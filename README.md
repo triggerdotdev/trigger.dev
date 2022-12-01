@@ -1,4 +1,4 @@
-# internal-workflow
+# trigger.dev
 
 Problem: Tools like Pipedream are great for quickly coding up a workflow that interacts with external services, but cannot easily access internal databases or internal services without opening them up to the internet or building proxies.
 
