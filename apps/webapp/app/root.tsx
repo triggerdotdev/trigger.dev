@@ -24,6 +24,7 @@ import { commitSession, getSession } from "~/models/message.server";
 import { useEffect, useRef } from "react";
 import posthog from "posthog-js";
 import { withSentry } from "@sentry/remix";
+import { env } from "./env.server";
 
 export const links: LinksFunction = () => {
   return [{ rel: "stylesheet", href: tailwindStylesheetUrl }];
@@ -44,7 +45,7 @@ type LoaderData = {
 export const loader: LoaderFunction = async ({ request }) => {
   const session = await getSession(request.headers.get("cookie"));
   const toastMessage = session.get("toastMessage") as ToastMessage;
-  const posthogProjectKey = process.env.POSTHOG_PROJECT_KEY;
+  const posthogProjectKey = env.POSTHOG_PROJECT_KEY;
 
   return json<LoaderData>(
     {
