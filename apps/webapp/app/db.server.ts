@@ -1,6 +1,5 @@
 import { PrismaClient, Prisma } from ".prisma/client";
 import invariant from "tiny-invariant";
-import { fieldEncryptionMiddleware } from "prisma-field-encryption";
 
 let prisma: PrismaClient;
 
@@ -54,12 +53,6 @@ function getClient() {
       },
     },
   });
-
-  client.$use(
-    fieldEncryptionMiddleware({
-      dmmf: Prisma.dmmf,
-    })
-  );
 
   // connect eagerly
   client.$connect();

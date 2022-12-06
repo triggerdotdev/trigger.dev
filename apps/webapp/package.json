@@ -64,7 +64,6 @@
     "postcss-import": "^14.1.0",
     "posthog-js": "^1.31.0",
     "pretty-bytes": "^6.0.0",
-    "prisma-field-encryption": "1.4.0-beta.5",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "react-hot-toast": "^2.4.0",
