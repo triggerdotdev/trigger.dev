@@ -10,7 +10,6 @@
     "build:server": "esbuild --platform=node --format=cjs ./server.ts --outdir=build",
     "dev": "run-p dev:*",
     "dev:server": "cross-env NODE_ENV=development node --inspect --require ./node_modules/dotenv/config ./build/server.js",
-    "dev:server:proxy": "cross-env NODE_ENV=development node --inspect --require ./node_modules/dotenv/config --require ./proxy ./build/server.js",
     "dev:build": "cross-env NODE_ENV=development npm run build:server -- --watch",
     "dev:remix": "cross-env NODE_ENV=development remix watch",
     "dev:css": "cross-env NODE_ENV=development npm run generate:css -- --watch",
