@@ -41,6 +41,7 @@ importers:
       '@heroicons/react': ^2.0.12
       '@lezer/highlight': ^1.1.2
       '@prisma/client': ^4.3.0
+      '@propelauth/react': ^2.0.0
       '@remix-run/dev': ^1.7.2
       '@remix-run/eslint-config': ^1.7.2
       '@remix-run/express': ^1.7.2
@@ -126,6 +127,7 @@ importers:
       '@heroicons/react': 2.0.13_react@18.2.0
       '@lezer/highlight': 1.1.3
       '@prisma/client': 4.7.1_prisma@4.7.1
+      '@propelauth/react': 2.0.0_biqbaboplfbrettd7655fr4n2y
       '@remix-run/express': 1.8.1_cwk4saenierp7pa7l5cpbeswge
       '@remix-run/node': 1.8.1_biqbaboplfbrettd7655fr4n2y
       '@remix-run/react': 1.8.1_biqbaboplfbrettd7655fr4n2y
@@ -2145,6 +2147,23 @@ packages:
   /@prisma/engines/4.7.1:
     resolution: {integrity: sha512-zWabHosTdLpXXlMefHmnouhXMoTB1+SCbUU3t4FCmdrtIOZcarPKU3Alto7gm/pZ9vHlGOXHCfVZ1G7OIrSbog==}
     requiresBuild: true
+
+  /@propelauth/javascript/2.0.0:
+    resolution: {integrity: sha512-YkQP62QMKq+s0Xd0lSn40XpEvKuocmjBl6EDtwUjczGrinqyPNbx7adYPTCUPkxdPF4KWZlWZvvJH8cqbXStLA==}
+    dev: false
+
+  /@propelauth/react/2.0.0_biqbaboplfbrettd7655fr4n2y:
+    resolution: {integrity: sha512-mbHxO6IlTBtUY7zZUxs+RbTgtd3pP+daliYlIDypb2bAMxFMPs2pDFTnW2nbROi2wLotAG+9VNV5NxA2KvKhZg==}
+    peerDependencies:
+      react: ^16.8.0 || ^17.0.0 || ^18.0.0
+      react-dom: ^16.8.0 || ^17.0.0 || ^18.0.0
+    dependencies:
+      '@propelauth/javascript': 2.0.0
+      hoist-non-react-statics: 3.3.2
+      react: 18.2.0
+      react-dom: 18.2.0_react@18.2.0
+      utility-types: 3.10.0
+    dev: false
 
   /@remix-run/dev/1.8.1_biqbaboplfbrettd7655fr4n2y:
     resolution: {integrity: sha512-5Yd8TW3GGPCL7xr4q7/yAojnltTKaqPNOSNyoSQC6bS/OhBMYftkdnmLw28fvrplQPC5wqEVIlz8NR0SPYXTzA==}
@@ -11502,6 +11521,11 @@ packages:
       is-generator-function: 1.0.10
       is-typed-array: 1.1.10
       which-typed-array: 1.1.9
+
+  /utility-types/3.10.0:
+    resolution: {integrity: sha512-O11mqxmi7wMKCo6HKFt5AhO4BwY3VV68YU07tgxfz8zJTIxr4BpsezN49Ffwy9j3ZpwwJp4fkRwjRzq3uWE6Rg==}
+    engines: {node: '>= 4'}
+    dev: false
 
   /utils-merge/1.0.1:
     resolution: {integrity: sha512-pMZTvIkT1d+TFGvDOqodOclx0QWkkgi6Tdoa8gC8ffGAAqz9pzPTZWAybbsHHoED/ztMtkv/VoYTYyShUn81hA==}
