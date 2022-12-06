@@ -1,6 +1,6 @@
 import { DocumentTextIcon } from "@heroicons/react/24/solid";
 import { Link } from "@remix-run/react";
-import { useUser } from "~/utils";
+import { useOptionalUser } from "~/utils";
 import { Logo } from "./Logo";
 import { UserProfileMenu } from "./UserProfileMenu";
 
@@ -9,7 +9,7 @@ type HeaderProps = {
 };
 
 export function Header({ children }: HeaderProps) {
-  const user = useUser();
+  const user = useOptionalUser();
 
   return (
     <div className="flex w-full items-center border-b border-slate-200 bg-white py-1 px-2">
