@@ -1,0 +1,30 @@
+version: "3.7"
+
+volumes:
+  database:
+    driver: local
+
+services:
+  redis:
+    image: redis:7.0.0-alpine
+    command: redis-server
+    restart: always
+    ports:
+      - 6379:6379
+  db:
+    image: postgres:latest
+    restart: always
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - database:/var/lib/postgresql-docker/data
+    networks:
+      - app_network
+
+networks:
+  app_network:
+    external: true

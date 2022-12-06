@@ -1,0 +1,10 @@
+node_modules
+
+/.cache
+/build
+/public/build
+
+/cypress/screenshots
+/cypress/videos
+
+/app/styles/tailwind.css

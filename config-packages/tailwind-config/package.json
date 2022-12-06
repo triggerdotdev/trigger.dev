@@ -1,0 +1,9 @@
+{
+  "name": "@apihero/tailwind-config",
+  "version": "0.0.0",
+  "private": true,
+  "devDependencies": {},
+  "publishConfig": {
+    "access": "public"
+  }
+}

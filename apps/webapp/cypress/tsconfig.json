@@ -1,0 +1,39 @@
+{
+  "exclude": [
+    "../node_modules/@types/jest",
+    "../node_modules/@testing-library/jest-dom"
+  ],
+  "include": [
+    "e2e/**/*",
+    "support/**/*",
+    "../node_modules/cypress",
+    "../node_modules/@testing-library/cypress"
+  ],
+  "compilerOptions": {
+    "baseUrl": ".",
+    "noEmit": true,
+    "types": ["node", "cypress", "@testing-library/cypress"],
+    "esModuleInterop": true,
+    "jsx": "react-jsx",
+    "moduleResolution": "node",
+    "target": "es2019",
+    "strict": true,
+    "skipLibCheck": true,
+    "resolveJsonModule": true,
+    "typeRoots": ["../types", "../node_modules/@types"],
+    "paths": {
+      "~/*": ["./app/*"],
+      "@apihero/ui/*": ["../../packages/ui/src/*"],
+      "@apihero/ui": ["../../packages/ui/src/index"],
+      "@apihero/business/*": ["../../packages/business/src/*"],
+      "@apihero/business": ["../../packages/business/src/index"],
+      "@apihero/internal-nobuild": [
+        "../../packages/internal-nobuild/src/index"
+      ],
+      "@apihero/internal-nobuild/*": ["../../packages/internal-nobuild/src/*"]
+    }
+  },
+  "ts-node": {
+    "swc": true
+  }
+}

@@ -105,3 +105,67 @@ new Workflow({
   },
 }).listen();
 ```
+
+## Development
+
+> **Warning**
+> All the following commands should be launched from the **monorepo root directory**
+
+1. Install the dependencies.
+    ```bash
+    pnpm install
+    ```
+    You also have to copy the example .env.example:
+    ```sh
+    cp .env.example .env
+    cp .env.example .env.docker
+    ```
+2. Start the postgresql docker container
+    ```bash
+    pnpm run docker:db
+    ```
+    > **Note:** The npm script will complete while Docker sets up the container in the background. Ensure that Docker has finished and your container is running before proceeding.
+
+3. Generate prisma schema 
+    ```bash
+    pnpm run generate
+    ```
+4. Run the Prisma migration to the database
+    ```bash
+    pnpm run db:migrate:deploy
+    ```
+5. Run the first build (with dependencies via the `...` option)
+    ```bash
+    pnpm run build --filter=webapp...
+    ```
+    **Running simply `pnpm run build` will build everything, including the NextJS app.**
+6. Run the Remix dev server
+    ```bash
+    pnpm run dev --filter=webapp
+    ```
+## Tests, Typechecks, Lint, Install packages...
+Check the `turbo.json` file to see the available pipelines.
+- Run the Cypress tests and Dev
+    ```bash
+    pnpm run test:e2e:dev --filter=webapp
+    ```
+- Lint everything
+    ```bash
+    pnpm run lint
+    ``` 
+- Typecheck the whole monorepo
+    ```bash
+    pnpm run typecheck
+    ```  
+- Test the whole monorepo
+    ```bash
+    pnpm run test
+    or
+    pnpm run test:dev 
+    ``` 
+- How to install an npm package in the Remix app ?
+    ```bash
+    pnpm add dayjs --filter webapp
+    ```
+- Tweak the tsconfigs, eslint configs in the `config-package` folder. Any package or app will then extend from these configs.
+

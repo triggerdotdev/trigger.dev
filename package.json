@@ -1,0 +1,56 @@
+{
+  "name": "apihero",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "version": "0.1.0",
+  "prisma": {
+    "schema": "apps/webapp/prisma/schema.prisma",
+    "seed": "tsx apps/webapp/prisma/seed.ts"
+  },
+  "scripts": {
+    "build": "turbo run build",
+    "build:force": "turbo run build --force",
+    "db:migrate:deploy": "turbo run db:migrate:deploy",
+    "db:migrate:dev": "turbo run db:migrate:dev",
+    "db:push": "turbo run db:push",
+    "db:seed": "turbo run db:seed --no-cache",
+    "db:migrate:force": "turbo run db:migrate:force --no-cache",
+    "dev": "turbo run dev --parallel",
+    "format": "prettier --write \"**/*.{ts,tsx,md}\"",
+    "generate": "turbo run generate",
+    "lint": "turbo run lint",
+    "docker:db": "docker-compose -f docker-compose.yml up -d",
+    "docker:db:stop": "docker-compose -f docker-compose.yml down",
+    "docker:build": "turbo run docker:build",
+    "docker:build:webapp": "docker build -t apihero-webapp -f ./apps/webapp/Dockerfile .",
+    "docker:run:webapp": "docker run -it --init --rm -p 3000:3000 --env-file ./apps/webapp/.env --env DATABASE_URL='postgresql://postgres:postgres@db:5432/postgres' --network=app_network apihero-webapp",
+    "docker:build:logs": "docker build -t apihero-logs -f ./apps/logs/Dockerfile .",
+    "docker:run:logs": "docker run -it --init --rm -p 3001:3001 --env-file ./apps/logs/.env --env PORT=3001 --env DATABASE_URL='postgresql://postgres:postgres@db:5433/postgres' --network=app_network apihero-logs",
+    "test": "turbo run test",
+    "test:dev": "turbo run test:dev",
+    "start": "turbo run start",
+    "clean": "turbo run clean",
+    "clean:node_modules": "find . -name 'node_modules' -type d -prune -exec rm -rf '{}' +",
+    "typecheck": "turbo run typecheck",
+    "test:e2e:dev": "turbo run test:e2e:dev",
+    "test:e2e:ci": "turbo run test:e2e:ci",
+    "setup": "turbo run generate db:migrate:force db:seed",
+    "env:pull": "turbo run env:pull"
+  },
+  "devDependencies": {
+    "@manypkg/cli": "^0.19.2",
+    "@tailwindcss/forms": "^0.5.3",
+    "@tailwindcss/typography": "^0.5.7",
+    "autoprefixer": "^10.4.12",
+    "eslint-config-custom": "*",
+    "postcss": "^8.4.17",
+    "prettier": "^2.5.1",
+    "tailwindcss": "^3.1.8",
+    "tsx": "^3.7.1",
+    "turbo": "^1.5.5"
+  },
+  "packageManager": "pnpm@7.13.5"
+}
