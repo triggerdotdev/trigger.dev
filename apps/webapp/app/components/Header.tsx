@@ -1,3 +1,4 @@
+import { UserButton } from "@clerk/remix";
 import { DocumentTextIcon } from "@heroicons/react/24/solid";
 import { Link } from "@remix-run/react";
 import { useOptionalUser } from "~/utils";
@@ -29,6 +30,7 @@ export function Header({ children }: HeaderProps) {
           <DocumentTextIcon className="h-4 w-4 transition group-hover:text-blue-600" />
           <span>Docs</span>
         </a>
+        <UserButton />
         {user ? (
           <UserProfileMenu user={user} />
         ) : (

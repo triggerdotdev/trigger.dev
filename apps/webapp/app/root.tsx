@@ -1,8 +1,4 @@
-import type {
-  LinksFunction,
-  LoaderFunction,
-  MetaFunction,
-} from "@remix-run/node";
+import { LinksFunction, LoaderFunction, MetaFunction } from "@remix-run/node";
 import {
   Links,
   LiveReload,
@@ -19,13 +15,13 @@ import tailwindStylesheetUrl from "./styles/tailwind.css";
 import { Toaster, toast } from "react-hot-toast";
 
 import type { ToastMessage } from "~/models/message.server";
-import { commitSession, getSession } from "~/models/message.server";
+import { getSession } from "~/models/message.server";
 import { useEffect, useRef } from "react";
 import posthog from "posthog-js";
 import { withSentry } from "@sentry/remix";
 import { env } from "./env.server";
 import { getUserById } from "./models/user.server";
-import { typedjson, useTypedLoaderData } from "remix-typedjson";
+import { useTypedLoaderData } from "remix-typedjson";
 import { ClerkApp, ClerkCatchBoundary } from "@clerk/remix";
 import { Title } from "./components/primitives/text/Title";
 
@@ -51,25 +47,34 @@ export const loader: LoaderFunction = async (args) => {
   const toastMessage = session.get("toastMessage") as ToastMessage;
   const posthogProjectKey = env.POSTHOG_PROJECT_KEY;
 
-  return rootAuthLoader(args, async ({ request }) => {
-    const { sessionId, userId, getToken } = request.auth;
+  return rootAuthLoader(
+    args,
+    async ({ request }) => {
+      const { userId } = request.auth;
 
-    return typedjson<LoaderData>(
-      {
+      console.log("request.auth", request.auth);
+
+      return {
         user: userId ? await getUserById(userId) : null,
         toastMessage,
         posthogProjectKey,
-      },
-      { headers: { "Set-Cookie": await commitSession(session) } }
-    );
-  });
+      };
+
+      //todo figure out how to send a cookie too, it's erroring out
+      // {
+      //   headers: { "Set-Cookie": await commitSession(session) },
+      // }
+    },
+    { loadUser: true }
+  );
 };
 
 export const CatchBoundary = ClerkCatchBoundary(ErrorBoundary);
 
 //todo we need to style the error page
-export function ErrorBoundary() {
+function ErrorBoundary() {
   const caught = useCatch();
+  console.log(caught);
   return (
     <html>
       <head>
@@ -79,7 +84,7 @@ export function ErrorBoundary() {
       </head>
       <body>
         <Title>
-          {caught.status} {caught.statusText}
+          Error:{caught?.status} {caught?.statusText}
         </Title>
         <Scripts />
       </body>
