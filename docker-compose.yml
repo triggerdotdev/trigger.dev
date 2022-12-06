@@ -5,12 +5,6 @@ volumes:
     driver: local
 
 services:
-  redis:
-    image: redis:7.0.0-alpine
-    command: redis-server
-    restart: always
-    ports:
-      - 6379:6379
   db:
     image: postgres:latest
     restart: always

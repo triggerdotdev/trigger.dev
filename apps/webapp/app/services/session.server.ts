@@ -1,10 +1,11 @@
 import { redirect } from "@remix-run/node";
 import { getUserById } from "~/models/user.server";
-import { authenticator } from "./auth.server";
 
 export async function getUserId(request: Request): Promise<string | undefined> {
-  let authUser = await authenticator.isAuthenticated(request);
-  return authUser?.userId;
+  //todo get the user id from the session
+  // let authUser = await authenticator.isAuthenticated(request);
+  // return authUser?.userId;
+  return undefined;
 }
 
 export async function getUser(request: Request) {
