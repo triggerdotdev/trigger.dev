@@ -48,7 +48,6 @@
     "@heroicons/react": "^2.0.12",
     "@lezer/highlight": "^1.1.2",
     "@prisma/client": "^4.3.0",
-    "@propelauth/react": "^2.0.0",
     "@remix-run/express": "^1.7.2",
     "@remix-run/node": "^1.7.2",
     "@remix-run/react": "^1.7.2",

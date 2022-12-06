@@ -1,34 +1,28 @@
-import {
-  AuthProvider,
-  RedirectToLogin,
-  RequiredAuthProvider,
-} from "@propelauth/react";
 import { Outlet } from "@remix-run/react";
 import type { LoaderArgs } from "@remix-run/server-runtime";
-import { env } from "../env.server";
 import { typedjson } from "remix-typedjson";
-import { useTypedLoaderData } from "remix-typedjson/dist/remix";
+import type { UseDataFunctionReturn } from "remix-typedjson/dist/remix";
+import { Header } from "~/components/Header";
 import { clearRedirectTo, commitSession } from "~/services/redirectTo.server";
 
-export const loader = async ({ request }: LoaderArgs) => {
+export type LoaderData = UseDataFunctionReturn<typeof loader>;
+
+export async function loader({ request }: LoaderArgs) {
   return typedjson(
-    { authUrl: env.AUTH_URL },
+    {},
     {
       headers: {
         "Set-Cookie": await commitSession(await clearRedirectTo(request)),
       },
     }
   );
-};
+}
 
 export default function AppLayout() {
-  const { authUrl } = useTypedLoaderData<typeof loader>();
-
   return (
-    <AuthProvider authUrl={authUrl}>
-      <div className="flex h-screen flex-col overflow-auto">
-        <Outlet />
-      </div>
-    </AuthProvider>
+    <div className="flex h-screen flex-col overflow-auto">
+      <Header>Home</Header>
+      <Outlet />
+    </div>
   );
 }
