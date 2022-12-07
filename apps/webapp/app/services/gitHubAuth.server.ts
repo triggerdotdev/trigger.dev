@@ -30,7 +30,7 @@ const gitHubStrategy = new GitHubStrategy(
       });
 
       if (isNewUser) {
-        const firstOrganization = await createFirstOrganization(user.id);
+        const firstOrganization = await createFirstOrganization(user);
         await createFirstWorkflow(user.id, firstOrganization.id);
         await sendWelcomeEmail(user);
       }
