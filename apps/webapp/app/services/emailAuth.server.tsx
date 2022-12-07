@@ -6,6 +6,8 @@ import type { Authenticator } from "remix-auth";
 import type { AuthUser } from "./authUser";
 import { findOrCreateUser } from "~/models/user.server";
 import { env } from "~/env.server";
+import { createFirstOrganization } from "~/models/organization.server";
+import { createFirstWorkflow } from "~/models/workflow.server";
 
 export const sendEmail: SendEmailFunction<AuthUser> = async (options) => {
   let subject = "Log in to API Hero";
@@ -62,9 +64,8 @@ const emailStrategy = new EmailLinkStrategy(
       );
 
       if (isNewUser) {
-        //todo setup user with their first organisation and maybe a workflow too?
-        // const firstWorkspace = await createFirstWorkspace(user.id);
-        // await createFirstProject(user.id, firstWorkspace.id);
+        const firstOrganization = await createFirstOrganization(user.id);
+        await createFirstWorkflow(user.id, firstOrganization.id);
         await emailProvider.sendWelcomeEmail(user);
       }
 
