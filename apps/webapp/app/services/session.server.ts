@@ -14,6 +14,8 @@ export async function getUser(request: Request) {
   const user = await getUserById(userId);
   if (user) return user;
 
+  console.log("user", user);
+
   throw await logout(request);
 }
 

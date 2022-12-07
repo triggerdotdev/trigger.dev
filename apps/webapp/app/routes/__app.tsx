@@ -21,7 +21,6 @@ export async function loader({ request }: LoaderArgs) {
 export default function AppLayout() {
   return (
     <div className="flex h-screen flex-col overflow-auto">
-      <Header>Home</Header>
       <Outlet />
     </div>
   );

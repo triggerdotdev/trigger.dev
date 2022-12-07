@@ -37,6 +37,7 @@ export function useMatchesData(
   id: string
 ): Record<string, unknown> | undefined {
   const matchingRoutes = useMatches();
+  console.log("matchingRoutes", matchingRoutes);
   const route = useMemo(
     () => matchingRoutes.find((route) => route.id === id),
     [matchingRoutes, id]

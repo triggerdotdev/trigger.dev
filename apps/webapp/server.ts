@@ -4,9 +4,10 @@ import compression from "compression";
 import morgan from "morgan";
 import { createRequestHandler as expressCreateRequestHandler } from "@remix-run/express";
 import { wrapExpressCreateRequestHandler } from "@sentry/remix";
+import { env } from "~/env.server";
 
 const createRequestHandler =
-  process.env.NODE_ENV === "production"
+  env.NODE_ENV === "production"
     ? wrapExpressCreateRequestHandler(expressCreateRequestHandler)
     : expressCreateRequestHandler;
 
@@ -14,7 +15,7 @@ const app = express();
 
 app.use((req, res, next) => {
   // helpful headers:
-  res.set("x-fly-region", process.env.FLY_REGION ?? "unknown");
+  res.set("x-fly-region", env.FLY_REGION ?? "unknown");
   res.set("Strict-Transport-Security", `max-age=${60 * 60 * 24 * 365 * 100}`);
 
   // /clean-urls/ -> /clean-urls
@@ -33,7 +34,7 @@ app.use((req, res, next) => {
 // learn more: https://fly.io/docs/getting-started/multi-region-databases/#replay-the-request
 app.all("*", function getReplayResponse(req, res, next) {
   const { method, path: pathname } = req;
-  const { PRIMARY_REGION, FLY_REGION } = process.env;
+  const { PRIMARY_REGION, FLY_REGION } = env;
 
   const isMethodReplayable = !["GET", "OPTIONS", "HEAD"].includes(method);
   const isReadOnlyRegion =
@@ -71,7 +72,7 @@ app.use(express.static("public", { maxAge: "1h" }));
 
 app.use(morgan("tiny"));
 
-const MODE = process.env.NODE_ENV;
+const MODE = env.NODE_ENV;
 const BUILD_DIR = path.join(process.cwd(), "build");
 
 app.all(
@@ -88,7 +89,7 @@ app.all(
       }
 );
 
-const port = process.env.REMIX_APP_PORT || 3000;
+const port = env.REMIX_APP_PORT || 3000;
 
 app.listen(port, () => {
   // require the built app so we're ready when the first request comes in

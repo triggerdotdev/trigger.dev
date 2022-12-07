@@ -1,5 +1,6 @@
 import type {
   LinksFunction,
+  LoaderArgs,
   LoaderFunction,
   MetaFunction,
 } from "@remix-run/node";
@@ -25,6 +26,7 @@ import { useEffect, useRef } from "react";
 import posthog from "posthog-js";
 import { withSentry } from "@sentry/remix";
 import { env } from "./env.server";
+import { typedjson, useTypedLoaderData } from "remix-typedjson";
 
 export const links: LinksFunction = () => {
   return [{ rel: "stylesheet", href: tailwindStylesheetUrl }];
@@ -36,18 +38,12 @@ export const meta: MetaFunction = () => ({
   viewport: "width=device-width,initial-scale=1",
 });
 
-type LoaderData = {
-  user: Awaited<ReturnType<typeof getUser>>;
-  toastMessage: ToastMessage | null;
-  posthogProjectKey?: string;
-};
-
-export const loader: LoaderFunction = async ({ request }) => {
+export const loader = async ({ request }: LoaderArgs) => {
   const session = await getSession(request.headers.get("cookie"));
   const toastMessage = session.get("toastMessage") as ToastMessage;
   const posthogProjectKey = env.POSTHOG_PROJECT_KEY;
 
-  return json<LoaderData>(
+  return typedjson(
     {
       user: await getUser(request),
       toastMessage,
@@ -58,7 +54,8 @@ export const loader: LoaderFunction = async ({ request }) => {
 };
 
 function App() {
-  const { toastMessage, posthogProjectKey, user } = useLoaderData<LoaderData>();
+  const { toastMessage, posthogProjectKey, user } =
+    useTypedLoaderData<typeof loader>();
   const postHogInitialised = useRef<boolean>(false);
 
   useEffect(() => {

@@ -1,6 +1,13 @@
 import { z } from "zod";
 
 const EnvironmentSchema = z.object({
+  NODE_ENV: z.union([
+    z.literal("development"),
+    z.literal("production"),
+    z.literal("test"),
+  ]),
+  REMIX_APP_PORT: z.string().optional(),
+  DATABASE_URL: z.string(),
   APP_ORIGIN: z.string().default("https://app.trigger.dev"),
   SENTRY_DSN: z
     .string()
@@ -14,6 +21,9 @@ const EnvironmentSchema = z.object({
   MAILGUN_KEY: z.string(),
   FROM_EMAIL: z.string(),
   MERGENT_KEY: z.string(),
+  PRIMARY_REGION: z.string().optional(),
+  FLY_REGION: z.string().optional(),
+  SESSION_SECRET: z.string(),
 });
 
 export type Environment = z.infer<typeof EnvironmentSchema>;

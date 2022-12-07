@@ -25,7 +25,7 @@ export default function handleRequest(
   });
 }
 
-if (process.env.NODE_ENV === "production") {
+if (env.NODE_ENV === "production") {
   Sentry.init({
     dsn: env.SENTRY_DSN,
     tracesSampleRate: 1,

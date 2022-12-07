@@ -1,10 +1,8 @@
 import { createCookieSessionStorage } from "@remix-run/node";
-import invariant from "tiny-invariant";
 import { z } from "zod";
+import { env } from "~/env.server";
 
 const ONE_DAY = 60 * 60 * 24;
-
-invariant(process.env.SESSION_SECRET, "SESSION_SECRET must be set");
 
 export const { commitSession, getSession } = createCookieSessionStorage({
   cookie: {
@@ -12,8 +10,8 @@ export const { commitSession, getSession } = createCookieSessionStorage({
     path: "/",
     httpOnly: true,
     sameSite: "lax",
-    secrets: [process.env.SESSION_SECRET],
-    secure: process.env.NODE_ENV === "production",
+    secrets: [env.SESSION_SECRET],
+    secure: env.NODE_ENV === "production",
     maxAge: ONE_DAY,
   },
 });
