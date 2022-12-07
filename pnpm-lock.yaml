@@ -99,6 +99,9 @@ importers:
       react-dom: ^18.2.0
       react-hot-toast: ^2.4.0
       react-hotkeys-hook: ^3.4.7
+      remix-auth: ^3.4.0
+      remix-auth-email-link: ^1.5.0
+      remix-auth-github: ^1.2.0
       remix-typedjson: ^0.1.3
       remix-utils: ^3.3.0
       slug: ^6.0.0
@@ -146,6 +149,9 @@ importers:
       react-dom: 18.2.0_react@18.2.0
       react-hot-toast: 2.4.0_owo25xnefcwdq3zjgtohz6dbju
       react-hotkeys-hook: 3.4.7_biqbaboplfbrettd7655fr4n2y
+      remix-auth: 3.4.0_ocwuv7fu46jksl4qrjyds63e2u
+      remix-auth-email-link: 1.5.0_l7zd37vlmwjjtjrqrsriv6vzlu
+      remix-auth-github: 1.2.0_l7zd37vlmwjjtjrqrsriv6vzlu
       remix-typedjson: 0.1.6_r6v4qdtnrykvhbowzwm5wlfc2i
       remix-utils: 3.4.0_3p2jan23etrrrxrm3xjpyebqtq
       slug: 6.1.0
@@ -4461,6 +4467,10 @@ packages:
       path-key: 3.1.1
       shebang-command: 2.0.0
       which: 2.0.2
+
+  /crypto-js/4.1.1:
+    resolution: {integrity: sha512-o2JlM7ydqd3Qk9CA0L4NL6mTzU2sdx96a+oOfPu8Mkl/PK51vSyoi8/rQ8NknZtk44vq15lmhAj9CIAGwgeWKw==}
+    dev: false
 
   /css.escape/1.5.1:
     resolution: {integrity: sha512-YUifsXXuknHlUsmlgyY0PKzgPOr7/FjCePfHNt0jxm83wHZi44VDMQ7/fGNkjY3/jV1MC+1CmZbaHzugyeRtpg==}
@@ -9993,6 +10003,55 @@ packages:
       mdast-util-to-hast: 11.3.0
       unified: 10.1.2
     dev: true
+
+  /remix-auth-email-link/1.5.0_l7zd37vlmwjjtjrqrsriv6vzlu:
+    resolution: {integrity: sha512-1lvPqaxReGQ53ZPY/QVnN1ptNqhLcxU1ZUmmeo3TXXLkUc3vFfbLW6l0Nm8lGKCubOwyf63kpe2Lw6+aGuS87A==}
+    peerDependencies:
+      '@remix-run/server-runtime': ^1.1.1
+      remix-auth: ^3.2.1
+    dependencies:
+      '@remix-run/server-runtime': 1.8.1_biqbaboplfbrettd7655fr4n2y
+      crypto-js: 4.1.1
+      remix-auth: 3.4.0_ocwuv7fu46jksl4qrjyds63e2u
+    dev: false
+
+  /remix-auth-github/1.2.0_l7zd37vlmwjjtjrqrsriv6vzlu:
+    resolution: {integrity: sha512-OAAMIJeJVtMoe/ZgzmXOtXPY36frmECT674OjgSm/rqkU/d5EbZVSb1DtALLb70specoabdYVBuhS+13bv9TWw==}
+    peerDependencies:
+      '@remix-run/server-runtime': ^1.0.0
+      remix-auth: ^3.4.0
+    dependencies:
+      '@remix-run/server-runtime': 1.8.1_biqbaboplfbrettd7655fr4n2y
+      remix-auth: 3.4.0_ocwuv7fu46jksl4qrjyds63e2u
+      remix-auth-oauth2: 1.5.0_l7zd37vlmwjjtjrqrsriv6vzlu
+    transitivePeerDependencies:
+      - supports-color
+    dev: false
+
+  /remix-auth-oauth2/1.5.0_l7zd37vlmwjjtjrqrsriv6vzlu:
+    resolution: {integrity: sha512-vv/CX2bCeVf8vzACfS1Fae+i75Cw0/As3RLkp00+9n9IBEvKi07LhUxTbODNA51jRh+wInnmCRIwsHafKQDD6g==}
+    peerDependencies:
+      '@remix-run/server-runtime': ^1.0.0
+      remix-auth: ^3.2.2
+    dependencies:
+      '@remix-run/server-runtime': 1.8.1_biqbaboplfbrettd7655fr4n2y
+      debug: 4.3.4
+      remix-auth: 3.4.0_ocwuv7fu46jksl4qrjyds63e2u
+      uuid: 8.3.2
+    transitivePeerDependencies:
+      - supports-color
+    dev: false
+
+  /remix-auth/3.4.0_ocwuv7fu46jksl4qrjyds63e2u:
+    resolution: {integrity: sha512-VRliJo9VRAS4sSYgMjYbi7rYRixPWU2Tb8PFZb06OIj0nONK/1KRzHf2+Y6VGZeIacepLVgan6g2IUJjayE2rQ==}
+    peerDependencies:
+      '@remix-run/react': ^1.0.0
+      '@remix-run/server-runtime': ^1.0.0
+    dependencies:
+      '@remix-run/react': 1.8.1_biqbaboplfbrettd7655fr4n2y
+      '@remix-run/server-runtime': 1.8.1_biqbaboplfbrettd7655fr4n2y
+      uuid: 8.3.2
+    dev: false
 
   /remix-typedjson/0.1.6_r6v4qdtnrykvhbowzwm5wlfc2i:
     resolution: {integrity: sha512-3weYEM1drz7la8orRQPJS0iwIj6Zzk4Fimr9cm7srTQow2TArtxTmeZIHicEYrq0EAcBOhXAyxCaik7zmoavXQ==}
