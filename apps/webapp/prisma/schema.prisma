@@ -11,6 +11,52 @@ generator client {
 
 model User {
   id    String @id @default(cuid())
+  email String @unique
+
+  authenticationMethod      AuthenticationMethod
+  accessToken               String?
+  authenticationProfile     Json?
+  authenticationExtraParams Json?
+
+  displayName String?
+  name        String?
+  avatarUrl   String?
+
+  admin Boolean @default(false)
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  organizations Organization[]
+}
+
+enum AuthenticationMethod {
+  GITHUB
+  MAGIC_LINK
+}
+
+model Organization {
+  id    String @id @default(cuid())
+  slug  String @unique
+  title String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  users    User[]
+  workflows Workflow[]
+}
+
+model Workflow {
+  id    String @id @default(cuid())
+  slug  String
+  title String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  organizationId String
+
+  @@unique([organizationId, slug])
 }
