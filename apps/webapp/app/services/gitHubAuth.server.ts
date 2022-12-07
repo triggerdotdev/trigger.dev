@@ -3,7 +3,6 @@ import { GitHubStrategy } from "remix-auth-github";
 import { env } from "~/env.server";
 import { createFirstOrganization } from "~/models/organization.server";
 import { findOrCreateUser } from "~/models/user.server";
-import { createFirstWorkflow } from "~/models/workflow.server";
 import type { AuthUser } from "./authUser";
 import { sendWelcomeEmail } from "./email.server";
 
@@ -30,8 +29,7 @@ const gitHubStrategy = new GitHubStrategy(
       });
 
       if (isNewUser) {
-        const firstOrganization = await createFirstOrganization(user);
-        await createFirstWorkflow(user.id, firstOrganization.id);
+        await createFirstOrganization(user);
         await sendWelcomeEmail(user);
       }
 
