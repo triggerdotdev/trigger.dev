@@ -3,6 +3,7 @@ import type {
   LoaderFunction,
   MetaFunction,
 } from "@remix-run/node";
+import { json } from "@remix-run/node";
 import {
   Links,
   LiveReload,
@@ -10,11 +11,11 @@ import {
   Outlet,
   Scripts,
   ScrollRestoration,
-  useCatch,
+  useLoaderData,
 } from "@remix-run/react";
-import { rootAuthLoader } from "@clerk/remix/ssr.server";
 
 import tailwindStylesheetUrl from "./styles/tailwind.css";
+import { getUser } from "./services/session.server";
 
 import { Toaster, toast } from "react-hot-toast";
 
@@ -24,10 +25,6 @@ import { useEffect, useRef } from "react";
 import posthog from "posthog-js";
 import { withSentry } from "@sentry/remix";
 import { env } from "./env.server";
-import { getUserById } from "./models/user.server";
-import { typedjson, useTypedLoaderData } from "remix-typedjson";
-import { ClerkApp, ClerkCatchBoundary } from "@clerk/remix";
-import { Title } from "./components/primitives/text/Title";
 
 export const links: LinksFunction = () => {
   return [{ rel: "stylesheet", href: tailwindStylesheetUrl }];
@@ -40,56 +37,28 @@ export const meta: MetaFunction = () => ({
 });
 
 type LoaderData = {
-  user: Awaited<ReturnType<typeof getUserById>>;
+  user: Awaited<ReturnType<typeof getUser>>;
   toastMessage: ToastMessage | null;
   posthogProjectKey?: string;
 };
 
-export const loader: LoaderFunction = async (args) => {
-  const { request } = args;
+export const loader: LoaderFunction = async ({ request }) => {
   const session = await getSession(request.headers.get("cookie"));
   const toastMessage = session.get("toastMessage") as ToastMessage;
   const posthogProjectKey = env.POSTHOG_PROJECT_KEY;
 
-  return rootAuthLoader(args, async ({ request }) => {
-    const { sessionId, userId, getToken } = request.auth;
-
-    return typedjson<LoaderData>(
-      {
-        user: userId ? await getUserById(userId) : null,
-        toastMessage,
-        posthogProjectKey,
-      },
-      { headers: { "Set-Cookie": await commitSession(session) } }
-    );
-  });
+  return json<LoaderData>(
+    {
+      user: await getUser(request),
+      toastMessage,
+      posthogProjectKey,
+    },
+    { headers: { "Set-Cookie": await commitSession(session) } }
+  );
 };
 
-export const CatchBoundary = ClerkCatchBoundary(ErrorBoundary);
-
-//todo we need to style the error page
-export function ErrorBoundary() {
-  const caught = useCatch();
-  return (
-    <html>
-      <head>
-        <title>Oh no!</title>
-        <Meta />
-        <Links />
-      </head>
-      <body>
-        <Title>
-          {caught.status} {caught.statusText}
-        </Title>
-        <Scripts />
-      </body>
-    </html>
-  );
-}
-
 function App() {
-  const { toastMessage, posthogProjectKey, user } =
-    useTypedLoaderData<LoaderData>();
+  const { toastMessage, posthogProjectKey, user } = useLoaderData<LoaderData>();
   const postHogInitialised = useRef<boolean>(false);
 
   useEffect(() => {
@@ -151,4 +120,4 @@ function App() {
   );
 }
 
-export default withSentry(ClerkApp(App));
+export default withSentry(App);
