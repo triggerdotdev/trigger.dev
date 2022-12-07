@@ -1,7 +1,7 @@
 import { ClipboardIcon } from "@heroicons/react/24/outline";
 import classNames from "classnames";
 import { useCallback, useState } from "react";
-import { CopyText } from "../libraries/ui/src/components/CopyText";
+import { CopyText } from "./CopyText";
 
 const variantStyle = {
   slate:

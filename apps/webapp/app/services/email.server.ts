@@ -1,7 +1,7 @@
 import type { User } from "~/models/user.server";
 import mailgun from "mailgun-js";
 import { env } from "~/env.server";
-import { mergent } from "~/mergent.server";
+import { mergent } from "./mergent.server";
 
 const mailgunDomain = "apihero.run";
 
@@ -16,7 +16,7 @@ export async function sendEmail(
   body: string
 ) {
   const data = {
-    from: `API Hero <${env.SENDGRID_FROM_EMAIL}>`,
+    from: `API Hero <${env.FROM_EMAIL}>`,
     to: emailAddress,
     subject,
     html: body,
@@ -27,7 +27,7 @@ export async function sendEmail(
 
 export async function sendWelcomeEmail(user: User) {
   const data = {
-    from: `API Hero <${env.SENDGRID_FROM_EMAIL}>`,
+    from: `API Hero <${env.FROM_EMAIL}>`,
     to: user.email,
     subject: "🤝 Welcome to API Hero!",
     template: "welcome_email_test1",

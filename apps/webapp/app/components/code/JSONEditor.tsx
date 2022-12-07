@@ -5,7 +5,7 @@ import type {
   UseCodeMirror,
 } from "@uiw/react-codemirror";
 import { useCodeMirror } from "@uiw/react-codemirror";
-import clsx from "clsx";
+import classNames from "classnames";
 import { useRef, useEffect } from "react";
 import { getEditorSetup } from "./codeMirrorSetup";
 import { lightTheme } from "./codeMirrorTheme";
@@ -77,7 +77,7 @@ export function JSONEditor(opts: JSONEditorProps) {
 
   return (
     <div
-      className={clsx("no-scrollbar overflow-y-auto", opts.className)}
+      className={classNames("no-scrollbar overflow-y-auto", opts.className)}
       ref={editor}
       onBlur={() => {
         if (!onBlur) return;

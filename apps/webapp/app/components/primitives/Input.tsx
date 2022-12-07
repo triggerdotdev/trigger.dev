@@ -1,4 +1,4 @@
-import clsx from "clsx";
+import classNames from "classnames";
 
 const roundedStyles = {
   roundedLeft:
@@ -21,7 +21,7 @@ export function Input({
   roundedEdges = "roundedFull",
   ...props
 }: InputProps) {
-  const classes = clsx(roundedStyles[roundedEdges], className);
+  const classes = classNames(roundedStyles[roundedEdges], className);
 
   return (
     <input

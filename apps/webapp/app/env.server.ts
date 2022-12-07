@@ -11,6 +11,9 @@ const EnvironmentSchema = z.object({
   MAGIC_LINK_SECRET: z.string(),
   GITHUB_CLIENT_ID: z.string(),
   GITHUB_SECRET: z.string(),
+  MAILGUN_KEY: z.string(),
+  FROM_EMAIL: z.string(),
+  MERGENT_KEY: z.string(),
 });
 
 export type Environment = z.infer<typeof EnvironmentSchema>;
