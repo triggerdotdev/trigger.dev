@@ -16,7 +16,7 @@ export async function sendEmail(
   body: string
 ) {
   const data = {
-    from: `API Hero <${env.FROM_EMAIL}>`,
+    from: `Trigger.dev <${env.FROM_EMAIL}>`,
     to: emailAddress,
     subject,
     html: body,
@@ -27,9 +27,9 @@ export async function sendEmail(
 
 export async function sendWelcomeEmail(user: User) {
   const data = {
-    from: `API Hero <${env.FROM_EMAIL}>`,
+    from: `Trigger.dev <${env.FROM_EMAIL}>`,
     to: user.email,
-    subject: "🤝 Welcome to API Hero!",
+    subject: "🤝 Welcome to Trigger.dev!",
     template: "welcome_email_test1",
     "v:greeting": user.name ?? "there",
   };
