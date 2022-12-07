@@ -1,9 +1,9 @@
 import { RemixBrowser, useLocation, useMatches } from "@remix-run/react";
-import { hydrate } from "react-dom";
+import { hydrateRoot } from "react-dom/client";
 import * as Sentry from "@sentry/remix";
 import { useEffect } from "react";
 
-hydrate(<RemixBrowser />, document);
+hydrateRoot(document, <RemixBrowser />);
 
 if (process.env.NODE_ENV === "production") {
   Sentry.init({
