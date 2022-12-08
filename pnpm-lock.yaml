@@ -36,6 +36,7 @@ importers:
       dotenv: ^16.0.3
       evt: ^2.4.13
       internal-bridge: workspace:*
+      pulsar-client: ^1.7.0
       rimraf: ^3.0.2
       tsup: ^6.5.0
       typescript: ^4.9.4
@@ -44,6 +45,7 @@ importers:
       zod: ^3.19.1
     dependencies:
       evt: 2.4.13
+      pulsar-client: 1.7.0
       uuid: 9.0.0
       ws: 8.11.0
       zod: 3.19.1
@@ -3959,8 +3961,6 @@ packages:
     resolution: {integrity: sha512-p2q/t/mhvuOj/UeLlV6566GD/guowlr0hHxClI0W9m7MWYkL1F0hLo+0Aexs9HSPCtR1SXQ0TD3MMKrXZajbiQ==}
     dependencies:
       file-uri-to-path: 1.0.0
-    dev: true
-    optional: true
 
   /bl/4.1.0:
     resolution: {integrity: sha512-1W07cM9gS6DcLperZfFSj+bWLtaPGSOHWhPiGzXmvVJbRLdG82sH/Kn8EtW1VqWVA54AKf2h5k5BbnIbwF3h6w==}
@@ -9104,6 +9104,10 @@ packages:
     dev: true
     optional: true
 
+  /node-addon-api/4.3.0:
+    resolution: {integrity: sha512-73sE9+3UaLYYFmDsFZnqCInzPyh3MqIwZO9cw58yIqAZhONrrabrYyYe3TuIqtIiOuTXVhsGau8hcrhhwSsDIQ==}
+    dev: false
+
   /node-dir/0.1.17:
     resolution: {integrity: sha512-tmPX422rYgofd4epzrNoOXiE8XFZYOcCq1vD7MAXCDO+O+zndlA2ztdKKMa+EeuBG5tHETpr4ml4RGgpqDCCAg==}
     engines: {node: '>= 0.10.5'}
@@ -10015,6 +10019,15 @@ packages:
   /pstree.remy/1.1.8:
     resolution: {integrity: sha512-77DZwxQmxKnu3aR542U+X8FypNzbfJ+C5XQDk3uWjWxn6151aIMGthWYRXTqT1E5oJvg+ljaa2OJi+VfvCOQ8w==}
     dev: true
+
+  /pulsar-client/1.7.0:
+    resolution: {integrity: sha512-Ips8j9S13Zx6zwHsaa+Eg4ASTXv5aM4CtE55Bw0uOuKr2mBH4bmp9eizIIkhBRHoo5zcsCuKdnwLUAG6G5FRew==}
+    engines: {node: '>=10.16.0'}
+    requiresBuild: true
+    dependencies:
+      bindings: 1.5.0
+      node-addon-api: 4.3.0
+    dev: false
 
   /pump/2.0.1:
     resolution: {integrity: sha512-ruPMNRkN3MHP1cWJc9OWr+T/xDP0jhXYCLfJcBuX54hhfIBnaQmAUMfDcG4DM5UMWByBbJY69QSphm3jtDKIkA==}

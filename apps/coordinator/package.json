@@ -13,6 +13,7 @@
   "author": "",
   "dependencies": {
     "evt": "^2.4.13",
+    "pulsar-client": "^1.7.0",
     "uuid": "^9.0.0",
     "ws": "^8.11.0",
     "zod": "^3.19.1"
