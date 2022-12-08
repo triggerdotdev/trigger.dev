@@ -15,7 +15,7 @@ function isOrganizations(orgs: any): orgs is Organization[] {
 }
 
 export function useOrganizations(): Organization[] | undefined {
-  const data = useMatchesData("routes/__app", true);
+  const data = useMatchesData("routes/__app");
 
   if (!data || !isOrganizations(data.organizations)) {
     return undefined;
