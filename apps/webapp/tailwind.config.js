@@ -10,7 +10,7 @@ const toxicColors = {
 module.exports = {
   ...parentConfig,
   theme: {
-    ...parentConfig._theme,
+    ...parentConfig.theme,
     extend: {
       ...parentConfig.extend,
       colors: {
