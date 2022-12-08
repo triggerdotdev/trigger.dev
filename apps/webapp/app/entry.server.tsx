@@ -3,7 +3,6 @@ import { RemixServer } from "@remix-run/react";
 import { renderToString } from "react-dom/server";
 import * as Sentry from "@sentry/remix";
 import { prisma } from "./db.server";
-import { env } from "./env.server";
 
 export default function handleRequest(
   request: Request,
@@ -25,9 +24,9 @@ export default function handleRequest(
   });
 }
 
-if (env.NODE_ENV === "production") {
+if (process.env.NODE_ENV === "production" && process.env.SENTRY_DSN) {
   Sentry.init({
-    dsn: env.SENTRY_DSN,
+    dsn: process.env.SENTRY_DSN,
     tracesSampleRate: 1,
     integrations: [new Sentry.Integrations.Prisma({ client: prisma })],
   });

@@ -44,7 +44,7 @@
     "eslint-config-custom": "*",
     "postcss": "^8.4.17",
     "prettier": "^2.5.1",
-    "tailwindcss": "^3.2.4",
+    "tailwindcss": "3.1.8",
     "tsx": "^3.7.1",
     "turbo": "^1.5.5"
   },
