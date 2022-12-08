@@ -1,6 +1,7 @@
 import { Outlet } from "@remix-run/react";
 import type { LoaderArgs } from "@remix-run/server-runtime";
 import { typedjson } from "remix-typedjson";
+import { AppLayout } from "~/components/layout/App";
 import { getOrganizations } from "~/models/organization.server";
 import { clearRedirectTo, commitSession } from "~/services/redirectTo.server";
 import { requireUserId } from "~/services/session.server";
@@ -21,10 +22,10 @@ export const loader = async ({ request }: LoaderArgs) => {
   );
 };
 
-export default function AppLayout() {
+export default function App() {
   return (
-    <div className="flex h-screen flex-col overflow-auto">
+    <AppLayout>
       <Outlet />
-    </div>
+    </AppLayout>
   );
 }
