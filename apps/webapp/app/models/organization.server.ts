@@ -2,6 +2,17 @@ import type { User, Organization } from ".prisma/client";
 import { prisma } from "~/db.server";
 import slug from "slug";
 
+export function getOrganizationFromSlug({
+  userId,
+  slug,
+}: Pick<Organization, "slug"> & {
+  userId: User["id"];
+}) {
+  return prisma.organization.findFirst({
+    where: { slug, users: { some: { id: userId } } },
+  });
+}
+
 export async function createFirstOrganization(user: User) {
   //We want the slug to be based on their name if they have one, otherwise their email
   let desiredSlug = user.name ? slug(user.name) : slug(user.email);
