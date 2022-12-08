@@ -1,0 +1,32 @@
+{
+  "name": "coordinator",
+  "version": "1.0.0",
+  "description": "Coordinates with host sockets and Apache Pulsar to route messages to and from workflows",
+  "main": "dist/index.js",
+  "scripts": {
+    "clean": "rimraf dist",
+    "build": "npm run clean && npm run build:tsup",
+    "build:tsup": "tsup",
+    "dev": "tsx watch --require ./node_modules/dotenv/config src/index.ts"
+  },
+  "keywords": [],
+  "author": "",
+  "dependencies": {
+    "evt": "^2.4.13",
+    "uuid": "^9.0.0",
+    "ws": "^8.11.0",
+    "zod": "^3.19.1"
+  },
+  "devDependencies": {
+    "@trigger.dev/tsconfig": "workspace:*",
+    "@types/debug": "^4.1.7",
+    "@types/node": "^18.11.9",
+    "@types/uuid": "^9.0.0",
+    "@types/ws": "^8.5.3",
+    "dotenv": "^16.0.3",
+    "internal-bridge": "workspace:*",
+    "rimraf": "^3.0.2",
+    "tsup": "^6.5.0",
+    "typescript": "^4.9.4"
+  }
+}

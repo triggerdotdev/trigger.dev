@@ -1,0 +1,24 @@
+{
+  "private": true,
+  "name": "internal-bridge",
+  "version": "0.0.1",
+  "description": "Common code for both the @trigger.dev/sdk and the coordinator server",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "devDependencies": {
+    "@trigger.dev/tsconfig": "workspace:*",
+    "@types/debug": "^4.1.7",
+    "@types/node": "^18.11.9",
+    "@types/uuid": "^9.0.0",
+    "@types/ws": "^8.5.3",
+    "tsx": "^3.12.1"
+  },
+  "scripts": {},
+  "dependencies": {
+    "debug": "^4.3.4",
+    "evt": "^2.4.13",
+    "uuid": "^9.0.0",
+    "ws": "^8.11.0",
+    "zod": "^3.19.1"
+  }
+}

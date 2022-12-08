@@ -1,0 +1,34 @@
+{
+  "name": "@trigger.dev/sdk",
+  "version": "0.0.1",
+  "description": "trigger.dev Node.JS SDK",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "devDependencies": {
+    "@trigger.dev/tsconfig": "workspace:*",
+    "@types/debug": "^4.1.7",
+    "@types/node": "^18.11.9",
+    "@types/uuid": "^9.0.0",
+    "@types/ws": "^8.5.3",
+    "internal-bridge": "workspace:*",
+    "rimraf": "^3.0.2",
+    "tsup": "^6.5.0",
+    "tsx": "^3.12.1"
+  },
+  "scripts": {
+    "clean": "rimraf dist",
+    "build": "npm run clean && npm run build:tsup",
+    "build:tsup": "tsup",
+    "dev": "tsup --watch"
+  },
+  "dependencies": {
+    "debug": "^4.3.4",
+    "evt": "^2.4.13",
+    "uuid": "^9.0.0",
+    "ws": "^8.11.0",
+    "zod": "^3.19.1"
+  }
+}

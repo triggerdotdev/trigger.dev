@@ -1,0 +1,14 @@
+{
+  "extends": "@trigger.dev/tsconfig/node18.json",
+  "include": ["./src/**/*.ts", "tsup.config.ts"],
+  "compilerOptions": {
+    "experimentalDecorators": true,
+    "emitDecoratorMetadata": true,
+    "paths": {
+      "internal-bridge/*": ["../internal-bridge/src/*"],
+      "internal-bridge": ["../internal-bridge/src/index"]
+    },
+    "lib": ["DOM", "DOM.Iterable"]
+  },
+  "exclude": ["node_modules"]
+}
