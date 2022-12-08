@@ -1,3 +1,4 @@
+/** @type {import('tailwindcss').Config} */
 import { blue, red } from "tailwindcss/colors";
 
 export const content = [
