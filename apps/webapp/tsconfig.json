@@ -17,15 +17,8 @@
     "emitDecoratorMetadata": true,
     "baseUrl": ".",
     "paths": {
-      "~/*": ["./app/*"],
-      "@apihero/internal-nobuild": [
-        "../../packages/internal-nobuild/src/index"
-      ],
-      "@apihero/internal-nobuild/*": ["../../packages/internal-nobuild/src/*"]
+      "~/*": ["./app/*"]
     },
-
-    // Remix takes care of building everything in `remix build`.
     "noEmit": true
   }
-  // "references": [{ "path": "../../packages/ui/tsconfig.json" }],
 }

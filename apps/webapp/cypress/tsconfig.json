@@ -22,15 +22,7 @@
     "resolveJsonModule": true,
     "typeRoots": ["../types", "../node_modules/@types"],
     "paths": {
-      "~/*": ["./app/*"],
-      "@apihero/ui/*": ["../../packages/ui/src/*"],
-      "@apihero/ui": ["../../packages/ui/src/index"],
-      "@apihero/business/*": ["../../packages/business/src/*"],
-      "@apihero/business": ["../../packages/business/src/index"],
-      "@apihero/internal-nobuild": [
-        "../../packages/internal-nobuild/src/index"
-      ],
-      "@apihero/internal-nobuild/*": ["../../packages/internal-nobuild/src/*"]
+      "~/*": ["./app/*"]
     }
   },
   "ts-node": {
