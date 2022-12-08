@@ -39,12 +39,12 @@
   "devDependencies": {
     "@manypkg/cli": "^0.19.2",
     "@tailwindcss/forms": "^0.5.3",
-    "@tailwindcss/typography": "^0.5.7",
+    "@tailwindcss/typography": "^0.5.8",
     "autoprefixer": "^10.4.12",
     "eslint-config-custom": "*",
     "postcss": "^8.4.17",
     "prettier": "^2.5.1",
-    "tailwindcss": "^3.1.8",
+    "tailwindcss": "^3.2.4",
     "tsx": "^3.7.1",
     "turbo": "^1.5.5"
   },
