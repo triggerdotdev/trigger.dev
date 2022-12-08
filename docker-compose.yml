@@ -3,6 +3,10 @@ version: "3.7"
 volumes:
   database:
     driver: local
+  pulsarconf:
+    driver: local
+  pulsardata:
+    driver: local
 
 services:
   db:
@@ -16,6 +20,17 @@ services:
       - "5432:5432"
     volumes:
       - database:/var/lib/postgresql-docker/data
+    networks:
+      - app_network
+  pulsar:
+    image: apachepulsar/pulsar-standalone:latest
+    ports:
+      - "6650:6650"
+      - "8080:8080"
+      - "8081:80"
+    volumes:
+      - pulsardata:/pulsar/data
+      - pulsarconf:/pulsar/conf
     networks:
       - app_network
 
