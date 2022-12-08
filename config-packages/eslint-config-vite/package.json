@@ -1,5 +1,5 @@
 {
-  "name": "@apihero/eslint-config-vite",
+  "name": "@trigger.dev/eslint-config-vite",
   "version": "1.0.0",
   "main": "index.js",
   "license": "MIT",

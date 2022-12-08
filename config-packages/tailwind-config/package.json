@@ -1,5 +1,5 @@
 {
-  "name": "@apihero/tailwind-config",
+  "name": "@trigger.dev/tailwind-config",
   "version": "0.0.0",
   "private": true,
   "devDependencies": {},

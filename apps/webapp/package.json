@@ -82,7 +82,7 @@
     "zod": "^3.17.3"
   },
   "devDependencies": {
-    "@apihero/tailwind-config": "*",
+    "@trigger.dev/tailwind-config": "workspace:*",
     "@faker-js/faker": "^7.6.0",
     "@remix-run/dev": "^1.7.2",
     "@remix-run/eslint-config": "^1.7.2",
