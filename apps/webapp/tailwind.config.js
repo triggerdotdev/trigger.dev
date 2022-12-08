@@ -1,5 +1,5 @@
 /** @type {import('tailwindcss').Config} */
-const parentConfig = require("@apihero/tailwind-config/tailwind.config");
+const parentConfig = require("@trigger.dev/tailwind-config/tailwind.config");
 const colors = require("tailwindcss/colors");
 const midnightColors = {
   1000: "#030713",
