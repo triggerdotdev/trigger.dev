@@ -32,9 +32,14 @@ export function safeRedirect(
  * @returns {JSON|undefined} The router data or undefined if not found
  */
 export function useMatchesData(
-  id: string
+  id: string,
+  debug: boolean = false
 ): Record<string, unknown> | undefined {
   const matchingRoutes = useMatches();
+  if (debug) {
+    console.log("matchingRoutes", matchingRoutes);
+  }
+
   const route = useMemo(
     () => matchingRoutes.find((route) => route.id === id),
     [matchingRoutes, id]

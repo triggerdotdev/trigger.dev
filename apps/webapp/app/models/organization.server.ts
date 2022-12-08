@@ -13,6 +13,13 @@ export function getOrganizationFromSlug({
   });
 }
 
+export function getOrganizations({ userId }: { userId: User["id"] }) {
+  return prisma.organization.findMany({
+    where: { users: { some: { id: userId } } },
+    orderBy: { createdAt: "desc" },
+  });
+}
+
 export async function createFirstOrganization(user: User) {
   //We want the slug to be based on their name if they have one, otherwise their email
   let desiredSlug = user.name ? slug(user.name) : slug(user.email);
