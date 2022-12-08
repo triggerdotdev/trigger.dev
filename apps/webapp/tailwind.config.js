@@ -1,28 +1,26 @@
 /** @type {import('tailwindcss').Config} */
-import parentConfig, {
-  theme as _theme,
-} from "@apihero/tailwind-config/tailwind.config";
-import { slate, blue, purple } from "tailwindcss/colors";
+const parentConfig = require("@apihero/tailwind-config/tailwind.config");
+const colors = require("tailwindcss/colors");
 const midnightColors = {
   1000: "#030713",
 };
 const toxicColors = {
   500: "#41FF54",
 };
-export default {
+module.exports = {
   ...parentConfig,
   theme: {
-    ..._theme,
+    ...parentConfig._theme,
     extend: {
-      ..._theme.extend,
+      ...parentConfig.extend,
       colors: {
         midnight: midnightColors[1000],
         toxic: toxicColors[500],
       },
       backgroundImage: {
         "gradient-radial": "radial-gradient(var(--tw-gradient-stops))",
-        "gradient-background": `radial-gradient(${slate[800]} 0%,${midnightColors[1000]} 50%,  ${midnightColors[1000]} 100%)`,
-        "gradient-secondary": `linear-gradient(90deg, ${blue[600]} 0%, ${purple[500]} 100%)`,
+        "gradient-background": `radial-gradient(${colors.slate[800]} 0%,${midnightColors[1000]} 50%,  ${midnightColors[1000]} 100%)`,
+        "gradient-secondary": `linear-gradient(90deg, ${colors.blue[600]} 0%, ${colors.purple[500]} 100%)`,
       },
     },
   },
