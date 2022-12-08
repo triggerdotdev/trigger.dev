@@ -1,6 +1,6 @@
 import { DocumentTextIcon } from "@heroicons/react/24/solid";
 import { Link } from "@remix-run/react";
-import { useOptionalUser } from "~/utils";
+import { useOptionalUser } from "~/hooks/useUser";
 import { Logo } from "./Logo";
 import { UserProfileMenu } from "./UserProfileMenu";
 
