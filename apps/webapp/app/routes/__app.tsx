@@ -1,7 +1,8 @@
 import { Outlet } from "@remix-run/react";
 import type { LoaderArgs } from "@remix-run/server-runtime";
 import { typedjson } from "remix-typedjson";
-import { AppLayout } from "~/components/layout/App";
+import { Footer } from "~/components/Footer";
+import { AppBody, AppLayout } from "~/components/layout/AppLayout";
 import { getOrganizations } from "~/models/organization.server";
 import { clearRedirectTo, commitSession } from "~/services/redirectTo.server";
 import { requireUserId } from "~/services/session.server";
@@ -26,6 +27,7 @@ export default function App() {
   return (
     <AppLayout>
       <Outlet />
+      <Footer />
     </AppLayout>
   );
 }
