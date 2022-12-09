@@ -34,6 +34,12 @@ export async function sendWelcomeEmail(user: User) {
     "v:greeting": user.name ?? "there",
   };
 
+  if (process.env.NODE_ENV === "development") {
+    await mailgunClient.messages().send(data);
+    return;
+  }
+
+  // Only do this in production
   await mergent.tasks.create({
     request: {
       url: `${env.APP_ORIGIN}/webhooks/mailgun`,

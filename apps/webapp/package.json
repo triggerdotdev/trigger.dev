@@ -131,6 +131,7 @@
     "@types/jest": "^29.2.0",
     "@types/json-query": "^2.2.3",
     "@types/lodash": "^4.14.182",
+    "@types/mailgun-js": "^0.22.12",
     "@types/marked": "^4.0.3",
     "@types/morgan": "^1.9.3",
     "@types/node": "^18.8.0",
