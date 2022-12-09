@@ -1,3 +1,4 @@
+import type { RouteMatch } from "@remix-run/react";
 import { useMatches } from "@remix-run/react";
 import { useMemo } from "react";
 
@@ -34,7 +35,7 @@ export function safeRedirect(
 export function useMatchesData(
   id: string,
   debug: boolean = false
-): Record<string, unknown> | undefined {
+): RouteMatch | undefined {
   const matchingRoutes = useMatches();
   if (debug) {
     console.log("matchingRoutes", matchingRoutes);
@@ -44,7 +45,7 @@ export function useMatchesData(
     () => matchingRoutes.find((route) => route.id === id),
     [matchingRoutes, id]
   );
-  return route?.data;
+  return route;
 }
 
 export function validateEmail(email: unknown): email is string {

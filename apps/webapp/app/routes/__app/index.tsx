@@ -9,7 +9,7 @@ export default function AppLayout() {
 
   return (
     <>
-      <Header>Home</Header>
+      <Header />
       <AppBody>
         <div className="flex items-center justify-center p-12 ">
           <ul className="grid grid-cols-3 max-w-5xl gap-2">

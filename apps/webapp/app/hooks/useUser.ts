@@ -6,11 +6,11 @@ function isUser(user: any): user is User {
 }
 
 export function useOptionalUser(): User | undefined {
-  const data = useMatchesData("root");
-  if (!data || !isUser(data.user)) {
+  const routeMatch = useMatchesData("root");
+  if (!routeMatch || !isUser(routeMatch.data.user)) {
     return undefined;
   }
-  return data.user;
+  return routeMatch.data.user;
 }
 
 export function useUser(): User {

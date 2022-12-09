@@ -15,10 +15,15 @@ function isOrganizations(orgs: any): orgs is Organization[] {
 }
 
 export function useOrganizations(): Organization[] | undefined {
-  const data = useMatchesData("routes/__app");
+  const routeMatch = useMatchesData("routes/__app");
 
-  if (!data || !isOrganizations(data.organizations)) {
+  if (!routeMatch || !isOrganizations(routeMatch.data.organizations)) {
     return undefined;
   }
-  return data.organizations;
+  return routeMatch.data.organizations;
+}
+
+export function useCurrentOrganizationSlug(): string | undefined {
+  const routeMatch = useMatchesData("routes/__app/orgs/$organizationSlug");
+  return routeMatch?.params?.organizationSlug;
 }

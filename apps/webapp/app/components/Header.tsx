@@ -2,6 +2,7 @@ import { DocumentTextIcon } from "@heroicons/react/24/solid";
 import { Link } from "@remix-run/react";
 import { useOptionalUser } from "~/hooks/useUser";
 import { Logo } from "./Logo";
+import { OrganizationMenu } from "./navigation/OrganizationMenu";
 import { UserProfileMenu } from "./UserProfileMenu";
 
 type HeaderProps = {
@@ -16,6 +17,8 @@ export function Header({ children }: HeaderProps) {
       <Link to="/" aria-label="Trigger">
         <Logo className="h-6" />
       </Link>
+
+      <OrganizationMenu />
 
       <div className="flex flex-1 justify-center">{children}</div>
 
