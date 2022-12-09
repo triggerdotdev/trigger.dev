@@ -1,3 +1,5 @@
+import classNames from "classnames";
+
 export function AppLayout({ children }: { children: React.ReactNode }) {
   return (
     <div className="grid grid-rows-[3rem_auto_2rem] w-full h-full">
@@ -6,6 +8,14 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
   );
 }
 
-export function AppBody({ children }: { children: React.ReactNode }) {
-  return <div className="overflow-y-auto">{children}</div>;
+export function AppBody({
+  children,
+  className = "bg-slate-100",
+}: {
+  children: React.ReactNode;
+  className?: string;
+}) {
+  return (
+    <div className={classNames("overflow-y-auto", className)}>{children}</div>
+  );
 }

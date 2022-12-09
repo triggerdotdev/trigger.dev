@@ -1,6 +1,7 @@
 import type { User, Organization } from ".prisma/client";
 import { prisma } from "~/db.server";
 import slug from "slug";
+export type { Organization } from ".prisma/client";
 
 export function getOrganizationFromSlug({
   userId,

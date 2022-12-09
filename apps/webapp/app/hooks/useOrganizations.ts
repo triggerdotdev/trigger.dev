@@ -1,4 +1,4 @@
-import type { Organization } from ".prisma/client";
+import type { Organization } from "~/models/organization.server";
 import { useMatchesData } from "~/utils";
 
 function isOrganization(org: any): org is Organization {
