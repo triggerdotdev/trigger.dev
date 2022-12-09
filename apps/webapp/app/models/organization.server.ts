@@ -6,6 +6,10 @@ import { customAlphabet } from "nanoid";
 export type { Organization } from ".prisma/client";
 
 const nanoid = customAlphabet("1234567890abcdef", 4);
+const apiKeyId = customAlphabet(
+  "1234567890abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ",
+  12
+);
 
 export function getOrganizationFromSlug({
   userId,
@@ -20,6 +24,13 @@ export function getOrganizationFromSlug({
           id: true,
           title: true,
           slug: true,
+        },
+      },
+      environments: {
+        select: {
+          id: true,
+          slug: true,
+          apiKey: true,
         },
       },
     },
@@ -51,20 +62,22 @@ export async function createOrganization({
   desiredSlug?: string;
 }) {
   if (desiredSlug === undefined) {
-    desiredSlug = `${slug(title)}-${nanoid(4)}`;
-  } else {
-    desiredSlug = `${desiredSlug}-${nanoid(4)}`;
+    desiredSlug = slug(title);
   }
+
+  const uniqueSlug = `${desiredSlug}-${nanoid(4)}`;
 
   const withSameSlug = await prisma.organization.findFirst({
-    where: { slug: desiredSlug },
+    where: { slug: uniqueSlug },
   });
 
+  let organization: Organization | undefined = undefined;
+
   if (withSameSlug == null) {
-    return prisma.organization.create({
+    organization = await prisma.organization.create({
       data: {
         title,
-        slug: desiredSlug,
+        slug: uniqueSlug,
         users: {
           connect: {
             id: userId,
@@ -72,38 +85,70 @@ export async function createOrganization({
         },
       },
     });
+  } else {
+    const organizationsWithMatchingSlugs =
+      await getOrganizationsWithMatchingSlug({
+        slug: uniqueSlug,
+      });
+
+    for (let i = 1; i < 100; i++) {
+      const alternativeSlug = `${desiredSlug}-${nanoid(4)}`;
+      if (
+        organizationsWithMatchingSlugs.find(
+          (organization) => organization.slug === alternativeSlug
+        )
+      ) {
+        continue;
+      }
+
+      organization = await prisma.organization.create({
+        data: {
+          title,
+          slug: alternativeSlug,
+          users: {
+            connect: {
+              id: userId,
+            },
+          },
+        },
+      });
+
+      break;
+    }
   }
 
-  const organizationsWithMatchingSlugs = await getOrganizationsWithMatchingSlug(
-    {
-      slug: desiredSlug,
-    }
-  );
+  if (organization) {
+    // Create the dev and prod environments
+    await createEnvironment(organization, "dev");
+    await createEnvironment(organization, "prod");
 
-  for (let i = 1; i < 100; i++) {
-    const alternativeSlug = `${desiredSlug}-${nanoid(4)}`;
-    if (
-      organizationsWithMatchingSlugs.find(
-        (organization) => organization.slug === alternativeSlug
-      )
-    ) {
-      continue;
-    }
-
-    return prisma.organization.create({
-      data: {
-        title,
-        slug: alternativeSlug,
-        users: {
-          connect: {
-            id: userId,
-          },
-        },
-      },
-    });
+    return organization;
   }
 
   throw new Error("Could not create organization with a unique slug");
+}
+
+export async function createEnvironment(
+  organization: Organization,
+  slug: string
+) {
+  const apiKey = createApiKeyForEnv(slug);
+
+  return await prisma.runtimeEnvironment.create({
+    data: {
+      slug,
+      apiKey,
+      organization: {
+        connect: {
+          id: organization.id,
+        },
+      },
+    },
+  });
+}
+
+function createApiKeyForEnv(envSlug: string) {
+  return `trigger_${envSlug}_${apiKeyId(12)}`;
 }
 
 function getOrganizationsWithMatchingSlug({ slug }: { slug: string }) {
