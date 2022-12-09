@@ -7,6 +7,7 @@ module.exports = {
     "pretty-bytes",
     "marked",
     "@cfworker/json-schema",
+    "@nangohq/pizzly-frontend",
   ],
   watchPaths: async () => {
     return ["../../packages/internal-nobuild/src/**/*"];

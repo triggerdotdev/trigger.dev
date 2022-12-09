@@ -1,7 +1,7 @@
 import { useCallback } from "react";
-import * as Pizzly from "@nangohq/pizzly-frontend";
+const Pizzly = require("@nangohq/pizzly-frontend");
 
-export function Integrations() {
+export default function Integrations() {
   const authenticateWithGitHub = useCallback(async () => {
     const pizzly = new Pizzly("http://localhost:3004");
     pizzly
