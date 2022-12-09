@@ -4,6 +4,8 @@ import { requireUserId } from "~/services/session.server";
 import { Outlet } from "@remix-run/react";
 import { getOrganizationFromSlug } from "~/models/organization.server";
 import { typedjson } from "remix-typedjson";
+import { Header } from "~/components/Header";
+import { AppBody } from "~/components/layout/AppLayout";
 
 export const loader = async ({ request, params }: LoaderArgs) => {
   const userId = await requireUserId(request);
@@ -25,7 +27,10 @@ export const loader = async ({ request, params }: LoaderArgs) => {
 export default function Organization() {
   return (
     <>
-      <Outlet />
+      <Header />
+      <AppBody>
+        <Outlet />
+      </AppBody>
     </>
   );
 }
