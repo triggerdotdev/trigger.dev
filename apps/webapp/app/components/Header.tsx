@@ -13,7 +13,7 @@ export function Header({ children }: HeaderProps) {
 
   return (
     <div className="flex w-full items-center border-b border-slate-200 bg-white py-1 px-2">
-      <Link to="/" aria-label="API Hero">
+      <Link to="/" aria-label="Trigger">
         <Logo className="h-6" />
       </Link>
 

@@ -9,22 +9,22 @@ import { env } from "~/env.server";
 import { createFirstOrganization } from "~/models/organization.server";
 
 export const sendEmail: SendEmailFunction<AuthUser> = async (options) => {
-  let subject = "Log in to API Hero";
+  let subject = "Log in to Trigger";
   let body = renderToString(
     <div>
       <p>Hello,</p>
       <p>
-        Click the link below to securely log in to API Hero. This link will
+        Click the link below to securely log in to Trigger. This link will
         expire in 15 minutes.
       </p>
       <br />
-      <a href={options.magicLink}>Log in to API Hero</a>
+      <a href={options.magicLink}>Log in to Trigger</a>
       <br />
       <p>If you did not request this link, you can safely ignore this email.</p>
       <br />
       <p>Thanks,</p>
       <br />
-      <p>The API Hero team</p>
+      <p>The Trigger team</p>
     </div>
   );
 
