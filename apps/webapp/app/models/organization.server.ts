@@ -2,6 +2,7 @@ import type { User, Organization } from ".prisma/client";
 import { prisma } from "~/db.server";
 import slug from "slug";
 import { customAlphabet } from "nanoid";
+import { generateTwoRandomWords } from "~/utils/randomWords";
 
 export type { Organization } from ".prisma/client";
 
@@ -49,7 +50,7 @@ export async function createFirstOrganization(user: User) {
   return await createOrganization({
     title: "Personal Workspace",
     userId: user.id,
-    desiredSlug: "personal",
+    desiredSlug: generateTwoRandomWords(),
   });
 }
 
