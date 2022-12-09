@@ -1,5 +1,5 @@
 export function AppLayout({ children }: { children: React.ReactNode }) {
   return (
-    <div className="grid grid-rows-[120px_auto_100px] w-full">{children}</div>
+    <div className="grid grid-rows-[3rem_auto_1rem] w-full">{children}</div>
   );
 }
