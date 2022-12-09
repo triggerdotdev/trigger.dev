@@ -10,6 +10,15 @@ export function getOrganizationFromSlug({
   userId: User["id"];
 }) {
   return prisma.organization.findFirst({
+    include: {
+      workflows: {
+        select: {
+          id: true,
+          title: true,
+          slug: true,
+        },
+      },
+    },
     where: { slug, users: { some: { id: userId } } },
   });
 }
