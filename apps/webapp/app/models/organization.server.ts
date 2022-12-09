@@ -1,7 +1,11 @@
 import type { User, Organization } from ".prisma/client";
 import { prisma } from "~/db.server";
 import slug from "slug";
+import { customAlphabet } from "nanoid";
+
 export type { Organization } from ".prisma/client";
+
+const nanoid = customAlphabet("1234567890abcdef", 4);
 
 export function getOrganizationFromSlug({
   userId,
@@ -31,13 +35,10 @@ export function getOrganizations({ userId }: { userId: User["id"] }) {
 }
 
 export async function createFirstOrganization(user: User) {
-  //We want the slug to be based on their name if they have one, otherwise their email
-  let desiredSlug = user.name ? slug(user.name) : slug(user.email);
-
   return await createOrganization({
     title: "Personal Workspace",
     userId: user.id,
-    desiredSlug,
+    desiredSlug: "personal",
   });
 }
 
@@ -50,7 +51,9 @@ export async function createOrganization({
   desiredSlug?: string;
 }) {
   if (desiredSlug === undefined) {
-    desiredSlug = slug(title);
+    desiredSlug = `${slug(title)}-${nanoid(4)}`;
+  } else {
+    desiredSlug = `${desiredSlug}-${nanoid(4)}`;
   }
 
   const withSameSlug = await prisma.organization.findFirst({
@@ -77,8 +80,8 @@ export async function createOrganization({
     }
   );
 
-  for (let i = 1; i < 10000; i++) {
-    const alternativeSlug = `${desiredSlug}-${i}`;
+  for (let i = 1; i < 100; i++) {
+    const alternativeSlug = `${desiredSlug}-${nanoid(4)}`;
     if (
       organizationsWithMatchingSlugs.find(
         (organization) => organization.slug === alternativeSlug
