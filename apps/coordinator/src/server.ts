@@ -8,6 +8,7 @@ import {
   HostRPCSchema,
   Logger,
 } from "internal-bridge";
+import { WorkflowMessageBroker } from "./messageBroker";
 
 export class TriggerServer {
   #connection?: TriggerServerConnection;
@@ -17,6 +18,8 @@ export class TriggerServer {
   #logger: Logger;
   #socket: WebSocket;
   #apiKey: string;
+  #isInitialized = false;
+  #messageBroker?: WorkflowMessageBroker;
 
   constructor(socket: WebSocket, apiKey: string) {
     this.#socket = socket;
@@ -69,6 +72,10 @@ export class TriggerServer {
         INITIALIZE_HOST: async (data) => {
           console.log("INITIALIZE_HOST", data);
 
+          this.#initializeHost(data);
+
+          // Create a new Workflow connection
+
           return { type: "success" as const };
         },
       },
@@ -86,7 +93,7 @@ export class TriggerServer {
       throw new Error("Cannot initialize host without an RPC connection");
     }
 
-    this.#logger.debug("Authentication client with apiKey:", this.#apiKey);
+    this.#logger.debug("Checking authorized to use messagingClient");
 
     const isAuthorized = await authorized(this.#apiKey);
 
@@ -133,6 +140,34 @@ export class TriggerServer {
         }
       }
     }
+  }
+
+  async #initializeHost(
+    data: z.infer<typeof ServerRPCSchema["INITIALIZE_HOST"]["request"]>
+  ) {
+    if (this.#isInitialized) {
+      throw new Error(
+        "Host already initialized, attempting to initialize again"
+      );
+    }
+
+    this.#logger.debug("Initializing message broker...");
+
+    this.#messageBroker = new WorkflowMessageBroker({
+      id: data.workflowId,
+    });
+
+    await this.#messageBroker.initialize({
+      id: data.workflowId,
+      name: data.workflowName,
+      trigger: {
+        id: data.triggerId,
+      },
+      package: {
+        name: data.packageName,
+        version: data.packageVersion,
+      },
+    });
   }
 }
 

@@ -17,6 +17,7 @@
 
    ```bash
    pnpm run docker:db
+   pnpm run docker:pulsar
    ```
 
    > **Note:** The npm script will complete while Docker sets up the container in the background. Ensure that Docker has finished and your container is running before proceeding.
