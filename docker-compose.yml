@@ -3,10 +3,6 @@ version: "3.7"
 volumes:
   database:
     driver: local
-  pulsarconf:
-    driver: local
-  pulsardata:
-    driver: local
 
 services:
   db:
@@ -22,15 +18,22 @@ services:
       - database:/var/lib/postgresql-docker/data
     networks:
       - app_network
-  pulsar:
-    image: apachepulsar/pulsar-standalone:latest
+  pizzly-server:
+    image: nangohq/pizzly-server
+    container_name: pizzly-server
+    restart: always
+    environment:
+      - SERVER_HOST=http://localhost
+      - SERVER_PORT=3004
+      - NODE_ENV=development
+      - PIZZLY_DB_HOST=db
+      - PIZZLY_DB_USER=postgres
+      - PIZZLY_DB_PASSWORD=postgres
+      - PIZZLY_DB_NAME=postgres
     ports:
-      - "6650:6650"
-      - "8080:8080"
-      - "8081:80"
-    volumes:
-      - pulsardata:/pulsar/data
-      - pulsarconf:/pulsar/conf
+      - "3004:3004"
+    depends_on:
+      - db
     networks:
       - app_network
 
