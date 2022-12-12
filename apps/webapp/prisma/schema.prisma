@@ -54,7 +54,7 @@ model APIConnection {
   title String
 
   apiIdentifier String
-  externalId    String?
+  status    APIConnectionStatus @default(CREATED)
   scopes String[]
   type APIConnectionType
 
@@ -68,6 +68,11 @@ model APIConnection {
 enum APIConnectionType {
   HTTP
   GRAPHQL
+}
+
+enum APIConnectionStatus {
+  CREATED
+  CONNECTED
 }
 
 model RuntimeEnvironment {

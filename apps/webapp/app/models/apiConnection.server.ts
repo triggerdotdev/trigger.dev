@@ -24,3 +24,18 @@ export async function createAPIConnection({
     },
   });
 }
+
+export async function setConnectedAPIConnection({
+  id,
+}: {
+  id: APIConnection["id"];
+}) {
+  return await prisma.aPIConnection.update({
+    where: {
+      id,
+    },
+    data: {
+      status: "CONNECTED",
+    },
+  });
+}

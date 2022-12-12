@@ -1,11 +1,15 @@
 import githubLogo from "../../assets/images/integrations/github.png";
-import { useCallback, useEffect } from "react";
+import { useEffect } from "react";
 import Pizzly from "@nangohq/pizzly-frontend";
-import { ActionArgs, json } from "@remix-run/server-runtime";
+import type { ActionArgs } from "@remix-run/server-runtime";
+import { json } from "@remix-run/server-runtime";
 import { requireUserId } from "~/services/session.server";
 import { env } from "~/env.server";
 import { z } from "zod";
-import { createAPIConnection } from "~/models/apiConnection.server";
+import {
+  createAPIConnection,
+  setConnectedAPIConnection,
+} from "~/models/apiConnection.server";
 import { APIConnectionType } from ".prisma/client";
 import { useFetcher } from "@remix-run/react";
 
@@ -32,7 +36,6 @@ const createSchema = z.object({
 const updateSchema = z.object({
   type: z.literal("update"),
   connectionId: z.string(),
-  externalId: z.number(),
 });
 const requestSchema = z.discriminatedUnion("type", [
   createSchema,
@@ -43,6 +46,10 @@ type CreateResponse = {
   host: string;
   integrationKey: string;
   connectionId: string;
+};
+
+type UpdateResponse = {
+  success: boolean;
 };
 
 export const action = async ({ request, params }: ActionArgs) => {
@@ -86,8 +93,14 @@ export const action = async ({ request, params }: ActionArgs) => {
         return json(response);
       }
       case "update": {
-        const { connectionId, externalId } = parsed;
-        return {};
+        const { connectionId } = parsed;
+        await setConnectedAPIConnection({
+          id: connectionId,
+        });
+
+        return json({
+          success: true,
+        });
       }
     }
   } catch (error: any) {
@@ -125,8 +138,12 @@ type Status = "loading" | "idle";
 
 export function useCreateConnection() {
   const createConnectionFetcher = useFetcher<CreateResponse>();
+  const completeConnectionFetcher = useFetcher<UpdateResponse>();
   const status: Status =
-    createConnectionFetcher.state === "loading" ? "loading" : "idle";
+    createConnectionFetcher.state === "loading" ||
+    completeConnectionFetcher.state === "loading"
+      ? "loading"
+      : "idle";
 
   useEffect(() => {
     async function authenticationFlow() {
@@ -135,12 +152,17 @@ export function useCreateConnection() {
       try {
         const pizzly = new Pizzly(createConnectionFetcher.data.host);
 
-        const result = await pizzly.auth(
+        await pizzly.auth(
           createConnectionFetcher.data.integrationKey,
           createConnectionFetcher.data.connectionId
         );
-        console.log(
-          `OAuth flow succeeded for provider "${result.providerConfigKey}" and connection-id "${result.connectionId}"!`
+
+        completeConnectionFetcher.submit(
+          {
+            type: "update",
+            connectionId: createConnectionFetcher.data.connectionId,
+          },
+          { method: "post", action: "/resources/connection" }
         );
       } catch (error: any) {
         console.error(
@@ -150,7 +172,7 @@ export function useCreateConnection() {
     }
 
     authenticationFlow();
-  }, [createConnectionFetcher.data]);
+  }, [completeConnectionFetcher, createConnectionFetcher.data]);
 
   return {
     createFetcher: createConnectionFetcher,
