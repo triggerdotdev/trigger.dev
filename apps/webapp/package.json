@@ -57,6 +57,7 @@
     "@keyv/redis": "^2.3.7",
     "@lezer/highlight": "^0.16.0",
     "@nangohq/pizzly-frontend": "^0.3.6",
+    "@nangohq/pizzly-node": "^0.3.7",
     "@prisma/client": "^4.3.0",
     "@remix-run/express": "^1.7.2",
     "@remix-run/node": "^1.7.2",

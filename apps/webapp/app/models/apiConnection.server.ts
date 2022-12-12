@@ -1,5 +1,7 @@
 import type { APIConnection, Organization } from ".prisma/client";
 import { prisma } from "~/db.server";
+import { Pizzly } from "@nangohq/pizzly-node";
+import { env } from "~/env.server";
 
 export async function createAPIConnection({
   organizationId,
@@ -53,4 +55,28 @@ export async function getApiConnectionsForOrganizationSlug({
       },
     },
   });
+}
+
+export async function getApiConnectionById({
+  id,
+}: {
+  id: APIConnection["id"];
+}) {
+  return await prisma.aPIConnection.findUnique({
+    where: {
+      id,
+    },
+  });
+}
+
+export async function getAccessToken({
+  connectionId,
+  apiIdentifier,
+}: {
+  connectionId: APIConnection["id"];
+  apiIdentifier: APIConnection["apiIdentifier"];
+}) {
+  const pizzly = new Pizzly(env.PIZZLY_HOST);
+  const accessToken = await pizzly.accessToken(apiIdentifier, connectionId);
+  return accessToken;
 }
