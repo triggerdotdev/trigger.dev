@@ -24,6 +24,7 @@ const EnvironmentSchema = z.object({
   PRIMARY_REGION: z.string().optional(),
   FLY_REGION: z.string().optional(),
   SESSION_SECRET: z.string(),
+  PIZZLY_HOST: z.string(),
 });
 
 export type Environment = z.infer<typeof EnvironmentSchema>;

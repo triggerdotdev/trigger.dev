@@ -1,29 +1,24 @@
-import { useCallback } from "react";
-const Pizzly = require("@nangohq/pizzly-frontend");
+import invariant from "tiny-invariant";
+import { useCurrentOrganization } from "~/hooks/useOrganizations";
+import { Connect, integrations } from "~/routes/resources/connection";
 
 export default function Integrations() {
-  const authenticateWithGitHub = useCallback(async () => {
-    const pizzly = new Pizzly("http://localhost:3004");
-    pizzly
-      .auth("github", "test-connection")
-      .then((result: any) => {
-        console.log(
-          `OAuth flow succeeded for provider "${result.providerConfigKey}" and connection-id "${result.connectionId}"!`
-        );
-      })
-      .catch((error: any) => {
-        console.error(
-          `There was an error in the OAuth flow for integration "${error.providerConfigKey}" and connection-id "${error.connectionId}": ${error.error.type} - ${error.error.message}`
-        );
-      });
-  }, []);
+  const organization = useCurrentOrganization();
+  invariant(organization, "Organization not found");
 
   return (
     <div>
       <h1>Integrations</h1>
-      <button onClick={() => authenticateWithGitHub()}>
-        Connect to GitHub
-      </button>
+
+      <div>
+        {integrations.map((integration) => (
+          <Connect
+            key={integration.key}
+            integration={integration}
+            organizationId={organization.id}
+          />
+        ))}
+      </div>
     </div>
   );
 }

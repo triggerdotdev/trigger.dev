@@ -1,17 +1,15 @@
-import { Organization } from ".prisma/client";
 import { Popover, Transition } from "@headlessui/react";
 import {
   BookmarkIcon,
-  BriefcaseIcon,
   CheckIcon,
   ChevronDownIcon,
   PlusIcon,
 } from "@heroicons/react/24/solid";
 import { Link } from "@remix-run/react";
 import classNames from "classnames";
-import React, { Fragment } from "react";
+import { Fragment } from "react";
 import {
-  useCurrentOrganizationSlug,
+  useCurrentOrganization,
   useOrganizations,
 } from "~/hooks/useOrganizations";
 
@@ -19,11 +17,7 @@ const actionClassNames = "text-green-500";
 
 export function OrganizationMenu() {
   const organizations = useOrganizations();
-  const currentOrganizationSlug = useCurrentOrganizationSlug();
-
-  const currentOrganization = organizations?.find(
-    (org) => org.slug === currentOrganizationSlug
-  );
+  const currentOrganization = useCurrentOrganization();
 
   if (organizations === undefined) {
     return null;
@@ -74,7 +68,7 @@ export function OrganizationMenu() {
                           to={`/orgs/${organization.slug}`}
                           className={classNames(
                             "flex items-center justify-between gap-1.5 mx-1 px-3 py-2 text-slate-600 rounded hover:bg-slate-100 transition",
-                            organization.slug === currentOrganizationSlug &&
+                            organization.slug === currentOrganization?.slug &&
                               "!bg-slate-200"
                           )}
                         >
@@ -87,7 +81,7 @@ export function OrganizationMenu() {
                               {organization.title}
                             </span>
                           </div>
-                          {organization.slug === currentOrganizationSlug && (
+                          {organization.slug === currentOrganization?.slug && (
                             <CheckIcon className="h-5 w-5 text-blue-500" />
                           )}
                         </Popover.Button>

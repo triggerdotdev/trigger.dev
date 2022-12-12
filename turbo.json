@@ -92,6 +92,7 @@
     "SENTRY_DSN",
     "MAILGUN_KEY",
     "FROM_EMAIL",
-    "MERGENT_KEY"
+    "MERGENT_KEY",
+    "PIZZLY_HOST"
   ]
 }

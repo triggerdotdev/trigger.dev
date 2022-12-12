@@ -46,6 +46,28 @@ model Organization {
   users        User[]
   workflows    Workflow[]
   environments RuntimeEnvironment[]
+  apiConnections  APIConnection[]
+}
+
+model APIConnection {
+  id    String @id @default(cuid())
+  title String
+
+  apiIdentifier String
+  externalId    String?
+  scopes String[]
+  type APIConnectionType
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  organizationId String
+}
+
+enum APIConnectionType {
+  HTTP
+  GRAPHQL
 }
 
 model RuntimeEnvironment {
@@ -75,3 +97,7 @@ model Workflow {
 
   @@unique([organizationId, slug])
 }
+
+//todo Workflows have connection slots, which are filled with connections (can be empty)
+//todo Workflow has one trigger (can also have a slot with connection)
+//todo WorkflowRuns belong to a workflow + environment

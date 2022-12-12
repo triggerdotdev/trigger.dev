@@ -27,3 +27,13 @@ export function useCurrentOrganizationSlug(): string | undefined {
   const routeMatch = useMatchesData("routes/__app/orgs/$organizationSlug");
   return routeMatch?.params?.organizationSlug;
 }
+
+export function useCurrentOrganization(): Organization | undefined {
+  const organizations = useOrganizations();
+  const currentOrganizationSlug = useCurrentOrganizationSlug();
+
+  const currentOrganization = organizations?.find(
+    (org) => org.slug === currentOrganizationSlug
+  );
+  return currentOrganization;
+}
