@@ -108,7 +108,7 @@ export const action = async ({ request, params }: ActionArgs) => {
   }
 };
 
-export function Connect({
+export function ConnectButton({
   integration,
   organizationId,
 }: {
@@ -125,10 +125,14 @@ export function Connect({
       <button
         type="submit"
         disabled={status === "loading"}
-        className="border border-gray-500 rounded-md flex h-12 p-1 items-center disabled:opacity-50"
+        className="border border-indigo-500 rounded-md flex h-10 pl-2 pr-3 gap-2 text-sm text-indigo-500 items-center disabled:opacity-50"
       >
-        <img src={integration.logo} alt={integration.name} className="h-10" />
-        <h1>Connect to {integration.name}</h1>
+        <img src={integration.logo} alt={integration.name} className="h-5" />
+        {status === "loading" ? (
+          <span>Connecting…</span>
+        ) : (
+          <span>Connect to {integration.name}</span>
+        )}
       </button>
     </createFetcher.Form>
   );

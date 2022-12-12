@@ -4,5 +4,5 @@ export type LargeTitleProps = {
 };
 
 export function LargeTitle({ children, className }: LargeTitleProps) {
-  return <p className={`font-sans text-base ${className}`}>{children}</p>;
+  return <p className={`font-sans text-2xl ${className}`}>{children}</p>;
 }

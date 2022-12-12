@@ -39,3 +39,18 @@ export async function setConnectedAPIConnection({
     },
   });
 }
+
+export async function getApiConnectionsForOrganizationSlug({
+  slug,
+}: {
+  slug: Organization["slug"];
+}) {
+  return await prisma.aPIConnection.findMany({
+    where: {
+      status: "CONNECTED",
+      organization: {
+        slug,
+      },
+    },
+  });
+}
