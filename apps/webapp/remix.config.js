@@ -8,6 +8,8 @@ module.exports = {
     "marked",
     "@cfworker/json-schema",
     "@nangohq/pizzly-frontend",
+    "@nangohq/pizzly-node",
+    "axios",
   ],
   watchPaths: async () => {
     return ["../../packages/internal-nobuild/src/**/*"];
