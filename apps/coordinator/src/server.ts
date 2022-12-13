@@ -18,6 +18,7 @@ export class TriggerServer {
   #logger: Logger;
   #socket: WebSocket;
   #apiKey: string;
+  #organizationId?: string;
   #isInitialized = false;
   #messageBroker?: WorkflowMessageBroker;
 
@@ -25,12 +26,19 @@ export class TriggerServer {
     this.#socket = socket;
     this.#apiKey = apiKey;
     this.#logger = new Logger("trigger.dev", "info");
+
+    process.on("beforeExit", () => this.close.bind(this));
   }
 
   async listen(instanceId?: string) {
     await this.#initializeConnection(instanceId);
     this.#initializeRPC();
     this.#initializeServer();
+  }
+
+  async close() {
+    this.#closeConnection();
+    await this.#closeMessageBroker();
   }
 
   async #initializeConnection(instanceId?: string) {
@@ -46,6 +54,9 @@ export class TriggerServer {
       if (reason) {
         console.error(reason);
       }
+
+      this.#closeConnection();
+      await this.#closeMessageBroker();
     });
 
     this.#logger.debug("Connection initialized", id);
@@ -95,10 +106,14 @@ export class TriggerServer {
 
     this.#logger.debug("Checking authorized to use messagingClient");
 
-    const isAuthorized = await authorized(this.#apiKey);
+    const authorizationResponse = await authorizeApiKey(this.#apiKey);
 
-    if (isAuthorized) {
-      this.#logger.debug("Client authenticated, sending message...");
+    if (authorizationResponse.authorized) {
+      this.#logger.debug(
+        `Client authenticated for org ${authorizationResponse.organizationId}, sending message...`
+      );
+
+      this.#organizationId = authorizationResponse.organizationId;
 
       const authenticatedMessage = JSON.stringify({
         type: "MESSAGE",
@@ -112,7 +127,10 @@ export class TriggerServer {
     } else {
       this.#logger.debug("Client not authenticated, sending error...");
 
-      this.#socket.close(4001, "Unauthorized");
+      this.#socket.close(
+        4001,
+        `Unauthorized: ${authorizationResponse.reason}}`
+      );
     }
   }
 
@@ -151,10 +169,15 @@ export class TriggerServer {
       );
     }
 
+    if (!this.#organizationId) {
+      throw new Error("Cannot initialize host without an organizationId");
+    }
+
     this.#logger.debug("Initializing message broker...");
 
     this.#messageBroker = new WorkflowMessageBroker({
       id: data.workflowId,
+      orgId: this.#organizationId,
     });
 
     await this.#messageBroker.initialize({
@@ -169,15 +192,46 @@ export class TriggerServer {
       },
     });
   }
+
+  async #closeMessageBroker() {
+    if (this.#messageBroker) {
+      await this.#messageBroker.close();
+    }
+  }
+
+  #closeConnection() {
+    this.#isConnected = false;
+    this.#connection?.close();
+    this.#connection = undefined;
+    this.#serverRPC = undefined;
+  }
 }
 
 export const sleep = (ms: number) =>
   new Promise((resolve) => setTimeout(resolve, ms));
 
-async function authorized(apiKey: string | undefined): Promise<boolean> {
+type AuthorizationSuccess = {
+  authorized: true;
+  organizationId: string;
+};
+
+type AuthorizationFailure = {
+  authorized: false;
+  reason?: string;
+};
+
+type AuthorizationResponse = AuthorizationSuccess | AuthorizationFailure;
+
+async function authorizeApiKey(
+  apiKey: string | undefined
+): Promise<AuthorizationResponse> {
   if (!apiKey || typeof apiKey !== "string") {
-    return false;
+    return { authorized: false, reason: "Missing API key" };
   }
 
-  return apiKey === "trigger_123";
+  if (apiKey === "trigger_123") {
+    return { authorized: true, organizationId: "123" };
+  }
+
+  return { authorized: false, reason: "Invalid API key" };
 }

@@ -43,3 +43,4 @@ yarn-error.log*
 .env
 .output
 apps/**/public/build
+.tests-container-id.txt

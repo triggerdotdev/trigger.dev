@@ -12,43 +12,62 @@ import { Logger } from "internal-bridge/logger";
 
 export type WorkflowMessageBrokerConfig = {
   id: string;
+  orgId: string;
 };
 
 export class WorkflowMessageBroker {
   #workflowsMetaProducer?: PulsarProducer;
-  #workflowsMetaConsumer?: PulsarConsumer;
+  #workflowsTriggersConsumer?: PulsarConsumer;
   #config: WorkflowMessageBrokerConfig;
   #logger: Logger;
 
   constructor(config: WorkflowMessageBrokerConfig) {
     this.#config = config;
-    this.#logger = new Logger("trigger.dev", "info");
+    this.#logger = new Logger(`trigger.dev org=${this.#config.orgId}`, "info");
   }
 
   async initialize(data: WorkflowMetadata) {
-    this.#logger.debug("Creating workflows-meta-from-host producer");
+    this.#logger.debug("Creating workflows-meta producer");
 
+    // workflows-meta is a topic that is used to send metadata about the workflow to the platform
     this.#workflowsMetaProducer = await pulsarClient.createProducer({
-      topic: "workflows-meta-from-host",
+      topic: "workflows-meta",
     });
 
-    this.#logger.debug("Creating workflows-meta-to-host consumer");
+    this.#logger.debug(`Creating ${this.#workflowTriggerTopic} consumer`);
 
-    this.#workflowsMetaConsumer = await pulsarClient.subscribe({
-      topic: "workflows-meta-to-host",
-      subscription: `workflows-meta-${this.#config.id}`,
+    // workflows-triggers is a topic that is used to send triggers to the workflow, scoped to the orgId and workflowId
+    this.#workflowsTriggersConsumer = await pulsarClient.subscribe({
+      topic: this.#workflowTriggerTopic,
+      subscription: `message-broker`,
       subscriptionType: "Shared",
       ackTimeoutMs: 30000,
       listener: async (msg, consumer) => {
-        await this.#receiveMessage(msg, consumer);
+        await this.#receiveTrigger(msg, consumer);
       },
     });
 
     await this.#sendMetadata("INITIALIZE_WORKFLOW", data);
   }
 
-  async #receiveMessage(msg: PulsarMessage, consumer: PulsarConsumer) {
-    console.log("Received message", msg.getData());
+  async close() {
+    this.#logger.debug("Closing workflows-meta producer");
+
+    if (this.#workflowsMetaProducer) {
+      await this.#workflowsMetaProducer.close();
+    }
+
+    this.#logger.debug("Closing workflows-triggers consumer");
+
+    if (this.#workflowsTriggersConsumer) {
+      await this.#workflowsTriggersConsumer.close();
+    }
+  }
+
+  async #receiveTrigger(msg: PulsarMessage, consumer: PulsarConsumer) {
+    const data = JSON.parse(msg.getData().toString());
+
+    console.log("Received trigger", data);
 
     await consumer.acknowledge(msg);
   }
@@ -72,7 +91,12 @@ export class WorkflowMessageBroker {
       ),
       properties: {
         "x-workflow-id": this.#config.id,
+        "x-org-id": this.#config.orgId,
       },
     });
+  }
+
+  get #workflowTriggerTopic() {
+    return `workflows-triggers-${this.#config.orgId}-${this.#config.id}`;
   }
 }

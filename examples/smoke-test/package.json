@@ -4,8 +4,9 @@
   "version": "0.0.1",
   "description": "Very basic smoke test for @trigger.dev/sdk",
   "dependencies": {
+    "@trigger.dev/integrations": "workspace:*",
     "@trigger.dev/sdk": "workspace:*",
-    "zod": "^3.19.1"
+    "zod": "^3.20.2"
   },
   "devDependencies": {
     "@trigger.dev/tsconfig": "workspace:*",

@@ -7,18 +7,18 @@
     "clean": "rimraf dist",
     "build": "npm run clean && npm run build:tsup",
     "build:tsup": "tsup",
-    "dev": "tsx watch --require ./node_modules/dotenv/config src/index.ts"
+    "dev": "tsx --require ./node_modules/dotenv/config src/index.ts"
   },
   "keywords": [],
   "author": "",
   "dependencies": {
     "evt": "^2.4.13",
+    "internal-bridge": "workspace:*",
+    "internal-messages": "workspace:*",
     "pulsar-client": "^1.7.0",
     "uuid": "^9.0.0",
     "ws": "^8.11.0",
-    "zod": "^3.19.1",
-    "internal-bridge": "workspace:*",
-    "internal-messages": "workspace:*"
+    "zod": "^3.20.2"
   },
   "devDependencies": {
     "@trigger.dev/tsconfig": "workspace:*",

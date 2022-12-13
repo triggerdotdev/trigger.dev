@@ -9,6 +9,8 @@ const server = createServer((req, res) => {
 
 const wss = new WebSocketServer({ noServer: true });
 
+const triggerServers = new Map<string, TriggerServer>();
+
 wss.on("connection", (ws, req) => {
   const apiKey = req.headers.authorization;
 
@@ -21,6 +23,8 @@ wss.on("connection", (ws, req) => {
 
   const triggerServer = new TriggerServer(ws, keyPart);
   triggerServer.listen();
+
+  triggerServers.set(keyPart, triggerServer);
 });
 
 // Upgrade an HTTP connection to a WebSocket connection

@@ -11,6 +11,6 @@
   },
   "scripts": {},
   "dependencies": {
-    "zod": "^3.19.1"
+    "zod": "^3.20.2"
   }
 }

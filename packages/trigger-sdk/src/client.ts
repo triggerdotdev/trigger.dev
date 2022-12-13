@@ -11,8 +11,12 @@ import {
 import * as pkg from "../package.json";
 import { Workflow, WorkflowOptions } from "./workflow";
 
-export class TriggerClient<TEventData = void> {
-  #workflow: Workflow<TEventData>;
+export class TriggerClient<
+  TEventData,
+  TConnectionType,
+  TConnections extends Record<string, TConnectionType>
+> {
+  #workflow: Workflow<TEventData, TConnectionType, TConnections>;
   #connection?: HostConnection;
   #serverRPC?: ZodRPC<typeof ServerRPCSchema, typeof HostRPCSchema>;
   #apiKey: string;
@@ -22,8 +26,8 @@ export class TriggerClient<TEventData = void> {
   #logger: Logger;
 
   constructor(
-    workflow: Workflow<TEventData>,
-    options: WorkflowOptions<TEventData>
+    workflow: Workflow<TEventData, TConnectionType, TConnections>,
+    options: WorkflowOptions<TEventData, TConnectionType, TConnections>
   ) {
     this.#workflow = workflow;
 

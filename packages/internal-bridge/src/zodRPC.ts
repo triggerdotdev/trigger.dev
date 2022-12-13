@@ -13,12 +13,8 @@ export type RPCMessage = z.infer<typeof RPCMessageSchema>;
 
 interface TransmitterSchema {
   [key: string]: {
-    request:
-      | z.ZodFirstPartySchemaTypes
-      | z.ZodDiscriminatedUnion<any, any, any>;
-    response:
-      | z.ZodFirstPartySchemaTypes
-      | z.ZodDiscriminatedUnion<any, any, any>;
+    request: z.ZodFirstPartySchemaTypes | z.ZodDiscriminatedUnion<any, any>;
+    response: z.ZodFirstPartySchemaTypes | z.ZodDiscriminatedUnion<any, any>;
   };
 }
 
