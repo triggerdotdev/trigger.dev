@@ -4,7 +4,7 @@ import invariant from "tiny-invariant";
 import { LargeTitle } from "~/components/primitives/text/LargeTitle";
 import { Title } from "~/components/primitives/text/Title";
 import { useCurrentOrganization } from "~/hooks/useOrganizations";
-import { getApiConnectionsForOrganizationSlug } from "~/models/apiConnection.server";
+import { getConnectedApiConnectionsForOrganizationSlug } from "~/models/apiConnection.server";
 import { ConnectButton, integrations } from "~/routes/resources/connection";
 import { requireUserId } from "~/services/session.server";
 
@@ -13,7 +13,7 @@ export const loader = async ({ request, params }: LoaderArgs) => {
   const { organizationSlug } = params;
   invariant(organizationSlug, "organizationSlug not found");
 
-  const connections = await getApiConnectionsForOrganizationSlug({
+  const connections = await getConnectedApiConnectionsForOrganizationSlug({
     slug: organizationSlug,
   });
 

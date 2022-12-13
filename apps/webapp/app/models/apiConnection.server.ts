@@ -42,7 +42,7 @@ export async function setConnectedAPIConnection({
   });
 }
 
-export async function getApiConnectionsForOrganizationSlug({
+export async function getConnectedApiConnectionsForOrganizationSlug({
   slug,
 }: {
   slug: Organization["slug"];
@@ -57,6 +57,20 @@ export async function getApiConnectionsForOrganizationSlug({
   });
 }
 
+export async function getApiConnectionsForOrganizationId({
+  id,
+}: {
+  id: Organization["id"];
+}) {
+  return await prisma.aPIConnection.findMany({
+    where: {
+      organization: {
+        id,
+      },
+    },
+  });
+}
+
 export async function getApiConnectionById({
   id,
 }: {
@@ -65,6 +79,23 @@ export async function getApiConnectionById({
   return await prisma.aPIConnection.findUnique({
     where: {
       id,
+    },
+  });
+}
+
+export async function updateApiConnectionTitle({
+  id,
+  title,
+}: {
+  id: APIConnection["id"];
+  title: APIConnection["title"];
+}) {
+  return await prisma.aPIConnection.update({
+    where: {
+      id,
+    },
+    data: {
+      title,
     },
   });
 }

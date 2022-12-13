@@ -8,6 +8,8 @@ import { env } from "~/env.server";
 import { z } from "zod";
 import {
   createAPIConnection,
+  getApiConnectionsForOrganizationId,
+  getConnectedApiConnectionsForOrganizationSlug,
   setConnectedAPIConnection,
 } from "~/models/apiConnection.server";
 import { APIConnectionType } from ".prisma/client";
@@ -76,9 +78,20 @@ export const action = async ({ request, params }: ActionArgs) => {
           throw new Error("Integration not found");
         }
 
+        //get a unique name for the connection (e.g. GitHub #4)
+        const organizationConnections =
+          await getApiConnectionsForOrganizationId({ id: organizationId });
+        const connectionsForApiIdentifier = organizationConnections
+          .filter((connection) => connection.apiIdentifier === key)
+          .sort((a, b) => a.title.localeCompare(b.title));
+        let title = integrationInfo.name;
+        if (connectionsForApiIdentifier.length > 0) {
+          title += ` #${connectionsForApiIdentifier.length + 1}`;
+        }
+
         const connection = await createAPIConnection({
           organizationId,
-          title: integrationInfo.name,
+          title,
           apiIdentifier: key,
           scopes: [],
           type: APIConnectionType.HTTP,
