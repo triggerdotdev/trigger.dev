@@ -86,7 +86,7 @@ importers:
       '@jsonhero/fetch-hero': ^0.2.2
       '@keyv/redis': ^2.3.7
       '@lezer/highlight': ^0.16.0
-      '@nangohq/pizzly-frontend': ^0.3.6
+      '@nangohq/pizzly-frontend': ^0.3.7
       '@nangohq/pizzly-node': ^0.3.7
       '@prisma/client': ^4.3.0
       '@remix-run/dev': ^1.7.2
@@ -219,7 +219,7 @@ importers:
       '@jsonhero/fetch-hero': 0.2.2
       '@keyv/redis': 2.5.4
       '@lezer/highlight': 0.16.0
-      '@nangohq/pizzly-frontend': 0.3.6
+      '@nangohq/pizzly-frontend': 0.3.7
       '@nangohq/pizzly-node': 0.3.7
       '@prisma/client': 4.7.1_prisma@4.7.1
       '@remix-run/express': 1.8.1_cwk4saenierp7pa7l5cpbeswge
@@ -3453,8 +3453,8 @@ packages:
       - supports-color
     dev: true
 
-  /@nangohq/pizzly-frontend/0.3.6:
-    resolution: {integrity: sha512-8n14jDCySLRE9Wn0zUmBOg1Iox0/G0wyFDzS3qLLChCtaHjxkvqyXbOZa1obo1mKPr/EUF1xCAx8DUGHoCONSg==}
+  /@nangohq/pizzly-frontend/0.3.7:
+    resolution: {integrity: sha512-O83yJFUW3MSh5srgxKx3a8kEikZc0KiwNLAX3peZH5mFZE5L8ssZerKzhtHWpMRH+qI8zdDfR/2R5zNLD8HKTg==}
     dev: false
 
   /@nangohq/pizzly-node/0.3.7:

@@ -56,7 +56,7 @@
     "@jsonhero/fetch-hero": "^0.2.2",
     "@keyv/redis": "^2.3.7",
     "@lezer/highlight": "^0.16.0",
-    "@nangohq/pizzly-frontend": "^0.3.6",
+    "@nangohq/pizzly-frontend": "^0.3.7",
     "@nangohq/pizzly-node": "^0.3.7",
     "@prisma/client": "^4.3.0",
     "@remix-run/express": "^1.7.2",
