@@ -93,6 +93,7 @@
     "postcss-import": "^14.1.0",
     "posthog-js": "^1.31.0",
     "pretty-bytes": "^6.0.0",
+    "pulsar-client": "^1.7.0",
     "qs": "^6.11.0",
     "react": "^18.2.0",
     "react-date-range": "^1.4.0",
@@ -109,8 +110,7 @@
     "slug": "^6.0.0",
     "tiny-invariant": "^1.2.0",
     "tsx": "^3.4.3",
-    "zod": "^3.17.3",
-    "zod-to-json-schema": "^3.17.0"
+    "zod": "^3.20.2"
   },
   "devDependencies": {
     "@faker-js/faker": "^7.5.0",
