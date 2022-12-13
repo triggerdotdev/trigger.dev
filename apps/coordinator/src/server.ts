@@ -9,6 +9,7 @@ import {
   Logger,
 } from "internal-bridge";
 import { WorkflowMessageBroker } from "./messageBroker";
+import { env } from "./env";
 
 export class TriggerServer {
   #connection?: TriggerServerConnection;
@@ -213,6 +214,7 @@ export const sleep = (ms: number) =>
 type AuthorizationSuccess = {
   authorized: true;
   organizationId: string;
+  env: string;
 };
 
 type AuthorizationFailure = {
@@ -229,9 +231,38 @@ async function authorizeApiKey(
     return { authorized: false, reason: "Missing API key" };
   }
 
-  if (apiKey === "trigger_123") {
-    return { authorized: true, organizationId: "123" };
+  return performAuthorizationRequest(apiKey);
+}
+
+async function performAuthorizationRequest(
+  apiKey: string
+): Promise<AuthorizationResponse> {
+  const response = await fetch(env.AUTHORIZATION_URL, {
+    method: "GET",
+    headers: {
+      Accept: "application/json",
+      Authorization: `Bearer ${apiKey}`,
+    },
+  });
+
+  if (response.ok) {
+    const body = await response.json();
+
+    return {
+      authorized: true,
+      organizationId: body.organizationId,
+      env: body.env,
+    };
   }
 
-  return { authorized: false, reason: "Invalid API key" };
+  if (response.status === 401) {
+    const errorBody = await response.json();
+
+    return { authorized: false, reason: errorBody.error };
+  }
+
+  return {
+    authorized: false,
+    reason: `[${response.status}] Something went wrong: ${response.statusText}`,
+  };
 }

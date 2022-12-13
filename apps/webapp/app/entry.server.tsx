@@ -2,6 +2,7 @@ import type { EntryContext } from "@remix-run/node";
 import { RemixServer } from "@remix-run/react";
 import { renderToString } from "react-dom/server";
 import * as Sentry from "@sentry/remix";
+import * as MessageBroker from "~/services/messageBroker.server";
 import { prisma } from "./db.server";
 
 export default function handleRequest(
@@ -33,3 +34,5 @@ if (process.env.NODE_ENV === "production" && process.env.SENTRY_DSN) {
 
   console.log("🚦 Sentry initialized");
 }
+
+MessageBroker.init();

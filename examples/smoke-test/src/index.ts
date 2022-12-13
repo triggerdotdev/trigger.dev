@@ -8,7 +8,7 @@ const userCreatedEvent = z.object({
 const workflow = new Workflow({
   id: "my-workflow",
   name: "My workflow",
-  apiKey: "trigger_123",
+  apiKey: "trigger_dev_zC25mKNn6c0q",
   endpoint: "ws://localhost:8889/ws",
   logLevel: "debug",
   trigger: onEvent({ name: "user.created", schema: userCreatedEvent }),

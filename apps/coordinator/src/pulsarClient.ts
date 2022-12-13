@@ -1,5 +1,6 @@
 import Pulsar from "pulsar-client";
+import { env } from "./env";
 
 export const pulsarClient = new Pulsar.Client({
-  serviceUrl: process.env.PULSAR_URL ?? "pulsar://localhost:6650",
+  serviceUrl: env.PULSAR_URL,
 });

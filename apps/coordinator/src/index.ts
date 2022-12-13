@@ -1,5 +1,6 @@
 import { createServer } from "node:http";
 import { WebSocketServer } from "ws";
+import { env } from "./env";
 import { TriggerServer } from "./server";
 
 // Create an HTTP server
@@ -57,7 +58,7 @@ server.on("upgrade", async (req, socket, head) => {
 });
 
 // Listen on port from env
-const port = process.env.PORT ?? 8089;
+const port = env.PORT;
 server.listen(port, () => {
   console.log(`Listening on port ${port}`);
 });

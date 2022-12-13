@@ -13,11 +13,10 @@
    ```sh
    cp ./apps/webapp/.env.example ./apps/webapp/.env
    ```
-3. Start postgresql and apache pulsar
+3. Start postgresql
 
    ```bash
    pnpm run docker:db
-   pnpm run docker:pulsar
    ```
 
    > **Note:** The npm script will complete while Docker sets up the container in the background. Ensure that Docker has finished and your container is running before proceeding.
@@ -36,8 +35,29 @@
    ```
    **Running simply `pnpm run build` will build everything, including the NextJS app.**
 7. Run the Remix dev server
+
+```bash
+pnpm run dev --filter=webapp
+```
+
+## Starting and Stopping Pulsar
+
+Both the webapp and coordinate apps rely on Apache Pulsar running on your local machine.
+
+1. Run the pulsar container
+   In a separate terminal window, run the following command:
    ```bash
-   pnpm run dev --filter=webapp
+   ./pulsar/start.sh
+   ```
+2. Wait until pulsar is available
+   In yet another terminal window, run this command and when it's finished pulsar will be ready
+   ```bash
+   until curl http://localhost:8080/admin/v2/brokers/internal-configuration > /dev/null 2>&1 ; do sleep 1; done
+   ```
+3. Stop pulsar
+   In the terminal window where you ran `./pulsar/start.sh`, go ahead and CTRL-C and then run
+   ```bash
+   ./pulsar/stop.sh
    ```
 
 ## Tests, Typechecks, Lint, Install packages...
