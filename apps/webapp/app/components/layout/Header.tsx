@@ -13,7 +13,7 @@ export function Header({ children }: HeaderProps) {
   const user = useOptionalUser();
 
   return (
-    <div className="flex w-full items-center border-b border-gray-900 bg-gray-800 py-1 px-2">
+    <div className="flex w-full items-center border-b border-slate-800 bg-midnight py-1 px-2">
       <Link to="/" aria-label="Trigger">
         <Logo className="h-6" />
       </Link>

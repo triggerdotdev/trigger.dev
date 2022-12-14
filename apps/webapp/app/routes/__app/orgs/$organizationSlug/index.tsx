@@ -1,6 +1,7 @@
-import { Header } from "~/components/layout/Header";
-import { AppBody } from "~/components/layout/AppLayout";
+import { Header1 } from "~/components/primitives/text/Headers";
 
 export default function OrganizationBlankState() {
-  return <>You need to create a workflow</>;
+  return (
+    <Header1 className="text-white">Create a workflow to get started</Header1>
+  );
 }

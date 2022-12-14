@@ -29,16 +29,16 @@ export default function Integrations() {
 
   return (
     <div>
-      <Header1>Integrations</Header1>
+      <Header1 className="text-white">Integrations</Header1>
       <div>
-        <Header2>Existing integrations</Header2>
+        <Header2 className="text-white">Existing integrations</Header2>
         {connections.map((connection) => (
           <div key={connection.id}>{connection.title}</div>
         ))}
       </div>
 
       <div>
-        <Header2>Add integration</Header2>
+        <Header2 className="text-white">Add integration</Header2>
         {integrations.map((integration) => (
           <ConnectButton
             key={integration.key}

@@ -38,10 +38,10 @@ export default function SideMenu() {
   ];
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col bg-gray-800 border-r border-gray-900">
-      <div className="flex flex-1 flex-col overflow-y-auto pt-0 pb-4">
+    <div className="flex min-h-0 flex-1 flex-col bg-midnight border-r border-slate-800">
+      <div className="flex flex-1 flex-col overflow-y-auto pb-4">
         <nav
-          className="mt-3 flex-1 space-y-1 bg-gray-800 px-2"
+          className="mt-2 flex-1 space-y-1 bg-midnight px-2"
           aria-label="Sidebar"
         >
           {navigation.map((item) => (
@@ -51,7 +51,7 @@ export default function SideMenu() {
               className={classNames(
                 item.current
                   ? "bg-gray-900 text-white"
-                  : "text-gray-300 hover:bg-gray-700 hover:text-white",
+                  : "text-gray-300 hover:bg-slate-800 hover:text-white",
                 "group flex items-center px-3 py-3 text-base rounded-md transition"
               )}
             >
