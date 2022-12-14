@@ -6,6 +6,7 @@ import { getOrganizationFromSlug } from "~/models/organization.server";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { Header } from "~/components/layout/Header";
 import { AppBody } from "~/components/layout/AppLayout";
+import SideMenu from "~/components/navigation/SideMenu";
 
 export const loader = async ({ request, params }: LoaderArgs) => {
   const userId = await requireUserId(request);
@@ -31,16 +32,21 @@ export default function Organization() {
     <>
       <Header />
       <AppBody>
-        <>
-          {organization.environments.map((environment) => {
-            return (
-              <div key={environment.id}>
-                {environment.slug}: {environment.apiKey}
-              </div>
-            );
-          })}
-        </>
-        <Outlet />
+        <div className="grid grid-cols-[300px_2fr] h-full">
+          <SideMenu />
+
+          {/* <>
+            {organization.environments.map((environment) => {
+              return (
+                <div key={environment.id}>
+                  {environment.slug}: {environment.apiKey}
+                </div>
+              );
+            })}
+          </> */}
+
+          <Outlet />
+        </div>
       </AppBody>
     </>
   );
