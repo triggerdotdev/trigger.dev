@@ -131,7 +131,7 @@ export function ConnectButton({
   const { createFetcher, status } = useCreateConnection();
 
   return (
-    <createFetcher.Form method="post" action="/resources/connection">
+    <createFetcher.Form method="post" action="/resources/integration/connect">
       <input type="hidden" name="type" value="create" />
       <input type="hidden" name="organizationId" value={organizationId} />
       <input type="hidden" name="key" value={integration.key} />
@@ -179,7 +179,7 @@ export function useCreateConnection() {
             type: "update",
             connectionId: createConnectionFetcher.data.connectionId,
           },
-          { method: "post", action: "/resources/connection" }
+          { method: "post", action: "/resources/integration/connect" }
         );
       } catch (error: any) {
         console.error(

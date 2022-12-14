@@ -5,7 +5,10 @@ import { LargeTitle } from "~/components/primitives/text/LargeTitle";
 import { Title } from "~/components/primitives/text/Title";
 import { useCurrentOrganization } from "~/hooks/useOrganizations";
 import { getConnectedApiConnectionsForOrganizationSlug } from "~/models/apiConnection.server";
-import { ConnectButton, integrations } from "~/routes/resources/connection";
+import {
+  ConnectButton,
+  integrations,
+} from "~/routes/resources/integration/connect";
 import { requireUserId } from "~/services/session.server";
 
 export const loader = async ({ request, params }: LoaderArgs) => {
