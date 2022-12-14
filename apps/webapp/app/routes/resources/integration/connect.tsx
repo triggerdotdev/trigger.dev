@@ -1,4 +1,4 @@
-import githubLogo from "../../assets/images/integrations/github.png";
+import githubLogo from "~/assets/images/integrations/github.png";
 import { useEffect } from "react";
 import Pizzly from "@nangohq/pizzly-frontend";
 import type { ActionArgs } from "@remix-run/server-runtime";
