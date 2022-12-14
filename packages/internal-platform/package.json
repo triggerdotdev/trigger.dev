@@ -1,8 +1,8 @@
 {
   "private": true,
-  "name": "internal-messages",
+  "name": "internal-platform",
   "version": "0.0.1",
-  "description": "Schemas and types for the internal messages used by trigger.dev",
+  "description": "Common code used across trigger.dev applications and packages",
   "main": "./src/index.ts",
   "types": "./src/index.ts",
   "devDependencies": {
@@ -12,6 +12,7 @@
   },
   "scripts": {},
   "dependencies": {
+    "pulsar-client": "^1.7.0",
     "zod": "^3.20.2"
   }
 }

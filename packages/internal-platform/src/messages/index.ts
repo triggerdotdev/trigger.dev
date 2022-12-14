@@ -1,4 +1,3 @@
-import { z } from "zod";
 export type { MessageCatalogSchema } from "./messageCatalogSchema";
 
 import coordinatorCatalog from "./catalogs/coordinator";
@@ -9,3 +8,4 @@ type PlatformCatalog = typeof platformCatalog;
 
 export type { CoordinatorCatalog, PlatformCatalog };
 export { coordinatorCatalog, platformCatalog };
+export { ZodPubSub } from "./zodPubSub";

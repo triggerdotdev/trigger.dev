@@ -1,5 +1,5 @@
-import { Logger } from "internal-bridge/logger";
-import { MessageCatalogSchema } from "internal-messages";
+import { Logger } from "../logger";
+import { MessageCatalogSchema } from "./messageCatalogSchema";
 import {
   Producer as PulsarProducer,
   Consumer as PulsarConsumer,

@@ -9,13 +9,13 @@ import {
   Logger,
 } from "internal-bridge";
 import { env } from "./env";
-import { ZodPubSub } from "./zodPubSub";
 import {
   coordinatorCatalog,
   CoordinatorCatalog,
   platformCatalog,
   PlatformCatalog,
-} from "internal-messages";
+  ZodPubSub,
+} from "internal-platform";
 import { pulsarClient } from "./pulsarClient";
 
 export class TriggerServer {
@@ -146,32 +146,6 @@ export class TriggerServer {
     }
   }
 
-  async #send<MethodName extends keyof typeof HostRPCSchema>(
-    methodName: MethodName,
-    request: z.input<typeof HostRPCSchema[MethodName]["request"]>
-  ) {
-    if (!this.#serverRPC) throw new Error("serverRPC not initialized");
-
-    while (true) {
-      try {
-        return await this.#serverRPC.send(methodName, request);
-      } catch (err) {
-        if (err instanceof TimeoutError) {
-          this.#logger.debug(
-            `RPC call timed out, retrying in ${Math.round(
-              this.#retryIntervalMs / 1000
-            )}s...`
-          );
-          this.#logger.debug(err);
-
-          await sleep(this.#retryIntervalMs);
-        } else {
-          throw err;
-        }
-      }
-    }
-  }
-
   async #initializeWorkflow(
     data: z.infer<typeof ServerRPCSchema["INITIALIZE_HOST"]["request"]>
   ) {
@@ -235,6 +209,11 @@ export class TriggerServer {
           name: data.packageName,
           version: data.packageVersion,
         },
+      },
+      {
+        "x-org-id": this.#organizationId,
+        "x-workflow-id": data.workflowId,
+        "x-api-key": this.#apiKey,
       }
     );
 

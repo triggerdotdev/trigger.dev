@@ -43,10 +43,10 @@ model Organization {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  users        User[]
-  workflows    Workflow[]
-  environments RuntimeEnvironment[]
-  apiConnections  APIConnection[]
+  users          User[]
+  workflows      Workflow[]
+  environments   RuntimeEnvironment[]
+  apiConnections APIConnection[]
 }
 
 model APIConnection {
@@ -54,9 +54,9 @@ model APIConnection {
   title String
 
   apiIdentifier String
-  status    APIConnectionStatus @default(CREATED)
-  scopes String[]
-  type APIConnectionType
+  status        APIConnectionStatus @default(CREATED)
+  scopes        String[]
+  type          APIConnectionType
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -103,6 +103,10 @@ model Workflow {
   @@unique([organizationId, slug])
 }
 
+//todo triggers are environment specific
+//todo connections are shared between environments
+//todo in the future, connections can be override per environment
+//todo runs are environment specific
 //todo Workflows have connection slots, which are filled with connections (can be empty)
 //todo Workflow has one trigger (can also have a slot with connection)
 //todo WorkflowRuns belong to a workflow + environment

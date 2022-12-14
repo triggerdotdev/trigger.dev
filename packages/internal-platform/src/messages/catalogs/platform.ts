@@ -1,4 +1,4 @@
-import triggerWorkflow from "../messages/triggerWorkflow";
+import triggerWorkflow from "../schemas/triggerWorkflow";
 
 const Catalog = {
   ...triggerWorkflow,

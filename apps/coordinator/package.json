@@ -14,7 +14,7 @@
   "dependencies": {
     "evt": "^2.4.13",
     "internal-bridge": "workspace:*",
-    "internal-messages": "workspace:*",
+    "internal-platform": "workspace:*",
     "pulsar-client": "^1.7.0",
     "uuid": "^9.0.0",
     "ws": "^8.11.0",
