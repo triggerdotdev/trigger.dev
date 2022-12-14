@@ -4,7 +4,7 @@ import { requireUserId } from "~/services/session.server";
 import { Outlet } from "@remix-run/react";
 import { getOrganizationFromSlug } from "~/models/organization.server";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
-import { Header } from "~/components/Header";
+import { Header } from "~/components/layout/Header";
 import { AppBody } from "~/components/layout/AppLayout";
 
 export const loader = async ({ request, params }: LoaderArgs) => {

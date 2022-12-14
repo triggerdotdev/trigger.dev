@@ -1,7 +1,7 @@
 import { Outlet } from "@remix-run/react";
 import type { LoaderArgs } from "@remix-run/server-runtime";
 import { typedjson } from "remix-typedjson";
-import { Footer } from "~/components/Footer";
+import { Footer } from "~/components/layout/Footer";
 import { AppBody, AppLayout } from "~/components/layout/AppLayout";
 import { getOrganizations } from "~/models/organization.server";
 import { clearRedirectTo, commitSession } from "~/services/redirectTo.server";

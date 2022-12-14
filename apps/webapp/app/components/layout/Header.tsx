@@ -1,9 +1,9 @@
 import { DocumentTextIcon } from "@heroicons/react/24/solid";
 import { Link } from "@remix-run/react";
 import { useOptionalUser } from "~/hooks/useUser";
-import { Logo } from "./Logo";
-import { OrganizationMenu } from "./navigation/OrganizationMenu";
-import { UserProfileMenu } from "./UserProfileMenu";
+import { Logo } from "../Logo";
+import { OrganizationMenu } from "../navigation/OrganizationMenu";
+import { UserProfileMenu } from "../UserProfileMenu";
 
 type HeaderProps = {
   children?: React.ReactNode;
