@@ -8,8 +8,15 @@ import {
   HostRPCSchema,
   Logger,
 } from "internal-bridge";
-import { WorkflowMessageBroker } from "./messageBroker";
 import { env } from "./env";
+import { ZodPubSub } from "./zodPubSub";
+import {
+  coordinatorCatalog,
+  CoordinatorCatalog,
+  platformCatalog,
+  PlatformCatalog,
+} from "internal-messages";
+import { pulsarClient } from "./pulsarClient";
 
 export class TriggerServer {
   #connection?: TriggerServerConnection;
@@ -21,7 +28,7 @@ export class TriggerServer {
   #apiKey: string;
   #organizationId?: string;
   #isInitialized = false;
-  #messageBroker?: WorkflowMessageBroker;
+  #pubSub?: ZodPubSub<PlatformCatalog, CoordinatorCatalog>;
 
   constructor(socket: WebSocket, apiKey: string) {
     this.#socket = socket;
@@ -39,7 +46,7 @@ export class TriggerServer {
 
   async close() {
     this.#closeConnection();
-    await this.#closeMessageBroker();
+    await this.#closePubSub();
   }
 
   async #initializeConnection(instanceId?: string) {
@@ -57,7 +64,7 @@ export class TriggerServer {
       }
 
       this.#closeConnection();
-      await this.#closeMessageBroker();
+      await this.#closePubSub();
     });
 
     this.#logger.debug("Connection initialized", id);
@@ -77,18 +84,20 @@ export class TriggerServer {
       receiver: ServerRPCSchema,
       handlers: {
         SEND_LOG: async (data) => {
-          console.log("SEND_LOG", data);
-
           return true;
         },
         INITIALIZE_HOST: async (data) => {
-          console.log("INITIALIZE_HOST", data);
+          // Initialize workflow
+          const success = await this.#initializeWorkflow(data);
 
-          this.#initializeHost(data);
-
-          // Create a new Workflow connection
-
-          return { type: "success" as const };
+          if (success) {
+            return { type: "success" as const };
+          } else {
+            return {
+              type: "error" as const,
+              message: "Failed to connect to the Pulsar cluster",
+            };
+          }
         },
       },
     });
@@ -161,7 +170,7 @@ export class TriggerServer {
     }
   }
 
-  async #initializeHost(
+  async #initializeWorkflow(
     data: z.infer<typeof ServerRPCSchema["INITIALIZE_HOST"]["request"]>
   ) {
     if (this.#isInitialized) {
@@ -174,29 +183,46 @@ export class TriggerServer {
       throw new Error("Cannot initialize host without an organizationId");
     }
 
-    this.#logger.debug("Initializing message broker...");
+    this.#logger.debug("Initializing pub sub...");
 
-    this.#messageBroker = new WorkflowMessageBroker({
-      id: data.workflowId,
-      orgId: this.#organizationId,
+    this.#pubSub = new ZodPubSub<PlatformCatalog, CoordinatorCatalog>({
+      subscriberSchema: platformCatalog,
+      publisherSchema: coordinatorCatalog,
+      client: pulsarClient,
+      subscriberConfig: {
+        topic: `persistent://public/default/workflows-${this.#organizationId}-${
+          data.workflowId
+        }`,
+        subscription: `coordinator`,
+        subscriptionType: "Exclusive",
+      },
+      publisherConfig: {
+        topic: `workflows-meta`,
+      },
+      handlers: {
+        TRIGGER_WORKFLOW: async (id, data, properties) => {
+          return true;
+        },
+      },
     });
 
-    await this.#messageBroker.initialize({
-      id: data.workflowId,
-      name: data.workflowName,
-      trigger: {
-        id: data.triggerId,
-      },
-      package: {
-        name: data.packageName,
-        version: data.packageVersion,
-      },
-    });
+    const result = await this.#pubSub.initialize();
+
+    if (!result) {
+      this.#logger.debug("Pub sub failed to initialize");
+      return false;
+    }
+
+    this.#logger.debug("Pub sub initialized");
+
+    this.#isInitialized = true;
+
+    return true;
   }
 
-  async #closeMessageBroker() {
-    if (this.#messageBroker) {
-      await this.#messageBroker.close();
+  async #closePubSub() {
+    if (this.#pubSub) {
+      await this.#pubSub.close();
     }
   }
 

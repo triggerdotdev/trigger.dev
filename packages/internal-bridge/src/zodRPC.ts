@@ -77,12 +77,12 @@ export class ZodRPC<
     } catch (callError) {
       if (callError instanceof ZodError) {
         console.error(
-          `[ZodRPC] Received invalid call\n\n${JSON.stringify(message)}: `,
+          `[ZodRPC] Received invalid call:\n${JSON.stringify(message)}: `,
           callError.flatten()
         );
       } else {
         console.error(
-          `[ZodRPC] Error handling call\n\n${JSON.stringify(message)}: `,
+          `[ZodRPC] Error handling call:\n${JSON.stringify(message)}: `,
           callError
         );
       }

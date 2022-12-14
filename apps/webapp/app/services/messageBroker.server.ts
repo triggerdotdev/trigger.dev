@@ -2,7 +2,7 @@ import type { PulsarMessage, PulsarConsumer } from "./pulsarClient.server";
 import { pulsarClient } from "./pulsarClient.server";
 
 export async function init() {
-  const workflowsMetaProducer = await pulsarClient.subscribe({
+  const workflowsMetaConsumer = await pulsarClient.subscribe({
     topic: "workflows-meta",
     subscription: "webapp",
     subscriptionType: "Shared",
@@ -15,7 +15,7 @@ export async function init() {
   console.log("📡 Message Broker initialized");
 
   process.on("beforeExit", () => {
-    workflowsMetaProducer.close();
+    workflowsMetaConsumer.close();
 
     console.log("📡 Message Broker closed");
   });
