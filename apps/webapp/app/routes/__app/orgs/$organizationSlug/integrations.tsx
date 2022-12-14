@@ -1,7 +1,7 @@
 import type { LoaderArgs } from "@remix-run/server-runtime";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import invariant from "tiny-invariant";
-import { Title } from "~/components/primitives/text/Title";
+import { Header1, Header2 } from "~/components/primitives/text/Headers";
 import { useCurrentOrganization } from "~/hooks/useOrganizations";
 import { getConnectedApiConnectionsForOrganizationSlug } from "~/models/apiConnection.server";
 import {
@@ -29,16 +29,16 @@ export default function Integrations() {
 
   return (
     <div>
-      <Title size="large">Integrations</Title>
+      <Header1>Integrations</Header1>
       <div>
-        <Title>Existing integrations</Title>
+        <Header2>Existing integrations</Header2>
         {connections.map((connection) => (
           <div key={connection.id}>{connection.title}</div>
         ))}
       </div>
 
       <div>
-        <Title>Add integration</Title>
+        <Header2>Add integration</Header2>
         {integrations.map((integration) => (
           <ConnectButton
             key={integration.key}
