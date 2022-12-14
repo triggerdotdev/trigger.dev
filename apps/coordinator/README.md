@@ -17,7 +17,7 @@
 ```sh
 export CPLUS_INCLUDE_PATH="$CPLUS_INCLUDE_PATH:$(brew --prefix)/include"
 export LIBRARY_PATH="$LIBRARY_PATH:$(brew --prefix)/lib"
-export PULSAR_CPP_DIR=/opt/homebrew/Cellar/libpulsar/2.10.2
+export PULSAR_CPP_DIR=/opt/homebrew/Cellar/libpulsar/3.1.0
 ```
 
 8. Run `pnpm install`

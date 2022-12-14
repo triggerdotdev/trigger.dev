@@ -29,12 +29,14 @@
    ```bash
    pnpm run db:migrate:deploy
    ```
-6. Run the first build (with dependencies via the `...` option)
+6. Make sure Pular has started by following the instructions below under "Starting and Stopping Pulsar"
+
+7. Run the first build (with dependencies via the `...` option)
    ```bash
    pnpm run build --filter=webapp...
    ```
    **Running simply `pnpm run build` will build everything, including the NextJS app.**
-7. Run the Remix dev server
+8. Run the Remix dev server
 
 ```bash
 pnpm run dev --filter=webapp
