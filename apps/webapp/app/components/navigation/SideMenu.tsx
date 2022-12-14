@@ -38,7 +38,7 @@ export default function SideMenu() {
   ];
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col bg-gray-800">
+    <div className="flex min-h-0 flex-1 flex-col bg-gray-800 border-r border-gray-900">
       <div className="flex flex-1 flex-col overflow-y-auto pt-0 pb-4">
         <nav
           className="mt-3 flex-1 space-y-1 bg-gray-800 px-2"

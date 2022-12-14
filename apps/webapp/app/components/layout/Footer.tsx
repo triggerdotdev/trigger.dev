@@ -2,22 +2,23 @@ import { Link } from "@remix-run/react";
 
 export function Footer() {
   const linkStyle =
-    "bg-slate-100 text-xs font-medium text-slate-700  whitespace-nowrap p-0 px-3 py-1 bg-transparent text-slate-500 transition hover:text-blue-500 hover:underline";
+    "bg-slate-100 text-xs font-medium text-slate-700 whitespace-nowrap bg-transparent text-slate-500 transition hover:text-blue-500";
 
   return (
-    <div className="flex w-full items-center justify-between border-t border-gray-200 bg-white px-2 flex-row gap-0 py-1">
+    <div className="flex w-full items-center justify-between border-t border-gray-900 bg-gray-800 px-2 flex-row gap-0 py-1">
       <p className="text-xs text-slate-500">
-        &copy; Trigger.dev 2022 <span className="text-slate-300">|</span>{" "}
+        &copy; {new Date().getFullYear()} Trigger.dev{" "}
+        <span className="text-slate-600">|</span>{" "}
         <Link className="transition hover:text-blue-500" to="/legal/terms">
           Terms
         </Link>{" "}
-        <span className="text-slate-300">|</span>{" "}
+        <span className="text-slate-600">|</span>{" "}
         <Link className="transition hover:text-blue-500" to="/legal/privacy">
           Privacy
         </Link>
       </p>
 
-      <div className="flex items-center gap-6">
+      <div className="flex">
         {/* <a
           target="_blank"
           rel="noopener noreferrer"
