@@ -1,7 +1,6 @@
 import type { LoaderArgs } from "@remix-run/server-runtime";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import invariant from "tiny-invariant";
-import { LargeTitle } from "~/components/primitives/text/LargeTitle";
 import { Title } from "~/components/primitives/text/Title";
 import { useCurrentOrganization } from "~/hooks/useOrganizations";
 import { getConnectedApiConnectionsForOrganizationSlug } from "~/models/apiConnection.server";
@@ -30,7 +29,7 @@ export default function Integrations() {
 
   return (
     <div>
-      <LargeTitle>Integrations</LargeTitle>
+      <Title size="large">Integrations</Title>
       <div>
         <Title>Existing integrations</Title>
         {connections.map((connection) => (
