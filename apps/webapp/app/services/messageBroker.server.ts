@@ -1,15 +1,35 @@
 import { env } from "~/env.server";
-import type { PulsarMessage, PulsarConsumer } from "./pulsarClient.server";
-import { pulsarClient } from "./pulsarClient.server";
+import type {
+  Message as PulsarMessage,
+  Consumer as PulsarConsumer,
+  Client as PulsarClient,
+} from "pulsar-client";
+import Pulsar from "pulsar-client";
 
 let workflowsMetaConsumer: PulsarConsumer;
+let pulsarClient: PulsarClient;
 
 declare global {
   var __meta_consumer__: typeof workflowsMetaConsumer;
+  var __pulsar_client__: typeof pulsarClient;
 }
 
 export async function init() {
   if (workflowsMetaConsumer) return;
+
+  if (!env.PULSAR_ENABLED) {
+    console.log("📡 Message Broker disabled");
+    return;
+  }
+
+  if (env.NODE_ENV === "production") {
+    pulsarClient = createClient();
+  } else {
+    if (!global.__pulsar_client__) {
+      global.__pulsar_client__ = createClient();
+    }
+    pulsarClient = global.__pulsar_client__;
+  }
 
   if (env.NODE_ENV === "production") {
     workflowsMetaConsumer = await createMetaConsumer();
@@ -41,6 +61,16 @@ async function createMetaConsumer() {
   });
 
   return workflowsMetaConsumer;
+}
+
+function createClient() {
+  console.log(`📡 Creating Pulsar client for ${env.PULSAR_URL}`);
+
+  const client = new Pulsar.Client({
+    serviceUrl: env.PULSAR_URL,
+  });
+
+  return client;
 }
 
 async function receiveMetadata(msg: PulsarMessage, consumer: PulsarConsumer) {
