@@ -31,7 +31,7 @@ export function OrganizationMenu() {
             <Popover.Button
               className={`
                 ${open ? "" : "text-opacity-90"}
-                group inline-flex min-w-[200px] justify-between items-center rounded text-slate-700 bg-white pl-2.5 pr-2 py-1 text-sm border border-slate-200 shadow-sm hover:bg-slate-50 transition focus:outline-none`}
+                group inline-flex min-w-[200px] justify-between items-center rounded text-white bg-slate-800 pl-3.5 pr-2 py-2 text-sm hover:bg-slate-900 transition focus:outline-none`}
             >
               <span className="transition">
                 {currentOrganization ? (
@@ -59,7 +59,7 @@ export function OrganizationMenu() {
             >
               <Popover.Panel className="absolute left-1/2 z-10 mt-3 w-screen min-w-max max-w-xs -translate-x-1/2 transform px-4 sm:px-0">
                 <div className="overflow-hidden rounded-lg shadow-lg ring-1 ring-black ring-opacity-5">
-                  <div className="relative grid py-1 bg-white grid-cols-1">
+                  <div className="relative grid py-1 bg-slate-700 grid-cols-1">
                     {organizations.map((organization) => {
                       return (
                         <Popover.Button
@@ -67,9 +67,9 @@ export function OrganizationMenu() {
                           as={Link}
                           to={`/orgs/${organization.slug}`}
                           className={classNames(
-                            "flex items-center justify-between gap-1.5 mx-1 px-3 py-2 text-slate-600 rounded hover:bg-slate-100 transition",
+                            "flex items-center justify-between gap-1.5 mx-1 px-3 py-2 text-white rounded hover:bg-slate-100 transition",
                             organization.slug === currentOrganization?.slug &&
-                              "!bg-slate-200"
+                              "!bg-slate-800"
                           )}
                         >
                           <div className="flex items-center gap-2">
@@ -88,12 +88,12 @@ export function OrganizationMenu() {
                       );
                     })}
                     <Popover.Button as={Link} to={`/orgs/new`}>
-                      <div className="flex items-center gap-2 mx-1 mt-1 pl-1 py-2 rounded bg-white hover:bg-slate-100 transition">
+                      <div className="flex items-center gap-2 mx-1 mt-1 pl-1 py-2 rounded bg-slate-800 hover:bg-slate-900 transition">
                         <PlusIcon
                           className="h-5 w-5 text-green-500"
                           aria-hidden="true"
                         />
-                        <span className="text-slate-600">New Organization</span>
+                        <span className="text-white">New Organization</span>
                       </div>
                     </Popover.Button>
                   </div>
