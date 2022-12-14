@@ -50,16 +50,16 @@ export default function SideMenu() {
               href={item.href}
               className={classNames(
                 item.current
-                  ? "bg-gray-900 text-white"
-                  : "text-gray-300 hover:bg-slate-800 hover:text-white",
+                  ? "bg-slate-900 text-white"
+                  : "text-slate-300 hover:bg-slate-800 hover:text-white",
                 "group flex items-center px-3 py-3 text-base rounded-md transition"
               )}
             >
               <item.icon
                 className={classNames(
                   item.current
-                    ? "text-gray-300"
-                    : "text-gray-400 group-hover:text-gray-300",
+                    ? "text-slate-300"
+                    : "text-slate-400 group-hover:text-slate-300",
                   "mr-3 flex-shrink-0 h-6 w-6"
                 )}
                 aria-hidden="true"
