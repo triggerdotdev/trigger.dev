@@ -90,6 +90,8 @@ export class TriggerServer {
           // Initialize workflow
           const success = await this.#initializeWorkflow(data);
 
+          // TODO: Do we need to wait to hear something back from the platform to be able to return success?
+
           if (success) {
             return { type: "success" as const };
           } else {
@@ -183,6 +185,12 @@ export class TriggerServer {
       throw new Error("Cannot initialize host without an organizationId");
     }
 
+    if (!this.#connection) {
+      throw new Error(
+        "Cannot initialize host without a connection to the host machine"
+      );
+    }
+
     this.#logger.debug("Initializing pub sub...");
 
     this.#pubSub = new ZodPubSub<PlatformCatalog, CoordinatorCatalog>({
@@ -213,7 +221,24 @@ export class TriggerServer {
       return false;
     }
 
-    this.#logger.debug("Pub sub initialized");
+    // Send a message to the platform to register this workflow
+    const messageId = await this.#pubSub.publish(
+      this.#connection.id,
+      "INITIALIZE_WORKFLOW",
+      {
+        id: data.workflowId,
+        name: data.workflowName,
+        trigger: {
+          id: data.triggerId,
+        },
+        package: {
+          name: data.packageName,
+          version: data.packageVersion,
+        },
+      }
+    );
+
+    this.#logger.debug("Published INITIALIZE_WORKFLOW message", messageId);
 
     this.#isInitialized = true;
 
