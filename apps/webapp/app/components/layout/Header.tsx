@@ -1,8 +1,9 @@
-import { DocumentTextIcon } from "@heroicons/react/24/solid";
+import { DocumentTextIcon } from "@heroicons/react/24/outline";
 import { Link } from "@remix-run/react";
 import { useOptionalUser } from "~/hooks/useUser";
 import { Logo } from "../Logo";
 import { OrganizationMenu } from "../navigation/OrganizationMenu";
+import { SecondaryA } from "../primitives/Buttons";
 import { UserProfileMenu } from "../UserProfileMenu";
 
 type HeaderProps = {
@@ -23,15 +24,10 @@ export function Header({ children }: HeaderProps) {
       <div className="flex flex-1 justify-center">{children}</div>
 
       <div className="flex items-center gap-2">
-        <a
-          href="https://docs.apihero.run"
-          target="_blank"
-          className="group flex items-center justify-center gap-1 rounded border border-slate-200 bg-white py-1 px-2 text-sm text-slate-700 shadow-sm transition hover:bg-slate-50 hover:text-blue-600"
-          rel="noreferrer"
-        >
-          <DocumentTextIcon className="h-4 w-4 transition group-hover:text-blue-600" />
-          <span>Docs</span>
-        </a>
+        <SecondaryA href="https://docs.apihero.run" target="_blank">
+          <DocumentTextIcon className="h-4 w-4" />
+          Docs
+        </SecondaryA>
         {user ? (
           <UserProfileMenu user={user} />
         ) : (
