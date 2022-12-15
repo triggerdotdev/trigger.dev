@@ -1,10 +1,9 @@
 import { Popover, Transition } from "@headlessui/react";
 import {
-  ArrowsRightLeftIcon,
   ChevronUpDownIcon,
   ArrowsRightLeftIcon,
 } from "@heroicons/react/24/outline";
-import { BookmarkIcon, CheckIcon, PlusIcon } from "@heroicons/react/24/solid";
+import { CheckIcon, PlusIcon } from "@heroicons/react/24/solid";
 import { Link } from "@remix-run/react";
 import classNames from "classnames";
 import { Fragment } from "react";
@@ -14,7 +13,7 @@ export function WorkflowMenu() {
   const workflows = useWorkflows();
   const currentWorkflow = useCurrentWorkflow();
 
-  if (workflows === undefined) {
+  if (workflows === undefined || workflows.length === 0) {
     return <></>;
   }
 
