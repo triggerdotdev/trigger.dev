@@ -8,4 +8,5 @@ type PlatformCatalog = typeof platformCatalog;
 
 export type { CoordinatorCatalog, PlatformCatalog };
 export { coordinatorCatalog, platformCatalog };
-export { ZodPubSub } from "./zodPubSub";
+export * from "./zodPublisher";
+export * from "./zodSubscriber";

@@ -41,7 +41,7 @@ export const InitiateIntegrationRequestSchema = z.object({
 });
 
 const Catalog = {
-  TRIGGER_WORKFLOW: {
+  INITIATE_INTEGRATION_REQUEST: {
     data: InitiateIntegrationRequestSchema,
     properties: WorkflowEventPropertiesSchema,
   },

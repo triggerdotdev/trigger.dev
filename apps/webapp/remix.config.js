@@ -10,8 +10,9 @@ module.exports = {
     "@nangohq/pizzly-frontend",
     "@nangohq/pizzly-node",
     "axios",
+    "internal-platform",
   ],
   watchPaths: async () => {
-    return ["../../packages/internal-nobuild/src/**/*"];
+    return ["../../packages/internal-platform/src/**/*"];
   },
 };

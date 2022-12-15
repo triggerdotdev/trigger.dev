@@ -116,7 +116,7 @@ export class TriggerClient<
       apiKey: this.#apiKey,
       workflowId: this.#workflow.id,
       workflowName: this.#workflow.name,
-      triggerId: this.#workflow.trigger.id,
+      trigger: this.#workflow.trigger,
       packageVersion: pkg.version,
       packageName: pkg.name,
     });

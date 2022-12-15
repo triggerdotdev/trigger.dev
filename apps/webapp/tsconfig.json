@@ -17,7 +17,9 @@
     "emitDecoratorMetadata": true,
     "baseUrl": ".",
     "paths": {
-      "~/*": ["./app/*"]
+      "~/*": ["./app/*"],
+      "internal-platform": ["../../packages/internal-platform/src/index"],
+      "internal-platform/*": ["../../packages/internal-platform/src/*"]
     },
     "noEmit": true
   }

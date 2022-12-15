@@ -83,8 +83,9 @@ model RuntimeEnvironment {
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   organizationId String
 
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+  WorkflowTrigger WorkflowTrigger[]
 
   @@unique([organizationId, slug])
 }
@@ -94,13 +95,47 @@ model Workflow {
   slug  String
   title String
 
+  packageJson Json?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   organizationId String
 
+  triggers WorkflowTrigger[]
+
   @@unique([organizationId, slug])
+}
+
+model WorkflowTrigger {
+  id String @id @default(cuid())
+
+  workflow   Workflow @relation(fields: [workflowId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  workflowId String
+
+  environment   RuntimeEnvironment @relation(fields: [environmentId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  environmentId String
+
+  type   WorkflowTriggerType
+  config Json
+  status WorkflowTriggerStatus @default(CREATED)
+
+  isDefault Boolean @default(false)
+
+  @@unique([workflowId, environmentId])
+}
+
+enum WorkflowTriggerType {
+  WEBHOOK
+  SCHEDULE
+  CUSTOM_EVENT
+  HTTP_ENDPOINT
+}
+
+enum WorkflowTriggerStatus {
+  CREATED
+  CONNECTED
 }
 
 //todo triggers are environment specific

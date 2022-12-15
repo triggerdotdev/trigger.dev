@@ -1,23 +1,17 @@
-import { Logger } from "../logger";
-import { MessageCatalogSchema } from "./messageCatalogSchema";
 import {
-  Producer as PulsarProducer,
-  Consumer as PulsarConsumer,
-  Message as PulsarMessage,
-  ConsumerConfig as PulsarConsumerConfig,
-  ProducerConfig as PulsarPublisherConfig,
   Client as PulsarClient,
+  Consumer as PulsarConsumer,
+  ConsumerConfig as PulsarConsumerConfig,
+  Message as PulsarMessage,
 } from "pulsar-client";
+import { Logger } from "../logger";
+import {
+  MessageCatalogSchema,
+  MessageData,
+  MessageDataSchema,
+} from "./messageCatalogSchema";
 
 import { z, ZodError } from "zod";
-
-const MessageDataSchema = z.object({
-  data: z.any(),
-  id: z.string(),
-  type: z.string(),
-});
-
-type MessageData = z.infer<typeof MessageDataSchema>;
 
 export type ZodSubscriberHandlers<
   TConsumerSchema extends MessageCatalogSchema
@@ -29,42 +23,31 @@ export type ZodSubscriberHandlers<
   ) => Promise<boolean>;
 };
 
-export type ZodPubSubOptions<
-  SubscriberSchema extends MessageCatalogSchema,
-  PublisherSchema extends MessageCatalogSchema
+export type ZodSubscriberOptions<
+  SubscriberSchema extends MessageCatalogSchema
 > = {
   client: PulsarClient;
   subscriberConfig: Omit<PulsarConsumerConfig, "listener">;
-  publisherConfig: PulsarPublisherConfig;
   subscriberSchema: SubscriberSchema;
-  publisherSchema: PublisherSchema;
   handlers: ZodSubscriberHandlers<SubscriberSchema>;
 };
 
-export class ZodPubSub<
-  SubscriberSchema extends MessageCatalogSchema,
-  PublisherSchema extends MessageCatalogSchema
-> {
+export class ZodSubscriber<SubscriberSchema extends MessageCatalogSchema> {
   #subscriberConfig: Omit<PulsarConsumerConfig, "listener">;
-  #publisherConfig: PulsarPublisherConfig;
   #subscriberSchema: SubscriberSchema;
-  #publisherSchema: PublisherSchema;
   #handlers: ZodSubscriberHandlers<SubscriberSchema>;
 
   #subscriber?: PulsarConsumer;
-  #publisher?: PulsarProducer;
   #client: PulsarClient;
 
   #logger: Logger;
 
-  constructor(options: ZodPubSubOptions<SubscriberSchema, PublisherSchema>) {
+  constructor(options: ZodSubscriberOptions<SubscriberSchema>) {
     this.#subscriberConfig = options.subscriberConfig;
-    this.#publisherConfig = options.publisherConfig;
     this.#subscriberSchema = options.subscriberSchema;
-    this.#publisherSchema = options.publisherSchema;
     this.#handlers = options.handlers;
     this.#client = options.client;
-    this.#logger = new Logger("trigger.dev pubsub", "info");
+    this.#logger = new Logger("trigger.dev subscriber", "info");
   }
 
   public async initialize(): Promise<boolean> {
@@ -79,40 +62,19 @@ export class ZodPubSub<
         ...this.#subscriberConfig,
         listener: this.#onMessage.bind(this),
       });
+
+      return true;
     } catch (e) {
       this.#logger.error("Error initializing subscriber", e);
 
       return false;
     }
-
-    try {
-      this.#logger.debug(
-        `Initializing publisher with config ${JSON.stringify(
-          this.#publisherConfig
-        )}`
-      );
-
-      this.#publisher = await this.#client.createProducer(
-        this.#publisherConfig
-      );
-    } catch (e) {
-      this.#logger.error("Error initializing publisher", e);
-
-      return false;
-    }
-
-    return true;
   }
 
   public async close() {
     if (this.#subscriber) {
       await this.#subscriber.close();
       this.#subscriber = undefined;
-    }
-
-    if (this.#publisher) {
-      await this.#publisher.close();
-      this.#publisher = undefined;
     }
   }
 
@@ -132,12 +94,12 @@ export class ZodPubSub<
     } catch (e) {
       if (e instanceof ZodError) {
         console.error(
-          "[ZodPubSub] Received invalid message data or properties",
+          "[ZodSubscriber] Received invalid message data or properties",
           messageData,
           properties
         );
       } else {
-        console.error("[ZodPubSub] Error handling message", e);
+        console.error("[ZodSubscriber] Error handling message", e);
       }
 
       consumer.negativeAcknowledge(msg);
@@ -159,6 +121,12 @@ export class ZodPubSub<
       throw new Error(`Unknown message type: ${rawMessage.type}`);
     }
 
+    this.#logger.info(
+      `Handling message of type ${rawMessage.type}, parsing data and properties`,
+      rawMessage.data,
+      rawProperties
+    );
+
     const message = messageSchema.data.parse(rawMessage.data);
     const properties = messageSchema.properties.parse(rawProperties);
 
@@ -167,29 +135,5 @@ export class ZodPubSub<
     const returnValue = await handler(rawMessage.id, message, properties);
 
     return returnValue;
-  }
-
-  public async publish<K extends keyof PublisherSchema>(
-    id: string,
-    type: K,
-    data: z.infer<PublisherSchema[K]["data"]>,
-    properties?: z.infer<PublisherSchema[K]["properties"]>
-  ): Promise<string> {
-    if (!this.#publisher) {
-      throw new Error("Cannot publish before establishing connection");
-    }
-
-    const message = JSON.stringify({
-      id,
-      type,
-      data,
-    });
-
-    const response = await this.#publisher.send({
-      data: Buffer.from(message),
-      properties,
-    });
-
-    return response.toString();
   }
 }

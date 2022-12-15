@@ -1,21 +1,21 @@
-import { v4 } from "uuid";
-import { z } from "zod";
-import { TimeoutError, TriggerServerConnection } from "./connection";
-import { WebSocket } from "ws";
 import {
-  ZodRPC,
-  ServerRPCSchema,
   HostRPCSchema,
   Logger,
+  ServerRPCSchema,
+  ZodRPC,
 } from "internal-bridge";
-import { env } from "./env";
 import {
-  coordinatorCatalog,
-  CoordinatorCatalog,
+  InternalApiClient,
   platformCatalog,
   PlatformCatalog,
-  ZodPubSub,
+  TriggerMetadataSchema,
+  ZodSubscriber,
 } from "internal-platform";
+import { v4 } from "uuid";
+import { WebSocket } from "ws";
+import { z } from "zod";
+import { TriggerServerConnection } from "./connection";
+import { env } from "./env";
 import { pulsarClient } from "./pulsarClient";
 
 export class TriggerServer {
@@ -25,14 +25,15 @@ export class TriggerServer {
   #retryIntervalMs: number = 3000;
   #logger: Logger;
   #socket: WebSocket;
-  #apiKey: string;
   #organizationId?: string;
   #isInitialized = false;
-  #pubSub?: ZodPubSub<PlatformCatalog, CoordinatorCatalog>;
+  #triggerSubscriber?: ZodSubscriber<PlatformCatalog>;
+  #apiClient: InternalApiClient;
+  #workflowId?: string;
 
   constructor(socket: WebSocket, apiKey: string) {
     this.#socket = socket;
-    this.#apiKey = apiKey;
+    this.#apiClient = new InternalApiClient(apiKey, env.PLATFORM_API_URL);
     this.#logger = new Logger("trigger.dev", "info");
 
     process.on("beforeExit", () => this.close.bind(this));
@@ -118,14 +119,14 @@ export class TriggerServer {
 
     this.#logger.debug("Checking authorized to use messagingClient");
 
-    const authorizationResponse = await authorizeApiKey(this.#apiKey);
+    try {
+      const whoamiResponse = await this.#apiClient.whoami();
 
-    if (authorizationResponse.authorized) {
       this.#logger.debug(
-        `Client authenticated for org ${authorizationResponse.organizationId}, sending message...`
+        `Client authenticated for org ${whoamiResponse.organizationId}, sending message...`
       );
 
-      this.#organizationId = authorizationResponse.organizationId;
+      this.#organizationId = whoamiResponse.organizationId;
 
       const authenticatedMessage = JSON.stringify({
         type: "MESSAGE",
@@ -136,13 +137,10 @@ export class TriggerServer {
       this.#socket.send(authenticatedMessage);
 
       this.#logger.debug("Server initialized");
-    } else {
+    } catch (error) {
       this.#logger.debug("Client not authenticated, sending error...");
 
-      this.#socket.close(
-        4001,
-        `Unauthorized: ${authorizationResponse.reason}}`
-      );
+      this.#socket.close(4001, `Unauthorized: ${error}}`);
     }
   }
 
@@ -165,68 +163,67 @@ export class TriggerServer {
       );
     }
 
-    this.#logger.debug("Initializing pub sub...");
+    try {
+      // TODO: do this in a better/safer way
+      const parsedTrigger = TriggerMetadataSchema.parse(data.trigger);
 
-    this.#pubSub = new ZodPubSub<PlatformCatalog, CoordinatorCatalog>({
-      subscriberSchema: platformCatalog,
-      publisherSchema: coordinatorCatalog,
-      client: pulsarClient,
-      subscriberConfig: {
-        topic: `persistent://public/default/workflows-${this.#organizationId}-${
-          data.workflowId
-        }`,
-        subscription: `coordinator`,
-        subscriptionType: "Exclusive",
-      },
-      publisherConfig: {
-        topic: `workflows-meta`,
-      },
-      handlers: {
-        TRIGGER_WORKFLOW: async (id, data, properties) => {
-          return true;
-        },
-      },
-    });
-
-    const result = await this.#pubSub.initialize();
-
-    if (!result) {
-      this.#logger.debug("Pub sub failed to initialize");
-      return false;
-    }
-
-    // Send a message to the platform to register this workflow
-    const messageId = await this.#pubSub.publish(
-      this.#connection.id,
-      "INITIALIZE_WORKFLOW",
-      {
+      // register the workflow with the platform
+      const response = await this.#apiClient.registerWorkflow({
         id: data.workflowId,
         name: data.workflowName,
-        trigger: {
-          id: data.triggerId,
-        },
+        trigger: parsedTrigger,
         package: {
           name: data.packageName,
           version: data.packageVersion,
         },
-      },
-      {
-        "x-org-id": this.#organizationId,
-        "x-workflow-id": data.workflowId,
-        "x-api-key": this.#apiKey,
+      });
+
+      this.#workflowId = response.id;
+
+      this.#logger.debug("Initializing pub sub...");
+
+      this.#triggerSubscriber = new ZodSubscriber<PlatformCatalog>({
+        subscriberSchema: platformCatalog,
+        client: pulsarClient,
+        subscriberConfig: {
+          topic: `persistent://public/default/workflow-triggers`,
+          subscription: `coordinator-${this.#workflowId}`,
+          subscriptionType: "Shared",
+        },
+        handlers: {
+          TRIGGER_WORKFLOW: async (id, data, properties) => {
+            this.#logger.info("Triggering workflow", id, data, properties);
+            // Once the workflow is triggered, then we will have the run id
+            // And we will need to setup a new consumer for the workflow run,
+            // with the following consumer config:
+            //  - topic: `persistent://public/default/workflow-events`
+            //  - subscription: `workflow-${orgId}-${workflowId}-${runId}`
+            //  - subscriptionType: "Exclusive"
+            return true;
+          },
+        },
+      });
+
+      const result = await this.#triggerSubscriber.initialize();
+
+      if (!result) {
+        this.#logger.debug("Pub sub failed to initialize");
+        return false;
       }
-    );
 
-    this.#logger.debug("Published INITIALIZE_WORKFLOW message", messageId);
+      this.#isInitialized = true;
 
-    this.#isInitialized = true;
+      return true;
+    } catch (error) {
+      this.#logger.error("Failed to initialize workflow", error);
 
-    return true;
+      return false;
+    }
   }
 
   async #closePubSub() {
-    if (this.#pubSub) {
-      await this.#pubSub.close();
+    if (this.#triggerSubscriber) {
+      await this.#triggerSubscriber.close();
     }
   }
 
@@ -240,59 +237,3 @@ export class TriggerServer {
 
 export const sleep = (ms: number) =>
   new Promise((resolve) => setTimeout(resolve, ms));
-
-type AuthorizationSuccess = {
-  authorized: true;
-  organizationId: string;
-  env: string;
-};
-
-type AuthorizationFailure = {
-  authorized: false;
-  reason?: string;
-};
-
-type AuthorizationResponse = AuthorizationSuccess | AuthorizationFailure;
-
-async function authorizeApiKey(
-  apiKey: string | undefined
-): Promise<AuthorizationResponse> {
-  if (!apiKey || typeof apiKey !== "string") {
-    return { authorized: false, reason: "Missing API key" };
-  }
-
-  return performAuthorizationRequest(apiKey);
-}
-
-async function performAuthorizationRequest(
-  apiKey: string
-): Promise<AuthorizationResponse> {
-  const response = await fetch(env.AUTHORIZATION_URL, {
-    method: "GET",
-    headers: {
-      Accept: "application/json",
-      Authorization: `Bearer ${apiKey}`,
-    },
-  });
-
-  if (response.ok) {
-    const body = await response.json();
-
-    return {
-      authorized: true,
-      organizationId: body.organizationId,
-      env: body.env,
-    };
-  }
-
-  if (response.status === 401) {
-    const errorBody = await response.json();
-
-    return { authorized: false, reason: errorBody.error };
-  }
-
-  return {
-    authorized: false,
-    reason: `[${response.status}] Something went wrong: ${response.statusText}`,
-  };
-}

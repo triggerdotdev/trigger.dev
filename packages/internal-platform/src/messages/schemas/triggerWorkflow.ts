@@ -1,5 +1,4 @@
 import { z } from "zod";
-import { MessageCatalogSchema } from "../messageCatalogSchema";
 import { WorkflowEventPropertiesSchema } from "../sharedSchemas";
 
 export const TriggerWorkflowMessageSchema = z.object({
