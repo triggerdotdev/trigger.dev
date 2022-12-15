@@ -9,21 +9,18 @@ export default function AppLayout() {
 
   return (
     <>
-      <Header />
-      <AppBody>
-        <div className="flex items-center justify-center p-12 ">
-          <ul className="grid grid-cols-3 max-w-5xl gap-2">
-            {organizations ? (
-              <OrganizationGrid organizations={organizations} />
-            ) : (
-              <li>No organizations</li>
-            )}
-            <li className={boxClasses}>
-              <Link to="orgs/new">Create a new organization</Link>
-            </li>
-          </ul>
-        </div>
-      </AppBody>
+      <div className="flex items-center justify-center p-12 ">
+        <ul className="grid grid-cols-3 max-w-5xl gap-2">
+          {organizations ? (
+            <OrganizationGrid organizations={organizations} />
+          ) : (
+            <li>No organizations</li>
+          )}
+          <li className={boxClasses}>
+            <Link to="orgs/new">Create a new organization</Link>
+          </li>
+        </ul>
+      </div>
     </>
   );
 }

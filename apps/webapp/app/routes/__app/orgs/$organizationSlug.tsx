@@ -27,10 +27,7 @@ export const loader = async ({ request, params }: LoaderArgs) => {
 export default function Organization() {
   return (
     <>
-      <Header />
-      <AppBody>
-        <Outlet />
-      </AppBody>
+      <Outlet />
     </>
   );
 }
