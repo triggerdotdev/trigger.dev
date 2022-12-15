@@ -89,7 +89,10 @@ export function WorkflowMenu() {
                         </Popover.Button>
                       );
                     })}
-                    <Popover.Button as={Link} to={`/orgs/new`}>
+                    <Popover.Button
+                      as={Link}
+                      to={`/orgs/${currentOrganizationSlug}/workflows/new`}
+                    >
                       <div className="flex items-center gap-2 mx-1 pl-2.5 py-2 rounded hover:bg-slate-800 transition">
                         <PlusIcon
                           className="h-5 w-5 text-green-500"
