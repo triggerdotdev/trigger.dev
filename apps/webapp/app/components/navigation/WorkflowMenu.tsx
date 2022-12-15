@@ -10,8 +10,6 @@ import classNames from "classnames";
 import { Fragment } from "react";
 import { useCurrentWorkflow, useWorkflows } from "~/hooks/useWorkflows";
 
-const actionClassNames = "text-green-500";
-
 export function WorkflowMenu() {
   const workflows = useWorkflows();
   const currentWorkflow = useCurrentWorkflow();
