@@ -3,10 +3,9 @@ import invariant from "tiny-invariant";
 import { requireUserId } from "~/services/session.server";
 import { Outlet } from "@remix-run/react";
 import { getOrganizationFromSlug } from "~/models/organization.server";
-import { typedjson, useTypedLoaderData } from "remix-typedjson";
+import { typedjson } from "remix-typedjson";
 import { Header } from "~/components/layout/Header";
 import { AppBody } from "~/components/layout/AppLayout";
-import { SideMenu, SideMenuContainer } from "~/components/navigation/SideMenu";
 
 export const loader = async ({ request, params }: LoaderArgs) => {
   const userId = await requireUserId(request);
@@ -26,27 +25,11 @@ export const loader = async ({ request, params }: LoaderArgs) => {
 };
 
 export default function Organization() {
-  const { organization } = useTypedLoaderData<typeof loader>();
-
   return (
     <>
       <Header />
       <AppBody>
-        <SideMenuContainer>
-          <SideMenu />
-
-          {/* <>
-            {organization.environments.map((environment) => {
-              return (
-                <div key={environment.id}>
-                  {environment.slug}: {environment.apiKey}
-                </div>
-              );
-            })}
-          </> */}
-
-          <Outlet />
-        </SideMenuContainer>
+        <Outlet />
       </AppBody>
     </>
   );

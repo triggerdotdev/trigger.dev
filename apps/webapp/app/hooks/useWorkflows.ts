@@ -1,3 +1,4 @@
+import { useMatches } from "@remix-run/react";
 import type { Workflow } from "~/models/workflow.server";
 import { useMatchesData } from "~/utils";
 
@@ -19,6 +20,7 @@ function isWorkflows(workflows: any): workflows is Workflow[] {
 }
 
 export function useWorkflows(): Workflow[] | undefined {
+  console.log(useMatches());
   const routeMatch = useMatchesData("routes/__app/orgs/$organizationSlug");
 
   if (!routeMatch || !isWorkflows(routeMatch.data.organization.workflows)) {

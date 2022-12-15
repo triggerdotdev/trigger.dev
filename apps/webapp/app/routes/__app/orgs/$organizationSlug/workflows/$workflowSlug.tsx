@@ -4,7 +4,10 @@ import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import invariant from "tiny-invariant";
 import { AppBody } from "~/components/layout/AppLayout";
 import { Header } from "~/components/layout/Header";
-import SideMenu from "~/components/navigation/SideMenu";
+import {
+  WorkflowsSideMenu,
+  SideMenuContainer,
+} from "~/components/navigation/SideMenu";
 import { Header1 } from "~/components/primitives/text/Headers";
 import { getWorkflowFromSlugs } from "~/models/workflow.server";
 import { requireUserId } from "~/services/session.server";
@@ -33,12 +36,10 @@ export default function Organization() {
 
   return (
     <>
-      <Header />
-      <AppBody>
-        <div className="grid grid-cols-[300px_2fr] h-full">
-          <SideMenu />
+      <SideMenuContainer>
+        <WorkflowsSideMenu />
 
-          {/* <>
+        {/* <>
             {organization.environments.map((environment) => {
               return (
                 <div key={environment.id}>
@@ -48,9 +49,10 @@ export default function Organization() {
             })}
           </> */}
 
-          <Outlet />
-        </div>
-      </AppBody>
+        <Header1 className="text-white">{workflow.title}</Header1>
+
+        <Outlet />
+      </SideMenuContainer>
     </>
   );
 }

@@ -9,7 +9,6 @@ import { z } from "zod";
 import {
   createAPIConnection,
   getApiConnectionsForOrganizationId,
-  getConnectedApiConnectionsForOrganizationSlug,
   setConnectedAPIConnection,
 } from "~/models/apiConnection.server";
 import { APIConnectionType } from ".prisma/client";
