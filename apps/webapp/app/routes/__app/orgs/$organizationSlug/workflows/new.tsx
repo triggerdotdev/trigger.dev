@@ -7,11 +7,11 @@ import {
 
 export default function NewWorkflowPage() {
   return (
-    <Container className="w-full h-full flex items-center justify-center">
-      <SideMenuContainer>
-        <WorkflowsSideMenu />
+    <SideMenuContainer>
+      <WorkflowsSideMenu />
+      <Container>
         <CreateNewWorkflow />
-      </SideMenuContainer>
-    </Container>
+      </Container>
+    </SideMenuContainer>
   );
 }

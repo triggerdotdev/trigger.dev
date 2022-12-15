@@ -54,9 +54,8 @@ export function OrganizationsSideMenu() {
 
 export function WorkflowsSideMenu() {
   const workflows = useWorkflows();
-  const currentWorkflow = useCurrentWorkflow();
 
-  if (workflows === undefined || currentWorkflow === undefined) {
+  if (workflows === undefined) {
     return null;
   }
 
