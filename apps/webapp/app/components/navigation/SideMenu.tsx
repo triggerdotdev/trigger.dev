@@ -78,7 +78,12 @@ export function WorkflowsSideMenu() {
     },
   ];
 
-  return <SideMenu items={items} />;
+  return (
+    <SideMenu
+      items={items}
+      // header={<div className="text-white p-16">Title</div>}
+    />
+  );
 }
 
 const defaultStyle =
@@ -86,7 +91,13 @@ const defaultStyle =
 const activeStyle =
   "group flex items-center gap-2 px-3 py-3 text-base rounded transition bg-slate-800 text-white";
 
-function SideMenu({ items }: { items: SideMenuItem[] }) {
+function SideMenu({
+  header = undefined,
+  items,
+}: {
+  header?: React.ReactNode;
+  items: SideMenuItem[];
+}) {
   return (
     <div className="flex min-h-0 flex-1 flex-col bg-slate-1000 border-r border-slate-800">
       <div className="flex flex-1 flex-col overflow-y-auto pb-4">
@@ -94,6 +105,8 @@ function SideMenu({ items }: { items: SideMenuItem[] }) {
           className="mt-2 flex-1 space-y-1 bg-slate-1000 px-2"
           aria-label="Sidebar"
         >
+          {header}
+
           {items.map((item) => (
             <NavLink
               key={item.name}
