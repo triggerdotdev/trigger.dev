@@ -6,7 +6,7 @@ import { getOrganizationFromSlug } from "~/models/organization.server";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { Header } from "~/components/layout/Header";
 import { AppBody } from "~/components/layout/AppLayout";
-import SideMenu from "~/components/navigation/SideMenu";
+import { SideMenu, SideMenuContainer } from "~/components/navigation/SideMenu";
 
 export const loader = async ({ request, params }: LoaderArgs) => {
   const userId = await requireUserId(request);
@@ -32,7 +32,7 @@ export default function Organization() {
     <>
       <Header />
       <AppBody>
-        <div className="grid grid-cols-[300px_2fr] h-full">
+        <SideMenuContainer>
           <SideMenu />
 
           {/* <>
@@ -46,7 +46,7 @@ export default function Organization() {
           </> */}
 
           <Outlet />
-        </div>
+        </SideMenuContainer>
       </AppBody>
     </>
   );
