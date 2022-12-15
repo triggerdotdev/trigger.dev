@@ -37,3 +37,8 @@ export function useCurrentOrganization(): Organization | undefined {
   );
   return currentOrganization;
 }
+
+export function useIsNewOrganizationPage(): boolean {
+  const routeMatch = useMatchesData("routes/__app/orgs/new");
+  return !!routeMatch;
+}

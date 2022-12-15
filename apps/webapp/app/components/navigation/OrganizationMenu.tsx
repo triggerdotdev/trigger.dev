@@ -10,6 +10,7 @@ import classNames from "classnames";
 import { Fragment } from "react";
 import {
   useCurrentOrganization,
+  useIsNewOrganizationPage,
   useOrganizations,
 } from "~/hooks/useOrganizations";
 
@@ -18,6 +19,7 @@ const actionClassNames = "text-green-500";
 export function OrganizationMenu() {
   const organizations = useOrganizations();
   const currentOrganization = useCurrentOrganization();
+  const isNewPage = useIsNewOrganizationPage();
 
   if (organizations === undefined) {
     return null;
@@ -36,10 +38,12 @@ export function OrganizationMenu() {
               <span className="transition">
                 {currentOrganization ? (
                   <span>{currentOrganization.title}</span>
-                ) : (
+                ) : isNewPage ? (
                   <span className={actionClassNames}>
                     Create new Organization
                   </span>
+                ) : (
+                  <span className="text-slate-400">Select organization</span>
                 )}
               </span>
               <ChevronDownIcon

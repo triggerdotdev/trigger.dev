@@ -1,9 +1,7 @@
-import { Link, Outlet } from "@remix-run/react";
+import { Outlet } from "@remix-run/react";
 import type { LoaderArgs } from "@remix-run/server-runtime";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import invariant from "tiny-invariant";
-import { AppBody } from "~/components/layout/AppLayout";
-import { Header } from "~/components/layout/Header";
 import {
   WorkflowsSideMenu,
   SideMenuContainer,

@@ -34,7 +34,7 @@ export function WorkflowMenu() {
                 {currentWorkflow ? (
                   <span>{currentWorkflow.title}</span>
                 ) : (
-                  <span className={actionClassNames}>Create new Workflow</span>
+                  <span className="text-slate-400">Select workflow</span>
                 )}
               </span>
               <ChevronDownIcon
