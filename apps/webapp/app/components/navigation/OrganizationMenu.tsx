@@ -1,10 +1,6 @@
 import { Popover, Transition } from "@headlessui/react";
-import {
-  BookmarkIcon,
-  CheckIcon,
-  ChevronDownIcon,
-  PlusIcon,
-} from "@heroicons/react/24/solid";
+import { BookmarkIcon, ChevronUpDownIcon } from "@heroicons/react/24/outline";
+import { CheckIcon, PlusIcon } from "@heroicons/react/24/solid";
 import { Link } from "@remix-run/react";
 import classNames from "classnames";
 import { Fragment } from "react";
@@ -26,15 +22,16 @@ export function OrganizationMenu() {
   }
 
   return (
-    <div className="w-full max-w-max px-4">
+    <div className="w-full max-w-max">
       <Popover className="relative">
         {({ open }) => (
           <>
             <Popover.Button
               className={`
                 ${open ? "" : "text-opacity-90"}
-                group inline-flex min-w-[200px] justify-between items-center rounded text-white bg-slate-800 pl-3.5 pr-2 py-2 text-sm hover:bg-slate-900 transition focus:outline-none`}
+                group inline-flex justify-between items-center rounded text-white bg-transparent pl-3.5 pr-2 py-2 text-sm hover:bg-slate-800 transition focus:outline-none`}
             >
+              <BookmarkIcon className="h-5 w-5 mr-2" aria-hidden="true" />
               <span className="transition">
                 {currentOrganization ? (
                   <span>{currentOrganization.title}</span>
@@ -43,11 +40,11 @@ export function OrganizationMenu() {
                     Create new Organization
                   </span>
                 ) : (
-                  <span className="text-slate-400">Select organization</span>
+                  <span className="">Select organization</span>
                 )}
               </span>
-              <ChevronDownIcon
-                className={`${open ? "rotate-180" : "text-opacity-70"}
+              <ChevronUpDownIcon
+                className={`${open ? "" : "text-opacity-70"}
                   ml-1 h-5 w-5 transition duration-150 ease-in-out group-hover:text-opacity-80`}
                 aria-hidden="true"
               />
@@ -92,7 +89,7 @@ export function OrganizationMenu() {
                       );
                     })}
                     <Popover.Button as={Link} to={`/orgs/new`}>
-                      <div className="flex items-center gap-2 mx-1 mt-1 pl-1 py-2 rounded bg-slate-800 hover:bg-slate-900 transition">
+                      <div className="flex items-center gap-2 mx-1 mt-1 pl-2.5 py-2 rounded hover:bg-slate-800 transition">
                         <PlusIcon
                           className="h-5 w-5 text-green-500"
                           aria-hidden="true"

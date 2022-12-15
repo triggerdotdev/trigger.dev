@@ -1,4 +1,7 @@
-import { DocumentTextIcon } from "@heroicons/react/24/outline";
+import {
+  ChevronRightIcon,
+  DocumentTextIcon,
+} from "@heroicons/react/24/outline";
 import { Link } from "@remix-run/react";
 import { useOptionalUser } from "~/hooks/useUser";
 import { Logo } from "../Logo";
@@ -15,12 +18,13 @@ export function Header({ children }: HeaderProps) {
   const user = useOptionalUser();
 
   return (
-    <div className="flex w-full items-center border-b border-slate-800 bg-slate-1000 py-1 px-2">
-      <Link to="/" aria-label="Trigger">
+    <div className="flex w-full gap-2 items-center border-b border-slate-800 bg-slate-1000 py-1 px-2">
+      <Link to="/" aria-label="Trigger" className="mr-2">
         <Logo className="h-6" />
       </Link>
-
+      <BreadcrumbDivider />
       <OrganizationMenu />
+      <BreadcrumbDivider />
       <WorkflowMenu />
 
       <div className="flex flex-1 justify-center">{children}</div>
@@ -42,5 +46,27 @@ export function Header({ children }: HeaderProps) {
         )}
       </div>
     </div>
+  );
+}
+
+function BreadcrumbDivider() {
+  return (
+    <svg
+      width="9"
+      height="20"
+      viewBox="0 0 9 26"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+    >
+      <line
+        x1="8.32382"
+        y1="0.6286"
+        x2="0.6286"
+        y2="24.6762"
+        opacity={0.8}
+        stroke="white"
+        strokeLinecap="round"
+      />
+    </svg>
   );
 }

@@ -1,10 +1,6 @@
 import { Popover, Transition } from "@headlessui/react";
-import {
-  BookmarkIcon,
-  CheckIcon,
-  ChevronDownIcon,
-  PlusIcon,
-} from "@heroicons/react/24/solid";
+import { ChevronUpDownIcon, Squares2X2Icon } from "@heroicons/react/24/outline";
+import { BookmarkIcon, CheckIcon, PlusIcon } from "@heroicons/react/24/solid";
 import { Link } from "@remix-run/react";
 import classNames from "classnames";
 import { Fragment } from "react";
@@ -19,24 +15,25 @@ export function WorkflowMenu() {
   }
 
   return (
-    <div className="w-full max-w-max px-4">
+    <div className="w-full max-w-max">
       <Popover className="relative">
         {({ open }) => (
           <>
             <Popover.Button
               className={`
-                ${open ? "" : "text-opacity-90"}
-                group inline-flex min-w-[200px] justify-between items-center rounded text-white bg-slate-800 pl-3.5 pr-2 py-2 text-sm hover:bg-slate-900 transition focus:outline-none`}
+                ${open ? "" : ""}
+                group inline-flex justify-between items-center rounded text-white bg-transparent pl-3.5 pr-2 py-2 text-sm hover:bg-slate-800 transition focus:outline-none`}
             >
+              <Squares2X2Icon className="h-5 w-5 mr-2" aria-hidden="true" />
               <span className="transition">
                 {currentWorkflow ? (
                   <span>{currentWorkflow.title}</span>
                 ) : (
-                  <span className="text-slate-400">Select workflow</span>
+                  <span className="">Select Workflow</span>
                 )}
               </span>
-              <ChevronDownIcon
-                className={`${open ? "rotate-180" : "text-opacity-70"}
+              <ChevronUpDownIcon
+                className={`${open ? "" : "text-opacity-70"}
                   ml-1 h-5 w-5 transition duration-150 ease-in-out group-hover:text-opacity-80`}
                 aria-hidden="true"
               />
@@ -60,13 +57,13 @@ export function WorkflowMenu() {
                           as={Link}
                           to={`workflows/${workflow.slug}`}
                           className={classNames(
-                            "flex items-center justify-between gap-1.5 mx-1 px-3 py-2 text-white rounded hover:bg-slate-100 transition",
+                            "flex items-center justify-between gap-1.5 mx-1 px-3 py-2 text-white rounded hover:bg-slate-800 transition",
                             workflow.slug === currentWorkflow?.slug &&
                               "!bg-slate-800"
                           )}
                         >
                           <div className="flex items-center gap-2">
-                            <BookmarkIcon
+                            <Squares2X2Icon
                               className="h-5 w-5 z-100"
                               aria-hidden="true"
                             />
@@ -75,13 +72,13 @@ export function WorkflowMenu() {
                             </span>
                           </div>
                           {workflow.slug === currentWorkflow?.slug && (
-                            <CheckIcon className="h-5 w-5 text-blue-500" />
+                            <CheckIcon className="h-5 w-5 text-blue-600" />
                           )}
                         </Popover.Button>
                       );
                     })}
                     <Popover.Button as={Link} to={`/orgs/new`}>
-                      <div className="flex items-center gap-2 mx-1 mt-1 pl-1 py-2 rounded bg-slate-800 hover:bg-slate-900 transition">
+                      <div className="flex items-center gap-2 mx-1 mt-1 pl-2.5 py-2 rounded hover:bg-slate-800 transition">
                         <PlusIcon
                           className="h-5 w-5 text-green-500"
                           aria-hidden="true"

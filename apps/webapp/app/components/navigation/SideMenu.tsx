@@ -81,9 +81,9 @@ export function WorkflowsSideMenu() {
 }
 
 const defaultStyle =
-  "group flex items-center gap-2 px-3 py-3 text-base rounded-md transition text-slate-300 hover:bg-slate-800 hover:text-white";
+  "group flex items-center gap-2 px-3 py-3 text-base rounded transition text-slate-300 hover:bg-slate-900 hover:text-white";
 const activeStyle =
-  "group flex items-center gap-2 px-3 py-3 text-base rounded-md transition bg-slate-900 text-white";
+  "group flex items-center gap-2 px-3 py-3 text-base rounded transition bg-slate-800 text-white";
 
 function SideMenu({ items }: { items: SideMenuItem[] }) {
   return (
