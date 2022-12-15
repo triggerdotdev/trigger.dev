@@ -7,13 +7,19 @@ import { CheckIcon, PlusIcon } from "@heroicons/react/24/solid";
 import { Link } from "@remix-run/react";
 import classNames from "classnames";
 import { Fragment } from "react";
+import { useCurrentOrganizationSlug } from "~/hooks/useOrganizations";
 import { useCurrentWorkflow, useWorkflows } from "~/hooks/useWorkflows";
 
 export function WorkflowMenu() {
   const workflows = useWorkflows();
   const currentWorkflow = useCurrentWorkflow();
+  const currentOrganizationSlug = useCurrentOrganizationSlug();
 
-  if (workflows === undefined || workflows.length === 0) {
+  if (
+    workflows === undefined ||
+    currentOrganizationSlug === undefined ||
+    workflows.length === 0
+  ) {
     return <></>;
   }
 
@@ -61,7 +67,7 @@ export function WorkflowMenu() {
                         <Popover.Button
                           key={workflow.id}
                           as={Link}
-                          to={`workflows/${workflow.slug}`}
+                          to={`/orgs/${currentOrganizationSlug}/workflows/${workflow.slug}`}
                           className={classNames(
                             "flex items-center justify-between gap-1.5 mx-1 px-3 py-2 text-white rounded hover:bg-slate-800 transition",
                             workflow.slug === currentWorkflow?.slug &&
