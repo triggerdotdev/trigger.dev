@@ -1,9 +1,5 @@
 /** @type {import('tailwindcss').Config} */
 const parentConfig = require("@trigger.dev/tailwind-config/tailwind.config");
-const colors = require("tailwindcss/colors");
-const midnightColors = {
-  1000: "#030713",
-};
 const toxicColors = {
   500: "#41FF54",
 };
@@ -11,16 +7,16 @@ module.exports = {
   ...parentConfig,
   theme: {
     ...parentConfig.theme,
+    
     extend: {
       ...parentConfig.extend,
       colors: {
-        midnight: midnightColors[1000],
+        'slate': {
+          1000: '#060F1E',
+          950: '#0A1423',
+          850: '#141D2E',
+        },
         toxic: toxicColors[500],
-      },
-      backgroundImage: {
-        "gradient-radial": "radial-gradient(var(--tw-gradient-stops))",
-        "gradient-background": `radial-gradient(${colors.slate[800]} 0%,${midnightColors[1000]} 50%,  ${midnightColors[1000]} 100%)`,
-        "gradient-secondary": `linear-gradient(90deg, ${colors.blue[600]} 0%, ${colors.purple[500]} 100%)`,
       },
     },
   },
