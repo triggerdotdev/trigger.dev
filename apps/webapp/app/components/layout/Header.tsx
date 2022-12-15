@@ -3,6 +3,7 @@ import { Link } from "@remix-run/react";
 import { useOptionalUser } from "~/hooks/useUser";
 import { Logo } from "../Logo";
 import { OrganizationMenu } from "../navigation/OrganizationMenu";
+import { WorkflowMenu } from "../navigation/WorkflowMenu";
 import { SecondaryA } from "../primitives/Buttons";
 import { UserProfileMenu } from "../UserProfileMenu";
 
@@ -20,6 +21,7 @@ export function Header({ children }: HeaderProps) {
       </Link>
 
       <OrganizationMenu />
+      <WorkflowMenu />
 
       <div className="flex flex-1 justify-center">{children}</div>
 

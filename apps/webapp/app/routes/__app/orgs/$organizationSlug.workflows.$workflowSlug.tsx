@@ -2,6 +2,10 @@ import { Link, Outlet } from "@remix-run/react";
 import type { LoaderArgs } from "@remix-run/server-runtime";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import invariant from "tiny-invariant";
+import { AppBody } from "~/components/layout/AppLayout";
+import { Header } from "~/components/layout/Header";
+import SideMenu from "~/components/navigation/SideMenu";
+import { Header1 } from "~/components/primitives/text/Headers";
 import { getWorkflowFromSlugs } from "~/models/workflow.server";
 import { requireUserId } from "~/services/session.server";
 
@@ -28,18 +32,25 @@ export default function Organization() {
   const { workflow } = useTypedLoaderData<typeof loader>();
 
   return (
-    <div className="grid grid-cols-[1fr_3fr] h-full">
-      <div className=" border-r border-slate-300 p-6">
-        <div className="flex flex-col gap-2">
-          <h1 className="text-2xl">{workflow.title}</h1>
-          <Link to="overview">Overview</Link>
-          <Link to="runs">Runs</Link>
-          <Link to="settings">Settings</Link>
+    <>
+      <Header />
+      <AppBody>
+        <div className="grid grid-cols-[300px_2fr] h-full">
+          <SideMenu />
+
+          {/* <>
+            {organization.environments.map((environment) => {
+              return (
+                <div key={environment.id}>
+                  {environment.slug}: {environment.apiKey}
+                </div>
+              );
+            })}
+          </> */}
+
+          <Outlet />
         </div>
-      </div>
-      <div className="p-6">
-        <Outlet />
-      </div>
-    </div>
+      </AppBody>
+    </>
   );
 }
