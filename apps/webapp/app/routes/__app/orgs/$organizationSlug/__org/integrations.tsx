@@ -1,6 +1,7 @@
 import type { LoaderArgs } from "@remix-run/server-runtime";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import invariant from "tiny-invariant";
+import { Container } from "~/components/layout/Container";
 import { Body } from "~/components/primitives/text/Body";
 import { Header1, Header2 } from "~/components/primitives/text/Headers";
 import { useCurrentOrganization } from "~/hooks/useOrganizations";
@@ -29,7 +30,7 @@ export default function Integrations() {
   invariant(organization, "Organization not found");
 
   return (
-    <div>
+    <Container>
       <Header1>Integrations</Header1>
       <div>
         <Header2>Existing integrations</Header2>
@@ -50,6 +51,6 @@ export default function Integrations() {
           />
         ))}
       </div>
-    </div>
+    </Container>
   );
 }
