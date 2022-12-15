@@ -2,6 +2,7 @@ import { Outlet } from "@remix-run/react";
 import type { LoaderArgs } from "@remix-run/server-runtime";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import invariant from "tiny-invariant";
+import { Container } from "~/components/layout/Container";
 import {
   WorkflowsSideMenu,
   SideMenuContainer,
@@ -36,9 +37,11 @@ export default function Organization() {
     <>
       <SideMenuContainer>
         <WorkflowsSideMenu />
-        <Header1>{workflow.title}</Header1>
+        <Container>
+          <Header1>{workflow.title}</Header1>
 
-        <Outlet />
+          <Outlet />
+        </Container>
       </SideMenuContainer>
     </>
   );
