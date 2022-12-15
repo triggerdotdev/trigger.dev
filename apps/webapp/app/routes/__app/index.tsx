@@ -1,6 +1,4 @@
 import { Link } from "@remix-run/react";
-import { Header } from "~/components/layout/Header";
-import { AppBody } from "~/components/layout/AppLayout";
 import { useOrganizations } from "~/hooks/useOrganizations";
 import type { Organization } from "~/models/organization.server";
 
@@ -16,8 +14,10 @@ export default function AppLayout() {
           ) : (
             <li>No organizations</li>
           )}
-          <li className={boxClasses}>
-            <Link to="orgs/new">Create a new organization</Link>
+          <li>
+            <Link to="orgs/new" className={boxClasses}>
+              Create a new organization
+            </Link>
           </li>
         </ul>
       </div>
@@ -42,8 +42,7 @@ function OrganizationGrid({
   );
 }
 
-const boxClasses =
-  "rounded-lg border border-gray-300 bg-white px-6 py-5 shadow-sm";
+const boxClasses = "rounded bg-slate-800 px-6 py-5 shadow-sm";
 
 function OrganizationGridItem({
   organization,
@@ -51,8 +50,10 @@ function OrganizationGridItem({
   organization: Organization;
 }) {
   return (
-    <li key={organization.id} className={boxClasses}>
-      <Link to={`orgs/${organization.slug}`}>{organization.title}</Link>
+    <li key={organization.id}>
+      <Link to={`orgs/${organization.slug}`} className={boxClasses}>
+        {organization.title}{" "}
+      </Link>
     </li>
   );
 }
