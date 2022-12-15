@@ -68,7 +68,7 @@ export function OrganizationMenu() {
                           as={Link}
                           to={`/orgs/${organization.slug}`}
                           className={classNames(
-                            "flex items-center justify-between gap-1.5 mx-1 px-3 py-2 text-white rounded hover:bg-slate-100 transition",
+                            "flex items-center justify-between gap-1.5 mx-1 px-3 py-2 text-white rounded hover:bg-slate-800 transition",
                             organization.slug === currentOrganization?.slug &&
                               "!bg-slate-800"
                           )}
