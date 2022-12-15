@@ -55,7 +55,7 @@ export function WorkflowMenu() {
             >
               <Popover.Panel className="absolute left-1/2 z-10 mt-3 w-screen min-w-max max-w-xs -translate-x-1/2 transform px-4 sm:px-0">
                 <div className="overflow-hidden rounded-lg shadow-lg ring-1 ring-black ring-opacity-5">
-                  <div className="relative grid py-1 bg-slate-700 grid-cols-1">
+                  <div className="relative grid gap-y-1 py-1 bg-slate-700 grid-cols-1">
                     {workflows.map((workflow) => {
                       return (
                         <Popover.Button
@@ -84,7 +84,7 @@ export function WorkflowMenu() {
                       );
                     })}
                     <Popover.Button as={Link} to={`/orgs/new`}>
-                      <div className="flex items-center gap-2 mx-1 mt-1 pl-2.5 py-2 rounded hover:bg-slate-800 transition">
+                      <div className="flex items-center gap-2 mx-1 pl-2.5 py-2 rounded hover:bg-slate-800 transition">
                         <PlusIcon
                           className="h-5 w-5 text-green-500"
                           aria-hidden="true"
