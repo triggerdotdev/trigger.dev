@@ -1,6 +1,6 @@
 import classNames from "classnames";
 
-const baseClasses = "p-12";
+const baseClasses = "px-12 py-10";
 
 export function Container({
   children,
