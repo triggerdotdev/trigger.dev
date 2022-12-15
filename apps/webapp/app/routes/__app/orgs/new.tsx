@@ -1,9 +1,10 @@
-import { BriefcaseIcon } from "@heroicons/react/24/outline";
+import { BookmarkIcon, BriefcaseIcon } from "@heroicons/react/24/outline";
 import type { ActionFunction } from "@remix-run/node";
 import { json, redirect } from "@remix-run/node";
 import { Form, useActionData } from "@remix-run/react";
 import * as React from "react";
 import { PrimaryButton, SecondaryLink } from "~/components/primitives/Buttons";
+import { Header1 } from "~/components/primitives/text/Headers";
 import { createOrganization } from "~/models/organization.server";
 import { requireUserId } from "~/services/session.server";
 
@@ -49,15 +50,11 @@ export default function NewOrganizationPage() {
   }, [actionData]);
 
   return (
-    <main className="bg-slate-50 w-full h-screen flex items-center justify-center">
-      <div className="flex flex-col gap-y-3.5 max-w-lg bg-white shadow border border-slate-200 rounded-md p-10">
-        <h3 className="font-semibold text-slate-600 text-xl">
+    <main className="w-full h-full flex items-center justify-center">
+      <div className="flex flex-col gap-y-3.5 min-w-[400px] bg-slate-800 border border-slate-800 rounded-md p-10">
+        <Header1 size="large" className="">
           Create a new Organization
-        </h3>
-        <p className="text-slate-600">
-          Use Organizations to hold a collection of Projects. A typical
-          Organization is named after a company or team.
-        </p>
+        </Header1>
         <Form
           method="post"
           style={{
@@ -74,13 +71,13 @@ export default function NewOrganizationPage() {
               </label>
               <div className="group flex">
                 <div className="flex justify-end pointer-events-none z-10 -mr-8 items-center w-8">
-                  <BriefcaseIcon className="h-5 w-5 text-slate-600"></BriefcaseIcon>
+                  <BookmarkIcon className="h-5 w-5 text-slate-600" />
                 </div>
                 <input
                   ref={titleRef}
                   name="title"
-                  placeholder="e.g. My first Organization"
-                  className="relative w-full pl-10 pr-3 py-2 rounded-md border text-slate-600 bg-slate-50 group-focus:border-blue-500 placeholder:text-slate-400"
+                  placeholder="e.g. Company name"
+                  className="relative w-full pl-10 pr-3 py-2 rounded bg-slate-900 group-focus:border-blue-500 placeholder:text-slate-600"
                   aria-invalid={actionData?.errors?.title ? true : undefined}
                   aria-errormessage={
                     actionData?.errors?.title ? "title-error" : undefined
@@ -96,17 +93,11 @@ export default function NewOrganizationPage() {
           </div>
 
           <div className="flex justify-between">
-            <SecondaryLink
-              to="/"
-              className="rounded bg-blue-500  py-2 px-4 text-white hover:bg-blue-600 focus:bg-blue-400"
-            >
+            <SecondaryLink to="/" className="rounded py-2 px-4">
               Cancel
             </SecondaryLink>
-            <PrimaryButton
-              type="submit"
-              className="rounded bg-blue-500  py-2 px-4 text-white hover:bg-blue-600 focus:bg-blue-400"
-            >
-              Create
+            <PrimaryButton type="submit" className="rounded py-2 px-4">
+              Create Organization
             </PrimaryButton>
           </div>
         </Form>

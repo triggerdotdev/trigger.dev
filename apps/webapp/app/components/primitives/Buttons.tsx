@@ -5,11 +5,11 @@ const commonClasses =
   "inline-flex items-center justify-center rounded max-w-max px-4 py-2 gap-2 text-sm transition whitespace-nowrap";
 const primaryClasses = classnames(
   commonClasses,
-  "bg-blue-500 text-white hover:bg-blue-600 focus:bg-blue-600"
+  "bg-blue-600 text-white hover:bg-blue-700 focus:bg-blue-700"
 );
 const secondaryClasses = classnames(
   commonClasses,
-  "bg-slate-800 text-white hover:bg-slate-900 focus:bg-slate-700"
+  "bg-slate-850 text-white hover:bg-slate-900 focus:bg-slate-700"
 );
 
 type ButtonProps = React.DetailedHTMLProps<

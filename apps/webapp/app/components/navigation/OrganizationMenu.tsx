@@ -10,7 +10,7 @@ import {
   useOrganizations,
 } from "~/hooks/useOrganizations";
 
-const actionClassNames = "text-green-500";
+const actionClassNames = "text-white";
 
 export function OrganizationMenu() {
   const organizations = useOrganizations();
