@@ -38,18 +38,7 @@ export default function Organization() {
     <>
       <SideMenuContainer>
         <WorkflowsSideMenu />
-
-        {/* <>
-            {organization.environments.map((environment) => {
-              return (
-                <div key={environment.id}>
-                  {environment.slug}: {environment.apiKey}
-                </div>
-              );
-            })}
-          </> */}
-
-        <Header1 className="text-white">{workflow.title}</Header1>
+        <Header1>{workflow.title}</Header1>
 
         <Outlet />
       </SideMenuContainer>

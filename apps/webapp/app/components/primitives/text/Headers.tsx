@@ -6,37 +6,52 @@ export type TitleProps = {
 
 type Size = "regular" | "small" | "large" | "extra-large";
 
+const baseClasses = "font-sans";
+const overrideClasses = "text-slate-100";
+
 export function Header1({
   children,
-  className,
+  className = overrideClasses,
   size = "extra-large",
 }: TitleProps) {
   return (
-    <h1 className={`font-sans ${getSizeClassName(size)} ${className}`}>
+    <h1 className={`${baseClasses} ${getSizeClassName(size)} ${className}`}>
       {children}
     </h1>
   );
 }
 
-export function Header2({ children, className, size = "large" }: TitleProps) {
+export function Header2({
+  children,
+  className = overrideClasses,
+  size = "large",
+}: TitleProps) {
   return (
-    <h2 className={`font-sans ${getSizeClassName(size)} ${className}`}>
+    <h2 className={`${baseClasses} ${getSizeClassName(size)} ${className}`}>
       {children}
     </h2>
   );
 }
 
-export function Header3({ children, className, size = "regular" }: TitleProps) {
+export function Header3({
+  children,
+  className = overrideClasses,
+  size = "regular",
+}: TitleProps) {
   return (
-    <h3 className={`font-sans ${getSizeClassName(size)} ${className}`}>
+    <h3 className={`${baseClasses} ${getSizeClassName(size)} ${className}`}>
       {children}
     </h3>
   );
 }
 
-export function Header4({ children, className, size = "small" }: TitleProps) {
+export function Header4({
+  children,
+  className = overrideClasses,
+  size = "small",
+}: TitleProps) {
   return (
-    <h4 className={`font-sans ${getSizeClassName(size)} ${className}`}>
+    <h4 className={`${baseClasses} ${getSizeClassName(size)} ${className}`}>
       {children}
     </h4>
   );
