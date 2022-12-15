@@ -2,6 +2,7 @@ import {
   SquaresPlusIcon,
   Squares2X2Icon,
   UsersIcon,
+  ForwardIcon,
 } from "@heroicons/react/24/outline";
 import { NavLink } from "@remix-run/react";
 import {
@@ -67,12 +68,12 @@ export function WorkflowsSideMenu() {
     },
     {
       name: "Runs",
-      icon: <SquaresPlusIcon className={iconStyle} />,
+      icon: <ForwardIcon className={iconStyle} />,
       to: `runs`,
     },
     {
       name: "API integrations",
-      icon: <UsersIcon className={iconStyle} />,
+      icon: <SquaresPlusIcon className={iconStyle} />,
       to: `integrations`,
     },
   ];
