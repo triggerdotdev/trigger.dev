@@ -1,5 +1,9 @@
 import { Popover, Transition } from "@headlessui/react";
-import { ChevronUpDownIcon, Squares2X2Icon } from "@heroicons/react/24/outline";
+import {
+  ArrowsRightLeftIcon,
+  ChevronUpDownIcon,
+  ArrowsRightLeftIcon,
+} from "@heroicons/react/24/outline";
 import { BookmarkIcon, CheckIcon, PlusIcon } from "@heroicons/react/24/solid";
 import { Link } from "@remix-run/react";
 import classNames from "classnames";
@@ -24,7 +28,10 @@ export function WorkflowMenu() {
                 ${open ? "" : ""}
                 group inline-flex justify-between items-center rounded text-white bg-transparent pl-3.5 pr-2 py-2 text-sm hover:bg-slate-800 transition focus:outline-none`}
             >
-              <Squares2X2Icon className="h-5 w-5 mr-2" aria-hidden="true" />
+              <ArrowsRightLeftIcon
+                className="h-5 w-5 mr-2"
+                aria-hidden="true"
+              />
               <span className="transition">
                 {currentWorkflow ? (
                   <span>{currentWorkflow.title}</span>
@@ -63,7 +70,7 @@ export function WorkflowMenu() {
                           )}
                         >
                           <div className="flex items-center gap-2">
-                            <Squares2X2Icon
+                            <ArrowsRightLeftIcon
                               className="h-5 w-5 z-100"
                               aria-hidden="true"
                             />

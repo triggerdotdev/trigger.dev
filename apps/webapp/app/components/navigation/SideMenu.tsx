@@ -1,6 +1,6 @@
 import {
   SquaresPlusIcon,
-  Squares2X2Icon,
+  ArrowsRightLeftIcon,
   UsersIcon,
   ForwardIcon,
 } from "@heroicons/react/24/outline";
@@ -34,7 +34,7 @@ export function OrganizationsSideMenu() {
   const items: SideMenuItem[] = [
     {
       name: "Workflows",
-      icon: <Squares2X2Icon className={iconStyle} />,
+      icon: <ArrowsRightLeftIcon className={iconStyle} />,
       to: `/orgs/${currentOrganization.slug}`,
     },
     {
@@ -63,7 +63,7 @@ export function WorkflowsSideMenu() {
   const items: SideMenuItem[] = [
     {
       name: "Overview",
-      icon: <Squares2X2Icon className={iconStyle} />,
+      icon: <ArrowsRightLeftIcon className={iconStyle} />,
       to: ``,
     },
     {
