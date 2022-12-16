@@ -44,8 +44,6 @@ export const loader = async ({ request, params }: LoaderArgs) => {
 };
 
 export default function Page() {
-  const { workflow } = useTypedLoaderData<typeof loader>();
-
   return (
     <>
       <SideMenuContainer>
