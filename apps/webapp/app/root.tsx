@@ -9,10 +9,10 @@ import {
 } from "@remix-run/react";
 
 import tailwindStylesheetUrl from "./styles/tailwind.css";
+import prismStylesheetUrl from "./styles/prism.css";
+import prismThemeStylesheetUrl from "./styles/prism-trigger-theme.css";
 import { getUser } from "./services/session.server";
-
 import { Toaster, toast } from "react-hot-toast";
-
 import type { ToastMessage } from "~/models/message.server";
 import { commitSession, getSession } from "~/models/message.server";
 import { useEffect, useRef } from "react";
@@ -22,7 +22,11 @@ import { env } from "./env.server";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 
 export const links: LinksFunction = () => {
-  return [{ rel: "stylesheet", href: tailwindStylesheetUrl }];
+  return [
+    { rel: "stylesheet", href: tailwindStylesheetUrl },
+    { rel: "stylesheet", href: prismStylesheetUrl },
+    { rel: "stylesheet", href: prismThemeStylesheetUrl },
+  ];
 };
 
 export const meta: MetaFunction = () => ({
