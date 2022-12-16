@@ -1,7 +1,7 @@
 import Prism from "prismjs";
 import "prismjs/components/prism-typescript";
 import { useEffect } from "react";
-import CodeBlock from "./code/codeBlock";
+import CodeBlock from "./code/CodeBlock";
 import { Header1 } from "./primitives/text/Headers";
 
 export default function CreateNewWorkflow() {
@@ -11,7 +11,7 @@ export default function CreateNewWorkflow() {
   return (
     <>
       <Header1 size="large">Create a Workflow</Header1>
-      <CodeBlock code={codeExample1} language="typescript" />
+      <CodeBlock code={codeExample1} />
     </>
   );
 }

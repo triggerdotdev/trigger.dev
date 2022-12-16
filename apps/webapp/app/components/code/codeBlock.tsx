@@ -3,10 +3,13 @@ import Prism from "prismjs";
 
 type CodeBlockProps = {
   code: string;
-  language: string;
+  language?: string;
 };
 
-export default function CodeBlock({ code, language }: CodeBlockProps) {
+export default function CodeBlock({
+  code,
+  language = "typescript",
+}: CodeBlockProps) {
   useEffect(() => {
     Prism.highlightAll();
   }, []);
