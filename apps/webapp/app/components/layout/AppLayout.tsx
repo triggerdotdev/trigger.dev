@@ -10,7 +10,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
 
 export function AppBody({
   children,
-  className = "bg-slate-1000",
+  className = "bg-slate-950",
 }: {
   children: React.ReactNode;
   className?: string;
