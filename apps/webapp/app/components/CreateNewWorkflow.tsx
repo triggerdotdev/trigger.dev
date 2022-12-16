@@ -2,7 +2,8 @@ import Prism from "prismjs";
 import "prismjs/components/prism-typescript";
 import { useEffect } from "react";
 import CodeBlock from "./code/CodeBlock";
-import { Header1 } from "./primitives/text/Headers";
+import { Body } from "./primitives/text/Body";
+import { Header1, Header2 } from "./primitives/text/Headers";
 
 export default function CreateNewWorkflow() {
   useEffect(() => {
@@ -11,6 +12,11 @@ export default function CreateNewWorkflow() {
   return (
     <>
       <Header1 size="large">Create a Workflow</Header1>
+      <Header2 size="small">Step 1.</Header2>
+      <Body>
+        Create a workflow in your code then trigger your workflow using the test
+        button to see the runs appear here.
+      </Body>
       <CodeBlock code={codeExample1} />
     </>
   );
