@@ -4,6 +4,7 @@ export const WorkflowEventPropertiesSchema = z.object({
   "x-workflow-id": z.string(),
   "x-org-id": z.string(),
   "x-api-key": z.string(),
+  "x-env": z.string(),
 });
 
 export const RetryOptionsSchema = z.object({

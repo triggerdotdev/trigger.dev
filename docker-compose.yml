@@ -3,6 +3,8 @@ version: "3.7"
 volumes:
   database:
     driver: local
+  pulsardatav:
+    driver: local
 
 services:
   db:
@@ -15,7 +17,7 @@ services:
     ports:
       - "5432:5432"
     volumes:
-      - database:/var/lib/postgresql-docker/data
+      - database:/var/lib/postgresql/data
     networks:
       - app_network
   pizzly-server:
@@ -36,6 +38,19 @@ services:
       - db
     networks:
       - app_network
+  pulsar:
+    image: apachepulsar/pulsar:2.10.2
+    ports:
+      - "6650:6650"
+      - "8080:8080"
+    volumes:
+      - "pulsardatav:/pulsar/data"
+    command: bin/pulsar standalone
+    container_name: pulsar
+    tty: true
+    stdin_open: true
+    restart: always
+  
 
 networks:
   app_network:

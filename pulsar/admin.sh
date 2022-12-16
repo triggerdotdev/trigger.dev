@@ -18,19 +18,6 @@
 # under the License.
 #
 
-set -e
+set -e -x
 
-SRC_DIR=$(git rev-parse --show-toplevel)
-cd $SRC_DIR
-
-pulsar/stop.sh
-
-CONTAINER_ID=$(docker run -i -p 8080:8080 -p 6650:6650 -p 8443:8443 -p 6651:6651 --rm --detach apachepulsar/pulsar:2.10.2 sleep 3600)
-
-echo $CONTAINER_ID >.tests-container-id.txt
-
-docker cp $SRC_DIR/pulsar/container-start.sh $CONTAINER_ID:container-start.sh
-
-docker exec -i $CONTAINER_ID /container-start.sh
-
-echo "-- Ready to run locally --"
+docker compose exec -it pulsar /pulsar/bin/pulsar-admin topics list public/default

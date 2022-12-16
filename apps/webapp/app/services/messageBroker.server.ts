@@ -169,6 +169,7 @@ async function createInternalPubSub() {
               "x-api-key": trigger.environment.apiKey,
               "x-org-id": trigger.environment.organizationId,
               "x-workflow-id": trigger.workflowId,
+              "x-env": trigger.environment.slug,
             }
           );
         }

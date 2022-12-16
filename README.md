@@ -13,7 +13,7 @@
    ```sh
    cp ./apps/webapp/.env.example ./apps/webapp/.env
    ```
-3. Start postgresql
+3. Start postgresql, pulsar, and the pizzly server
 
    ```bash
    pnpm run docker:db
@@ -26,41 +26,21 @@
    pnpm run generate
    ```
 5. Run the Prisma migration to the database
+
    ```bash
    pnpm run db:migrate:deploy
    ```
-6. Make sure Pular has started by following the instructions below under "Starting and Stopping Pulsar"
 
-7. Run the first build (with dependencies via the `...` option)
+6. Run the first build (with dependencies via the `...` option)
    ```bash
    pnpm run build --filter=webapp...
    ```
    **Running simply `pnpm run build` will build everything, including the NextJS app.**
-8. Run the Remix dev server
+7. Run the Remix dev server
 
 ```bash
 pnpm run dev --filter=webapp
 ```
-
-## Starting and Stopping Pulsar
-
-Both the webapp and coordinate apps rely on Apache Pulsar running on your local machine.
-
-1. Run the pulsar container
-   In a separate terminal window, run the following command:
-   ```bash
-   ./pulsar/start.sh
-   ```
-2. Wait until pulsar is available
-   In yet another terminal window, run this command and when it's finished pulsar will be ready
-   ```bash
-   until curl http://localhost:8080/admin/v2/brokers/internal-configuration > /dev/null 2>&1 ; do sleep 1; done
-   ```
-3. Stop pulsar
-   In the terminal window where you ran `./pulsar/start.sh`, go ahead and CTRL-C and then run
-   ```bash
-   ./pulsar/stop.sh
-   ```
 
 ## Tests, Typechecks, Lint, Install packages...
 

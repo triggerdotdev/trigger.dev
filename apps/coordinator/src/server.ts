@@ -189,6 +189,7 @@ export class TriggerServer {
           topic: `persistent://public/default/workflow-triggers`,
           subscription: `coordinator-${this.#workflowId}`,
           subscriptionType: "Shared",
+          subscriptionInitialPosition: "Earliest",
         },
         handlers: {
           TRIGGER_WORKFLOW: async (id, data, properties) => {
@@ -206,12 +207,15 @@ export class TriggerServer {
             }
 
             this.#logger.info("Triggering workflow", id, data, properties);
-            // Once the workflow is triggered, then we will have the run id
-            // And we will need to setup a new consumer for the workflow run,
-            // with the following consumer config:
-            //  - topic: `persistent://public/default/workflow-events`
-            //  - subscription: `workflow-${orgId}-${workflowId}-${runId}`
-            //  - subscriptionType: "Exclusive"
+
+            // Send the trigger to the host machine
+
+            // this.#serverRPC?.send("TRIGGER_WORKFLOW", {
+            //   id,
+            //   data,
+            //   properties,
+            // });
+
             return true;
           },
         },
