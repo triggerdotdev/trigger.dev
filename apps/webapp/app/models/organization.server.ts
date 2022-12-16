@@ -31,6 +31,7 @@ export function getOrganizationFromSlug({
         select: {
           id: true,
           slug: true,
+          title: true,
           apiKey: true,
         },
       },
