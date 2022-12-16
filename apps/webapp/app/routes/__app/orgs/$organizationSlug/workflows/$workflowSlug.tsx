@@ -10,7 +10,6 @@ import {
 import { Header1, Header2 } from "~/components/primitives/text/Headers";
 import {
   commitSession,
-  getEnvironmentFromSlug,
   getRuntimeEnvironmentFromSession,
   getSession,
 } from "~/models/runtimeEnvironment.server";
@@ -34,34 +33,27 @@ export const loader = async ({ request, params }: LoaderArgs) => {
   }
 
   const environmentSession = await getSession(request.headers.get("cookie"));
-  const runtimeEnvironmentName = await getRuntimeEnvironmentFromSession(
+  const currentEnvironmentSlug = await getRuntimeEnvironmentFromSession(
     environmentSession
   );
-  const runtimeEnvironment = await getEnvironmentFromSlug({
-    organizationSlug,
-    slug: runtimeEnvironmentName,
-  });
-
-  if (runtimeEnvironment === null) {
-    throw new Response("Environment Not Found", { status: 404 });
-  }
 
   return typedjson(
-    { workflow, currentEnvironment: runtimeEnvironment },
+    { workflow, currentEnvironmentSlug },
     { headers: { "Set-Cookie": await commitSession(environmentSession) } }
   );
 };
 
 export default function Organization() {
-  const { workflow, currentEnvironment } = useTypedLoaderData<typeof loader>();
+  const { workflow, currentEnvironmentSlug } =
+    useTypedLoaderData<typeof loader>();
 
   return (
     <>
       <SideMenuContainer>
-        <WorkflowsSideMenu currentEnvironment={currentEnvironment} />
+        <WorkflowsSideMenu />
         <Container>
           <Header1>{workflow.title}</Header1>
-          <Header2>{currentEnvironment.slug}</Header2>
+          <Header2>{currentEnvironmentSlug}</Header2>
 
           <Outlet />
         </Container>

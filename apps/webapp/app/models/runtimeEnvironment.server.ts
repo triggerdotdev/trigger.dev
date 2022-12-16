@@ -19,23 +19,6 @@ export async function findEnvironmentByApiKey(apiKey: string) {
   return environment;
 }
 
-export async function getEnvironmentFromSlug({
-  organizationSlug,
-  slug,
-}: {
-  organizationSlug: Organization["slug"];
-  slug: RuntimeEnvironment["slug"];
-}) {
-  return await prisma.runtimeEnvironment.findFirst({
-    where: {
-      slug,
-      organization: {
-        slug: organizationSlug,
-      },
-    },
-  });
-}
-
 export const { commitSession, getSession } = createCookieSessionStorage({
   cookie: {
     name: "__environment",
@@ -50,11 +33,5 @@ export const { commitSession, getSession } = createCookieSessionStorage({
 export async function getRuntimeEnvironmentFromSession(
   session: Session
 ): Promise<string> {
-  const environment = session.get("environment");
-
-  if (!environment) {
-    return "dev";
-  }
-
-  return environment;
+  return session.get("environment") ?? "dev";
 }

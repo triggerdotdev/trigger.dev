@@ -1,10 +1,8 @@
-import {
-  ChevronRightIcon,
-  DocumentTextIcon,
-} from "@heroicons/react/24/outline";
+import { DocumentTextIcon } from "@heroicons/react/24/outline";
 import { Link } from "@remix-run/react";
 import { useOptionalUser } from "~/hooks/useUser";
 import { Logo } from "../Logo";
+import { EnvironmentMenu } from "../../routes/resources/environment";
 import { OrganizationMenu } from "../navigation/OrganizationMenu";
 import { WorkflowMenu } from "../navigation/WorkflowMenu";
 import { SecondaryA } from "../primitives/Buttons";
@@ -22,10 +20,10 @@ export function Header({ children }: HeaderProps) {
       <Link to="/" aria-label="Trigger" className="mr-2">
         <Logo className="h-6" />
       </Link>
-      <BreadcrumbDivider />
+
       <OrganizationMenu />
-      <BreadcrumbDivider />
       <WorkflowMenu />
+      <EnvironmentMenu />
 
       <div className="flex flex-1 justify-center">{children}</div>
 
@@ -49,7 +47,7 @@ export function Header({ children }: HeaderProps) {
   );
 }
 
-function BreadcrumbDivider() {
+export function BreadcrumbDivider() {
   return (
     <svg
       width="9"
