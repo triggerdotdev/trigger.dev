@@ -25,6 +25,7 @@ export function getOrganizationFromSlug({
           id: true,
           title: true,
           slug: true,
+          updatedAt: true,
         },
       },
       environments: {

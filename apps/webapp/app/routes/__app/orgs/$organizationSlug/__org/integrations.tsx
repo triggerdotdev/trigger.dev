@@ -31,7 +31,7 @@ export default function Integrations() {
 
   return (
     <Container>
-      <Header1>Integrations</Header1>
+      <Header1>API Integrations</Header1>
       <div>
         <Header2>Existing integrations</Header2>
         {connections.map((connection) => (
