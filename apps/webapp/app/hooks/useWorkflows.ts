@@ -1,30 +1,16 @@
 import type { Workflow } from "~/models/workflow.server";
-import { useMatchesData } from "~/utils";
-
-function isWorkflow(workflow: any): workflow is Workflow {
-  return (
-    workflow &&
-    typeof workflow === "object" &&
-    typeof workflow.title === "string"
-  );
-}
-
-function isWorkflows(workflows: any): workflows is Workflow[] {
-  return (
-    workflows &&
-    typeof workflows === "object" &&
-    Array.isArray(workflows) &&
-    workflows.every(isWorkflow)
-  );
-}
+import { hydrateObject, useMatchesData } from "~/utils";
 
 export function useWorkflows(): Workflow[] | undefined {
   const routeMatch = useMatchesData("routes/__app/orgs/$organizationSlug");
-
-  if (!routeMatch || !isWorkflows(routeMatch.data.organization.workflows)) {
+  if (!routeMatch || !routeMatch.data.organization.workflows) {
     return undefined;
   }
-  return routeMatch.data.organization.workflows;
+
+  const workflows = hydrateObject<Workflow[]>(
+    routeMatch.data.organization.workflows
+  );
+  return workflows;
 }
 
 export function useCurrentWorkflowSlug(): string | undefined {
@@ -41,5 +27,6 @@ export function useCurrentWorkflow(): Workflow | undefined {
   const currentWorkflow = workflows?.find(
     (org) => org.slug === currentWorkflowSlug
   );
+
   return currentWorkflow;
 }

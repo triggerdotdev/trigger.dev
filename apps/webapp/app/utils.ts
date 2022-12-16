@@ -51,3 +51,44 @@ export function useMatchesData(
 export function validateEmail(email: unknown): email is string {
   return typeof email === "string" && email.length > 3 && email.includes("@");
 }
+
+export function hydrateObject<T>(object: any): T {
+  return hydrateDates(object) as T;
+}
+
+export function hydrateDates(object: any): any {
+  if (object === null) {
+    return object;
+  }
+
+  if (object instanceof Date) {
+    return object;
+  }
+
+  if (typeof object === "string" && object.match(/\d{4}-\d{2}-\d{2}/)) {
+    return new Date(object);
+  }
+
+  if (typeof object === "object") {
+    if (Array.isArray(object)) {
+      return object.map((item) => hydrateDates(item));
+    } else {
+      const hydratedObject: any = {};
+      for (const key in object) {
+        hydratedObject[key] = hydrateDates(object[key]);
+      }
+      return hydratedObject;
+    }
+  }
+
+  return object;
+}
+
+const dateFormatter = new Intl.DateTimeFormat("en-US", {
+  dateStyle: "medium",
+  timeStyle: "short",
+});
+
+export function formatDateTime(date: Date): string {
+  return dateFormatter.format(date);
+}

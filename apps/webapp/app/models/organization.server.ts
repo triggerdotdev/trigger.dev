@@ -20,14 +20,7 @@ export function getOrganizationFromSlug({
 }) {
   return prisma.organization.findFirst({
     include: {
-      workflows: {
-        select: {
-          id: true,
-          title: true,
-          slug: true,
-          updatedAt: true,
-        },
-      },
+      workflows: true,
       environments: {
         select: {
           id: true,

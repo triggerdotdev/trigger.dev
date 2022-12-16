@@ -1,26 +1,13 @@
 import type { Organization } from "~/models/organization.server";
-import { useMatchesData } from "~/utils";
-
-function isOrganization(org: any): org is Organization {
-  return org && typeof org === "object" && typeof org.title === "string";
-}
-
-function isOrganizations(orgs: any): orgs is Organization[] {
-  return (
-    orgs &&
-    typeof orgs === "object" &&
-    Array.isArray(orgs) &&
-    orgs.every(isOrganization)
-  );
-}
+import { hydrateObject, useMatchesData } from "~/utils";
 
 export function useOrganizations(): Organization[] | undefined {
   const routeMatch = useMatchesData("routes/__app");
 
-  if (!routeMatch || !isOrganizations(routeMatch.data.organizations)) {
+  if (!routeMatch || !routeMatch.data.organizations) {
     return undefined;
   }
-  return routeMatch.data.organizations;
+  return hydrateObject<Organization[]>(routeMatch.data.organizations);
 }
 
 export function useCurrentOrganizationSlug(): string | undefined {
