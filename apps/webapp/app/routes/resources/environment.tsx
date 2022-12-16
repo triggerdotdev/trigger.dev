@@ -82,7 +82,7 @@ export function EnvironmentMenu() {
                 <EnvironmentIcon slug={currentEnvironment.slug} />
                 <span className="transition">
                   {currentEnvironment ? (
-                    <span>{currentEnvironment.title}</span>
+                    <span>{currentEnvironment.slug}</span>
                   ) : (
                     <span className="">Select environment</span>
                   )}
@@ -122,7 +122,7 @@ export function EnvironmentMenu() {
                             <div className="flex items-center gap-2">
                               <EnvironmentIcon slug={environment.slug} />
                               <span className="block truncate">
-                                {environment.title}
+                                {environment.slug}
                               </span>
                             </div>
                             {environment.slug === currentEnvironment?.slug && (

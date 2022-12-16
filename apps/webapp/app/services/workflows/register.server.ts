@@ -62,7 +62,7 @@ export class RegisterWorkflow {
           type: validation.data.trigger.type,
           config: validation.data.trigger.config,
           status: "CREATED",
-          isDefault: environment.slug === "dev",
+          isDefault: environment.slug === "development",
         },
       });
 

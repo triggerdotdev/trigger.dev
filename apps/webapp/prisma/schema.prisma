@@ -78,7 +78,6 @@ enum APIConnectionStatus {
 
 model RuntimeEnvironment {
   id     String @id @default(cuid())
-  title String
   slug   String
   apiKey String @unique
 
