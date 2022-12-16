@@ -47,6 +47,7 @@ model Organization {
   workflows      Workflow[]
   environments   RuntimeEnvironment[]
   apiConnections APIConnection[]
+  customEvents   CustomEvent[]
 }
 
 model APIConnection {
@@ -84,9 +85,12 @@ model RuntimeEnvironment {
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   organizationId String
 
-  createdAt       DateTime          @default(now())
-  updatedAt       DateTime          @updatedAt
-  WorkflowTrigger WorkflowTrigger[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  triggers     WorkflowTrigger[]
+  customEvents CustomEvent[]
+  runs         WorkflowRun[]
 
   @@unique([organizationId, slug])
 }
@@ -105,6 +109,7 @@ model Workflow {
   organizationId String
 
   triggers WorkflowTrigger[]
+  runs     WorkflowRun[]
 
   @@unique([organizationId, slug])
 }
@@ -122,7 +127,8 @@ model WorkflowTrigger {
   config Json
   status WorkflowTriggerStatus @default(CREATED)
 
-  isDefault Boolean @default(false)
+  isDefault Boolean       @default(false)
+  runs      WorkflowRun[]
 
   @@unique([workflowId, environmentId])
 }
@@ -137,6 +143,56 @@ enum WorkflowTriggerType {
 enum WorkflowTriggerStatus {
   CREATED
   CONNECTED
+}
+
+model CustomEvent {
+  id        String   @id @default(cuid())
+  name      String
+  timestamp DateTime @default(now())
+  payload   Json
+  context   Json?
+
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  organizationId String
+
+  environment   RuntimeEnvironment @relation(fields: [environmentId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  environmentId String
+
+  status CustomEventStatus @default(PENDING)
+}
+
+enum CustomEventStatus {
+  PENDING
+  PROCESSED
+}
+
+model WorkflowRun {
+  id String @id @default(cuid())
+
+  workflow   Workflow @relation(fields: [workflowId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  workflowId String
+
+  trigger   WorkflowTrigger @relation(fields: [triggerId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  triggerId String
+
+  environment   RuntimeEnvironment @relation(fields: [environmentId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  environmentId String
+
+  input     Json
+  context   Json?
+  timestamp DateTime
+
+  status WorkflowRunStatus @default(PENDING)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+enum WorkflowRunStatus {
+  PENDING
+  RUNNING
+  SUCCESS
+  ERROR
 }
 
 //todo triggers are environment specific

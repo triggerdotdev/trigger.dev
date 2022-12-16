@@ -1,9 +1,12 @@
 import { z } from "zod";
+import { JsonSchema } from "../../schemas";
 import { WorkflowEventPropertiesSchema } from "../sharedSchemas";
 
 export const TriggerWorkflowMessageSchema = z.object({
   id: z.string(),
-  event: z.unknown().optional(),
+  input: JsonSchema.default({}),
+  context: JsonSchema.default({}),
+  timestamp: z.string().datetime(),
 });
 
 const Catalog = {

@@ -30,9 +30,11 @@ export class TriggerServer {
   #triggerSubscriber?: ZodSubscriber<PlatformCatalog>;
   #apiClient: InternalApiClient;
   #workflowId?: string;
+  #apiKey: string;
 
   constructor(socket: WebSocket, apiKey: string) {
     this.#socket = socket;
+    this.#apiKey = apiKey;
     this.#apiClient = new InternalApiClient(apiKey, env.PLATFORM_API_URL);
     this.#logger = new Logger("trigger.dev", "info");
 
@@ -90,8 +92,6 @@ export class TriggerServer {
         INITIALIZE_HOST: async (data) => {
           // Initialize workflow
           const success = await this.#initializeWorkflow(data);
-
-          // TODO: Do we need to wait to hear something back from the platform to be able to return success?
 
           if (success) {
             return { type: "success" as const };
@@ -183,15 +183,28 @@ export class TriggerServer {
       this.#logger.debug("Initializing pub sub...");
 
       this.#triggerSubscriber = new ZodSubscriber<PlatformCatalog>({
-        subscriberSchema: platformCatalog,
+        schema: platformCatalog,
         client: pulsarClient,
-        subscriberConfig: {
+        config: {
           topic: `persistent://public/default/workflow-triggers`,
           subscription: `coordinator-${this.#workflowId}`,
           subscriptionType: "Shared",
         },
         handlers: {
           TRIGGER_WORKFLOW: async (id, data, properties) => {
+            this.#logger.debug("Received trigger", id, data, properties);
+            // If the API keys don't match, then we should ignore it
+            // This ensures the workflow is triggered for the correct environment
+            if (properties["x-api-key"] !== this.#apiKey) {
+              return true;
+            }
+
+            // If the workflow id is not the same as the workflow id
+            // that we are listening for, then we should ignore it
+            if (properties["x-workflow-id"] !== this.#workflowId) {
+              return true;
+            }
+
             this.#logger.info("Triggering workflow", id, data, properties);
             // Once the workflow is triggered, then we will have the run id
             // And we will need to setup a new consumer for the workflow run,
@@ -210,6 +223,8 @@ export class TriggerServer {
         this.#logger.debug("Pub sub failed to initialize");
         return false;
       }
+
+      this.#logger.info("Pub sub initialized");
 
       this.#isInitialized = true;
 

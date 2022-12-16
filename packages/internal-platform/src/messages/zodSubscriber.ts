@@ -27,14 +27,14 @@ export type ZodSubscriberOptions<
   SubscriberSchema extends MessageCatalogSchema
 > = {
   client: PulsarClient;
-  subscriberConfig: Omit<PulsarConsumerConfig, "listener">;
-  subscriberSchema: SubscriberSchema;
+  config: Omit<PulsarConsumerConfig, "listener">;
+  schema: SubscriberSchema;
   handlers: ZodSubscriberHandlers<SubscriberSchema>;
 };
 
 export class ZodSubscriber<SubscriberSchema extends MessageCatalogSchema> {
-  #subscriberConfig: Omit<PulsarConsumerConfig, "listener">;
-  #subscriberSchema: SubscriberSchema;
+  #config: Omit<PulsarConsumerConfig, "listener">;
+  #schema: SubscriberSchema;
   #handlers: ZodSubscriberHandlers<SubscriberSchema>;
 
   #subscriber?: PulsarConsumer;
@@ -43,8 +43,8 @@ export class ZodSubscriber<SubscriberSchema extends MessageCatalogSchema> {
   #logger: Logger;
 
   constructor(options: ZodSubscriberOptions<SubscriberSchema>) {
-    this.#subscriberConfig = options.subscriberConfig;
-    this.#subscriberSchema = options.subscriberSchema;
+    this.#config = options.config;
+    this.#schema = options.schema;
     this.#handlers = options.handlers;
     this.#client = options.client;
     this.#logger = new Logger("trigger.dev subscriber", "info");
@@ -53,13 +53,11 @@ export class ZodSubscriber<SubscriberSchema extends MessageCatalogSchema> {
   public async initialize(): Promise<boolean> {
     try {
       this.#logger.debug(
-        `Initializing subscriber with config ${JSON.stringify(
-          this.#subscriberConfig
-        )}`
+        `Initializing subscriber with config ${JSON.stringify(this.#config)}`
       );
 
       this.#subscriber = await this.#client.subscribe({
-        ...this.#subscriberConfig,
+        ...this.#config,
         listener: this.#onMessage.bind(this),
       });
 
@@ -78,12 +76,26 @@ export class ZodSubscriber<SubscriberSchema extends MessageCatalogSchema> {
     }
   }
 
+  #getRawProperties(msg: PulsarMessage): Record<string, string> {
+    const properties = msg.getProperties();
+
+    if (Array.isArray(properties)) {
+      return Object.keys(properties).reduce((acc, key) => {
+        acc[key] = properties[key];
+
+        return acc;
+      }, {} as Record<string, string>);
+    }
+
+    return properties;
+  }
+
   async #onMessage(msg: PulsarMessage, consumer: PulsarConsumer) {
     const messageData = MessageDataSchema.parse(
       JSON.parse(msg.getData().toString())
     );
 
-    const properties = msg.getProperties();
+    const properties = this.#getRawProperties(msg);
 
     try {
       const wasHandled = await this.#handleMessage(messageData, properties);
@@ -93,13 +105,14 @@ export class ZodSubscriber<SubscriberSchema extends MessageCatalogSchema> {
       }
     } catch (e) {
       if (e instanceof ZodError) {
-        console.error(
+        this.#logger.error(
           "[ZodSubscriber] Received invalid message data or properties",
           messageData,
-          properties
+          properties,
+          e.format()
         );
       } else {
-        console.error("[ZodSubscriber] Error handling message", e);
+        this.#logger.error("[ZodSubscriber] Error handling message", e);
       }
 
       consumer.negativeAcknowledge(msg);
@@ -110,7 +123,7 @@ export class ZodSubscriber<SubscriberSchema extends MessageCatalogSchema> {
     rawMessage: MessageData,
     rawProperties: Record<string, string> = {}
   ): Promise<boolean> {
-    const subscriberSchema = this.#subscriberSchema;
+    const subscriberSchema = this.#schema;
     type TypeKeys = keyof typeof subscriberSchema;
     const typeName = rawMessage.type as TypeKeys;
 

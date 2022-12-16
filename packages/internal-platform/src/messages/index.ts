@@ -10,3 +10,4 @@ export type { CoordinatorCatalog, PlatformCatalog };
 export { coordinatorCatalog, platformCatalog };
 export * from "./zodPublisher";
 export * from "./zodSubscriber";
+export * from "./zodPubSub";
