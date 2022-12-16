@@ -4,7 +4,7 @@ import {
   UsersIcon,
   ForwardIcon,
 } from "@heroicons/react/24/outline";
-import { NavLink } from "@remix-run/react";
+import { Link, NavLink } from "@remix-run/react";
 import {
   useCurrentOrganization,
   useOrganizations,
@@ -95,7 +95,7 @@ function SideMenu({ title, items }: { title: string; items: SideMenuItem[] }) {
           aria-label="Sidebar"
         >
           <Header1 size="regular" className="p-2 my-2">
-            {title}
+            <Link to="">{title}</Link>
           </Header1>
 
           {items.map((item) => (
