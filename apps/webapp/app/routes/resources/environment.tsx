@@ -4,7 +4,7 @@ import {
   ArrowsRightLeftIcon,
 } from "@heroicons/react/24/outline";
 import { CheckIcon } from "@heroicons/react/24/solid";
-import { Form, useFetcher } from "@remix-run/react";
+import { useFetcher } from "@remix-run/react";
 import type { ActionArgs } from "@remix-run/server-runtime";
 import { json } from "@remix-run/server-runtime";
 import classNames from "classnames";
@@ -80,12 +80,9 @@ export function EnvironmentMenu() {
               <Popover.Button
                 className={`
                 ${open ? "" : ""}
-                group inline-flex justify-between items-center rounded text-white bg-transparent pl-3.5 pr-2 py-2 text-sm hover:bg-slate-800 transition focus:outline-none`}
+                group inline-flex justify-between gap-2 items-center rounded text-white bg-transparent pl-3.5 pr-2 py-2 text-sm hover:bg-slate-800 transition focus:outline-none`}
               >
-                <ArrowsRightLeftIcon
-                  className="h-5 w-5 mr-2"
-                  aria-hidden="true"
-                />
+                <EnvironmentIcon slug={currentEnvironment.slug} />
                 <span className="transition">
                   {currentEnvironment ? (
                     <span>{currentEnvironment.slug}</span>
@@ -126,10 +123,7 @@ export function EnvironmentMenu() {
                             )}
                           >
                             <div className="flex items-center gap-2">
-                              <ArrowsRightLeftIcon
-                                className="h-5 w-5 z-100"
-                                aria-hidden="true"
-                              />
+                              <EnvironmentIcon slug={environment.slug} />
                               <span className="block truncate">
                                 {environment.slug}
                               </span>
@@ -149,5 +143,20 @@ export function EnvironmentMenu() {
         </Popover>
       </fetcher.Form>
     </>
+  );
+}
+
+function EnvironmentIcon({ slug }: { slug: string }) {
+  let color = "bg-emerald-500";
+  if (slug === "prod") {
+    color = "bg-orange-500";
+  }
+  return (
+    <span
+      className={classNames(
+        "rounded-full  block w-[0.35rem] h-[0.35rem]",
+        color
+      )}
+    />
   );
 }
