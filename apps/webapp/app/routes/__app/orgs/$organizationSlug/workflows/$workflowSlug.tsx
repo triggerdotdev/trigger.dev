@@ -43,18 +43,14 @@ export const loader = async ({ request, params }: LoaderArgs) => {
   );
 };
 
-export default function Organization() {
-  const { workflow, currentEnvironmentSlug } =
-    useTypedLoaderData<typeof loader>();
+export default function Page() {
+  const { workflow } = useTypedLoaderData<typeof loader>();
 
   return (
     <>
       <SideMenuContainer>
         <WorkflowsSideMenu />
         <Container>
-          <Header1>{workflow.title}</Header1>
-          <Header2>{currentEnvironmentSlug}</Header2>
-
           <Outlet />
         </Container>
       </SideMenuContainer>
