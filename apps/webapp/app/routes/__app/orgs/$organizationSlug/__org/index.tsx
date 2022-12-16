@@ -13,6 +13,7 @@ import type { Workflow } from "~/models/workflow.server";
 import logoGithub from "~/assets/images/integrations/logo-github.png";
 import logoTrello from "~/assets/images/integrations/logo-trello.png";
 import logoAirtable from "~/assets/images/integrations/logo-airtable.png";
+import { formatDateTime } from "~/utils";
 
 export default function Page() {
   const workflows = useWorkflows();
@@ -79,9 +80,9 @@ function WorkflowList({
                           <p className="mr-1">Last modified:</p>
                           <time
                             //TODO: Fix this so dates come in as dates, not strings
-                            dateTime={workflow.updatedAt as unknown as string}
+                            dateTime={workflow.updatedAt.toISOString()}
                           >
-                            25 Jan 2066
+                            {formatDateTime(workflow.updatedAt)}
                           </time>
                         </div>
                       </div>
