@@ -15,7 +15,7 @@ export default function CodeBlock({
   }, []);
 
   return (
-    <pre className="flex">
+    <pre className="flex rounded">
       <code className={`language-${language}`}>{code}</code>
     </pre>
   );
