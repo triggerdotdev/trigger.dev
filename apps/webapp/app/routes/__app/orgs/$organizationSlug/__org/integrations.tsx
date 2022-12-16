@@ -46,7 +46,8 @@ export default function Integrations() {
         ) : (
           <>
             <Header2 size="small" className="mb-2 text-slate-400">
-              {connections.length} connected integrations
+              {connections.length} connected integration
+              {connections.length > 1 ? "s" : ""}
             </Header2>
             <div className="overflow-hidden bg-slate-850 shadow sm:rounded-md mb-10">
               <ul className="divide-y divide-slate-800">
