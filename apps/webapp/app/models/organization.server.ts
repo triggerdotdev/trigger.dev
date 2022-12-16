@@ -121,8 +121,8 @@ export async function createOrganization({
 
   if (organization) {
     // Create the dev and prod environments
-    await createEnvironment(organization, "dev");
-    await createEnvironment(organization, "prod");
+    await createEnvironment(organization, "Development", "dev");
+    await createEnvironment(organization, "Production", "prod");
 
     return organization;
   }
@@ -132,6 +132,7 @@ export async function createOrganization({
 
 export async function createEnvironment(
   organization: Organization,
+  title: string,
   slug: string
 ) {
   const apiKey = createApiKeyForEnv(slug);
@@ -139,6 +140,7 @@ export async function createEnvironment(
   return await prisma.runtimeEnvironment.create({
     data: {
       slug,
+      title,
       apiKey,
       organization: {
         connect: {
