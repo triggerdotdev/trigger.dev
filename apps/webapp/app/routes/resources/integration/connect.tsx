@@ -1,4 +1,4 @@
-import githubLogo from "~/assets/images/integrations/github.png";
+import githubLogo from "~/assets/images/integrations/logo-github.png";
 import { useEffect } from "react";
 import Pizzly from "@nangohq/pizzly-frontend";
 import type { ActionArgs } from "@remix-run/server-runtime";
@@ -13,6 +13,7 @@ import {
 } from "~/models/apiConnection.server";
 import { APIConnectionType } from ".prisma/client";
 import { useFetcher } from "@remix-run/react";
+import { PlusCircleIcon } from "@heroicons/react/24/solid";
 
 type Integration = {
   key: string;
@@ -137,13 +138,23 @@ export function ConnectButton({
       <button
         type="submit"
         disabled={status === "loading"}
-        className="border border-indigo-500 rounded-md flex h-10 pl-2 pr-3 gap-2 text-sm text-indigo-500 items-center disabled:opacity-50"
+        className="flex flex-col group max-w-[160px] rounded-md bg-slate-850 border border-slate-800 gap-4 text-sm text-slate-200 items-center overflow-hidden hover:bg-slate-800/30 transition shadow disabled:opacity-50"
       >
-        <img src={integration.logo} alt={integration.name} className="h-5" />
+        <div className="relative flex items-center justify-center w-full py-6 bg-black/10 border-b border-slate-800">
+          <PlusCircleIcon className="absolute h-7 w-7 top-[16px] right-[28px] z-10 text-slate-200 shadow-md" />
+          <img
+            src={integration.logo}
+            alt={integration.name}
+            className="h-20 shadow-lg group-hover:opacity-80 transition"
+          />
+        </div>
         {status === "loading" ? (
-          <span>Connecting…</span>
+          <span className="px-6 pb-4">Connecting…</span>
         ) : (
-          <span>Connect to {integration.name}</span>
+          <span className="px-6 pb-4 leading-relaxed text-slate-400">
+            Connect to{" "}
+            <span className="text-slate-200 text-base">{integration.name}</span>
+          </span>
         )}
       </button>
     </createFetcher.Form>

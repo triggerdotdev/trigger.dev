@@ -7,7 +7,7 @@ export type TitleProps = {
 type Size = "regular" | "small" | "large" | "extra-large";
 
 const baseClasses = "font-sans";
-const overrideClasses = "text-slate-100";
+const overrideClasses = "text-slate-200";
 
 export function Header1({
   children,

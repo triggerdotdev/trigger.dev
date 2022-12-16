@@ -11,8 +11,10 @@ export default function CreateNewWorkflow() {
   }, []);
   return (
     <>
-      <Header1 size="large">Create a Workflow</Header1>
-      <Header2 size="small">Step 1.</Header2>
+      <Header1 className="mb-6">Create a Workflow</Header1>
+      <Header2 size="small" className="mb-2 text-slate-400">
+        Step 1.
+      </Header2>
       <Body>
         Create a workflow in your code then trigger your workflow using the test
         button to see the runs appear here.

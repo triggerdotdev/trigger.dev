@@ -6,7 +6,11 @@ import {
 import { Link } from "@remix-run/react";
 import CreateNewWorkflow from "~/components/CreateNewWorkflow";
 import { Container } from "~/components/layout/Container";
-import { Header1 } from "~/components/primitives/text/Headers";
+import {
+  Header1,
+  Header2,
+  Header3,
+} from "~/components/primitives/text/Headers";
 import { useCurrentOrganizationSlug } from "~/hooks/useOrganizations";
 import { useWorkflows } from "~/hooks/useWorkflows";
 import type { Workflow } from "~/models/workflow.server";
@@ -28,7 +32,10 @@ export default function Page() {
         <></>
       ) : (
         <>
-          <Header1 className="mb-3">Workflows</Header1>
+          <Header1 className="mb-6">Workflows</Header1>
+          <Header2 size="small" className="mb-2 text-slate-400">
+            {workflows.length} active workflows
+          </Header2>
           <WorkflowList
             workflows={workflows}
             currentOrganizationSlug={currentOrganizationSlug}
@@ -55,14 +62,14 @@ function WorkflowList({
             <li key={workflow.id}>
               <Link
                 to={`/orgs/${currentOrganizationSlug}/workflows/${workflow.slug}`}
-                className="block hover:bg-slate-900 transition"
+                className="block hover:bg-slate-900/50 transition"
               >
                 <div className="flex items-center px-4 py-4 sm:px-6">
                   <div className="min-w-0 flex-1 sm:flex sm:items-center sm:justify-between">
                     <div className="truncate">
-                      <p className="truncate font-medium text-lg">
+                      <Header3 size="small" className="truncate font-medium">
                         {workflow.title}
-                      </p>
+                      </Header3>
 
                       <div className="mt-2 flex flex-col gap-2">
                         <div className="flex items-center text-sm text-slate-500">
@@ -72,12 +79,12 @@ function WorkflowList({
                           />
                           <p className="mr-1">ID: {workflow.id}</p>
                         </div>
-                        <div className="flex items-center text-sm text-slate-500">
+                        <div className="flex items-center text-sm">
                           <CalendarIcon
-                            className="mr-1.5 h-5 w-5 flex-shrink-0 text-slate-400"
+                            className="mr-1.5 h-5 w-5 flex-shrink-0"
                             aria-hidden="true"
                           />
-                          <p className="mr-1">Last modified:</p>
+                          <p className="mr-1 text-slate-400">Last modified:</p>
                           <time
                             //TODO: Fix this so dates come in as dates, not strings
                             dateTime={workflow.updatedAt.toISOString()}
