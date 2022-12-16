@@ -9,5 +9,9 @@ export function Container({
   children: React.ReactNode;
   className?: string;
 }) {
-  return <div className={classNames(baseClasses, className)}>{children}</div>;
+  return (
+    <div className={classNames("overflow-y-auto", baseClasses, className)}>
+      {children}
+    </div>
+  );
 }
