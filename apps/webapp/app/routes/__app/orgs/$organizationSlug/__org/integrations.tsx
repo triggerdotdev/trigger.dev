@@ -16,8 +16,6 @@ import {
 } from "~/routes/resources/integration/connect";
 import { requireUserId } from "~/services/session.server";
 import logoGithub from "~/assets/images/integrations/logo-github.png";
-import logoTrello from "~/assets/images/integrations/logo-trello.png";
-import logoAirtable from "~/assets/images/integrations/logo-airtable.png";
 import { ArrowsRightLeftIcon } from "@heroicons/react/24/outline";
 
 export const loader = async ({ request, params }: LoaderArgs) => {
@@ -86,13 +84,15 @@ export default function Integrations() {
         <Header2 size="small" className="mb-2 text-slate-400">
           Add an integration
         </Header2>
-        {integrations.map((integration) => (
-          <ConnectButton
-            key={integration.key}
-            integration={integration}
-            organizationId={organization.id}
-          />
-        ))}
+        <div className="flex flex-wrap gap-2 w-full">
+          {integrations.map((integration) => (
+            <ConnectButton
+              key={integration.key}
+              integration={integration}
+              organizationId={organization.id}
+            />
+          ))}
+        </div>
       </div>
     </Container>
   );
