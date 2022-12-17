@@ -72,7 +72,7 @@ function WorkflowList({
                       </Header3>
 
                       <div className="mt-2 flex flex-col gap-2">
-                        <div className="flex items-center text-sm text-slate-500">
+                        <div className="flex items-center text-sm text-slate-400">
                           <IdentificationIcon
                             className="mr-1.5 h-5 w-5 flex-shrink-0 text-slate-400"
                             aria-hidden="true"
@@ -81,11 +81,12 @@ function WorkflowList({
                         </div>
                         <div className="flex items-center text-sm">
                           <CalendarIcon
-                            className="mr-1.5 h-5 w-5 flex-shrink-0"
+                            className="mr-1.5 h-5 w-5 flex-shrink-0 text-slate-400"
                             aria-hidden="true"
                           />
                           <p className="mr-1 text-slate-400">Last modified:</p>
                           <time
+                            className="text-slate-400"
                             //TODO: Fix this so dates come in as dates, not strings
                             dateTime={workflow.updatedAt.toISOString()}
                           >
