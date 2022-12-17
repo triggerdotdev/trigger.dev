@@ -1,6 +1,7 @@
 import { BookmarkIcon, PlusIcon } from "@heroicons/react/24/outline";
 import { Link } from "@remix-run/react";
 import classNames from "classnames";
+import { Body } from "~/components/primitives/text/Body";
 import { useOrganizations } from "~/hooks/useOrganizations";
 import type { Organization } from "~/models/organization.server";
 
@@ -14,13 +15,15 @@ export default function AppLayout() {
           {organizations ? (
             <OrganizationGrid organizations={organizations} />
           ) : (
-            <li>No organizations</li>
+            <li>
+              <Body>No organizations</Body>
+            </li>
           )}
           <li>
             <Link
               to="orgs/new"
               className={classNames(
-                "border-2 border-slate-800 hover:bg-slate-950",
+                "border-2 border-slate-800 hover:border-transparent hover:bg-slate-800/50 hover:shadow-md",
                 boxClasses
               )}
             >
@@ -52,7 +55,7 @@ function OrganizationGrid({
 }
 
 const boxClasses =
-  "flex flex-col gap-4 items-center min-h-40 rounded px-20 py-20 transition";
+  "flex flex-col gap-4 items-center min-h-40 rounded-lg px-20 py-20 transition";
 
 function OrganizationGridItem({
   organization,
@@ -64,7 +67,7 @@ function OrganizationGridItem({
       <Link
         to={`orgs/${organization.slug}`}
         className={classNames(
-          "bg-slate-900 border-2 border-slate-850 hover:bg-slate-850",
+          "bg-slate-800 shadow-md hover:bg-slate-800/50",
           boxClasses
         )}
       >

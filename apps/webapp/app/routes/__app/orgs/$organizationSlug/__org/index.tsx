@@ -55,14 +55,14 @@ function WorkflowList({
   currentOrganizationSlug: string;
 }) {
   return (
-    <div className="overflow-hidden bg-slate-850 shadow sm:rounded-md mb-10">
-      <ul className="divide-y divide-slate-800">
+    <div className="overflow-hidden bg-slate-800 shadow-md sm:rounded-md mb-10">
+      <ul className="divide-y divide-slate-850">
         {workflows.map((workflow) => {
           return (
             <li key={workflow.id}>
               <Link
                 to={`/orgs/${currentOrganizationSlug}/workflows/${workflow.slug}`}
-                className="block hover:bg-slate-900/50 transition"
+                className="block hover:bg-slate-850/50 transition"
               >
                 <div className="flex items-center px-4 py-4 sm:px-6">
                   <div className="min-w-0 flex-1 sm:flex sm:items-center sm:justify-between">

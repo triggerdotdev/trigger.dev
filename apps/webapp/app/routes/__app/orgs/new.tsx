@@ -51,7 +51,7 @@ export default function NewOrganizationPage() {
 
   return (
     <main className="w-full h-full flex items-center justify-center">
-      <div className="flex flex-col gap-y-3.5 min-w-[400px] bg-slate-800 border border-slate-800 rounded-md p-10">
+      <div className="flex flex-col gap-y-3.5 min-w-[400px] bg-slate-800 border border-slate-800 rounded-md p-10 shadow-md">
         <Header1 size="large" className="">
           Create a new Organization
         </Header1>
@@ -77,7 +77,7 @@ export default function NewOrganizationPage() {
                   ref={titleRef}
                   name="title"
                   placeholder="e.g. Company name"
-                  className="relative w-full pl-10 pr-3 py-2 rounded bg-slate-900 group-focus:border-blue-500 placeholder:text-slate-600"
+                  className="relative w-full pl-10 pr-3 py-2 rounded bg-slate-850 group-focus:border-blue-500 placeholder:text-slate-600"
                   aria-invalid={actionData?.errors?.title ? true : undefined}
                   aria-errormessage={
                     actionData?.errors?.title ? "title-error" : undefined

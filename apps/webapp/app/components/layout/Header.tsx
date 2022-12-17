@@ -16,7 +16,7 @@ export function Header({ children }: HeaderProps) {
   const user = useOptionalUser();
 
   return (
-    <div className="flex w-full gap-2 items-center border-b border-slate-800 bg-slate-1000 py-1 px-2">
+    <div className="flex w-full gap-2 items-center border-b border-slate-800 bg-slate-950 py-1 px-2">
       <Link to="/" aria-label="Trigger" className="mr-2">
         <Logo className="h-6" />
       </Link>

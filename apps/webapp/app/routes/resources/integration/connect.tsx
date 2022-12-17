@@ -138,9 +138,9 @@ export function ConnectButton({
       <button
         type="submit"
         disabled={status === "loading"}
-        className="flex flex-col group max-w-[160px] rounded-md bg-slate-850 border border-slate-800 gap-4 text-sm text-slate-200 items-center overflow-hidden hover:bg-slate-800/30 transition shadow disabled:opacity-50"
+        className="flex flex-col group max-w-[160px] rounded-md bg-slate-800 border border-slate-800 gap-4 text-sm text-slate-200 items-center overflow-hidden hover:bg-slate-800/30 transition shadow-md disabled:opacity-50"
       >
-        <div className="relative flex items-center justify-center w-full py-6 bg-black/10 border-b border-slate-800">
+        <div className="relative flex items-center justify-center w-full py-6 bg-black/20 border-b border-slate-800">
           <PlusCircleIcon className="absolute h-7 w-7 top-[16px] right-[28px] z-10 text-slate-200 shadow-md" />
           <img
             src={integration.logo}

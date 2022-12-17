@@ -5,7 +5,7 @@ export function Footer() {
     "bg-slate-100 text-xs font-medium text-slate-700 whitespace-nowrap bg-transparent text-slate-500 transition hover:text-blue-500";
 
   return (
-    <div className="flex w-full items-center justify-between border-t border-slate-800 bg-slate-1000 pl-2 pr-3 py-1 flex-row gap-0">
+    <div className="flex w-full items-center justify-between border-t border-slate-800 bg-slate-950 pl-2 pr-3 py-1 flex-row gap-0">
       <p className="text-xs text-slate-500">
         &copy; {new Date().getFullYear()} Trigger.dev{" "}
         <span className="text-slate-600">|</span>{" "}

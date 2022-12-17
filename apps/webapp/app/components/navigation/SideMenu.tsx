@@ -98,10 +98,10 @@ function SideMenu({ title, items }: { title: string; items: SideMenuItem[] }) {
   // const { organization } = useTypedLoaderData<typeof loader>();
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col bg-slate-1000 border-r border-slate-800">
+    <div className="flex min-h-0 flex-1 flex-col bg-slate-950 border-r border-slate-800">
       <div className="flex flex-1 flex-col overflow-y-auto pb-4">
         <nav
-          className="mt-2 flex flex-col h-full justify-between space-y-1 bg-slate-1000 px-2"
+          className="mt-2 flex flex-col h-full justify-between space-y-1 px-2"
           aria-label="Sidebar"
         >
           <div>

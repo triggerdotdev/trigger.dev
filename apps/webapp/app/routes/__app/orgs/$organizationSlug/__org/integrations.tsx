@@ -47,13 +47,13 @@ export default function Integrations() {
               {connections.length} connected integration
               {connections.length > 1 ? "s" : ""}
             </Header2>
-            <div className="overflow-hidden bg-slate-850 shadow sm:rounded-md mb-10">
-              <ul className="divide-y divide-slate-800">
+            <div className="overflow-hidden bg-slate-800 shadow-md sm:rounded-md mb-10">
+              <ul className="divide-y divide-slate-850">
                 {connections.map((connection) => (
                   <li key={connection.id}>
                     <div className="flex gap-4 items-center px-4 py-4">
                       <img
-                        className="h-14 w-14"
+                        className="h-14 w-14 shadow-md"
                         src={logoGithub}
                         alt="Github integration logo"
                       />

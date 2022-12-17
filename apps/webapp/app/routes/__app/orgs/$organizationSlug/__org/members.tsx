@@ -6,7 +6,7 @@ export default function Members() {
   return (
     <Container>
       <main className="w-full h-full flex items-center justify-center">
-        <div className="flex flex-col items-center gap-y-3.5 min-w-[400px] bg-slate-850 border border-slate-800 rounded-md p-10">
+        <div className="flex flex-col items-center gap-y-3.5 min-w-[400px] bg-slate-800 shadow-md border border-slate-800 rounded-md p-10">
           <UserGroupIcon className="h-10 w-10 text-indigo-500" />
           <Header1 size="large" className="">
             Manage team members
