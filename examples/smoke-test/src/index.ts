@@ -13,7 +13,7 @@ const workflow = new Workflow({
   logLevel: "debug",
   trigger: onEvent({ name: "user.created", schema: userCreatedEvent }),
   run: async (event) => {
-    console.log(event);
+    console.log("Inside the smoke test workflow, received event", event);
   },
 });
 

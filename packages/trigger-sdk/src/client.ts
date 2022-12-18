@@ -11,12 +11,8 @@ import {
 import * as pkg from "../package.json";
 import { Workflow, WorkflowOptions } from "./workflow";
 
-export class TriggerClient<
-  TEventData,
-  TConnectionType,
-  TConnections extends Record<string, TConnectionType>
-> {
-  #workflow: Workflow<TEventData, TConnectionType, TConnections>;
+export class TriggerClient {
+  #workflow: Workflow;
   #connection?: HostConnection;
   #serverRPC?: ZodRPC<typeof ServerRPCSchema, typeof HostRPCSchema>;
   #apiKey: string;
@@ -25,10 +21,7 @@ export class TriggerClient<
   #retryIntervalMs: number = 3000;
   #logger: Logger;
 
-  constructor(
-    workflow: Workflow<TEventData, TConnectionType, TConnections>,
-    options: WorkflowOptions<TEventData, TConnectionType, TConnections>
-  ) {
+  constructor(workflow: Workflow, options: WorkflowOptions) {
     this.#workflow = workflow;
 
     const apiKey = options.apiKey ?? process.env.TRIGGER_API_KEY;
@@ -96,6 +89,9 @@ export class TriggerClient<
         },
         TRIGGER_WORKFLOW: async (data) => {
           console.log("TRIGGER_WORKFLOW", data);
+
+          // TODO: handle this better
+          this.#workflow.options.run(data.trigger.input);
         },
       },
     });

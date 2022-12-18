@@ -1,0 +1,16 @@
+{
+  "private": true,
+  "name": "@trigger.dev/common-schemas",
+  "version": "0.0.1",
+  "description": "Common zod schemas used across trigger.dev applications and packages",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "devDependencies": {
+    "@trigger.dev/tsconfig": "workspace:*",
+    "@types/node": "^18.11.9",
+    "typescript": "^4.9.4"
+  },
+  "dependencies": {
+    "zod": "^3.20.2"
+  }
+}

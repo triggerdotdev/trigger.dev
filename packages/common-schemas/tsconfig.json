@@ -1,6 +1,6 @@
 {
   "extends": "@trigger.dev/tsconfig/node18.json",
-  "include": ["src/globals.d.ts", "./src/**/*.ts"],
+  "include": ["./src/**/*.ts"],
   "compilerOptions": {
     "experimentalDecorators": true,
     "emitDecoratorMetadata": true,

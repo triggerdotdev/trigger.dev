@@ -210,11 +210,17 @@ export class TriggerServer {
 
             // Send the trigger to the host machine
 
-            // this.#serverRPC?.send("TRIGGER_WORKFLOW", {
-            //   id,
-            //   data,
-            //   properties,
-            // });
+            // TODO - call this TRIGGER_WORKFLOW and then have the host machine create a new run
+            this.#serverRPC?.send("TRIGGER_WORKFLOW", {
+              id,
+              trigger: data,
+              meta: {
+                workflowId: properties["x-workflow-id"],
+                organizationId: properties["x-org-id"],
+                environment: properties["x-env"],
+                apiKey: properties["x-api-key"],
+              },
+            });
 
             return true;
           },

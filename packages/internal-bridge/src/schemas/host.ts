@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { TriggerEnvironmentSchema } from "./common";
+import { JsonSchema } from "@trigger.dev/common-schemas";
 
 export const HostRPCSchema = {
   IO_RESPONSE: {
@@ -11,9 +12,18 @@ export const HostRPCSchema = {
   },
   TRIGGER_WORKFLOW: {
     request: z.object({
-      triggerId: z.string(),
-      data: z.any(),
-      environment: TriggerEnvironmentSchema,
+      id: z.string(),
+      trigger: z.object({
+        input: JsonSchema.default({}),
+        context: JsonSchema.default({}),
+        timestamp: z.string().datetime(),
+      }),
+      meta: z.object({
+        environment: z.string(),
+        workflowId: z.string(),
+        organizationId: z.string(),
+        apiKey: z.string(),
+      }),
     }),
     response: z.void().nullable(),
   },
