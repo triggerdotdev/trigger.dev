@@ -1,4 +1,3 @@
-import "prismjs/components/prism-typescript";
 import CodeBlock from "./code/CodeBlock";
 import { Body } from "./primitives/text/Body";
 import { Header1, Header2 } from "./primitives/text/Headers";

@@ -1,7 +1,10 @@
 import { useEffect } from "react";
 import Prism from "prismjs";
+import "prismjs/components/prism-typescript";
 import classNames from "classnames";
 import { ClientOnly } from "remix-utils";
+
+Prism.manual = true;
 
 type CodeBlockProps = {
   code: string;
