@@ -20,7 +20,7 @@ import {
 import CodeBlock from "~/components/code/CodeBlock";
 import { CheckCircleIcon } from "@heroicons/react/24/solid";
 import { WorkflowNodeArrow } from "~/components/WorkflowNodeArrow";
-import type { FC } from "react";
+import type { ReactNode } from "react";
 
 export default function Page() {
   return (
@@ -63,22 +63,59 @@ export default function Page() {
         </li>
       </ul>
 
-      <WorkflowStep status={"complete"} />
+      <WorkflowStep
+        step={{
+          type: "trigger",
+          status: "complete",
+          trigger: {
+            on: "webhook",
+            input: {},
+          },
+          startedAt: new Date(),
+          completedAt: new Date(),
+        }}
+      />
       <WorkflowNodeArrow />
-      <WorkflowStep status={"error"} />
+      <WorkflowStep
+        step={{
+          type: "trigger",
+          status: "error",
+          trigger: {
+            on: "webhook",
+            input: {},
+          },
+          startedAt: new Date(),
+          completedAt: new Date(),
+        }}
+      />
       <WorkflowNodeArrow />
-      <WorkflowStep status={"inProgress"} />
+      <WorkflowStep
+        step={{
+          type: "trigger",
+          status: "inProgress",
+          trigger: {
+            on: "webhook",
+            input: {},
+          },
+          startedAt: new Date(),
+        }}
+      />
       <WorkflowNodeArrow />
-      <WorkflowStep status={"notStarted"} />
+      <WorkflowStep
+        step={{
+          type: "trigger",
+          status: "notStarted",
+          trigger: {
+            on: "webhook",
+            input: {},
+          },
+        }}
+      />
     </>
   );
 }
 
-type WorkflowStepProps = {
-  status: "error" | "inProgress" | "complete" | "notStarted";
-};
-
-const WorkflowStep: FC<WorkflowStepProps> = (props) => {
+function WorkflowStep({ step }: { step: Step }) {
   const workflowNodeFlexClasses = "flex gap-1 items-baseline";
   const workflowNodeUppercaseClasses = "uppercase text-slate-400";
   const workflowNode1code = `{ 
@@ -86,39 +123,8 @@ const WorkflowStep: FC<WorkflowStepProps> = (props) => {
   "issueId": "uiydfgydfg7yt34"
 }`;
 
-  let icon;
-  let statusText;
-  let borderColor;
-
-  switch (props.status) {
-    case "error":
-      icon = (
-        <XCircleIcon className="relative top-[3px] h-4 w-4 text-red-500" />
-      );
-      statusText = "Error";
-      borderColor = "border-red-700";
-      break;
-    case "inProgress":
-      icon = <Spinner className="relative top-[3px] h-4 w-4 text-blue-500" />;
-      statusText = "In progress";
-      borderColor = "border-blue-700";
-      break;
-    case "complete":
-      icon = (
-        <CheckCircleIcon className="relative top-[3px] h-4 w-4 text-green-500" />
-      );
-      statusText = "Complete";
-      borderColor = "border-slate-800";
-      break;
-    default:
-      icon = (
-        <ClockIcon className="relative top-[3px] h-4 w-4 text-slate-500" />
-      );
-      statusText = "Not started";
-      borderColor = "border-slate-800";
-  }
   return (
-    <Panel className={`border ${borderColor}`}>
+    <StepPanel status={step.status}>
       <div className="flex mb-4 pb-3 justify-between items-center border-b border-slate-700">
         <ul className="flex gap-4 items-center">
           <li className={workflowNodeFlexClasses}>
@@ -132,8 +138,8 @@ const WorkflowStep: FC<WorkflowStepProps> = (props) => {
               Step:
             </Body>
             <div className="flex gap-0.5 items-baseline">
-              {icon}
-              <Body size="small">{statusText}</Body>
+              <Status status={step.status} />
+              <Body size="small">{step.status}</Body>
             </div>
           </li>
           <li className={workflowNodeFlexClasses}>
@@ -159,6 +165,113 @@ const WorkflowStep: FC<WorkflowStepProps> = (props) => {
         GitHub new issue (Webhook)
       </Header3>
       <CodeBlock code={workflowNode1code} language="json" />
-    </Panel>
+    </StepPanel>
   );
+}
+
+function Status({ status }: { status: WorkflowStepStatus }) {
+  switch (status) {
+    case "error":
+      return (
+        <XCircleIcon className="relative top-[3px] h-4 w-4 text-red-500" />
+      );
+    case "inProgress":
+      return <Spinner className="relative top-[3px] h-4 w-4 text-blue-500" />;
+    case "complete":
+      return (
+        <CheckCircleIcon className="relative top-[3px] h-4 w-4 text-green-500" />
+      );
+    default:
+      return (
+        <ClockIcon className="relative top-[3px] h-4 w-4 text-slate-500" />
+      );
+  }
+}
+
+function StepPanel({
+  status,
+  children,
+}: {
+  status: WorkflowStepStatus;
+  children: ReactNode;
+}) {
+  let borderClass = "border-slate-800";
+  switch (status) {
+    case "error":
+      borderClass = "border-red-700";
+      break;
+    case "inProgress":
+      borderClass = "border-blue-700";
+      break;
+  }
+
+  return <Panel className={`border ${borderClass}`}>{children}</Panel>;
+}
+
+type Step = LogStep | DelayStep | RequestStep | TriggerStep;
+
+type TriggerStep = CommonStepData & {
+  type: "trigger";
+  trigger:
+    | WebhookTrigger
+    | ScheduledTrigger
+    | CustomTrigger
+    | HttpTrigger
+    | AwsTrigger
+    | EmailTrigger;
 };
+
+type LogStep = CommonStepData & {
+  type: "log";
+  message: string;
+};
+
+type DelayStep = CommonStepData & {
+  type: "delay";
+  duration: number;
+};
+
+type RequestStep = CommonStepData & {
+  type: "request";
+  integration: string;
+};
+
+type WebhookTrigger = {
+  on: "webhook";
+  input: any;
+};
+
+type ScheduledTrigger = {
+  on: "scheduled";
+  input: any;
+};
+
+type CustomTrigger = {
+  on: "custom";
+  name: string;
+  input: any;
+};
+
+type HttpTrigger = {
+  on: "http";
+  method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
+  path: string;
+};
+
+type EmailTrigger = {
+  on: "email";
+  address: string;
+};
+
+type AwsTrigger = {
+  on: "aws";
+  input: any;
+};
+
+type CommonStepData = {
+  status: WorkflowStepStatus;
+  startedAt?: Date;
+  completedAt?: Date;
+};
+
+type WorkflowStepStatus = "error" | "inProgress" | "complete" | "notStarted";
