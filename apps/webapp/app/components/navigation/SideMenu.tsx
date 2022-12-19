@@ -90,7 +90,7 @@ export function WorkflowsSideMenu() {
 }
 
 const defaultStyle =
-  "group flex items-center gap-2 px-3 py-3 text-base rounded transition text-slate-300 hover:bg-slate-900 hover:text-white";
+  "group flex items-center gap-2 px-3 py-3 text-base rounded transition text-slate-300 hover:bg-slate-850 hover:text-white";
 const activeStyle =
   "group flex items-center gap-2 px-3 py-3 text-base rounded transition bg-slate-800 text-white";
 
@@ -115,7 +115,7 @@ function SideMenu({ title, items }: { title: string; items: SideMenuItem[] }) {
 
               <Header1
                 size="regular"
-                className="pl-2 py-2 w-full text-slate-400 rounded-r hover:bg-slate-800 transition"
+                className="pl-2 py-2  text-slate-400 rounded-r hover:bg-slate-800 transition whitespace-nowrap text-ellipsis overflow-hidden"
               >
                 <Link to="">{title}</Link>
               </Header1>
