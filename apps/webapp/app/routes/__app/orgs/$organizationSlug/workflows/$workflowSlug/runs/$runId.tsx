@@ -1,4 +1,8 @@
-import { ClockIcon, PlayCircleIcon } from "@heroicons/react/24/solid";
+import {
+  ClockIcon,
+  PlayCircleIcon,
+  XCircleIcon,
+} from "@heroicons/react/24/solid";
 import {
   ArrowPathRoundedSquareIcon,
   BeakerIcon,
@@ -16,11 +20,12 @@ import {
 import CodeBlock from "~/components/code/CodeBlock";
 import { CheckCircleIcon } from "@heroicons/react/24/solid";
 import { WorkflowNodeArrow } from "~/components/WorkflowNodeArrow";
+import type { FC } from "react";
 
 export default function Page() {
   return (
     <>
-      <div className="flex justify-between items-center mb-4">
+      <div className="flex sticky -top-12 py-4 bg-slate-850 justify-between items-center z-10">
         <Header1 className="">Run #1</Header1>
         <div className="flex gap-2">
           <Body
@@ -58,56 +63,102 @@ export default function Page() {
         </li>
       </ul>
 
-      <Panel>
-        <div className="flex mb-4 pb-3 justify-between items-center border-b border-slate-700">
-          <ul className="flex gap-4 items-center">
-            <li className={workflowNodeFlexClasses}>
-              <Body size="extra-small" className={workflowNodeUppercaseClasses}>
-                Type:
-              </Body>
-              <Body size="small">Trigger</Body>
-            </li>
-            <li className={workflowNodeFlexClasses}>
-              <Body size="extra-small" className={workflowNodeUppercaseClasses}>
-                Step:
-              </Body>
-              <div className="flex gap-0.5 items-baseline">
-                <CheckCircleIcon className="relative top-[3px] h-4 w-4 text-green-500" />
-                <Body size="small">Complete</Body>
-              </div>
-            </li>
-            <li className={workflowNodeFlexClasses}>
-              <Body size="extra-small" className={workflowNodeUppercaseClasses}>
-                Org:
-              </Body>
-              <Body size="small">apihero-run</Body>
-            </li>
-            <li className={workflowNodeFlexClasses}>
-              <Body size="extra-small" className={workflowNodeUppercaseClasses}>
-                Repo:
-              </Body>
-              <Body size="small">jsonhero-web</Body>
-            </li>
-          </ul>
-          <Select>
-            <option value="GitHub #1">GitHub #1</option>
-            <option value="GitHub #2">GitHub #2</option>
-            <option value="GitHub #3">GitHub #3</option>
-          </Select>
-        </div>
-        <Header3 size="large" className="mb-4">
-          GitHub new issue (Webhook)
-        </Header3>
-        <CodeBlock code={workflowNode1code} />
-      </Panel>
+      <WorkflowStep status={"complete"} />
       <WorkflowNodeArrow />
+      <WorkflowStep status={"error"} />
+      <WorkflowNodeArrow />
+      <WorkflowStep status={"inProgress"} />
+      <WorkflowNodeArrow />
+      <WorkflowStep status={"notStarted"} />
     </>
   );
 }
 
-const workflowNodeFlexClasses = "flex gap-1 items-baseline";
-const workflowNodeUppercaseClasses = "uppercase text-slate-400";
-const workflowNode1code = `{ 
+type WorkflowStepProps = {
+  status: "error" | "inProgress" | "complete" | "notStarted";
+};
+
+const WorkflowStep: FC<WorkflowStepProps> = (props) => {
+  const workflowNodeFlexClasses = "flex gap-1 items-baseline";
+  const workflowNodeUppercaseClasses = "uppercase text-slate-400";
+  const workflowNode1code = `{ 
   "assignee": "samejr",
   "issueId: "uiydfgydfg7yt34"
 }`;
+
+  let icon;
+  let statusText;
+  let borderColor;
+
+  switch (props.status) {
+    case "error":
+      icon = (
+        <XCircleIcon className="relative top-[3px] h-4 w-4 text-red-500" />
+      );
+      statusText = "Error";
+      borderColor = "border-red-700";
+      break;
+    case "inProgress":
+      icon = <Spinner className="relative top-[3px] h-4 w-4 text-blue-500" />;
+      statusText = "In progress";
+      borderColor = "border-blue-700";
+      break;
+    case "complete":
+      icon = (
+        <CheckCircleIcon className="relative top-[3px] h-4 w-4 text-green-500" />
+      );
+      statusText = "Complete";
+      borderColor = "border-slate-800";
+      break;
+    default:
+      icon = (
+        <ClockIcon className="relative top-[3px] h-4 w-4 text-slate-500" />
+      );
+      statusText = "Not started";
+      borderColor = "border-slate-800";
+  }
+  return (
+    <Panel className={`border ${borderColor}`}>
+      <div className="flex mb-4 pb-3 justify-between items-center border-b border-slate-700">
+        <ul className="flex gap-4 items-center">
+          <li className={workflowNodeFlexClasses}>
+            <Body size="extra-small" className={workflowNodeUppercaseClasses}>
+              Type:
+            </Body>
+            <Body size="small">Trigger</Body>
+          </li>
+          <li className={workflowNodeFlexClasses}>
+            <Body size="extra-small" className={workflowNodeUppercaseClasses}>
+              Step:
+            </Body>
+            <div className="flex gap-0.5 items-baseline">
+              {icon}
+              <Body size="small">{statusText}</Body>
+            </div>
+          </li>
+          <li className={workflowNodeFlexClasses}>
+            <Body size="extra-small" className={workflowNodeUppercaseClasses}>
+              Org:
+            </Body>
+            <Body size="small">apihero-run</Body>
+          </li>
+          <li className={workflowNodeFlexClasses}>
+            <Body size="extra-small" className={workflowNodeUppercaseClasses}>
+              Repo:
+            </Body>
+            <Body size="small">jsonhero-web</Body>
+          </li>
+        </ul>
+        <Select>
+          <option value="GitHub #1">GitHub #1</option>
+          <option value="GitHub #2">GitHub #2</option>
+          <option value="GitHub #3">GitHub #3</option>
+        </Select>
+      </div>
+      <Header3 size="large" className="mb-4">
+        GitHub new issue (Webhook)
+      </Header3>
+      <CodeBlock code={workflowNode1code} />
+    </Panel>
+  );
+};
