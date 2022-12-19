@@ -57,13 +57,16 @@ export function OrganizationsSideMenu() {
     },
   ];
 
-  return <SideMenu title={currentOrganization.title} items={items} />;
+  return (
+    <SideMenu title={currentOrganization.title} items={items} backPath="/" />
+  );
 }
 
 export function WorkflowsSideMenu() {
   const currentWorkflow = useCurrentWorkflow();
+  const organization = useCurrentOrganization();
 
-  if (currentWorkflow === undefined) {
+  if (currentWorkflow === undefined || organization === undefined) {
     return null;
   }
 
@@ -85,7 +88,13 @@ export function WorkflowsSideMenu() {
     },
   ];
 
-  return <SideMenu title={currentWorkflow.title} items={items} />;
+  return (
+    <SideMenu
+      title={currentWorkflow.title}
+      items={items}
+      backPath={`/orgs/${organization.slug}`}
+    />
+  );
 }
 
 const defaultStyle =
@@ -93,7 +102,15 @@ const defaultStyle =
 const activeStyle =
   "group flex items-center gap-2 px-3 py-3 text-base rounded transition bg-slate-800 text-white";
 
-function SideMenu({ title, items }: { title: string; items: SideMenuItem[] }) {
+function SideMenu({
+  title,
+  items,
+  backPath,
+}: {
+  title: string;
+  items: SideMenuItem[];
+  backPath: string;
+}) {
   const organization = useCurrentOrganization();
   invariant(organization, "Organization must be defined");
 
@@ -107,7 +124,7 @@ function SideMenu({ title, items }: { title: string; items: SideMenuItem[] }) {
           <div>
             <div className="group flex items-center my-2 text-slate-400 rounded hover:bg-slate-900 transition divide-x divide-transparent hover:divide-slate-900">
               <Link
-                to="/"
+                to={backPath}
                 className="px-2 py-3 hover:bg-slate-800 rounded-l transition"
               >
                 <ChevronLeftIcon className="h-5 w-5 text-slate-400" />
