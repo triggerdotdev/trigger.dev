@@ -1,8 +1,6 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import Prism from "prismjs";
 import "prismjs/components/prism-typescript";
-import classNames from "classnames";
-import { ClientOnly } from "remix-utils";
 
 Prism.manual = true;
 
@@ -15,23 +13,18 @@ export default function CodeBlock({
   code,
   language = "typescript",
 }: CodeBlockProps) {
-  return (
-    <ClientOnly fallback={<pre>{code}</pre>}>
-      {() => <CodeBlockWithColoring code={code} language={language} />}
-    </ClientOnly>
-  );
-}
-
-function CodeBlockWithColoring({
-  code,
-  language = "typescript",
-}: CodeBlockProps) {
+  const [codeHtml, setCodeHtml] = useState(code);
   useEffect(() => {
-    Prism.highlightAll();
-  }, []);
+    const val = Prism.highlight(code, Prism.languages[language], language);
+    setCodeHtml(val);
+  }, [code, language]);
+
   return (
-    <pre className={classNames("flex rounded-md", `language-${language}`)}>
-      <code className={`language-${language}`}>{code}</code>
+    <pre className={`flex rounded-md language-${language}`}>
+      <code
+        className={`language-${language}`}
+        dangerouslySetInnerHTML={{ __html: codeHtml }}
+      ></code>
     </pre>
   );
 }
