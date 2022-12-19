@@ -1,5 +1,6 @@
 import {
   ClockIcon,
+  DocumentTextIcon,
   PlayCircleIcon,
   XCircleIcon,
 } from "@heroicons/react/24/solid";
@@ -21,6 +22,7 @@ import CodeBlock from "~/components/code/CodeBlock";
 import { CheckCircleIcon } from "@heroicons/react/24/solid";
 import { WorkflowNodeArrow } from "~/components/WorkflowNodeArrow";
 import type { ReactNode } from "react";
+import { formatDateTime } from "~/utils";
 
 export default function Page() {
   return (
@@ -70,6 +72,7 @@ export default function Page() {
           trigger: {
             on: "webhook",
             input: {},
+            integration: "github",
           },
           startedAt: new Date(),
           completedAt: new Date(),
@@ -83,6 +86,7 @@ export default function Page() {
           trigger: {
             on: "webhook",
             input: {},
+            integration: "github",
           },
           startedAt: new Date(),
           completedAt: new Date(),
@@ -96,6 +100,7 @@ export default function Page() {
           trigger: {
             on: "webhook",
             input: {},
+            integration: "github",
           },
           startedAt: new Date(),
         }}
@@ -108,64 +113,85 @@ export default function Page() {
           trigger: {
             on: "webhook",
             input: {},
+            integration: "github",
           },
+        }}
+      />
+      <WorkflowStep
+        step={{
+          type: "trigger",
+          status: "inProgress",
+          trigger: {
+            on: "email",
+            address: "james@trigger.dev",
+          },
+          startedAt: new Date(),
         }}
       />
     </>
   );
 }
 
-function WorkflowStep({ step }: { step: Step }) {
-  const workflowNodeFlexClasses = "flex gap-1 items-baseline";
-  const workflowNodeUppercaseClasses = "uppercase text-slate-400";
-  const workflowNode1code = `{ 
+const workflowNodeFlexClasses = "flex gap-1 items-baseline";
+const workflowNodeUppercaseClasses = "uppercase text-slate-400";
+const workflowNode1code = `{ 
   "assignee": "samejr",
   "issueId": "uiydfgydfg7yt34"
 }`;
 
+function WorkflowStep({ step }: { step: Step }) {
   return (
-    <StepPanel status={step.status}>
-      <div className="flex mb-4 pb-3 justify-between items-center border-b border-slate-700">
-        <ul className="flex gap-4 items-center">
+    <div className="flex gap-2 items-center w-full">
+      <Status status={step.status} />
+      <StepPanel status={step.status}>
+        <StepHeader step={step} />
+        <Header3 size="large" className="mb-4">
+          GitHub new issue (Webhook)
+        </Header3>
+        <CodeBlock code={workflowNode1code} language="json" />
+      </StepPanel>
+    </div>
+  );
+}
+
+{
+  /* <li className={workflowNodeFlexClasses}>
+          <Body size="extra-small" className={workflowNodeUppercaseClasses}>
+            Repo:
+          </Body>
+          <Body size="small">jsonhero-web</Body>
+        </li> */
+}
+
+function StepHeader({ step }: { step: Step }) {
+  return (
+    <div className="flex mb-4 pb-3 justify-between items-center border-b border-slate-700">
+      <ul className="flex gap-4 items-center">
+        <li className={workflowNodeFlexClasses}>
+          <StepIcon step={step} />
+          <Body size="small">{stepTitle(step)}</Body>
+        </li>
+        {step.startedAt && (
           <li className={workflowNodeFlexClasses}>
             <Body size="extra-small" className={workflowNodeUppercaseClasses}>
-              Type:
+              Start:
             </Body>
-            <Body size="small">Trigger</Body>
+            <Body size="small">{formatDateTime(step.startedAt)}</Body>
           </li>
+        )}
+        {step.completedAt && (
           <li className={workflowNodeFlexClasses}>
             <Body size="extra-small" className={workflowNodeUppercaseClasses}>
-              Step:
+              Completed:
             </Body>
-            <div className="flex gap-0.5 items-baseline">
-              <Status status={step.status} />
-              <Body size="small">{step.status}</Body>
-            </div>
+            <Body size="small">{formatDateTime(step.completedAt)}</Body>
           </li>
-          <li className={workflowNodeFlexClasses}>
-            <Body size="extra-small" className={workflowNodeUppercaseClasses}>
-              Org:
-            </Body>
-            <Body size="small">apihero-run</Body>
-          </li>
-          <li className={workflowNodeFlexClasses}>
-            <Body size="extra-small" className={workflowNodeUppercaseClasses}>
-              Repo:
-            </Body>
-            <Body size="small">jsonhero-web</Body>
-          </li>
-        </ul>
-        <Select>
-          <option value="GitHub #1">GitHub #1</option>
-          <option value="GitHub #2">GitHub #2</option>
-          <option value="GitHub #3">GitHub #3</option>
-        </Select>
-      </div>
-      <Header3 size="large" className="mb-4">
-        GitHub new issue (Webhook)
-      </Header3>
-      <CodeBlock code={workflowNode1code} language="json" />
-    </StepPanel>
+        )}
+      </ul>
+      {step.type === "trigger" && step.trigger.on === "webhook" ? (
+        <div>{step.trigger.integration}</div>
+      ) : null}
+    </div>
   );
 }
 
@@ -208,6 +234,58 @@ function StepPanel({
   return <Panel className={`border ${borderClass}`}>{children}</Panel>;
 }
 
+function stepTitle(step: Step): string {
+  switch (step.type) {
+    case "log":
+      return "Log";
+    case "delay":
+      return "Delay";
+    case "request":
+      return "Request";
+    case "trigger":
+      switch (step.trigger.on) {
+        case "webhook":
+          return "Webhook";
+        case "scheduled":
+          return "Scheduled";
+        case "custom":
+          return "Custom";
+        case "http":
+          return "HTTP";
+        case "aws":
+          return "AWS";
+        case "email":
+          return "Email";
+      }
+  }
+}
+
+function StepIcon({ step }: { step: Step }) {
+  switch (step.type) {
+    case "log":
+      return <DocumentTextIcon className="h-4 w-4 text-slate-500" />;
+    case "delay":
+      return <ClockIcon className="h-4 w-4 text-slate-500" />;
+    case "request":
+      return <DocumentTextIcon className="h-4 w-4 text-slate-500" />;
+    case "trigger":
+      switch (step.trigger.on) {
+        case "webhook":
+          return <DocumentTextIcon className="h-4 w-4 text-slate-500" />;
+        case "scheduled":
+          return <DocumentTextIcon className="h-4 w-4 text-slate-500" />;
+        case "custom":
+          return <DocumentTextIcon className="h-4 w-4 text-slate-500" />;
+        case "http":
+          return <DocumentTextIcon className="h-4 w-4 text-slate-500" />;
+        case "aws":
+          return <DocumentTextIcon className="h-4 w-4 text-slate-500" />;
+        case "email":
+          return <DocumentTextIcon className="h-4 w-4 text-slate-500" />;
+      }
+  }
+}
+
 type Step = LogStep | DelayStep | RequestStep | TriggerStep;
 
 type TriggerStep = CommonStepData & {
@@ -238,6 +316,7 @@ type RequestStep = CommonStepData & {
 
 type WebhookTrigger = {
   on: "webhook";
+  integration: string;
   input: any;
 };
 
