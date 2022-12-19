@@ -1,2 +1,2 @@
-export * from "./workflow";
-export * from "./triggers";
+export * from "./trigger";
+export * from "./events";

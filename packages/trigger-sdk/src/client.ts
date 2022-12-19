@@ -9,22 +9,30 @@ import {
   Logger,
 } from "internal-bridge";
 import * as pkg from "../package.json";
-import { Workflow, WorkflowOptions } from "./workflow";
+import { Trigger, TriggerOptions } from "./trigger";
 
-export class TriggerClient {
-  #workflow: Workflow;
+export class TriggerClient<TEventData = void> {
+  #trigger: Trigger<TEventData>;
+  #options: TriggerOptions<TEventData>;
+
   #connection?: HostConnection;
   #serverRPC?: ZodRPC<typeof ServerRPCSchema, typeof HostRPCSchema>;
+
   #apiKey: string;
   #endpoint: string;
+
   #isConnected = false;
   #retryIntervalMs: number = 3000;
   #logger: Logger;
 
-  constructor(workflow: Workflow, options: WorkflowOptions) {
-    this.#workflow = workflow;
+  constructor(
+    trigger: Trigger<TEventData>,
+    options: TriggerOptions<TEventData>
+  ) {
+    this.#trigger = trigger;
+    this.#options = options;
 
-    const apiKey = options.apiKey ?? process.env.TRIGGER_API_KEY;
+    const apiKey = this.#options.apiKey ?? process.env.TRIGGER_API_KEY;
 
     if (!apiKey) {
       throw new Error(
@@ -33,8 +41,8 @@ export class TriggerClient {
     }
 
     this.#apiKey = apiKey;
-    this.#endpoint = options.endpoint ?? "ws://trigger.dev/ws";
-    this.#logger = new Logger("trigger.dev", options.logLevel ?? "info");
+    this.#endpoint = this.#options.endpoint ?? "ws://trigger.dev/ws";
+    this.#logger = new Logger("trigger.dev", this.#options.logLevel ?? "info");
   }
 
   async listen(instanceId?: string) {
@@ -91,7 +99,7 @@ export class TriggerClient {
           console.log("TRIGGER_WORKFLOW", data);
 
           // TODO: handle this better
-          this.#workflow.options.run(data.trigger.input);
+          this.#trigger.options.run(data.trigger.input as TEventData);
         },
       },
     });
@@ -110,9 +118,9 @@ export class TriggerClient {
 
     const response = await this.#send("INITIALIZE_HOST", {
       apiKey: this.#apiKey,
-      workflowId: this.#workflow.id,
-      workflowName: this.#workflow.name,
-      trigger: this.#workflow.trigger,
+      workflowId: this.#trigger.id,
+      workflowName: this.#trigger.name,
+      trigger: this.#trigger.on,
       packageVersion: pkg.version,
       packageName: pkg.name,
     });

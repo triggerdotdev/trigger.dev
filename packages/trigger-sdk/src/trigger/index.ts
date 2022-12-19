@@ -1,22 +1,22 @@
 import { TriggerClient } from "../client";
 import { LogLevel } from "internal-bridge";
-import { Trigger } from "../triggers";
+import { TriggerEvent } from "../events";
 
-export type WorkflowOptions<TEventData = any> = {
+export type TriggerOptions<TEventData = void> = {
   id: string;
   name: string;
+  on: TriggerEvent<TEventData>;
   apiKey?: string;
   endpoint?: string;
   logLevel?: LogLevel;
-  trigger: Trigger<TEventData>;
   run: (event: TEventData) => Promise<void>;
 };
 
-export class Workflow<TEventData = any> {
-  options: WorkflowOptions<TEventData>;
-  #client: TriggerClient | undefined;
+export class Trigger<TEventData = void> {
+  options: TriggerOptions<TEventData>;
+  #client: TriggerClient<TEventData> | undefined;
 
-  constructor(options: WorkflowOptions<TEventData>) {
+  constructor(options: TriggerOptions<TEventData>) {
     this.options = options;
   }
 
@@ -40,7 +40,7 @@ export class Workflow<TEventData = any> {
     return this.options.endpoint;
   }
 
-  get trigger() {
-    return this.options.trigger;
+  get on() {
+    return this.options.on;
   }
 }
