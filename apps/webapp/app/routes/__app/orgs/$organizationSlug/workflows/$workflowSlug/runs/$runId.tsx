@@ -30,7 +30,7 @@ export default function Page() {
         <div className="flex gap-2">
           <Body
             size="extra-small"
-            className="flex items-center pl-2 pr-3 py-0.5 rounded uppercase tracking-wide border border-slate-700 text-slate-500"
+            className="flex items-center pl-2 pr-3 py-0.5 rounded uppercase tracking-wide text-slate-500"
           >
             <BeakerIcon className="h-4 w-4 mr-1" />
             Test Run
@@ -83,7 +83,7 @@ const WorkflowStep: FC<WorkflowStepProps> = (props) => {
   const workflowNodeUppercaseClasses = "uppercase text-slate-400";
   const workflowNode1code = `{ 
   "assignee": "samejr",
-  "issueId: "uiydfgydfg7yt34"
+  "issueId": "uiydfgydfg7yt34"
 }`;
 
   let icon;
@@ -158,7 +158,7 @@ const WorkflowStep: FC<WorkflowStepProps> = (props) => {
       <Header3 size="large" className="mb-4">
         GitHub new issue (Webhook)
       </Header3>
-      <CodeBlock code={workflowNode1code} />
+      <CodeBlock code={workflowNode1code} language="json" />
     </Panel>
   );
 };
