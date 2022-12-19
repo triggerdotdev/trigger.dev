@@ -77,7 +77,7 @@ function WorkflowList({
                             className="mr-1.5 h-5 w-5 flex-shrink-0 text-slate-400"
                             aria-hidden="true"
                           />
-                          <p className="mr-1">ID: {workflow.id}</p>
+                          <p className="mr-1">ID: {workflow.slug}</p>
                         </div>
                         <div className="flex items-center text-sm">
                           <CalendarIcon
