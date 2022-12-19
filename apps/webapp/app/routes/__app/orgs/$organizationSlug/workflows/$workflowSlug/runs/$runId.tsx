@@ -71,7 +71,10 @@ export default function Page() {
           status: "complete",
           trigger: {
             on: "webhook",
-            input: {},
+            input: {
+              assignee: "samejr",
+              issueId: "uiydfgydfg7yt34",
+            },
             integration: "github",
           },
           startedAt: new Date(),
@@ -128,6 +131,15 @@ export default function Page() {
           startedAt: new Date(),
         }}
       />
+      <WorkflowStep
+        step={{
+          type: "log",
+          status: "complete",
+          message: "Hello world",
+          startedAt: new Date(),
+          completedAt: new Date(),
+        }}
+      />
     </>
   );
 }
@@ -145,22 +157,59 @@ function WorkflowStep({ step }: { step: Step }) {
       <Status status={step.status} />
       <StepPanel status={step.status}>
         <StepHeader step={step} />
-        <Header3 size="large" className="mb-4">
-          GitHub new issue (Webhook)
-        </Header3>
-        <CodeBlock code={workflowNode1code} language="json" />
+        <StepBody step={step} />
       </StepPanel>
     </div>
   );
 }
 
-{
-  /* <li className={workflowNodeFlexClasses}>
-          <Body size="extra-small" className={workflowNodeUppercaseClasses}>
-            Repo:
-          </Body>
-          <Body size="small">jsonhero-web</Body>
-        </li> */
+function StepBody({ step }: { step: Step }) {
+  switch (step.type) {
+    case "trigger":
+      switch (step.trigger.on) {
+        case "webhook":
+          return <Webhook webhook={step.trigger} />;
+        case "email":
+          // return <Email email={step.trigger.on} />;
+          break;
+        default:
+          break;
+      }
+      break;
+    case "log":
+      return <Log log={step.message} />;
+    case "delay":
+    // return <Delay step={step} />;
+  }
+
+  return <></>;
+}
+
+function Webhook({ webhook }: { webhook: WebhookTrigger }) {
+  return (
+    <>
+      <Header3 size="large" className="mb-4">
+        GitHub new issue (Webhook)
+      </Header3>
+      <Body size="extra-small" className={workflowNodeUppercaseClasses}>
+        Repo:
+      </Body>
+      <Body size="small">jsonhero-web</Body>
+      <Body size="extra-small" className={workflowNodeUppercaseClasses}>
+        Org:
+      </Body>
+      <Body size="small">jsonhero-web</Body>
+      <CodeBlock code={JSON.stringify(webhook.input)} language="json" />
+    </>
+  );
+}
+
+function Log({ log }: { log: string }) {
+  return (
+    <Header3 size="large" className="mb-4">
+      {log}
+    </Header3>
+  );
 }
 
 function StepHeader({ step }: { step: Step }) {
@@ -261,27 +310,28 @@ function stepTitle(step: Step): string {
 }
 
 function StepIcon({ step }: { step: Step }) {
+  const styleClass = "h-4 w-4 text-slate-500";
   switch (step.type) {
     case "log":
-      return <DocumentTextIcon className="h-4 w-4 text-slate-500" />;
+      return <DocumentTextIcon className={styleClass} />;
     case "delay":
-      return <ClockIcon className="h-4 w-4 text-slate-500" />;
+      return <ClockIcon className={styleClass} />;
     case "request":
-      return <DocumentTextIcon className="h-4 w-4 text-slate-500" />;
+      return <DocumentTextIcon className={styleClass} />;
     case "trigger":
       switch (step.trigger.on) {
         case "webhook":
-          return <DocumentTextIcon className="h-4 w-4 text-slate-500" />;
+          return <DocumentTextIcon className={styleClass} />;
         case "scheduled":
-          return <DocumentTextIcon className="h-4 w-4 text-slate-500" />;
+          return <DocumentTextIcon className={styleClass} />;
         case "custom":
-          return <DocumentTextIcon className="h-4 w-4 text-slate-500" />;
+          return <DocumentTextIcon className={styleClass} />;
         case "http":
-          return <DocumentTextIcon className="h-4 w-4 text-slate-500" />;
+          return <DocumentTextIcon className={styleClass} />;
         case "aws":
-          return <DocumentTextIcon className="h-4 w-4 text-slate-500" />;
+          return <DocumentTextIcon className={styleClass} />;
         case "email":
-          return <DocumentTextIcon className="h-4 w-4 text-slate-500" />;
+          return <DocumentTextIcon className={styleClass} />;
       }
   }
 }
