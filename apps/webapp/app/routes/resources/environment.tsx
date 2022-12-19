@@ -13,6 +13,7 @@ import {
 } from "~/hooks/useEnvironments";
 import { commitSession, getSession } from "~/models/runtimeEnvironment.server";
 import { requireUserId } from "~/services/session.server";
+import { titleCase } from "~/utils";
 import { BreadcrumbDivider } from "../../components/layout/Header";
 
 const requestSchema = z.object({
@@ -82,7 +83,7 @@ export function EnvironmentMenu() {
                 <EnvironmentIcon slug={currentEnvironment.slug} />
                 <span className="transition">
                   {currentEnvironment ? (
-                    <span>{currentEnvironment.slug}</span>
+                    <span>{titleCase(currentEnvironment.slug)}</span>
                   ) : (
                     <span className="">Select environment</span>
                   )}
@@ -122,7 +123,7 @@ export function EnvironmentMenu() {
                             <div className="flex items-center gap-2">
                               <EnvironmentIcon slug={environment.slug} />
                               <span className="block truncate">
-                                {environment.slug}
+                                {titleCase(environment.slug)}
                               </span>
                             </div>
                             {environment.slug === currentEnvironment?.slug && (

@@ -96,3 +96,10 @@ export function formatDateTime(date: Date): string {
 export type PrismaReturnType<T extends (...args: any) => any> = Awaited<
   ReturnType<T>
 >;
+
+export function titleCase(original: string): string {
+  return original
+    .split(" ")
+    .map((word) => word[0].toUpperCase() + word.slice(1))
+    .join(" ");
+}
