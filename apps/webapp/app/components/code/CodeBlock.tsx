@@ -1,12 +1,13 @@
 import { useEffect, useState } from "react";
 import Prism from "prismjs";
 import "prismjs/components/prism-typescript";
+import "prismjs/components/prism-json";
 
 Prism.manual = true;
 
 type CodeBlockProps = {
   code: string;
-  language?: string;
+  language?: "typescript" | "json";
 };
 
 export default function CodeBlock({
