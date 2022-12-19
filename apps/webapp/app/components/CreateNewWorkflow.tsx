@@ -1,14 +1,9 @@
-import Prism from "prismjs";
 import "prismjs/components/prism-typescript";
-import { useEffect } from "react";
 import CodeBlock from "./code/CodeBlock";
 import { Body } from "./primitives/text/Body";
 import { Header1, Header2 } from "./primitives/text/Headers";
 
 export default function CreateNewWorkflow() {
-  useEffect(() => {
-    Prism.highlightAll();
-  }, []);
   return (
     <>
       <Header1 className="mb-6">Create a Workflow</Header1>

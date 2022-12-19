@@ -17,6 +17,7 @@ import {
 import { requireUserId } from "~/services/session.server";
 import logoGithub from "~/assets/images/integrations/logo-github.png";
 import { ArrowsRightLeftIcon } from "@heroicons/react/24/outline";
+import { List } from "~/components/layout/List";
 
 export const loader = async ({ request, params }: LoaderArgs) => {
   await requireUserId(request);
@@ -47,35 +48,33 @@ export default function Integrations() {
               {connections.length} connected integration
               {connections.length > 1 ? "s" : ""}
             </Header2>
-            <div className="overflow-hidden bg-slate-800 shadow-md sm:rounded-md mb-10">
-              <ul className="divide-y divide-slate-850">
-                {connections.map((connection) => (
-                  <li key={connection.id}>
-                    <div className="flex gap-4 items-center px-4 py-4">
-                      <img
-                        className="h-14 w-14 shadow-md"
-                        src={logoGithub}
-                        alt="Github integration logo"
-                      />
-                      <div className="flex flex-col gap-2">
-                        <Header3 size="small" className="truncate font-medium">
-                          {connection.title}
-                        </Header3>
-                        <div className="flex items-center gap-1">
-                          <ArrowsRightLeftIcon
-                            className="h-5 w-5 flex-shrink-0 text-slate-400"
-                            aria-hidden="true"
-                          />
-                          <Body size="small" className="text-slate-400">
-                            Active in 100,000 workflows
-                          </Body>
-                        </div>
+            <List>
+              {connections.map((connection) => (
+                <li key={connection.id}>
+                  <div className="flex gap-4 items-center px-4 py-4">
+                    <img
+                      className="h-14 w-14 shadow-md"
+                      src={logoGithub}
+                      alt="Github integration logo"
+                    />
+                    <div className="flex flex-col gap-2">
+                      <Header3 size="small" className="truncate font-medium">
+                        {connection.title}
+                      </Header3>
+                      <div className="flex items-center gap-1">
+                        <ArrowsRightLeftIcon
+                          className="h-5 w-5 flex-shrink-0 text-slate-400"
+                          aria-hidden="true"
+                        />
+                        <Body size="small" className="text-slate-400">
+                          Active in 100,000 workflows
+                        </Body>
                       </div>
                     </div>
-                  </li>
-                ))}
-              </ul>
-            </div>
+                  </div>
+                </li>
+              ))}
+            </List>
           </>
         )}
       </div>

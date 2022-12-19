@@ -6,7 +6,7 @@ type SelectProps = React.DetailedHTMLProps<
 >;
 
 const defaultClasses =
-  "mt-1 block w-full rounded-md border-gray-300 py-1 pl-2 pr-10 text-base focus:border-indigo-500 focus:outline-none focus:ring-indigo-500 sm:text-sm";
+  "block rounded bg-slate-700 text-slate-200 shadow-md border-none py-2 pl-4 pr-9 text-sm hover:cursor-pointer hover:bg-slate-700/50 focus:border-none focus:outline-none focus:ring-0 transition";
 
 export function Select({ children, className, ...props }: SelectProps) {
   return (
