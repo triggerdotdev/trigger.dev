@@ -7,18 +7,18 @@ import { CheckIcon, PlusIcon } from "@heroicons/react/24/solid";
 import { Link } from "@remix-run/react";
 import classNames from "classnames";
 import { Fragment } from "react";
-import { useCurrentOrganizationSlug } from "~/hooks/useOrganizations";
+import { useCurrentOrganization } from "~/hooks/useOrganizations";
 import { useCurrentWorkflow, useWorkflows } from "~/hooks/useWorkflows";
 import { BreadcrumbDivider } from "../layout/Header";
 
 export function WorkflowMenu() {
   const workflows = useWorkflows();
   const currentWorkflow = useCurrentWorkflow();
-  const currentOrganizationSlug = useCurrentOrganizationSlug();
+  const currentOrganization = useCurrentOrganization();
 
   if (
     workflows === undefined ||
-    currentOrganizationSlug === undefined ||
+    currentOrganization === undefined ||
     workflows.length === 0
   ) {
     return <></>;
@@ -70,7 +70,7 @@ export function WorkflowMenu() {
                           <Popover.Button
                             key={workflow.id}
                             as={Link}
-                            to={`/orgs/${currentOrganizationSlug}/workflows/${workflow.slug}`}
+                            to={`/orgs/${currentOrganization.slug}/workflows/${workflow.slug}`}
                             className={classNames(
                               "flex items-center justify-between gap-1.5 mx-1 px-3 py-2 text-white rounded hover:bg-slate-800 transition",
                               workflow.slug === currentWorkflow?.slug &&
@@ -94,7 +94,7 @@ export function WorkflowMenu() {
                       })}
                       <Popover.Button
                         as={Link}
-                        to={`/orgs/${currentOrganizationSlug}/workflows/new`}
+                        to={`/orgs/${currentOrganization.slug}/workflows/new`}
                       >
                         <div className="flex items-center gap-2 mx-1 pl-2.5 py-2 rounded hover:bg-slate-800 transition">
                           <PlusIcon

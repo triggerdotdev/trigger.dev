@@ -1,4 +1,4 @@
-import { BookmarkIcon, BriefcaseIcon } from "@heroicons/react/24/outline";
+import { BookmarkIcon } from "@heroicons/react/24/outline";
 import type { ActionFunction } from "@remix-run/node";
 import { json, redirect } from "@remix-run/node";
 import { Form, useActionData } from "@remix-run/react";
@@ -29,7 +29,6 @@ export const action: ActionFunction = async ({ request }) => {
 
   try {
     const organization = await createOrganization({ title, userId });
-
     return redirect(`/orgs/${organization.slug}`);
   } catch (error: any) {
     return json<ActionData>(

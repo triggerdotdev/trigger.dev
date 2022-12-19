@@ -16,9 +16,8 @@ import {
 import { useCurrentWorkflow } from "~/hooks/useWorkflows";
 import { Body } from "../primitives/text/Body";
 import { Header1 } from "../primitives/text/Headers";
-import { useTypedLoaderData } from "remix-typedjson";
-import type { loader } from "~/routes/__app/orgs/$organizationSlug";
 import { CopyTextButton } from "../CopyTextButton";
+import invariant from "tiny-invariant";
 
 export function SideMenuContainer({ children }: { children: React.ReactNode }) {
   return <div className="grid grid-cols-[300px_2fr] h-full">{children}</div>;
@@ -95,7 +94,8 @@ const activeStyle =
   "group flex items-center gap-2 px-3 py-3 text-base rounded transition bg-slate-800 text-white";
 
 function SideMenu({ title, items }: { title: string; items: SideMenuItem[] }) {
-  // const { organization } = useTypedLoaderData<typeof loader>();
+  const organization = useCurrentOrganization();
+  invariant(organization, "Organization must be defined");
 
   return (
     <div className="flex min-h-0 flex-1 flex-col bg-slate-950 border-r border-slate-800">
@@ -142,28 +142,20 @@ function SideMenu({ title, items }: { title: string; items: SideMenuItem[] }) {
                   API Keys
                 </Body>
               </li>
-              {/* {organization.environments.map((environment) => {
-              return (
-                <li key={environment.id} className="flex justify-between w-full">
-                <Body size="small" className="text-slate-400">
-                  {environment.slug}: <span className="select-all">{environment.apiKey}</span>
-                </Body>
-                <CopyTextButton variant="text" value={environment.apiKey} />
-              </li>
-              );
-            })} */}
-              <li className="flex justify-between w-full">
-                <Body size="small" className="text-slate-400">
-                  Dev: <span className="select-all">Jgfisd9Kd*&jdfks</span>
-                </Body>
-                <CopyTextButton variant="text" value={"sdfgsdfg"} />
-              </li>
-              <li className="flex justify-between w-full">
-                <Body size="small" className="text-slate-400">
-                  Prod: <span className="select-all">Jgfisd9Kd*&jdfks</span>
-                </Body>
-                <CopyTextButton variant="text" value={"sdfgsdfg"} />
-              </li>
+              {organization.environments.map((environment) => {
+                return (
+                  <li
+                    key={environment.id}
+                    className="flex justify-between w-full"
+                  >
+                    <Body size="small" className="text-slate-400">
+                      {environment.slug}:{" "}
+                      <span className="select-all">{environment.apiKey}</span>
+                    </Body>
+                    <CopyTextButton variant="text" value={environment.apiKey} />
+                  </li>
+                );
+              })}
             </ul>
             <ul className="flex flex-col gap-2 ml-3">
               <li>

@@ -1,4 +1,8 @@
-import type { Organization } from "~/models/organization.server";
+import type {
+  getOrganizationFromSlug,
+  Organization,
+} from "~/models/organization.server";
+import type { PrismaReturnType } from "~/utils";
 import { hydrateObject, useMatchesData } from "~/utils";
 
 export function useOrganizations(): Organization[] | undefined {
@@ -10,19 +14,23 @@ export function useOrganizations(): Organization[] | undefined {
   return hydrateObject<Organization[]>(routeMatch.data.organizations);
 }
 
-export function useCurrentOrganizationSlug(): string | undefined {
+export function useCurrentOrganization() {
   const routeMatch = useMatchesData("routes/__app/orgs/$organizationSlug");
-  return routeMatch?.params?.organizationSlug;
-}
 
-export function useCurrentOrganization(): Organization | undefined {
-  const organizations = useOrganizations();
-  const currentOrganizationSlug = useCurrentOrganizationSlug();
+  if (!routeMatch || !routeMatch.data.organization) {
+    return undefined;
+  }
 
-  const currentOrganization = organizations?.find(
-    (org) => org.slug === currentOrganizationSlug
-  );
-  return currentOrganization;
+  if (routeMatch.data.organization == null) {
+    return undefined;
+  }
+
+  const result = hydrateObject<
+    PrismaReturnType<typeof getOrganizationFromSlug>
+  >(routeMatch.data.organization);
+
+  if (result == null) return undefined;
+  return result;
 }
 
 export function useIsNewOrganizationPage(): boolean {

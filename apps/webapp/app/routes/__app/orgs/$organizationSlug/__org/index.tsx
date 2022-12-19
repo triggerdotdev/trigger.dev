@@ -11,18 +11,18 @@ import {
   Header2,
   Header3,
 } from "~/components/primitives/text/Headers";
-import { useCurrentOrganizationSlug } from "~/hooks/useOrganizations";
 import { useWorkflows } from "~/hooks/useWorkflows";
 import type { Workflow } from "~/models/workflow.server";
 import logoGithub from "~/assets/images/integrations/logo-github.png";
 import logoTrello from "~/assets/images/integrations/logo-trello.png";
 import logoAirtable from "~/assets/images/integrations/logo-airtable.png";
 import { formatDateTime } from "~/utils";
+import { useCurrentOrganization } from "~/hooks/useOrganizations";
 
 export default function Page() {
   const workflows = useWorkflows();
-  const currentOrganizationSlug = useCurrentOrganizationSlug();
-  if (workflows === undefined || currentOrganizationSlug === undefined) {
+  const currentOrganization = useCurrentOrganization();
+  if (workflows === undefined || currentOrganization === undefined) {
     return <></>;
   }
 
@@ -38,7 +38,7 @@ export default function Page() {
           </Header2>
           <WorkflowList
             workflows={workflows}
-            currentOrganizationSlug={currentOrganizationSlug}
+            currentOrganizationSlug={currentOrganization.slug}
           />
         </>
       )}

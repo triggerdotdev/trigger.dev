@@ -57,7 +57,7 @@ export function hydrateObject<T>(object: any): T {
 }
 
 export function hydrateDates(object: any): any {
-  if (object === null) {
+  if (object === null || object === undefined) {
     return object;
   }
 
@@ -92,3 +92,7 @@ const dateFormatter = new Intl.DateTimeFormat("en-US", {
 export function formatDateTime(date: Date): string {
   return dateFormatter.format(date);
 }
+
+export type PrismaReturnType<T extends (...args: any) => any> = Awaited<
+  ReturnType<T>
+>;
