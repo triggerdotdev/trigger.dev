@@ -33,5 +33,5 @@ export const { commitSession, getSession } = createCookieSessionStorage({
 export async function getRuntimeEnvironmentFromSession(
   session: Session
 ): Promise<string> {
-  return session.get("environment") ?? "dev";
+  return session.get("environment") ?? "development";
 }

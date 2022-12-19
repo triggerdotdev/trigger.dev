@@ -145,7 +145,7 @@ export function EnvironmentMenu() {
 
 function EnvironmentIcon({ slug }: { slug: string }) {
   let color = "bg-emerald-500";
-  if (slug === "prod") {
+  if (slug === "live") {
     color = "bg-orange-500";
   }
   return (
