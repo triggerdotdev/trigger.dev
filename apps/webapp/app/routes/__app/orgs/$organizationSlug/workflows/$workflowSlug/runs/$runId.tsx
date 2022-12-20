@@ -148,9 +148,10 @@ export default function Page() {
       />
       <WorkflowStep
         step={{
-          type: "event",
-          status: "inProgress",
+          type: "fireEvent",
+          status: "complete",
           startedAt: new Date(),
+          completedAt: new Date(),
           name: "my-event",
           payload: { id: 1, name: "James" },
         }}
@@ -172,6 +173,8 @@ export default function Page() {
   );
 }
 
+// Workflow nodes
+
 const workflowNodeFlexClasses = "flex gap-1 items-baseline";
 const workflowNodeUppercaseClasses = "uppercase text-slate-400";
 const workflowNodeDelayClasses = "flex rounded-md bg-[#0F172A] p-3";
@@ -191,6 +194,26 @@ function WorkflowStep({ step }: { step: Step }) {
       </StepPanel>
     </div>
   );
+}
+
+function StepPanel({
+  status,
+  children,
+}: {
+  status: WorkflowStepStatus;
+  children: ReactNode;
+}) {
+  let borderClass = "border-slate-800";
+  switch (status) {
+    case "error":
+      borderClass = "border-red-700";
+      break;
+    case "inProgress":
+      borderClass = "border-blue-700";
+      break;
+  }
+
+  return <Panel className={`border ${borderClass} my-4`}>{children}</Panel>;
 }
 
 function StepHeader({ step }: { step: Step }) {
@@ -235,8 +258,8 @@ function StepBody({ step }: { step: Step }) {
         case "webhook":
           return <Webhook webhook={step.trigger} />;
         case "email":
-          // return <Email email={step.trigger.on} />;
-          break;
+          return <Email email={step.trigger.on} />;
+
         default:
           break;
       }
@@ -245,9 +268,13 @@ function StepBody({ step }: { step: Step }) {
       return <Log log={step.message} />;
     case "delay":
       return <Delay step={step} />;
+    case "fireEvent":
+      return <Event event={step} />;
   }
   return <></>;
 }
+
+// Trigger types
 
 function Webhook({ webhook }: { webhook: WebhookTrigger }) {
   return (
@@ -307,6 +334,21 @@ function Delay({ step }: { step: DelayStep }) {
   );
 }
 
+function Event({ event }: { event: EventStep }) {
+  return (
+    <>
+      <Header2 size="large" className="mb-4">
+        {event.name}
+      </Header2>
+      <CodeBlock code={JSON.stringify(event.payload)} />
+    </>
+  );
+}
+
+function Email({ email }: { email: string }) {
+  return <CodeBlock code={email} />;
+}
+
 function Log({ log }: { log: string }) {
   return <CodeBlock code={log} />;
 }
@@ -342,26 +384,6 @@ function Status({ status }: { status: WorkflowStepStatus }) {
   }
 }
 
-function StepPanel({
-  status,
-  children,
-}: {
-  status: WorkflowStepStatus;
-  children: ReactNode;
-}) {
-  let borderClass = "border-slate-800";
-  switch (status) {
-    case "error":
-      borderClass = "border-red-700";
-      break;
-    case "inProgress":
-      borderClass = "border-blue-700";
-      break;
-  }
-
-  return <Panel className={`border ${borderClass} my-4`}>{children}</Panel>;
-}
-
 function stepTitle(step: Step): string {
   switch (step.type) {
     case "log":
@@ -370,17 +392,17 @@ function stepTitle(step: Step): string {
       return "Delay";
     case "request":
       return "Request";
-    case "event":
+    case "fireEvent":
       return "Event";
     case "trigger":
       switch (step.trigger.on) {
         case "webhook":
           return "Webhook";
-        case "scheduled":
+        case "schedule":
           return "Scheduled";
-        case "custom":
+        case "customEvent":
           return "Custom";
-        case "http":
+        case "httpEndpoint":
           return "HTTP";
         case "aws":
           return "AWS";
@@ -399,17 +421,17 @@ function StepIcon({ step }: { step: Step }) {
       return <CalendarDaysIcon className={styleClass} />;
     case "request":
       return <DocumentTextIcon className={styleClass} />;
-    case "event":
+    case "fireEvent":
       return <DocumentTextIcon className={styleClass} />;
     case "trigger":
       switch (step.trigger.on) {
         case "webhook":
           return <DocumentTextIcon className={styleClass} />;
-        case "scheduled":
+        case "schedule":
           return <DocumentTextIcon className={styleClass} />;
-        case "custom":
+        case "customEvent":
           return <DocumentTextIcon className={styleClass} />;
-        case "http":
+        case "httpEndpoint":
           return <DocumentTextIcon className={styleClass} />;
         case "aws":
           return <DocumentTextIcon className={styleClass} />;
@@ -448,7 +470,7 @@ type RequestStep = CommonStepData & {
 };
 
 type EventStep = CommonStepData & {
-  type: "event";
+  type: "fireEvent";
   name: string;
   payload: any;
 };
@@ -460,18 +482,18 @@ type WebhookTrigger = {
 };
 
 type ScheduledTrigger = {
-  on: "scheduled";
+  on: "schedule";
   input: any;
 };
 
 type CustomTrigger = {
-  on: "custom";
+  on: "customEvent";
   name: string;
   input: any;
 };
 
 type HttpTrigger = {
-  on: "http";
+  on: "httpEndpoint";
   method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
   path: string;
 };
