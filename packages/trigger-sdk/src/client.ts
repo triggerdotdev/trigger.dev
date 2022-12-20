@@ -10,6 +10,8 @@ import {
 } from "internal-bridge";
 import * as pkg from "../package.json";
 import { Trigger, TriggerOptions } from "./trigger";
+import { TriggerContext } from "./types";
+import { ContextLogger } from "./logger";
 
 export class TriggerClient<TEventData = void> {
   #trigger: Trigger<TEventData>;
@@ -95,9 +97,22 @@ export class TriggerClient<TEventData = void> {
         TRIGGER_WORKFLOW: async (data) => {
           console.log("TRIGGER_WORKFLOW", data);
 
+          const ctx: TriggerContext = {
+            id: data.id,
+            environment: data.meta.environment,
+            apiKey: data.meta.apiKey,
+            organizationId: data.meta.organizationId,
+            logger: new ContextLogger(async (level, message, properties) => {
+              await serverRPC.send("SEND_LOG", {
+                id: data.id,
+                log: { level, message, properties: JSON.stringify(properties ?? {}) },
+              });
+            }),
+          };
+
           // TODO: handle this better
           this.#trigger.options
-            .run(data.trigger.input as TEventData)
+            .run(data.trigger.input as TEventData, ctx)
             .then((output) => {
               return serverRPC.send("COMPLETE_WORKFLOW_RUN", {
                 id: data.id,

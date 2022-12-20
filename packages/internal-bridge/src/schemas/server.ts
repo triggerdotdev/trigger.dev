@@ -4,8 +4,11 @@ export const ServerRPCSchema = {
   SEND_LOG: {
     request: z.object({
       id: z.string(),
-      message: z.string(),
-      level: z.enum(["DEBUG", "INFO", "WARN", "ERROR"]),
+      log: z.object({
+        message: z.string(),
+        level: z.enum(["DEBUG", "INFO", "WARN", "ERROR"]),
+        properties: z.string().optional(),
+      }),
     }),
     response: z.boolean(),
   },

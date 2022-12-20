@@ -113,8 +113,9 @@ export class TriggerServer {
             {
               id: data.id,
               log: {
-                level: data.level,
-                message: data.message,
+                level: data.log.level,
+                message: data.log.message,
+                properties: safeJsonParse(data.log.properties),
               },
             },
             {
@@ -389,3 +390,15 @@ export class TriggerServer {
 
 export const sleep = (ms: number) =>
   new Promise((resolve) => setTimeout(resolve, ms));
+
+function safeJsonParse(json?: string) {
+  if (!json) {
+    return undefined;
+  }
+
+  try {
+    return JSON.parse(json);
+  } catch (error) {
+    return undefined;
+  }
+}

@@ -12,8 +12,11 @@ const trigger = new Trigger({
   endpoint: "ws://localhost:8889/ws",
   logLevel: "debug",
   on: customEvent({ name: "user.created", schema: userCreatedEvent }),
-  run: async (event) => {
-    console.log("Inside the smoke test workflow, received event", event);
+  run: async (event, ctx) => {
+    await ctx.logger.info("Inside the smoke test workflow, received event", {
+      event,
+      myDate: new Date(),
+    });
 
     return { foo: "bar" };
   },
