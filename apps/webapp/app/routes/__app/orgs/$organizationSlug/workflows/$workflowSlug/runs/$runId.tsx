@@ -7,8 +7,8 @@ import {
   EnvelopeIcon,
   CheckCircleIcon,
   ExclamationTriangleIcon,
+  CalendarDaysIcon,
 } from "@heroicons/react/24/solid";
-import { CalendarDaysIcon } from "@heroicons/react/24/outline";
 import { Panel } from "~/components/layout/Panel";
 import { PrimaryButton } from "~/components/primitives/Buttons";
 import { Spinner } from "~/components/primitives/Spinner";
@@ -174,6 +174,7 @@ export default function Page() {
 
 const workflowNodeFlexClasses = "flex gap-1 items-baseline";
 const workflowNodeUppercaseClasses = "uppercase text-slate-400";
+const workflowNodeDelayClasses = "flex rounded-md bg-[#0F172A] p-3";
 
 function WorkflowStep({ step }: { step: Step }) {
   return (
@@ -277,9 +278,32 @@ function Webhook({ webhook }: { webhook: WebhookTrigger }) {
 
 function Delay({ step }: { step: DelayStep }) {
   return (
-    <>
-      <Body size="small">{step.duration}</Body>
-    </>
+    <div className="grid grid-cols-3 gap-2 text-slate-300">
+      <div className="flex flex-col gap-1">
+        <Body size="extra-small" className={workflowNodeUppercaseClasses}>
+          Total delay:
+        </Body>
+        <Body className={workflowNodeDelayClasses} size="small">
+          3 days 5 hrs 30 mins 10 secs
+        </Body>
+      </div>
+      <div className="flex flex-col gap-1">
+        <Body size="extra-small" className={workflowNodeUppercaseClasses}>
+          Fires at:
+        </Body>
+        <Body className={workflowNodeDelayClasses} size="small">
+          3:45pm Dec 22 2022
+        </Body>
+      </div>
+      <div className="flex flex-col gap-1">
+        <Body size="extra-small" className={workflowNodeUppercaseClasses}>
+          Fires in:
+        </Body>
+        <Body className={workflowNodeDelayClasses} size="small">
+          2 days 16 hours 30 mins 10 secs
+        </Body>
+      </div>
+    </div>
   );
 }
 
