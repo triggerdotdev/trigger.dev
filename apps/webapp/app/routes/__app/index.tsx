@@ -55,7 +55,7 @@ function OrganizationGrid({
 }
 
 const boxClasses =
-  "flex flex-col gap-4 items-center min-h-40 rounded-lg px-20 py-20 transition";
+  "flex flex-col gap-4 items-center justify-center min-h-40 rounded-lg px-6 py-6 min-h-[15rem] transition";
 
 function OrganizationGridItem({
   organization,
