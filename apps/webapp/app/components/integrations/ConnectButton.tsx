@@ -2,13 +2,12 @@ import githubLogo from "~/assets/images/integrations/logo-github.png";
 import { useEffect } from "react";
 import Pizzly from "@nangohq/pizzly-frontend";
 import { useFetcher } from "@remix-run/react";
-import { PlusCircleIcon } from "@heroicons/react/24/solid";
 import type {
   CreateResponse,
   UpdateResponse,
 } from "~/routes/api/v1/internal/connection";
 
-type Integration = {
+export type Integration = {
   key: string;
   name: string;
   logo: string;
