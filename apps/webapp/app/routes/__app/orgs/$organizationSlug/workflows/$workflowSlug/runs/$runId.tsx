@@ -249,11 +249,7 @@ function Delay({ step }: { step: DelayStep }) {
 }
 
 function Log({ log }: { log: string }) {
-  return (
-    <Header3 size="large" className="mb-4">
-      {log}
-    </Header3>
-  );
+  return <CodeBlock code={log} />;
 }
 
 function StepError({ step }: { step: Step }) {
