@@ -6,6 +6,7 @@ import {
   BeakerIcon,
   EnvelopeIcon,
   CheckCircleIcon,
+  ExclamationTriangleIcon,
 } from "@heroicons/react/24/solid";
 import { CalendarDaysIcon } from "@heroicons/react/24/outline";
 import { Panel } from "~/components/layout/Panel";
@@ -88,6 +89,10 @@ export default function Page() {
           },
           startedAt: new Date(),
           completedAt: new Date(),
+          error: {
+            message: "Something went wrong",
+            statuscode: 500,
+          },
         }}
       />
       <WorkflowStep
@@ -133,6 +138,36 @@ export default function Page() {
           completedAt: new Date(),
         }}
       />
+      <WorkflowStep
+        step={{
+          type: "delay",
+          status: "inProgress",
+          startedAt: new Date(),
+          duration: 60 * 60 * 24 * 18,
+        }}
+      />
+      <WorkflowStep
+        step={{
+          type: "event",
+          status: "inProgress",
+          startedAt: new Date(),
+          name: "my-event",
+          payload: { id: 1, name: "James" },
+        }}
+      />
+      <WorkflowStep
+        step={{
+          type: "request",
+          status: "inProgress",
+          startedAt: new Date(),
+          integration: "github",
+        }}
+      />
+      <div>
+        <Panel>
+          <Body>Workflow complete node</Body>
+        </Panel>
+      </div>
     </>
   );
 }
@@ -151,6 +186,7 @@ function WorkflowStep({ step }: { step: Step }) {
       <StepPanel status={step.status}>
         <StepHeader step={step} />
         <StepBody step={step} />
+        {step.error && <StepError step={step} />}
       </StepPanel>
     </div>
   );
@@ -172,9 +208,8 @@ function StepBody({ step }: { step: Step }) {
     case "log":
       return <Log log={step.message} />;
     case "delay":
-    // return <Delay step={step} />;
+      return <Delay step={step} />;
   }
-
   return <></>;
 }
 
@@ -205,11 +240,37 @@ function Webhook({ webhook }: { webhook: WebhookTrigger }) {
   );
 }
 
+function Delay({ step }: { step: DelayStep }) {
+  return (
+    <>
+      <Body size="small">{step.duration}</Body>
+    </>
+  );
+}
+
 function Log({ log }: { log: string }) {
   return (
     <Header3 size="large" className="mb-4">
       {log}
     </Header3>
+  );
+}
+
+function StepError({ step }: { step: Step }) {
+  return (
+    <>
+      <div className="flex gap-2 mb-2 mt-3 ">
+        <ExclamationTriangleIcon className="h-5 w-5 text-red-600" />
+        <Body size="small" className="text-slate-300">
+          Failed with error:
+        </Body>
+      </div>
+      <CodeBlock
+        code={JSON.stringify(step.error)}
+        language="json"
+        className="border border-red-600"
+      />
+    </>
   );
 }
 
@@ -289,6 +350,8 @@ function stepTitle(step: Step): string {
       return "Delay";
     case "request":
       return "Request";
+    case "event":
+      return "Event";
     case "trigger":
       switch (step.trigger.on) {
         case "webhook":
@@ -316,6 +379,8 @@ function StepIcon({ step }: { step: Step }) {
       return <CalendarDaysIcon className={styleClass} />;
     case "request":
       return <DocumentTextIcon className={styleClass} />;
+    case "event":
+      return <DocumentTextIcon className={styleClass} />;
     case "trigger":
       switch (step.trigger.on) {
         case "webhook":
@@ -334,7 +399,7 @@ function StepIcon({ step }: { step: Step }) {
   }
 }
 
-type Step = LogStep | DelayStep | RequestStep | TriggerStep;
+type Step = LogStep | DelayStep | RequestStep | TriggerStep | EventStep;
 
 type TriggerStep = CommonStepData & {
   type: "trigger";
@@ -360,6 +425,12 @@ type DelayStep = CommonStepData & {
 type RequestStep = CommonStepData & {
   type: "request";
   integration: string;
+};
+
+type EventStep = CommonStepData & {
+  type: "event";
+  name: string;
+  payload: any;
 };
 
 type WebhookTrigger = {
@@ -399,6 +470,7 @@ type CommonStepData = {
   status: WorkflowStepStatus;
   startedAt?: Date;
   completedAt?: Date;
+  error?: any;
 };
 
 type WorkflowStepStatus = "error" | "inProgress" | "complete" | "notStarted";

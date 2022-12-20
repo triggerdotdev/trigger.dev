@@ -12,6 +12,7 @@ type CodeBlockProps = {
   language?: "typescript" | "json";
   showCopyButton?: boolean;
   align?: "top" | "center";
+  className?: string;
 };
 
 export default function CodeBlock({
@@ -19,6 +20,7 @@ export default function CodeBlock({
   language = "typescript",
   showCopyButton = true,
   align = "center",
+  className,
 }: CodeBlockProps) {
   const [codeHtml, setCodeHtml] = useState(code);
   useEffect(() => {
@@ -29,7 +31,8 @@ export default function CodeBlock({
   return (
     <div
       className={classNames(
-        "flex rounded-md bg-[#0F172A] py-0",
+        "flex rounded-md bg-[#0F172A] pl-2",
+        className,
         align === "center" ? "items-center" : "items-start"
       )}
     >
