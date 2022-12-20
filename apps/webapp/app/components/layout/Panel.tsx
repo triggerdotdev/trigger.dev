@@ -12,7 +12,7 @@ export function Panel({
 }) {
   return (
     <div
-      className={`bg-slate-800 shadow-md rounded-md pl-5 pt-3 pb-1 pr-3 ${className}`}
+      className={`bg-slate-800 w-full shadow-md rounded-md px-3 pt-3 pb-1 ${className}`}
     >
       {children}
     </div>
