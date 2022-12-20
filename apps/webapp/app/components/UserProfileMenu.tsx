@@ -1,6 +1,8 @@
 import { Menu, Transition } from "@headlessui/react";
 import classnames from "classnames";
 import type { User } from "~/models/user.server";
+import { Body } from "./primitives/text/Body";
+import { Header2, Header3, Header4 } from "./primitives/text/Headers";
 import { UserProfilePhoto } from "./UserProfilePhoto";
 
 const userNavigation = [{ name: "Logout", href: "/logout" }];
@@ -22,15 +24,18 @@ export function UserProfileMenu({ user }: { user: User }) {
         leaveFrom="transform opacity-100 scale-100"
         leaveTo="transform opacity-0 scale-95"
       >
-        <Menu.Items className="absolute right-0 mt-2 w-48 origin-top-right rounded-md bg-white pb-2 pt-1 shadow-lg ring-1 ring-black ring-opacity-5 focus:outline-none">
+        <Menu.Items className="absolute right-0 mt-2 w-48 origin-top-right rounded-md bg-slate-700 pb-2 pt-1 shadow-lg ring-1 ring-black ring-opacity-5 focus:outline-none">
           {user.name ? (
-            <h2 className="mb-2 block border-b border-slate-200 py-2 pl-5 pr-2 text-sm font-semibold text-slate-600">
+            <Body
+              size="small"
+              className="mb-2 block border-b border-slate-800 py-2 pl-5 pr-2 font-semibold"
+            >
               {user.name}
-            </h2>
+            </Body>
           ) : (
-            <h2 className="mb-2 block border-b border-slate-200 py-2 pl-5 pr-2 text-sm font-semibold text-slate-600">
+            <Header2 className="mb-2 block border-b border-slate-800 py-2 pl-5 pr-2 font-semibold">
               {user.email}
-            </h2>
+            </Header2>
           )}
 
           {userNavigation.map((item) => (
@@ -39,8 +44,8 @@ export function UserProfileMenu({ user }: { user: User }) {
                 <a
                   href={item.href}
                   className={classnames(
-                    active ? "bg-rose-100 text-rose-700" : "",
-                    "mx-2 block rounded-md p-2 pl-3 text-sm text-slate-700"
+                    active ? "bg-rose-200 text-rose-700" : "",
+                    "mx-2 block rounded-md p-2 pl-3 text-sm text-slate-300"
                   )}
                 >
                   {item.name}
