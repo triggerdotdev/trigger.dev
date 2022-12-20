@@ -13,7 +13,7 @@ export default function CreateNewWorkflow() {
         Create a workflow in your code then trigger your workflow using the test
         button to see the runs appear here.
       </Body>
-      <CodeBlock code={codeExample1} />
+      <CodeBlock code={codeExample1} align="top" />
     </>
   );
 }

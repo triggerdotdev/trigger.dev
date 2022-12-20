@@ -2,17 +2,23 @@ import { useEffect, useState } from "react";
 import Prism from "prismjs";
 import "prismjs/components/prism-typescript";
 import "prismjs/components/prism-json";
+import { CopyTextButton } from "../CopyTextButton";
+import classNames from "classnames";
 
 Prism.manual = true;
 
 type CodeBlockProps = {
   code: string;
   language?: "typescript" | "json";
+  showCopyButton?: boolean;
+  align?: "top" | "center";
 };
 
 export default function CodeBlock({
   code,
   language = "typescript",
+  showCopyButton = true,
+  align = "center",
 }: CodeBlockProps) {
   const [codeHtml, setCodeHtml] = useState(code);
   useEffect(() => {
@@ -21,11 +27,25 @@ export default function CodeBlock({
   }, [code, language]);
 
   return (
-    <pre className={`flex rounded-md language-${language}`}>
-      <code
-        className={`language-${language}`}
-        dangerouslySetInnerHTML={{ __html: codeHtml }}
-      ></code>
-    </pre>
+    <div
+      className={classNames(
+        "flex rounded-md bg-[#0F172A] py-0",
+        align === "center" ? "items-center" : "items-start"
+      )}
+    >
+      <pre className={`flex-grow language-${language}`}>
+        <code
+          className={`language-${language}`}
+          dangerouslySetInnerHTML={{ __html: codeHtml }}
+        ></code>
+      </pre>
+      {showCopyButton === true && (
+        <CopyTextButton
+          className="text-sm my-2 mx-3"
+          value={code}
+          variant="slate"
+        />
+      )}
+    </div>
   );
 }
