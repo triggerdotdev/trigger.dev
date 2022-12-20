@@ -117,17 +117,25 @@ export function ConnectionSelector({
                         </Popover.Button>
                       );
                     })}
-                    <Popover.Button
-                    // to={`/orgs/${currentOrganization.slug}/workflows/new`}
+                    <ConnectButton
+                      key={integration.key}
+                      integration={integration}
+                      organizationId={organizationId}
                     >
-                      <div className="flex items-center gap-2 mx-1 pl-2.5 py-2 rounded hover:bg-slate-800 transition">
-                        <PlusIcon
-                          className="h-5 w-5 text-green-500"
-                          aria-hidden="true"
-                        />
-                        <span className="text-white">New connection</span>
-                      </div>
-                    </Popover.Button>
+                      {(status) => (
+                        <div className="flex items-center gap-2 mx-1 pl-2.5 py-2 rounded hover:bg-slate-800 transition">
+                          <PlusIcon
+                            className="h-5 w-5 text-green-500"
+                            aria-hidden="true"
+                          />
+                          <span className="text-white">
+                            {status === "loading"
+                              ? "Connecting…"
+                              : "New connection"}
+                          </span>
+                        </div>
+                      )}
+                    </ConnectButton>
                   </div>
                 </div>
               </Popover.Panel>
