@@ -18,6 +18,7 @@ import { Body } from "../primitives/text/Body";
 import { Header1 } from "../primitives/text/Headers";
 import { CopyTextButton } from "../CopyTextButton";
 import invariant from "tiny-invariant";
+import { titleCase } from "~/utils";
 
 export function SideMenuContainer({ children }: { children: React.ReactNode }) {
   return <div className="grid grid-cols-[300px_2fr] h-full">{children}</div>;
@@ -163,13 +164,27 @@ function SideMenu({
                 return (
                   <li
                     key={environment.id}
-                    className="flex justify-between w-full"
+                    className="flex flex-col gap-1.5 justify-between w-full"
                   >
-                    <Body size="small" className="text-slate-400">
-                      {environment.slug}:{" "}
-                      <span className="select-all">{environment.apiKey}</span>
+                    <div className="flex justify-between">
+                      <Body
+                        size="small"
+                        className="text-slate-300 overflow-hidden"
+                      >
+                        {titleCase(environment.slug)}:
+                      </Body>
+                      <CopyTextButton
+                        variant="text"
+                        value={environment.apiKey}
+                      />
+                    </div>
+                    <Body
+                      size="small"
+                      className="relative select-all text-slate-400 p-1 pl-2 rounded-sm border border-slate-800"
+                    >
+                      <span className="block absolute pointer-events-none right-0 top-0 bg-gradient-to-r from-transparent to-slate-950 w-20 h-6"></span>
+                      {environment.apiKey}
                     </Body>
-                    <CopyTextButton variant="text" value={environment.apiKey} />
                   </li>
                 );
               })}
