@@ -133,7 +133,7 @@ function SideMenu({
 
               <Header1
                 size="regular"
-                className="pl-2 py-2  text-slate-400 rounded-r hover:bg-slate-800 transition whitespace-nowrap text-ellipsis overflow-hidden"
+                className="pl-2 py-2 w-full text-slate-400 rounded-r hover:bg-slate-800 transition whitespace-nowrap text-ellipsis overflow-hidden"
               >
                 <Link to="">{title}</Link>
               </Header1>
