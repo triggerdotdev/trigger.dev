@@ -2,7 +2,6 @@ import { Menu, Transition } from "@headlessui/react";
 import classnames from "classnames";
 import type { User } from "~/models/user.server";
 import { Body } from "./primitives/text/Body";
-import { Header2, Header3, Header4 } from "./primitives/text/Headers";
 import { UserProfilePhoto } from "./UserProfilePhoto";
 
 const userNavigation = [{ name: "Logout", href: "/logout" }];
@@ -33,9 +32,9 @@ export function UserProfileMenu({ user }: { user: User }) {
               {user.name}
             </Body>
           ) : (
-            <Header2 className="mb-2 block border-b border-slate-800 py-2 pl-5 pr-2 font-semibold">
+            <Body className="mb-2 block border-b border-slate-800 py-2 pl-5 pr-2 font-semibold">
               {user.email}
-            </Header2>
+            </Body>
           )}
 
           {userNavigation.map((item) => (
