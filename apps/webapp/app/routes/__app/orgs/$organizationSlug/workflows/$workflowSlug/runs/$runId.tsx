@@ -164,11 +164,45 @@ export default function Page() {
           integration: "github",
         }}
       />
-      <div>
-        <Panel>
-          <Body>Workflow complete node</Body>
-        </Panel>
-      </div>
+      <Panel>
+        <div className="flex gap-2 items-center border-b border-slate-700 pb-3 mb-4">
+          <CheckCircleIcon className="h-5 w-5 text-green-500" />
+          <Body size="small" className="text-slate-300">
+            Run #1 complete
+          </Body>
+        </div>
+        <div className="grid grid-cols-3 gap-2 text-slate-300">
+          <div className="flex flex-col gap-1">
+            <Body size="extra-small" className={workflowNodeUppercaseClasses}>
+              Run duration:
+            </Body>
+            <Body className={workflowNodeDelayClasses} size="small">
+              3 days 5 hrs 30 mins 10 secs
+            </Body>
+          </div>
+          <div className="flex flex-col gap-1">
+            <Body size="extra-small" className={workflowNodeUppercaseClasses}>
+              Started:
+            </Body>
+            <Body className={workflowNodeDelayClasses} size="small">
+              3:45pm Dec 22 2022
+            </Body>
+          </div>
+          <div className="flex flex-col gap-1">
+            <Body size="extra-small" className={workflowNodeUppercaseClasses}>
+              Completed:
+            </Body>
+            <Body className={workflowNodeDelayClasses} size="small">
+              3:45pm Dec 22 2022
+            </Body>
+          </div>
+        </div>
+        <CodeBlock
+          code={JSON.stringify({ aasdfasdf: "asdfasdfa" })}
+          language="json"
+          className="mt-2"
+        />
+      </Panel>
     </>
   );
 }
