@@ -172,7 +172,7 @@ export default function Page() {
   );
 }
 
-const workflowNodeFlexClasses = "flex gap-1 items-center";
+const workflowNodeFlexClasses = "flex gap-1 items-baseline";
 const workflowNodeUppercaseClasses = "uppercase text-slate-400";
 
 function WorkflowStep({ step }: { step: Step }) {
@@ -188,6 +188,41 @@ function WorkflowStep({ step }: { step: Step }) {
         <StepBody step={step} />
         {step.error && <StepError step={step} />}
       </StepPanel>
+    </div>
+  );
+}
+
+function StepHeader({ step }: { step: Step }) {
+  return (
+    <div className="flex mb-4 pb-3 justify-between items-center border-b border-slate-700">
+      <ul className="flex gap-4 items-center">
+        <li className="flex gap-1 items-center">
+          <StepIcon step={step} />
+          <Body size="small">{stepTitle(step)}</Body>
+        </li>
+        {step.startedAt && (
+          <li className={workflowNodeFlexClasses}>
+            <Body size="extra-small" className={workflowNodeUppercaseClasses}>
+              Started:
+            </Body>
+            <Body size="small">{formatDateTime(step.startedAt)}</Body>
+          </li>
+        )}
+        {step.completedAt && (
+          <li className={workflowNodeFlexClasses}>
+            <Body size="extra-small" className={workflowNodeUppercaseClasses}>
+              Completed:
+            </Body>
+            <Body size="small">{formatDateTime(step.completedAt)}</Body>
+          </li>
+        )}
+      </ul>
+      {step.type === "trigger" && step.trigger.on === "webhook" ? (
+        <div className="flex gap-2 items-center">
+          <Body size="small">{step.trigger.integration}</Body>
+          <img src={githubLogo} alt="GitHub" className="h-8 shadow" />
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -267,41 +302,6 @@ function StepError({ step }: { step: Step }) {
         className="border border-red-600"
       />
     </>
-  );
-}
-
-function StepHeader({ step }: { step: Step }) {
-  return (
-    <div className="flex mb-4 pb-3 justify-between items-center border-b border-slate-700">
-      <ul className="flex gap-4 items-center">
-        <li className={workflowNodeFlexClasses}>
-          <StepIcon step={step} />
-          <Body size="small">{stepTitle(step)}</Body>
-        </li>
-        {step.startedAt && (
-          <li className={workflowNodeFlexClasses}>
-            <Body size="extra-small" className={workflowNodeUppercaseClasses}>
-              Started:
-            </Body>
-            <Body size="small">{formatDateTime(step.startedAt)}</Body>
-          </li>
-        )}
-        {step.completedAt && (
-          <li className={workflowNodeFlexClasses}>
-            <Body size="extra-small" className={workflowNodeUppercaseClasses}>
-              Completed:
-            </Body>
-            <Body size="small">{formatDateTime(step.completedAt)}</Body>
-          </li>
-        )}
-      </ul>
-      {step.type === "trigger" && step.trigger.on === "webhook" ? (
-        <div className="flex gap-2 items-center">
-          <Body size="small">{step.trigger.integration}</Body>
-          <img src={githubLogo} alt="GitHub" className="h-8 shadow" />
-        </div>
-      ) : null}
-    </div>
   );
 }
 
