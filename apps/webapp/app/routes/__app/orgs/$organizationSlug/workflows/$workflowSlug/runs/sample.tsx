@@ -22,38 +22,12 @@ import CodeBlock from "~/components/code/CodeBlock";
 import type { ReactNode } from "react";
 import { formatDateTime } from "~/utils";
 import githubLogo from "~/assets/images/integrations/logo-github.png";
-import type { LoaderArgs } from "@remix-run/server-runtime";
-import { typedjson, useTypedLoaderData } from "remix-typedjson";
-import { requireUserId } from "~/services/session.server";
-import invariant from "tiny-invariant";
-import { WorkflowRunPresenter } from "~/models/workflowRunPresenter.server";
-import type { WorkflowRunStatus } from "~/models/workflowRun.server";
-
-export const loader = async ({ request, params }: LoaderArgs) => {
-  await requireUserId(request);
-  const { runId } = params;
-  invariant(runId, "runId is required");
-
-  const presenter = new WorkflowRunPresenter();
-
-  try {
-    const run = await presenter.data(runId);
-    return typedjson({ run });
-  } catch (error: any) {
-    console.error(error);
-    throw new Response("Error ", { status: 404 });
-  }
-};
 
 export default function Page() {
-  const { run } = useTypedLoaderData<typeof loader>();
-
-  console.log(run);
-
   return (
     <>
       <div className="flex sticky -top-12 py-4 -mt-4 -ml-1 pl-1 bg-slate-850 justify-between items-center z-10">
-        <Header1 className="">Run {run.id}</Header1>
+        <Header1 className="">Run #1</Header1>
         <div className="flex gap-2">
           <Body
             size="extra-small"
@@ -73,7 +47,7 @@ export default function Page() {
         <li className="flex gap-2 items-center">
           <Spinner />
           <Header2 size="small" className="text-slate-400">
-            {statusLabel[run.status]}
+            In progress
           </Header2>
         </li>
         <li className="flex gap-1 items-center">
@@ -500,13 +474,6 @@ function StepIcon({ step }: { step: Step }) {
       }
   }
 }
-
-const statusLabel: Record<WorkflowRunStatus, string> = {
-  SUCCESS: "Success",
-  PENDING: "In progress",
-  RUNNING: "Running",
-  ERROR: "Error",
-} as const;
 
 type Step = LogStep | DelayStep | RequestStep | TriggerStep | EventStep;
 

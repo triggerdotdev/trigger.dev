@@ -9,7 +9,8 @@ import type { z } from "zod";
 import { prisma } from "~/db.server";
 import { IngestEvent } from "~/services/events/ingest.server";
 
-export type { WorkflowRun, WorkflowRunStep };
+type WorkflowRunStatus = WorkflowRun["status"];
+export type { WorkflowRun, WorkflowRunStep, WorkflowRunStatus };
 
 export async function startWorkflowRun(id: string, apiKey: string) {
   const workflowRun = await findWorkflowRunScopedToApiKey(id, apiKey);
