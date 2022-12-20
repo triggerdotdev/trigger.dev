@@ -48,7 +48,6 @@ export class IngestEvent {
 
     // Produce a message to the event bus
     await internalPubSub.publish(
-      event.id,
       "CUSTOM_EVENT_CREATED",
       {
         id: event.id,

@@ -11,8 +11,12 @@ module.exports = {
     "@nangohq/pizzly-node",
     "axios",
     "internal-platform",
+    "@trigger.dev/common-schemas",
   ],
   watchPaths: async () => {
-    return ["../../packages/internal-platform/src/**/*"];
+    return [
+      "../../packages/internal-platform/src/**/*",
+      "../../packages/common-schemas/src/**/*",
+    ];
   },
 };

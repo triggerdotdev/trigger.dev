@@ -4,9 +4,8 @@ export const ServerRPCSchema = {
   SEND_LOG: {
     request: z.object({
       id: z.string(),
-      data: z.string(),
-      index: z.number().optional(),
-      timestamp: z.number().optional(),
+      message: z.string(),
+      level: z.enum(["DEBUG", "INFO", "WARN", "ERROR"]),
     }),
     response: z.boolean(),
   },
@@ -38,6 +37,26 @@ export const ServerRPCSchema = {
         }),
       ])
       .nullable(),
+  },
+  COMPLETE_WORKFLOW_RUN: {
+    request: z.object({
+      id: z.string(),
+      workflowId: z.string(),
+      output: z.string(),
+    }),
+    response: z.boolean(),
+  },
+  SEND_WORKFLOW_ERROR: {
+    request: z.object({
+      id: z.string(),
+      workflowId: z.string(),
+      error: z.object({
+        name: z.string(),
+        message: z.string(),
+        stackTrace: z.string().optional(),
+      }),
+    }),
+    response: z.boolean(),
   },
 };
 

@@ -19,7 +19,11 @@
     "paths": {
       "~/*": ["./app/*"],
       "internal-platform": ["../../packages/internal-platform/src/index"],
-      "internal-platform/*": ["../../packages/internal-platform/src/*"]
+      "internal-platform/*": ["../../packages/internal-platform/src/*"],
+      "@trigger.dev/common-schemas": [
+        "../../packages/common-schemas/src/index"
+      ],
+      "@trigger.dev/common-schemas/*": ["../../packages/common-schemas/src/*"]
     },
     "noEmit": true
   }

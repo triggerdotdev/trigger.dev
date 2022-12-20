@@ -63,11 +63,10 @@ export class ZodPubSub<TPubSubSchema extends MessageCatalogSchema> {
   }
 
   public async publish<K extends keyof TPubSubSchema>(
-    id: string,
     type: K,
     data: z.infer<TPubSubSchema[K]["data"]>,
     properties?: z.infer<TPubSubSchema[K]["properties"]>
   ): Promise<string | undefined> {
-    return this.#publisher.publish(id, type, data, properties);
+    return this.#publisher.publish(type, data, properties);
   }
 }

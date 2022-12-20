@@ -92,14 +92,49 @@ export class TriggerClient<TEventData = void> {
       sender: ServerRPCSchema,
       receiver: HostRPCSchema,
       handlers: {
-        IO_RESPONSE: async (data) => {
-          console.log("IO_RESPONSE", data);
-        },
         TRIGGER_WORKFLOW: async (data) => {
           console.log("TRIGGER_WORKFLOW", data);
 
           // TODO: handle this better
-          this.#trigger.options.run(data.trigger.input as TEventData);
+          this.#trigger.options
+            .run(data.trigger.input as TEventData)
+            .then((output) => {
+              return serverRPC.send("COMPLETE_WORKFLOW_RUN", {
+                id: data.id,
+                output: JSON.stringify(output),
+                workflowId: data.meta.workflowId,
+              });
+            })
+            .catch((anyError) => {
+              const parseAnyError = (
+                error: any
+              ): {
+                name: string;
+                message: string;
+                stackTrace?: string;
+              } => {
+                if (error instanceof Error) {
+                  return {
+                    name: error.name,
+                    message: error.message,
+                    stackTrace: error.stack,
+                  };
+                }
+
+                return {
+                  name: "UnknownError",
+                  message: "An unknown error occurred",
+                };
+              };
+
+              const error = parseAnyError(anyError);
+
+              return serverRPC.send("SEND_WORKFLOW_ERROR", {
+                id: data.id,
+                workflowId: data.meta.workflowId,
+                error,
+              });
+            });
         },
       },
     });

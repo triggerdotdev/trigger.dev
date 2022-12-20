@@ -5,6 +5,7 @@ import {
 } from "pulsar-client";
 import { Logger } from "../logger";
 import { MessageCatalogSchema } from "./messageCatalogSchema";
+import { ulid } from "ulid";
 
 import { z, ZodError } from "zod";
 
@@ -54,7 +55,6 @@ export class ZodPublisher<PublisherSchema extends MessageCatalogSchema> {
   }
 
   public async publish<K extends keyof PublisherSchema>(
-    id: string,
     type: K,
     data: z.infer<PublisherSchema[K]["data"]>,
     properties?: z.infer<PublisherSchema[K]["properties"]>
@@ -64,7 +64,7 @@ export class ZodPublisher<PublisherSchema extends MessageCatalogSchema> {
     }
 
     try {
-      return this.#handlePublish(id, type, data, properties);
+      return this.#handlePublish(type, data, properties);
     } catch (e) {
       if (e instanceof ZodError) {
         this.#logger.error(
@@ -79,7 +79,6 @@ export class ZodPublisher<PublisherSchema extends MessageCatalogSchema> {
   }
 
   async #handlePublish<K extends keyof PublisherSchema>(
-    id: string,
     type: K,
     data: z.infer<PublisherSchema[K]["data"]>,
     properties?: z.infer<PublisherSchema[K]["properties"]>
@@ -89,6 +88,8 @@ export class ZodPublisher<PublisherSchema extends MessageCatalogSchema> {
     if (!messageSchema) {
       throw new Error(`Unknown message type: ${String(type)}`);
     }
+
+    const id = ulid();
 
     const parsedData = messageSchema.data.parse(data);
     const parsedProperties = messageSchema.properties.parse(properties);

@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { WorkflowMetadata } from "../schemas";
+import { UpdateWorkflowRun, WorkflowMetadata } from "../schemas";
 
 export class InternalApiClient {
   #apiKey: string;
@@ -20,7 +20,7 @@ export class InternalApiClient {
       error: z.string(),
     });
 
-    const response = await fetch(this.#apiUrl("whoami"), {
+    const response = await fetch(this.#apiUrl("/whoami"), {
       method: "GET",
       headers: this.#headers(),
     });
@@ -52,7 +52,7 @@ export class InternalApiClient {
       error: z.string(),
     });
 
-    const response = await fetch(this.#apiUrl(`workflows/${workflow.id}`), {
+    const response = await fetch(this.#apiUrl(`/workflows/${workflow.id}`), {
       method: "PUT",
       headers: this.#headers({ "Content-Type": "application/json" }),
       body: JSON.stringify(workflow),
@@ -76,7 +76,37 @@ export class InternalApiClient {
     );
   }
 
-  #apiUrl = (path: string) => `${this.#baseUrl}/${path}`;
+  async startWorkflowRun(workflowId: string, runId: string) {
+    const validationResponseSchema = z.object({
+      error: z.string(),
+    });
+
+    const response = await fetch(
+      this.#apiUrl(`/workflows/${workflowId}/runs/${runId}`),
+      {
+        method: "PUT",
+        headers: this.#headers({ "Content-Type": "application/json" }),
+        body: JSON.stringify({ status: "RUNNING" }),
+      }
+    );
+
+    if (response.ok) {
+      return true;
+    }
+
+    if (response.status === 400) {
+      const rawBody = await response.json();
+      const body = validationResponseSchema.parse(rawBody);
+
+      throw new Error(body.error);
+    }
+
+    throw new Error(
+      `[${response.status}] Something went wrong: ${response.statusText}`
+    );
+  }
+
+  #apiUrl = (path: string) => `${this.#baseUrl}${path}`;
   #headers = (additionalHeaders?: Record<string, string>) => ({
     Accept: "application/json",
     Authorization: `Bearer ${this.#apiKey}`,

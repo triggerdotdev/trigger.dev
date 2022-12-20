@@ -1,6 +1,8 @@
 import { TriggerClient } from "../client";
 import { LogLevel } from "internal-bridge";
 import { TriggerEvent } from "../events";
+import { z } from "zod";
+import { JsonSchema } from "@trigger.dev/common-schemas";
 
 export type TriggerOptions<TEventData = void> = {
   id: string;
@@ -9,7 +11,7 @@ export type TriggerOptions<TEventData = void> = {
   apiKey?: string;
   endpoint?: string;
   logLevel?: LogLevel;
-  run: (event: TEventData) => Promise<void>;
+  run: (event: TEventData) => Promise<any>;
 };
 
 export class Trigger<TEventData = void> {

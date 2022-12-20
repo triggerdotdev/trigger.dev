@@ -14,6 +14,7 @@
     "@types/uuid": "^9.0.0",
     "@types/ws": "^8.5.3",
     "internal-bridge": "workspace:*",
+    "@trigger.dev/common-schemas": "workspace:*",
     "rimraf": "^3.0.2",
     "tsup": "^6.5.0",
     "tsx": "^3.12.1"

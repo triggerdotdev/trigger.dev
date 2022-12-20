@@ -177,14 +177,18 @@ model WorkflowRun {
   environment   RuntimeEnvironment @relation(fields: [environmentId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   environmentId String
 
-  input     Json
-  context   Json?
-  timestamp DateTime
+  tasks WorkflowRunStep[]
+
+  input   Json
+  context Json?
+  error   Json?
 
   status WorkflowRunStatus @default(PENDING)
 
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+  startedAt  DateTime?
+  finishedAt DateTime?
 }
 
 enum WorkflowRunStatus {
@@ -192,6 +196,31 @@ enum WorkflowRunStatus {
   RUNNING
   SUCCESS
   ERROR
+}
+
+model WorkflowRunStep {
+  id String @id @default(cuid())
+
+  run   WorkflowRun @relation(fields: [runId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  runId String
+
+  type    WorkflowRunStepType
+  input   Json?
+  output  Json?
+  context Json
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  startedAt  DateTime?
+  finishedAt DateTime?
+}
+
+enum WorkflowRunStepType {
+  OUTPUT
+  LOG_MESSAGE
+  DURABLE_DELAY
+  CUSTOM_EVENT
 }
 
 //todo triggers are environment specific

@@ -14,6 +14,8 @@ const trigger = new Trigger({
   on: customEvent({ name: "user.created", schema: userCreatedEvent }),
   run: async (event) => {
     console.log("Inside the smoke test workflow, received event", event);
+
+    return { foo: "bar" };
   },
 });
 

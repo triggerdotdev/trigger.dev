@@ -5,10 +5,13 @@ import {
   ZodRPC,
 } from "internal-bridge";
 import {
+  coordinatorCatalog,
+  CoordinatorCatalog,
   InternalApiClient,
   platformCatalog,
   PlatformCatalog,
   TriggerMetadataSchema,
+  ZodPublisher,
   ZodSubscriber,
 } from "internal-platform";
 import { v4 } from "uuid";
@@ -28,6 +31,7 @@ export class TriggerServer {
   #organizationId?: string;
   #isInitialized = false;
   #triggerSubscriber?: ZodSubscriber<PlatformCatalog>;
+  #triggerPublisher?: ZodPublisher<CoordinatorCatalog>;
   #apiClient: InternalApiClient;
   #workflowId?: string;
   #apiKey: string;
@@ -87,7 +91,39 @@ export class TriggerServer {
       receiver: ServerRPCSchema,
       handlers: {
         SEND_LOG: async (data) => {
-          return true;
+          if (!this.#triggerPublisher) {
+            // TODO: need to recover from this issue by trying to reconnect
+            return false;
+          }
+
+          if (!this.#organizationId) {
+            // TODO: this should never really happen
+            throw new Error(
+              "Cannot complete workflow run without an organization ID"
+            );
+          }
+
+          if (!this.#workflowId) {
+            // TODO: this should never really happen
+            throw new Error("Cannot send log without a workflow ID");
+          }
+
+          const response = await this.#triggerPublisher.publish(
+            "LOG_MESSAGE",
+            {
+              id: data.id,
+              log: {
+                level: data.level,
+                message: data.message,
+              },
+            },
+            {
+              "x-api-key": this.#apiKey,
+              "x-workflow-id": this.#workflowId,
+            }
+          );
+
+          return !!response;
         },
         INITIALIZE_HOST: async (data) => {
           // Initialize workflow
@@ -101,6 +137,54 @@ export class TriggerServer {
               message: "Failed to connect to the Pulsar cluster",
             };
           }
+        },
+        SEND_WORKFLOW_ERROR: async (data) => {
+          if (!this.#triggerPublisher) {
+            // TODO: need to recover from this issue by trying to reconnect
+            return false;
+          }
+
+          if (!this.#organizationId) {
+            // TODO: this should never really happen
+            throw new Error(
+              "Cannot complete workflow run without an organization ID"
+            );
+          }
+
+          const response = await this.#triggerPublisher.publish(
+            "FAIL_WORKFLOW_RUN",
+            data,
+            {
+              "x-api-key": this.#apiKey,
+              "x-workflow-id": data.workflowId,
+            }
+          );
+
+          return !!response;
+        },
+        COMPLETE_WORKFLOW_RUN: async (data) => {
+          if (!this.#triggerPublisher) {
+            // TODO: need to recover from this issue by trying to reconnect
+            return false;
+          }
+
+          if (!this.#organizationId) {
+            // TODO: this should never really happen
+            throw new Error(
+              "Cannot complete workflow run without an organization ID"
+            );
+          }
+
+          const response = await this.#triggerPublisher.publish(
+            "COMPLETE_WORKFLOW_RUN",
+            data,
+            {
+              "x-api-key": this.#apiKey,
+              "x-workflow-id": data.workflowId,
+            }
+          );
+
+          return !!response;
         },
       },
     });
@@ -180,7 +264,7 @@ export class TriggerServer {
 
       this.#workflowId = response.id;
 
-      this.#logger.debug("Initializing pub sub...");
+      this.#logger.debug("Initializing platform subscriber...");
 
       this.#triggerSubscriber = new ZodSubscriber<PlatformCatalog>({
         schema: platformCatalog,
@@ -206,13 +290,13 @@ export class TriggerServer {
               return true;
             }
 
-            this.#logger.info("Triggering workflow", id, data, properties);
+            this.#logger.info("Triggering workflow", data, properties);
 
             // Send the trigger to the host machine
 
             // TODO - call this TRIGGER_WORKFLOW and then have the host machine create a new run
             this.#serverRPC?.send("TRIGGER_WORKFLOW", {
-              id,
+              id: data.id,
               trigger: data,
               meta: {
                 workflowId: properties["x-workflow-id"],
@@ -222,7 +306,26 @@ export class TriggerServer {
               },
             });
 
-            return true;
+            try {
+              const messageId = await this.#triggerPublisher?.publish(
+                "START_WORKFLOW_RUN",
+                {
+                  id: data.id,
+                },
+                {
+                  "x-workflow-id": properties["x-workflow-id"],
+                  "x-api-key": properties["x-api-key"],
+                }
+              );
+
+              return !!messageId;
+            } catch (error) {
+              this.#logger.error(
+                "Failed to notify platform that workflow run started",
+                error
+              );
+              return false;
+            }
           },
         },
       });
@@ -230,11 +333,31 @@ export class TriggerServer {
       const result = await this.#triggerSubscriber.initialize();
 
       if (!result) {
-        this.#logger.debug("Pub sub failed to initialize");
+        this.#logger.debug("Platform subscriber failed to initialize");
         return false;
       }
 
-      this.#logger.info("Pub sub initialized");
+      this.#logger.info("Platform subscriber initialized");
+
+      this.#logger.info("Initializing coordinator publisher...");
+
+      this.#triggerPublisher = new ZodPublisher<CoordinatorCatalog>({
+        schema: coordinatorCatalog,
+        client: pulsarClient,
+        config: {
+          topic: `persistent://public/default/coordinator-events`,
+        },
+      });
+
+      const result2 = await this.#triggerPublisher.initialize();
+
+      if (!result2) {
+        this.#logger.info("Coordinator publisher failed to initialize");
+        await this.#closePubSub();
+        return false;
+      }
+
+      this.#logger.info("Coordinator publisher initialized");
 
       this.#isInitialized = true;
 
@@ -249,6 +372,10 @@ export class TriggerServer {
   async #closePubSub() {
     if (this.#triggerSubscriber) {
       await this.#triggerSubscriber.close();
+    }
+
+    if (this.#triggerPublisher) {
+      await this.#triggerPublisher.close();
     }
   }
 
