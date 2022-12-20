@@ -13,11 +13,12 @@ import { getConnectedApiConnectionsForOrganizationSlug } from "~/models/apiConne
 import {
   ConnectButton,
   integrations,
-} from "~/routes/resources/integration/connect";
+} from "~/components/integrations/ConnectButton";
 import { requireUserId } from "~/services/session.server";
 import logoGithub from "~/assets/images/integrations/logo-github.png";
 import { ArrowsRightLeftIcon } from "@heroicons/react/24/outline";
 import { List } from "~/components/layout/List";
+import { PlusCircleIcon } from "@heroicons/react/24/solid";
 
 export const loader = async ({ request, params }: LoaderArgs) => {
   await requireUserId(request);
@@ -89,7 +90,32 @@ export default function Integrations() {
               key={integration.key}
               integration={integration}
               organizationId={organization.id}
-            />
+              className="flex flex-col group max-w-[160px] rounded-md bg-slate-800 border border-slate-800 gap-4 text-sm text-slate-200 items-center overflow-hidden hover:bg-slate-800/30 transition shadow-md disabled:opacity-50"
+            >
+              {(status) => (
+                <>
+                  <div className="relative flex items-center justify-center w-full py-6 bg-black/20 border-b border-slate-800">
+                    <PlusCircleIcon className="absolute h-7 w-7 top-[16px] right-[28px] z-10 text-slate-200 shadow-md" />
+                    <img
+                      src={integration.logo}
+                      alt={integration.name}
+                      className="h-20 shadow-lg group-hover:opacity-80 transition"
+                    />
+                  </div>
+
+                  {status === "loading" ? (
+                    <span className="px-6 pb-4">Connecting…</span>
+                  ) : (
+                    <span className="px-6 pb-4 leading-relaxed text-slate-400">
+                      Connect to{" "}
+                      <span className="text-slate-200 text-base">
+                        {integration.name}
+                      </span>
+                    </span>
+                  )}
+                </>
+              )}
+            </ConnectButton>
           ))}
         </div>
       </div>
