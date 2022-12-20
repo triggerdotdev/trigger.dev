@@ -1,4 +1,4 @@
-import { CustomEventSchema } from "internal-platform";
+import { CustomEventSchema } from "@trigger.dev/common-schemas";
 import type { PrismaClient } from "~/db.server";
 import { prisma } from "~/db.server";
 import type { Organization } from "~/models/organization.server";
@@ -41,8 +41,8 @@ export class IngestEvent {
         },
         name: validation.data.name,
         timestamp: validation.data.timestamp,
-        payload: validation.data.payload,
-        context: validation.data.context,
+        payload: validation.data.payload ?? {},
+        context: validation.data.context ?? undefined,
       },
     });
 
@@ -54,7 +54,7 @@ export class IngestEvent {
         name: event.name,
         payload: validation.data.payload,
         timestamp: event.timestamp.toISOString(),
-        context: validation.data.context,
+        context: validation.data.context ?? {},
         status: event.status,
       },
       {

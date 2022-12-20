@@ -3,8 +3,8 @@ import type {
   ErrorSchema,
   LogMessageSchema,
   WaitSchema,
+  CustomEventSchema,
 } from "@trigger.dev/common-schemas";
-import type { CustomEventSchema } from "internal-platform";
 import type { z } from "zod";
 import { prisma } from "~/db.server";
 import { IngestEvent } from "~/services/events/ingest.server";

@@ -1,3 +1,7 @@
+import { SerializableCustomEventSchema } from "@trigger.dev/common-schemas";
+import { z } from "zod";
+
+type CustomEvent = z.infer<typeof SerializableCustomEventSchema>;
 
 export interface TriggerContext {
   id: string;
@@ -5,6 +9,7 @@ export interface TriggerContext {
   apiKey: string;
   organizationId: string;
   logger: TriggerLogger;
+  fireEvent(event: CustomEvent): Promise<void>;
 }
 
 export interface TriggerLogger {

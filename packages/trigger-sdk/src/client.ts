@@ -105,9 +105,19 @@ export class TriggerClient<TEventData = void> {
             logger: new ContextLogger(async (level, message, properties) => {
               await serverRPC.send("SEND_LOG", {
                 id: data.id,
-                log: { level, message, properties: JSON.stringify(properties ?? {}) },
+                log: {
+                  level,
+                  message,
+                  properties: JSON.stringify(properties ?? {}),
+                },
               });
             }),
+            fireEvent: async (event) => {
+              await serverRPC.send("SEND_EVENT", {
+                id: data.id,
+                event: JSON.parse(JSON.stringify(event)),
+              });
+            },
           };
 
           // TODO: handle this better

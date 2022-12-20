@@ -90,6 +90,38 @@ export class TriggerServer {
       sender: HostRPCSchema,
       receiver: ServerRPCSchema,
       handlers: {
+        SEND_EVENT: async (data) => {
+          if (!this.#triggerPublisher) {
+            // TODO: need to recover from this issue by trying to reconnect
+            return false;
+          }
+
+          if (!this.#organizationId) {
+            // TODO: this should never really happen
+            throw new Error(
+              "Cannot complete workflow run without an organization ID"
+            );
+          }
+
+          if (!this.#workflowId) {
+            // TODO: this should never really happen
+            throw new Error("Cannot send log without a workflow ID");
+          }
+
+          const response = await this.#triggerPublisher.publish(
+            "TRIGGER_CUSTOM_EVENT",
+            {
+              id: data.id,
+              event: data.event,
+            },
+            {
+              "x-api-key": this.#apiKey,
+              "x-workflow-id": this.#workflowId,
+            }
+          );
+
+          return !!response;
+        },
         SEND_LOG: async (data) => {
           if (!this.#triggerPublisher) {
             // TODO: need to recover from this issue by trying to reconnect

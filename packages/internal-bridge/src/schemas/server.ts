@@ -1,3 +1,4 @@
+import { CustomEventSchema } from "@trigger.dev/common-schemas";
 import { z } from "zod";
 
 export const ServerRPCSchema = {
@@ -9,6 +10,13 @@ export const ServerRPCSchema = {
         level: z.enum(["DEBUG", "INFO", "WARN", "ERROR"]),
         properties: z.string().optional(),
       }),
+    }),
+    response: z.boolean(),
+  },
+  SEND_EVENT: {
+    request: z.object({
+      id: z.string(),
+      event: CustomEventSchema,
     }),
     response: z.boolean(),
   },

@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { CustomEventSchema } from "../../schemas";
+import { CustomEventSchema } from "@trigger.dev/common-schemas";
 
 const Catalog = {
   TRIGGER_CUSTOM_EVENT: {
