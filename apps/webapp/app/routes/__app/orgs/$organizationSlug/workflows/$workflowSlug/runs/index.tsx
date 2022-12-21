@@ -1,3 +1,4 @@
+import { BeakerIcon } from "@heroicons/react/24/outline";
 import {
   CheckIcon,
   ExclamationTriangleIcon,
@@ -107,7 +108,9 @@ export default function Page() {
                       : "–"}
                   </Cell>
                   <Cell to={run.id}>
-                    <CheckIcon className="h-5 w-5 text-green-500" />
+                    {run.isTest && (
+                      <BeakerIcon className="h-5 w-5 text-green-500" />
+                    )}
                   </Cell>
                 </tr>
               ))

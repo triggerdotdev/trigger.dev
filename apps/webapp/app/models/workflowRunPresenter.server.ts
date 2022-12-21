@@ -48,6 +48,7 @@ export class WorkflowRunPresenter {
       status: workflowRun.status,
       startedAt: workflowRun.startedAt,
       finishedAt: workflowRun.finishedAt,
+      isTest: workflowRun.isTest,
       duration:
         workflowRun.startedAt &&
         workflowRun.finishedAt &&

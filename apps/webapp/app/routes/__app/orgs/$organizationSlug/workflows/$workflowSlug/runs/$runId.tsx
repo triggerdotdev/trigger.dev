@@ -69,13 +69,15 @@ export default function Page() {
       <div className="flex sticky -top-12 py-4 -mt-4 -ml-1 pl-1 bg-slate-850 justify-between items-center z-10">
         <Header1 className="">Run {run.id}</Header1>
         <div className="flex gap-2">
-          <Body
-            size="extra-small"
-            className="flex items-center pl-2 pr-3 py-0.5 rounded uppercase tracking-wide text-slate-500"
-          >
-            <BeakerIcon className="h-4 w-4 mr-1" />
-            Test Run
-          </Body>
+          {run.isTest && (
+            <Body
+              size="extra-small"
+              className="flex items-center pl-2 pr-3 py-0.5 rounded uppercase tracking-wide text-slate-500"
+            >
+              <BeakerIcon className="h-4 w-4 mr-1" />
+              Test Run
+            </Body>
+          )}
           <PrimaryButton>
             <ArrowPathRoundedSquareIcon className="h-5 w-5 -ml-1" />
             Rerun

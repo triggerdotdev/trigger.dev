@@ -189,6 +189,8 @@ model WorkflowRun {
   updatedAt  DateTime  @updatedAt
   startedAt  DateTime?
   finishedAt DateTime?
+
+  isTest Boolean @default(false)
 }
 
 enum WorkflowRunStatus {
