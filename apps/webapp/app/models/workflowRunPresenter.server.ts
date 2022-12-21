@@ -83,19 +83,19 @@ async function parseStep(
     case "LOG_MESSAGE":
       return {
         ...base,
-        type: "LOG_MESSAGE",
+        type: "LOG_MESSAGE" as const,
         input: await LogMessageSchema.parseAsync(original.input),
       };
     case "CUSTOM_EVENT":
       return {
         ...base,
-        type: "CUSTOM_EVENT",
+        type: "CUSTOM_EVENT" as const,
         input: await CustomEventSchema.parseAsync(original.input),
       };
     case "OUTPUT":
       return {
         ...base,
-        type: "OUTPUT",
+        type: "OUTPUT" as const,
         output: original.output,
       };
   }
