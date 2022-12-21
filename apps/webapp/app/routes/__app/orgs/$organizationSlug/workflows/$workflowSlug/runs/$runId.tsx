@@ -6,6 +6,7 @@ import {
   BeakerIcon,
   CheckCircleIcon,
   ChatBubbleLeftEllipsisIcon,
+  ExclamationTriangleIcon,
 } from "@heroicons/react/24/solid";
 import { Panel } from "~/components/layout/Panel";
 import { PrimaryButton } from "~/components/primitives/Buttons";
@@ -47,6 +48,7 @@ export const loader = async ({ request, params }: LoaderArgs) => {
 type Run = Awaited<ReturnType<WorkflowRunPresenter["data"]>>;
 type Trigger = Run["trigger"];
 type Step = Run["steps"][number];
+type RunError = Run["error"];
 type StepOrTriggerType = Step["type"] | Trigger["type"];
 type TriggerType<T, K extends Trigger["type"]> = T extends { type: K }
   ? T
@@ -147,10 +149,13 @@ export default function Page() {
               code={stringifyCode(output.output)}
               language="json"
               className="mt-2"
+              align="top"
             />
           )}
         </Panel>
       )}
+
+      {run.error && <Error error={run.error} />}
     </>
   );
 }
@@ -383,11 +388,11 @@ function CustomEventStep({ event }: { event: StepType<Step, "CUSTOM_EVENT"> }) {
         {event.input.name}
       </Header2>
       <Header4>Payload</Header4>
-      <CodeBlock code={stringifyCode(event.input.payload)} />
+      <CodeBlock code={stringifyCode(event.input.payload)} align="top" />
       {event.input.context && (
         <>
           <Header4>Context</Header4>
-          <CodeBlock code={stringifyCode(event.input.context)} />
+          <CodeBlock code={stringifyCode(event.input.context)} align="top" />
         </>
       )}
     </>
@@ -417,28 +422,29 @@ function Log({ log }: { log: StepType<Step, "LOG_MESSAGE"> }) {
         "{log.input.message}"
       </Header4>
 
-      <CodeBlock code={stringifyCode(log.input.properties)} />
+      <CodeBlock code={stringifyCode(log.input.properties)} align="top" />
     </>
   );
 }
 
-// function StepError({ step }: { step: Step }) {
-//   return (
-//     <>
-//       <div className="flex gap-2 mb-2 mt-3 ">
-//         <ExclamationTriangleIcon className="h-5 w-5 text-red-600" />
-//         <Body size="small" className="text-slate-300">
-//           Failed with error:
-//         </Body>
-//       </div>
-//       <CodeBlock
-//         code={JSON.stringify(step.error)}
-//         language="json"
-//         className="border border-red-600"
-//       />
-//     </>
-//   );
-// }
+function Error({ error }: { error: RunError }) {
+  return (
+    <>
+      <div className="flex gap-2 mb-2 mt-3 ">
+        <ExclamationTriangleIcon className="h-5 w-5 text-red-600" />
+        <Body size="small" className="text-slate-300">
+          Failed with error:
+        </Body>
+      </div>
+      <CodeBlock
+        code={stringifyCode(error)}
+        language="json"
+        className="border border-red-600"
+        align="top"
+      />
+    </>
+  );
+}
 
 function StepIcon({ stepType }: { stepType: StepOrTriggerType }) {
   const styleClass = "h-6 w-6 text-slate-400";
