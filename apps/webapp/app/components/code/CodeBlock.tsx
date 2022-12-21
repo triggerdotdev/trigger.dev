@@ -44,7 +44,7 @@ export default function CodeBlock({
       </pre>
       {showCopyButton === true && (
         <CopyTextButton
-          className="text-sm my-2 mx-3"
+          className="text-sm my-2 mx-2"
           value={code}
           variant="slate"
         />
