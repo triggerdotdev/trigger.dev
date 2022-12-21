@@ -5,6 +5,7 @@ import {
   ArrowPathRoundedSquareIcon,
   BeakerIcon,
   CheckCircleIcon,
+  ChatBubbleLeftEllipsisIcon,
 } from "@heroicons/react/24/solid";
 import { Panel } from "~/components/layout/Panel";
 import { PrimaryButton } from "~/components/primitives/Buttons";
@@ -26,7 +27,7 @@ import invariant from "tiny-invariant";
 import { WorkflowRunPresenter } from "~/models/workflowRunPresenter.server";
 import type { WorkflowRunStatus } from "~/models/workflowRun.server";
 import humanizeDuration from "humanize-duration";
-
+import classNames from "classnames";
 export const loader = async ({ request, params }: LoaderArgs) => {
   await requireUserId(request);
   const { runId } = params;
@@ -79,9 +80,9 @@ export default function Page() {
 
       <ul className="flex gap-6 ml-[-3px]">
         <li className="flex gap-2 items-center">
-          <StatusIcon status={run.status} />
+          {status[run.status].icon}
           <Header2 size="small" className="text-slate-400">
-            {statusLabel[run.status]}
+            {status[run.status].label}
           </Header2>
         </li>
         <li className="flex gap-1 items-center">
@@ -167,7 +168,7 @@ function TriggerStep({ trigger }: { trigger: Trigger }) {
     <div className="flex items-stretch w-full">
       <div className="relative flex w-5 border-l border-slate-700 ml-2.5">
         <div className="absolute top-6 -left-[18px] p-1 bg-slate-850 rounded-full">
-          <StatusIcon status={trigger.status} />
+          {status[trigger.status].icon}
         </div>
       </div>
       <StepPanel status={trigger.status}>
@@ -189,7 +190,7 @@ function WorkflowStep({ step }: { step: Step }) {
     <div className="flex items-stretch w-full">
       <div className="relative flex w-5 border-l border-slate-700 ml-2.5">
         <div className="absolute top-6 -left-[18px] p-1 bg-slate-850 rounded-full">
-          <StatusIcon status={step.status} />
+          {status[step.status].icon}
         </div>
       </div>
       <StepPanel status={step.status}>
@@ -400,8 +401,22 @@ function CustomEventStep({ event }: { event: StepType<Step, "CUSTOM_EVENT"> }) {
 function Log({ log }: { log: StepType<Step, "LOG_MESSAGE"> }) {
   return (
     <>
-      <Header4>{log.input.level}</Header4>
-      <CodeBlock code={log.input.message} />
+      <Body className="font-mono" size="small">
+        <span
+          className={classNames(
+            "uppercase text-bas",
+            logColor[log.input.level]
+          )}
+        >
+          {log.input.level}:
+        </span>
+      </Body>
+      <Header4
+        className={classNames("mb-2 font-mono", logColor[log.input.level])}
+      >
+        "{log.input.message}"
+      </Header4>
+
       <CodeBlock code={stringifyCode(log.input.properties)} />
     </>
   );
@@ -425,24 +440,11 @@ function Log({ log }: { log: StepType<Step, "LOG_MESSAGE"> }) {
 //   );
 // }
 
-function StatusIcon({ status }: { status: WorkflowRunStatus }) {
-  switch (status) {
-    case "ERROR":
-      return <XCircleIcon className="relative h-7 w-7 text-red-500" />;
-    case "PENDING":
-      return <ClockIcon className="relative h-7 w-7 text-slate-500" />;
-    case "SUCCESS":
-      return <CheckCircleIcon className="relative h-7 w-7 text-green-500" />;
-    case "RUNNING":
-      return <Spinner className="relative h-6 w-6 ml-[1px] text-blue-500" />;
-  }
-}
-
 function StepIcon({ stepType }: { stepType: StepOrTriggerType }) {
   const styleClass = "h-6 w-6 text-slate-400";
   switch (stepType) {
     case "LOG_MESSAGE":
-      return <DocumentTextIcon className={styleClass} />;
+      return <ChatBubbleLeftEllipsisIcon className={styleClass} />;
     case "CUSTOM_EVENT":
       return <DocumentTextIcon className={styleClass} />;
     case "OUTPUT":
@@ -456,12 +458,25 @@ function StepIcon({ stepType }: { stepType: StepOrTriggerType }) {
   }
 }
 
-const statusLabel: Record<WorkflowRunStatus, string> = {
-  SUCCESS: "Success",
-  PENDING: "In progress",
-  RUNNING: "Running",
-  ERROR: "Error",
-} as const;
+const status: Record<WorkflowRunStatus, { icon: ReactNode; label: ReactNode }> =
+  {
+    SUCCESS: {
+      icon: <CheckCircleIcon className="relative h-7 w-7 text-green-500" />,
+      label: <span className="text-green-500">Success</span>,
+    },
+    PENDING: {
+      icon: <ClockIcon className="relative h-7 w-7 text-slate-500" />,
+      label: <span className="text-slate-500">In progress</span>,
+    },
+    RUNNING: {
+      icon: <Spinner className="relative h-6 w-6 ml-[1px] text-blue-500" />,
+      label: <span className="text-blue-500">Running</span>,
+    },
+    ERROR: {
+      icon: <XCircleIcon className="relative h-7 w-7 text-red-500" />,
+      label: <span className="text-red-500">Error</span>,
+    },
+  } as const;
 
 const typeLabel: Record<StepOrTriggerType, string> = {
   LOG_MESSAGE: "Log",
@@ -470,4 +485,12 @@ const typeLabel: Record<StepOrTriggerType, string> = {
   WEBHOOK: "Webhook",
   HTTP_ENDPOINT: "HTTP",
   SCHEDULE: "Scheduled",
+} as const;
+
+type LogLevel = StepType<Step, "LOG_MESSAGE">["input"]["level"];
+const logColor: Record<LogLevel, string> = {
+  INFO: "text-slate-500",
+  WARN: "text-yellow-300",
+  ERROR: "text-red-300",
+  DEBUG: "text-slate-300",
 } as const;
