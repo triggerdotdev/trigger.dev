@@ -3,22 +3,23 @@ import { LogLevel } from "internal-bridge";
 import { TriggerEvent } from "../events";
 
 import type { TriggerContext } from "../types";
+import { z } from "zod";
 
-export type TriggerOptions<TEventData = void> = {
+export type TriggerOptions<TSchema extends z.ZodTypeAny> = {
   id: string;
   name: string;
-  on: TriggerEvent<TEventData>;
+  on: TriggerEvent<TSchema>;
   apiKey?: string;
   endpoint?: string;
   logLevel?: LogLevel;
-  run: (event: TEventData, ctx: TriggerContext) => Promise<any>;
+  run: (event: z.infer<TSchema>, ctx: TriggerContext) => Promise<any>;
 };
 
-export class Trigger<TEventData = void> {
-  options: TriggerOptions<TEventData>;
-  #client: TriggerClient<TEventData> | undefined;
+export class Trigger<TSchema extends z.ZodTypeAny> {
+  options: TriggerOptions<TSchema>;
+  #client: TriggerClient<TSchema> | undefined;
 
-  constructor(options: TriggerOptions<TEventData>) {
+  constructor(options: TriggerOptions<TSchema>) {
     this.options = options;
   }
 

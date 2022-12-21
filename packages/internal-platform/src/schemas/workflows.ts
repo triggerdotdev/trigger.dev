@@ -11,7 +11,7 @@ export const WebhookEventTriggerSchema = z.object({
   type: z.literal("WEBHOOK"),
   config: z.object({
     id: z.string(),
-    params: z.record(z.string()),
+    webhook: z.any(),
   }),
 });
 

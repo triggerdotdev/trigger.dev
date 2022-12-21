@@ -20,6 +20,10 @@
       "~/*": ["./app/*"],
       "internal-platform": ["../../packages/internal-platform/src/index"],
       "internal-platform/*": ["../../packages/internal-platform/src/*"],
+      "internal-integrations": [
+        "../../packages/internal-integrations/src/index"
+      ],
+      "internal-integrations/*": ["../../packages/internal-integrations/src/*"],
       "@trigger.dev/common-schemas": [
         "../../packages/common-schemas/src/index"
       ],

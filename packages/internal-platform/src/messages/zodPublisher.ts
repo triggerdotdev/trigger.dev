@@ -91,8 +91,15 @@ export class ZodPublisher<PublisherSchema extends MessageCatalogSchema> {
 
     const id = ulid();
 
+    this.#logger.debug(
+      "Parsing message data and properties",
+      type,
+      data,
+      properties
+    );
+
     const parsedData = messageSchema.data.parse(data);
-    const parsedProperties = messageSchema.properties.parse(properties);
+    const parsedProperties = messageSchema.properties.parse(properties ?? {});
 
     const message = JSON.stringify({
       id,

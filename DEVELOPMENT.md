@@ -83,3 +83,7 @@ curl --request POST \
 	}
 }'
 ```
+
+## Dependency & Package graph
+
+![Dependency Graph](assets/dependencyGraph.png)

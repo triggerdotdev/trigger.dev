@@ -9,6 +9,7 @@
   ],
   "devDependencies": {
     "@trigger.dev/tsconfig": "workspace:*",
+    "internal-integrations": "workspace:*",
     "@types/node": "^18.11.9",
     "rimraf": "^3.0.2",
     "tsup": "^6.5.0"
@@ -20,6 +21,7 @@
     "dev": "tsup --watch"
   },
   "dependencies": {
-    "zod": "^3.20.2"
+    "zod": "^3.20.2",
+    "@trigger.dev/sdk": "workspace:*"
   }
 }

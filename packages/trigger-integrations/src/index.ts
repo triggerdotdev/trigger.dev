@@ -1,2 +1,3 @@
-export * from "./integrations/github";
-export * from "./integrations/slack";
+import * as github from "./integrations/github";
+
+export { github };

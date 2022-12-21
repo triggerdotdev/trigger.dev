@@ -62,8 +62,9 @@ model APIConnection {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  organizationId String
+  organization    Organization             @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  organizationId  String
+  connectionSlots WorkflowConnectionSlot[]
 }
 
 enum APIConnectionType {
@@ -107,8 +108,10 @@ model Workflow {
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   organizationId String
 
-  triggers WorkflowTrigger[]
-  runs     WorkflowRun[]
+  triggers           WorkflowTrigger[]
+  runs               WorkflowRun[]
+  connectionSlots    WorkflowConnectionSlot[]
+  registeredWebhooks RegisteredWebhook[] // Can have multiple because there are multiple environments
 
   @@unique([organizationId, slug])
 }
@@ -126,8 +129,10 @@ model WorkflowTrigger {
   config Json
   status WorkflowTriggerStatus @default(CREATED)
 
-  isDefault Boolean       @default(false)
-  runs      WorkflowRun[]
+  isDefault         Boolean                 @default(false)
+  runs              WorkflowRun[]
+  connectionSlot    WorkflowConnectionSlot?
+  registeredWebhook RegisteredWebhook?
 
   @@unique([workflowId, environmentId])
 }
@@ -140,6 +145,53 @@ enum WorkflowTriggerType {
 }
 
 enum WorkflowTriggerStatus {
+  CREATED
+  CONNECTED
+}
+
+model WorkflowConnectionSlot {
+  id String @id @default(cuid())
+
+  workflow   Workflow @relation(fields: [workflowId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  workflowId String
+
+  trigger   WorkflowTrigger? @relation(fields: [triggerId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  triggerId String?          @unique
+
+  connection   APIConnection? @relation(fields: [connectionId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  connectionId String?
+
+  slotName          String
+  serviceIdentifier String
+  auth              Json?
+
+  registeredWebhook RegisteredWebhook?
+
+  @@unique([workflowId, slotName])
+}
+
+model RegisteredWebhook {
+  id String @id @default(cuid())
+
+  workflow   Workflow @relation(fields: [workflowId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  workflowId String
+
+  trigger   WorkflowTrigger @relation(fields: [triggerId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  triggerId String          @unique
+
+  connectionSlot   WorkflowConnectionSlot @relation(fields: [connectionSlotId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  connectionSlotId String                 @unique
+
+  secret        String
+  webhookConfig Json?
+  status        RegisteredWebhookStatus @default(CREATED)
+  connectedAt   DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+enum RegisteredWebhookStatus {
   CREATED
   CONNECTED
 }

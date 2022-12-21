@@ -1,8 +1,9 @@
 import { z } from "zod";
 
-export type TriggerEvent<TEventData = unknown> = {
+export type TriggerEvent<TSchema extends z.ZodTypeAny> = {
   type: "CUSTOM_EVENT" | "HTTP_ENDPOINT" | "SCHEDULE" | "WEBHOOK";
   config: any;
+  schema: TSchema;
 };
 
 export type TriggerCustomEventOptions<TSchema extends z.ZodTypeAny> = {
@@ -12,9 +13,10 @@ export type TriggerCustomEventOptions<TSchema extends z.ZodTypeAny> = {
 
 export function customEvent<TSchema extends z.ZodTypeAny>(
   options: TriggerCustomEventOptions<TSchema>
-): TriggerEvent<z.infer<TSchema>> {
+): TriggerEvent<TSchema> {
   return {
     type: "CUSTOM_EVENT",
-    config: options,
+    config: { name: options.name },
+    schema: options.schema,
   };
 }

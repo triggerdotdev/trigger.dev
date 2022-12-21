@@ -12,6 +12,7 @@ import Pulsar from "pulsar-client";
 import { z } from "zod";
 import { prisma } from "~/db.server";
 import { env } from "~/env.server";
+import { findRegisteredWebhookById } from "~/models/registeredWebhook.server";
 import {
   completeWorkflowRun,
   failWorkflowRun,
@@ -20,6 +21,7 @@ import {
   startWorkflowRun,
   triggerEventInRun,
 } from "~/models/workflowRun.server";
+import { RegisterWebhook } from "./webhooks/registerWebhook.server";
 
 let pulsarClient: PulsarClient;
 let triggerPublisher: ZodPublisher<PlatformCatalog>;
@@ -178,6 +180,10 @@ const InternalCatalog = {
     data: CustomEventCreatedEventSchema,
     properties: CustomEventCreatedPropertiesSchema,
   },
+  REGISTERED_WEBHOOK_CREATED: {
+    data: z.object({ id: z.string() }),
+    properties: z.object({}),
+  },
 };
 
 async function createInternalPubSub() {
@@ -193,6 +199,19 @@ async function createInternalPubSub() {
     },
     schema: InternalCatalog,
     handlers: {
+      REGISTERED_WEBHOOK_CREATED: async (id, data, properties) => {
+        const webhook = await findRegisteredWebhookById(data.id);
+
+        if (!webhook) {
+          return true;
+        }
+
+        const registerWebhookService = new RegisterWebhook();
+
+        const isRegistered = await registerWebhookService.call(webhook);
+
+        return isRegistered; // Returning true will mean we don't retry
+      },
       CUSTOM_EVENT_CREATED: async (id, data, properties) => {
         console.log("CUSTOM_EVENT_CREATED", id, data, properties);
 

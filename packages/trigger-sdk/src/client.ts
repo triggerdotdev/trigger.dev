@@ -13,9 +13,9 @@ import { Trigger, TriggerOptions } from "./trigger";
 import { TriggerContext } from "./types";
 import { ContextLogger } from "./logger";
 
-export class TriggerClient<TEventData = void> {
-  #trigger: Trigger<TEventData>;
-  #options: TriggerOptions<TEventData>;
+export class TriggerClient<TSchema extends z.ZodTypeAny> {
+  #trigger: Trigger<TSchema>;
+  #options: TriggerOptions<TSchema>;
 
   #connection?: HostConnection;
   #serverRPC?: ZodRPC<typeof ServerRPCSchema, typeof HostRPCSchema>;
@@ -27,10 +27,7 @@ export class TriggerClient<TEventData = void> {
   #retryIntervalMs: number = 3000;
   #logger: Logger;
 
-  constructor(
-    trigger: Trigger<TEventData>,
-    options: TriggerOptions<TEventData>
-  ) {
+  constructor(trigger: Trigger<TSchema>, options: TriggerOptions<TSchema>) {
     this.#trigger = trigger;
     this.#options = options;
 
@@ -120,9 +117,11 @@ export class TriggerClient<TEventData = void> {
             },
           };
 
+          const eventData = this.#options.on.schema.parse(data.trigger.input);
+
           // TODO: handle this better
           this.#trigger.options
-            .run(data.trigger.input as TEventData, ctx)
+            .run(eventData, ctx)
             .then((output) => {
               return serverRPC.send("COMPLETE_WORKFLOW_RUN", {
                 id: data.id,

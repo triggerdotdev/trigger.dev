@@ -16,7 +16,7 @@ import {
 } from "internal-platform";
 import { v4 } from "uuid";
 import { WebSocket } from "ws";
-import { z } from "zod";
+import { z, ZodError } from "zod";
 import { TriggerServerConnection } from "./connection";
 import { env } from "./env";
 import { pulsarClient } from "./pulsarClient";
@@ -282,13 +282,13 @@ export class TriggerServer {
 
     try {
       // TODO: do this in a better/safer way
-      const parsedTrigger = TriggerMetadataSchema.parse(data.trigger);
+      const trigger = TriggerMetadataSchema.parse(data.trigger);
 
       // register the workflow with the platform
       const response = await this.#apiClient.registerWorkflow({
         id: data.workflowId,
         name: data.workflowName,
-        trigger: parsedTrigger,
+        trigger,
         package: {
           name: data.packageName,
           version: data.packageVersion,
@@ -396,7 +396,19 @@ export class TriggerServer {
 
       return true;
     } catch (error) {
-      this.#logger.error("Failed to initialize workflow", error);
+      if (error instanceof ZodError) {
+        this.#logger.error(
+          `Failed to initialize workflow because the trigger is invalid: ${JSON.stringify(
+            data.trigger
+          )}`,
+          error.issues
+        );
+      } else {
+        this.#logger.error(
+          "Failed to initialize workflow for some unknown reason",
+          error
+        );
+      }
 
       return false;
     }
