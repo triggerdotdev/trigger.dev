@@ -1,6 +1,7 @@
 import type { WorkflowRunStep, WorkflowTrigger } from ".prisma/client";
 import {
   CustomEventSchema,
+  ErrorSchema,
   LogMessageSchema,
 } from "@trigger.dev/common-schemas";
 import { TriggerMetadataSchema } from "internal-platform";
@@ -44,6 +45,7 @@ export class WorkflowRunPresenter {
     const trigger = {
       startedAt: workflowRun.startedAt,
       status: triggerStatus(steps.length, workflowRun.status),
+      input: workflowRun.input,
       ...(await parseTrigger(workflowRun.trigger)),
     };
 
@@ -58,7 +60,9 @@ export class WorkflowRunPresenter {
         dateDifference(workflowRun.startedAt, workflowRun.finishedAt),
       trigger,
       steps,
-      error: workflowRun.error,
+      error: workflowRun.error
+        ? await ErrorSchema.parseAsync(workflowRun.error)
+        : undefined,
     };
   }
 }
@@ -72,7 +76,7 @@ async function parseStep(
   workflowStatus: WorkflowRunStatus,
   isLast: boolean
 ) {
-  const status = stepStatus(original.finishedAt, workflowStatus, isLast);
+  const status = stepStatus(original.finishedAt);
   const base = {
     id: original.id,
     startedAt: original.startedAt,
@@ -103,14 +107,7 @@ async function parseStep(
   throw new Error(`Unknown step type ${original.type}`);
 }
 
-function stepStatus(
-  finishedAt: Date | null,
-  workflowStatus: WorkflowRunStatus,
-  isLast: boolean
-) {
-  if (isLast) {
-    return workflowStatus;
-  }
+function stepStatus(finishedAt: Date | null) {
   if (finishedAt) {
     return "SUCCESS";
   } else {

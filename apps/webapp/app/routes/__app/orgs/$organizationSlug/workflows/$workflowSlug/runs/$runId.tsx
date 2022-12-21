@@ -48,7 +48,6 @@ export const loader = async ({ request, params }: LoaderArgs) => {
 type Run = Awaited<ReturnType<WorkflowRunPresenter["data"]>>;
 type Trigger = Run["trigger"];
 type Step = Run["steps"][number];
-type RunError = Run["error"];
 type StepOrTriggerType = Step["type"] | Trigger["type"];
 type TriggerType<T, K extends Trigger["type"]> = T extends { type: K }
   ? T
@@ -419,7 +418,7 @@ function Log({ log }: { log: StepType<Step, "LOG_MESSAGE"> }) {
       <Header4
         className={classNames("mb-2 font-mono", logColor[log.input.level])}
       >
-        "{log.input.message}"
+        {log.input.message}
       </Header4>
 
       <CodeBlock code={stringifyCode(log.input.properties)} align="top" />
@@ -427,7 +426,9 @@ function Log({ log }: { log: StepType<Step, "LOG_MESSAGE"> }) {
   );
 }
 
-function Error({ error }: { error: RunError }) {
+function Error({ error }: { error: Run["error"] }) {
+  if (!error) return null;
+
   return (
     <>
       <div className="flex gap-2 mb-2 mt-3 ">
@@ -436,12 +437,16 @@ function Error({ error }: { error: RunError }) {
           Failed with error:
         </Body>
       </div>
-      <CodeBlock
-        code={stringifyCode(error)}
-        language="json"
-        className="border border-red-600"
-        align="top"
-      />
+      <Panel className="border border-red-600">
+        <Header4 className="font-mono">
+          {error.name}: {error.message}
+        </Header4>
+        {error.stackTrace && (
+          <div className="mt-2">
+            <CodeBlock code={error.stackTrace} language="json" align="top" />
+          </div>
+        )}
+      </Panel>
     </>
   );
 }
