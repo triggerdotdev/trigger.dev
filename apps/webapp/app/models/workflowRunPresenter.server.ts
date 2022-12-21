@@ -6,6 +6,7 @@ import {
 import { TriggerMetadataSchema } from "internal-platform";
 import type { PrismaClient } from "~/db.server";
 import { prisma } from "~/db.server";
+import { duration } from "~/utils";
 import type { WorkflowRunStatus } from "./workflowRun.server";
 
 export class WorkflowRunPresenter {
@@ -54,9 +55,7 @@ export class WorkflowRunPresenter {
       duration:
         workflowRun.startedAt &&
         workflowRun.finishedAt &&
-        Math.abs(
-          workflowRun.startedAt.getTime() - workflowRun.finishedAt.getTime()
-        ) / 1000,
+        duration(workflowRun.startedAt, workflowRun.finishedAt),
       trigger,
       steps,
       error: workflowRun.error,

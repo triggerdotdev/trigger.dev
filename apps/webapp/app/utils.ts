@@ -88,9 +88,21 @@ const dateFormatter = new Intl.DateTimeFormat("en-US", {
   dateStyle: "medium",
   timeStyle: "short",
 });
+const dateFormatterLong = new Intl.DateTimeFormat("en-US", {
+  dateStyle: "medium",
+  timeStyle: "medium",
+});
 
-export function formatDateTime(date: Date): string {
-  return dateFormatter.format(date);
+export function formatDateTime(
+  date: Date,
+  style: "medium" | "long" = "medium"
+): string {
+  switch (style) {
+    case "long":
+      return dateFormatterLong.format(date);
+    case "medium":
+      return dateFormatter.format(date);
+  }
 }
 
 export type PrismaReturnType<T extends (...args: any) => any> = Awaited<
@@ -102,4 +114,8 @@ export function titleCase(original: string): string {
     .split(" ")
     .map((word) => word[0].toUpperCase() + word.slice(1))
     .join(" ");
+}
+
+export function duration(date1: Date, date2: Date) {
+  return Math.abs(date1.getTime() - date2.getTime()) / 1000;
 }

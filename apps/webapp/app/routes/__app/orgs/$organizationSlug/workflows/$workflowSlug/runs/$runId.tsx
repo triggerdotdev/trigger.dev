@@ -69,16 +69,17 @@ export default function Page() {
         </div>
       </div>
 
-      <ul className="flex gap-6">
+      <ul className="flex gap-6 ml-[-3px]">
         <li className="flex gap-2 items-center">
-          <Spinner />
+          <Status status={run.status} />
           <Header2 size="small" className="text-slate-400">
             {statusLabel[run.status]}
           </Header2>
         </li>
         <li className="flex gap-1 items-center">
           <Header2 size="small" className="text-slate-400">
-            Started: 12:34:56pm Dec 13, 2022
+            {run.startedAt &&
+              `Started: ${formatDateTime(run.startedAt, "long")}`}
           </Header2>
         </li>
         <li className="flex gap-1 items-center">
@@ -431,13 +432,13 @@ function StepError({ step }: { step: Step }) {
   );
 }
 
-function Status({ status }: { status: WorkflowStepStatus }) {
+function Status({ status }: { status: WorkflowRunStatus }) {
   switch (status) {
-    case "error":
+    case "ERROR":
       return <XCircleIcon className="relative h-7 w-7 text-red-500" />;
-    case "inProgress":
+    case "PENDING":
       return <Spinner className="relative h-6 w-6 ml-[1px] text-blue-500" />;
-    case "complete":
+    case "SUCCESS":
       return <CheckCircleIcon className="relative h-7 w-7 text-green-500" />;
     default:
       return <ClockIcon className="relative h-7 w-7 text-slate-500" />;
