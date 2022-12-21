@@ -5,10 +5,18 @@ import {
 } from "@heroicons/react/24/solid";
 import { CheckCircleIcon } from "@heroicons/react/24/solid";
 import { Link } from "@remix-run/react";
+import type { LoaderArgs } from "@remix-run/server-runtime";
 import classNames from "classnames";
+import humanizeDuration from "humanize-duration";
+import { typedjson, useTypedLoaderData } from "remix-typedjson";
+import invariant from "tiny-invariant";
 import { Panel } from "~/components/layout/Panel";
 import { Spinner } from "~/components/primitives/Spinner";
 import { Header1, Header2 } from "~/components/primitives/text/Headers";
+import { runStatusIcon, runStatusTitle } from "~/components/runs/runStatus";
+import { getWorkflowRuns } from "~/models/workflowRun.server";
+import { requireUserId } from "~/services/session.server";
+import { dateDifference, formatDateTime } from "~/utils";
 
 const headerCell = "px-4 py-5 text-left text-base font-semibold text-slate-300";
 const headerCellRightAlign = classNames(headerCell, "text-right");
@@ -16,7 +24,28 @@ const cell = "flex whitespace-nowrap text-sm text-slate-300";
 const cellLeftAligned = classNames(cell, "justify-start");
 const cellRightAligned = classNames(cell, "justify-end");
 
+export const loader = async ({ request, params }: LoaderArgs) => {
+  const userId = await requireUserId(request);
+  const { organizationSlug, workflowSlug } = params;
+  invariant(organizationSlug, "organizationSlug is required");
+  invariant(workflowSlug, "workflowSlug is required");
+
+  try {
+    const runs = await getWorkflowRuns({
+      userId,
+      organizationSlug,
+      workflowSlug,
+    });
+    return typedjson({ runs });
+  } catch (error: any) {
+    console.error(error);
+    throw new Response("Error ", { status: 404 });
+  }
+};
+
 export default function Page() {
+  const { runs } = useTypedLoaderData<typeof loader>();
+
   return (
     <>
       <Header1 className="mb-6">Runs</Header1>
@@ -28,13 +57,13 @@ export default function Page() {
           <thead className="bg-slate-700/20">
             <tr>
               <th scope="col" className={headerCell}>
+                Started
+              </th>
+              <th scope="col" className={headerCell}>
                 ID
               </th>
               <th scope="col" className={headerCell}>
                 Status
-              </th>
-              <th scope="col" className={headerCell}>
-                Started
               </th>
               <th scope="col" className={headerCell}>
                 Completed
@@ -48,77 +77,54 @@ export default function Page() {
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-850">
-            <tr className="group w-full">
-              <Cell to="abcdef" alignment="left">
-                clbuoggr500047cw95pv8r1oh
-              </Cell>
-              <Cell to="abcdef" alignment="left">
-                <span className="flex items-center gap-1">
-                  <Spinner className="w-4 h-4 text-green-500" />
-                  In progress
-                </span>
-              </Cell>
-              <Cell to="abcdef" alignment="left">
-                12:45pm 22 Dec 2022
-              </Cell>
-              <Cell to="abcdef" alignment="left">
-                –
-              </Cell>
-              <Cell to="abcdef">–</Cell>
-              <Cell to="abcdef">
-                <CheckIcon className="h-5 w-5 text-green-500" />
-              </Cell>
-            </tr>
-            <tr className="group w-full">
-              <Cell to="abcdef" alignment="left">
-                clbuoggr500047cw95pv8r1oh
-              </Cell>
-              <Cell to="abcdef" alignment="left">
-                <span className="flex items-center gap-1 justify-end">
-                  <CheckCircleIcon className="w-4 h-4 text-green-500" />
-                  Complete
-                </span>
-              </Cell>
-              <Cell to="abcdef" alignment="left">
-                12:45pm 22 Dec 2022
-              </Cell>
-              <Cell to="abcdef" alignment="left">
-                10:13am 23 Dec 2022
-              </Cell>
-              <Cell to="abcdef">1d 4h 44m</Cell>
-              <Cell to="abcdef">–</Cell>
-            </tr>
-            <tr className="group w-full">
-              <Cell to="abcdef" alignment="left">
-                clbuoggr500047cw95pv8r1oh
-              </Cell>
-              <Cell to="abcdef" alignment="left">
-                <span className="flex items-center gap-1 justify-end">
-                  <ExclamationTriangleIcon className="flex justify-self-end h-4 w-4 text-red-600" />
-                  Error
-                </span>
-              </Cell>
-              <Cell to="abcdef" alignment="left">
-                12:45pm 22 Dec 2022
-              </Cell>
-              <Cell to="abcdef" alignment="left">
-                –
-              </Cell>
-              <Cell to="abcdef">–</Cell>
-              <Cell to="abcdef">–</Cell>
-            </tr>
-            <tr>
-              <td colSpan={6} className="py-6 text-sm text-center">
-                <div className="flex items-center justify-center">
-                  <div className="flex items-center justify-center p-3 pr-4 gap-1 bg-yellow-200 border border-yellow-400 rounded-md text-yellow-700">
-                    <InformationCircleIcon className="w-5 h-5" />
-                    <span className="text-gray">
-                      No runs found for this Workflow
+            {runs.length > 0 ? (
+              runs.map((run) => (
+                <tr key={run.id} className="group w-full">
+                  <Cell to={run.id} alignment="left">
+                    {run.startedAt
+                      ? formatDateTime(run.startedAt, "long")
+                      : "–"}
+                  </Cell>
+                  <Cell to={run.id} alignment="left">
+                    {run.id}
+                  </Cell>
+                  <Cell to={run.id} alignment="left">
+                    <span className="flex items-center gap-1">
+                      {runStatusIcon(run.status, "small")}
+                      {runStatusTitle(run.status)}
                     </span>
+                  </Cell>
+                  <Cell to={run.id} alignment="left">
+                    {run.finishedAt
+                      ? formatDateTime(run.finishedAt, "long")
+                      : "–"}
+                  </Cell>
+                  <Cell to={run.id}>
+                    {run.startedAt && run.finishedAt
+                      ? humanizeDuration(
+                          dateDifference(run.startedAt, run.finishedAt)
+                        )
+                      : "–"}
+                  </Cell>
+                  <Cell to={run.id}>
+                    <CheckIcon className="h-5 w-5 text-green-500" />
+                  </Cell>
+                </tr>
+              ))
+            ) : (
+              <tr>
+                <td colSpan={6} className="py-6 text-sm text-center">
+                  <div className="flex items-center justify-center">
+                    <div className="flex items-center justify-center p-3 pr-4 gap-1 bg-yellow-200 border border-yellow-400 rounded-md text-yellow-700">
+                      <InformationCircleIcon className="w-5 h-5" />
+                      <span className="text-gray">
+                        No runs found for this Workflow
+                      </span>
+                    </div>
                   </div>
-                </div>
-              </td>
-            </tr>
+                </td>
+              </tr>
+            )}
           </tbody>
         </table>
       </Panel>

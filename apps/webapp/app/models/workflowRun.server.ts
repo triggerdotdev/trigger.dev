@@ -8,6 +8,9 @@ import type {
 import type { z } from "zod";
 import { prisma } from "~/db.server";
 import { IngestEvent } from "~/services/events/ingest.server";
+import { Organization } from "./organization.server";
+import { User } from "./user.server";
+import { Workflow } from "./workflow.server";
 
 type WorkflowRunStatus = WorkflowRun["status"];
 export type { WorkflowRun, WorkflowRunStep, WorkflowRunStatus };
@@ -149,4 +152,30 @@ async function findWorkflowRunScopedToApiKey(id: string, apiKey: string) {
   }
 
   return workflowRun;
+}
+
+export async function getWorkflowRuns({
+  userId,
+  organizationSlug,
+  workflowSlug,
+}: {
+  userId: User["id"];
+  organizationSlug: Organization["slug"];
+  workflowSlug: Workflow["slug"];
+}) {
+  return prisma.workflowRun.findMany({
+    where: {
+      workflow: {
+        slug: workflowSlug,
+        organization: {
+          slug: organizationSlug,
+          users: {
+            some: {
+              id: userId,
+            },
+          },
+        },
+      },
+    },
+  });
 }

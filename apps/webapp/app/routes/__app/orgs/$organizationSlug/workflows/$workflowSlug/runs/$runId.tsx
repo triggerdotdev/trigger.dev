@@ -1,7 +1,5 @@
 import {
-  ClockIcon,
   DocumentTextIcon,
-  XCircleIcon,
   ArrowPathRoundedSquareIcon,
   BeakerIcon,
   CheckCircleIcon,
@@ -16,7 +14,6 @@ import {
 } from "@heroicons/react/24/outline";
 import { Panel } from "~/components/layout/Panel";
 import { PrimaryButton } from "~/components/primitives/Buttons";
-import { Spinner } from "~/components/primitives/Spinner";
 import { Body } from "~/components/primitives/text/Body";
 import {
   Header1,
@@ -35,6 +32,7 @@ import { WorkflowRunPresenter } from "~/models/workflowRunPresenter.server";
 import type { WorkflowRunStatus } from "~/models/workflowRun.server";
 import humanizeDuration from "humanize-duration";
 import classNames from "classnames";
+import { runStatusIcon, runStatusTitle } from "~/components/runs/runStatus";
 
 export const loader = async ({ request, params }: LoaderArgs) => {
   await requireUserId(request);
@@ -87,9 +85,9 @@ export default function Page() {
 
       <ul className="flex gap-6 ml-[-3px]">
         <li className="flex gap-2 items-center">
-          {status[run.status].icon}
+          {runStatusIcon(run.status, "large")}
           <Header2 size="small" className="text-slate-400">
-            {status[run.status].label}
+            {runStatusTitle(run.status)}
           </Header2>
         </li>
         <li className="flex gap-1 items-center">
@@ -193,7 +191,7 @@ function WorkflowStep({ step }: { step: Step }) {
     <div className="flex items-stretch w-full">
       <div className="relative flex w-5 border-l border-slate-700 ml-2.5">
         <div className="absolute top-6 -left-[18px] p-1 bg-slate-850 rounded-full">
-          {status[step.status].icon}
+          {runStatusIcon(step.status, "large")}
         </div>
       </div>
       <StepPanel status={step.status}>
@@ -449,26 +447,6 @@ function Error({ error }: { error: Run["error"] }) {
     </>
   );
 }
-
-const status: Record<WorkflowRunStatus, { icon: ReactNode; label: ReactNode }> =
-  {
-    SUCCESS: {
-      icon: <CheckCircleIcon className="relative h-7 w-7 text-green-500" />,
-      label: <span className="text-green-500">Success</span>,
-    },
-    PENDING: {
-      icon: <ClockIcon className="relative h-7 w-7 text-slate-500" />,
-      label: <span className="text-slate-500">In progress</span>,
-    },
-    RUNNING: {
-      icon: <Spinner className="relative h-6 w-6 ml-[1px] text-blue-500" />,
-      label: <span className="text-blue-500">Running</span>,
-    },
-    ERROR: {
-      icon: <XCircleIcon className="relative h-7 w-7 text-red-500" />,
-      label: <span className="text-red-500">Error</span>,
-    },
-  } as const;
 
 const styleClass = "h-6 w-6 text-slate-400";
 const stepInfo: Record<Step["type"], { label: string; icon: ReactNode }> = {
