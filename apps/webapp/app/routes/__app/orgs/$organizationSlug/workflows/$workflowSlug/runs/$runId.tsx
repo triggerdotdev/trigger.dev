@@ -5,9 +5,15 @@ import {
   ArrowPathRoundedSquareIcon,
   BeakerIcon,
   CheckCircleIcon,
-  ChatBubbleLeftEllipsisIcon,
   ExclamationTriangleIcon,
 } from "@heroicons/react/24/solid";
+import {
+  ArrowRightIcon,
+  BarsArrowDownIcon,
+  BoltIcon,
+  CalendarDaysIcon,
+  ChatBubbleLeftEllipsisIcon,
+} from "@heroicons/react/24/outline";
 import { Panel } from "~/components/layout/Panel";
 import { PrimaryButton } from "~/components/primitives/Buttons";
 import { Spinner } from "~/components/primitives/Spinner";
@@ -20,7 +26,7 @@ import {
 } from "~/components/primitives/text/Headers";
 import CodeBlock from "~/components/code/CodeBlock";
 import type { ReactNode } from "react";
-import { formatDateTime } from "~/utils";
+import { dateDifference, formatDateTime } from "~/utils";
 import type { LoaderArgs } from "@remix-run/server-runtime";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { requireUserId } from "~/services/session.server";
@@ -29,7 +35,7 @@ import { WorkflowRunPresenter } from "~/models/workflowRunPresenter.server";
 import type { WorkflowRunStatus } from "~/models/workflowRun.server";
 import humanizeDuration from "humanize-duration";
 import classNames from "classnames";
-import { BarsArrowDownIcon } from "@heroicons/react/24/outline";
+
 export const loader = async ({ request, params }: LoaderArgs) => {
   await requireUserId(request);
   const { runId } = params;
@@ -49,7 +55,6 @@ export const loader = async ({ request, params }: LoaderArgs) => {
 type Run = Awaited<ReturnType<WorkflowRunPresenter["data"]>>;
 type Trigger = Run["trigger"];
 type Step = Run["steps"][number];
-type StepOrTriggerType = Step["type"] | Trigger["type"];
 type TriggerType<T, K extends Trigger["type"]> = T extends { type: K }
   ? T
   : never;
@@ -250,22 +255,24 @@ function StepHeader({
         </Body>
       </div>
       <ul className="flex justify-end items-center gap-4">
-        {startedAt && (
-          <li className={workflowNodeFlexClasses}>
-            <Body size="extra-small" className={workflowNodeUppercaseClasses}>
-              Started:
-            </Body>
-            <Body size="small">{formatDateTime(startedAt)}</Body>
-          </li>
-        )}
-        {finishedAt && (
-          <li className={workflowNodeFlexClasses}>
-            <Body size="extra-small" className={workflowNodeUppercaseClasses}>
-              Completed:
-            </Body>
-            <Body size="small">{formatDateTime(finishedAt)}</Body>
-          </li>
-        )}
+        <div className={workflowNodeFlexClasses}>
+          {startedAt && (
+            <Body size="small">{formatDateTime(startedAt, "long")}</Body>
+          )}
+          {startedAt &&
+            finishedAt &&
+            dateDifference(startedAt, finishedAt) > 1 && (
+              <>
+                <Body
+                  size="extra-small"
+                  className={workflowNodeUppercaseClasses}
+                >
+                  <ArrowRightIcon className="h-3 w-3" />
+                </Body>
+                <Body size="small">{formatDateTime(finishedAt, "long")}</Body>
+              </>
+            )}
+        </div>
 
         {integration && (
           <li className="flex gap-2 items-center">
@@ -326,7 +333,7 @@ function Webhook({ webhook }: { webhook: TriggerType<Trigger, "WEBHOOK"> }) {
           ))}
         </div>
       </div>
-      {/* <CodeBlock code={JSON.stringify(webhook.input)} language="json" /> */}
+      {webhook.input && <CodeBlock code={stringifyCode(webhook.input)} />}
     </>
   );
 }
@@ -403,12 +410,7 @@ function Log({ log }: { log: StepType<Step, "LOG_MESSAGE"> }) {
   return (
     <>
       <Body className="font-mono" size="small">
-        <span
-          className={classNames(
-            "uppercase text-bas",
-            logColor[log.input.level]
-          )}
-        >
+        <span className={"uppercase text-small text-slate-500"}>
           {log.input.level}:
         </span>
       </Body>
@@ -476,7 +478,7 @@ const stepInfo: Record<Step["type"], { label: string; icon: ReactNode }> = {
   },
   CUSTOM_EVENT: {
     label: "Fire custom event",
-    icon: <DocumentTextIcon className={styleClass} />,
+    icon: <BoltIcon className={styleClass} />,
   },
   OUTPUT: { label: "Output", icon: <></> },
 } as const;
@@ -497,13 +499,13 @@ const triggerInfo: Record<Trigger["type"], { label: string; icon: ReactNode }> =
     },
     SCHEDULE: {
       label: "Scheduled",
-      icon: <ClockIcon className={styleClass} />,
+      icon: <CalendarDaysIcon className={styleClass} />,
     },
   } as const;
 
 type LogLevel = StepType<Step, "LOG_MESSAGE">["input"]["level"];
 const logColor: Record<LogLevel, string> = {
-  INFO: "text-slate-500",
+  INFO: "text-slate-300",
   WARN: "text-yellow-300",
   ERROR: "text-red-300",
   DEBUG: "text-slate-300",
