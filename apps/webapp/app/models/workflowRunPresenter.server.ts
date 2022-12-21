@@ -33,13 +33,7 @@ export class WorkflowRunPresenter {
     }
 
     const steps = await Promise.all(
-      workflowRun.tasks.map((step, index) =>
-        parseStep(
-          step,
-          workflowRun.status,
-          index === workflowRun.tasks.length - 1
-        )
-      )
+      workflowRun.tasks.map((step) => parseStep(step))
     );
 
     const trigger = {
@@ -71,11 +65,7 @@ async function parseTrigger(original: WorkflowTrigger) {
   return TriggerMetadataSchema.parseAsync(original);
 }
 
-async function parseStep(
-  original: WorkflowRunStep,
-  workflowStatus: WorkflowRunStatus,
-  isLast: boolean
-) {
+async function parseStep(original: WorkflowRunStep) {
   const status = stepStatus(original.finishedAt);
   const base = {
     id: original.id,
@@ -109,15 +99,15 @@ async function parseStep(
 
 function stepStatus(finishedAt: Date | null) {
   if (finishedAt) {
-    return "SUCCESS";
+    return "SUCCESS" as const;
   } else {
-    return "PENDING";
+    return "PENDING" as const;
   }
 }
 
 function triggerStatus(stepCount: number, workflowStatus: WorkflowRunStatus) {
   if (stepCount > 0) {
-    return "SUCCESS";
+    return "SUCCESS" as const;
   }
 
   return workflowStatus;

@@ -29,6 +29,7 @@ import { WorkflowRunPresenter } from "~/models/workflowRunPresenter.server";
 import type { WorkflowRunStatus } from "~/models/workflowRun.server";
 import humanizeDuration from "humanize-duration";
 import classNames from "classnames";
+import { BarsArrowDownIcon } from "@heroicons/react/24/outline";
 export const loader = async ({ request, params }: LoaderArgs) => {
   await requireUserId(request);
   const { runId } = params;
@@ -169,23 +170,16 @@ const workflowNodeDelayClasses = "flex rounded-md bg-[#0F172A] p-3";
 
 function TriggerStep({ trigger }: { trigger: Trigger }) {
   return (
-    <div className="flex items-stretch w-full">
-      <div className="relative flex w-5 border-l border-slate-700 ml-2.5">
-        <div className="absolute top-6 -left-[18px] p-1 bg-slate-850 rounded-full">
-          {status[trigger.status].icon}
-        </div>
-      </div>
-      <StepPanel status={trigger.status}>
-        <StepHeader
-          stepType={trigger.type}
-          title={typeLabel[trigger.type]}
-          startedAt={trigger.startedAt}
-          finishedAt={null}
-          // integration={trigger.type === "WEBHOOK"}
-        />
-        <TriggerBody trigger={trigger} />
-      </StepPanel>
-    </div>
+    <Panel className="mt-4">
+      <StepHeader
+        icon={triggerInfo[trigger.type].icon}
+        title={triggerInfo[trigger.type].label}
+        startedAt={trigger.startedAt}
+        finishedAt={null}
+        // integration={trigger.type === "WEBHOOK"}
+      />
+      <TriggerBody trigger={trigger} />
+    </Panel>
   );
 }
 
@@ -199,8 +193,8 @@ function WorkflowStep({ step }: { step: Step }) {
       </div>
       <StepPanel status={step.status}>
         <StepHeader
-          stepType={step.type}
-          title={typeLabel[step.type]}
+          icon={stepInfo[step.type].icon}
+          title={stepInfo[step.type].label}
           startedAt={step.startedAt}
           finishedAt={step.finishedAt}
           // integration={trigger.type === "WEBHOOK"}
@@ -232,13 +226,13 @@ function StepPanel({
 }
 
 function StepHeader({
-  stepType,
+  icon,
   title,
   startedAt,
   finishedAt,
   integration,
 }: {
-  stepType: StepOrTriggerType;
+  icon: ReactNode;
   title: string;
   startedAt: Date | null;
   finishedAt: Date | null;
@@ -249,11 +243,13 @@ function StepHeader({
 }) {
   return (
     <div className="flex mb-4 pb-3 justify-between items-center border-b border-slate-700">
-      <ul className="flex gap-4 items-center">
-        <li className="flex gap-1 items-center">
-          <StepIcon stepType={stepType} />
-          <Body size="small">{title}</Body>
-        </li>
+      <div className="flex gap-1 items-center">
+        {icon}
+        <Body size="small" className="uppercase text-slate-400 font-semibold">
+          {title}
+        </Body>
+      </div>
+      <ul className="flex justify-end items-center gap-4">
         {startedAt && (
           <li className={workflowNodeFlexClasses}>
             <Body size="extra-small" className={workflowNodeUppercaseClasses}>
@@ -270,17 +266,18 @@ function StepHeader({
             <Body size="small">{formatDateTime(finishedAt)}</Body>
           </li>
         )}
+
+        {integration && (
+          <li className="flex gap-2 items-center">
+            <Body size="small">{integration.name}</Body>
+            <img
+              src={integration.logoUrl}
+              alt={integration.name}
+              className="h-8 shadow"
+            />
+          </li>
+        )}
       </ul>
-      {integration && (
-        <div className="flex gap-2 items-center">
-          <Body size="small">{integration.name}</Body>
-          <img
-            src={integration.logoUrl}
-            alt={integration.name}
-            className="h-8 shadow"
-          />
-        </div>
-      )}
     </div>
   );
 }
@@ -373,9 +370,9 @@ function CustomEventTrigger({
   return (
     <>
       <Header2 size="large" className="mb-4">
-        {event.config.name}
+        name: {event.config.name}
       </Header2>
-      {/* <CodeBlock code={JSON.stringify(event.payload)} /> */}
+      {event.input && <CodeBlock code={stringifyCode(event.input)} />}
     </>
   );
 }
@@ -384,7 +381,7 @@ function CustomEventStep({ event }: { event: StepType<Step, "CUSTOM_EVENT"> }) {
   return (
     <>
       <Header2 size="large" className="mb-4">
-        {event.input.name}
+        name: {event.input.name}
       </Header2>
       <Header4>Payload</Header4>
       <CodeBlock code={stringifyCode(event.input.payload)} align="top" />
@@ -451,24 +448,6 @@ function Error({ error }: { error: Run["error"] }) {
   );
 }
 
-function StepIcon({ stepType }: { stepType: StepOrTriggerType }) {
-  const styleClass = "h-6 w-6 text-slate-400";
-  switch (stepType) {
-    case "LOG_MESSAGE":
-      return <ChatBubbleLeftEllipsisIcon className={styleClass} />;
-    case "CUSTOM_EVENT":
-      return <DocumentTextIcon className={styleClass} />;
-    case "OUTPUT":
-      return <DocumentTextIcon className={styleClass} />;
-    case "WEBHOOK":
-      return <DocumentTextIcon className={styleClass} />;
-    case "HTTP_ENDPOINT":
-      return <DocumentTextIcon className={styleClass} />;
-    case "SCHEDULE":
-      return <DocumentTextIcon className={styleClass} />;
-  }
-}
-
 const status: Record<WorkflowRunStatus, { icon: ReactNode; label: ReactNode }> =
   {
     SUCCESS: {
@@ -489,14 +468,38 @@ const status: Record<WorkflowRunStatus, { icon: ReactNode; label: ReactNode }> =
     },
   } as const;
 
-const typeLabel: Record<StepOrTriggerType, string> = {
-  LOG_MESSAGE: "Log",
-  CUSTOM_EVENT: "Custom",
-  OUTPUT: "Output",
-  WEBHOOK: "Webhook",
-  HTTP_ENDPOINT: "HTTP",
-  SCHEDULE: "Scheduled",
+const styleClass = "h-6 w-6 text-slate-400";
+const stepInfo: Record<Step["type"], { label: string; icon: ReactNode }> = {
+  LOG_MESSAGE: {
+    label: "Log",
+    icon: <ChatBubbleLeftEllipsisIcon className={styleClass} />,
+  },
+  CUSTOM_EVENT: {
+    label: "Fire custom event",
+    icon: <DocumentTextIcon className={styleClass} />,
+  },
+  OUTPUT: { label: "Output", icon: <></> },
 } as const;
+
+const triggerInfo: Record<Trigger["type"], { label: string; icon: ReactNode }> =
+  {
+    CUSTOM_EVENT: {
+      label: "Custom event",
+      icon: <BarsArrowDownIcon className={styleClass} />,
+    },
+    WEBHOOK: {
+      label: "Webhook",
+      icon: <DocumentTextIcon className={styleClass} />,
+    },
+    HTTP_ENDPOINT: {
+      label: "HTTP endpoint",
+      icon: <DocumentTextIcon className={styleClass} />,
+    },
+    SCHEDULE: {
+      label: "Scheduled",
+      icon: <ClockIcon className={styleClass} />,
+    },
+  } as const;
 
 type LogLevel = StepType<Step, "LOG_MESSAGE">["input"]["level"];
 const logColor: Record<LogLevel, string> = {
