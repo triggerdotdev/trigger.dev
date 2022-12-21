@@ -4,10 +4,7 @@ import {
   XCircleIcon,
   ArrowPathRoundedSquareIcon,
   BeakerIcon,
-  EnvelopeIcon,
   CheckCircleIcon,
-  ExclamationTriangleIcon,
-  CalendarDaysIcon,
 } from "@heroicons/react/24/solid";
 import { Panel } from "~/components/layout/Panel";
 import { PrimaryButton } from "~/components/primitives/Buttons";
@@ -22,7 +19,6 @@ import {
 import CodeBlock from "~/components/code/CodeBlock";
 import type { ReactNode } from "react";
 import { formatDateTime } from "~/utils";
-import githubLogo from "~/assets/images/integrations/logo-github.png";
 import type { LoaderArgs } from "@remix-run/server-runtime";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { requireUserId } from "~/services/session.server";
@@ -58,8 +54,9 @@ type StepType<T, K extends Step["type"]> = T extends { type: K } ? T : never;
 
 export default function Page() {
   const { run } = useTypedLoaderData<typeof loader>();
-
-  console.log(run);
+  const output = run.steps.find((s) => s.type === "OUTPUT") as
+    | StepType<Step, "OUTPUT">
+    | undefined;
 
   return (
     <>
@@ -104,51 +101,61 @@ export default function Page() {
 
       <TriggerStep trigger={run.trigger} />
 
-      {run.steps.map((step, index) => (
-        <WorkflowStep key={index} step={step} />
-      ))}
+      {run.steps
+        .filter((s) => s.type !== "OUTPUT")
+        .map((step, index) => (
+          <WorkflowStep key={index} step={step} />
+        ))}
 
-      <Panel>
-        <div className="flex gap-2 items-center border-b border-slate-700 pb-3 mb-4">
-          <CheckCircleIcon className="h-5 w-5 text-green-500" />
-          <Body size="small" className="text-slate-300">
-            Run #1 complete
-          </Body>
-        </div>
-        <div className="grid grid-cols-3 gap-2 text-slate-300">
-          <div className="flex flex-col gap-1">
-            <Body size="extra-small" className={workflowNodeUppercaseClasses}>
-              Run duration:
-            </Body>
-            <Body className={workflowNodeDelayClasses} size="small">
-              3 days 5 hrs 30 mins 10 secs
+      {run.status === "SUCCESS" && (
+        <Panel>
+          <div className="flex gap-2 items-center border-b border-slate-700 pb-3 mb-4">
+            <CheckCircleIcon className="h-5 w-5 text-green-500" />
+            <Body size="small" className="text-slate-300">
+              Run {run.id} complete
             </Body>
           </div>
-          <div className="flex flex-col gap-1">
-            <Body size="extra-small" className={workflowNodeUppercaseClasses}>
-              Started:
-            </Body>
-            <Body className={workflowNodeDelayClasses} size="small">
-              3:45pm Dec 22 2022
-            </Body>
+          <div className="grid grid-cols-3 gap-2 text-slate-300">
+            <div className="flex flex-col gap-1">
+              <Body size="extra-small" className={workflowNodeUppercaseClasses}>
+                Run duration:
+              </Body>
+              <Body className={workflowNodeDelayClasses} size="small">
+                {run.duration && humanizeDuration(run.duration)}
+              </Body>
+            </div>
+            <div className="flex flex-col gap-1">
+              <Body size="extra-small" className={workflowNodeUppercaseClasses}>
+                Started:
+              </Body>
+              <Body className={workflowNodeDelayClasses} size="small">
+                {run.startedAt && formatDateTime(run.startedAt, "long")}
+              </Body>
+            </div>
+            <div className="flex flex-col gap-1">
+              <Body size="extra-small" className={workflowNodeUppercaseClasses}>
+                Completed:
+              </Body>
+              <Body className={workflowNodeDelayClasses} size="small">
+                {run.finishedAt && formatDateTime(run.finishedAt, "long")}
+              </Body>
+            </div>
           </div>
-          <div className="flex flex-col gap-1">
-            <Body size="extra-small" className={workflowNodeUppercaseClasses}>
-              Completed:
-            </Body>
-            <Body className={workflowNodeDelayClasses} size="small">
-              3:45pm Dec 22 2022
-            </Body>
-          </div>
-        </div>
-        <CodeBlock
-          code={JSON.stringify({ aasdfasdf: "asdfasdfa" })}
-          language="json"
-          className="mt-2"
-        />
-      </Panel>
+          {output && (
+            <CodeBlock
+              code={stringifyCode(output.output)}
+              language="json"
+              className="mt-2"
+            />
+          )}
+        </Panel>
+      )}
     </>
   );
+}
+
+function stringifyCode(obj: any) {
+  return JSON.stringify(obj, null, 2);
 }
 
 const workflowNodeFlexClasses = "flex gap-1 items-baseline";
@@ -295,8 +302,6 @@ function StepBody({ step }: { step: Step }) {
       return <Log log={step} />;
     case "CUSTOM_EVENT":
       return <CustomEventStep event={step} />;
-    case "OUTPUT":
-      return <Output event={step} />;
   }
   return <></>;
 }
@@ -377,21 +382,13 @@ function CustomEventStep({ event }: { event: StepType<Step, "CUSTOM_EVENT"> }) {
         {event.input.name}
       </Header2>
       <Header4>Payload</Header4>
-      <CodeBlock code={JSON.stringify(event.input.payload)} />
+      <CodeBlock code={stringifyCode(event.input.payload)} />
       {event.input.context && (
         <>
           <Header4>Context</Header4>
-          <CodeBlock code={JSON.stringify(event.input.context)} />
+          <CodeBlock code={stringifyCode(event.input.context)} />
         </>
       )}
-    </>
-  );
-}
-
-function Output({ event }: { event: StepType<Step, "OUTPUT"> }) {
-  return (
-    <>
-      <CodeBlock code={JSON.stringify(event.output)} />
     </>
   );
 }
@@ -405,7 +402,7 @@ function Log({ log }: { log: StepType<Step, "LOG_MESSAGE"> }) {
     <>
       <Header4>{log.input.level}</Header4>
       <CodeBlock code={log.input.message} />
-      <CodeBlock code={JSON.stringify(log.input.properties)} />
+      <CodeBlock code={stringifyCode(log.input.properties)} />
     </>
   );
 }
