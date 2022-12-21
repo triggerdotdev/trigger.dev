@@ -1,7 +1,5 @@
 import type { APIConnection, Organization } from ".prisma/client";
 import { prisma } from "~/db.server";
-import { Pizzly } from "@nangohq/pizzly-node";
-import { env } from "~/env.server";
 
 export { APIConnection };
 
@@ -100,16 +98,4 @@ export async function updateApiConnectionTitle({
       title,
     },
   });
-}
-
-export async function getAccessToken({
-  connectionId,
-  apiIdentifier,
-}: {
-  connectionId: APIConnection["id"];
-  apiIdentifier: APIConnection["apiIdentifier"];
-}) {
-  const pizzly = new Pizzly(env.PIZZLY_HOST);
-  const accessToken = await pizzly.accessToken(apiIdentifier, connectionId);
-  return accessToken;
 }
