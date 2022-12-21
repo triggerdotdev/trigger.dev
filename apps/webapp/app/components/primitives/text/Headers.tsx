@@ -4,7 +4,13 @@ export type TitleProps = {
   className?: string;
 };
 
-type Size = "regular" | "small" | "large" | "extra-large";
+type Size =
+  | "extra-extra-small"
+  | "extra-small"
+  | "small"
+  | "regular"
+  | "large"
+  | "extra-large";
 
 const baseClasses = "font-sans";
 const overrideClasses = "text-slate-200";
@@ -59,6 +65,10 @@ export function Header4({
 
 function getSizeClassName(size: Size) {
   switch (size) {
+    case "extra-extra-small":
+      return "text-sm";
+    case "extra-small":
+      return "text-base";
     case "small":
       return "text-lg";
     case "large":
