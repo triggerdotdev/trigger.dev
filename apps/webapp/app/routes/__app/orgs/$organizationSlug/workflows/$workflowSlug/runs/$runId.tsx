@@ -28,6 +28,7 @@ import { requireUserId } from "~/services/session.server";
 import invariant from "tiny-invariant";
 import { WorkflowRunPresenter } from "~/models/workflowRunPresenter.server";
 import type { WorkflowRunStatus } from "~/models/workflowRun.server";
+import humanizeDuration from "humanize-duration";
 
 export const loader = async ({ request, params }: LoaderArgs) => {
   await requireUserId(request);
@@ -82,11 +83,13 @@ export default function Page() {
               `Started: ${formatDateTime(run.startedAt, "long")}`}
           </Header2>
         </li>
-        <li className="flex gap-1 items-center">
-          <Header2 size="small" className="text-slate-400">
-            Duration: 1m 23s
-          </Header2>
-        </li>
+        {run.duration && (
+          <li className="flex gap-1 items-center">
+            <Header2 size="small" className="text-slate-400">
+              Duration: {humanizeDuration(run.duration)}
+            </Header2>
+          </li>
+        )}
       </ul>
 
       <WorkflowStep
