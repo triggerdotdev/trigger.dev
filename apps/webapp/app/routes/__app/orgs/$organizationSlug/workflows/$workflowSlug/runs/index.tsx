@@ -1,5 +1,5 @@
 import { Listbox } from "@headlessui/react";
-import { BeakerIcon } from "@heroicons/react/24/outline";
+import { BeakerIcon, CheckIcon } from "@heroicons/react/24/outline";
 import { InformationCircleIcon } from "@heroicons/react/24/solid";
 import { Link } from "@remix-run/react";
 import type { LoaderArgs } from "@remix-run/server-runtime";
@@ -10,7 +10,7 @@ import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import invariant from "tiny-invariant";
 import { Panel } from "~/components/layout/Panel";
 import { PaginationControls } from "~/components/Pagination";
-import { Select } from "~/components/primitives/Select";
+import { StyledListBox } from "~/components/primitives/ListBox";
 import { Header1 } from "~/components/primitives/text/Headers";
 import { runStatusIcon, runStatusTitle } from "~/components/runs/runStatus";
 import type { WorkflowRunStatus } from "~/models/workflowRun.server";
@@ -57,7 +57,7 @@ export default function Page() {
     <>
       <Header1 className="mb-6">Runs</Header1>
       <div>
-        <Select />
+        <StatusFilter statuses={filters.statuses} />
       </div>
       <Panel className="p-0 overflow-hidden overflow-x-auto">
         <table className="w-full divide-y divide-slate-850">
@@ -177,26 +177,66 @@ function BlankRow({ title }: { title: string }) {
   );
 }
 
-function StatusFilter({ selected }: { selected: WorkflowRunStatus[] }) {
+const allStatuses: WorkflowRunStatus[] = [
+  "PENDING",
+  "RUNNING",
+  "SUCCESS",
+  "ERROR",
+];
+
+function StatusFilter({ statuses }: { statuses: WorkflowRunStatus[] }) {
   const [selectedStatuses, setSelectedStatuses] =
-    useState<WorkflowRunStatus[]>(selected);
+    useState<WorkflowRunStatus[]>(statuses);
 
   useEffect(() => {
-    setSelectedStatuses(selected);
-  }, [selected]);
+    setSelectedStatuses(statuses);
+  }, [statuses]);
 
   return (
-    <Listbox value={selectedStatuses} onChange={setSelectedStatuses} multiple>
-      <Listbox.Button>
-        {selectedStatuses.map((status) => status).join(", ")}
-      </Listbox.Button>
-      <Listbox.Options>
-        {selectedStatuses.map((status) => (
-          <Listbox.Option key={status} value={status}>
-            {status}
-          </Listbox.Option>
-        ))}
-      </Listbox.Options>
+    <Listbox
+      value={selectedStatuses}
+      onChange={setSelectedStatuses}
+      defaultValue={selectedStatuses}
+      multiple
+    >
+      <div className="relative mt-1">
+        <StyledListBox.Button>
+          {selectedStatuses.length === 4
+            ? "All statuses"
+            : selectedStatuses.length === 0
+            ? "None"
+            : selectedStatuses.map((status) => status).join(", ")}
+        </StyledListBox.Button>
+        <StyledListBox.Options>
+          {allStatuses.map((status) => (
+            <StyledListBox.Option key={status} value={status}>
+              {({ selected, active }) => (
+                <>
+                  <span
+                    className={classNames(
+                      selected ? "font-semibold" : "font-normal",
+                      "block truncate"
+                    )}
+                  >
+                    {status}
+                  </span>
+
+                  {selected ? (
+                    <span
+                      className={classNames(
+                        active ? "text-white" : "text-blue-500",
+                        "absolute inset-y-0 right-0 flex items-center pr-4"
+                      )}
+                    >
+                      <CheckIcon className="h-5 w-5" aria-hidden="true" />
+                    </span>
+                  ) : null}
+                </>
+              )}
+            </StyledListBox.Option>
+          ))}
+        </StyledListBox.Options>
+      </div>
     </Listbox>
   );
 }

@@ -4,7 +4,6 @@ import { prisma } from "~/db.server";
 import type { Organization } from "./organization.server";
 import type { User } from "./user.server";
 import type { Workflow } from "./workflow.server";
-import type { WorkflowRunStatus } from "./workflowRun.server";
 
 const statusSchema = z.union([
   z.literal("PENDING"),
