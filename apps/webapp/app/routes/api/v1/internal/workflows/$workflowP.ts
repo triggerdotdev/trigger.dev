@@ -2,7 +2,7 @@ import type { ActionArgs } from "@remix-run/server-runtime";
 import { json } from "@remix-run/server-runtime";
 import { z } from "zod";
 import { authenticateApiRequest } from "~/services/apiAuth.server";
-import { RegisterWorkflow } from "~/services/workflows/register.server";
+import { RegisterWorkflow } from "~/services/workflows/registerWorkflow";
 
 // PUT /api/v1/internal/workflows/:workflowP
 export async function action({ request, params }: ActionArgs) {
