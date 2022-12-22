@@ -46,6 +46,13 @@ export class RegisterWebhook {
       },
     });
 
+    await this.#prismaClient.workflowTrigger.update({
+      where: { id: webhook.triggerId },
+      data: {
+        status: "CONNECTED",
+      },
+    });
+
     return true;
   }
 
