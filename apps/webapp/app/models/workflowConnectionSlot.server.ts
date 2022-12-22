@@ -13,3 +13,24 @@ export async function findWorkflowConnectionSlotById(id: string) {
     },
   });
 }
+
+export async function getWorkflowConnectionSlotsForWorkspace(id: string) {
+  return prisma.workflowConnectionSlot.findMany({
+    where: {
+      workflowId: id,
+    },
+    select: {
+      id: true,
+      serviceIdentifier: true,
+      slotName: true,
+      auth: true,
+      connection: true,
+      trigger: {
+        select: {
+          id: true,
+          status: true,
+        },
+      },
+    },
+  });
+}
