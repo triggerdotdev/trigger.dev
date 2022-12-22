@@ -158,12 +158,25 @@ export async function getWorkflowRuns({
   userId,
   organizationSlug,
   workflowSlug,
+  page,
+  pageSize = 20,
 }: {
   userId: User["id"];
   organizationSlug: Organization["slug"];
   workflowSlug: Workflow["slug"];
+  page: number;
+  pageSize?: number;
 }) {
-  return prisma.workflowRun.findMany({
+  const offset = (page - 1) * pageSize;
+  const total = await prisma.workflowRun.count({
+    where: {
+      workflow: {
+        slug: workflowSlug,
+      },
+    },
+  });
+
+  const runs = await prisma.workflowRun.findMany({
     where: {
       workflow: {
         slug: workflowSlug,
@@ -177,5 +190,16 @@ export async function getWorkflowRuns({
         },
       },
     },
+    orderBy: {
+      startedAt: "desc",
+    },
+    skip: offset,
+    take: pageSize,
   });
+
+  return {
+    runs,
+    page,
+    total,
+  };
 }

@@ -12,7 +12,6 @@ import humanizeDuration from "humanize-duration";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import invariant from "tiny-invariant";
 import { Panel } from "~/components/layout/Panel";
-import { Spinner } from "~/components/primitives/Spinner";
 import { Header1, Header2 } from "~/components/primitives/text/Headers";
 import { runStatusIcon, runStatusTitle } from "~/components/runs/runStatus";
 import { getWorkflowRuns } from "~/models/workflowRun.server";
@@ -32,12 +31,13 @@ export const loader = async ({ request, params }: LoaderArgs) => {
   invariant(workflowSlug, "workflowSlug is required");
 
   try {
-    const runs = await getWorkflowRuns({
+    const result = await getWorkflowRuns({
       userId,
       organizationSlug,
       workflowSlug,
+      page: 1,
     });
-    return typedjson({ runs });
+    return typedjson(result);
   } catch (error: any) {
     console.error(error);
     throw new Response("Error ", { status: 404 });
@@ -45,13 +45,13 @@ export const loader = async ({ request, params }: LoaderArgs) => {
 };
 
 export default function Page() {
-  const { runs } = useTypedLoaderData<typeof loader>();
+  const { runs, page, total } = useTypedLoaderData<typeof loader>();
 
   return (
     <>
       <Header1 className="mb-6">Runs</Header1>
       <Header2 size="small" className="mb-2 text-slate-400">
-        20 runs of 530
+        {runs.length} runs of {total}
       </Header2>
       <Panel className="p-0 overflow-hidden overflow-x-auto">
         <table className="w-full divide-y divide-slate-850">
@@ -78,7 +78,7 @@ export default function Page() {
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-850">
-            {runs.length > 0 ? (
+            {total > 0 ? (
               runs.map((run) => (
                 <tr key={run.id} className="group w-full">
                   <Cell to={run.id} alignment="left">
