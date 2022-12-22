@@ -48,8 +48,6 @@ export default function Page() {
   const result = useTypedLoaderData<typeof loader>();
   const { runs, total, page, pageCount, pageSize } = result;
 
-  console.log(result);
-
   return (
     <>
       <Header1 className="mb-6">Runs</Header1>
