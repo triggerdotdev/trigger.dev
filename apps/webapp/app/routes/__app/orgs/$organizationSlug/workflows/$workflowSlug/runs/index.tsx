@@ -1,15 +1,19 @@
+import { Listbox } from "@headlessui/react";
 import { BeakerIcon } from "@heroicons/react/24/outline";
 import { InformationCircleIcon } from "@heroicons/react/24/solid";
 import { Link } from "@remix-run/react";
 import type { LoaderArgs } from "@remix-run/server-runtime";
 import classNames from "classnames";
 import humanizeDuration from "humanize-duration";
+import { useEffect, useState } from "react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import invariant from "tiny-invariant";
 import { Panel } from "~/components/layout/Panel";
 import { PaginationControls } from "~/components/Pagination";
-import { Header1, Header2 } from "~/components/primitives/text/Headers";
+import { Select } from "~/components/primitives/Select";
+import { Header1 } from "~/components/primitives/text/Headers";
 import { runStatusIcon, runStatusTitle } from "~/components/runs/runStatus";
+import type { WorkflowRunStatus } from "~/models/workflowRun.server";
 import { WorkflowRunListPresenter } from "~/models/workflowRunListPresenter.server";
 import { requireUserId } from "~/services/session.server";
 import { dateDifference, formatDateTime } from "~/utils";
@@ -40,20 +44,21 @@ export const loader = async ({ request, params }: LoaderArgs) => {
     return typedjson(result);
   } catch (error: any) {
     console.error(error);
-    throw new Response("Error ", { status: 404 });
+    throw new Response("Error ", { status: 400 });
   }
 };
 
 export default function Page() {
   const result = useTypedLoaderData<typeof loader>();
-  const { runs, total, page, pageCount, pageSize } = result;
+  const { runs, total, page, pageCount, pageSize, filters, hasFilters } =
+    result;
 
   return (
     <>
       <Header1 className="mb-6">Runs</Header1>
-      <Header2 size="small" className="mb-2 text-slate-400">
-        {runs.length} runs of {total}
-      </Header2>
+      <div>
+        <Select />
+      </div>
       <Panel className="p-0 overflow-hidden overflow-x-auto">
         <table className="w-full divide-y divide-slate-850">
           <thead className="bg-slate-700/20">
@@ -79,7 +84,7 @@ export default function Page() {
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-850">
-            {total === 0 ? (
+            {total === 0 && !hasFilters ? (
               <BlankRow title="No runs found for this Workflow" />
             ) : runs.length === 0 ? (
               <BlankRow title="No runs match your filters" />
@@ -169,5 +174,29 @@ function BlankRow({ title }: { title: string }) {
         </div>
       </td>
     </tr>
+  );
+}
+
+function StatusFilter({ selected }: { selected: WorkflowRunStatus[] }) {
+  const [selectedStatuses, setSelectedStatuses] =
+    useState<WorkflowRunStatus[]>(selected);
+
+  useEffect(() => {
+    setSelectedStatuses(selected);
+  }, [selected]);
+
+  return (
+    <Listbox value={selectedStatuses} onChange={setSelectedStatuses} multiple>
+      <Listbox.Button>
+        {selectedStatuses.map((status) => status).join(", ")}
+      </Listbox.Button>
+      <Listbox.Options>
+        {selectedStatuses.map((status) => (
+          <Listbox.Option key={status} value={status}>
+            {status}
+          </Listbox.Option>
+        ))}
+      </Listbox.Options>
+    </Listbox>
   );
 }
