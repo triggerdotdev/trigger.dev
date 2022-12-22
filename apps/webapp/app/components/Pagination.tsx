@@ -1,8 +1,11 @@
+import { ChevronRightIcon } from "@heroicons/react/24/outline";
 import {
   ArrowLongLeftIcon,
   ArrowLongRightIcon,
+  ChevronLeftIcon,
 } from "@heroicons/react/24/solid";
 import { Link, useLocation } from "@remix-run/react";
+import classNames from "classnames";
 
 export function PaginationControls({
   currentPage,
@@ -14,42 +17,64 @@ export function PaginationControls({
   const location = useLocation();
 
   return (
-    <nav className="flex items-center justify-between border-t border-gray-200 px-4 sm:px-0">
-      <div className="-mt-px mr-4 flex w-0 flex-1">
+    <div className="flex items-center justify-between border-t border-gray-200 bg-white px-4 py-3 sm:px-6">
+      <div className="flex flex-1 justify-between sm:hidden">
         {currentPage > 1 && (
           <Link
             to={pageUrl(location, currentPage - 1)}
-            className="inline-flex items-center border-t-2 border-transparent pt-4 pr-1 text-sm font-medium text-gray-500 hover:border-gray-300 hover:text-gray-700"
+            className="relative inline-flex items-center rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
           >
-            <ArrowLongLeftIcon
-              className="mr-3 h-5 w-5 text-gray-400"
-              aria-hidden="true"
-            />
             Previous
           </Link>
         )}
-      </div>
-      <div className="hidden md:-mt-px md:flex">
-        {calculatePageLinks(currentPage, totalPages).map((page, i) => (
-          <PageLinkComponent page={page} key={i} location={location} />
-        ))}
-      </div>
-
-      <div className="-mt-px flex w-0 flex-1 justify-end">
         {currentPage < totalPages && (
           <Link
             to={pageUrl(location, currentPage + 1)}
-            className="inline-flex items-center border-t-2 border-transparent pt-4 pl-1 text-sm font-medium text-gray-500 hover:border-gray-300 hover:text-gray-700"
+            className="relative ml-3 inline-flex items-center rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
           >
             Next
-            <ArrowLongRightIcon
-              className="ml-3 h-5 w-5 text-gray-400"
-              aria-hidden="true"
-            />
           </Link>
         )}
       </div>
-    </nav>
+      <div className="hidden sm:flex sm:flex-1 sm:items-center sm:justify-between">
+        <div>
+          <p className="text-sm text-gray-700">
+            Showing <span className="font-medium">1</span> to{" "}
+            <span className="font-medium">10</span> of{" "}
+            <span className="font-medium">97</span> results
+          </p>
+        </div>
+        <div>
+          <nav
+            className="isolate inline-flex -space-x-px rounded-md shadow-sm"
+            aria-label="Pagination"
+          >
+            {currentPage > 1 && (
+              <Link
+                to={pageUrl(location, currentPage - 1)}
+                disabled={currentPage === 1}
+                className="relative inline-flex items-center rounded-l-md border border-gray-300 bg-white px-2 py-2 text-sm font-medium text-gray-500 hover:bg-gray-50 focus:z-20"
+              >
+                <span className="sr-only">Previous</span>
+                <ChevronLeftIcon className="h-5 w-5" aria-hidden="true" />
+              </Link>
+            )}
+            {calculatePageLinks(currentPage, totalPages).map((page, i) => (
+              <PageLinkComponent page={page} key={i} location={location} />
+            ))}
+            {currentPage < totalPages && (
+              <Link
+                to={pageUrl(location, currentPage + 1)}
+                className="relative inline-flex items-center rounded-r-md border border-gray-300 bg-white px-2 py-2 text-sm font-medium text-gray-500 hover:bg-gray-50 focus:z-20"
+              >
+                <span className="sr-only">Next</span>
+                <ChevronRightIcon className="h-5 w-5" aria-hidden="true" />
+              </Link>
+            )}
+          </nav>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -64,6 +89,12 @@ function pageUrl(
   return location.pathname + "?" + search.toString();
 }
 
+const baseClass =
+  "relative inline-flex items-center border px-4 py-2 text-sm font-medium focus:z-20";
+const unselectedClass =
+  "bg-white border-gray-300 text-gray-500 hover:bg-gray-50";
+const selectedClass = "z-10 bg-indigo-50 border-indigo-500 text-indigo-600";
+
 function PageLinkComponent({
   page,
   location,
@@ -76,7 +107,7 @@ function PageLinkComponent({
       return (
         <Link
           to={pageUrl(location, page.page)}
-          className="inline-flex items-center border-t-2 border-indigo-500 px-4 pt-4 text-sm font-medium text-indigo-600"
+          className={classNames(baseClass, selectedClass)}
         >
           {page.page}
         </Link>
@@ -85,7 +116,7 @@ function PageLinkComponent({
       return (
         <Link
           to={pageUrl(location, page.page)}
-          className="inline-flex items-center border-t-2 border-transparent px-4 pt-4 text-sm font-medium text-gray-500 hover:border-gray-300 hover:text-gray-700"
+          className={classNames(baseClass, unselectedClass)}
         >
           {page.page}
         </Link>
