@@ -37,6 +37,13 @@ export class WorkflowRunListPresenter {
     });
 
     const runs = await this.#prismaClient.workflowRun.findMany({
+      select: {
+        id: true,
+        startedAt: true,
+        finishedAt: true,
+        status: true,
+        isTest: true,
+      },
       where: {
         workflow: {
           slug: workflowSlug,
