@@ -46,7 +46,7 @@ export const loader = async ({ request, params }: LoaderArgs) => {
 
 export default function Page() {
   const result = useTypedLoaderData<typeof loader>();
-  const { runs, total, page, pageCount } = result;
+  const { runs, total, page, pageCount, pageSize } = result;
 
   console.log(result);
 
@@ -124,7 +124,12 @@ export default function Page() {
             )}
           </tbody>
         </table>
-        <PaginationControls currentPage={page} totalPages={pageCount} />
+        <PaginationControls
+          currentPage={page}
+          totalPages={pageCount}
+          pageSize={pageSize}
+          totalResults={total}
+        />
       </Panel>
     </>
   );

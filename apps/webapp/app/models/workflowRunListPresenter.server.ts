@@ -74,6 +74,7 @@ export class WorkflowRunListPresenter {
       pageCount: Math.ceil(total / pageSize),
       total,
       filters,
+      pageSize,
     };
   }
 }
