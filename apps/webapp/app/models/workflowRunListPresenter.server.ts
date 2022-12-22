@@ -1,8 +1,8 @@
 import type { PrismaClient } from "~/db.server";
 import { prisma } from "~/db.server";
-import { Organization } from "./organization.server";
-import { User } from "./user.server";
-import { Workflow } from "./workflow.server";
+import type { Organization } from "./organization.server";
+import type { User } from "./user.server";
+import type { Workflow } from "./workflow.server";
 
 export class WorkflowRunListPresenter {
   #prismaClient: PrismaClient;
@@ -15,7 +15,7 @@ export class WorkflowRunListPresenter {
     userId,
     organizationSlug,
     workflowSlug,
-    pageSize = 20,
+    pageSize = 2,
     searchParams,
   }: {
     userId: User["id"];
@@ -57,10 +57,16 @@ export class WorkflowRunListPresenter {
       take: pageSize,
     });
 
+    const filters = Object.fromEntries(
+      Object.entries(searchObject).filter(([key]) => key !== "page")
+    );
+
     return {
       runs,
       page,
+      pageCount: Math.ceil(total / pageSize),
       total,
+      filters,
     };
   }
 }

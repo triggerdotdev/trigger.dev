@@ -7,6 +7,7 @@ import humanizeDuration from "humanize-duration";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import invariant from "tiny-invariant";
 import { Panel } from "~/components/layout/Panel";
+import { PaginationControls } from "~/components/Pagination";
 import { Header1, Header2 } from "~/components/primitives/text/Headers";
 import { runStatusIcon, runStatusTitle } from "~/components/runs/runStatus";
 import { WorkflowRunListPresenter } from "~/models/workflowRunListPresenter.server";
@@ -44,7 +45,10 @@ export const loader = async ({ request, params }: LoaderArgs) => {
 };
 
 export default function Page() {
-  const { runs, page, total } = useTypedLoaderData<typeof loader>();
+  const result = useTypedLoaderData<typeof loader>();
+  const { runs, total, page, pageCount } = result;
+
+  console.log(result);
 
   return (
     <>
@@ -120,6 +124,7 @@ export default function Page() {
             )}
           </tbody>
         </table>
+        <PaginationControls currentPage={page} totalPages={pageCount} />
       </Panel>
     </>
   );
