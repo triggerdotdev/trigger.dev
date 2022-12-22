@@ -4,7 +4,7 @@
 
 ### Pulsar requirements
 
-1. Ensure you have Homebrew installed by running `which brew` in terminal. If it's not found then you should install it: https://brew.sh/
+1. Ensure you have Homebrew installed by running `which brew` in terminal. If it's not found then you should install it: https://brew.sh/. Run `which brew` again to check it's found. If it's not you may need to add it your path: https://stackoverflow.com/questions/36657321/after-installing-homebrew-i-get-zsh-command-not-found-brew
 
 2. Run `brew install libpulsar` to install the C++ libraries that the pulsar-client depends on
 
