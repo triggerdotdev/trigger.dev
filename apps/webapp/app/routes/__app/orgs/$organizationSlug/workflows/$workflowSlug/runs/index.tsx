@@ -1,18 +1,22 @@
 import { Listbox } from "@headlessui/react";
 import { BeakerIcon, CheckIcon } from "@heroicons/react/24/outline";
 import { InformationCircleIcon } from "@heroicons/react/24/solid";
-import { Link } from "@remix-run/react";
+import { Link, useFetcher, useSubmit } from "@remix-run/react";
 import type { LoaderArgs } from "@remix-run/server-runtime";
 import classNames from "classnames";
 import humanizeDuration from "humanize-duration";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import invariant from "tiny-invariant";
 import { Panel } from "~/components/layout/Panel";
 import { PaginationControls } from "~/components/Pagination";
 import { StyledListBox } from "~/components/primitives/ListBox";
 import { Header1 } from "~/components/primitives/text/Headers";
-import { runStatusIcon, runStatusTitle } from "~/components/runs/runStatus";
+import {
+  runStatusIcon,
+  runStatusLabel,
+  runStatusTitle,
+} from "~/components/runs/runStatus";
 import type { WorkflowRunStatus } from "~/models/workflowRun.server";
 import { WorkflowRunListPresenter } from "~/models/workflowRunListPresenter.server";
 import { requireUserId } from "~/services/session.server";
@@ -53,12 +57,26 @@ export default function Page() {
   const { runs, total, page, pageCount, pageSize, filters, hasFilters } =
     result;
 
+  const fetcher = useFetcher();
+  const submit = useSubmit();
+  const formRef = useRef<HTMLFormElement>(null);
+
+  const submitForm = useCallback(() => {
+    if (!formRef.current) return;
+    submit(formRef.current, { replace: true });
+  }, [submit]);
+
   return (
     <>
       <Header1 className="mb-6">Runs</Header1>
-      <div>
-        <StatusFilter statuses={filters.statuses} />
-      </div>
+      <fetcher.Form
+        method="get"
+        className="pb-4 flex gap-2"
+        onChange={submitForm}
+        ref={formRef}
+      >
+        <StatusFilter statuses={filters.statuses} submitForm={submitForm} />
+      </fetcher.Form>
       <Panel className="p-0 overflow-hidden overflow-x-auto">
         <table className="w-full divide-y divide-slate-850">
           <thead className="bg-slate-700/20">
@@ -102,7 +120,7 @@ export default function Page() {
                   <Cell to={run.id} alignment="left">
                     <span className="flex items-center gap-1">
                       {runStatusIcon(run.status, "small")}
-                      {runStatusTitle(run.status)}
+                      {runStatusLabel(run.status)}
                     </span>
                   </Cell>
                   <Cell to={run.id} alignment="left">
@@ -184,7 +202,13 @@ const allStatuses: WorkflowRunStatus[] = [
   "ERROR",
 ];
 
-function StatusFilter({ statuses }: { statuses: WorkflowRunStatus[] }) {
+function StatusFilter({
+  statuses,
+  submitForm,
+}: {
+  statuses: WorkflowRunStatus[];
+  submitForm: () => void;
+}) {
   const [selectedStatuses, setSelectedStatuses] =
     useState<WorkflowRunStatus[]>(statuses);
 
@@ -192,51 +216,64 @@ function StatusFilter({ statuses }: { statuses: WorkflowRunStatus[] }) {
     setSelectedStatuses(statuses);
   }, [statuses]);
 
-  return (
-    <Listbox
-      value={selectedStatuses}
-      onChange={setSelectedStatuses}
-      defaultValue={selectedStatuses}
-      multiple
-    >
-      <div className="relative mt-1">
-        <StyledListBox.Button>
-          {selectedStatuses.length === 4
-            ? "All statuses"
-            : selectedStatuses.length === 0
-            ? "None"
-            : selectedStatuses.map((status) => status).join(", ")}
-        </StyledListBox.Button>
-        <StyledListBox.Options>
-          {allStatuses.map((status) => (
-            <StyledListBox.Option key={status} value={status}>
-              {({ selected, active }) => (
-                <>
-                  <span
-                    className={classNames(
-                      selected ? "font-semibold" : "font-normal",
-                      "block truncate"
-                    )}
-                  >
-                    {status}
-                  </span>
+  useEffect(() => {
+    if (statuses.join("") === selectedStatuses.join("")) return;
+    submitForm();
+  }, [submitForm, selectedStatuses, statuses]);
 
-                  {selected ? (
+  return (
+    <>
+      {selectedStatuses.length > 0 && (
+        <input
+          type="hidden"
+          name={"statuses"}
+          value={selectedStatuses.join(",")}
+          onChange={(val) => console.log(val)}
+        />
+      )}
+      <Listbox value={selectedStatuses} onChange={setSelectedStatuses} multiple>
+        <div className="relative mt-1 w-52">
+          <StyledListBox.Button>
+            {selectedStatuses.length === 4
+              ? "All statuses"
+              : selectedStatuses.length === 0
+              ? "None"
+              : selectedStatuses
+                  .map((status) => runStatusTitle(status))
+                  .join(", ")}
+          </StyledListBox.Button>
+          <StyledListBox.Options>
+            {allStatuses.map((status) => (
+              <StyledListBox.Option key={status} value={status}>
+                {({ selected, active }) => (
+                  <>
                     <span
                       className={classNames(
-                        active ? "text-white" : "text-blue-500",
-                        "absolute inset-y-0 right-0 flex items-center pr-4"
+                        selected ? "font-semibold" : "font-normal",
+                        "flex truncate items-center gap-1"
                       )}
                     >
-                      <CheckIcon className="h-5 w-5" aria-hidden="true" />
+                      {runStatusIcon(status, "small")}
+                      {runStatusLabel(status)}
                     </span>
-                  ) : null}
-                </>
-              )}
-            </StyledListBox.Option>
-          ))}
-        </StyledListBox.Options>
-      </div>
-    </Listbox>
+
+                    {selected ? (
+                      <span
+                        className={classNames(
+                          active ? "text-white" : "text-blue-500",
+                          "absolute inset-y-0 right-0 flex items-center pr-4"
+                        )}
+                      >
+                        <CheckIcon className="h-5 w-5" aria-hidden="true" />
+                      </span>
+                    ) : null}
+                  </>
+                )}
+              </StyledListBox.Option>
+            ))}
+          </StyledListBox.Options>
+        </div>
+      </Listbox>
+    </>
   );
 }

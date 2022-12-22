@@ -32,7 +32,7 @@ import { WorkflowRunPresenter } from "~/models/workflowRunPresenter.server";
 import type { WorkflowRunStatus } from "~/models/workflowRun.server";
 import humanizeDuration from "humanize-duration";
 import classNames from "classnames";
-import { runStatusIcon, runStatusTitle } from "~/components/runs/runStatus";
+import { runStatusIcon, runStatusLabel } from "~/components/runs/runStatus";
 
 export const loader = async ({ request, params }: LoaderArgs) => {
   await requireUserId(request);
@@ -89,7 +89,7 @@ export default function Page() {
         <li className="flex gap-2 items-center">
           {runStatusIcon(run.status, "large")}
           <Header2 size="small" className="text-slate-400">
-            {runStatusTitle(run.status)}
+            {runStatusLabel(run.status)}
           </Header2>
         </li>
         <li className="flex gap-1 items-center">

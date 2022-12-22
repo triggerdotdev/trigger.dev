@@ -9,16 +9,29 @@ import type { ReactNode } from "react";
 import type { WorkflowRunStatus } from "~/models/workflowRun.server";
 import { Spinner } from "../primitives/Spinner";
 
-export function runStatusTitle(status: WorkflowRunStatus): ReactNode {
+export function runStatusTitle(status: WorkflowRunStatus): string {
   switch (status) {
     case "SUCCESS":
-      return <span className="text-green-500">Complete</span>;
+      return "Complete";
     case "PENDING":
-      return <span className="text-slate-500">Not started</span>;
+      return "Not started";
     case "RUNNING":
-      return <span className="text-blue-500">In progress</span>;
+      return "In progress";
     case "ERROR":
-      return <span className="text-red-500">Error</span>;
+      return "Error";
+  }
+}
+
+export function runStatusLabel(status: WorkflowRunStatus): ReactNode {
+  switch (status) {
+    case "SUCCESS":
+      return <span className="text-green-500">{runStatusTitle(status)}</span>;
+    case "PENDING":
+      return <span className="text-slate-500">{runStatusTitle(status)}</span>;
+    case "RUNNING":
+      return <span className="text-blue-500">{runStatusTitle(status)}</span>;
+    case "ERROR":
+      return <span className="text-red-500">{runStatusTitle(status)}</span>;
   }
 }
 
