@@ -37,7 +37,7 @@ export class WorkflowRunListPresenter {
     userId,
     organizationSlug,
     workflowSlug,
-    pageSize = 2,
+    pageSize = 20,
     searchParams,
   }: {
     userId: User["id"];
