@@ -1,7 +1,9 @@
+import type { RegisteredWebhook } from ".prisma/client";
+import { github } from "internal-integrations";
 import type { PrismaClient } from "~/db.server";
 import { prisma } from "~/db.server";
 import type { RegisteredWebhookWithRelationships } from "~/models/registeredWebhook.server";
-import { github } from "internal-integrations";
+import { findRegisteredWebhookById } from "~/models/registeredWebhook.server";
 import { pizzly } from "../pizzly.server";
 import { originOrProxyUrl } from "../webhookProxy.server";
 
@@ -12,7 +14,13 @@ export class RegisterWebhook {
     this.#prismaClient = prismaClient;
   }
 
-  public async call(webhook: RegisteredWebhookWithRelationships) {
+  public async call(idOrWebhook: string | RegisteredWebhook) {
+    const webhook = await this.#findWebhook(idOrWebhook);
+
+    if (!webhook) {
+      return true;
+    }
+
     if (webhook.status === "CONNECTED") {
       return true;
     }
@@ -54,6 +62,25 @@ export class RegisterWebhook {
     });
 
     return true;
+  }
+
+  async #findWebhook(
+    idOrWebhook: string | RegisteredWebhook
+  ): Promise<RegisteredWebhookWithRelationships | undefined> {
+    const webhook =
+      typeof idOrWebhook === "string"
+        ? await findRegisteredWebhookById(idOrWebhook)
+        : await findRegisteredWebhookById(idOrWebhook.id);
+
+    if (!webhook) {
+      return;
+    }
+
+    if (!webhook.connectionSlot.connection) {
+      return;
+    }
+
+    return webhook;
   }
 
   async #registerWebhookWithConnection(

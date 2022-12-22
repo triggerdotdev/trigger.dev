@@ -13,6 +13,7 @@ import { z } from "zod";
 import { prisma } from "~/db.server";
 import { env } from "~/env.server";
 import { findRegisteredWebhookById } from "~/models/registeredWebhook.server";
+import { findWorkflowConnectionSlotById } from "~/models/workflowConnectionSlot.server";
 import {
   completeWorkflowRun,
   failWorkflowRun,
@@ -184,6 +185,10 @@ const InternalCatalog = {
     data: z.object({ id: z.string() }),
     properties: z.object({}),
   },
+  CONNECTION_SLOT_CONNECTED: {
+    data: z.object({ id: z.string() }),
+    properties: z.object({}),
+  },
 };
 
 async function createInternalPubSub() {
@@ -199,16 +204,33 @@ async function createInternalPubSub() {
     },
     schema: InternalCatalog,
     handlers: {
-      REGISTERED_WEBHOOK_CREATED: async (id, data, properties) => {
-        const webhook = await findRegisteredWebhookById(data.id);
+      CONNECTION_SLOT_CONNECTED: async (id, data, properties) => {
+        const slot = await findWorkflowConnectionSlotById(data.id);
 
-        if (!webhook) {
+        if (!slot) {
+          return true;
+        }
+
+        if (!slot.connection) {
+          return true;
+        }
+
+        if (!slot.registeredWebhook) {
           return true;
         }
 
         const registerWebhookService = new RegisterWebhook();
 
-        const isRegistered = await registerWebhookService.call(webhook);
+        const isRegistered = await registerWebhookService.call(
+          slot.registeredWebhook
+        );
+
+        return isRegistered; // Returning true will mean we don't retry
+      },
+      REGISTERED_WEBHOOK_CREATED: async (id, data, properties) => {
+        const registerWebhookService = new RegisterWebhook();
+
+        const isRegistered = await registerWebhookService.call(data.id);
 
         return isRegistered; // Returning true will mean we don't retry
       },
