@@ -11,7 +11,6 @@ export default function Page() {
   invariant(organization, "Organization not found");
   const connectionSlots = useConnectionSlots();
   invariant(connectionSlots, "Connection slots not found");
-  console.log(connectionSlots);
 
   return (
     <>

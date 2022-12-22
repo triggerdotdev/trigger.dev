@@ -49,9 +49,6 @@ export class WorkflowRunListPresenter {
     const searchEntries = Object.fromEntries(searchParams.entries());
     const { page, statuses } = SearchParamsSchema.parse(searchEntries);
 
-    console.log("page", page);
-    console.log("statuses", statuses);
-
     const offset = (page - 1) * pageSize;
     const total = await this.#prismaClient.workflowRun.count({
       where: {
