@@ -12,7 +12,6 @@ import Pulsar from "pulsar-client";
 import { z } from "zod";
 import { prisma } from "~/db.server";
 import { env } from "~/env.server";
-import { findRegisteredWebhookById } from "~/models/registeredWebhook.server";
 import { findWorkflowConnectionSlotById } from "~/models/workflowConnectionSlot.server";
 import {
   completeWorkflowRun,

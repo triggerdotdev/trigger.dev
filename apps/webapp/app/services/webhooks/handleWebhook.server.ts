@@ -20,7 +20,7 @@ export class HandleWebhook {
     const rawBody = await request.json();
     const rawHeaders = Object.fromEntries(request.headers.entries());
 
-    const webhookEvent = await this.#handleWebhook(
+    const handledWebhook = await this.#handleWebhook(
       webhook,
       serviceIdentifier,
       rawBody,
@@ -28,11 +28,29 @@ export class HandleWebhook {
       rawSearchParams
     );
 
-    console.log(
-      `Received webhook event: ${JSON.stringify(webhookEvent, null, 2)}`
-    );
+    switch (handledWebhook.status) {
+      case "ok": {
+        const { id, payload } = handledWebhook.data;
 
-    return true;
+        console.log(
+          `Received webhook event: ${id} with payload:\n${JSON.stringify(
+            payload,
+            null,
+            2
+          )}}`
+        );
+
+        return true;
+      }
+      case "ignored": {
+        console.log(`Ignored webhook event: ${handledWebhook.reason}`);
+
+        return true;
+      }
+      case "error": {
+        throw new Error(handledWebhook.error);
+      }
+    }
   }
 
   async #handleWebhook(

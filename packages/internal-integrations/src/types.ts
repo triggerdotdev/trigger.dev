@@ -16,7 +16,17 @@ export interface HandleWebhookOptions {
   params: unknown;
 }
 
+export interface ReceivedWebhook {
+  id: string;
+  payload: any;
+}
+
 export interface WebhookIntegration {
   registerWebhook: (config: WebhookConfig, params: unknown) => Promise<any>;
-  handleWebhookRequest: (options: HandleWebhookOptions) => any;
+  handleWebhookRequest: (
+    options: HandleWebhookOptions
+  ) =>
+    | { status: "ok"; data: ReceivedWebhook }
+    | { status: "ignored"; reason: string }
+    | { status: "error"; error: string };
 }

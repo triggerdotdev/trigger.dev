@@ -3,6 +3,7 @@ import {
   WebhookConfig,
   WebhookIntegration,
 } from "../types";
+import { Webhooks } from "@octokit/webhooks";
 
 import { WebhookSchema, IssueEventSchema } from "./schemas";
 
@@ -17,7 +18,48 @@ export class GitHubWebhookIntegration implements WebhookIntegration {
   }
 
   handleWebhookRequest(options: HandleWebhookOptions) {
-    return options.request.body;
+    const parsedParams = parseWebhookData(options.params);
+
+    const deliveryId = options.request.headers["x-github-delivery"];
+
+    console.log(
+      `[${deliveryId}] GitHubWebhookIntegration: parsedParams ${JSON.stringify(
+        parsedParams
+      )}`
+    );
+
+    if (
+      !parsedParams.events.includes(options.request.headers["x-github-event"])
+    ) {
+      return {
+        status: "ignored" as const,
+        reason: `params.events [${parsedParams.events}] did not match the x-github-event: ${options.request.headers["x-github-event"]}`,
+      };
+    }
+
+    const signature = options.request.headers["x-hub-signature-256"];
+
+    if (options.secret && signature) {
+      const githubWebhooks = new Webhooks({
+        secret: options.secret,
+      });
+
+      console.log(
+        `[${deliveryId}] GitHubWebhookIntegration: Verifying signature ${signature}`
+      );
+
+      if (!githubWebhooks.verify(options.request.body, signature)) {
+        return {
+          status: "error" as const,
+          error: `GitHubWebhookIntegration: Could not verify webhook payload, invalid signature or secret. [deliveryId = ${deliveryId}]]`,
+        };
+      }
+    }
+
+    return {
+      status: "ok" as const,
+      data: { id: deliveryId, payload: options.request.body },
+    };
   }
 }
 

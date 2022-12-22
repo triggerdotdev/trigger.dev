@@ -12,6 +12,7 @@
   },
   "scripts": {},
   "dependencies": {
+    "@octokit/webhooks": "^10.4.0",
     "zod": "^3.20.2"
   }
 }
