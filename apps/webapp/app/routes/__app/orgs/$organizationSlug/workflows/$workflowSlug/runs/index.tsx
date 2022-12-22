@@ -9,7 +9,7 @@ import invariant from "tiny-invariant";
 import { Panel } from "~/components/layout/Panel";
 import { Header1, Header2 } from "~/components/primitives/text/Headers";
 import { runStatusIcon, runStatusTitle } from "~/components/runs/runStatus";
-import { getWorkflowRuns } from "~/models/workflowRun.server";
+import { WorkflowRunListPresenter } from "~/models/workflowRunListPresenter.server";
 import { requireUserId } from "~/services/session.server";
 import { dateDifference, formatDateTime } from "~/utils";
 
@@ -25,12 +25,16 @@ export const loader = async ({ request, params }: LoaderArgs) => {
   invariant(organizationSlug, "organizationSlug is required");
   invariant(workflowSlug, "workflowSlug is required");
 
+  const url = new URL(request.url);
+  const searchParams = new URLSearchParams(url.search);
+
   try {
-    const result = await getWorkflowRuns({
+    const presenter = new WorkflowRunListPresenter();
+    const result = await presenter.data({
       userId,
       organizationSlug,
       workflowSlug,
-      page: 1,
+      searchParams,
     });
     return typedjson(result);
   } catch (error: any) {
@@ -73,7 +77,11 @@ export default function Page() {
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-850">
-            {total > 0 ? (
+            {total === 0 ? (
+              <BlankRow title="No runs found for this Workflow" />
+            ) : runs.length === 0 ? (
+              <BlankRow title="No runs match your filters" />
+            ) : (
               runs.map((run) => (
                 <tr key={run.id} className="group w-full">
                   <Cell to={run.id} alignment="left">
@@ -109,19 +117,6 @@ export default function Page() {
                   </Cell>
                 </tr>
               ))
-            ) : (
-              <tr>
-                <td colSpan={6} className="py-6 text-sm text-center">
-                  <div className="flex items-center justify-center">
-                    <div className="flex items-center justify-center p-3 pr-4 gap-1 bg-yellow-200 border border-yellow-400 rounded-md text-yellow-700">
-                      <InformationCircleIcon className="w-5 h-5" />
-                      <span className="text-gray">
-                        No runs found for this Workflow
-                      </span>
-                    </div>
-                  </div>
-                </td>
-              </tr>
             )}
           </tbody>
         </table>
@@ -151,5 +146,20 @@ function Cell({
         {children}
       </Link>
     </td>
+  );
+}
+
+function BlankRow({ title }: { title: string }) {
+  return (
+    <tr>
+      <td colSpan={6} className="py-6 text-sm text-center">
+        <div className="flex items-center justify-center">
+          <div className="flex items-center justify-center p-3 pr-4 gap-1 bg-yellow-200 border border-yellow-400 rounded-md text-yellow-700">
+            <InformationCircleIcon className="w-5 h-5" />
+            <span className="text-gray">{title}</span>
+          </div>
+        </div>
+      </td>
+    </tr>
   );
 }
