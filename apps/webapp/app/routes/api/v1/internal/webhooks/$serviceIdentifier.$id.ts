@@ -1,30 +1,30 @@
 import type { ActionArgs } from "@remix-run/server-runtime";
 import { z } from "zod";
-import { findRegisteredWebhookById } from "~/models/registeredWebhook.server";
-import { HandleWebhook } from "~/services/webhooks/handleWebhook.server";
+import { findExternalSourceById } from "~/models/externalSource.server";
+import { HandleExternalSource } from "~/services/externalSources/handleExternalSource.server";
 
 export async function action({ request, params }: ActionArgs) {
   const { id, serviceIdentifier } = z
     .object({ id: z.string(), serviceIdentifier: z.string() })
     .parse(params);
 
-  const webhook = await findRegisteredWebhookById(id);
+  const externalSource = await findExternalSourceById(id);
 
-  if (!webhook) {
+  if (!externalSource) {
     return {
       status: 404,
-      body: `Could not find webhook with id ${id} and serviceIdentifier ${serviceIdentifier}`,
+      body: `Could not find external source with id ${id} and serviceIdentifier ${serviceIdentifier}`,
     };
   }
 
-  if (webhook.connectionSlot.connection?.apiIdentifier !== serviceIdentifier) {
+  if (externalSource.connection?.apiIdentifier !== serviceIdentifier) {
     return { status: 500, body: "Service identifier does not match" };
   }
 
   try {
-    const handleWebhookService = new HandleWebhook();
+    const service = new HandleExternalSource();
 
-    await handleWebhookService.call(webhook, serviceIdentifier, request);
+    await service.call(externalSource, serviceIdentifier, request);
 
     return { status: 200 };
   } catch (error) {

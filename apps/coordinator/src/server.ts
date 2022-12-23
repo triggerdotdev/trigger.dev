@@ -10,7 +10,6 @@ import {
   InternalApiClient,
   platformCatalog,
   PlatformCatalog,
-  TriggerMetadataSchema,
   ZodPublisher,
   ZodSubscriber,
 } from "internal-platform";
@@ -281,14 +280,11 @@ export class TriggerServer {
     }
 
     try {
-      // TODO: do this in a better/safer way
-      const trigger = TriggerMetadataSchema.parse(data.trigger);
-
       // register the workflow with the platform
       const response = await this.#apiClient.registerWorkflow({
         id: data.workflowId,
         name: data.workflowName,
-        trigger,
+        trigger: data.trigger,
         package: {
           name: data.packageName,
           version: data.packageVersion,

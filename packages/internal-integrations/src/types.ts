@@ -4,25 +4,28 @@ export interface WebhookConfig {
   secret: string;
 }
 
-export interface NormalizedWebhookRequest {
+export interface NormalizedRequest {
   body: any;
   headers: Record<string, string>;
   searchParams: URLSearchParams;
 }
 
 export interface HandleWebhookOptions {
-  request: NormalizedWebhookRequest;
+  request: NormalizedRequest;
   secret?: string;
-  params: unknown;
 }
 
 export interface ReceivedWebhook {
   id: string;
+  event: string;
   payload: any;
+  timestamp?: string;
+  context?: any;
 }
 
 export interface WebhookIntegration {
-  registerWebhook: (config: WebhookConfig, params: unknown) => Promise<any>;
+  keyForSource: (source: unknown) => string;
+  registerWebhook: (config: WebhookConfig, source: unknown) => Promise<any>;
   handleWebhookRequest: (
     options: HandleWebhookOptions
   ) =>

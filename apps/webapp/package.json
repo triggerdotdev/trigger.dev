@@ -80,8 +80,8 @@
     "date-fns": "2.0.0-alpha.7 || >=2.0.0",
     "express": "^4.18.1",
     "humanize-duration": "^3.27.3",
-    "internal-platform": "workspace:*",
     "internal-integrations": "workspace:*",
+    "internal-platform": "workspace:*",
     "javascript-time-ago": "^2.5.7",
     "json-query": "^2.2.2",
     "jsonata": "^1.8.6",
@@ -117,6 +117,7 @@
     "slug": "^6.0.0",
     "tiny-invariant": "^1.2.0",
     "tsx": "^3.4.3",
+    "ulid": "^2.3.0",
     "zod": "^3.20.2"
   },
   "devDependencies": {

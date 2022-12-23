@@ -179,7 +179,7 @@ export class TriggerClient<TSchema extends z.ZodTypeAny> {
       apiKey: this.#apiKey,
       workflowId: this.#trigger.id,
       workflowName: this.#trigger.name,
-      trigger: this.#trigger.on,
+      trigger: this.#trigger.on.metadata,
       packageVersion: pkg.version,
       packageName: pkg.name,
     });

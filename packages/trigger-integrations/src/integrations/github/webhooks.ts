@@ -1,38 +1,58 @@
 import { TriggerEvent } from "@trigger.dev/sdk";
-import { createWebhookConfig, github } from "internal-integrations";
+import { github } from "internal-integrations";
 
-type IssueEventParams = {
+export function repoIssueEvent(params: {
   repo: string;
-};
-
-export function issueEvent(
-  params: IssueEventParams
-): TriggerEvent<typeof github.schemas.IssueEventSchema> {
+}): TriggerEvent<typeof github.schemas.IssueEventSchema> {
   return {
-    type: "WEBHOOK",
-    config: createWebhookConfig(github.schemas.WebhookSchema, "github.issue", {
-      events: ["issues"],
-      params,
-      scopes: ["repo"],
-    }),
+    metadata: {
+      type: "WEBHOOK",
+      service: "github",
+      name: "On Issue Event",
+      rule: {
+        service: ["github"],
+        payload: {
+          repository: {
+            full_name: [params.repo],
+          },
+        },
+        event: ["issues"],
+      },
+      source: github.schemas.WebhookSourceSchema.parse({
+        subresource: "repository",
+        scopes: ["repo"],
+        repo: params.repo,
+        events: ["issues"],
+      }),
+    },
     schema: github.schemas.IssueEventSchema,
   };
 }
 
-export function issueCommentEvent(
-  params: IssueEventParams
-): TriggerEvent<typeof github.schemas.IssueEventSchema> {
+export function orgIssueEvent(params: {
+  org: string;
+}): TriggerEvent<typeof github.schemas.IssueEventSchema> {
   return {
-    type: "WEBHOOK",
-    config: createWebhookConfig(
-      github.schemas.WebhookSchema,
-      "github.issueComment",
-      {
-        events: ["issue_comment"],
-        params,
+    metadata: {
+      type: "WEBHOOK",
+      service: "github",
+      name: "On Issue Event",
+      rule: {
+        service: ["github"],
+        payload: {
+          organizaton: {
+            name: [params.org],
+          },
+        },
+        event: ["issues"],
+      },
+      source: github.schemas.WebhookSourceSchema.parse({
+        subresource: "organization",
         scopes: ["repo"],
-      }
-    ),
+        org: params.org,
+        events: ["issues"],
+      }),
+    },
     schema: github.schemas.IssueEventSchema,
   };
 }

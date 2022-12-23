@@ -43,11 +43,13 @@ model Organization {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  users          User[]
-  workflows      Workflow[]
-  environments   RuntimeEnvironment[]
-  apiConnections APIConnection[]
-  customEvents   CustomEvent[]
+  users           User[]
+  workflows       Workflow[]
+  environments    RuntimeEnvironment[]
+  apiConnections  APIConnection[]
+  events          TriggerEvent[]
+  externalSources ExternalSource[]
+  eventRules      EventRule[]
 }
 
 model APIConnection {
@@ -62,9 +64,10 @@ model APIConnection {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  organization    Organization             @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  organizationId  String
-  connectionSlots WorkflowConnectionSlot[]
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  organizationId String
+
+  externalSources ExternalSource[]
 }
 
 enum APIConnectionType {
@@ -88,9 +91,9 @@ model RuntimeEnvironment {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  triggers     WorkflowTrigger[]
-  customEvents CustomEvent[]
-  runs         WorkflowRun[]
+  events     TriggerEvent[]
+  runs       WorkflowRun[]
+  eventRules EventRule[]
 
   @@unique([organizationId, slug])
 }
@@ -108,100 +111,25 @@ model Workflow {
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   organizationId String
 
-  triggers           WorkflowTrigger[]
-  runs               WorkflowRun[]
-  connectionSlots    WorkflowConnectionSlot[]
-  registeredWebhooks RegisteredWebhook[] // Can have multiple because there are multiple environments
+  type   TriggerType
+  status WorkflowStatus @default(CREATED)
+
+  externalSource   ExternalSource? @relation(fields: [externalSourceId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  externalSourceId String?
+
+  runs  WorkflowRun[]
+  rules EventRule[]
 
   @@unique([organizationId, slug])
 }
 
-model WorkflowTrigger {
+model EventRule {
   id String @id @default(cuid())
+
+  type TriggerType
 
   workflow   Workflow @relation(fields: [workflowId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   workflowId String
-
-  environment   RuntimeEnvironment @relation(fields: [environmentId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  environmentId String
-
-  type   WorkflowTriggerType
-  config Json
-  status WorkflowTriggerStatus @default(CREATED)
-
-  isDefault         Boolean                 @default(false)
-  runs              WorkflowRun[]
-  connectionSlot    WorkflowConnectionSlot?
-  registeredWebhook RegisteredWebhook?
-
-  @@unique([workflowId, environmentId])
-}
-
-enum WorkflowTriggerType {
-  WEBHOOK
-  SCHEDULE
-  CUSTOM_EVENT
-  HTTP_ENDPOINT
-}
-
-enum WorkflowTriggerStatus {
-  CREATED
-  CONNECTED
-}
-
-model WorkflowConnectionSlot {
-  id String @id @default(cuid())
-
-  workflow   Workflow @relation(fields: [workflowId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  workflowId String
-
-  trigger   WorkflowTrigger? @relation(fields: [triggerId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  triggerId String?          @unique
-
-  connection   APIConnection? @relation(fields: [connectionId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  connectionId String?
-
-  slotName          String
-  serviceIdentifier String
-  auth              Json?
-
-  registeredWebhook RegisteredWebhook?
-
-  @@unique([workflowId, slotName])
-}
-
-model RegisteredWebhook {
-  id String @id @default(cuid())
-
-  workflow   Workflow @relation(fields: [workflowId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  workflowId String
-
-  trigger   WorkflowTrigger @relation(fields: [triggerId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  triggerId String          @unique
-
-  connectionSlot   WorkflowConnectionSlot @relation(fields: [connectionSlotId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  connectionSlotId String                 @unique
-
-  secret        String
-  webhookConfig Json?
-  status        RegisteredWebhookStatus @default(CREATED)
-  connectedAt   DateTime?
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-}
-
-enum RegisteredWebhookStatus {
-  CREATED
-  CONNECTED
-}
-
-model CustomEvent {
-  id        String   @id @default(cuid())
-  name      String
-  timestamp DateTime @default(now())
-  payload   Json
-  context   Json?
 
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   organizationId String
@@ -209,10 +137,90 @@ model CustomEvent {
   environment   RuntimeEnvironment @relation(fields: [environmentId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   environmentId String
 
-  status CustomEventStatus @default(PENDING)
+  rule    Json
+  trigger Json
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  runs WorkflowRun[]
+
+  @@unique([workflowId, environmentId])
 }
 
-enum CustomEventStatus {
+enum TriggerType {
+  WEBHOOK
+  SCHEDULE
+  CUSTOM_EVENT
+  HTTP_ENDPOINT
+  EVENT_BRIDGE
+  HTTP_POLLING
+}
+
+enum WorkflowStatus {
+  CREATED
+  READY
+}
+
+model ExternalSource {
+  id String @id @default(cuid())
+
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  organizationId String
+
+  workflows    Workflow[]
+  type         ExternalSourceType
+  key          String
+  source       Json
+  status       ExternalSourceStatus @default(CREATED)
+  externalData Json?
+  secret       String?
+
+  readyAt   DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  connection   APIConnection? @relation(fields: [connectionId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  connectionId String?
+
+  @@unique([organizationId, key])
+}
+
+enum ExternalSourceStatus {
+  CREATED
+  READY
+}
+
+enum ExternalSourceType {
+  WEBHOOK
+  EVENT_BRIDGE
+  HTTP_POLLING
+}
+
+model TriggerEvent {
+  id        String      @id @default(cuid())
+  service   String
+  name      String
+  type      TriggerType
+  timestamp DateTime    @default(now())
+  payload   Json
+  context   Json?
+
+  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  organizationId String?
+
+  environment   RuntimeEnvironment? @relation(fields: [environmentId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  environmentId String?
+
+  status      TriggerEventStatus @default(PENDING)
+  WorkflowRun WorkflowRun[]
+
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  processedAt DateTime?
+}
+
+enum TriggerEventStatus {
   PENDING
   PROCESSED
 }
@@ -223,17 +231,18 @@ model WorkflowRun {
   workflow   Workflow @relation(fields: [workflowId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   workflowId String
 
-  trigger   WorkflowTrigger @relation(fields: [triggerId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  triggerId String
-
   environment   RuntimeEnvironment @relation(fields: [environmentId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   environmentId String
 
+  eventRule   EventRule @relation(fields: [eventRuleId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  eventRuleId String
+
   tasks WorkflowRunStep[]
 
-  input   Json
-  context Json?
-  error   Json?
+  event   TriggerEvent @relation(fields: [eventId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  eventId String
+
+  error Json?
 
   status WorkflowRunStatus @default(PENDING)
 

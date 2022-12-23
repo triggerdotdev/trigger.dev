@@ -1,10 +1,12 @@
+import { github } from "internal-integrations";
+import type { WorkflowMetadata } from "internal-platform";
 import { WorkflowMetadataSchema } from "internal-platform";
 import type { PrismaClient } from "~/db.server";
 import { prisma } from "~/db.server";
 import type { Organization } from "~/models/organization.server";
 import type { RuntimeEnvironment } from "~/models/runtimeEnvironment.server";
-import { internalPubSub } from "~/services/messageBroker.server";
-import crypto from "node:crypto";
+import type { Workflow } from "~/models/workflow.server";
+import { internalPubSub } from "../messageBroker.server";
 
 export class RegisterWorkflow {
   #prismaClient: PrismaClient;
@@ -28,6 +30,75 @@ export class RegisterWorkflow {
       };
     }
 
+    const workflow = await this.#upsertWorkflow(
+      slug,
+      validation.data,
+      organization
+    );
+
+    if (validation.data.trigger.service !== "trigger") {
+      const externalSource = await this.#upsertExternalSource(
+        validation.data,
+        organization
+      );
+
+      if (externalSource) {
+        await this.#prismaClient.workflow.update({
+          where: {
+            id: workflow.id,
+          },
+          data: {
+            externalSourceId: externalSource.id,
+          },
+        });
+      }
+    }
+
+    await this.#upsertEventRule(
+      workflow,
+      validation.data,
+      organization,
+      environment
+    );
+
+    return {
+      status: "success" as const,
+      data: { id: workflow.id },
+    };
+  }
+
+  async #upsertEventRule(
+    workflow: Workflow,
+    payload: WorkflowMetadata,
+    organization: Organization,
+    environment: RuntimeEnvironment
+  ) {
+    return this.#prismaClient.eventRule.upsert({
+      where: {
+        workflowId_environmentId: {
+          workflowId: workflow.id,
+          environmentId: environment.id,
+        },
+      },
+      update: {
+        rule: payload.trigger.rule,
+      },
+      create: {
+        workflowId: workflow.id,
+        environmentId: environment.id,
+        organizationId: organization.id,
+        rule: payload.trigger.rule,
+        type: payload.trigger.type,
+        trigger: payload.trigger,
+      },
+    });
+  }
+
+  async #upsertWorkflow(
+    slug: string,
+    payload: WorkflowMetadata,
+    organization: Organization
+  ) {
     const workflow = await this.#prismaClient.workflow.upsert({
       where: {
         organizationId_slug: {
@@ -36,207 +107,98 @@ export class RegisterWorkflow {
         },
       },
       update: {
-        title: validation.data.name,
-        packageJson: validation.data.package,
+        title: payload.name,
+        packageJson: payload.package,
+        type: payload.trigger.type,
       },
       create: {
         organizationId: organization.id,
         slug,
-        title: validation.data.name,
-        packageJson: validation.data.package,
+        title: payload.name,
+        packageJson: payload.package,
+        type: payload.trigger.type,
+        status: payload.trigger.service === "trigger" ? "READY" : "CREATED",
       },
       include: {
-        triggers: {
-          where: {
-            environmentId: environment.id,
-          },
-        },
+        externalSource: true,
       },
     });
 
-    const existingTrigger = workflow.triggers[0];
+    return workflow;
+  }
 
-    if (!existingTrigger) {
-      const trigger = await this.#prismaClient.workflowTrigger.create({
-        data: {
-          workflowId: workflow.id,
-          environmentId: environment.id,
-          type: validation.data.trigger.type,
-          config: validation.data.trigger.config,
-          status: "CREATED",
-          isDefault: environment.slug === "development",
-        },
-      });
-
-      if (validation.data.trigger.type === "WEBHOOK") {
-        const serviceIdentifier = this.#parseServiceIdentifier(
-          validation.data.trigger.config.id
-        );
+  async #upsertExternalSource(
+    payload: WorkflowMetadata,
+    organization: Organization
+  ) {
+    switch (payload.trigger.type) {
+      case "WEBHOOK": {
+        if (!payload.trigger.source) {
+          return;
+        }
 
         const existingConnection =
           await this.#findLatestExistingConnectionInOrg(
-            serviceIdentifier,
+            payload.trigger.service,
             organization
           );
 
-        // Create the connectionSlot and then fire the connectionSlot created event
-        const connectionSlot =
-          await this.#prismaClient.workflowConnectionSlot.create({
+        const externalSource = await this.#prismaClient.externalSource.upsert({
+          where: {
+            organizationId_key: {
+              key: this.#keyForExternalSource(payload),
+              organizationId: organization.id,
+            },
+          },
+          update: {
+            source: payload.trigger.source,
+          },
+          create: {
+            organizationId: organization.id,
+            key: this.#keyForExternalSource(payload),
+            type: "WEBHOOK",
+            source: payload.trigger.source,
+            status: "CREATED",
+            connectionId: existingConnection?.id,
+          },
+        });
+
+        if (!externalSource.connectionId && existingConnection) {
+          await this.#prismaClient.externalSource.update({
+            where: {
+              id: externalSource.id,
+            },
             data: {
-              workflowId: workflow.id,
-              triggerId: trigger.id,
-              serviceIdentifier,
-              connectionId: existingConnection?.id,
-              slotName: "trigger",
-              auth: validation.data.trigger.config.webhook,
+              connectionId: existingConnection.id,
             },
           });
-
-        const webhook = await this.#prismaClient.registeredWebhook.create({
-          data: {
-            connectionSlot: {
-              connect: {
-                id: connectionSlot.id,
-              },
-            },
-            workflow: {
-              connect: {
-                id: trigger.workflowId,
-              },
-            },
-            trigger: {
-              connect: {
-                id: trigger.id,
-              },
-            },
-            secret: crypto.randomBytes(32).toString("hex"),
-          },
-        });
-
-        await internalPubSub.publish("REGISTERED_WEBHOOK_CREATED", {
-          id: webhook.id,
-        });
-      }
-
-      return {
-        status: "success" as const,
-        data: {
-          id: workflow.id,
-        },
-      };
-    } else {
-      if (existingTrigger.type === validation.data.trigger.type) {
-        await this.#prismaClient.workflowTrigger.update({
-          where: {
-            id: existingTrigger.id,
-          },
-          data: {
-            config: validation.data.trigger.config,
-          },
-        });
-
-        if (validation.data.trigger.type === "WEBHOOK") {
-          const serviceIdentifier = this.#parseServiceIdentifier(
-            validation.data.trigger.config.id
-          );
-
-          const existingConnection =
-            await this.#findLatestExistingConnectionInOrg(
-              serviceIdentifier,
-              organization
-            );
-
-          const existingConnectionSlot =
-            await this.#prismaClient.workflowConnectionSlot.findFirst({
-              where: {
-                workflowId: workflow.id,
-                triggerId: existingTrigger.id,
-                serviceIdentifier,
-              },
-            });
-
-          if (existingConnectionSlot) {
-            await this.#prismaClient.workflowConnectionSlot.update({
-              where: {
-                id: existingConnectionSlot.id,
-              },
-              data: {
-                connectionId: existingConnectionSlot.connectionId
-                  ? existingConnectionSlot.connectionId
-                  : existingConnection?.id,
-                auth: validation.data.trigger.config.webhook,
-              },
-            });
-          } else {
-            // Create the connectionSlot and then fire the connectionSlot created event
-            const connectionSlot =
-              await this.#prismaClient.workflowConnectionSlot.create({
-                data: {
-                  workflowId: workflow.id,
-                  triggerId: existingTrigger.id,
-                  serviceIdentifier,
-                  connectionId: existingConnection?.id,
-                  slotName: "trigger",
-                  auth: validation.data.trigger.config.webhook,
-                },
-              });
-
-            const webhook = await this.#prismaClient.registeredWebhook.create({
-              data: {
-                connectionSlot: {
-                  connect: {
-                    id: connectionSlot.id,
-                  },
-                },
-                workflow: {
-                  connect: {
-                    id: existingTrigger.workflowId,
-                  },
-                },
-                trigger: {
-                  connect: {
-                    id: existingTrigger.id,
-                  },
-                },
-                secret: crypto.randomBytes(32).toString("hex"),
-              },
-            });
-
-            await internalPubSub.publish("REGISTERED_WEBHOOK_CREATED", {
-              id: webhook.id,
-            });
-          }
         }
 
-        return {
-          status: "success" as const,
-          data: {
-            id: workflow.id,
-          },
-        };
-      } else {
-        return {
-          status: "error" as const,
-          error: {
-            code: "TRIGGER_TYPE_MISMATCH",
-            message: "The trigger type cannot be changed",
-          },
-        };
+        await internalPubSub.publish("EXTERNAL_SOURCE_UPSERTED", {
+          id: externalSource.id,
+        });
+
+        return externalSource;
+      }
+      default: {
+        return;
       }
     }
-
-    // Create or update the workflow
-    //todo triggers are environment specific
-    //todo connections are shared between environments
-    //todo Workflows have connection slots, which are filled with connections (can be empty)
-    //todo Workflow has one trigger (can also have a slot with connection)
-    //todo WorkflowRuns belong to a workflow + environment
   }
 
-  #parseServiceIdentifier(id: string): string {
-    const [serviceIdentifier] = id.split(".");
-
-    return serviceIdentifier;
+  #keyForExternalSource(payload: WorkflowMetadata): string {
+    if (payload.trigger.type === "WEBHOOK") {
+      switch (payload.trigger.service) {
+        case "github": {
+          return github.webhooks.keyForSource(payload.trigger.source);
+        }
+        default: {
+          return payload.trigger.service;
+        }
+      }
+    } else {
+      return payload.trigger.service;
+    }
   }
 
   async #findLatestExistingConnectionInOrg(

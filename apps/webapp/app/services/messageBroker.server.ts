@@ -1,4 +1,3 @@
-import { JsonSchema } from "@trigger.dev/common-schemas";
 import type { CoordinatorCatalog, PlatformCatalog } from "internal-platform";
 import {
   coordinatorCatalog,
@@ -10,9 +9,7 @@ import {
 import type { Client as PulsarClient } from "pulsar-client";
 import Pulsar from "pulsar-client";
 import { z } from "zod";
-import { prisma } from "~/db.server";
 import { env } from "~/env.server";
-import { findWorkflowConnectionSlotById } from "~/models/workflowConnectionSlot.server";
 import {
   completeWorkflowRun,
   failWorkflowRun,
@@ -21,7 +18,7 @@ import {
   startWorkflowRun,
   triggerEventInRun,
 } from "~/models/workflowRun.server";
-import { RegisterWebhook } from "./webhooks/registerWebhook.server";
+import { RegisterExternalSource } from "./externalSources/registerExternalSource.server";
 
 let pulsarClient: PulsarClient;
 let triggerPublisher: ZodPublisher<PlatformCatalog>;
@@ -162,29 +159,12 @@ async function createTriggerSubscriber() {
   return subscriber;
 }
 
-const CustomEventCreatedEventSchema = z.object({
-  id: z.string(),
-  name: z.string(),
-  payload: JsonSchema,
-  context: JsonSchema,
-  timestamp: z.string().datetime(),
-  status: z.enum(["PENDING", "PROCESSED"]),
-});
-
-const CustomEventCreatedPropertiesSchema = z.object({
-  "x-environment-id": z.string(),
-});
-
 const InternalCatalog = {
-  CUSTOM_EVENT_CREATED: {
-    data: CustomEventCreatedEventSchema,
-    properties: CustomEventCreatedPropertiesSchema,
-  },
-  REGISTERED_WEBHOOK_CREATED: {
+  EVENT_CREATED: {
     data: z.object({ id: z.string() }),
     properties: z.object({}),
   },
-  CONNECTION_SLOT_CONNECTED: {
+  EXTERNAL_SOURCE_UPSERTED: {
     data: z.object({ id: z.string() }),
     properties: z.object({}),
   },
@@ -203,95 +183,20 @@ async function createInternalPubSub() {
     },
     schema: InternalCatalog,
     handlers: {
-      CONNECTION_SLOT_CONNECTED: async (id, data, properties) => {
-        const slot = await findWorkflowConnectionSlotById(data.id);
+      EXTERNAL_SOURCE_UPSERTED: async (id, data, properties) => {
+        const service = new RegisterExternalSource();
 
-        if (!slot) {
-          return true;
-        }
-
-        if (!slot.connection) {
-          return true;
-        }
-
-        if (!slot.registeredWebhook) {
-          return true;
-        }
-
-        const registerWebhookService = new RegisterWebhook();
-
-        const isRegistered = await registerWebhookService.call(
-          slot.registeredWebhook
-        );
+        const isRegistered = await service.call(data.id);
 
         return isRegistered; // Returning true will mean we don't retry
       },
-      REGISTERED_WEBHOOK_CREATED: async (id, data, properties) => {
-        const registerWebhookService = new RegisterWebhook();
-
-        const isRegistered = await registerWebhookService.call(data.id);
-
-        return isRegistered; // Returning true will mean we don't retry
-      },
-      CUSTOM_EVENT_CREATED: async (id, data, properties) => {
-        console.log("CUSTOM_EVENT_CREATED", id, data, properties);
-
-        const triggers = await prisma.workflowTrigger.findMany({
-          where: {
-            type: "CUSTOM_EVENT",
-            environmentId: properties["x-environment-id"],
-            config: {
-              path: ["name"],
-              equals: data.name,
-            },
-          },
-          include: {
-            workflow: true,
-            environment: true,
-          },
-        });
-
-        // For each trigger, we need to create a new workflow run
-        // Which will trigger the workflow to run
-
-        for (const trigger of triggers) {
-          const run = await prisma.workflowRun.create({
-            data: {
-              workflow: {
-                connect: {
-                  id: trigger.workflowId,
-                },
-              },
-              environment: {
-                connect: {
-                  id: trigger.environmentId,
-                },
-              },
-              trigger: {
-                connect: {
-                  id: trigger.id,
-                },
-              },
-              input: data.payload ?? {},
-              context: data.context ?? undefined,
-            },
-          });
-
-          await triggerPublisher.publish(
-            "TRIGGER_WORKFLOW",
-            {
-              id: run.id,
-              input: data.payload,
-              context: data.context,
-            },
-            {
-              "x-api-key": trigger.environment.apiKey,
-              "x-org-id": trigger.environment.organizationId,
-              "x-workflow-id": trigger.workflowId,
-              "x-env": trigger.environment.slug,
-            }
-          );
-        }
+      EVENT_CREATED: async (id, data, properties) => {
+        // TODO: this is where we will need to handle the event and find all the event rules that match it
+        // If the event has an environment associated with it, then query like this:
+        // SELECT * FROM event_rules WHERE org_id = ${event.orgId} AND environmentId = ${event.environmentId} AND type = ${event.type}
+        // If the event does not have an environment, then query like this:
+        // SELECT * FROM event_rules WHERE org_id = ${event.orgId} AND type = ${event.type}
+        // For each matching event rule, we need to create a new workflow run and publish that to the trigger publisher
 
         return true;
       },

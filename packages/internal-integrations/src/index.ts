@@ -1,3 +1,2 @@
 export * as github from "./github";
-
-export * from "./webhooks";
+export * from "./types";

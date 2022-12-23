@@ -1,4 +1,4 @@
-import { CustomEventSchema } from "@trigger.dev/common-schemas";
+import { CustomEventSchema, TriggerMetadataSchema } from "@trigger.dev/common-schemas";
 import { z } from "zod";
 
 export const ServerRPCSchema = {
@@ -25,15 +25,7 @@ export const ServerRPCSchema = {
       apiKey: z.string(),
       workflowId: z.string(),
       workflowName: z.string(),
-      trigger: z.object({
-        type: z.union([
-          z.literal("HTTP_ENDPOINT"),
-          z.literal("SCHEDULE"),
-          z.literal("CUSTOM_EVENT"),
-          z.literal("WEBHOOK"),
-        ]),
-        config: z.any(),
-      }),
+      trigger: TriggerMetadataSchema,
       packageVersion: z.string(),
       packageName: z.string(),
     }),

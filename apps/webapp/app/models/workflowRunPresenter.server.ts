@@ -1,10 +1,10 @@
-import type { WorkflowRunStep, WorkflowTrigger } from ".prisma/client";
+import type { WorkflowRunStep } from ".prisma/client";
 import {
   CustomEventSchema,
   ErrorSchema,
   LogMessageSchema,
 } from "@trigger.dev/common-schemas";
-import { TriggerMetadataSchema } from "internal-platform";
+import { TriggerMetadataSchema } from "@trigger.dev/common-schemas";
 import type { PrismaClient } from "~/db.server";
 import { prisma } from "~/db.server";
 import { dateDifference } from "~/utils";
@@ -21,7 +21,8 @@ export class WorkflowRunPresenter {
     const workflowRun = await this.#prismaClient.workflowRun.findUnique({
       where: { id },
       include: {
-        trigger: true,
+        eventRule: true,
+        event: true,
         tasks: {
           orderBy: { startedAt: "asc" },
         },
@@ -39,8 +40,8 @@ export class WorkflowRunPresenter {
     const trigger = {
       startedAt: workflowRun.startedAt,
       status: triggerStatus(steps.length, workflowRun.status),
-      input: workflowRun.input,
-      ...(await parseTrigger(workflowRun.trigger)),
+      input: workflowRun.event.payload,
+      ...(await parseTrigger(workflowRun.eventRule.trigger)),
     };
 
     return {
@@ -62,7 +63,7 @@ export class WorkflowRunPresenter {
   }
 }
 
-async function parseTrigger(original: WorkflowTrigger) {
+async function parseTrigger(original: unknown) {
   return TriggerMetadataSchema.parseAsync(original);
 }
 

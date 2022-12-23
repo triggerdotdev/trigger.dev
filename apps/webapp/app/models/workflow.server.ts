@@ -1,6 +1,15 @@
-import type { Organization, User, Workflow } from ".prisma/client";
+import type {
+  Organization,
+  User,
+  Workflow,
+  ExternalSource,
+} from ".prisma/client";
 import { prisma } from "~/db.server";
 export type { Workflow } from ".prisma/client";
+
+export type WorkflowWithExternalSource = Workflow & {
+  externalSource: ExternalSource;
+};
 
 export function getWorkflowFromSlugs({
   userId,
