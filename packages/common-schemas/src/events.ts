@@ -22,8 +22,8 @@ const EventMatcherSchema = z.union([
 ]);
 type EventMatcher = z.infer<typeof EventMatcherSchema>;
 
-export type EventRule = { [key: string]: EventMatcher | EventRule };
+export type EventFilter = { [key: string]: EventMatcher | EventFilter };
 
-export const EventRuleSchema: z.ZodType<EventRule> = z.lazy(() =>
-  z.record(z.union([EventMatcherSchema, EventRuleSchema]))
+export const EventFilterSchema: z.ZodType<EventFilter> = z.lazy(() =>
+  z.record(z.union([EventMatcherSchema, EventFilterSchema]))
 );

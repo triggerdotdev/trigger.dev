@@ -1,10 +1,10 @@
 import {
-  EventRuleSchema,
+  EventFilterSchema,
   TriggerMetadataSchema,
 } from "@trigger.dev/common-schemas";
 import { z } from "zod";
 
-export type EventRule = z.infer<typeof EventRuleSchema>;
+export type EventRule = z.infer<typeof EventFilterSchema>;
 
 export type TriggerEvent<TSchema extends z.ZodTypeAny> = {
   metadata: z.infer<typeof TriggerMetadataSchema>;
@@ -24,7 +24,7 @@ export function customEvent<TSchema extends z.ZodTypeAny>(
       type: "CUSTOM_EVENT",
       service: "trigger",
       name: options.name,
-      rule: { name: [options.name] },
+      filter: { event: [options.name] },
     },
     schema: options.schema,
   };

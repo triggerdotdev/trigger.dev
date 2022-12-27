@@ -5,15 +5,23 @@ import type {
   LogMessageSchema,
   WaitSchema,
 } from "@trigger.dev/common-schemas";
+import { ulid } from "ulid";
 import type { z } from "zod";
 import { prisma } from "~/db.server";
 import { IngestEvent } from "~/services/events/ingest.server";
-import type { Organization } from "./organization.server";
-import type { User } from "./user.server";
-import type { Workflow } from "./workflow.server";
 
 type WorkflowRunStatus = WorkflowRun["status"];
 export type { WorkflowRun, WorkflowRunStep, WorkflowRunStatus };
+
+export async function findWorklowRunById(id: string) {
+  return prisma.workflowRun.findUnique({
+    where: { id },
+    include: {
+      event: true,
+      environment: true,
+    },
+  });
+}
 
 export async function startWorkflowRun(id: string, apiKey: string) {
   const workflowRun = await findWorkflowRunScopedToApiKey(id, apiKey);
@@ -94,9 +102,16 @@ export async function triggerEventInRun(
   const ingestService = new IngestEvent();
 
   await ingestService.call(
-    event,
-    workflowRun.environment.organization,
-    workflowRun.environment
+    {
+      id: ulid(),
+      name: event.name,
+      type: "CUSTOM_EVENT",
+      service: "trigger",
+      payload: event.payload,
+      context: event.context,
+      apiKey: workflowRun.environment.apiKey,
+    },
+    workflowRun.environment.organization
   );
 }
 

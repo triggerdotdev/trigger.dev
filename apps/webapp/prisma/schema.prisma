@@ -137,7 +137,7 @@ model EventRule {
   environment   RuntimeEnvironment @relation(fields: [environmentId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   environmentId String
 
-  rule    Json
+  filter  Json
   trigger Json
 
   createdAt DateTime @default(now())
@@ -215,14 +215,14 @@ model TriggerEvent {
   status      TriggerEventStatus @default(PENDING)
   WorkflowRun WorkflowRun[]
 
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
-  processedAt DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  dispatchedAt DateTime?
 }
 
 enum TriggerEventStatus {
   PENDING
-  PROCESSED
+  DISPATCHED
 }
 
 model WorkflowRun {

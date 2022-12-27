@@ -1,3 +1,4 @@
+import { JsonSchema } from "@trigger.dev/common-schemas";
 import type { CoordinatorCatalog, PlatformCatalog } from "internal-platform";
 import {
   coordinatorCatalog,
@@ -13,11 +14,13 @@ import { env } from "~/env.server";
 import {
   completeWorkflowRun,
   failWorkflowRun,
+  findWorklowRunById,
   initiateWaitInRun,
   logMessageInRun,
   startWorkflowRun,
   triggerEventInRun,
 } from "~/models/workflowRun.server";
+import { DispatchEvent } from "./events/dispatch.server";
 import { RegisterExternalSource } from "./externalSources/registerExternalSource.server";
 
 let pulsarClient: PulsarClient;
@@ -164,6 +167,10 @@ const InternalCatalog = {
     data: z.object({ id: z.string() }),
     properties: z.object({}),
   },
+  WORKFLOW_RUN_CREATED: {
+    data: z.object({ id: z.string() }),
+    properties: z.object({}),
+  },
   EXTERNAL_SOURCE_UPSERTED: {
     data: z.object({ id: z.string() }),
     properties: z.object({}),
@@ -191,12 +198,38 @@ async function createInternalPubSub() {
         return isRegistered; // Returning true will mean we don't retry
       },
       EVENT_CREATED: async (id, data, properties) => {
-        // TODO: this is where we will need to handle the event and find all the event rules that match it
-        // If the event has an environment associated with it, then query like this:
-        // SELECT * FROM event_rules WHERE org_id = ${event.orgId} AND environmentId = ${event.environmentId} AND type = ${event.type}
-        // If the event does not have an environment, then query like this:
-        // SELECT * FROM event_rules WHERE org_id = ${event.orgId} AND type = ${event.type}
-        // For each matching event rule, we need to create a new workflow run and publish that to the trigger publisher
+        const service = new DispatchEvent();
+
+        try {
+          await service.call(data.id);
+        } catch (error) {
+          console.log(error);
+          return false;
+        }
+
+        return true;
+      },
+      WORKFLOW_RUN_CREATED: async (id, data, properties) => {
+        const run = await findWorklowRunById(data.id);
+
+        if (!run) {
+          return true;
+        }
+
+        await triggerPublisher.publish(
+          "TRIGGER_WORKFLOW",
+          {
+            id: run.id,
+            input: JsonSchema.parse(run.event.payload),
+            context: JsonSchema.parse(run.event.context),
+          },
+          {
+            "x-api-key": run.environment.apiKey,
+            "x-org-id": run.environment.organizationId,
+            "x-workflow-id": run.workflowId,
+            "x-env": run.environment.slug,
+          }
+        );
 
         return true;
       },

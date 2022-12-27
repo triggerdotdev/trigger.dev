@@ -9,7 +9,7 @@ export function repoIssueEvent(params: {
       type: "WEBHOOK",
       service: "github",
       name: "On Issue Event",
-      rule: {
+      filter: {
         service: ["github"],
         payload: {
           repository: {
@@ -37,7 +37,7 @@ export function orgIssueEvent(params: {
       type: "WEBHOOK",
       service: "github",
       name: "On Issue Event",
-      rule: {
+      filter: {
         service: ["github"],
         payload: {
           organizaton: {

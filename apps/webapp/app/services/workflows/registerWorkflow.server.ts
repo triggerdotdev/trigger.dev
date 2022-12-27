@@ -81,13 +81,13 @@ export class RegisterWorkflow {
         },
       },
       update: {
-        rule: payload.trigger.rule,
+        filter: payload.trigger.filter,
       },
       create: {
         workflowId: workflow.id,
         environmentId: environment.id,
         organizationId: organization.id,
-        rule: payload.trigger.rule,
+        filter: payload.trigger.filter,
         type: payload.trigger.type,
         trigger: payload.trigger,
       },
