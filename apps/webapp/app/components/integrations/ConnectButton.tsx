@@ -6,7 +6,7 @@ import type {
   CreateResponse,
   Update,
   UpdateResponse,
-} from "~/routes/api/v1/internal/connection";
+} from "~/routes/resources/connection";
 
 export type Integration = {
   key: string;
@@ -22,7 +22,7 @@ export const integrations: Integration[] = [
   },
 ];
 
-const actionPath = "/api/v1/internal/connection";
+const actionPath = "/resources/connection";
 
 export function ConnectButton({
   integration,

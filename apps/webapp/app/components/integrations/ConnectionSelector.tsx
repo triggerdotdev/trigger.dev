@@ -96,7 +96,7 @@ export function ConnectionSelector({
                       return (
                         <fetcher.Form
                           key={connection.id}
-                          action={`/api/v1/internal/sources/${sourceId}`}
+                          action={`/resources/sources/${sourceId}`}
                           method="put"
                         >
                           <input

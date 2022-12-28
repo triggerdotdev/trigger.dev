@@ -11,7 +11,7 @@ const requestSchema = z.object({
   connectionId: z.string(),
 });
 
-// PUT /api/v1/internal/sources/:sourceId
+// PUT /resources/sources/:sourceId
 /** This is used to connect an external source with a connection to an API */
 export async function action({ request, params }: ActionArgs) {
   await requireUserId(request);
