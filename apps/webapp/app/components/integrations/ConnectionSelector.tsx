@@ -1,10 +1,5 @@
 import { Popover, Transition } from "@headlessui/react";
-import {
-  ArrowsRightLeftIcon,
-  ChevronUpDownIcon,
-  CheckIcon,
-  PlusIcon,
-} from "@heroicons/react/24/outline";
+import { ChevronUpDownIcon, CheckIcon } from "@heroicons/react/24/outline";
 import { useFetcher } from "@remix-run/react";
 import classNames from "classnames";
 import { Fragment } from "react";

@@ -2,6 +2,7 @@ import invariant from "tiny-invariant";
 import { integrations } from "~/components/integrations/ConnectButton";
 import { ConnectionSelector } from "~/components/integrations/ConnectionSelector";
 import { Panel } from "~/components/layout/Panel";
+import { Body } from "~/components/primitives/text/Body";
 import { Header1, Header2 } from "~/components/primitives/text/Headers";
 import { useConnectionSlots } from "~/hooks/useConnectionSlots";
 import { useCurrentOrganization } from "~/hooks/useOrganizations";
@@ -14,20 +15,23 @@ export default function Page() {
 
   return (
     <>
-      <Header1>Overview</Header1>
-      <div>Pending API integrations panel will go here </div>
+      <Header1 className="mb-4">Overview</Header1>
       <Panel>
-        <Header2 size="small">API integrations</Header2>
-        <div className="flex flex-col gap-1 items-stretch w-full">
+        <Header2 size="small" className="mb-2">
+          API integrations
+        </Header2>
+        <div className="flex flex-col gap-4 items-stretch w-full">
           {connectionSlots.map((slot) => (
-            <ConnectionSelector
-              key={slot.id}
-              sourceId={slot.id}
-              organizationId={organization.id}
-              integration={integrations[0]}
-              connections={slot.possibleConnections}
-              selectedConnectionId={slot.connection?.id}
-            />
+            <div key={slot.id} className="flex flex-col gap-1">
+              <Body>{slot.integration?.name}</Body>
+              <ConnectionSelector
+                sourceId={slot.id}
+                organizationId={organization.id}
+                integration={integrations[0]}
+                connections={slot.possibleConnections}
+                selectedConnectionId={slot.connection?.id}
+              />
+            </div>
           ))}
         </div>
       </Panel>
