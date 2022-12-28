@@ -10,6 +10,16 @@ import { integrations } from "~/components/integrations/ConnectButton";
 import { requireUserId } from "~/services/session.server";
 import { APIConnectionType } from ".prisma/client";
 import { env } from "~/env.server";
+import { connectExternalSource } from "~/models/externalSource.server";
+import { internalPubSub } from "~/services/messageBroker.server";
+
+const updateSchema = z.object({
+  type: z.literal("update"),
+  connectionId: z.string(),
+  sourceId: z.string().optional(),
+});
+
+export type Update = z.infer<typeof updateSchema>;
 
 const requestSchema = z.discriminatedUnion("type", [
   z.object({
@@ -17,10 +27,7 @@ const requestSchema = z.discriminatedUnion("type", [
     organizationId: z.string(),
     key: z.string(),
   }),
-  z.object({
-    type: z.literal("update"),
-    connectionId: z.string(),
-  }),
+  updateSchema,
 ]);
 
 export type CreateResponse = {
@@ -85,10 +92,19 @@ export const action = async ({ request, params }: ActionArgs) => {
         return json(response);
       }
       case "update": {
-        const { connectionId } = parsed;
+        const { connectionId, sourceId } = parsed;
         await setConnectedAPIConnection({
           id: connectionId,
         });
+
+        console.log("sourceId", sourceId);
+
+        if (sourceId !== undefined) {
+          await connectExternalSource({ sourceId, connectionId });
+          await internalPubSub.publish("EXTERNAL_SOURCE_UPSERTED", {
+            id: sourceId,
+          });
+        }
 
         return json({
           success: true,
@@ -96,6 +112,7 @@ export const action = async ({ request, params }: ActionArgs) => {
       }
     }
   } catch (error: any) {
+    console.log("error", error);
     return json({ message: error.message }, { status: 400 });
   }
 };

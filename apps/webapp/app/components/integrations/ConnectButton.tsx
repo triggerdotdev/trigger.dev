@@ -1,9 +1,10 @@
 import githubLogo from "~/assets/images/integrations/logo-github.png";
-import { useEffect } from "react";
+import { useCallback, useEffect } from "react";
 import Pizzly from "@nangohq/pizzly-frontend";
 import { useFetcher } from "@remix-run/react";
 import type {
   CreateResponse,
+  Update,
   UpdateResponse,
 } from "~/routes/api/v1/internal/connection";
 
@@ -26,15 +27,17 @@ const actionPath = "/api/v1/internal/connection";
 export function ConnectButton({
   integration,
   organizationId,
+  sourceId,
   className,
   children,
 }: {
   integration: Integration;
   organizationId: string;
+  sourceId?: string;
   className?: string;
   children: (status: Status) => React.ReactNode;
 }) {
-  const { createFetcher, status } = useCreateConnection();
+  const { createFetcher, status } = useCreateConnection(sourceId);
 
   return (
     <createFetcher.Form method="post" action={actionPath}>
@@ -54,43 +57,87 @@ export function ConnectButton({
 
 type Status = "loading" | "idle";
 
-export function useCreateConnection() {
+export function useCreateConnection(sourceId?: string) {
   const createConnectionFetcher = useFetcher<CreateResponse>();
   const completeConnectionFetcher = useFetcher<UpdateResponse>();
   const status: Status =
-    createConnectionFetcher.state === "loading" ||
-    completeConnectionFetcher.state === "loading"
-      ? "loading"
-      : "idle";
+    createConnectionFetcher.state === "idle" &&
+    completeConnectionFetcher.state === "idle"
+      ? "idle"
+      : "loading";
 
-  useEffect(() => {
-    async function authenticationFlow() {
-      if (createConnectionFetcher.data === undefined) return;
+  const completeFlow = useCallback(
+    async ({
+      pizzlyHost,
+      connectionId,
+      service,
+      sourceId,
+    }: {
+      pizzlyHost: string;
+      connectionId: string;
+      service: string;
+      sourceId?: string;
+    }) => {
+      console.log(`completeFlow`, {
+        pizzlyHost,
+        connectionId,
+        service,
+        sourceId,
+      });
 
       try {
-        const pizzly = new Pizzly(createConnectionFetcher.data.host);
+        const pizzly = new Pizzly(pizzlyHost);
+        await pizzly.auth(service, connectionId);
 
-        await pizzly.auth(
-          createConnectionFetcher.data.integrationKey,
-          createConnectionFetcher.data.connectionId
-        );
+        let completeData: Update = {
+          type: "update",
+          connectionId: connectionId,
+        };
 
-        completeConnectionFetcher.submit(
-          {
-            type: "update",
-            connectionId: createConnectionFetcher.data.connectionId,
-          },
-          { method: "post", action: actionPath }
-        );
+        if (sourceId) {
+          completeData = {
+            ...completeData,
+            sourceId,
+          };
+        }
+
+        completeConnectionFetcher.submit(completeData, {
+          method: "post",
+          action: actionPath,
+        });
       } catch (error: any) {
         console.error(
-          `There was an error in the OAuth flow for integration "${error.providerConfigKey}" and connection-id "${error.connectionId}": ${error.error.type} - ${error.error.message}`
+          `There was an error in the OAuth flow for integration "${error.providerConfigKey}" and connection-id "${error.connectionId}": ${error.error.type} - ${error.error.message}`,
+          error
         );
       }
-    }
+    },
+    [completeConnectionFetcher]
+  );
 
-    authenticationFlow();
-  }, [completeConnectionFetcher, createConnectionFetcher.data]);
+  useEffect(() => {
+    if (
+      createConnectionFetcher.state !== "idle" ||
+      createConnectionFetcher.type !== "done"
+    )
+      return;
+    if (completeConnectionFetcher.state !== "idle") return;
+    if (createConnectionFetcher.data === undefined) return;
+
+    completeFlow({
+      pizzlyHost: createConnectionFetcher.data.host,
+      connectionId: createConnectionFetcher.data.connectionId,
+      service: createConnectionFetcher.data.integrationKey,
+      sourceId,
+    });
+  }, [
+    completeConnectionFetcher,
+    completeConnectionFetcher.data,
+    completeConnectionFetcher.submit,
+    completeFlow,
+    createConnectionFetcher,
+    sourceId,
+  ]);
 
   return {
     createFetcher: createConnectionFetcher,

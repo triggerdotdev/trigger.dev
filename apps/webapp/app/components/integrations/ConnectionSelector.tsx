@@ -35,6 +35,7 @@ export function ConnectionSelector({
         key={integration.key}
         integration={integration}
         organizationId={organizationId}
+        sourceId={sourceId}
         className="flex rounded-md bg-slate-800 border border-rose-400 gap-3 text-sm text-slate-200 items-center hover:bg-slate-800/30 transition shadow-md disabled:opacity-50 py-1 pl-1 pr-3"
       >
         {(status) => (
@@ -136,6 +137,7 @@ export function ConnectionSelector({
                       key={integration.key}
                       integration={integration}
                       organizationId={organizationId}
+                      sourceId={sourceId}
                     >
                       {(status) => (
                         <div className="flex items-center gap-2 mx-1 pl-2.5 py-2 rounded hover:bg-slate-800 transition">
