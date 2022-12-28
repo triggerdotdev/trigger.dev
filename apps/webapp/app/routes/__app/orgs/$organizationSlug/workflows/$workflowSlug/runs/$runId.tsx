@@ -1,15 +1,11 @@
 import {
-  DocumentTextIcon,
   ArrowPathRoundedSquareIcon,
   BeakerIcon,
   CheckCircleIcon,
   ExclamationTriangleIcon,
 } from "@heroicons/react/24/solid";
 import {
-  ArrowRightIcon,
-  BarsArrowDownIcon,
   BoltIcon,
-  CalendarDaysIcon,
   ChatBubbleLeftEllipsisIcon,
 } from "@heroicons/react/24/outline";
 import { Panel } from "~/components/layout/Panel";
@@ -18,12 +14,11 @@ import { Body } from "~/components/primitives/text/Body";
 import {
   Header1,
   Header2,
-  Header3,
   Header4,
 } from "~/components/primitives/text/Headers";
 import CodeBlock from "~/components/code/CodeBlock";
 import type { ReactNode } from "react";
-import { dateDifference, formatDateTime } from "~/utils";
+import { formatDateTime } from "~/utils";
 import type { LoaderArgs } from "@remix-run/server-runtime";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { requireUserId } from "~/services/session.server";
@@ -56,9 +51,6 @@ export const loader = async ({ request, params }: LoaderArgs) => {
 type Run = Awaited<ReturnType<WorkflowRunPresenter["data"]>>;
 type Trigger = Run["trigger"];
 type Step = Run["steps"][number];
-type TriggerType<T, K extends Trigger["type"]> = T extends { type: K }
-  ? T
-  : never;
 type StepType<T, K extends Step["type"]> = T extends { type: K } ? T : never;
 
 export default function Page() {
