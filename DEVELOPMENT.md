@@ -77,6 +77,12 @@ export PULSAR_CPP_DIR=/opt/homebrew/Cellar/libpulsar/3.1.0
 pnpm run dev --filter=webapp
 ```
 
+## Attaching an API integration using Pizzly
+
+```bash
+npx pizzly config:create github github <client-id> <client-secret> "repo"
+```
+
 ## Tests, Typechecks, Lint, Install packages...
 
 Check the `turbo.json` file to see the available pipelines.
