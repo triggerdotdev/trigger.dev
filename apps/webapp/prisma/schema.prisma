@@ -220,6 +220,8 @@ model TriggerEvent {
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
   dispatchedAt DateTime?
+
+  isTest Boolean @default(false)
 }
 
 enum TriggerEventStatus {

@@ -162,6 +162,7 @@ class DispatchWorkflowRun {
           },
         },
         status: "PENDING",
+        isTest: event.isTest,
       },
     });
 

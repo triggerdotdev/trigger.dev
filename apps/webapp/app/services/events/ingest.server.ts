@@ -14,6 +14,7 @@ export type IngestEventOptions = {
   payload: any;
   context?: any;
   apiKey?: string;
+  isTest?: boolean;
 };
 
 export class IngestEvent {
@@ -50,6 +51,7 @@ export class IngestEvent {
         context: options.context ?? undefined,
         service: options.service,
         type: options.type,
+        isTest: options.isTest ?? false,
       },
     });
 
