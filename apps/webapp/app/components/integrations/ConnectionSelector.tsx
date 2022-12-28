@@ -5,6 +5,7 @@ import {
   CheckIcon,
   PlusIcon,
 } from "@heroicons/react/24/outline";
+import { useFetcher } from "@remix-run/react";
 import classNames from "classnames";
 import { Fragment } from "react";
 import type { APIConnection } from "~/models/apiConnection.server";
@@ -12,7 +13,7 @@ import type { Integration } from "./ConnectButton";
 import { ConnectButton } from "./ConnectButton";
 
 type Props = {
-  slotId: string;
+  sourceId: string;
   organizationId: string;
   integration: Integration;
   connections: Pick<APIConnection, "id" | "title">[];
@@ -20,12 +21,14 @@ type Props = {
 };
 
 export function ConnectionSelector({
-  slotId,
+  sourceId,
   integration,
   connections,
   selectedConnectionId,
   organizationId,
 }: Props) {
+  const fetcher = useFetcher();
+
   if (connections.length === 0) {
     return (
       <ConnectButton
@@ -95,28 +98,38 @@ export function ConnectionSelector({
                   <div className="relative grid gap-y-1 py-1 bg-slate-700 grid-cols-1">
                     {connections.map((connection) => {
                       return (
-                        <Popover.Button
+                        <fetcher.Form
                           key={connection.id}
-                          // to={`/orgs/${currentOrganization.slug}/workflows/${connection.slug}`}
-                          className={classNames(
-                            "flex items-center justify-between gap-1.5 mx-1 px-3 py-2 text-white rounded hover:bg-slate-800 transition",
-                            connection.id === selectedConnectionId &&
-                              "!bg-slate-800"
-                          )}
+                          action={`/api/v1/internal/sources/${sourceId}`}
+                          method="put"
                         >
-                          <div className="flex items-center gap-2">
-                            <ArrowsRightLeftIcon
-                              className="h-5 w-5 z-100"
-                              aria-hidden="true"
-                            />
-                            <span className="block truncate">
-                              {connection.title}
-                            </span>
-                          </div>
-                          {connection.id === selectedConnectionId && (
-                            <CheckIcon className="h-5 w-5 text-blue-600" />
-                          )}
-                        </Popover.Button>
+                          <input
+                            type="hidden"
+                            name={"connectionId"}
+                            value={connection.id}
+                          />
+                          <Popover.Button
+                            className={classNames(
+                              "flex items-center justify-between gap-1.5 mx-1 px-3 py-2 text-white rounded hover:bg-slate-800 transition",
+                              connection.id === selectedConnectionId &&
+                                "!bg-slate-800"
+                            )}
+                            type="submit"
+                          >
+                            <div className="flex items-center gap-2">
+                              <ArrowsRightLeftIcon
+                                className="h-5 w-5 z-100"
+                                aria-hidden="true"
+                              />
+                              <span className="block truncate">
+                                {connection.title}
+                              </span>
+                            </div>
+                            {connection.id === selectedConnectionId && (
+                              <CheckIcon className="h-5 w-5 text-blue-600" />
+                            )}
+                          </Popover.Button>
+                        </fetcher.Form>
                       );
                     })}
                     <ConnectButton

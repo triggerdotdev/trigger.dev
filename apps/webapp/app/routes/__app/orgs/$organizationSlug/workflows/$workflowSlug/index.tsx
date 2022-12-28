@@ -22,7 +22,7 @@ export default function Page() {
           {connectionSlots.map((slot) => (
             <ConnectionSelector
               key={slot.id}
-              slotId={slot.id}
+              sourceId={slot.id}
               organizationId={organization.id}
               integration={integrations[0]}
               connections={slot.possibleConnections}

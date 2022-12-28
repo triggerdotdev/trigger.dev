@@ -13,3 +13,20 @@ export async function findExternalSourceById(id: string) {
     },
   });
 }
+
+export async function connectExternalSource({
+  sourceId,
+  connectionId,
+}: {
+  sourceId: string;
+  connectionId: string;
+}) {
+  return await prisma.externalSource.update({
+    where: {
+      id: sourceId,
+    },
+    data: {
+      connectionId: connectionId,
+    },
+  });
+}
