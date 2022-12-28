@@ -334,7 +334,11 @@ function Webhook({ webhook }: { webhook: TriggerType<Trigger, "WEBHOOK"> }) {
           ))}
       </div>
       {webhook.input && (
-        <CodeBlock code={stringifyCode(webhook.input)} align="top" />
+        <CodeBlock
+          code={stringifyCode(webhook.input)}
+          align="top"
+          maxHeight="150px"
+        />
       )}
     </>
   );

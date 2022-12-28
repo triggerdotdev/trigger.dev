@@ -12,6 +12,7 @@ type CodeBlockProps = {
   language?: "typescript" | "json";
   showCopyButton?: boolean;
   align?: "top" | "center";
+  maxHeight?: string;
   className?: string;
 };
 
@@ -20,9 +21,13 @@ export default function CodeBlock({
   language = "typescript",
   showCopyButton = true,
   align = "center",
+  maxHeight,
   className,
 }: CodeBlockProps) {
   const [codeHtml, setCodeHtml] = useState(code);
+  const [isCollapsed, setIsCollapsed] = useState(
+    maxHeight === undefined ? false : true
+  );
   useEffect(() => {
     const val = Prism.highlight(code, Prism.languages[language], language);
     setCodeHtml(val);
@@ -31,12 +36,13 @@ export default function CodeBlock({
   return (
     <div
       className={classNames(
-        "flex rounded-md bg-[#0F172A] pl-2",
+        "relative rounded-md bg-[#0F172A] pl-2",
         className,
-        align === "center" ? "items-center" : "items-start"
+        isCollapsed ? "overflow-hidden" : ""
       )}
+      style={{ maxHeight: isCollapsed ? maxHeight : undefined }}
     >
-      <pre className={`flex-grow language-${language}`}>
+      <pre className={`language-${language}`}>
         <code
           className={`language-${language}`}
           dangerouslySetInnerHTML={{ __html: codeHtml }}
@@ -44,10 +50,23 @@ export default function CodeBlock({
       </pre>
       {showCopyButton === true && (
         <CopyTextButton
-          className="text-sm my-2 mx-2"
+          className={classNames(
+            "absolute text-sm my-2 mx-2",
+            align === "center" ? " top-1/2 right-0" : "top-0 right-0"
+          )}
           value={code}
           variant="slate"
         />
+      )}
+      {isCollapsed && (
+        <div className="absolute left-0 bottom-0 w-full flex items-center justify-center bg-gradient-to-b from-transparent to-[#0F172A]">
+          <button
+            className="bg-slate-800 rounded-full py-1 px-2 text-xs mb-1"
+            onClick={(e) => setIsCollapsed((s) => !s)}
+          >
+            Expand
+          </button>
+        </div>
       )}
     </div>
   );
