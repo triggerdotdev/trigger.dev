@@ -168,6 +168,8 @@ model ExternalSource {
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   organizationId String
 
+  service String
+
   workflows    Workflow[]
   type         ExternalSourceType
   key          String

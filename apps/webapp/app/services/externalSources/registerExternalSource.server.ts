@@ -56,7 +56,7 @@ export class RegisterExternalSource {
     const webhookUrl = `${originOrProxyUrl}/api/v1/internal/webhooks/${connection.apiIdentifier}/${externalSource.id}`;
 
     const serviceWebhook = await this.#registerWebhookWithConnection(
-      connection.apiIdentifier,
+      externalSource.service,
       accessToken,
       webhookUrl,
       secret,

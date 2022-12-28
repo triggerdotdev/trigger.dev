@@ -160,6 +160,7 @@ export class RegisterWorkflow {
             source: payload.trigger.source,
             status: "CREATED",
             connectionId: existingConnection?.id,
+            service: payload.trigger.service,
           },
         });
 
