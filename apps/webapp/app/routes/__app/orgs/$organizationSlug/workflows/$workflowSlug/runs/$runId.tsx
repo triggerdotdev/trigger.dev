@@ -320,10 +320,10 @@ function Webhook({ webhook }: { webhook: TriggerType<Trigger, "WEBHOOK"> }) {
     <>
       <div className="flex justify-between items-baseline">
         <Header3 size="large" className="mb-4">
-          {webhook.config.id}
+          {webhook.name}
         </Header3>
-        <div className="flex items-baseline gap-2">
-          {Object.entries(webhook.config.params).map(([key, value]) => (
+        {/* <div className="flex items-baseline gap-2">
+          {Object.entries(webhook.).map(([key, value]) => (
             <div key={key} className="flex gap-1 items-baseline">
               <Body size="extra-small" className={workflowNodeUppercaseClasses}>
                 {key}
@@ -331,9 +331,11 @@ function Webhook({ webhook }: { webhook: TriggerType<Trigger, "WEBHOOK"> }) {
               <Body size="small">{value}</Body>
             </div>
           ))}
-        </div>
+        </div> */}
       </div>
-      {webhook.input && <CodeBlock code={stringifyCode(webhook.input)} />}
+      {webhook.input && (
+        <CodeBlock code={stringifyCode(webhook.input)} align="top" />
+      )}
     </>
   );
 }
@@ -377,7 +379,7 @@ function CustomEventTrigger({
   return (
     <>
       <Header2 size="large" className="mb-4">
-        name: {event.config.name}
+        name: {event.name}
       </Header2>
       {event.input && <CodeBlock code={stringifyCode(event.input)} />}
     </>
