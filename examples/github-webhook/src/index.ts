@@ -7,7 +7,7 @@ const trigger = new Trigger({
   apiKey: "trigger_dev_zC25mKNn6c0q",
   endpoint: "ws://localhost:8889/ws",
   logLevel: "debug",
-  on: github.repoIssueEvent({ repo: "apihero-run/jsonhero-web" }),
+  on: github.triggers.repoIssueEvent({ repo: "apihero-run/jsonhero-web" }),
   run: async (event, ctx) => {
     await ctx.logger.info(
       "Inside the github-webhook workflow, received event",
@@ -15,6 +15,14 @@ const trigger = new Trigger({
         event,
       }
     );
+
+    if (event.action === "assigned") {
+      await ctx.logger.info(`New assignee: ${event.assignee.login}`);
+      // await slack.sendMessage({
+      //   channel: "C01BQKZJZ7M",
+      //   text: `New issue: ${event.issue.title}`,
+      // });
+    }
 
     return event;
   },

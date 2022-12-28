@@ -1,1 +1,3 @@
-export * from "./webhooks";
+import * as triggers from "./triggers";
+
+export { triggers };
