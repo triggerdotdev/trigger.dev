@@ -97,8 +97,6 @@ export const action = async ({ request, params }: ActionArgs) => {
           id: connectionId,
         });
 
-        console.log("sourceId", sourceId);
-
         if (sourceId !== undefined) {
           await connectExternalSource({ sourceId, connectionId });
           await internalPubSub.publish("EXTERNAL_SOURCE_UPSERTED", {

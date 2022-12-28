@@ -121,8 +121,14 @@ export function useCreateConnection(sourceId?: string) {
       createConnectionFetcher.type !== "done"
     )
       return;
-    if (completeConnectionFetcher.state !== "idle") return;
+    if (
+      completeConnectionFetcher.state !== "idle" ||
+      completeConnectionFetcher.type !== "init"
+    )
+      return;
     if (createConnectionFetcher.data === undefined) return;
+
+    completeConnectionFetcher.type = "init";
 
     completeFlow({
       pizzlyHost: createConnectionFetcher.data.host,
