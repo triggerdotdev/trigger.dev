@@ -2,16 +2,29 @@ import invariant from "tiny-invariant";
 import { integrations } from "~/components/integrations/ConnectButton";
 import { ConnectionSelector } from "~/components/integrations/ConnectionSelector";
 import { Panel } from "~/components/layout/Panel";
+import { PanelHeader } from "~/components/layout/PanelHeader";
 import { Body } from "~/components/primitives/text/Body";
 import { Header1, Header2 } from "~/components/primitives/text/Headers";
+import { TriggerBody } from "~/components/triggers/Trigger";
+import { triggerInfo } from "~/components/triggers/triggerTypes";
 import { useConnectionSlots } from "~/hooks/useConnectionSlots";
+import { useCurrentEnvironment } from "~/hooks/useEnvironments";
 import { useCurrentOrganization } from "~/hooks/useOrganizations";
+import { useCurrentWorkflow } from "~/hooks/useWorkflows";
 
 export default function Page() {
   const organization = useCurrentOrganization();
   invariant(organization, "Organization not found");
   const connectionSlots = useConnectionSlots();
   invariant(connectionSlots, "Connection slots not found");
+  const workflow = useCurrentWorkflow();
+  invariant(workflow, "Workflow not found");
+  const environment = useCurrentEnvironment();
+  invariant(environment, "Environment not found");
+
+  const eventRule = workflow.rules.find(
+    (r) => r.environmentId === environment.id
+  );
 
   return (
     <>
@@ -37,6 +50,19 @@ export default function Page() {
           </div>
         </Panel>
       )}
+
+      {eventRule && (
+        <Panel className="mt-4">
+          <PanelHeader
+            icon={triggerInfo[eventRule.trigger.type].icon}
+            title={triggerInfo[eventRule.trigger.type].label}
+            startedAt={null}
+            finishedAt={null}
+          />
+          <TriggerBody trigger={eventRule.trigger} />
+        </Panel>
+      )}
+
       <div>Test functionality will go here</div>
     </>
   );

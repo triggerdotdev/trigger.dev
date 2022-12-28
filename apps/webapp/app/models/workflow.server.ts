@@ -33,6 +33,14 @@ export function getWorkflowFromSlugs({
           service: true,
         },
       },
+      rules: {
+        select: {
+          id: true,
+          type: true,
+          trigger: true,
+          environmentId: true,
+        },
+      },
     },
     where: {
       slug: workflowSlug,

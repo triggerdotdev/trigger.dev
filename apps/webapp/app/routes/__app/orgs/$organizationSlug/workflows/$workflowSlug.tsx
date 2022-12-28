@@ -1,5 +1,6 @@
 import { Outlet } from "@remix-run/react";
 import type { LoaderArgs } from "@remix-run/server-runtime";
+import { TriggerMetadataSchema } from "@trigger.dev/common-schemas";
 import { typedjson } from "remix-typedjson";
 import invariant from "tiny-invariant";
 import { integrations } from "~/components/integrations/ConnectButton";
@@ -23,7 +24,7 @@ export const loader = async ({ request, params }: LoaderArgs) => {
   invariant(organizationSlug, "organizationSlug not found");
   invariant(workflowSlug, "workflowSlug not found");
 
-  const workflow = await getWorkflowFromSlugs({
+  let workflow = await getWorkflowFromSlugs({
     userId,
     organizationSlug,
     workflowSlug,
@@ -32,6 +33,11 @@ export const loader = async ({ request, params }: LoaderArgs) => {
   if (workflow === null) {
     throw new Response("Not Found", { status: 404 });
   }
+
+  const rules = workflow.rules.map((r) => ({
+    ...r,
+    trigger: TriggerMetadataSchema.parse(r.trigger),
+  }));
 
   const environmentSession = await getSession(request.headers.get("cookie"));
   const currentEnvironmentSlug = await getRuntimeEnvironmentFromSession(
@@ -53,7 +59,11 @@ export const loader = async ({ request, params }: LoaderArgs) => {
   }));
 
   return typedjson(
-    { workflow, currentEnvironmentSlug, connectionSlots },
+    {
+      workflow: { ...workflow, rules },
+      currentEnvironmentSlug,
+      connectionSlots,
+    },
     { headers: { "Set-Cookie": await commitSession(environmentSession) } }
   );
 };

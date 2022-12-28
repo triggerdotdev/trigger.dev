@@ -15,7 +15,7 @@ export function useWorkflows(): Workflow[] | undefined {
   return workflows;
 }
 
-export function useCurrentWorkflow(): Workflow | undefined {
+export function useCurrentWorkflow() {
   const routeMatch = useMatchesData(
     "routes/__app/orgs/$organizationSlug/workflows/$workflowSlug"
   );

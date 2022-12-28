@@ -8,6 +8,7 @@ export const CustomEventTriggerSchema = z.object({
   name: z.string(),
   filter: EventFilterSchema,
 });
+export type CustomEventTrigger = z.infer<typeof CustomEventTriggerSchema>;
 
 export const WebhookEventTriggerSchema = z.object({
   type: z.literal("WEBHOOK"),
@@ -16,6 +17,7 @@ export const WebhookEventTriggerSchema = z.object({
   filter: EventFilterSchema,
   source: JsonSchema,
 });
+export type WebhookEventTrigger = z.infer<typeof WebhookEventTriggerSchema>;
 
 export const HttpEventTriggerSchema = z.object({
   type: z.literal("HTTP_ENDPOINT"),
@@ -23,6 +25,7 @@ export const HttpEventTriggerSchema = z.object({
   name: z.string(),
   filter: EventFilterSchema,
 });
+export type HttpEventTrigger = z.infer<typeof HttpEventTriggerSchema>;
 
 export const ScheduledEventTriggerSchema = z.object({
   type: z.literal("SCHEDULE"),
@@ -30,6 +33,7 @@ export const ScheduledEventTriggerSchema = z.object({
   name: z.string(),
   filter: EventFilterSchema,
 });
+export type ScheduledEventTrigger = z.infer<typeof ScheduledEventTriggerSchema>;
 
 export const TriggerMetadataSchema = z.discriminatedUnion("type", [
   CustomEventTriggerSchema,
@@ -37,3 +41,5 @@ export const TriggerMetadataSchema = z.discriminatedUnion("type", [
   HttpEventTriggerSchema,
   ScheduledEventTriggerSchema,
 ]);
+
+export type TriggerMetadata = z.infer<typeof TriggerMetadataSchema>;
