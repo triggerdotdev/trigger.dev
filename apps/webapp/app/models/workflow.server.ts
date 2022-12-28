@@ -19,8 +19,21 @@ export function getWorkflowFromSlugs({
   userId: User["id"];
   organizationSlug: Organization["slug"];
   workflowSlug: Workflow["slug"];
-}): Promise<Workflow | null> {
+}) {
   return prisma.workflow.findFirst({
+    include: {
+      externalSource: {
+        select: {
+          id: true,
+          type: true,
+          source: true,
+          status: true,
+          connection: true,
+          key: true,
+          service: true,
+        },
+      },
+    },
     where: {
       slug: workflowSlug,
       organization: {
