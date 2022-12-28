@@ -1,4 +1,4 @@
-import { Form } from "@remix-run/react";
+import { Form, useFetcher } from "@remix-run/react";
 import { useState } from "react";
 import invariant from "tiny-invariant";
 import { JSONEditor } from "~/components/code/JSONEditor";
@@ -25,6 +25,8 @@ export default function Page() {
   invariant(workflow, "Workflow not found");
   const environment = useCurrentEnvironment();
   invariant(environment, "Environment not found");
+
+  const testFetcher = useFetcher();
 
   const eventRule = workflow.rules.find(
     (r) => r.environmentId === environment.id
@@ -71,15 +73,25 @@ export default function Page() {
 
       {workflow.status === "READY" && (
         <Panel className="mt-4">
-          <Form className="flex flex-col gap-2">
+          <testFetcher.Form
+            action={`/resources/run/${organization.slug}/test/${workflow.slug}`}
+            method="post"
+            className="flex flex-col gap-2"
+          >
             <JSONEditor
               content={testContent}
               readOnly={false}
               onChange={(c) => setTestContent(c)}
             />
-            <input type="hidden" name="data" value={testContent} />
+            <input type="hidden" name="environmentId" value={environment.id} />
+            <input type="hidden" name="apiKey" value={environment.apiKey} />
+            <input
+              type="hidden"
+              name="data"
+              value={JSON.stringify(testContent)}
+            />
             <PrimaryButton type="submit">Test</PrimaryButton>
-          </Form>
+          </testFetcher.Form>
         </Panel>
       )}
     </>
