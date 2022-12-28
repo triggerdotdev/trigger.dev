@@ -2,7 +2,7 @@ import { Link } from "@remix-run/react";
 
 export function Footer() {
   const linkStyle =
-    "bg-slate-100 text-xs font-medium text-slate-700 whitespace-nowrap bg-transparent text-slate-500 transition hover:text-blue-500";
+    "text-xs font-medium text-slate-400 whitespace-nowrap bg-transparent text-slate-500 transition hover:text-blue-500";
 
   return (
     <div className="flex w-full items-center justify-between border-t border-slate-800 bg-slate-950 pl-2 pr-3 py-1 flex-row gap-0">
