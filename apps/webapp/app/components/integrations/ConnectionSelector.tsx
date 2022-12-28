@@ -94,9 +94,9 @@ export function ConnectionSelector({
               leaveFrom="opacity-100 translate-y-0"
               leaveTo="opacity-0 translate-y-1"
             >
-              <Popover.Panel className="absolute left-full z-10 mt-3 w-screen min-w-max max-w-xs -translate-x-1/2 transform px-4 sm:px-0">
+              <Popover.Panel className="absolute left-full z-10 mt-3 w-screen min-w-max max-w-xs -translate-x-1/2 transform sm:px-0">
                 <div className="overflow-hidden rounded-lg shadow-lg ring-1 ring-black ring-opacity-5">
-                  <div className="relative grid gap-y-1 py-1 bg-slate-700 grid-cols-1">
+                  <div className="flex flex-col items-stretch gap-y-1 py-1 px-1 bg-slate-700">
                     {connections.map((connection) => {
                       return (
                         <fetcher.Form
@@ -111,17 +111,13 @@ export function ConnectionSelector({
                           />
                           <Popover.Button
                             className={classNames(
-                              "flex items-center justify-between gap-1.5 mx-1 px-3 py-2 text-white rounded hover:bg-slate-800 transition",
+                              "flex items-center w-full justify-between gap-1.5 py-2 px-3 text-white rounded hover:bg-slate-800 transition",
                               connection.id === selectedConnectionId &&
                                 "!bg-slate-800"
                             )}
                             type="submit"
                           >
                             <div className="flex items-center gap-2">
-                              <ArrowsRightLeftIcon
-                                className="h-5 w-5 z-100"
-                                aria-hidden="true"
-                              />
                               <span className="block truncate">
                                 {connection.title}
                               </span>
