@@ -8,7 +8,7 @@ import { useCodeMirror } from "@uiw/react-codemirror";
 import classNames from "classnames";
 import { useRef, useEffect } from "react";
 import { getEditorSetup } from "./codeMirrorSetup";
-import { lightTheme } from "./codeMirrorTheme";
+import { darkTheme, lightTheme } from "./codeMirrorTheme";
 
 export interface JSONEditorProps extends Omit<ReactCodeMirrorProps, "onBlur"> {
   content: string;
@@ -61,7 +61,7 @@ export function JSONEditor(opts: JSONEditorProps) {
     contentEditable: !readOnly,
     value: content,
     autoFocus: false,
-    theme: lightTheme(),
+    theme: darkTheme(),
     indentWithTab: false,
     basicSetup,
     onChange,

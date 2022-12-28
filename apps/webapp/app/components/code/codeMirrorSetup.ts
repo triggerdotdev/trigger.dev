@@ -5,12 +5,14 @@ import {
   dropCursor,
   lineNumbers,
   highlightActiveLineGutter,
+  keymap,
 } from "@codemirror/view";
 import type { Extension } from "@codemirror/state";
 import { highlightSelectionMatches } from "@codemirror/search";
 import { json as jsonLang } from "@codemirror/lang-json";
 import { closeBrackets } from "@codemirror/autocomplete";
 import { bracketMatching } from "@codemirror/language";
+import { indentWithTab } from "@codemirror/commands";
 
 export function getPreviewSetup(): Array<Extension> {
   return [
@@ -37,6 +39,7 @@ export function getEditorSetup(
     dropCursor(),
     bracketMatching(),
     closeBrackets(),
+    keymap.of([indentWithTab]),
   ];
 
   if (showLineNumbers) {

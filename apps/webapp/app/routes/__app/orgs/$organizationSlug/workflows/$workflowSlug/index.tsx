@@ -1,8 +1,12 @@
+import { Form } from "@remix-run/react";
+import { useState } from "react";
 import invariant from "tiny-invariant";
+import { JSONEditor } from "~/components/code/JSONEditor";
 import { integrations } from "~/components/integrations/ConnectButton";
 import { ConnectionSelector } from "~/components/integrations/ConnectionSelector";
 import { Panel } from "~/components/layout/Panel";
 import { PanelHeader } from "~/components/layout/PanelHeader";
+import { PrimaryButton } from "~/components/primitives/Buttons";
 import { Body } from "~/components/primitives/text/Body";
 import { Header1, Header2 } from "~/components/primitives/text/Headers";
 import { TriggerBody } from "~/components/triggers/Trigger";
@@ -25,6 +29,8 @@ export default function Page() {
   const eventRule = workflow.rules.find(
     (r) => r.environmentId === environment.id
   );
+
+  const [testContent, setTestContent] = useState<string>("");
 
   return (
     <>
@@ -63,7 +69,19 @@ export default function Page() {
         </Panel>
       )}
 
-      <div>Test functionality will go here</div>
+      {workflow.status === "READY" && (
+        <Panel className="mt-4">
+          <Form className="flex flex-col gap-2">
+            <JSONEditor
+              content={testContent}
+              readOnly={false}
+              onChange={(c) => setTestContent(c)}
+            />
+            <input type="hidden" name="data" value={testContent} />
+            <PrimaryButton type="submit">Test</PrimaryButton>
+          </Form>
+        </Panel>
+      )}
     </>
   );
 }
