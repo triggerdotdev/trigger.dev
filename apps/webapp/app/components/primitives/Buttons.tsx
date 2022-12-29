@@ -9,7 +9,7 @@ const primaryClasses = classnames(
 );
 const secondaryClasses = classnames(
   commonClasses,
-  "bg-slate-850 text-white hover:bg-slate-900 focus:bg-slate-700"
+  "bg-indigo-900 text-white hover:bg-indigo-800 focus:bg-indigo-800"
 );
 
 type ButtonProps = React.DetailedHTMLProps<

@@ -6,7 +6,7 @@ import { integrations } from "~/components/integrations/ConnectButton";
 import { ConnectionSelector } from "~/components/integrations/ConnectionSelector";
 import { Panel } from "~/components/layout/Panel";
 import { PanelHeader } from "~/components/layout/PanelHeader";
-import { PrimaryLink } from "~/components/primitives/Buttons";
+import { PrimaryLink, SecondaryLink } from "~/components/primitives/Buttons";
 import { Body } from "~/components/primitives/text/Body";
 import { Header1, Header2 } from "~/components/primitives/text/Headers";
 import { NoRuns, RunsTable } from "~/components/runs/Table";
@@ -100,7 +100,10 @@ export default function Page() {
 
       {total > 0 ? (
         <>
-          <Header2 className="mt-6 mb-4">Last {pageSize} runs</Header2>
+          <div className="mt-6 mb-4 flex justify-between items-center">
+            <Header2>Last {pageSize} runs</Header2>
+            <SecondaryLink to="runs">View all</SecondaryLink>
+          </div>
           <Panel className="p-0 overflow-hidden overflow-x-auto">
             <RunsTable runs={runs} total={total} hasFilters={hasFilters} />
           </Panel>
