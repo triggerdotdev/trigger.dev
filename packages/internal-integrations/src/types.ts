@@ -10,6 +10,12 @@ export interface NormalizedRequest {
   searchParams: URLSearchParams;
 }
 
+export interface NormalizedResponse {
+  body: any;
+  headers: Record<string, string>;
+  statusCode: number;
+}
+
 export interface HandleWebhookOptions {
   request: NormalizedRequest;
   secret?: string;
@@ -21,6 +27,16 @@ export interface ReceivedWebhook {
   payload: any;
   timestamp?: string;
   context?: any;
+}
+
+export type PerformRequestOptions = {
+  accessToken: string;
+  endpoint: string;
+  params: any;
+};
+
+export interface RequestIntegration {
+  perform: (options: PerformRequestOptions) => Promise<NormalizedResponse>;
 }
 
 export interface WebhookIntegration {

@@ -67,7 +67,8 @@ model APIConnection {
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   organizationId String
 
-  externalSources ExternalSource[]
+  externalSources  ExternalSource[]
+  externalServices ExternalService[]
 }
 
 enum APIConnectionType {
@@ -117,8 +118,9 @@ model Workflow {
   externalSource   ExternalSource? @relation(fields: [externalSourceId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   externalSourceId String?
 
-  runs  WorkflowRun[]
-  rules EventRule[]
+  runs             WorkflowRun[]
+  rules            EventRule[]
+  externalServices ExternalService[]
 
   service String @default("trigger")
   eventNames String[]
@@ -202,6 +204,86 @@ enum ExternalSourceType {
   HTTP_POLLING
 }
 
+model ExternalService {
+  id      String @id @default(cuid())
+  slug    String
+  service String
+
+  workflow   Workflow @relation(fields: [workflowId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  workflowId String
+
+  connection   APIConnection? @relation(fields: [connectionId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  connectionId String?
+
+  type   ExternalServiceType
+  status ExternalServiceStatus @default(CREATED)
+
+  readyAt   DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  requests IntegrationRequest[]
+
+  @@unique([workflowId, slug])
+}
+
+enum ExternalServiceType {
+  HTTP_API
+}
+
+enum ExternalServiceStatus {
+  CREATED
+  READY
+}
+
+model IntegrationRequest {
+  id String @id
+
+  params   Json
+  endpoint String
+
+  externalService   ExternalService @relation(fields: [externalServiceId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  externalServiceId String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  status IntegrationRequestStatus @default(PENDING)
+
+  run   WorkflowRun @relation(fields: [runId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  runId String
+
+  step   WorkflowRunStep @relation(fields: [stepId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  stepId String          @unique
+
+  retryCount Int                   @default(0)
+  error      Json?
+  response   Json?
+  responses  IntegrationResponse[]
+}
+
+enum IntegrationRequestStatus {
+  PENDING
+  WAITING_FOR_CONNECTION
+  FETCHING
+  RETRYING
+  SUCCESS
+  ERROR
+}
+
+model IntegrationResponse {
+  id String @id @default(cuid())
+
+  request   IntegrationRequest @relation(fields: [requestId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  requestId String
+
+  statusCode Int
+  body       Json
+  headers    Json
+
+  createdAt DateTime @default(now())
+}
+
 model TriggerEvent {
   id        String      @id @default(cuid())
   service   String
@@ -258,7 +340,8 @@ model WorkflowRun {
   startedAt  DateTime?
   finishedAt DateTime?
 
-  isTest Boolean @default(false)
+  isTest   Boolean              @default(false)
+  requests IntegrationRequest[]
 }
 
 enum WorkflowRunStatus {
@@ -284,6 +367,17 @@ model WorkflowRunStep {
 
   startedAt  DateTime?
   finishedAt DateTime?
+
+  status WorkflowRunStepStatus @default(PENDING)
+
+  integrationRequest IntegrationRequest?
+}
+
+enum WorkflowRunStepStatus {
+  PENDING
+  RUNNING
+  SUCCESS
+  ERROR
 }
 
 enum WorkflowRunStepType {
@@ -291,6 +385,7 @@ enum WorkflowRunStepType {
   LOG_MESSAGE
   DURABLE_DELAY
   CUSTOM_EVENT
+  INTEGRATION_REQUEST
 }
 
 //todo triggers are environment specific

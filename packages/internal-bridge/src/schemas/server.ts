@@ -1,7 +1,20 @@
-import { CustomEventSchema, TriggerMetadataSchema } from "@trigger.dev/common-schemas";
+import {
+  CustomEventSchema,
+  TriggerMetadataSchema,
+} from "@trigger.dev/common-schemas";
 import { z } from "zod";
 
 export const ServerRPCSchema = {
+  SEND_REQUEST: {
+    request: z.object({
+      id: z.string(),
+      requestId: z.string(),
+      service: z.string(),
+      endpoint: z.string(),
+      params: z.any(),
+    }),
+    response: z.boolean(),
+  },
   SEND_LOG: {
     request: z.object({
       id: z.string(),

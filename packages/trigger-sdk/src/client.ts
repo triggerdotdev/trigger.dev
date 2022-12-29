@@ -12,6 +12,14 @@ import * as pkg from "../package.json";
 import { Trigger, TriggerOptions } from "./trigger";
 import { TriggerContext } from "./types";
 import { ContextLogger } from "./logger";
+import { triggerRunLocalStorage } from "./localStorage";
+import { ulid } from "ulid";
+
+type RequestResponse = {
+  body?: any;
+  headers: Record<string, string>;
+  status: number;
+};
 
 export class TriggerClient<TSchema extends z.ZodTypeAny> {
   #trigger: Trigger<TSchema>;
@@ -26,6 +34,14 @@ export class TriggerClient<TSchema extends z.ZodTypeAny> {
   #isConnected = false;
   #retryIntervalMs: number = 3000;
   #logger: Logger;
+
+  #responseCompleteCallbacks = new Map<
+    string,
+    {
+      resolve: (output: RequestResponse) => void;
+      reject: (err?: any) => void;
+    }
+  >();
 
   constructor(trigger: Trigger<TSchema>, options: TriggerOptions<TSchema>) {
     this.#trigger = trigger;
@@ -91,6 +107,25 @@ export class TriggerClient<TSchema extends z.ZodTypeAny> {
       sender: ServerRPCSchema,
       receiver: HostRPCSchema,
       handlers: {
+        COMPLETE_REQUEST: async (data) => {
+          const requestCallbacks = this.#responseCompleteCallbacks.get(data.id);
+
+          if (!requestCallbacks) {
+            throw new Error(
+              `Could not find request callbacks for request ID ${data.id}`
+            );
+          }
+
+          const { resolve, reject } = requestCallbacks;
+
+          if (data.status === "SUCCESS") {
+            resolve(data.response);
+          } else {
+            reject(new Error(`Request failed: ${data.response.status}`));
+          }
+
+          return true;
+        },
         TRIGGER_WORKFLOW: async (data) => {
           console.log("TRIGGER_WORKFLOW", data);
 
@@ -119,46 +154,83 @@ export class TriggerClient<TSchema extends z.ZodTypeAny> {
 
           const eventData = this.#options.on.schema.parse(data.trigger.input);
 
-          // TODO: handle this better
-          this.#trigger.options
-            .run(eventData, ctx)
-            .then((output) => {
-              return serverRPC.send("COMPLETE_WORKFLOW_RUN", {
-                id: data.id,
-                output: JSON.stringify(output),
-                workflowId: data.meta.workflowId,
-              });
-            })
-            .catch((anyError) => {
-              const parseAnyError = (
-                error: any
-              ): {
-                name: string;
-                message: string;
-                stackTrace?: string;
-              } => {
-                if (error instanceof Error) {
-                  return {
-                    name: error.name,
-                    message: error.message,
-                    stackTrace: error.stack,
-                  };
-                }
+          triggerRunLocalStorage.run(
+            {
+              performRequest: async (options) => {
+                const requestId = ulid();
 
-                return {
-                  name: "UnknownError",
-                  message: "An unknown error occurred",
+                const result = new Promise<RequestResponse>(
+                  (resolve, reject) => {
+                    this.#responseCompleteCallbacks.set(requestId, {
+                      resolve,
+                      reject,
+                    });
+                  }
+                );
+
+                await serverRPC.send("SEND_REQUEST", {
+                  id: data.id,
+                  requestId,
+                  service: options.service,
+                  endpoint: options.endpoint,
+                  params: options.params,
+                });
+
+                const response = await result;
+
+                const parsedResponse = {
+                  ok: true,
+                  status: response.status,
+                  headers: response.headers,
+                  body: options.response.schema.parse(response.body),
                 };
-              };
 
-              const error = parseAnyError(anyError);
+                return parsedResponse;
+              },
+            },
+            () => {
+              // TODO: handle this better
+              this.#trigger.options
+                .run(eventData, ctx)
+                .then((output) => {
+                  return serverRPC.send("COMPLETE_WORKFLOW_RUN", {
+                    id: data.id,
+                    output: JSON.stringify(output),
+                    workflowId: data.meta.workflowId,
+                  });
+                })
+                .catch((anyError) => {
+                  const parseAnyError = (
+                    error: any
+                  ): {
+                    name: string;
+                    message: string;
+                    stackTrace?: string;
+                  } => {
+                    if (error instanceof Error) {
+                      return {
+                        name: error.name,
+                        message: error.message,
+                        stackTrace: error.stack,
+                      };
+                    }
 
-              return serverRPC.send("SEND_WORKFLOW_ERROR", {
-                id: data.id,
-                workflowId: data.meta.workflowId,
-                error,
-              });
-            });
+                    return {
+                      name: "UnknownError",
+                      message: "An unknown error occurred",
+                    };
+                  };
+
+                  const error = parseAnyError(anyError);
+
+                  return serverRPC.send("SEND_WORKFLOW_ERROR", {
+                    id: data.id,
+                    workflowId: data.meta.workflowId,
+                    error,
+                  });
+                });
+            }
+          );
         },
       },
     });

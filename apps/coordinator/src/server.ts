@@ -89,6 +89,41 @@ export class TriggerServer {
       sender: HostRPCSchema,
       receiver: ServerRPCSchema,
       handlers: {
+        SEND_REQUEST: async (data) => {
+          if (!this.#triggerPublisher) {
+            // TODO: need to recover from this issue by trying to reconnect
+            return false;
+          }
+
+          if (!this.#organizationId) {
+            // TODO: this should never really happen
+            throw new Error(
+              "Cannot complete workflow run without an organization ID"
+            );
+          }
+
+          if (!this.#workflowId) {
+            // TODO: this should never really happen
+            throw new Error("Cannot send log without a workflow ID");
+          }
+
+          const response = await this.#triggerPublisher.publish(
+            "SEND_INTEGRATION_REQUEST",
+            {
+              id: data.requestId,
+              service: data.service,
+              endpoint: data.endpoint,
+              params: data.params,
+            },
+            {
+              "x-api-key": this.#apiKey,
+              "x-workflow-id": this.#workflowId,
+              "x-workflow-run-id": data.id,
+            }
+          );
+
+          return !!response;
+        },
         SEND_EVENT: async (data) => {
           if (!this.#triggerPublisher) {
             // TODO: need to recover from this issue by trying to reconnect
@@ -305,6 +340,47 @@ export class TriggerServer {
           subscriptionInitialPosition: "Earliest",
         },
         handlers: {
+          FINISH_INTEGRATION_REQUEST: async (id, data, properties) => {
+            this.#logger.debug(
+              "Received finish integration request",
+              id,
+              data,
+              properties
+            );
+
+            if (!this.#serverRPC) {
+              throw new Error(
+                "Cannot finish integration request without an RPC connection"
+              );
+            }
+
+            // If the API keys don't match, then we should ignore it
+            // This ensures the workflow is triggered for the correct environment
+            if (properties["x-api-key"] !== this.#apiKey) {
+              return true;
+            }
+
+            // If the workflow id is not the same as the workflow id
+            // that we are listening for, then we should ignore it
+            if (properties["x-workflow-id"] !== this.#workflowId) {
+              return true;
+            }
+
+            const success = await this.#serverRPC.send("COMPLETE_REQUEST", {
+              id: data.id,
+              status: data.status,
+              response: data.response,
+              meta: {
+                workflowId: properties["x-workflow-id"],
+                organizationId: properties["x-org-id"],
+                environment: properties["x-env"],
+                apiKey: properties["x-api-key"],
+                runId: properties["x-workflow-run-id"],
+              },
+            });
+
+            return success;
+          },
           TRIGGER_WORKFLOW: async (id, data, properties) => {
             this.#logger.debug("Received trigger", id, data, properties);
             // If the API keys don't match, then we should ignore it

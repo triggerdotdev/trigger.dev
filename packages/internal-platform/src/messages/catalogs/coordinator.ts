@@ -1,4 +1,4 @@
-import initiateIntegrationRequest from "../schemas/initiateIntegrationRequest";
+import sendIntegrationRequest from "../schemas/sendIntegrationRequest";
 import startWorklowRun from "../schemas/startWorkflowRun";
 import failWorkflowRun from "../schemas/failWorkflowRun";
 import completeWorkflowRun from "../schemas/completeWorkflowRun";
@@ -7,7 +7,7 @@ import triggerCustomEvent from "../schemas/triggerCustomEvent";
 import awaits from "../schemas/awaits";
 
 const Catalog = {
-  ...initiateIntegrationRequest,
+  ...sendIntegrationRequest,
   ...startWorklowRun,
   ...failWorkflowRun,
   ...completeWorkflowRun,

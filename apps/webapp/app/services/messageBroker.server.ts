@@ -11,6 +11,7 @@ import type { Client as PulsarClient } from "pulsar-client";
 import Pulsar from "pulsar-client";
 import { z } from "zod";
 import { env } from "~/env.server";
+import { findIntegrationRequestById } from "~/models/integrationRequest.server";
 import {
   completeWorkflowRun,
   failWorkflowRun,
@@ -22,17 +23,23 @@ import {
 } from "~/models/workflowRun.server";
 import { DispatchEvent } from "./events/dispatch.server";
 import { RegisterExternalSource } from "./externalSources/registerExternalSource.server";
+import { CreateIntegrationRequest } from "./requests/createIntegrationRequest.server";
+import { PerformIntegrationRequest } from "./requests/performIntegrationRequest.server";
+import { StartIntegrationRequest } from "./requests/startIntegrationRequest.server";
+import { WaitForConnection } from "./requests/waitForConnection.server";
 
 let pulsarClient: PulsarClient;
 let triggerPublisher: ZodPublisher<PlatformCatalog>;
 let triggerSubscriber: ZodSubscriber<CoordinatorCatalog>;
 let internalPubSub: ZodPubSub<typeof InternalCatalog>;
+let requestPubSub: ZodPubSub<typeof RequestCatalog>;
 
 declare global {
   var __pulsar_client__: typeof pulsarClient;
   var __trigger_publisher__: typeof triggerPublisher;
   var __trigger_subscriber__: typeof triggerSubscriber;
   var __internal_pub_sub__: typeof internalPubSub;
+  var __request_pub_sub__: typeof requestPubSub;
 }
 
 export async function init() {
@@ -79,6 +86,15 @@ export async function init() {
       global.__internal_pub_sub__ = await createInternalPubSub();
     }
     internalPubSub = global.__internal_pub_sub__;
+  }
+
+  if (env.NODE_ENV === "production") {
+    requestPubSub = await createRequestPubSub();
+  } else {
+    if (!global.__request_pub_sub__) {
+      global.__request_pub_sub__ = await createRequestPubSub();
+    }
+    requestPubSub = global.__request_pub_sub__;
   }
 }
 
@@ -132,7 +148,19 @@ async function createTriggerSubscriber() {
 
         return true;
       },
-      INITIATE_INTEGRATION_REQUEST: async (id, data, properties) => {
+      SEND_INTEGRATION_REQUEST: async (id, data, properties) => {
+        const service = new CreateIntegrationRequest();
+
+        const integrationRequest = await service.call(
+          properties["x-api-key"],
+          properties["x-workflow-run-id"],
+          data
+        );
+
+        internalPubSub.publish("INTEGRATION_REQUEST_CREATED", {
+          id: integrationRequest.id,
+        });
+
         return true;
       },
       COMPLETE_WORKFLOW_RUN: async (id, data, properties) => {
@@ -175,7 +203,46 @@ const InternalCatalog = {
     data: z.object({ id: z.string() }),
     properties: z.object({}),
   },
+  INTEGRATION_REQUEST_CREATED: {
+    data: z.object({ id: z.string() }),
+    properties: z.object({}),
+  },
 };
+
+const RequestCatalog = {
+  PERFORM_INTEGRATION_REQUEST: {
+    data: z.object({ id: z.string() }),
+    properties: z.object({}),
+  },
+};
+
+async function createRequestPubSub() {
+  const pubSub = new ZodPubSub<typeof RequestCatalog>({
+    client: pulsarClient,
+    topic: "persistent://public/default/internal-requests",
+    subscriberConfig: {
+      subscription: "webapp",
+      subscriptionType: "Shared",
+    },
+    publisherConfig: {
+      sendTimeoutMs: 1000,
+    },
+    schema: RequestCatalog,
+    handlers: {
+      PERFORM_INTEGRATION_REQUEST: async (id, data, properties) => {
+        const service = new PerformIntegrationRequest();
+
+        const success = await service.call(data.id);
+
+        return success;
+      },
+    },
+  });
+
+  await pubSub.initialize();
+
+  return pubSub;
+}
 
 async function createInternalPubSub() {
   const pubSub = new ZodPubSub<typeof InternalCatalog>({
@@ -190,6 +257,29 @@ async function createInternalPubSub() {
     },
     schema: InternalCatalog,
     handlers: {
+      INTEGRATION_REQUEST_CREATED: async (id, data, properties) => {
+        const integrationRequest = await findIntegrationRequestById(data.id);
+
+        if (!integrationRequest) {
+          return true;
+        }
+
+        if (!integrationRequest.externalService.connectionId) {
+          const service = new WaitForConnection();
+          await service.call(
+            integrationRequest,
+            integrationRequest.externalService,
+            integrationRequest.step,
+            integrationRequest.run
+          );
+          return true;
+        } else {
+          const service = new StartIntegrationRequest();
+          await service.call(integrationRequest, integrationRequest.step);
+
+          return true;
+        }
+      },
       EXTERNAL_SOURCE_UPSERTED: async (id, data, properties) => {
         const service = new RegisterExternalSource();
 
@@ -241,4 +331,4 @@ async function createInternalPubSub() {
   return pubSub;
 }
 
-export { internalPubSub };
+export { internalPubSub, requestPubSub };
