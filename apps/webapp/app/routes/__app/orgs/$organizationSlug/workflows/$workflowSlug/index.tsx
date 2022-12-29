@@ -1,18 +1,53 @@
+import { Link } from "@remix-run/react";
+import { LoaderArgs } from "@remix-run/server-runtime";
+import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import invariant from "tiny-invariant";
 import { integrations } from "~/components/integrations/ConnectButton";
 import { ConnectionSelector } from "~/components/integrations/ConnectionSelector";
 import { Panel } from "~/components/layout/Panel";
 import { PanelHeader } from "~/components/layout/PanelHeader";
+import { PrimaryLink } from "~/components/primitives/Buttons";
 import { Body } from "~/components/primitives/text/Body";
 import { Header1, Header2 } from "~/components/primitives/text/Headers";
+import { NoRuns, RunsTable } from "~/components/runs/Table";
 import { TriggerBody } from "~/components/triggers/Trigger";
 import { triggerInfo } from "~/components/triggers/triggerTypes";
 import { useConnectionSlots } from "~/hooks/useConnectionSlots";
 import { useCurrentEnvironment } from "~/hooks/useEnvironments";
 import { useCurrentOrganization } from "~/hooks/useOrganizations";
 import { useCurrentWorkflow } from "~/hooks/useWorkflows";
+import { WorkflowRunListPresenter } from "~/models/workflowRunListPresenter.server";
+import { requireUserId } from "~/services/session.server";
+
+const pageSize = 10;
+
+export const loader = async ({ request, params }: LoaderArgs) => {
+  const userId = await requireUserId(request);
+  const { organizationSlug, workflowSlug } = params;
+  invariant(organizationSlug, "organizationSlug is required");
+  invariant(workflowSlug, "workflowSlug is required");
+
+  const searchParams = new URLSearchParams();
+
+  try {
+    const presenter = new WorkflowRunListPresenter();
+    const result = await presenter.data({
+      userId,
+      organizationSlug,
+      workflowSlug,
+      searchParams,
+      pageSize,
+    });
+    return typedjson(result);
+  } catch (error: any) {
+    console.error(error);
+    throw new Response("Error ", { status: 400 });
+  }
+};
 
 export default function Page() {
+  const { runs, total, hasFilters } = useTypedLoaderData<typeof loader>();
+
   const organization = useCurrentOrganization();
   invariant(organization, "Organization not found");
   const connectionSlots = useConnectionSlots();
@@ -61,6 +96,20 @@ export default function Page() {
           />
           <TriggerBody trigger={eventRule.trigger} />
         </Panel>
+      )}
+
+      {total > 0 ? (
+        <>
+          <Header2 className="mt-6 mb-4">Last {pageSize} runs</Header2>
+          <Panel className="p-0 overflow-hidden overflow-x-auto">
+            <RunsTable runs={runs} total={total} hasFilters={hasFilters} />
+          </Panel>
+        </>
+      ) : (
+        <>
+          <Header2 className="mt-6 mb-4">No workflows runs</Header2>
+          <PrimaryLink to="test">Test your workflow</PrimaryLink>
+        </>
       )}
     </>
   );
