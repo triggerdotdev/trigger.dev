@@ -1,5 +1,7 @@
 import { useFetcher } from "@remix-run/react";
+import type { LoaderArgs } from "@remix-run/server-runtime";
 import { useCallback, useState } from "react";
+import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import invariant from "tiny-invariant";
 import { JSONEditor } from "~/components/code/JSONEditor";
 import { Panel } from "~/components/layout/Panel";
@@ -8,8 +10,26 @@ import { Select } from "~/components/primitives/Select";
 import { Header1 } from "~/components/primitives/text/Headers";
 import { useCurrentOrganization } from "~/hooks/useOrganizations";
 import { useCurrentWorkflow } from "~/hooks/useWorkflows";
+import { getMostRecentWorkflowRun } from "~/models/workflowRun.server";
+import { requireUserId } from "~/services/session.server";
+
+export const loader = async ({ request, params }: LoaderArgs) => {
+  await requireUserId(request);
+  const { workflowSlug } = params;
+  invariant(workflowSlug, "workflowSlug is required");
+
+  try {
+    const latestRun = await getMostRecentWorkflowRun({ workflowSlug });
+    return typedjson({ latestRun });
+  } catch (error: any) {
+    console.error(error);
+    throw new Response("Error ", { status: 400 });
+  }
+};
 
 export default function Page() {
+  const { latestRun } = useTypedLoaderData<typeof loader>();
+
   const organization = useCurrentOrganization();
   invariant(organization, "Organization not found");
   const workflow = useCurrentWorkflow();
@@ -25,6 +45,11 @@ export default function Page() {
             organizationSlug={organization.slug}
             workflowSlug={workflow.slug}
             eventNames={workflow.eventNames}
+            initialValue={
+              latestRun == null
+                ? ""
+                : JSON.stringify(latestRun.event.payload, null, 2)
+            }
           />
         </Panel>
       )}
@@ -36,13 +61,15 @@ function Tester({
   organizationSlug,
   workflowSlug,
   eventNames,
+  initialValue,
 }: {
   organizationSlug: string;
   workflowSlug: string;
   eventNames: string[];
+  initialValue: string;
 }) {
   const testFetcher = useFetcher();
-  const [testContent, setTestContent] = useState<string>("");
+  const [testContent, setTestContent] = useState<string>(initialValue);
   const [eventName, setEventName] = useState<string>(eventNames[0]);
 
   const submit = useCallback(() => {

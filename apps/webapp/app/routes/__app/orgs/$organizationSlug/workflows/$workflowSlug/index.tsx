@@ -1,5 +1,4 @@
-import { Link } from "@remix-run/react";
-import { LoaderArgs } from "@remix-run/server-runtime";
+import type { LoaderArgs } from "@remix-run/server-runtime";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import invariant from "tiny-invariant";
 import { integrations } from "~/components/integrations/ConnectButton";
@@ -9,7 +8,7 @@ import { PanelHeader } from "~/components/layout/PanelHeader";
 import { PrimaryLink, SecondaryLink } from "~/components/primitives/Buttons";
 import { Body } from "~/components/primitives/text/Body";
 import { Header1, Header2 } from "~/components/primitives/text/Headers";
-import { NoRuns, RunsTable } from "~/components/runs/Table";
+import { RunsTable } from "~/components/runs/Table";
 import { TriggerBody } from "~/components/triggers/Trigger";
 import { triggerInfo } from "~/components/triggers/triggerTypes";
 import { useConnectionSlots } from "~/hooks/useConnectionSlots";
