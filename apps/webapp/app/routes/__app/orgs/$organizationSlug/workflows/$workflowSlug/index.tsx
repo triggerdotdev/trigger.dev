@@ -3,6 +3,7 @@ import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import invariant from "tiny-invariant";
 import { integrations } from "~/components/integrations/ConnectButton";
 import { ConnectionSelector } from "~/components/integrations/ConnectionSelector";
+import { WorkflowConnections } from "~/components/integrations/WorkflowConnections";
 import { Panel } from "~/components/layout/Panel";
 import { PanelHeader } from "~/components/layout/PanelHeader";
 import { PrimaryLink, SecondaryLink } from "~/components/primitives/Buttons";
@@ -68,20 +69,7 @@ export default function Page() {
           <Header2 size="small" className="mb-2">
             API integrations
           </Header2>
-          <div className="flex flex-col gap-4 items-stretch w-full">
-            {connectionSlots.map((slot) => (
-              <div key={slot.id} className="flex flex-col gap-1">
-                <Body>{slot.integration?.name}</Body>
-                <ConnectionSelector
-                  sourceId={slot.id}
-                  organizationId={organization.id}
-                  integration={integrations[0]}
-                  connections={slot.possibleConnections}
-                  selectedConnectionId={slot.connection?.id}
-                />
-              </div>
-            ))}
-          </div>
+          <WorkflowConnections />
         </Panel>
       )}
 
