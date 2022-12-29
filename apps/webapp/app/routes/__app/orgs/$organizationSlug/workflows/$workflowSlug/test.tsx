@@ -47,7 +47,7 @@ export default function Page() {
             eventNames={workflow.eventNames}
             initialValue={
               latestRun == null
-                ? ""
+                ? "{\n\n}"
                 : JSON.stringify(latestRun.event.payload, null, 2)
             }
           />
