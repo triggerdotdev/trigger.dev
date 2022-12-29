@@ -1,13 +1,8 @@
-import { useFetcher } from "@remix-run/react";
-import { useCallback, useState } from "react";
 import invariant from "tiny-invariant";
-import { JSONEditor } from "~/components/code/JSONEditor";
 import { integrations } from "~/components/integrations/ConnectButton";
 import { ConnectionSelector } from "~/components/integrations/ConnectionSelector";
 import { Panel } from "~/components/layout/Panel";
 import { PanelHeader } from "~/components/layout/PanelHeader";
-import { PrimaryButton } from "~/components/primitives/Buttons";
-import { Select } from "~/components/primitives/Select";
 import { Body } from "~/components/primitives/text/Body";
 import { Header1, Header2 } from "~/components/primitives/text/Headers";
 import { TriggerBody } from "~/components/triggers/Trigger";
@@ -67,71 +62,6 @@ export default function Page() {
           <TriggerBody trigger={eventRule.trigger} />
         </Panel>
       )}
-
-      {workflow.status === "READY" && (
-        <Panel className="mt-4">
-          <Tester
-            organizationSlug={organization.slug}
-            workflowSlug={workflow.slug}
-            eventNames={workflow.eventNames}
-          />
-        </Panel>
-      )}
     </>
-  );
-}
-
-function Tester({
-  organizationSlug,
-  workflowSlug,
-  eventNames,
-}: {
-  organizationSlug: string;
-  workflowSlug: string;
-  eventNames: string[];
-}) {
-  const testFetcher = useFetcher();
-  const [testContent, setTestContent] = useState<string>("");
-  const [eventName, setEventName] = useState<string>(eventNames[0]);
-
-  const submit = useCallback(() => {
-    console.log({
-      payload: testContent,
-    });
-
-    testFetcher.submit(
-      {
-        eventName,
-        payload: testContent,
-      },
-      {
-        method: "post",
-        action: `/resources/run/${organizationSlug}/test/${workflowSlug}`,
-      }
-    );
-  }, [eventName, organizationSlug, testContent, testFetcher, workflowSlug]);
-
-  return (
-    <div className="flex flex-col gap-2">
-      {eventNames.length > 1 ? (
-        <Select
-          name="eventName"
-          defaultValue={eventName}
-          onChange={(e) => setEventName(e.currentTarget.value)}
-        >
-          {eventNames.map((eventName) => (
-            <option key={eventName} value={eventName}>
-              {eventName}
-            </option>
-          ))}
-        </Select>
-      ) : null}
-      <JSONEditor
-        content={testContent}
-        readOnly={false}
-        onChange={(c) => setTestContent(c)}
-      />
-      <PrimaryButton onClick={submit}>Test</PrimaryButton>
-    </div>
   );
 }

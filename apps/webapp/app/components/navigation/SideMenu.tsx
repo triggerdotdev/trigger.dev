@@ -7,6 +7,7 @@ import {
   ArrowTopRightOnSquareIcon,
   PhoneArrowUpRightIcon,
   EnvelopeIcon,
+  BeakerIcon,
 } from "@heroicons/react/24/outline";
 import { Link, NavLink } from "@remix-run/react";
 import {
@@ -76,6 +77,11 @@ export function WorkflowsSideMenu() {
       name: "Overview",
       icon: <ArrowsRightLeftIcon className={iconStyle} />,
       to: ``,
+    },
+    {
+      name: "Test",
+      icon: <BeakerIcon className={iconStyle} />,
+      to: `test`,
     },
     {
       name: "Runs",
