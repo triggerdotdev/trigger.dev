@@ -1,0 +1,15 @@
+{
+  "private": true,
+  "name": "internal-cli",
+  "version": "0.0.1",
+  "description": "An internal CLI, used to run scripts",
+  "devDependencies": {
+    "internal-catalog": "workspace:*",
+    "@trigger.dev/tsconfig": "workspace:*",
+    "@types/node": "^18.11.9",
+    "tsx": "^3.12.0"
+  },
+  "scripts": {
+    "cli": "tsx src/index.ts"
+  }
+}

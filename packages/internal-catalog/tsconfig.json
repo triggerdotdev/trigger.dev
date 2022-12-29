@@ -1,0 +1,11 @@
+{
+  "extends": "@trigger.dev/tsconfig/node18.json",
+  "include": ["./src/**/*.ts"],
+  "compilerOptions": {
+    "experimentalDecorators": true,
+    "emitDecoratorMetadata": true,
+    "paths": {},
+    "lib": ["DOM"]
+  },
+  "exclude": ["node_modules"]
+}

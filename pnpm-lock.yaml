@@ -491,6 +491,33 @@ importers:
       '@types/ws': 8.5.3
       tsx: 3.12.1
 
+  packages/internal-catalog:
+    specifiers:
+      '@trigger.dev/tsconfig': workspace:*
+      '@types/node': ^18.11.9
+      typescript: ^4.9.4
+      yaml: ^2.2.0
+      zod: ^3.20.2
+    dependencies:
+      yaml: 2.2.0
+      zod: 3.20.2
+    devDependencies:
+      '@trigger.dev/tsconfig': link:../../config-packages/tsconfig
+      '@types/node': 18.11.15
+      typescript: 4.9.4
+
+  packages/internal-cli:
+    specifiers:
+      '@trigger.dev/tsconfig': workspace:*
+      '@types/node': ^18.11.9
+      internal-catalog: workspace:*
+      tsx: ^3.12.0
+    devDependencies:
+      '@trigger.dev/tsconfig': link:../../config-packages/tsconfig
+      '@types/node': 18.11.15
+      internal-catalog: link:../internal-catalog
+      tsx: 3.12.1
+
   packages/internal-integrations:
     specifiers:
       '@octokit/webhooks': ^10.4.0
@@ -14337,6 +14364,11 @@ packages:
   /yaml/1.10.2:
     resolution: {integrity: sha512-r3vXyErRCYJ7wg28yvBY5VSoAF8ZvlcW9/BwUzEtUsjvX/DKs24dIkuwjtuprwJJHsbyUbLApepYTR1BN4uHrg==}
     engines: {node: '>= 6'}
+
+  /yaml/2.2.0:
+    resolution: {integrity: sha512-auf7Gi6QwO7HW//GA9seGvTXVGWl1CM/ADWh1+RxtXr6XOxnT65ovDl9fTi4e0monEyJxCHqDpF6QnFDXmJE4g==}
+    engines: {node: '>= 14'}
+    dev: false
 
   /yargs-parser/20.2.9:
     resolution: {integrity: sha512-y11nGElTIV+CT3Zv9t7VKl+Q3hTQoT9a1Qzezhhl6Rp21gJ/IVTW7Z3y9EWXhuUBC2Shnf+DX0antecpAwSP8w==}

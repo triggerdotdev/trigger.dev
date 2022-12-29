@@ -1,0 +1,18 @@
+{
+  "private": true,
+  "name": "internal-catalog",
+  "version": "0.0.1",
+  "description": "Get the API integration catalog",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "devDependencies": {
+    "@trigger.dev/tsconfig": "workspace:*",
+    "@types/node": "^18.11.9",
+    "typescript": "^4.9.4"
+  },
+  "scripts": {},
+  "dependencies": {
+    "yaml": "^2.2.0",
+    "zod": "^3.20.2"
+  }
+}
