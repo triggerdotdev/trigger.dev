@@ -108,6 +108,7 @@ function Tester({
         content={testContent}
         readOnly={false}
         onChange={(c) => setTestContent(c)}
+        maxHeight="calc(100vh - 300px)"
       />
       <PrimaryButton onClick={submit}>Test</PrimaryButton>
     </div>
