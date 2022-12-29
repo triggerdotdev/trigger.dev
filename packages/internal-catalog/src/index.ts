@@ -6,6 +6,7 @@ const schema = z.array(
     name: z.string(),
     slug: z.string(),
     icon: z.string(),
+    scopes: z.array(z.string()),
     environments: z.record(
       z.object({ oauth: z.object({ client_id: z.string() }) })
     ),

@@ -1,6 +1,8 @@
 - name: GitHub
   slug: github
   icon: /integrations/github.png
+  scopes:
+    - repo
   environments:
     development:
       oauth:
