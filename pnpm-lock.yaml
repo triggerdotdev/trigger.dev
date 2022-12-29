@@ -149,6 +149,7 @@ importers:
       glob: ^8.0.3
       happy-dom: ^6.0.4
       humanize-duration: ^3.27.3
+      internal-catalog: workspace:*
       internal-integrations: workspace:*
       internal-platform: workspace:*
       javascript-time-ago: ^2.5.7
@@ -245,6 +246,7 @@ importers:
       date-fns: 2.29.3
       express: 4.18.2
       humanize-duration: 3.27.3
+      internal-catalog: link:../../packages/internal-catalog
       internal-integrations: link:../../packages/internal-integrations
       internal-platform: link:../../packages/internal-platform
       javascript-time-ago: 2.5.9

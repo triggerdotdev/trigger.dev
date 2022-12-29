@@ -78,6 +78,7 @@
     "humanize-duration": "^3.27.3",
     "internal-integrations": "workspace:*",
     "internal-platform": "workspace:*",
+    "internal-catalog": "workspace:*",
     "javascript-time-ago": "^2.5.7",
     "json-query": "^2.2.2",
     "jsonata": "^1.8.6",

@@ -2,7 +2,6 @@ import invariant from "tiny-invariant";
 import { useConnectionSlots } from "~/hooks/useConnectionSlots";
 import { useCurrentOrganization } from "~/hooks/useOrganizations";
 import { Body } from "../primitives/text/Body";
-import { integrations } from "./ConnectButton";
 import { ConnectionSelector } from "./ConnectionSelector";
 
 export function WorkflowConnections() {
@@ -19,7 +18,7 @@ export function WorkflowConnections() {
           <ConnectionSelector
             sourceId={slot.id}
             organizationId={organization.id}
-            integration={integrations[0]}
+            integration={slot.integration}
             connections={slot.possibleConnections}
             selectedConnectionId={slot.connection?.id}
           />

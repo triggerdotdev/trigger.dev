@@ -3,13 +3,13 @@ import type { LoaderArgs } from "@remix-run/server-runtime";
 import { TriggerMetadataSchema } from "@trigger.dev/common-schemas";
 import { typedjson } from "remix-typedjson";
 import invariant from "tiny-invariant";
-import { integrations } from "~/components/integrations/ConnectButton";
 import { Container } from "~/components/layout/Container";
 import {
   SideMenuContainer,
   WorkflowsSideMenu,
 } from "~/components/navigation/SideMenu";
 import { getConnectedApiConnectionsForOrganizationSlug } from "~/models/apiConnection.server";
+import { getIntegrations } from "~/models/integrations.server";
 import { getRuntimeEnvironmentFromRequest } from "~/models/runtimeEnvironment.server";
 import { getWorkflowFromSlugs } from "~/models/workflow.server";
 import { requireUserId } from "~/services/session.server";
@@ -50,7 +50,7 @@ export const loader = async ({ request, params }: LoaderArgs) => {
     possibleConnections: allConnections.filter(
       (a) => a.apiIdentifier === c.service
     ),
-    integration: integrations.find((i) => i.key === c.service),
+    integration: getIntegrations().find((i) => i.slug === c.service),
   }));
 
   return typedjson({

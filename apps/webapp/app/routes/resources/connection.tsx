@@ -6,12 +6,12 @@ import {
   createAPIConnection,
   setConnectedAPIConnection,
 } from "~/models/apiConnection.server";
-import { integrations } from "~/components/integrations/ConnectButton";
 import { requireUserId } from "~/services/session.server";
 import { APIConnectionType } from ".prisma/client";
 import { env } from "~/env.server";
 import { connectExternalSource } from "~/models/externalSource.server";
 import { internalPubSub } from "~/services/messageBroker.server";
+import { getIntegrations } from "~/models/integrations.server";
 
 const updateSchema = z.object({
   type: z.literal("update"),
@@ -59,7 +59,7 @@ export const action = async ({ request, params }: ActionArgs) => {
       case "create": {
         const { organizationId, key } = parsed;
 
-        const integrationInfo = integrations.find((i) => i.key === key);
+        const integrationInfo = getIntegrations().find((i) => i.slug === key);
         if (!integrationInfo) {
           throw new Error("Integration not found");
         }

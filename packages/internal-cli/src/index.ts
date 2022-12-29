@@ -15,7 +15,6 @@ async function run() {
 
   const file = fs.readFileSync(integrationFilePath, "utf8");
   const catalog = getCatalog(file);
-  console.log(catalog);
 }
 
 run();

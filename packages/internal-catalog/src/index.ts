@@ -12,6 +12,9 @@ const schema = z.array(
   })
 );
 
+type Catalog = z.infer<typeof schema>;
+export type CatalogIntegration = Catalog[number];
+
 export function getCatalog(raw: string) {
   const doc = parseDocument(raw);
   const jsObject = doc.toJS();

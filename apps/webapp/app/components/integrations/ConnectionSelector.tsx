@@ -2,15 +2,15 @@ import { Popover, Transition } from "@headlessui/react";
 import { ChevronUpDownIcon, CheckIcon } from "@heroicons/react/24/outline";
 import { useFetcher } from "@remix-run/react";
 import classNames from "classnames";
+import type { CatalogIntegration } from "internal-catalog";
 import { Fragment } from "react";
 import type { APIConnection } from "~/models/apiConnection.server";
-import type { Integration } from "./ConnectButton";
 import { ConnectButton } from "./ConnectButton";
 
 type Props = {
   sourceId: string;
   organizationId: string;
-  integration: Integration;
+  integration: CatalogIntegration;
   connections: Pick<APIConnection, "id" | "title">[];
   selectedConnectionId?: string;
 };
@@ -27,7 +27,7 @@ export function ConnectionSelector({
   if (connections.length === 0) {
     return (
       <ConnectButton
-        key={integration.key}
+        key={integration.slug}
         integration={integration}
         organizationId={organizationId}
         sourceId={sourceId}
@@ -135,12 +135,12 @@ export function ConnectionSelector({
   );
 }
 
-function IntegrationIcon({ integration }: { integration: Integration }) {
+function IntegrationIcon({ integration }: { integration: CatalogIntegration }) {
   return (
     <img
-      src={integration.logo}
+      src={integration.icon}
       alt={integration.name}
-      className="h-8 w-8 shadow-lg group-hover:opacity-80 transition"
+      className="h-5 w-5 shadow-lg group-hover:opacity-80 transition"
     />
   );
 }

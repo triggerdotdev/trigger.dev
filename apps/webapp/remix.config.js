@@ -12,6 +12,7 @@ module.exports = {
     "axios",
     "internal-platform",
     "internal-integrations",
+    "internal-catalog",
     "@trigger.dev/common-schemas",
   ],
   watchPaths: async () => {
@@ -19,6 +20,7 @@ module.exports = {
       "../../packages/internal-platform/src/**/*",
       "../../packages/common-schemas/src/**/*",
       "../../packages/internal-integrations/src/**/*",
+      "../../packages/internal-catalog/src/**/*",
     ];
   },
 };

@@ -1,8 +1,10 @@
+import { PlusCircleIcon } from "@heroicons/react/24/solid";
 import type { LoaderArgs } from "@remix-run/server-runtime";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import invariant from "tiny-invariant";
+import { ConnectButton } from "~/components/integrations/ConnectButton";
 import { Container } from "~/components/layout/Container";
-import { Body } from "~/components/primitives/text/Body";
+import { List } from "~/components/layout/List";
 import {
   Header1,
   Header2,
@@ -10,15 +12,8 @@ import {
 } from "~/components/primitives/text/Headers";
 import { useCurrentOrganization } from "~/hooks/useOrganizations";
 import { getConnectedApiConnectionsForOrganizationSlug } from "~/models/apiConnection.server";
-import {
-  ConnectButton,
-  integrations,
-} from "~/components/integrations/ConnectButton";
+import { getIntegrations } from "~/models/integrations.server";
 import { requireUserId } from "~/services/session.server";
-import logoGithub from "~/assets/images/integrations/logo-github.png";
-import { ArrowsRightLeftIcon } from "@heroicons/react/24/outline";
-import { List } from "~/components/layout/List";
-import { PlusCircleIcon } from "@heroicons/react/24/solid";
 
 export const loader = async ({ request, params }: LoaderArgs) => {
   await requireUserId(request);
@@ -29,11 +24,11 @@ export const loader = async ({ request, params }: LoaderArgs) => {
     slug: organizationSlug,
   });
 
-  return typedjson({ connections });
+  return typedjson({ connections, integrations: getIntegrations() });
 };
 
 export default function Integrations() {
-  const { connections } = useTypedLoaderData<typeof loader>();
+  const { connections, integrations } = useTypedLoaderData<typeof loader>();
   const organization = useCurrentOrganization();
   invariant(organization, "Organization not found");
 
@@ -55,7 +50,11 @@ export default function Integrations() {
                   <div className="flex gap-4 items-center px-4 py-4">
                     <img
                       className="h-14 w-14 shadow-md"
-                      src={logoGithub}
+                      src={
+                        integrations.find(
+                          (i) => i.slug === connection.apiIdentifier
+                        )?.icon
+                      }
                       alt="Github integration logo"
                     />
                     <div className="flex flex-col gap-2">
@@ -87,7 +86,7 @@ export default function Integrations() {
         <div className="flex flex-wrap gap-2 w-full">
           {integrations.map((integration) => (
             <ConnectButton
-              key={integration.key}
+              key={integration.slug}
               integration={integration}
               organizationId={organization.id}
               className="flex flex-col group max-w-[160px] rounded-md bg-slate-800 border border-slate-800 gap-4 text-sm text-slate-200 items-center overflow-hidden hover:bg-slate-800/30 transition shadow-md disabled:opacity-50"
@@ -97,7 +96,7 @@ export default function Integrations() {
                   <div className="relative flex items-center justify-center w-full py-6 bg-black/20 border-b border-slate-800">
                     <PlusCircleIcon className="absolute h-7 w-7 top-[16px] right-[28px] z-10 text-slate-200 shadow-md" />
                     <img
-                      src={integration.logo}
+                      src={integration.icon}
                       alt={integration.name}
                       className="h-20 shadow-lg group-hover:opacity-80 transition"
                     />

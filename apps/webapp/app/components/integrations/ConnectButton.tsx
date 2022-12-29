@@ -1,4 +1,3 @@
-import githubLogo from "~/assets/images/integrations/logo-github.png";
 import { useCallback, useEffect } from "react";
 import Pizzly from "@nangohq/pizzly-frontend";
 import { useFetcher } from "@remix-run/react";
@@ -7,20 +6,7 @@ import type {
   Update,
   UpdateResponse,
 } from "~/routes/resources/connection";
-
-export type Integration = {
-  key: string;
-  name: string;
-  logo: string;
-};
-
-export const integrations: Integration[] = [
-  {
-    key: "github",
-    name: "GitHub",
-    logo: githubLogo,
-  },
-];
+import type { CatalogIntegration } from "internal-catalog";
 
 const actionPath = "/resources/connection";
 
@@ -31,7 +17,7 @@ export function ConnectButton({
   className,
   children,
 }: {
-  integration: Integration;
+  integration: CatalogIntegration;
   organizationId: string;
   sourceId?: string;
   className?: string;
@@ -43,7 +29,7 @@ export function ConnectButton({
     <createFetcher.Form method="post" action={actionPath}>
       <input type="hidden" name="type" value="create" />
       <input type="hidden" name="organizationId" value={organizationId} />
-      <input type="hidden" name="key" value={integration.key} />
+      <input type="hidden" name="key" value={integration.slug} />
       <button
         type="submit"
         disabled={status === "loading"}

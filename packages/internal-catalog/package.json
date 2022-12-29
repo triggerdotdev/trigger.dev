@@ -1,6 +1,7 @@
 {
   "private": true,
   "name": "internal-catalog",
+  "type": "module",
   "version": "0.0.1",
   "description": "Get the API integration catalog",
   "main": "./src/index.ts",
