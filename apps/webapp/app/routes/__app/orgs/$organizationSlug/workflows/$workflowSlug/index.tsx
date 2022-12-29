@@ -1,4 +1,4 @@
-import { Form, useFetcher } from "@remix-run/react";
+import { useFetcher } from "@remix-run/react";
 import { useCallback, useState } from "react";
 import invariant from "tiny-invariant";
 import { JSONEditor } from "~/components/code/JSONEditor";
@@ -15,7 +15,6 @@ import { useConnectionSlots } from "~/hooks/useConnectionSlots";
 import { useCurrentEnvironment } from "~/hooks/useEnvironments";
 import { useCurrentOrganization } from "~/hooks/useOrganizations";
 import { useCurrentWorkflow } from "~/hooks/useWorkflows";
-import { RuntimeEnvironment } from "~/models/runtimeEnvironment.server";
 
 export default function Page() {
   const organization = useCurrentOrganization();
@@ -27,13 +26,9 @@ export default function Page() {
   const environment = useCurrentEnvironment();
   invariant(environment, "Environment not found");
 
-  const testFetcher = useFetcher();
-
   const eventRule = workflow.rules.find(
     (r) => r.environmentId === environment.id
   );
-
-  const [testContent, setTestContent] = useState<string>("");
 
   return (
     <>
@@ -77,7 +72,6 @@ export default function Page() {
           <Tester
             organizationSlug={organization.slug}
             workflowSlug={workflow.slug}
-            environment={environment}
           />
         </Panel>
       )}
@@ -88,26 +82,20 @@ export default function Page() {
 function Tester({
   organizationSlug,
   workflowSlug,
-  environment,
 }: {
   organizationSlug: string;
   workflowSlug: string;
-  environment: RuntimeEnvironment;
 }) {
   const testFetcher = useFetcher();
   const [testContent, setTestContent] = useState<string>("");
 
   const submit = useCallback(() => {
     console.log({
-      environmentId: environment.id,
-      apiKey: environment.apiKey,
-      data: testContent,
+      payload: testContent,
     });
 
     testFetcher.submit(
       {
-        environmentId: environment.id,
-        apiKey: environment.apiKey,
         payload: testContent,
       },
       {
@@ -115,14 +103,7 @@ function Tester({
         action: `/resources/run/${organizationSlug}/test/${workflowSlug}`,
       }
     );
-  }, [
-    environment.apiKey,
-    environment.id,
-    organizationSlug,
-    testContent,
-    testFetcher,
-    workflowSlug,
-  ]);
+  }, [organizationSlug, testContent, testFetcher, workflowSlug]);
 
   return (
     <div className="flex flex-col gap-2">

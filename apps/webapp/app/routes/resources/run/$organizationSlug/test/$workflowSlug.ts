@@ -1,17 +1,18 @@
 import type { ActionArgs } from "@remix-run/server-runtime";
-import { TriggerMetadataSchema } from "@trigger.dev/common-schemas";
 import invariant from "tiny-invariant";
 import { ulid } from "ulid";
 import { z } from "zod";
 import { getOrganizationFromSlug } from "~/models/organization.server";
+import {
+  getRuntimeEnvironment,
+  getRuntimeEnvironmentFromRequest,
+} from "~/models/runtimeEnvironment.server";
 import { getWorkflowFromSlugs } from "~/models/workflow.server";
 import { IngestEvent } from "~/services/events/ingest.server";
 import { requireUserId } from "~/services/session.server";
 
 const requestSchema = z.object({
-  environmentId: z.string(),
-  apiKey: z.string(),
-  payload: z.any(),
+  payload: z.string(),
 });
 
 export const action = async ({ request, params }: ActionArgs) => {
@@ -31,7 +32,9 @@ export const action = async ({ request, params }: ActionArgs) => {
   try {
     const formData = await request.formData();
     const body = Object.fromEntries(formData.entries());
-    const { payload, apiKey, environmentId } = requestSchema.parse(body);
+    const { payload } = requestSchema.parse(body);
+
+    const jsonPayload = JSON.parse(payload);
 
     const workflow = await getWorkflowFromSlugs({
       userId,
@@ -46,25 +49,31 @@ export const action = async ({ request, params }: ActionArgs) => {
     });
     invariant(organization, "organization is required");
 
-    const activeEventRule = workflow.rules.find(
-      (r) => r.environmentId === environmentId
-    );
+    const environmentSlug = await getRuntimeEnvironmentFromRequest(request);
+    const environment = await getRuntimeEnvironment({
+      organizationId: organization.id,
+      slug: environmentSlug,
+    });
+    invariant(environment, "environment is required");
 
-    const eventRule = TriggerMetadataSchema.parse(activeEventRule);
-
+    //todo choose event name from form dropdown
     const ingestService = new IngestEvent();
     await ingestService.call(
       {
         id: ulid(),
-        name: eventRule.name,
+        name: workflow.eventNames[0],
         type: workflow.type,
-        service: eventRule.service,
-        payload: payload,
+        service: workflow.service,
+        payload: jsonPayload,
         context: {},
-        apiKey: apiKey,
+        apiKey: environment.apiKey,
+        isTest: true,
       },
       organization
     );
+
+    //todo redirect to the runs page
+    return null;
   } catch (error: any) {
     console.error(error);
     throw new Response(error.message, { status: 400 });

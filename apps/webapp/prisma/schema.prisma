@@ -120,6 +120,9 @@ model Workflow {
   runs  WorkflowRun[]
   rules EventRule[]
 
+  service String @default("trigger")
+  eventNames String[]
+
   @@unique([organizationId, slug])
 }
 

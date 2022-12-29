@@ -30,8 +30,26 @@ export const { commitSession, getSession } = createCookieSessionStorage({
   },
 });
 
-export async function getRuntimeEnvironmentFromSession(
-  session: Session
+export async function getRuntimeEnvironmentFromRequest(
+  request: Request
 ): Promise<string> {
-  return session.get("environment") ?? "development";
+  const environmentSession = await getSession(request.headers.get("cookie"));
+  return environmentSession.get("environment") ?? "development";
+}
+
+export async function getRuntimeEnvironment({
+  organizationId,
+  slug,
+}: {
+  organizationId: string;
+  slug: string;
+}) {
+  return prisma.runtimeEnvironment.findUnique({
+    where: {
+      organizationId_slug: {
+        organizationId,
+        slug,
+      },
+    },
+  });
 }

@@ -12,7 +12,7 @@ import {
 import { getConnectedApiConnectionsForOrganizationSlug } from "~/models/apiConnection.server";
 import {
   commitSession,
-  getRuntimeEnvironmentFromSession,
+  getRuntimeEnvironmentFromRequest,
   getSession,
 } from "~/models/runtimeEnvironment.server";
 import { getWorkflowFromSlugs } from "~/models/workflow.server";
@@ -39,9 +39,8 @@ export const loader = async ({ request, params }: LoaderArgs) => {
     trigger: TriggerMetadataSchema.parse(r.trigger),
   }));
 
-  const environmentSession = await getSession(request.headers.get("cookie"));
-  const currentEnvironmentSlug = await getRuntimeEnvironmentFromSession(
-    environmentSession
+  const currentEnvironmentSlug = await getRuntimeEnvironmentFromRequest(
+    request
   );
 
   const allConnections = await getConnectedApiConnectionsForOrganizationSlug({
@@ -58,14 +57,11 @@ export const loader = async ({ request, params }: LoaderArgs) => {
     integration: integrations.find((i) => i.key === c.service),
   }));
 
-  return typedjson(
-    {
-      workflow: { ...workflow, rules },
-      currentEnvironmentSlug,
-      connectionSlots,
-    },
-    { headers: { "Set-Cookie": await commitSession(environmentSession) } }
-  );
+  return typedjson({
+    workflow: { ...workflow, rules },
+    currentEnvironmentSlug,
+    connectionSlots,
+  });
 };
 
 export default function Page() {
