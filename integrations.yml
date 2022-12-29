@@ -1,0 +1,10 @@
+- name: GitHub
+  slug: github
+  icon: /integrations/github.png
+  environments:
+    development:
+      oauth:
+        client_id: cd763219ce4005e58c00
+    production:
+      oauth:
+        client_id: abcdefg
