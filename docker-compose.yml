@@ -21,17 +21,17 @@ services:
     networks:
       - app_network
   pizzly-server:
-    image: nangohq/pizzly-server
+    image: nangohq/pizzly-server:0.4.3
     container_name: pizzly-server
     restart: always
     environment:
       - SERVER_HOST=http://localhost
       - SERVER_PORT=3004
       - NODE_ENV=development
-      - PIZZLY_DB_HOST=db
-      - PIZZLY_DB_USER=postgres
-      - PIZZLY_DB_PASSWORD=postgres
-      - PIZZLY_DB_NAME=postgres
+      - NANGO_DB_HOST=db
+      - NANGO_DB_USER=postgres
+      - NANGO_DB_PASSWORD=postgres
+      - NANGO_DB_NAME=postgres
     ports:
       - "3004:3004"
     depends_on:
@@ -50,7 +50,6 @@ services:
     tty: true
     stdin_open: true
     restart: always
-  
 
 networks:
   app_network:
