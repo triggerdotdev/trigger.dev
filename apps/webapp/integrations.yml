@@ -10,3 +10,16 @@
     production:
       oauth:
         client_id: abcdefg
+- name: Slack
+  slug: slack
+  icon: /integrations/slack.png
+  scopes:
+    - channels:read
+    - chat:write:bot
+  environments:
+    development:
+      oauth:
+        client_id: "276370297397.4579145654276"
+    production:
+      oauth:
+        client_id: abcdefg
