@@ -62,7 +62,7 @@ export default function Integrations() {
                       <Header3 size="small" className="truncate font-medium">
                         {connection.title}
                       </Header3>
-                      <div className="flex items-center gap-1">
+                      {/* <div className="flex items-center gap-1">
                         <ArrowsRightLeftIcon
                           className="h-5 w-5 flex-shrink-0 text-slate-400"
                           aria-hidden="true"
@@ -70,7 +70,7 @@ export default function Integrations() {
                         <Body size="small" className="text-slate-400">
                           Active in 100,000 workflows
                         </Body>
-                      </div>
+                      </div> */}
                     </div>
                   </div>
                 </li>
