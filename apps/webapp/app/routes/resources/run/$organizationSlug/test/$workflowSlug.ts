@@ -2,6 +2,7 @@ import type { ActionArgs } from "@remix-run/server-runtime";
 import invariant from "tiny-invariant";
 import { ulid } from "ulid";
 import { z } from "zod";
+import { redirectWithSuccessMessage } from "~/models/message.server";
 import { getOrganizationFromSlug } from "~/models/organization.server";
 import {
   getRuntimeEnvironment,
@@ -12,6 +13,7 @@ import { IngestEvent } from "~/services/events/ingest.server";
 import { requireUserId } from "~/services/session.server";
 
 const requestSchema = z.object({
+  eventName: z.string(),
   payload: z.string(),
 });
 
@@ -32,7 +34,7 @@ export const action = async ({ request, params }: ActionArgs) => {
   try {
     const formData = await request.formData();
     const body = Object.fromEntries(formData.entries());
-    const { payload } = requestSchema.parse(body);
+    const { eventName, payload } = requestSchema.parse(body);
 
     const jsonPayload = JSON.parse(payload);
 
@@ -61,7 +63,7 @@ export const action = async ({ request, params }: ActionArgs) => {
     await ingestService.call(
       {
         id: ulid(),
-        name: workflow.eventNames[0],
+        name: eventName,
         type: workflow.type,
         service: workflow.service,
         payload: jsonPayload,
@@ -72,8 +74,11 @@ export const action = async ({ request, params }: ActionArgs) => {
       organization
     );
 
-    //todo redirect to the runs page
-    return null;
+    return redirectWithSuccessMessage(
+      `/orgs/${organizationSlug}/workflows/${workflowSlug}/runs`,
+      request,
+      "Test event successfully sent"
+    );
   } catch (error: any) {
     console.error(error);
     throw new Response(error.message, { status: 400 });
