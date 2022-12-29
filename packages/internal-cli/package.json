@@ -5,6 +5,7 @@
   "description": "An internal CLI, used to run scripts",
   "devDependencies": {
     "@aws-sdk/client-secrets-manager": "^3.238.0",
+    "@aws-sdk/credential-providers": "^3.238.0",
     "@trigger.dev/tsconfig": "workspace:*",
     "@types/node": "^18.11.9",
     "commander": "^9.4.1",

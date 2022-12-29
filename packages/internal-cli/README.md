@@ -59,3 +59,9 @@ Pass the base url for Pizzly, defaults to `http://localhost:3004`.
 `-s` or `--pizzlysecretkey`
 
 Pass the secret key for Pizzly, defaults to undefined which will work locally in the default configuration.
+
+## AWS profile
+
+`-a` or `--awsprofile`
+
+Pass the AWS profile to use, defaults to `default`.

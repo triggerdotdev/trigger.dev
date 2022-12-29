@@ -3,15 +3,11 @@ import * as fs from "node:fs";
 import { z } from "zod";
 import invariant from "tiny-invariant";
 import { getCatalog } from "internal-catalog";
+import { fromIni } from "@aws-sdk/credential-providers";
 import {
   SecretsManagerClient,
   GetSecretValueCommand,
 } from "@aws-sdk/client-secrets-manager";
-import { stringify } from "node:querystring";
-
-const client = new SecretsManagerClient({
-  region: "us-east-1",
-});
 
 const program = new Command();
 
@@ -25,6 +21,7 @@ program
   .option("-e, --environment <environment>", "The environment to update")
   .option("-p, --pizzlyhost <pizzly_host>", "Pizzly host")
   .option("-s, --pizzlysecretkey <pizzly_secret_key>", "Pizzly secret key")
+  .option("-a, --awsprofile <aws_profile>", "AWS profile name")
   .action(
     async (
       integration_file_path: string,
@@ -32,6 +29,7 @@ program
         environment?: string;
         pizzly_host?: string;
         pizzly_secret_key?: string;
+        aws_profile?: string;
       }
     ) => {
       if (!integration_file_path) {
@@ -47,6 +45,11 @@ program
 
       const file = fs.readFileSync(integration_file_path, "utf8");
       const catalog = getCatalog(file);
+
+      const client = new SecretsManagerClient({
+        region: "us-east-1",
+        credentials: fromIni({ profile: options.aws_profile ?? "default" }),
+      });
 
       const promises = catalog.map(async (integration) => {
         const environmentClientId =
