@@ -1,4 +1,6 @@
 import * as fs from "node:fs";
+import util from "node:util";
+const exec = util.promisify(require("child_process").exec);
 import { z } from "zod";
 import invariant from "tiny-invariant";
 import { getCatalog } from "internal-catalog";
@@ -55,6 +57,16 @@ async function run() {
           client_secret: z.string(),
         })
         .parse(secretObject);
+
+      const { stdout, stderr } = await exec(
+        `npx pizzly config:create ${integration.slug} ${
+          integration.slug
+        } ${environmentClientId} ${
+          parsed.client_secret
+        } "${integration.scopes.join(",")}"`
+      );
+      console.log("stdout:", stdout);
+      console.log("stderr:", stderr);
     } catch (error) {
       // For a list of exceptions thrown, see
       // https://docs.aws.amazon.com/secretsmanager/latest/apireference/API_GetSecretValue.html
