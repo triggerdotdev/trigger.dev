@@ -41,6 +41,7 @@ export class WorkflowRunPresenter {
       startedAt: workflowRun.startedAt,
       status: triggerStatus(steps.length, workflowRun.status),
       input: workflowRun.event.payload,
+      eventName: workflowRun.event.name,
       ...(await parseTrigger(workflowRun.eventRule.trigger)),
     };
 

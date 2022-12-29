@@ -31,6 +31,9 @@ import { runStatusIcon, runStatusLabel } from "~/components/runs/runStatus";
 import { triggerInfo } from "~/components/triggers/triggerTypes";
 import { PanelHeader } from "~/components/layout/PanelHeader";
 import { TriggerBody } from "~/components/triggers/Trigger";
+import { useFetcher } from "@remix-run/react";
+import { useCurrentOrganization } from "~/hooks/useOrganizations";
+import { useCurrentWorkflow } from "~/hooks/useWorkflows";
 
 export const loader = async ({ request, params }: LoaderArgs) => {
   await requireUserId(request);
@@ -54,10 +57,15 @@ type Step = Run["steps"][number];
 type StepType<T, K extends Step["type"]> = T extends { type: K } ? T : never;
 
 export default function Page() {
+  const rerunFetcher = useFetcher();
   const { run } = useTypedLoaderData<typeof loader>();
   const output = run.steps.find((s) => s.type === "OUTPUT") as
     | StepType<Step, "OUTPUT">
     | undefined;
+  const organization = useCurrentOrganization();
+  invariant(organization, "organization is required");
+  const workflow = useCurrentWorkflow();
+  invariant(workflow, "workflow is required");
 
   return (
     <>
@@ -73,10 +81,36 @@ export default function Page() {
               Test Run
             </Body>
           )}
-          <PrimaryButton>
-            <ArrowPathRoundedSquareIcon className="h-5 w-5 -ml-1" />
-            Rerun
-          </PrimaryButton>
+          <rerunFetcher.Form
+            action={`/resources/run/${organization.slug}/test/${workflow.slug}`}
+            method="post"
+          >
+            <input
+              type={"hidden"}
+              name={"eventName"}
+              value={run.trigger.eventName}
+            />
+            <input
+              type={"hidden"}
+              name={"payload"}
+              value={JSON.stringify(run.trigger.input)}
+            />
+            <PrimaryButton
+              type="submit"
+              onClick={(e) => {
+                if (
+                  !confirm(
+                    "Are you sure you want to create a new run with the same payload?"
+                  )
+                ) {
+                  e.preventDefault();
+                }
+              }}
+            >
+              <ArrowPathRoundedSquareIcon className="h-5 w-5 -ml-1" />
+              Rerun
+            </PrimaryButton>
+          </rerunFetcher.Form>
         </div>
       </div>
 
