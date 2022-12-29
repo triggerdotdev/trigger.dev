@@ -1,5 +1,5 @@
 import { Form, useFetcher } from "@remix-run/react";
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import invariant from "tiny-invariant";
 import { JSONEditor } from "~/components/code/JSONEditor";
 import { integrations } from "~/components/integrations/ConnectButton";
@@ -15,6 +15,7 @@ import { useConnectionSlots } from "~/hooks/useConnectionSlots";
 import { useCurrentEnvironment } from "~/hooks/useEnvironments";
 import { useCurrentOrganization } from "~/hooks/useOrganizations";
 import { useCurrentWorkflow } from "~/hooks/useWorkflows";
+import { RuntimeEnvironment } from "~/models/runtimeEnvironment.server";
 
 export default function Page() {
   const organization = useCurrentOrganization();
@@ -73,27 +74,64 @@ export default function Page() {
 
       {workflow.status === "READY" && (
         <Panel className="mt-4">
-          <testFetcher.Form
-            action={`/resources/run/${organization.slug}/test/${workflow.slug}`}
-            method="post"
-            className="flex flex-col gap-2"
-          >
-            <JSONEditor
-              content={testContent}
-              readOnly={false}
-              onChange={(c) => setTestContent(c)}
-            />
-            <input type="hidden" name="environmentId" value={environment.id} />
-            <input type="hidden" name="apiKey" value={environment.apiKey} />
-            <input
-              type="hidden"
-              name="data"
-              value={JSON.stringify(testContent)}
-            />
-            <PrimaryButton type="submit">Test</PrimaryButton>
-          </testFetcher.Form>
+          <Tester
+            organizationSlug={organization.slug}
+            workflowSlug={workflow.slug}
+            environment={environment}
+          />
         </Panel>
       )}
     </>
+  );
+}
+
+function Tester({
+  organizationSlug,
+  workflowSlug,
+  environment,
+}: {
+  organizationSlug: string;
+  workflowSlug: string;
+  environment: RuntimeEnvironment;
+}) {
+  const testFetcher = useFetcher();
+  const [testContent, setTestContent] = useState<string>("");
+
+  const submit = useCallback(() => {
+    console.log({
+      environmentId: environment.id,
+      apiKey: environment.apiKey,
+      data: testContent,
+    });
+
+    testFetcher.submit(
+      {
+        environmentId: environment.id,
+        apiKey: environment.apiKey,
+        payload: testContent,
+      },
+      {
+        method: "post",
+        action: `/resources/run/${organizationSlug}/test/${workflowSlug}`,
+      }
+    );
+  }, [
+    environment.apiKey,
+    environment.id,
+    organizationSlug,
+    testContent,
+    testFetcher,
+    workflowSlug,
+  ]);
+
+  return (
+    <div className="flex flex-col gap-2">
+      <JSONEditor
+        content={testContent}
+        readOnly={false}
+        onChange={(c) => setTestContent(c)}
+      />
+      <PrimaryButton onClick={submit}>Test</PrimaryButton>
+    </div>
   );
 }
