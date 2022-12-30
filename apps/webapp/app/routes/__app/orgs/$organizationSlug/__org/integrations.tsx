@@ -1,8 +1,9 @@
 import { PlusCircleIcon } from "@heroicons/react/24/solid";
 import type { LoaderArgs } from "@remix-run/server-runtime";
+import { CatalogIntegration } from "internal-catalog";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import invariant from "tiny-invariant";
-import { ConnectButton } from "~/components/integrations/ConnectButton";
+import { ConnectButton, Status } from "~/components/integrations/ConnectButton";
 import { Container } from "~/components/layout/Container";
 import { List } from "~/components/layout/List";
 import { Body } from "~/components/primitives/text/Body";
@@ -91,40 +92,67 @@ export default function Integrations() {
           Add an integration
         </Header2>
         <div className="flex flex-wrap gap-2 w-full">
-          {integrations.map((integration) => (
-            <ConnectButton
-              key={integration.slug}
-              integration={integration}
-              organizationId={organization.id}
-              className="flex flex-col group max-w-[160px] rounded-md bg-slate-800 border border-slate-800 gap-4 text-sm text-slate-200 items-center overflow-hidden hover:bg-slate-800/30 transition shadow-md disabled:opacity-50"
-            >
-              {(status) => (
-                <>
-                  <div className="relative flex items-center justify-center w-full py-6 bg-black/20 border-b border-slate-800">
-                    <PlusCircleIcon className="absolute h-7 w-7 top-[16px] right-[28px] z-10 text-slate-200 shadow-md" />
-                    <img
-                      src={integration.icon}
-                      alt={integration.name}
-                      className="h-20 shadow-lg group-hover:opacity-80 transition"
-                    />
-                  </div>
-
-                  {status === "loading" ? (
-                    <span className="px-6 pb-4">Connecting…</span>
-                  ) : (
-                    <span className="px-6 pb-4 leading-relaxed text-slate-400">
-                      Connect to{" "}
-                      <span className="text-slate-200 text-base">
-                        {integration.name}
-                      </span>
-                    </span>
-                  )}
-                </>
-              )}
-            </ConnectButton>
-          ))}
+          {integrations.map((integration) => {
+            switch (integration.authentication.type) {
+              case "oauth":
+                return (
+                  <ConnectButton
+                    key={integration.slug}
+                    integration={integration}
+                    organizationId={organization.id}
+                    className="flex flex-col group max-w-[160px] rounded-md bg-slate-800 border border-slate-800 gap-4 text-sm text-slate-200 items-center overflow-hidden hover:bg-slate-800/30 transition shadow-md disabled:opacity-50"
+                  >
+                    {(status) => (
+                      <AddButton integration={integration} status={status} />
+                    )}
+                  </ConnectButton>
+                );
+              case "api_key":
+                //todo support api key integrations here
+                return (
+                  <button
+                    key={integration.slug}
+                    className="flex flex-col group max-w-[160px] rounded-md bg-slate-800 border border-slate-800 gap-4 text-sm text-slate-200 items-center overflow-hidden hover:bg-slate-800/30 transition shadow-md disabled:opacity-50"
+                  >
+                    <AddButton integration={integration} status={"idle"} />
+                  </button>
+                );
+              default:
+                return null;
+            }
+          })}
         </div>
       </div>
     </Container>
+  );
+}
+
+function AddButton({
+  integration,
+  status,
+}: {
+  integration: CatalogIntegration;
+  status: Status;
+}) {
+  return (
+    <>
+      <div className="relative flex items-center justify-center w-full py-6 bg-black/20 border-b border-slate-800">
+        <PlusCircleIcon className="absolute h-7 w-7 top-[16px] right-[28px] z-10 text-slate-200 shadow-md" />
+        <img
+          src={integration.icon}
+          alt={integration.name}
+          className="h-20 group-hover:opacity-80 transition"
+        />
+      </div>
+
+      {status === "loading" ? (
+        <span className="px-6 pb-4">Connecting…</span>
+      ) : (
+        <span className="px-6 pb-4 leading-relaxed text-slate-400">
+          Connect to{" "}
+          <span className="text-slate-200 text-base">{integration.name}</span>
+        </span>
+      )}
+    </>
   );
 }

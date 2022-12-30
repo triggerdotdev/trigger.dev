@@ -78,7 +78,7 @@ export function BasicConnectButton({
   );
 }
 
-type Status = "loading" | "idle";
+export type Status = "loading" | "idle";
 
 export function useCreateConnection(sourceId?: string, serviceId?: string) {
   const createConnectionFetcher = useFetcher<CreateResponse>();
