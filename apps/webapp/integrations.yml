@@ -1,26 +1,37 @@
 - name: GitHub
   slug: github
   icon: /integrations/github.png
-  scopes:
-    - repo
-  environments:
-    development:
-      oauth:
+  authentication:
+    type: oauth
+    scopes:
+      - repo
+    environments:
+      development:
         client_id: cd763219ce4005e58c00
-    production:
-      oauth:
+      production:
         client_id: abcdefg
 - name: Slack
   slug: slack
   icon: /integrations/slack.png
-  scopes:
-    - channels:read
-    - channels:join
-    - chat:write
-  environments:
-    development:
-      oauth:
+  authentication:
+    type: oauth
+    scopes:
+      - channels:read
+      - channels:join
+      - chat:write
+    environments:
+      development:
         client_id: "276370297397.4579145654276"
-    production:
-      oauth:
+      production:
         client_id: abcdefg
+- name: Airtable
+  slug: airtable
+  icon: /integrations/airtable.png
+  authentication:
+    type: api_key
+    header_name: "Authorization"
+    header_type: "Bearer"
+    documentation: |
+      # Example title
+      - Go to airtable
+      - Get API keys
