@@ -78,7 +78,7 @@ export function EnvironmentMenu() {
               <Popover.Button
                 className={`
                 ${open ? "" : ""}
-                group inline-flex justify-between gap-2 items-center rounded text-white bg-transparent pl-3.5 pr-2 py-2 text-sm hover:bg-slate-800 transition focus:outline-none`}
+                group inline-flex justify-between gap-2 items-center rounded text-white bg-transparent pl-3.5 pr-2 py-2 text-sm hover:bg-slate-800 focus:outline-none`}
               >
                 <EnvironmentIcon slug={currentEnvironment.slug} />
                 <span className="transition">
