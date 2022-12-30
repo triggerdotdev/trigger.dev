@@ -164,7 +164,6 @@ new Trigger({
 
 Install our SDK and get instant access to an arsenal of triggers you can use in your code:
 
-&nbsp;
 
 ### **Webhooks**
 
@@ -174,7 +173,6 @@ Subscribe to webhooks without creating API endpoints. Plus they work locally wit
 github.issueEvent({ repo: "acme/website" })
 ```
 
-&nbsp;
 
 ### **Scheduled (CRON)**
 
@@ -184,7 +182,6 @@ Easily subscribe to a recurring schedule using human readable code or CRON synta
 scheduleEvent({ every: { minutes: 30 } })
 ```
 
-&nbsp;
 
 ### **Custom Events**
 
@@ -194,8 +191,6 @@ Trigger workflows from any event in your app. Send us your events, and we'll do 
 customEvent<YourType>({ name: "your.event" })
 ```
 
-&nbsp;
-
 ### **HTTP Endpoint**
 
 Expose a HTTP endpoint to trigger your workflows with the method and path of your choice.
@@ -204,8 +199,6 @@ Expose a HTTP endpoint to trigger your workflows with the method and path of you
 httpEvent<User>({ method: "POST", path: "/users/:id" })
 ```
 
-&nbsp;
-
 ### **Receive Emails**
 
 Receive emails from your custom domain and trigger a workflow with the email metadata and content.
@@ -213,8 +206,6 @@ Receive emails from your custom domain and trigger a workflow with the email met
 ```Typescript
 emailEvent({ address: "support@help.customdomain.io" })
 ```
-
-&nbsp;
 
 ### **AWS Event Bridge**
 
