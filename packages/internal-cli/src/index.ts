@@ -27,8 +27,8 @@ program
       integration_file_path: string,
       options: {
         environment?: string;
-        pizzly_host?: string;
-        pizzly_secret_key?: string;
+        pizzlyhost?: string;
+        pizzlysecretkey?: string;
         awsprofile?: string;
       }
     ) => {
@@ -41,7 +41,7 @@ program
       }
 
       const environment = options.environment ?? "development";
-      const pizzly_host = options.pizzly_host ?? "http://localhost:3004";
+      const pizzly_host = options.pizzlyhost ?? "http://localhost:3004";
 
       const file = fs.readFileSync(integration_file_path, "utf8");
       const catalog = getCatalog(file);
@@ -79,7 +79,7 @@ program
           const hasExistingConfig = await hasConfig(
             pizzly_host,
             integration.slug,
-            options.pizzly_secret_key
+            options.pizzlysecretkey
           );
 
           if (hasExistingConfig) {
@@ -89,7 +89,7 @@ program
               environmentClientId,
               client_secret,
               integration.scopes,
-              options.pizzly_secret_key
+              options.pizzlysecretkey
             );
             console.log(`Updated config for ${integration.slug}`);
           } else {
@@ -99,7 +99,7 @@ program
               environmentClientId,
               client_secret,
               integration.scopes,
-              options.pizzly_secret_key
+              options.pizzlysecretkey
             );
             console.log(`Created config for ${integration.slug}`);
           }
