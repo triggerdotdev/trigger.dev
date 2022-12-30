@@ -3,9 +3,9 @@ import { github } from "internal-integrations";
 import crypto from "node:crypto";
 import type { PrismaClient } from "~/db.server";
 import { prisma } from "~/db.server";
+import { env } from "~/env.server";
 import { findExternalSourceById } from "~/models/externalSource.server";
 import { pizzly } from "../pizzly.server";
-import { originOrProxyUrl } from "../webhookProxy.server";
 
 export class RegisterExternalSource {
   #prismaClient: PrismaClient;
@@ -53,7 +53,7 @@ export class RegisterExternalSource {
 
     const secret = crypto.randomBytes(32).toString("hex");
 
-    const webhookUrl = `${originOrProxyUrl}/api/v1/internal/webhooks/${connection.apiIdentifier}/${externalSource.id}`;
+    const webhookUrl = `${env.APP_ORIGIN}/api/v1/internal/webhooks/${connection.apiIdentifier}/${externalSource.id}`;
 
     const serviceWebhook = await this.#registerWebhookWithConnection(
       externalSource.service,

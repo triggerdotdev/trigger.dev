@@ -45,7 +45,21 @@ export PULSAR_CPP_DIR=/opt/homebrew/Cellar/libpulsar/3.1.0
 
    Then you will need to fill in the fields with real values.
 
-3. Start postgresql, pulsar, and the pizzly server
+   You also need to create three `.env` files under the `.docker` directory:
+
+   ```sh
+   cp ./.docker/pizzly-server.env.example ./.docker/pizzly-server.env
+   cp ./.docker/pizzly_proxy.env.example ./.docker/pizzly_proxy.env
+   cp ./.docker/webapp_proxy.env.example ./.docker/webapp_proxy.env
+   ```
+
+   In `webapp_proxy` and `pizzly_proxy` make sure you fill in the `NGROK_SUBDOMAIN` and `NGROK_AUTH` environment variables. For example, in `webapp_proxy` and `pizzly_proxy` you could have something like `dan-trigger-dev` and `dan-pizzly-dev` respectively for the `NGROK_SUBDOMAIN` env var.
+
+   Next, update the `SERVER_HOST` env var in the `pizzly-server.env` env file with the value provided to the `NGROK_SUBDOMAIN` in the `pizzly_proxy.env` file. Using the example above the `SERVER_HOST` would be `SERVER_HOST=https://dan-pizzly-dev.ngrok.io`
+
+   Also, in `webapp/.env`, set the `APP_ORIGIN` to the `NGROK_SUBDOMAIN` provided to the `webapp_proxy.env` file, e.g. `APP_ORIGIN=https://dan-trigger-dev.ngrok.io`
+
+3. Start postgresql, pulsar, pizzly server, and the two ngrok proxies
 
    ```bash
    pnpm run docker:db

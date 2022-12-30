@@ -30,8 +30,6 @@ const EnvironmentSchema = z.object({
     .string()
     .default("0")
     .transform((v) => v === "1"),
-  NGROK_AUTH_TOKEN: z.string().optional(),
-  NGROK_SUBDOMAIN: z.string().optional(),
 });
 
 export type Environment = z.infer<typeof EnvironmentSchema>;
