@@ -8,7 +8,6 @@ import {
   ForwardIcon,
 } from "@heroicons/react/24/solid";
 import {
-  ArrowDownOnSquareIcon,
   BoltIcon,
   ChatBubbleLeftEllipsisIcon,
   GlobeAltIcon,
