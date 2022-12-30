@@ -5,6 +5,7 @@ import invariant from "tiny-invariant";
 import { ConnectButton } from "~/components/integrations/ConnectButton";
 import { Container } from "~/components/layout/Container";
 import { List } from "~/components/layout/List";
+import { Body } from "~/components/primitives/text/Body";
 import {
   Header1,
   Header2,
@@ -14,6 +15,7 @@ import { useCurrentOrganization } from "~/hooks/useOrganizations";
 import { getConnectedApiConnectionsForOrganizationSlug } from "~/models/apiConnection.server";
 import { getIntegrations } from "~/models/integrations.server";
 import { requireUserId } from "~/services/session.server";
+import { formatDateTime } from "~/utils";
 
 export const loader = async ({ request, params }: LoaderArgs) => {
   await requireUserId(request);
@@ -49,7 +51,7 @@ export default function Integrations() {
                 <li key={connection.id}>
                   <div className="flex gap-4 items-center px-4 py-4">
                     <img
-                      className="h-14 w-14 shadow-md"
+                      className="h-6 w-6"
                       src={
                         integrations.find(
                           (i) => i.slug === connection.apiIdentifier
@@ -58,9 +60,14 @@ export default function Integrations() {
                       alt="Github integration logo"
                     />
                     <div className="flex flex-col gap-2">
-                      <Header3 size="small" className="truncate font-medium">
-                        {connection.title}
-                      </Header3>
+                      <div>
+                        <Header3 size="small" className="truncate font-medium">
+                          {connection.title}
+                        </Header3>
+                        <Body size="small" className="text-slate-400">
+                          Added {formatDateTime(connection.createdAt)}
+                        </Body>
+                      </div>
                       {/* <div className="flex items-center gap-1">
                         <ArrowsRightLeftIcon
                           className="h-5 w-5 flex-shrink-0 text-slate-400"
