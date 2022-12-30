@@ -80,7 +80,7 @@ pnpm run dev --filter=webapp
 ## Attaching an API integration using Pizzly
 
 ```bash
-npx pizzly config:create github github <client-id> <client-secret> "repo"
+PIZZLY_HOSTPORT=http://localhost:3004 npx pizzly config:create github github <client-id> <client-secret> "repo,user"
 ```
 
 ## Tests, Typechecks, Lint, Install packages...
