@@ -74,6 +74,7 @@ export class CreateIntegrationRequest {
           service: data.service,
           type: "HTTP_API",
           connectionId: existingConnection?.id,
+          status: existingConnection ? "READY" : "CREATED",
         },
       });
     } else {
@@ -91,6 +92,7 @@ export class CreateIntegrationRequest {
             },
             data: {
               connectionId: existingConnection.id,
+              status: existingConnection ? "READY" : "CREATED",
             },
           });
         }

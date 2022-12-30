@@ -236,9 +236,22 @@ async function createRequestPubSub() {
       PERFORM_INTEGRATION_REQUEST: async (id, data, properties) => {
         const service = new PerformIntegrationRequest();
 
-        const success = await service.call(data.id);
+        const response = await service.call(data.id);
 
-        return success;
+        if (response.stop) {
+          return true;
+        } else {
+          await pubSub.publish(
+            "PERFORM_INTEGRATION_REQUEST",
+            {
+              id: data.id,
+            },
+            {},
+            { deliverAfter: response.retryInSeconds * 1000 }
+          );
+
+          return true;
+        }
       },
     },
   });

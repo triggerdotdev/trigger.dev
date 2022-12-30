@@ -122,7 +122,7 @@ model Workflow {
   rules            EventRule[]
   externalServices ExternalService[]
 
-  service String @default("trigger")
+  service    String   @default("trigger")
   eventNames String[]
 
   @@unique([organizationId, slug])

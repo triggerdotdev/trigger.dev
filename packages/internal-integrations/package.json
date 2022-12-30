@@ -7,12 +7,14 @@
   "types": "./src/index.ts",
   "devDependencies": {
     "@trigger.dev/tsconfig": "workspace:*",
+    "@types/debug": "^4.1.7",
     "@types/node": "^18.11.9",
     "typescript": "^4.9.4"
   },
   "scripts": {},
   "dependencies": {
     "@octokit/webhooks": "^10.4.0",
+    "debug": "^4.3.4",
     "zod": "^3.20.2"
   }
 }

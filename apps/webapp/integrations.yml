@@ -15,6 +15,7 @@
   icon: /integrations/slack.png
   scopes:
     - channels:read
+    - channels:join
     - chat:write
   environments:
     development:

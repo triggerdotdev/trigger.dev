@@ -6,7 +6,7 @@ import {
 import { MessageCatalogSchema } from "./messageCatalogSchema";
 
 import { z } from "zod";
-import { ZodPublisher } from "./zodPublisher";
+import { PublishOptions, ZodPublisher } from "./zodPublisher";
 import { ZodSubscriber, ZodSubscriberHandlers } from "./zodSubscriber";
 
 export type ZodPubSubOptions<TPubSubSchema extends MessageCatalogSchema> = {
@@ -65,8 +65,9 @@ export class ZodPubSub<TPubSubSchema extends MessageCatalogSchema> {
   public async publish<K extends keyof TPubSubSchema>(
     type: K,
     data: z.infer<TPubSubSchema[K]["data"]>,
-    properties?: z.infer<TPubSubSchema[K]["properties"]>
+    properties?: z.infer<TPubSubSchema[K]["properties"]>,
+    options?: PublishOptions
   ): Promise<string | undefined> {
-    return this.#publisher.publish(type, data, properties);
+    return this.#publisher.publish(type, data, properties, options);
   }
 }

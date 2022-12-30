@@ -30,6 +30,7 @@ const EnvironmentSchema = z.object({
     .string()
     .default("0")
     .transform((v) => v === "1"),
+  REDIS_URL: z.string().default("redis://localhost:6379"),
 });
 
 export type Environment = z.infer<typeof EnvironmentSchema>;

@@ -33,6 +33,7 @@ export type PerformRequestOptions = {
   accessToken: string;
   endpoint: string;
   params: any;
+  cache?: CacheService;
 };
 
 export type DisplayProperties = {
@@ -40,8 +41,16 @@ export type DisplayProperties = {
   properties?: { key: string; value: string | number | boolean }[];
 };
 
+export interface PerformedRequestResponse {
+  response: NormalizedResponse;
+  isRetryable: boolean;
+  ok: boolean;
+}
+
 export interface RequestIntegration {
-  perform: (options: PerformRequestOptions) => Promise<NormalizedResponse>;
+  perform: (
+    options: PerformRequestOptions
+  ) => Promise<PerformedRequestResponse>;
   displayProperties: (endpoint: string, params: any) => DisplayProperties;
 }
 
@@ -54,4 +63,9 @@ export interface WebhookIntegration {
     | { status: "ok"; data: ReceivedWebhook }
     | { status: "ignored"; reason: string }
     | { status: "error"; error: string };
+}
+
+export interface CacheService {
+  get: (key: string) => Promise<string | null>;
+  set: (key: string, value: string, ttl?: number) => Promise<void>;
 }

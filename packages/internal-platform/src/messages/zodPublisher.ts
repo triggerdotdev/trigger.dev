@@ -9,6 +9,11 @@ import { ulid } from "ulid";
 
 import { z, ZodError } from "zod";
 
+export type PublishOptions = {
+  deliverAfter?: number;
+  deliverAt?: number;
+};
+
 export type ZodPublisherOptions<PublisherSchema extends MessageCatalogSchema> =
   {
     client: PulsarClient;
@@ -57,14 +62,15 @@ export class ZodPublisher<PublisherSchema extends MessageCatalogSchema> {
   public async publish<K extends keyof PublisherSchema>(
     type: K,
     data: z.infer<PublisherSchema[K]["data"]>,
-    properties?: z.infer<PublisherSchema[K]["properties"]>
+    properties?: z.infer<PublisherSchema[K]["properties"]>,
+    options?: PublishOptions
   ): Promise<string | undefined> {
     if (!this.#producer) {
       throw new Error("Cannot publish before establishing connection");
     }
 
     try {
-      return this.#handlePublish(type, data, properties);
+      return this.#handlePublish(type, data, properties, options);
     } catch (e) {
       if (e instanceof ZodError) {
         this.#logger.error(
@@ -81,7 +87,8 @@ export class ZodPublisher<PublisherSchema extends MessageCatalogSchema> {
   async #handlePublish<K extends keyof PublisherSchema>(
     type: K,
     data: z.infer<PublisherSchema[K]["data"]>,
-    properties?: z.infer<PublisherSchema[K]["properties"]>
+    properties?: z.infer<PublisherSchema[K]["properties"]>,
+    options?: PublishOptions
   ): Promise<string> {
     const messageSchema = this.#schema[type];
 
@@ -112,6 +119,8 @@ export class ZodPublisher<PublisherSchema extends MessageCatalogSchema> {
     const response = await this.#producer!.send({
       data: Buffer.from(message),
       properties: parsedProperties,
+      deliverAfter: options?.deliverAfter,
+      deliverAt: options?.deliverAt,
     });
 
     return response.toString();
