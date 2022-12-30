@@ -203,6 +203,10 @@ const InternalCatalog = {
     data: z.object({ id: z.string() }),
     properties: z.object({}),
   },
+  EXTERNAL_SERVICE_UPSERTED: {
+    data: z.object({ id: z.string() }),
+    properties: z.object({}),
+  },
   INTEGRATION_REQUEST_CREATED: {
     data: z.object({ id: z.string() }),
     properties: z.object({}),
@@ -286,6 +290,9 @@ async function createInternalPubSub() {
         const isRegistered = await service.call(data.id);
 
         return isRegistered; // Returning true will mean we don't retry
+      },
+      EXTERNAL_SERVICE_UPSERTED: async (id, data, properties) => {
+        return true;
       },
       EVENT_CREATED: async (id, data, properties) => {
         const service = new DispatchEvent();
