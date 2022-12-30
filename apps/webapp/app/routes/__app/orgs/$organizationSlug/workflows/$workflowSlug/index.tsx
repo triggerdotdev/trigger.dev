@@ -6,7 +6,7 @@ import { Panel } from "~/components/layout/Panel";
 import { PanelHeader } from "~/components/layout/PanelHeader";
 import { PrimaryLink, SecondaryLink } from "~/components/primitives/Buttons";
 import { Header1, Header2 } from "~/components/primitives/text/Headers";
-import { RunsTable } from "~/components/runs/Table";
+import { RunsTable } from "~/components/runs/RunsTable";
 import { TriggerBody } from "~/components/triggers/Trigger";
 import { triggerInfo } from "~/components/triggers/triggerTypes";
 import { useConnectionSlots } from "~/hooks/useConnectionSlots";
@@ -89,7 +89,12 @@ export default function Page() {
             <SecondaryLink to="runs">View all</SecondaryLink>
           </div>
           <Panel className="p-0 overflow-hidden overflow-x-auto">
-            <RunsTable runs={runs} total={total} hasFilters={hasFilters} />
+            <RunsTable
+              runs={runs}
+              total={total}
+              hasFilters={hasFilters}
+              basePath="runs"
+            />
           </Panel>
         </>
       ) : (

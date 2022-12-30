@@ -5,7 +5,8 @@ import {
   TriggerMetadataSchema,
 } from "@trigger.dev/common-schemas";
 import type { CatalogIntegration } from "internal-catalog";
-import { DisplayProperties, slack } from "internal-integrations";
+import type { DisplayProperties } from "internal-integrations";
+import { slack } from "internal-integrations";
 import invariant from "tiny-invariant";
 import type { PrismaClient } from "~/db.server";
 import { prisma } from "~/db.server";

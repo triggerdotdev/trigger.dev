@@ -2,7 +2,7 @@ import { BeakerIcon, InformationCircleIcon } from "@heroicons/react/24/outline";
 import { Link } from "@remix-run/react";
 import classNames from "classnames";
 import humanizeDuration from "humanize-duration";
-import { ReactNode } from "react";
+import type { ReactNode } from "react";
 import type { WorkflowRunListPresenter } from "~/models/workflowRunListPresenter.server";
 import { dateDifference, formatDateTime } from "~/utils";
 import { runStatusIcon, runStatusLabel } from "./runStatus";
@@ -14,10 +14,12 @@ export function RunsTable({
   total,
   hasFilters,
   runs,
+  basePath,
 }: {
   total: number;
   hasFilters: boolean;
   runs: Awaited<ReturnType<WorkflowRunListPresenter["data"]>>["runs"];
+  basePath?: string;
 }) {
   return (
     <table className="w-full divide-y divide-slate-850">
@@ -53,37 +55,42 @@ export function RunsTable({
             <NoRuns title="No runs match your filters" />
           </BlankRow>
         ) : (
-          runs.map((run) => (
-            <tr key={run.id} className="group w-full">
-              <Cell to={run.id} alignment="left">
-                {run.startedAt ? formatDateTime(run.startedAt, "long") : "–"}
-              </Cell>
-              <Cell to={run.id} alignment="left">
-                {run.id}
-              </Cell>
-              <Cell to={run.id} alignment="left">
-                <span className="flex items-center gap-1">
-                  {runStatusIcon(run.status, "small")}
-                  {runStatusLabel(run.status)}
-                </span>
-              </Cell>
-              <Cell to={run.id} alignment="left">
-                {run.finishedAt ? formatDateTime(run.finishedAt, "long") : "–"}
-              </Cell>
-              <Cell to={run.id}>
-                {run.startedAt && run.finishedAt
-                  ? humanizeDuration(
-                      dateDifference(run.startedAt, run.finishedAt)
-                    )
-                  : "–"}
-              </Cell>
-              <Cell to={run.id}>
-                {run.isTest && (
-                  <BeakerIcon className="h-5 w-5 text-green-500" />
-                )}
-              </Cell>
-            </tr>
-          ))
+          runs.map((run) => {
+            const path = basePath ? `${basePath}/${run.id}` : run.id;
+            return (
+              <tr key={run.id} className="group w-full">
+                <Cell to={path} alignment="left">
+                  {run.startedAt ? formatDateTime(run.startedAt, "long") : "–"}
+                </Cell>
+                <Cell to={path} alignment="left">
+                  {run.id}
+                </Cell>
+                <Cell to={path} alignment="left">
+                  <span className="flex items-center gap-1">
+                    {runStatusIcon(run.status, "small")}
+                    {runStatusLabel(run.status)}
+                  </span>
+                </Cell>
+                <Cell to={path} alignment="left">
+                  {run.finishedAt
+                    ? formatDateTime(run.finishedAt, "long")
+                    : "–"}
+                </Cell>
+                <Cell to={path}>
+                  {run.startedAt && run.finishedAt
+                    ? humanizeDuration(
+                        dateDifference(run.startedAt, run.finishedAt)
+                      )
+                    : "–"}
+                </Cell>
+                <Cell to={path}>
+                  {run.isTest && (
+                    <BeakerIcon className="h-5 w-5 text-green-500" />
+                  )}
+                </Cell>
+              </tr>
+            );
+          })
         )}
       </tbody>
     </table>

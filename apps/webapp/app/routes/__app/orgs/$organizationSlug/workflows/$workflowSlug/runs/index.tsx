@@ -15,7 +15,7 @@ import {
   runStatusLabel,
   runStatusTitle,
 } from "~/components/runs/runStatus";
-import { RunsTable } from "~/components/runs/Table";
+import { RunsTable } from "~/components/runs/RunsTable";
 import type { WorkflowRunStatus } from "~/models/workflowRun.server";
 import { WorkflowRunListPresenter } from "~/models/workflowRunListPresenter.server";
 import { requireUserId } from "~/services/session.server";

@@ -36,11 +36,7 @@ import { TriggerBody } from "~/components/triggers/Trigger";
 import { useFetcher } from "@remix-run/react";
 import { useCurrentOrganization } from "~/hooks/useOrganizations";
 import { useCurrentWorkflow } from "~/hooks/useWorkflows";
-import {
-  BasicConnectButton,
-  ConnectButton,
-} from "~/components/integrations/ConnectButton";
-import { IntegrationIcon } from "~/components/integrations/ConnectionSelector";
+import { BasicConnectButton } from "~/components/integrations/ConnectButton";
 
 export const loader = async ({ request, params }: LoaderArgs) => {
   await requireUserId(request);
@@ -54,7 +50,7 @@ export const loader = async ({ request, params }: LoaderArgs) => {
     return typedjson({ run });
   } catch (error: any) {
     console.error(error);
-    throw new Response("Error ", { status: 404 });
+    throw new Response("Error ", { status: 400 });
   }
 };
 
