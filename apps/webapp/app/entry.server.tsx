@@ -1,9 +1,8 @@
 import type { EntryContext } from "@remix-run/node";
 import { RemixServer } from "@remix-run/react";
 import { renderToString } from "react-dom/server";
-import * as Sentry from "@sentry/remix";
+import * as Sentry from "~/services/sentry.server";
 import * as MessageBroker from "~/services/messageBroker.server";
-import { prisma } from "./db.server";
 
 export default function handleRequest(
   request: Request,
@@ -25,14 +24,5 @@ export default function handleRequest(
   });
 }
 
-if (process.env.NODE_ENV === "production" && process.env.SENTRY_DSN) {
-  Sentry.init({
-    dsn: process.env.SENTRY_DSN,
-    tracesSampleRate: 1,
-    integrations: [new Sentry.Integrations.Prisma({ client: prisma })],
-  });
-
-  console.log("🚦 Sentry initialized");
-}
-
+Sentry.init();
 MessageBroker.init();

@@ -7,7 +7,7 @@ hydrateRoot(document, <RemixBrowser />);
 
 if (process.env.NODE_ENV === "production") {
   Sentry.init({
-    dsn: "https://a014169306c748b1adf61875c64b90de:a7fa7bfcc28d43e1bd293e121c677e4a@o4504169280569344.ingest.sentry.io/4504169281880064",
+    dsn: "https://bf96820b08004fa4b2e1506f2ac74a14@o4504419574087680.ingest.sentry.io/4504419607052288",
     tracesSampleRate: 1,
     integrations: [
       new Sentry.BrowserTracing({
