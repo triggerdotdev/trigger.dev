@@ -1,13 +1,10 @@
 import type { LoaderArgs } from "@remix-run/server-runtime";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import invariant from "tiny-invariant";
-import { integrations } from "~/components/integrations/ConnectButton";
-import { ConnectionSelector } from "~/components/integrations/ConnectionSelector";
 import { WorkflowConnections } from "~/components/integrations/WorkflowConnections";
 import { Panel } from "~/components/layout/Panel";
 import { PanelHeader } from "~/components/layout/PanelHeader";
 import { PrimaryLink, SecondaryLink } from "~/components/primitives/Buttons";
-import { Body } from "~/components/primitives/text/Body";
 import { Header1, Header2 } from "~/components/primitives/text/Headers";
 import { RunsTable } from "~/components/runs/Table";
 import { TriggerBody } from "~/components/triggers/Trigger";
@@ -64,14 +61,15 @@ export default function Page() {
   return (
     <>
       <Header1 className="mb-4">Overview</Header1>
-      {connectionSlots.length > 0 && (
-        <Panel>
-          <Header2 size="small" className="mb-2">
-            API integrations
-          </Header2>
-          <WorkflowConnections />
-        </Panel>
-      )}
+      {connectionSlots.source ||
+        (connectionSlots.services.length > 0 && (
+          <Panel>
+            <Header2 size="small" className="mb-2">
+              API integrations
+            </Header2>
+            <WorkflowConnections />
+          </Panel>
+        ))}
 
       {eventRule && (
         <Panel className="mt-4">

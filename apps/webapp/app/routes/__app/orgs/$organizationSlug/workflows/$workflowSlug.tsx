@@ -43,15 +43,38 @@ export const loader = async ({ request, params }: LoaderArgs) => {
     slug: organizationSlug,
   });
 
-  const slots = workflow.externalSource ? [workflow.externalSource] : [];
+  const externalSourceIntegration = getIntegrations().find(
+    (i) => i.slug === workflow?.externalSource?.service
+  );
+  const externalSourceSlot =
+    workflow.externalSource && externalSourceIntegration
+      ? {
+          ...workflow.externalSource,
+          possibleConnections: allConnections.filter(
+            (a) => a.apiIdentifier === workflow?.externalSource?.service
+          ),
+          integration: externalSourceIntegration,
+        }
+      : undefined;
 
-  const connectionSlots = slots.map((c) => ({
-    ...c,
-    possibleConnections: allConnections.filter(
-      (a) => a.apiIdentifier === c.service
-    ),
-    integration: getIntegrations().find((i) => i.slug === c.service),
-  }));
+  const connectionSlots = {
+    source: externalSourceSlot,
+    services: workflow.externalServices.flatMap((c) => {
+      const integration = getIntegrations().find((i) => i.slug === c.service);
+
+      if (!integration) {
+        return [];
+      }
+
+      return {
+        ...c,
+        possibleConnections: allConnections.filter(
+          (a) => a.apiIdentifier === c.service
+        ),
+        integration,
+      };
+    }),
+  };
 
   return typedjson({
     workflow: { ...workflow, rules },

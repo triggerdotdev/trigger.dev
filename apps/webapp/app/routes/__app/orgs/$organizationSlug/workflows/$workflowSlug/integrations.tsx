@@ -12,7 +12,7 @@ export default function Page() {
   return (
     <>
       <Header1 className="mb-4">Integrations</Header1>
-      {connectionSlots.length > 0 ? (
+      {connectionSlots.source || connectionSlots.services.length > 0 ? (
         <Panel>
           <Header2 size="small" className="mb-2">
             API integrations

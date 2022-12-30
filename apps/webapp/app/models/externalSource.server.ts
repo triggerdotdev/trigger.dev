@@ -1,4 +1,5 @@
 import { prisma } from "~/db.server";
+export type { ExternalSource } from ".prisma/client";
 
 export type ExternalSourceWithConnection = Awaited<
   ReturnType<typeof findExternalSourceById>

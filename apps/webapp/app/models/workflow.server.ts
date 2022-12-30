@@ -33,6 +33,16 @@ export function getWorkflowFromSlugs({
           service: true,
         },
       },
+      externalServices: {
+        select: {
+          id: true,
+          type: true,
+          status: true,
+          connection: true,
+          slug: true,
+          service: true,
+        },
+      },
       rules: {
         select: {
           id: true,
