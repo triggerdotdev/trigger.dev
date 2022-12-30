@@ -61,15 +61,14 @@ export default function Page() {
   return (
     <>
       <Header1 className="mb-4">Overview</Header1>
-      {connectionSlots.source ||
-        (connectionSlots.services.length > 0 && (
-          <Panel>
-            <Header2 size="small" className="mb-2">
-              API integrations
-            </Header2>
-            <WorkflowConnections />
-          </Panel>
-        ))}
+      {(connectionSlots.source || connectionSlots.services.length > 0) && (
+        <Panel>
+          <Header2 size="small" className="mb-2">
+            API integrations
+          </Header2>
+          <WorkflowConnections />
+        </Panel>
+      )}
 
       {eventRule && (
         <Panel className="mt-4">
