@@ -387,11 +387,3 @@ enum WorkflowRunStepType {
   CUSTOM_EVENT
   INTEGRATION_REQUEST
 }
-
-//todo triggers are environment specific
-//todo connections are shared between environments
-//todo in the future, connections can be override per environment
-//todo runs are environment specific
-//todo Workflows have connection slots, which are filled with connections (can be empty)
-//todo Workflow has one trigger (can also have a slot with connection)
-//todo WorkflowRuns belong to a workflow + environment
