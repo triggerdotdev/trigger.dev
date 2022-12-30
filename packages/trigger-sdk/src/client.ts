@@ -38,7 +38,7 @@ export class TriggerClient<TSchema extends z.ZodTypeAny> {
   #responseCompleteCallbacks = new Map<
     string,
     {
-      resolve: (output: RequestResponse) => void;
+      resolve: (output: any) => void;
       reject: (err?: any) => void;
     }
   >();
@@ -118,11 +118,7 @@ export class TriggerClient<TSchema extends z.ZodTypeAny> {
 
           const { resolve, reject } = requestCallbacks;
 
-          if (data.status === "SUCCESS") {
-            resolve(data.response);
-          } else {
-            reject(new Error(`Request failed: ${data.response.status}`));
-          }
+          resolve(data.output);
 
           return true;
         },
@@ -159,14 +155,12 @@ export class TriggerClient<TSchema extends z.ZodTypeAny> {
               performRequest: async (options) => {
                 const requestId = ulid();
 
-                const result = new Promise<RequestResponse>(
-                  (resolve, reject) => {
-                    this.#responseCompleteCallbacks.set(requestId, {
-                      resolve,
-                      reject,
-                    });
-                  }
-                );
+                const result = new Promise((resolve, reject) => {
+                  this.#responseCompleteCallbacks.set(requestId, {
+                    resolve,
+                    reject,
+                  });
+                });
 
                 await serverRPC.send("SEND_REQUEST", {
                   id: data.id,
@@ -176,16 +170,9 @@ export class TriggerClient<TSchema extends z.ZodTypeAny> {
                   params: options.params,
                 });
 
-                const response = await result;
+                const output = await result;
 
-                const parsedResponse = {
-                  ok: true,
-                  status: response.status,
-                  headers: response.headers,
-                  body: options.response.schema.parse(response.body),
-                };
-
-                return parsedResponse;
+                return options.response.schema.parse(output);
               },
             },
             () => {

@@ -21,12 +21,7 @@ export const HostRPCSchema = {
   COMPLETE_REQUEST: {
     request: z.object({
       id: z.string(),
-      status: z.enum(["SUCCESS", "FAILURE"]),
-      response: z.object({
-        status: z.number(),
-        headers: z.record(z.string()),
-        body: z.string().optional(),
-      }),
+      output: JsonSchema.default({}),
       meta: z.object({
         environment: z.string(),
         workflowId: z.string(),

@@ -368,8 +368,7 @@ export class TriggerServer {
 
             const success = await this.#serverRPC.send("COMPLETE_REQUEST", {
               id: data.id,
-              status: data.status,
-              response: data.response,
+              output: data.output,
               meta: {
                 workflowId: properties["x-workflow-id"],
                 organizationId: properties["x-org-id"],

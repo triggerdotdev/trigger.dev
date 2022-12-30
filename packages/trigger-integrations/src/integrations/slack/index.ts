@@ -19,7 +19,7 @@ export async function postMessage(
     throw new Error("Cannot call postMessage outside of a trigger run");
   }
 
-  const response = await run.performRequest({
+  const output = await run.performRequest({
     service: "slack",
     endpoint: "chat.postMessage",
     params: options,
@@ -28,5 +28,5 @@ export async function postMessage(
     },
   });
 
-  return response.body;
+  return output;
 }

@@ -190,29 +190,6 @@ async function createTriggerSubscriber() {
   return subscriber;
 }
 
-const InternalCatalog = {
-  EVENT_CREATED: {
-    data: z.object({ id: z.string() }),
-    properties: z.object({}),
-  },
-  WORKFLOW_RUN_CREATED: {
-    data: z.object({ id: z.string() }),
-    properties: z.object({}),
-  },
-  EXTERNAL_SOURCE_UPSERTED: {
-    data: z.object({ id: z.string() }),
-    properties: z.object({}),
-  },
-  EXTERNAL_SERVICE_UPSERTED: {
-    data: z.object({ id: z.string() }),
-    properties: z.object({}),
-  },
-  INTEGRATION_REQUEST_CREATED: {
-    data: z.object({ id: z.string() }),
-    properties: z.object({}),
-  },
-};
-
 const RequestCatalog = {
   PERFORM_INTEGRATION_REQUEST: {
     data: z.object({ id: z.string() }),
@@ -261,6 +238,33 @@ async function createRequestPubSub() {
   return pubSub;
 }
 
+const InternalCatalog = {
+  EVENT_CREATED: {
+    data: z.object({ id: z.string() }),
+    properties: z.object({}),
+  },
+  WORKFLOW_RUN_CREATED: {
+    data: z.object({ id: z.string() }),
+    properties: z.object({}),
+  },
+  EXTERNAL_SOURCE_UPSERTED: {
+    data: z.object({ id: z.string() }),
+    properties: z.object({}),
+  },
+  EXTERNAL_SERVICE_UPSERTED: {
+    data: z.object({ id: z.string() }),
+    properties: z.object({}),
+  },
+  INTEGRATION_REQUEST_CREATED: {
+    data: z.object({ id: z.string() }),
+    properties: z.object({}),
+  },
+  INTEGRATION_REQUEST_FINISHED: {
+    data: z.object({ id: z.string() }),
+    properties: z.object({}),
+  },
+};
+
 async function createInternalPubSub() {
   const pubSub = new ZodPubSub<typeof InternalCatalog>({
     client: pulsarClient,
@@ -296,6 +300,38 @@ async function createInternalPubSub() {
 
           return true;
         }
+      },
+      INTEGRATION_REQUEST_FINISHED: async (id, data, properties) => {
+        const integrationRequest = await findIntegrationRequestById(data.id);
+
+        if (!integrationRequest) {
+          return true;
+        }
+
+        const run = await findWorklowRunById(integrationRequest.runId);
+
+        if (!run) {
+          return true;
+        }
+
+        await triggerPublisher.publish(
+          "FINISH_INTEGRATION_REQUEST",
+          {
+            id: integrationRequest.id,
+            output: integrationRequest.step.output as z.infer<
+              typeof JsonSchema
+            >,
+          },
+          {
+            "x-workflow-run-id": run.id,
+            "x-api-key": run.environment.apiKey,
+            "x-org-id": run.environment.organizationId,
+            "x-workflow-id": run.workflowId,
+            "x-env": run.environment.slug,
+          }
+        );
+
+        return true;
       },
       EXTERNAL_SOURCE_UPSERTED: async (id, data, properties) => {
         const service = new RegisterExternalSource();

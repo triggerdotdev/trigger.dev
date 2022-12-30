@@ -10,17 +10,10 @@ type PerformRequestOptions<TSchema extends z.ZodTypeAny> = {
   };
 };
 
-type PerformRequestResponse<TSchema extends z.ZodTypeAny> = {
-  ok: boolean;
-  status: number;
-  headers: Record<string, string>;
-  body: z.infer<TSchema>;
-};
-
 type TriggerRunLocalStorage = {
   performRequest: <TSchema extends z.ZodTypeAny>(
     options: PerformRequestOptions<TSchema>
-  ) => Promise<PerformRequestResponse<TSchema>>;
+  ) => Promise<z.infer<TSchema>>;
 };
 
 export const triggerRunLocalStorage =
