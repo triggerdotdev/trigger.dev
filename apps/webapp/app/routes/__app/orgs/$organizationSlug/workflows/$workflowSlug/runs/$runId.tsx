@@ -7,6 +7,7 @@ import {
 import {
   BoltIcon,
   ChatBubbleLeftEllipsisIcon,
+  GlobeAltIcon,
 } from "@heroicons/react/24/outline";
 import { Panel } from "~/components/layout/Panel";
 import { PrimaryButton } from "~/components/primitives/Buttons";
@@ -271,6 +272,8 @@ function StepBody({ step }: { step: Step }) {
       return <Log log={step} />;
     case "CUSTOM_EVENT":
       return <CustomEventStep event={step} />;
+    case "INTEGRATION_REQUEST":
+      return <IntegrationRequestStep request={step} />;
   }
   return <></>;
 }
@@ -318,6 +321,26 @@ function CustomEventStep({ event }: { event: StepType<Step, "CUSTOM_EVENT"> }) {
         <>
           <Header4>Context</Header4>
           <CodeBlock code={stringifyCode(event.input.context)} align="top" />
+        </>
+      )}
+    </>
+  );
+}
+
+function IntegrationRequestStep({
+  request,
+}: {
+  request: StepType<Step, "INTEGRATION_REQUEST">;
+}) {
+  return (
+    <>
+      {request.context && (
+        <CodeBlock code={stringifyCode(request.context)} align="top" />
+      )}
+      {request.input && (
+        <>
+          <Header4>Input</Header4>
+          <CodeBlock code={stringifyCode(request.input)} align="top" />
         </>
       )}
     </>
@@ -383,6 +406,10 @@ const stepInfo: Record<Step["type"], { label: string; icon: ReactNode }> = {
     icon: <BoltIcon className={styleClass} />,
   },
   OUTPUT: { label: "Output", icon: <></> },
+  INTEGRATION_REQUEST: {
+    label: "API request",
+    icon: <GlobeAltIcon className={styleClass} />,
+  },
 } as const;
 
 type LogLevel = StepType<Step, "LOG_MESSAGE">["input"]["level"];

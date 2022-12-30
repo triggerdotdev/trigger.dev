@@ -95,6 +95,13 @@ async function parseStep(original: WorkflowRunStep) {
         type: "OUTPUT" as const,
         output: original.output,
       };
+    case "INTEGRATION_REQUEST":
+      return {
+        ...base,
+        type: "INTEGRATION_REQUEST" as const,
+        input: original.input,
+        context: original.context,
+      };
   }
 
   throw new Error(`Unknown step type ${original.type}`);
