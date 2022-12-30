@@ -225,7 +225,7 @@ We provide a full history of all runs, so you can see exactly what happened.
 
 &nbsp;
 
-<img src="https://trigger.dev/_next/static/media/runs-diagram.f2bb634a.png?imwidth=1000" alt="Runs" width="400"/>
+<img src="https://trigger.dev/_next/static/media/runs-diagram.c9ce4213.png" alt="Runs" width="400"/>
 
 &nbsp;
 
@@ -239,7 +239,8 @@ Workflows pick up where they left off when your server or external APIs go down.
 
 &nbsp;
 
-<img src="https://trigger.dev/_next/static/media/retries-diagram.e64fc140.png?imwidth=1080" alt="Retries" width="400"/>
+<img src="https://trigger.dev/_next/static/media/retries-diagram.d90a00d9.png
+" alt="Retries" width="400"/>
 
 &nbsp;
 
