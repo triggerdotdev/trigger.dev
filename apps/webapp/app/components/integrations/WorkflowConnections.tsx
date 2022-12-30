@@ -16,7 +16,8 @@ export function WorkflowConnections() {
         <div className="flex flex-col gap-1">
           <Body>{connectionSlots.source.integration.name}</Body>
           <ConnectionSelector
-            sourceId={connectionSlots.source.id}
+            type="source"
+            sourceServiceId={connectionSlots.source.id}
             organizationId={organization.id}
             integration={connectionSlots.source.integration}
             connections={connectionSlots.source.possibleConnections}
@@ -28,7 +29,8 @@ export function WorkflowConnections() {
         <div key={slot.id} className="flex flex-col gap-1">
           <Body>{slot.integration?.name}</Body>
           <ConnectionSelector
-            sourceId={slot.id}
+            type="service"
+            sourceServiceId={slot.id}
             organizationId={organization.id}
             integration={slot.integration}
             connections={slot.possibleConnections}

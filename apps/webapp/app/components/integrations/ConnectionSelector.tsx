@@ -5,10 +5,12 @@ import classNames from "classnames";
 import type { CatalogIntegration } from "internal-catalog";
 import { Fragment } from "react";
 import type { APIConnection } from "~/models/apiConnection.server";
-import { BasicConnectButton, ConnectButton } from "./ConnectButton";
+import { BasicConnectButton } from "./ConnectButton";
+import { IntegrationIcon } from "./IntegrationIcon";
 
 type Props = {
-  sourceId: string;
+  type: "source" | "service";
+  sourceServiceId: string;
   organizationId: string;
   integration: CatalogIntegration;
   connections: Pick<APIConnection, "id" | "title">[];
@@ -16,7 +18,8 @@ type Props = {
 };
 
 export function ConnectionSelector({
-  sourceId,
+  type,
+  sourceServiceId,
   integration,
   connections,
   selectedConnectionId,
@@ -30,6 +33,8 @@ export function ConnectionSelector({
         key={integration.slug}
         integration={integration}
         organizationId={organizationId}
+        sourceId={type === "source" ? sourceServiceId : undefined}
+        serviceId={type === "service" ? sourceServiceId : undefined}
       />
     );
   }
@@ -80,7 +85,9 @@ export function ConnectionSelector({
                       return (
                         <fetcher.Form
                           key={connection.id}
-                          action={`/resources/sources/${sourceId}`}
+                          action={`/resources/${
+                            type === "source" ? "sources" : "services"
+                          }/${sourceServiceId}`}
                           method="put"
                         >
                           <input
@@ -88,6 +95,7 @@ export function ConnectionSelector({
                             name={"connectionId"}
                             value={connection.id}
                           />
+
                           <Popover.Button
                             className={classNames(
                               "flex items-center w-full justify-between gap-1.5 py-2 px-3 text-white rounded hover:bg-slate-800 transition",
