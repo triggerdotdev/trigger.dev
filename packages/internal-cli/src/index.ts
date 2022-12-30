@@ -52,8 +52,11 @@ program
       });
 
       const promises = catalog.map(async (integration) => {
+        if (integration.authentication.type !== "oauth")
+          return Promise.resolve();
+
         const environmentClientId =
-          integration.environments[environment!].oauth.client_id;
+          integration.authentication.environments[environment!].client_id;
         const secretId = `integrations/${integration.slug}/${environmentClientId}`;
         try {
           console.log(`Finding secret for id: ${secretId}`);
@@ -88,7 +91,7 @@ program
               integration.slug,
               environmentClientId,
               client_secret,
-              integration.scopes,
+              integration.authentication.scopes,
               options.pizzlysecretkey
             );
             console.log(`Updated config for ${integration.slug}`);
@@ -98,7 +101,7 @@ program
               integration.slug,
               environmentClientId,
               client_secret,
-              integration.scopes,
+              integration.authentication.scopes,
               options.pizzlysecretkey
             );
             console.log(`Created config for ${integration.slug}`);
