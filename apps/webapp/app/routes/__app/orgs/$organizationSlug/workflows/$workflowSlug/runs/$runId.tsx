@@ -423,7 +423,14 @@ function IntegrationRequestStep({
       <div className="mt-4">
         {request.output && (
           <>
-            <OutputTitle />
+            <div className="flex justify-between">
+              <OutputTitle />
+              {request.retryCount > 0 && (
+                <Body size="small" className="text-slate-400">
+                  {request.retryCount} retries
+                </Body>
+              )}
+            </div>
             <CodeBlock
               code={stringifyCode(request.output)}
               align="top"

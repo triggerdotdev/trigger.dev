@@ -138,6 +138,7 @@ async function parseStep(
           connection: externalService.connection,
           integration,
         },
+        retryCount: original.integrationRequest.retryCount,
       };
   }
 
