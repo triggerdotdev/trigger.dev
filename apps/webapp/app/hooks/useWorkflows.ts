@@ -15,6 +15,8 @@ export function useWorkflows() {
   return workflows;
 }
 
+export type OrgWorkflow = NonNullable<ReturnType<typeof useWorkflows>>[number];
+
 export function useCurrentWorkflow() {
   const routeMatch = useMatchesData(
     "routes/__app/orgs/$organizationSlug/workflows/$workflowSlug"

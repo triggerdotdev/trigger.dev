@@ -21,7 +21,6 @@ import {
 import CodeBlock from "~/components/code/CodeBlock";
 import type { ReactNode } from "react";
 import { formatDateTime } from "~/utils";
-import githubLogo from "~/assets/images/integrations/logo-github.png";
 
 export default function Page() {
   return (
@@ -278,7 +277,7 @@ function StepHeader({ step }: { step: Step }) {
       {step.type === "trigger" && step.trigger.on === "webhook" ? (
         <div className="flex gap-2 items-center">
           <Body size="small">{step.trigger.integration}</Body>
-          <img src={githubLogo} alt="GitHub" className="h-8 shadow" />
+          {/* <img src={githubLogo} alt="GitHub" className="h-8 shadow" /> */}
         </div>
       ) : null}
     </div>

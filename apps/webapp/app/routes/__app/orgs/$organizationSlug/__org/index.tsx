@@ -4,23 +4,31 @@ import {
   IdentificationIcon,
 } from "@heroicons/react/24/solid";
 import { Link } from "@remix-run/react";
+import type { LoaderArgs } from "@remix-run/server-runtime";
+import type { CatalogIntegration } from "internal-catalog";
+import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import CreateNewWorkflow from "~/components/CreateNewWorkflow";
 import { Container } from "~/components/layout/Container";
+import { List } from "~/components/layout/List";
 import {
   Header1,
   Header2,
   Header3,
 } from "~/components/primitives/text/Headers";
-import { useWorkflows } from "~/hooks/useWorkflows";
-import type { Workflow } from "~/models/workflow.server";
-import logoGithub from "~/assets/images/integrations/logo-github.png";
-import logoTrello from "~/assets/images/integrations/logo-trello.png";
-import logoAirtable from "~/assets/images/integrations/logo-airtable.png";
-import { formatDateTime } from "~/utils";
-import { List } from "~/components/layout/List";
 import { useCurrentOrganization } from "~/hooks/useOrganizations";
+import type { OrgWorkflow } from "~/hooks/useWorkflows";
+import { useWorkflows } from "~/hooks/useWorkflows";
+import { getIntegrations } from "~/models/integrations.server";
+import { requireUserId } from "~/services/session.server";
+import { formatDateTime } from "~/utils";
+
+export const loader = async ({ request, params }: LoaderArgs) => {
+  await requireUserId(request);
+  return typedjson({ integrations: getIntegrations() });
+};
 
 export default function Page() {
+  const { integrations } = useTypedLoaderData<typeof loader>();
   const workflows = useWorkflows();
   const currentOrganization = useCurrentOrganization();
   if (workflows === undefined || currentOrganization === undefined) {
@@ -39,6 +47,7 @@ export default function Page() {
           </Header2>
           <WorkflowList
             workflows={workflows}
+            integrations={integrations}
             currentOrganizationSlug={currentOrganization.slug}
           />
         </>
@@ -50,9 +59,11 @@ export default function Page() {
 
 function WorkflowList({
   workflows,
+  integrations,
   currentOrganizationSlug,
 }: {
-  workflows: Workflow[];
+  workflows: OrgWorkflow[];
+  integrations: CatalogIntegration[];
   currentOrganizationSlug: string;
 }) {
   return (
@@ -94,22 +105,18 @@ function WorkflowList({
                       </div>
                     </div>
                   </div>
-                  <div className="flex gap-2">
-                    <img
-                      className="h-8 w-8"
-                      src={logoGithub}
-                      alt="Github integration logo"
+                  <div className="flex gap-2 items-center">
+                    <ServiceIcon
+                      service={workflow.service}
+                      integrations={integrations}
                     />
-                    <img
-                      className="h-8 w-8"
-                      src={logoAirtable}
-                      alt="Github integration logo"
-                    />
-                    <img
-                      className="h-8 w-8"
-                      src={logoTrello}
-                      alt="Github integration logo"
-                    />
+                    {workflow.externalServices.map((service) => (
+                      <ServiceIcon
+                        key={service.service}
+                        service={service.service}
+                        integrations={integrations}
+                      />
+                    ))}
                   </div>
                 </div>
                 <div className="ml-5 flex-shrink-0">
@@ -124,5 +131,28 @@ function WorkflowList({
         );
       })}
     </List>
+  );
+}
+
+function ServiceIcon({
+  service,
+  integrations,
+}: {
+  service: string;
+  integrations: CatalogIntegration[];
+}) {
+  const integration = integrations.find((i) => i.slug === service);
+
+  if (!integration) {
+    return null;
+  }
+
+  return (
+    <img
+      src={integration.icon}
+      title={integration.name}
+      alt={integration.name}
+      className="w-5 h-5"
+    />
   );
 }
