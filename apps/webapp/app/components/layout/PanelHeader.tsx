@@ -34,7 +34,7 @@ export function PanelHeader({
           )}
           {startedAt &&
             finishedAt &&
-            dateDifference(startedAt, finishedAt) > 1 && (
+            dateDifference(startedAt, finishedAt) > 1000 && (
               <>
                 <Body
                   size="extra-small"
