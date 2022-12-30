@@ -160,6 +160,7 @@ export function useCreateConnection(sourceId?: string, serviceId?: string) {
       connectionId: createConnectionFetcher.data.connectionId,
       service: createConnectionFetcher.data.integrationKey,
       sourceId,
+      serviceId,
     });
   }, [
     completeConnectionFetcher,
@@ -167,6 +168,7 @@ export function useCreateConnection(sourceId?: string, serviceId?: string) {
     completeConnectionFetcher.submit,
     completeFlow,
     createConnectionFetcher,
+    serviceId,
     sourceId,
   ]);
 
