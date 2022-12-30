@@ -37,7 +37,18 @@ export PULSAR_CPP_DIR=/opt/homebrew/Cellar/libpulsar/3.1.0
    ```bash
    pnpm install
    ```
-2. Environment variables. You will need to create copies of the `.env.example` files in `app/webapp`
+2. Optionally, if you are testing auth (pizzly) or webhooks (webapp) then you'll need to use ngrok to proxy internet traffic to your local machine
+
+   Get access to ngrok and then follow the instructions here to get it setup: https://ngrok.com/download (use homebrew) and make sure to authenticate.
+
+   Then run the following scripts to start proxying:
+
+   ```sh
+   ./scripts/proxy-pizzly.sh dan-pizzly-dev
+   ./scripts/proxy-webapp.sh dan-trigger-dev
+   ```
+
+3. Environment variables. You will need to create copies of the `.env.example` files in `app/webapp`
 
    ```sh
    cp ./apps/webapp/.env.example ./apps/webapp/.env
@@ -45,21 +56,19 @@ export PULSAR_CPP_DIR=/opt/homebrew/Cellar/libpulsar/3.1.0
 
    Then you will need to fill in the fields with real values.
 
-   You also need to create three `.env` files under the `.docker` directory:
+   You also need to create the `pizzly-server.env` files under the `.docker` directory:
 
    ```sh
    cp ./.docker/pizzly-server.env.example ./.docker/pizzly-server.env
-   cp ./.docker/pizzly_proxy.env.example ./.docker/pizzly_proxy.env
-   cp ./.docker/webapp_proxy.env.example ./.docker/webapp_proxy.env
    ```
 
-   In `webapp_proxy` and `pizzly_proxy` make sure you fill in the `NGROK_SUBDOMAIN` and `NGROK_AUTH` environment variables. For example, in `webapp_proxy` and `pizzly_proxy` you could have something like `dan-trigger-dev` and `dan-pizzly-dev` respectively for the `NGROK_SUBDOMAIN` env var.
+   Next, update the `AUTH_CALLBACK_URL` env var in the `pizzly-server.env` env file with the value provided to the `./scripts/proxy-pizzly.sh` command. Using the example above the `AUTH_CALLBACK_URL` would be `AUTH_CALLBACK_URL=https://dan-pizzly-dev.eu.ngrok.io/oauth/callback`.
 
-   Next, update the `SERVER_HOST` env var in the `pizzly-server.env` env file with the value provided to the `NGROK_SUBDOMAIN` in the `pizzly_proxy.env` file. Using the example above the `SERVER_HOST` would be `SERVER_HOST=https://dan-pizzly-dev.ngrok.io`
+   If you aren't proxying pizzly according to step 2, then leave the `pizzly-server.env` file empty.
 
-   Also, in `webapp/.env`, set the `APP_ORIGIN` to the `NGROK_SUBDOMAIN` provided to the `webapp_proxy.env` file, e.g. `APP_ORIGIN=https://dan-trigger-dev.ngrok.io`
+   If you are proxying the webapp accroding to step 2 then in `webapp/.env`, set the `APP_ORIGIN` to the `NGROK_SUBDOMAIN` provided to the `./scripts/proxy-webapp.sh` command, e.g. `APP_ORIGIN=https://dan-trigger-dev.eu.ngrok.io`
 
-3. Start postgresql, pulsar, pizzly server, and the two ngrok proxies
+4. Start postgresql, pulsar, and pizzly server
 
    ```bash
    pnpm run docker:db
@@ -67,17 +76,17 @@ export PULSAR_CPP_DIR=/opt/homebrew/Cellar/libpulsar/3.1.0
 
    > **Note:** The npm script will complete while Docker sets up the container in the background. Ensure that Docker has finished and your container is running before proceeding.
 
-4. Generate prisma schema
+5. Generate prisma schema
    ```bash
    pnpm run generate
    ```
-5. Run the Prisma migration to the database
+6. Run the Prisma migration to the database
 
    ```bash
    pnpm run db:migrate:deploy
    ```
 
-6. Run the first build (with dependencies via the `...` option)
+7. Run the first build (with dependencies via the `...` option)
 
    ```bash
    pnpm run build --filter=webapp...
@@ -85,7 +94,7 @@ export PULSAR_CPP_DIR=/opt/homebrew/Cellar/libpulsar/3.1.0
 
    **Running simply `pnpm run build` will build everything, including the Remix app.**
 
-7. Run the Remix dev server
+8. Run the Remix dev server
 
 ```bash
 pnpm run dev --filter=webapp

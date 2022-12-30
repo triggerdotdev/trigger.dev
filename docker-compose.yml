@@ -26,20 +26,20 @@ services:
     restart: always
     env_file:
       - .docker/pizzly-server.env
+    environment:
+      - SERVER_HOST=http://localhost
+      - SERVER_PORT=3004
+      - NODE_ENV=development
+      - NANGO_DB_HOST=db
+      - NANGO_DB_USER=postgres
+      - NANGO_DB_PASSWORD=postgres
+      - NANGO_DB_NAME=postgres
     ports:
       - "3004:3004"
     depends_on:
       - db
     networks:
       - app_network
-  pizzly_proxy:
-    image: wernight/ngrok
-    env_file:
-      - .docker/pizzly_proxy.env
-  webapp_proxy:
-    image: wernight/ngrok
-    env_file:
-      - .docker/webapp_proxy.env
   pulsar:
     image: apachepulsar/pulsar:2.10.2
     ports:
