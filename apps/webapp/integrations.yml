@@ -13,12 +13,9 @@
 - name: Slack
   slug: slack
   icon: /integrations/slack.png
-<<<<<<< HEAD
   scopes:
     - channels:read
     - chat:write:bot
-=======
->>>>>>> 2bc66f0 (Setup the slack integration)
   environments:
     development:
       oauth:
