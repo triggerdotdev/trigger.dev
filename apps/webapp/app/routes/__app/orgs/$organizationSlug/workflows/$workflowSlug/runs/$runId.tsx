@@ -1,11 +1,14 @@
 import {
   ArrowPathRoundedSquareIcon,
+  InboxArrowDownIcon,
   BeakerIcon,
   CheckCircleIcon,
   ExclamationCircleIcon,
   ExclamationTriangleIcon,
+  ForwardIcon,
 } from "@heroicons/react/24/solid";
 import {
+  ArrowDownOnSquareIcon,
   BoltIcon,
   ChatBubbleLeftEllipsisIcon,
   GlobeAltIcon,
@@ -292,6 +295,28 @@ function StepHeader({ step }: { step: Step }) {
   }
 }
 
+function InputTitle() {
+  return (
+    <Header4
+      size="extra-extra-small"
+      className="flex gap-1 items-center uppercase text-slate-400 font-semibold tracking-wide mb-2"
+    >
+      Input <InboxArrowDownIcon className="w-4 h-4 text-slate-500" />
+    </Header4>
+  );
+}
+
+function OutputTitle() {
+  return (
+    <Header4
+      size="extra-extra-small"
+      className="flex gap-1 items-center uppercase text-slate-400 font-semibold tracking-wide mb-2"
+    >
+      Output <ForwardIcon className="w-4 h-4 text-slate-500" />
+    </Header4>
+  );
+}
+
 function StepBody({ step }: { step: Step }) {
   switch (step.type) {
     case "LOG_MESSAGE":
@@ -389,8 +414,21 @@ function IntegrationRequestStep({
       <div className="mt-4">
         {request.input && (
           <>
-            <Header4>Input</Header4>
+            <InputTitle />
             <CodeBlock code={stringifyCode(request.input)} align="top" />
+          </>
+        )}
+      </div>
+
+      <div className="mt-4">
+        {request.output && (
+          <>
+            <OutputTitle />
+            <CodeBlock
+              code={stringifyCode(request.output)}
+              align="top"
+              maxHeight="200px"
+            />
           </>
         )}
       </div>

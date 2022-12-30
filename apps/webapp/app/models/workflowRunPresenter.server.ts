@@ -127,6 +127,7 @@ async function parseStep(
         ...base,
         type: "INTEGRATION_REQUEST" as const,
         input: original.input,
+        output: original.output,
         context: original.context,
         displayProperties,
         service: {
@@ -136,18 +137,6 @@ async function parseStep(
           status: externalService.status,
           connection: externalService.connection,
           integration,
-        },
-        request: {
-          params: original.integrationRequest.params,
-          endpoint: original.integrationRequest.endpoint,
-          status: original.integrationRequest.status,
-          retryCount: original.integrationRequest.retryCount,
-          error: original.integrationRequest.error,
-          response: original.integrationRequest.responses[0] && {
-            statusCode: original.integrationRequest.responses[0].statusCode,
-            body: original.integrationRequest.responses[0].body,
-            headers: original.integrationRequest.responses[0].headers,
-          },
         },
       };
   }
