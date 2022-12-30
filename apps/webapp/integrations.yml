@@ -15,7 +15,7 @@
   icon: /integrations/slack.png
   scopes:
     - channels:read
-    - chat:write:bot
+    - chat:write
   environments:
     development:
       oauth:

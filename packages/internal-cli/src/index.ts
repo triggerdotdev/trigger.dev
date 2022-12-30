@@ -29,7 +29,7 @@ program
         environment?: string;
         pizzly_host?: string;
         pizzly_secret_key?: string;
-        aws_profile?: string;
+        awsprofile?: string;
       }
     ) => {
       if (!integration_file_path) {
@@ -48,7 +48,7 @@ program
 
       const client = new SecretsManagerClient({
         region: "us-east-1",
-        credentials: fromIni({ profile: options.aws_profile ?? "default" }),
+        credentials: fromIni({ profile: options.awsprofile ?? "default" }),
       });
 
       const promises = catalog.map(async (integration) => {
@@ -144,7 +144,7 @@ async function updateConfig(
       provider: slug,
       oauth_client_id: client_id,
       oauth_client_secret: client_secret,
-      oauth_scopes: scopes,
+      oauth_scopes: scopes.join(","),
     }),
   });
   return response.ok;
@@ -166,7 +166,7 @@ async function createConfig(
       provider: slug,
       oauth_client_id: client_id,
       oauth_client_secret: client_secret,
-      oauth_scopes: scopes,
+      oauth_scopes: scopes.join(","),
     }),
   });
   return response.ok;
