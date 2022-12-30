@@ -3,11 +3,11 @@ import { github } from "@trigger.dev/integrations";
 
 const trigger = new Trigger({
   id: "github-webhook-9",
-  name: "GitHub Issue changes for jsonhero-web",
+  name: "GitHub Issue changes for trigger.dev",
   apiKey: "trigger_dev_zC25mKNn6c0q",
   endpoint: "ws://localhost:8889/ws",
   logLevel: "debug",
-  on: github.triggers.repoIssueEvent({ repo: "apihero-run/jsonhero-web" }),
+  on: github.triggers.repoIssueEvent({ repo: "triggerdotdev/trigger.dev" }),
   run: async (event, ctx) => {
     await ctx.logger.info(
       "Inside the github-webhook workflow, received event",
