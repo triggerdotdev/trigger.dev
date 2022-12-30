@@ -233,13 +233,7 @@ function WorkflowStep({ step }: { step: Step }) {
         </div>
       </div>
       <StepPanel status={step.status}>
-        <PanelHeader
-          icon={stepInfo[step.type].icon}
-          title={stepInfo[step.type].label}
-          startedAt={step.startedAt}
-          finishedAt={step.finishedAt}
-          // integration={trigger.type === "WEBHOOK"}
-        />
+        <StepHeader step={step} />
         <StepBody step={step} />
       </StepPanel>
     </div>
@@ -264,6 +258,35 @@ function StepPanel({
   }
 
   return <Panel className={`border ${borderClass} my-4`}>{children}</Panel>;
+}
+
+function StepHeader({ step }: { step: Step }) {
+  switch (step.type) {
+    case "INTEGRATION_REQUEST":
+      return (
+        <PanelHeader
+          icon={
+            <img
+              src={step.service.integration.icon}
+              alt={step.service.integration.name}
+              className="h-5 w-5 mr-1"
+            />
+          }
+          title={step.service.integration.name}
+          startedAt={step.startedAt}
+          finishedAt={step.finishedAt}
+        />
+      );
+    default:
+      return (
+        <PanelHeader
+          icon={stepInfo[step.type].icon}
+          title={stepInfo[step.type].label}
+          startedAt={step.startedAt}
+          finishedAt={step.finishedAt}
+        />
+      );
+  }
 }
 
 function StepBody({ step }: { step: Step }) {
