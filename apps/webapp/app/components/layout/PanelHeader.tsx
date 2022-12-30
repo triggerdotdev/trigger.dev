@@ -17,10 +17,7 @@ export function PanelHeader({
   title: string;
   startedAt: Date | null;
   finishedAt: Date | null;
-  integration?: {
-    name: string;
-    logoUrl: string;
-  };
+  integration?: string;
 }) {
   return (
     <div className="flex mb-4 pb-3 justify-between items-center border-b border-slate-700">
@@ -52,12 +49,7 @@ export function PanelHeader({
 
         {integration && (
           <li className="flex gap-2 items-center">
-            <Body size="small">{integration.name}</Body>
-            <img
-              src={integration.logoUrl}
-              alt={integration.name}
-              className="h-8 shadow"
-            />
+            <Body size="small">{integration}</Body>
           </li>
         )}
       </ul>

@@ -1,5 +1,6 @@
 import { normalizeHeaders } from "../headers";
 import {
+  DisplayProperties,
   NormalizedResponse,
   PerformRequestOptions,
   RequestIntegration,
@@ -19,6 +20,25 @@ class SlackRequestIntegration implements RequestIntegration {
       }
       default: {
         throw new Error(`Unknown endpoint: ${options.endpoint}`);
+      }
+    }
+  }
+
+  displayProperties(endpoint: string, params: any): DisplayProperties {
+    switch (endpoint) {
+      case "chat.postMessage": {
+        return {
+          title: `Post message to #${params.channel}`,
+          properties: [
+            {
+              key: "Text",
+              value: params.text,
+            },
+          ],
+        };
+      }
+      default: {
+        throw new Error(`Unknown endpoint: ${endpoint}`);
       }
     }
   }

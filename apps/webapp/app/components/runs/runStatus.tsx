@@ -1,8 +1,5 @@
-import {
-  ClockIcon,
-  XCircleIcon,
-  CheckCircleIcon,
-} from "@heroicons/react/24/solid";
+import { ClockIcon } from "@heroicons/react/24/outline";
+import { XCircleIcon, CheckCircleIcon } from "@heroicons/react/24/solid";
 import classNames from "classnames";
 
 import type { ReactNode } from "react";

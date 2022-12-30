@@ -5,6 +5,7 @@ import {
   TriggerMetadataSchema,
 } from "@trigger.dev/common-schemas";
 import type { CatalogIntegration } from "internal-catalog";
+import { DisplayProperties, slack } from "internal-integrations";
 import invariant from "tiny-invariant";
 import type { PrismaClient } from "~/db.server";
 import { prisma } from "~/db.server";
@@ -106,12 +107,29 @@ async function parseStep(
       );
       invariant(integration, `Integration ${externalService.slug} not found`);
 
+      let displayProperties: DisplayProperties;
+
+      switch (externalService.slug) {
+        case "slack":
+          displayProperties = slack.requests.displayProperties(
+            original.integrationRequest.endpoint,
+            original.integrationRequest.params
+          );
+          break;
+        default:
+          displayProperties = {
+            title: "Unknown integration",
+          };
+      }
+
       return {
         ...base,
         type: "INTEGRATION_REQUEST" as const,
         input: original.input,
         context: original.context,
+        displayProperties,
         service: {
+          id: externalService.id,
           slug: externalService.slug,
           type: externalService.type,
           status: externalService.status,

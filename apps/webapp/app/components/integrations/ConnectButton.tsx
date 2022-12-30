@@ -7,6 +7,7 @@ import type {
   UpdateResponse,
 } from "~/routes/resources/connection";
 import type { CatalogIntegration } from "internal-catalog";
+import { IntegrationIcon } from "./IntegrationIcon";
 
 const actionPath = "/resources/connection";
 
@@ -14,16 +15,18 @@ export function ConnectButton({
   integration,
   organizationId,
   sourceId,
+  serviceId,
   className,
   children,
 }: {
   integration: CatalogIntegration;
   organizationId: string;
   sourceId?: string;
+  serviceId?: string;
   className?: string;
   children: (status: Status) => React.ReactNode;
 }) {
-  const { createFetcher, status } = useCreateConnection(sourceId);
+  const { createFetcher, status } = useCreateConnection(sourceId, serviceId);
 
   return (
     <createFetcher.Form method="post" action={actionPath}>
@@ -41,9 +44,43 @@ export function ConnectButton({
   );
 }
 
+export function BasicConnectButton({
+  integration,
+  organizationId,
+  sourceId,
+  serviceId,
+}: {
+  integration: CatalogIntegration;
+  organizationId: string;
+  sourceId?: string;
+  serviceId?: string;
+}) {
+  return (
+    <ConnectButton
+      key={integration.slug}
+      integration={integration}
+      organizationId={organizationId}
+      sourceId={sourceId}
+      serviceId={serviceId}
+      className="flex rounded-md bg-blue-600 gap-3 text-sm text-white items-center hover:bg-blue-700 transition shadow-md disabled:opacity-50 py-2 pl-2 pr-3"
+    >
+      {(status) => (
+        <>
+          <IntegrationIcon integration={integration} />
+          {status === "loading" ? (
+            <span className="">Connecting…</span>
+          ) : (
+            <span>Connect to {integration.name}</span>
+          )}
+        </>
+      )}
+    </ConnectButton>
+  );
+}
+
 type Status = "loading" | "idle";
 
-export function useCreateConnection(sourceId?: string) {
+export function useCreateConnection(sourceId?: string, serviceId?: string) {
   const createConnectionFetcher = useFetcher<CreateResponse>();
   const completeConnectionFetcher = useFetcher<UpdateResponse>();
   const status: Status =
@@ -58,19 +95,14 @@ export function useCreateConnection(sourceId?: string) {
       connectionId,
       service,
       sourceId,
+      serviceId,
     }: {
       pizzlyHost: string;
       connectionId: string;
       service: string;
       sourceId?: string;
+      serviceId?: string;
     }) => {
-      console.log(`completeFlow`, {
-        pizzlyHost,
-        connectionId,
-        service,
-        sourceId,
-      });
-
       try {
         const pizzly = new Pizzly(pizzlyHost);
         await pizzly.auth(service, connectionId);
@@ -84,6 +116,13 @@ export function useCreateConnection(sourceId?: string) {
           completeData = {
             ...completeData,
             sourceId,
+          };
+        }
+
+        if (serviceId) {
+          completeData = {
+            ...completeData,
+            serviceId,
           };
         }
 

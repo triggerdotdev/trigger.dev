@@ -35,8 +35,14 @@ export type PerformRequestOptions = {
   params: any;
 };
 
+export type DisplayProperties = {
+  title: string;
+  properties?: { key: string; value: string | number | boolean }[];
+};
+
 export interface RequestIntegration {
   perform: (options: PerformRequestOptions) => Promise<NormalizedResponse>;
+  displayProperties: (endpoint: string, params: any) => DisplayProperties;
 }
 
 export interface WebhookIntegration {

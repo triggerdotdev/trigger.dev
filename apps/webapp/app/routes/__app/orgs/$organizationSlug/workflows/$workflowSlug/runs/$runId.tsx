@@ -2,6 +2,7 @@ import {
   ArrowPathRoundedSquareIcon,
   BeakerIcon,
   CheckCircleIcon,
+  ExclamationCircleIcon,
   ExclamationTriangleIcon,
 } from "@heroicons/react/24/solid";
 import {
@@ -35,6 +36,11 @@ import { TriggerBody } from "~/components/triggers/Trigger";
 import { useFetcher } from "@remix-run/react";
 import { useCurrentOrganization } from "~/hooks/useOrganizations";
 import { useCurrentWorkflow } from "~/hooks/useWorkflows";
+import {
+  BasicConnectButton,
+  ConnectButton,
+} from "~/components/integrations/ConnectButton";
+import { IntegrationIcon } from "~/components/integrations/ConnectionSelector";
 
 export const loader = async ({ request, params }: LoaderArgs) => {
   await requireUserId(request);
@@ -275,6 +281,7 @@ function StepHeader({ step }: { step: Step }) {
           title={step.service.integration.name}
           startedAt={step.startedAt}
           finishedAt={step.finishedAt}
+          integration={step.service.connection?.title}
         />
       );
     default:
@@ -355,17 +362,42 @@ function IntegrationRequestStep({
 }: {
   request: StepType<Step, "INTEGRATION_REQUEST">;
 }) {
+  const organization = useCurrentOrganization();
+  invariant(organization, "Organization must be set");
+
   return (
     <>
-      {request.context && (
-        <CodeBlock code={stringifyCode(request.context)} align="top" />
-      )}
-      {request.input && (
+      <Header2 size="large" className="mb-4">
+        {request.displayProperties.title}
+      </Header2>
+      {request.service.connection === null && (
         <>
-          <Header4>Input</Header4>
-          <CodeBlock code={stringifyCode(request.input)} align="top" />
+          <div className="rounded-md bg-red-500/10 border border-red-600 p-3 flex gap-2 items-top mb-2">
+            <ExclamationCircleIcon className="h-6 w-6 mr-1 text-red-500" />
+            <div>
+              <Body className="mb-2">
+                You need to connect {request.service.integration.name} to
+                continue this workflow
+              </Body>
+              <BasicConnectButton
+                key={request.service.slug}
+                integration={request.service.integration}
+                organizationId={organization.id}
+                serviceId={request.service.id}
+              />
+            </div>
+          </div>
         </>
       )}
+
+      <div className="mt-4">
+        {request.input && (
+          <>
+            <Header4>Input</Header4>
+            <CodeBlock code={stringifyCode(request.input)} align="top" />
+          </>
+        )}
+      </div>
     </>
   );
 }

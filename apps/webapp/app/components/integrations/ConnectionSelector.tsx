@@ -5,7 +5,7 @@ import classNames from "classnames";
 import type { CatalogIntegration } from "internal-catalog";
 import { Fragment } from "react";
 import type { APIConnection } from "~/models/apiConnection.server";
-import { ConnectButton } from "./ConnectButton";
+import { BasicConnectButton, ConnectButton } from "./ConnectButton";
 
 type Props = {
   sourceId: string;
@@ -26,27 +26,11 @@ export function ConnectionSelector({
 
   if (connections.length === 0) {
     return (
-      <ConnectButton
+      <BasicConnectButton
         key={integration.slug}
         integration={integration}
         organizationId={organizationId}
-        sourceId={sourceId}
-        className="flex rounded-md bg-slate-800 border border-rose-400 gap-3 text-sm text-slate-200 items-center hover:bg-slate-800/30 transition shadow-md disabled:opacity-50 py-1 pl-1 pr-3"
-      >
-        {(status) => (
-          <>
-            <IntegrationIcon integration={integration} />
-            {status === "loading" ? (
-              <span className="">Connecting…</span>
-            ) : (
-              <span className="text-slate-400">
-                Connect to{" "}
-                <span className="text-slate-200">{integration.name}</span>
-              </span>
-            )}
-          </>
-        )}
-      </ConnectButton>
+      />
     );
   }
 
@@ -132,15 +116,5 @@ export function ConnectionSelector({
         )}
       </Popover>
     </div>
-  );
-}
-
-function IntegrationIcon({ integration }: { integration: CatalogIntegration }) {
-  return (
-    <img
-      src={integration.icon}
-      alt={integration.name}
-      className="h-5 w-5 shadow-lg group-hover:opacity-80 transition"
-    />
   );
 }

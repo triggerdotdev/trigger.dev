@@ -12,11 +12,13 @@ import { env } from "~/env.server";
 import { connectExternalSource } from "~/models/externalSource.server";
 import { internalPubSub } from "~/services/messageBroker.server";
 import { getIntegrations } from "~/models/integrations.server";
+import { connectExternalService } from "~/models/externalService.server";
 
 const updateSchema = z.object({
   type: z.literal("update"),
   connectionId: z.string(),
   sourceId: z.string().optional(),
+  serviceId: z.string().optional(),
 });
 
 export type Update = z.infer<typeof updateSchema>;
@@ -92,7 +94,7 @@ export const action = async ({ request, params }: ActionArgs) => {
         return json(response);
       }
       case "update": {
-        const { connectionId, sourceId } = parsed;
+        const { connectionId, sourceId, serviceId } = parsed;
         await setConnectedAPIConnection({
           id: connectionId,
         });
@@ -101,6 +103,12 @@ export const action = async ({ request, params }: ActionArgs) => {
           await connectExternalSource({ sourceId, connectionId });
           await internalPubSub.publish("EXTERNAL_SOURCE_UPSERTED", {
             id: sourceId,
+          });
+        }
+        if (serviceId !== undefined) {
+          await connectExternalService({ serviceId, connectionId });
+          await internalPubSub.publish("EXTERNAL_SERVICE_UPSERTED", {
+            id: serviceId,
           });
         }
 
