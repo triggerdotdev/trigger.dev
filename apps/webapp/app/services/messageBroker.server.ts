@@ -216,6 +216,10 @@ async function createRequestPubSub() {
         const response = await service.call(data.id);
 
         if (response.stop) {
+          await internalPubSub.publish("INTEGRATION_REQUEST_FINISHED", {
+            id: data.id,
+          });
+
           return true;
         } else {
           await pubSub.publish(

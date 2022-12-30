@@ -22,6 +22,14 @@ const trigger = new Trigger({
       text: `New domain created: ${event.domain} by customer ${event.customerId}`,
     });
 
+    if (response.ok) {
+      await ctx.logger.info("Message sent successfully", {
+        message: response.message,
+      });
+    } else {
+      await ctx.logger.error(`Message failed to send: ${response.error}`);
+    }
+
     return response;
   },
 });
