@@ -110,6 +110,7 @@ export class RegisterWorkflow {
         title: payload.name,
         packageJson: payload.package,
         type: payload.trigger.type,
+        eventNames: payload.trigger.name,
       },
       create: {
         organizationId: organization.id,
@@ -118,6 +119,7 @@ export class RegisterWorkflow {
         packageJson: payload.package,
         type: payload.trigger.type,
         status: payload.trigger.service === "trigger" ? "READY" : "CREATED",
+        eventNames: payload.trigger.name,
       },
       include: {
         externalSource: true,
