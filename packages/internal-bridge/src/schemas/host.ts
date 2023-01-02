@@ -32,6 +32,19 @@ export const HostRPCSchema = {
     }),
     response: z.boolean(),
   },
+  RESOLVE_DELAY: {
+    request: z.object({
+      id: z.string(),
+      meta: z.object({
+        environment: z.string(),
+        workflowId: z.string(),
+        organizationId: z.string(),
+        apiKey: z.string(),
+        runId: z.string(),
+      }),
+    }),
+    response: z.boolean(),
+  },
 };
 
 export type HostRPC = typeof HostRPCSchema;

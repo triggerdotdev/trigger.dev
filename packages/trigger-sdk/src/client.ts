@@ -10,7 +10,7 @@ import {
 } from "internal-bridge";
 import * as pkg from "../package.json";
 import { Trigger, TriggerOptions } from "./trigger";
-import { TriggerContext } from "./types";
+import { TriggerContext, WaitForOptions } from "./types";
 import { ContextLogger } from "./logger";
 import { triggerRunLocalStorage } from "./localStorage";
 import { ulid } from "ulid";
@@ -109,6 +109,23 @@ export class TriggerClient<TSchema extends z.ZodTypeAny> {
       sender: ServerRPCSchema,
       receiver: HostRPCSchema,
       handlers: {
+        RESOLVE_DELAY: async (data) => {
+          console.log(`RESOLVE_DELAY(${data.id})`);
+
+          const waitCallbacks = this.#waitForCallbacks.get(data.id);
+
+          if (!waitCallbacks) {
+            throw new Error(
+              `Could not find wait callbacks for wait ID ${data.id}`
+            );
+          }
+
+          const { resolve, reject } = waitCallbacks;
+
+          resolve();
+
+          return true;
+        },
         RESOLVE_REQUEST: async (data) => {
           const requestCallbacks = this.#responseCompleteCallbacks.get(data.id);
 
@@ -148,7 +165,7 @@ export class TriggerClient<TSchema extends z.ZodTypeAny> {
                 event: JSON.parse(JSON.stringify(event)),
               });
             },
-            waitFor: async (seconds: number) => {
+            waitFor: async (options: WaitForOptions) => {
               const waitId = ulid();
 
               const result = new Promise<void>((resolve, reject) => {
@@ -161,7 +178,36 @@ export class TriggerClient<TSchema extends z.ZodTypeAny> {
               await serverRPC.send("INITIALIZE_DELAY", {
                 id: data.id,
                 waitId,
-                delay: seconds,
+                config: {
+                  type: "DELAY",
+                  seconds: options.seconds,
+                  minutes: options.minutes,
+                  hours: options.hours,
+                  days: options.days,
+                },
+              });
+
+              await result;
+
+              return;
+            },
+            waitUntil: async (date: Date) => {
+              const waitId = ulid();
+
+              const result = new Promise<void>((resolve, reject) => {
+                this.#waitForCallbacks.set(waitId, {
+                  resolve,
+                  reject,
+                });
+              });
+
+              await serverRPC.send("INITIALIZE_DELAY", {
+                id: data.id,
+                waitId,
+                config: {
+                  type: "SCHEDULE_FOR",
+                  scheduledFor: date.toISOString(),
+                },
               });
 
               await result;

@@ -111,7 +111,7 @@ export class TriggerServer {
             "INITIALIZE_DELAY",
             {
               id: data.waitId,
-              delay: data.delay,
+              config: data.config,
             },
             {
               "x-api-key": this.#apiKey,
@@ -373,6 +373,38 @@ export class TriggerServer {
           subscriptionInitialPosition: "Earliest",
         },
         handlers: {
+          RESOLVE_DELAY: async (id, data, properties) => {
+            this.#logger.debug("Received resolve delay", id, data, properties);
+
+            if (!this.#serverRPC) {
+              throw new Error("Cannot resolve delay without an RPC connection");
+            }
+
+            // If the API keys don't match, then we should ignore it
+            // This ensures the workflow is triggered for the correct environment
+            if (properties["x-api-key"] !== this.#apiKey) {
+              return true;
+            }
+
+            // If the workflow id is not the same as the workflow id
+            // that we are listening for, then we should ignore it
+            if (properties["x-workflow-id"] !== this.#workflowId) {
+              return true;
+            }
+
+            const success = await this.#serverRPC.send("RESOLVE_DELAY", {
+              id: data.id,
+              meta: {
+                workflowId: properties["x-workflow-id"],
+                organizationId: properties["x-org-id"],
+                environment: properties["x-env"],
+                apiKey: properties["x-api-key"],
+                runId: properties["x-workflow-run-id"],
+              },
+            });
+
+            return success;
+          },
           RESOLVE_INTEGRATION_REQUEST: async (id, data, properties) => {
             this.#logger.debug(
               "Received finish integration request",

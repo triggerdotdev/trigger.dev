@@ -3,6 +3,13 @@ import { z } from "zod";
 
 type CustomEvent = z.infer<typeof SerializableCustomEventSchema>;
 
+export type WaitForOptions = {
+  seconds?: number;
+  minutes?: number;
+  hours?: number;
+  days?: number;
+};
+
 export interface TriggerContext {
   id: string;
   environment: string;
@@ -10,7 +17,8 @@ export interface TriggerContext {
   organizationId: string;
   logger: TriggerLogger;
   fireEvent(event: CustomEvent): Promise<void>;
-  waitFor(seconds: number): Promise<void>;
+  waitFor(options: WaitForOptions): Promise<void>;
+  waitUntil(date: Date): Promise<void>;
 }
 
 export interface TriggerLogger {

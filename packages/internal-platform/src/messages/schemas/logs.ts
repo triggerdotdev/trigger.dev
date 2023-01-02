@@ -1,11 +1,11 @@
+import { LogMessageSchema } from "@trigger.dev/common-schemas";
 import { z } from "zod";
-import { ErrorSchema } from "@trigger.dev/common-schemas";
 
-const Catalog = {
-  FAIL_WORKFLOW_RUN: {
+export const coordinator = {
+  LOG_MESSAGE: {
     data: z.object({
       id: z.string(),
-      error: ErrorSchema,
+      log: LogMessageSchema,
     }),
     properties: z.object({
       "x-workflow-id": z.string(),
@@ -13,5 +13,3 @@ const Catalog = {
     }),
   },
 };
-
-export default Catalog;

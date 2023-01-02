@@ -1,19 +1,15 @@
-import sendIntegrationRequest from "../schemas/sendIntegrationRequest";
-import startWorklowRun from "../schemas/startWorkflowRun";
-import failWorkflowRun from "../schemas/failWorkflowRun";
-import completeWorkflowRun from "../schemas/completeWorkflowRun";
-import logMessage from "../schemas/logMessage";
-import triggerCustomEvent from "../schemas/triggerCustomEvent";
-import awaits from "../schemas/awaits";
+import { coordinator as integrationRequests } from "../schemas/integrationRequests";
+import { coordinator as workflowRuns } from "../schemas/workflowRuns";
+import { coordinator as logs } from "../schemas/logs";
+import { coordinator as customEvents } from "../schemas/customEvents";
+import { coordinator as delays } from "../schemas/delays";
 
 const Catalog = {
-  ...sendIntegrationRequest,
-  ...startWorklowRun,
-  ...failWorkflowRun,
-  ...completeWorkflowRun,
-  ...logMessage,
-  ...triggerCustomEvent,
-  ...awaits,
+  ...integrationRequests,
+  ...workflowRuns,
+  ...logs,
+  ...customEvents,
+  ...delays,
 };
 
 export default Catalog;

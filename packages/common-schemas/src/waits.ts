@@ -2,7 +2,10 @@ import { z } from "zod";
 
 export const DelaySchema = z.object({
   type: z.literal("DELAY"),
-  durationInMs: z.number(),
+  seconds: z.number().optional(),
+  minutes: z.number().optional(),
+  hours: z.number().optional(),
+  days: z.number().optional(),
 });
 
 export const ScheduledForSchema = z.object({

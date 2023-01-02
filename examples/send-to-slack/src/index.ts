@@ -17,12 +17,20 @@ const trigger = new Trigger({
     }),
   }),
   run: async (event, ctx) => {
-    // await ctx.waitFor(60);
+    await ctx.logger.info(
+      "Received domain.created event, waiting for 60 seconds..."
+    );
+
+    await ctx.waitFor({ seconds: 60 });
+
+    await ctx.logger.info("Posting to Slack...");
 
     const response = await slack.postMessage({
       channel: "test-integrations",
       text: `New domain created: ${event.domain} by customer ${event.customerId}`,
     });
+
+    await ctx.logger.info("Posted to Slack!");
 
     return response.message;
   },

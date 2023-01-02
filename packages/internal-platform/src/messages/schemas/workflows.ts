@@ -8,11 +8,9 @@ export const TriggerWorkflowMessageSchema = z.object({
   context: JsonSchema.default({}),
 });
 
-const Catalog = {
+export const platform = {
   TRIGGER_WORKFLOW: {
     data: TriggerWorkflowMessageSchema,
     properties: WorkflowEventPropertiesSchema,
   },
 };
-
-export default Catalog;

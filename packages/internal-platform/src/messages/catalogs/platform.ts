@@ -1,9 +1,11 @@
-import triggerWorkflow from "../schemas/triggerWorkflow";
-import finishIntegrationRequest from "../schemas/finishIntegrationRequest";
+import { platform as workflows } from "../schemas/workflows";
+import { platform as integrationRequests } from "../schemas/integrationRequests";
+import { platform as delays } from "../schemas/delays";
 
 const Catalog = {
-  ...triggerWorkflow,
-  ...finishIntegrationRequest,
+  ...workflows,
+  ...integrationRequests,
+  ...delays,
 };
 
 export default Catalog;

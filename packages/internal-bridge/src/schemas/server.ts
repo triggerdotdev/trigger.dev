@@ -1,6 +1,7 @@
 import {
   CustomEventSchema,
   TriggerMetadataSchema,
+  WaitSchema,
 } from "@trigger.dev/common-schemas";
 import { z } from "zod";
 
@@ -9,7 +10,7 @@ export const ServerRPCSchema = {
     request: z.object({
       id: z.string(),
       waitId: z.string(),
-      delay: z.number(),
+      config: WaitSchema,
     }),
     response: z.boolean(),
   },

@@ -28,6 +28,7 @@ import { PerformIntegrationRequest } from "./requests/performIntegrationRequest.
 import { StartIntegrationRequest } from "./requests/startIntegrationRequest.server";
 import { WaitForConnection } from "./requests/waitForConnection.server";
 import { HandleNewServiceConnection } from "./externalServices/handleNewConnection.server";
+import { ResolveDelay } from "./delays/resolveDelay.server";
 
 let pulsarClient: PulsarClient;
 let triggerPublisher: ZodPublisher<PlatformCatalog>;
@@ -183,7 +184,7 @@ async function createTriggerSubscriber() {
 
         await service.call(properties["x-workflow-run-id"], {
           id: data.id,
-          seconds: data.delay,
+          config: data.config,
         });
 
         return true;
@@ -273,6 +274,10 @@ const InternalCatalog = {
     data: z.object({ id: z.string() }),
     properties: z.object({}),
   },
+  RESOLVE_DELAY: {
+    data: z.object({ id: z.string() }),
+    properties: z.object({}),
+  },
 };
 
 async function createInternalPubSub() {
@@ -288,6 +293,24 @@ async function createInternalPubSub() {
     },
     schema: InternalCatalog,
     handlers: {
+      RESOLVE_DELAY: async (id, data, properties) => {
+        const service = new ResolveDelay();
+
+        const run = await service.call(data.id);
+
+        triggerPublisher.publish(
+          "RESOLVE_DELAY",
+          { id: data.id },
+          {
+            "x-workflow-run-id": run.id,
+            "x-api-key": run.environment.apiKey,
+            "x-org-id": run.environment.organizationId,
+            "x-workflow-id": run.workflowId,
+            "x-env": run.environment.slug,
+          }
+        );
+        return true;
+      },
       INTEGRATION_REQUEST_CREATED: async (id, data, properties) => {
         const integrationRequest = await findIntegrationRequestById(data.id);
 

@@ -1,9 +1,11 @@
 import { z } from "zod";
+import { CustomEventSchema } from "@trigger.dev/common-schemas";
 
-const Catalog = {
-  START_WORKFLOW_RUN: {
+export const coordinator = {
+  TRIGGER_CUSTOM_EVENT: {
     data: z.object({
       id: z.string(),
+      event: CustomEventSchema,
     }),
     properties: z.object({
       "x-workflow-id": z.string(),
@@ -11,5 +13,3 @@ const Catalog = {
     }),
   },
 };
-
-export default Catalog;
