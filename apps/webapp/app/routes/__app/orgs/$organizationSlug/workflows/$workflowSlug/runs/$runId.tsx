@@ -1,12 +1,12 @@
 import {
   ArrowPathRoundedSquareIcon,
   InboxArrowDownIcon,
-  BeakerIcon,
   CheckCircleIcon,
   ExclamationCircleIcon,
   ExclamationTriangleIcon,
   ForwardIcon,
 } from "@heroicons/react/24/solid";
+import { BeakerIcon } from "@heroicons/react/20/solid";
 import {
   BoltIcon,
   ChatBubbleLeftEllipsisIcon,
