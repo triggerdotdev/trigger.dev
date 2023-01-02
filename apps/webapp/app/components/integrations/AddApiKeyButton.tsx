@@ -1,4 +1,3 @@
-import { Dialog } from "@headlessui/react";
 import type {
   APIKeyAuthentication,
   CatalogIntegration,
@@ -6,7 +5,11 @@ import type {
 import { Fragment, useState } from "react";
 import { marked } from "marked";
 import { StyledDialog } from "../primitives/Dialog";
-import { PrimaryButton } from "../primitives/Buttons";
+import { PrimaryButton, SecondaryButton } from "../primitives/Buttons";
+import { Form, useFetcher } from "@remix-run/react";
+import { Input } from "../primitives/Input";
+import { Label } from "../primitives/Label";
+import { InputGroup } from "../primitives/InputGroup";
 
 type Status = "loading" | "idle";
 
@@ -27,6 +30,8 @@ export function AddApiKeyButton({
   className?: string;
   children: (status: Status) => React.ReactNode;
 }) {
+  // const fetcher = useFetcher<CreateResponse>();
+
   const [status, setStatus] = useState<Status>("idle");
   const [isOpen, setIsOpen] = useState(false);
 
@@ -55,11 +60,28 @@ export function AddApiKeyButton({
             />
           </div>
 
-          <div className="mt-4 flex justify-between">
-            <PrimaryButton type="button" onClick={(e) => setIsOpen(false)}>
-              Close
-            </PrimaryButton>
-          </div>
+          <Form>
+            <InputGroup>
+              <Label htmlFor="title">Name</Label>
+              <Input
+                id="title"
+                name="title"
+                placeholder="The name of this connection"
+              />
+            </InputGroup>
+
+            <InputGroup>
+              <Label htmlFor="apiKey">API Key</Label>
+              <Input id="apiKey" name="apiKey" placeholder="<api_key>" />
+            </InputGroup>
+
+            <div className="mt-4 flex justify-between">
+              <PrimaryButton type="submit">Save</PrimaryButton>
+              <SecondaryButton type="button" onClick={(e) => setIsOpen(false)}>
+                Cancel
+              </SecondaryButton>
+            </div>
+          </Form>
         </StyledDialog.Panel>
       </StyledDialog.Dialog>
     </>

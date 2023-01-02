@@ -1,11 +1,9 @@
 import classNames from "classnames";
 
 const roundedStyles = {
-  roundedLeft:
-    "rounded-l focus:outline-offset-[0px] focus:outline-blue-500 -mr-1",
-  roundedRight:
-    "rounded-r focus:outline-offset-[0px] focus:outline-blue-500 -ml-1",
-  roundedFull: "rounded focus:outline-offset-[0px] focus:outline-blue-500",
+  roundedLeft: "rounded-l -mr-1",
+  roundedRight: "rounded-r -ml-1",
+  roundedFull: "rounded",
 };
 
 type InputProps = React.DetailedHTMLProps<
@@ -26,7 +24,10 @@ export function Input({
   return (
     <input
       {...props}
-      className={`flex grow border border-slate-200 py-2 pl-3 pr-1 text-slate-700 ${classes}`}
+      className={classNames(
+        `flex grow rounded-lg border border-slate-300 bg-slate-50 py-2 pl-3 pr-1 text-slate-700 focus:outline-offset-[0px] focus:outline-blue-500`,
+        classes
+      )}
     >
       {children}
     </input>
