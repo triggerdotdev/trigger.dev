@@ -109,7 +109,7 @@ export class TriggerClient<TSchema extends z.ZodTypeAny> {
       sender: ServerRPCSchema,
       receiver: HostRPCSchema,
       handlers: {
-        COMPLETE_REQUEST: async (data) => {
+        RESOLVE_REQUEST: async (data) => {
           const requestCallbacks = this.#responseCompleteCallbacks.get(data.id);
 
           if (!requestCallbacks) {

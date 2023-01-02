@@ -115,7 +115,8 @@ export class ZodSubscriber<SubscriberSchema extends MessageCatalogSchema> {
         this.#logger.error("[ZodSubscriber] Error handling message", e);
       }
 
-      consumer.negativeAcknowledge(msg);
+      // TODO: Add support for dead letter queue
+      await consumer.acknowledge(msg);
     }
   }
 

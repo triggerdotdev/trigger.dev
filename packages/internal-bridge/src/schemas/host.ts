@@ -18,7 +18,7 @@ export const HostRPCSchema = {
     }),
     response: z.void().nullable(),
   },
-  COMPLETE_REQUEST: {
+  RESOLVE_REQUEST: {
     request: z.object({
       id: z.string(),
       output: JsonSchema.default({}),

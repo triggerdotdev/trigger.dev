@@ -399,7 +399,7 @@ export class TriggerServer {
               return true;
             }
 
-            const success = await this.#serverRPC.send("COMPLETE_REQUEST", {
+            const success = await this.#serverRPC.send("RESOLVE_REQUEST", {
               id: data.id,
               output: data.output,
               meta: {
