@@ -196,7 +196,7 @@ model ExternalSource {
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
 
-  connection   APIConnection? @relation(fields: [connectionId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  connection   APIConnection? @relation(fields: [connectionId], references: [id], onDelete: SetNull)
   connectionId String?
 
   @@unique([organizationId, key])
@@ -221,7 +221,7 @@ model ExternalService {
   workflow   Workflow @relation(fields: [workflowId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   workflowId String
 
-  connection   APIConnection? @relation(fields: [connectionId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  connection   APIConnection? @relation(fields: [connectionId], references: [id], onDelete: SetNull)
   connectionId String?
 
   type   ExternalServiceType
