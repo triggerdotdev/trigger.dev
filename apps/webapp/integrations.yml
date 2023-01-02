@@ -32,6 +32,17 @@
     header_name: "Authorization"
     header_type: "Bearer"
     documentation: |
-      # Example title
-      - Go to airtable
-      - Get API keys
+      You need to create a `Personal access token`
+      1. Go to the [personal access token](https://airtable.com/create/tokens) page
+        - You may need to login
+      2. Press the `Create token` button
+      3. Name your token, e.g. "Trigger.dev token"
+      4. Add scopes
+        - You will almost certainly want to add `data.records:read`
+        - If you want to make changes as well, add `data.records:write`
+        - Other scopes are more advanced. [View the documentation](https://airtable.com/developers/web/api/scopes#)
+      5. Add permissions
+        - You can allow access to all bases, or just specific ones
+      6. Press the `Create token` button
+      7. Copy the token (it won't be shown again)
+      8. Paste it into the API Key field below
