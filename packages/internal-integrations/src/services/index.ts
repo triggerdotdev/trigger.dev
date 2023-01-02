@@ -39,7 +39,7 @@ export class HttpService {
         method: endpoint.options.method,
         headers: {
           Authorization: `Bearer ${this.options.accessToken}`,
-          "Content-Type": "application/json",
+          "Content-Type": "application/json; charset=utf-8",
         },
         body: body ? JSON.stringify(body) : undefined,
       }
