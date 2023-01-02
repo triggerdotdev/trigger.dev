@@ -406,7 +406,7 @@ function DelayScheduled({
 }) {
   const scheduledDate = new Date(scheduled.scheduledFor);
   const [timeRemaining, setTimeRemaining] = useState(
-    step.startedAt ? dateDifference(step.startedAt, scheduledDate) : undefined
+    scheduledDate ? dateDifference(new Date(), scheduledDate) : undefined
   );
 
   useEffect(() => {
@@ -434,7 +434,7 @@ function DelayScheduled({
             Fires at:
           </Body>
           <Body className={workflowNodeDelayClasses} size="small">
-            {formatDateTime(new Date(scheduled.scheduledFor))}
+            {formatDateTime(scheduledDate, "long")}
           </Body>
         </div>
       </div>

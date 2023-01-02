@@ -21,9 +21,9 @@ const trigger = new Trigger({
       "Received domain.created event, waiting for 60 seconds..."
     );
 
-    await ctx.waitFor({ seconds: 60 });
-
     await ctx.waitUntil(new Date(Date.now() + 1000 * 60));
+
+    await ctx.waitFor({ seconds: 60 });
 
     await ctx.logger.info("Posting to Slack...");
 
