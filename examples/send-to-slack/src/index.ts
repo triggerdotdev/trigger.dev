@@ -23,6 +23,8 @@ const trigger = new Trigger({
 
     await ctx.waitFor({ seconds: 60 });
 
+    await ctx.waitUntil(new Date(Date.now() + 1000 * 60));
+
     await ctx.logger.info("Posting to Slack...");
 
     const response = await slack.postMessage({
