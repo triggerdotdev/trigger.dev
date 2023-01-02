@@ -153,6 +153,12 @@ export function useCreateConnection(sourceId?: string, serviceId?: string) {
 
     completeConnectionFetcher.type = "init";
 
+    if (!createConnectionFetcher.data.success) {
+      throw new Error(
+        `There was an error creating the connection: ${createConnectionFetcher.data.errors}`
+      );
+    }
+
     invariant(
       createConnectionFetcher.data.pizzlyHost,
       "pizzlyHost is required for oauth"
