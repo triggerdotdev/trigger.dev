@@ -41,7 +41,7 @@ import { useCurrentOrganization } from "~/hooks/useOrganizations";
 import { useCurrentWorkflow } from "~/hooks/useWorkflows";
 import { BasicConnectButton } from "~/components/integrations/ConnectOAuthButton";
 import { calculateDurationInMs } from "~/utils/delays";
-import { Delay } from "@trigger.dev/common-schemas";
+import { Delay, Scheduled } from "@trigger.dev/common-schemas";
 
 export const loader = async ({ request, params }: LoaderArgs) => {
   await requireUserId(request);
@@ -338,18 +338,7 @@ function DelayStep({ step }: { step: StepType<Step, "DURABLE_DELAY"> }) {
     case "DELAY":
       return <DelayDuration step={step} delay={step.input} />;
     case "SCHEDULE_FOR":
-      return (
-        <div className="grid grid-cols-3 gap-2 text-slate-300">
-          <div className="flex flex-col gap-1">
-            <Body size="extra-small" className={workflowNodeUppercaseClasses}>
-              Fires at:
-            </Body>
-            <Body className={workflowNodeDelayClasses} size="small">
-              {formatDateTime(new Date(step.input.scheduledFor))}
-            </Body>
-          </div>
-        </div>
-      );
+      return <DelayScheduled step={step} scheduled={step.input} />;
   }
 }
 
@@ -393,6 +382,61 @@ function DelayDuration({
         <Body className={workflowNodeDelayClasses} size="small">
           {humanizeDuration(msDelay)}
         </Body>
+      </div>
+      {step.status === "PENDING" && timeRemaining && (
+        <div className="flex flex-col gap-1">
+          <Body size="extra-small" className={workflowNodeUppercaseClasses}>
+            Fires in:
+          </Body>
+          <Body className={workflowNodeDelayClasses} size="small">
+            {humanizeDuration(timeRemaining, { round: true })}
+          </Body>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function DelayScheduled({
+  step,
+  scheduled,
+}: {
+  step: StepType<Step, "DURABLE_DELAY">;
+  scheduled: Scheduled;
+}) {
+  const scheduledDate = new Date(scheduled.scheduledFor);
+  const [timeRemaining, setTimeRemaining] = useState(
+    step.startedAt ? dateDifference(step.startedAt, scheduledDate) : undefined
+  );
+
+  useEffect(() => {
+    if (timeRemaining === undefined) return;
+    const interval = setInterval(() => {
+      setTimeRemaining((timeRemaining) => {
+        if (timeRemaining === undefined) return undefined;
+        if (timeRemaining <= 1000) return 0;
+        if (timeRemaining <= 0) {
+          clearInterval(interval);
+          return 0;
+        }
+
+        return timeRemaining - 1000;
+      });
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [timeRemaining]);
+
+  return (
+    <div className="grid grid-cols-2 gap-2 text-slate-300">
+      <div className="grid grid-cols-3 gap-2 text-slate-300">
+        <div className="flex flex-col gap-1">
+          <Body size="extra-small" className={workflowNodeUppercaseClasses}>
+            Fires at:
+          </Body>
+          <Body className={workflowNodeDelayClasses} size="small">
+            {formatDateTime(new Date(scheduled.scheduledFor))}
+          </Body>
+        </div>
       </div>
       {step.status === "PENDING" && timeRemaining && (
         <div className="flex flex-col gap-1">
