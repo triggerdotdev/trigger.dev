@@ -59,6 +59,10 @@ model APIConnection {
   apiIdentifier String
   status        APIConnectionStatus @default(CREATED)
   scopes        String[]
+  
+  authenticationMethod APIAuthenticationMethod @default(OAUTH)
+  authenticationConfig Json?
+
   type          APIConnectionType
 
   createdAt DateTime @default(now())
@@ -69,6 +73,11 @@ model APIConnection {
 
   externalSources  ExternalSource[]
   externalServices ExternalService[]
+}
+
+enum APIAuthenticationMethod {
+  OAUTH
+  API_KEY
 }
 
 enum APIConnectionType {
