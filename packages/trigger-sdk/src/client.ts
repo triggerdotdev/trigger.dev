@@ -15,12 +15,6 @@ import { ContextLogger } from "./logger";
 import { triggerRunLocalStorage } from "./localStorage";
 import { ulid } from "ulid";
 
-type RequestResponse = {
-  body?: any;
-  headers: Record<string, string>;
-  status: number;
-};
-
 export class TriggerClient<TSchema extends z.ZodTypeAny> {
   #trigger: Trigger<TSchema>;
   #options: TriggerOptions<TSchema>;
@@ -39,6 +33,14 @@ export class TriggerClient<TSchema extends z.ZodTypeAny> {
     string,
     {
       resolve: (output: any) => void;
+      reject: (err?: any) => void;
+    }
+  >();
+
+  #waitForCallbacks = new Map<
+    string,
+    {
+      resolve: () => void;
       reject: (err?: any) => void;
     }
   >();
@@ -145,6 +147,26 @@ export class TriggerClient<TSchema extends z.ZodTypeAny> {
                 id: data.id,
                 event: JSON.parse(JSON.stringify(event)),
               });
+            },
+            waitFor: async (seconds: number) => {
+              const waitId = ulid();
+
+              const result = new Promise<void>((resolve, reject) => {
+                this.#waitForCallbacks.set(waitId, {
+                  resolve,
+                  reject,
+                });
+              });
+
+              await serverRPC.send("INITIALIZE_DELAY", {
+                id: data.id,
+                waitId,
+                delay: seconds,
+              });
+
+              await result;
+
+              return;
             },
           };
 

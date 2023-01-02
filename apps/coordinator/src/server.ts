@@ -89,6 +89,39 @@ export class TriggerServer {
       sender: HostRPCSchema,
       receiver: ServerRPCSchema,
       handlers: {
+        INITIALIZE_DELAY: async (data) => {
+          if (!this.#triggerPublisher) {
+            // TODO: need to recover from this issue by trying to reconnect
+            return false;
+          }
+
+          if (!this.#organizationId) {
+            // TODO: this should never really happen
+            throw new Error(
+              "Cannot complete workflow run without an organization ID"
+            );
+          }
+
+          if (!this.#workflowId) {
+            // TODO: this should never really happen
+            throw new Error("Cannot send log without a workflow ID");
+          }
+
+          const response = await this.#triggerPublisher.publish(
+            "INITIALIZE_DELAY",
+            {
+              id: data.waitId,
+              delay: data.delay,
+            },
+            {
+              "x-api-key": this.#apiKey,
+              "x-workflow-id": this.#workflowId,
+              "x-workflow-run-id": data.id,
+            }
+          );
+
+          return !!response;
+        },
         SEND_REQUEST: async (data) => {
           if (!this.#triggerPublisher) {
             // TODO: need to recover from this issue by trying to reconnect

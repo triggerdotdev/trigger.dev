@@ -1,16 +1,14 @@
 import { WaitSchema } from "@trigger.dev/common-schemas";
 import { z } from "zod";
+import { WorkflowSendRunEventPropertiesSchema } from "../sharedSchemas";
 
 const Catalog = {
-  INITIATE_WAIT: {
+  INITIALIZE_DELAY: {
     data: z.object({
       id: z.string(),
-      wait: WaitSchema,
+      delay: z.number(),
     }),
-    properties: z.object({
-      "x-workflow-id": z.string(),
-      "x-api-key": z.string(),
-    }),
+    properties: WorkflowSendRunEventPropertiesSchema,
   },
 };
 

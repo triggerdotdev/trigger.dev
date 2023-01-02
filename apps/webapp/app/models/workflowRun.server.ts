@@ -134,24 +134,6 @@ export async function logMessageInRun(
   });
 }
 
-export async function initiateWaitInRun(
-  id: string,
-  wait: z.infer<typeof WaitSchema>,
-  apiKey: string
-) {
-  const workflowRun = await findWorkflowRunScopedToApiKey(id, apiKey);
-
-  await prisma.workflowRunStep.create({
-    data: {
-      runId: workflowRun.id,
-      type: "DURABLE_DELAY",
-      input: wait,
-      context: {},
-      startedAt: new Date(),
-    },
-  });
-}
-
 async function findWorkflowRunScopedToApiKey(id: string, apiKey: string) {
   const workflowRun = await prisma.workflowRun.findFirst({
     where: { id },

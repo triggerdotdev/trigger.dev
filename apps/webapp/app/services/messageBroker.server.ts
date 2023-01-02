@@ -16,11 +16,11 @@ import {
   completeWorkflowRun,
   failWorkflowRun,
   findWorklowRunById,
-  initiateWaitInRun,
   logMessageInRun,
   startWorkflowRun,
   triggerEventInRun,
 } from "~/models/workflowRun.server";
+import { InitiateDelay } from "./delays/initiateDelay.server";
 import { DispatchEvent } from "./events/dispatch.server";
 import { RegisterExternalSource } from "./externalSources/registerExternalSource.server";
 import { CreateIntegrationRequest } from "./requests/createIntegrationRequest.server";
@@ -177,8 +177,13 @@ async function createTriggerSubscriber() {
 
         return true;
       },
-      INITIATE_WAIT: async (id, data, properties) => {
-        await initiateWaitInRun(data.id, data.wait, properties["x-api-key"]);
+      INITIALIZE_DELAY: async (id, data, properties) => {
+        const service = new InitiateDelay();
+
+        await service.call(properties["x-workflow-run-id"], {
+          id: data.id,
+          seconds: data.delay,
+        });
 
         return true;
       },

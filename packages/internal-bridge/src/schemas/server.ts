@@ -5,6 +5,14 @@ import {
 import { z } from "zod";
 
 export const ServerRPCSchema = {
+  INITIALIZE_DELAY: {
+    request: z.object({
+      id: z.string(),
+      waitId: z.string(),
+      delay: z.number(),
+    }),
+    response: z.boolean(),
+  },
   SEND_REQUEST: {
     request: z.object({
       id: z.string(),

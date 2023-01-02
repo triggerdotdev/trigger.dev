@@ -10,6 +10,7 @@ export interface TriggerContext {
   organizationId: string;
   logger: TriggerLogger;
   fireEvent(event: CustomEvent): Promise<void>;
+  waitFor(seconds: number): Promise<void>;
 }
 
 export interface TriggerLogger {
