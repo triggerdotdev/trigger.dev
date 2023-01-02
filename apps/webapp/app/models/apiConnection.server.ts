@@ -1,7 +1,12 @@
 import type { APIConnection, Organization } from ".prisma/client";
+import { z } from "zod";
 import { prisma } from "~/db.server";
 
 export { APIConnection };
+
+export const apiKeyConfigSchema = z.object({
+  api_key: z.string().min(1),
+});
 
 export async function createAPIConnection({
   organizationId,

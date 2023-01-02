@@ -7,6 +7,7 @@ import { slack } from "internal-integrations";
 import type { PrismaClient } from "~/db.server";
 import { prisma } from "~/db.server";
 import type { IntegrationRequest } from "~/models/integrationRequest.server";
+import { getAccessToken } from "../accessToken.server";
 import { RedisCacheService } from "../cacheService.server";
 import { pizzly } from "../pizzly.server";
 
@@ -47,9 +48,8 @@ export class PerformIntegrationRequest {
       return { stop: true };
     }
 
-    const accessToken = await pizzly.accessToken(
-      integrationRequest.externalService.connection.apiIdentifier,
-      integrationRequest.externalService.connection.id
+    const accessToken = await getAccessToken(
+      integrationRequest.externalService.connection
     );
 
     if (!accessToken) {
