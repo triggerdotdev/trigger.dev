@@ -216,7 +216,7 @@ async function createRequestPubSub() {
         const response = await service.call(data.id);
 
         if (response.stop) {
-          await internalPubSub.publish("INTEGRATION_REQUEST_FINISHED", {
+          await internalPubSub.publish("RESOLVE_INTEGRATION_REQUEST", {
             id: data.id,
           });
 
@@ -263,7 +263,7 @@ const InternalCatalog = {
     data: z.object({ id: z.string() }),
     properties: z.object({}),
   },
-  INTEGRATION_REQUEST_FINISHED: {
+  RESOLVE_INTEGRATION_REQUEST: {
     data: z.object({ id: z.string() }),
     properties: z.object({}),
   },
@@ -305,7 +305,7 @@ async function createInternalPubSub() {
           return true;
         }
       },
-      INTEGRATION_REQUEST_FINISHED: async (id, data, properties) => {
+      RESOLVE_INTEGRATION_REQUEST: async (id, data, properties) => {
         const integrationRequest = await findIntegrationRequestById(data.id);
 
         if (!integrationRequest) {
@@ -319,7 +319,7 @@ async function createInternalPubSub() {
         }
 
         await triggerPublisher.publish(
-          "FINISH_INTEGRATION_REQUEST",
+          "RESOLVE_INTEGRATION_REQUEST",
           {
             id: integrationRequest.id,
             output: integrationRequest.step.output as z.infer<

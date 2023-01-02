@@ -340,7 +340,7 @@ export class TriggerServer {
           subscriptionInitialPosition: "Earliest",
         },
         handlers: {
-          FINISH_INTEGRATION_REQUEST: async (id, data, properties) => {
+          RESOLVE_INTEGRATION_REQUEST: async (id, data, properties) => {
             this.#logger.debug(
               "Received finish integration request",
               id,

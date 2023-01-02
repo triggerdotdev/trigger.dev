@@ -7,6 +7,7 @@ import {
   RequestIntegration,
 } from "../types";
 import {
+  PostMessageSuccessResponseSchema,
   PostMessageResponseSchema,
   PostMessageBodySchema,
   JoinConversationResponseSchema,
@@ -15,6 +16,7 @@ import {
 } from "./schemas";
 
 export const schemas = {
+  PostMessageSuccessResponseSchema,
   PostMessageResponseSchema,
   PostMessageBodySchema,
 };

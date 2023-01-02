@@ -7,7 +7,7 @@ export type PostMessageOptions = z.infer<
 >;
 
 export type PostMessageResponse = z.infer<
-  typeof slack.schemas.PostMessageResponseSchema
+  typeof slack.schemas.PostMessageSuccessResponseSchema
 >;
 
 export async function postMessage(
@@ -24,7 +24,7 @@ export async function postMessage(
     endpoint: "chat.postMessage",
     params: options,
     response: {
-      schema: slack.schemas.PostMessageResponseSchema,
+      schema: slack.schemas.PostMessageSuccessResponseSchema,
     },
   });
 

@@ -3,7 +3,7 @@ import { z } from "zod";
 import { WorkflowRunEventPropertiesSchema } from "../sharedSchemas";
 
 const Catalog = {
-  FINISH_INTEGRATION_REQUEST: {
+  RESOLVE_INTEGRATION_REQUEST: {
     data: z.object({
       id: z.string(),
       output: JsonSchema.default({}),
