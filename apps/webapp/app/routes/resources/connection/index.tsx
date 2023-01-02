@@ -2,7 +2,7 @@ import { APIConnectionType } from ".prisma/client";
 import type { ActionArgs } from "@remix-run/server-runtime";
 import { json } from "@remix-run/server-runtime";
 import { typedjson } from "remix-typedjson";
-import { z, ZodFormattedError } from "zod";
+import { z } from "zod";
 import { env } from "~/env.server";
 import {
   createAPIConnection,
