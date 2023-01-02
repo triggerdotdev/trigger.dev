@@ -20,6 +20,10 @@ const apiKeyIntegrationAuthenticationSchema = z.object({
   documentation: z.string(),
 });
 
+export type APIKeyAuthentication = z.infer<
+  typeof apiKeyIntegrationAuthenticationSchema
+>;
+
 const integrationSchema = integrationMetadataSchema.extend({
   authentication: z.discriminatedUnion("type", [
     oAuthIntegrationAuthenticationSchema,

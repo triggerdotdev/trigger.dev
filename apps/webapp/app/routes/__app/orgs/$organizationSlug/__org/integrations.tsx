@@ -3,6 +3,7 @@ import type { LoaderArgs } from "@remix-run/server-runtime";
 import { CatalogIntegration } from "internal-catalog";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import invariant from "tiny-invariant";
+import { AddApiKeyButton } from "~/components/integrations/AddApiKeyButton";
 import { ConnectButton, Status } from "~/components/integrations/ConnectButton";
 import { Container } from "~/components/layout/Container";
 import { List } from "~/components/layout/List";
@@ -103,19 +104,30 @@ export default function Integrations() {
                     className="flex flex-col group max-w-[160px] rounded-md bg-slate-800 border border-slate-800 gap-4 text-sm text-slate-200 items-center overflow-hidden hover:bg-slate-800/30 transition shadow-md disabled:opacity-50"
                   >
                     {(status) => (
-                      <AddButton integration={integration} status={status} />
+                      <AddButtonContent
+                        integration={integration}
+                        status={status}
+                      />
                     )}
                   </ConnectButton>
                 );
               case "api_key":
                 //todo support api key integrations here
                 return (
-                  <button
+                  <AddApiKeyButton
                     key={integration.slug}
+                    integration={integration}
+                    organizationId={organization.id}
+                    authentication={integration.authentication}
                     className="flex flex-col group max-w-[160px] rounded-md bg-slate-800 border border-slate-800 gap-4 text-sm text-slate-200 items-center overflow-hidden hover:bg-slate-800/30 transition shadow-md disabled:opacity-50"
                   >
-                    <AddButton integration={integration} status={"idle"} />
-                  </button>
+                    {(status) => (
+                      <AddButtonContent
+                        integration={integration}
+                        status={status}
+                      />
+                    )}
+                  </AddApiKeyButton>
                 );
               default:
                 return null;
@@ -127,7 +139,7 @@ export default function Integrations() {
   );
 }
 
-function AddButton({
+function AddButtonContent({
   integration,
   status,
 }: {
