@@ -6,6 +6,7 @@ import type {
 import { Fragment, useState } from "react";
 import { marked } from "marked";
 import { StyledDialog } from "../primitives/Dialog";
+import { PrimaryButton } from "../primitives/Buttons";
 
 type Status = "loading" | "idle";
 
@@ -41,13 +42,13 @@ export function AddApiKeyButton({
         show={isOpen}
         as={Fragment}
       >
-        <StyledDialog.Panel className="w-full max-w-md transform overflow-hidden rounded-2xl bg-white p-6 text-left align-middle shadow-xl transition-all">
+        <StyledDialog.Panel>
           <StyledDialog.Title>
             Add {integration.name} API keys
           </StyledDialog.Title>
           <div className="mt-2">
             <p
-              className="prose prose-sm prose-slate"
+              className="prose prose-sm prose-invert"
               dangerouslySetInnerHTML={{
                 __html: marked(authentication.documentation),
               }}
@@ -55,13 +56,9 @@ export function AddApiKeyButton({
           </div>
 
           <div className="mt-4 flex justify-between">
-            <button
-              type="button"
-              className="inline-flex justify-center rounded-md border border-transparent bg-blue-100 px-4 py-2 text-sm font-medium text-blue-900 hover:bg-blue-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2"
-              onClick={(e) => setIsOpen(false)}
-            >
+            <PrimaryButton type="button" onClick={(e) => setIsOpen(false)}>
               Close
-            </button>
+            </PrimaryButton>
           </div>
         </StyledDialog.Panel>
       </StyledDialog.Dialog>

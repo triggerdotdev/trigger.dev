@@ -1,5 +1,4 @@
 import { Dialog as HeadlessDialog, Transition } from "@headlessui/react";
-import classNames from "classnames";
 import { forwardRef, Fragment } from "react";
 
 type DialogProps = Parameters<typeof HeadlessDialog>[0] & {
@@ -19,7 +18,7 @@ function Dialog({ onClose, children, ...props }: DialogProps) {
           leaveFrom="opacity-100"
           leaveTo="opacity-0"
         >
-          <div className="fixed inset-0 bg-black bg-opacity-25" />
+          <div className="fixed inset-0 bg-black/50" />
         </Transition.Child>
 
         <div className="fixed inset-0 overflow-y-auto">
@@ -45,7 +44,7 @@ function Dialog({ onClose, children, ...props }: DialogProps) {
 type PanelProps = Parameters<typeof HeadlessDialog.Panel>[0];
 const Panel = forwardRef((props: PanelProps, ref) => (
   <HeadlessDialog.Panel
-    className="w-full max-w-md transform overflow-hidden rounded-2xl bg-white p-6 text-left align-middle shadow-xl transition-all"
+    className="w-full max-w-md transform overflow-hidden rounded-lg bg-slate-800 text-slate-200 p-6 text-left align-middle shadow-xl transition-all"
     {...props}
     ref={ref}
   />
@@ -56,7 +55,7 @@ type TitleProps = Parameters<typeof HeadlessDialog.Title>[0];
 const Title = forwardRef((props: TitleProps, ref) => (
   <HeadlessDialog.Title
     as="h3"
-    className="text-lg font-medium leading-6 text-gray-900"
+    className="text-lg font-medium leading-6 text-slate-200"
     {...props}
     ref={ref}
   />
