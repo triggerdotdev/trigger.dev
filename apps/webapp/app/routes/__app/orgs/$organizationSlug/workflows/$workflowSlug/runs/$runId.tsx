@@ -10,6 +10,7 @@ import { BeakerIcon } from "@heroicons/react/20/solid";
 import {
   BoltIcon,
   ChatBubbleLeftEllipsisIcon,
+  ClockIcon,
   GlobeAltIcon,
 } from "@heroicons/react/24/outline";
 import { Panel } from "~/components/layout/Panel";
@@ -21,8 +22,8 @@ import {
   Header4,
 } from "~/components/primitives/text/Headers";
 import CodeBlock from "~/components/code/CodeBlock";
-import type { ReactNode } from "react";
-import { formatDateTime } from "~/utils";
+import { ReactNode, useEffect, useState } from "react";
+import { dateDifference, formatDateTime } from "~/utils";
 import type { LoaderArgs } from "@remix-run/server-runtime";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { requireUserId } from "~/services/session.server";
@@ -39,6 +40,8 @@ import { useFetcher } from "@remix-run/react";
 import { useCurrentOrganization } from "~/hooks/useOrganizations";
 import { useCurrentWorkflow } from "~/hooks/useWorkflows";
 import { BasicConnectButton } from "~/components/integrations/ConnectOAuthButton";
+import { calculateDurationInMs } from "~/utils/delays";
+import { Delay } from "@trigger.dev/common-schemas";
 
 export const loader = async ({ request, params }: LoaderArgs) => {
   await requireUserId(request);
@@ -324,40 +327,86 @@ function StepBody({ step }: { step: Step }) {
       return <CustomEventStep event={step} />;
     case "INTEGRATION_REQUEST":
       return <IntegrationRequestStep request={step} />;
+    case "DURABLE_DELAY":
+      return <DelayStep step={step} />;
   }
   return <></>;
 }
 
-// function Delay({ step }: { step: DelayStep }) {
-//   return (
-//     <div className="grid grid-cols-3 gap-2 text-slate-300">
-//       <div className="flex flex-col gap-1">
-//         <Body size="extra-small" className={workflowNodeUppercaseClasses}>
-//           Total delay:
-//         </Body>
-//         <Body className={workflowNodeDelayClasses} size="small">
-//           3 days 5 hrs 30 mins 10 secs
-//         </Body>
-//       </div>
-//       <div className="flex flex-col gap-1">
-//         <Body size="extra-small" className={workflowNodeUppercaseClasses}>
-//           Fires at:
-//         </Body>
-//         <Body className={workflowNodeDelayClasses} size="small">
-//           3:45pm Dec 22 2022
-//         </Body>
-//       </div>
-//       <div className="flex flex-col gap-1">
-//         <Body size="extra-small" className={workflowNodeUppercaseClasses}>
-//           Fires in:
-//         </Body>
-//         <Body className={workflowNodeDelayClasses} size="small">
-//           2 days 16 hours 30 mins 10 secs
-//         </Body>
-//       </div>
-//     </div>
-//   );
-// }
+function DelayStep({ step }: { step: StepType<Step, "DURABLE_DELAY"> }) {
+  switch (step.input.type) {
+    case "DELAY":
+      return <DelayDuration step={step} delay={step.input} />;
+    case "SCHEDULE_FOR":
+      return (
+        <div className="grid grid-cols-3 gap-2 text-slate-300">
+          <div className="flex flex-col gap-1">
+            <Body size="extra-small" className={workflowNodeUppercaseClasses}>
+              Fires at:
+            </Body>
+            <Body className={workflowNodeDelayClasses} size="small">
+              {formatDateTime(new Date(step.input.scheduledFor))}
+            </Body>
+          </div>
+        </div>
+      );
+  }
+}
+
+function DelayDuration({
+  step,
+  delay,
+}: {
+  step: StepType<Step, "DURABLE_DELAY">;
+  delay: Delay;
+}) {
+  const msDelay = calculateDurationInMs(delay);
+  const [timeRemaining, setTimeRemaining] = useState(
+    step.startedAt
+      ? msDelay - dateDifference(step.startedAt, new Date())
+      : undefined
+  );
+
+  useEffect(() => {
+    if (timeRemaining === undefined) return;
+    const interval = setInterval(() => {
+      setTimeRemaining((timeRemaining) => {
+        if (timeRemaining === undefined) return undefined;
+        if (timeRemaining <= 1000) return 0;
+        if (timeRemaining <= 0) {
+          clearInterval(interval);
+          return 0;
+        }
+
+        return timeRemaining - 1000;
+      });
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [timeRemaining]);
+
+  return (
+    <div className="grid grid-cols-2 gap-2 text-slate-300">
+      <div className="flex flex-col gap-1">
+        <Body size="extra-small" className={workflowNodeUppercaseClasses}>
+          Total delay:
+        </Body>
+        <Body className={workflowNodeDelayClasses} size="small">
+          {humanizeDuration(msDelay)}
+        </Body>
+      </div>
+      {step.status === "PENDING" && timeRemaining && (
+        <div className="flex flex-col gap-1">
+          <Body size="extra-small" className={workflowNodeUppercaseClasses}>
+            Fires in:
+          </Body>
+          <Body className={workflowNodeDelayClasses} size="small">
+            {humanizeDuration(timeRemaining, { round: true })}
+          </Body>
+        </div>
+      )}
+    </div>
+  );
+}
 
 function CustomEventStep({ event }: { event: StepType<Step, "CUSTOM_EVENT"> }) {
   return (
@@ -504,6 +553,10 @@ const stepInfo: Record<Step["type"], { label: string; icon: ReactNode }> = {
   INTEGRATION_REQUEST: {
     label: "API request",
     icon: <GlobeAltIcon className={styleClass} />,
+  },
+  DURABLE_DELAY: {
+    label: "Delay",
+    icon: <ClockIcon className={styleClass} />,
   },
 } as const;
 

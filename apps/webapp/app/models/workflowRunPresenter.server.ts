@@ -1,8 +1,10 @@
 import {
   CustomEventSchema,
+  DelaySchema,
   ErrorSchema,
   LogMessageSchema,
   TriggerMetadataSchema,
+  WaitSchema,
 } from "@trigger.dev/common-schemas";
 import type { CatalogIntegration } from "internal-catalog";
 import type { DisplayProperties } from "internal-integrations";
@@ -96,6 +98,12 @@ async function parseStep(
         ...base,
         type: "OUTPUT" as const,
         output: original.output,
+      };
+    case "DURABLE_DELAY":
+      return {
+        ...base,
+        type: "DURABLE_DELAY" as const,
+        input: await WaitSchema.parseAsync(original.input),
       };
     case "INTEGRATION_REQUEST":
       invariant(
