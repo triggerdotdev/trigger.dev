@@ -38,7 +38,7 @@ import { TriggerBody } from "~/components/triggers/Trigger";
 import { useFetcher } from "@remix-run/react";
 import { useCurrentOrganization } from "~/hooks/useOrganizations";
 import { useCurrentWorkflow } from "~/hooks/useWorkflows";
-import { BasicConnectButton } from "~/components/integrations/ConnectButton";
+import { BasicConnectButton } from "~/components/integrations/ConnectOAuthButton";
 
 export const loader = async ({ request, params }: LoaderArgs) => {
   await requireUserId(request);

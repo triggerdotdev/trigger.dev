@@ -4,7 +4,10 @@ import { CatalogIntegration } from "internal-catalog";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import invariant from "tiny-invariant";
 import { AddApiKeyButton } from "~/components/integrations/AddApiKeyButton";
-import { ConnectButton, Status } from "~/components/integrations/ConnectButton";
+import {
+  ConnectOAuthButton,
+  Status,
+} from "~/components/integrations/ConnectOAuthButton";
 import { Container } from "~/components/layout/Container";
 import { List } from "~/components/layout/List";
 import { Body } from "~/components/primitives/text/Body";
@@ -97,7 +100,7 @@ export default function Integrations() {
             switch (integration.authentication.type) {
               case "oauth":
                 return (
-                  <ConnectButton
+                  <ConnectOAuthButton
                     key={integration.slug}
                     integration={integration}
                     organizationId={organization.id}
@@ -109,7 +112,7 @@ export default function Integrations() {
                         status={status}
                       />
                     )}
-                  </ConnectButton>
+                  </ConnectOAuthButton>
                 );
               case "api_key":
                 //todo support api key integrations here

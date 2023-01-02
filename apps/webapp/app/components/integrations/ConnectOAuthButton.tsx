@@ -1,17 +1,16 @@
 import { useCallback, useEffect } from "react";
 import Pizzly from "@nangohq/pizzly-frontend";
 import { useFetcher } from "@remix-run/react";
+import type { Response as CreateResponse } from "~/routes/resources/connection";
 import type {
-  CreateResponse,
-  Update,
-  UpdateResponse,
-} from "~/routes/resources/connection";
+  Request as UpdateRequest,
+  Response as UpdateResponse,
+} from "~/routes/resources/connection/$connectionId";
 import type { CatalogIntegration } from "internal-catalog";
 import { IntegrationIcon } from "./IntegrationIcon";
+import invariant from "tiny-invariant";
 
-const actionPath = "/resources/connection";
-
-export function ConnectButton({
+export function ConnectOAuthButton({
   integration,
   organizationId,
   sourceId,
@@ -29,10 +28,10 @@ export function ConnectButton({
   const { createFetcher, status } = useCreateConnection(sourceId, serviceId);
 
   return (
-    <createFetcher.Form method="post" action={actionPath}>
-      <input type="hidden" name="type" value="create" />
+    <createFetcher.Form method="post" action="/resources/connection?index">
+      <input type="hidden" name="type" value="oauth" />
       <input type="hidden" name="organizationId" value={organizationId} />
-      <input type="hidden" name="key" value={integration.slug} />
+      <input type="hidden" name="service" value={integration.slug} />
       <button
         type="submit"
         disabled={status === "loading"}
@@ -56,7 +55,7 @@ export function BasicConnectButton({
   serviceId?: string;
 }) {
   return (
-    <ConnectButton
+    <ConnectOAuthButton
       key={integration.slug}
       integration={integration}
       organizationId={organizationId}
@@ -74,7 +73,7 @@ export function BasicConnectButton({
           )}
         </>
       )}
-    </ConnectButton>
+    </ConnectOAuthButton>
   );
 }
 
@@ -107,8 +106,7 @@ export function useCreateConnection(sourceId?: string, serviceId?: string) {
         const pizzly = new Pizzly(pizzlyHost);
         await pizzly.auth(service, connectionId);
 
-        let completeData: Update = {
-          type: "update",
+        let completeData: UpdateRequest = {
           connectionId: connectionId,
         };
 
@@ -127,8 +125,8 @@ export function useCreateConnection(sourceId?: string, serviceId?: string) {
         }
 
         completeConnectionFetcher.submit(completeData, {
-          method: "post",
-          action: actionPath,
+          method: "put",
+          action: `/resources/connection/${connectionId}`,
         });
       } catch (error: any) {
         console.error(
@@ -155,10 +153,15 @@ export function useCreateConnection(sourceId?: string, serviceId?: string) {
 
     completeConnectionFetcher.type = "init";
 
+    invariant(
+      createConnectionFetcher.data.pizzlyHost,
+      "pizzlyHost is required for oauth"
+    );
+
     completeFlow({
-      pizzlyHost: createConnectionFetcher.data.host,
+      pizzlyHost: createConnectionFetcher.data.pizzlyHost,
       connectionId: createConnectionFetcher.data.connectionId,
-      service: createConnectionFetcher.data.integrationKey,
+      service: createConnectionFetcher.data.service,
       sourceId,
       serviceId,
     });

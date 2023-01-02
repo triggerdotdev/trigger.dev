@@ -8,8 +8,18 @@ export async function createAPIConnection({
   title,
   apiIdentifier,
   scopes,
+  authenticationMethod,
+  authenticationConfig,
   type,
-}: Pick<APIConnection, "title" | "apiIdentifier" | "type" | "scopes"> & {
+}: Pick<
+  APIConnection,
+  | "title"
+  | "apiIdentifier"
+  | "type"
+  | "scopes"
+  | "authenticationMethod"
+  | "authenticationConfig"
+> & {
   organizationId: Organization["id"];
 }) {
   return await prisma.aPIConnection.create({
@@ -18,6 +28,8 @@ export async function createAPIConnection({
       apiIdentifier,
       type,
       scopes,
+      authenticationMethod,
+      authenticationConfig: authenticationConfig ?? undefined,
       organization: {
         connect: {
           id: organizationId,

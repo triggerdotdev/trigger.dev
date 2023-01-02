@@ -5,7 +5,7 @@ import classNames from "classnames";
 import type { CatalogIntegration } from "internal-catalog";
 import { Fragment } from "react";
 import type { APIConnection } from "~/models/apiConnection.server";
-import { BasicConnectButton } from "./ConnectButton";
+import { BasicConnectButton } from "./ConnectOAuthButton";
 import { IntegrationIcon } from "./IntegrationIcon";
 
 type Props = {
