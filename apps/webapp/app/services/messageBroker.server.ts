@@ -27,6 +27,7 @@ import { CreateIntegrationRequest } from "./requests/createIntegrationRequest.se
 import { PerformIntegrationRequest } from "./requests/performIntegrationRequest.server";
 import { StartIntegrationRequest } from "./requests/startIntegrationRequest.server";
 import { WaitForConnection } from "./requests/waitForConnection.server";
+import { HandleNewServiceConnection } from "./externalServices/handleNewConnection.server";
 
 let pulsarClient: PulsarClient;
 let triggerPublisher: ZodPublisher<PlatformCatalog>;
@@ -350,6 +351,10 @@ async function createInternalPubSub() {
         return isRegistered; // Returning true will mean we don't retry
       },
       EXTERNAL_SERVICE_UPSERTED: async (id, data, properties) => {
+        const service = new HandleNewServiceConnection();
+
+        await service.call(data.id);
+
         return true;
       },
       EVENT_CREATED: async (id, data, properties) => {

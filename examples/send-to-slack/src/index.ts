@@ -17,7 +17,7 @@ const trigger = new Trigger({
     }),
   }),
   run: async (event, ctx) => {
-    await ctx.waitFor(60);
+    // await ctx.waitFor(60);
 
     const response = await slack.postMessage({
       channel: "test-integrations",
