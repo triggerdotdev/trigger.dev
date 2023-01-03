@@ -66,7 +66,7 @@ export PULSAR_CPP_DIR=/opt/homebrew/Cellar/libpulsar/3.1.0
 
    If you aren't proxying pizzly according to step 2, then leave the `pizzly-server.env` file empty.
 
-   If you are proxying the webapp accroding to step 2 then in `webapp/.env`, set the `APP_ORIGIN` to the `NGROK_SUBDOMAIN` provided to the `./scripts/proxy-webapp.sh` command, e.g. `APP_ORIGIN=https://dan-trigger-dev.eu.ngrok.io`
+   If you are proxying the webapp according to step 2 then in `webapp/.env`, set the `APP_ORIGIN` to the `NGROK_SUBDOMAIN` provided to the `./scripts/proxy-webapp.sh` command, e.g. `APP_ORIGIN=https://dan-trigger-dev.eu.ngrok.io`
 
 4. Start postgresql, pulsar, and pizzly server
 
