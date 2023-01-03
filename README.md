@@ -1,5 +1,4 @@
-![Coming soon banner](https://raw.githubusercontent.com/triggerdotdev/trigger.dev/fd96078d6eb956fb962359e2c84ea924dee3ee91/coming-soon-banner.png?token=AB7J3CH6FN77SIACLDJLGELDWRTFA
-)
+![](apps/webapp/public/images/coming-soon-banner.png)
 
 --- 
 &nbsp;
