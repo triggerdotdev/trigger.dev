@@ -217,7 +217,7 @@ function SideMenu({
               </li>
               <li>
                 <a
-                  href="https://docs.trigger.dev"
+                  href="https://docs.trigger.dev/introduction#getting-started"
                   rel="noreferrer"
                   target="_blank"
                   className={menuSmallLinkStyle}
