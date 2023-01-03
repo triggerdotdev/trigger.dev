@@ -1,9 +1,11 @@
+import { SquaresPlusIcon } from "@heroicons/react/24/outline";
 import { PlusCircleIcon } from "@heroicons/react/24/solid";
 import type { LoaderArgs } from "@remix-run/server-runtime";
 import type { CatalogIntegration } from "internal-catalog";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import invariant from "tiny-invariant";
-import { ConnectButton, Status } from "~/components/integrations/ConnectButton";
+import type { Status } from "~/components/integrations/ConnectButton";
+import { ConnectButton } from "~/components/integrations/ConnectButton";
 import { Container } from "~/components/layout/Container";
 import { List } from "~/components/layout/List";
 import { Body } from "~/components/primitives/text/Body";
@@ -104,6 +106,20 @@ export default function Integrations() {
               )}
             </ConnectButton>
           ))}
+          <a
+            href="mailto:hello@trigger.dev"
+            className="flex flex-col group max-w-[160px] rounded-md bg-slate-800 border border-slate-800 gap-4 text-sm text-slate-200 items-center overflow-hidden hover:bg-slate-800/30 transition shadow-md disabled:opacity-50"
+          >
+            <div className="relative flex items-center justify-center w-full py-6 bg-black/20 border-b border-slate-800">
+              <SquaresPlusIcon className="h-20 w-20 text-slate-400" />
+            </div>
+            <div className="flex flex-col items-center justify-center text-center leading-relaxed text-slate-400">
+              <span className="px-2.5">Need an integration?</span>
+              <span className="px-6 text-slate-200 text-base">
+                Let us know!
+              </span>
+            </div>
+          </a>
         </div>
       </div>
     </Container>
@@ -129,7 +145,10 @@ function AddButtonContent({
       </div>
 
       {status === "loading" ? (
-        <span className="px-6 pb-4">Connecting…</span>
+        <span className="px-6 pb-4 leading-relaxed text-green-500 animate-pulse">
+          Connecting to{" "}
+          <span className="text-slate-200 text-base">{integration.name}</span>
+        </span>
       ) : (
         <span className="px-6 pb-4 leading-relaxed text-slate-400">
           Connect to{" "}
