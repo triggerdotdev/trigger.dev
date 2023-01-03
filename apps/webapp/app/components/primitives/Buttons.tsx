@@ -2,14 +2,19 @@ import { Link } from "@remix-run/react";
 import classnames from "classnames";
 
 const commonClasses =
-  "inline-flex items-center justify-center rounded max-w-max px-4 py-2 gap-2 text-sm transition whitespace-nowrap";
+  "inline-flex items-center justify-center rounded max-w-max px-4 py-2 text-sm transition whitespace-nowrap";
 const primaryClasses = classnames(
   commonClasses,
-  "bg-blue-600 text-white hover:bg-blue-700 focus:bg-blue-700"
+  "bg-blue-600 text-white hover:bg-blue-700 focus:bg-blue-700 gap-2"
 );
 const secondaryClasses = classnames(
   commonClasses,
-  "bg-indigo-900 text-white hover:bg-indigo-800 focus:bg-indigo-800"
+  "bg-indigo-900 text-white hover:bg-indigo-800 focus:bg-indigo-800 gap-2"
+);
+
+const tertiaryClasses = classnames(
+  commonClasses,
+  "text-white/60 hover:text-white gap-1"
 );
 
 type ButtonProps = React.DetailedHTMLProps<
@@ -82,6 +87,18 @@ export function SecondaryA({ children, className, href, ...props }: AProps) {
     <a
       href={href}
       className={classnames(secondaryClasses, className)}
+      {...props}
+    >
+      {children}
+    </a>
+  );
+}
+
+export function TertiaryA({ children, className, href, ...props }: AProps) {
+  return (
+    <a
+      href={href}
+      className={classnames(tertiaryClasses, className)}
       {...props}
     >
       {children}

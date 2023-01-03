@@ -8,6 +8,7 @@ import {
   PhoneArrowUpRightIcon,
   EnvelopeIcon,
   BeakerIcon,
+  ClipboardDocumentCheckIcon,
 } from "@heroicons/react/24/outline";
 import { Link, NavLink } from "@remix-run/react";
 import {
@@ -20,6 +21,7 @@ import { Header1 } from "../primitives/text/Headers";
 import { CopyTextButton } from "../CopyTextButton";
 import invariant from "tiny-invariant";
 import { titleCase } from "~/utils";
+import { CopyText } from "../CopyText";
 
 export function SideMenuContainer({ children }: { children: React.ReactNode }) {
   return <div className="grid grid-cols-[300px_2fr] h-full">{children}</div>;
@@ -160,12 +162,7 @@ function SideMenu({
             ))}
           </div>
           <div className="flex flex-col gap-6">
-            <ul className="flex flex-col gap-2 ml-3 mr-2">
-              <li>
-                <Body size="extra-small" className={menuSmallTitleStyle}>
-                  API Keys
-                </Body>
-              </li>
+            <ul className="flex flex-col gap-6 ml-3 mr-2">
               {organization.environments.map((environment) => {
                 return (
                   <li
@@ -174,56 +171,80 @@ function SideMenu({
                   >
                     <div className="flex justify-between">
                       <Body
-                        size="small"
-                        className="text-slate-300 overflow-hidden"
+                        size="extra-small"
+                        className={`text-slate-300 overflow-hidden ${menuSmallTitleStyle}`}
                       >
-                        {titleCase(environment.slug)}:
+                        {environment.slug} api key
                       </Body>
-                      <CopyTextButton
+                      {/* <CopyTextButton
                         variant="text"
                         value={environment.apiKey}
-                      />
+                      /> */}
                     </div>
                     <Body
                       size="small"
                       className="relative select-all text-slate-400 p-1 pl-2 rounded-sm border border-slate-800"
                     >
-                      <span className="block absolute pointer-events-none right-0 top-0 bg-gradient-to-r from-transparent to-slate-950 w-20 h-6"></span>
+                      <span className="block absolute pointer-events-none right-7 top-0 bg-gradient-to-r from-transparent to-slate-950 w-20 h-6"></span>
+                      <CopyText
+                        value={environment.apiKey}
+                        className="group absolute flex right-0 top-0 items-center justify-center rounded-sm w-7 h-full bg-slate-950 border-l border-slate-800 hover:bg-slate-900 transition hover:cursor-pointer active:bg-green-900"
+                      >
+                        <ClipboardDocumentCheckIcon className="h-5 w-5 group-active:text-green-500" />
+                      </CopyText>
                       {environment.apiKey}
                     </Body>
                   </li>
                 );
               })}
             </ul>
-            <ul className="flex flex-col gap-2 ml-3">
+            <ul className="flex flex-col gap-3 ml-3">
               <li>
                 <Body size="extra-small" className={menuSmallTitleStyle}>
                   Help and resources
                 </Body>
               </li>
               <li>
-                <Link to="/" target="_blank" className={menuSmallLinkStyle}>
+                <a
+                  href="https://docs.trigger.dev"
+                  target="_blank"
+                  rel="noreferrer"
+                  className={menuSmallLinkStyle}
+                >
                   <ArrowTopRightOnSquareIcon className={menuSmallIconStyle} />
                   Documentation
-                </Link>
+                </a>
               </li>
               <li>
-                <Link to="/" target="_blank" className={menuSmallLinkStyle}>
+                <a
+                  href="https://docs.trigger.dev"
+                  rel="noreferrer"
+                  target="_blank"
+                  className={menuSmallLinkStyle}
+                >
                   <ArrowTopRightOnSquareIcon className={menuSmallIconStyle} />
                   Quick start guide
-                </Link>
+                </a>
               </li>
               <li>
-                <Link to="/" target="_blank" className={menuSmallLinkStyle}>
+                <a
+                  href="https://cal.com/team/triggerdotdev/call"
+                  rel="noreferrer"
+                  target="_blank"
+                  className={menuSmallLinkStyle}
+                >
                   <PhoneArrowUpRightIcon className={menuSmallIconStyle} />
                   Schedule a call
-                </Link>
+                </a>
               </li>
               <li>
-                <Link to="/" target="_blank" className={menuSmallLinkStyle}>
+                <a
+                  href="mailto:hello@trigger.dev"
+                  className={menuSmallLinkStyle}
+                >
                   <EnvelopeIcon className={menuSmallIconStyle} />
                   Contact us
-                </Link>
+                </a>
               </li>
             </ul>
           </div>
