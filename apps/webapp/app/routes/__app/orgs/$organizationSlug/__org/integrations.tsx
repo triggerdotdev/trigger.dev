@@ -120,7 +120,7 @@ function AddButtonContent({
   return (
     <>
       <div className="relative flex items-center justify-center w-full py-6 bg-black/20 border-b border-slate-800">
-        <PlusCircleIcon className="absolute h-7 w-7 top-[16px] right-[28px] z-10 text-slate-200 shadow-md" />
+        <PlusCircleIcon className="absolute h-7 w-7 top-[6px] right-[6px] z-10 text-slate-500 shadow-md" />
         <img
           src={integration.icon}
           alt={integration.name}
