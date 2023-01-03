@@ -5,7 +5,7 @@ import { Logo } from "../Logo";
 import { EnvironmentMenu } from "../../routes/resources/environment";
 import { OrganizationMenu } from "../navigation/OrganizationMenu";
 import { WorkflowMenu } from "../navigation/WorkflowMenu";
-import { SecondaryA } from "../primitives/Buttons";
+import { TertiaryA } from "../primitives/Buttons";
 import { UserProfileMenu } from "../UserProfileMenu";
 
 type HeaderProps = {
@@ -26,11 +26,11 @@ export function Header({ children }: HeaderProps) {
 
       <div className="flex flex-1 justify-center">{children}</div>
 
-      <div className="flex items-center gap-2">
-        <SecondaryA href="https://docs.apihero.run" target="_blank">
-          <DocumentTextIcon className="h-4 w-4" />
+      <div className="flex items-center gap-1">
+        <TertiaryA href="https://docs.trigger.dev" target="_blank">
+          <DocumentTextIcon className="h-5 w-5" />
           Docs
-        </SecondaryA>
+        </TertiaryA>
         {user ? (
           <UserProfileMenu user={user} />
         ) : (
