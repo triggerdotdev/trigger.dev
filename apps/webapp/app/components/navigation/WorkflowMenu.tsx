@@ -11,6 +11,8 @@ import { useCurrentOrganization } from "~/hooks/useOrganizations";
 import { useCurrentWorkflow, useWorkflows } from "~/hooks/useWorkflows";
 import { BreadcrumbDivider } from "../layout/Header";
 
+const dimmedClassNames = "text-slate-500";
+
 export function WorkflowMenu() {
   const workflows = useWorkflows();
   const currentWorkflow = useCurrentWorkflow();
@@ -34,10 +36,10 @@ export function WorkflowMenu() {
               <Popover.Button
                 className={`
                 ${open ? "" : ""}
-                group inline-flex justify-between items-center rounded text-white bg-transparent pl-3.5 pr-2 py-2 text-sm hover:bg-slate-800 focus:outline-none`}
+                group inline-flex justify-between items-center rounded text-white bg-transparent pl-2.5 pr-2 py-2 text-sm hover:bg-slate-800 focus:outline-none`}
               >
                 <ArrowsRightLeftIcon
-                  className="h-5 w-5 mr-2"
+                  className={`h-5 w-5 mr-2 ${dimmedClassNames}`}
                   aria-hidden="true"
                 />
                 <span className="transition">
@@ -49,7 +51,7 @@ export function WorkflowMenu() {
                 </span>
                 <ChevronUpDownIcon
                   className={`${open ? "" : "text-opacity-70"}
-                  ml-1 h-5 w-5 transition duration-150 ease-in-out group-hover:text-opacity-80`}
+                  ml-1 h-5 w-5 transition duration-150 ease-in-out group-hover:text-opacity-80 ${dimmedClassNames}`}
                   aria-hidden="true"
                 />
               </Popover.Button>

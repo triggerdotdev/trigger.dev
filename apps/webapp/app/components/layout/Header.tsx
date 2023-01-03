@@ -16,11 +16,10 @@ export function Header({ children }: HeaderProps) {
   const user = useOptionalUser();
 
   return (
-    <div className="flex w-full gap-2 items-center border-b border-slate-800 bg-slate-950 py-1 px-2">
+    <div className="flex w-full gap-2 items-center border-b border-slate-800 bg-slate-950 py-1 pl-4 pr-3">
       <Link to="/" aria-label="Trigger" className="mr-2">
         <Logo className="h-5" />
       </Link>
-
       <OrganizationMenu />
       <WorkflowMenu />
       <EnvironmentMenu />
@@ -61,7 +60,7 @@ export function BreadcrumbDivider() {
         y1="0.6286"
         x2="0.6286"
         y2="24.6762"
-        opacity={0.8}
+        opacity={0.5}
         stroke="white"
         strokeLinecap="round"
       />
