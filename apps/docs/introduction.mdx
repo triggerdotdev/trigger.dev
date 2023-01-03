@@ -1,0 +1,83 @@
+---
+title: "Automate complex workflows with code"
+sidebarTitle: "Introduction"
+description: "Trigger workflows from APIs, on a schedule, or on demand. API calls are easy with authentication handled for you. Add durable delays that survive server restarts."
+---
+
+<Note>
+  Welcome to the Mintlify starter kit. Update the content in main branch of your
+  docs repo, and your documentation page will automatically be updated. It's
+  that simple!
+</Note>
+
+## Getting Started
+
+Select from the following guides to learn more about how Mintlify can best suit your documentation.
+
+<CardGroup>
+  <Card title="Development" icon="rectangle-terminal" href="/development">
+    Run on your computer to see changes locally
+  </Card>
+  <Card
+    title="Global Settings"
+    icon="sliders"
+    href="https://mintlify.com/docs/settings/global"
+  >
+    Customizing the theme, branding, and other global configurations
+  </Card>
+  <Card
+    title="Page Titles and Metadata"
+    icon="heading"
+    href="https://mintlify.com/docs/settings/page"
+  >
+    Setting the title and metadata for navigation and SEO
+  </Card>
+  <Card
+    title="Writing Content"
+    icon="pen-nib"
+    href="https://mintlify.com/docs/components/overview"
+  >
+    Introduction on how to add and edit content
+  </Card>
+  <Card title="Learn More" icon="ellipsis" href="/resources">
+    See more in the resources page
+  </Card>
+</CardGroup>
+
+## Customization Checklist
+
+Learn more about you can fully customize the starter template for your own documentation
+
+<AccordionGroup>
+  <Accordion title="Change name">Update the `name` property in `mint.json` to the name of your company or product</Accordion>
+  <Accordion title="Customize the branding">
+    Branding mostly happens in the `mint.json` file. You can learn more about all available [configuration properties](https://mintlify.com/docs/settings/global).
+
+    #### Update the logo
+
+    Update `logo` folder with the light and dark version of your logo (can be svg or png).
+    <Note>Make sure that the path matches the values set in `logo` of `mint.json`</Note>
+
+    #### Customize the colors
+
+    Populate the `colors` object with colors that match your brand
+
+    #### Update the favicon
+
+    Change the `favicon.png` with an image of the favicon
+
+    #### Update footer social icons
+
+    Update `footerSocials` with the right `[platform]: [url]` key-value pair
+
+  </Accordion>
+  <Accordion title="Update the anchors">Update the `anchors` array in `mint.json` with the links that you want to emphasize</Accordion>
+  <Accordion title="Update or remove the API Reference">
+    Either update the pages in `api-reference` or remove it entirely
+    <Note>If removing the API Reference, make sure to also remove it from the `anchors` and `navigation` from `mint.json`</Note>
+  </Accordion>
+  <Accordion title="Update the topbar navigation items">
+    Update the `topbarCtaButton` and `topbarLinks` properties in `mint.json` to the links that matter most
+    <Tip>The `topbarCtaButton` will receive the most number of clicks</Tip>
+  </Accordion>
+</AccordionGroup>

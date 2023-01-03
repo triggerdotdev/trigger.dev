@@ -1,0 +1,76 @@
+{
+  "name": "API Hero",
+  "logo": {
+    "dark": "/logo/light.png",
+    "light": "/logo/light.png",
+    "href": "https://trigger.dev"
+  },
+  "favicon": "/images/favicon.png",
+  "colors": {
+    "primary": "#0fd122",
+    "light": "#e7ff52",
+    "dark": "#09ab18",
+    "anchors": {
+      "from": "#069613",
+      "to": "#0fd122"
+    }
+  },
+  "modeToggle": {
+    "default": "dark",
+    "isHidden": true
+  },
+  "topbarLinks": [
+    {
+      "name": "Pricing",
+      "url": "https://trigger.dev/pricing"
+    }
+  ],
+  "topbarCtaButton": {
+    "name": "Join the waitlist",
+    "url": "https://bcymafitv0e.typeform.com/tddsignup"
+  },
+  "anchors": [
+    {
+      "name": "API Reference",
+      "icon": "rectangle-terminal",
+      "url": "api-reference"
+    },
+    {
+      "name": "JSON Hero",
+      "icon": "code",
+      "url": "https://jsonhero.io/"
+    },
+    {
+      "name": "Community",
+      "icon": "discord",
+      "url": "https://mintlify.com/community"
+    }
+  ],
+  "navigation": [
+    {
+      "group": "Home",
+      "pages": ["introduction", "development"]
+    },
+    {
+      "group": "Learn More",
+      "pages": ["features", "resources"]
+    },
+    {
+      "group": "API Documentation",
+      "pages": ["api-reference/authentication"]
+    },
+    {
+      "group": "Endpoint Examples",
+      "pages": [
+        "api-reference/endpoint/get",
+        "api-reference/endpoint/create",
+        "api-reference/endpoint/update",
+        "api-reference/endpoint/delete"
+      ]
+    }
+  ],
+  "footerSocials": {
+    "website": "https://trigger.dev",
+    "twitter": "https://twitter.com/triggerdotdev"
+  }
+}
