@@ -1,11 +1,3 @@
-import {
-  ArrowPathRoundedSquareIcon,
-  InboxArrowDownIcon,
-  CheckCircleIcon,
-  ExclamationCircleIcon,
-  ExclamationTriangleIcon,
-  ForwardIcon,
-} from "@heroicons/react/24/solid";
 import { BeakerIcon } from "@heroicons/react/20/solid";
 import {
   BoltIcon,
@@ -13,7 +5,27 @@ import {
   ClockIcon,
   GlobeAltIcon,
 } from "@heroicons/react/24/outline";
+import {
+  ArrowPathRoundedSquareIcon,
+  CheckCircleIcon,
+  ExclamationCircleIcon,
+  ExclamationTriangleIcon,
+  ForwardIcon,
+  InboxArrowDownIcon,
+} from "@heroicons/react/24/solid";
+import { useFetcher } from "@remix-run/react";
+import type { LoaderArgs } from "@remix-run/server-runtime";
+import type { Delay, Scheduled } from "@trigger.dev/common-schemas";
+import classNames from "classnames";
+import humanizeDuration from "humanize-duration";
+import type { ReactNode } from "react";
+import { useEffect, useState } from "react";
+import { typedjson, useTypedLoaderData } from "remix-typedjson";
+import invariant from "tiny-invariant";
+import CodeBlock from "~/components/code/CodeBlock";
+import { BasicConnectButton } from "~/components/integrations/ConnectButton";
 import { Panel } from "~/components/layout/Panel";
+import { PanelHeader } from "~/components/layout/PanelHeader";
 import { PrimaryButton } from "~/components/primitives/Buttons";
 import { Body } from "~/components/primitives/text/Body";
 import {
@@ -21,27 +33,16 @@ import {
   Header2,
   Header4,
 } from "~/components/primitives/text/Headers";
-import CodeBlock from "~/components/code/CodeBlock";
-import { ReactNode, useEffect, useState } from "react";
-import { dateDifference, formatDateTime } from "~/utils";
-import type { LoaderArgs } from "@remix-run/server-runtime";
-import { typedjson, useTypedLoaderData } from "remix-typedjson";
-import { requireUserId } from "~/services/session.server";
-import invariant from "tiny-invariant";
-import { WorkflowRunPresenter } from "~/models/workflowRunPresenter.server";
-import type { WorkflowRunStatus } from "~/models/workflowRun.server";
-import humanizeDuration from "humanize-duration";
-import classNames from "classnames";
 import { runStatusIcon, runStatusLabel } from "~/components/runs/runStatus";
-import { triggerInfo } from "~/components/triggers/triggerTypes";
-import { PanelHeader } from "~/components/layout/PanelHeader";
 import { TriggerBody } from "~/components/triggers/Trigger";
-import { useFetcher } from "@remix-run/react";
+import { triggerInfo } from "~/components/triggers/triggerTypes";
 import { useCurrentOrganization } from "~/hooks/useOrganizations";
 import { useCurrentWorkflow } from "~/hooks/useWorkflows";
-import { BasicConnectButton } from "~/components/integrations/ConnectOAuthButton";
+import type { WorkflowRunStatus } from "~/models/workflowRun.server";
+import { WorkflowRunPresenter } from "~/models/workflowRunPresenter.server";
+import { requireUserId } from "~/services/session.server";
+import { dateDifference, formatDateTime } from "~/utils";
 import { calculateDurationInMs } from "~/utils/delays";
-import { Delay, Scheduled } from "@trigger.dev/common-schemas";
 
 export const loader = async ({ request, params }: LoaderArgs) => {
   await requireUserId(request);
