@@ -1,13 +1,9 @@
 import { PlusCircleIcon } from "@heroicons/react/24/solid";
 import type { LoaderArgs } from "@remix-run/server-runtime";
-import { CatalogIntegration } from "internal-catalog";
+import type { CatalogIntegration } from "internal-catalog";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import invariant from "tiny-invariant";
-import { AddApiKeyButton } from "~/components/integrations/AddApiKeyButton";
-import {
-  ConnectOAuthButton,
-  Status,
-} from "~/components/integrations/ConnectOAuthButton";
+import { ConnectButton, Status } from "~/components/integrations/ConnectButton";
 import { Container } from "~/components/layout/Container";
 import { List } from "~/components/layout/List";
 import { Body } from "~/components/primitives/text/Body";
@@ -96,46 +92,18 @@ export default function Integrations() {
           Add an integration
         </Header2>
         <div className="flex flex-wrap gap-2 w-full">
-          {integrations.map((integration) => {
-            switch (integration.authentication.type) {
-              case "oauth":
-                return (
-                  <ConnectOAuthButton
-                    key={integration.slug}
-                    integration={integration}
-                    organizationId={organization.id}
-                    className="flex flex-col group max-w-[160px] rounded-md bg-slate-800 border border-slate-800 gap-4 text-sm text-slate-200 items-center overflow-hidden hover:bg-slate-800/30 transition shadow-md disabled:opacity-50"
-                  >
-                    {(status) => (
-                      <AddButtonContent
-                        integration={integration}
-                        status={status}
-                      />
-                    )}
-                  </ConnectOAuthButton>
-                );
-              case "api_key":
-                //todo support api key integrations here
-                return (
-                  <AddApiKeyButton
-                    key={integration.slug}
-                    integration={integration}
-                    organizationId={organization.id}
-                    authentication={integration.authentication}
-                    className="flex flex-col group max-w-[160px] rounded-md bg-slate-800 border border-slate-800 gap-4 text-sm text-slate-200 items-center overflow-hidden hover:bg-slate-800/30 transition shadow-md disabled:opacity-50"
-                  >
-                    {(status) => (
-                      <AddButtonContent
-                        integration={integration}
-                        status={status}
-                      />
-                    )}
-                  </AddApiKeyButton>
-                );
-              default:
-                return null;
-            }
-          })}
+          {integrations.map((integration) => (
+            <ConnectButton
+              key={integration.slug}
+              integration={integration}
+              organizationId={organization.id}
+              className="flex flex-col group max-w-[160px] rounded-md bg-slate-800 border border-slate-800 gap-4 text-sm text-slate-200 items-center overflow-hidden hover:bg-slate-800/30 transition shadow-md disabled:opacity-50"
+            >
+              {(status) => (
+                <AddButtonContent integration={integration} status={status} />
+              )}
+            </ConnectButton>
+          ))}
         </div>
       </div>
     </Container>

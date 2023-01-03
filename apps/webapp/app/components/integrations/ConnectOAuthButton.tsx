@@ -1,14 +1,14 @@
-import { useCallback, useEffect } from "react";
 import Pizzly from "@nangohq/pizzly-frontend";
 import { useFetcher } from "@remix-run/react";
+import type { CatalogIntegration } from "internal-catalog";
+import { useCallback, useEffect } from "react";
+import invariant from "tiny-invariant";
 import type { Response as CreateResponse } from "~/routes/resources/connection";
 import type {
   Request as UpdateRequest,
   Response as UpdateResponse,
 } from "~/routes/resources/connection/$connectionId";
-import type { CatalogIntegration } from "internal-catalog";
-import { IntegrationIcon } from "./IntegrationIcon";
-import invariant from "tiny-invariant";
+import type { Status } from "./ConnectButton";
 
 export function ConnectOAuthButton({
   integration,
@@ -42,42 +42,6 @@ export function ConnectOAuthButton({
     </createFetcher.Form>
   );
 }
-
-export function BasicConnectButton({
-  integration,
-  organizationId,
-  sourceId,
-  serviceId,
-}: {
-  integration: CatalogIntegration;
-  organizationId: string;
-  sourceId?: string;
-  serviceId?: string;
-}) {
-  return (
-    <ConnectOAuthButton
-      key={integration.slug}
-      integration={integration}
-      organizationId={organizationId}
-      sourceId={sourceId}
-      serviceId={serviceId}
-      className="flex rounded-md bg-blue-600 gap-3 text-sm text-white items-center hover:bg-blue-700 transition shadow-md disabled:opacity-50 py-2 pl-2 pr-3"
-    >
-      {(status) => (
-        <>
-          <IntegrationIcon integration={integration} />
-          {status === "loading" ? (
-            <span className="">Connecting…</span>
-          ) : (
-            <span>Connect to {integration.name}</span>
-          )}
-        </>
-      )}
-    </ConnectOAuthButton>
-  );
-}
-
-export type Status = "loading" | "idle";
 
 export function useCreateConnection(sourceId?: string, serviceId?: string) {
   const createConnectionFetcher = useFetcher<CreateResponse>();

@@ -1,11 +1,11 @@
 import { Popover, Transition } from "@headlessui/react";
-import { ChevronUpDownIcon, CheckIcon } from "@heroicons/react/24/outline";
+import { CheckIcon, ChevronUpDownIcon } from "@heroicons/react/24/outline";
 import { useFetcher } from "@remix-run/react";
 import classNames from "classnames";
 import type { CatalogIntegration } from "internal-catalog";
 import { Fragment } from "react";
 import type { APIConnection } from "~/models/apiConnection.server";
-import { BasicConnectButton } from "./ConnectOAuthButton";
+import { BasicConnectButton } from "./ConnectButton";
 import { IntegrationIcon } from "./IntegrationIcon";
 
 type Props = {
@@ -30,7 +30,6 @@ export function ConnectionSelector({
   if (connections.length === 0) {
     return (
       <BasicConnectButton
-        key={integration.slug}
         integration={integration}
         organizationId={organizationId}
         sourceId={type === "source" ? sourceServiceId : undefined}
