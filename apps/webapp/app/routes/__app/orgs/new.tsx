@@ -75,6 +75,7 @@ export default function NewOrganizationPage() {
                 <input
                   ref={titleRef}
                   name="title"
+                  autoFocus
                   placeholder="e.g. Company name"
                   className="relative w-full pl-10 pr-3 py-2 rounded bg-slate-850 group-focus:border-blue-500 placeholder:text-slate-600"
                   aria-invalid={actionData?.errors?.title ? true : undefined}
