@@ -379,7 +379,10 @@ function DelayDuration({
         <Body size="extra-small" className={workflowNodeUppercaseClasses}>
           Total delay:
         </Body>
-        <Body className={workflowNodeDelayClasses} size="small">
+        <Body
+          className={classNames(workflowNodeDelayClasses, "w-full")}
+          size="small"
+        >
           {humanizeDuration(msDelay)}
         </Body>
       </div>
@@ -388,7 +391,10 @@ function DelayDuration({
           <Body size="extra-small" className={workflowNodeUppercaseClasses}>
             Fires in:
           </Body>
-          <Body className={workflowNodeDelayClasses} size="small">
+          <Body
+            className={classNames(workflowNodeDelayClasses, "w-full")}
+            size="small"
+          >
             {humanizeDuration(timeRemaining, { round: true })}
           </Body>
         </div>
@@ -428,19 +434,20 @@ function DelayScheduled({
 
   return (
     <div className="grid grid-cols-2 gap-2 text-slate-300">
-      <div className="grid grid-cols-3 gap-2 text-slate-300">
-        <div className="flex flex-col gap-1">
-          <Body size="extra-small" className={workflowNodeUppercaseClasses}>
-            Fires at:
-          </Body>
-          <Body className={workflowNodeDelayClasses} size="small">
-            {formatDateTime(scheduledDate, "long")}
-          </Body>
-        </div>
+      <div className="flex flex-col gap-1 items-stretch">
+        <Body size="extra-small" className={workflowNodeUppercaseClasses}>
+          Fires at:
+        </Body>
+        <Body className={classNames(workflowNodeDelayClasses)} size="small">
+          {formatDateTime(scheduledDate, "long")}
+        </Body>
       </div>
       {step.status === "PENDING" && timeRemaining && (
         <div className="flex flex-col gap-1">
-          <Body size="extra-small" className={workflowNodeUppercaseClasses}>
+          <Body
+            size="extra-small"
+            className={classNames(workflowNodeDelayClasses)}
+          >
             Fires in:
           </Body>
           <Body className={workflowNodeDelayClasses} size="small">
