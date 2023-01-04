@@ -54,7 +54,7 @@ export default function Integrations() {
                 <li key={connection.id}>
                   <div className="flex gap-4 items-center px-4 py-4">
                     <img
-                      className="h-6 w-6"
+                      className="rounded p-2 h-10 w-10 bg-slate-900/50"
                       src={
                         integrations.find(
                           (i) => i.slug === connection.apiIdentifier
