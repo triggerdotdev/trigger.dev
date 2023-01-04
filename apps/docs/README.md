@@ -10,7 +10,11 @@ Click on `Use this template` to quickstarter your documentation setup with Mintl
 
 ### 👩‍💻 Development
 
-Run this from the root of the repository
+Run these from the root of the repository
+
+```
+pnpm install
+```
 
 ```
 pnpm run dev --filter docs
