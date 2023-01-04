@@ -1,34 +1,24 @@
 import { ErrorSchema } from "@trigger.dev/common-schemas";
 import { z } from "zod";
+import { WorkflowSendRunEventPropertiesSchema } from "../sharedSchemas";
 
 export const coordinator = {
-  COMPLETE_WORKFLOW_RUN: {
+  WORKFLOW_RUN_COMPLETE: {
     data: z.object({
-      id: z.string(),
       output: z.string(),
     }),
-    properties: z.object({
-      "x-workflow-id": z.string(),
-      "x-api-key": z.string(),
-    }),
+    properties: WorkflowSendRunEventPropertiesSchema,
   },
-  FAIL_WORKFLOW_RUN: {
+  WORKFLOW_RUN_ERROR: {
     data: z.object({
-      id: z.string(),
       error: ErrorSchema,
     }),
-    properties: z.object({
-      "x-workflow-id": z.string(),
-      "x-api-key": z.string(),
-    }),
+    properties: WorkflowSendRunEventPropertiesSchema,
   },
-  START_WORKFLOW_RUN: {
+  WORKFLOW_RUN_STARTED: {
     data: z.object({
       id: z.string(),
     }),
-    properties: z.object({
-      "x-workflow-id": z.string(),
-      "x-api-key": z.string(),
-    }),
+    properties: WorkflowSendRunEventPropertiesSchema,
   },
 };

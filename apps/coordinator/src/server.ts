@@ -8,6 +8,7 @@ import {
   coordinatorCatalog,
   CoordinatorCatalog,
   InternalApiClient,
+  MessageCatalogSchema,
   platformCatalog,
   PlatformCatalog,
   ZodPublisher,
@@ -19,6 +20,7 @@ import { z, ZodError } from "zod";
 import { TriggerServerConnection } from "./connection";
 import { env } from "./env";
 import { pulsarClient } from "./pulsarClient";
+import { WorkflowRunController } from "./runController";
 
 export class TriggerServer {
   #connection?: TriggerServerConnection;
@@ -34,12 +36,13 @@ export class TriggerServer {
   #apiClient: InternalApiClient;
   #workflowId?: string;
   #apiKey: string;
+  #runControllers = new Map<string, WorkflowRunController>();
 
   constructor(socket: WebSocket, apiKey: string) {
     this.#socket = socket;
     this.#apiKey = apiKey;
     this.#apiClient = new InternalApiClient(apiKey, env.PLATFORM_API_URL);
-    this.#logger = new Logger("trigger.dev", "info");
+    this.#logger = new Logger("trigger.dev", "debug");
 
     process.on("beforeExit", () => this.close.bind(this));
   }
@@ -63,14 +66,13 @@ export class TriggerServer {
     const connection = new TriggerServerConnection(this.#socket, { id });
 
     connection.onClose.attach(async ([code, reason]) => {
-      console.error(`Could not connect to host (code ${code})`);
+      this.#logger.log(`Connection with host was closed (${code})`, id);
 
       if (reason) {
-        console.error(reason);
+        this.#logger.error(reason);
       }
 
-      this.#closeConnection();
-      await this.#closePubSub();
+      await this.close();
     });
 
     this.#logger.debug("Connection initialized", id);
@@ -89,137 +91,103 @@ export class TriggerServer {
       sender: HostRPCSchema,
       receiver: ServerRPCSchema,
       handlers: {
-        INITIALIZE_DELAY: async (data) => {
-          if (!this.#triggerPublisher) {
+        INITIALIZE_DELAY: async (request) => {
+          const runController = this.#runControllers.get(request.runId);
+
+          if (!runController) {
             // TODO: need to recover from this issue by trying to reconnect
             return false;
           }
 
-          if (!this.#organizationId) {
-            // TODO: this should never really happen
-            throw new Error(
-              "Cannot complete workflow run without an organization ID"
-            );
-          }
-
-          if (!this.#workflowId) {
-            // TODO: this should never really happen
-            throw new Error("Cannot send log without a workflow ID");
-          }
-
-          const response = await this.#triggerPublisher.publish(
-            "INITIALIZE_DELAY",
-            {
-              id: data.waitId,
-              config: data.config,
-            },
-            {
-              "x-api-key": this.#apiKey,
-              "x-workflow-id": this.#workflowId,
-              "x-workflow-run-id": data.id,
-            }
-          );
+          const response = await runController.publish("INITIALIZE_DELAY", {
+            key: request.key,
+            wait: request.wait,
+          });
 
           return !!response;
         },
-        SEND_REQUEST: async (data) => {
-          if (!this.#triggerPublisher) {
+        SEND_REQUEST: async (request) => {
+          const runController = this.#runControllers.get(request.runId);
+
+          if (!runController) {
             // TODO: need to recover from this issue by trying to reconnect
             return false;
           }
 
-          if (!this.#organizationId) {
-            // TODO: this should never really happen
-            throw new Error(
-              "Cannot complete workflow run without an organization ID"
-            );
-          }
-
-          if (!this.#workflowId) {
-            // TODO: this should never really happen
-            throw new Error("Cannot send log without a workflow ID");
-          }
-
-          const response = await this.#triggerPublisher.publish(
+          const response = await runController.publish(
             "SEND_INTEGRATION_REQUEST",
             {
-              id: data.requestId,
-              service: data.service,
-              endpoint: data.endpoint,
-              params: data.params,
-            },
-            {
-              "x-api-key": this.#apiKey,
-              "x-workflow-id": this.#workflowId,
-              "x-workflow-run-id": data.id,
+              key: request.key,
+              request: request.request,
             }
           );
 
           return !!response;
         },
-        SEND_EVENT: async (data) => {
-          if (!this.#triggerPublisher) {
+        SEND_EVENT: async (request) => {
+          const runController = this.#runControllers.get(request.runId);
+
+          if (!runController) {
             // TODO: need to recover from this issue by trying to reconnect
             return false;
           }
 
-          if (!this.#organizationId) {
-            // TODO: this should never really happen
-            throw new Error(
-              "Cannot complete workflow run without an organization ID"
-            );
-          }
-
-          if (!this.#workflowId) {
-            // TODO: this should never really happen
-            throw new Error("Cannot send log without a workflow ID");
-          }
-
-          const response = await this.#triggerPublisher.publish(
-            "TRIGGER_CUSTOM_EVENT",
-            {
-              id: data.id,
-              event: data.event,
-            },
-            {
-              "x-api-key": this.#apiKey,
-              "x-workflow-id": this.#workflowId,
-            }
-          );
+          const response = await runController.publish("TRIGGER_CUSTOM_EVENT", {
+            key: request.key,
+            event: request.event,
+          });
 
           return !!response;
         },
-        SEND_LOG: async (data) => {
-          if (!this.#triggerPublisher) {
-            // TODO: need to recover from this issue by trying to reconnect
+        SEND_LOG: async (request) => {
+          this.#logger.debug("Received SEND_LOG", request);
+
+          const runController = this.#runControllers.get(request.runId);
+
+          if (!runController) {
+            this.#logger.debug(
+              "Aborting SEND_LOG because there are is no runController for ",
+              request.runId
+            );
+
             return false;
           }
 
-          if (!this.#organizationId) {
-            // TODO: this should never really happen
-            throw new Error(
-              "Cannot complete workflow run without an organization ID"
-            );
-          }
-
-          if (!this.#workflowId) {
-            // TODO: this should never really happen
-            throw new Error("Cannot send log without a workflow ID");
-          }
-
-          const response = await this.#triggerPublisher.publish(
-            "LOG_MESSAGE",
-            {
-              id: data.id,
-              log: {
-                level: data.log.level,
-                message: data.log.message,
-                properties: safeJsonParse(data.log.properties),
-              },
+          const response = await runController.publish("LOG_MESSAGE", {
+            key: request.key,
+            log: {
+              level: request.log.level,
+              message: request.log.message,
+              properties: safeJsonParse(request.log.properties),
             },
+          });
+
+          return !!response;
+        },
+        SEND_WORKFLOW_ERROR: async (request) => {
+          const runController = this.#runControllers.get(request.runId);
+
+          if (!runController) {
+            return false;
+          }
+
+          const response = await runController.publish("WORKFLOW_RUN_ERROR", {
+            error: request.error,
+          });
+
+          return !!response;
+        },
+        COMPLETE_WORKFLOW_RUN: async (request) => {
+          const runController = this.#runControllers.get(request.runId);
+
+          if (!runController) {
+            return false;
+          }
+
+          const response = await runController.publish(
+            "WORKFLOW_RUN_COMPLETE",
             {
-              "x-api-key": this.#apiKey,
-              "x-workflow-id": this.#workflowId,
+              output: request.output,
             }
           );
 
@@ -237,54 +205,6 @@ export class TriggerServer {
               message: "Failed to connect to the Pulsar cluster",
             };
           }
-        },
-        SEND_WORKFLOW_ERROR: async (data) => {
-          if (!this.#triggerPublisher) {
-            // TODO: need to recover from this issue by trying to reconnect
-            return false;
-          }
-
-          if (!this.#organizationId) {
-            // TODO: this should never really happen
-            throw new Error(
-              "Cannot complete workflow run without an organization ID"
-            );
-          }
-
-          const response = await this.#triggerPublisher.publish(
-            "FAIL_WORKFLOW_RUN",
-            data,
-            {
-              "x-api-key": this.#apiKey,
-              "x-workflow-id": data.workflowId,
-            }
-          );
-
-          return !!response;
-        },
-        COMPLETE_WORKFLOW_RUN: async (data) => {
-          if (!this.#triggerPublisher) {
-            // TODO: need to recover from this issue by trying to reconnect
-            return false;
-          }
-
-          if (!this.#organizationId) {
-            // TODO: this should never really happen
-            throw new Error(
-              "Cannot complete workflow run without an organization ID"
-            );
-          }
-
-          const response = await this.#triggerPublisher.publish(
-            "COMPLETE_WORKFLOW_RUN",
-            data,
-            {
-              "x-api-key": this.#apiKey,
-              "x-workflow-id": data.workflowId,
-            }
-          );
-
-          return !!response;
         },
       },
     });
@@ -373,78 +293,24 @@ export class TriggerServer {
           subscriptionInitialPosition: "Earliest",
         },
         handlers: {
-          RESOLVE_DELAY: async (id, data, properties) => {
-            this.#logger.debug("Received resolve delay", id, data, properties);
-
-            if (!this.#serverRPC) {
-              throw new Error("Cannot resolve delay without an RPC connection");
-            }
-
-            // If the API keys don't match, then we should ignore it
-            // This ensures the workflow is triggered for the correct environment
-            if (properties["x-api-key"] !== this.#apiKey) {
-              return true;
-            }
-
-            // If the workflow id is not the same as the workflow id
-            // that we are listening for, then we should ignore it
-            if (properties["x-workflow-id"] !== this.#workflowId) {
-              return true;
-            }
-
-            const success = await this.#serverRPC.send("RESOLVE_DELAY", {
-              id: data.id,
-              meta: {
-                workflowId: properties["x-workflow-id"],
-                organizationId: properties["x-org-id"],
-                environment: properties["x-env"],
-                apiKey: properties["x-api-key"],
-                runId: properties["x-workflow-run-id"],
-              },
-            });
-
-            return success;
-          },
-          RESOLVE_INTEGRATION_REQUEST: async (id, data, properties) => {
-            this.#logger.debug(
-              "Received finish integration request",
-              id,
-              data,
-              properties
-            );
-
-            if (!this.#serverRPC) {
-              throw new Error(
-                "Cannot finish integration request without an RPC connection"
-              );
-            }
-
-            // If the API keys don't match, then we should ignore it
-            // This ensures the workflow is triggered for the correct environment
-            if (properties["x-api-key"] !== this.#apiKey) {
-              return true;
-            }
-
-            // If the workflow id is not the same as the workflow id
-            // that we are listening for, then we should ignore it
-            if (properties["x-workflow-id"] !== this.#workflowId) {
-              return true;
-            }
-
-            const success = await this.#serverRPC.send("RESOLVE_REQUEST", {
-              id: data.id,
-              output: data.output,
-              meta: {
-                workflowId: properties["x-workflow-id"],
-                organizationId: properties["x-org-id"],
-                environment: properties["x-env"],
-                apiKey: properties["x-api-key"],
-                runId: properties["x-workflow-run-id"],
-              },
-            });
-
-            return success;
-          },
+          REJECT_INTEGRATION_REQUEST: createForwardHandler(
+            platformCatalog,
+            "REJECT_INTEGRATION_REQUEST",
+            this.#logger,
+            (properties) => `workflow-runs-${properties["x-workflow-run-id"]}`
+          ),
+          RESOLVE_DELAY: createForwardHandler(
+            platformCatalog,
+            "RESOLVE_DELAY",
+            this.#logger,
+            (properties) => `workflow-runs-${properties["x-workflow-run-id"]}`
+          ),
+          RESOLVE_INTEGRATION_REQUEST: createForwardHandler(
+            platformCatalog,
+            "RESOLVE_INTEGRATION_REQUEST",
+            this.#logger,
+            (properties) => `workflow-runs-${properties["x-workflow-run-id"]}`
+          ),
           TRIGGER_WORKFLOW: async (id, data, properties) => {
             this.#logger.debug("Received trigger", id, data, properties);
             // If the API keys don't match, then we should ignore it
@@ -459,15 +325,25 @@ export class TriggerServer {
               return true;
             }
 
-            this.#logger.info("Triggering workflow", data, properties);
+            if (!this.#serverRPC) {
+              throw new Error(
+                "Cannot trigger workflow without an RPC connection"
+              );
+            }
 
-            // Send the trigger to the host machine
+            if (!this.#triggerPublisher) {
+              throw new Error(
+                "Cannot trigger workflow without a trigger publisher"
+              );
+            }
 
-            // TODO - call this TRIGGER_WORKFLOW and then have the host machine create a new run
-            this.#serverRPC?.send("TRIGGER_WORKFLOW", {
-              id: data.id,
-              trigger: data,
-              meta: {
+            this.#logger.debug("Triggering workflow", data, properties);
+
+            const runController = new WorkflowRunController({
+              runId: data.id,
+              hostRPC: this.#serverRPC,
+              publisher: this.#triggerPublisher,
+              metadata: {
                 workflowId: properties["x-workflow-id"],
                 organizationId: properties["x-org-id"],
                 environment: properties["x-env"],
@@ -475,26 +351,20 @@ export class TriggerServer {
               },
             });
 
-            try {
-              const messageId = await this.#triggerPublisher?.publish(
-                "START_WORKFLOW_RUN",
-                {
-                  id: data.id,
-                },
-                {
-                  "x-workflow-id": properties["x-workflow-id"],
-                  "x-api-key": properties["x-api-key"],
-                }
-              );
+            // Make sure this is set before calling initialize
+            this.#runControllers.set(data.id, runController);
 
-              return !!messageId;
-            } catch (error) {
-              this.#logger.error(
-                "Failed to notify platform that workflow run started",
-                error
-              );
-              return false;
+            // Send the trigger to the host machine
+            const result = await runController.initialize(
+              data.input,
+              data.context
+            );
+
+            if (!result) {
+              this.#runControllers.delete(data.id);
             }
+
+            return result;
           },
         },
       });
@@ -581,4 +451,55 @@ function safeJsonParse(json?: string) {
   } catch (error) {
     return undefined;
   }
+}
+
+function createForwardHandler<
+  TSubscriberSchema extends MessageCatalogSchema,
+  THandlerName extends keyof TSubscriberSchema
+>(
+  schema: TSubscriberSchema,
+  handler: THandlerName,
+  logger: Logger,
+  topicFn: (
+    data: z.infer<TSubscriberSchema[THandlerName]["properties"]>
+  ) => string
+) {
+  return async (
+    id: string,
+    data: z.infer<TSubscriberSchema[THandlerName]["data"]>,
+    properties: z.infer<TSubscriberSchema[THandlerName]["properties"]>
+  ) => {
+    const topicName = topicFn(properties);
+
+    logger.debug(`Forwarding message to ${topicName}`, data, properties);
+
+    const runPublisher = new ZodPublisher({
+      schema: schema,
+      client: pulsarClient,
+      config: {
+        topic: `persistent://public/default/${topicName}`,
+      },
+    });
+
+    await runPublisher.initialize();
+
+    try {
+      await runPublisher.publish(handler, data, properties);
+
+      logger.debug(`Forwarded message to ${topicName}`, data, properties);
+
+      return true;
+    } catch (e) {
+      logger.error(
+        `Failed to forward message to ${topicName}`,
+        e,
+        data,
+        properties
+      );
+
+      return false;
+    } finally {
+      await runPublisher.close();
+    }
+  };
 }

@@ -8,8 +8,8 @@ import {
 export const coordinator = {
   INITIALIZE_DELAY: {
     data: z.object({
-      id: z.string(),
-      config: WaitSchema,
+      key: z.string(),
+      wait: WaitSchema,
     }),
     properties: WorkflowSendRunEventPropertiesSchema,
   },
@@ -19,6 +19,7 @@ export const platform = {
   RESOLVE_DELAY: {
     data: z.object({
       id: z.string(),
+      key: z.string(),
     }),
     properties: WorkflowRunEventPropertiesSchema,
   },

@@ -3,12 +3,12 @@ import type {
   CustomEventSchema,
   ErrorSchema,
   LogMessageSchema,
-  WaitSchema,
 } from "@trigger.dev/common-schemas";
 import { ulid } from "ulid";
 import type { z } from "zod";
 import { prisma } from "~/db.server";
 import { IngestEvent } from "~/services/events/ingest.server";
+import { createStepOnce } from "./workflowRunStep.server";
 
 type WorkflowRunStatus = WorkflowRun["status"];
 export type { WorkflowRun, WorkflowRunStep, WorkflowRunStatus };
@@ -26,6 +26,10 @@ export async function findWorklowRunById(id: string) {
 export async function startWorkflowRun(id: string, apiKey: string) {
   const workflowRun = await findWorkflowRunScopedToApiKey(id, apiKey);
 
+  if (workflowRun.status !== "PENDING") {
+    return;
+  }
+
   await prisma.workflowRun.update({
     where: { id: workflowRun.id },
     data: {
@@ -42,6 +46,10 @@ export async function failWorkflowRun(
 ) {
   const workflowRun = await findWorkflowRunScopedToApiKey(id, apiKey);
 
+  if (workflowRun.status !== "RUNNING") {
+    return;
+  }
+
   await prisma.workflowRun.update({
     where: { id: workflowRun.id },
     data: {
@@ -53,11 +61,15 @@ export async function failWorkflowRun(
 }
 
 export async function completeWorkflowRun(
-  id: string,
   output: string,
+  runId: string,
   apiKey: string
 ) {
-  const workflowRun = await findWorkflowRunScopedToApiKey(id, apiKey);
+  const workflowRun = await findWorkflowRunScopedToApiKey(runId, apiKey);
+
+  if (workflowRun.status !== "RUNNING") {
+    return;
+  }
 
   await prisma.$transaction(async (tx) => {
     await tx.workflowRun.update({
@@ -68,36 +80,46 @@ export async function completeWorkflowRun(
       },
     });
 
-    await tx.workflowRunStep.create({
-      data: {
-        runId: id,
+    await tx.workflowRunStep.upsert({
+      where: {
+        runId_idempotencyKey: {
+          runId,
+          idempotencyKey: "output",
+        },
+      },
+      create: {
+        runId,
+        idempotencyKey: "output",
         type: "OUTPUT",
         output: JSON.parse(output),
         context: {},
         startedAt: new Date(),
         finishedAt: new Date(),
       },
+      update: {},
     });
   });
 }
 
 export async function triggerEventInRun(
-  id: string,
+  key: string,
   event: z.infer<typeof CustomEventSchema>,
+  runId: string,
   apiKey: string
 ) {
-  const workflowRun = await findWorkflowRunScopedToApiKey(id, apiKey);
+  const workflowRun = await findWorkflowRunScopedToApiKey(runId, apiKey);
 
-  await prisma.workflowRunStep.create({
-    data: {
-      runId: id,
-      type: "CUSTOM_EVENT",
-      input: event,
-      context: {},
-      startedAt: new Date(),
-      finishedAt: new Date(),
-    },
+  const step = await createStepOnce(runId, key, {
+    type: "CUSTOM_EVENT",
+    input: event,
+    context: {},
+    startedAt: new Date(),
+    finishedAt: new Date(),
   });
+
+  if (step.status === "EXISTING") {
+    return;
+  }
 
   const ingestService = new IngestEvent();
 
@@ -116,21 +138,20 @@ export async function triggerEventInRun(
 }
 
 export async function logMessageInRun(
-  id: string,
+  key: string,
   log: z.infer<typeof LogMessageSchema>,
+  runId: string,
   apiKey: string
 ) {
-  const workflowRun = await findWorkflowRunScopedToApiKey(id, apiKey);
+  const workflowRun = await findWorkflowRunScopedToApiKey(runId, apiKey);
 
-  await prisma.workflowRunStep.create({
-    data: {
-      runId: workflowRun.id,
-      type: "LOG_MESSAGE",
-      input: log,
-      context: {},
-      startedAt: new Date(),
-      finishedAt: new Date(),
-    },
+  return createStepOnce(workflowRun.id, key, {
+    type: "LOG_MESSAGE",
+    input: log,
+    context: {},
+    status: "SUCCESS",
+    startedAt: new Date(),
+    finishedAt: new Date(),
   });
 }
 

@@ -246,7 +246,7 @@ enum ExternalServiceStatus {
 }
 
 model IntegrationRequest {
-  id String @id
+  id String @id @default(cuid())
 
   params   Json
   endpoint String
@@ -294,7 +294,7 @@ model IntegrationResponse {
 }
 
 model DurableDelay {
-  id String @id
+  id String @id @default(cuid())
 
   run   WorkflowRun @relation(fields: [runId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   runId String
@@ -382,6 +382,8 @@ model WorkflowRunStep {
   run   WorkflowRun @relation(fields: [runId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   runId String
 
+  idempotencyKey String
+
   type    WorkflowRunStepType
   input   Json?
   output  Json?
@@ -397,6 +399,8 @@ model WorkflowRunStep {
 
   integrationRequest IntegrationRequest?
   delay              DurableDelay?
+
+  @@unique([runId, idempotencyKey])
 }
 
 enum WorkflowRunStepStatus {

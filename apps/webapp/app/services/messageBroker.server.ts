@@ -130,52 +130,63 @@ async function createTriggerSubscriber() {
     config: {
       topic: "persistent://public/default/coordinator-events",
       subscription: "webapp",
-      subscriptionType: "Shared",
+      subscriptionType: "KeyShared",
       subscriptionInitialPosition: "Earliest",
     },
     schema: coordinatorCatalog,
     handlers: {
       LOG_MESSAGE: async (id, data, properties) => {
-        await logMessageInRun(data.id, data.log, properties["x-api-key"]);
+        await logMessageInRun(
+          data.key,
+          data.log,
+          properties["x-workflow-run-id"],
+          properties["x-api-key"]
+        );
 
         return true;
       },
-      START_WORKFLOW_RUN: async (id, data, properties) => {
+      WORKFLOW_RUN_STARTED: async (id, data, properties) => {
         await startWorkflowRun(data.id, properties["x-api-key"]);
 
         return true;
       },
-      FAIL_WORKFLOW_RUN: async (id, data, properties) => {
-        await failWorkflowRun(data.id, data.error, properties["x-api-key"]);
+      WORKFLOW_RUN_ERROR: async (id, data, properties) => {
+        await failWorkflowRun(
+          properties["x-workflow-run-id"],
+          data.error,
+          properties["x-api-key"]
+        );
 
         return true;
       },
       SEND_INTEGRATION_REQUEST: async (id, data, properties) => {
         const service = new CreateIntegrationRequest();
 
-        const integrationRequest = await service.call(
-          properties["x-api-key"],
+        await service.call(
+          data.key,
           properties["x-workflow-run-id"],
-          data
+          properties["x-api-key"],
+          data.request
         );
-
-        internalPubSub.publish("INTEGRATION_REQUEST_CREATED", {
-          id: integrationRequest.id,
-        });
 
         return true;
       },
-      COMPLETE_WORKFLOW_RUN: async (id, data, properties) => {
+      WORKFLOW_RUN_COMPLETE: async (id, data, properties) => {
         await completeWorkflowRun(
-          data.id,
           data.output,
+          properties["x-workflow-run-id"],
           properties["x-api-key"]
         );
 
         return true;
       },
       TRIGGER_CUSTOM_EVENT: async (id, data, properties) => {
-        await triggerEventInRun(data.id, data.event, properties["x-api-key"]);
+        await triggerEventInRun(
+          data.key,
+          data.event,
+          properties["x-workflow-run-id"],
+          properties["x-api-key"]
+        );
 
         return true;
       },
@@ -183,8 +194,8 @@ async function createTriggerSubscriber() {
         const service = new InitiateDelay();
 
         await service.call(properties["x-workflow-run-id"], {
-          id: data.id,
-          config: data.config,
+          key: data.key,
+          wait: data.wait,
         });
 
         return true;
@@ -296,17 +307,17 @@ async function createInternalPubSub() {
       RESOLVE_DELAY: async (id, data, properties) => {
         const service = new ResolveDelay();
 
-        const run = await service.call(data.id);
+        const { step } = await service.call(data.id);
 
         triggerPublisher.publish(
           "RESOLVE_DELAY",
-          { id: data.id },
+          { id: data.id, key: step.idempotencyKey },
           {
-            "x-workflow-run-id": run.id,
-            "x-api-key": run.environment.apiKey,
-            "x-org-id": run.environment.organizationId,
-            "x-workflow-id": run.workflowId,
-            "x-env": run.environment.slug,
+            "x-workflow-run-id": step.run.id,
+            "x-api-key": step.run.environment.apiKey,
+            "x-org-id": step.run.environment.organizationId,
+            "x-workflow-id": step.run.workflowId,
+            "x-env": step.run.environment.slug,
           }
         );
         return true;
@@ -347,22 +358,50 @@ async function createInternalPubSub() {
           return true;
         }
 
-        await triggerPublisher.publish(
-          "RESOLVE_INTEGRATION_REQUEST",
-          {
-            id: integrationRequest.id,
-            output: integrationRequest.step.output as z.infer<
-              typeof JsonSchema
-            >,
-          },
-          {
-            "x-workflow-run-id": run.id,
-            "x-api-key": run.environment.apiKey,
-            "x-org-id": run.environment.organizationId,
-            "x-workflow-id": run.workflowId,
-            "x-env": run.environment.slug,
-          }
-        );
+        if (
+          integrationRequest.status !== "SUCCESS" &&
+          integrationRequest.status !== "ERROR"
+        ) {
+          return true;
+        }
+
+        if (integrationRequest.status === "SUCCESS") {
+          await triggerPublisher.publish(
+            "RESOLVE_INTEGRATION_REQUEST",
+            {
+              id: integrationRequest.id,
+              key: integrationRequest.step.idempotencyKey,
+              output: integrationRequest.step.output as z.infer<
+                typeof JsonSchema
+              >,
+            },
+            {
+              "x-workflow-run-id": run.id,
+              "x-api-key": run.environment.apiKey,
+              "x-org-id": run.environment.organizationId,
+              "x-workflow-id": run.workflowId,
+              "x-env": run.environment.slug,
+            }
+          );
+        } else {
+          await triggerPublisher.publish(
+            "REJECT_INTEGRATION_REQUEST",
+            {
+              id: integrationRequest.id,
+              key: integrationRequest.step.idempotencyKey,
+              error: integrationRequest.step.output as z.infer<
+                typeof JsonSchema
+              >,
+            },
+            {
+              "x-workflow-run-id": run.id,
+              "x-api-key": run.environment.apiKey,
+              "x-org-id": run.environment.organizationId,
+              "x-workflow-id": run.workflowId,
+              "x-env": run.environment.slug,
+            }
+          );
+        }
 
         return true;
       },
@@ -411,6 +450,7 @@ async function createInternalPubSub() {
             "x-org-id": run.environment.organizationId,
             "x-workflow-id": run.workflowId,
             "x-env": run.environment.slug,
+            "x-workflow-run-id": run.id,
           }
         );
 

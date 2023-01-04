@@ -9,7 +9,16 @@ export const platform = {
   RESOLVE_INTEGRATION_REQUEST: {
     data: z.object({
       id: z.string(),
+      key: z.string(),
       output: JsonSchema.default({}),
+    }),
+    properties: WorkflowRunEventPropertiesSchema,
+  },
+  REJECT_INTEGRATION_REQUEST: {
+    data: z.object({
+      id: z.string(),
+      key: z.string(),
+      error: JsonSchema.default({}),
     }),
     properties: WorkflowRunEventPropertiesSchema,
   },
@@ -18,10 +27,12 @@ export const platform = {
 export const coordinator = {
   SEND_INTEGRATION_REQUEST: {
     data: z.object({
-      id: z.string(),
-      service: z.string(),
-      endpoint: z.string(),
-      params: z.any(),
+      key: z.string(),
+      request: z.object({
+        service: z.string(),
+        endpoint: z.string(),
+        params: z.any(),
+      }),
     }),
     properties: WorkflowSendRunEventPropertiesSchema,
   },

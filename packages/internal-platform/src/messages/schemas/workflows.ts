@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { JsonSchema } from "@trigger.dev/common-schemas";
-import { WorkflowEventPropertiesSchema } from "../sharedSchemas";
+import { WorkflowRunEventPropertiesSchema } from "../sharedSchemas";
 
 export const TriggerWorkflowMessageSchema = z.object({
   id: z.string(),
@@ -11,6 +11,6 @@ export const TriggerWorkflowMessageSchema = z.object({
 export const platform = {
   TRIGGER_WORKFLOW: {
     data: TriggerWorkflowMessageSchema,
-    properties: WorkflowEventPropertiesSchema,
+    properties: WorkflowRunEventPropertiesSchema,
   },
 };

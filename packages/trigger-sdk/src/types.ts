@@ -16,9 +16,9 @@ export interface TriggerContext {
   apiKey: string;
   organizationId: string;
   logger: TriggerLogger;
-  fireEvent(event: CustomEvent): Promise<void>;
-  waitFor(options: WaitForOptions): Promise<void>;
-  waitUntil(date: Date): Promise<void>;
+  fireEvent(key: string, event: CustomEvent): Promise<void>;
+  waitFor(key: string, options: WaitForOptions): Promise<void>;
+  waitUntil(key: string, date: Date): Promise<void>;
 }
 
 export interface TriggerLogger {

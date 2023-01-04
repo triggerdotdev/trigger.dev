@@ -14,31 +14,31 @@ export class Logger {
   }
 
   log(...args: any[]) {
-    if (this.#level > logLevels.indexOf("log")) return;
+    if (this.#level < 0) return;
 
     console.log(`[${this.#name}] `, ...args);
   }
 
   error(...args: any[]) {
-    if (this.#level > logLevels.indexOf("error")) return;
+    if (this.#level < 1) return;
 
     console.error(`[${this.#name}] `, ...args);
   }
 
   warn(...args: any[]) {
-    if (this.#level > logLevels.indexOf("warn")) return;
+    if (this.#level < 2) return;
 
     console.warn(`[${this.#name}] `, ...args);
   }
 
   info(...args: any[]) {
-    if (this.#level > logLevels.indexOf("info")) return;
+    if (this.#level < 3) return;
 
     console.info(`[${this.#name}] `, ...args);
   }
 
   debug(...args: any[]) {
-    if (this.#level > logLevels.indexOf("debug")) return;
+    if (this.#level < 4) return;
 
     console.debug(`[${this.#name}] `, ...args);
   }

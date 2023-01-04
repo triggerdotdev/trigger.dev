@@ -12,6 +12,7 @@ type PerformRequestOptions<TSchema extends z.ZodTypeAny> = {
 
 type TriggerRunLocalStorage = {
   performRequest: <TSchema extends z.ZodTypeAny>(
+    key: string,
     options: PerformRequestOptions<TSchema>
   ) => Promise<z.infer<TSchema>>;
 };

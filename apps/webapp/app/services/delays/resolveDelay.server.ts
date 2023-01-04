@@ -9,6 +9,27 @@ export class ResolveDelay {
   }
 
   async call(id: string) {
+    const existingDelay = await this.#prismaClient.durableDelay.findUnique({
+      where: { id },
+      include: {
+        step: {
+          include: {
+            run: {
+              include: { environment: true },
+            },
+          },
+        },
+      },
+    });
+
+    if (!existingDelay) {
+      throw new Error("Delay not found");
+    }
+
+    if (existingDelay.resolvedAt) {
+      return existingDelay;
+    }
+
     const delay = await this.#prismaClient.durableDelay.update({
       where: { id },
       data: { resolvedAt: new Date() },
@@ -28,6 +49,6 @@ export class ResolveDelay {
       data: { status: "SUCCESS", finishedAt: delay.resolvedAt },
     });
 
-    return delay.step.run;
+    return delay;
   }
 }

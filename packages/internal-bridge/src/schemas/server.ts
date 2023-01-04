@@ -8,25 +8,28 @@ import { z } from "zod";
 export const ServerRPCSchema = {
   INITIALIZE_DELAY: {
     request: z.object({
-      id: z.string(),
-      waitId: z.string(),
-      config: WaitSchema,
+      runId: z.string(),
+      key: z.string(),
+      wait: WaitSchema,
     }),
     response: z.boolean(),
   },
   SEND_REQUEST: {
     request: z.object({
-      id: z.string(),
-      requestId: z.string(),
-      service: z.string(),
-      endpoint: z.string(),
-      params: z.any(),
+      runId: z.string(),
+      key: z.string(),
+      request: z.object({
+        service: z.string(),
+        endpoint: z.string(),
+        params: z.any(),
+      }),
     }),
     response: z.boolean(),
   },
   SEND_LOG: {
     request: z.object({
-      id: z.string(),
+      runId: z.string(),
+      key: z.string(),
       log: z.object({
         message: z.string(),
         level: z.enum(["DEBUG", "INFO", "WARN", "ERROR"]),
@@ -37,7 +40,8 @@ export const ServerRPCSchema = {
   },
   SEND_EVENT: {
     request: z.object({
-      id: z.string(),
+      runId: z.string(),
+      key: z.string(),
       event: CustomEventSchema,
     }),
     response: z.boolean(),
@@ -65,16 +69,14 @@ export const ServerRPCSchema = {
   },
   COMPLETE_WORKFLOW_RUN: {
     request: z.object({
-      id: z.string(),
-      workflowId: z.string(),
+      runId: z.string(),
       output: z.string(),
     }),
     response: z.boolean(),
   },
   SEND_WORKFLOW_ERROR: {
     request: z.object({
-      id: z.string(),
-      workflowId: z.string(),
+      runId: z.string(),
       error: z.object({
         name: z.string(),
         message: z.string(),

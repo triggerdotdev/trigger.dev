@@ -12,6 +12,7 @@ import { z, ZodError } from "zod";
 export type PublishOptions = {
   deliverAfter?: number;
   deliverAt?: number;
+  partitionKey?: string;
 };
 
 export type ZodPublisherOptions<PublisherSchema extends MessageCatalogSchema> =
@@ -102,7 +103,8 @@ export class ZodPublisher<PublisherSchema extends MessageCatalogSchema> {
       "Parsing message data and properties",
       type,
       data,
-      properties
+      properties,
+      options
     );
 
     const parsedData = messageSchema.data.parse(data);
@@ -121,6 +123,7 @@ export class ZodPublisher<PublisherSchema extends MessageCatalogSchema> {
       properties: parsedProperties,
       deliverAfter: options?.deliverAfter,
       deliverAt: options?.deliverAt,
+      partitionKey: options?.partitionKey,
     });
 
     return response.toString();

@@ -11,6 +11,7 @@ export type PostMessageResponse = z.infer<
 >;
 
 export async function postMessage(
+  key: string,
   options: PostMessageOptions
 ): Promise<PostMessageResponse> {
   const run = getTriggerRun();
@@ -19,7 +20,7 @@ export async function postMessage(
     throw new Error("Cannot call postMessage outside of a trigger run");
   }
 
-  const output = await run.performRequest({
+  const output = await run.performRequest(key, {
     service: "slack",
     endpoint: "chat.postMessage",
     params: options,

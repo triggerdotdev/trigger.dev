@@ -1,19 +1,18 @@
-import { v4 } from "uuid";
-import { z } from "zod";
-import { TimeoutError, HostConnection } from "./connection";
-import { WebSocket } from "ws";
 import {
-  ZodRPC,
-  ServerRPCSchema,
   HostRPCSchema,
   Logger,
+  ServerRPCSchema,
+  ZodRPC,
 } from "internal-bridge";
+import { v4 } from "uuid";
+import { WebSocket } from "ws";
+import { z } from "zod";
 import * as pkg from "../package.json";
-import { Trigger, TriggerOptions } from "./trigger";
-import { TriggerContext, WaitForOptions } from "./types";
-import { ContextLogger } from "./logger";
+import { HostConnection, TimeoutError } from "./connection";
 import { triggerRunLocalStorage } from "./localStorage";
-import { ulid } from "ulid";
+import { ContextLogger } from "./logger";
+import { Trigger, TriggerOptions } from "./trigger";
+import { TriggerContext } from "./types";
 
 export class TriggerClient<TSchema extends z.ZodTypeAny> {
   #trigger: Trigger<TSchema>;
@@ -110,39 +109,64 @@ export class TriggerClient<TSchema extends z.ZodTypeAny> {
       receiver: HostRPCSchema,
       handlers: {
         RESOLVE_DELAY: async (data) => {
-          console.log(`RESOLVE_DELAY(${data.id})`);
+          this.#logger.debug("Handling RESOLVE_DELAY", data);
 
-          const waitCallbacks = this.#waitForCallbacks.get(data.id);
+          const waitCallbacks = this.#waitForCallbacks.get(
+            messageKey(data.meta.runId, data.key)
+          );
 
           if (!waitCallbacks) {
             throw new Error(
-              `Could not find wait callbacks for wait ID ${data.id}`
+              `Could not find wait callbacks for wait ID ${data.meta.runId}:${data.key}`
             );
           }
 
-          const { resolve, reject } = waitCallbacks;
+          const { resolve } = waitCallbacks;
 
           resolve();
 
           return true;
         },
         RESOLVE_REQUEST: async (data) => {
-          const requestCallbacks = this.#responseCompleteCallbacks.get(data.id);
+          this.#logger.debug("Handling RESOLVE_REQUEST", data);
+
+          const requestCallbacks = this.#responseCompleteCallbacks.get(
+            messageKey(data.meta.runId, data.key)
+          );
 
           if (!requestCallbacks) {
             throw new Error(
-              `Could not find request callbacks for request ID ${data.id}`
+              `Could not find request callbacks for request ID ${data.meta.runId}:${data.key}`
             );
           }
 
-          const { resolve, reject } = requestCallbacks;
+          const { resolve } = requestCallbacks;
 
           resolve(data.output);
 
           return true;
         },
+        REJECT_REQUEST: async (data) => {
+          this.#logger.debug("Handling REJECT_REQUEST", data);
+
+          const requestCallbacks = this.#responseCompleteCallbacks.get(
+            messageKey(data.meta.runId, data.key)
+          );
+
+          if (!requestCallbacks) {
+            throw new Error(
+              `Could not find request callbacks for request id ${data.meta.runId}:${data.key}`
+            );
+          }
+
+          const { reject } = requestCallbacks;
+
+          reject(data.error);
+
+          return true;
+        },
         TRIGGER_WORKFLOW: async (data) => {
-          console.log("TRIGGER_WORKFLOW", data);
+          this.#logger.debug("Handling TRIGGER_WORKFLOW", data);
 
           const ctx: TriggerContext = {
             id: data.id,
@@ -151,7 +175,8 @@ export class TriggerClient<TSchema extends z.ZodTypeAny> {
             organizationId: data.meta.organizationId,
             logger: new ContextLogger(async (level, message, properties) => {
               await serverRPC.send("SEND_LOG", {
-                id: data.id,
+                runId: data.id,
+                key: message,
                 log: {
                   level,
                   message,
@@ -159,26 +184,25 @@ export class TriggerClient<TSchema extends z.ZodTypeAny> {
                 },
               });
             }),
-            fireEvent: async (event) => {
+            fireEvent: async (key, event) => {
               await serverRPC.send("SEND_EVENT", {
-                id: data.id,
+                runId: data.id,
+                key,
                 event: JSON.parse(JSON.stringify(event)),
               });
             },
-            waitFor: async (options: WaitForOptions) => {
-              const waitId = ulid();
-
+            waitFor: async (key, options) => {
               const result = new Promise<void>((resolve, reject) => {
-                this.#waitForCallbacks.set(waitId, {
+                this.#waitForCallbacks.set(messageKey(data.id, key), {
                   resolve,
                   reject,
                 });
               });
 
               await serverRPC.send("INITIALIZE_DELAY", {
-                id: data.id,
-                waitId,
-                config: {
+                runId: data.id,
+                key,
+                wait: {
                   type: "DELAY",
                   seconds: options.seconds,
                   minutes: options.minutes,
@@ -191,20 +215,18 @@ export class TriggerClient<TSchema extends z.ZodTypeAny> {
 
               return;
             },
-            waitUntil: async (date: Date) => {
-              const waitId = ulid();
-
+            waitUntil: async (key, date: Date) => {
               const result = new Promise<void>((resolve, reject) => {
-                this.#waitForCallbacks.set(waitId, {
+                this.#waitForCallbacks.set(messageKey(data.id, key), {
                   resolve,
                   reject,
                 });
               });
 
               await serverRPC.send("INITIALIZE_DELAY", {
-                id: data.id,
-                waitId,
-                config: {
+                runId: data.id,
+                key,
+                wait: {
                   type: "SCHEDULE_FOR",
                   scheduledFor: date.toISOString(),
                 },
@@ -218,24 +240,29 @@ export class TriggerClient<TSchema extends z.ZodTypeAny> {
 
           const eventData = this.#options.on.schema.parse(data.trigger.input);
 
+          this.#logger.debug("Parsed event data", eventData);
+
           triggerRunLocalStorage.run(
             {
-              performRequest: async (options) => {
-                const requestId = ulid();
-
+              performRequest: async (key, options) => {
                 const result = new Promise((resolve, reject) => {
-                  this.#responseCompleteCallbacks.set(requestId, {
-                    resolve,
-                    reject,
-                  });
+                  this.#responseCompleteCallbacks.set(
+                    messageKey(data.id, key),
+                    {
+                      resolve,
+                      reject,
+                    }
+                  );
                 });
 
                 await serverRPC.send("SEND_REQUEST", {
-                  id: data.id,
-                  requestId,
-                  service: options.service,
-                  endpoint: options.endpoint,
-                  params: options.params,
+                  runId: data.id,
+                  key,
+                  request: {
+                    service: options.service,
+                    endpoint: options.endpoint,
+                    params: options.params,
+                  },
                 });
 
                 const output = await result;
@@ -244,14 +271,14 @@ export class TriggerClient<TSchema extends z.ZodTypeAny> {
               },
             },
             () => {
-              // TODO: handle this better
+              this.#logger.debug("Running trigger...");
+
               this.#trigger.options
                 .run(eventData, ctx)
                 .then((output) => {
                   return serverRPC.send("COMPLETE_WORKFLOW_RUN", {
-                    id: data.id,
+                    runId: data.id,
                     output: JSON.stringify(output),
-                    workflowId: data.meta.workflowId,
                   });
                 })
                 .catch((anyError) => {
@@ -279,16 +306,19 @@ export class TriggerClient<TSchema extends z.ZodTypeAny> {
                   const error = parseAnyError(anyError);
 
                   return serverRPC.send("SEND_WORKFLOW_ERROR", {
-                    id: data.id,
-                    workflowId: data.meta.workflowId,
+                    runId: data.id,
                     error,
                   });
                 });
             }
           );
+
+          return true;
         },
       },
     });
+
+    this.#logger.debug("Successfully initialized RPC with server");
 
     this.#serverRPC = serverRPC;
   }
@@ -315,7 +345,7 @@ export class TriggerClient<TSchema extends z.ZodTypeAny> {
       throw new Error(response.message);
     }
 
-    console.log("Host initialized");
+    this.#logger.debug("Successfully initialized workflow with server");
   }
 
   async #send<MethodName extends keyof typeof ServerRPCSchema>(
@@ -326,15 +356,21 @@ export class TriggerClient<TSchema extends z.ZodTypeAny> {
 
     while (true) {
       try {
+        this.#logger.debug(
+          `Sending RPC request to server: ${methodName}`,
+          request
+        );
+
         return await this.#serverRPC.send(methodName, request);
       } catch (err) {
         if (err instanceof TimeoutError) {
-          console.log(
+          this.#logger.log(
             `RPC call timed out, retrying in ${Math.round(
               this.#retryIntervalMs / 1000
             )}s...`
           );
-          console.log(err);
+
+          this.#logger.error(err);
 
           await sleep(this.#retryIntervalMs);
         } else {
@@ -347,3 +383,5 @@ export class TriggerClient<TSchema extends z.ZodTypeAny> {
 
 export const sleep = (ms: number) =>
   new Promise((resolve) => setTimeout(resolve, ms));
+
+const messageKey = (runId: string, key: string) => `${runId}:${key}`;

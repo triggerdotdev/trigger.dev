@@ -1,6 +1,9 @@
 import type { PrismaClient } from "~/db.server";
 import { prisma } from "~/db.server";
 import type { Organization } from "~/models/organization.server";
+import type { WorkflowRunStep } from "~/models/workflowRun.server";
+import { createStepOnce } from "~/models/workflowRunStep.server";
+import { internalPubSub } from "../messageBroker.server";
 
 export class CreateIntegrationRequest {
   #prismaClient: PrismaClient;
@@ -10,10 +13,10 @@ export class CreateIntegrationRequest {
   }
 
   async call(
+    key: string,
+    runId: string,
     apiKey: string,
-    workflowRunId: string,
     data: {
-      id: string;
       service: string;
       endpoint: string;
       params?: any;
@@ -34,7 +37,7 @@ export class CreateIntegrationRequest {
 
     const workflowRun = await this.#prismaClient.workflowRun.findUnique({
       where: {
-        id: workflowRunId,
+        id: runId,
       },
       include: {
         workflow: true,
@@ -48,6 +51,23 @@ export class CreateIntegrationRequest {
     if (workflowRun.workflow.organizationId !== environment.organizationId) {
       throw new Error("Invalid workflow run ID");
     }
+
+    // Create the workflow run step
+    const idempotentStep = await createStepOnce(workflowRun.id, key, {
+      type: "INTEGRATION_REQUEST",
+      input: data.params,
+      context: {
+        service: data.service,
+        endpoint: data.endpoint,
+      },
+      status: "PENDING",
+    });
+
+    if (idempotentStep.status === "EXISTING") {
+      return this.#handleExistingStep(idempotentStep.step);
+    }
+
+    const workflowRunStep = idempotentStep.step;
 
     // Find existing external service for this workflow and service
     // If it doesn't exist, create it
@@ -98,25 +118,11 @@ export class CreateIntegrationRequest {
         }
       }
     }
-    // Create the workflow run step
-    const workflowRunStep = await this.#prismaClient.workflowRunStep.create({
-      data: {
-        runId: workflowRun.id,
-        type: "INTEGRATION_REQUEST",
-        input: data.params,
-        context: {
-          service: data.service,
-          endpoint: data.endpoint,
-        },
-        status: "PENDING",
-      },
-    });
 
     // Create the integration request
     const integrationRequest =
       await this.#prismaClient.integrationRequest.create({
         data: {
-          id: data.id,
           params: data.params,
           endpoint: data.endpoint,
           externalServiceId: externalService.id,
@@ -126,7 +132,33 @@ export class CreateIntegrationRequest {
         },
       });
 
+    internalPubSub.publish("INTEGRATION_REQUEST_CREATED", {
+      id: integrationRequest.id,
+    });
+
     return integrationRequest;
+  }
+
+  async #handleExistingStep(step: WorkflowRunStep) {
+    const integrationRequest =
+      await this.#prismaClient.integrationRequest.findUnique({
+        where: {
+          stepId: step.id,
+        },
+      });
+
+    if (!integrationRequest) {
+      return;
+    }
+
+    if (
+      integrationRequest.status === "SUCCESS" ||
+      integrationRequest.status === "ERROR"
+    ) {
+      await internalPubSub.publish("RESOLVE_INTEGRATION_REQUEST", {
+        id: integrationRequest.id,
+      });
+    }
   }
 
   async #findLatestExistingConnectionInOrg(

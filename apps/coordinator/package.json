@@ -15,6 +15,7 @@
     "evt": "^2.4.13",
     "internal-bridge": "workspace:*",
     "internal-platform": "workspace:*",
+    "@trigger.dev/common-schemas": "workspace:*",
     "pulsar-client": "^1.7.0",
     "uuid": "^9.0.0",
     "ws": "^8.11.0",
