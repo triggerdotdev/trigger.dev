@@ -30,7 +30,7 @@ services:
       - app_network
   pizzly-server:
     image: nangohq/pizzly-server:0.4.3
-    container_name: pizzly-server
+    container_name: trigger-pizzly-server
     restart: always
     env_file:
       - .docker/pizzly-server.env
@@ -60,7 +60,6 @@ services:
     tty: true
     stdin_open: true
     restart: always
-  
 
 networks:
   app_network:
