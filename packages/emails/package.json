@@ -2,7 +2,7 @@
   "name": "emails",
   "version": "1.0.0",
   "scripts": {
-    "dev": "email dev",
+    "dev": "PORT=3080 email dev",
     "export": "email export"
   },
   "dependencies": {
