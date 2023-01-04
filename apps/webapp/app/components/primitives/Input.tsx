@@ -25,7 +25,7 @@ export function Input({
     <input
       {...props}
       className={classNames(
-        `flex grow rounded-lg border border-slate-300 bg-slate-50 py-2 pl-3 pr-1 text-slate-700 focus:outline-offset-[0px] focus:outline-blue-500`,
+        `flex grow py-2 pl-3 pr-1 text-slate-200 rounded bg-slate-850 group-focus:border-indigo-500 placeholder:text-slate-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500`,
         classes
       )}
     >

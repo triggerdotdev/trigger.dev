@@ -42,12 +42,36 @@
         client_id: "09bd8b46-6b80-4343-9ffd-5750a8c3e2f1"
       production:
         client_id: abcdefg
-# - name: Mailgun
-#   slug: mailgun
-#   icon: /integrations/mailgun.png
-#   authentication:
-#     type: api_key
-#     header_name: "Authorization"
-#     header_type: "Bearer"
-#     documentation: |
-#       You need to create a `Personal access token`
+- name: Mailgun
+  slug: mailgun
+  icon: /integrations/mailgun.png
+  authentication:
+    type: api_key
+    header_name: "Authorization"
+    header_type: "Bearer"
+    documentation: |
+      Name this integration and create a `Personal access token`. <br>
+      Here is some more text <br>
+      Here is some more text <br>
+      Here is some more text <br>
+      Here is some more text <br>
+      Here is some more text <br>
+      Here is some more text <br>
+      Here is some more text <br>
+      Here is some more text <br>
+      Here is some more text <br>
+      Here is some more text <br>
+      Here is some more text <br>
+      Here is some more text <br>
+      Here is some more text <br>
+      Here is some more text <br>
+      Here is some more text <br>
+      Here is some more text <br>
+      Here is some more text <br>
+      Here is some more text <br>
+      Here is some more text <br>
+      Here is some more text <br>
+      Here is some more text <br>
+      Here is some more text <br>
+      Here is some more text <br>
+      Here is some more text

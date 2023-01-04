@@ -44,7 +44,7 @@ function Dialog({ onClose, children, ...props }: DialogProps) {
 type PanelProps = Parameters<typeof HeadlessDialog.Panel>[0];
 const Panel = forwardRef((props: PanelProps, ref) => (
   <HeadlessDialog.Panel
-    className="w-full max-w-md transform overflow-hidden rounded-lg bg-slate-800 text-slate-200 p-6 text-left align-middle shadow-xl transition-all"
+    className="w-full max-w-xl transform overflow-hidden rounded-md shadow-md bg-slate-800 text-slate-200 p-10 text-left align-middle transition-all"
     {...props}
     ref={ref}
   />
@@ -55,7 +55,7 @@ type TitleProps = Parameters<typeof HeadlessDialog.Title>[0];
 const Title = forwardRef((props: TitleProps, ref) => (
   <HeadlessDialog.Title
     as="h3"
-    className="text-lg font-medium leading-6 text-slate-200"
+    className="text-2xl leading-6 text-slate-200"
     {...props}
     ref={ref}
   />

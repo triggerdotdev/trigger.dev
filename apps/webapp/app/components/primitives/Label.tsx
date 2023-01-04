@@ -8,10 +8,7 @@ type LabelProps = React.DetailedHTMLProps<
 export function Label(props: LabelProps) {
   return (
     <label
-      className={classNames(
-        "text-sm font-medium text-slate-400",
-        props.className
-      )}
+      className={classNames("text-sm text-slate-500", props.className)}
       {...props}
     />
   );

@@ -1,4 +1,3 @@
-import { useFetcher } from "@remix-run/react";
 import type {
   APIKeyAuthentication,
   CatalogIntegration,
@@ -11,8 +10,11 @@ import { FormError } from "../primitives/FormError";
 import { Input } from "../primitives/Input";
 import { InputGroup } from "../primitives/InputGroup";
 import { Label } from "../primitives/Label";
-import { Response as CreateResponse } from "~/routes/resources/connection";
+import type { Response as CreateResponse } from "~/routes/resources/connection";
 import { useTypedFetcher } from "remix-typedjson";
+import { Body } from "../primitives/text/Body";
+import { Header4 } from "../primitives/text/Headers";
+import { InformationCircleIcon } from "@heroicons/react/24/outline";
 
 type Status = "loading" | "idle";
 
@@ -55,9 +57,15 @@ export function AddApiKeyButton({
       >
         <StyledDialog.Panel>
           <StyledDialog.Title>
-            Add {integration.name} API keys
+            Add your {integration.name} API keys
           </StyledDialog.Title>
-          <div className="mt-2">
+          <div className="overflow-hidden overflow-y-auto max-h-40 mb-3 mt-4 bg-slate-700/50 rounded px-4 pb-3 pt-4">
+            <div className="flex gap-0.5 items-center -m-0.5 mb-1 text-slate-400">
+              <InformationCircleIcon className="h-5 w-5" />
+              <Body size="small" className="uppercase tracking-wide">
+                Instructions
+              </Body>
+            </div>
             <p
               className="prose prose-sm prose-invert"
               dangerouslySetInnerHTML={{
@@ -78,26 +86,40 @@ export function AddApiKeyButton({
             )}
             <InputGroup>
               <Label htmlFor="title">Name</Label>
-              <Input
-                id="title"
-                name="title"
-                placeholder="The name of this connection"
-                defaultValue={integration.name}
-              />
+              <div className="flex">
+                <img
+                  src={integration.icon}
+                  alt={integration.icon}
+                  className="flex pointer-events-none z-10 -mr-7 ml-2.5 mt-2.5 w-5 h-5"
+                />
+                <Input
+                  id="title"
+                  name="title"
+                  placeholder="Name this integration"
+                  spellCheck={false}
+                  defaultValue={integration.name}
+                  className="pl-9"
+                />
+              </div>
               {errors && <FormError errors={errors} path={["title"]} />}
             </InputGroup>
 
             <InputGroup>
               <Label htmlFor="api_key">API Key</Label>
-              <Input id="api_key" name="api_key" placeholder="<api_key>" />
+              <Input
+                id="api_key"
+                name="api_key"
+                placeholder="<api_key>"
+                spellCheck={false}
+              />
               {errors && <FormError errors={errors} path={["api_key"]} />}
             </InputGroup>
 
             <div className="mt-4 flex justify-between">
-              <PrimaryButton type="submit">Save</PrimaryButton>
               <SecondaryButton type="button" onClick={(e) => setIsOpen(false)}>
                 Cancel
               </SecondaryButton>
+              <PrimaryButton type="submit">Save</PrimaryButton>
             </div>
           </fetcher.Form>
         </StyledDialog.Panel>
