@@ -77,7 +77,7 @@ export default function NewOrganizationPage() {
                   name="title"
                   autoFocus
                   placeholder="e.g. Company name"
-                  className="relative w-full pl-10 pr-3 py-2 rounded bg-slate-850 group-focus:border-blue-500 placeholder:text-slate-600"
+                  className="relative w-full pl-10 pr-3 py-2 rounded bg-slate-850 group-focus:border-indigo-500 placeholder:text-slate-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
                   aria-invalid={actionData?.errors?.title ? true : undefined}
                   aria-errormessage={
                     actionData?.errors?.title ? "title-error" : undefined

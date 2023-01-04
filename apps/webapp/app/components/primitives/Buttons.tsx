@@ -5,11 +5,11 @@ const commonClasses =
   "inline-flex items-center justify-center rounded max-w-max px-4 py-2 text-sm transition whitespace-nowrap";
 const primaryClasses = classnames(
   commonClasses,
-  "bg-blue-600 text-white hover:bg-blue-700 focus:bg-blue-700 gap-2"
+  "bg-indigo-700 text-white hover:bg-indigo-800 focus:ring-indigo-800 gap-2"
 );
 const secondaryClasses = classnames(
   commonClasses,
-  "bg-indigo-900 text-white hover:bg-indigo-800 focus:bg-indigo-800 gap-2"
+  "bg-transparent border-2 border-slate-500 text-white hover:bg-black/20 hover:border-slate-700 focus:ring-slate-300 gap-2"
 );
 
 const tertiaryClasses = classnames(
