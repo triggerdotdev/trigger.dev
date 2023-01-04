@@ -6,7 +6,6 @@ import {
   ZodRPC,
 } from "internal-bridge";
 import {
-  coordinatorCatalog,
   CoordinatorCatalog,
   InternalApiClient,
   MessageCatalogSchema,
@@ -33,19 +32,24 @@ export class TriggerServer {
   #organizationId?: string;
   #isInitialized = false;
   #triggerSubscriber?: ZodSubscriber<PlatformCatalog>;
-  #triggerPublisher?: ZodPublisher<CoordinatorCatalog>;
+  #triggerPublisher: ZodPublisher<CoordinatorCatalog>;
   #apiClient: InternalApiClient;
   #workflowId?: string;
   #apiKey: string;
   #runControllers = new Map<string, WorkflowRunController>();
   onClose: Evt<void>;
 
-  constructor(socket: WebSocket, apiKey: string) {
+  constructor(
+    socket: WebSocket,
+    apiKey: string,
+    publisher: ZodPublisher<CoordinatorCatalog>
+  ) {
     this.#socket = socket;
     this.#apiKey = apiKey;
     this.#apiClient = new InternalApiClient(apiKey, env.PLATFORM_API_URL);
     this.#logger = new Logger("trigger.dev", "debug");
     this.onClose = new Evt();
+    this.#triggerPublisher = publisher;
 
     process.on("beforeExit", () => this.close.bind(this));
   }
@@ -382,26 +386,6 @@ export class TriggerServer {
 
       this.#logger.info("Platform subscriber initialized");
 
-      this.#logger.info("Initializing coordinator publisher...");
-
-      this.#triggerPublisher = new ZodPublisher<CoordinatorCatalog>({
-        schema: coordinatorCatalog,
-        client: pulsarClient,
-        config: {
-          topic: `persistent://public/default/coordinator-events`,
-        },
-      });
-
-      const result2 = await this.#triggerPublisher.initialize();
-
-      if (!result2) {
-        this.#logger.info("Coordinator publisher failed to initialize");
-        await this.#closePubSub();
-        return false;
-      }
-
-      this.#logger.info("Coordinator publisher initialized");
-
       this.#isInitialized = true;
 
       return true;
@@ -446,14 +430,7 @@ export class TriggerServer {
       await this.#triggerSubscriber.close();
     }
 
-    if (this.#triggerPublisher) {
-      this.#logger.debug("Closing trigger publisher...");
-
-      await this.#triggerPublisher.close();
-    }
-
     this.#triggerSubscriber = undefined;
-    this.#triggerPublisher = undefined;
   }
 
   #closeConnection() {

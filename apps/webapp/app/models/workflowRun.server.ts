@@ -26,10 +26,7 @@ export async function findWorklowRunById(id: string) {
 export async function startWorkflowRun(id: string, apiKey: string) {
   const workflowRun = await findWorkflowRunScopedToApiKey(id, apiKey);
 
-  if (
-    workflowRun.status !== "PENDING" &&
-    workflowRun.status !== "INTERRUPTED"
-  ) {
+  if (!isWorkflowPending(workflowRun)) {
     return;
   }
 
@@ -41,6 +38,8 @@ export async function startWorkflowRun(id: string, apiKey: string) {
         attemptCount: { increment: 1 },
       },
     });
+
+    await resolveInterruptionStepsInRun(workflowRun.id);
   } else {
     await prisma.workflowRun.update({
       where: { id: workflowRun.id },
@@ -60,7 +59,7 @@ export async function failWorkflowRun(
 ) {
   const workflowRun = await findWorkflowRunScopedToApiKey(id, apiKey);
 
-  if (workflowRun.status !== "RUNNING") {
+  if (!isWorkflowRunning(workflowRun)) {
     return;
   }
 
@@ -81,7 +80,7 @@ export async function completeWorkflowRun(
 ) {
   const workflowRun = await findWorkflowRunScopedToApiKey(runId, apiKey);
 
-  if (workflowRun.status !== "RUNNING") {
+  if (!isWorkflowRunning(workflowRun)) {
     return;
   }
 
@@ -123,6 +122,10 @@ export async function triggerEventInRun(
 ) {
   const workflowRun = await findWorkflowRunScopedToApiKey(runId, apiKey);
 
+  if (!isWorkflowRunning(workflowRun)) {
+    return;
+  }
+
   const step = await createStepOnce(runId, key, {
     type: "CUSTOM_EVENT",
     input: event,
@@ -158,6 +161,10 @@ export async function logMessageInRun(
   apiKey: string
 ) {
   const workflowRun = await findWorkflowRunScopedToApiKey(runId, apiKey);
+
+  if (!isWorkflowRunning(workflowRun)) {
+    return;
+  }
 
   return createStepOnce(workflowRun.id, key, {
     type: "LOG_MESSAGE",
@@ -204,4 +211,30 @@ export async function getMostRecentWorkflowRun({
       createdAt: "desc",
     },
   });
+}
+
+export async function resolveInterruptionStepsInRun(runId: string) {
+  return prisma.workflowRunStep.updateMany({
+    where: {
+      runId,
+      type: "INTERRUPTION",
+      status: "RUNNING",
+    },
+    data: {
+      status: "SUCCESS",
+      finishedAt: new Date(),
+    },
+  });
+}
+
+export function isWorkflowPending(workflowRun: WorkflowRun) {
+  return (
+    workflowRun.status === "PENDING" || workflowRun.status === "INTERRUPTED"
+  );
+}
+
+export function isWorkflowRunning(workflowRun: WorkflowRun) {
+  return (
+    workflowRun.status === "RUNNING" || workflowRun.status === "INTERRUPTED"
+  );
 }

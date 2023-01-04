@@ -105,6 +105,11 @@ async function parseStep(
         type: "DURABLE_DELAY" as const,
         input: await WaitSchema.parseAsync(original.input),
       };
+    case "INTERRUPTION":
+      return {
+        ...base,
+        type: "INTERRUPTION" as const,
+      };
     case "INTEGRATION_REQUEST":
       invariant(
         original.integrationRequest,

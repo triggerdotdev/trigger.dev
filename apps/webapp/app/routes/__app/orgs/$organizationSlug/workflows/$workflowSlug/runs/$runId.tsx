@@ -610,6 +610,10 @@ const stepInfo: Record<Step["type"], { label: string; icon: ReactNode }> = {
     label: "Delay",
     icon: <ClockIcon className={styleClass} />,
   },
+  INTERRUPTION: {
+    label: "Interruption",
+    icon: <ExclamationCircleIcon className={styleClass} />,
+  },
 } as const;
 
 type LogLevel = StepType<Step, "LOG_MESSAGE">["input"]["level"];

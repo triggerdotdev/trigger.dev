@@ -1,5 +1,6 @@
 import type { PrismaClient } from "~/db.server";
 import { prisma } from "~/db.server";
+import { createStepOnce } from "~/models/workflowRunStep.server";
 import { internalPubSub } from "../messageBroker.server";
 
 export class InterruptWorkflowRun {
@@ -33,13 +34,35 @@ export class InterruptWorkflowRun {
       },
     });
 
+    const lastStep = await this.#prismaClient.workflowRunStep.findFirst({
+      where: {
+        runId: workflowRun.id,
+      },
+      orderBy: {
+        createdAt: "desc",
+      },
+    });
+
+    await createStepOnce(
+      workflowRun.id,
+      `${lastStep ? lastStep.id : ""}-interruption`,
+      {
+        type: "INTERRUPTION",
+        status: "RUNNING",
+        input: {},
+        context: {},
+        startedAt: new Date(),
+      }
+    );
+
+    // Create an INTERRUPTION step
     return await internalPubSub.publish(
       "TRIGGER_WORKFLOW_RUN",
       {
         id: workflowRun.id,
       },
       {},
-      { deliverAfter: 5 * 1000 }
+      { deliverAfter: 1 * 1000 }
     );
   }
 }
