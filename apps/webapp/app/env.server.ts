@@ -8,6 +8,7 @@ const EnvironmentSchema = z.object({
   ]),
   REMIX_APP_PORT: z.string().optional(),
   DATABASE_URL: z.string(),
+  LOGIN_ORIGIN: z.string().default("https://app.trigger.dev"),
   APP_ORIGIN: z.string().default("https://app.trigger.dev"),
   SENTRY_DSN: z.string().optional(),
   POSTHOG_PROJECT_KEY: z.string().optional(),

@@ -10,7 +10,7 @@ const gitHubStrategy = new GitHubStrategy(
   {
     clientID: env.GITHUB_CLIENT_ID ?? "",
     clientSecret: env.GITHUB_SECRET ?? "",
-    callbackURL: `${env.APP_ORIGIN}/auth/github/callback`,
+    callbackURL: `${env.LOGIN_ORIGIN}/auth/github/callback`,
   },
   async ({ accessToken, extraParams, profile }) => {
     const emails = profile.emails;
