@@ -31,11 +31,6 @@
   },
   "anchors": [
     {
-      "name": "API Reference",
-      "icon": "rectangle-terminal",
-      "url": "api-reference"
-    },
-    {
       "name": "JSON Hero",
       "icon": "code",
       "url": "https://jsonhero.io/"
@@ -48,25 +43,28 @@
   ],
   "navigation": [
     {
-      "group": "Home",
-      "pages": ["introduction", "development"]
+      "group": "Getting Started",
+      "pages": ["getting-started"]
     },
     {
-      "group": "Learn More",
-      "pages": ["features", "resources"]
-    },
-    {
-      "group": "API Documentation",
-      "pages": ["api-reference/authentication"]
-    },
-    {
-      "group": "Endpoint Examples",
+      "group": "Triggers",
       "pages": [
-        "api-reference/endpoint/get",
-        "api-reference/endpoint/create",
-        "api-reference/endpoint/update",
-        "api-reference/endpoint/delete"
+        "triggers/webhooks",
+        "triggers/custom-events",
+        "triggers/coming-soon"
       ]
+    },
+    {
+      "group": "Requests",
+      "pages": ["requests/overview"]
+    },
+    {
+      "group": "Integrations",
+      "pages": ["integrations/integrations", "integrations/authentication"]
+    },
+    {
+      "group": "Sample projects",
+      "pages": ["sample-projects/examples"]
     }
   ],
   "footerSocials": {
