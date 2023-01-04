@@ -116,9 +116,14 @@ export class TriggerClient<TSchema extends z.ZodTypeAny> {
           );
 
           if (!waitCallbacks) {
-            throw new Error(
-              `Could not find wait callbacks for wait ID ${data.meta.runId}:${data.key}`
+            this.#logger.debug(
+              `Could not find wait callbacks for wait ID ${messageKey(
+                data.meta.runId,
+                data.key
+              )}. This can happen when a workflow run is resumed`
             );
+
+            return true;
           }
 
           const { resolve } = waitCallbacks;
@@ -135,9 +140,14 @@ export class TriggerClient<TSchema extends z.ZodTypeAny> {
           );
 
           if (!requestCallbacks) {
-            throw new Error(
-              `Could not find request callbacks for request ID ${data.meta.runId}:${data.key}`
+            this.#logger.debug(
+              `Could not find request callbacks for request ID ${messageKey(
+                data.meta.runId,
+                data.key
+              )}. This can happen when a workflow run is resumed`
             );
+
+            return true;
           }
 
           const { resolve } = requestCallbacks;
@@ -154,9 +164,14 @@ export class TriggerClient<TSchema extends z.ZodTypeAny> {
           );
 
           if (!requestCallbacks) {
-            throw new Error(
-              `Could not find request callbacks for request id ${data.meta.runId}:${data.key}`
+            this.#logger.debug(
+              `Could not find request callbacks for request ID ${messageKey(
+                data.meta.runId,
+                data.key
+              )}. This can happen when a workflow run is resumed`
             );
+
+            return true;
           }
 
           const { reject } = requestCallbacks;
