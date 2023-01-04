@@ -181,10 +181,7 @@ function SideMenu({
                         value={environment.apiKey}
                       /> */}
                     </div>
-                    <Body
-                      size="small"
-                      className="relative select-all text-slate-400 p-1 pl-2 rounded-sm border border-slate-800"
-                    >
+                    <div className="relative overflow-hidden text-sm select-all text-slate-400 p-1 pl-2 rounded-sm border border-slate-800">
                       <span className="block absolute pointer-events-none right-7 top-0 bg-gradient-to-r from-transparent to-slate-950 w-20 h-6"></span>
                       <CopyText
                         value={environment.apiKey}
@@ -193,7 +190,7 @@ function SideMenu({
                         <ClipboardDocumentCheckIcon className="h-5 w-5 group-active:text-green-500" />
                       </CopyText>
                       {environment.apiKey}
-                    </Body>
+                    </div>
                   </li>
                 );
               })}
