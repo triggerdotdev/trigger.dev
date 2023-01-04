@@ -10,17 +10,13 @@ Click on `Use this template` to quickstarter your documentation setup with Mintl
 
 ### 👩‍💻 Development
 
-Install the [Mintlify CLI](https://www.npmjs.com/package/mintlify) to preview the documentation changes locally. To install, use the following command
+Run this from the root of the repository
 
 ```
-npm i mintlify -g
+pnpm run dev --filter docs
 ```
 
-Run the following command at the root of your documentation (where mint.json is)
-
-```
-mintlify dev
-```
+Go to http://localhost:3050
 
 ### 😎 Publishing Changes
 
