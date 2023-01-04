@@ -1,4 +1,5 @@
 import { JsonSchema } from "@trigger.dev/common-schemas";
+import { DeliverEmailSchema } from "emails";
 import type { CoordinatorCatalog, PlatformCatalog } from "internal-platform";
 import {
   coordinatorCatalog,
@@ -22,6 +23,7 @@ import {
 } from "~/models/workflowRun.server";
 import { InitiateDelay } from "./delays/initiateDelay.server";
 import { ResolveDelay } from "./delays/resolveDelay.server";
+import { sendEmail } from "./email.server";
 import { DispatchEvent } from "./events/dispatch.server";
 import { HandleNewServiceConnection } from "./externalServices/handleNewConnection.server";
 import { RegisterExternalSource } from "./externalSources/registerExternalSource.server";
@@ -297,6 +299,10 @@ const InternalCatalog = {
     data: z.object({ id: z.string() }),
     properties: z.object({}),
   },
+  DELIVER_EMAIL: {
+    data: DeliverEmailSchema,
+    properties: z.object({}),
+  },
 };
 
 async function createInternalPubSub() {
@@ -462,6 +468,10 @@ async function createInternalPubSub() {
           }
         );
 
+        return true;
+      },
+      DELIVER_EMAIL: async (id, data, properties) => {
+        await sendEmail(data);
         return true;
       },
     },

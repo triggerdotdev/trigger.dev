@@ -1,8 +1,10 @@
+import type { DeliverEmail } from "emails";
 import { EmailClient } from "emails";
 import type { SendEmailOptions } from "remix-auth-email-link";
 import { env } from "~/env.server";
 import type { User } from "~/models/user.server";
 import type { AuthUser } from "./authUser";
+import { internalPubSub } from "./messageBroker.server";
 
 const client = new EmailClient(
   env.RESEND_API_KEY,
@@ -20,14 +22,23 @@ export async function sendMagicLinkEmail(
   });
 }
 
-export async function sendWelcomeEmail(user: User) {
-  try {
-    await client.send({
+export async function scheduleWelcomeEmail(user: User) {
+  //delay for one minute in development, longer in production
+  const delay =
+    process.env.NODE_ENV === "development" ? 1000 * 60 : 1000 * 60 * 22;
+
+  await internalPubSub.publish(
+    "DELIVER_EMAIL",
+    {
       email: "welcome",
       to: user.email,
       name: user.name ?? undefined,
-    });
-  } catch (e) {
-    console.error("Welcome email failed to send", e);
-  }
+    },
+    {},
+    { deliverAfter: delay }
+  );
+}
+
+export async function sendEmail(data: DeliverEmail) {
+  return client.send(data);
 }

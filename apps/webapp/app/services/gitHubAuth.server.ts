@@ -4,7 +4,7 @@ import { env } from "~/env.server";
 import { createFirstOrganization } from "~/models/organization.server";
 import { findOrCreateUser } from "~/models/user.server";
 import type { AuthUser } from "./authUser";
-import { sendWelcomeEmail } from "./email.server";
+import { scheduleWelcomeEmail } from "./email.server";
 
 const gitHubStrategy = new GitHubStrategy(
   {
@@ -30,7 +30,7 @@ const gitHubStrategy = new GitHubStrategy(
 
       if (isNewUser) {
         await createFirstOrganization(user);
-        await sendWelcomeEmail(user);
+        await scheduleWelcomeEmail(user);
       }
 
       return {

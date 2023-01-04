@@ -17,7 +17,7 @@ export const DeliverEmailSchema = z
   ])
   .and(z.object({ to: z.string() }));
 
-type DeliverEmail = z.infer<typeof DeliverEmailSchema>;
+export type DeliverEmail = z.infer<typeof DeliverEmailSchema>;
 
 export class EmailClient {
   #client: Resend;

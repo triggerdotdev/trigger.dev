@@ -40,7 +40,7 @@ const emailStrategy = new EmailLinkStrategy(
 
       if (isNewUser) {
         await createFirstOrganization(user);
-        emailProvider.sendWelcomeEmail(user);
+        emailProvider.scheduleWelcomeEmail(user);
       }
 
       return { userId: user.id };
