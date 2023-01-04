@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { parseDocument } from "yaml";
+import invariant from "tiny-invariant";
 
 const integrationMetadataSchema = z.object({
   name: z.string(),
@@ -38,6 +39,7 @@ export type CatalogIntegration = Catalog[number];
 
 export function getCatalog(raw: string) {
   const doc = parseDocument(raw);
+  invariant(doc, `Catalog doc is not defined: ${raw}`);
   const jsObject = doc.toJS();
   return schema.parse(jsObject);
 }

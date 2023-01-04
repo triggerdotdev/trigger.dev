@@ -91,8 +91,9 @@
     "GITHUB_CLIENT_ID",
     "GITHUB_SECRET",
     "SENTRY_DSN",
-    "MAILGUN_KEY",
     "FROM_EMAIL",
+    "REPLY_TO_EMAIL",
+    "RESEND_API_KEY",
     "MERGENT_KEY",
     "PIZZLY_HOST",
     "DEBUG"

@@ -1,9 +1,12 @@
 {
+  "private": true,
   "name": "emails",
   "version": "1.0.0",
+  "description": "Send emails",
+  "main": "./src/index.tsx",
+  "types": "./src/index.tsx",
   "scripts": {
-    "dev": "PORT=3080 email dev",
-    "export": "email export"
+    "dev": "PORT=3080 email dev"
   },
   "dependencies": {
     "@react-email/button": "^0.0.4",
@@ -15,12 +18,17 @@
     "@react-email/img": "^0.0.2",
     "@react-email/link": "^0.0.2",
     "@react-email/preview": "^0.0.2",
+    "@react-email/render": "^0.0.3",
     "@react-email/section": "^0.0.1",
     "@react-email/text": "^0.0.2",
     "react": "^18.2.0",
-    "react-email": "^1.5.0"
+    "react-email": "^1.5.0",
+    "resend": "^0.9.1",
+    "tiny-invariant": "^1.2.0",
+    "zod": "^3.20.2"
   },
   "devDependencies": {
+    "@trigger.dev/tsconfig": "workspace:*",
     "@types/react": "^18.0.21"
   }
 }

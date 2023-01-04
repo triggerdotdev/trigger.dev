@@ -1,53 +1,33 @@
-import type { User } from "~/models/user.server";
-import mailgun from "mailgun-js";
+import { EmailClient } from "emails";
+import type { SendEmailOptions } from "remix-auth-email-link";
 import { env } from "~/env.server";
-import { mergent } from "./mergent.server";
+import type { User } from "~/models/user.server";
+import type { AuthUser } from "./authUser";
 
-const mailgunDomain = "apihero.run";
+const client = new EmailClient(
+  env.RESEND_API_KEY,
+  env.FROM_EMAIL,
+  env.REPLY_TO_EMAIL
+);
 
-export const mailgunClient = mailgun({
-  apiKey: env.MAILGUN_KEY,
-  domain: mailgunDomain,
-});
-
-export async function sendEmail(
-  emailAddress: string,
-  subject: string,
-  body: string
-) {
-  const data = {
-    from: `Trigger.dev <${env.FROM_EMAIL}>`,
-    to: emailAddress,
-    subject,
-    html: body,
-  };
-
-  await mailgunClient.messages().send(data);
+export async function sendMagicLinkEmail(
+  options: SendEmailOptions<AuthUser>
+): Promise<void> {
+  return client.send({
+    email: "magic_link",
+    to: options.emailAddress,
+    magicLink: options.magicLink,
+  });
 }
 
 export async function sendWelcomeEmail(user: User) {
-  const data = {
-    from: `Trigger.dev <${env.FROM_EMAIL}>`,
-    to: user.email,
-    subject: "🤝 Welcome to Trigger.dev!",
-    template: "welcome_email_test1",
-    "v:greeting": user.name ?? "there",
-  };
-
-  if (process.env.NODE_ENV === "development") {
-    await mailgunClient.messages().send(data);
-    return;
+  try {
+    await client.send({
+      email: "welcome",
+      to: user.email,
+      name: user.name ?? undefined,
+    });
+  } catch (e) {
+    console.error("Welcome email failed to send", e);
   }
-
-  // Only do this in production
-  await mergent.tasks.create({
-    request: {
-      url: `${env.APP_ORIGIN}/webhooks/mailgun`,
-      body: JSON.stringify(data),
-      headers: {
-        "Content-Type": "application/json",
-      },
-    },
-    delay: { minutes: 30 },
-  });
 }

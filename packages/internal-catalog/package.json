@@ -1,7 +1,6 @@
 {
   "private": true,
   "name": "internal-catalog",
-  "type": "module",
   "version": "0.0.1",
   "description": "Get the API integration catalog",
   "main": "./src/index.ts",
@@ -13,6 +12,7 @@
   },
   "scripts": {},
   "dependencies": {
+    "tiny-invariant": "^1.2.0",
     "yaml": "^2.2.0",
     "zod": "^3.20.2"
   }

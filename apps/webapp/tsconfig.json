@@ -27,7 +27,9 @@
       "@trigger.dev/common-schemas": [
         "../../packages/common-schemas/src/index"
       ],
-      "@trigger.dev/common-schemas/*": ["../../packages/common-schemas/src/*"]
+      "@trigger.dev/common-schemas/*": ["../../packages/common-schemas/src/*"],
+      "emails": ["../../packages/emails/src/index"],
+      "emails/*": ["../../packages/emails/src/*"]
     },
     "noEmit": true
   }
