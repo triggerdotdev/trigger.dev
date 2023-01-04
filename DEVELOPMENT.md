@@ -223,3 +223,7 @@ curl --request POST \
 ## Dependency & Package graph
 
 ![Dependency Graph](assets/dependencyGraph.png)
+
+## Warp Launch Configuration
+
+Setup a custom launch configuration for the Warp terminal ([docs here](https://docs.warp.dev/features/sessions/launch-configurations)) by copying the `.warp/triggerdotdev.yaml.example` file to `~/.warp/launch_configurations/triggerdotdev.yaml`. Make sure you edit the file and replace `<your-trigger-dev>` and `<your-pizzly-dev>` with your custom ngrok subdomains.

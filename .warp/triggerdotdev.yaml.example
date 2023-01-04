@@ -1,0 +1,64 @@
+# Warp Launch Configuration
+#
+#
+# Use this to start a certain configuration of windows, tabs, and panes
+# Open the launch configuration palette to access and open any launch configuration
+#
+# This file defines your launch configuration
+# More on how to do so here:
+# https://docs.warp.dev/features/session-management/launch-configurations
+#
+# All launch configurations are stored under ~/.warp/launch_configurations/
+# Edit them anytime!
+#
+# You can also add commands that run on-start for your launch configurations like so:
+# ---
+# name: Example with Command
+# windows:
+#  - tabs:
+#      - layout:
+#          cwd: /Users/warp-user/project
+#          commands:
+#            - exec: code .
+
+---
+name: Triggerdotdev
+windows:
+  - tabs:
+      - layout:
+          split_direction: vertical
+          panes:
+            - cwd: /Users/eric/code/triggerdotdev/trigger.dev
+              commands:
+                - exec: pnpm run dev --filter webapp
+            - cwd: /Users/eric/code/triggerdotdev/trigger.dev/apps/webapp
+      - layout:
+          split_direction: horizontal
+          panes:
+            - cwd: /Users/eric/code/triggerdotdev/trigger.dev
+            - split_direction: vertical
+              panes:
+                - cwd: /Users/eric/code/triggerdotdev/trigger.dev
+                  commands:
+                    - exec: pnpm run dev --filter @trigger.dev/sdk
+                - cwd: /Users/eric/code/triggerdotdev/trigger.dev
+                  commands:
+                    - exec: pnpm run dev --filter @trigger.dev/integrations
+      - title: ngrok
+        layout:
+          split_direction: horizontal
+          panes:
+            - cwd: /Users/eric/code/triggerdotdev/trigger.dev
+              commands:
+                - exec: ./scripts/proxy-webapp.sh <your-trigger-dev>
+            - cwd: /Users/eric/code/triggerdotdev/trigger.dev
+              commands:
+                - exec: ./scripts/proxy-pizzly.sh <your-pizzly-dev>
+      - title: coordinator and examples
+        layout:
+          split_direction: horizontal
+          panes:
+            - cwd: /Users/eric/code/triggerdotdev/trigger.dev
+              commands:
+                - exec: pnpm run dev --filter coordinator
+            - cwd: /Users/eric/code/triggerdotdev/trigger.dev/examples
