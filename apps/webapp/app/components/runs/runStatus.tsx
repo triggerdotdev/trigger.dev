@@ -1,7 +1,10 @@
-import { ClockIcon } from "@heroicons/react/24/outline";
-import { XCircleIcon, CheckCircleIcon } from "@heroicons/react/24/solid";
+import {
+  BoltSlashIcon,
+  ClockIcon,
+  XCircleIcon,
+  CheckCircleIcon,
+} from "@heroicons/react/24/solid";
 import classNames from "classnames";
-
 import type { ReactNode } from "react";
 import type { WorkflowRunStatus } from "~/models/workflowRun.server";
 import { Spinner } from "../primitives/Spinner";
@@ -14,6 +17,8 @@ export function runStatusTitle(status: WorkflowRunStatus): string {
       return "Not started";
     case "RUNNING":
       return "In progress";
+    case "INTERRUPTED":
+      return "Interrupted";
     case "ERROR":
       return "Error";
   }
@@ -27,6 +32,8 @@ export function runStatusLabel(status: WorkflowRunStatus): ReactNode {
       return <span className="text-slate-500">{runStatusTitle(status)}</span>;
     case "RUNNING":
       return <span className="text-blue-500">{runStatusTitle(status)}</span>;
+    case "INTERRUPTED":
+      return <span className="text-orange-500">{runStatusTitle(status)}</span>;
     case "ERROR":
       return <span className="text-red-500">{runStatusTitle(status)}</span>;
   }
@@ -63,6 +70,15 @@ export function runStatusIcon(
           className={classNames(
             iconSize === "small" ? smallClasses : largeClasses,
             "relative text-blue-500 ml-[1px]"
+          )}
+        />
+      );
+    case "INTERRUPTED":
+      return (
+        <BoltSlashIcon
+          className={classNames(
+            iconSize === "small" ? smallClasses : largeClasses,
+            "relative text-orange-500"
           )}
         />
       );
