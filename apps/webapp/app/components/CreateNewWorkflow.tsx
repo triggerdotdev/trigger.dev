@@ -1,49 +1,38 @@
-import CodeBlock from "./code/CodeBlock";
+import { ArrowTopRightOnSquareIcon } from "@heroicons/react/24/outline";
+import { PrimaryA, SecondaryA } from "./primitives/Buttons";
 import { Body } from "./primitives/text/Body";
 import { Header1, Header2 } from "./primitives/text/Headers";
 
 export default function CreateNewWorkflow() {
   return (
     <>
-      <Header1 className="mb-6">Create a Workflow</Header1>
+      <Header1 className="mb-6">Workflows</Header1>
       <Header2 size="small" className="mb-2 text-slate-400">
-        Step 1.
+        Create a workflow
       </Header2>
-      <Body>
-        Create a workflow in your code then trigger your workflow using the test
-        button to see the runs appear here.
+      <Body className="mb-4 max-w-xl">
+        Create a workflow in your code then trigger it using the test button to
+        see the runs appear here. For a head start, you can view some example
+        workflows in the documentation.
       </Body>
-      <CodeBlock code={codeExample1} align="top" />
+      <div className="flex gap-2">
+        <PrimaryA
+          href="https://docs.trigger.dev"
+          target="_blank"
+          rel="noreferrer"
+        >
+          <ArrowTopRightOnSquareIcon className="w-4 h-4" />
+          <span>Documentation</span>
+        </PrimaryA>
+        <SecondaryA
+          href="https://docs.trigger.dev"
+          target="_blank"
+          rel="noreferrer"
+        >
+          <ArrowTopRightOnSquareIcon className="w-4 h-4" />
+          <span>Example workflows</span>
+        </SecondaryA>
+      </div>
     </>
   );
 }
-
-const codeExample1 = `new Workflow({
-    name: "Sync Github issues to Linear",
-    trigger: onIssue({
-        repo: "acme/website",
-    }),
-    run: async (event, io, ctx) => {
-        const { issue, action } = event;
-    
-        const assignee = await findUserByGithubId(issue.assignee?.id);
-    
-        if (action === "opened") {
-        await io.linear.issueCreate({
-            id: issue.id,
-            title: issue.title,
-            description: issue.body,
-            assigneeId: assignee?.linearId,
-            teamId: ctx.env.LINEAR_TEAM_ID,
-        });
-        } else {
-        await io.linear.issueUpdate(issue.id, {
-            assigneeId: assignee?.linearId,
-            stateId:
-            action === "closed"
-                ? ctx.env.LINEAR_CLOSED_STATE_ID
-                : ctx.env.LINEAR_OPEN_STATE_ID,
-        });
-        }
-    },
-    }).listen();`;
