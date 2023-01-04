@@ -1,0 +1,33 @@
+{
+  "name": "emails",
+  "version": "1.0.0",
+  "description": "The emails we want to send, powered by Resend/React email",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "clean": "rimraf dist",
+    "build": "npm run clean && npm run build:tsup",
+    "build:tsup": "tsup",
+    "dev": "pnpx react-email dev"
+  },
+  "devDependencies": {
+    "@trigger.dev/tsconfig": "workspace:*",
+    "@types/debug": "^4.1.7",
+    "@types/node": "^18.11.9",
+    "@types/react": "^18.0.21",
+    "@types/uuid": "^9.0.0",
+    "@types/ws": "^8.5.3",
+    "rimraf": "^3.0.2",
+    "tsup": "^6.5.0",
+    "tsx": "^3.12.1"
+  },
+  "dependencies": {
+    "@react-email/button": "^0.0.5",
+    "@react-email/html": "^0.0.3",
+    "react": "^18.2.0",
+    "react-email": "^1.6.0"
+  }
+}
