@@ -13,7 +13,7 @@ Click on `Use this template` to quickstarter your documentation setup with Mintl
 Run these from the root of the repository
 
 ```
-pnpm install
+pnpm install --filter docs
 ```
 
 ```
