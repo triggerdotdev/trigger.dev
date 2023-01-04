@@ -194,6 +194,12 @@ pnpm run dev --filter=coordinator
 pnpm run dev --filter=@trigger.dev/sdk
 ```
 
+5. Run the @trigger.dev integrations
+
+```bash
+pnpm run dev --filter=@trigger.dev/integrations
+```
+
 ## Running the smoke test
 
 1. Run the smoke test workflow
