@@ -1,3 +1,4 @@
+import { Evt } from "evt";
 import {
   HostRPCSchema,
   Logger,
@@ -37,12 +38,14 @@ export class TriggerServer {
   #workflowId?: string;
   #apiKey: string;
   #runControllers = new Map<string, WorkflowRunController>();
+  onClose: Evt<void>;
 
   constructor(socket: WebSocket, apiKey: string) {
     this.#socket = socket;
     this.#apiKey = apiKey;
     this.#apiClient = new InternalApiClient(apiKey, env.PLATFORM_API_URL);
     this.#logger = new Logger("trigger.dev", "debug");
+    this.onClose = new Evt();
 
     process.on("beforeExit", () => this.close.bind(this));
   }
@@ -56,6 +59,7 @@ export class TriggerServer {
   async close() {
     this.#closeConnection();
     await this.#closePubSub();
+    this.onClose.post();
   }
 
   async #initializeConnection(instanceId?: string) {

@@ -18,10 +18,10 @@ const trigger = new Trigger({
   }),
   run: async (event, ctx) => {
     await ctx.logger.info(
-      "Received domain.created event, waiting for 5 minutes..."
+      "Received domain.created event, waiting for 1 minutes..."
     );
 
-    await ctx.waitFor("initial-wait", { minutes: 5 });
+    await ctx.waitFor("initial-wait", { minutes: 1 });
     await ctx.waitUntil("initial-wait-until", new Date(Date.now() + 1000 * 60));
 
     await ctx.logger.info("Posting to Slack...");

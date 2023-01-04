@@ -26,6 +26,14 @@ wss.on("connection", (ws, req) => {
   triggerServer.listen();
 
   triggerServers.set(keyPart, triggerServer);
+
+  triggerServer.onClose.attach(() => {
+    console.log(
+      `Trigger server for key ${keyPart} closed. Removing it from the map.`
+    );
+
+    triggerServers.delete(keyPart);
+  });
 });
 
 // Upgrade an HTTP connection to a WebSocket connection
