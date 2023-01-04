@@ -359,6 +359,8 @@ model WorkflowRun {
 
   status WorkflowRunStatus @default(PENDING)
 
+  attemptCount Int @default(0)
+
   createdAt  DateTime  @default(now())
   updatedAt  DateTime  @updatedAt
   startedAt  DateTime?
@@ -372,6 +374,7 @@ model WorkflowRun {
 enum WorkflowRunStatus {
   PENDING
   RUNNING
+  INTERRUPTED
   SUCCESS
   ERROR
 }

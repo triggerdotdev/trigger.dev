@@ -26,17 +26,31 @@ export async function findWorklowRunById(id: string) {
 export async function startWorkflowRun(id: string, apiKey: string) {
   const workflowRun = await findWorkflowRunScopedToApiKey(id, apiKey);
 
-  if (workflowRun.status !== "PENDING") {
+  if (
+    workflowRun.status !== "PENDING" &&
+    workflowRun.status !== "INTERRUPTED"
+  ) {
     return;
   }
 
-  await prisma.workflowRun.update({
-    where: { id: workflowRun.id },
-    data: {
-      status: "RUNNING",
-      startedAt: new Date(),
-    },
-  });
+  if (workflowRun.status === "INTERRUPTED") {
+    await prisma.workflowRun.update({
+      where: { id: workflowRun.id },
+      data: {
+        status: "RUNNING",
+        attemptCount: { increment: 1 },
+      },
+    });
+  } else {
+    await prisma.workflowRun.update({
+      where: { id: workflowRun.id },
+      data: {
+        status: "RUNNING",
+        startedAt: new Date(),
+        attemptCount: { increment: 1 },
+      },
+    });
+  }
 }
 
 export async function failWorkflowRun(

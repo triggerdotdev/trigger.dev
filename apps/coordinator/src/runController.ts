@@ -168,6 +168,21 @@ export class WorkflowRunController {
     return true;
   }
 
+  async close() {
+    await this.#subscriber.close();
+
+    await this.#publisher.publish(
+      "WORKFLOW_RUN_INTERRUPTED",
+      {
+        id: this.#runId,
+      },
+      this.#publishProperties,
+      { partitionKey: this.#runId }
+    );
+
+    this.#logger.debug("Workflow run closed");
+  }
+
   async publish<TEventName extends keyof CoordinatorCatalog>(
     eventName: TEventName,
     data: z.infer<CoordinatorCatalog[TEventName]["data"]>

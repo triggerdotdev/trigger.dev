@@ -21,4 +21,10 @@ export const coordinator = {
     }),
     properties: WorkflowSendRunEventPropertiesSchema,
   },
+  WORKFLOW_RUN_INTERRUPTED: {
+    data: z.object({
+      id: z.string(),
+    }),
+    properties: WorkflowSendRunEventPropertiesSchema,
+  },
 };

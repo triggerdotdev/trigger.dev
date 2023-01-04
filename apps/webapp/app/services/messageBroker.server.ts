@@ -21,14 +21,15 @@ import {
   triggerEventInRun,
 } from "~/models/workflowRun.server";
 import { InitiateDelay } from "./delays/initiateDelay.server";
+import { ResolveDelay } from "./delays/resolveDelay.server";
 import { DispatchEvent } from "./events/dispatch.server";
+import { HandleNewServiceConnection } from "./externalServices/handleNewConnection.server";
 import { RegisterExternalSource } from "./externalSources/registerExternalSource.server";
 import { CreateIntegrationRequest } from "./requests/createIntegrationRequest.server";
 import { PerformIntegrationRequest } from "./requests/performIntegrationRequest.server";
 import { StartIntegrationRequest } from "./requests/startIntegrationRequest.server";
 import { WaitForConnection } from "./requests/waitForConnection.server";
-import { HandleNewServiceConnection } from "./externalServices/handleNewConnection.server";
-import { ResolveDelay } from "./delays/resolveDelay.server";
+import { InterruptWorkflowRun } from "./runs/interruptWorkflowRun.server";
 
 let pulsarClient: PulsarClient;
 let triggerPublisher: ZodPublisher<PlatformCatalog>;
@@ -159,6 +160,22 @@ async function createTriggerSubscriber() {
 
         return true;
       },
+      WORKFLOW_RUN_COMPLETE: async (id, data, properties) => {
+        await completeWorkflowRun(
+          data.output,
+          properties["x-workflow-run-id"],
+          properties["x-api-key"]
+        );
+
+        return true;
+      },
+      WORKFLOW_RUN_INTERRUPTED: async (id, data, properties) => {
+        const service = new InterruptWorkflowRun();
+
+        const success = await service.call(data.id);
+
+        return !!success;
+      },
       SEND_INTEGRATION_REQUEST: async (id, data, properties) => {
         const service = new CreateIntegrationRequest();
 
@@ -167,15 +184,6 @@ async function createTriggerSubscriber() {
           properties["x-workflow-run-id"],
           properties["x-api-key"],
           data.request
-        );
-
-        return true;
-      },
-      WORKFLOW_RUN_COMPLETE: async (id, data, properties) => {
-        await completeWorkflowRun(
-          data.output,
-          properties["x-workflow-run-id"],
-          properties["x-api-key"]
         );
 
         return true;
@@ -265,7 +273,7 @@ const InternalCatalog = {
     data: z.object({ id: z.string() }),
     properties: z.object({}),
   },
-  WORKFLOW_RUN_CREATED: {
+  TRIGGER_WORKFLOW_RUN: {
     data: z.object({ id: z.string() }),
     properties: z.object({}),
   },
@@ -431,7 +439,7 @@ async function createInternalPubSub() {
 
         return true;
       },
-      WORKFLOW_RUN_CREATED: async (id, data, properties) => {
+      TRIGGER_WORKFLOW_RUN: async (id, data, properties) => {
         const run = await findWorklowRunById(data.id);
 
         if (!run) {

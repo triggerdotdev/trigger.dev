@@ -425,13 +425,35 @@ export class TriggerServer {
   }
 
   async #closePubSub() {
+    this.#logger.debug(
+      "Closing run controllers...",
+      Array.from(this.#runControllers.keys())
+    );
+
+    // Close all the run controllers in a Promise.all
+    await Promise.all(
+      Array.from(this.#runControllers.values()).map((controller) =>
+        controller.close()
+      )
+    );
+
+    // Clear the run controllers
+    this.#runControllers.clear();
+
     if (this.#triggerSubscriber) {
+      this.#logger.debug("Closing trigger subscriber...");
+
       await this.#triggerSubscriber.close();
     }
 
     if (this.#triggerPublisher) {
+      this.#logger.debug("Closing trigger publisher...");
+
       await this.#triggerPublisher.close();
     }
+
+    this.#triggerSubscriber = undefined;
+    this.#triggerPublisher = undefined;
   }
 
   #closeConnection() {

@@ -170,7 +170,7 @@ class DispatchWorkflowRun {
       `Created workflow run ${workflowRun.id} for event rule ${eventRule.id}`
     );
 
-    await internalPubSub.publish("WORKFLOW_RUN_CREATED", {
+    await internalPubSub.publish("TRIGGER_WORKFLOW_RUN", {
       id: workflowRun.id,
     });
   }
