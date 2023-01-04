@@ -18,9 +18,7 @@ import {
 import { useCurrentWorkflow } from "~/hooks/useWorkflows";
 import { Body } from "../primitives/text/Body";
 import { Header1 } from "../primitives/text/Headers";
-import { CopyTextButton } from "../CopyTextButton";
 import invariant from "tiny-invariant";
-import { titleCase } from "~/utils";
 import { CopyText } from "../CopyText";
 
 export function SideMenuContainer({ children }: { children: React.ReactNode }) {
