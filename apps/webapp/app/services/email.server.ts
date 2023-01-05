@@ -6,11 +6,12 @@ import type { User } from "~/models/user.server";
 import type { AuthUser } from "./authUser";
 import { internalPubSub } from "./messageBroker.server";
 
-const client = new EmailClient(
-  env.RESEND_API_KEY,
-  env.FROM_EMAIL,
-  env.REPLY_TO_EMAIL
-);
+const client = new EmailClient({
+  apikey: env.RESEND_API_KEY,
+  imagesBaseUrl: env.APP_ORIGIN,
+  from: env.FROM_EMAIL,
+  replyTo: env.REPLY_TO_EMAIL,
+});
 
 export async function sendMagicLinkEmail(
   options: SendEmailOptions<AuthUser>

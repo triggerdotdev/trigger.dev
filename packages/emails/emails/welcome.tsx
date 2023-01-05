@@ -3,7 +3,7 @@ import { Container } from "@react-email/container";
 import { Head } from "@react-email/head";
 import { Hr } from "@react-email/hr";
 import { Html } from "@react-email/html";
-import { Img } from "@react-email/img";
+import { Image } from "./components/Image";
 import { Link } from "@react-email/link";
 import { Preview } from "@react-email/preview";
 import { Section } from "@react-email/section";
@@ -18,11 +18,11 @@ export default function Email({ name }: { name?: string }) {
       <Section style={main}>
         <Container style={container}>
           <Section style={box}>
-            <Img
-              src="/static/stripe-logo.png"
-              width="49"
-              height="21"
-              alt="Stripe"
+            <Image
+              path="/emails/logo.png"
+              width="156"
+              height="28"
+              alt="Trigger.dev"
             />
             <Hr style={hr} />
             <Text style={paragraph}>

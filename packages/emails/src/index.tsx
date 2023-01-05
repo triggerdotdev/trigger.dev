@@ -1,8 +1,10 @@
 import { ReactElement } from "react";
+import { BasePath } from "../emails/components/BasePath";
 import WelcomeEmail from "../emails/welcome";
 import MagicLinkEmail from "../emails/magic-link";
 import { Resend } from "resend";
 import { z } from "zod";
+import React from "react";
 
 export const DeliverEmailSchema = z
   .discriminatedUnion("email", [
@@ -21,13 +23,20 @@ export type DeliverEmail = z.infer<typeof DeliverEmailSchema>;
 
 export class EmailClient {
   #client: Resend;
+  #imagesBaseUrl: string;
   #from: string;
   #replyTo: string;
 
-  constructor(apikey: string, from: string, replyTo: string) {
-    this.#client = new Resend(apikey);
-    this.#from = from;
-    this.#replyTo = replyTo;
+  constructor(config: {
+    apikey: string;
+    imagesBaseUrl: string;
+    from: string;
+    replyTo: string;
+  }) {
+    this.#client = new Resend(config.apikey);
+    this.#imagesBaseUrl = config.imagesBaseUrl;
+    this.#from = config.from;
+    this.#replyTo = config.replyTo;
   }
 
   async send(data: DeliverEmail) {
@@ -37,7 +46,7 @@ export class EmailClient {
     return this.#sendEmail({
       to: data.to,
       subject,
-      react: component,
+      react: <BasePath basePath={this.#imagesBaseUrl}>{component}</BasePath>,
     });
   }
 

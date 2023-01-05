@@ -1,8 +1,9 @@
 {
   "extends": "@trigger.dev/tsconfig/node18.json",
-  "include": ["src/globals.d.ts", "./src/**/*.ts"],
+  "include": ["src/globals.d.ts", "./src/**/*.ts", "./src/**/*.tsx"],
   "compilerOptions": {
     "jsx": "react",
+    "lib": ["ES2021", "dom"],
     "experimentalDecorators": true,
     "emitDecoratorMetadata": true,
     "paths": {}
