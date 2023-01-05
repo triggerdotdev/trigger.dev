@@ -12,12 +12,14 @@ export function PanelHeader({
   startedAt,
   finishedAt,
   integration,
+  runId,
 }: {
   icon: ReactNode;
   title: string;
-  startedAt: Date | null;
-  finishedAt: Date | null;
+  startedAt?: Date | null;
+  finishedAt?: Date | null;
   integration?: string;
+  runId?: string;
 }) {
   return (
     <div className="flex mb-4 pb-3 justify-between items-center border-b border-slate-700">
@@ -50,6 +52,12 @@ export function PanelHeader({
         {integration && (
           <li className="flex gap-2 items-center">
             <Body size="small">{integration}</Body>
+          </li>
+        )}
+
+        {runId && (
+          <li className="flex gap-2 items-center">
+            <Body size="small">{runId}</Body>
           </li>
         )}
       </ul>
