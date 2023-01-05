@@ -234,12 +234,12 @@ function TriggerStep({ trigger }: { trigger: Trigger }) {
 
 function WorkflowStep({ step }: { step: Step }) {
   switch (step.type) {
-    case "INTERRUPTION":
+    case "DISCONNECTION":
       return (
         <div className="flex items-stretch w-full">
           <div className="relative flex w-5 border-l border-dashed border-slate-700 ml-2.5">
             <div className="absolute top-2 -left-[18px] p-1 bg-slate-850 rounded-full">
-              {runStatusIcon("INTERRUPTED", "large")}
+              {runStatusIcon("DISCONNECTED", "large")}
             </div>
           </div>
 
@@ -377,8 +377,6 @@ function OutputTitle() {
 
 function StepBody({ step }: { step: Step }) {
   switch (step.type) {
-    case "LOG_MESSAGE":
-      return <Log log={step} />;
     case "CUSTOM_EVENT":
       return <CustomEventStep event={step} />;
     case "INTEGRATION_REQUEST":
