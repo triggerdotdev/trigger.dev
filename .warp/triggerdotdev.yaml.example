@@ -58,7 +58,7 @@ windows:
         layout:
           split_direction: horizontal
           panes:
-            - cwd: /Users/eric/code/triggerdotdev/trigger.dev
+            - cwd: /Users/eric/code/triggerdotdev/trigger.dev/apps/coordinator
               commands:
-                - exec: pnpm run dev --filter coordinator
+                - exec: pnpm run dev
             - cwd: /Users/eric/code/triggerdotdev/trigger.dev/examples
