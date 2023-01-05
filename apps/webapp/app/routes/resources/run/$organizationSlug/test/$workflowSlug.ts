@@ -1,20 +1,23 @@
 import type { ActionArgs } from "@remix-run/server-runtime";
 import invariant from "tiny-invariant";
-import { ulid } from "ulid";
 import { z } from "zod";
-import { redirectWithSuccessMessage } from "~/models/message.server";
+import {
+  redirectWithErrorMessage,
+  redirectWithSuccessMessage,
+} from "~/models/message.server";
 import { getOrganizationFromSlug } from "~/models/organization.server";
 import {
   getRuntimeEnvironment,
   getRuntimeEnvironmentFromRequest,
 } from "~/models/runtimeEnvironment.server";
 import { getWorkflowFromSlugs } from "~/models/workflow.server";
-import { IngestEvent } from "~/services/events/ingest.server";
+import { CreateWorkflowTestRun } from "~/services/runs/createTestRun.server";
 import { requireUserId } from "~/services/session.server";
 
 const requestSchema = z.object({
   eventName: z.string(),
   payload: z.string(),
+  source: z.enum(["rerun", "test"]),
 });
 
 export const action = async ({ request, params }: ActionArgs) => {
@@ -34,7 +37,7 @@ export const action = async ({ request, params }: ActionArgs) => {
   try {
     const formData = await request.formData();
     const body = Object.fromEntries(formData.entries());
-    const { eventName, payload } = requestSchema.parse(body);
+    const { eventName, payload, source } = requestSchema.parse(body);
 
     const jsonPayload = JSON.parse(payload);
 
@@ -59,28 +62,46 @@ export const action = async ({ request, params }: ActionArgs) => {
     invariant(environment, "environment is required");
 
     //todo choose event name from form dropdown
-    const ingestService = new IngestEvent();
-    await ingestService.call(
-      {
-        id: ulid(),
-        name: eventName,
-        type: workflow.type,
-        service: workflow.service,
-        payload: jsonPayload,
-        context: {},
-        apiKey: environment.apiKey,
-        isTest: true,
-      },
-      organization
-    );
+    const createTestRunService = new CreateWorkflowTestRun();
+    const run = await createTestRunService.call({
+      payload: jsonPayload,
+      eventName,
+      workflow,
+      environment,
+      organization,
+    });
+
+    if (!run) {
+      return redirectWithErrorMessage(
+        `/orgs/${organizationSlug}/workflows/${workflowSlug}/runs`,
+        request,
+        errorMessageForSource(source)
+      );
+    }
 
     return redirectWithSuccessMessage(
-      `/orgs/${organizationSlug}/workflows/${workflowSlug}/runs`,
+      `/orgs/${organizationSlug}/workflows/${workflowSlug}/runs/${run.id}`,
       request,
-      "Test event successfully sent"
+      successMessageForSource(source)
     );
   } catch (error: any) {
     console.error(error);
     throw new Response(error.message, { status: 400 });
   }
 };
+
+function errorMessageForSource(source: "rerun" | "test") {
+  if (source === "rerun") {
+    return "Unable to rerun this workflow. Please contact help@trigger.dev for assistance.";
+  } else {
+    return "Unable to create a test run for this workflow. Please contact help@trigger.dev for assistance.";
+  }
+}
+
+function successMessageForSource(source: "rerun" | "test") {
+  if (source === "rerun") {
+    return "Workflow successfully rerun";
+  } else {
+    return "Test event successfully sent";
+  }
+}

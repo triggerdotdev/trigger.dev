@@ -106,6 +106,8 @@ export default function Page() {
             />
             <PrimaryButton
               type="submit"
+              name="source"
+              value="rerun"
               onClick={(e) => {
                 if (
                   !confirm(

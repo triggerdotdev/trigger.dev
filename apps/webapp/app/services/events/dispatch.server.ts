@@ -122,7 +122,7 @@ function patternMatches(payload: any, pattern: any): boolean {
   return true;
 }
 
-class DispatchWorkflowRun {
+export class DispatchWorkflowRun {
   #prismaClient: PrismaClient;
 
   constructor(prismaClient: PrismaClient = prisma) {
@@ -135,10 +135,6 @@ class DispatchWorkflowRun {
     event: TriggerEvent,
     environment: RuntimeEnvironment
   ) {
-    if (!workflow) {
-      throw new Error("Workflow not found");
-    }
-
     const workflowRun = await this.#prismaClient.workflowRun.create({
       data: {
         workflow: {
@@ -173,5 +169,7 @@ class DispatchWorkflowRun {
     await internalPubSub.publish("TRIGGER_WORKFLOW_RUN", {
       id: workflowRun.id,
     });
+
+    return workflowRun;
   }
 }

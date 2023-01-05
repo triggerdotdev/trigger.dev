@@ -81,6 +81,7 @@ function Tester({
       {
         eventName,
         payload: testContent,
+        source: "test",
       },
       {
         method: "post",

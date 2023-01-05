@@ -31,7 +31,7 @@ import { CreateIntegrationRequest } from "./requests/createIntegrationRequest.se
 import { PerformIntegrationRequest } from "./requests/performIntegrationRequest.server";
 import { StartIntegrationRequest } from "./requests/startIntegrationRequest.server";
 import { WaitForConnection } from "./requests/waitForConnection.server";
-import { WorkflowRunDisconnected } from "./runs/runDisconnected";
+import { WorkflowRunDisconnected } from "./runs/runDisconnected.server";
 
 let pulsarClient: PulsarClient;
 let triggerPublisher: ZodPublisher<PlatformCatalog>;
