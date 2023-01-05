@@ -1,19 +1,18 @@
 import { ArrowTopRightOnSquareIcon } from "@heroicons/react/24/outline";
 import { PrimaryA, SecondaryA } from "./primitives/Buttons";
 import { Body } from "./primitives/text/Body";
-import { Header1, Header2 } from "./primitives/text/Headers";
+import { Header2 } from "./primitives/text/Headers";
 
 export default function CreateNewWorkflow() {
   return (
     <>
-      <Header1 className="mb-6">Workflows</Header1>
       <Header2 size="small" className="mb-2 text-slate-400">
-        Create a workflow
+        Create a new workflow
       </Header2>
-      <Body className="mb-4 max-w-xl">
-        Create a workflow in your code then trigger it using the test button to
-        see the runs appear here. For a head start, you can view some example
-        workflows in the documentation.
+      <Body className="mb-4 max-w-md text-slate-300">
+        Create a workflow in your code then trigger it using a test to see the
+        runs appear here. For a head start, you can view some example workflows
+        in the documentation.
       </Body>
       <div className="flex gap-2">
         <PrimaryA

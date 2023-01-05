@@ -37,11 +37,11 @@ export default function Page() {
 
   return (
     <Container>
+      <Header1 className="mb-6">Workflows</Header1>
       {workflows.length === 0 ? (
         <></>
       ) : (
         <>
-          <Header1 className="mb-6">Workflows</Header1>
           <Header2 size="small" className="mb-2 text-slate-400">
             {workflows.length} active workflow{workflows.length > 1 ? "s" : ""}
           </Header2>
