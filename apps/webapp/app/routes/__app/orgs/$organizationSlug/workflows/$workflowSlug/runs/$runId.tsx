@@ -159,12 +159,11 @@ export default function Page() {
         <>
           <div className="h-3 w-full ml-[10px] border-l border-slate-700"></div>
           <Panel className="">
-            <div className="flex gap-2 items-center border-b border-slate-700 pb-3 mb-4">
-              <CheckCircleIcon className="h-5 w-5 text-green-500" />
-              <Body size="small" className="text-slate-300">
-                Run {run.id} complete
-              </Body>
-            </div>
+            <PanelHeader
+              icon={<CheckCircleIcon className="h-6 w-6 text-green-500" />}
+              title="Run complete"
+              runId={run.id}
+            />
             <div className="grid grid-cols-3 gap-2 text-slate-300">
               <div className="flex flex-col gap-1">
                 <Body
@@ -225,28 +224,32 @@ function stringifyCode(obj: any) {
   return JSON.stringify(obj, null, 2);
 }
 
-const workflowNodeUppercaseClasses = "uppercase text-slate-400 tracking-wide";
-const workflowNodeDelayClasses = "flex rounded-md bg-[#0F172A] p-3";
+const workflowNodeUppercaseClasses = "uppercase text-slate-400 tracking-wider";
+const workflowNodeDelayClasses =
+  "flex rounded-md bg-[#0F172A] pl-4 p-3 font-mono";
 
 function TriggerStep({ trigger }: { trigger: Trigger }) {
   return (
-    <Panel className="mt-4">
-      <PanelHeader
-        icon={triggerInfo[trigger.type].icon}
-        title={triggerInfo[trigger.type].label}
-        startedAt={trigger.startedAt}
-        finishedAt={null}
-        // integration={trigger.type === "WEBHOOK"}
-      />
-      <TriggerBody trigger={trigger} />
-      {trigger.input && (
-        <CodeBlock
-          code={stringifyCode(trigger.input)}
-          align="top"
-          maxHeight="150px"
+    <>
+      <Panel className="mt-4">
+        <PanelHeader
+          icon={triggerInfo[trigger.type].icon}
+          title={triggerInfo[trigger.type].label}
+          startedAt={trigger.startedAt}
+          finishedAt={null}
+          // integration={trigger.type === "WEBHOOK"}
         />
-      )}
-    </Panel>
+        <TriggerBody trigger={trigger} />
+        {trigger.input && (
+          <CodeBlock
+            code={stringifyCode(trigger.input)}
+            align="top"
+            maxHeight="150px"
+          />
+        )}
+      </Panel>
+      <div className="h-3 w-full ml-[10px] border-l border-slate-700"></div>
+    </>
   );
 }
 
@@ -267,7 +270,7 @@ function WorkflowStep({ step }: { step: Step }) {
 
           <Body
             size="small"
-            className={classNames("font-mono my-4 text-slate-400")}
+            className={classNames("font-mono my-4 ml-0.5 text-slate-400")}
           >
             {step.startedAt && step.finishedAt
               ? `The run disconnected for ${humanizeDuration(
@@ -275,7 +278,7 @@ function WorkflowStep({ step }: { step: Step }) {
                   { round: true }
                 )} here.`
               : step.startedAt
-              ? `The run disconnected at ${formatDateTime(
+              ? `The run disconnected on ${formatDateTime(
                   step.startedAt,
                   "long"
                 )}.`
@@ -515,10 +518,10 @@ function DelayScheduled({
     const interval = setInterval(() => {
       setTimeRemaining((timeRemaining) => {
         if (timeRemaining === undefined) return undefined;
-        if (timeRemaining <= 1000) return 0;
+        if (timeRemaining <= 1000) return undefined;
         if (timeRemaining <= 0) {
           clearInterval(interval);
-          return 0;
+          return undefined;
         }
 
         return timeRemaining - 1000;
@@ -533,7 +536,10 @@ function DelayScheduled({
         <Body size="extra-small" className={workflowNodeUppercaseClasses}>
           Fires at
         </Body>
-        <Body className={classNames(workflowNodeDelayClasses)} size="small">
+        <Body
+          className={classNames(workflowNodeDelayClasses, "font-mono")}
+          size="small"
+        >
           {formatDateTime(scheduledDate, "long")}
         </Body>
       </div>
@@ -545,11 +551,12 @@ function DelayScheduled({
           >
             Fires in
           </Body>
-          {timeRemaining <= 0 ? (
-            <Body className={workflowNodeDelayClasses} size="small">
-              {humanizeDuration(timeRemaining, { round: true })}
-            </Body>
-          ) : null}
+          <Body
+            className={classNames(workflowNodeDelayClasses, "font-mono")}
+            size="small"
+          >
+            {humanizeDuration(timeRemaining, { round: true })}
+          </Body>
         </div>
       )}
     </div>
@@ -695,7 +702,7 @@ const stepInfo: Record<Step["type"], { label: string; icon: ReactNode }> = {
 type LogLevel = StepType<Step, "LOG_MESSAGE">["input"]["level"];
 const logColor: Record<LogLevel, string> = {
   INFO: "text-slate-300",
-  WARN: "text-yellow-300",
+  WARN: "text-amber-300",
   ERROR: "text-rose-400",
   DEBUG: "text-slate-300",
 } as const;
