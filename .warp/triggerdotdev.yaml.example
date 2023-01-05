@@ -25,14 +25,16 @@
 name: Triggerdotdev
 windows:
   - tabs:
-      - layout:
+      - title: webapp
+        layout:
           split_direction: vertical
           panes:
             - cwd: /Users/eric/code/triggerdotdev/trigger.dev
               commands:
                 - exec: pnpm run dev --filter webapp
             - cwd: /Users/eric/code/triggerdotdev/trigger.dev/apps/webapp
-      - layout:
+      - title: sdk
+        layout:
           split_direction: horizontal
           panes:
             - cwd: /Users/eric/code/triggerdotdev/trigger.dev
@@ -62,3 +64,11 @@ windows:
               commands:
                 - exec: pnpm run dev
             - cwd: /Users/eric/code/triggerdotdev/trigger.dev/examples
+      - title: emails
+        layout:
+          split_direction: horizontal
+          panes:
+            - cwd: /Users/eric/Work/Git/APIHero/trigger.dev/packages/emails
+              commands:
+                - exec: pnpm run dev
+            - cwd: /Users/eric/Work/Git/APIHero/trigger.dev/packages/emails
