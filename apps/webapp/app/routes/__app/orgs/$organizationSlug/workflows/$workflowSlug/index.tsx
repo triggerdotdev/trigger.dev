@@ -4,12 +4,7 @@ import invariant from "tiny-invariant";
 import { WorkflowConnections } from "~/components/integrations/WorkflowConnections";
 import { Panel } from "~/components/layout/Panel";
 import { PanelHeader } from "~/components/layout/PanelHeader";
-import {
-  PrimaryLink,
-  SecondaryLink,
-  TertiaryA,
-  TertiaryLink,
-} from "~/components/primitives/Buttons";
+import { PrimaryLink, SecondaryLink } from "~/components/primitives/Buttons";
 import { Header1, Header2 } from "~/components/primitives/text/Headers";
 import { RunsTable } from "~/components/runs/RunsTable";
 import { TriggerBody } from "~/components/triggers/Trigger";
