@@ -500,13 +500,15 @@ function DelayScheduled({
         <div className="flex flex-col gap-1">
           <Body
             size="extra-small"
-            className={classNames(workflowNodeDelayClasses)}
+            className={classNames(workflowNodeUppercaseClasses)}
           >
             Fires in
           </Body>
-          <Body className={workflowNodeDelayClasses} size="small">
-            {humanizeDuration(timeRemaining, { round: true })}
-          </Body>
+          {timeRemaining <= 0 ? (
+            <Body className={workflowNodeDelayClasses} size="small">
+              {humanizeDuration(timeRemaining, { round: true })}
+            </Body>
+          ) : null}
         </div>
       )}
     </div>
