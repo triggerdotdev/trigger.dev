@@ -30,7 +30,7 @@ export class WorkflowRunDisconnected {
     await this.#prismaClient.workflowRun.update({
       where: { id: workflowRun.id },
       data: {
-        status: "INTERRUPTED",
+        status: "DISCONNECTED",
       },
     });
 
@@ -45,9 +45,9 @@ export class WorkflowRunDisconnected {
 
     await createStepOnce(
       workflowRun.id,
-      `${lastStep ? lastStep.id : ""}-interruption`,
+      `${lastStep ? lastStep.id : ""}-disconnection`,
       {
-        type: "INTERRUPTION",
+        type: "DISCONNECTION",
         status: "RUNNING",
         input: {},
         context: {},
@@ -55,7 +55,6 @@ export class WorkflowRunDisconnected {
       }
     );
 
-    // Create an INTERRUPTION step
     return await internalPubSub.publish(
       "TRIGGER_WORKFLOW_RUN",
       {

@@ -374,7 +374,7 @@ model WorkflowRun {
 enum WorkflowRunStatus {
   PENDING
   RUNNING
-  INTERRUPTED
+  DISCONNECTED
   SUCCESS
   ERROR
 }
@@ -419,5 +419,5 @@ enum WorkflowRunStepType {
   DURABLE_DELAY
   CUSTOM_EVENT
   INTEGRATION_REQUEST
-  INTERRUPTION
+  DISCONNECTION
 }

@@ -34,7 +34,7 @@ export async function startWorkflowRun(id: string, apiKey: string) {
     return;
   }
 
-  if (workflowRun.status === "INTERRUPTED") {
+  if (workflowRun.status === "DISCONNECTED") {
     await prisma.workflowRun.update({
       where: { id: workflowRun.id },
       data: {
@@ -43,7 +43,7 @@ export async function startWorkflowRun(id: string, apiKey: string) {
       },
     });
 
-    await resolveInterruptionStepsInRun(workflowRun.id);
+    await resolveDisconnectionStepsInRun(workflowRun.id);
   } else {
     await prisma.workflowRun.update({
       where: { id: workflowRun.id },
@@ -229,11 +229,11 @@ export async function getMostRecentWorkflowRun({
   });
 }
 
-export async function resolveInterruptionStepsInRun(runId: string) {
+export async function resolveDisconnectionStepsInRun(runId: string) {
   return prisma.workflowRunStep.updateMany({
     where: {
       runId,
-      type: "INTERRUPTION",
+      type: "DISCONNECTION",
       status: "RUNNING",
     },
     data: {
@@ -245,20 +245,20 @@ export async function resolveInterruptionStepsInRun(runId: string) {
 
 export function isWorkflowPending(workflowRun: WorkflowRun) {
   return (
-    workflowRun.status === "PENDING" || workflowRun.status === "INTERRUPTED"
+    workflowRun.status === "PENDING" || workflowRun.status === "DISCONNECTED"
   );
 }
 
 export function isWorkflowRunning(workflowRun: WorkflowRun) {
   return (
-    workflowRun.status === "RUNNING" || workflowRun.status === "INTERRUPTED"
+    workflowRun.status === "RUNNING" || workflowRun.status === "DISCONNECTED"
   );
 }
 
 export function isWorkflowRunningOrPending(workflowRun: WorkflowRun) {
   return (
     workflowRun.status === "RUNNING" ||
-    workflowRun.status === "INTERRUPTED" ||
+    workflowRun.status === "DISCONNECTED" ||
     workflowRun.status === "PENDING"
   );
 }

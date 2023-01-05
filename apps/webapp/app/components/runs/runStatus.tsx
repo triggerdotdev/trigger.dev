@@ -17,8 +17,8 @@ export function runStatusTitle(status: WorkflowRunStatus): string {
       return "Not started";
     case "RUNNING":
       return "In progress";
-    case "INTERRUPTED":
-      return "Interrupted";
+    case "DISCONNECTED":
+      return "Disconnected";
     case "ERROR":
       return "Error";
   }
@@ -32,7 +32,7 @@ export function runStatusLabel(status: WorkflowRunStatus): ReactNode {
       return <span className="text-slate-500">{runStatusTitle(status)}</span>;
     case "RUNNING":
       return <span className="text-blue-500">{runStatusTitle(status)}</span>;
-    case "INTERRUPTED":
+    case "DISCONNECTED":
       return <span className="text-yellow-300">{runStatusTitle(status)}</span>;
     case "ERROR":
       return <span className="text-red-500">{runStatusTitle(status)}</span>;
@@ -73,7 +73,7 @@ export function runStatusIcon(
           )}
         />
       );
-    case "INTERRUPTED":
+    case "DISCONNECTED":
       return (
         <ExclamationCircleIcon
           className={classNames(
