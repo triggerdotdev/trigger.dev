@@ -288,41 +288,53 @@ export class TriggerClient<TSchema extends z.ZodTypeAny> {
             () => {
               this.#logger.debug("Running trigger...");
 
-              this.#trigger.options
-                .run(eventData, ctx)
-                .then((output) => {
-                  return serverRPC.send("COMPLETE_WORKFLOW_RUN", {
-                    runId: data.id,
-                    output: JSON.stringify(output),
-                  });
+              serverRPC
+                .send("START_WORKFLOW_RUN", {
+                  runId: data.id,
+                })
+                .then(() => {
+                  return this.#trigger.options
+                    .run(eventData, ctx)
+                    .then((output) => {
+                      return serverRPC.send("COMPLETE_WORKFLOW_RUN", {
+                        runId: data.id,
+                        output: JSON.stringify(output),
+                      });
+                    })
+                    .catch((anyError) => {
+                      const parseAnyError = (
+                        error: any
+                      ): {
+                        name: string;
+                        message: string;
+                        stackTrace?: string;
+                      } => {
+                        if (error instanceof Error) {
+                          return {
+                            name: error.name,
+                            message: error.message,
+                            stackTrace: error.stack,
+                          };
+                        }
+
+                        return {
+                          name: "UnknownError",
+                          message: "An unknown error occurred",
+                        };
+                      };
+
+                      const error = parseAnyError(anyError);
+
+                      return serverRPC.send("SEND_WORKFLOW_ERROR", {
+                        runId: data.id,
+                        error,
+                      });
+                    });
                 })
                 .catch((anyError) => {
-                  const parseAnyError = (
-                    error: any
-                  ): {
-                    name: string;
-                    message: string;
-                    stackTrace?: string;
-                  } => {
-                    if (error instanceof Error) {
-                      return {
-                        name: error.name,
-                        message: error.message,
-                        stackTrace: error.stack,
-                      };
-                    }
-
-                    return {
-                      name: "UnknownError",
-                      message: "An unknown error occurred",
-                    };
-                  };
-
-                  const error = parseAnyError(anyError);
-
                   return serverRPC.send("SEND_WORKFLOW_ERROR", {
                     runId: data.id,
-                    error,
+                    error: anyError,
                   });
                 });
             }

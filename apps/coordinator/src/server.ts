@@ -185,6 +185,19 @@ export class TriggerServer {
 
           return !!response;
         },
+        START_WORKFLOW_RUN: async (request) => {
+          const runController = this.#runControllers.get(request.runId);
+
+          if (!runController) {
+            return false;
+          }
+
+          const response = await runController.publish("WORKFLOW_RUN_STARTED", {
+            id: request.runId,
+          });
+
+          return !!response;
+        },
         COMPLETE_WORKFLOW_RUN: async (request) => {
           const runController = this.#runControllers.get(request.runId);
 

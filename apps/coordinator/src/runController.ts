@@ -142,30 +142,13 @@ export class WorkflowRunController {
   }
 
   async initialize(input: any, context: any) {
-    const triggerResult = await this.#hostRPC.send("TRIGGER_WORKFLOW", {
+    await this.#subscriber.initialize();
+
+    return this.#hostRPC.send("TRIGGER_WORKFLOW", {
       id: this.#runId,
       trigger: { input, context },
       meta: this.#metadata,
     });
-
-    if (!triggerResult) {
-      return false;
-    }
-
-    await this.#subscriber.initialize();
-
-    await this.#publisher.publish(
-      "WORKFLOW_RUN_STARTED",
-      {
-        id: this.#runId,
-      },
-      this.#publishProperties,
-      { partitionKey: this.#runId }
-    );
-
-    this.#logger.debug("Workflow run initialized");
-
-    return true;
   }
 
   async close() {

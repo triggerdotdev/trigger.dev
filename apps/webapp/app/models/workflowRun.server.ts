@@ -27,6 +27,10 @@ export async function startWorkflowRun(id: string, apiKey: string) {
   const workflowRun = await findWorkflowRunScopedToApiKey(id, apiKey);
 
   if (!isWorkflowPending(workflowRun)) {
+    console.log(
+      `[startWorkflowRun] ${workflowRun.id} is not pending, skipping`
+    );
+
     return;
   }
 
@@ -60,6 +64,8 @@ export async function failWorkflowRun(
   const workflowRun = await findWorkflowRunScopedToApiKey(id, apiKey);
 
   if (!isWorkflowRunning(workflowRun)) {
+    console.log(`[failWorkflowRun] ${workflowRun.id} is not running, skipping`);
+
     return;
   }
 
@@ -81,6 +87,10 @@ export async function completeWorkflowRun(
   const workflowRun = await findWorkflowRunScopedToApiKey(runId, apiKey);
 
   if (!isWorkflowRunning(workflowRun)) {
+    console.log(
+      `[completeWorkflowRun] ${workflowRun.id} is not running, skipping`
+    );
+
     return;
   }
 
@@ -123,6 +133,10 @@ export async function triggerEventInRun(
   const workflowRun = await findWorkflowRunScopedToApiKey(runId, apiKey);
 
   if (!isWorkflowRunning(workflowRun)) {
+    console.log(
+      `[triggerEventInRun] ${workflowRun.id} is not running, skipping`
+    );
+
     return;
   }
 
@@ -163,6 +177,8 @@ export async function logMessageInRun(
   const workflowRun = await findWorkflowRunScopedToApiKey(runId, apiKey);
 
   if (!isWorkflowRunning(workflowRun)) {
+    console.log(`[logMessageInRun] ${workflowRun.id} is not running, skipping`);
+
     return;
   }
 

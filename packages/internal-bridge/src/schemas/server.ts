@@ -67,6 +67,12 @@ export const ServerRPCSchema = {
       ])
       .nullable(),
   },
+  START_WORKFLOW_RUN: {
+    request: z.object({
+      runId: z.string(),
+    }),
+    response: z.boolean(),
+  },
   COMPLETE_WORKFLOW_RUN: {
     request: z.object({
       runId: z.string(),
