@@ -265,22 +265,18 @@ function WorkflowStep({ step }: { step: Step }) {
       return (
         <div className="flex items-stretch w-full">
           <div className="relative flex w-5 border-l border-slate-700 ml-2.5"></div>
-          <div className="flex gap-2 items-center">
-            <ChatBubbleLeftEllipsisIcon className="h-6 w-6 -mb-1 text-slate-400" />
-            <Body
-              size="small"
-              className="text-slate-400 font-semibold uppercase tracking-wide"
-            >
-              Log
-            </Body>
-            <Header4
+          <div className="flex flex-col gap-2 w-full my-4">
+            <div
               className={classNames(
-                "mb-2 font-mono",
+                "flex gap-2 items-center",
                 logColor[step.input.level]
               )}
             >
-              {step.input.message}
-            </Header4>
+              <ChatBubbleLeftEllipsisIcon className="h-6 w-6 mt-1" />
+              <Body size="small" className={classNames("font-mono")}>
+                {step.input.message}
+              </Body>
+            </div>
 
             {step.input.properties &&
               Object.keys(step.input.properties).length !== 0 && (
@@ -652,6 +648,6 @@ type LogLevel = StepType<Step, "LOG_MESSAGE">["input"]["level"];
 const logColor: Record<LogLevel, string> = {
   INFO: "text-slate-300",
   WARN: "text-yellow-300",
-  ERROR: "text-red-300",
+  ERROR: "text-rose-400",
   DEBUG: "text-slate-300",
 } as const;
