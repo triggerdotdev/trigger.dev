@@ -11,7 +11,6 @@ import { ApiLogoIcon } from "~/components/code/ApiLogoIcon";
 import CreateNewWorkflow from "~/components/CreateNewWorkflow";
 import { Container } from "~/components/layout/Container";
 import { List } from "~/components/layout/List";
-import { useConnectionSlots } from "~/hooks/useConnectionSlots";
 import {
   Header1,
   Header2,
@@ -69,7 +68,6 @@ function WorkflowList({
   integrations: CatalogIntegration[];
   currentOrganizationSlug: string;
 }) {
-  const connectionSlots = useConnectionSlots();
   return (
     <List>
       {workflows.map((workflow) => {
@@ -117,14 +115,13 @@ function WorkflowList({
                       )}
                     />
                     {workflow.externalServices.map((service) => (
-                      <>
-                        <ApiLogoIcon
-                          integration={getIntegration(
-                            integrations,
-                            service.service
-                          )}
-                        />
-                      </>
+                      <ApiLogoIcon
+                        key={service.service}
+                        integration={getIntegration(
+                          integrations,
+                          service.service
+                        )}
+                      />
                     ))}
                   </div>
                 </div>
@@ -140,28 +137,5 @@ function WorkflowList({
         );
       })}
     </List>
-  );
-}
-
-function ServiceIcon({
-  service,
-  integrations,
-}: {
-  service: string;
-  integrations: CatalogIntegration[];
-}) {
-  const integration = integrations.find((i) => i.slug === service);
-
-  if (!integration) {
-    return null;
-  }
-
-  return (
-    <img
-      src={integration.icon}
-      title={integration.name}
-      alt={integration.name}
-      className="w-5 h-5"
-    />
   );
 }
