@@ -9,7 +9,7 @@ const primaryClasses = classnames(
 );
 const secondaryClasses = classnames(
   commonClasses,
-  "bg-transparent border-2 border-slate-500 text-white hover:bg-black/20 hover:border-slate-700 focus:ring-slate-300 gap-2"
+  "bg-transparent border-2 border-slate-600 text-white hover:bg-black/20 hover:border-slate-700 focus:ring-slate-300 gap-2"
 );
 
 const tertiaryClasses = classnames(
@@ -49,6 +49,14 @@ export function SecondaryButton({
   );
 }
 
+export function TertiaryButton({ children, className, ...props }: ButtonProps) {
+  return (
+    <button className={classnames(tertiaryClasses, className)} {...props}>
+      {children}
+    </button>
+  );
+}
+
 export function PrimaryLink({ children, className, to, ...props }: LinkProps) {
   return (
     <Link to={to} className={classnames(primaryClasses, className)} {...props}>
@@ -69,6 +77,14 @@ export function SecondaryLink({
       className={classnames(secondaryClasses, className)}
       {...props}
     >
+      {children}
+    </Link>
+  );
+}
+
+export function TertiaryLink({ children, className, to, ...props }: LinkProps) {
+  return (
+    <Link to={to} className={classnames(tertiaryClasses, className)} {...props}>
       {children}
     </Link>
   );
