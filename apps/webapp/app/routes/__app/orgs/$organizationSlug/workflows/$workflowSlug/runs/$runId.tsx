@@ -2,6 +2,8 @@ import { BeakerIcon } from "@heroicons/react/20/solid";
 import {
   BoltIcon,
   ChatBubbleLeftEllipsisIcon,
+  ChevronDownIcon,
+  ChevronUpIcon,
   ClockIcon,
   GlobeAltIcon,
 } from "@heroicons/react/24/outline";
@@ -233,6 +235,10 @@ function TriggerStep({ trigger }: { trigger: Trigger }) {
 }
 
 function WorkflowStep({ step }: { step: Step }) {
+  const [showCodeBlock, setShowCodeBlock] = useState(false);
+  const toggleCodeBlock = () => {
+    setShowCodeBlock(!showCodeBlock);
+  };
   switch (step.type) {
     case "DISCONNECTION":
       return (
@@ -266,20 +272,43 @@ function WorkflowStep({ step }: { step: Step }) {
         <div className="flex items-stretch w-full">
           <div className="relative flex w-5 border-l border-slate-700 ml-2.5"></div>
           <div className="flex flex-col gap-2 w-full my-4">
-            <div
-              className={classNames(
-                "flex gap-2 items-center",
-                logColor[step.input.level]
-              )}
-            >
-              <ChatBubbleLeftEllipsisIcon className="h-6 w-6 mt-1" />
-              <Body size="small" className={classNames("font-mono")}>
+            <div className={classNames("flex gap-2 items-center")}>
+              <ChatBubbleLeftEllipsisIcon
+                className={classNames(
+                  "h-6 w-6 mt-1",
+                  logColor[step.input.level]
+                )}
+              />
+              <Body
+                size="small"
+                className={classNames("font-mono", logColor[step.input.level])}
+              >
                 {step.input.message}
               </Body>
+
+              {step.input.properties &&
+                Object.keys(step.input.properties).length !== 0 && (
+                  <button
+                    onClick={toggleCodeBlock}
+                    className="text-sm text-slate-400 hover:text-slate-200 transition"
+                  >
+                    {showCodeBlock ? (
+                      <span className="flex gap-1 items-center">
+                        Hide custom fields <ChevronUpIcon className="h-4 w-4" />
+                      </span>
+                    ) : (
+                      <span className="flex gap-1 items-center">
+                        View custom fields{" "}
+                        <ChevronDownIcon className="h-4 w-4" />
+                      </span>
+                    )}
+                  </button>
+                )}
             </div>
 
             {step.input.properties &&
-              Object.keys(step.input.properties).length !== 0 && (
+              Object.keys(step.input.properties).length !== 0 &&
+              showCodeBlock && (
                 <CodeBlock
                   code={stringifyCode(step.input.properties)}
                   align="top"
