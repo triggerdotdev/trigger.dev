@@ -1,6 +1,5 @@
 import {
   CustomEventSchema,
-  DelaySchema,
   ErrorSchema,
   LogMessageSchema,
   TriggerMetadataSchema,
