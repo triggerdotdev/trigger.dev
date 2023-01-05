@@ -5,7 +5,7 @@ import {
   ZodRPC,
 } from "internal-bridge";
 import {
-  CoordinatorCatalog,
+  WSSCatalog,
   platformCatalog,
   PlatformCatalog,
   ZodPublisher,
@@ -16,7 +16,7 @@ import { pulsarClient } from "./pulsarClient";
 
 export type WorkflowRunControllerOptions = {
   hostRPC: ZodRPC<typeof HostRPCSchema, typeof ServerRPCSchema>;
-  publisher: ZodPublisher<CoordinatorCatalog>;
+  publisher: ZodPublisher<WSSCatalog>;
   runId: string;
   metadata: {
     workflowId: string;
@@ -29,7 +29,7 @@ export type WorkflowRunControllerOptions = {
 export class WorkflowRunController {
   #runId: string;
   #hostRPC: ZodRPC<typeof HostRPCSchema, typeof ServerRPCSchema>;
-  #publisher: ZodPublisher<CoordinatorCatalog>;
+  #publisher: ZodPublisher<WSSCatalog>;
   #subscriber: ZodSubscriber<Omit<PlatformCatalog, "TRIGGER_WORKFLOW">>;
   #metadata: {
     workflowId: string;
@@ -166,9 +166,9 @@ export class WorkflowRunController {
     this.#logger.debug("Workflow run closed");
   }
 
-  async publish<TEventName extends keyof CoordinatorCatalog>(
+  async publish<TEventName extends keyof WSSCatalog>(
     eventName: TEventName,
-    data: z.infer<CoordinatorCatalog[TEventName]["data"]>
+    data: z.infer<WSSCatalog[TEventName]["data"]>
   ) {
     this.#logger.debug(`Publishing event ${eventName} with data`, data);
 

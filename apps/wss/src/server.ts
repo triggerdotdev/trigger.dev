@@ -6,7 +6,7 @@ import {
   ZodRPC,
 } from "internal-bridge";
 import {
-  CoordinatorCatalog,
+  WSSCatalog,
   InternalApiClient,
   MessageCatalogSchema,
   platformCatalog,
@@ -32,7 +32,7 @@ export class TriggerServer {
   #organizationId?: string;
   #isInitialized = false;
   #triggerSubscriber?: ZodSubscriber<PlatformCatalog>;
-  #triggerPublisher: ZodPublisher<CoordinatorCatalog>;
+  #triggerPublisher: ZodPublisher<WSSCatalog>;
   #apiClient: InternalApiClient;
   #workflowId?: string;
   #apiKey: string;
@@ -43,7 +43,7 @@ export class TriggerServer {
   constructor(
     socket: WebSocket,
     apiKey: string,
-    publisher: ZodPublisher<CoordinatorCatalog>
+    publisher: ZodPublisher<WSSCatalog>
   ) {
     this.#socket = socket;
     this.#apiKey = apiKey;
@@ -329,7 +329,7 @@ export class TriggerServer {
         client: pulsarClient,
         config: {
           topic: `persistent://public/default/workflow-triggers`,
-          subscription: `coordinator-${this.#workflowId}`,
+          subscription: `wss-${this.#workflowId}`,
           subscriptionType: "Shared",
           subscriptionInitialPosition: "Earliest",
         },

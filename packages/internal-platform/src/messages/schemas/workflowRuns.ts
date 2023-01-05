@@ -2,7 +2,7 @@ import { ErrorSchema } from "@trigger.dev/common-schemas";
 import { z } from "zod";
 import { WorkflowSendRunEventPropertiesSchema } from "../sharedSchemas";
 
-export const coordinator = {
+export const wss = {
   WORKFLOW_RUN_COMPLETE: {
     data: z.object({
       output: z.string(),

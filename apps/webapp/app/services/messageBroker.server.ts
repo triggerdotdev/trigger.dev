@@ -1,8 +1,8 @@
 import { JsonSchema } from "@trigger.dev/common-schemas";
 import { DeliverEmailSchema } from "emails";
-import type { CoordinatorCatalog, PlatformCatalog } from "internal-platform";
+import type { WSSCatalog, PlatformCatalog } from "internal-platform";
 import {
-  coordinatorCatalog,
+  wssCatalog,
   platformCatalog,
   ZodPublisher,
   ZodPubSub,
@@ -35,7 +35,7 @@ import { WorkflowRunDisconnected } from "./runs/runDisconnected.server";
 
 let pulsarClient: PulsarClient;
 let triggerPublisher: ZodPublisher<PlatformCatalog>;
-let triggerSubscriber: ZodSubscriber<CoordinatorCatalog>;
+let triggerSubscriber: ZodSubscriber<WSSCatalog>;
 let internalPubSub: ZodPubSub<typeof InternalCatalog>;
 let requestPubSub: ZodPubSub<typeof RequestCatalog>;
 
@@ -128,15 +128,15 @@ async function createTriggerPublisher() {
 }
 
 async function createTriggerSubscriber() {
-  const subscriber = new ZodSubscriber<CoordinatorCatalog>({
+  const subscriber = new ZodSubscriber<WSSCatalog>({
     client: pulsarClient,
     config: {
-      topic: "persistent://public/default/coordinator-events",
+      topic: "persistent://public/default/wss-events",
       subscription: "webapp",
       subscriptionType: "KeyShared",
       subscriptionInitialPosition: "Earliest",
     },
-    schema: coordinatorCatalog,
+    schema: wssCatalog,
     handlers: {
       LOG_MESSAGE: async (id, data, properties) => {
         await logMessageInRun(

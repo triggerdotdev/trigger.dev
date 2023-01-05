@@ -1,8 +1,4 @@
-import {
-  coordinatorCatalog,
-  CoordinatorCatalog,
-  ZodPublisher,
-} from "internal-platform";
+import { wssCatalog, WSSCatalog, ZodPublisher } from "internal-platform";
 import { createServer } from "node:http";
 import process from "node:process";
 import { WebSocketServer } from "ws";
@@ -36,11 +32,11 @@ process.on("SIGINT", async (code) => {
 
 // main
 async function main() {
-  const triggerPublisher = new ZodPublisher<CoordinatorCatalog>({
-    schema: coordinatorCatalog,
+  const triggerPublisher = new ZodPublisher<WSSCatalog>({
+    schema: wssCatalog,
     client: pulsarClient,
     config: {
-      topic: `persistent://public/default/coordinator-events`,
+      topic: `persistent://public/default/wss-events`,
     },
   });
 

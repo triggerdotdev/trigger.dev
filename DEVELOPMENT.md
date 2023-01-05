@@ -182,10 +182,10 @@ pnpm run docker:db
 pnpm run dev --filter=webapp
 ```
 
-3. Run the coordinator
+3. Run the Web Socket Server
 
 ```bash
-pnpm run dev --filter=coordinator
+pnpm run dev --filter=wss
 ```
 
 4. Run the @trigger.dev/sdk:dev

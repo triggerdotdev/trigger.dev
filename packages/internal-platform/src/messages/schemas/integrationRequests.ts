@@ -24,7 +24,7 @@ export const platform = {
   },
 };
 
-export const coordinator = {
+export const wss = {
   SEND_INTEGRATION_REQUEST: {
     data: z.object({
       key: z.string(),

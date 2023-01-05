@@ -1,13 +1,13 @@
 export type { MessageCatalogSchema } from "./messageCatalogSchema";
 
-import coordinatorCatalog from "./catalogs/coordinator";
+import wssCatalog from "./catalogs/wss";
 import platformCatalog from "./catalogs/platform";
 
-type CoordinatorCatalog = typeof coordinatorCatalog;
+type WSSCatalog = typeof wssCatalog;
 type PlatformCatalog = typeof platformCatalog;
 
-export type { CoordinatorCatalog, PlatformCatalog };
-export { coordinatorCatalog, platformCatalog };
+export type { WSSCatalog, PlatformCatalog };
+export { wssCatalog, platformCatalog };
 export * from "./zodPublisher";
 export * from "./zodSubscriber";
 export * from "./zodPubSub";

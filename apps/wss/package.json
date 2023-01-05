@@ -1,7 +1,7 @@
 {
-  "name": "coordinator",
+  "name": "wss",
   "version": "1.0.0",
-  "description": "Coordinates with host sockets and Apache Pulsar to route messages to and from workflows",
+  "description": "Web Socket server that hosts connect to and Apache Pulsar to route messages to and from workflows",
   "main": "dist/index.js",
   "scripts": {
     "clean": "rimraf dist",

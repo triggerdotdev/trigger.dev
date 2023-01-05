@@ -56,13 +56,13 @@ windows:
             - cwd: /Users/eric/code/triggerdotdev/trigger.dev
               commands:
                 - exec: ./scripts/proxy-pizzly.sh <your-pizzly-dev>
-      - title: coordinator and examples
+      - title: wss and examples
         layout:
           split_direction: horizontal
           panes:
-            - cwd: /Users/eric/code/triggerdotdev/trigger.dev/apps/coordinator
+            - cwd: /Users/eric/code/triggerdotdev/trigger.dev/apps/wss
               commands:
-                - exec: pnpm run dev
+                - exec: LOG_LEVEL=debug pnpm run dev
             - cwd: /Users/eric/code/triggerdotdev/trigger.dev/examples
       - title: emails
         layout:

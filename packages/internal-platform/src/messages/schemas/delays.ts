@@ -5,7 +5,7 @@ import {
   WorkflowSendRunEventPropertiesSchema,
 } from "../sharedSchemas";
 
-export const coordinator = {
+export const wss = {
   INITIALIZE_DELAY: {
     data: z.object({
       key: z.string(),
