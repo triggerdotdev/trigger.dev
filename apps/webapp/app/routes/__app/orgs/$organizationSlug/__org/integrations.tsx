@@ -46,7 +46,7 @@ export default function Integrations() {
         ) : (
           <>
             <Header2 size="small" className="mb-2 text-slate-400">
-              {connections.length} connected integration
+              {connections.length} connected API
               {connections.length > 1 ? "s" : ""}
             </Header2>
             <List>
@@ -91,7 +91,7 @@ export default function Integrations() {
 
       <div>
         <Header2 size="small" className="mb-2 text-slate-400">
-          Add an integration
+          Add an API integration
         </Header2>
         <div className="flex flex-wrap gap-2 w-full">
           {integrations.map((integration) => (
