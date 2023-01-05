@@ -20,6 +20,7 @@ import type { WorkflowRunStatus } from "~/models/workflowRun.server";
 import { WorkflowRunListPresenter } from "~/models/workflowRunListPresenter.server";
 import { requireUserId } from "~/services/session.server";
 import { getRuntimeEnvironmentFromRequest } from "~/models/runtimeEnvironment.server";
+import { allStatuses } from "~/models/workflowRunStatus";
 
 export const loader = async ({ request, params }: LoaderArgs) => {
   const userId = await requireUserId(request);
@@ -84,13 +85,6 @@ export default function Page() {
     </>
   );
 }
-
-const allStatuses: WorkflowRunStatus[] = [
-  "PENDING",
-  "RUNNING",
-  "SUCCESS",
-  "ERROR",
-];
 
 function StatusFilter({
   statuses,

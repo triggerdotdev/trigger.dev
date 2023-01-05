@@ -1,5 +1,5 @@
 import type { WorkflowRun, WorkflowRunStep } from ".prisma/client";
-import { WorkflowRunStatus } from ".prisma/client";
+import type { WorkflowRunStatus } from ".prisma/client";
 import type {
   CustomEventSchema,
   ErrorSchema,
@@ -12,7 +12,6 @@ import { IngestEvent } from "~/services/events/ingest.server";
 import { createStepOnce } from "./workflowRunStep.server";
 
 export type { WorkflowRun, WorkflowRunStep, WorkflowRunStatus };
-export const allStatuses = Object.values(WorkflowRunStatus);
 
 export async function findWorklowRunById(id: string) {
   return prisma.workflowRun.findUnique({

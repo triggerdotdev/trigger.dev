@@ -5,7 +5,7 @@ import type { Organization } from "./organization.server";
 import type { RuntimeEnvironment } from "./runtimeEnvironment.server";
 import type { User } from "./user.server";
 import type { Workflow } from "./workflow.server";
-import { allStatuses } from "./workflowRun.server";
+import { allStatuses } from "./workflowRunStatus";
 
 const literals = allStatuses.map((s) => z.literal(s));
 const statusSchema = z.union([literals[0], literals[1], ...literals.splice(2)]);

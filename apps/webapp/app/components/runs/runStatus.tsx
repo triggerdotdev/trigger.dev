@@ -1,5 +1,4 @@
 import {
-  BoltSlashIcon,
   ClockIcon,
   XCircleIcon,
   CheckCircleIcon,
