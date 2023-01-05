@@ -11,14 +11,17 @@ export default function Page() {
 
   return (
     <>
-      <Header1 className="mb-4">Integrations</Header1>
+      <Header1 className="mb-4">Connected APIs</Header1>
       {connectionSlots.source || connectionSlots.services.length > 0 ? (
-        <Panel>
-          <Header2 size="small" className="mb-2">
-            API integrations
+        <>
+          <Header2 size="small" className="mb-2 text-slate-400">
+            {connectionSlots.services.length} connected API
+            {connectionSlots.services.length === 1 ? "" : "s"}
           </Header2>
-          <WorkflowConnections />
-        </Panel>
+          <Panel>
+            <WorkflowConnections />
+          </Panel>
+        </>
       ) : (
         <Body>No API Integrations for this workflow</Body>
       )}
