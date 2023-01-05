@@ -7,9 +7,11 @@ import { Link } from "@remix-run/react";
 import type { LoaderArgs } from "@remix-run/server-runtime";
 import type { CatalogIntegration } from "internal-catalog";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
+import { ApiLogoIcon } from "~/components/code/ApiLogoIcon";
 import CreateNewWorkflow from "~/components/CreateNewWorkflow";
 import { Container } from "~/components/layout/Container";
 import { List } from "~/components/layout/List";
+import { useConnectionSlots } from "~/hooks/useConnectionSlots";
 import {
   Header1,
   Header2,
@@ -21,6 +23,7 @@ import { useWorkflows } from "~/hooks/useWorkflows";
 import { getIntegrations } from "~/models/integrations.server";
 import { requireUserId } from "~/services/session.server";
 import { formatDateTime } from "~/utils";
+import { getIntegration } from "~/utils/integrations";
 
 export const loader = async ({ request, params }: LoaderArgs) => {
   await requireUserId(request);
@@ -66,6 +69,7 @@ function WorkflowList({
   integrations: CatalogIntegration[];
   currentOrganizationSlug: string;
 }) {
+  const connectionSlots = useConnectionSlots();
   return (
     <List>
       {workflows.map((workflow) => {
@@ -106,16 +110,21 @@ function WorkflowList({
                     </div>
                   </div>
                   <div className="flex gap-2 items-center">
-                    <ServiceIcon
-                      service={workflow.service}
-                      integrations={integrations}
+                    <ApiLogoIcon
+                      integration={getIntegration(
+                        integrations,
+                        workflow.externalServices[0].service
+                      )}
                     />
                     {workflow.externalServices.map((service) => (
-                      <ServiceIcon
-                        key={service.service}
-                        service={service.service}
-                        integrations={integrations}
-                      />
+                      <>
+                        <ApiLogoIcon
+                          integration={getIntegration(
+                            integrations,
+                            service.service
+                          )}
+                        />
+                      </>
                     ))}
                   </div>
                 </div>

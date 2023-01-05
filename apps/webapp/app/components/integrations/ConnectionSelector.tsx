@@ -50,10 +50,9 @@ export function ConnectionSelector({
             <Popover.Button
               className={`
           ${open ? "" : ""}
-          inline-flex justify-between items-center rounded text-white bg-transparent pl-1 pr-2 py-1 gap-2 text-sm hover:bg-slate-800 transition focus:outline-none border border-slate-400`}
+          inline-flex justify-between items-center rounded text-white bg-slate-700 shadow pl-3 pr-2 py-1.5 gap-2 text-sm hover:bg-slate-700/50 transition focus:outline-none`}
             >
-              <IntegrationIcon integration={integration} />
-              <span className="transition">
+              <span className="transition text-xs text-slate-300">
                 {selectedConnection ? (
                   <span>{selectedConnection.title}</span>
                 ) : (
@@ -63,8 +62,8 @@ export function ConnectionSelector({
                 )}
               </span>
               <ChevronUpDownIcon
-                className={`${open ? "" : "text-opacity-70"}
-            ml-1 h-5 w-5 transition duration-150 ease-in-out`}
+                className={`${open ? "" : ""}
+            ml-1 h-5 w-5 transition duration-150 ease-in-out text-slate-400`}
                 aria-hidden="true"
               />
             </Popover.Button>

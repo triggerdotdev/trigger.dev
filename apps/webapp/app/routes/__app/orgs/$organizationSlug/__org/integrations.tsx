@@ -20,6 +20,7 @@ import { getConnectedApiConnectionsForOrganizationSlug } from "~/models/apiConne
 import { getIntegrations } from "~/models/integrations.server";
 import { requireUserId } from "~/services/session.server";
 import { formatDateTime } from "~/utils";
+import { getIntegration } from "~/utils/integrations";
 
 export const loader = async ({ request, params }: LoaderArgs) => {
   await requireUserId(request);
@@ -52,17 +53,19 @@ export default function Integrations() {
             </Header2>
             <List>
               {connections.map((connection) => {
-                const integration = integrations.find(
-                  (i) => i.slug === connection.apiIdentifier
-                );
                 return (
                   <li key={connection.id}>
                     <div className="flex gap-4 items-center px-4 py-4">
-                      <ApiLogoIcon integration={integration} />
+                      <ApiLogoIcon
+                        integration={getIntegration(
+                          integrations,
+                          connection.apiIdentifier
+                        )}
+                      />
                       <div className="flex flex-col gap-2">
                         <div>
                           <Header3
-                            size="small"
+                            size="extra-small"
                             className="truncate font-medium"
                           >
                             {connection.title}
@@ -71,15 +74,6 @@ export default function Integrations() {
                             Added {formatDateTime(connection.createdAt)}
                           </Body>
                         </div>
-                        {/* <div className="flex items-center gap-1">
-                        <ArrowsRightLeftIcon
-                          className="h-5 w-5 flex-shrink-0 text-slate-400"
-                          aria-hidden="true"
-                        />
-                        <Body size="small" className="text-slate-400">
-                          Active in 100,000 workflows
-                        </Body>
-                      </div> */}
                       </div>
                     </div>
                   </li>
