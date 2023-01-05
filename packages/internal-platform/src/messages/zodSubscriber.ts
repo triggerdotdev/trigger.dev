@@ -135,14 +135,13 @@ export class ZodSubscriber<SubscriberSchema extends MessageCatalogSchema> {
       throw new Error(`Unknown message type: ${rawMessage.type}`);
     }
 
-    this.#logger.info(
-      `Handling message of type ${rawMessage.type}, parsing data and properties`,
-      rawMessage.data,
-      rawProperties
-    );
-
     const message = messageSchema.data.parse(rawMessage.data);
     const properties = messageSchema.properties.parse(rawProperties);
+
+    this.#logger.debug("Received message, calling handler", {
+      message,
+      properties,
+    });
 
     const handler = this.#handlers[typeName];
 

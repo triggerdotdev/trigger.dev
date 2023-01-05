@@ -246,6 +246,7 @@ export class TriggerClient<TSchema extends z.ZodTypeAny> {
                   message,
                   properties: JSON.stringify(properties ?? {}),
                 },
+                timestamp: String(highPrecisionTimestamp()),
               });
             }),
             fireEvent: async (key, event) => {
@@ -253,6 +254,7 @@ export class TriggerClient<TSchema extends z.ZodTypeAny> {
                 runId: data.id,
                 key,
                 event: JSON.parse(JSON.stringify(event)),
+                timestamp: String(highPrecisionTimestamp()),
               });
             },
             waitFor: async (key, options) => {
@@ -273,6 +275,7 @@ export class TriggerClient<TSchema extends z.ZodTypeAny> {
                   hours: options.hours,
                   days: options.days,
                 },
+                timestamp: String(highPrecisionTimestamp()),
               });
 
               await result;
@@ -294,6 +297,7 @@ export class TriggerClient<TSchema extends z.ZodTypeAny> {
                   type: "SCHEDULE_FOR",
                   scheduledFor: date.toISOString(),
                 },
+                timestamp: String(highPrecisionTimestamp()),
               });
 
               await result;
@@ -327,6 +331,7 @@ export class TriggerClient<TSchema extends z.ZodTypeAny> {
                     endpoint: options.endpoint,
                     params: options.params,
                   },
+                  timestamp: String(highPrecisionTimestamp()),
                 });
 
                 const output = await result;
@@ -340,6 +345,7 @@ export class TriggerClient<TSchema extends z.ZodTypeAny> {
               serverRPC
                 .send("START_WORKFLOW_RUN", {
                   runId: data.id,
+                  timestamp: String(highPrecisionTimestamp()),
                 })
                 .then(() => {
                   return this.#trigger.options
@@ -348,6 +354,7 @@ export class TriggerClient<TSchema extends z.ZodTypeAny> {
                       return serverRPC.send("COMPLETE_WORKFLOW_RUN", {
                         runId: data.id,
                         output: JSON.stringify(output),
+                        timestamp: String(highPrecisionTimestamp()),
                       });
                     })
                     .catch((anyError) => {
@@ -377,6 +384,7 @@ export class TriggerClient<TSchema extends z.ZodTypeAny> {
                       return serverRPC.send("SEND_WORKFLOW_ERROR", {
                         runId: data.id,
                         error,
+                        timestamp: String(highPrecisionTimestamp()),
                       });
                     });
                 })
@@ -384,6 +392,7 @@ export class TriggerClient<TSchema extends z.ZodTypeAny> {
                   return serverRPC.send("SEND_WORKFLOW_ERROR", {
                     runId: data.id,
                     error: anyError,
+                    timestamp: String(highPrecisionTimestamp()),
                   });
                 });
             }
@@ -461,3 +470,9 @@ export const sleep = (ms: number) =>
   new Promise((resolve) => setTimeout(resolve, ms));
 
 const messageKey = (runId: string, key: string) => `${runId}:${key}`;
+
+function highPrecisionTimestamp() {
+  const [seconds, nanoseconds] = process.hrtime();
+
+  return seconds * 1e9 + nanoseconds;
+}

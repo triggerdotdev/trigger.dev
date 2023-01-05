@@ -386,6 +386,7 @@ model WorkflowRunStep {
   runId String
 
   idempotencyKey String
+  ts             String
 
   type    WorkflowRunStepType
   input   Json?

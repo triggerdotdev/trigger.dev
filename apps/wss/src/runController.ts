@@ -154,25 +154,27 @@ export class WorkflowRunController {
   async close() {
     await this.#subscriber.close();
 
-    await this.#publisher.publish(
-      "WORKFLOW_RUN_DISCONNECTED",
-      {
-        id: this.#runId,
-      },
-      this.#publishProperties,
-      { partitionKey: this.#runId }
-    );
+    await this.publish("WORKFLOW_RUN_DISCONNECTED", {
+      id: this.#runId,
+    });
 
     this.#logger.debug("Workflow run closed");
   }
 
   async publish<TEventName extends keyof WSSCatalog>(
     eventName: TEventName,
-    data: z.infer<WSSCatalog[TEventName]["data"]>
+    data: z.infer<WSSCatalog[TEventName]["data"]>,
+    timestamp: number = Date.now()
   ) {
     this.#logger.debug(`Publishing event ${eventName} with data`, data);
 
-    return this.#publisher.publish(eventName, data, this.#publishProperties, {
+    const properties = {
+      ...this.#publishProperties,
+      "x-timestamp": String(timestamp),
+    };
+
+    return this.#publisher.publish(eventName, data, properties, {
+      orderingKey: this.#runId,
       partitionKey: this.#runId,
     });
   }

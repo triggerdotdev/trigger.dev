@@ -23,20 +23,12 @@ const trigger = new Trigger({
 
     await ctx.waitFor("initial-wait", { minutes: 1 });
 
-    await ctx.logger.error("Error message!", { event });
-
-    await ctx.waitUntil("initial-wait-until", new Date(Date.now() + 1000 * 60));
-
-    await ctx.logger.info("Info message");
-
     const response = await slack.postMessage("send-to-slack", {
       channel: "test-integrations",
       text: `New domain created: ${event.domain} by customer ${event.customerId}`,
     });
 
     await ctx.logger.debug("Debug message");
-
-    await ctx.logger.warn("Warning message!");
 
     return response.message;
   },

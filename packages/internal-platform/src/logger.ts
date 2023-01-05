@@ -10,7 +10,9 @@ export class Logger {
 
   constructor(name: string, level: LogLevel = "info") {
     this.#name = name;
-    this.#level = logLevels.indexOf(level);
+    this.#level = logLevels.indexOf(
+      (process.env.TRIGGER_LOG_LEVEL ?? level) as LogLevel
+    );
   }
 
   log(...args: any[]) {

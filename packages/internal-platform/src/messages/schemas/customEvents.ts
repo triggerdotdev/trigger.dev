@@ -1,6 +1,6 @@
-import { z } from "zod";
 import { CustomEventSchema } from "@trigger.dev/common-schemas";
-import { WorkflowRunEventPropertiesSchema } from "../sharedSchemas";
+import { z } from "zod";
+import { WorkflowSendRunEventPropertiesSchema } from "../sharedSchemas";
 
 export const wss = {
   TRIGGER_CUSTOM_EVENT: {
@@ -8,6 +8,6 @@ export const wss = {
       key: z.string(),
       event: CustomEventSchema,
     }),
-    properties: WorkflowRunEventPropertiesSchema,
+    properties: WorkflowSendRunEventPropertiesSchema,
   },
 };

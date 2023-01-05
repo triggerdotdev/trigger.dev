@@ -13,6 +13,7 @@ export type PublishOptions = {
   deliverAfter?: number;
   deliverAt?: number;
   partitionKey?: string;
+  orderingKey?: string;
 };
 
 export type ZodPublisherOptions<PublisherSchema extends MessageCatalogSchema> =
@@ -100,6 +101,7 @@ export class ZodPublisher<PublisherSchema extends MessageCatalogSchema> {
     const id = ulid();
 
     this.#logger.debug("Publishing message", {
+      topic: this.#config.topic,
       type,
       data,
       properties,
@@ -123,6 +125,7 @@ export class ZodPublisher<PublisherSchema extends MessageCatalogSchema> {
       deliverAfter: options?.deliverAfter,
       deliverAt: options?.deliverAt,
       partitionKey: options?.partitionKey,
+      orderingKey: options?.orderingKey,
     });
 
     return response.toString();

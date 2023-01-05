@@ -196,7 +196,7 @@ function getWorkflowRun(prismaClient: PrismaClient, id: string) {
             },
           },
         },
-        orderBy: { startedAt: "asc" },
+        orderBy: { ts: "asc" },
       },
     },
   });

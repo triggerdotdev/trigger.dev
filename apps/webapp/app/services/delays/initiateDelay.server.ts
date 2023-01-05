@@ -16,7 +16,11 @@ export class InitiateDelay {
     this.#prismaClient = prismaClient;
   }
 
-  async call(runId: string, delay: { key: string; wait: Wait }) {
+  async call(
+    runId: string,
+    timestamp: string,
+    delay: { key: string; wait: Wait }
+  ) {
     const delayUntil = this.#calculateDelayUntil(delay.wait);
 
     // Make sure the delay is not more than 1 year in the future
@@ -32,6 +36,7 @@ export class InitiateDelay {
       context: { delayUntil: delayUntil.toISOString() },
       status: "RUNNING",
       startedAt: new Date(),
+      ts: timestamp,
     });
 
     if (idempotentStep.status === "EXISTING") {

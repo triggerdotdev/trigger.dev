@@ -16,6 +16,7 @@ export class CreateIntegrationRequest {
     key: string,
     runId: string,
     apiKey: string,
+    timestamp: string,
     data: {
       service: string;
       endpoint: string;
@@ -61,6 +62,7 @@ export class CreateIntegrationRequest {
         endpoint: data.endpoint,
       },
       status: "PENDING",
+      ts: timestamp,
     });
 
     if (idempotentStep.status === "EXISTING") {

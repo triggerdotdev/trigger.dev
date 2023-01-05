@@ -82,7 +82,8 @@ export async function failWorkflowRun(
 export async function completeWorkflowRun(
   output: string,
   runId: string,
-  apiKey: string
+  apiKey: string,
+  timestamp: string
 ) {
   const workflowRun = await findWorkflowRunScopedToApiKey(runId, apiKey);
 
@@ -118,6 +119,7 @@ export async function completeWorkflowRun(
         context: {},
         startedAt: new Date(),
         finishedAt: new Date(),
+        ts: timestamp,
       },
       update: {},
     });
@@ -128,7 +130,8 @@ export async function triggerEventInRun(
   key: string,
   event: z.infer<typeof CustomEventSchema>,
   runId: string,
-  apiKey: string
+  apiKey: string,
+  timestamp: string
 ) {
   const workflowRun = await findWorkflowRunScopedToApiKey(runId, apiKey);
 
@@ -146,6 +149,7 @@ export async function triggerEventInRun(
     context: {},
     startedAt: new Date(),
     finishedAt: new Date(),
+    ts: timestamp,
   });
 
   if (step.status === "EXISTING") {
@@ -172,7 +176,8 @@ export async function logMessageInRun(
   key: string,
   log: z.infer<typeof LogMessageSchema>,
   runId: string,
-  apiKey: string
+  apiKey: string,
+  timestamp: string
 ) {
   const workflowRun = await findWorkflowRunScopedToApiKey(runId, apiKey);
 
@@ -189,6 +194,7 @@ export async function logMessageInRun(
     status: "SUCCESS",
     startedAt: new Date(),
     finishedAt: new Date(),
+    ts: timestamp,
   });
 }
 

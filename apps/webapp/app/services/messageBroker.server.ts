@@ -143,7 +143,8 @@ async function createTriggerSubscriber() {
           data.key,
           data.log,
           properties["x-workflow-run-id"],
-          properties["x-api-key"]
+          properties["x-api-key"],
+          properties["x-timestamp"]
         );
 
         return true;
@@ -166,7 +167,8 @@ async function createTriggerSubscriber() {
         await completeWorkflowRun(
           data.output,
           properties["x-workflow-run-id"],
-          properties["x-api-key"]
+          properties["x-api-key"],
+          properties["x-timestamp"]
         );
 
         return true;
@@ -185,6 +187,7 @@ async function createTriggerSubscriber() {
           data.key,
           properties["x-workflow-run-id"],
           properties["x-api-key"],
+          properties["x-timestamp"],
           data.request
         );
 
@@ -195,7 +198,8 @@ async function createTriggerSubscriber() {
           data.key,
           data.event,
           properties["x-workflow-run-id"],
-          properties["x-api-key"]
+          properties["x-api-key"],
+          properties["x-timestamp"]
         );
 
         return true;
@@ -203,10 +207,14 @@ async function createTriggerSubscriber() {
       INITIALIZE_DELAY: async (id, data, properties) => {
         const service = new InitiateDelay();
 
-        await service.call(properties["x-workflow-run-id"], {
-          key: data.key,
-          wait: data.wait,
-        });
+        await service.call(
+          properties["x-workflow-run-id"],
+          properties["x-timestamp"],
+          {
+            key: data.key,
+            wait: data.wait,
+          }
+        );
 
         return true;
       },

@@ -20,4 +20,5 @@ export const WorkflowSendEventPropertiesSchema = z.object({
 export const WorkflowSendRunEventPropertiesSchema =
   WorkflowSendEventPropertiesSchema.extend({
     "x-workflow-run-id": z.string(),
+    "x-timestamp": z.string(),
   });
