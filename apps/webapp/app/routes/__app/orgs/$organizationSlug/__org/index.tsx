@@ -113,7 +113,7 @@ function WorkflowList({
                     <ApiLogoIcon
                       integration={getIntegration(
                         integrations,
-                        workflow.externalServices[0].service
+                        workflow.service
                       )}
                     />
                     {workflow.externalServices.map((service) => (
