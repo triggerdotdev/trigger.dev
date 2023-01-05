@@ -4,13 +4,10 @@ import { prisma } from "~/db.server";
 import type { Organization } from "./organization.server";
 import type { User } from "./user.server";
 import type { Workflow } from "./workflow.server";
+import { allStatuses } from "./workflowRun.server";
 
-const statusSchema = z.union([
-  z.literal("PENDING"),
-  z.literal("RUNNING"),
-  z.literal("SUCCESS"),
-  z.literal("ERROR"),
-]);
+const literals = allStatuses.map((s) => z.literal(s));
+const statusSchema = z.union([literals[0], literals[1], ...literals.splice(2)]);
 
 const SearchParamsSchema = z.object({
   page: z.coerce.number().default(1),
@@ -23,7 +20,7 @@ const SearchParamsSchema = z.object({
       return undefined;
     }
     return statuses;
-  }, z.array(statusSchema).optional().default(["PENDING", "RUNNING", "SUCCESS", "ERROR"])),
+  }, z.array(statusSchema).optional().default(allStatuses)),
 });
 
 export class WorkflowRunListPresenter {
