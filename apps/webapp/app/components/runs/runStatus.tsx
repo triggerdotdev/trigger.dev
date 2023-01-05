@@ -2,7 +2,7 @@ import {
   ClockIcon,
   XCircleIcon,
   CheckCircleIcon,
-  ExclamationCircleIcon,
+  ExclamationTriangleIcon,
 } from "@heroicons/react/24/solid";
 import classNames from "classnames";
 import type { ReactNode } from "react";
@@ -75,7 +75,7 @@ export function runStatusIcon(
       );
     case "DISCONNECTED":
       return (
-        <ExclamationCircleIcon
+        <ExclamationTriangleIcon
           className={classNames(
             iconSize === "small" ? smallClasses : largeClasses,
             "relative text-yellow-300"

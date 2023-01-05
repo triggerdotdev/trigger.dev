@@ -12,6 +12,7 @@ import {
   CheckCircleIcon,
   ExclamationCircleIcon,
   ExclamationTriangleIcon,
+  ChatBubbleOvalLeftEllipsisIcon,
 } from "@heroicons/react/24/solid";
 import { useFetcher } from "@remix-run/react";
 import type { LoaderArgs } from "@remix-run/server-runtime";
@@ -289,18 +290,21 @@ function WorkflowStep({ step }: { step: Step }) {
     case "LOG_MESSAGE":
       return (
         <div className="flex items-stretch w-full">
-          <div className="relative flex w-5 border-l border-slate-700 ml-2.5"></div>
+          <div className="relative flex w-5 border-l border-slate-700 ml-2.5">
+            <div className="absolute top-2 -left-[18px] p-1 bg-slate-850 rounded-full">
+              <ChatBubbleOvalLeftEllipsisIcon
+                className={classNames("h-7 w-7", logColor[step.input.level])}
+              />
+            </div>
+          </div>
           <div className="flex flex-col gap-2 w-full my-4">
             <div className={classNames("flex gap-2 items-center")}>
-              <ChatBubbleLeftEllipsisIcon
-                className={classNames(
-                  "h-6 w-6 mt-1",
-                  logColor[step.input.level]
-                )}
-              />
               <Body
                 size="small"
-                className={classNames("font-mono", logColor[step.input.level])}
+                className={classNames(
+                  "ml-1 font-mono",
+                  logColor[step.input.level]
+                )}
               >
                 {step.input.message}
               </Body>
@@ -701,8 +705,8 @@ const stepInfo: Record<Step["type"], { label: string; icon: ReactNode }> = {
 
 type LogLevel = StepType<Step, "LOG_MESSAGE">["input"]["level"];
 const logColor: Record<LogLevel, string> = {
-  INFO: "text-slate-300",
+  INFO: "text-slate-400",
   WARN: "text-amber-300",
   ERROR: "text-rose-400",
-  DEBUG: "text-slate-300",
+  DEBUG: "text-slate-400",
 } as const;
