@@ -21,7 +21,7 @@ export const coordinator = {
     }),
     properties: WorkflowSendRunEventPropertiesSchema,
   },
-  WORKFLOW_RUN_INTERRUPTED: {
+  WORKFLOW_RUN_DISCONNECTED: {
     data: z.object({
       id: z.string(),
     }),

@@ -155,7 +155,7 @@ export class WorkflowRunController {
     await this.#subscriber.close();
 
     await this.#publisher.publish(
-      "WORKFLOW_RUN_INTERRUPTED",
+      "WORKFLOW_RUN_DISCONNECTED",
       {
         id: this.#runId,
       },

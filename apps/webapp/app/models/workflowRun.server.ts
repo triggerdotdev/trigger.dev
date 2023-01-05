@@ -63,7 +63,7 @@ export async function failWorkflowRun(
 ) {
   const workflowRun = await findWorkflowRunScopedToApiKey(id, apiKey);
 
-  if (!isWorkflowRunning(workflowRun)) {
+  if (!isWorkflowRunningOrPending(workflowRun)) {
     console.log(`[failWorkflowRun] ${workflowRun.id} is not running, skipping`);
 
     return;
@@ -86,7 +86,7 @@ export async function completeWorkflowRun(
 ) {
   const workflowRun = await findWorkflowRunScopedToApiKey(runId, apiKey);
 
-  if (!isWorkflowRunning(workflowRun)) {
+  if (!isWorkflowRunningOrPending(workflowRun)) {
     console.log(
       `[completeWorkflowRun] ${workflowRun.id} is not running, skipping`
     );
@@ -132,7 +132,7 @@ export async function triggerEventInRun(
 ) {
   const workflowRun = await findWorkflowRunScopedToApiKey(runId, apiKey);
 
-  if (!isWorkflowRunning(workflowRun)) {
+  if (!isWorkflowRunningOrPending(workflowRun)) {
     console.log(
       `[triggerEventInRun] ${workflowRun.id} is not running, skipping`
     );
@@ -176,7 +176,7 @@ export async function logMessageInRun(
 ) {
   const workflowRun = await findWorkflowRunScopedToApiKey(runId, apiKey);
 
-  if (!isWorkflowRunning(workflowRun)) {
+  if (!isWorkflowRunningOrPending(workflowRun)) {
     console.log(`[logMessageInRun] ${workflowRun.id} is not running, skipping`);
 
     return;
@@ -252,5 +252,13 @@ export function isWorkflowPending(workflowRun: WorkflowRun) {
 export function isWorkflowRunning(workflowRun: WorkflowRun) {
   return (
     workflowRun.status === "RUNNING" || workflowRun.status === "INTERRUPTED"
+  );
+}
+
+export function isWorkflowRunningOrPending(workflowRun: WorkflowRun) {
+  return (
+    workflowRun.status === "RUNNING" ||
+    workflowRun.status === "INTERRUPTED" ||
+    workflowRun.status === "PENDING"
   );
 }

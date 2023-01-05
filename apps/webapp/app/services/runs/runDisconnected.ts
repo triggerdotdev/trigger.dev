@@ -3,7 +3,7 @@ import { prisma } from "~/db.server";
 import { createStepOnce } from "~/models/workflowRunStep.server";
 import { internalPubSub } from "../messageBroker.server";
 
-export class InterruptWorkflowRun {
+export class WorkflowRunDisconnected {
   #prismaClient: PrismaClient;
 
   constructor(prismaClient: PrismaClient = prisma) {

@@ -31,7 +31,7 @@ import { CreateIntegrationRequest } from "./requests/createIntegrationRequest.se
 import { PerformIntegrationRequest } from "./requests/performIntegrationRequest.server";
 import { StartIntegrationRequest } from "./requests/startIntegrationRequest.server";
 import { WaitForConnection } from "./requests/waitForConnection.server";
-import { InterruptWorkflowRun } from "./runs/interruptWorkflowRun.server";
+import { WorkflowRunDisconnected } from "./runs/runDisconnected";
 
 let pulsarClient: PulsarClient;
 let triggerPublisher: ZodPublisher<PlatformCatalog>;
@@ -171,8 +171,8 @@ async function createTriggerSubscriber() {
 
         return true;
       },
-      WORKFLOW_RUN_INTERRUPTED: async (id, data, properties) => {
-        const service = new InterruptWorkflowRun();
+      WORKFLOW_RUN_DISCONNECTED: async (id, data, properties) => {
+        const service = new WorkflowRunDisconnected();
 
         const success = await service.call(data.id);
 
