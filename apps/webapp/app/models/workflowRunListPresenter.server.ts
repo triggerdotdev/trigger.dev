@@ -2,6 +2,7 @@ import { z } from "zod";
 import type { PrismaClient } from "~/db.server";
 import { prisma } from "~/db.server";
 import type { Organization } from "./organization.server";
+import type { RuntimeEnvironment } from "./runtimeEnvironment.server";
 import type { User } from "./user.server";
 import type { Workflow } from "./workflow.server";
 import { allStatuses } from "./workflowRun.server";
@@ -34,12 +35,14 @@ export class WorkflowRunListPresenter {
     userId,
     organizationSlug,
     workflowSlug,
+    environmentSlug,
     pageSize = 20,
     searchParams,
   }: {
     userId: User["id"];
     organizationSlug: Organization["slug"];
     workflowSlug: Workflow["slug"];
+    environmentSlug: RuntimeEnvironment["slug"];
     pageSize?: number;
     searchParams: URLSearchParams;
   }) {
@@ -51,6 +54,9 @@ export class WorkflowRunListPresenter {
       where: {
         workflow: {
           slug: workflowSlug,
+        },
+        environment: {
+          slug: environmentSlug,
         },
         status: {
           in: statuses,
@@ -69,6 +75,9 @@ export class WorkflowRunListPresenter {
       where: {
         status: {
           in: statuses,
+        },
+        environment: {
+          slug: environmentSlug,
         },
         workflow: {
           slug: workflowSlug,
@@ -97,7 +106,7 @@ export class WorkflowRunListPresenter {
       filters: {
         statuses,
       },
-      hasFilters: statuses.length !== 4,
+      hasFilters: statuses.length !== allStatuses.length,
       pageSize,
     };
   }

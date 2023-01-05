@@ -19,6 +19,7 @@ import { RunsTable } from "~/components/runs/RunsTable";
 import type { WorkflowRunStatus } from "~/models/workflowRun.server";
 import { WorkflowRunListPresenter } from "~/models/workflowRunListPresenter.server";
 import { requireUserId } from "~/services/session.server";
+import { getRuntimeEnvironmentFromRequest } from "~/models/runtimeEnvironment.server";
 
 export const loader = async ({ request, params }: LoaderArgs) => {
   const userId = await requireUserId(request);
@@ -30,11 +31,13 @@ export const loader = async ({ request, params }: LoaderArgs) => {
   const searchParams = new URLSearchParams(url.search);
 
   try {
+    const environmentSlug = await getRuntimeEnvironmentFromRequest(request);
     const presenter = new WorkflowRunListPresenter();
     const result = await presenter.data({
       userId,
       organizationSlug,
       workflowSlug,
+      environmentSlug,
       searchParams,
     });
     return typedjson(result);

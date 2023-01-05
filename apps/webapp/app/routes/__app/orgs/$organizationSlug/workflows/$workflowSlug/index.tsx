@@ -13,6 +13,7 @@ import { useConnectionSlots } from "~/hooks/useConnectionSlots";
 import { useCurrentEnvironment } from "~/hooks/useEnvironments";
 import { useCurrentOrganization } from "~/hooks/useOrganizations";
 import { useCurrentWorkflow } from "~/hooks/useWorkflows";
+import { getRuntimeEnvironmentFromRequest } from "~/models/runtimeEnvironment.server";
 import { WorkflowRunListPresenter } from "~/models/workflowRunListPresenter.server";
 import { requireUserId } from "~/services/session.server";
 
@@ -27,11 +28,13 @@ export const loader = async ({ request, params }: LoaderArgs) => {
   const searchParams = new URLSearchParams();
 
   try {
+    const environmentSlug = await getRuntimeEnvironmentFromRequest(request);
     const presenter = new WorkflowRunListPresenter();
     const result = await presenter.data({
       userId,
       organizationSlug,
       workflowSlug,
+      environmentSlug,
       searchParams,
       pageSize,
     });
