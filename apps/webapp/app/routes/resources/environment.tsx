@@ -78,7 +78,7 @@ export function EnvironmentMenu() {
               <Popover.Button
                 className={`
                 ${open ? "" : ""}
-                group inline-flex justify-between gap-2 items-center rounded text-white bg-transparent pl-3.5 pr-2 py-2 text-sm hover:bg-slate-800 focus:outline-none`}
+                inline-flex justify-between gap-2 items-center rounded text-white bg-transparent pl-3.5 pr-2 py-2 text-sm hover:bg-slate-800 focus:outline-none`}
               >
                 <EnvironmentIcon slug={currentEnvironment.slug} />
                 <span className="transition">
@@ -89,8 +89,8 @@ export function EnvironmentMenu() {
                   )}
                 </span>
                 <ChevronUpDownIcon
-                  className={`${open ? "" : "text-opacity-70"}
-                  ml-1 h-5 w-5 transition duration-150 ease-in-out group-hover:text-opacity-80`}
+                  className={`${open ? "" : ""}
+                  ml-1 h-5 w-5 transition duration-150 ease-in-out text-slate-500`}
                   aria-hidden="true"
                 />
               </Popover.Button>
