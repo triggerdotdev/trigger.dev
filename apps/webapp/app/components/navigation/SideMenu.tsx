@@ -9,6 +9,7 @@ import {
   EnvelopeIcon,
   BeakerIcon,
   ClipboardDocumentCheckIcon,
+  Squares2X2Icon,
 } from "@heroicons/react/24/outline";
 import { Link, NavLink } from "@remix-run/react";
 import {
@@ -89,8 +90,8 @@ export function WorkflowsSideMenu() {
       to: `runs`,
     },
     {
-      name: "API integrations",
-      icon: <SquaresPlusIcon className={iconStyle} />,
+      name: "Connected APIs",
+      icon: <Squares2X2Icon className={iconStyle} />,
       to: `integrations`,
     },
   ];
