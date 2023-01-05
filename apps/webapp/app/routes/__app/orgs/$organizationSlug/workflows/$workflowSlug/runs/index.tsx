@@ -118,7 +118,7 @@ function StatusFilter({
       <Listbox value={selectedStatuses} onChange={setSelectedStatuses} multiple>
         <div className="relative mt-1 w-52">
           <StyledListBox.Button>
-            {selectedStatuses.length === 4
+            {selectedStatuses.length === allStatuses.length
               ? "All statuses"
               : selectedStatuses.length === 0
               ? "None"
