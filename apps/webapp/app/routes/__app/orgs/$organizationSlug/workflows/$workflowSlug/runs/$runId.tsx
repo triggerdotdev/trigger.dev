@@ -10,8 +10,6 @@ import {
   CheckCircleIcon,
   ExclamationCircleIcon,
   ExclamationTriangleIcon,
-  ForwardIcon,
-  InboxArrowDownIcon,
 } from "@heroicons/react/24/solid";
 import { useFetcher } from "@remix-run/react";
 import type { LoaderArgs } from "@remix-run/server-runtime";
@@ -166,7 +164,7 @@ export default function Page() {
           <div className="grid grid-cols-3 gap-2 text-slate-300">
             <div className="flex flex-col gap-1">
               <Body size="extra-small" className={workflowNodeUppercaseClasses}>
-                Run duration:
+                Run duration
               </Body>
               <Body className={workflowNodeDelayClasses} size="small">
                 {run.duration && humanizeDuration(run.duration)}
@@ -174,7 +172,7 @@ export default function Page() {
             </div>
             <div className="flex flex-col gap-1">
               <Body size="extra-small" className={workflowNodeUppercaseClasses}>
-                Started:
+                Started
               </Body>
               <Body className={workflowNodeDelayClasses} size="small">
                 {run.startedAt && formatDateTime(run.startedAt, "long")}
@@ -182,7 +180,7 @@ export default function Page() {
             </div>
             <div className="flex flex-col gap-1">
               <Body size="extra-small" className={workflowNodeUppercaseClasses}>
-                Completed:
+                Completed
               </Body>
               <Body className={workflowNodeDelayClasses} size="small">
                 {run.finishedAt && formatDateTime(run.finishedAt, "long")}
@@ -209,7 +207,7 @@ function stringifyCode(obj: any) {
   return JSON.stringify(obj, null, 2);
 }
 
-const workflowNodeUppercaseClasses = "uppercase text-slate-400";
+const workflowNodeUppercaseClasses = "uppercase text-slate-400 tracking-wide";
 const workflowNodeDelayClasses = "flex rounded-md bg-[#0F172A] p-3";
 
 function TriggerStep({ trigger }: { trigger: Trigger }) {
@@ -235,19 +233,80 @@ function TriggerStep({ trigger }: { trigger: Trigger }) {
 }
 
 function WorkflowStep({ step }: { step: Step }) {
-  return (
-    <div className="flex items-stretch w-full">
-      <div className="relative flex w-5 border-l border-slate-700 ml-2.5">
-        <div className="absolute top-6 -left-[18px] p-1 bg-slate-850 rounded-full">
-          {runStatusIcon(step.status, "large")}
+  switch (step.type) {
+    case "INTERRUPTION":
+      return (
+        <div className="flex items-stretch w-full">
+          <div className="relative flex w-5 border-l border-dashed border-slate-700 ml-2.5">
+            <div className="absolute top-2 -left-[18px] p-1 bg-slate-850 rounded-full">
+              {runStatusIcon("INTERRUPTED", "large")}
+            </div>
+          </div>
+
+          <Body
+            size="small"
+            className={classNames("font-mono my-4 text-slate-400")}
+          >
+            {step.startedAt && step.finishedAt
+              ? `The run disconnected for ${humanizeDuration(
+                  dateDifference(step.startedAt, step.finishedAt),
+                  { round: true }
+                )} here.`
+              : step.startedAt
+              ? `The run disconnected at ${formatDateTime(
+                  step.startedAt,
+                  "long"
+                )}.`
+              : "Disconnected"}
+          </Body>
         </div>
-      </div>
-      <StepPanel status={step.status}>
-        <StepHeader step={step} />
-        <StepBody step={step} />
-      </StepPanel>
-    </div>
-  );
+      );
+    case "LOG_MESSAGE":
+      return (
+        <div className="flex items-stretch w-full">
+          <div className="relative flex w-5 border-l border-slate-700 ml-2.5"></div>
+          <div className="flex gap-2 items-center">
+            <ChatBubbleLeftEllipsisIcon className="h-6 w-6 -mb-1 text-slate-400" />
+            <Body
+              size="small"
+              className="text-slate-400 font-semibold uppercase tracking-wide"
+            >
+              Log
+            </Body>
+            <Header4
+              className={classNames(
+                "mb-2 font-mono",
+                logColor[step.input.level]
+              )}
+            >
+              {step.input.message}
+            </Header4>
+
+            {step.input.properties &&
+              Object.keys(step.input.properties).length !== 0 && (
+                <CodeBlock
+                  code={stringifyCode(step.input.properties)}
+                  align="top"
+                />
+              )}
+          </div>
+        </div>
+      );
+    default:
+      return (
+        <div className="flex items-stretch w-full">
+          <div className="relative flex w-5 border-l border-slate-700 ml-2.5">
+            <div className="absolute top-6 -left-[18px] p-1 bg-slate-850 rounded-full">
+              {runStatusIcon(step.status, "large")}
+            </div>
+          </div>
+          <StepPanel status={step.status}>
+            <StepHeader step={step} />
+            <StepBody step={step} />
+          </StepPanel>
+        </div>
+      );
+  }
 }
 
 function StepPanel({
@@ -302,23 +361,17 @@ function StepHeader({ step }: { step: Step }) {
 
 function InputTitle() {
   return (
-    <Header4
-      size="extra-extra-small"
-      className="flex gap-1 items-center uppercase text-slate-400 font-semibold tracking-wide mb-2"
-    >
-      Input <InboxArrowDownIcon className="w-4 h-4 text-slate-500" />
+    <Header4 size="extra-extra-small" className={workflowNodeUppercaseClasses}>
+      Input
     </Header4>
   );
 }
 
 function OutputTitle() {
   return (
-    <Header4
-      size="extra-extra-small"
-      className="flex gap-1 items-center uppercase text-slate-400 font-semibold tracking-wide mb-2"
-    >
-      Output <ForwardIcon className="w-4 h-4 text-slate-500" />
-    </Header4>
+    <Body size="extra-small" className={`mb-2 ${workflowNodeUppercaseClasses}`}>
+      Output
+    </Body>
   );
 }
 
@@ -380,7 +433,7 @@ function DelayDuration({
     <div className="grid grid-cols-2 gap-2 text-slate-300">
       <div className="flex flex-col gap-1">
         <Body size="extra-small" className={workflowNodeUppercaseClasses}>
-          Total delay:
+          Total delay
         </Body>
         <Body
           className={classNames(workflowNodeDelayClasses, "w-full")}
@@ -392,7 +445,7 @@ function DelayDuration({
       {step.status === "PENDING" && timeRemaining && (
         <div className="flex flex-col gap-1">
           <Body size="extra-small" className={workflowNodeUppercaseClasses}>
-            Fires in:
+            Fires in
           </Body>
           <Body
             className={classNames(workflowNodeDelayClasses, "w-full")}
@@ -439,7 +492,7 @@ function DelayScheduled({
     <div className="grid grid-cols-2 gap-2 text-slate-300">
       <div className="flex flex-col gap-1 items-stretch">
         <Body size="extra-small" className={workflowNodeUppercaseClasses}>
-          Fires at:
+          Fires at
         </Body>
         <Body className={classNames(workflowNodeDelayClasses)} size="small">
           {formatDateTime(scheduledDate, "long")}
@@ -451,7 +504,7 @@ function DelayScheduled({
             size="extra-small"
             className={classNames(workflowNodeDelayClasses)}
           >
-            Fires in:
+            Fires in
           </Body>
           <Body className={workflowNodeDelayClasses} size="small">
             {humanizeDuration(timeRemaining, { round: true })}
@@ -541,29 +594,6 @@ function IntegrationRequestStep({
           </>
         )}
       </div>
-    </>
-  );
-}
-
-// function Email({ email }: { email: string }) {
-//   return <CodeBlock code={email} />;
-// }
-
-function Log({ log }: { log: StepType<Step, "LOG_MESSAGE"> }) {
-  return (
-    <>
-      <Body className="font-mono" size="small">
-        <span className={"uppercase text-small text-slate-500"}>
-          {log.input.level}:
-        </span>
-      </Body>
-      <Header4
-        className={classNames("mb-2 font-mono", logColor[log.input.level])}
-      >
-        {log.input.message}
-      </Header4>
-
-      <CodeBlock code={stringifyCode(log.input.properties)} align="top" />
     </>
   );
 }

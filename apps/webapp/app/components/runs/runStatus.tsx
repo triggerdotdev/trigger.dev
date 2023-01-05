@@ -3,6 +3,7 @@ import {
   ClockIcon,
   XCircleIcon,
   CheckCircleIcon,
+  ExclamationCircleIcon,
 } from "@heroicons/react/24/solid";
 import classNames from "classnames";
 import type { ReactNode } from "react";
@@ -33,7 +34,7 @@ export function runStatusLabel(status: WorkflowRunStatus): ReactNode {
     case "RUNNING":
       return <span className="text-blue-500">{runStatusTitle(status)}</span>;
     case "INTERRUPTED":
-      return <span className="text-orange-500">{runStatusTitle(status)}</span>;
+      return <span className="text-yellow-300">{runStatusTitle(status)}</span>;
     case "ERROR":
       return <span className="text-red-500">{runStatusTitle(status)}</span>;
   }
@@ -75,10 +76,10 @@ export function runStatusIcon(
       );
     case "INTERRUPTED":
       return (
-        <BoltSlashIcon
+        <ExclamationCircleIcon
           className={classNames(
             iconSize === "small" ? smallClasses : largeClasses,
-            "relative text-orange-500"
+            "relative text-yellow-300"
           )}
         />
       );
