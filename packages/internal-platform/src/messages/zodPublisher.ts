@@ -34,7 +34,7 @@ export class ZodPublisher<PublisherSchema extends MessageCatalogSchema> {
     this.#config = options.config;
     this.#schema = options.schema;
     this.#client = options.client;
-    this.#logger = new Logger("trigger.dev publisher", "info");
+    this.#logger = new Logger("trigger.dev publisher");
   }
 
   public async initialize(): Promise<boolean> {
@@ -54,7 +54,7 @@ export class ZodPublisher<PublisherSchema extends MessageCatalogSchema> {
   }
 
   public async close() {
-    if (this.#producer) {
+    if (this.#producer && this.#producer.isConnected()) {
       await this.#producer.close();
       this.#producer = undefined;
     }
@@ -99,13 +99,12 @@ export class ZodPublisher<PublisherSchema extends MessageCatalogSchema> {
 
     const id = ulid();
 
-    this.#logger.debug(
-      "Parsing message data and properties",
+    this.#logger.debug("Publishing message", {
       type,
       data,
       properties,
-      options
-    );
+      options,
+    });
 
     const parsedData = messageSchema.data.parse(data);
     const parsedProperties = messageSchema.properties.parse(properties ?? {});

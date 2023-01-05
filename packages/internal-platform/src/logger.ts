@@ -10,41 +10,58 @@ export class Logger {
 
   constructor(name: string, level: LogLevel = "info") {
     this.#name = name;
-
-    // First use the LOG_LEVEL environment variable to set the log level
-    // If that's not set, use the level argument
-    const logLevel = process.env.LOG_LEVEL || level;
-
-    this.#level = logLevels.indexOf(logLevel as LogLevel);
+    this.#level = logLevels.indexOf(level);
   }
 
   log(...args: any[]) {
-    if (this.#level < logLevels.indexOf("log")) return;
+    if (this.#level < 0) return;
 
-    console.log(`[${this.#name}] `, ...args);
+    console.log(`[${formattedDateTime()}] [${this.#name}] `, ...args);
   }
 
   error(...args: any[]) {
-    if (this.#level < logLevels.indexOf("error")) return;
+    if (this.#level < 1) return;
 
-    console.error(`[${this.#name}] `, ...args);
+    console.error(`[${formattedDateTime()}] [${this.#name}] `, ...args);
   }
 
   warn(...args: any[]) {
-    if (this.#level < logLevels.indexOf("warn")) return;
+    if (this.#level < 2) return;
 
-    console.warn(`[${this.#name}] `, ...args);
+    console.warn(`[${formattedDateTime()}] [${this.#name}] `, ...args);
   }
 
   info(...args: any[]) {
-    if (this.#level < logLevels.indexOf("info")) return;
+    if (this.#level < 3) return;
 
-    console.info(`[${this.#name}] `, ...args);
+    console.info(`[${formattedDateTime()}] [${this.#name}] `, ...args);
   }
 
   debug(...args: any[]) {
-    if (this.#level < logLevels.indexOf("debug")) return;
+    if (this.#level < 4) return;
 
-    console.debug(`[${this.#name}] `, ...args);
+    console.debug(`[${formattedDateTime()}] [${this.#name}] `, ...args);
   }
+}
+
+function formattedDateTime() {
+  const date = new Date();
+
+  const hours = date.getHours();
+  const minutes = date.getMinutes();
+  const seconds = date.getSeconds();
+  const milliseconds = date.getMilliseconds();
+
+  // Make sure the time is always 2 digits
+  const formattedHours = hours < 10 ? `0${hours}` : hours;
+  const formattedMinutes = minutes < 10 ? `0${minutes}` : minutes;
+  const formattedSeconds = seconds < 10 ? `0${seconds}` : seconds;
+  const formattedMilliseconds =
+    milliseconds < 10
+      ? `00${milliseconds}`
+      : milliseconds < 100
+      ? `0${milliseconds}`
+      : milliseconds;
+
+  return `${formattedHours}:${formattedMinutes}:${formattedSeconds}.${formattedMilliseconds}`;
 }

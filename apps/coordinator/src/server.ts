@@ -37,6 +37,7 @@ export class TriggerServer {
   #workflowId?: string;
   #apiKey: string;
   #runControllers = new Map<string, WorkflowRunController>();
+  #closedByServer = false;
   onClose: Evt<void>;
 
   constructor(
@@ -47,11 +48,9 @@ export class TriggerServer {
     this.#socket = socket;
     this.#apiKey = apiKey;
     this.#apiClient = new InternalApiClient(apiKey, env.PLATFORM_API_URL);
-    this.#logger = new Logger("trigger.dev", "debug");
+    this.#logger = new Logger("trigger.dev server");
     this.onClose = new Evt();
     this.#triggerPublisher = publisher;
-
-    process.on("beforeExit", () => this.close.bind(this));
   }
 
   async listen(instanceId?: string) {
@@ -61,8 +60,23 @@ export class TriggerServer {
   }
 
   async close() {
-    this.#closeConnection();
+    if (!this.#isConnected) {
+      return;
+    }
+
+    this.#closedByServer = true;
+    return this.#close();
+  }
+
+  async #close() {
+    this.#isConnected = false;
+
     await this.#closePubSub();
+
+    if (this.#closedByServer) {
+      this.#closeConnection();
+    }
+
     this.onClose.post();
   }
 
@@ -74,6 +88,12 @@ export class TriggerServer {
     const connection = new TriggerServerConnection(this.#socket, { id });
 
     connection.onClose.attach(async ([code, reason]) => {
+      if (!this.#isConnected) {
+        return;
+      }
+
+      this.#closedByServer = false;
+
       this.#logger.log(`Connection with host was closed (${code})`, id);
 
       if (reason) {

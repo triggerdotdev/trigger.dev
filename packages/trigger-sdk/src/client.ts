@@ -25,8 +25,9 @@ export class TriggerClient<TSchema extends z.ZodTypeAny> {
   #endpoint: string;
 
   #isConnected = false;
-  #retryIntervalMs: number = 3000;
+  #retryIntervalMs: number = 3_000;
   #logger: Logger;
+  #closedByUser = false;
 
   #responseCompleteCallbacks = new Map<
     string,
@@ -57,14 +58,25 @@ export class TriggerClient<TSchema extends z.ZodTypeAny> {
     }
 
     this.#apiKey = apiKey;
-    this.#endpoint = this.#options.endpoint ?? "ws://trigger.dev/ws";
-    this.#logger = new Logger("trigger.dev", this.#options.logLevel ?? "info");
+    this.#endpoint = this.#options.endpoint ?? "ws://wss.trigger.dev/ws";
+    this.#logger = new Logger("trigger.dev", this.#options.logLevel);
   }
 
   async listen(instanceId?: string) {
     await this.#initializeConnection(instanceId);
     this.#initializeRPC();
     this.#initializeHost();
+  }
+
+  close() {
+    this.#closedByUser = true;
+
+    if (this.#serverRPC) {
+      this.#serverRPC = undefined;
+    }
+
+    this.#connection?.close();
+    this.#isConnected = false;
   }
 
   async #initializeConnection(instanceId?: string) {
@@ -83,10 +95,42 @@ export class TriggerClient<TSchema extends z.ZodTypeAny> {
     );
 
     connection.onClose.attach(async ([code, reason]) => {
-      console.error(`Could not connect to trigger.dev (code ${code})`);
+      if (this.#closedByUser) {
+        this.#logger.debug("Connection closed by user, so we won't reconnect");
+        this.#closedByUser = false;
+        return;
+      }
+
+      this.#logger.error(`🚩 Could not connect to trigger.dev (code ${code})`);
 
       if (reason) {
-        console.error(reason);
+        this.#logger.error("Reason:", reason);
+      }
+
+      // If #isConnected is already false, that means we are already trying to reconnect
+      if (!this.#isConnected) return;
+
+      this.#logger.log("🔌 Reconnecting to trigger.dev...");
+
+      this.#isConnected = false;
+
+      while (!this.#isConnected) {
+        this.#initializeConnection(id)
+          .then(() => {
+            this.#logger.log("⚡ Reconnection successful");
+          })
+          .catch(() => {});
+
+        this.#logger.debug(
+          `Reconnection failed, retrying in ${Math.round(
+            this.#retryIntervalMs / 1000
+          )} seconds`,
+          id
+        );
+
+        await new Promise((resolve) =>
+          setTimeout(resolve, this.#retryIntervalMs)
+        );
       }
     });
 
@@ -96,6 +140,11 @@ export class TriggerClient<TSchema extends z.ZodTypeAny> {
 
     this.#connection = connection;
     this.#isConnected = true;
+
+    if (this.#serverRPC) {
+      this.#serverRPC.resetConnection(connection);
+      await this.#initializeHost();
+    }
   }
 
   async #initializeRPC() {

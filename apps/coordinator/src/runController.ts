@@ -45,7 +45,7 @@ export class WorkflowRunController {
     this.#hostRPC = options.hostRPC;
     this.#publisher = options.publisher;
     this.#metadata = options.metadata;
-    this.#logger = new Logger(`trigger.dev [run=${this.#runId}]`, "debug");
+    this.#logger = new Logger(`trigger.dev [run=${this.#runId}]`);
 
     this.#subscriber = new ZodSubscriber({
       schema: omit(platformCatalog, ["TRIGGER_WORKFLOW"]),

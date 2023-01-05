@@ -4,6 +4,7 @@ import {
   ZodPublisher,
 } from "internal-platform";
 import { createServer } from "node:http";
+import process from "node:process";
 import { WebSocketServer } from "ws";
 import { env } from "./env";
 import { pulsarClient } from "./pulsarClient";
@@ -12,6 +13,25 @@ import { TriggerServer } from "./server";
 // Create an HTTP server
 const server = createServer((req, res) => {
   res.end("Hello, World!");
+});
+
+const triggerServers = new Map<string, TriggerServer>();
+
+let shuttingDown = false;
+
+process.on("SIGINT", async (code) => {
+  console.log("Shutting down...");
+
+  shuttingDown = true;
+
+  // Close all the trigger servers in a Promise.all
+  await Promise.all(
+    Array.from(triggerServers.values()).map((triggerServer) =>
+      triggerServer.close()
+    )
+  );
+
+  process.exit();
 });
 
 // main
@@ -33,8 +53,6 @@ async function main() {
   });
 
   const wss = new WebSocketServer({ noServer: true });
-
-  const triggerServers = new Map<string, TriggerServer>();
 
   wss.on("connection", (ws, req) => {
     const apiKey = req.headers.authorization;
@@ -63,6 +81,11 @@ async function main() {
   // Upgrade an HTTP connection to a WebSocket connection
   // Only accept the upgrade if there is a valid API Key in the authorization header
   server.on("upgrade", async (req, socket, head) => {
+    if (shuttingDown) {
+      socket.destroy();
+      return;
+    }
+
     console.log(
       `Attemping to upgrade connection at url ${
         req.url

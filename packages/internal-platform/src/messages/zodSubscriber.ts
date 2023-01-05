@@ -47,7 +47,7 @@ export class ZodSubscriber<SubscriberSchema extends MessageCatalogSchema> {
     this.#schema = options.schema;
     this.#handlers = options.handlers;
     this.#client = options.client;
-    this.#logger = new Logger("trigger.dev subscriber", "info");
+    this.#logger = new Logger("trigger.dev subscriber");
   }
 
   public async initialize(): Promise<boolean> {
@@ -70,7 +70,7 @@ export class ZodSubscriber<SubscriberSchema extends MessageCatalogSchema> {
   }
 
   public async close() {
-    if (this.#subscriber) {
+    if (this.#subscriber && this.#subscriber.isConnected()) {
       await this.#subscriber.close();
       this.#subscriber = undefined;
     }

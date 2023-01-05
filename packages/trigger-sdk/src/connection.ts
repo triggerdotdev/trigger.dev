@@ -1,7 +1,7 @@
 import type { WebSocket as NodeWebSocket } from "ws";
 import { v4 } from "uuid";
 import { Evt } from "evt";
-import { IConnection, MESSAGE_META } from "internal-bridge";
+import { IConnection, Logger, MESSAGE_META } from "internal-bridge";
 
 export class TimeoutError extends Error {}
 export class NotConnectedError extends Error {}
@@ -35,6 +35,11 @@ export class HostConnection implements IConnection {
   #timeouts: Set<NodeJS.Timeout>;
   #isClosed: boolean = false;
   #pendingMessages = new Map<string, PendingMessage>();
+  #logger: Logger;
+
+  #pingIntervalHandle: NodeJS.Timeout | undefined;
+  #pingIntervalMs: number = 30_000; // 30 seconds
+  #closeUnresponsiveConnectionTimeoutMs: number = 3 * 60 * 1000; // 3 minutes
 
   constructor(socket: WebSocket | NodeWebSocket, options?: ConnectionOptions) {
     this.#socket = socket;
@@ -52,8 +57,15 @@ export class HostConnection implements IConnection {
 
     this.#timeouts = new Set();
 
+    this.#logger = new Logger("trigger.dev connection");
+
     this.onClose.attach(() => {
       this.#isClosed = true;
+
+      if (this.#pingIntervalHandle) {
+        clearInterval(this.#pingIntervalHandle);
+        this.#pingIntervalHandle = undefined;
+      }
 
       for (const timeout of this.#timeouts) {
         clearTimeout(timeout);
@@ -65,6 +77,8 @@ export class HostConnection implements IConnection {
     this.#socket.onopen = () => {
       this.#isClosed = false;
       this.onOpen.post();
+
+      this.#startPingInterval();
     };
 
     this.#socket.onclose = (ev: CloseEvent) => {
@@ -118,24 +132,32 @@ export class HostConnection implements IConnection {
   }
 
   async connect() {
+    this.#logger.debug("[connect] Attempting to connect");
+
     return new Promise<void>((resolve, reject) => {
       if (
         this.#socket.readyState === this.#socket.OPEN &&
         this.#isAuthenticated
       ) {
+        this.#logger.debug("[connect] Already connected, resolving");
+
         return resolve();
       }
 
-      const failTimeout = setTimeout(
-        () => reject(new TimeoutError()),
-        this.#connectTimeout
-      );
+      const failTimeout = setTimeout(() => {
+        this.#logger.debug("[connect] Connection timed out, rejecting");
+
+        reject(new TimeoutError());
+      }, this.#connectTimeout);
 
       this.#timeouts.add(failTimeout);
 
       this.onAuthenticated.attach(() => {
         clearTimeout(failTimeout);
         this.#timeouts.delete(failTimeout);
+
+        this.#logger.debug("[connect] Connected, resolving");
+
         resolve();
       });
     });
@@ -172,5 +194,90 @@ export class HostConnection implements IConnection {
     this.#isClosed = true;
     this.onMessage.detach();
     return this.#socket.close(code, reason);
+  }
+
+  #startPingInterval() {
+    // Do the ping stuff here
+    let lastSuccessfulPing = new Date();
+    this.#pingIntervalHandle = setInterval(async () => {
+      if (!this.#socket.OPEN) {
+        if (this.#pingIntervalHandle) {
+          clearInterval(this.#pingIntervalHandle);
+          this.#pingIntervalHandle = undefined;
+        }
+
+        return;
+      }
+
+      try {
+        await this.#ping();
+        lastSuccessfulPing = new Date();
+      } catch (err) {
+        this.#logger.warn("Pong not received in time");
+        if (!(err instanceof TimeoutError)) {
+          this.#logger.error(err);
+        }
+
+        if (
+          lastSuccessfulPing.getTime() <
+          new Date().getTime() - this.#closeUnresponsiveConnectionTimeoutMs
+        ) {
+          this.#logger.error(
+            "No pong received in last three minutes, closing connection to Interval and retrying..."
+          );
+          if (this.#pingIntervalHandle) {
+            clearInterval(this.#pingIntervalHandle);
+            this.#pingIntervalHandle = undefined;
+          }
+          this.#socket.close();
+        }
+      }
+    }, this.#pingIntervalMs);
+  }
+
+  async #ping() {
+    if (!this.#socket.OPEN) {
+      throw new NotConnectedError();
+    }
+
+    if (!("ping" in this.#socket)) {
+      // Not supported in web client WebSocket
+      throw new Error(
+        "ping not supported in this underlying websocket connection"
+      );
+    }
+
+    const socket = this.#socket;
+
+    return new Promise<void>((resolve, reject) => {
+      const id = v4();
+
+      const failTimeout = setTimeout(() => {
+        reject(new TimeoutError("Pong not received in time"));
+      }, this.#pingTimeout);
+
+      this.#timeouts.add(failTimeout);
+
+      this.#pendingMessages.set(id, {
+        data: "ping",
+        onAckReceived: () => {
+          clearTimeout(failTimeout);
+
+          this.#timeouts.delete(failTimeout);
+
+          this.#logger.debug(`Resolving ping`);
+
+          resolve();
+        },
+      });
+
+      this.#logger.debug(`Sending ping ${id} to ${socket.url}`);
+
+      socket.ping(id, undefined, (err) => {
+        if (err) {
+          reject(err);
+        }
+      });
+    });
   }
 }

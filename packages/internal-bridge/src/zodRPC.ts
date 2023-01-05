@@ -55,6 +55,12 @@ export class ZodRPC<
     this.#connection.onMessage.attach(this.#onMessage.bind(this));
   }
 
+  public resetConnection(connection: IConnection) {
+    this.#connection.onMessage.detach();
+    this.#connection = connection;
+    this.#connection.onMessage.attach(this.#onMessage.bind(this));
+  }
+
   async #onMessage(rawData: unknown) {
     try {
       const data = RPCMessageSchema.parse(JSON.parse(rawData as string));
