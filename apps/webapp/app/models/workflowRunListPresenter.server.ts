@@ -86,7 +86,7 @@ export class WorkflowRunListPresenter {
         },
       },
       orderBy: {
-        startedAt: "desc",
+        createdAt: "desc",
       },
       skip: offset,
       take: pageSize,
