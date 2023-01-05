@@ -22,14 +22,14 @@ export function TriggerBody({ trigger }: { trigger: TriggerMetadata }) {
   return <></>;
 }
 
-const workflowNodeUppercaseClasses = "uppercase text-slate-400";
+const workflowNodeUppercaseClasses = "uppercase text-slate-400 tracking-wide";
 
 function Webhook({ webhook }: { webhook: WebhookEventTrigger }) {
   return (
     <>
-      <Header3 size="large" className="mb-2">
+      <Header2 size="small" className="text-slate-300 mb-2">
         {webhook.name}
-      </Header3>
+      </Header2>
       <div className="flex flex-col gap-1 mb-2">
         {webhook.source &&
           Object.entries(webhook.source).map(([key, value]) => (
@@ -48,8 +48,11 @@ function Webhook({ webhook }: { webhook: WebhookEventTrigger }) {
 function CustomEvent({ event }: { event: CustomEventTrigger }) {
   return (
     <>
-      <Header2 size="large" className="mb-4">
-        name: {event.name}
+      <Body size="extra-small" className={workflowNodeUppercaseClasses}>
+        Name
+      </Body>
+      <Header2 size="small" className="text-slate-300 mb-2">
+        {event.name}
       </Header2>
     </>
   );

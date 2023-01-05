@@ -156,48 +156,64 @@ export default function Page() {
         ))}
 
       {run.status === "SUCCESS" && (
-        <Panel>
-          <div className="flex gap-2 items-center border-b border-slate-700 pb-3 mb-4">
-            <CheckCircleIcon className="h-5 w-5 text-green-500" />
-            <Body size="small" className="text-slate-300">
-              Run {run.id} complete
-            </Body>
-          </div>
-          <div className="grid grid-cols-3 gap-2 text-slate-300">
-            <div className="flex flex-col gap-1">
-              <Body size="extra-small" className={workflowNodeUppercaseClasses}>
-                Run duration
-              </Body>
-              <Body className={workflowNodeDelayClasses} size="small">
-                {run.duration && humanizeDuration(run.duration)}
+        <>
+          <div className="h-3 w-full ml-[10px] border-l border-slate-700"></div>
+          <Panel className="">
+            <div className="flex gap-2 items-center border-b border-slate-700 pb-3 mb-4">
+              <CheckCircleIcon className="h-5 w-5 text-green-500" />
+              <Body size="small" className="text-slate-300">
+                Run {run.id} complete
               </Body>
             </div>
-            <div className="flex flex-col gap-1">
-              <Body size="extra-small" className={workflowNodeUppercaseClasses}>
-                Started
-              </Body>
-              <Body className={workflowNodeDelayClasses} size="small">
-                {run.startedAt && formatDateTime(run.startedAt, "long")}
-              </Body>
+            <div className="grid grid-cols-3 gap-2 text-slate-300">
+              <div className="flex flex-col gap-1">
+                <Body
+                  size="extra-small"
+                  className={workflowNodeUppercaseClasses}
+                >
+                  Run duration
+                </Body>
+                <Body className={workflowNodeDelayClasses} size="small">
+                  {run.duration && humanizeDuration(run.duration)}
+                </Body>
+              </div>
+              <div className="flex flex-col gap-1">
+                <Body
+                  size="extra-small"
+                  className={workflowNodeUppercaseClasses}
+                >
+                  Started
+                </Body>
+                <Body className={workflowNodeDelayClasses} size="small">
+                  {run.startedAt && formatDateTime(run.startedAt, "long")}
+                </Body>
+              </div>
+              <div className="flex flex-col gap-1">
+                <Body
+                  size="extra-small"
+                  className={workflowNodeUppercaseClasses}
+                >
+                  Completed
+                </Body>
+                <Body className={workflowNodeDelayClasses} size="small">
+                  {run.finishedAt && formatDateTime(run.finishedAt, "long")}
+                </Body>
+              </div>
             </div>
-            <div className="flex flex-col gap-1">
-              <Body size="extra-small" className={workflowNodeUppercaseClasses}>
-                Completed
-              </Body>
-              <Body className={workflowNodeDelayClasses} size="small">
-                {run.finishedAt && formatDateTime(run.finishedAt, "long")}
-              </Body>
-            </div>
-          </div>
-          {output && (
-            <CodeBlock
-              code={stringifyCode(output.output)}
-              language="json"
-              className="mt-2"
-              align="top"
-            />
-          )}
-        </Panel>
+            {output && (
+              <CodeBlock
+                code={stringifyCode(output.output)}
+                language="json"
+                className="mt-2"
+                align="top"
+              />
+            )}
+          </Panel>
+        </>
+      )}
+
+      {run.status === "PENDING" && (
+        <div className="h-10 w-full ml-[10px] border-dashed border-l border-gradient border-slate-700"></div>
       )}
 
       {run.error && <Error error={run.error} />}
@@ -386,15 +402,15 @@ function StepHeader({ step }: { step: Step }) {
 
 function InputTitle() {
   return (
-    <Header4 size="extra-extra-small" className={workflowNodeUppercaseClasses}>
+    <Body size="extra-small" className={`mb-1 ${workflowNodeUppercaseClasses}`}>
       Input
-    </Header4>
+    </Body>
   );
 }
 
 function OutputTitle() {
   return (
-    <Body size="extra-small" className={`mb-2 ${workflowNodeUppercaseClasses}`}>
+    <Body size="extra-small" className={`mb-1 ${workflowNodeUppercaseClasses}`}>
       Output
     </Body>
   );
@@ -543,8 +559,11 @@ function DelayScheduled({
 function CustomEventStep({ event }: { event: StepType<Step, "CUSTOM_EVENT"> }) {
   return (
     <>
-      <Header2 size="large" className="mb-4">
-        name: {event.input.name}
+      <Body size="extra-small" className={workflowNodeUppercaseClasses}>
+        Name
+      </Body>
+      <Header2 size="small" className="text-slate-300 mb-2">
+        {event.input.name}
       </Header2>
       <Header4>Payload</Header4>
       <CodeBlock code={stringifyCode(event.input.payload)} align="top" />
@@ -568,7 +587,7 @@ function IntegrationRequestStep({
 
   return (
     <>
-      <Header2 size="large" className="mb-4">
+      <Header2 size="small" className="text-slate-300 mb-2">
         {request.displayProperties.title}
       </Header2>
       {request.service.connection === null && (
