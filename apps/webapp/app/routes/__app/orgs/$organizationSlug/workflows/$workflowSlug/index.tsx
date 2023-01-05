@@ -4,7 +4,12 @@ import invariant from "tiny-invariant";
 import { WorkflowConnections } from "~/components/integrations/WorkflowConnections";
 import { Panel } from "~/components/layout/Panel";
 import { PanelHeader } from "~/components/layout/PanelHeader";
-import { PrimaryLink, SecondaryLink } from "~/components/primitives/Buttons";
+import {
+  PrimaryLink,
+  SecondaryLink,
+  TertiaryA,
+  TertiaryLink,
+} from "~/components/primitives/Buttons";
 import { Header1, Header2 } from "~/components/primitives/text/Headers";
 import { RunsTable } from "~/components/runs/RunsTable";
 import { TriggerBody } from "~/components/triggers/Trigger";
@@ -65,30 +70,40 @@ export default function Page() {
     <>
       <Header1 className="mb-4">Overview</Header1>
       {(connectionSlots.source || connectionSlots.services.length > 0) && (
-        <Panel>
-          <Header2 size="small" className="mb-2">
-            API integrations
+        <>
+          <Header2 size="small" className="mb-2 text-slate-400">
+            {connectionSlots.services.length} connected API{" "}
+            {connectionSlots.services.length === 1 ? "" : "s"}
           </Header2>
-          <WorkflowConnections />
-        </Panel>
+          <Panel className="mb-6">
+            <WorkflowConnections />
+          </Panel>
+        </>
       )}
 
       {eventRule && (
-        <Panel className="mt-4">
-          <PanelHeader
-            icon={triggerInfo[eventRule.trigger.type].icon}
-            title={triggerInfo[eventRule.trigger.type].label}
-            startedAt={null}
-            finishedAt={null}
-          />
-          <TriggerBody trigger={eventRule.trigger} />
-        </Panel>
+        <>
+          <Header2 size="small" className="text-slate-400 mb-2">
+            Workflow type
+          </Header2>
+          <Panel className="mb-4">
+            <PanelHeader
+              icon={triggerInfo[eventRule.trigger.type].icon}
+              title={triggerInfo[eventRule.trigger.type].label}
+              startedAt={null}
+              finishedAt={null}
+            />
+            <TriggerBody trigger={eventRule.trigger} />
+          </Panel>
+        </>
       )}
 
       {total > 0 ? (
         <>
-          <div className="mt-6 mb-4 flex justify-between items-center">
-            <Header2>Last {pageSize} runs</Header2>
+          <div className="mb-2 flex justify-between items-end">
+            <Header2 size="small" className="text-slate-400">
+              Last {pageSize} runs
+            </Header2>
             <SecondaryLink to="runs">View all</SecondaryLink>
           </div>
           <Panel className="p-0 overflow-hidden overflow-x-auto">
