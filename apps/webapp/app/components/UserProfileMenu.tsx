@@ -23,16 +23,16 @@ export function UserProfileMenu({ user }: { user: User }) {
         leaveFrom="transform opacity-100 scale-100"
         leaveTo="transform opacity-0 scale-95"
       >
-        <Menu.Items className="absolute right-0 mt-2 w-48 origin-top-right rounded-md bg-slate-700 pb-2 pt-1 shadow-lg ring-1 ring-black ring-opacity-5 focus:outline-none">
+        <Menu.Items className="absolute right-0 mt-2 w-48 origin-top-right rounded-md bg-slate-700 pb-1 pt-1 shadow-lg ring-1 ring-black ring-opacity-5 focus:outline-none">
           {user.name ? (
             <Body
               size="small"
-              className="mb-2 block border-b border-slate-800 py-2 pl-5 pr-2 font-semibold"
+              className="mb-1 block border-b border-slate-800 py-2 pl-4 pr-1 font-semibold"
             >
               {user.name}
             </Body>
           ) : (
-            <Body className="mb-2 block border-b border-slate-800 py-2 pl-5 pr-2 font-semibold">
+            <Body className="mb-1 block border-b border-slate-800 py-2 pl-4 pr-1 font-semibold">
               {user.email}
             </Body>
           )}
@@ -44,7 +44,7 @@ export function UserProfileMenu({ user }: { user: User }) {
                   href={item.href}
                   className={classnames(
                     active ? "bg-rose-200 text-rose-700" : "",
-                    "mx-2 block rounded-md p-2 pl-3 text-sm text-slate-300"
+                    "mx-1 block rounded p-2 pl-3 text-sm text-slate-300"
                   )}
                 >
                   {item.name}
