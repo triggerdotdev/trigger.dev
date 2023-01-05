@@ -22,7 +22,7 @@
     "@react-email/section": "^0.0.1",
     "@react-email/text": "^0.0.2",
     "react": "^18.2.0",
-    "react-email": "^1.5.0",
+    "react-email": "^1.6.0",
     "resend": "^0.9.1",
     "tiny-invariant": "^1.2.0",
     "zod": "^3.20.2"

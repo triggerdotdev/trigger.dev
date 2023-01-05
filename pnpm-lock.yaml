@@ -419,6 +419,23 @@ importers:
       '@types/node': 18.11.15
       tsx: 3.12.1
 
+  examples/playground:
+    specifiers:
+      '@trigger.dev/integrations': workspace:*
+      '@trigger.dev/sdk': workspace:*
+      '@trigger.dev/tsconfig': workspace:*
+      '@types/node': ^18.11.9
+      tsx: ^3.12.0
+      zod: ^3.20.2
+    dependencies:
+      '@trigger.dev/integrations': link:../../packages/trigger-integrations
+      '@trigger.dev/sdk': link:../../packages/trigger-sdk
+      zod: 3.20.2
+    devDependencies:
+      '@trigger.dev/tsconfig': link:../../config-packages/tsconfig
+      '@types/node': 18.11.15
+      tsx: 3.12.1
+
   examples/send-to-slack:
     specifiers:
       '@trigger.dev/integrations': workspace:*
@@ -483,7 +500,7 @@ importers:
       '@trigger.dev/tsconfig': workspace:*
       '@types/react': ^18.0.21
       react: ^18.2.0
-      react-email: ^1.5.0
+      react-email: ^1.6.0
       resend: ^0.9.1
       tiny-invariant: ^1.2.0
       zod: ^3.20.2
