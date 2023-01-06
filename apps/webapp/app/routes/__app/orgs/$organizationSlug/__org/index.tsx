@@ -143,8 +143,8 @@ function WorkflowList({
       <li>
         <Link to={`/`} className="block hover:bg-slate-850/40 transition">
           <div className="flex justify-between items-center flex-wrap lg:flex-nowrap px-4 py-4">
-            <div className="flex items-center flex-1 justify-between">
-              <div className="flex">
+            <div className="flex items-center truncate justify-between">
+              <div className="flex truncate">
                 <TriggerTypeIcon className="flex-shrink-0 self-start h-24 w-24 mr-4" />
                 <div className="mr-1 truncate">
                   <Header2 size="large" className="truncate text-slate-200">
@@ -211,16 +211,18 @@ function PillLabel({ label }: { label: string }) {
 function WorkflowProperty({
   label,
   content,
+  className,
 }: {
   label: string;
   content: string;
+  className?: string;
 }) {
   return (
-    <div className="flex items-baseline truncate gap-x-1">
-      <Body size="extra-small" className="uppercase text-slate-500">
+    <div className="flex items-baseline gap-x-1">
+      <Body size="extra-small" className="uppercase text-slate-400">
         {label}
       </Body>
-      <Body size="small" className="text-slate-400">
+      <Body size="small" className="text-slate-400 truncate">
         {content}
       </Body>
     </div>
