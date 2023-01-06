@@ -10,7 +10,9 @@ import classNames from "classnames";
 import type { CatalogIntegration } from "internal-catalog";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { ApiLogoIcon } from "~/components/code/ApiLogoIcon";
-import CreateNewWorkflow from "~/components/CreateNewWorkflow";
+import CreateNewWorkflow, {
+  CreateNewWorkflowNoWorkflows,
+} from "~/components/CreateNewWorkflow";
 import { OctoKitty } from "~/components/GitHubLoginButton";
 import { Container } from "~/components/layout/Container";
 import { List } from "~/components/layout/List";
@@ -45,7 +47,7 @@ export default function Page() {
     <Container>
       <Header1 className="mb-6">Workflows</Header1>
       {workflows.length === 0 ? (
-        <></>
+        <CreateNewWorkflowNoWorkflows />
       ) : (
         <>
           <Header2 size="small" className="mb-2 text-slate-400">
@@ -56,9 +58,9 @@ export default function Page() {
             integrations={integrations}
             currentOrganizationSlug={currentOrganization.slug}
           />
+          <CreateNewWorkflow />
         </>
       )}
-      <CreateNewWorkflow />
     </Container>
   );
 }
