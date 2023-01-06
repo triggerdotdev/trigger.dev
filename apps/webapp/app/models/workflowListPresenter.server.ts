@@ -85,7 +85,7 @@ function getWorkflowsRun(prismaClient: PrismaClient, organizationSlug: string) {
 }
 
 function triggerProperties(
-  workflow: Pick<Workflow, "type">,
+  workflow: Pick<Workflow, "type" | "eventNames">,
   externalSource?: Pick<ExternalSource, "service" | "source">
 ): {
   type: Workflow["type"];
@@ -115,6 +115,12 @@ function triggerProperties(
         properties: displayProperties.properties,
       };
     }
+    case "CUSTOM_EVENT":
+      return {
+        type: workflow.type,
+        typeTitle: "Custom event",
+        title: `on: ${workflow.eventNames.join(", ")}`,
+      };
     default: {
       return {
         type: workflow.type,
