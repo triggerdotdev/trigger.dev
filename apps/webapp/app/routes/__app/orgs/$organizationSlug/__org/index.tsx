@@ -1,16 +1,20 @@
 import {
+  BugAntIcon,
   CalendarIcon,
   ChevronRightIcon,
   IdentificationIcon,
 } from "@heroicons/react/24/solid";
 import { Link } from "@remix-run/react";
 import type { LoaderArgs } from "@remix-run/server-runtime";
+import classNames from "classnames";
 import type { CatalogIntegration } from "internal-catalog";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { ApiLogoIcon } from "~/components/code/ApiLogoIcon";
 import CreateNewWorkflow from "~/components/CreateNewWorkflow";
+import { OctoKitty } from "~/components/GitHubLoginButton";
 import { Container } from "~/components/layout/Container";
 import { List } from "~/components/layout/List";
+import { Body } from "~/components/primitives/text/Body";
 import {
   Header1,
   Header2,
@@ -136,6 +140,97 @@ function WorkflowList({
           </li>
         );
       })}
+      <li>
+        <Link to={`/`} className="block hover:bg-slate-850/40 transition">
+          <div className="flex justify-between items-center flex-wrap lg:flex-nowrap px-4 py-4">
+            <div className="flex items-center flex-1 justify-between">
+              <div className="flex">
+                <TriggerTypeIcon className="flex-shrink-0 self-start h-24 w-24 mr-4" />
+                <div className="mr-1 truncate">
+                  <Header2 size="large" className="truncate text-slate-200">
+                    Send to Slack on new domain
+                  </Header2>
+                  <div className="flex gap-2 mt-2">
+                    <PillLabel label="webhook" />
+                    <Header3 size="small" className="truncate text-slate-300">
+                      GitHub Issues
+                    </Header3>
+                  </div>
+                  <div className="flex flex-wrap gap-x-2 mt-2 items-baseline">
+                    <WorkflowProperty
+                      label="Repo"
+                      content="trigger.dev/trigger.dev"
+                    />
+                    <WorkflowProperty
+                      label="Property"
+                      content="Another property"
+                    />
+                  </div>
+                </div>
+              </div>
+              <ChevronRightIcon
+                className="shrink-0 h-5 w-5 ml-5 text-slate-400 lg:hidden"
+                aria-hidden="true"
+              />
+            </div>
+            <div className="flex items-center flex-grow lg:flex-grow-0">
+              <div className="flex flex-wrap-reverse justify-between w-full lg:justify-end gap-3 items-center mt-4 lg:mt-0">
+                <div className="flex flex-col text-right">
+                  <Body size="extra-small" className="text-slate-500">
+                    Last run: Jan 5, 2023, 6:48 PM
+                  </Body>
+                  <Body size="extra-small" className="text-slate-500">
+                    send-to-slack-on-new-domain
+                  </Body>
+                </div>
+                <div className="flex gap-2 items-center">
+                  <BugAntIcon className="h-9 w-9 p-1.5 bg-slate-850 rounded" />
+                  <BugAntIcon className="h-9 w-9 p-1.5 bg-slate-850 rounded" />
+                </div>
+              </div>
+              <ChevronRightIcon
+                className="shrink-0 h-5 w-5 ml-5 text-slate-400 hidden lg:block"
+                aria-hidden="true"
+              />
+            </div>
+          </div>
+        </Link>
+      </li>
     </List>
+  );
+}
+
+function PillLabel({ label }: { label: string }) {
+  return (
+    <span className="px-2 py-1.5 text-xs font-semibold tracking-wider uppercase rounded text-slate-400 bg-slate-700">
+      {label}
+    </span>
+  );
+}
+
+function WorkflowProperty({
+  label,
+  content,
+}: {
+  label: string;
+  content: string;
+}) {
+  return (
+    <div className="flex items-baseline truncate gap-x-1">
+      <Body size="extra-small" className="uppercase text-slate-500">
+        {label}
+      </Body>
+      <Body size="small" className="text-slate-400">
+        {content}
+      </Body>
+    </div>
+  );
+}
+
+function TriggerTypeIcon({ className }: { className?: string }) {
+  return (
+    <OctoKitty
+      className={classNames("p-3 bg-slate-850 rounded-md", className)}
+    />
   );
 }
