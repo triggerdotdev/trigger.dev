@@ -130,7 +130,7 @@ export default function LoginMagicLinkPage() {
                       </PrimaryButton>
                     ) : (
                       <PrimaryButton
-                        className="flex mt-2 py-3 w-full"
+                        className="flex mt-2 py-3 w-full max-w-full"
                         name="action"
                         value="send"
                         type="submit"
