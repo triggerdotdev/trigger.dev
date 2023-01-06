@@ -38,8 +38,10 @@ export type PerformRequestOptions = {
 
 export type DisplayProperties = {
   title: string;
-  properties?: { key: string; value: string | number | boolean }[];
+  properties?: DisplayProperty[];
 };
+
+export type DisplayProperty = { key: string; value: string | number | boolean };
 
 export interface PerformedRequestResponse {
   response: NormalizedResponse;
@@ -63,6 +65,7 @@ export interface WebhookIntegration {
     | { status: "ok"; data: ReceivedWebhook }
     | { status: "ignored"; reason: string }
     | { status: "error"; error: string };
+  displayProperties: (source: unknown) => DisplayProperties;
 }
 
 export interface CacheService {

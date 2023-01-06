@@ -1,4 +1,5 @@
 import {
+  DisplayProperty,
   HandleWebhookOptions,
   WebhookConfig,
   WebhookIntegration,
@@ -77,6 +78,39 @@ export class GitHubWebhookIntegration implements WebhookIntegration {
       status: "ok" as const,
       data: { id: deliveryId, payload: options.request.body, event, context },
     };
+  }
+
+  displayProperties(source: unknown) {
+    const githubSource = parseWebhookSource(source);
+
+    const title = `GitHub ${githubSource.events.join(", ")}`;
+    let properties: DisplayProperty[] = [];
+
+    switch (githubSource.subresource) {
+      case "repository": {
+        properties = [
+          {
+            key: "Repo",
+            value: githubSource.repo,
+          },
+        ];
+        break;
+      }
+      case "organization": {
+        properties = [
+          {
+            key: "Organization",
+            value: githubSource.org,
+          },
+        ];
+        break;
+      }
+      default: {
+        throw new Error(`Unknown subresource`);
+      }
+    }
+
+    return { title, properties };
   }
 }
 

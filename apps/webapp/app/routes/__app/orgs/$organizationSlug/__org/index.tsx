@@ -1,14 +1,8 @@
-import {
-  BugAntIcon,
-  CalendarIcon,
-  ChevronRightIcon,
-  IdentificationIcon,
-} from "@heroicons/react/24/solid";
+import { ChevronRightIcon } from "@heroicons/react/24/solid";
 import { Link } from "@remix-run/react";
 import type { LoaderArgs } from "@remix-run/server-runtime";
-import classNames from "classnames";
-import type { CatalogIntegration } from "internal-catalog";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
+import invariant from "tiny-invariant";
 import { ApiLogoIcon } from "~/components/code/ApiLogoIcon";
 import CreateNewWorkflow, {
   CreateNewWorkflowNoWorkflows,
@@ -22,24 +16,32 @@ import {
   Header2,
   Header3,
 } from "~/components/primitives/text/Headers";
+import { triggerTypeIcon } from "~/components/triggers/triggerTypes";
 import { useCurrentOrganization } from "~/hooks/useOrganizations";
-import type { OrgWorkflow } from "~/hooks/useWorkflows";
-import { useWorkflows } from "~/hooks/useWorkflows";
-import { getIntegrations } from "~/models/integrations.server";
-import { requireUser } from "~/services/session.server";
+import type { WorkflowListItem } from "~/models/workflowListPresenter.server";
+import { WorkflowListPresenter } from "~/models/workflowListPresenter.server";
+import { requireUserId } from "~/services/session.server";
 import { formatDateTime } from "~/utils";
-import { getIntegration } from "~/utils/integrations";
 
 export const loader = async ({ request, params }: LoaderArgs) => {
-  const user = await requireUser(request);
-  return typedjson({ integrations: getIntegrations(user.admin) });
+  await requireUserId(request);
+  invariant(params.organizationSlug, "Organization slug is required");
+
+  const presenter = new WorkflowListPresenter();
+
+  try {
+    const workflows = await presenter.data(params.organizationSlug);
+    return typedjson({ workflows });
+  } catch (error: any) {
+    console.error(error);
+    throw new Response("Error ", { status: 400 });
+  }
 };
 
 export default function Page() {
-  const { integrations } = useTypedLoaderData<typeof loader>();
-  const workflows = useWorkflows();
+  const { workflows } = useTypedLoaderData<typeof loader>();
   const currentOrganization = useCurrentOrganization();
-  if (workflows === undefined || currentOrganization === undefined) {
+  if (currentOrganization === undefined) {
     return <></>;
   }
 
@@ -55,7 +57,6 @@ export default function Page() {
           </Header2>
           <WorkflowList
             workflows={workflows}
-            integrations={integrations}
             currentOrganizationSlug={currentOrganization.slug}
           />
           <CreateNewWorkflow />
@@ -67,11 +68,9 @@ export default function Page() {
 
 function WorkflowList({
   workflows,
-  integrations,
   currentOrganizationSlug,
 }: {
-  workflows: OrgWorkflow[];
-  integrations: CatalogIntegration[];
+  workflows: WorkflowListItem[];
   currentOrganizationSlug: string;
 }) {
   return (
@@ -81,59 +80,80 @@ function WorkflowList({
           <li key={workflow.id}>
             <Link
               to={`/orgs/${currentOrganizationSlug}/workflows/${workflow.slug}`}
-              className="block hover:bg-slate-850/50 transition"
+              className="block hover:bg-slate-850/40 transition"
             >
-              <div className="flex items-center px-4 py-4 sm:px-6">
-                <div className="min-w-0 flex-1 sm:flex sm:items-center sm:justify-between">
-                  <div className="truncate">
-                    <Header3 size="small" className="truncate font-medium">
-                      {workflow.title}
-                    </Header3>
-
-                    <div className="mt-2 flex flex-col gap-2">
-                      <div className="flex items-center text-sm text-slate-400">
-                        <IdentificationIcon
-                          className="mr-1.5 h-5 w-5 flex-shrink-0 text-slate-400"
-                          aria-hidden="true"
-                        />
-                        <p className="mr-1">ID: {workflow.slug}</p>
-                      </div>
-                      <div className="flex items-center text-sm">
-                        <CalendarIcon
-                          className="mr-1.5 h-5 w-5 flex-shrink-0 text-slate-400"
-                          aria-hidden="true"
-                        />
-                        <p className="mr-1 text-slate-400">Last modified:</p>
-                        <time
-                          className="text-slate-400"
-                          dateTime={workflow.updatedAt.toISOString()}
+              <div className="flex justify-between items-center flex-wrap lg:flex-nowrap px-4 py-4">
+                <div className="flex items-center flex-1 justify-between">
+                  <div className="flex">
+                    <TriggerTypeIcon workflow={workflow} />
+                    <div className="mr-1 truncate">
+                      <Header2 size="large" className="truncate text-slate-200">
+                        {workflow.title}
+                      </Header2>
+                      <div className="flex gap-2 mt-2">
+                        <PillLabel label={workflow.trigger.typeTitle} />
+                        <Header3
+                          size="small"
+                          className="truncate text-slate-300"
                         >
-                          {formatDateTime(workflow.updatedAt)}
-                        </time>
+                          {workflow.trigger.title}
+                        </Header3>
+                      </div>
+                      <div className="flex flex-wrap gap-x-2 mt-2 items-baseline">
+                        {workflow.trigger.properties &&
+                          workflow.trigger.properties.map((property) => (
+                            <WorkflowProperty
+                              key={property.key}
+                              label={property.key}
+                              content={`${property.value}`}
+                            />
+                          ))}
                       </div>
                     </div>
                   </div>
-                  <div className="flex gap-2 items-center">
-                    <ApiLogoIcon
-                      integration={getIntegration(
-                        integrations,
-                        workflow.service
-                      )}
-                    />
-                    {workflow.externalServices.map((service) => (
-                      <ApiLogoIcon
-                        key={service.service}
-                        integration={getIntegration(
-                          integrations,
-                          service.service
-                        )}
-                      />
-                    ))}
-                  </div>
-                </div>
-                <div className="ml-5 flex-shrink-0">
                   <ChevronRightIcon
-                    className="h-5 w-5 text-slate-400"
+                    className="shrink-0 h-5 w-5 ml-5 text-slate-400 lg:hidden"
+                    aria-hidden="true"
+                  />
+                </div>
+                <div className="flex items-center flex-grow lg:flex-grow-0">
+                  <div className="flex flex-wrap-reverse justify-between w-full lg:justify-end gap-3 items-center mt-4 lg:mt-0">
+                    <div className="flex flex-col text-right">
+                      <Body size="extra-small" className="text-slate-500">
+                        Last run:{" "}
+                        {workflow.lastRun === undefined
+                          ? "never"
+                          : workflow.lastRun.status === "ERROR"
+                          ? "failed"
+                          : workflow.lastRun.finishedAt
+                          ? formatDateTime(workflow.lastRun.finishedAt)
+                          : "?"}
+                      </Body>
+                      <Body size="extra-small" className="text-slate-500">
+                        {workflow.slug}
+                      </Body>
+                    </div>
+                    <div className="flex gap-2 items-center">
+                      {workflow.integrations.source && (
+                        <ApiLogoIcon
+                          integration={workflow.integrations.source}
+                        />
+                      )}
+                      {workflow.integrations.services.map((service) => {
+                        if (service === undefined) {
+                          return null;
+                        }
+                        return (
+                          <ApiLogoIcon
+                            key={service.slug}
+                            integration={service}
+                          />
+                        );
+                      })}
+                    </div>
+                  </div>
+                  <ChevronRightIcon
+                    className="shrink-0 h-5 w-5 ml-5 text-slate-400 hidden lg:block"
                     aria-hidden="true"
                   />
                 </div>
@@ -142,62 +162,6 @@ function WorkflowList({
           </li>
         );
       })}
-      <li>
-        <Link to={`/`} className="block hover:bg-slate-850/40 transition">
-          <div className="flex justify-between items-center flex-wrap lg:flex-nowrap px-4 py-4">
-            <div className="flex items-center truncate justify-between">
-              <div className="flex truncate">
-                <TriggerTypeIcon className="flex-shrink-0 self-start h-24 w-24 mr-4" />
-                <div className="mr-1 truncate">
-                  <Header2 size="large" className="truncate text-slate-200">
-                    Send to Slack on new domain
-                  </Header2>
-                  <div className="flex gap-2 mt-2">
-                    <PillLabel label="webhook" />
-                    <Header3 size="small" className="truncate text-slate-300">
-                      GitHub Issues
-                    </Header3>
-                  </div>
-                  <div className="flex flex-wrap gap-x-2 mt-2 items-baseline">
-                    <WorkflowProperty
-                      label="Repo"
-                      content="trigger.dev/trigger.dev"
-                    />
-                    <WorkflowProperty
-                      label="Property"
-                      content="Another property"
-                    />
-                  </div>
-                </div>
-              </div>
-              <ChevronRightIcon
-                className="shrink-0 h-5 w-5 ml-5 text-slate-400 lg:hidden"
-                aria-hidden="true"
-              />
-            </div>
-            <div className="flex items-center flex-grow lg:flex-grow-0">
-              <div className="flex flex-wrap-reverse justify-between w-full lg:justify-end gap-3 items-center mt-4 lg:mt-0">
-                <div className="flex flex-col text-right">
-                  <Body size="extra-small" className="text-slate-500">
-                    Last run: Jan 5, 2023, 6:48 PM
-                  </Body>
-                  <Body size="extra-small" className="text-slate-500">
-                    send-to-slack-on-new-domain
-                  </Body>
-                </div>
-                <div className="flex gap-2 items-center">
-                  <BugAntIcon className="h-9 w-9 p-1.5 bg-slate-850 rounded" />
-                  <BugAntIcon className="h-9 w-9 p-1.5 bg-slate-850 rounded" />
-                </div>
-              </div>
-              <ChevronRightIcon
-                className="shrink-0 h-5 w-5 ml-5 text-slate-400 hidden lg:block"
-                aria-hidden="true"
-              />
-            </div>
-          </div>
-        </Link>
-      </li>
     </List>
   );
 }
@@ -231,10 +195,18 @@ function WorkflowProperty({
   );
 }
 
-function TriggerTypeIcon({ className }: { className?: string }) {
-  return (
-    <OctoKitty
-      className={classNames("p-3 bg-slate-850 rounded-md", className)}
-    />
+function TriggerTypeIcon({ workflow }: { workflow: WorkflowListItem }) {
+  if (workflow.integrations.source) {
+    return (
+      <ApiLogoIcon
+        integration={workflow.integrations.source}
+        className="p-3 bg-slate-850 rounded-md flex-shrink-0 self-start h-24 w-24 mr-4"
+      />
+    );
+  }
+
+  return triggerTypeIcon(
+    workflow.trigger.type,
+    "p-3 bg-slate-850 rounded-md flex-shrink-0 self-start h-24 w-24 mr-4"
   );
 }
