@@ -33,9 +33,9 @@ export function runStatusLabel(status: WorkflowRunStatus): ReactNode {
     case "RUNNING":
       return <span className="text-blue-500">{runStatusTitle(status)}</span>;
     case "DISCONNECTED":
-      return <span className="text-yellow-300">{runStatusTitle(status)}</span>;
+      return <span className="text-amber-300">{runStatusTitle(status)}</span>;
     case "ERROR":
-      return <span className="text-red-500">{runStatusTitle(status)}</span>;
+      return <span className="text-rose-500">{runStatusTitle(status)}</span>;
   }
 }
 
@@ -78,7 +78,7 @@ export function runStatusIcon(
         <ExclamationTriangleIcon
           className={classNames(
             iconSize === "small" ? smallClasses : largeClasses,
-            "relative text-yellow-300"
+            "relative text-amber-300"
           )}
         />
       );
@@ -87,7 +87,7 @@ export function runStatusIcon(
         <XCircleIcon
           className={classNames(
             iconSize === "small" ? smallClasses : largeClasses,
-            "relative text-red-500"
+            "relative text-rose-500"
           )}
         />
       );

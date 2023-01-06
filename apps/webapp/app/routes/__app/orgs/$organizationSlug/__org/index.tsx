@@ -16,6 +16,7 @@ import {
   Header2,
   Header3,
 } from "~/components/primitives/text/Headers";
+import { runStatusLabel, runStatusTitle } from "~/components/runs/runStatus";
 import { triggerTypeIcon } from "~/components/triggers/triggerTypes";
 import { useCurrentOrganization } from "~/hooks/useOrganizations";
 import type { WorkflowListItem } from "~/models/workflowListPresenter.server";
@@ -120,14 +121,7 @@ function WorkflowList({
                   <div className="flex flex-wrap-reverse justify-between w-full lg:justify-end gap-3 items-center mt-4 lg:mt-0">
                     <div className="flex flex-col text-right">
                       <Body size="extra-small" className="text-slate-500">
-                        Last run:{" "}
-                        {workflow.lastRun === undefined
-                          ? "never"
-                          : workflow.lastRun.status === "ERROR"
-                          ? "failed"
-                          : workflow.lastRun.finishedAt
-                          ? formatDateTime(workflow.lastRun.finishedAt)
-                          : "?"}
+                        Last run: {lastRunDescription(workflow.lastRun)}
                       </Body>
                       <Body size="extra-small" className="text-slate-500">
                         {workflow.slug}
@@ -164,6 +158,19 @@ function WorkflowList({
       })}
     </List>
   );
+}
+
+function lastRunDescription(lastRun: WorkflowListItem["lastRun"]) {
+  if (lastRun === undefined) {
+    return "Never";
+  }
+  if (lastRun.status === "SUCCESS") {
+    if (lastRun.finishedAt) {
+      return formatDateTime(lastRun.finishedAt);
+    }
+    throw new Error("lastRun.finishedAt is undefined");
+  }
+  return runStatusLabel(lastRun.status);
 }
 
 function PillLabel({ label }: { label: string }) {
