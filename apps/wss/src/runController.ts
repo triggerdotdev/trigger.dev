@@ -5,18 +5,19 @@ import {
   ZodRPC,
 } from "internal-bridge";
 import {
-  WSSCatalog,
-  platformCatalog,
-  PlatformCatalog,
+  CommandCatalog,
+  commandResponseCatalog,
+  CommandResponseCatalog,
   ZodPublisher,
   ZodSubscriber,
 } from "internal-platform";
+import { Topics } from "internal-pulsar/index";
 import { z } from "zod";
 import { pulsarClient } from "./pulsarClient";
 
 export type WorkflowRunControllerOptions = {
   hostRPC: ZodRPC<typeof HostRPCSchema, typeof ServerRPCSchema>;
-  publisher: ZodPublisher<WSSCatalog>;
+  publisher: ZodPublisher<CommandCatalog>;
   runId: string;
   metadata: {
     workflowId: string;
@@ -29,8 +30,8 @@ export type WorkflowRunControllerOptions = {
 export class WorkflowRunController {
   #runId: string;
   #hostRPC: ZodRPC<typeof HostRPCSchema, typeof ServerRPCSchema>;
-  #publisher: ZodPublisher<WSSCatalog>;
-  #subscriber: ZodSubscriber<Omit<PlatformCatalog, "TRIGGER_WORKFLOW">>;
+  #publisher: ZodPublisher<CommandCatalog>;
+  #commandResponseSubscriber: ZodSubscriber<CommandResponseCatalog>;
   #metadata: {
     workflowId: string;
     environment: string;
@@ -47,27 +48,27 @@ export class WorkflowRunController {
     this.#metadata = options.metadata;
     this.#logger = new Logger(`trigger.dev [run=${this.#runId}]`);
 
-    this.#subscriber = new ZodSubscriber({
-      schema: omit(platformCatalog, ["TRIGGER_WORKFLOW"]),
+    this.#commandResponseSubscriber = new ZodSubscriber({
+      schema: commandResponseCatalog,
       client: pulsarClient,
       config: {
-        topic: `persistent://public/default/workflow-runs-${this.#runId}`,
-        subscription: `run-controller`,
+        topic: Topics.runCommandResponses,
+        subscription: `run-${this.#runId}`,
         subscriptionType: "Exclusive",
         subscriptionInitialPosition: "Latest",
       },
       handlers: {
         RESOLVE_DELAY: async (id, data, properties) => {
+          if (properties["x-workflow-run-id"] !== this.#runId) {
+            return true;
+          }
+
           this.#logger.debug(
             "Received resolve delay request",
             id,
             data,
             properties
           );
-
-          if (properties["x-workflow-run-id"] !== this.#runId) {
-            return true;
-          }
 
           const success = await this.#hostRPC.send("RESOLVE_DELAY", {
             id: data.id,
@@ -84,16 +85,16 @@ export class WorkflowRunController {
           return success;
         },
         RESOLVE_INTEGRATION_REQUEST: async (id, data, properties) => {
+          if (properties["x-workflow-run-id"] !== this.#runId) {
+            return true;
+          }
+
           this.#logger.debug(
             "Received resolve integration request",
             id,
             data,
             properties
           );
-
-          if (properties["x-workflow-run-id"] !== this.#runId) {
-            return true;
-          }
 
           const success = await this.#hostRPC.send("RESOLVE_REQUEST", {
             id: data.id,
@@ -111,16 +112,16 @@ export class WorkflowRunController {
           return success;
         },
         REJECT_INTEGRATION_REQUEST: async (id, data, properties) => {
+          if (properties["x-workflow-run-id"] !== this.#runId) {
+            return true;
+          }
+
           this.#logger.debug(
             "Received reject integration request",
             id,
             data,
             properties
           );
-
-          if (properties["x-workflow-run-id"] !== this.#runId) {
-            return true;
-          }
 
           const success = await this.#hostRPC.send("REJECT_REQUEST", {
             id: data.id,
@@ -142,7 +143,7 @@ export class WorkflowRunController {
   }
 
   async initialize(input: any, context: any) {
-    await this.#subscriber.initialize();
+    await this.#commandResponseSubscriber.initialize();
 
     return this.#hostRPC.send("TRIGGER_WORKFLOW", {
       id: this.#runId,
@@ -152,7 +153,7 @@ export class WorkflowRunController {
   }
 
   async close() {
-    await this.#subscriber.close();
+    await this.#commandResponseSubscriber.close();
 
     await this.publish("WORKFLOW_RUN_DISCONNECTED", {
       id: this.#runId,
@@ -161,12 +162,12 @@ export class WorkflowRunController {
     this.#logger.debug("Workflow run closed");
   }
 
-  async publish<TEventName extends keyof WSSCatalog>(
+  async publish<TEventName extends keyof CommandCatalog>(
     eventName: TEventName,
-    data: z.infer<WSSCatalog[TEventName]["data"]>,
+    data: z.infer<CommandCatalog[TEventName]["data"]>,
     timestamp: number = Date.now()
   ) {
-    this.#logger.debug(`Publishing event ${eventName} with data`, data);
+    this.#logger.debug(`Publishing command ${eventName} with data`, data);
 
     const properties = {
       ...this.#publishProperties,
@@ -186,17 +187,4 @@ export class WorkflowRunController {
       "x-workflow-run-id": this.#runId,
     };
   }
-}
-
-function omit<T extends Record<string, any>, K extends keyof T>(
-  obj: T,
-  keys: K[]
-): Omit<T, K> {
-  const result: any = {};
-  for (const key in obj) {
-    if (!keys.includes(key as any)) {
-      result[key] = obj[key];
-    }
-  }
-  return result;
 }

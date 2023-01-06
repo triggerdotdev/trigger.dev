@@ -6,7 +6,9 @@
     "emitDecoratorMetadata": true,
     "paths": {
       "internal-bridge/*": ["../../packages/internal-bridge/src/*"],
-      "internal-bridge": ["../../packages/internal-bridge/src/index"]
+      "internal-bridge": ["../../packages/internal-bridge/src/index"],
+      "internal-pulsar/*": ["../../packages/internal-pulsar/src/*"],
+      "internal-pulsar": ["../../packages/internal-pulsar/src/index"]
     },
     "lib": ["DOM", "DOM.Iterable"]
   },

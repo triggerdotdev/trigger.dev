@@ -5,7 +5,7 @@ import {
   WorkflowSendRunEventPropertiesSchema,
 } from "../sharedSchemas";
 
-export const platform = {
+export const commandResponses = {
   RESOLVE_INTEGRATION_REQUEST: {
     data: z.object({
       id: z.string(),
@@ -24,7 +24,7 @@ export const platform = {
   },
 };
 
-export const wss = {
+export const commands = {
   SEND_INTEGRATION_REQUEST: {
     data: z.object({
       key: z.string(),

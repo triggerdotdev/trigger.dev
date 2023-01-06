@@ -1,7 +1,7 @@
 import type { PrismaClient } from "~/db.server";
 import { prisma } from "~/db.server";
 import { createStepOnce } from "~/models/workflowRunStep.server";
-import { internalPubSub } from "../messageBroker.server";
+import { taskQueue } from "../messageBroker.server";
 
 export class WorkflowRunDisconnected {
   #prismaClient: PrismaClient;
@@ -55,7 +55,7 @@ export class WorkflowRunDisconnected {
       }
     );
 
-    return await internalPubSub.publish(
+    return await taskQueue.publish(
       "TRIGGER_WORKFLOW_RUN",
       {
         id: workflowRun.id,

@@ -1,15 +1,21 @@
 import { JsonSchema } from "@trigger.dev/common-schemas";
 import { DeliverEmailSchema } from "emails";
-import type { WSSCatalog, PlatformCatalog } from "internal-platform";
+import type { PulsarClient } from "internal-pulsar";
+import { Topics } from "internal-pulsar";
+import { createPulsarClient } from "internal-pulsar";
 import {
-  wssCatalog,
-  platformCatalog,
+  CommandCatalog,
+  commandResponseCatalog,
+  CommandResponseCatalog,
+  TriggerCatalog,
+} from "internal-platform";
+import { triggerCatalog } from "internal-platform";
+import {
+  commandCatalog,
   ZodPublisher,
   ZodPubSub,
   ZodSubscriber,
 } from "internal-platform";
-import type { Client as PulsarClient } from "pulsar-client";
-import Pulsar from "pulsar-client";
 import { z } from "zod";
 import { env } from "~/env.server";
 import { findIntegrationRequestById } from "~/models/integrationRequest.server";
@@ -34,16 +40,18 @@ import { WaitForConnection } from "./requests/waitForConnection.server";
 import { WorkflowRunDisconnected } from "./runs/runDisconnected.server";
 
 let pulsarClient: PulsarClient;
-let triggerPublisher: ZodPublisher<PlatformCatalog>;
-let triggerSubscriber: ZodSubscriber<WSSCatalog>;
-let internalPubSub: ZodPubSub<typeof InternalCatalog>;
+let triggerPublisher: ZodPublisher<TriggerCatalog>;
+let commandResponsePublisher: ZodPublisher<CommandResponseCatalog>;
+let commandSubscriber: ZodSubscriber<CommandCatalog>;
+let taskQueue: ZodPubSub<typeof taskQueueCatalog>;
 let requestPubSub: ZodPubSub<typeof RequestCatalog>;
 
 declare global {
   var __pulsar_client__: typeof pulsarClient;
   var __trigger_publisher__: typeof triggerPublisher;
-  var __trigger_subscriber__: typeof triggerSubscriber;
-  var __internal_pub_sub__: typeof internalPubSub;
+  var __command_subscriber__: typeof commandSubscriber;
+  var __command_response_publisher__: typeof commandResponsePublisher;
+  var __task_queue__: typeof taskQueue;
   var __request_pub_sub__: typeof requestPubSub;
 }
 
@@ -76,21 +84,31 @@ export async function init() {
   }
 
   if (env.NODE_ENV === "production") {
-    triggerSubscriber = await createTriggerSubscriber();
+    commandSubscriber = await createCommandSubscriber();
   } else {
-    if (!global.__trigger_subscriber__) {
-      global.__trigger_subscriber__ = await createTriggerSubscriber();
+    if (!global.__command_subscriber__) {
+      global.__command_subscriber__ = await createCommandSubscriber();
     }
-    triggerSubscriber = global.__trigger_subscriber__;
+    commandSubscriber = global.__command_subscriber__;
   }
 
   if (env.NODE_ENV === "production") {
-    internalPubSub = await createInternalPubSub();
+    commandResponsePublisher = await createCommandResponsePublisher();
   } else {
-    if (!global.__internal_pub_sub__) {
-      global.__internal_pub_sub__ = await createInternalPubSub();
+    if (!global.__command_response_publisher__) {
+      global.__command_response_publisher__ =
+        await createCommandResponsePublisher();
     }
-    internalPubSub = global.__internal_pub_sub__;
+    commandResponsePublisher = global.__command_response_publisher__;
+  }
+
+  if (env.NODE_ENV === "production") {
+    taskQueue = await createTaskQueue();
+  } else {
+    if (!global.__task_queue__) {
+      global.__task_queue__ = await createTaskQueue();
+    }
+    taskQueue = global.__task_queue__;
   }
 
   if (env.NODE_ENV === "production") {
@@ -104,22 +122,22 @@ export async function init() {
 }
 
 function createClient() {
-  const client = new Pulsar.Client({
-    serviceUrl: env.PULSAR_URL,
+  const client = createPulsarClient({
+    serviceUrl: env.PULSAR_SERVICE_URL,
   });
 
-  console.log(`📡 Connected to pulsar at ${env.PULSAR_URL}`);
+  console.log(`📡 Connected to pulsar at ${env.PULSAR_SERVICE_URL}`);
 
   return client;
 }
 
 async function createTriggerPublisher() {
-  const producer = new ZodPublisher<PlatformCatalog>({
+  const producer = new ZodPublisher({
     client: pulsarClient,
     config: {
-      topic: "persistent://public/default/workflow-triggers",
+      topic: Topics.triggers,
     },
-    schema: platformCatalog,
+    schema: triggerCatalog,
   });
 
   await producer.initialize();
@@ -127,16 +145,16 @@ async function createTriggerPublisher() {
   return producer;
 }
 
-async function createTriggerSubscriber() {
-  const subscriber = new ZodSubscriber<WSSCatalog>({
+async function createCommandSubscriber() {
+  const subscriber = new ZodSubscriber({
     client: pulsarClient,
     config: {
-      topic: "persistent://public/default/wss-events",
+      topic: Topics.runCommands,
       subscription: "webapp",
       subscriptionType: "KeyShared",
       subscriptionInitialPosition: "Earliest",
     },
-    schema: wssCatalog,
+    schema: commandCatalog,
     handlers: {
       LOG_MESSAGE: async (id, data, properties) => {
         await logMessageInRun(
@@ -226,6 +244,20 @@ async function createTriggerSubscriber() {
   return subscriber;
 }
 
+async function createCommandResponsePublisher() {
+  const producer = new ZodPublisher({
+    client: pulsarClient,
+    config: {
+      topic: Topics.runCommandResponses,
+    },
+    schema: commandResponseCatalog,
+  });
+
+  await producer.initialize();
+
+  return producer;
+}
+
 const RequestCatalog = {
   PERFORM_INTEGRATION_REQUEST: {
     data: z.object({ id: z.string() }),
@@ -236,7 +268,7 @@ const RequestCatalog = {
 async function createRequestPubSub() {
   const pubSub = new ZodPubSub<typeof RequestCatalog>({
     client: pulsarClient,
-    topic: "persistent://public/default/internal-requests",
+    topic: Topics.integrationWorker,
     subscriberConfig: {
       subscription: "webapp",
       subscriptionType: "Shared",
@@ -252,7 +284,7 @@ async function createRequestPubSub() {
         const response = await service.call(data.id);
 
         if (response.stop) {
-          await internalPubSub.publish("RESOLVE_INTEGRATION_REQUEST", {
+          await taskQueue.publish("RESOLVE_INTEGRATION_REQUEST", {
             id: data.id,
           });
 
@@ -278,7 +310,7 @@ async function createRequestPubSub() {
   return pubSub;
 }
 
-const InternalCatalog = {
+const taskQueueCatalog = {
   EVENT_CREATED: {
     data: z.object({ id: z.string() }),
     properties: z.object({}),
@@ -313,10 +345,10 @@ const InternalCatalog = {
   },
 };
 
-async function createInternalPubSub() {
-  const pubSub = new ZodPubSub<typeof InternalCatalog>({
+async function createTaskQueue() {
+  const taskQueue = new ZodPubSub({
     client: pulsarClient,
-    topic: "persistent://public/default/internal-messaging",
+    topic: Topics.appTaskWorker,
     subscriberConfig: {
       subscription: "webapp",
       subscriptionType: "Shared",
@@ -324,14 +356,14 @@ async function createInternalPubSub() {
     publisherConfig: {
       sendTimeoutMs: 1000,
     },
-    schema: InternalCatalog,
+    schema: taskQueueCatalog,
     handlers: {
       RESOLVE_DELAY: async (id, data, properties) => {
         const service = new ResolveDelay();
 
         const { step } = await service.call(data.id);
 
-        triggerPublisher.publish(
+        commandResponsePublisher.publish(
           "RESOLVE_DELAY",
           { id: data.id, key: step.idempotencyKey },
           {
@@ -388,7 +420,7 @@ async function createInternalPubSub() {
         }
 
         if (integrationRequest.status === "SUCCESS") {
-          await triggerPublisher.publish(
+          await commandResponsePublisher.publish(
             "RESOLVE_INTEGRATION_REQUEST",
             {
               id: integrationRequest.id,
@@ -406,7 +438,7 @@ async function createInternalPubSub() {
             }
           );
         } else {
-          await triggerPublisher.publish(
+          await commandResponsePublisher.publish(
             "REJECT_INTEGRATION_REQUEST",
             {
               id: integrationRequest.id,
@@ -485,9 +517,9 @@ async function createInternalPubSub() {
     },
   });
 
-  await pubSub.initialize();
+  await taskQueue.initialize();
 
-  return pubSub;
+  return taskQueue;
 }
 
-export { internalPubSub, requestPubSub };
+export { taskQueue, requestPubSub };

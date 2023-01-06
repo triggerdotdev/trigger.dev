@@ -1,8 +1,8 @@
 import {
-  Client as PulsarClient,
-  Producer as PulsarProducer,
-  ProducerConfig as PulsarPublisherConfig,
-} from "pulsar-client";
+  PulsarClient,
+  PulsarProducer,
+  PulsarProducerConfig,
+} from "internal-pulsar";
 import { Logger } from "../logger";
 import { MessageCatalogSchema } from "./messageCatalogSchema";
 import { ulid } from "ulid";
@@ -19,12 +19,12 @@ export type PublishOptions = {
 export type ZodPublisherOptions<PublisherSchema extends MessageCatalogSchema> =
   {
     client: PulsarClient;
-    config: PulsarPublisherConfig;
+    config: PulsarProducerConfig;
     schema: PublisherSchema;
   };
 
 export class ZodPublisher<PublisherSchema extends MessageCatalogSchema> {
-  #config: PulsarPublisherConfig;
+  #config: PulsarProducerConfig;
   #schema: PublisherSchema;
   #producer?: PulsarProducer;
   #client: PulsarClient;

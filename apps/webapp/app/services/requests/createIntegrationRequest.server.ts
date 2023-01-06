@@ -3,7 +3,7 @@ import { prisma } from "~/db.server";
 import type { Organization } from "~/models/organization.server";
 import type { WorkflowRunStep } from "~/models/workflowRun.server";
 import { createStepOnce } from "~/models/workflowRunStep.server";
-import { internalPubSub } from "../messageBroker.server";
+import { taskQueue } from "../messageBroker.server";
 
 export class CreateIntegrationRequest {
   #prismaClient: PrismaClient;
@@ -134,7 +134,7 @@ export class CreateIntegrationRequest {
         },
       });
 
-    internalPubSub.publish("INTEGRATION_REQUEST_CREATED", {
+    await taskQueue.publish("INTEGRATION_REQUEST_CREATED", {
       id: integrationRequest.id,
     });
 
@@ -157,7 +157,7 @@ export class CreateIntegrationRequest {
       integrationRequest.status === "SUCCESS" ||
       integrationRequest.status === "ERROR"
     ) {
-      await internalPubSub.publish("RESOLVE_INTEGRATION_REQUEST", {
+      await taskQueue.publish("RESOLVE_INTEGRATION_REQUEST", {
         id: integrationRequest.id,
       });
     }

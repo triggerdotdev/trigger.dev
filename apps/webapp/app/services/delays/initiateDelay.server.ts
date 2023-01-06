@@ -5,7 +5,7 @@ import { prisma } from "~/db.server";
 import type { WorkflowRunStep } from "~/models/workflowRun.server";
 import { createStepOnce } from "~/models/workflowRunStep.server";
 import { calculateDurationInMs } from "~/utils/delays";
-import { internalPubSub } from "../messageBroker.server";
+import { taskQueue } from "../messageBroker.server";
 
 type Wait = z.infer<typeof WaitSchema>;
 
@@ -54,7 +54,7 @@ export class InitiateDelay {
       },
     });
 
-    await internalPubSub.publish(
+    await taskQueue.publish(
       "RESOLVE_DELAY",
       {
         id: durableDelay.id,
@@ -76,7 +76,7 @@ export class InitiateDelay {
     }
 
     if (durableDelay.resolvedAt) {
-      await internalPubSub.publish("RESOLVE_DELAY", {
+      await taskQueue.publish("RESOLVE_DELAY", {
         id: durableDelay.id,
       });
     }

@@ -12,7 +12,7 @@ import {
 import { connectExternalService } from "~/models/externalService.server";
 import { connectExternalSource } from "~/models/externalSource.server";
 import { getIntegrations } from "~/models/integrations.server";
-import { internalPubSub } from "~/services/messageBroker.server";
+import { taskQueue } from "~/services/messageBroker.server";
 import { requireUserId } from "~/services/session.server";
 
 const baseSchema = z.object({
@@ -135,7 +135,7 @@ export const action = async ({ request }: ActionArgs) => {
             sourceId: parsed.sourceId,
             connectionId: connection.id,
           });
-          await internalPubSub.publish("EXTERNAL_SOURCE_UPSERTED", {
+          await taskQueue.publish("EXTERNAL_SOURCE_UPSERTED", {
             id: parsed.sourceId,
           });
         }
@@ -144,7 +144,7 @@ export const action = async ({ request }: ActionArgs) => {
             serviceId: parsed.serviceId,
             connectionId: connection.id,
           });
-          await internalPubSub.publish("EXTERNAL_SERVICE_UPSERTED", {
+          await taskQueue.publish("EXTERNAL_SERVICE_UPSERTED", {
             id: parsed.serviceId,
           });
         }

@@ -6,14 +6,15 @@ import {
   ZodRPC,
 } from "internal-bridge";
 import {
-  WSSCatalog,
+  CommandCatalog,
   InternalApiClient,
   MessageCatalogSchema,
-  platformCatalog,
-  PlatformCatalog,
+  TriggerCatalog,
+  triggerCatalog,
   ZodPublisher,
   ZodSubscriber,
 } from "internal-platform";
+import { Topics } from "internal-pulsar/index";
 import { v4 } from "uuid";
 import { WebSocket } from "ws";
 import { z, ZodError } from "zod";
@@ -31,8 +32,8 @@ export class TriggerServer {
   #socket: WebSocket;
   #organizationId?: string;
   #isInitialized = false;
-  #triggerSubscriber?: ZodSubscriber<PlatformCatalog>;
-  #triggerPublisher: ZodPublisher<WSSCatalog>;
+  #triggerSubscriber?: ZodSubscriber<TriggerCatalog>;
+  #commandPublisher: ZodPublisher<CommandCatalog>;
   #apiClient: InternalApiClient;
   #workflowId?: string;
   #apiKey: string;
@@ -43,14 +44,14 @@ export class TriggerServer {
   constructor(
     socket: WebSocket,
     apiKey: string,
-    publisher: ZodPublisher<WSSCatalog>
+    publisher: ZodPublisher<CommandCatalog>
   ) {
     this.#socket = socket;
     this.#apiKey = apiKey;
     this.#apiClient = new InternalApiClient(apiKey, env.PLATFORM_API_URL);
     this.#logger = new Logger("trigger.dev server");
     this.onClose = new Evt();
-    this.#triggerPublisher = publisher;
+    this.#commandPublisher = publisher;
   }
 
   async listen(instanceId?: string) {
@@ -322,36 +323,18 @@ export class TriggerServer {
 
       this.#workflowId = response.id;
 
-      this.#logger.debug("Initializing platform subscriber...");
+      this.#logger.debug("Initializing trigger subscriber...");
 
-      this.#triggerSubscriber = new ZodSubscriber<PlatformCatalog>({
-        schema: platformCatalog,
+      this.#triggerSubscriber = new ZodSubscriber({
+        schema: triggerCatalog,
         client: pulsarClient,
         config: {
-          topic: `persistent://public/default/workflow-triggers`,
-          subscription: `wss-${this.#workflowId}`,
+          topic: Topics.triggers,
+          subscription: `workflow-${this.#workflowId}`,
           subscriptionType: "Shared",
           subscriptionInitialPosition: "Earliest",
         },
         handlers: {
-          REJECT_INTEGRATION_REQUEST: createForwardHandler(
-            platformCatalog,
-            "REJECT_INTEGRATION_REQUEST",
-            this.#logger,
-            (properties) => `workflow-runs-${properties["x-workflow-run-id"]}`
-          ),
-          RESOLVE_DELAY: createForwardHandler(
-            platformCatalog,
-            "RESOLVE_DELAY",
-            this.#logger,
-            (properties) => `workflow-runs-${properties["x-workflow-run-id"]}`
-          ),
-          RESOLVE_INTEGRATION_REQUEST: createForwardHandler(
-            platformCatalog,
-            "RESOLVE_INTEGRATION_REQUEST",
-            this.#logger,
-            (properties) => `workflow-runs-${properties["x-workflow-run-id"]}`
-          ),
           TRIGGER_WORKFLOW: async (id, data, properties) => {
             this.#logger.debug("Received trigger", id, data, properties);
             // If the API keys don't match, then we should ignore it
@@ -372,7 +355,7 @@ export class TriggerServer {
               );
             }
 
-            if (!this.#triggerPublisher) {
+            if (!this.#commandPublisher) {
               throw new Error(
                 "Cannot trigger workflow without a trigger publisher"
               );
@@ -383,7 +366,7 @@ export class TriggerServer {
             const runController = new WorkflowRunController({
               runId: data.id,
               hostRPC: this.#serverRPC,
-              publisher: this.#triggerPublisher,
+              publisher: this.#commandPublisher,
               metadata: {
                 workflowId: properties["x-workflow-id"],
                 organizationId: properties["x-org-id"],
@@ -513,7 +496,7 @@ function createForwardHandler<
       schema: schema,
       client: pulsarClient,
       config: {
-        topic: `persistent://public/default/${topicName}`,
+        topic: topicName,
       },
     });
 

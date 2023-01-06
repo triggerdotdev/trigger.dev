@@ -15,6 +15,7 @@ module.exports = {
     "internal-catalog",
     "@trigger.dev/common-schemas",
     "emails",
+    "internal-pulsar",
   ],
   watchPaths: async () => {
     return [
@@ -23,6 +24,7 @@ module.exports = {
       "../../packages/internal-integrations/src/**/*",
       "../../packages/internal-catalog/src/**/*",
       "../../packages/emails/src/**/*",
+      "../../packages/internal-pulsar/src/**/*",
     ];
   },
 };

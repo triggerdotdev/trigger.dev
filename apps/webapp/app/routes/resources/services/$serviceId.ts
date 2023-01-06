@@ -4,7 +4,7 @@ import { typedjson } from "remix-typedjson";
 import invariant from "tiny-invariant";
 import { z } from "zod";
 import { connectExternalService } from "~/models/externalService.server";
-import { internalPubSub } from "~/services/messageBroker.server";
+import { taskQueue } from "~/services/messageBroker.server";
 import { requireUserId } from "~/services/session.server";
 
 const requestSchema = z.object({
@@ -30,7 +30,7 @@ export async function action({ request, params }: ActionArgs) {
     const { connectionId } = requestSchema.parse(formObject);
     await connectExternalService({ serviceId, connectionId });
 
-    await internalPubSub.publish("EXTERNAL_SERVICE_UPSERTED", {
+    await taskQueue.publish("EXTERNAL_SERVICE_UPSERTED", {
       id: serviceId,
     });
 

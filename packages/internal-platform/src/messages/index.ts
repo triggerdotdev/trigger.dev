@@ -1,13 +1,15 @@
 export type { MessageCatalogSchema } from "./messageCatalogSchema";
 
-import wssCatalog from "./catalogs/wss";
-import platformCatalog from "./catalogs/platform";
+import commandCatalog from "./catalogs/commands";
+import commandResponseCatalog from "./catalogs/commandResponses";
+import triggerCatalog from "./catalogs/triggers";
 
-type WSSCatalog = typeof wssCatalog;
-type PlatformCatalog = typeof platformCatalog;
+type CommandCatalog = typeof commandCatalog;
+type CommandResponseCatalog = typeof commandResponseCatalog;
+type TriggerCatalog = typeof triggerCatalog;
 
-export type { WSSCatalog, PlatformCatalog };
-export { wssCatalog, platformCatalog };
+export type { CommandCatalog, CommandResponseCatalog, TriggerCatalog };
+export { commandCatalog, commandResponseCatalog, triggerCatalog };
 export * from "./zodPublisher";
 export * from "./zodSubscriber";
 export * from "./zodPubSub";

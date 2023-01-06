@@ -1,19 +1,19 @@
-import {
-  Client as PulsarClient,
-  ConsumerConfig as PulsarConsumerConfig,
-  ProducerConfig as PulsarPublisherConfig,
-} from "pulsar-client";
 import { MessageCatalogSchema } from "./messageCatalogSchema";
 
 import { z } from "zod";
 import { PublishOptions, ZodPublisher } from "./zodPublisher";
 import { ZodSubscriber, ZodSubscriberHandlers } from "./zodSubscriber";
+import {
+  PulsarClient,
+  PulsarConsumerConfig,
+  PulsarProducerConfig,
+} from "internal-pulsar";
 
 export type ZodPubSubOptions<TPubSubSchema extends MessageCatalogSchema> = {
   client: PulsarClient;
   schema: TPubSubSchema;
   topic: string;
-  publisherConfig: Omit<PulsarPublisherConfig, "topic">;
+  publisherConfig: Omit<PulsarProducerConfig, "topic">;
   subscriberConfig: Omit<PulsarConsumerConfig, "listener" | "topic">;
 
   handlers: ZodSubscriberHandlers<TPubSubSchema>;

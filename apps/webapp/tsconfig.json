@@ -29,7 +29,9 @@
       ],
       "@trigger.dev/common-schemas/*": ["../../packages/common-schemas/src/*"],
       "emails": ["../../packages/emails/src/index"],
-      "emails/*": ["../../packages/emails/src/*"]
+      "emails/*": ["../../packages/emails/src/*"],
+      "internal-pulsar": ["../../packages/internal-pulsar/src/index"],
+      "internal-pulsar/*": ["../../packages/internal-pulsar/src/*"]
     },
     "noEmit": true
   }

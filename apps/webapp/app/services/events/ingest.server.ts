@@ -3,7 +3,7 @@ import type { PrismaClient } from "~/db.server";
 import { prisma } from "~/db.server";
 import type { Organization } from "~/models/organization.server";
 import { findEnvironmentByApiKey } from "~/models/runtimeEnvironment.server";
-import { internalPubSub } from "~/services/messageBroker.server";
+import { taskQueue } from "~/services/messageBroker.server";
 
 export type IngestEventOptions = {
   id: string;
@@ -56,7 +56,7 @@ export class IngestEvent {
     });
 
     // Produce a message to the event bus
-    await internalPubSub.publish("EVENT_CREATED", {
+    await taskQueue.publish("EVENT_CREATED", {
       id: event.id,
     });
 

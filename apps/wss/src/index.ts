@@ -1,4 +1,9 @@
-import { wssCatalog, WSSCatalog, ZodPublisher } from "internal-platform";
+import {
+  commandCatalog,
+  CommandCatalog,
+  ZodPublisher,
+} from "internal-platform";
+import { Topics } from "internal-pulsar/index";
 import { createServer } from "node:http";
 import process from "node:process";
 import { WebSocketServer } from "ws";
@@ -42,15 +47,15 @@ async function shutdown() {
 
 // main
 async function main() {
-  const triggerPublisher = new ZodPublisher<WSSCatalog>({
-    schema: wssCatalog,
+  const commandPublisher = new ZodPublisher({
+    schema: commandCatalog,
     client: pulsarClient,
     config: {
-      topic: `persistent://public/default/wss-events`,
+      topic: Topics.runCommands,
     },
   });
 
-  await triggerPublisher.initialize();
+  await commandPublisher.initialize();
 
   // Listen on port from env
   const port = env.PORT;
@@ -70,7 +75,7 @@ async function main() {
 
     const keyPart = apiKey.split(" ")[1];
 
-    const triggerServer = new TriggerServer(ws, keyPart, triggerPublisher);
+    const triggerServer = new TriggerServer(ws, keyPart, commandPublisher);
     triggerServer.listen();
 
     triggerServers.set(keyPart, triggerServer);

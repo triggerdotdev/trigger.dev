@@ -5,7 +5,7 @@ import {
   WorkflowSendRunEventPropertiesSchema,
 } from "../sharedSchemas";
 
-export const wss = {
+export const commands = {
   INITIALIZE_DELAY: {
     data: z.object({
       key: z.string(),
@@ -15,7 +15,7 @@ export const wss = {
   },
 };
 
-export const platform = {
+export const commandResponses = {
   RESOLVE_DELAY: {
     data: z.object({
       id: z.string(),

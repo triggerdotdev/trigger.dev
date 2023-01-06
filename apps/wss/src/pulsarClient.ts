@@ -1,6 +1,3 @@
-import Pulsar from "pulsar-client";
-import { env } from "./env";
+import { createPulsarClient, PulsarClient } from "internal-pulsar";
 
-export const pulsarClient = new Pulsar.Client({
-  serviceUrl: env.PULSAR_URL,
-});
+export const pulsarClient: PulsarClient = createPulsarClient();

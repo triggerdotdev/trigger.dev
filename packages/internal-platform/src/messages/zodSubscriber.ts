@@ -1,9 +1,9 @@
 import {
-  Client as PulsarClient,
-  Consumer as PulsarConsumer,
-  ConsumerConfig as PulsarConsumerConfig,
-  Message as PulsarMessage,
-} from "pulsar-client";
+  PulsarClient,
+  PulsarConsumer,
+  PulsarConsumerConfig,
+  PulsarMessage,
+} from "internal-pulsar";
 import { Logger } from "../logger";
 import {
   MessageCatalogSchema,

@@ -4,7 +4,7 @@ import type { PrismaClient } from "~/db.server";
 import { prisma } from "~/db.server";
 import type { RuntimeEnvironment } from "~/models/runtimeEnvironment.server";
 import type { Workflow } from "~/models/workflow.server";
-import { internalPubSub } from "../messageBroker.server";
+import { taskQueue } from "../messageBroker.server";
 
 export class DispatchEvent {
   #prismaClient: PrismaClient;
@@ -166,7 +166,7 @@ export class DispatchWorkflowRun {
       `Created workflow run ${workflowRun.id} for event rule ${eventRule.id}`
     );
 
-    await internalPubSub.publish("TRIGGER_WORKFLOW_RUN", {
+    await taskQueue.publish("TRIGGER_WORKFLOW_RUN", {
       id: workflowRun.id,
     });
 

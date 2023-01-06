@@ -4,7 +4,7 @@ import type { SendEmailOptions } from "remix-auth-email-link";
 import { env } from "~/env.server";
 import type { User } from "~/models/user.server";
 import type { AuthUser } from "./authUser";
-import { internalPubSub } from "./messageBroker.server";
+import { taskQueue } from "./messageBroker.server";
 
 const client = new EmailClient({
   apikey: env.RESEND_API_KEY,
@@ -28,7 +28,7 @@ export async function scheduleWelcomeEmail(user: User) {
   const delay =
     process.env.NODE_ENV === "development" ? 1000 * 60 : 1000 * 60 * 22;
 
-  await internalPubSub.publish(
+  await taskQueue.publish(
     "DELIVER_EMAIL",
     {
       email: "welcome",
