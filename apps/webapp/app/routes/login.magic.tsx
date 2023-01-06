@@ -66,7 +66,7 @@ export default function LoginMagicLinkPage() {
     <div className="flex h-screen w-screen justify-between overflow-y-scroll bg-slate-900">
       <LoginPromoPanel />
       <div className="flex grow items-center justify-center bg-gradient-background h-full w-full p-4">
-        <div className="mt-[100px] flex w-full max-w-xl flex-col justify-between rounded-lg bg-slate-850 shadow-md lg:mt-0 lg:min-h-[430px]">
+        <div className="flex w-full max-w-xl flex-col justify-between rounded-lg bg-slate-850 shadow-md min-h-[430px]">
           <Form className="flex h-full flex-grow flex-col" method="post">
             <a
               href="https://trigger.dev"
@@ -74,7 +74,7 @@ export default function LoginMagicLinkPage() {
             >
               <LogoSvg className="h-10 lg:h-14" />
             </a>
-            <div className="flex flex-grow flex-col items-center justify-between px-4 pt-8 pb-12 text-center lg:px-4">
+            <div className="flex flex-grow flex-col items-center justify-between px-4 pt-8 pb-12 text-center">
               {magicLinkSent ? (
                 <>
                   <InboxArrowDownIcon className="mt-0 h-12 w-12 text-blue-500" />

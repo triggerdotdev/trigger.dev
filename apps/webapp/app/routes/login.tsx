@@ -47,7 +47,7 @@ export default function LoginPage() {
     <div className="flex h-screen w-screen justify-between overflow-y-scroll bg-slate-900">
       <LoginPromoPanel />
       <div className="flex grow items-center justify-center h-full w-full p-4">
-        <div className="mt-[100px] flex w-full max-w-xl flex-col justify-between rounded-lg bg-slate-850 shadow-md lg:mt-0 lg:min-h-[430px]">
+        <div className="flex w-full max-w-xl flex-col justify-between rounded-lg bg-slate-850 shadow-md min-h-[430px]">
           <Form
             className="flex flex-col flex-grow"
             action={`/auth/github${
@@ -57,12 +57,12 @@ export default function LoginPage() {
           >
             <a
               href="https://trigger.dev"
-              className="flex w-full justify-center mt-12"
+              className="flex w-full justify-center mt-12 px-4"
             >
-              <LogoSvg className="h-10 lg:h-14" />
+              <LogoSvg className="h-14" />
             </a>
-            <div className="flex flex-col flex-grow justify-between items-center px-4 pt-8 pb-12 text-center lg:px-10">
-              <p className="mb-4 lg:mb-0 text-base lg:text-lg">
+            <div className="flex flex-col flex-grow justify-between items-center text-center pt-8 pb-12 px-10">
+              <p className="text-base lg:text-lg">
                 Connect your GitHub account to get started.
               </p>
               <GitHubLoginButton className="mx-auto whitespace-nowrap" />
