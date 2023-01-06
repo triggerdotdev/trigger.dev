@@ -2,10 +2,19 @@ import { z } from "zod";
 import { parseDocument } from "yaml";
 import invariant from "tiny-invariant";
 
+const enabledForSchema = z.union([
+  z.literal("all"),
+  z.literal("admins"),
+  z.literal("none"),
+]);
+
+type EnabledFor = z.infer<typeof enabledForSchema>;
+
 const integrationMetadataSchema = z.object({
   name: z.string(),
   slug: z.string(),
   icon: z.string(),
+  enabledFor: enabledForSchema.default("all"),
 });
 
 const oAuthIntegrationAuthenticationSchema = z.object({
@@ -37,9 +46,20 @@ const schema = z.array(integrationSchema);
 type Catalog = z.infer<typeof schema>;
 export type CatalogIntegration = Catalog[number];
 
-export function getCatalog(raw: string) {
+export function getCatalog(raw: string, isAdmin: boolean) {
   const doc = parseDocument(raw);
   invariant(doc, `Catalog doc is not defined: ${raw}`);
   const jsObject = doc.toJS();
-  return schema.parse(jsObject);
+  const catalog = schema.parse(jsObject);
+
+  return catalog.filter((i) => {
+    switch (i.enabledFor) {
+      case "all":
+        return true;
+      case "admins":
+        return isAdmin;
+      case "none":
+        return false;
+    }
+  });
 }

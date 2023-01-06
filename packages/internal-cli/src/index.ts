@@ -44,7 +44,7 @@ program
       const pizzly_host = options.pizzlyhost ?? "http://localhost:3004";
 
       const file = fs.readFileSync(integration_file_path, "utf8");
-      const catalog = getCatalog(file);
+      const catalog = getCatalog(file, true);
 
       const client = new SecretsManagerClient({
         region: "us-east-1",

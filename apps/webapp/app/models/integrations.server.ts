@@ -1,7 +1,7 @@
 import * as fs from "node:fs";
 import { getCatalog } from "internal-catalog";
 
-export function getIntegrations() {
+export function getIntegrations(showAdminOnly: boolean) {
   const file = fs.readFileSync("./integrations.yml", "utf8");
-  return getCatalog(file);
+  return getCatalog(file, showAdminOnly);
 }

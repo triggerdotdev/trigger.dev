@@ -12,16 +12,16 @@ import { getConnectedApiConnectionsForOrganizationSlug } from "~/models/apiConne
 import { getIntegrations } from "~/models/integrations.server";
 import { getRuntimeEnvironmentFromRequest } from "~/models/runtimeEnvironment.server";
 import { getWorkflowFromSlugs } from "~/models/workflow.server";
-import { requireUserId } from "~/services/session.server";
+import { requireUser } from "~/services/session.server";
 
 export const loader = async ({ request, params }: LoaderArgs) => {
-  const userId = await requireUserId(request);
+  const user = await requireUser(request);
   const { organizationSlug, workflowSlug } = params;
   invariant(organizationSlug, "organizationSlug not found");
   invariant(workflowSlug, "workflowSlug not found");
 
   let workflow = await getWorkflowFromSlugs({
-    userId,
+    userId: user.id,
     organizationSlug,
     workflowSlug,
   });
@@ -29,6 +29,8 @@ export const loader = async ({ request, params }: LoaderArgs) => {
   if (workflow === null) {
     throw new Response("Not Found", { status: 404 });
   }
+
+  const integrations = getIntegrations(user.admin);
 
   const rules = workflow.rules.map((r) => ({
     ...r,
@@ -43,7 +45,7 @@ export const loader = async ({ request, params }: LoaderArgs) => {
     slug: organizationSlug,
   });
 
-  const externalSourceIntegration = getIntegrations().find(
+  const externalSourceIntegration = integrations.find(
     (i) => i.slug === workflow?.externalSource?.service
   );
   const externalSourceSlot =
@@ -60,7 +62,7 @@ export const loader = async ({ request, params }: LoaderArgs) => {
   const connectionSlots = {
     source: externalSourceSlot,
     services: workflow.externalServices.flatMap((c) => {
-      const integration = getIntegrations().find((i) => i.slug === c.service);
+      const integration = integrations.find((i) => i.slug === c.service);
 
       if (!integration) {
         return [];

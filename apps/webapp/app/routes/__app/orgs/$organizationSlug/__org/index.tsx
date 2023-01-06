@@ -20,13 +20,13 @@ import { useCurrentOrganization } from "~/hooks/useOrganizations";
 import type { OrgWorkflow } from "~/hooks/useWorkflows";
 import { useWorkflows } from "~/hooks/useWorkflows";
 import { getIntegrations } from "~/models/integrations.server";
-import { requireUserId } from "~/services/session.server";
+import { requireUser } from "~/services/session.server";
 import { formatDateTime } from "~/utils";
 import { getIntegration } from "~/utils/integrations";
 
 export const loader = async ({ request, params }: LoaderArgs) => {
-  await requireUserId(request);
-  return typedjson({ integrations: getIntegrations() });
+  const user = await requireUser(request);
+  return typedjson({ integrations: getIntegrations(user.admin) });
 };
 
 export default function Page() {

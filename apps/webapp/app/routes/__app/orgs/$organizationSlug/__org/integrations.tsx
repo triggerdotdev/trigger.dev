@@ -18,12 +18,13 @@ import {
 import { useCurrentOrganization } from "~/hooks/useOrganizations";
 import { getConnectedApiConnectionsForOrganizationSlug } from "~/models/apiConnection.server";
 import { getIntegrations } from "~/models/integrations.server";
-import { requireUserId } from "~/services/session.server";
+import { requireUser } from "~/services/session.server";
 import { formatDateTime } from "~/utils";
 import { getIntegration } from "~/utils/integrations";
 
 export const loader = async ({ request, params }: LoaderArgs) => {
-  await requireUserId(request);
+  const user = await requireUser(request);
+
   const { organizationSlug } = params;
   invariant(organizationSlug, "organizationSlug not found");
 
@@ -31,7 +32,7 @@ export const loader = async ({ request, params }: LoaderArgs) => {
     slug: organizationSlug,
   });
 
-  return typedjson({ connections, integrations: getIntegrations() });
+  return typedjson({ connections, integrations: getIntegrations(user.admin) });
 };
 
 export default function Integrations() {

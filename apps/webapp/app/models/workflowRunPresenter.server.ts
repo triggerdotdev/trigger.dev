@@ -30,7 +30,7 @@ export class WorkflowRunPresenter {
       throw new Error(`Workflow run with id ${id} not found`);
     }
 
-    const integrations = getIntegrations();
+    const integrations = getIntegrations(true);
     const steps = await Promise.all(
       workflowRun.tasks.map((step) => parseStep(step, integrations))
     );

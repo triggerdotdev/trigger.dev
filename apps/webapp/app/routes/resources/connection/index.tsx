@@ -71,7 +71,7 @@ export const action = async ({ request }: ActionArgs) => {
     }
 
     const parsed = parsedResult.data;
-    const integrationInfo = getIntegrations().find(
+    const integrationInfo = getIntegrations(true).find(
       (i) => i.slug === parsed.service
     );
     if (!integrationInfo) {
