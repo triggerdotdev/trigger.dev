@@ -4,7 +4,7 @@ import { json, redirect } from "@remix-run/node";
 import { Form, Link, useLoaderData } from "@remix-run/react";
 import { GitHubLoginButton } from "~/components/GitHubLoginButton";
 import { LoginPromoPanel } from "~/components/LoginPromoPanel";
-import { Logo } from "~/components/Logo";
+import { Logo, LogoSvg } from "~/components/Logo";
 import { commitSession, setRedirectTo } from "~/services/redirectTo.server";
 import { getUserId } from "~/services/session.server";
 
@@ -44,55 +44,58 @@ export const meta: MetaFunction = () => {
 export default function LoginPage() {
   const data = useLoaderData<LoaderData>();
   return (
-    <div className="flex h-screen w-screen justify-between overflow-y-scroll">
+    <div className="flex h-screen w-screen justify-between overflow-y-scroll bg-slate-900">
       <LoginPromoPanel />
-      <div className="flex grow items-center justify-center bg-gradient-background h-full w-full p-4">
-        <div className="mt-[100px] flex w-full max-w-xl flex-col justify-between rounded-lg border bg-white shadow-md lg:mt-0 lg:min-h-[430px]">
+      <div className="flex grow items-center justify-center h-full w-full p-4">
+        <div className="mt-[100px] flex w-full max-w-xl flex-col justify-between rounded-lg bg-slate-850 shadow-md lg:mt-0 lg:min-h-[430px]">
           <Form
-            className="flex flex-col"
+            className="flex flex-col flex-grow"
             action={`/auth/github${
               data.redirectTo ? `?redirectTo=${data.redirectTo}` : ""
             }`}
             method="post"
           >
-            <div className="flex flex-col items-center px-4 pt-6 pb-4 text-center lg:px-10">
-              <a href="https://apihero.run">
-                <Logo className="mb-4 h-10 w-auto lg:mb-6 lg:mt-8 lg:h-14" />
-              </a>
-              <h2 className="mb-2 text-2xl font-bold tracking-tight text-slate-700 lg:text-4xl">
-                Welcome to Trigger.dev
-              </h2>
-              <p className="mb-4 text-base lg:mb-12 lg:text-lg">
+            <a
+              href="https://trigger.dev"
+              className="flex w-full justify-center mt-12"
+            >
+              <LogoSvg className="h-10 lg:h-14" />
+            </a>
+            <div className="flex flex-col flex-grow justify-between items-center px-4 pt-8 pb-12 text-center lg:px-10">
+              <p className="mb-4 lg:mb-0 text-base lg:text-lg">
                 Connect your GitHub account to get started.
               </p>
               <GitHubLoginButton className="mx-auto whitespace-nowrap" />
+              <Link
+                className="flex items-center justify-center gap-1 text-sm text-slate-400 transition hover:text-slate-300"
+                to="/login/magic"
+              >
+                <EnvelopeIcon className="h-4 w-4" />
+                Continue with email
+              </Link>
             </div>
           </Form>
-          {
-            <Link
-              className="mb-4 flex items-center justify-center gap-1 text-sm text-slate-500 transition hover:text-slate-800"
-              to="/login/magic"
-            >
-              <EnvelopeIcon className="h-4 w-4" />
-              Continue with email
-            </Link>
-          }
-          <div className="w-full rounded-b-lg border-t bg-slate-50 px-8 py-4">
+
+          <div className="w-full rounded-b-lg border-t border-slate-850 bg-slate-800 px-8 py-4">
             <p className="text-center text-xs text-slate-500">
               By connecting your GitHub account you agree to our{" "}
-              <Link
-                className="underline transition hover:text-blue-500"
-                to="/legal/terms"
+              <a
+                className="underline transition hover:text-indigo-500"
+                href="https://trigger.dev/legal/terms"
+                target="_blank"
+                rel="noreferrer"
               >
                 terms
-              </Link>{" "}
+              </a>{" "}
               and{" "}
-              <Link
-                className="underline transition hover:text-blue-500"
-                to="/legal/privacy"
+              <a
+                className="underline transition hover:text-indigo-500"
+                href="https://trigger.dev/legal/privacy"
+                target="_blank"
+                rel="noreferrer"
               >
                 privacy
-              </Link>{" "}
+              </a>{" "}
               policies.
             </p>
           </div>

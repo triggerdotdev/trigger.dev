@@ -2,10 +2,10 @@ import { Link } from "@remix-run/react";
 import classnames from "classnames";
 
 const commonClasses =
-  "inline-flex items-center justify-center rounded max-w-max px-4 py-2 text-sm transition whitespace-nowrap";
+  "inline-flex items-center justify-center rounded px-4 py-2 text-sm transition whitespace-nowrap";
 const primaryClasses = classnames(
   commonClasses,
-  "bg-indigo-700 text-white hover:bg-indigo-800 focus:ring-indigo-800 gap-2"
+  "bg-indigo-700 text-white hover:bg-indigo-600 focus:ring-indigo-800 gap-2"
 );
 const secondaryClasses = classnames(
   commonClasses,

@@ -8,7 +8,7 @@ import {
 
 export function LoginPromoPanel() {
   return (
-    <div className="hidden lg:flex flex-col justify-center p-12 min-w-[30vw] h-full bg-slate-1000 border-r border-white/10">
+    <div className="hidden lg:flex flex-col justify-center p-12 min-w-[30vw] h-full bg-slate-950 border-r border-black/20">
       <ul>
         <li className="flex gap-2 text-white">
           <div className="flex flex-col items-center gap-2 mt-1.5">

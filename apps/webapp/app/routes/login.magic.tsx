@@ -10,7 +10,9 @@ import { ArrowLeftIcon } from "@heroicons/react/24/solid";
 import { InboxArrowDownIcon } from "@heroicons/react/24/outline";
 import { z } from "zod";
 import { LoginPromoPanel } from "~/components/LoginPromoPanel";
-import { Logo } from "~/components/Logo";
+import { Logo, LogoSvg } from "~/components/Logo";
+import { Input } from "~/components/primitives/Input";
+import { PrimaryButton } from "~/components/primitives/Buttons";
 
 export async function loader({ request }: LoaderArgs) {
   await authenticator.isAuthenticated(request, {
@@ -61,15 +63,18 @@ export default function LoginMagicLinkPage() {
   const transition = useTransition();
 
   return (
-    <div className="flex h-screen w-screen justify-between overflow-y-scroll">
+    <div className="flex h-screen w-screen justify-between overflow-y-scroll bg-slate-900">
       <LoginPromoPanel />
       <div className="flex grow items-center justify-center bg-gradient-background h-full w-full p-4">
-        <div className="mt-[100px] flex w-full max-w-xl flex-col justify-between rounded-lg border bg-white shadow-md lg:mt-0 lg:min-h-[430px]">
+        <div className="mt-[100px] flex w-full max-w-xl flex-col justify-between rounded-lg bg-slate-850 shadow-md lg:mt-0 lg:min-h-[430px]">
           <Form className="flex h-full flex-grow flex-col" method="post">
-            <div className="flex flex-grow flex-col items-center justify-between px-4 pt-6 pb-2 text-center lg:px-4">
-              <a href="https://apihero.run">
-                <Logo className="mb-4 h-10 w-auto lg:mb-6 lg:mt-8 lg:h-14" />
-              </a>
+            <a
+              href="https://trigger.dev"
+              className="flex w-full justify-center mt-12"
+            >
+              <LogoSvg className="h-10 lg:h-14" />
+            </a>
+            <div className="flex flex-grow flex-col items-center justify-between px-4 pt-8 pb-12 text-center lg:px-4">
               {magicLinkSent ? (
                 <>
                   <InboxArrowDownIcon className="mt-0 h-12 w-12 text-blue-500" />
@@ -78,19 +83,19 @@ export default function LoginMagicLinkPage() {
                     We sent you an email which contains a magic link that will
                     log you in to your account.
                   </p>
-                  <div className="mt-10 flex w-full justify-between">
+                  <div className="mt-10 flex w-full max-w-sm justify-between">
                     <button
                       type="submit"
                       name="action"
                       value="reset"
-                      className="flex items-center justify-center gap-1 text-sm text-slate-500 transition hover:text-slate-800"
+                      className="flex items-center justify-center gap-1 text-sm text-slate-400 transition hover:text-slate-300"
                     >
                       <ArrowLeftIcon className="h-3 w-3" />
                       Re-enter email
                     </button>
 
                     <Link
-                      className="flex items-center justify-center gap-1 text-sm text-slate-500 transition hover:text-slate-800"
+                      className="flex items-center justify-center gap-1 text-sm text-slate-400 transition hover:text-slate-300"
                       to="/login"
                     >
                       Log in using another option
@@ -99,71 +104,68 @@ export default function LoginMagicLinkPage() {
                 </>
               ) : (
                 <>
-                  <h2 className="mb-2 text-2xl font-bold tracking-tight text-slate-700 lg:text-4xl">
-                    Welcome to Trigger.dev
-                  </h2>
-                  <p className="mb-5 text-base lg:text-lg text-slate-600">
+                  <p className="text-base lg:text-lg text-slate-200">
                     Enter your email address to get started.
                   </p>
                   <div className="flex w-full max-w-sm flex-col">
-                    <input
-                      className="w-full rounded-lg border border-slate-300 bg-slate-50 px-4 py-2 text-sm text-slate-700 focus:border-blue-500 focus:outline-none"
+                    <Input
+                      className="py-3"
                       type="email"
                       name="email"
                       placeholder="Email Address"
                       required
+                      autoFocus
                     />
 
                     {transition.state === "submitting" &&
                     transition.type === "actionSubmission" &&
                     transition.submission.formData.get("action") === "send" ? (
-                      <button
-                        className="mt-2 mb-6 flex w-full items-center justify-center rounded-lg border border-transparent bg-blue-500 px-4 py-2 text-sm font-medium text-white transition hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+                      <PrimaryButton
+                        className="flex mt-2 py-3 w-full"
                         name="action"
                         value="send"
                         type="submit"
                       >
                         Sending...
-                      </button>
+                      </PrimaryButton>
                     ) : (
-                      <button
-                        className="mt-2 mb-6 flex w-full items-center justify-center rounded-lg border border-transparent bg-blue-500 px-4 py-2 text-sm font-medium text-white transition hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+                      <PrimaryButton
+                        className="flex mt-2 py-3 w-full"
                         name="action"
                         value="send"
                         type="submit"
                       >
                         Send a magic link
-                      </button>
+                      </PrimaryButton>
                     )}
-
-                    <Link
-                      className="flex items-center justify-center gap-1 text-sm text-slate-500 transition hover:text-slate-800"
-                      to="/login"
-                    >
-                      <ArrowLeftIcon className="h-3 w-3" />
-                      All login options
-                    </Link>
                   </div>
+                  <Link
+                    className="flex items-center justify-center gap-1 text-sm text-slate-400 transition hover:text-slate-300"
+                    to="/login"
+                  >
+                    <ArrowLeftIcon className="h-3 w-3" />
+                    All login options
+                  </Link>
                 </>
               )}
             </div>
           </Form>
-          <div className="w-full rounded-b-lg border-t bg-slate-50 px-8 py-4">
+          <div className="w-full rounded-b-lg border-t border-slate-850 bg-slate-800 px-8 py-4">
             <p className="text-center text-xs text-slate-500">
               By logging in with your email you agree to our{" "}
-              <Link
-                className="underline transition hover:text-blue-500"
-                to="/legal/terms"
+              <a
+                className="underline transition hover:text-indigo-500"
+                href="https://trigger.dev/legal/terms"
               >
                 terms
-              </Link>{" "}
+              </a>{" "}
               and{" "}
-              <Link
-                className="underline transition hover:text-blue-500"
-                to="/legal/privacy"
+              <a
+                className="underline transition hover:text-indigo-500"
+                href="https://trigger.dev/legal/privacy"
               >
                 privacy
-              </Link>{" "}
+              </a>{" "}
               policies.
             </p>
           </div>
