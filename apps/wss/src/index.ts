@@ -16,6 +16,18 @@ const triggerServers = new Map<string, TriggerServer>();
 let shuttingDown = false;
 
 process.on("SIGINT", async (code) => {
+  await shutdown();
+
+  process.exit();
+});
+
+process.on("SIGHUP", async (code) => {
+  await shutdown();
+
+  process.exit();
+});
+
+async function shutdown() {
   console.log("Shutting down...");
 
   shuttingDown = true;
@@ -26,9 +38,7 @@ process.on("SIGINT", async (code) => {
       triggerServer.close()
     )
   );
-
-  process.exit();
-});
+}
 
 // main
 async function main() {
