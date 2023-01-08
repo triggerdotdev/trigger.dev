@@ -67,7 +67,7 @@ export default function Page() {
       {(connectionSlots.source || connectionSlots.services.length > 0) && (
         <>
           <Header2 size="small" className="mb-2 text-slate-400">
-            {connectionSlots.services.length} connected API{" "}
+            {connectionSlots.services.length} connected API
             {connectionSlots.services.length === 1 ? "" : "s"}
           </Header2>
           <Panel className="mb-6">
@@ -112,7 +112,9 @@ export default function Page() {
         </>
       ) : (
         <>
-          <Header2 className="mt-6 mb-4">No workflows runs</Header2>
+          <Header2 size="small" className="text-slate-400 mt-6 mb-2">
+            No workflows run yet
+          </Header2>
           <PrimaryLink to="test">Test your workflow</PrimaryLink>
         </>
       )}
