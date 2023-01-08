@@ -7,7 +7,6 @@ import { ApiLogoIcon } from "~/components/code/ApiLogoIcon";
 import CreateNewWorkflow, {
   CreateNewWorkflowNoWorkflows,
 } from "~/components/CreateNewWorkflow";
-import { OctoKitty } from "~/components/GitHubLoginButton";
 import { Container } from "~/components/layout/Container";
 import { List } from "~/components/layout/List";
 import { Body } from "~/components/primitives/text/Body";
@@ -16,7 +15,7 @@ import {
   Header2,
   Header3,
 } from "~/components/primitives/text/Headers";
-import { runStatusLabel, runStatusTitle } from "~/components/runs/runStatus";
+import { runStatusLabel } from "~/components/runs/runStatus";
 import { triggerTypeIcon } from "~/components/triggers/triggerTypes";
 import { useCurrentOrganization } from "~/hooks/useOrganizations";
 import type { WorkflowListItem } from "~/models/workflowListPresenter.server";
@@ -83,24 +82,27 @@ function WorkflowList({
               to={`/orgs/${currentOrganizationSlug}/workflows/${workflow.slug}`}
               className="block hover:bg-slate-850/40 transition"
             >
-              <div className="flex justify-between items-center flex-wrap lg:flex-nowrap px-4 py-4">
+              <div className="flex justify-between lg:items-center flex-col lg:flex-row flex-wrap lg:flex-nowrap pl-5 pr-4 py-4">
                 <div className="flex items-center flex-1 justify-between">
-                  <div className="flex">
+                  <div className="flex items-center">
                     <TriggerTypeIcon workflow={workflow} />
-                    <div className="mr-1 truncate">
-                      <Header2 size="large" className="truncate text-slate-200">
+                    <div className="flex flex-col gap-1 mr-1 truncate">
+                      <Header2
+                        size="regular"
+                        className="truncate text-slate-200"
+                      >
                         {workflow.title}
                       </Header2>
-                      <div className="flex gap-2 mt-2">
+                      <div className="flex gap-2 items-baseline">
                         <PillLabel label={workflow.trigger.typeTitle} />
                         <Header3
-                          size="small"
+                          size="extra-small"
                           className="truncate text-slate-300"
                         >
                           {workflow.trigger.title}
                         </Header3>
                       </div>
-                      <div className="flex flex-wrap gap-x-2 mt-2 items-baseline">
+                      <div className="flex flex-wrap gap-x-2 items-baseline">
                         {workflow.trigger.properties &&
                           workflow.trigger.properties.map((property) => (
                             <WorkflowProperty
@@ -118,8 +120,8 @@ function WorkflowList({
                   />
                 </div>
                 <div className="flex items-center flex-grow lg:flex-grow-0">
-                  <div className="flex flex-wrap-reverse justify-between w-full lg:justify-end gap-3 items-center mt-4 lg:mt-0">
-                    <div className="flex flex-col text-right">
+                  <div className="flex flex-wrap-reverse justify-between w-full lg:justify-end gap-3 items-center mt-2 lg:mt-0">
+                    <div className="flex flex-col text-left lg:text-right">
                       <Body size="extra-small" className="text-slate-500">
                         Last run: {lastRunDescription(workflow.lastRun)}
                       </Body>
@@ -139,6 +141,7 @@ function WorkflowList({
                         }
                         return (
                           <ApiLogoIcon
+                            size="regular"
                             key={service.slug}
                             integration={service}
                           />
@@ -175,7 +178,7 @@ function lastRunDescription(lastRun: WorkflowListItem["lastRun"]) {
 
 function PillLabel({ label }: { label: string }) {
   return (
-    <span className="px-2 py-1.5 text-xs font-semibold tracking-wider uppercase rounded text-slate-400 bg-slate-700">
+    <span className="px-1.5 py-1 text-xs font-semibold tracking-wider uppercase rounded text-slate-400 bg-slate-700">
       {label}
     </span>
   );
@@ -192,7 +195,7 @@ function WorkflowProperty({
 }) {
   return (
     <div className="flex items-baseline gap-x-1">
-      <Body size="extra-small" className="uppercase text-slate-400">
+      <Body size="extra-small" className="uppercase text-slate-500">
         {label}
       </Body>
       <Body size="small" className="text-slate-400 truncate">
@@ -207,13 +210,14 @@ function TriggerTypeIcon({ workflow }: { workflow: WorkflowListItem }) {
     return (
       <ApiLogoIcon
         integration={workflow.integrations.source}
-        className="p-3 bg-slate-850 rounded-md flex-shrink-0 self-start h-24 w-24 mr-4"
+        size="extra-large"
+        className="p-3 bg-slate-850 rounded-md flex-shrink-0 self-start lg:self-center mr-5"
       />
     );
   }
 
   return triggerTypeIcon(
     workflow.trigger.type,
-    "p-3 bg-slate-850 rounded-md flex-shrink-0 self-start h-24 w-24 mr-4"
+    "p-3 bg-slate-850 rounded-md flex-shrink-0 self-start h-20 w-20 mr-4"
   );
 }
