@@ -18,11 +18,22 @@ export function WorkflowConnections() {
   const connectedApisCount =
     connectionSlots.services.filter((c) => c.connection).length +
     (connectionSlots.source?.connection ? 1 : 0);
+  const unconnectedApisCount = allApisCount - connectedApisCount ? 1 : 0;
+  const unconnectedApisCountCopy = `, ${unconnectedApisCount} to connect`;
 
   return (
     <>
       <SubTitle>
-        {connectedApisCount}/{allApisCount} connected APIs
+        <>
+          {connectedApisCount} API
+          {connectedApisCount > 1
+            ? "s"
+            : connectedApisCount === 0
+            ? "s"
+            : ""}{" "}
+          connected
+          {unconnectedApisCount === 0 ? "" : unconnectedApisCountCopy}
+        </>
       </SubTitle>
       <Panel className="mb-6 py-0">
         <div className="divide-y divide-slate-700">
