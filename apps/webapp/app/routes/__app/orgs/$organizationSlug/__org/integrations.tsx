@@ -60,6 +60,7 @@ export default function Integrations() {
                           integrations,
                           connection.apiIdentifier
                         )}
+                        size="regular"
                       />
                       <div className="flex flex-col gap-2">
                         <div>
