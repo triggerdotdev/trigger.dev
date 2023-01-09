@@ -194,7 +194,7 @@ async function createCommandSubscriber() {
       WORKFLOW_RUN_DISCONNECTED: async (id, data, properties) => {
         const service = new WorkflowRunDisconnected();
 
-        const success = await service.call(data.id);
+        const success = await service.call(data.id, properties["x-timestamp"]);
 
         return !!success;
       },

@@ -139,6 +139,7 @@ export class ZodSubscriber<SubscriberSchema extends MessageCatalogSchema> {
     const properties = messageSchema.properties.parse(rawProperties);
 
     this.#logger.debug("Received message, calling handler", {
+      type: rawMessage.type,
       message,
       properties,
     });

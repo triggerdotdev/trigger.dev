@@ -10,7 +10,7 @@ export class WorkflowRunDisconnected {
     this.#prismaClient = prismaClient;
   }
 
-  async call(id: string) {
+  async call(id: string, ts: string) {
     const workflowRun = await this.#prismaClient.workflowRun.findUnique({
       where: { id },
       include: {
@@ -52,6 +52,7 @@ export class WorkflowRunDisconnected {
         input: {},
         context: {},
         startedAt: new Date(),
+        ts,
       }
     );
 
