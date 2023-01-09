@@ -1,7 +1,4 @@
-import type {
-  APIKeyAuthentication,
-  CatalogIntegration,
-} from "internal-providers";
+import type { APIKeyAuthentication, Provider } from "internal-providers";
 import { marked } from "marked";
 import { Fragment, useState } from "react";
 import { PrimaryButton, SecondaryButton } from "../primitives/Buttons";
@@ -13,7 +10,6 @@ import { Label } from "../primitives/Label";
 import type { Response as CreateResponse } from "~/routes/resources/connection";
 import { useTypedFetcher } from "remix-typedjson";
 import { Body } from "../primitives/text/Body";
-import { Header4 } from "../primitives/text/Headers";
 import { InformationCircleIcon } from "@heroicons/react/24/outline";
 
 type Status = "loading" | "idle";
@@ -27,7 +23,7 @@ export function AddApiKeyButton({
   className,
   children,
 }: {
-  integration: CatalogIntegration;
+  integration: Provider;
   authentication: APIKeyAuthentication;
   organizationId: string;
   sourceId?: string;

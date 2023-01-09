@@ -1,6 +1,6 @@
 import Pizzly from "@nangohq/pizzly-frontend";
 import { useFetcher } from "@remix-run/react";
-import type { CatalogIntegration } from "internal-providers";
+import type { Provider } from "internal-providers";
 import { useCallback, useEffect } from "react";
 import invariant from "tiny-invariant";
 import type { Response as CreateResponse } from "~/routes/resources/connection";
@@ -18,7 +18,7 @@ export function ConnectOAuthButton({
   className,
   children,
 }: {
-  integration: CatalogIntegration;
+  integration: Provider;
   organizationId: string;
   sourceId?: string;
   serviceId?: string;

@@ -2,7 +2,7 @@ import { Command } from "commander";
 import * as fs from "node:fs";
 import { z } from "zod";
 import invariant from "tiny-invariant";
-import { getCatalog } from "internal-providers";
+import { getProviders } from "internal-providers";
 import { fromIni } from "@aws-sdk/credential-providers";
 import {
   SecretsManagerClient,
@@ -14,44 +14,28 @@ const program = new Command();
 program
   .command("update")
   .description("Update the catalog")
-  .argument(
-    "<integration_file_path>",
-    "The file path to the integration file. Probably ../../apps/webapp/integrations.yml"
-  )
   .option("-e, --environment <environment>", "The environment to update")
   .option("-p, --pizzlyhost <pizzly_host>", "Pizzly host")
   .option("-s, --pizzlysecretkey <pizzly_secret_key>", "Pizzly secret key")
   .option("-a, --awsprofile <aws_profile>", "AWS profile name")
   .action(
-    async (
-      integration_file_path: string,
-      options: {
-        environment?: string;
-        pizzlyhost?: string;
-        pizzlysecretkey?: string;
-        awsprofile?: string;
-      }
-    ) => {
-      if (!integration_file_path) {
-        console.error(
-          "Missing integration file path.",
-          "You probably want to pass in: ../../apps/webapp/integrations.yml"
-        );
-        return;
-      }
-
+    async (options: {
+      environment?: string;
+      pizzlyhost?: string;
+      pizzlysecretkey?: string;
+      awsprofile?: string;
+    }) => {
       const environment = options.environment ?? "development";
       const pizzly_host = options.pizzlyhost ?? "http://localhost:3004";
 
-      const file = fs.readFileSync(integration_file_path, "utf8");
-      const catalog = getCatalog(file, true);
+      const providers = getProviders(true);
 
       const client = new SecretsManagerClient({
         region: "us-east-1",
         credentials: fromIni({ profile: options.awsprofile ?? "default" }),
       });
 
-      const promises = catalog.map(async (integration) => {
+      const promises = providers.map(async (integration) => {
         if (integration.authentication.type !== "oauth")
           return Promise.resolve();
 

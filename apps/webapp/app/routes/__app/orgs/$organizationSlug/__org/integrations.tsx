@@ -1,7 +1,7 @@
 import { SquaresPlusIcon } from "@heroicons/react/24/outline";
 import { PlusCircleIcon } from "@heroicons/react/24/solid";
 import type { LoaderArgs } from "@remix-run/server-runtime";
-import type { CatalogIntegration } from "internal-providers";
+import type { Provider } from "internal-providers";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import invariant from "tiny-invariant";
 import { ApiLogoIcon } from "~/components/code/ApiLogoIcon";
@@ -123,7 +123,7 @@ function AddButtonContent({
   integration,
   status,
 }: {
-  integration: CatalogIntegration;
+  integration: Provider;
   status: Status;
 }) {
   return (

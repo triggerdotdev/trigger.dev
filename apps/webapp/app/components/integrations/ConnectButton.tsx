@@ -1,4 +1,4 @@
-import type { CatalogIntegration } from "internal-providers";
+import type { Provider } from "internal-providers";
 import { AddApiKeyButton } from "./AddApiKeyButton";
 import { ConnectOAuthButton } from "./ConnectOAuthButton";
 import { IntegrationIcon } from "./IntegrationIcon";
@@ -13,7 +13,7 @@ export function ConnectButton({
   children,
   className,
 }: {
-  integration: CatalogIntegration;
+  integration: Provider;
   organizationId: string;
   sourceId?: string;
   serviceId?: string;
@@ -55,7 +55,7 @@ export function BasicConnectButton({
   sourceId,
   serviceId,
 }: {
-  integration: CatalogIntegration;
+  integration: Provider;
   organizationId: string;
   sourceId?: string;
   serviceId?: string;

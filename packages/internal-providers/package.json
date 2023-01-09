@@ -13,7 +13,6 @@
   "scripts": {},
   "dependencies": {
     "tiny-invariant": "^1.2.0",
-    "yaml": "^2.2.0",
     "zod": "^3.20.2"
   }
 }

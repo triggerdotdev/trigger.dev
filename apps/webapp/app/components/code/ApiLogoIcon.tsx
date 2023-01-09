@@ -1,4 +1,4 @@
-import type { CatalogIntegration } from "internal-providers";
+import type { Provider } from "internal-providers";
 
 type Props = Omit<
   React.DetailedHTMLProps<
@@ -7,7 +7,7 @@ type Props = Omit<
   >,
   "src" | "alt"
 > & {
-  integration?: CatalogIntegration;
+  integration?: Provider;
   size?: Size;
 };
 

@@ -1,10 +1,6 @@
-import type { CatalogIntegration } from "internal-providers";
+import type { Provider } from "internal-providers";
 
-export function IntegrationIcon({
-  integration,
-}: {
-  integration: CatalogIntegration;
-}) {
+export function IntegrationIcon({ integration }: { integration: Provider }) {
   return (
     <img
       src={integration.icon}

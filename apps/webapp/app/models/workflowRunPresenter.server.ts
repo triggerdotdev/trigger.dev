@@ -5,9 +5,9 @@ import {
   TriggerMetadataSchema,
   WaitSchema,
 } from "@trigger.dev/common-schemas";
-import type { CatalogIntegration } from "internal-providers";
 import type { DisplayProperties } from "internal-integrations";
 import { slack } from "internal-integrations";
+import { Provider } from "internal-providers";
 import invariant from "tiny-invariant";
 import type { PrismaClient } from "~/db.server";
 import { prisma } from "~/db.server";
@@ -70,7 +70,7 @@ async function parseStep(
   original: NonNullable<
     PrismaReturnType<typeof getWorkflowRun>
   >["tasks"][number],
-  integrations: CatalogIntegration[]
+  integrations: Provider[]
 ) {
   const status = stepStatus(original.finishedAt);
   const base = {
