@@ -7,9 +7,9 @@ import { slack } from "internal-integrations";
 import type { PrismaClient } from "~/db.server";
 import { prisma } from "~/db.server";
 import type { IntegrationRequest } from "~/models/integrationRequest.server";
-import { getAccessToken } from "../accessToken.server";
+import type { AccessInfo } from "../accessInfo.server";
+import { getAccessInfo } from "../accessInfo.server";
 import { RedisCacheService } from "../cacheService.server";
-import { pizzly } from "../pizzly.server";
 
 type CallResponse =
   | {
@@ -48,11 +48,11 @@ export class PerformIntegrationRequest {
       return { stop: true };
     }
 
-    const accessToken = await getAccessToken(
+    const accessInfo = await getAccessInfo(
       integrationRequest.externalService.connection
     );
 
-    if (!accessToken) {
+    if (!accessInfo) {
       return { stop: true };
     }
 
@@ -62,7 +62,7 @@ export class PerformIntegrationRequest {
 
     const performedRequest = await this.#performRequest(
       integrationRequest.externalService.connection.apiIdentifier,
-      accessToken,
+      accessInfo,
       integrationRequest,
       cache
     );
@@ -227,14 +227,14 @@ export class PerformIntegrationRequest {
 
   async #performRequest(
     service: string,
-    accessToken: string,
+    accessInfo: AccessInfo,
     integrationRequest: IntegrationRequest,
     cache: CacheService
   ): Promise<PerformedRequestResponse> {
     switch (service) {
       case "slack": {
         return slack.requests.perform({
-          accessToken,
+          accessInfo,
           endpoint: integrationRequest.endpoint,
           params: integrationRequest.params,
           cache,

@@ -6,6 +6,7 @@ export { APIConnection };
 
 export const apiKeyConfigSchema = z.object({
   api_key: z.string().min(1),
+  additionalFields: z.record(z.string()).optional(),
 });
 
 export async function createAPIConnection({

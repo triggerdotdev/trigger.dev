@@ -5,6 +5,7 @@ import {
   PerformedRequestResponse,
   PerformRequestOptions,
   RequestIntegration,
+  AccessInfo,
 } from "../types";
 import { slack } from "internal-providers";
 
@@ -43,7 +44,7 @@ class SlackRequestIntegration implements RequestIntegration {
     switch (options.endpoint) {
       case "chat.postMessage": {
         return this.#postMessage(
-          options.accessToken,
+          options.accessInfo,
           options.params,
           options.cache
         );
@@ -74,13 +75,18 @@ class SlackRequestIntegration implements RequestIntegration {
   }
 
   async #postMessage(
-    accessToken: string,
+    accessInfo: AccessInfo,
     params: any,
     cache?: CacheService
   ): Promise<PerformedRequestResponse> {
     const parsedParams = slack.schemas.PostMessageBodySchema.parse(params);
 
     log("chat.postMessage %O", parsedParams);
+
+    const accessToken =
+      accessInfo.type === "oauth2"
+        ? accessInfo.accessToken
+        : accessInfo.api_key;
 
     const service = new HttpService({
       accessToken,
@@ -131,7 +137,7 @@ class SlackRequestIntegration implements RequestIntegration {
       if (joinResponse.success && joinResponse.data.ok) {
         log("joined channel %s, retrying postMessage", channel);
 
-        return this.#postMessage(accessToken, params);
+        return this.#postMessage(accessInfo, params);
       }
     }
 

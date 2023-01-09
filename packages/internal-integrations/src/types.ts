@@ -1,5 +1,13 @@
+export type AccessInfo =
+  | { type: "oauth2"; accessToken: string }
+  | {
+      type: "api_key";
+      api_key: string;
+      additionalFields?: Record<string, string>;
+    };
+
 export interface WebhookConfig {
-  accessToken: string;
+  accessInfo: AccessInfo;
   callbackUrl: string;
   secret: string;
 }
@@ -30,7 +38,7 @@ export interface ReceivedWebhook {
 }
 
 export type PerformRequestOptions = {
-  accessToken: string;
+  accessInfo: AccessInfo;
   endpoint: string;
   params: any;
   cache?: CacheService;

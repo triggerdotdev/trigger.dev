@@ -1,4 +1,5 @@
 import {
+  AccessInfo,
   DisplayProperty,
   HandleWebhookOptions,
   WebhookConfig,
@@ -123,7 +124,7 @@ async function registerRepositoryWebhook(
       headers: {
         "Content-Type": "application/json",
         Accept: "application/vnd.github+json",
-        Authorization: `Bearer ${config.accessToken}`,
+        Authorization: `Bearer ${bearerToken(config.accessInfo)}`,
         "X-GitHub-Api-Version": "2022-11-28",
       },
       body: JSON.stringify({
@@ -161,7 +162,7 @@ async function registerOrganizationWebhook(
       headers: {
         "Content-Type": "application/json",
         Accept: "application/vnd.github+json",
-        Authorization: `Bearer ${config.accessToken}`,
+        Authorization: `Bearer ${bearerToken(config.accessInfo)}`,
         "X-GitHub-Api-Version": "2022-11-28",
       },
       body: JSON.stringify({
@@ -185,6 +186,12 @@ async function registerOrganizationWebhook(
   const webhook = await response.json();
 
   return webhook;
+}
+
+function bearerToken(accessInfo: AccessInfo) {
+  return accessInfo.type === "oauth2"
+    ? accessInfo.accessToken
+    : accessInfo.api_key;
 }
 
 function parseWebhookSource(source: unknown) {
