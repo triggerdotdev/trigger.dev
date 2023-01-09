@@ -39,7 +39,7 @@ new Trigger({
 
 new Trigger({
   id: "playground-2",
-  name: "Github Issue changes for trigger.dev",
+  name: "Playground 2",
   apiKey: "trigger_dev_zC25mKNn6c0q",
   endpoint: "ws://localhost:8889/ws",
   on: github.triggers.repoIssueEvent({ repo: "triggerdotdev/trigger.dev" }),
