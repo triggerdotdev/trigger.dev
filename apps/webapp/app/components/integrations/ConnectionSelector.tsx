@@ -61,7 +61,7 @@ export function ConnectionSelector({
                 {selectedConnection ? (
                   <span>{selectedConnection.title}</span>
                 ) : (
-                  <span className="text-slate-400">
+                  <span className="text-slate-200">
                     Select {integration.name} connection
                   </span>
                 )}
