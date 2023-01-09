@@ -24,10 +24,10 @@ export function WorkflowConnections() {
       <SubTitle>
         {connectedApisCount}/{allApisCount} connected APIs
       </SubTitle>
-      <Panel className="mb-6">
-        <div className="flex gap-4 w-full">
+      <Panel className="mb-6 py-0">
+        <div className="divide-y divide-slate-700">
           {connectionSlots.source && (
-            <>
+            <div className="flex gap-4 w-full py-3">
               <ApiLogoIcon
                 integration={connectionSlots.source.integration}
                 size="regular"
@@ -41,13 +41,14 @@ export function WorkflowConnections() {
                   integration={connectionSlots.source.integration}
                   connections={connectionSlots.source.possibleConnections}
                   selectedConnectionId={connectionSlots.source.connection?.id}
+                  className="mr-1"
                   popoverAlign="right"
                 />
               </div>
-            </>
+            </div>
           )}
           {connectionSlots.services.map((slot) => (
-            <div key={slot.id} className="flex gap-4 items-center w-full">
+            <div key={slot.id} className="flex gap-4 items-center w-full py-3">
               <ApiLogoIcon integration={slot.integration} size="regular" />
               <div className="flex items-center justify-between w-full">
                 <Header3 size="small" className="truncate text-slate-300">
