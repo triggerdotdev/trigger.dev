@@ -17,7 +17,10 @@ export function WorkflowConnections() {
       {connectionSlots.source && (
         <>
           <div className="flex flex-col gap-1">
-            <ApiLogoIcon integration={connectionSlots.source.integration} />
+            <ApiLogoIcon
+              integration={connectionSlots.source.integration}
+              size="small"
+            />
           </div>
           <div className="flex flex-col gap-1">
             <Body>{connectionSlots.source.integration.name}</Body>
@@ -28,17 +31,18 @@ export function WorkflowConnections() {
               integration={connectionSlots.source.integration}
               connections={connectionSlots.source.possibleConnections}
               selectedConnectionId={connectionSlots.source.connection?.id}
+              popoverAlign="right"
             />
           </div>
         </>
       )}
       {connectionSlots.services.map((slot) => (
         <div key={slot.id} className="flex gap-4 items-center">
-          <div className="flex flex-col gap-1 ml-2">
-            <ApiLogoIcon integration={slot.integration} />
+          <div className="flex flex-col gap-1">
+            <ApiLogoIcon integration={slot.integration} size="regular" />
           </div>
-          <div className="flex flex-col gap-0.5">
-            <Header3 size="extra-small" className="truncate font-medium">
+          <div className="flex justify-between w-full gap-0.5">
+            <Header3 size="small" className="truncate text-slate-300">
               {slot.integration?.name}
             </Header3>
             <ConnectionSelector
@@ -48,6 +52,8 @@ export function WorkflowConnections() {
               integration={slot.integration}
               connections={slot.possibleConnections}
               selectedConnectionId={slot.connection?.id}
+              className="mr-2"
+              popoverAlign="right"
             />
           </div>
         </div>

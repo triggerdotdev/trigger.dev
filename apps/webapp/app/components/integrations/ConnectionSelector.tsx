@@ -6,7 +6,6 @@ import type { CatalogIntegration } from "internal-catalog";
 import { Fragment } from "react";
 import type { APIConnection } from "~/models/apiConnection.server";
 import { BasicConnectButton } from "./ConnectButton";
-import { IntegrationIcon } from "./IntegrationIcon";
 
 type Props = {
   type: "source" | "service";
@@ -15,7 +14,11 @@ type Props = {
   integration: CatalogIntegration;
   connections: Pick<APIConnection, "id" | "title">[];
   selectedConnectionId?: string;
+  className?: string;
+  popoverAlign: Align;
 };
+
+type Align = "left" | "right" | "center";
 
 export function ConnectionSelector({
   type,
@@ -24,6 +27,7 @@ export function ConnectionSelector({
   connections,
   selectedConnectionId,
   organizationId,
+  popoverAlign = "left",
 }: Props) {
   const fetcher = useFetcher();
 
@@ -76,7 +80,11 @@ export function ConnectionSelector({
               leaveFrom="opacity-100 translate-y-0"
               leaveTo="opacity-0 translate-y-1"
             >
-              <Popover.Panel className="absolute left-full z-10 mt-3 w-screen min-w-max max-w-xs -translate-x-1/2 transform sm:px-0">
+              <Popover.Panel
+                className={`absolute z-10 mt-3 w-screen min-w-max max-w-xs transform sm:px-0 ${getPopoverAlignment(
+                  popoverAlign
+                )}`}
+              >
                 <div className="overflow-hidden rounded-lg shadow-lg ring-1 ring-black ring-opacity-5">
                   <div className="flex flex-col items-stretch gap-y-1 py-1 px-1 bg-slate-700">
                     {connections.map((connection) => {
@@ -123,4 +131,16 @@ export function ConnectionSelector({
       </Popover>
     </div>
   );
+}
+
+function getPopoverAlignment(alignment: Align) {
+  switch (alignment) {
+    case "right":
+      return "right-0";
+    case "center":
+      return "left-full -translate-x-1/2";
+    case "left":
+    default:
+      return "left-0";
+  }
 }
