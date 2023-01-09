@@ -16,7 +16,7 @@ export function darkTheme(): Extension {
     whiskey = "#d19a66",
     violet = "#c678dd",
     darkBackground = "#21252b",
-    highlightBackground = "rgba(234,179,8,0.1)",
+    highlightBackground = "rgba(71,85,105,0.2)",
     background = "#0f172a",
     tooltipBackground = "#353a42",
     selection = "rgb(71 85 105)",
