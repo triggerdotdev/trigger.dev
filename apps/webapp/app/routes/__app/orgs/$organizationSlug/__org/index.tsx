@@ -51,7 +51,10 @@ export default function Page() {
     <Container>
       <Title>Workflows</Title>
       {workflows.length === 0 ? (
-        <CreateNewWorkflowNoWorkflows />
+        <>
+          <SubTitle>Create your first workflow</SubTitle>
+          <CreateNewWorkflowNoWorkflows />
+        </>
       ) : (
         <>
           <SubTitle>

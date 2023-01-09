@@ -34,7 +34,6 @@ export default function CreateNewWorkflow() {
 export function CreateNewWorkflowNoWorkflows() {
   return (
     <>
-      <SubTitle>Create your first workflow</SubTitle>
       <Panel className="flex p-0 overflow-hidden">
         <div className="flex flex-col p-6 w-2/3">
           <Body className="mb-4 text-slate-300">
