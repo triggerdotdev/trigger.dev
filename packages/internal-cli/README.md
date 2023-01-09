@@ -26,10 +26,8 @@ cd packages/internal-cli
 2. Run the script
 
 ```bash
-pnpm run cli ../../apps/webapp/integrations.yml
+pnpm run cli
 ```
-
-This will run the script locally, using the `integrations.yml` file in the webapp directory.
 
 # Options
 
@@ -45,7 +43,7 @@ This will run the script locally, using the `integrations.yml` file in the webap
 Example:
 
 ```bash
-pnpm run cli ../../apps/webapp/integrations.yml -e production
+pnpm run cli -e production
 ```
 
 ## Pizzly host
