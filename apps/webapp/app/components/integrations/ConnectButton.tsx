@@ -66,7 +66,7 @@ export function BasicConnectButton({
       organizationId={organizationId}
       sourceId={sourceId}
       serviceId={serviceId}
-      className="flex rounded-md bg-blue-600 gap-3 text-sm text-white items-center hover:bg-blue-700 transition shadow-md disabled:opacity-50 py-2 pl-2 pr-3"
+      className="flex rounded bg-indigo-700 gap-3 text-sm text-white items-center hover:bg-indigo-600 transition shadow-md disabled:opacity-50 pl-3 pr-4 py-2"
     >
       {(status) => (
         <>

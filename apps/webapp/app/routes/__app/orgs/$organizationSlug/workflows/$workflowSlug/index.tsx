@@ -62,21 +62,13 @@ export default function Page() {
     (r) => r.environmentId === environment.id
   );
 
+  const apiConnectionCount =
+    connectionSlots.services.length + (connectionSlots.source ? 1 : 0);
+
   return (
     <>
       <Title>Overview</Title>
-      {(connectionSlots.source || connectionSlots.services.length > 0) && (
-        <>
-          <SubTitle>
-            {connectionSlots.services.length} connected API
-            {connectionSlots.services.length === 1 ? "" : "s"}
-          </SubTitle>
-          <Panel className="mb-6">
-            <WorkflowConnections />
-          </Panel>
-        </>
-      )}
-
+      {apiConnectionCount > 0 && <WorkflowConnections />}
       {eventRule && (
         <>
           <SubTitle>Workflow type</SubTitle>
