@@ -206,6 +206,7 @@ export default function Page() {
                 language="json"
                 className="mt-2"
                 align="top"
+                maxHeight="150px"
               />
             )}
           </Panel>
