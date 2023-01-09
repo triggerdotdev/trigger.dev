@@ -61,7 +61,7 @@ export default function CodeBlock({
       {maxHeight && (
         <div className="absolute left-0 bottom-0 w-full flex items-center justify-center bg-gradient-to-b from-transparent to-[#0F172A]">
           <button
-            className="bg-slate-800 rounded-full py-2 px-3 text-xs mb-1 hover:bg-slate-700 transition"
+            className="bg-slate-800 rounded-full py-2 px-3.5 text-xs mb-1 hover:bg-slate-700 transition"
             onClick={(e) => setIsCollapsed((s) => !s)}
           >
             {isCollapsed ? "Expand" : "Collapse"}
