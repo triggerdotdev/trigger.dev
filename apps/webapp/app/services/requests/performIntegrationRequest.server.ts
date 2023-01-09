@@ -103,11 +103,8 @@ export class PerformIntegrationRequest {
       },
       data: {
         status: "SUCCESS",
-        output: response.body,
-        context: {
-          headers: response.headers,
-          statusCode: response.statusCode,
-        },
+        output: response.output,
+        context: response.context,
         finishedAt: new Date(),
       },
     });
@@ -136,11 +133,8 @@ export class PerformIntegrationRequest {
       },
       data: {
         status: "ERROR",
-        output: response.body,
-        context: {
-          headers: response.headers,
-          statusCode: response.statusCode,
-        },
+        output: response.output,
+        context: response.context,
         finishedAt: new Date(),
       },
     });
@@ -216,9 +210,8 @@ export class PerformIntegrationRequest {
               id: integrationRequest.id,
             },
           },
-          statusCode: response.statusCode,
-          headers: response.headers,
-          body: response.body ? response.body : undefined,
+          context: response.context,
+          output: response.output ? response.output : undefined,
         },
       });
 

@@ -7,15 +7,19 @@
   "types": "./src/index.ts",
   "devDependencies": {
     "@trigger.dev/tsconfig": "workspace:*",
-    "internal-providers": "workspace:*",
     "@types/debug": "^4.1.7",
     "@types/node": "^18.11.9",
+    "internal-providers": "workspace:*",
     "typescript": "^4.9.4"
   },
   "scripts": {},
   "dependencies": {
     "@octokit/webhooks": "^10.4.0",
+    "@shopify/shopify-api": "^6.1.0",
+    "@urql/core": "^3.1.1",
     "debug": "^4.3.4",
+    "graphql": "^16.6.0",
+    "urql": "^3.0.3",
     "zod": "^3.20.2"
   }
 }

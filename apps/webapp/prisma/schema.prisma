@@ -286,9 +286,8 @@ model IntegrationResponse {
   request   IntegrationRequest @relation(fields: [requestId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   requestId String
 
-  statusCode Int
-  body       Json
-  headers    Json
+  output     Json
+  context    Json
 
   createdAt DateTime @default(now())
 }

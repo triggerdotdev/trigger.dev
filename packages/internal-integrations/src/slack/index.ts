@@ -113,9 +113,11 @@ class SlackRequestIntegration implements RequestIntegration {
         ok: false,
         isRetryable: this.#isRetryable(response.statusCode),
         response: {
-          statusCode: response.statusCode,
-          headers: response.headers,
-          body: null,
+          output: null,
+          context: {
+            statusCode: response.statusCode,
+            headers: response.headers,
+          },
         },
       };
     }
@@ -147,9 +149,11 @@ class SlackRequestIntegration implements RequestIntegration {
       ok,
       isRetryable: this.#isRetryable(response.statusCode),
       response: {
-        statusCode: response.statusCode,
-        headers: response.headers,
-        body: response.data,
+        output: response.data,
+        context: {
+          statusCode: response.statusCode,
+          headers: response.headers,
+        },
       },
     };
 

@@ -18,17 +18,7 @@ export const shopify = {
         description: `This is the name of your Shopify store`,
       },
     ],
-    documentation: `Name this integration and create a \`Personal access token\`. <br>
-      Here is some more text <br>
-      Here is some more text <br>
-      Here is some more text <br>
-      Here is some more text <br>
-      Here is some more text <br>
-      Here is some more text <br>
-      Here is some more text <br>
-      Here is some more text <br>
-      Here is some more text <br>
-      Here is some more text <br>`,
+    documentation: `1. Follow (this guide)[https://help.shopify.com/en/manual/apps/custom-apps] to enable Custom apps`,
   },
   schemas: {},
 };

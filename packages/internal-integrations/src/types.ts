@@ -19,9 +19,8 @@ export interface NormalizedRequest {
 }
 
 export interface NormalizedResponse {
-  body: any;
-  headers: Record<string, string>;
-  statusCode: number;
+  output: any;
+  context: any;
 }
 
 export interface HandleWebhookOptions {
