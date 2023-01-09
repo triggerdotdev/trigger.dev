@@ -75,7 +75,7 @@
     "emails": "workspace:*",
     "express": "^4.18.1",
     "humanize-duration": "^3.27.3",
-    "internal-catalog": "workspace:*",
+    "internal-providers": "workspace:*",
     "internal-integrations": "workspace:*",
     "internal-platform": "workspace:*",
     "internal-pulsar": "workspace:*",

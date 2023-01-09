@@ -1,4 +1,4 @@
-import type { CatalogIntegration } from "internal-catalog";
+import type { CatalogIntegration } from "internal-providers";
 import { AddApiKeyButton } from "./AddApiKeyButton";
 import { ConnectOAuthButton } from "./ConnectOAuthButton";
 import { IntegrationIcon } from "./IntegrationIcon";

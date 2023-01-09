@@ -1,6 +1,6 @@
 import Pizzly from "@nangohq/pizzly-frontend";
 import { useFetcher } from "@remix-run/react";
-import type { CatalogIntegration } from "internal-catalog";
+import type { CatalogIntegration } from "internal-providers";
 import { useCallback, useEffect } from "react";
 import invariant from "tiny-invariant";
 import type { Response as CreateResponse } from "~/routes/resources/connection";

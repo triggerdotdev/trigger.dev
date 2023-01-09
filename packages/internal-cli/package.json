@@ -9,7 +9,7 @@
     "@trigger.dev/tsconfig": "workspace:*",
     "@types/node": "^18.11.9",
     "commander": "^9.4.1",
-    "internal-catalog": "workspace:*",
+    "internal-providers": "workspace:*",
     "tiny-invariant": "^1.2.0",
     "tsx": "^3.12.0",
     "zod": "^3.20.2"

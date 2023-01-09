@@ -1,4 +1,4 @@
-import type { CatalogIntegration } from "internal-catalog";
+import type { CatalogIntegration } from "internal-providers";
 
 type Props = Omit<
   React.DetailedHTMLProps<

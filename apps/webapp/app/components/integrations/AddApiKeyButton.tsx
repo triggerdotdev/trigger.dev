@@ -1,7 +1,7 @@
 import type {
   APIKeyAuthentication,
   CatalogIntegration,
-} from "internal-catalog";
+} from "internal-providers";
 import { marked } from "marked";
 import { Fragment, useState } from "react";
 import { PrimaryButton, SecondaryButton } from "../primitives/Buttons";

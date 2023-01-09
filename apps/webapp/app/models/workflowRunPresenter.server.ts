@@ -5,7 +5,7 @@ import {
   TriggerMetadataSchema,
   WaitSchema,
 } from "@trigger.dev/common-schemas";
-import type { CatalogIntegration } from "internal-catalog";
+import type { CatalogIntegration } from "internal-providers";
 import type { DisplayProperties } from "internal-integrations";
 import { slack } from "internal-integrations";
 import invariant from "tiny-invariant";
