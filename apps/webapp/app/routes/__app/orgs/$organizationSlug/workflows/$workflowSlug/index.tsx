@@ -5,7 +5,8 @@ import { WorkflowConnections } from "~/components/integrations/WorkflowConnectio
 import { Panel } from "~/components/layout/Panel";
 import { PanelHeader } from "~/components/layout/PanelHeader";
 import { PrimaryLink, SecondaryLink } from "~/components/primitives/Buttons";
-import { Header1, Header2 } from "~/components/primitives/text/Headers";
+import { SubTitle } from "~/components/primitives/text/SubTitle";
+import { Title } from "~/components/primitives/text/Title";
 import { RunsTable } from "~/components/runs/RunsTable";
 import { TriggerBody } from "~/components/triggers/Trigger";
 import { triggerInfo } from "~/components/triggers/triggerTypes";
@@ -63,13 +64,13 @@ export default function Page() {
 
   return (
     <>
-      <Header1 className="mb-4">Overview</Header1>
+      <Title>Overview</Title>
       {(connectionSlots.source || connectionSlots.services.length > 0) && (
         <>
-          <Header2 size="small" className="mb-2 text-slate-400">
+          <SubTitle>
             {connectionSlots.services.length} connected API
             {connectionSlots.services.length === 1 ? "" : "s"}
-          </Header2>
+          </SubTitle>
           <Panel className="mb-6">
             <WorkflowConnections />
           </Panel>
@@ -78,9 +79,7 @@ export default function Page() {
 
       {eventRule && (
         <>
-          <Header2 size="small" className="text-slate-400 mb-2">
-            Workflow type
-          </Header2>
+          <SubTitle>Workflow type</SubTitle>
           <Panel className="mb-4">
             <PanelHeader
               icon={triggerInfo[eventRule.trigger.type].icon}
@@ -95,11 +94,11 @@ export default function Page() {
 
       {total > 0 ? (
         <>
-          <div className="mb-2 flex justify-between items-end">
-            <Header2 size="small" className="text-slate-400">
-              Last {pageSize} runs
-            </Header2>
-            <SecondaryLink to="runs">View all</SecondaryLink>
+          <div className="flex justify-between items-end">
+            <SubTitle>Last {pageSize} runs</SubTitle>
+            <SecondaryLink to="runs" className="mb-2">
+              View all
+            </SecondaryLink>
           </div>
           <Panel className="p-0 overflow-hidden overflow-x-auto">
             <RunsTable
@@ -112,9 +111,7 @@ export default function Page() {
         </>
       ) : (
         <>
-          <Header2 size="small" className="text-slate-400 mt-6 mb-2">
-            No workflows run yet
-          </Header2>
+          <SubTitle>No workflows run yet</SubTitle>
           <PrimaryLink to="test">Test your workflow</PrimaryLink>
         </>
       )}

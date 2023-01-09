@@ -80,7 +80,7 @@ export default function Page() {
   return (
     <>
       <div className="flex sticky -top-12 py-4 -mt-4 -ml-1 pl-1 bg-slate-850 justify-between items-center z-10">
-        <Header1 className="">Run {run.id}</Header1>
+        <Header1>Run {run.id}</Header1>
         <div className="flex gap-2">
           {run.isTest && (
             <Body

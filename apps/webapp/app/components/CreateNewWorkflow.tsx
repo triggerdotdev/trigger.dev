@@ -2,15 +2,13 @@ import { ArrowTopRightOnSquareIcon } from "@heroicons/react/24/outline";
 import { Panel } from "./layout/Panel";
 import { PrimaryA, SecondaryA } from "./primitives/Buttons";
 import { Body } from "./primitives/text/Body";
-import { Header2 } from "./primitives/text/Headers";
 import onboarding from "../assets/images/onboarding-image.png";
+import { SubTitle } from "./primitives/text/SubTitle";
 
 export default function CreateNewWorkflow() {
   return (
     <>
-      <Header2 size="small" className="mb-2 text-slate-400">
-        Create a new workflow
-      </Header2>
+      <SubTitle>Create a new workflow</SubTitle>
       <div className="flex gap-2">
         <PrimaryA
           href="https://docs.trigger.dev"
@@ -36,9 +34,7 @@ export default function CreateNewWorkflow() {
 export function CreateNewWorkflowNoWorkflows() {
   return (
     <>
-      <Header2 size="small" className="mb-2 text-slate-400">
-        Create your first workflow
-      </Header2>
+      <SubTitle>Create your first workflow</SubTitle>
       <Panel className="flex p-0 overflow-hidden">
         <div className="flex flex-col p-6 w-2/3">
           <Body className="mb-4 text-slate-300">

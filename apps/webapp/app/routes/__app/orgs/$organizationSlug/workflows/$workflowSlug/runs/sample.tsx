@@ -13,20 +13,17 @@ import { Panel } from "~/components/layout/Panel";
 import { PrimaryButton } from "~/components/primitives/Buttons";
 import { Spinner } from "~/components/primitives/Spinner";
 import { Body } from "~/components/primitives/text/Body";
-import {
-  Header1,
-  Header2,
-  Header3,
-} from "~/components/primitives/text/Headers";
+import { Header2, Header3 } from "~/components/primitives/text/Headers";
 import CodeBlock from "~/components/code/CodeBlock";
 import type { ReactNode } from "react";
 import { formatDateTime } from "~/utils";
+import { Title } from "~/components/primitives/text/Title";
 
 export default function Page() {
   return (
     <>
       <div className="flex sticky -top-12 py-4 -mt-4 -ml-1 pl-1 bg-slate-850 justify-between items-center z-10">
-        <Header1 className="">Run #1</Header1>
+        <Title>Run #1</Title>
         <div className="flex gap-2">
           <Body
             size="extra-small"

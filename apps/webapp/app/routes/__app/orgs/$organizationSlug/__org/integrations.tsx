@@ -10,11 +10,9 @@ import { ConnectButton } from "~/components/integrations/ConnectButton";
 import { Container } from "~/components/layout/Container";
 import { List } from "~/components/layout/List";
 import { Body } from "~/components/primitives/text/Body";
-import {
-  Header1,
-  Header2,
-  Header3,
-} from "~/components/primitives/text/Headers";
+import { Header3 } from "~/components/primitives/text/Headers";
+import { SubTitle } from "~/components/primitives/text/SubTitle";
+import { Title } from "~/components/primitives/text/Title";
 import { useCurrentOrganization } from "~/hooks/useOrganizations";
 import { getConnectedApiConnectionsForOrganizationSlug } from "~/models/apiConnection.server";
 import { getIntegrations } from "~/models/integrations.server";
@@ -42,16 +40,16 @@ export default function Integrations() {
 
   return (
     <Container>
-      <Header1 className="mb-6">API Integrations</Header1>
+      <Title>API Integrations</Title>
       <div>
         {connections.length === 0 ? (
           <></>
         ) : (
           <>
-            <Header2 size="small" className="mb-2 text-slate-400">
+            <SubTitle>
               {connections.length} connected API
               {connections.length > 1 ? "s" : ""}
-            </Header2>
+            </SubTitle>
             <List>
               {connections.map((connection) => {
                 return (
@@ -86,9 +84,7 @@ export default function Integrations() {
       </div>
 
       <div>
-        <Header2 size="small" className="mb-2 text-slate-400">
-          Add an API integration
-        </Header2>
+        <SubTitle>Add an API integration</SubTitle>
         <div className="flex flex-wrap gap-2 w-full">
           {integrations.map((integration) => (
             <ConnectButton

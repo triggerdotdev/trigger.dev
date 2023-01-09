@@ -8,6 +8,7 @@ import { Panel } from "~/components/layout/Panel";
 import { PrimaryButton } from "~/components/primitives/Buttons";
 import { Select } from "~/components/primitives/Select";
 import { Header1 } from "~/components/primitives/text/Headers";
+import { Title } from "~/components/primitives/text/Title";
 import { useCurrentOrganization } from "~/hooks/useOrganizations";
 import { useCurrentWorkflow } from "~/hooks/useWorkflows";
 import { getMostRecentWorkflowRun } from "~/models/workflowRun.server";
@@ -37,7 +38,7 @@ export default function Page() {
 
   return (
     <>
-      <Header1 className="mb-4">Test</Header1>
+      <Title>Test</Title>
 
       {workflow.status === "READY" && (
         <Panel className="mt-4">

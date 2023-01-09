@@ -15,6 +15,7 @@ import {
   Header2,
   Header3,
 } from "~/components/primitives/text/Headers";
+import { Title } from "~/components/primitives/text/Title";
 import { runStatusLabel } from "~/components/runs/runStatus";
 import { triggerTypeIcon } from "~/components/triggers/triggerTypes";
 import { useCurrentOrganization } from "~/hooks/useOrganizations";
@@ -47,7 +48,7 @@ export default function Page() {
 
   return (
     <Container>
-      <Header1 className="mb-6">Workflows</Header1>
+      <Title>Workflows</Title>
       {workflows.length === 0 ? (
         <CreateNewWorkflowNoWorkflows />
       ) : (

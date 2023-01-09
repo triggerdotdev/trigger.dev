@@ -2,7 +2,8 @@ import invariant from "tiny-invariant";
 import { WorkflowConnections } from "~/components/integrations/WorkflowConnections";
 import { Panel } from "~/components/layout/Panel";
 import { Body } from "~/components/primitives/text/Body";
-import { Header1, Header2 } from "~/components/primitives/text/Headers";
+import { SubTitle } from "~/components/primitives/text/SubTitle";
+import { Title } from "~/components/primitives/text/Title";
 import { useConnectionSlots } from "~/hooks/useConnectionSlots";
 
 export default function Page() {
@@ -11,13 +12,13 @@ export default function Page() {
 
   return (
     <>
-      <Header1 className="mb-4">Connected APIs</Header1>
+      <Title>Connected APIs</Title>
       {connectionSlots.source || connectionSlots.services.length > 0 ? (
         <>
-          <Header2 size="small" className="mb-2 text-slate-400">
+          <SubTitle>
             {connectionSlots.services.length} connected API
             {connectionSlots.services.length === 1 ? "" : "s"}
-          </Header2>
+          </SubTitle>
           <Panel>
             <WorkflowConnections />
           </Panel>

@@ -21,6 +21,7 @@ import { WorkflowRunListPresenter } from "~/models/workflowRunListPresenter.serv
 import { requireUserId } from "~/services/session.server";
 import { getRuntimeEnvironmentFromRequest } from "~/models/runtimeEnvironment.server";
 import { allStatuses } from "~/models/workflowRunStatus";
+import { Title } from "~/components/primitives/text/Title";
 
 export const loader = async ({ request, params }: LoaderArgs) => {
   const userId = await requireUserId(request);
@@ -64,7 +65,7 @@ export default function Page() {
 
   return (
     <>
-      <Header1 className="mb-6">Runs</Header1>
+      <Title>Runs</Title>
       <fetcher.Form
         method="get"
         className="pb-4 flex gap-2"
