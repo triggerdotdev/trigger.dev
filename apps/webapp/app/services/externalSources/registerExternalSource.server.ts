@@ -4,10 +4,8 @@ import crypto from "node:crypto";
 import type { PrismaClient } from "~/db.server";
 import { prisma } from "~/db.server";
 import { env } from "~/env.server";
-import { apiKeyConfigSchema } from "~/models/apiConnection.server";
 import { findExternalSourceById } from "~/models/externalSource.server";
 import { getAccessToken } from "../accessToken.server";
-import { pizzly } from "../pizzly.server";
 
 export class RegisterExternalSource {
   #prismaClient: PrismaClient;
@@ -49,6 +47,10 @@ export class RegisterExternalSource {
     connection: APIConnection
   ) {
     const accessToken = await getAccessToken(connection);
+    if (accessToken == null) {
+      throw new Error("No access token found for webhook");
+    }
+
     const secret = crypto.randomBytes(32).toString("hex");
 
     const webhookUrl = `${env.APP_ORIGIN}/api/v1/internal/webhooks/${connection.apiIdentifier}/${externalSource.id}`;

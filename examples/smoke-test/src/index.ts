@@ -18,7 +18,10 @@ const trigger = new Trigger({
       myDate: new Date(),
     });
 
-    await ctx.fireEvent({ name: "smoke.test", payload: { baz: "banana" } });
+    await ctx.fireEvent("start-fire", {
+      name: "smoke.test",
+      payload: { baz: "banana" },
+    });
 
     return { foo: "bar" };
   },

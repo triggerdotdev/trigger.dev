@@ -1,3 +1,3 @@
-import * as triggers from "./triggers";
+import * as events from "./events";
 
-export { triggers };
+export { events };

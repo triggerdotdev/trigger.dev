@@ -1,9 +1,12 @@
+import { ZodTypeAny } from "zod";
+
 export type Provider = {
   name: string;
   slug: string;
   icon: string;
   enabledFor: "all" | "admins" | "none";
   authentication: OAuthAuthentication | APIKeyAuthentication;
+  schemas: Record<string, ZodTypeAny>;
 };
 
 export type OAuthAuthentication = {
@@ -20,5 +23,5 @@ export type APIKeyAuthentication = {
 };
 
 export type ProviderCatalog = {
-  providers: Provider[];
+  providers: Record<string, Provider>;
 };

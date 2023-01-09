@@ -584,6 +584,7 @@ importers:
       '@types/debug': ^4.1.7
       '@types/node': ^18.11.9
       debug: ^4.3.4
+      internal-providers: workspace:*
       typescript: ^4.9.4
       zod: ^3.20.2
     dependencies:
@@ -594,6 +595,7 @@ importers:
       '@trigger.dev/tsconfig': link:../../config-packages/tsconfig
       '@types/debug': 4.1.7
       '@types/node': 18.11.15
+      internal-providers: link:../internal-providers
       typescript: 4.9.4
 
   packages/internal-platform:
@@ -623,11 +625,9 @@ importers:
       '@types/node': ^18.11.9
       tiny-invariant: ^1.2.0
       typescript: ^4.9.4
-      yaml: ^2.2.0
       zod: ^3.20.2
     dependencies:
       tiny-invariant: 1.3.1
-      yaml: 2.2.0
       zod: 3.20.2
     devDependencies:
       '@trigger.dev/tsconfig': link:../../config-packages/tsconfig
@@ -664,7 +664,7 @@ importers:
       '@trigger.dev/sdk': workspace:*
       '@trigger.dev/tsconfig': workspace:*
       '@types/node': ^18.11.9
-      internal-integrations: workspace:*
+      internal-providers: workspace:*
       rimraf: ^3.0.2
       tsup: ^6.5.0
       zod: ^3.20.2
@@ -674,7 +674,7 @@ importers:
     devDependencies:
       '@trigger.dev/tsconfig': link:../../config-packages/tsconfig
       '@types/node': 18.11.11
-      internal-integrations: link:../internal-integrations
+      internal-providers: link:../internal-providers
       rimraf: 3.0.2
       tsup: 6.5.0
 
@@ -17018,11 +17018,6 @@ packages:
   /yaml/1.10.2:
     resolution: {integrity: sha512-r3vXyErRCYJ7wg28yvBY5VSoAF8ZvlcW9/BwUzEtUsjvX/DKs24dIkuwjtuprwJJHsbyUbLApepYTR1BN4uHrg==}
     engines: {node: '>= 6'}
-
-  /yaml/2.2.0:
-    resolution: {integrity: sha512-auf7Gi6QwO7HW//GA9seGvTXVGWl1CM/ADWh1+RxtXr6XOxnT65ovDl9fTi4e0monEyJxCHqDpF6QnFDXmJE4g==}
-    engines: {node: '>= 14'}
-    dev: false
 
   /yargs-parser/20.2.9:
     resolution: {integrity: sha512-y11nGElTIV+CT3Zv9t7VKl+Q3hTQoT9a1Qzezhhl6Rp21gJ/IVTW7Z3y9EWXhuUBC2Shnf+DX0antecpAwSP8w==}

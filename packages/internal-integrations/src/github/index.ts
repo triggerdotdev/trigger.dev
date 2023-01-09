@@ -5,13 +5,8 @@ import {
   WebhookIntegration,
 } from "../types";
 import { Webhooks } from "@octokit/webhooks";
-
-import {
-  WebhookSourceSchema,
-  IssueEventSchema,
-  WebhookRepoSource,
-  WebhookOrganizationSource,
-} from "./schemas";
+import { z } from "zod";
+import { github } from "internal-providers";
 
 export class GitHubWebhookIntegration implements WebhookIntegration {
   keyForSource(source: unknown): string {
@@ -115,14 +110,10 @@ export class GitHubWebhookIntegration implements WebhookIntegration {
 }
 
 export const webhooks = new GitHubWebhookIntegration();
-export const schemas = {
-  IssueEventSchema,
-  WebhookSourceSchema,
-};
 
 async function registerRepositoryWebhook(
   config: WebhookConfig,
-  source: WebhookRepoSource
+  source: z.infer<typeof github.schemas.WebhookRepoSourceSchema>
 ) {
   // Create the webhook in github
   const response = await fetch(
@@ -160,7 +151,7 @@ async function registerRepositoryWebhook(
 
 async function registerOrganizationWebhook(
   config: WebhookConfig,
-  source: WebhookOrganizationSource
+  source: z.infer<typeof github.schemas.WebhookOrganizationSourceSchema>
 ) {
   // Create the webhook in github
   const response = await fetch(
@@ -197,7 +188,7 @@ async function registerOrganizationWebhook(
 }
 
 function parseWebhookSource(source: unknown) {
-  return WebhookSourceSchema.parse(source);
+  return github.schemas.WebhookSourceSchema.parse(source);
 }
 
 function omit<T extends Record<string, unknown>, K extends keyof T>(

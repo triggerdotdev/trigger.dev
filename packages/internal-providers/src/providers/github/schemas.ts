@@ -7,18 +7,12 @@ export const WebhookRepoSourceSchema = z.object({
   events: z.array(z.string()),
 });
 
-export type WebhookRepoSource = z.infer<typeof WebhookRepoSourceSchema>;
-
 export const WebhookOrganizationSourceSchema = z.object({
   subresource: z.literal("organization"),
   scopes: z.array(z.string()),
   org: z.string(),
   events: z.array(z.string()),
 });
-
-export type WebhookOrganizationSource = z.infer<
-  typeof WebhookOrganizationSourceSchema
->;
 
 export const WebhookSourceSchema = z.union([
   WebhookRepoSourceSchema,

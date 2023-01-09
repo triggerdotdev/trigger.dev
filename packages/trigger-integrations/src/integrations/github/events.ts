@@ -1,5 +1,5 @@
 import { TriggerEvent } from "@trigger.dev/sdk";
-import { github } from "internal-integrations";
+import { github } from "internal-providers";
 
 export function repoIssueEvent(params: {
   repo: string;

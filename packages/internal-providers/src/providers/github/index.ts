@@ -1,6 +1,6 @@
-import { Provider } from "../types";
+import * as schemas from "./schemas";
 
-export const githubProvider: Provider = {
+export const github = {
   name: "GitHub",
   slug: "github",
   icon: "/integrations/github.png",
@@ -17,4 +17,5 @@ export const githubProvider: Provider = {
       },
     },
   },
+  schemas,
 };

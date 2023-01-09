@@ -1,6 +1,6 @@
-import { Provider } from "../types";
+import * as schemas from "./schemas";
 
-export const slackProvider: Provider = {
+export const slack = {
   name: "Slack",
   slug: "slack",
   icon: "/integrations/slack.png",
@@ -17,4 +17,5 @@ export const slackProvider: Provider = {
       },
     },
   },
+  schemas,
 };

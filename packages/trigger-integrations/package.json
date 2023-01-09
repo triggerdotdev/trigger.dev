@@ -9,7 +9,7 @@
   ],
   "devDependencies": {
     "@trigger.dev/tsconfig": "workspace:*",
-    "internal-integrations": "workspace:*",
+    "internal-providers": "workspace:*",
     "@types/node": "^18.11.9",
     "rimraf": "^3.0.2",
     "tsup": "^6.5.0"

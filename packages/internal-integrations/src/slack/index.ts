@@ -6,20 +6,7 @@ import {
   PerformRequestOptions,
   RequestIntegration,
 } from "../types";
-import {
-  PostMessageSuccessResponseSchema,
-  PostMessageResponseSchema,
-  PostMessageBodySchema,
-  JoinConversationResponseSchema,
-  JoinConversationBodySchema,
-  ListConversationsResponseSchema,
-} from "./schemas";
-
-export const schemas = {
-  PostMessageSuccessResponseSchema,
-  PostMessageResponseSchema,
-  PostMessageBodySchema,
-};
+import { slack } from "internal-providers";
 
 import debug from "debug";
 
@@ -27,25 +14,25 @@ const log = debug("trigger:integrations:slack");
 
 class SlackRequestIntegration implements RequestIntegration {
   #joinChannelEndpoint = new HttpEndpoint<
-    typeof JoinConversationResponseSchema,
-    typeof JoinConversationBodySchema
+    typeof slack.schemas.JoinConversationResponseSchema,
+    typeof slack.schemas.JoinConversationBodySchema
   >({
-    response: JoinConversationResponseSchema,
+    response: slack.schemas.JoinConversationResponseSchema,
     method: "POST",
     path: "/conversations.join",
   });
 
   #listConversationsEndpoint = new HttpEndpoint({
-    response: ListConversationsResponseSchema,
+    response: slack.schemas.ListConversationsResponseSchema,
     method: "GET",
     path: "/conversations.list",
   });
 
   #postMessageEndpoint = new HttpEndpoint<
-    typeof PostMessageResponseSchema,
-    typeof PostMessageBodySchema
+    typeof slack.schemas.PostMessageResponseSchema,
+    typeof slack.schemas.PostMessageBodySchema
   >({
-    response: PostMessageResponseSchema,
+    response: slack.schemas.PostMessageResponseSchema,
     method: "POST",
     path: "/chat.postMessage",
   });
@@ -91,7 +78,7 @@ class SlackRequestIntegration implements RequestIntegration {
     params: any,
     cache?: CacheService
   ): Promise<PerformedRequestResponse> {
-    const parsedParams = PostMessageBodySchema.parse(params);
+    const parsedParams = slack.schemas.PostMessageBodySchema.parse(params);
 
     log("chat.postMessage %O", parsedParams);
 

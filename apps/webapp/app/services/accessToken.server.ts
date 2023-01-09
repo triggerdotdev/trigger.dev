@@ -7,7 +7,15 @@ export async function getAccessToken(
 ): Promise<string | null | undefined> {
   switch (connection.authenticationMethod) {
     case "OAUTH": {
-      return await pizzly.accessToken(connection.apiIdentifier, connection.id);
+      const accessToken = await pizzly.accessToken(
+        connection.apiIdentifier,
+        connection.id
+      );
+      if (accessToken == null) {
+        return undefined;
+      }
+      //todo if it's an OAuth1 API then this will fail, as Pizzly returns an object
+      return accessToken as string;
     }
     case "API_KEY": {
       const parsed = apiKeyConfigSchema.safeParse(

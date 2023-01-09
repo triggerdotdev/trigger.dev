@@ -1,6 +1,9 @@
 {
   "extends": "@trigger.dev/tsconfig/node18.json",
-  "include": ["./src/**/*.ts"],
+  "include": [
+    "./src/**/*.ts",
+    "../internal-providers/src/providers/slack/schemas.ts"
+  ],
   "compilerOptions": {
     "experimentalDecorators": true,
     "emitDecoratorMetadata": true,
