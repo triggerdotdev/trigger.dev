@@ -1,5 +1,6 @@
 import { github } from "./providers/github";
 import { slack } from "./providers/slack";
+import { shopify } from "./providers/shopify";
 import { Provider } from "./types";
 
 export type {
@@ -9,7 +10,7 @@ export type {
 } from "./types";
 
 const providerCatalog = {
-  providers: { github, slack },
+  providers: { github, slack, shopify },
 };
 
 export function getProviders(isAdmin: boolean): Provider[] {
@@ -28,4 +29,4 @@ export function getProviders(isAdmin: boolean): Provider[] {
   }) as Provider[];
 }
 
-export { github, slack };
+export { github, slack, shopify };

@@ -1,6 +1,6 @@
 import type { APIKeyAuthentication, Provider } from "internal-providers";
 import { marked } from "marked";
-import { Fragment, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import { PrimaryButton, SecondaryButton } from "../primitives/Buttons";
 import { StyledDialog } from "../primitives/Dialog";
 import { FormError } from "../primitives/FormError";
@@ -38,6 +38,16 @@ export function AddApiKeyButton({
     fetcher.type === "done" && !fetcher.data.success
       ? fetcher.data.errors
       : undefined;
+
+  useEffect(() => {
+    if (
+      fetcher.type === "done" &&
+      fetcher.state === "idle" &&
+      fetcher.data?.success === true
+    ) {
+      setIsOpen(false);
+    }
+  }, [fetcher.type, fetcher.state, fetcher.data]);
 
   return (
     <>
@@ -110,6 +120,27 @@ export function AddApiKeyButton({
               />
               {errors && <FormError errors={errors} path={["api_key"]} />}
             </InputGroup>
+
+            {authentication.additionalFields?.map((field) => {
+              const fieldName = `additionalFields[${field.key}]`;
+              return (
+                <InputGroup key={field.key}>
+                  <Label htmlFor={fieldName}>{field.name}</Label>
+                  <Input
+                    id={fieldName}
+                    name={fieldName}
+                    placeholder={field.placeholder}
+                    spellCheck={false}
+                  />
+                  {errors && (
+                    <FormError
+                      errors={errors}
+                      path={["additionalFields", field.key]}
+                    />
+                  )}
+                </InputGroup>
+              );
+            })}
 
             <div className="mt-4 flex justify-between">
               <SecondaryButton type="button" onClick={(e) => setIsOpen(false)}>

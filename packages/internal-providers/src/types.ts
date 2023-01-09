@@ -20,6 +20,13 @@ export type APIKeyAuthentication = {
   header_name: string;
   header_type: "access_token" | "bearer";
   documentation: string;
+  additionalFields?: {
+    key: string;
+    fieldType: "text";
+    name: string;
+    placeholder?: string;
+    description: string;
+  }[];
 };
 
 export type ProviderCatalog = {

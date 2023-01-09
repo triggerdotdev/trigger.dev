@@ -31,6 +31,7 @@ const requestSchema = z
       title: z.string().min(1),
       sourceId: z.string().optional(),
       serviceId: z.string().optional(),
+      additionalFields: z.record(z.string()).optional(),
     }),
   ])
   .and(baseSchema);
@@ -60,7 +61,26 @@ export const action = async ({ request }: ActionArgs) => {
 
   try {
     const formData = await request.formData();
-    const body = Object.fromEntries(formData.entries());
+    const formBody = Object.fromEntries(formData.entries());
+
+    let additionalFieldsArray = Object.entries(formBody).flatMap(
+      ([key, value]) => {
+        if (!key.startsWith("additionalFields[")) {
+          return [];
+        }
+        const fieldKey = key.replace("additionalFields[", "").replace("]", "");
+        return [[fieldKey, value as string]];
+      }
+    );
+
+    const body = {
+      ...formBody,
+      additionalFields:
+        additionalFieldsArray.length === 0
+          ? undefined
+          : Object.fromEntries(additionalFieldsArray),
+    };
+
     const parsedResult = requestSchema.safeParse(body);
 
     if (!parsedResult.success) {
@@ -122,6 +142,7 @@ export const action = async ({ request }: ActionArgs) => {
           authenticationMethod: "API_KEY",
           authenticationConfig: {
             api_key: parsed.api_key,
+            additionalFields: parsed.additionalFields,
           },
           type: APIConnectionType.HTTP,
         });
