@@ -27,6 +27,7 @@ export function ConnectionSelector({
   connections,
   selectedConnectionId,
   organizationId,
+  className,
   popoverAlign = "left",
 }: Props) {
   const fetcher = useFetcher();
@@ -47,7 +48,7 @@ export function ConnectionSelector({
   );
 
   return (
-    <div className="w-full max-w-max">
+    <div className={`w-full max-w-max ${className}`}>
       <Popover className="relative">
         {({ open }) => (
           <>
