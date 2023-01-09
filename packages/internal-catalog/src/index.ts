@@ -26,7 +26,7 @@ const oAuthIntegrationAuthenticationSchema = z.object({
 const apiKeyIntegrationAuthenticationSchema = z.object({
   type: z.literal("api_key"),
   header_name: z.string(),
-  header_type: z.string(),
+  header_type: z.union([z.literal("access_token"), z.literal("bearer")]),
   documentation: z.string(),
 });
 
