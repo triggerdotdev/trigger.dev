@@ -15,6 +15,7 @@ import {
   Header2,
   Header3,
 } from "~/components/primitives/text/Headers";
+import { SubTitle } from "~/components/primitives/text/SubTitle";
 import { Title } from "~/components/primitives/text/Title";
 import { runStatusLabel } from "~/components/runs/runStatus";
 import { triggerTypeIcon } from "~/components/triggers/triggerTypes";
@@ -53,9 +54,9 @@ export default function Page() {
         <CreateNewWorkflowNoWorkflows />
       ) : (
         <>
-          <Header2 size="small" className="mb-2 text-slate-400">
+          <SubTitle>
             {workflows.length} active workflow{workflows.length > 1 ? "s" : ""}
-          </Header2>
+          </SubTitle>
           <WorkflowList
             workflows={workflows}
             currentOrganizationSlug={currentOrganization.slug}
