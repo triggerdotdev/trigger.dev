@@ -38,6 +38,14 @@ export function createPulsarClient(options?: ClientOptions): PulsarClient {
     ? new AuthenticationToken({ token: opts.token })
     : oauth2AuthenticationFromEnv();
 
+  if (process.env.PULSAR_DEBUG) {
+    Pulsar.Client.setLogHandler((level, file, line, message) => {
+      console.log("[%s][%s:%d] %s", level, file, line, message);
+    });
+  }
+
+  console.log(`Connecting to pulsar instance at ${serviceUrl}...`);
+
   return new Pulsar.Client({
     ...opts,
     serviceUrl,
@@ -54,8 +62,6 @@ function oauth2AuthenticationFromEnv(): AuthenticationOauth2 | undefined {
   if (!clientId || !clientSecret || !issuerUrl || !audience) {
     return undefined;
   }
-
-  console.log("Using OAuth2 authentication for Pulsar client");
 
   return new AuthenticationOauth2({
     type: "sn_service_account",

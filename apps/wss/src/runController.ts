@@ -53,7 +53,7 @@ export class WorkflowRunController {
       client: pulsarClient,
       config: {
         topic: Topics.runCommandResponses,
-        subscription: `run-${this.#runId}`,
+        subscription: `websocketserver-run-${this.#runId}`,
         subscriptionType: "Exclusive",
         subscriptionInitialPosition: "Latest",
       },

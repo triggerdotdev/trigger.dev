@@ -1,8 +1,4 @@
-import {
-  commandCatalog,
-  CommandCatalog,
-  ZodPublisher,
-} from "internal-platform";
+import { commandCatalog, ZodPublisher } from "internal-platform";
 import { Topics } from "internal-pulsar/index";
 import { createServer } from "node:http";
 import process from "node:process";

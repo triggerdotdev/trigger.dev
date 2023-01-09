@@ -1,21 +1,20 @@
 import { JsonSchema } from "@trigger.dev/common-schemas";
 import { DeliverEmailSchema } from "emails";
-import type { PulsarClient } from "internal-pulsar";
-import { Topics } from "internal-pulsar";
-import { createPulsarClient } from "internal-pulsar";
-import {
+import type {
   CommandCatalog,
-  commandResponseCatalog,
   CommandResponseCatalog,
   TriggerCatalog,
 } from "internal-platform";
-import { triggerCatalog } from "internal-platform";
 import {
   commandCatalog,
+  commandResponseCatalog,
+  triggerCatalog,
   ZodPublisher,
   ZodPubSub,
   ZodSubscriber,
 } from "internal-platform";
+import type { PulsarClient } from "internal-pulsar";
+import { createPulsarClient, Topics } from "internal-pulsar";
 import { z } from "zod";
 import { env } from "~/env.server";
 import { findIntegrationRequestById } from "~/models/integrationRequest.server";
@@ -44,7 +43,7 @@ let triggerPublisher: ZodPublisher<TriggerCatalog>;
 let commandResponsePublisher: ZodPublisher<CommandResponseCatalog>;
 let commandSubscriber: ZodSubscriber<CommandCatalog>;
 let taskQueue: ZodPubSub<typeof taskQueueCatalog>;
-let requestPubSub: ZodPubSub<typeof RequestCatalog>;
+let requestTaskQueue: ZodPubSub<typeof RequestCatalog>;
 
 declare global {
   var __pulsar_client__: typeof pulsarClient;
@@ -52,14 +51,10 @@ declare global {
   var __command_subscriber__: typeof commandSubscriber;
   var __command_response_publisher__: typeof commandResponsePublisher;
   var __task_queue__: typeof taskQueue;
-  var __request_pub_sub__: typeof requestPubSub;
+  var __request_task_queue__: typeof requestTaskQueue;
 }
 
 export async function init() {
-  if (pulsarClient) {
-    return;
-  }
-
   if (!env.PULSAR_ENABLED) {
     console.log("📡 Message Broker disabled");
     return;
@@ -75,50 +70,55 @@ export async function init() {
   }
 
   if (env.NODE_ENV === "production") {
-    triggerPublisher = await createTriggerPublisher();
+    triggerPublisher = createTriggerPublisher();
   } else {
     if (!global.__trigger_publisher__) {
-      global.__trigger_publisher__ = await createTriggerPublisher();
+      global.__trigger_publisher__ = createTriggerPublisher();
     }
     triggerPublisher = global.__trigger_publisher__;
   }
 
   if (env.NODE_ENV === "production") {
-    commandSubscriber = await createCommandSubscriber();
+    commandSubscriber = createCommandSubscriber();
   } else {
     if (!global.__command_subscriber__) {
-      global.__command_subscriber__ = await createCommandSubscriber();
+      global.__command_subscriber__ = createCommandSubscriber();
     }
     commandSubscriber = global.__command_subscriber__;
   }
 
   if (env.NODE_ENV === "production") {
-    commandResponsePublisher = await createCommandResponsePublisher();
+    commandResponsePublisher = createCommandResponsePublisher();
   } else {
     if (!global.__command_response_publisher__) {
-      global.__command_response_publisher__ =
-        await createCommandResponsePublisher();
+      global.__command_response_publisher__ = createCommandResponsePublisher();
     }
     commandResponsePublisher = global.__command_response_publisher__;
   }
 
   if (env.NODE_ENV === "production") {
-    taskQueue = await createTaskQueue();
+    taskQueue = createTaskQueue();
   } else {
     if (!global.__task_queue__) {
-      global.__task_queue__ = await createTaskQueue();
+      global.__task_queue__ = createTaskQueue();
     }
     taskQueue = global.__task_queue__;
   }
 
   if (env.NODE_ENV === "production") {
-    requestPubSub = await createRequestPubSub();
+    requestTaskQueue = createRequestTaskQueue();
   } else {
-    if (!global.__request_pub_sub__) {
-      global.__request_pub_sub__ = await createRequestPubSub();
+    if (!global.__request_task_queue__) {
+      global.__request_task_queue__ = createRequestTaskQueue();
     }
-    requestPubSub = global.__request_pub_sub__;
+    requestTaskQueue = global.__request_task_queue__;
   }
+
+  await commandResponsePublisher.initialize();
+  await triggerPublisher.initialize();
+  await taskQueue.initialize();
+  await requestTaskQueue.initialize();
+  await commandSubscriber.initialize();
 }
 
 function createClient() {
@@ -131,7 +131,7 @@ function createClient() {
   return client;
 }
 
-async function createTriggerPublisher() {
+function createTriggerPublisher() {
   const producer = new ZodPublisher({
     client: pulsarClient,
     config: {
@@ -140,17 +140,15 @@ async function createTriggerPublisher() {
     schema: triggerCatalog,
   });
 
-  await producer.initialize();
-
   return producer;
 }
 
-async function createCommandSubscriber() {
+function createCommandSubscriber() {
   const subscriber = new ZodSubscriber({
     client: pulsarClient,
     config: {
       topic: Topics.runCommands,
-      subscription: "webapp",
+      subscription: "webapp-commands",
       subscriptionType: "KeyShared",
       subscriptionInitialPosition: "Earliest",
     },
@@ -239,12 +237,10 @@ async function createCommandSubscriber() {
     },
   });
 
-  await subscriber.initialize();
-
   return subscriber;
 }
 
-async function createCommandResponsePublisher() {
+function createCommandResponsePublisher() {
   const producer = new ZodPublisher({
     client: pulsarClient,
     config: {
@@ -252,8 +248,6 @@ async function createCommandResponsePublisher() {
     },
     schema: commandResponseCatalog,
   });
-
-  await producer.initialize();
 
   return producer;
 }
@@ -265,12 +259,12 @@ const RequestCatalog = {
   },
 };
 
-async function createRequestPubSub() {
+function createRequestTaskQueue() {
   const pubSub = new ZodPubSub<typeof RequestCatalog>({
     client: pulsarClient,
     topic: Topics.integrationWorker,
     subscriberConfig: {
-      subscription: "webapp",
+      subscription: "webapp-requests",
       subscriptionType: "Shared",
     },
     publisherConfig: {
@@ -304,8 +298,6 @@ async function createRequestPubSub() {
       },
     },
   });
-
-  await pubSub.initialize();
 
   return pubSub;
 }
@@ -345,12 +337,12 @@ const taskQueueCatalog = {
   },
 };
 
-async function createTaskQueue() {
+function createTaskQueue() {
   const taskQueue = new ZodPubSub({
     client: pulsarClient,
     topic: Topics.appTaskWorker,
     subscriberConfig: {
-      subscription: "webapp",
+      subscription: "webapp-queue",
       subscriptionType: "Shared",
     },
     publisherConfig: {
@@ -517,9 +509,7 @@ async function createTaskQueue() {
     },
   });
 
-  await taskQueue.initialize();
-
   return taskQueue;
 }
 
-export { taskQueue, requestPubSub };
+export { taskQueue, requestTaskQueue };

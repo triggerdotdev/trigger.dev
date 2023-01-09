@@ -12,6 +12,7 @@ import {
 } from "./messageCatalogSchema";
 
 import { z, ZodError } from "zod";
+import { ZodPubSubStatus } from "./types";
 
 export type ZodSubscriberHandlers<
   TConsumerSchema extends MessageCatalogSchema
@@ -39,6 +40,7 @@ export class ZodSubscriber<SubscriberSchema extends MessageCatalogSchema> {
 
   #subscriber?: PulsarConsumer;
   #client: PulsarClient;
+  #status: ZodPubSubStatus = "waitingToConnect";
 
   #logger: Logger;
 
@@ -51,6 +53,12 @@ export class ZodSubscriber<SubscriberSchema extends MessageCatalogSchema> {
   }
 
   public async initialize(): Promise<boolean> {
+    if (this.#status !== "waitingToConnect") {
+      return this.#status === "ready";
+    }
+
+    this.#status = "initializing";
+
     try {
       this.#logger.debug(
         `Initializing subscriber with config ${JSON.stringify(this.#config)}`
@@ -61,8 +69,12 @@ export class ZodSubscriber<SubscriberSchema extends MessageCatalogSchema> {
         listener: this.#onMessage.bind(this),
       });
 
+      this.#status = "ready";
+
       return true;
     } catch (e) {
+      this.#status = "error";
+
       this.#logger.error("Error initializing subscriber", e);
 
       return false;
@@ -139,6 +151,8 @@ export class ZodSubscriber<SubscriberSchema extends MessageCatalogSchema> {
     const properties = messageSchema.properties.parse(rawProperties);
 
     this.#logger.debug("Received message, calling handler", {
+      topic: this.#config.topic,
+      subscription: this.#config.subscription,
       type: rawMessage.type,
       message,
       properties,

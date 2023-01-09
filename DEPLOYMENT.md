@@ -5,8 +5,8 @@
 ### Generic client credentials
 
 ```sh
-snctl auth export-service-account webapp-sa --key-file webapp-credentials.json
-snctl auth export-service-account wss-sa --key-file wss-credentials.json
+snctl auth export-service-account webapp --key-file webapp-credentials.json
+snctl auth export-service-account websocketserver --key-file wss-credentials.json
 ```
 
 ### Topics

@@ -1,7 +1,7 @@
 import type { IntegrationRequest, WorkflowRunStep } from ".prisma/client";
 import type { PrismaClient } from "~/db.server";
 import { prisma } from "~/db.server";
-import { requestPubSub } from "../messageBroker.server";
+import { requestTaskQueue } from "../messageBroker.server";
 
 export class StartIntegrationRequest {
   #prismaClient: PrismaClient;
@@ -30,7 +30,7 @@ export class StartIntegrationRequest {
       },
     });
 
-    requestPubSub.publish("PERFORM_INTEGRATION_REQUEST", {
+    requestTaskQueue.publish("PERFORM_INTEGRATION_REQUEST", {
       id: request.id,
     });
   }

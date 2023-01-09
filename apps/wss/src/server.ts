@@ -330,7 +330,7 @@ export class TriggerServer {
         client: pulsarClient,
         config: {
           topic: Topics.triggers,
-          subscription: `workflow-${this.#workflowId}`,
+          subscription: `websocketserver-workflow-${this.#workflowId}`,
           subscriptionType: "Shared",
           subscriptionInitialPosition: "Earliest",
         },
