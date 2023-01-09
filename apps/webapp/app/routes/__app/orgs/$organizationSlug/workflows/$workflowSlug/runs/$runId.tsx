@@ -367,7 +367,7 @@ function StepPanel({
   let borderClass = "border-slate-800";
   switch (status) {
     case "ERROR":
-      borderClass = "border-red-700";
+      borderClass = "border-rose-700";
       break;
     case "PENDING":
       borderClass = "border-blue-700";
@@ -603,12 +603,12 @@ function IntegrationRequestStep({
       </Header2>
       {request.service.connection === null && (
         <>
-          <div className="rounded-md bg-red-500/10 border border-red-600 p-3 flex gap-2 items-top mb-2">
-            <ExclamationCircleIcon className="h-6 w-6 mr-1 text-red-500" />
-            <div>
-              <Body className="mb-2">
-                You need to connect {request.service.integration.name} to
-                continue this workflow
+          <div className="flex items-center gap-2 rounded-md bg-rose-500/10 border border-rose-600 p-3 mb-2">
+            <ExclamationCircleIcon className="h-6 w-6 mr-1 text-rose-500" />
+            <div className="flex gap-2 items-center justify-between flex-wrap w-full">
+              <Body>
+                You need to connect to {request.service.integration.name} to
+                continue this workflow.
               </Body>
               <BasicConnectButton
                 key={request.service.slug}
@@ -659,12 +659,12 @@ function Error({ error }: { error: Run["error"] }) {
   return (
     <>
       <div className="flex gap-2 mb-2 mt-3 ">
-        <ExclamationTriangleIcon className="h-5 w-5 text-red-600" />
+        <ExclamationTriangleIcon className="h-5 w-5 text-rose-500" />
         <Body size="small" className="text-slate-300">
           Failed with error:
         </Body>
       </div>
-      <Panel className="border border-red-600">
+      <Panel className="border border-rose-600">
         <Header4 className="font-mono">
           {error.name}: {error.message}
         </Header4>
