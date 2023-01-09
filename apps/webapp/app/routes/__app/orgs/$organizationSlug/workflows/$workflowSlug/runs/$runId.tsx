@@ -80,12 +80,12 @@ export default function Page() {
   return (
     <>
       <div className="flex sticky -top-12 py-4 -mt-4 -ml-1 pl-1 bg-slate-850 justify-between items-center z-10">
-        <Header1>Run {run.id}</Header1>
+        <Header1 className="truncate">Run {run.id}</Header1>
         <div className="flex gap-2">
           {run.isTest && (
             <Body
               size="extra-small"
-              className="flex items-center pl-2 pr-3 py-0.5 rounded uppercase tracking-wide text-slate-500"
+              className="flex items-center pl-2 pr-3 py-0.5 rounded uppercase whitespace-nowrap tracking-wide text-slate-500"
             >
               <BeakerIcon className="h-4 w-4 mr-1" />
               Test Run
@@ -126,7 +126,7 @@ export default function Page() {
         </div>
       </div>
 
-      <ul className="flex gap-6 ml-[-3px]">
+      <ul className="flex gap-6 ml-[-3px] flex-wrap">
         <li className="flex gap-2 items-center">
           {runStatusIcon(run.status, "large")}
           <Header2 size="small" className="text-slate-400">
