@@ -30,7 +30,7 @@ function Webhook({ webhook }: { webhook: WebhookEventTrigger }) {
       <Header2 size="small" className="text-slate-300 mb-2">
         {webhook.name}
       </Header2>
-      <div className="flex flex-col gap-1 mb-2">
+      <div className="flex flex-col gap-1">
         {webhook.source &&
           Object.entries(webhook.source).map(([key, value]) => (
             <div key={key} className="flex gap-2 items-baseline">

@@ -247,6 +247,7 @@ function TriggerStep({ trigger }: { trigger: Trigger }) {
             code={stringifyCode(trigger.input)}
             align="top"
             maxHeight="150px"
+            className="mt-2"
           />
         )}
       </Panel>
