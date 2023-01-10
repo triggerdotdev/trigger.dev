@@ -1,7 +1,8 @@
-import type {
+import {
   CacheService,
   NormalizedResponse,
   PerformedRequestResponse,
+  shopify,
 } from "internal-integrations";
 import { slack } from "internal-integrations";
 import type { PrismaClient } from "~/db.server";
@@ -227,6 +228,14 @@ export class PerformIntegrationRequest {
     switch (service) {
       case "slack": {
         return slack.requests.perform({
+          accessInfo,
+          endpoint: integrationRequest.endpoint,
+          params: integrationRequest.params,
+          cache,
+        });
+      }
+      case "shopify": {
+        return shopify.requests.perform({
           accessInfo,
           endpoint: integrationRequest.endpoint,
           params: integrationRequest.params,

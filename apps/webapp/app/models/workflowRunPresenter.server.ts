@@ -6,8 +6,8 @@ import {
   WaitSchema,
 } from "@trigger.dev/common-schemas";
 import type { DisplayProperties } from "internal-integrations";
-import { slack } from "internal-integrations";
-import { Provider } from "internal-providers";
+import { slack, shopify } from "internal-integrations";
+import type { Provider } from "internal-providers";
 import invariant from "tiny-invariant";
 import type { PrismaClient } from "~/db.server";
 import { prisma } from "~/db.server";
@@ -125,6 +125,12 @@ async function parseStep(
       switch (externalService.slug) {
         case "slack":
           displayProperties = slack.requests.displayProperties(
+            original.integrationRequest.endpoint,
+            original.integrationRequest.params
+          );
+          break;
+        case "shopify":
+          displayProperties = shopify.requests.displayProperties(
             original.integrationRequest.endpoint,
             original.integrationRequest.params
           );
