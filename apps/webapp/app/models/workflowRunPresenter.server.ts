@@ -72,12 +72,11 @@ async function parseStep(
   >["tasks"][number],
   integrations: Provider[]
 ) {
-  const status = stepStatus(original.finishedAt);
   const base = {
     id: original.id,
     startedAt: original.startedAt,
     finishedAt: original.finishedAt,
-    status,
+    status: original.status,
   };
   switch (original.type) {
     case "LOG_MESSAGE":
