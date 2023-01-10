@@ -36,13 +36,19 @@ jobs:
           key: ${{ runner.os }}-buildx-${{ github.sha }}
           restore-keys: |
             ${{ runner.os }}-buildx-
+      - name: 🐳 Docker login
+        uses: docker/login-action@v2
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: 🐳 Docker build
         uses: docker/build-push-action@v3
         with:
           context: .
           file: apps/webapp/Dockerfile
-          push: false
+          push: true
+          tags: maverickdotdev/triggerdotdev:latest
           build-args: |
             COMMIT_SHA=${{ github.sha }}
           cache-from: type=local,src=/tmp/.buildx-cache
