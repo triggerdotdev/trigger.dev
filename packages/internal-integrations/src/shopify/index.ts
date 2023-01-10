@@ -8,11 +8,9 @@ import {
 import { Client, createClient, gql } from "@urql/core";
 import { shopify } from "internal-providers";
 import { z } from "zod";
+import { searchProductVariantsQuery } from "./queries";
 
 const log = debug("trigger:integrations:slack");
-type SearchVariantsSuccessResponse = z.infer<
-  typeof shopify.schemas.SearchVariantsSuccessResponseSchema
->;
 class ShopifyRequestIntegration implements RequestIntegration {
   constructor(
     private readonly baseUrlFormat: string = "https://{shop}.myshopify.com/admin/api/2021-07/graphql.json"
@@ -68,51 +66,16 @@ class ShopifyRequestIntegration implements RequestIntegration {
     log("productVariants.search %O", parsedParams);
 
     try {
-      const firstLast = buildFirstLast(parsedParams);
       const filters = parsedParams.filter
         ? buildFilter(parsedParams.filter)
         : undefined;
 
-      const query = `
-        query {
-          productVariants(${firstLast}${
-        filters ? `, query: "${filters}"` : ""
-      }) {
-            edges {
-              node {
-                id
-                title
-                createdAt
-                updatedAt
-                price
-                product {
-                  id
-                }
-                sku
-                barcode
-                compareAtPrice
-                fulfillmentService {
-                  id
-                }
-                image {
-                  id
-                }
-                inventoryQuantity
-                requiresShipping
-                position
-                taxCode
-                taxable
-                weight
-                weightUnit
-              }
-            }
-            pageInfo {
-              hasNextPage
-            }
-          }
-        }
-      `;
-      const result = await client.query(query, {}).toPromise();
+      const result = await client
+        .query(searchProductVariantsQuery, {
+          first: parsedParams.first,
+          filters: filters,
+        })
+        .toPromise();
 
       if (result.error) {
         log("productVariants.search failed %O", result.error);
@@ -140,11 +103,9 @@ class ShopifyRequestIntegration implements RequestIntegration {
         };
       }
 
-      const parsed = VariantsSearchQueryResultSchema.parse(result.data);
-
-      const response: SearchVariantsSuccessResponse = {
-        count: parsed.productVariants.edges.length,
-        productVariants: parsed.productVariants.edges.map((p) => ({
+      const response = {
+        count: result.data.productVariants.edges.length,
+        productVariants: result.data.productVariants.edges.map((p: any) => ({
           id: p.node.id,
           title: p.node.title,
           createdAt: p.node.createdAt,
@@ -166,11 +127,14 @@ class ShopifyRequestIntegration implements RequestIntegration {
         })),
       };
 
+      const validatedResponse =
+        shopify.schemas.SearchVariantsSuccessResponseSchema.parse(response);
+
       const performedRequest = {
         ok: true,
         isRetryable: false,
         response: {
-          output: response,
+          output: validatedResponse,
           context: {},
         },
       };
@@ -194,20 +158,6 @@ class ShopifyRequestIntegration implements RequestIntegration {
 
 export const requests = new ShopifyRequestIntegration();
 
-function buildFirstLast(
-  firstLast: z.infer<typeof shopify.schemas.FirstOrLastSchema>
-) {
-  let first = firstLast.first;
-  if (first === undefined && firstLast.last === undefined) {
-    first = 100;
-  }
-
-  if (first !== undefined) {
-    return `first: ${first}`;
-  }
-  return `last: ${firstLast.last}`;
-}
-
 function buildFilter(filter: Record<string, string[]>): string {
   let filterQueries: string[] = [];
 
@@ -219,12 +169,3 @@ function buildFilter(filter: Record<string, string[]>): string {
 
   return filterQueries.join(" AND ");
 }
-
-const VariantsSearchQueryResultSchema = z.object({
-  productVariants: z.object({
-    edges: z.array(z.object({ node: shopify.schemas.ProductVariantSchema })),
-    pageInfo: z.object({
-      hasNextPage: z.boolean(),
-    }),
-  }),
-});
