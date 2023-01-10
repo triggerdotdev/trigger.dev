@@ -133,6 +133,7 @@
           "autoUpgradeMinorVersions": true,
           "instanceSize": "db.m5.2xlarge",
           "storage": 4000,
+          "maxStorage": 4000,
           "private": true,
           "deletionProtection": true,
           "port": 5432
