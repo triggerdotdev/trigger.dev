@@ -144,6 +144,7 @@ function WorkflowList({
                       {workflow.integrations.source && (
                         <ApiLogoIcon
                           integration={workflow.integrations.source}
+                          size="regular"
                         />
                       )}
                       {workflow.integrations.services.map((service) => {
