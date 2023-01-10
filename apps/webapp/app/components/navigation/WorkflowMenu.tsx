@@ -44,9 +44,9 @@ export function WorkflowMenu() {
                 />
                 <span className="transition">
                   {currentWorkflow ? (
-                    <span>{currentWorkflow.title}</span>
+                    <span className="truncate">{currentWorkflow.title}</span>
                   ) : (
-                    <span className="">Select Workflow</span>
+                    <span className="truncate">Select Workflow</span>
                   )}
                 </span>
                 <ChevronUpDownIcon

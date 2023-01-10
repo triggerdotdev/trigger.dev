@@ -41,13 +41,15 @@ export function OrganizationMenu() {
                 />
                 <span className="transition">
                   {currentOrganization ? (
-                    <span>{currentOrganization.title}</span>
+                    <span className="truncate">
+                      {currentOrganization.title}
+                    </span>
                   ) : isNewPage ? (
-                    <span className={actionClassNames}>
+                    <span className={`${actionClassNames}, "truncate"`}>
                       Create new Organization
                     </span>
                   ) : (
-                    <span className="">Select organization</span>
+                    <span className="truncate">Select organization</span>
                   )}
                 </span>
                 <ChevronUpDownIcon
