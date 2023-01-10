@@ -13,6 +13,7 @@ export function PanelHeader({
   finishedAt,
   integration,
   runId,
+  name,
 }: {
   icon: ReactNode;
   title: string;
@@ -20,6 +21,7 @@ export function PanelHeader({
   finishedAt?: Date | null;
   integration?: string;
   runId?: string;
+  name?: string;
 }) {
   return (
     <div className="flex mb-4 pb-3 justify-between items-center border-b border-slate-700">
@@ -28,6 +30,14 @@ export function PanelHeader({
         <Body size="small" className="uppercase text-slate-400 font-semibold">
           {title}
         </Body>
+        {name && (
+          <div className="flex gap-3 items-center ml-2">
+            <span className="block h-5 border-l border-slate-700"></span>
+            <Body size="small" className="text-slate-400">
+              {name}
+            </Body>
+          </div>
+        )}
       </div>
       <ul className="flex justify-end items-center gap-4">
         <div className={workflowNodeFlexClasses}>

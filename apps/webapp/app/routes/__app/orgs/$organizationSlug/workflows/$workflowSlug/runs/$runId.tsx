@@ -159,7 +159,7 @@ export default function Page() {
       {run.status === "SUCCESS" && (
         <>
           <div className="h-3 w-full ml-[10px] border-l border-slate-700"></div>
-          <Panel className="">
+          <Panel>
             <PanelHeader
               icon={<CheckCircleIcon className="h-6 w-6 text-green-500" />}
               title="Run complete"
@@ -239,6 +239,7 @@ function TriggerStep({ trigger }: { trigger: Trigger }) {
           title={triggerInfo[trigger.type].label}
           startedAt={trigger.startedAt}
           finishedAt={null}
+          name="Initial wait"
           // integration={trigger.type === "WEBHOOK"}
         />
         <TriggerBody trigger={trigger} />
