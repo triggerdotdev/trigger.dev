@@ -17,8 +17,8 @@ export function Header({ children }: HeaderProps) {
 
   return (
     <div className="flex w-full gap-2 items-center border-b border-slate-800 bg-slate-950 py-1 pl-4 pr-3">
-      <Link to="/" aria-label="Trigger" className="mr-2">
-        <Logo className="h-5" />
+      <Link to="/" aria-label="Trigger" className="flex shrink-0 mr-2 w-28">
+        <Logo className="" />
       </Link>
       <OrganizationMenu />
       <WorkflowMenu />
