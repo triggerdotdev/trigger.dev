@@ -338,6 +338,7 @@ function WorkflowStep({ step }: { step: Step }) {
                 <CodeBlock
                   code={stringifyCode(step.input.properties)}
                   align="top"
+                  maxHeight="150px"
                 />
               )}
           </div>
