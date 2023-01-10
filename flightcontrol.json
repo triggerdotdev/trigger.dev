@@ -25,7 +25,7 @@
           "type": "fargate",
           "buildType": "docker",
           "dockerfilePath": "./apps/webapp/Dockerfile",
-          "dockerContext": "./apps/webapp",
+          "dockerContext": ".",
           "cpu": 4,
           "memory": 8,
           "minInstances": 2,
@@ -52,7 +52,6 @@
             "p-db"
           ],
           "envVariables": {
-            "NIXPACKS_CONFIG_FILE": "./apps/webapp/nixpacks.toml",
             "FROM_EMAIL": "hello@email.trigger.dev",
             "REPLY_TO_EMAIL": "hello@trigger.dev",
             "RESEND_API_KEY": {
@@ -114,7 +113,6 @@
             "apps/wss/nixpacks.toml"
           ],
           "envVariables": {
-            "NIXPACKS_CONFIG_FILE": "./apps/wss/nixpacks.toml",
             "PULSAR_CLIENT_ID": {
               "fromParameterStore": "PROD_WSS_PULSAR_CLIENT_ID"
             },
