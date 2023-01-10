@@ -43,7 +43,7 @@ RUN pnpm run build --filter=webapp...
 
 # Runner
 FROM node:lts-bullseye-slim AS runner
-RUN apt-get update && apt-get install -y openssl
+RUN apt-get update && apt-get install openssl g++ make wget python3 -y
 RUN npm install turbo -g
 WORKDIR /app
 RUN corepack enable
@@ -53,7 +53,6 @@ RUN adduser --system --uid 1001 remixjs
 RUN chown -R remixjs:nodejs /app
 USER remixjs
 
-RUN apt-get update && apt-get install openssl g++ make wget python3 -y
 ENV PULSAR_CPP_CLIENT_VERSION=2.10.3
 RUN wget https://archive.apache.org/dist/pulsar/pulsar-${PULSAR_CPP_CLIENT_VERSION}/DEB/apache-pulsar-client.deb -q
 RUN wget https://archive.apache.org/dist/pulsar/pulsar-${PULSAR_CPP_CLIENT_VERSION}/DEB/apache-pulsar-client-dev.deb -q
