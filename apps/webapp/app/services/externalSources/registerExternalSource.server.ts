@@ -5,7 +5,7 @@ import type { PrismaClient } from "~/db.server";
 import { prisma } from "~/db.server";
 import { env } from "~/env.server";
 import { findExternalSourceById } from "~/models/externalSource.server";
-import { getAccessInfo } from "../accessInfo.server";
+import { AccessInfo, getAccessInfo } from "../accessInfo.server";
 
 export class RegisterExternalSource {
   #prismaClient: PrismaClient;
@@ -46,8 +46,8 @@ export class RegisterExternalSource {
     externalSource: ExternalSource,
     connection: APIConnection
   ) {
-    const accessToken = await getAccessInfo(connection);
-    if (accessToken == null) {
+    const accessInfo = await getAccessInfo(connection);
+    if (accessInfo == null) {
       throw new Error("No access token found for webhook");
     }
 
@@ -57,7 +57,7 @@ export class RegisterExternalSource {
 
     const serviceWebhook = await this.#registerWebhookWithConnection(
       externalSource.service,
-      accessToken,
+      accessInfo,
       webhookUrl,
       secret,
       externalSource.source
@@ -114,7 +114,7 @@ export class RegisterExternalSource {
 
   async #registerWebhookWithConnection(
     serviceIdentifier: string,
-    accessToken: string,
+    accessInfo: AccessInfo,
     callbackUrl: string,
     secret: string,
     data: unknown
@@ -125,7 +125,7 @@ export class RegisterExternalSource {
           {
             callbackUrl,
             secret,
-            accessToken,
+            accessInfo,
           },
           data
         );

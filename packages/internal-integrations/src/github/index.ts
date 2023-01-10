@@ -1,5 +1,4 @@
 import {
-  AccessInfo,
   DisplayProperty,
   HandleWebhookOptions,
   WebhookConfig,
@@ -8,6 +7,7 @@ import {
 import { Webhooks } from "@octokit/webhooks";
 import { z } from "zod";
 import { github } from "internal-providers";
+import { getAccessToken } from "../accessInfo";
 
 export class GitHubWebhookIntegration implements WebhookIntegration {
   keyForSource(source: unknown): string {
@@ -124,7 +124,7 @@ async function registerRepositoryWebhook(
       headers: {
         "Content-Type": "application/json",
         Accept: "application/vnd.github+json",
-        Authorization: `Bearer ${bearerToken(config.accessInfo)}`,
+        Authorization: `Bearer ${getAccessToken(config.accessInfo)}`,
         "X-GitHub-Api-Version": "2022-11-28",
       },
       body: JSON.stringify({
@@ -162,7 +162,7 @@ async function registerOrganizationWebhook(
       headers: {
         "Content-Type": "application/json",
         Accept: "application/vnd.github+json",
-        Authorization: `Bearer ${bearerToken(config.accessInfo)}`,
+        Authorization: `Bearer ${getAccessToken(config.accessInfo)}`,
         "X-GitHub-Api-Version": "2022-11-28",
       },
       body: JSON.stringify({
@@ -186,12 +186,6 @@ async function registerOrganizationWebhook(
   const webhook = await response.json();
 
   return webhook;
-}
-
-function bearerToken(accessInfo: AccessInfo) {
-  return accessInfo.type === "oauth2"
-    ? accessInfo.accessToken
-    : accessInfo.api_key;
 }
 
 function parseWebhookSource(source: unknown) {

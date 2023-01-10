@@ -1,14 +1,7 @@
 import type { APIConnection } from ".prisma/client";
+import type { AccessInfo } from "internal-integrations";
 import { apiKeyConfigSchema } from "~/models/apiConnection.server";
 import { pizzly } from "./pizzly.server";
-
-export type AccessInfo =
-  | { type: "oauth2"; accessToken: string }
-  | {
-      type: "api_key";
-      api_key: string;
-      additionalFields?: Record<string, string>;
-    };
 
 export async function getAccessInfo(
   connection: APIConnection

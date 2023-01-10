@@ -10,6 +10,7 @@ import {
 import { slack } from "internal-providers";
 
 import debug from "debug";
+import { getAccessToken } from "../accessInfo";
 
 const log = debug("trigger:integrations:slack");
 
@@ -83,10 +84,7 @@ class SlackRequestIntegration implements RequestIntegration {
 
     log("chat.postMessage %O", parsedParams);
 
-    const accessToken =
-      accessInfo.type === "oauth2"
-        ? accessInfo.accessToken
-        : accessInfo.api_key;
+    const accessToken = getAccessToken(accessInfo);
 
     const service = new HttpService({
       accessToken,
