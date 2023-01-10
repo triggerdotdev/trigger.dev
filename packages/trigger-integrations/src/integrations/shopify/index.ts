@@ -10,8 +10,8 @@ export async function getProducts(key: string): Promise<any> {
   }
 
   const output = await run.performRequest(key, {
-    service: "slack",
-    endpoint: "chat.postMessage",
+    service: "shopify",
+    endpoint: "products.get",
     params: {},
     response: {
       schema: z.any(),

@@ -5,13 +5,13 @@ import {
   PerformRequestOptions,
   RequestIntegration,
 } from "../types";
-import { createClient } from "@urql/core";
+import { createClient, gql } from "@urql/core";
 
 const log = debug("trigger:integrations:slack");
 
 class ShopifyRequestIntegration implements RequestIntegration {
   constructor(
-    private readonly baseUrlFormat: string = "https://{shop}.myshopify.com/admin/api/2021-07"
+    private readonly baseUrlFormat: string = "https://{shop}.myshopify.com/admin/api/2021-07/graphql.json"
   ) {}
 
   async perform(
@@ -39,44 +39,57 @@ class ShopifyRequestIntegration implements RequestIntegration {
       },
     });
 
-    const result = await client
-      .query(
-        `{
-    products(first: 5) {
-      edges {
-        node {
-          id
-          handle
+    try {
+      const query = gql`
+        query {
+          products(first: 5) {
+            edges {
+              node {
+                id
+                handle
+              }
+            }
+            pageInfo {
+              hasNextPage
+            }
+          }
         }
-      }
-      pageInfo {
-        hasNextPage
-      }
-    }
-  }`,
-        {}
-      )
-      .toPromise();
+      `;
+      const result = await client.query(query, {}).toPromise();
 
-    if (result.error) {
+      if (result.error) {
+        console.error("Shopify result error", result.error);
+        return {
+          ok: false,
+          isRetryable: false,
+          response: {
+            output: result.error,
+            context: {},
+          },
+        };
+      }
+
+      console.log("Shopify success result", result.data);
+
+      return {
+        ok: true,
+        isRetryable: false,
+        response: {
+          output: result.data,
+          context: {},
+        },
+      };
+    } catch (error) {
+      console.error("Shopify query error", error);
       return {
         ok: false,
         isRetryable: false,
         response: {
-          output: result.error,
-          context: null,
+          output: error,
+          context: {},
         },
       };
     }
-
-    return {
-      ok: true,
-      isRetryable: false,
-      response: {
-        output: result.data,
-        context: null,
-      },
-    };
   }
 
   displayProperties(endpoint: string, params: any): DisplayProperties {
