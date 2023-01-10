@@ -24,7 +24,6 @@ const EnvironmentSchema = z.object({
   FROM_EMAIL: z.string(),
   REPLY_TO_EMAIL: z.string(),
   RESEND_API_KEY: z.string(),
-  MERGENT_KEY: z.string(),
   PRIMARY_REGION: z.string().optional(),
   FLY_REGION: z.string().optional(),
   SESSION_SECRET: z.string(),

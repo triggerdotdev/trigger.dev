@@ -94,7 +94,6 @@
     "FROM_EMAIL",
     "REPLY_TO_EMAIL",
     "RESEND_API_KEY",
-    "MERGENT_KEY",
     "PIZZLY_HOST",
     "DEBUG"
   ]
