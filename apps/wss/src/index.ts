@@ -9,7 +9,17 @@ import { TriggerServer } from "./server";
 
 // Create an HTTP server
 const server = createServer((req, res) => {
-  res.end("Hello, World!");
+  // Add a health check endpoint at /healthcheck
+  if (req.url === "/healthcheck") {
+    res.writeHead(200);
+    res.end("OK");
+
+    return;
+  }
+
+  // Everything else should be a 404
+  res.writeHead(404);
+  res.end("Not Found");
 });
 
 const triggerServers = new Map<string, TriggerServer>();

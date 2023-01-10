@@ -8,8 +8,14 @@ const EnvironmentSchema = z.object({
   ]),
   REMIX_APP_PORT: z.string().optional(),
   DATABASE_URL: z.string(),
-  LOGIN_ORIGIN: z.string().default("https://app.trigger.dev"),
-  APP_ORIGIN: z.string().default("https://app.trigger.dev"),
+  LOGIN_ORIGIN: z
+    .string()
+    // eslint-disable-next-line turbo/no-undeclared-env-vars
+    .default(process.env.FC_URL ?? "https://app.trigger.dev"),
+  APP_ORIGIN: z
+    .string()
+    // eslint-disable-next-line turbo/no-undeclared-env-vars
+    .default(process.env.FC_URL ?? "https://app.trigger.dev"),
   SENTRY_DSN: z.string().optional(),
   POSTHOG_PROJECT_KEY: z.string().optional(),
   MAGIC_LINK_SECRET: z.string(),

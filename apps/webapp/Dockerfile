@@ -1,5 +1,5 @@
 FROM node:lts-bullseye-slim AS pruner
-RUN apt-get update && apt-get install -y openssl
+RUN apt-get update && apt-get install openssl python3 -y
 WORKDIR /app
 RUN yarn global add turbo
 COPY . .
@@ -8,23 +8,31 @@ RUN find . -name "node_modules" -type d -prune -exec rm -rf '{}' +
 
 # Base strategy to have layer caching
 FROM node:lts-bullseye-slim AS base
-RUN apt-get update && apt-get install -y openssl
+RUN apt-get update && apt-get install openssl curl build-essential cmake python3 -y
 WORKDIR /app
 COPY .gitignore .gitignore
 COPY --from=pruner /app/out/json/ .
 COPY --from=pruner /app/out/pnpm-lock.yaml ./pnpm-lock.yaml
 COPY --from=pruner /app/out/pnpm-workspace.yaml ./pnpm-workspace.yaml
+# install pulsar stuff
+ENV PULSAR_VERSION=2.10.3
+RUN cd "$(mktemp -d)" && \
+  curl -SLO 'http://archive.apache.org/dist/pulsar/pulsar-'$PULSAR_VERSION'/DEB/apache-pulsar-client.deb' && \
+  curl -SLO 'http://archive.apache.org/dist/pulsar/pulsar-'$PULSAR_VERSION'/DEB/apache-pulsar-client-dev.deb' && \
+  apt install ./apache-pulsar-client*.deb
 # COPY --from=pruner /app/out/full/ .
 
 FROM base AS dev-deps
 WORKDIR /app
 RUN corepack enable
+RUN npm config set python /usr/bin/python3
 RUN pnpm install --ignore-scripts --frozen-lockfile
 
 FROM base AS production-deps
 WORKDIR /app
 RUN corepack enable
 ENV NODE_ENV production
+RUN npm config set python /usr/bin/python3
 RUN pnpm install --prod --frozen-lockfile
 COPY --from=pruner /app/out/full/apps/webapp/prisma/schema.prisma /app/apps/webapp/prisma/schema.prisma
 RUN pnpx prisma generate --schema /app/apps/webapp/prisma/schema.prisma
@@ -61,4 +69,4 @@ COPY --from=builder --chown=remixjs:nodejs /app/apps/webapp/prisma/migrations ./
 COPY --from=builder --chown=remixjs:nodejs /app/apps/webapp/node_modules/.prisma/client/libquery_engine-debian-openssl-1.1.x.so.node ./apps/webapp/build/libquery_engine-debian-openssl-1.1.x.so.node
 
 # release_command = "pnpx prisma migrate deploy --schema apps/webapp/prisma/schema.prisma"
-CMD ["pnpm", "--filter", "webapp", "run", "start"]
+ENTRYPOINT ["pnpm", "--filter", "webapp", "run", "start"]

@@ -1,0 +1,152 @@
+{
+  "$schema": "https://app.flightcontrol.dev/schema.json",
+  "environments": [
+    {
+      "id": "prod",
+      "name": "Prod",
+      "region": "us-east-1",
+      "source": {
+        "branch": "main",
+        "trigger": "manual"
+      },
+      "envVariables": {
+        "NODE_ENV": "production",
+        "PULSAR_ISSUER_URL": "https://auth.streamnative.cloud/",
+        "PULSAR_AUDIENCE": "urn:sn:pulsar:o-syacq:trigger-platform",
+        "PULSAR_TENANT": "triggerdotdev",
+        "PULSAR_WORKFLOWS_NAMESPACE": "workflows",
+        "PULSAR_QUEUES_NAMESPACE": "queues",
+        "PULSAR_SERVICE_URL": "pulsar+ssl://cluster1.o-syacq.snio.cloud:6651"
+      },
+      "services": [
+        {
+          "id": "p-webapp",
+          "name": "Prod Webapp",
+          "type": "fargate",
+          "buildType": "docker",
+          "dockerfilePath": "./apps/webapp/Dockerfile",
+          "dockerContext": "./apps/webapp",
+          "cpu": 4,
+          "memory": 8,
+          "minInstances": 2,
+          "maxInstances": 10,
+          "domain": "app.trigger.dev",
+          "port": 3000,
+          "healthCheckPath": "/healthcheck",
+          "watchPaths": [
+            "apps/webapp/app/**",
+            "apps/webapp/public/**",
+            "apps/webapp/Dockerfile",
+            "apps/webapp/package.json",
+            "apps/webapp/server.ts",
+            "apps/webapp/remix.config.js",
+            "apps/webapp/tailwind.config.js",
+            "apps/webapp/tsconfig.json",
+            "apps/webapp/postcss.config.js",
+            "apps/webapp/styles/**",
+            "apps/webapp/prisma/**",
+            "apps/webapp/types/**",
+            "apps/webapp/nixpacks.toml"
+          ],
+          "envVariables": {
+            "NIXPACKS_CONFIG_FILE": "./apps/webapp/nixpacks.toml",
+            "FROM_EMAIL": "hello@email.trigger.dev",
+            "REPLY_TO_EMAIL": "hello@trigger.dev",
+            "RESEND_API_KEY": {
+              "fromParameterStore": "PROD_RESEND_API_KEY"
+            },
+            "SENTRY_DSN": {
+              "fromParameterStore": "SENTRY_DSN"
+            },
+            "SESSION_SECRET": {
+              "fromParameterStore": "PROD_SESSION_SECRET"
+            },
+            "MAGIC_LINK_SECRET": {
+              "fromParameterStore": "PROD_MAGIC_LINK_SECRET"
+            },
+            "GITHUB_CLIENT_ID": "724e56fcebe940eb5b22",
+            "GITHUB_CLIENT_SECRET": {
+              "fromParameterStore": "PROD_GITHUB_CLIENT_SECRET"
+            },
+            "DATABASE_URL": {
+              "fromService": {
+                "id": "p-db",
+                "value": "dbConnectionString"
+              }
+            },
+            "PULSAR_ENABLED": "1",
+            "PULSAR_CLIENT_ID": {
+              "fromParameterStore": "PROD_WEBAPP_PULSAR_CLIENT_ID"
+            },
+            "PULSAR_CLIENT_SECRET": {
+              "fromParameterStore": "PROD_WEBAPP_PULSAR_CLIENT_SECRET"
+            },
+            "PULSAR_ROLE": "webapp@o-syacq.auth.streamnative.cloud"
+          }
+        },
+        {
+          "id": "p-wss",
+          "name": "Prod WSS",
+          "type": "fargate",
+          "buildType": "nodejs",
+          "installCommand": "pnpm i --filter wss",
+          "buildCommand": "pnpm run build --filter wss",
+          "startCommand": "pnpm run start --filter wss",
+          "cpu": 4,
+          "memory": 8,
+          "minInstances": 2,
+          "maxInstances": 10,
+          "domain": "wss.trigger.dev",
+          "port": 8889,
+          "healthCheckPath": "/healthcheck",
+          "watchPaths": [
+            "apps/wss/src/**",
+            "apps/wss/tsconfig.json",
+            "apps/wss/tsup.config.ts",
+            "apps/wss/package.json",
+            "apps/wss/nixpacks.toml"
+          ],
+          "envVariables": {
+            "NIXPACKS_CONFIG_FILE": "./apps/wss/nixpacks.toml",
+            "PULSAR_CLIENT_ID": {
+              "fromParameterStore": "PROD_WSS_PULSAR_CLIENT_ID"
+            },
+            "PULSAR_CLIENT_SECRET": {
+              "fromParameterStore": "PROD_WSS_PULSAR_CLIENT_SECRET"
+            },
+            "PULSAR_ROLE": "websocketserver@o-syacq.auth.streamnative.cloud",
+            "AUTHORIZATION_URL": {
+              "fromService": {
+                "id": "p-webapp",
+                "value": "origin"
+              }
+            }
+          }
+        },
+        {
+          "id": "p-db",
+          "name": "Prod Database",
+          "type": "rds",
+          "engine": "postgres",
+          "applyChangesImmediately": false,
+          "engineVersion": "14",
+          "autoUpgradeMinorVersions": true,
+          "instanceSize": "db.m5.2xlarge",
+          "storage": 4000,
+          "private": true,
+          "deletionProtection": true,
+          "port": 5432
+        },
+        {
+          "id": "p-redis",
+          "name": "Prod Redis",
+          "type": "elasticache",
+          "engine": "redis",
+          "engineVersion": "7.0",
+          "instanceSize": "cache.m1.large",
+          "connectionStringEnvVarName": "REDIS_URL"
+        }
+      ]
+    }
+  ]
+}
