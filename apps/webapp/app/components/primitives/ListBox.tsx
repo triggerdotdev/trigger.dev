@@ -17,7 +17,7 @@ type ButtonProps = Parameters<typeof Listbox.Button>[0] & {
 };
 
 const buttonClassName =
-  "relative w-full cursor-default rounded-md border border-slate-600 bg-slate-800 py-2 pl-3 pr-10 text-left shadow-md focus:border-blue-700 focus:outline-none focus:ring-1 focus:ring-blue-700 sm:text-sm";
+  "relative w-full rounded bg-slate-700 py-2 pl-3 pr-10 text-sm text-left shadow-md hover:cursor-pointer hover:bg-slate-600/80 transition";
 function Button({ children, ...props }: ButtonProps) {
   return (
     <Listbox.Button
@@ -37,7 +37,7 @@ function Button({ children, ...props }: ButtonProps) {
 
 type OptionsProps = Parameters<typeof Listbox.Options>[0];
 const optionsClassName =
-  "absolute z-10 mt-1 max-h-60 w-full overflow-auto rounded-md border border-slate-600 bg-slate-800 text-base shadow-lg ring-1 ring-black ring-opacity-5 focus:outline-none sm:text-sm";
+  "absolute z-10 mt-1 max-h-60 w-full overflow-auto rounded p-1 bg-slate-700 text-base shadow-lg";
 function Options(props: OptionsProps) {
   return (
     <Listbox.Options
@@ -50,8 +50,9 @@ function Options(props: OptionsProps) {
 }
 
 type OptionProps = Parameters<typeof Listbox.Option>[0];
-const optionClassName = "relative cursor-default select-none py-2 pl-3 pr-9";
-const activeOptionClassName = "text-slate-300 bg-slate-900";
+const optionClassName = "relative cursor-default select-none py-2 pl-3 pr-7";
+const activeOptionClassName =
+  "bg-slate-800 rounded hover:cursor-pointer font-bold";
 const inactiveOptionClassName = "text-slate-300";
 function Option(props: OptionProps) {
   return (

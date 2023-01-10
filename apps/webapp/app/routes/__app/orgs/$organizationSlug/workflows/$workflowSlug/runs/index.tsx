@@ -147,8 +147,8 @@ function StatusFilter({
                   <>
                     <span
                       className={classNames(
-                        selected ? "font-semibold" : "font-normal",
-                        "flex truncate items-center gap-1"
+                        selected ? "" : "",
+                        "flex truncate font-semibold items-center gap-1"
                       )}
                     >
                       {runStatusIcon(status, "small")}
