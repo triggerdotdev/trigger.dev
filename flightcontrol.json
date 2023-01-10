@@ -48,6 +48,9 @@
             "apps/webapp/types/**",
             "apps/webapp/nixpacks.toml"
           ],
+          "dependsOn": [
+            "p-db"
+          ],
           "envVariables": {
             "NIXPACKS_CONFIG_FILE": "./apps/webapp/nixpacks.toml",
             "FROM_EMAIL": "hello@email.trigger.dev",
@@ -125,7 +128,10 @@
                 "value": "origin"
               }
             }
-          }
+          },
+          "dependsOn": [
+            "p-webapp"
+          ]
         },
         {
           "id": "p-db",
