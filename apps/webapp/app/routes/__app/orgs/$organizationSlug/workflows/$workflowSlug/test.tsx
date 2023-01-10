@@ -5,9 +5,10 @@ import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import invariant from "tiny-invariant";
 import { JSONEditor } from "~/components/code/JSONEditor";
 import { Panel } from "~/components/layout/Panel";
+import { PanelWarning } from "~/components/layout/PanelWarning";
 import { PrimaryButton } from "~/components/primitives/Buttons";
 import { Select } from "~/components/primitives/Select";
-import { Header1 } from "~/components/primitives/text/Headers";
+import { SubTitle } from "~/components/primitives/text/SubTitle";
 import { Title } from "~/components/primitives/text/Title";
 import { useCurrentOrganization } from "~/hooks/useOrganizations";
 import { useCurrentWorkflow } from "~/hooks/useWorkflows";
@@ -39,7 +40,14 @@ export default function Page() {
   return (
     <>
       <Title>Test</Title>
-
+      {workflow.status !== "READY" && (
+        <>
+          <SubTitle>1 issue</SubTitle>
+          <PanelWarning className="mb-6">
+            This workflow requires its APIs to be connected before it can run.
+          </PanelWarning>
+        </>
+      )}
       {workflow.status === "READY" && (
         <Panel className="mt-4">
           <Tester

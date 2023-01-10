@@ -20,10 +20,7 @@ export class WorkflowListPresenter {
   }
 
   async data(organizationSlug: string) {
-    const workflows = await getWorkflowsRun(
-      this.#prismaClient,
-      organizationSlug
-    );
+    const workflows = await getWorkflows(this.#prismaClient, organizationSlug);
     const integrations = getIntegrations(true);
 
     return workflows.map((workflow) => {
@@ -39,6 +36,7 @@ export class WorkflowListPresenter {
         id: workflow.id,
         title: workflow.title,
         slug: workflow.slug,
+        status: workflow.status,
         trigger: triggerProperties(
           workflow,
           workflow.externalSource ?? undefined
@@ -57,7 +55,7 @@ export class WorkflowListPresenter {
   }
 }
 
-function getWorkflowsRun(prismaClient: PrismaClient, organizationSlug: string) {
+function getWorkflows(prismaClient: PrismaClient, organizationSlug: string) {
   return prismaClient.workflow.findMany({
     where: { organization: { slug: organizationSlug } },
     include: {

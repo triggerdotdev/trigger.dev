@@ -4,6 +4,7 @@ import invariant from "tiny-invariant";
 import { WorkflowConnections } from "~/components/integrations/WorkflowConnections";
 import { Panel } from "~/components/layout/Panel";
 import { PanelHeader } from "~/components/layout/PanelHeader";
+import { PanelWarning } from "~/components/layout/PanelWarning";
 import { PrimaryLink, SecondaryLink } from "~/components/primitives/Buttons";
 import { SubTitle } from "~/components/primitives/text/SubTitle";
 import { Title } from "~/components/primitives/text/Title";
@@ -68,6 +69,14 @@ export default function Page() {
   return (
     <>
       <Title>Overview</Title>
+      {workflow.status !== "READY" && (
+        <>
+          <SubTitle>1 issue</SubTitle>
+          <PanelWarning className="mb-6">
+            This workflow requires its APIs to be connected before it can run.
+          </PanelWarning>
+        </>
+      )}
       {apiConnectionCount > 0 && <WorkflowConnections />}
       {eventRule && (
         <>

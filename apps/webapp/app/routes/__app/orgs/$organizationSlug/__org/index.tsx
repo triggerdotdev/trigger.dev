@@ -1,4 +1,7 @@
-import { ChevronRightIcon } from "@heroicons/react/24/solid";
+import {
+  ChevronRightIcon,
+  ExclamationTriangleIcon,
+} from "@heroicons/react/24/solid";
 import { Link } from "@remix-run/react";
 import type { LoaderArgs } from "@remix-run/server-runtime";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
@@ -89,7 +92,10 @@ function WorkflowList({
             >
               <div className="flex justify-between lg:items-center flex-col lg:flex-row flex-wrap lg:flex-nowrap pl-5 pr-4 py-4">
                 <div className="flex items-center flex-1 justify-between">
-                  <div className="flex items-center">
+                  <div className="relative flex items-center">
+                    {workflow.status !== "READY" && (
+                      <ExclamationTriangleIcon className="absolute -top-2 -left-2 h-7 w-7 text-amber-500" />
+                    )}
                     <TriggerTypeIcon workflow={workflow} />
                     <div className="flex flex-col gap-1 mr-1 truncate">
                       <Header2

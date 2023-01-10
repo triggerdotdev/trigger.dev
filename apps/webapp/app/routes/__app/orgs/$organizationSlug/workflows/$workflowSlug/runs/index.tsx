@@ -21,6 +21,9 @@ import { requireUserId } from "~/services/session.server";
 import { getRuntimeEnvironmentFromRequest } from "~/models/runtimeEnvironment.server";
 import { allStatuses } from "~/models/workflowRunStatus";
 import { Title } from "~/components/primitives/text/Title";
+import { useCurrentWorkflow } from "~/hooks/useWorkflows";
+import { PanelWarning } from "~/components/layout/PanelWarning";
+import { SubTitle } from "~/components/primitives/text/SubTitle";
 
 export const loader = async ({ request, params }: LoaderArgs) => {
   const userId = await requireUserId(request);
@@ -62,9 +65,20 @@ export default function Page() {
     submit(formRef.current, { replace: true });
   }, [submit]);
 
+  const workflow = useCurrentWorkflow();
+  invariant(workflow, "Workflow not found");
+
   return (
     <>
       <Title>Runs</Title>
+      {workflow.status !== "READY" && (
+        <>
+          <SubTitle>1 issue</SubTitle>
+          <PanelWarning className="mb-6">
+            This workflow requires its APIs to be connected before it can run.
+          </PanelWarning>
+        </>
+      )}
       <fetcher.Form
         method="get"
         className="pb-4 flex gap-2"
