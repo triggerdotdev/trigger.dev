@@ -147,6 +147,7 @@ async function parseStep(
         input: original.input,
         output: original.output,
         context: original.context,
+        requestStatus: original.integrationRequest.status,
         displayProperties,
         service: {
           id: externalService.id,

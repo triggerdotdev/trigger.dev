@@ -8,7 +8,11 @@ import {
 import { Client, createClient, gql } from "@urql/core";
 import { shopify } from "internal-providers";
 import { z } from "zod";
-import { searchProductVariantsQuery } from "./queries";
+import {
+  createProductVariantsQuery,
+  defaultFirst,
+  searchProductVariantsQuery,
+} from "./queries";
 
 const log = debug("trigger:integrations:slack");
 class ShopifyRequestIntegration implements RequestIntegration {
@@ -45,6 +49,9 @@ class ShopifyRequestIntegration implements RequestIntegration {
       case "productVariants.search": {
         return this.#searchProductVariants(client, options.params);
       }
+      case "productVariant.create": {
+        return this.#createProductVariant(client, options.params);
+      }
       default: {
         throw new Error(`Unknown endpoint: ${options.endpoint}`);
       }
@@ -52,10 +59,39 @@ class ShopifyRequestIntegration implements RequestIntegration {
   }
 
   displayProperties(endpoint: string, params: any): DisplayProperties {
-    return {
-      title: "Temporary",
-    };
-    throw new Error(`Unknown endpoint: ${endpoint}`);
+    switch (endpoint) {
+      case "productVariants.search": {
+        const parsedParams =
+          shopify.schemas.SearchVariantsBodySchema.parse(params);
+        return {
+          title: "Search product variants",
+          properties: [
+            {
+              key: "first",
+              value: parsedParams.first ?? defaultFirst,
+            },
+            ...Object.entries(parsedParams.filter ?? {}).map(
+              ([key, value]) => ({
+                key,
+                value: value.join(", "),
+              })
+            ),
+          ],
+        };
+      }
+      case "productVariant.create": {
+        const parsedParams =
+          shopify.schemas.CreateVariantBodySchema.parse(params);
+        return {
+          title: `Create product variant for ${parsedParams.productId}`,
+        };
+      }
+      default: {
+        return {
+          title: "Unknown endpoint",
+        };
+      }
+    }
   }
 
   async #searchProductVariants(
@@ -72,7 +108,7 @@ class ShopifyRequestIntegration implements RequestIntegration {
 
       const result = await client
         .query(searchProductVariantsQuery, {
-          first: parsedParams.first,
+          first: parsedParams.first ?? defaultFirst,
           filters: filters,
         })
         .toPromise();
@@ -144,6 +180,113 @@ class ShopifyRequestIntegration implements RequestIntegration {
       return performedRequest;
     } catch (error) {
       log("productVariants.search query error %O", error);
+      return {
+        ok: false,
+        isRetryable: false,
+        response: {
+          output: error,
+          context: {},
+        },
+      };
+    }
+  }
+
+  async #createProductVariant(
+    client: Client,
+    params: any
+  ): Promise<PerformedRequestResponse> {
+    const parsedParams = shopify.schemas.CreateVariantBodySchema.parse(params);
+    log("productVariant.create %O", parsedParams);
+
+    try {
+      const result = await client
+        .mutation(createProductVariantsQuery, {
+          input: parsedParams,
+        })
+        .toPromise();
+
+      if (result.error) {
+        log("productVariant.create failed %O", result.error);
+        return {
+          ok: false,
+          isRetryable: false,
+          response: {
+            output: result.error,
+            context: {},
+          },
+        };
+      }
+
+      if (result.data === undefined) {
+        log("productVariant.create data undefined %O");
+        return {
+          ok: false,
+          isRetryable: false,
+          response: {
+            output: {
+              message: "No data returned",
+            },
+            context: {},
+          },
+        };
+      }
+
+      //todo convert this into a better response format
+      const validatedResponse = result.data;
+
+      if (result.data.productVariantCreate.userErrors) {
+        log("productVariant.create userErrors %O", result.data.userErrors);
+        return {
+          ok: false,
+          isRetryable: false,
+          response: {
+            output: result.data.productVariantCreate.userErrors,
+            context: {},
+          },
+        };
+      }
+
+      // const response = {
+      //   count: result.data.productVariants.edges.length,
+      //   productVariants: result.data.productVariants.edges.map((p: any) => ({
+      //     id: p.node.id,
+      //     title: p.node.title,
+      //     createdAt: p.node.createdAt,
+      //     updatedAt: p.node.updatedAt,
+      //     price: p.node.price,
+      //     product: p.node.product,
+      //     sku: p.node.sku,
+      //     barcode: p.node.barcode,
+      //     compareAtPrice: p.node.compareAtPrice,
+      //     fulfillmentService: p.node.fulfillmentService,
+      //     image: p.node.image,
+      //     inventoryQuantity: p.node.inventoryQuantity,
+      //     requiresShipping: p.node.requiresShipping,
+      //     position: p.node.position,
+      //     taxCode: p.node.taxCode,
+      //     taxable: p.node.taxable,
+      //     weight: p.node.weight,
+      //     weightUnit: p.node.weightUnit,
+      //   })),
+      // };
+
+      // const validatedResponse =
+      //   shopify.schemas.SearchVariantsSuccessResponseSchema.parse(response);
+
+      const performedRequest = {
+        ok: true,
+        isRetryable: false,
+        response: {
+          output: validatedResponse,
+          context: {},
+        },
+      };
+
+      log("productVariant.create performedRequest %O", performedRequest);
+
+      return performedRequest;
+    } catch (error) {
+      log("productVariant.create query error %O", error);
       return {
         ok: false,
         isRetryable: false,

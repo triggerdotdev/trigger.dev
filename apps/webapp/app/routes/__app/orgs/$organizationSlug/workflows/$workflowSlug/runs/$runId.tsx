@@ -635,22 +635,39 @@ function IntegrationRequestStep({
       </div>
 
       <div className="mt-4">
-        {request.output && (
-          <>
-            <div className="flex justify-between">
-              <OutputTitle />
-              {request.retryCount > 0 && (
-                <Body size="small" className="text-slate-400">
-                  {request.retryCount} retries
-                </Body>
-              )}
+        {request.requestStatus === "ERROR" ? (
+          <div>
+            <div className="flex gap-2 mb-2 mt-3 ">
+              <ExclamationTriangleIcon className="h-5 w-5 text-rose-500" />
+              <Body size="small" className="text-rose-500">
+                Failed with error:
+              </Body>
             </div>
             <CodeBlock
-              code={stringifyCode(request.output)}
+              code={request.output ? stringifyCode(request.output) : ""}
               align="top"
               maxHeight="200px"
+              className="border border-rose-500"
             />
-          </>
+          </div>
+        ) : (
+          request.output && (
+            <>
+              <div className="flex justify-between">
+                <OutputTitle />
+                {request.retryCount > 0 && (
+                  <Body size="small" className="text-slate-400">
+                    {request.retryCount} retries
+                  </Body>
+                )}
+              </div>
+              <CodeBlock
+                code={stringifyCode(request.output)}
+                align="top"
+                maxHeight="200px"
+              />
+            </>
+          )
         )}
       </div>
     </>

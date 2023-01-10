@@ -15,7 +15,7 @@ const trigger = new Trigger({
   run: async (event, ctx) => {
     await ctx.logger.info("Get Shopify products for my store");
 
-    const response = await shopify.searchProductVariants(
+    const results = await shopify.searchProductVariants(
       "get-shopify-variants",
       {
         filter: {
@@ -24,9 +24,14 @@ const trigger = new Trigger({
       }
     );
 
+    const newVariant = await shopify.createProductVariant("create-variant", {
+      productId: results.productVariants[0].product.id,
+      price: "12.34",
+    });
+
     await ctx.logger.debug("Debug message");
 
-    return response;
+    return newVariant;
   },
 });
 

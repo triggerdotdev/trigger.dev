@@ -16,7 +16,10 @@ export const ProductVariantSchema = z.object({
   createdAt: z.string().nullable(),
   updatedAt: z.string().nullable(),
   price: z.string().nullable(),
-  product: objectWithId,
+  product: z.object({
+    id: z.string(),
+    title: z.string(),
+  }),
   sku: z.string().nullable(),
   barcode: z.string().nullable(),
   compareAtPrice: z.string().nullable(),
@@ -45,4 +48,9 @@ export const SearchVariantsBodySchema = FirstOrLastSchema.and(
 export const SearchVariantsSuccessResponseSchema = z.object({
   count: z.number(),
   productVariants: z.array(ProductVariantSchema),
+});
+
+export const CreateVariantBodySchema = z.object({
+  productId: z.string(),
+  price: z.string().optional(),
 });
