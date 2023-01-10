@@ -57,7 +57,7 @@ export function ConnectionSelector({
           ${open ? "" : ""}
           inline-flex justify-between items-center rounded text-white bg-slate-700 shadow pl-3 pr-2 py-1.5 gap-2 text-sm hover:bg-slate-600/80 transition focus:outline-none`}
             >
-              <span className="transition text-xs text-slate-300">
+              <span className="transition text-sm text-slate-200">
                 {selectedConnection ? (
                   <span>{selectedConnection.title}</span>
                 ) : (
