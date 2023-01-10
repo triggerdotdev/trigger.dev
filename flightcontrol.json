@@ -81,7 +81,11 @@
             "PULSAR_CLIENT_SECRET": {
               "fromParameterStore": "PROD_WEBAPP_PULSAR_CLIENT_SECRET"
             },
-            "PULSAR_ROLE": "webapp@o-syacq.auth.streamnative.cloud"
+            "PULSAR_ROLE": "webapp@o-syacq.auth.streamnative.cloud",
+            "DOCKER_USERNAME": "maverickdotdev",
+            "DOCKER_PASSWORD": {
+              "fromParameterStore": "DOCKER_HUB_PASSWORD"
+            }
           }
         },
         {
@@ -144,7 +148,7 @@
           "type": "elasticache",
           "engine": "redis",
           "engineVersion": "7.0",
-          "instanceSize": "cache.m1.large",
+          "instanceSize": "cache.m5.large",
           "connectionStringEnvVarName": "REDIS_URL"
         }
       ]
