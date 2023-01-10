@@ -19,12 +19,6 @@ COPY --from=pruner /app/out/json/ .
 COPY --from=pruner /app/out/pnpm-lock.yaml ./pnpm-lock.yaml
 COPY --from=pruner /app/out/pnpm-workspace.yaml ./pnpm-workspace.yaml
 
-FROM base AS dev-deps
-WORKDIR /app
-RUN corepack enable
-RUN npm config set python /usr/bin/python3
-RUN pnpm install --ignore-scripts --frozen-lockfile
-
 FROM base AS production-deps
 WORKDIR /app
 RUN npm install turbo -g
@@ -38,11 +32,10 @@ RUN pnpx prisma generate --schema /app/apps/webapp/prisma/schema.prisma
 FROM base AS builder
 WORKDIR /app
 RUN npm install turbo -g
-RUN corepack enable
-# ENV NODE_ENV production
-COPY --from=pruner /app/out/full/ .
-COPY --from=dev-deps /app/ .
 COPY turbo.json turbo.json
+RUN corepack enable
+COPY --from=pruner /app/out/full/ .
+RUN npm config set python /usr/bin/python3
 RUN pnpm install --ignore-scripts --frozen-lockfile
 RUN pnpm run generate
 RUN pnpm run build --filter=webapp...
