@@ -15,12 +15,15 @@ const trigger = new Trigger({
   run: async (event, ctx) => {
     await ctx.logger.info("Get Shopify products for my store");
 
-    const response = await shopify.getProducts("get-shopify-products");
+    const response = await shopify.searchProductVariants(
+      "get-shopify-variants",
+      {}
+    );
     console.log(response);
 
     await ctx.logger.debug("Debug message");
 
-    return response.message;
+    return response;
   },
 });
 

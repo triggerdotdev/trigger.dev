@@ -373,6 +373,8 @@ export class TriggerClient<TSchema extends z.ZodTypeAny> {
                           };
                         }
 
+                        console.error(anyError);
+
                         return {
                           name: "UnknownError",
                           message: "An unknown error occurred",

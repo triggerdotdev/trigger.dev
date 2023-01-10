@@ -2,7 +2,18 @@ import { getTriggerRun } from "@trigger.dev/sdk";
 import { z } from "zod";
 import { shopify } from "internal-providers";
 
-export async function getProducts(key: string): Promise<any> {
+export type SearchVariantsOptions = z.infer<
+  typeof shopify.schemas.SearchVariantsBodySchema
+>;
+
+export type SearchVariantsResponse = z.infer<
+  typeof shopify.schemas.SearchVariantsSuccessResponseSchema
+>;
+
+export async function searchProductVariants(
+  key: string,
+  options: SearchVariantsOptions
+): Promise<SearchVariantsResponse> {
   const run = getTriggerRun();
 
   if (!run) {
@@ -11,10 +22,10 @@ export async function getProducts(key: string): Promise<any> {
 
   const output = await run.performRequest(key, {
     service: "shopify",
-    endpoint: "products.get",
-    params: {},
+    endpoint: "productVariants.search",
+    params: options,
     response: {
-      schema: z.any(),
+      schema: shopify.schemas.SearchVariantsSuccessResponseSchema,
     },
   });
 
