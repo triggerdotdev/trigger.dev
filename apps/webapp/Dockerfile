@@ -53,6 +53,12 @@ RUN adduser --system --uid 1001 remixjs
 RUN chown -R remixjs:nodejs /app
 USER remixjs
 
+RUN apt-get update && apt-get install openssl g++ make wget python3 -y
+ENV PULSAR_CPP_CLIENT_VERSION=2.10.3
+RUN wget https://archive.apache.org/dist/pulsar/pulsar-${PULSAR_CPP_CLIENT_VERSION}/DEB/apache-pulsar-client.deb -q
+RUN wget https://archive.apache.org/dist/pulsar/pulsar-${PULSAR_CPP_CLIENT_VERSION}/DEB/apache-pulsar-client-dev.deb -q
+RUN dpkg -i --force-architecture ./apache-pulsar-client*.deb
+
 COPY --from=pruner --chown=remixjs:nodejs /app/out/full/ .
 COPY --from=production-deps --chown=remixjs:nodejs /app .
 COPY --from=builder --chown=remixjs:nodejs /app/apps/webapp/app/styles/tailwind.css ./apps/webapp/app/styles/tailwind.css
