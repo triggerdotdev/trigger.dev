@@ -67,7 +67,7 @@
               "fromParameterStore": "PROD_MAGIC_LINK_SECRET"
             },
             "GITHUB_CLIENT_ID": "724e56fcebe940eb5b22",
-            "GITHUB_CLIENT_SECRET": {
+            "GITHUB_SECRET": {
               "fromParameterStore": "PROD_GITHUB_CLIENT_SECRET"
             },
             "DATABASE_URL": {
@@ -87,7 +87,8 @@
             "DOCKER_USERNAME": "maverickdotdev",
             "DOCKER_PASSWORD": {
               "fromParameterStore": "DOCKER_HUB_PASSWORD"
-            }
+            },
+            "PIZZLY_HOST": "https://auth.trigger.dev"
           }
         },
         {
