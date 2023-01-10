@@ -3,7 +3,6 @@ import { z } from "zod";
 export const FirstOrLastSchema = z
   .object({
     first: z.number().optional(),
-    last: z.number().optional(),
   })
   .default({ first: 100 });
 
@@ -36,8 +35,8 @@ export const SearchVariantsBodySchema = FirstOrLastSchema.and(
   z.object({
     filter: z
       .object({
-        productIds: z.array(z.string()).optional(),
-        skus: z.array(z.string()).optional(),
+        productId: z.array(z.string()).optional(),
+        sku: z.array(z.string()).optional(),
       })
       .optional(),
   })

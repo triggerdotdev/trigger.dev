@@ -17,9 +17,12 @@ const trigger = new Trigger({
 
     const response = await shopify.searchProductVariants(
       "get-shopify-variants",
-      {}
+      {
+        filter: {
+          sku: ["prod3", "prod6"],
+        },
+      }
     );
-    console.log(response);
 
     await ctx.logger.debug("Debug message");
 

@@ -73,9 +73,11 @@ class ShopifyRequestIntegration implements RequestIntegration {
         ? buildFilter(parsedParams.filter)
         : undefined;
 
-      const query = gql`
+      const query = `
         query {
-          productVariants(${firstLast}${filters ? `, ${filters}` : ""}) {
+          productVariants(${firstLast}${
+        filters ? `, query: "${filters}"` : ""
+      }) {
             edges {
               node {
                 id
@@ -138,15 +140,13 @@ class ShopifyRequestIntegration implements RequestIntegration {
         };
       }
 
-      console.log("result.data", JSON.stringify(result.data));
-
       const parsed = VariantsSearchQueryResultSchema.parse(result.data);
 
       const response: SearchVariantsSuccessResponse = {
         count: parsed.productVariants.edges.length,
         productVariants: parsed.productVariants.edges.map((p) => ({
           id: p.node.id,
-          title: p.node.id,
+          title: p.node.title,
           createdAt: p.node.createdAt,
           updatedAt: p.node.updatedAt,
           price: p.node.price,
@@ -179,7 +179,6 @@ class ShopifyRequestIntegration implements RequestIntegration {
 
       return performedRequest;
     } catch (error) {
-      console.error("productVariants.search query error %O", error);
       log("productVariants.search query error %O", error);
       return {
         ok: false,
