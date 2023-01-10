@@ -54,7 +54,7 @@ export function OrganizationsSideMenu() {
       to: `/orgs/${currentOrganization.slug}/integrations`,
     },
     {
-      name: "Members",
+      name: "Team",
       icon: <UsersIcon className={iconStyle} />,
       to: `/orgs/${currentOrganization.slug}/members`,
     },
