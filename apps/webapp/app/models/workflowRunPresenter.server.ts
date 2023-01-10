@@ -163,14 +163,6 @@ async function parseStep(
   throw new Error(`Unknown step type ${original.type}`);
 }
 
-function stepStatus(finishedAt: Date | null) {
-  if (finishedAt) {
-    return "SUCCESS" as const;
-  } else {
-    return "PENDING" as const;
-  }
-}
-
 function triggerStatus(stepCount: number, workflowStatus: WorkflowRunStatus) {
   if (stepCount > 0) {
     return "SUCCESS" as const;
