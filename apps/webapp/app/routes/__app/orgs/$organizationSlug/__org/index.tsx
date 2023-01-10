@@ -13,11 +13,7 @@ import CreateNewWorkflow, {
 import { Container } from "~/components/layout/Container";
 import { List } from "~/components/layout/List";
 import { Body } from "~/components/primitives/text/Body";
-import {
-  Header1,
-  Header2,
-  Header3,
-} from "~/components/primitives/text/Headers";
+import { Header2, Header3 } from "~/components/primitives/text/Headers";
 import { SubTitle } from "~/components/primitives/text/SubTitle";
 import { Title } from "~/components/primitives/text/Title";
 import { runStatusLabel } from "~/components/runs/runStatus";
@@ -94,7 +90,7 @@ function WorkflowList({
                 <div className="flex items-center flex-1 justify-between">
                   <div className="relative flex items-center">
                     {workflow.status !== "READY" && (
-                      <ExclamationTriangleIcon className="absolute -top-2 -left-2 h-7 w-7 text-amber-500" />
+                      <ExclamationTriangleIcon className="absolute -top-1.5 -left-1.5 h-6 w-6 text-amber-500" />
                     )}
                     <TriggerTypeIcon workflow={workflow} />
                     <div className="flex flex-col gap-1 mr-1 truncate">
@@ -108,7 +104,7 @@ function WorkflowList({
                         <PillLabel label={workflow.trigger.typeTitle} />
                         <Header3
                           size="extra-small"
-                          className="truncate text-slate-300"
+                          className="truncate text-slate-400"
                         >
                           {workflow.trigger.title}
                         </Header3>
@@ -190,7 +186,7 @@ function lastRunDescription(lastRun: WorkflowListItem["lastRun"]) {
 
 function PillLabel({ label }: { label: string }) {
   return (
-    <span className="px-1.5 py-1 text-xs font-semibold tracking-wider uppercase rounded text-slate-400 bg-slate-700">
+    <span className="px-1.5 py-1 text-[10px] font-semibold tracking-wide uppercase rounded text-slate-400 bg-slate-700">
       {label}
     </span>
   );
@@ -199,11 +195,9 @@ function PillLabel({ label }: { label: string }) {
 function WorkflowProperty({
   label,
   content,
-  className,
 }: {
   label: string;
   content: string;
-  className?: string;
 }) {
   return (
     <div className="flex items-baseline gap-x-1">
