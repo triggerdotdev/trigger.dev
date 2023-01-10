@@ -42,7 +42,7 @@ new Trigger({
   name: "Playground 2",
   apiKey: "trigger_dev_zC25mKNn6c0q",
   endpoint: "ws://localhost:8889/ws",
-  on: github.triggers.repoIssueEvent({ repo: "triggerdotdev/trigger.dev" }),
+  on: github.events.repoIssueEvent({ repo: "triggerdotdev/trigger.dev" }),
 
   run: async (event, ctx) => {
     await ctx.logger.info(
