@@ -44,26 +44,26 @@ COPY turbo.json turbo.json
 RUN pnpm run generate
 RUN pnpm run build --filter=webapp...
 
-# # Runner
-# FROM node:lts-bullseye-slim AS runner
-# RUN apt-get update && apt-get install -y openssl
-# WORKDIR /app
-# RUN corepack enable
-# ENV NODE_ENV production
-# RUN addgroup --system --gid 1001 nodejs
-# RUN adduser --system --uid 1001 remixjs
-# RUN chown -R remixjs:nodejs /app
-# USER remixjs
+# Runner
+FROM node:lts-bullseye-slim AS runner
+RUN apt-get update && apt-get install -y openssl
+WORKDIR /app
+RUN corepack enable
+ENV NODE_ENV production
+RUN addgroup --system --gid 1001 nodejs
+RUN adduser --system --uid 1001 remixjs
+RUN chown -R remixjs:nodejs /app
+USER remixjs
 
-# COPY --from=pruner --chown=remixjs:nodejs /app/out/full/ .
-# COPY --from=production-deps --chown=remixjs:nodejs /app .
-# COPY --from=builder --chown=remixjs:nodejs /app/apps/webapp/app/styles/tailwind.css ./apps/webapp/app/styles/tailwind.css
-# COPY --from=builder --chown=remixjs:nodejs /app/apps/webapp/build/server.js ./apps/webapp/build/server.js
-# COPY --from=builder --chown=remixjs:nodejs /app/apps/webapp/build ./apps/webapp/build
-# COPY --from=builder --chown=remixjs:nodejs /app/apps/webapp/public ./apps/webapp/public
-# COPY --from=builder --chown=remixjs:nodejs /app/apps/webapp/prisma/schema.prisma ./apps/webapp/build/schema.prisma
-# COPY --from=builder --chown=remixjs:nodejs /app/apps/webapp/prisma/migrations ./apps/webapp/build/migrations
-# COPY --from=builder --chown=remixjs:nodejs /app/apps/webapp/node_modules/.prisma/client/libquery_engine-debian-openssl-1.1.x.so.node ./apps/webapp/build/libquery_engine-debian-openssl-1.1.x.so.node
+COPY --from=pruner --chown=remixjs:nodejs /app/out/full/ .
+COPY --from=production-deps --chown=remixjs:nodejs /app .
+COPY --from=builder --chown=remixjs:nodejs /app/apps/webapp/app/styles/tailwind.css ./apps/webapp/app/styles/tailwind.css
+COPY --from=builder --chown=remixjs:nodejs /app/apps/webapp/build/server.js ./apps/webapp/build/server.js
+COPY --from=builder --chown=remixjs:nodejs /app/apps/webapp/build ./apps/webapp/build
+COPY --from=builder --chown=remixjs:nodejs /app/apps/webapp/public ./apps/webapp/public
+COPY --from=builder --chown=remixjs:nodejs /app/apps/webapp/prisma/schema.prisma ./apps/webapp/build/schema.prisma
+COPY --from=builder --chown=remixjs:nodejs /app/apps/webapp/prisma/migrations ./apps/webapp/build/migrations
+COPY --from=builder --chown=remixjs:nodejs /app/apps/webapp/node_modules/.prisma/client/libquery_engine-debian-openssl-1.1.x.so.node ./apps/webapp/build/libquery_engine-debian-openssl-1.1.x.so.node
 
-# # release_command = "pnpx prisma migrate deploy --schema apps/webapp/prisma/schema.prisma"
-# ENTRYPOINT ["pnpm", "--filter", "webapp", "run", "start"]
+# release_command = "pnpx prisma migrate deploy --schema apps/webapp/prisma/schema.prisma"
+ENTRYPOINT ["pnpm", "--filter", "webapp", "run", "start"]
