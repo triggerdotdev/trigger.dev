@@ -10,8 +10,8 @@ RUN find . -name "node_modules" -type d -prune -exec rm -rf '{}' +
 FROM node:lts-bullseye-slim AS base
 RUN apt-get update && apt-get install openssl g++ make wget python3 -y
 ENV PULSAR_CPP_CLIENT_VERSION=2.10.3
-RUN wget https://archive.apache.org/dist/pulsar/pulsar-${PULSAR_CPP_CLIENT_VERSION}/DEB/apache-pulsar-client.deb
-RUN wget https://archive.apache.org/dist/pulsar/pulsar-${PULSAR_CPP_CLIENT_VERSION}/DEB/apache-pulsar-client-dev.deb
+RUN wget https://archive.apache.org/dist/pulsar/pulsar-${PULSAR_CPP_CLIENT_VERSION}/DEB/apache-pulsar-client.deb -q
+RUN wget https://archive.apache.org/dist/pulsar/pulsar-${PULSAR_CPP_CLIENT_VERSION}/DEB/apache-pulsar-client-dev.deb -q
 RUN dpkg -i --force-architecture ./apache-pulsar-client*.deb
 WORKDIR /app
 COPY .gitignore .gitignore
@@ -39,7 +39,7 @@ FROM base AS builder
 WORKDIR /app
 RUN npm install turbo -g
 RUN corepack enable
-ENV NODE_ENV production
+# ENV NODE_ENV production
 COPY --from=pruner /app/out/full/ .
 COPY --from=dev-deps /app/ .
 COPY turbo.json turbo.json
