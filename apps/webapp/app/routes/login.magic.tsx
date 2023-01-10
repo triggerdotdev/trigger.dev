@@ -21,7 +21,7 @@ export async function loader({ request }: LoaderArgs) {
 
   const session = await getUserSession(request);
 
-  return { magicLinkSent: session.has("apihero:magiclink") };
+  return { magicLinkSent: session.has("triggerdotdev:magiclink") };
 }
 
 export async function action({ request }: ActionArgs) {
@@ -42,7 +42,7 @@ export async function action({ request }: ActionArgs) {
     });
   } else {
     const session = await getUserSession(request);
-    session.unset("apihero:magiclink");
+    session.unset("triggerdotdev:magiclink");
 
     return redirect("/login/magic", {
       headers: {

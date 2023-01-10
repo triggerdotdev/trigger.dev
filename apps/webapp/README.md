@@ -6,5 +6,5 @@ To start, run with `pnpm run dev --filter webapp`
 
 ```sh
 pnpm run docker:build:webapp
-docker run -it apihero-webapp sh
+docker run -it triggerdotdev-webapp sh
 ```

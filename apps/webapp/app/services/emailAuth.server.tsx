@@ -15,7 +15,7 @@ const emailStrategy = new EmailLinkStrategy(
     sendEmail: sendMagicLinkEmail,
     secret,
     callbackURL: "/magic",
-    sessionMagicLinkKey: "apihero:magiclink",
+    sessionMagicLinkKey: "triggerdotdev:magiclink",
   },
   async ({
     email,

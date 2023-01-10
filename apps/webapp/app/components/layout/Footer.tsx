@@ -30,7 +30,7 @@ export function Footer() {
         <a
           target="_blank"
           rel="noopener noreferrer"
-          href="https://twitter.com/runapihero"
+          href="https://twitter.com/triggerdotdev"
           className={linkStyle}
         >
           Twitter
