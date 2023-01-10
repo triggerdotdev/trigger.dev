@@ -32,28 +32,27 @@ export default function Email({ magicLink }: { magicLink: string }) {
               ...text,
               color: "#ababab",
               marginTop: "14px",
-              marginBottom: "16px",
+              marginBottom: "24px",
             }}
           >
             If you didn&apos;t try to login, you can safely ignore this email.
           </Text>
           <Img
-            src="/static/notion-logo.png"
-            width="32"
-            height="32"
-            alt="Notion's Logo"
+            src="/static/logo-mono.png"
+            width="138"
+            height="24"
+            alt="Trigger.dev logo"
           />
           <Text style={footer}>
             <Link
-              href="https://notion.so"
+              href="https://app.trigger.dev"
               target="_blank"
               style={{ ...link, color: "#898989" }}
             >
-              Notion.so
+              Trigger.dev
             </Link>
-            , the all-in-one-workspace
+            , Automate complex workflows with code.
             <br />
-            for your notes, tasks, wikis, and databases.
           </Text>
         </Container>
       </Section>

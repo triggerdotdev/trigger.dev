@@ -16,81 +16,69 @@ export default function Email({ name }: { name?: string }) {
       <Head />
       <Preview>You're now ready to make live transactions with Stripe!</Preview>
       <Section style={main}>
-        <Container style={container}>
-          <Section style={box}>
-            <Image
-              path="/emails/logo.png"
-              width="156"
-              height="28"
-              alt="Trigger.dev"
-            />
-            <Hr style={hr} />
-            <Text style={paragraph}>
-              Thanks for submitting your account information. You're now ready
-              to make live transactions with Stripe!
-            </Text>
-            <Text style={paragraph}>
-              You can view your payments and a variety of other information
-              about your account right from your dashboard.
-            </Text>
-            <Button
-              pX={10}
-              pY={10}
-              style={button}
-              href="https://dashboard.stripe.com/login"
-            >
-              View your Stripe Dashboard
-            </Button>
-            <Hr style={hr} />
-            <Text style={paragraph}>
-              If you haven't finished your integration, you might find our{" "}
-              <Link style={anchor} href="https://stripe.com/docs">
-                docs
-              </Link>{" "}
-              handy.
-            </Text>
-            <Text style={paragraph}>
-              Once you're ready to start accepting payments, you'll just need to
-              use your live{" "}
-              <Link
-                style={anchor}
-                href="https://dashboard.stripe.com/login?redirect=%2Fapikeys"
-              >
-                API keys
-              </Link>{" "}
-              instead of your test API keys. Your account can simultaneously be
-              used for both test and live requests, so you can continue testing
-              while accepting live payments. Check out our{" "}
-              <Link style={anchor} href="https://stripe.com/docs/dashboard">
-                tutorial about account basics
-              </Link>
-              .
-            </Text>
-            <Text style={paragraph}>
-              Finally, we've put together a{" "}
-              <Link
-                style={anchor}
-                href="https://stripe.com/docs/checklist/website"
-              >
-                quick checklist
-              </Link>{" "}
-              to ensure your website conforms to card network standards.
-            </Text>
-            <Text style={paragraph}>
-              We'll be here to help you with any step along the way. You can
-              find answers to most questions and get in touch with us on our{" "}
-              <Link style={anchor} href="https://support.stripe.com/">
-                support site
-              </Link>
-              .
-            </Text>
-            <Text style={paragraph}>— The Stripe team</Text>
-            <Hr style={hr} />
-            <Text style={footer}>
-              Stripe, 354 Oyster Point Blvd, South San Francisco, CA 94080
-            </Text>
-          </Section>
-        </Container>
+        <Text style={paragraph}>Hey {name ?? "there"},</Text>
+        <Text style={paragraph}>
+          Thanks for signing up! I’m Matt, CEO of Trigger.dev.
+        </Text>
+        <Text style={paragraph}>
+          Our goal is to give developers like you the ability to easily create
+          much more powerful workflows, directly from your codebase. Creating
+          complex workflows should feel the same as any other important part of
+          the product, which is why we created Trigger.dev.
+        </Text>
+
+        <Text style={paragraph}>
+          If you’re ready - you can{" "}
+          <Link style={anchor} href="https://app.trigger.dev/">
+            create a new workflow.
+          </Link>{" "}
+        </Text>
+
+        <Text style={paragraph}>Otherwise, please feel free to check out:</Text>
+
+        <Text style={paragraph}>
+          • Our{" "}
+          <Link style={anchor} href="">
+            quickstart guide
+          </Link>{" "}
+        </Text>
+
+        <Text style={paragraph}>
+          • Browse our{" "}
+          <Link style={anchor} href="">
+            workflow templates
+          </Link>{" "}
+          if you want some inspiration.
+        </Text>
+
+        <Text style={paragraph}>
+          • Explore our{" "}
+          <Link style={anchor} href="https://docs.trigger.dev/">
+            docs
+          </Link>{" "}
+          for a full overview of the product and it’s features{" "}
+        </Text>
+
+        <Text style={paragraph}>
+          •{" "}
+          <Link style={anchor} href="https://docs.trigger.dev/quickstart">
+            Schedule a call with us
+          </Link>{" "}
+          about a workflow idea you have.
+        </Text>
+
+        <Text style={paragraph}>Best,</Text>
+        <Text style={paragraph}>Matt</Text>
+        <Text style={paragraph}>CEO, Trigger.dev</Text>
+
+        <Hr style={hr} />
+        <Text style={footer}>
+          <Link style={anchor} href="https://app.trigger.dev/">
+            Trigger.dev
+          </Link>
+          . ©API Hero Ltd, 3rd Floor, 1 Ashley Road, Altrincham, Cheshire, WA14
+          2DT
+        </Text>
       </Section>
     </Html>
   );
