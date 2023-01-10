@@ -36,6 +36,7 @@ COPY turbo.json turbo.json
 RUN corepack enable
 COPY --from=pruner /app/out/full/ .
 RUN npm config set python /usr/bin/python3
+ENV NODE_ENV development
 RUN pnpm install --ignore-scripts --frozen-lockfile
 RUN pnpm run generate
 RUN pnpm run build --filter=webapp...
