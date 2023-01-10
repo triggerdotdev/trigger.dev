@@ -30,19 +30,19 @@ WORKDIR /app
 RUN corepack enable
 ENV NODE_ENV production
 RUN npm config set python /usr/bin/python3
-RUN pnpm install --prod --frozen-lockfile
 COPY --from=pruner /app/out/full/apps/webapp/prisma/schema.prisma /app/apps/webapp/prisma/schema.prisma
+RUN pnpm install --prod --frozen-lockfile
 RUN pnpx prisma generate --schema /app/apps/webapp/prisma/schema.prisma
 
-# FROM base AS builder
-# WORKDIR /app
-# RUN corepack enable
-# ENV NODE_ENV production
-# COPY --from=pruner /app/out/full/ .
-# COPY --from=dev-deps /app/ .
-# COPY turbo.json turbo.json
-# RUN pnpm run generate
-# RUN pnpm run build --filter=webapp...
+FROM base AS builder
+WORKDIR /app
+RUN corepack enable
+ENV NODE_ENV production
+COPY --from=pruner /app/out/full/ .
+COPY --from=dev-deps /app/ .
+COPY turbo.json turbo.json
+RUN pnpm run generate
+RUN pnpm run build --filter=webapp...
 
 # # Runner
 # FROM node:lts-bullseye-slim AS runner
