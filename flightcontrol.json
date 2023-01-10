@@ -88,7 +88,9 @@
             "DOCKER_PASSWORD": {
               "fromParameterStore": "DOCKER_HUB_PASSWORD"
             },
-            "PIZZLY_HOST": "https://auth.trigger.dev"
+            "PIZZLY_HOST": "https://auth.trigger.dev",
+            "TRIGGER_LOG_LEVEL": "debug",
+            "PULSAR_DEBUG": true
           }
         },
         {
