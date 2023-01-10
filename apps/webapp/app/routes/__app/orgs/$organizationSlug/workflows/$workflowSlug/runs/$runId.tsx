@@ -348,7 +348,7 @@ function WorkflowStep({ step }: { step: Step }) {
       return (
         <div className="flex items-stretch w-full">
           <div className="relative flex w-5 border-l border-slate-700 ml-2.5">
-            <div className="absolute top-6 -left-[18px] p-1 bg-slate-850 rounded-full">
+            <div className="absolute top-[23px] -left-[18px] p-1 bg-slate-850 rounded-full">
               {runStatusIcon(step.status, "large")}
             </div>
           </div>
