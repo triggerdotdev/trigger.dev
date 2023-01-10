@@ -27,6 +27,7 @@ RUN pnpm install --ignore-scripts --frozen-lockfile
 
 FROM base AS production-deps
 WORKDIR /app
+RUN npm install turbo -g
 RUN corepack enable
 ENV NODE_ENV production
 RUN npm config set python /usr/bin/python3
@@ -36,6 +37,7 @@ RUN pnpx prisma generate --schema /app/apps/webapp/prisma/schema.prisma
 
 FROM base AS builder
 WORKDIR /app
+RUN npm install turbo -g
 RUN corepack enable
 ENV NODE_ENV production
 COPY --from=pruner /app/out/full/ .
@@ -47,6 +49,7 @@ RUN pnpm run build --filter=webapp...
 # Runner
 FROM node:lts-bullseye-slim AS runner
 RUN apt-get update && apt-get install -y openssl
+RUN npm install turbo -g
 WORKDIR /app
 RUN corepack enable
 ENV NODE_ENV production
