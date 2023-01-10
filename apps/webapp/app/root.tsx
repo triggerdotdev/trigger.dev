@@ -105,7 +105,36 @@ function App() {
       </head>
       <body className="h-full overflow-hidden">
         <Outlet />
-        <Toaster position="top-right" />
+        <Toaster
+          position="top-right"
+          toastOptions={{
+            className: "",
+            success: {
+              style: {
+                border: "1px solid #10B981",
+                background: "#D1FAE5",
+                padding: "16px 20px",
+                color: "#1E293B",
+              },
+              iconTheme: {
+                primary: "#10B981",
+                secondary: "#D1FAE5",
+              },
+            },
+            error: {
+              style: {
+                border: "1px solid #F43F5E",
+                background: "#FFE4E6",
+                padding: "16px 20px",
+                color: "#1E293B",
+              },
+              iconTheme: {
+                primary: "#F43F5E",
+                secondary: "#FFE4E6",
+              },
+            },
+          }}
+        />
         <ScrollRestoration />
         <Scripts />
         <LiveReload />

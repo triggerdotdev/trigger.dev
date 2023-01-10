@@ -100,7 +100,7 @@ function errorMessageForSource(source: "rerun" | "test") {
 
 function successMessageForSource(source: "rerun" | "test") {
   if (source === "rerun") {
-    return "Workflow successfully rerun";
+    return "Rerun successful";
   } else {
     return "Test event successfully sent";
   }
