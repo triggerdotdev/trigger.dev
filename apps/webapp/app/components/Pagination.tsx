@@ -18,12 +18,12 @@ export function PaginationControls({
   const location = useLocation();
 
   return (
-    <div className="flex items-center justify-between border-t border-slate-850 bg-slate-700/20 px-4 py-3 sm:px-6 text-slate-400">
+    <div className="flex items-center justify-between border-t border-slate-850 bg-slate-700/20 pl-4 pr-3 py-3 text-slate-400">
       <div className="flex flex-1 justify-between sm:hidden">
         {currentPage > 1 && (
           <Link
             to={pageUrl(location, currentPage - 1)}
-            className="relative inline-flex items-center rounded-md border border-gray-300 bg-slate-700/20 px-4 py-2 text-sm font-medium  hover:bg-gray-50"
+            className="relative inline-flex items-center rounded-md border border-slate-300 bg-slate-700/20 px-4 py-2 text-xs hover:bg-slate-50"
           >
             Previous
           </Link>
@@ -31,7 +31,7 @@ export function PaginationControls({
         {currentPage < totalPages && (
           <Link
             to={pageUrl(location, currentPage + 1)}
-            className="relative ml-3 inline-flex items-center rounded-md border border-gray-300 bg-slate-700/20 px-4 py-2 text-sm font-medium  hover:bg-gray-50"
+            className="relative ml-3 inline-flex items-center rounded-md border border-slate-300 bg-slate-700/20 px-4 py-2 text-xs hover:bg-slate-50"
           >
             Next
           </Link>
@@ -56,11 +56,11 @@ export function PaginationControls({
             <LinkDisabled
               to={pageUrl(location, currentPage - 1)}
               disabled={currentPage === 1}
-              className="relative inline-flex items-center rounded-l-md border border-slate-500 bg-slate-700/20 px-2 py-2 text-sm font-medium text-slate-400 hover:bg-slate-500 hover:text-slate-900 focus:z-20"
-              disabledClassName="opacity-30"
+              className="relative inline-flex items-center rounded-l border border-slate-500 bg-slate-700/20 px-2 text-xs font-medium text-slate-400 hover:bg-slate-400 hover:text-slate-800 hover:border-slate-400 focus:z-20 transition"
+              disabledClassName="opacity-30 cursor-default hover:bg-slate-700/20 hover:border-slate-500 hover:!text-slate-400"
             >
               <span className="sr-only">Previous</span>
-              <ChevronLeftIcon className="h-5 w-5" aria-hidden="true" />
+              <ChevronLeftIcon className="h-4 w-4" aria-hidden="true" />
             </LinkDisabled>
 
             {calculatePageLinks(currentPage, totalPages).map((page, i) => (
@@ -70,11 +70,11 @@ export function PaginationControls({
             <LinkDisabled
               to={pageUrl(location, currentPage + 1)}
               disabled={currentPage === totalPages}
-              className="relative inline-flex items-center rounded-r-md border border-slate-500 bg-slate-700/20 px-2 py-2 text-sm font-medium text-slate-400 hover:bg-slate-500 hover:text-slate-900 focus:z-20"
-              disabledClassName="opacity-30"
+              className="relative inline-flex items-center rounded-r border border-slate-500 bg-slate-700/20 px-2 text-xs font-medium text-slate-400 hover:bg-slate-400 hover:text-slate-800 hover:border-slate-400 focus:z-20 transition"
+              disabledClassName="opacity-30 cursor-default hover:bg-slate-700/20 hover:border-slate-500 hover:!text-slate-400"
             >
               <span className="sr-only">Next</span>
-              <ChevronRightIcon className="h-5 w-5" aria-hidden="true" />
+              <ChevronRightIcon className="h-4 w-4" aria-hidden="true" />
             </LinkDisabled>
           </nav>
         </div>
@@ -95,11 +95,11 @@ function pageUrl(
 }
 
 const baseClass =
-  "relative inline-flex items-center border px-4 py-2 text-sm font-medium focus:z-20";
+  "relative inline-flex items-center border px-3.5 py-2 text-xs font-medium focus:z-20 transition";
 const unselectedClass =
-  "bg-slate-700/20 border-slate-500 text-slate-400 hover:bg-slate-500 hover:text-slate-900";
+  "bg-slate-700/20 border-slate-500 text-slate-400 hover:bg-slate-400 hover:text-slate-900";
 const selectedClass =
-  "z-10 bg-slate-400 hover:bg-slate-200 border-slate-400 text-slate-900";
+  "z-10 bg-slate-500 border-slate-500 hover:bg-slate-400 text-slate-900";
 
 function PageLinkComponent({
   page,
@@ -130,7 +130,7 @@ function PageLinkComponent({
     }
   } else {
     return (
-      <span className="inline-flex items-center border-t-2 border-transparent px-4 pt-4 text-sm font-medium text-gray-500">
+      <span className="inline-flex items-center border-t-2 border-transparent px-4 pt-4 text-xs font-medium text-slate-500">
         ...
       </span>
     );
@@ -147,7 +147,7 @@ function NextPreviousButton({
   return (
     <Link
       to={path}
-      className="relative inline-flex items-center rounded-l-md border border-gray-300 bg-slate-700/20 px-2 py-2 text-sm font-medium text-gray-500 hover:bg-gray-50 focus:z-20"
+      className="relative inline-flex items-center rounded-l-md border border-slate-300 bg-slate-700/20 px-2 py-2 text-xs font-medium text-slate-500 hover:bg-slate-50 focus:z-20"
     >
       {children}
     </Link>
