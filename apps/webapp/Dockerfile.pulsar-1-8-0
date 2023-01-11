@@ -1,7 +1,7 @@
 FROM sitespeedio/node:ubuntu-22.04-nodejs-18.12.1 AS pruner
 RUN apt-get update && apt-get install -y openssl
 WORKDIR /app
-RUN yarn global add turbo
+RUN npm install turbo -g
 COPY . .
 RUN turbo prune --scope=webapp --docker
 RUN find . -name "node_modules" -type d -prune -exec rm -rf '{}' +
