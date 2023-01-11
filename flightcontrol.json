@@ -6,7 +6,7 @@
       "name": "Prod",
       "region": "us-east-1",
       "source": {
-        "branch": "dev",
+        "branch": "main",
         "trigger": "manual"
       },
       "envVariables": {
