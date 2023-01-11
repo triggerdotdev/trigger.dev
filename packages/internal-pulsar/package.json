@@ -18,7 +18,7 @@
     "test": "jest"
   },
   "dependencies": {
-    "pulsar-client": "1.8.0",
+    "pulsar-client": "1.7.0",
     "ulid": "^2.3.0",
     "zod": "^3.20.2"
   }
