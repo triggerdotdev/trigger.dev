@@ -132,6 +132,9 @@ new Trigger({
   run: async (event, ctx) => {
     const collections = await shopify.listCollections("get-collections", {
       first: 10,
+      filter: {
+        title: ["Home page"],
+      },
     });
 
     return collections;

@@ -156,8 +156,8 @@ export const appendProductImagesQuery = gql`
 `;
 
 export const listCollectionsQuery = gql`
-  {
-    collections(first: 100) {
+  query SearchProductVariants($first: Int!, $filters: String) {
+    collections(first: $first, query: $filters) {
       edges {
         node {
           id
