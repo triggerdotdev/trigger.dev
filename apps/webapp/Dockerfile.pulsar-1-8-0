@@ -36,6 +36,7 @@ ENV NODE_ENV production
 COPY --from=pruner /app/out/full/ .
 COPY --from=dev-deps /app/ .
 COPY turbo.json turbo.json
+RUN pnpm add -g turbo
 RUN pnpm run generate
 RUN pnpm run build --filter=webapp...
 
