@@ -1,5 +1,5 @@
 {
-  "name": "API Hero",
+  "name": "Trigger.dev",
   "logo": {
     "dark": "/logo/light.png",
     "light": "/logo/light.png",
@@ -8,7 +8,7 @@
   "favicon": "/images/favicon.png",
   "colors": {
     "primary": "#0fd122",
-    "light": "#e7ff52",
+    "light": "#41FF54",
     "dark": "#09ab18",
     "anchors": {
       "from": "#069613",
@@ -34,11 +34,6 @@
       "name": "JSON Hero",
       "icon": "code",
       "url": "https://jsonhero.io/"
-    },
-    {
-      "name": "Community",
-      "icon": "discord",
-      "url": "https://mintlify.com/community"
     }
   ],
   "navigation": [
