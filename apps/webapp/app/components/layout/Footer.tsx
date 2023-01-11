@@ -1,5 +1,3 @@
-import { Link } from "@remix-run/react";
-
 export function Footer() {
   const linkStyle =
     "text-xs font-medium text-slate-400 whitespace-nowrap bg-transparent text-slate-500 transition hover:text-indigo-500";
@@ -9,13 +7,19 @@ export function Footer() {
       <p className="text-xs text-slate-500">
         &copy; {new Date().getFullYear()} Trigger.dev{" "}
         <span className="text-slate-600">|</span>{" "}
-        <Link className="transition hover:text-indigo-500" to="/legal/terms">
+        <a
+          className="transition hover:text-indigo-500"
+          href="https://trigger.dev/legal/terms"
+        >
           Terms
-        </Link>{" "}
+        </a>{" "}
         <span className="text-slate-600">|</span>{" "}
-        <Link className="transition hover:text-indigo-500" to="/legal/privacy">
+        <a
+          className="transition hover:text-indigo-500"
+          href="https://trigger.dev/legal/privacy"
+        >
           Privacy
-        </Link>
+        </a>
       </p>
 
       <div className="flex">
