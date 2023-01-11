@@ -39,7 +39,6 @@ export const ProductSchema = z.object({
     })
     .nullable(),
   productType: z.string().nullable(),
-  storefrontId: z.string().nullable(),
   tags: z.array(z.string()).nullable(),
   totalInventory: z.number().nullable(),
   totalVariants: z.number().nullable(),
@@ -126,11 +125,6 @@ export const CreateProductBodySchema = z.object({
   giftCardTemplateSuffix: z.string().optional(),
   handle: z.string().optional(),
   options: z.array(z.string()).optional(),
-  productCategory: z
-    .object({
-      productTaxonomyNodeId: z.string(),
-    })
-    .optional(),
   productType: z.string().optional(),
   requiresSellingPlan: z.boolean().optional(),
   seo: z

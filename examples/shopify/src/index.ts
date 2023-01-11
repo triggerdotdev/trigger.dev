@@ -75,10 +75,31 @@ new Trigger({
   }),
   run: async (event, ctx) => {
     const newProduct = await shopify.createProduct("create-product", {
-      title: "Best ever product",
+      descriptionHtml: "This is my brilliant <i>product description</i>.",
+      title: "Fantastic product",
+      productType: "t-shirt",
+      vendor: "Nike",
+      options: ["Color", "Size"],
+      standardizedProductType: {
+        productTaxonomyNodeId: "gid://shopify/ProductTaxonomyNode/352",
+      },
+      variants: [
+        {
+          price: "99.99",
+          sku: "variant-1",
+          inventoryItem: {
+            tracked: true,
+          },
+          inventoryQuantities: [
+            {
+              availableQuantity: 1,
+              locationId: "gid://shopify/Location/76378800435",
+            },
+          ],
+          options: ["Maroon", "Tiny"],
+        },
+      ],
     });
-
-    await ctx.logger.debug("Debug message");
 
     return newProduct;
   },

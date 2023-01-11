@@ -117,7 +117,6 @@ export const createProductQuery = gql`
           }
         }
         productType
-        storefrontId
         tags
         totalInventory
         totalVariants
