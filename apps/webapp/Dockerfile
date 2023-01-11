@@ -12,7 +12,7 @@ RUN apt-get update && apt-get install openssl g++ make wget python3 -y
 ENV PULSAR_CPP_CLIENT_VERSION=2.10.3
 RUN wget https://archive.apache.org/dist/pulsar/pulsar-${PULSAR_CPP_CLIENT_VERSION}/DEB/apache-pulsar-client.deb -q
 RUN wget https://archive.apache.org/dist/pulsar/pulsar-${PULSAR_CPP_CLIENT_VERSION}/DEB/apache-pulsar-client-dev.deb -q
-RUN dpkg -i --force-architecture ./apache-pulsar-client*.deb
+RUN dpkg -i ./apache-pulsar-client*.deb
 WORKDIR /app
 COPY .gitignore .gitignore
 COPY --from=pruner /app/out/json/ .
@@ -48,7 +48,7 @@ RUN apt-get update && apt-get install openssl g++ make wget python3 -y
 ENV PULSAR_CPP_CLIENT_VERSION=2.10.3
 RUN wget https://archive.apache.org/dist/pulsar/pulsar-${PULSAR_CPP_CLIENT_VERSION}/DEB/apache-pulsar-client.deb -q
 RUN wget https://archive.apache.org/dist/pulsar/pulsar-${PULSAR_CPP_CLIENT_VERSION}/DEB/apache-pulsar-client-dev.deb -q
-RUN dpkg -i --force-architecture ./apache-pulsar-client*.deb
+RUN dpkg -i ./apache-pulsar-client*.deb
 RUN npm install turbo -g
 WORKDIR /app
 RUN corepack enable
