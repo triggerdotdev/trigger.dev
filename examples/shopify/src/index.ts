@@ -101,6 +101,20 @@ new Trigger({
       ],
     });
 
+    const newImages = await shopify.appendProductImages("append-images", {
+      id: newProduct.id,
+      images: [
+        {
+          src: "https://via.placeholder.com/600/92c952.png",
+          altText: "Image 1",
+        },
+        {
+          src: "https://via.placeholder.com/600/d32776.png",
+          altText: "Image 2",
+        },
+      ],
+    });
+
     return newProduct;
   },
 }).listen();

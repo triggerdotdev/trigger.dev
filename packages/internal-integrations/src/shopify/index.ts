@@ -9,6 +9,7 @@ import { Client, createClient, gql } from "@urql/core";
 import { shopify } from "internal-providers";
 import { z } from "zod";
 import {
+  appendProductImagesQuery,
   createProductQuery,
   createProductVariantsQuery,
   defaultFirst,
@@ -56,6 +57,9 @@ class ShopifyRequestIntegration implements RequestIntegration {
       case "productVariant.create": {
         return this.#createProductVariant(client, options.params);
       }
+      case "productImages.append": {
+        return this.#appendProductImages(client, options.params);
+      }
       default: {
         throw new Error(`Unknown endpoint: ${options.endpoint}`);
       }
@@ -65,8 +69,10 @@ class ShopifyRequestIntegration implements RequestIntegration {
   displayProperties(endpoint: string, params: any): DisplayProperties {
     switch (endpoint) {
       case "product.create": {
+        const parsedParams =
+          shopify.schemas.CreateProductBodySchema.parse(params);
         return {
-          title: "Create product",
+          title: `Create product: ${parsedParams.title}`,
         };
       }
       case "productVariants.search": {
@@ -93,6 +99,13 @@ class ShopifyRequestIntegration implements RequestIntegration {
           shopify.schemas.CreateVariantBodySchema.parse(params);
         return {
           title: `Create product variant for ${parsedParams.productId}`,
+        };
+      }
+      case "productImages.append": {
+        const parsedParams =
+          shopify.schemas.AppendProductImagesBodySchema.parse(params);
+        return {
+          title: `Append product images to: ${parsedParams.id}`,
         };
       }
       default: {
@@ -366,6 +379,93 @@ class ShopifyRequestIntegration implements RequestIntegration {
       return performedRequest;
     } catch (error) {
       log("product.create query error %O", error);
+      return {
+        ok: false,
+        isRetryable: false,
+        response: {
+          output: error,
+          context: {},
+        },
+      };
+    }
+  }
+
+  async #appendProductImages(
+    client: Client,
+    params: any
+  ): Promise<PerformedRequestResponse> {
+    const parsedParams =
+      shopify.schemas.AppendProductImagesBodySchema.parse(params);
+    log("productImages.append %O", parsedParams);
+
+    try {
+      const result = await client
+        .mutation(appendProductImagesQuery, {
+          input: parsedParams,
+        })
+        .toPromise();
+
+      if (result.error) {
+        log("productImages.append failed %O", result.error);
+        return {
+          ok: false,
+          isRetryable: false,
+          response: {
+            output: result.error,
+            context: {},
+          },
+        };
+      }
+
+      if (result.data === undefined) {
+        log("productImages.append data undefined %O");
+        return {
+          ok: false,
+          isRetryable: false,
+          response: {
+            output: {
+              message: "No data returned",
+            },
+            context: {},
+          },
+        };
+      }
+
+      const userErrors = result.data.productAppendImages.userErrors;
+      if (userErrors && userErrors.length > 0) {
+        log(
+          "productImages.append userErrors %O",
+          result.data.productAppendImages
+        );
+        return {
+          ok: false,
+          isRetryable: false,
+          response: {
+            output: userErrors,
+            context: {},
+          },
+        };
+      }
+
+      const newImages = result.data.productAppendImages.newImages;
+
+      const validatedProduct =
+        shopify.schemas.AppendProductImagesResponseSchema.parse(newImages);
+
+      const performedRequest = {
+        ok: true,
+        isRetryable: false,
+        response: {
+          output: validatedProduct,
+          context: {},
+        },
+      };
+
+      log("productImages.append performedRequest %O", performedRequest);
+
+      return performedRequest;
+    } catch (error) {
+      log("productImages.append query error %O", error);
       return {
         ok: false,
         isRetryable: false,

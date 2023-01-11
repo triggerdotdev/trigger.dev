@@ -90,3 +90,33 @@ export async function createProduct(
 
   return output;
 }
+
+export type AppendProductImagesBody = z.infer<
+  typeof shopify.schemas.AppendProductImagesBodySchema
+>;
+
+export type AppendProductImagesResponse = z.infer<
+  typeof shopify.schemas.AppendProductImagesResponseSchema
+>;
+
+export async function appendProductImages(
+  key: string,
+  options: AppendProductImagesBody
+): Promise<AppendProductImagesResponse> {
+  const run = getTriggerRun();
+
+  if (!run) {
+    throw new Error("Cannot call getProducts outside of a trigger run");
+  }
+
+  const output = await run.performRequest(key, {
+    service: "shopify",
+    endpoint: "productImages.append",
+    params: options,
+    response: {
+      schema: shopify.schemas.AppendProductImagesResponseSchema,
+    },
+  });
+
+  return output;
+}

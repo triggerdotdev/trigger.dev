@@ -136,3 +136,21 @@ export const createProductQuery = gql`
     }
   }
 `;
+
+export const appendProductImagesQuery = gql`
+  mutation productAppendImages($input: ProductAppendImagesInput!) {
+    productAppendImages(input: $input) {
+      newImages {
+        id
+        altText
+        url
+        height
+        width
+      }
+      userErrors {
+        field
+        message
+      }
+    }
+  }
+`;

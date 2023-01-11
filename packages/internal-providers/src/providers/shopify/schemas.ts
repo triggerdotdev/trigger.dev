@@ -146,3 +146,20 @@ export const CreateProductBodySchema = z.object({
     .optional(),
   vendor: z.string().optional(),
 });
+
+export const AppendProductImagesBodySchema = z.object({
+  id: z.string(),
+  images: z.array(
+    z.object({ src: z.string(), altText: z.string().optional() })
+  ),
+});
+
+export const ImageSchema = z.object({
+  id: z.string(),
+  url: z.string(),
+  width: z.number(),
+  height: z.number(),
+  altText: z.string().optional(),
+});
+
+export const AppendProductImagesResponseSchema = z.array(ImageSchema);
