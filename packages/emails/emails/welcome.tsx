@@ -13,17 +13,21 @@ export default function Email({ name }: { name?: string }) {
   return (
     <Html>
       <Head />
-      <Preview>You're now ready to make live transactions with Stripe!</Preview>
+      <Preview>You're now ready to create complex workflows in code!</Preview>
       <Section style={main}>
         <Text style={paragraph}>Hey {name ?? "there"},</Text>
         <Text style={paragraph}>
-          Thanks for signing up! I’m Matt, CEO of Trigger.dev.
+          I’m Matt, CEO of{" "}
+          <Link style={anchor} href="https://app.trigger.dev/">
+            Trigger.dev
+          </Link>
+          .
         </Text>
         <Text style={paragraph}>
           Our goal is to give developers like you the ability to easily create
           much more powerful workflows, directly from your codebase. Creating
-          complex workflows should feel the same as any other important part of
-          the product, which is why we created Trigger.dev.
+          complex workflows should be the same as creating any other important
+          part of your product, which is why we created Trigger.dev.
         </Text>
 
         <Text style={paragraph}>
@@ -40,16 +44,16 @@ export default function Email({ name }: { name?: string }) {
           <Link style={anchor} href="">
             quickstart guide
           </Link>{" "}
-          does this work
+          to get you up and running in minutes
         </Text>
-
+        {/* 
         <Text style={bullets}>
-          • Browse our{" "}
+          • Browse our pre-built{" "}
           <Link style={anchor} href="">
             workflow templates
           </Link>{" "}
           if you want some inspiration.
-        </Text>
+        </Text> */}
 
         <Text style={bullets}>
           • Explore our{" "}
@@ -67,8 +71,12 @@ export default function Email({ name }: { name?: string }) {
           about a workflow idea you have.
         </Text>
 
-        <Text style={paragraph}>Best,</Text>
-        <Text style={paragraph}>Matt</Text>
+        <Text style={paragraph}>
+          Feel free to drop me a message if you have any further questions!
+        </Text>
+
+        <Text style={bullets}>Best,</Text>
+        <Text style={bullets}>Matt</Text>
         <Text style={paragraph}>CEO, Trigger.dev</Text>
 
         <Hr style={hr} />
@@ -78,6 +86,11 @@ export default function Email({ name }: { name?: string }) {
           </Link>
           . ©API Hero Ltd, 3rd Floor, 1 Ashley Road, Altrincham, Cheshire, WA14
           2DT
+        </Text>
+        <Text style={footer}>
+          <Link style={anchor} href="">
+            Unsubscribe from this list
+          </Link>{" "}
         </Text>
       </Section>
     </Html>
@@ -105,7 +118,7 @@ const hr = {
 };
 
 const paragraph = {
-  color: "#ffffff",
+  color: "#333",
   fontFamily:
     '-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Ubuntu,sans-serif',
   fontSize: "16px",
@@ -114,7 +127,7 @@ const paragraph = {
 };
 
 const bullets = {
-  color: "#525f7f",
+  color: "#333",
   fontFamily:
     '-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Ubuntu,sans-serif',
   fontSize: "16px",
@@ -125,6 +138,7 @@ const bullets = {
 
 const anchor = {
   color: "#556cd6",
+  textDecoration: "underline",
 };
 
 const button = {
