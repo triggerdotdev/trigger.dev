@@ -159,7 +159,7 @@ export default function Page() {
 
       {run.status === "SUCCESS" && (
         <>
-          <div className="h-3 w-full ml-[10px] border-l border-slate-700"></div>
+          <div className="h-3 w-full ml-[10px] -mr-[10px] border-l border-slate-700"></div>
           <Panel>
             <PanelHeader
               icon={<CheckCircleIcon className="h-6 w-6 text-green-500" />}
@@ -260,7 +260,7 @@ function TriggerStep({ trigger }: { trigger: Trigger }) {
           />
         )}
       </Panel>
-      <div className="h-3 w-full ml-[10px] border-l border-slate-700"></div>
+      <div className="h-3 w-full ml-[10px] -mr-[10px] border-l border-slate-700"></div>
     </>
   );
 }
@@ -301,7 +301,7 @@ function WorkflowStep({ step }: { step: Step }) {
     case "LOG_MESSAGE":
       return (
         <div className="flex items-stretch w-full">
-          <div className="relative flex w-5 border-l border-slate-700 ml-2.5">
+          <div className="relative flex shrink-0 w-5 border-l border-slate-700 ml-2.5">
             <div className="absolute top-2 -left-[18px] p-1 bg-slate-850 rounded-full">
               <ChatBubbleOvalLeftEllipsisIcon
                 className={classNames("h-7 w-7", logColor[step.input.level])}
@@ -355,7 +355,7 @@ function WorkflowStep({ step }: { step: Step }) {
     default:
       return (
         <div className="flex items-stretch w-full">
-          <div className="relative flex w-5 border-l border-slate-700 ml-2.5">
+          <div className="relative flex shrink-0 w-5 border-l border-slate-700 ml-2.5">
             <div className="absolute top-[23px] -left-[18px] p-1 bg-slate-850 rounded-full">
               {runStatusIcon(step.status, "large")}
             </div>
