@@ -10,7 +10,8 @@ import { SubTitle } from "~/components/primitives/text/SubTitle";
 import { Title } from "~/components/primitives/text/Title";
 import { RunsTable } from "~/components/runs/RunsTable";
 import { TriggerBody } from "~/components/triggers/Trigger";
-import { triggerInfo } from "~/components/triggers/triggerTypes";
+import { TriggerTypeIcon } from "~/components/triggers/TriggerIcons";
+import { triggerLabel } from "~/components/triggers/triggerLabel";
 import { useConnectionSlots } from "~/hooks/useConnectionSlots";
 import { useCurrentEnvironment } from "~/hooks/useEnvironments";
 import { useCurrentOrganization } from "~/hooks/useOrganizations";
@@ -83,8 +84,15 @@ export default function Page() {
           <SubTitle>Workflow type</SubTitle>
           <Panel className="mb-4">
             <PanelHeader
-              icon={triggerInfo[eventRule.trigger.type].icon}
-              title={triggerInfo[eventRule.trigger.type].label}
+              icon={
+                <div className="h-6 w-6 mr-1">
+                  <TriggerTypeIcon
+                    type={eventRule.trigger.type}
+                    provider={connectionSlots.source?.integration}
+                  />
+                </div>
+              }
+              title={triggerLabel(eventRule.trigger.type)}
               startedAt={null}
               finishedAt={null}
             />

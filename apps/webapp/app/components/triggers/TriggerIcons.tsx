@@ -1,10 +1,10 @@
 import type { Provider } from "internal-providers";
 import type { Workflow } from "~/models/workflow.server";
 import { ApiLogoIcon } from "../code/ApiLogoIcon";
-import CustomEvent from "./assets/images/triggers/custom-event.png";
-import HttpEndpoint from "./assets/images/triggers/http-endpoint.png";
-import Schedule from "./assets/images/triggers/schedule.png";
-import { triggerLabel } from "./triggerTypes";
+import CustomEvent from "../../assets/images/triggers/custom-event.png";
+import HttpEndpoint from "../../assets/images/triggers/http-endpoint.png";
+import Schedule from "../../assets/images/triggers/schedule.png";
+import { triggerLabel } from "./triggerLabel";
 
 type TriggerType = Workflow["type"];
 

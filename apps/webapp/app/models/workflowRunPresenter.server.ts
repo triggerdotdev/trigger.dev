@@ -13,6 +13,7 @@ import type { PrismaClient } from "~/db.server";
 import { prisma } from "~/db.server";
 import type { PrismaReturnType } from "~/utils";
 import { dateDifference } from "~/utils";
+import { getIntegration } from "~/utils/integrations";
 import { getIntegrations } from "./integrations.server";
 import type { WorkflowRunStatus } from "./workflowRun.server";
 
@@ -35,7 +36,7 @@ export class WorkflowRunPresenter {
       workflowRun.tasks.map((step) => parseStep(step, integrations))
     );
 
-    const trigger = {
+    let trigger = {
       startedAt: workflowRun.startedAt,
       status: triggerStatus(steps.length, workflowRun.status),
       input: workflowRun.event.payload,
@@ -53,7 +54,10 @@ export class WorkflowRunPresenter {
         workflowRun.startedAt &&
         workflowRun.finishedAt &&
         dateDifference(workflowRun.startedAt, workflowRun.finishedAt),
-      trigger,
+      trigger: {
+        ...trigger,
+        integration: getIntegration(integrations, trigger.service),
+      },
       steps,
       error: workflowRun.error
         ? await ErrorSchema.parseAsync(workflowRun.error)

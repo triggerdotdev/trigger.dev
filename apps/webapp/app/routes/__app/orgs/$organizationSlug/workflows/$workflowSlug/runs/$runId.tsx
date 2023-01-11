@@ -36,7 +36,8 @@ import {
 } from "~/components/primitives/text/Headers";
 import { runStatusIcon, runStatusLabel } from "~/components/runs/runStatus";
 import { TriggerBody } from "~/components/triggers/Trigger";
-import { triggerInfo } from "~/components/triggers/triggerTypes";
+import { TriggerTypeIcon } from "~/components/triggers/TriggerIcons";
+import { triggerLabel } from "~/components/triggers/triggerLabel";
 import { useCurrentOrganization } from "~/hooks/useOrganizations";
 import { useCurrentWorkflow } from "~/hooks/useWorkflows";
 import type { WorkflowRunStatus } from "~/models/workflowRun.server";
@@ -235,8 +236,15 @@ function TriggerStep({ trigger }: { trigger: Trigger }) {
     <>
       <Panel className="mt-4">
         <PanelHeader
-          icon={triggerInfo[trigger.type].icon}
-          title={triggerInfo[trigger.type].label}
+          icon={
+            <div className="h-6 w-6 mr-1">
+              <TriggerTypeIcon
+                type={trigger.type}
+                provider={trigger.integration}
+              />
+            </div>
+          }
+          title={triggerLabel(trigger.type)}
           startedAt={trigger.startedAt}
           finishedAt={null}
           name="Initial wait"
