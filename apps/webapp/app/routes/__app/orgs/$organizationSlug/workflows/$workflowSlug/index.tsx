@@ -81,7 +81,12 @@ export default function Page() {
       {apiConnectionCount > 0 && <WorkflowConnections />}
       {eventRule && (
         <>
-          <SubTitle>Workflow type</SubTitle>
+          <div className="flex justify-between items-end">
+            <SubTitle>Workflow type</SubTitle>
+            <SecondaryLink to="test" className="mb-2">
+              Run a test
+            </SecondaryLink>
+          </div>
           <Panel className="mb-4">
             <PanelHeader
               icon={
