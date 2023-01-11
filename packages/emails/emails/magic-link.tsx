@@ -1,7 +1,7 @@
 import { Container } from "@react-email/container";
 import { Head } from "@react-email/head";
 import { Html } from "@react-email/html";
-import { Img } from "@react-email/img";
+import { Image } from "./components/image";
 import { Link } from "@react-email/link";
 import { Preview } from "@react-email/preview";
 import { Section } from "@react-email/section";
@@ -37,11 +37,11 @@ export default function Email({ magicLink }: { magicLink: string }) {
           >
             If you didn&apos;t try to login, you can safely ignore this email.
           </Text>
-          <Img
-            src="/static/logo-mono.png"
-            width="138"
-            height="24"
-            alt="Trigger.dev logo"
+          <Image
+            path="/emails/logo-mono.png"
+            width="156"
+            height="28"
+            alt="Trigger.dev"
           />
           <Text style={footer}>
             <Link

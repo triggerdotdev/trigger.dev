@@ -3,7 +3,6 @@ import { Container } from "@react-email/container";
 import { Head } from "@react-email/head";
 import { Hr } from "@react-email/hr";
 import { Html } from "@react-email/html";
-import { Image } from "./components/Image";
 import { Link } from "@react-email/link";
 import { Preview } from "@react-email/preview";
 import { Section } from "@react-email/section";
@@ -36,14 +35,15 @@ export default function Email({ name }: { name?: string }) {
 
         <Text style={paragraph}>Otherwise, please feel free to check out:</Text>
 
-        <Text style={paragraph}>
+        <Text style={bullets}>
           • Our{" "}
           <Link style={anchor} href="">
             quickstart guide
           </Link>{" "}
+          does this work
         </Text>
 
-        <Text style={paragraph}>
+        <Text style={bullets}>
           • Browse our{" "}
           <Link style={anchor} href="">
             workflow templates
@@ -51,7 +51,7 @@ export default function Email({ name }: { name?: string }) {
           if you want some inspiration.
         </Text>
 
-        <Text style={paragraph}>
+        <Text style={bullets}>
           • Explore our{" "}
           <Link style={anchor} href="https://docs.trigger.dev/">
             docs
@@ -59,7 +59,7 @@ export default function Email({ name }: { name?: string }) {
           for a full overview of the product and it’s features{" "}
         </Text>
 
-        <Text style={paragraph}>
+        <Text style={bullets}>
           •{" "}
           <Link style={anchor} href="https://docs.trigger.dev/quickstart">
             Schedule a call with us
@@ -85,7 +85,7 @@ export default function Email({ name }: { name?: string }) {
 }
 
 const main = {
-  backgroundColor: "#f6f9fc",
+  backgroundColor: "#ffffff",
 };
 
 const container = {
@@ -105,12 +105,22 @@ const hr = {
 };
 
 const paragraph = {
+  color: "#ffffff",
+  fontFamily:
+    '-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Ubuntu,sans-serif',
+  fontSize: "16px",
+  lineHeight: "24px",
+  textAlign: "left" as const,
+};
+
+const bullets = {
   color: "#525f7f",
   fontFamily:
     '-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Ubuntu,sans-serif',
   fontSize: "16px",
   lineHeight: "24px",
   textAlign: "left" as const,
+  margin: "0",
 };
 
 const anchor = {
