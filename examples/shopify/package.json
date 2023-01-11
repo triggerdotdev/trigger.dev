@@ -1,6 +1,6 @@
 {
   "private": true,
-  "name": "@examples/send-to-slack",
+  "name": "@examples/shopify",
   "version": "0.0.1",
   "description": "Send a message to slack when a customer creates a new custom domain",
   "dependencies": {
