@@ -121,7 +121,7 @@ export default function LoginMagicLinkPage() {
                     transition.type === "actionSubmission" &&
                     transition.submission.formData.get("action") === "send" ? (
                       <PrimaryButton
-                        className="flex mt-2 py-3 w-full"
+                        className="flex mt-2 py-3 w-full !max-w-full"
                         name="action"
                         value="send"
                         type="submit"
@@ -130,7 +130,7 @@ export default function LoginMagicLinkPage() {
                       </PrimaryButton>
                     ) : (
                       <PrimaryButton
-                        className="flex mt-2 py-3 w-full max-w-full"
+                        className="flex mt-2 py-3 w-full !max-w-full"
                         name="action"
                         value="send"
                         type="submit"
