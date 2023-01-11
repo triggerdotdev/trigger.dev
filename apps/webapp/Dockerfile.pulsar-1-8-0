@@ -43,7 +43,7 @@ RUN pnpm run build --filter=webapp...
 
 # Runner
 FROM sitespeedio/node:ubuntu-22.04-nodejs-18.12.1 AS runner
-RUN apt-get update && apt-get install -y openssl
+RUN apt-get update && apt-get install -y openssl ca-certificates
 WORKDIR /app
 RUN corepack enable
 ENV NODE_ENV production
