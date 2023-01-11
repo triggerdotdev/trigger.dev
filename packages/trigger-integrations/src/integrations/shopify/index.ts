@@ -35,10 +35,14 @@ export type CreateVariantBody = z.infer<
   typeof shopify.schemas.CreateVariantBodySchema
 >;
 
+export type CreateVariantResponse = z.infer<
+  typeof shopify.schemas.ProductVariantSchema
+>;
+
 export async function createProductVariant(
   key: string,
   options: CreateVariantBody
-): Promise<any> {
+): Promise<CreateVariantResponse> {
   const run = getTriggerRun();
 
   if (!run) {
@@ -50,7 +54,7 @@ export async function createProductVariant(
     endpoint: "productVariant.create",
     params: options,
     response: {
-      schema: z.any(),
+      schema: shopify.schemas.ProductVariantSchema,
     },
   });
 

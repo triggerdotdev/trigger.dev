@@ -51,8 +51,32 @@ export const SearchVariantsSuccessResponseSchema = z.object({
   productVariants: z.array(ProductVariantSchema),
 });
 
+const InventoryQuantitySchema = z.object({
+  availableQuantity: z.number(),
+  locationId: z.string(),
+});
+
+const InventoryItemSchema = z.object({
+  cost: z.string().optional(),
+  tracked: z.boolean().optional(),
+});
+
+const InventoryPolicy = z.union([z.literal("CONTINUE"), z.literal("DENY")]);
+
 export const CreateVariantBodySchema = z.object({
   productId: z.string(),
   options: z.array(z.string()),
   price: z.string().optional(),
+  sku: z.string().optional(),
+  barcode: z.string().optional(),
+  compareAtPrice: z.string().optional(),
+  inventoryItem: InventoryItemSchema.optional(),
+  inventoryPolicy: InventoryPolicy.optional(),
+  inventoryQuantities: z.array(InventoryQuantitySchema).optional(),
+  requiresShipping: z.boolean().optional(),
+  position: z.number().optional(),
+  taxCode: z.string().optional(),
+  taxable: z.boolean().optional(),
+  weight: z.number().optional(),
+  weightUnit: z.string().optional(),
 });

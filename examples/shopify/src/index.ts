@@ -46,8 +46,15 @@ const trigger = new Trigger({
 
     const newVariant = await shopify.createProductVariant("create-variant", {
       productId: results.productVariants[0].product.id,
-      options: [pickRandom(sizes), pickRandom(materials), pickRandom(colors)],
+      inventoryQuantities: [
+        {
+          availableQuantity: 10,
+          locationId: "gid://shopify/Location/76378800435",
+        },
+      ],
       price: "12.34",
+      sku: `variant-${Math.floor(Math.random() * 1000)}`,
+      options: [pickRandom(sizes), pickRandom(materials), pickRandom(colors)],
     });
 
     await ctx.logger.debug("Debug message");
