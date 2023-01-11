@@ -14,7 +14,7 @@ export default function Email({
   workflowId,
 }: {
   name?: string;
-  workflowid: string;
+  workflowId: string;
   integration: string;
 }) {
   return (
