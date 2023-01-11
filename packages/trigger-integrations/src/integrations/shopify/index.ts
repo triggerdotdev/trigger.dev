@@ -150,3 +150,33 @@ export async function listCollections(
 
   return output;
 }
+
+export type ListLocationsBody = z.infer<
+  typeof shopify.schemas.ListLocationsBodySchema
+>;
+
+export type ListLocationsResponse = z.infer<
+  typeof shopify.schemas.ListLocationsResponseSchema
+>;
+
+export async function listLocations(
+  key: string,
+  options: ListLocationsBody
+): Promise<ListLocationsResponse> {
+  const run = getTriggerRun();
+
+  if (!run) {
+    throw new Error("Cannot call getProducts outside of a trigger run");
+  }
+
+  const output = await run.performRequest(key, {
+    service: "shopify",
+    endpoint: "locations.list",
+    params: options,
+    response: {
+      schema: shopify.schemas.ListLocationsResponseSchema,
+    },
+  });
+
+  return output;
+}

@@ -14,6 +14,7 @@ import {
   createProductVariantsQuery,
   defaultFirst,
   listCollectionsQuery,
+  listLocationsQuery,
   searchProductVariantsQuery,
 } from "./queries";
 
@@ -63,6 +64,9 @@ class ShopifyRequestIntegration implements RequestIntegration {
       }
       case "collections.list": {
         return this.#listCollections(client, options.params);
+      }
+      case "locations.list": {
+        return this.#listLocations(client, options.params);
       }
       default: {
         throw new Error(`Unknown endpoint: ${options.endpoint}`);
@@ -115,6 +119,11 @@ class ShopifyRequestIntegration implements RequestIntegration {
       case "collections.list": {
         return {
           title: "List collections",
+        };
+      }
+      case "locations.list": {
+        return {
+          title: "List locations",
         };
       }
       default: {
@@ -558,6 +567,80 @@ class ShopifyRequestIntegration implements RequestIntegration {
       return performedRequest;
     } catch (error) {
       log("collections.list query error %O", error);
+      return {
+        ok: false,
+        isRetryable: false,
+        response: {
+          output: error,
+          context: {},
+        },
+      };
+    }
+  }
+
+  async #listLocations(
+    client: Client,
+    params: any
+  ): Promise<PerformedRequestResponse> {
+    const parsedParams = shopify.schemas.ListLocationsBodySchema.parse(params);
+    log("locations.list %O", parsedParams);
+
+    try {
+      const result = await client
+        .query(listLocationsQuery, {
+          first: parsedParams.first ?? defaultFirst,
+        })
+        .toPromise();
+
+      if (result.error) {
+        log("locations.list failed %O", result.error);
+        return {
+          ok: false,
+          isRetryable: false,
+          response: {
+            output: result.error,
+            context: {},
+          },
+        };
+      }
+
+      if (result.data === undefined) {
+        log("locations.list data undefined %O");
+        return {
+          ok: false,
+          isRetryable: false,
+          response: {
+            output: {
+              message: "No data returned",
+            },
+            context: {},
+          },
+        };
+      }
+
+      const response = result.data.locations.edges.map((c: any) => ({
+        id: c.node.id,
+        name: c.node.name,
+        isActive: c.node.isActive,
+      }));
+
+      const validatedResponse =
+        shopify.schemas.ListLocationsResponseSchema.parse(response);
+
+      const performedRequest = {
+        ok: true,
+        isRetryable: false,
+        response: {
+          output: validatedResponse,
+          context: {},
+        },
+      };
+
+      log("locations.list performedRequest %O", performedRequest);
+
+      return performedRequest;
+    } catch (error) {
+      log("locations.list query error %O", error);
       return {
         ok: false,
         isRetryable: false,

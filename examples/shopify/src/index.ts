@@ -21,6 +21,10 @@ const colors = [
 ];
 const materials = ["Cotton", "Polyester", "Lycra", "Wool", "Silk", "Leather"];
 
+function pickRandom(array: string[]): string {
+  return array[Math.floor(Math.random() * array.length)];
+}
+
 new Trigger({
   id: "shopify-product-variants",
   name: "Shopify product variants",
@@ -141,6 +145,21 @@ new Trigger({
   },
 }).listen();
 
-function pickRandom(array: string[]): string {
-  return array[Math.floor(Math.random() * array.length)];
-}
+new Trigger({
+  id: "shopify-locations",
+  name: "Shopify locations",
+  apiKey: "trigger_dev_zC25mKNn6c0q",
+  endpoint: "ws://localhost:8889/ws",
+  logLevel: "debug",
+  on: customEvent({
+    name: "shopify.locations",
+    schema: z.object({}),
+  }),
+  run: async (event, ctx) => {
+    const locations = await shopify.listLocations("get-locations", {
+      first: 10,
+    });
+
+    return locations;
+  },
+}).listen();

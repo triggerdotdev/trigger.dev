@@ -156,7 +156,7 @@ export const appendProductImagesQuery = gql`
 `;
 
 export const listCollectionsQuery = gql`
-  query SearchProductVariants($first: Int!, $filters: String) {
+  query ListCollections($first: Int!, $filters: String) {
     collections(first: $first, query: $filters) {
       edges {
         node {
@@ -166,6 +166,20 @@ export const listCollectionsQuery = gql`
           updatedAt
           productsCount
           sortOrder
+        }
+      }
+    }
+  }
+`;
+
+export const listLocationsQuery = gql`
+  query ListLocations($first: Int!) {
+    locations(first: $first) {
+      edges {
+        node {
+          id
+          name
+          isActive
         }
       }
     }

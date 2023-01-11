@@ -187,3 +187,12 @@ export const ListCollectionsResponseSchema = z.array(
     sortOrder: z.string(),
   })
 );
+
+export const ListLocationsBodySchema = FirstOrLastSchema;
+export const ListLocationsResponseSchema = z.array(
+  z.object({
+    id: z.string(),
+    name: z.string(),
+    isActive: z.boolean(),
+  })
+);
