@@ -10,12 +10,10 @@ import * as React from "react";
 
 export default function Email({
   name,
-  integration,
   workflowId,
 }: {
   name?: string;
   workflowId: string;
-  integration: string;
 }) {
   return (
     <Html>
@@ -23,14 +21,15 @@ export default function Email({
       <Preview>You need to connect your workflow!</Preview>
       <Section style={main}>
         <Text style={paragraph}>
-          Your workflow {workflowId ?? "WORKFLOWID"} can’t run because you need
-          to connect to {integration ?? "INTEGRATION"}.
+          Your workflow, {workflowId ?? "WORKFLOWID"} has failed.
         </Text>
 
-        <Text style={paragraph}>To fix this click the button below.</Text>
+        <Text style={paragraph}>
+          To learn more, just click the button below.
+        </Text>
 
         <Button href="" pX={20} pY={12} style={btn}>
-          Connect {integration ?? "INTEGRATION"}
+          View the issue
         </Button>
 
         <Text style={paragraph}>— Trigger.dev team</Text>

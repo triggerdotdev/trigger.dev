@@ -22,8 +22,6 @@ export default function Email({
       <Head />
       <Preview>You need to connect your workflow!</Preview>
       <Section style={main}>
-        <Text style={paragraph}>Hey {name ?? "there"},</Text>
-
         <Text style={paragraph}>
           Your workflow {workflowId ?? "WORKFLOWID"} can’t run because it
           requires {integration ?? "INTEGRATION"} to be connected.
@@ -34,7 +32,7 @@ export default function Email({
         </Text>
 
         <Button href="" pX={20} pY={12} style={btn}>
-          Connect {integration ?? "INTEGRATION"}.
+          Connect {integration ?? "INTEGRATION"}
         </Button>
 
         <Text style={paragraph}>— Trigger.dev team</Text>
