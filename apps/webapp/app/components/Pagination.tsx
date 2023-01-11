@@ -16,6 +16,9 @@ export function PaginationControls({
   totalResults: number;
 }) {
   const location = useLocation();
+  if (totalPages <= 1) {
+    return null;
+  }
 
   return (
     <div className="flex items-center justify-between rounded-b-lg border-t border-slate-850 bg-slate-700/20 pl-4 pr-3 py-3 text-slate-400">

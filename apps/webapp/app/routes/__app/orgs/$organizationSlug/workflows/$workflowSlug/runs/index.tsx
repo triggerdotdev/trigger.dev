@@ -87,25 +87,20 @@ export default function Page() {
       >
         <StatusFilter statuses={filters.statuses} submitForm={submitForm} />
       </fetcher.Form>
-      {runs.length !== 0 ? (
-        <>
-          <Panel className="p-0 overflow-hidden overflow-x-auto rounded-b-none">
-            <RunsTable runs={runs} total={total} hasFilters={hasFilters} />
-          </Panel>
-          <PaginationControls
-            currentPage={page}
-            totalPages={pageCount}
-            pageSize={pageSize}
-            totalResults={total}
-          />
-        </>
-      ) : (
-        <>
-          <Panel className="p-0 overflow-hidden overflow-x-auto rounded-b-lg">
-            <RunsTable runs={runs} total={total} hasFilters={hasFilters} />
-          </Panel>
-        </>
-      )}
+      <Panel
+        className={classNames(
+          "p-0 overflow-hidden overflow-x-auto",
+          total === 0 ? "rounded-b-lg" : "rounded-b-none"
+        )}
+      >
+        <RunsTable runs={runs} total={total} hasFilters={hasFilters} />
+      </Panel>
+      <PaginationControls
+        currentPage={page}
+        totalPages={pageCount}
+        pageSize={pageSize}
+        totalResults={total}
+      />
     </>
   );
 }
