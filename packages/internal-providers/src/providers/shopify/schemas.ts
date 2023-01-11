@@ -53,5 +53,6 @@ export const SearchVariantsSuccessResponseSchema = z.object({
 
 export const CreateVariantBodySchema = z.object({
   productId: z.string(),
+  options: z.array(z.string()),
   price: z.string().optional(),
 });

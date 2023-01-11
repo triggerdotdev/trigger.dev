@@ -231,7 +231,10 @@ class ShopifyRequestIntegration implements RequestIntegration {
         };
       }
 
-      if (result.data.productVariantCreate.userErrors) {
+      if (
+        result.data.productVariantCreate.userErrors &&
+        result.data.productVariantCreate.userErrors.length > 0
+      ) {
         log("productVariant.create userErrors %O", result.data.userErrors);
         return {
           ok: false,
@@ -243,41 +246,17 @@ class ShopifyRequestIntegration implements RequestIntegration {
         };
       }
 
-      //todo convert this into a better response format
-      const validatedResponse = result.data;
+      const productVariant = result.data.productVariantCreate.productVariant;
 
-      // const response = {
-      //   count: result.data.productVariants.edges.length,
-      //   productVariants: result.data.productVariants.edges.map((p: any) => ({
-      //     id: p.node.id,
-      //     title: p.node.title,
-      //     createdAt: p.node.createdAt,
-      //     updatedAt: p.node.updatedAt,
-      //     price: p.node.price,
-      //     product: p.node.product,
-      //     sku: p.node.sku,
-      //     barcode: p.node.barcode,
-      //     compareAtPrice: p.node.compareAtPrice,
-      //     fulfillmentService: p.node.fulfillmentService,
-      //     image: p.node.image,
-      //     inventoryQuantity: p.node.inventoryQuantity,
-      //     requiresShipping: p.node.requiresShipping,
-      //     position: p.node.position,
-      //     taxCode: p.node.taxCode,
-      //     taxable: p.node.taxable,
-      //     weight: p.node.weight,
-      //     weightUnit: p.node.weightUnit,
-      //   })),
-      // };
-
-      // const validatedResponse =
-      //   shopify.schemas.SearchVariantsSuccessResponseSchema.parse(response);
+      const validatedProductVariant =
+        shopify.schemas.ProductVariantSchema.parse(productVariant);
+      console.log("validatedProductVariant", validatedProductVariant);
 
       const performedRequest = {
         ok: true,
         isRetryable: false,
         response: {
-          output: validatedResponse,
+          output: validatedProductVariant,
           context: {},
         },
       };
