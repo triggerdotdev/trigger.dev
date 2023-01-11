@@ -1,9 +1,3 @@
-import CustomEvent from "../../assets/images/triggers/custom-event.png";
-import HttpEndpoint from "../../assets/images/triggers/http-endpoint.png";
-import Schedule from "../../assets/images/triggers/schedule.png";
-import EventBridge from "../../assets/images/triggers/event-bridge.png";
-import HttpPolling from "../../assets/images/triggers/http-polling.png";
-
 import {
   BarsArrowDownIcon,
   CalendarDaysIcon,
@@ -11,8 +5,6 @@ import {
 } from "@heroicons/react/24/outline";
 import type { ReactNode } from "react";
 import type { Workflow } from "~/models/workflow.server";
-import type { Provider } from "internal-providers";
-import { ApiLogoIcon } from "../code/ApiLogoIcon";
 
 type TriggerType = Workflow["type"];
 
@@ -59,49 +51,5 @@ export function triggerLabel(type: TriggerType) {
       return "Scheduled";
     default:
       return type;
-  }
-}
-
-const iconClasses = "h-full w-full";
-
-export function TriggerTypeIcon({
-  type,
-  provider,
-}: {
-  type: TriggerType;
-  provider?: Provider;
-}) {
-  if (provider) {
-    return (
-      <ApiLogoIcon
-        integration={provider}
-        size="custom"
-        className={iconClasses}
-      />
-    );
-  }
-  switch (type) {
-    case "CUSTOM_EVENT":
-      return (
-        <img
-          src={CustomEvent}
-          alt={triggerLabel(type)}
-          className={iconClasses}
-        />
-      );
-    case "HTTP_ENDPOINT":
-      return (
-        <img
-          src={HttpEndpoint}
-          alt={triggerLabel(type)}
-          className={iconClasses}
-        />
-      );
-    case "SCHEDULE":
-      return (
-        <img src={Schedule} alt={triggerLabel(type)} className={iconClasses} />
-      );
-    default:
-      return null;
   }
 }
