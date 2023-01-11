@@ -76,7 +76,6 @@
                 "value": "dbConnectionString"
               }
             },
-            "PULSAR_ENABLED": "1",
             "PULSAR_CLIENT_ID": {
               "fromParameterStore": "PROD_WEBAPP_PULSAR_CLIENT_ID"
             },
