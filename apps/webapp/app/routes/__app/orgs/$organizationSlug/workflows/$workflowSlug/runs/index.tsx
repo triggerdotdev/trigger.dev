@@ -87,15 +87,15 @@ export default function Page() {
       >
         <StatusFilter statuses={filters.statuses} submitForm={submitForm} />
       </fetcher.Form>
-      <Panel className="p-0 overflow-hidden overflow-x-auto">
+      <Panel className="p-0 overflow-hidden overflow-x-auto rounded-b-none">
         <RunsTable runs={runs} total={total} hasFilters={hasFilters} />
-        <PaginationControls
-          currentPage={page}
-          totalPages={pageCount}
-          pageSize={pageSize}
-          totalResults={total}
-        />
       </Panel>
+      <PaginationControls
+        currentPage={page}
+        totalPages={pageCount}
+        pageSize={pageSize}
+        totalResults={total}
+      />
     </>
   );
 }
