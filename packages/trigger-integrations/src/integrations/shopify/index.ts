@@ -120,3 +120,33 @@ export async function appendProductImages(
 
   return output;
 }
+
+export type ListCollectionsBody = z.infer<
+  typeof shopify.schemas.ListCollectionsBodySchema
+>;
+
+export type ListCollectionsResponse = z.infer<
+  typeof shopify.schemas.ListCollectionsResponseSchema
+>;
+
+export async function listCollections(
+  key: string,
+  options: ListCollectionsBody
+): Promise<ListCollectionsResponse> {
+  const run = getTriggerRun();
+
+  if (!run) {
+    throw new Error("Cannot call getProducts outside of a trigger run");
+  }
+
+  const output = await run.performRequest(key, {
+    service: "shopify",
+    endpoint: "collections.list",
+    params: options,
+    response: {
+      schema: shopify.schemas.ListCollectionsResponseSchema,
+    },
+  });
+
+  return output;
+}

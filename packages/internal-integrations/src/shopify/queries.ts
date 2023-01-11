@@ -154,3 +154,20 @@ export const appendProductImagesQuery = gql`
     }
   }
 `;
+
+export const listCollectionsQuery = gql`
+  {
+    collections(first: 100) {
+      edges {
+        node {
+          id
+          title
+          handle
+          updatedAt
+          productsCount
+          sortOrder
+        }
+      }
+    }
+  }
+`;

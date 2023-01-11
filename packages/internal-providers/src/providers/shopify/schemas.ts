@@ -163,3 +163,27 @@ export const ImageSchema = z.object({
 });
 
 export const AppendProductImagesResponseSchema = z.array(ImageSchema);
+
+export const ListCollectionsBodySchema = FirstOrLastSchema.and(
+  z.object({
+    filter: z
+      .object({
+        title: z.array(z.string()).optional(),
+        collectionType: z.array(z.string()).optional(),
+        publishedStatus: z.array(z.string()).optional(),
+        publishableStatus: z.array(z.string()).optional(),
+        updatedAt: z.array(z.string()).optional(),
+      })
+      .optional(),
+  })
+);
+export const ListCollectionsResponseSchema = z.array(
+  z.object({
+    id: z.string(),
+    title: z.string(),
+    handle: z.string(),
+    updatedAt: z.string(),
+    productsCount: z.number(),
+    sortOrder: z.string(),
+  })
+);

@@ -119,6 +119,25 @@ new Trigger({
   },
 }).listen();
 
+new Trigger({
+  id: "shopify-collections",
+  name: "Shopify collections",
+  apiKey: "trigger_dev_zC25mKNn6c0q",
+  endpoint: "ws://localhost:8889/ws",
+  logLevel: "debug",
+  on: customEvent({
+    name: "shopify.collections",
+    schema: z.object({}),
+  }),
+  run: async (event, ctx) => {
+    const collections = await shopify.listCollections("get-collections", {
+      first: 10,
+    });
+
+    return collections;
+  },
+}).listen();
+
 function pickRandom(array: string[]): string {
   return array[Math.floor(Math.random() * array.length)];
 }

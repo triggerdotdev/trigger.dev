@@ -13,6 +13,7 @@ import {
   createProductQuery,
   createProductVariantsQuery,
   defaultFirst,
+  listCollectionsQuery,
   searchProductVariantsQuery,
 } from "./queries";
 
@@ -60,6 +61,9 @@ class ShopifyRequestIntegration implements RequestIntegration {
       case "productImages.append": {
         return this.#appendProductImages(client, options.params);
       }
+      case "collections.list": {
+        return this.#listCollections(client, options.params);
+      }
       default: {
         throw new Error(`Unknown endpoint: ${options.endpoint}`);
       }
@@ -106,6 +110,11 @@ class ShopifyRequestIntegration implements RequestIntegration {
           shopify.schemas.AppendProductImagesBodySchema.parse(params);
         return {
           title: `Append product images to: ${parsedParams.id}`,
+        };
+      }
+      case "collections.list": {
+        return {
+          title: "List collections",
         };
       }
       default: {
@@ -466,6 +475,89 @@ class ShopifyRequestIntegration implements RequestIntegration {
       return performedRequest;
     } catch (error) {
       log("productImages.append query error %O", error);
+      return {
+        ok: false,
+        isRetryable: false,
+        response: {
+          output: error,
+          context: {},
+        },
+      };
+    }
+  }
+
+  async #listCollections(
+    client: Client,
+    params: any
+  ): Promise<PerformedRequestResponse> {
+    const parsedParams =
+      shopify.schemas.ListCollectionsBodySchema.parse(params);
+    log("collections.list %O", parsedParams);
+
+    try {
+      const filters = parsedParams.filter
+        ? buildFilter(parsedParams.filter)
+        : undefined;
+
+      const result = await client
+        .query(listCollectionsQuery, {
+          first: parsedParams.first ?? defaultFirst,
+          filters: filters,
+        })
+        .toPromise();
+
+      if (result.error) {
+        log("collections.list failed %O", result.error);
+        return {
+          ok: false,
+          isRetryable: false,
+          response: {
+            output: result.error,
+            context: {},
+          },
+        };
+      }
+
+      if (result.data === undefined) {
+        log("collections.list data undefined %O");
+        return {
+          ok: false,
+          isRetryable: false,
+          response: {
+            output: {
+              message: "No data returned",
+            },
+            context: {},
+          },
+        };
+      }
+
+      const response = result.data.collections.edges.map((c: any) => ({
+        id: c.node.id,
+        title: c.node.title,
+        handle: c.node.handle,
+        updatedAt: c.node.updatedAt,
+        productsCount: c.node.productsCount,
+        sortOrder: c.node.sortOrder,
+      }));
+
+      const validatedResponse =
+        shopify.schemas.ListCollectionsResponseSchema.parse(response);
+
+      const performedRequest = {
+        ok: true,
+        isRetryable: false,
+        response: {
+          output: validatedResponse,
+          context: {},
+        },
+      };
+
+      log("collections.list performedRequest %O", performedRequest);
+
+      return performedRequest;
+    } catch (error) {
+      log("collections.list query error %O", error);
       return {
         ok: false,
         isRetryable: false,
