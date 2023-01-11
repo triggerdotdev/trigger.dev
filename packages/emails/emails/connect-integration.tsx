@@ -20,16 +20,14 @@ export default function Email({
   return (
     <Html>
       <Head />
-      <Preview>You need to connect your workflow!</Preview>
+      <Preview>You need to connect {integration ?? "INTEGRATION"}!</Preview>
       <Section style={main}>
         <Text style={paragraph}>
-          Your workflow {workflowId ?? "WORKFLOWID"} can’t run because it
-          requires {integration ?? "INTEGRATION"} to be connected.
+          Your workflow {workflowId ?? "WORKFLOWID"} can’t run because you need
+          to connect to {integration ?? "INTEGRATION"}.
         </Text>
 
-        <Text style={paragraph}>
-          To get back up and running click the button below.
-        </Text>
+        <Text style={paragraph}>To fix this click the button below.</Text>
 
         <Button href="" pX={20} pY={12} style={btn}>
           Connect {integration ?? "INTEGRATION"}

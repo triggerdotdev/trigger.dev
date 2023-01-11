@@ -18,7 +18,7 @@ export default function Email({
   return (
     <Html>
       <Head />
-      <Preview>You need to connect your workflow!</Preview>
+      <Preview>Your workflow has failed!</Preview>
       <Section style={main}>
         <Text style={paragraph}>
           Your workflow, {workflowId ?? "WORKFLOWID"} has failed.
