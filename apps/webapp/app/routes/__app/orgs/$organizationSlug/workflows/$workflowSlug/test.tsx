@@ -120,7 +120,7 @@ function Tester({
         onChange={(c) => setTestContent(c)}
         maxHeight="calc(100vh - 300px)"
       />
-      <PrimaryButton onClick={submit}>Test</PrimaryButton>
+      <PrimaryButton onClick={submit}>Run test</PrimaryButton>
     </div>
   );
 }
