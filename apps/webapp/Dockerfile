@@ -38,6 +38,7 @@ COPY --from=pruner /app/out/full/ .
 RUN npm config set python /usr/bin/python3
 ENV NODE_ENV development
 RUN pnpm install --ignore-scripts --frozen-lockfile
+ENV NODE_ENV production
 RUN pnpm run generate
 RUN pnpm run build --filter=webapp...
 RUN pnpx prisma migrate deploy --schema apps/webapp/prisma/schema.prisma
