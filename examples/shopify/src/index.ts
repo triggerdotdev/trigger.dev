@@ -97,7 +97,7 @@ new Trigger({
           inventoryQuantities: [
             {
               availableQuantity: 1,
-              locationId: "gid://shopify/Location/76378800435",
+              locationId: "gid://shopify/Location/76187369773",
             },
           ],
           options: ["Maroon", "Tiny"],
