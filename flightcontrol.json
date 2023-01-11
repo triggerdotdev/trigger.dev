@@ -24,7 +24,7 @@
           "name": "Prod Webapp",
           "type": "fargate",
           "buildType": "docker",
-          "dockerfilePath": "./apps/webapp/Dockerfile",
+          "dockerfilePath": "./apps/webapp/Dockerfile.pulsar-1-8-0",
           "dockerContext": ".",
           "cpu": 4,
           "memory": 8,
