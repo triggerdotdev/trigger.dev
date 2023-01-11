@@ -88,8 +88,7 @@
             },
             "PIZZLY_HOST": "https://auth.trigger.dev",
             "TRIGGER_LOG_LEVEL": "debug",
-            "PULSAR_DEBUG": true,
-            "PULSAR_ENABLED": "1"
+            "PULSAR_DEBUG": true
           }
         },
         {
