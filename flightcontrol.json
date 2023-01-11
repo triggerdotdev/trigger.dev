@@ -10,7 +10,6 @@
         "trigger": "manual"
       },
       "envVariables": {
-        "NODE_ENV": "production",
         "PULSAR_ISSUER_URL": "https://auth.streamnative.cloud/",
         "PULSAR_AUDIENCE": "urn:sn:pulsar:o-syacq:trigger-platform",
         "PULSAR_TENANT": "triggerdotdev",
