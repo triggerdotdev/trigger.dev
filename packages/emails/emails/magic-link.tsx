@@ -1,7 +1,7 @@
 import { Container } from "@react-email/container";
 import { Head } from "@react-email/head";
 import { Html } from "@react-email/html";
-import { Image } from "./components/image";
+import { Image } from "./components/Image";
 import { Link } from "@react-email/link";
 import { Preview } from "@react-email/preview";
 import { Section } from "@react-email/section";
