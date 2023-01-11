@@ -8,7 +8,11 @@ RUN find . -name "node_modules" -type d -prune -exec rm -rf '{}' +
 
 # Base strategy to have layer caching
 FROM sitespeedio/node:ubuntu-22.04-nodejs-18.12.1 AS base
-RUN apt-get update && apt-get install -y openssl
+RUN apt-get update && apt-get install openssl g++ make wget python3 -y
+ENV PULSAR_CPP_CLIENT_VERSION=2.10.3
+RUN wget https://archive.apache.org/dist/pulsar/pulsar-${PULSAR_CPP_CLIENT_VERSION}/DEB/apache-pulsar-client.deb -q
+RUN wget https://archive.apache.org/dist/pulsar/pulsar-${PULSAR_CPP_CLIENT_VERSION}/DEB/apache-pulsar-client-dev.deb -q
+RUN dpkg -i ./apache-pulsar-client*.deb
 WORKDIR /app
 COPY .gitignore .gitignore
 COPY --from=pruner /app/out/json/ .
@@ -20,12 +24,14 @@ FROM base AS dev-deps
 WORKDIR /app
 RUN corepack enable
 ENV NODE_ENV development
+RUN npm config set python /usr/bin/python3
 RUN pnpm install --ignore-scripts --frozen-lockfile
 
 FROM base AS production-deps
 WORKDIR /app
 RUN corepack enable
 ENV NODE_ENV production
+RUN npm config set python /usr/bin/python3
 RUN pnpm install --prod --frozen-lockfile
 COPY --from=pruner /app/out/full/apps/webapp/prisma/schema.prisma /app/apps/webapp/prisma/schema.prisma
 RUN pnpx prisma generate --schema /app/apps/webapp/prisma/schema.prisma
@@ -43,7 +49,11 @@ RUN pnpm run build --filter=webapp...
 
 # Runner
 FROM sitespeedio/node:ubuntu-22.04-nodejs-18.12.1 AS runner
-RUN apt-get update && apt-get install -y openssl ca-certificates
+RUN apt-get update && apt-get install openssl g++ make wget python3 ca-certificates -y
+ENV PULSAR_CPP_CLIENT_VERSION=2.10.3
+RUN wget https://archive.apache.org/dist/pulsar/pulsar-${PULSAR_CPP_CLIENT_VERSION}/DEB/apache-pulsar-client.deb -q
+RUN wget https://archive.apache.org/dist/pulsar/pulsar-${PULSAR_CPP_CLIENT_VERSION}/DEB/apache-pulsar-client-dev.deb -q
+RUN dpkg -i ./apache-pulsar-client*.deb
 WORKDIR /app
 RUN corepack enable
 ENV NODE_ENV production

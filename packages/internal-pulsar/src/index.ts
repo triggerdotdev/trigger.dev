@@ -3,6 +3,8 @@ import Pulsar, {
   AuthenticationToken,
 } from "pulsar-client";
 
+import SegfaultHandler from "segfault-handler";
+
 export type ClientOptions = {
   serviceUrl?: string;
   token?: string;
@@ -38,9 +40,13 @@ export function createPulsarClient(options?: ClientOptions): PulsarClient {
     ? new AuthenticationToken({ token: opts.token })
     : oauth2AuthenticationFromEnv();
 
-  Pulsar.Client.setLogHandler((level, file, line, message) => {
-    console.log("[%s][%s:%d] %s", level, file, line, message);
-  });
+  if (process.env.PULSAR_DEBUG) {
+    SegfaultHandler.registerHandler("crash.log");
+
+    Pulsar.Client.setLogHandler((level, file, line, message) => {
+      console.log("[%s][%s:%d] %s", level, file, line, message);
+    });
+  }
 
   console.log(`Connecting to pulsar instance at ${serviceUrl}...`);
 
