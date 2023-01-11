@@ -6,6 +6,7 @@ import {
   Outlet,
   Scripts,
   ScrollRestoration,
+  useCatch,
 } from "@remix-run/react";
 
 import tailwindStylesheetUrl from "./styles/tailwind.css";
@@ -20,6 +21,8 @@ import posthog from "posthog-js";
 import { withSentry } from "@sentry/remix";
 import { env } from "./env.server";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
+import { Body } from "./components/primitives/text/Body";
+import { PrimaryLink } from "./components/primitives/Buttons";
 
 export const links: LinksFunction = () => {
   return [
@@ -49,6 +52,32 @@ export const loader = async ({ request }: LoaderArgs) => {
     { headers: { "Set-Cookie": await commitSession(session) } }
   );
 };
+
+export function CatchBoundary() {
+  const caught = useCatch();
+  return (
+    <html>
+      <head>
+        <title>Oops!</title>
+        <Meta />
+        <Links />
+      </head>
+      <body className="bg-slate-850">
+        <div className="flex items-center justify-center h-screen w-screen">
+          <div className="flex flex-col items-center justify-center space-y-4">
+            <h1>
+              {caught.status} {caught.statusText}
+            </h1>
+            <PrimaryLink to="/" className="">
+              Back home
+            </PrimaryLink>
+          </div>
+          <Scripts />
+        </div>
+      </body>
+    </html>
+  );
+}
 
 function App() {
   const { toastMessage, posthogProjectKey, user } =
