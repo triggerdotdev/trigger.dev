@@ -9,7 +9,7 @@ const primaryClasses = classnames(
 );
 const secondaryClasses = classnames(
   commonClasses,
-  "bg-transparent border-2 border-slate-600 text-white hover:bg-black/20 hover:border-slate-700 focus:ring-slate-300 gap-2"
+  "bg-transparent border border-slate-700 text-white hover:bg-white/5 hover:border-slate-700 focus:ring-slate-300 gap-2"
 );
 
 const tertiaryClasses = classnames(
