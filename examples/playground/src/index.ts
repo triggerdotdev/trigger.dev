@@ -149,14 +149,14 @@ new Trigger({
 
     await ctx.waitFor("initial-wait", { seconds: 10 });
 
-    await slack.postMessage("send-to-slack", {
+    await slack.postMessage("send-to-slack-1", {
       channel: "test-integrations",
       text: `This is test message 1/2 from "Post to Slack twice after 10 second delays" workflow ${event.id}`,
     });
 
     await ctx.waitFor("second-wait", { seconds: 10 });
 
-    const response = await slack.postMessage("send-to-slack", {
+    const response = await slack.postMessage("send-to-slack-2", {
       channel: "test-integrations",
       text: `This is test message 2/2 from "Post to Slack twice after 10 second delays" workflow ${event.id}`,
     });
@@ -231,5 +231,30 @@ new Trigger({
     });
 
     return response.message;
+  },
+}).listen();
+
+// Workflow that send a message to Slack after 24 hours
+
+new Trigger({
+  id: "playground-7",
+  name: "Post to Slack many times in a loop",
+  apiKey: "trigger_dev_zC25mKNn6c0q",
+  endpoint: "ws://localhost:8889/ws",
+  on: customEvent({
+    name: "playground",
+    schema: z.object({
+      id: z.string(),
+    }),
+  }),
+  run: async (event, ctx) => {
+    for (let index = 0; index < 4; index++) {
+      const response = await slack.postMessage(`send-to-slack-${index}`, {
+        channel: "test-integrations",
+        text: `This is a post to Slack many times in a loop ${index} ${event.id}`,
+      });
+    }
+
+    return {};
   },
 }).listen();
