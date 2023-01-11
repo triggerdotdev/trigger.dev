@@ -16,7 +16,7 @@
     "format": "prettier --write .",
     "generate:css": "tailwindcss --postcss -i ./styles/tailwind-include.css -o ./app/styles/tailwind.css",
     "lint": "eslint --cache --cache-location ./node_modules/.cache/eslint .",
-    "start": "cross-env NODE_ENV=production NODE_OPTIONS=--max_old_space_size=8192 node ./build/server.js",
+    "start": "cross-env NODE_ENV=production node --max-old-space-size=8192 ./build/server.js",
     "docker:build": "cd ../.. && docker build -t trigger-webapp -f ./apps/webapp/Dockerfile .",
     "test": "vitest run",
     "test:cov": "vitest run --coverage",

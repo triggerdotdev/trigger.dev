@@ -27,8 +27,6 @@ function getClient() {
   const { DATABASE_URL } = env;
   invariant(typeof DATABASE_URL === "string", "DATABASE_URL env var not set");
 
-  const databaseUrl = new URL(DATABASE_URL);
-
   // Remove the username:password in the url and print that to the console
   const urlWithoutCredentials = new URL(DATABASE_URL);
   urlWithoutCredentials.password = "";
