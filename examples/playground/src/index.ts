@@ -6,7 +6,7 @@ import { z } from "zod";
 
 new Trigger({
   id: "playground-1",
-  name: "Posts to Slack",
+  name: "Post to Slack immediately",
   apiKey: "trigger_dev_zC25mKNn6c0q",
   endpoint: "ws://localhost:8889/ws",
   on: customEvent({
@@ -17,23 +17,21 @@ new Trigger({
   }),
   run: async (event, ctx) => {
     await ctx.logger.info(
-      "Hey there! This is the Trigger.dev Playground. You can use this to test your Trigger.dev code."
+      "This workflow will post a message to Slack immediately and display an Error, Info, Debug, and Warning message."
     );
-
-    await ctx.waitFor("initial-wait", { seconds: 10 });
 
     await ctx.logger.error("Error message!", { event });
 
     await ctx.logger.info("Info message", { event });
 
+    await ctx.logger.debug("Debug message");
+
+    await ctx.logger.warn("Warning message!");
+
     const response = await slack.postMessage("send-to-slack", {
       channel: "test-integrations",
       text: `This is a message from the "Posts to Slack" workflow ${event.id}`,
     });
-
-    await ctx.logger.debug("Debug message");
-
-    await ctx.logger.warn("Warning message!");
 
     return response.message;
   },
@@ -49,6 +47,10 @@ new Trigger({
   on: github.events.repoIssueEvent({ repo: "triggerdotdev/trigger.dev" }),
 
   run: async (event, ctx) => {
+    await ctx.logger.info(
+      "This workflow will post to Slack when a GitHub Issue created or modified after 2 delays."
+    );
+
     await ctx.waitFor("initial-wait", { seconds: 30 });
 
     await ctx.waitUntil("wait-until", new Date(Date.now() + 1000 * 30));
@@ -83,6 +85,10 @@ new Trigger({
   }),
 
   run: async (event, ctx) => {
+    await ctx.logger.info(
+      "This workflow prints all the log types with a 5 second delay between each."
+    );
+
     await ctx.logger.info(
       "Hey there! This is a really long message to see how the layout handles it. If this breaks the layout, I will fix it. Hey there! This is a really long message to see how the layout handles it. If this breaks the layout, I will fix it. Hey there! This is a really long message to see how the layout handles it. If this breaks the layout, I will fix it. Hey there! This is a really long message to see how the layout handles it. If this breaks the layout, I will fix it."
     );
@@ -137,6 +143,10 @@ new Trigger({
     }),
   }),
   run: async (event, ctx) => {
+    await ctx.logger.info(
+      "This workflow sends 2 messages to Slack with a 10 second delay between both."
+    );
+
     await ctx.waitFor("initial-wait", { seconds: 10 });
 
     await slack.postMessage("send-to-slack", {
@@ -169,7 +179,9 @@ new Trigger({
     }),
   }),
   run: async (event, ctx) => {
-    await ctx.logger.info("This is an example of a long-running workflow");
+    await ctx.logger.info(
+      "This workflow posts a message to Slack after a 1 hour delay"
+    );
 
     await ctx.waitUntil("wait-until", new Date(Date.now() + 1000 * 60 * 60));
 
@@ -200,7 +212,9 @@ new Trigger({
     }),
   }),
   run: async (event, ctx) => {
-    await ctx.logger.info("This is an example of a 24 hour workflow");
+    await ctx.logger.info(
+      "This workflow posts a message to Slack after a 24 hour delay"
+    );
 
     await ctx.waitUntil(
       "wait-until",
