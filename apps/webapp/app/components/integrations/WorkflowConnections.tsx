@@ -35,7 +35,7 @@ export function WorkflowConnections() {
           {unconnectedApisCount === 0 ? "" : unconnectedApisCountCopy}
         </>
       </SubTitle>
-      <Panel className="mb-6 py-0">
+      <Panel className="mb-4 py-0">
         <div className="divide-y divide-slate-700">
           {connectionSlots.source && (
             <div className="flex gap-4 w-full py-3">
