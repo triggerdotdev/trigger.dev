@@ -12,6 +12,7 @@
   },
   "scripts": {},
   "dependencies": {
+    "@shopify/admin-graphql-api-utilities": "^2.0.1",
     "tiny-invariant": "^1.2.0",
     "zod": "^3.20.2"
   }

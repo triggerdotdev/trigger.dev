@@ -19,19 +19,20 @@ const trigger = new Trigger({
       "get-shopify-variants",
       {
         filter: {
-          sku: ["prod3", "prod6"],
+          productId: ["8066602598707"],
+          sku: ["prod7"],
         },
       }
     );
 
-    const newVariant = await shopify.createProductVariant("create-variant", {
-      productId: results.productVariants[0].product.id,
-      price: "12.34",
-    });
+    // const newVariant = await shopify.createProductVariant("create-variant", {
+    //   productId: results.productVariants[0].product.id,
+    //   price: "12.34",
+    // });
 
     await ctx.logger.debug("Debug message");
 
-    return newVariant;
+    return;
   },
 });
 

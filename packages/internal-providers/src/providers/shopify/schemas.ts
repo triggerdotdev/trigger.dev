@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { parseGid } from "@shopify/admin-graphql-api-utilities";
 
 export const FirstOrLastSchema = z
   .object({
@@ -38,7 +39,7 @@ export const SearchVariantsBodySchema = FirstOrLastSchema.and(
   z.object({
     filter: z
       .object({
-        productId: z.array(z.string()).optional(),
+        productId: z.array(z.string().transform((s) => parseGid(s))).optional(),
         sku: z.array(z.string()).optional(),
       })
       .optional(),

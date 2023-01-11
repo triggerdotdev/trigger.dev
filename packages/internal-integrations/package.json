@@ -15,6 +15,7 @@
   "scripts": {},
   "dependencies": {
     "@octokit/webhooks": "^10.4.0",
+    "@shopify/admin-graphql-api-utilities": "^2.0.1",
     "@shopify/shopify-api": "^6.1.0",
     "@urql/core": "^3.1.1",
     "debug": "^4.3.4",

@@ -231,9 +231,6 @@ class ShopifyRequestIntegration implements RequestIntegration {
         };
       }
 
-      //todo convert this into a better response format
-      const validatedResponse = result.data;
-
       if (result.data.productVariantCreate.userErrors) {
         log("productVariant.create userErrors %O", result.data.userErrors);
         return {
@@ -245,6 +242,9 @@ class ShopifyRequestIntegration implements RequestIntegration {
           },
         };
       }
+
+      //todo convert this into a better response format
+      const validatedResponse = result.data;
 
       // const response = {
       //   count: result.data.productVariants.edges.length,
@@ -306,9 +306,15 @@ function buildFilter(filter: Record<string, string[]>): string {
 
   for (const [key, values] of Object.entries(filter)) {
     filterQueries.push(
-      `(${values.map((value) => `${key}:${value}`).join(" OR ")})`
+      `(${values
+        .map((value) => `${titleCaseToSnakeCase(key)}:${value}`)
+        .join(" OR ")})`
     );
   }
 
   return filterQueries.join(" AND ");
+}
+
+function titleCaseToSnakeCase(input: string): string {
+  return input.replace(/([A-Z])/g, (g) => `_${g[0].toLowerCase()}`);
 }
