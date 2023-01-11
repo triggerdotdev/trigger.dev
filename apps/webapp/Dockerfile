@@ -9,10 +9,6 @@ RUN find . -name "node_modules" -type d -prune -exec rm -rf '{}' +
 # Base strategy to have layer caching
 FROM node:lts-bullseye-slim AS base
 RUN apt-get update && apt-get install openssl g++ make wget python3 -y
-ENV PULSAR_CPP_CLIENT_VERSION=2.10.3
-RUN wget https://archive.apache.org/dist/pulsar/pulsar-${PULSAR_CPP_CLIENT_VERSION}/DEB/apache-pulsar-client.deb -q
-RUN wget https://archive.apache.org/dist/pulsar/pulsar-${PULSAR_CPP_CLIENT_VERSION}/DEB/apache-pulsar-client-dev.deb -q
-RUN dpkg -i ./apache-pulsar-client*.deb
 WORKDIR /app
 COPY .gitignore .gitignore
 COPY --from=pruner /app/out/json/ .
@@ -45,11 +41,7 @@ RUN pnpx prisma migrate deploy --schema apps/webapp/prisma/schema.prisma
 
 # Runner
 FROM node:lts-bullseye-slim AS runner
-RUN apt-get update && apt-get install openssl g++ make wget python3 -y
-ENV PULSAR_CPP_CLIENT_VERSION=2.10.3
-RUN wget https://archive.apache.org/dist/pulsar/pulsar-${PULSAR_CPP_CLIENT_VERSION}/DEB/apache-pulsar-client.deb -q
-RUN wget https://archive.apache.org/dist/pulsar/pulsar-${PULSAR_CPP_CLIENT_VERSION}/DEB/apache-pulsar-client-dev.deb -q
-RUN dpkg -i ./apache-pulsar-client*.deb
+RUN apt-get update && apt-get install openssl -y
 RUN npm install turbo -g
 WORKDIR /app
 RUN corepack enable
