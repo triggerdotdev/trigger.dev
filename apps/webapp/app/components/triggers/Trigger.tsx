@@ -4,7 +4,7 @@ import type {
   WebhookEventTrigger,
 } from "@trigger.dev/common-schemas";
 import { Body } from "../primitives/text/Body";
-import { Header2, Header3 } from "../primitives/text/Headers";
+import { Header2 } from "../primitives/text/Headers";
 
 export function TriggerBody({ trigger }: { trigger: TriggerMetadata }) {
   switch (trigger.type) {
