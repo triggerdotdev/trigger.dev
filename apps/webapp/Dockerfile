@@ -40,6 +40,7 @@ ENV NODE_ENV development
 RUN pnpm install --ignore-scripts --frozen-lockfile
 RUN pnpm run generate
 RUN pnpm run build --filter=webapp...
+RUN pnpx prisma migrate deploy --schema apps/webapp/prisma/schema.prisma
 
 # Runner
 FROM node:lts-bullseye-slim AS runner
