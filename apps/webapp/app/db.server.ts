@@ -32,7 +32,7 @@ function getClient() {
   urlWithoutCredentials.password = "";
 
   console.log(
-    `🔌 setting up prisma client to ${urlWithoutCredentials.toString()}`
+    `1. 🔌 setting up prisma client to ${urlWithoutCredentials.toString()}`
   );
 
   const client = new PrismaClient({
@@ -41,10 +41,15 @@ function getClient() {
         url: DATABASE_URL,
       },
     },
+    log: ["query", "info", "warn", "error"],
   });
+
+  console.log(`2.0 🔌 prisma client connecting`);
 
   // connect eagerly
   client.$connect();
+
+  console.log(`3.0 🔌 prisma client connected`);
 
   return client;
 }
