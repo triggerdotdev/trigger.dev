@@ -21,18 +21,18 @@ const colors = [
 ];
 const materials = ["Cotton", "Polyester", "Lycra", "Wool", "Silk", "Leather"];
 
-const trigger = new Trigger({
-  id: "get-shopify-products",
-  name: "Get Shopify products",
+new Trigger({
+  id: "shopify-product-variants",
+  name: "Shopify product variants",
   apiKey: "trigger_dev_zC25mKNn6c0q",
   endpoint: "ws://localhost:8889/ws",
   logLevel: "debug",
   on: customEvent({
-    name: "shopify.get",
+    name: "shopify.product-variants",
     schema: z.object({}),
   }),
   run: async (event, ctx) => {
-    await ctx.logger.info("Get Shopify products for my store");
+    await ctx.logger.info("Get Shopify products variants");
 
     const results = await shopify.searchProductVariants(
       "get-shopify-variants",
@@ -61,9 +61,28 @@ const trigger = new Trigger({
 
     return newVariant;
   },
-});
+}).listen();
 
-trigger.listen();
+new Trigger({
+  id: "shopify-products",
+  name: "Shopify products",
+  apiKey: "trigger_dev_zC25mKNn6c0q",
+  endpoint: "ws://localhost:8889/ws",
+  logLevel: "debug",
+  on: customEvent({
+    name: "shopify.products",
+    schema: z.object({}),
+  }),
+  run: async (event, ctx) => {
+    const newProduct = await shopify.createProduct("create-product", {
+      title: "Best ever product",
+    });
+
+    await ctx.logger.debug("Debug message");
+
+    return newProduct;
+  },
+}).listen();
 
 function pickRandom(array: string[]): string {
   return array[Math.floor(Math.random() * array.length)];

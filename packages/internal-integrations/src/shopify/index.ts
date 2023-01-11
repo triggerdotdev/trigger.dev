@@ -9,12 +9,13 @@ import { Client, createClient, gql } from "@urql/core";
 import { shopify } from "internal-providers";
 import { z } from "zod";
 import {
+  createProductQuery,
   createProductVariantsQuery,
   defaultFirst,
   searchProductVariantsQuery,
 } from "./queries";
 
-const log = debug("trigger:integrations:slack");
+const log = debug("trigger:integrations:shopify");
 class ShopifyRequestIntegration implements RequestIntegration {
   constructor(
     private readonly baseUrlFormat: string = "https://{shop}.myshopify.com/admin/api/2021-07/graphql.json"
@@ -46,6 +47,9 @@ class ShopifyRequestIntegration implements RequestIntegration {
     });
 
     switch (options.endpoint) {
+      case "product.create": {
+        return this.#createProduct(client, options.params);
+      }
       case "productVariants.search": {
         return this.#searchProductVariants(client, options.params);
       }
@@ -60,6 +64,11 @@ class ShopifyRequestIntegration implements RequestIntegration {
 
   displayProperties(endpoint: string, params: any): DisplayProperties {
     switch (endpoint) {
+      case "product.create": {
+        return {
+          title: "Create product",
+        };
+      }
       case "productVariants.search": {
         const parsedParams =
           shopify.schemas.SearchVariantsBodySchema.parse(params);
@@ -250,7 +259,6 @@ class ShopifyRequestIntegration implements RequestIntegration {
 
       const validatedProductVariant =
         shopify.schemas.ProductVariantSchema.parse(productVariant);
-      console.log("validatedProductVariant", validatedProductVariant);
 
       const performedRequest = {
         ok: true,
@@ -266,6 +274,98 @@ class ShopifyRequestIntegration implements RequestIntegration {
       return performedRequest;
     } catch (error) {
       log("productVariant.create query error %O", error);
+      return {
+        ok: false,
+        isRetryable: false,
+        response: {
+          output: error,
+          context: {},
+        },
+      };
+    }
+  }
+
+  async #createProduct(
+    client: Client,
+    params: any
+  ): Promise<PerformedRequestResponse> {
+    const parsedParams = shopify.schemas.CreateProductBodySchema.parse(params);
+    log("product.create %O", parsedParams);
+
+    try {
+      const result = await client
+        .mutation(createProductQuery, {
+          input: parsedParams,
+        })
+        .toPromise();
+
+      if (result.error) {
+        log("product.create failed %O", result.error);
+        return {
+          ok: false,
+          isRetryable: false,
+          response: {
+            output: result.error,
+            context: {},
+          },
+        };
+      }
+
+      if (result.data === undefined) {
+        log("product.create data undefined %O");
+        return {
+          ok: false,
+          isRetryable: false,
+          response: {
+            output: {
+              message: "No data returned",
+            },
+            context: {},
+          },
+        };
+      }
+
+      if (
+        result.data.productCreate.userErrors &&
+        result.data.productCreate.userErrors.length > 0
+      ) {
+        log("product.create userErrors %O", result.data.userErrors);
+        return {
+          ok: false,
+          isRetryable: false,
+          response: {
+            output: result.data.productCreate.userErrors,
+            context: {},
+          },
+        };
+      }
+
+      const product = {
+        ...result.data.productCreate.product,
+        images: result.data.productCreate.product.images?.edges?.map(
+          (e: any) => e.node
+        ),
+        variants: result.data.productCreate.product.variants?.edges?.map(
+          (e: any) => e.node
+        ),
+      };
+
+      const validatedProduct = shopify.schemas.ProductSchema.parse(product);
+
+      const performedRequest = {
+        ok: true,
+        isRetryable: false,
+        response: {
+          output: validatedProduct,
+          context: {},
+        },
+      };
+
+      log("product.create performedRequest %O", performedRequest);
+
+      return performedRequest;
+    } catch (error) {
+      log("product.create query error %O", error);
       return {
         ok: false,
         isRetryable: false,
