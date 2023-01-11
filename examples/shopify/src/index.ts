@@ -42,8 +42,8 @@ new Trigger({
       "get-shopify-variants",
       {
         filter: {
-          productId: ["8066602598707"],
-          sku: ["prod7", "prod8"],
+          productId: ["gid://shopify/Product/8098295546157"],
+          sku: ["variant-1"],
         },
       }
     );
@@ -58,7 +58,7 @@ new Trigger({
       ],
       price: "12.34",
       sku: `variant-${Math.floor(Math.random() * 1000)}`,
-      options: [pickRandom(sizes), pickRandom(materials), pickRandom(colors)],
+      options: [pickRandom(sizes), pickRandom(materials)],
     });
 
     await ctx.logger.debug("Debug message");
