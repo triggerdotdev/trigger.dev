@@ -23,7 +23,7 @@
           "name": "Prod Webapp",
           "type": "fargate",
           "buildType": "docker",
-          "dockerfilePath": "./apps/webapp/Dockerfile.pulsar-1-8-0",
+          "dockerfilePath": "./apps/webapp/Dockerfile",
           "dockerContext": ".",
           "cpu": 4,
           "memory": 8,
@@ -88,6 +88,7 @@
             },
             "PIZZLY_HOST": "https://auth.trigger.dev",
             "TRIGGER_LOG_LEVEL": "debug",
+            "PULSAR_ENABLED": "1",
             "PULSAR_DEBUG": true
           }
         },
@@ -95,12 +96,11 @@
           "id": "p-wss",
           "name": "Prod WSS",
           "type": "fargate",
-          "buildType": "nodejs",
-          "installCommand": "pnpm i --filter wss",
-          "buildCommand": "pnpm run build --filter wss",
-          "startCommand": "pnpm run start --filter wss",
-          "cpu": 4,
-          "memory": 8,
+          "buildType": "docker",
+          "dockerfilePath": "./apps/wss/Dockerfile",
+          "dockerContext": ".",
+          "cpu": 2,
+          "memory": 4,
           "minInstances": 2,
           "maxInstances": 10,
           "domain": "wss.trigger.dev",
@@ -110,8 +110,7 @@
             "apps/wss/src/**",
             "apps/wss/tsconfig.json",
             "apps/wss/tsup.config.ts",
-            "apps/wss/package.json",
-            "apps/wss/nixpacks.toml"
+            "apps/wss/package.json"
           ],
           "envVariables": {
             "PULSAR_CLIENT_ID": {

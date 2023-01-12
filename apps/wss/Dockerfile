@@ -3,7 +3,7 @@ RUN apt-get update && apt-get install openssl -y
 WORKDIR /app
 RUN npm install turbo -g
 COPY . .
-RUN turbo prune --scope=webapp --docker
+RUN turbo prune --scope=wss --docker
 RUN find . -name "node_modules" -type d -prune -exec rm -rf '{}' +
 
 # Base strategy to have layer caching
@@ -25,9 +25,7 @@ RUN npm install turbo -g
 RUN corepack enable
 ENV NODE_ENV production
 RUN npm config set python /usr/bin/python3
-COPY --from=pruner /app/out/full/apps/webapp/prisma/schema.prisma /app/apps/webapp/prisma/schema.prisma
 RUN pnpm install --prod --frozen-lockfile
-RUN pnpx prisma generate --schema /app/apps/webapp/prisma/schema.prisma
 
 FROM base AS builder
 WORKDIR /app
@@ -39,9 +37,7 @@ RUN npm config set python /usr/bin/python3
 ENV NODE_ENV development
 RUN pnpm install --ignore-scripts --frozen-lockfile
 ENV NODE_ENV production
-RUN pnpm run generate
-RUN pnpm run build --filter=webapp...
-RUN pnpx prisma migrate deploy --schema apps/webapp/prisma/schema.prisma
+RUN pnpm run build --filter=wss...
 
 # Runner
 FROM node:16-bullseye AS runner
@@ -55,19 +51,12 @@ WORKDIR /app
 RUN corepack enable
 ENV NODE_ENV production
 RUN addgroup --system --gid 1001 nodejs
-RUN adduser --system --uid 1001 remixjs
-RUN chown -R remixjs:nodejs /app
-USER remixjs
+RUN adduser --system --uid 1001 wssjs
+RUN chown -R wssjs:nodejs /app
+USER wssjs
 
-COPY --from=pruner --chown=remixjs:nodejs /app/out/full/ .
-COPY --from=production-deps --chown=remixjs:nodejs /app .
-COPY --from=builder --chown=remixjs:nodejs /app/apps/webapp/app/styles/tailwind.css ./apps/webapp/app/styles/tailwind.css
-COPY --from=builder --chown=remixjs:nodejs /app/apps/webapp/build/server.js ./apps/webapp/build/server.js
-COPY --from=builder --chown=remixjs:nodejs /app/apps/webapp/build ./apps/webapp/build
-COPY --from=builder --chown=remixjs:nodejs /app/apps/webapp/public ./apps/webapp/public
-COPY --from=builder --chown=remixjs:nodejs /app/apps/webapp/prisma/schema.prisma ./apps/webapp/build/schema.prisma
-COPY --from=builder --chown=remixjs:nodejs /app/apps/webapp/prisma/migrations ./apps/webapp/build/migrations
-COPY --from=builder --chown=remixjs:nodejs /app/apps/webapp/node_modules/.prisma/client/libquery_engine-debian-openssl-1.1.x.so.node ./apps/webapp/build/libquery_engine-debian-openssl-1.1.x.so.node
+COPY --from=pruner --chown=wssjs:nodejs /app/out/full/ .
+COPY --from=production-deps --chown=wssjs:nodejs /app .
+COPY --from=builder --chown=wssjs:nodejs /app/apps/wss/dist/index.js ./apps/wss/dist/index.js
 
-# release_command = "pnpx prisma migrate deploy --schema apps/webapp/prisma/schema.prisma"
-ENTRYPOINT ["pnpm", "--filter", "webapp", "run", "start"]
+ENTRYPOINT ["pnpm", "--filter", "wss", "run", "start"]
