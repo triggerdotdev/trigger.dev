@@ -8,7 +8,7 @@
   "devDependencies": {
     "@trigger.dev/tsconfig": "workspace:*",
     "@types/debug": "^4.1.7",
-    "@types/node": "^18.11.9",
+    "@types/node": "16",
     "@types/node-fetch": "2.6",
     "internal-providers": "workspace:*",
     "typescript": "^4.9.4"
@@ -24,5 +24,8 @@
     "node-fetch": "2.6",
     "urql": "^3.0.3",
     "zod": "^3.20.2"
+  },
+  "engines": {
+    "node": ">=16.0.0 <17.0.0"
   }
 }

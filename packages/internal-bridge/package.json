@@ -9,7 +9,7 @@
     "@trigger.dev/tsconfig": "workspace:*",
     "@trigger.dev/common-schemas": "workspace:*",
     "@types/debug": "^4.1.7",
-    "@types/node": "^18.11.9",
+    "@types/node": "16",
     "@types/uuid": "^9.0.0",
     "@types/ws": "^8.5.3",
     "tsx": "^3.12.1"
