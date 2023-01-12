@@ -1,14 +1,17 @@
 import { z } from "zod";
 import { UpdateWorkflowRun, WorkflowMetadata } from "../schemas";
 import fetch from "node-fetch";
+import { Logger } from "../logger";
 
 export class InternalApiClient {
   #apiKey: string;
   #baseUrl: string;
+  #logger: Logger;
 
   constructor(apiKey: string, baseUrl: string) {
     this.#apiKey = apiKey;
     this.#baseUrl = `${baseUrl}/api/v1/internal`;
+    this.#logger = new Logger("trigger.dev [internal-api]");
   }
 
   async whoami(): Promise<{ organizationId: string; env: string }> {
@@ -21,6 +24,11 @@ export class InternalApiClient {
       error: z.string(),
     });
 
+    this.#logger.debug("whoami", {
+      url: this.#apiUrl("/whoami"),
+      method: "GET",
+    });
+
     const response = await fetch(this.#apiUrl("/whoami"), {
       method: "GET",
       headers: this.#headers(),
@@ -29,15 +37,22 @@ export class InternalApiClient {
     if (response.ok) {
       const rawBody = await response.json();
 
+      this.#logger.debug("whoami ok response", { rawBody });
+
       return ResponseSchema.parse(rawBody);
     }
 
     if (response.status === 401) {
       const rawBody = await response.json();
+
+      this.#logger.debug("whoami 401 response", { rawBody });
+
       const body = Response401Schema.parse(rawBody);
 
       throw new Error(body.error);
     }
+
+    this.#logger.debug("whoami failure response", { status: response.status });
 
     throw new Error(
       `[${response.status}] Something went wrong: ${response.statusText}`

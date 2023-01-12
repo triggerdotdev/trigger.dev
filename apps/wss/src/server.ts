@@ -284,9 +284,14 @@ export class TriggerServer {
 
       this.#logger.debug("Server initialized");
     } catch (error) {
-      this.#logger.debug("Client not authenticated, sending error...");
+      this.#logger.debug(
+        "Client not authenticated, sending unauthorized error",
+        {
+          error,
+        }
+      );
 
-      this.#socket.close(4001, `Unauthorized: ${error}}`);
+      this.#socket.close(4001, "Client not authenticated");
     }
   }
 
