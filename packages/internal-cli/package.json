@@ -8,6 +8,7 @@
     "@aws-sdk/credential-providers": "^3.238.0",
     "@trigger.dev/tsconfig": "workspace:*",
     "@types/node": "^18.11.9",
+    "@types/node-fetch": "2.6",
     "commander": "^9.4.1",
     "internal-providers": "workspace:*",
     "tiny-invariant": "^1.2.0",
@@ -16,5 +17,8 @@
   },
   "scripts": {
     "cli": "tsx src/index.ts update"
+  },
+  "dependencies": {
+    "node-fetch": "2.6"
   }
 }

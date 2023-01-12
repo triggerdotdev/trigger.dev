@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { normalizeHeaders } from "../headers";
-
+import fetch from "node-fetch";
 import debug from "debug";
 
 const log = debug("trigger:integrations:services");

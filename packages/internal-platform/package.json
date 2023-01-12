@@ -8,6 +8,7 @@
   "devDependencies": {
     "@trigger.dev/tsconfig": "workspace:*",
     "@types/node": "^18.11.9",
+    "@types/node-fetch": "2.6",
     "typescript": "^4.9.4",
     "undici": "^5.14.0"
   },
@@ -15,6 +16,7 @@
   "dependencies": {
     "@trigger.dev/common-schemas": "workspace:*",
     "internal-pulsar": "workspace:*",
+    "node-fetch": "2.6",
     "ulid": "^2.3.0",
     "zod": "^3.20.2"
   }

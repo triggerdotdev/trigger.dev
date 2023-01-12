@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { UpdateWorkflowRun, WorkflowMetadata } from "../schemas";
+import fetch from "node-fetch";
 
 export class InternalApiClient {
   #apiKey: string;

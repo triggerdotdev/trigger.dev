@@ -8,6 +8,7 @@ import {
   SecretsManagerClient,
   GetSecretValueCommand,
 } from "@aws-sdk/client-secrets-manager";
+import fetch from "node-fetch";
 
 const program = new Command();
 

@@ -8,6 +8,7 @@ import { Webhooks } from "@octokit/webhooks";
 import { z } from "zod";
 import { github } from "internal-providers";
 import { getAccessToken } from "../accessInfo";
+import fetch from "node-fetch";
 
 export class GitHubWebhookIntegration implements WebhookIntegration {
   keyForSource(source: unknown): string {
