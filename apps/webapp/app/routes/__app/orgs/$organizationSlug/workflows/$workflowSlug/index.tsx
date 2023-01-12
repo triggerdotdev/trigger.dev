@@ -6,6 +6,7 @@ import { Panel } from "~/components/layout/Panel";
 import { PanelHeader } from "~/components/layout/PanelHeader";
 import { PanelWarning } from "~/components/layout/PanelWarning";
 import { PrimaryLink, SecondaryLink } from "~/components/primitives/Buttons";
+import { Body } from "~/components/primitives/text/Body";
 import { SubTitle } from "~/components/primitives/text/SubTitle";
 import { Title } from "~/components/primitives/text/Title";
 import { RunsTable } from "~/components/runs/RunsTable";
@@ -69,7 +70,10 @@ export default function Page() {
 
   return (
     <>
-      <Title>Overview</Title>
+      <div className="flex items-baseline justify-between">
+        <Title>Overview</Title>
+        <Body className="text-slate-400">ID: {workflow.slug}</Body>
+      </div>
       {workflow.status !== "READY" && (
         <>
           <SubTitle>1 issue</SubTitle>
