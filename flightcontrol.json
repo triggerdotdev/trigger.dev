@@ -125,6 +125,10 @@
                 "id": "p-webapp",
                 "value": "origin"
               }
+            },
+            "DOCKER_USERNAME": "maverickdotdev",
+            "DOCKER_PASSWORD": {
+              "fromParameterStore": "DOCKER_HUB_PASSWORD"
             }
           },
           "dependsOn": [
