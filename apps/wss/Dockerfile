@@ -21,7 +21,6 @@ COPY --from=pruner /app/out/pnpm-workspace.yaml ./pnpm-workspace.yaml
 
 FROM base AS production-deps
 WORKDIR /app
-RUN npm install turbo -g
 RUN corepack enable
 ENV NODE_ENV production
 RUN npm config set python /usr/bin/python3
@@ -37,7 +36,7 @@ RUN npm config set python /usr/bin/python3
 ENV NODE_ENV development
 RUN pnpm install --ignore-scripts --frozen-lockfile
 ENV NODE_ENV production
-RUN pnpm run build --filter=wss...
+RUN pnpm run build --filter=wss
 
 # Runner
 FROM node:16-bullseye AS runner

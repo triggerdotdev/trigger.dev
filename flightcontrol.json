@@ -45,7 +45,7 @@
             "apps/webapp/styles/**",
             "apps/webapp/prisma/**",
             "apps/webapp/types/**",
-            "apps/webapp/nixpacks.toml"
+            "./pnpm-lock.yaml"
           ],
           "dependsOn": [
             "p-db"
@@ -110,7 +110,8 @@
             "apps/wss/src/**",
             "apps/wss/tsconfig.json",
             "apps/wss/tsup.config.ts",
-            "apps/wss/package.json"
+            "apps/wss/package.json",
+            "./pnpm-lock.yaml"
           ],
           "envVariables": {
             "PULSAR_CLIENT_ID": {
@@ -120,20 +121,12 @@
               "fromParameterStore": "PROD_WSS_PULSAR_CLIENT_SECRET"
             },
             "PULSAR_ROLE": "websocketserver@o-syacq.auth.streamnative.cloud",
-            "AUTHORIZATION_URL": {
-              "fromService": {
-                "id": "p-webapp",
-                "value": "origin"
-              }
-            },
+            "AUTHORIZATION_URL": "https://app.trigger.dev",
             "DOCKER_USERNAME": "maverickdotdev",
             "DOCKER_PASSWORD": {
               "fromParameterStore": "DOCKER_HUB_PASSWORD"
             }
-          },
-          "dependsOn": [
-            "p-webapp"
-          ]
+          }
         },
         {
           "id": "p-db",
