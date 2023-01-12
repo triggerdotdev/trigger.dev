@@ -121,7 +121,7 @@
               "fromParameterStore": "PROD_WSS_PULSAR_CLIENT_SECRET"
             },
             "PULSAR_ROLE": "websocketserver@o-syacq.auth.streamnative.cloud",
-            "AUTHORIZATION_URL": "https://app.trigger.dev",
+            "PLATFORM_API_URL": "https://app.trigger.dev",
             "DOCKER_USERNAME": "maverickdotdev",
             "DOCKER_PASSWORD": {
               "fromParameterStore": "DOCKER_HUB_PASSWORD"
