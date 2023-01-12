@@ -5,6 +5,7 @@ import humanizeDuration from "humanize-duration";
 import type { ReactNode } from "react";
 import type { WorkflowRunListPresenter } from "~/models/workflowRunListPresenter.server";
 import { dateDifference, formatDateTime } from "~/utils";
+import { Spinner } from "../primitives/Spinner";
 import { runStatusIcon, runStatusLabel } from "./runStatus";
 
 const headerCell = "px-4 py-5 text-left text-base font-semibold text-slate-300";
@@ -15,11 +16,13 @@ export function RunsTable({
   hasFilters,
   runs,
   basePath,
+  isLoading = false,
 }: {
   total: number;
   hasFilters: boolean;
   runs: Awaited<ReturnType<WorkflowRunListPresenter["data"]>>["runs"];
   basePath?: string;
+  isLoading?: boolean;
 }) {
   return (
     <table className="w-full divide-y divide-slate-850">
@@ -45,7 +48,7 @@ export function RunsTable({
           </th>
         </tr>
       </thead>
-      <tbody className="divide-y divide-slate-850">
+      <tbody className="relative divide-y divide-slate-850">
         {total === 0 && !hasFilters ? (
           <BlankRow>
             <NoRuns title="No runs found for this Workflow" />
@@ -91,6 +94,16 @@ export function RunsTable({
               </tr>
             );
           })
+        )}
+        {isLoading && (
+          <tr className="absolute top-0 left-0 w-full h-full bg-slate-800/90">
+            <td
+              colSpan={6}
+              className="flex items-center justify-center gap-2 text-white h-full"
+            >
+              <Spinner /> Loading…
+            </td>
+          </tr>
         )}
       </tbody>
     </table>

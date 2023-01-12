@@ -1,6 +1,6 @@
 import { Listbox } from "@headlessui/react";
 import { CheckIcon } from "@heroicons/react/24/outline";
-import { useFetcher, useSubmit } from "@remix-run/react";
+import { useFetcher, useSubmit, useTransition } from "@remix-run/react";
 import type { LoaderArgs } from "@remix-run/server-runtime";
 import classNames from "classnames";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -58,6 +58,8 @@ export default function Page() {
 
   const fetcher = useFetcher();
   const submit = useSubmit();
+  const transition = useTransition();
+
   const formRef = useRef<HTMLFormElement>(null);
 
   const submitForm = useCallback(() => {
@@ -93,7 +95,12 @@ export default function Page() {
           total === 0 ? "rounded-b-lg" : "rounded-b-none"
         )}
       >
-        <RunsTable runs={runs} total={total} hasFilters={hasFilters} />
+        <RunsTable
+          runs={runs}
+          total={total}
+          hasFilters={hasFilters}
+          isLoading={transition.state !== "idle"}
+        />
       </Panel>
       <PaginationControls
         currentPage={page}
@@ -114,10 +121,6 @@ function StatusFilter({
 }) {
   const [selectedStatuses, setSelectedStatuses] =
     useState<WorkflowRunStatus[]>(statuses);
-
-  useEffect(() => {
-    setSelectedStatuses(statuses);
-  }, [statuses]);
 
   useEffect(() => {
     if (statuses.join("") === selectedStatuses.join("")) return;
