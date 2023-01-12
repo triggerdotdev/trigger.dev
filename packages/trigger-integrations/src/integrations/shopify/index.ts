@@ -16,7 +16,9 @@ export async function searchProductVariants(
   const run = getTriggerRun();
 
   if (!run) {
-    throw new Error("Cannot call getProducts outside of a trigger run");
+    throw new Error(
+      "Cannot call searchProductVariants outside of a trigger run"
+    );
   }
 
   const output = await run.performRequest(key, {
@@ -46,7 +48,9 @@ export async function createProductVariant(
   const run = getTriggerRun();
 
   if (!run) {
-    throw new Error("Cannot call getProducts outside of a trigger run");
+    throw new Error(
+      "Cannot call createProductVariant outside of a trigger run"
+    );
   }
 
   const output = await run.performRequest(key, {
@@ -76,12 +80,42 @@ export async function createProduct(
   const run = getTriggerRun();
 
   if (!run) {
-    throw new Error("Cannot call getProducts outside of a trigger run");
+    throw new Error("Cannot call createProduct outside of a trigger run");
   }
 
   const output = await run.performRequest(key, {
     service: "shopify",
     endpoint: "product.create",
+    params: options,
+    response: {
+      schema: shopify.schemas.ProductSchema,
+    },
+  });
+
+  return output;
+}
+
+export type UpdateProductBody = z.infer<
+  typeof shopify.schemas.UpdateProductBodySchema
+>;
+
+export type UpdateProductResponse = z.infer<
+  typeof shopify.schemas.ProductSchema
+>;
+
+export async function updateProduct(
+  key: string,
+  options: UpdateProductBody
+): Promise<UpdateProductResponse> {
+  const run = getTriggerRun();
+
+  if (!run) {
+    throw new Error("Cannot call updateProduct outside of a trigger run");
+  }
+
+  const output = await run.performRequest(key, {
+    service: "shopify",
+    endpoint: "product.update",
     params: options,
     response: {
       schema: shopify.schemas.ProductSchema,
@@ -106,7 +140,7 @@ export async function appendProductImages(
   const run = getTriggerRun();
 
   if (!run) {
-    throw new Error("Cannot call getProducts outside of a trigger run");
+    throw new Error("Cannot call appendProductImages outside of a trigger run");
   }
 
   const output = await run.performRequest(key, {
@@ -136,7 +170,7 @@ export async function listCollections(
   const run = getTriggerRun();
 
   if (!run) {
-    throw new Error("Cannot call getProducts outside of a trigger run");
+    throw new Error("Cannot call listCollections outside of a trigger run");
   }
 
   const output = await run.performRequest(key, {
@@ -166,7 +200,7 @@ export async function listLocations(
   const run = getTriggerRun();
 
   if (!run) {
-    throw new Error("Cannot call getProducts outside of a trigger run");
+    throw new Error("Cannot call listLocations outside of a trigger run");
   }
 
   const output = await run.performRequest(key, {
@@ -196,7 +230,9 @@ export async function addProductsToCollection(
   const run = getTriggerRun();
 
   if (!run) {
-    throw new Error("Cannot call getProducts outside of a trigger run");
+    throw new Error(
+      "Cannot call addProductsToCollection outside of a trigger run"
+    );
   }
 
   const output = await run.performRequest(key, {

@@ -147,6 +147,15 @@ export const CreateProductBodySchema = z.object({
   vendor: z.string().optional(),
 });
 
+export const UpdateProductBodySchema = z.object({ id: z.string() }).and(
+  z.object({
+    ...CreateProductBodySchema.shape,
+    title: z.string().optional(),
+  })
+);
+
+export const UpdateProductResponseSchema = ProductSchema;
+
 export const AppendProductImagesBodySchema = z.object({
   id: z.string(),
   images: z.array(

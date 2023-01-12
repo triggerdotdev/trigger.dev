@@ -201,3 +201,61 @@ export const addProductsToCollectionQuery = gql`
     }
   }
 `;
+
+export const updateProductQuery = gql`
+  mutation productUpdate($input: ProductInput!) {
+    productUpdate(input: $input) {
+      product {
+        id
+        title
+        status
+        createdAt
+        updatedAt
+        description
+        descriptionHtml
+        featuredImage {
+          id
+        }
+        handle
+        hasOnlyDefaultVariant
+        hasOutOfStockVariants
+        images(first: 10) {
+          edges {
+            node {
+              id
+            }
+          }
+        }
+        options {
+          name
+        }
+        onlineStorePreviewUrl
+        onlineStoreUrl
+        priceRange {
+          minVariantPrice {
+            amount
+          }
+          maxVariantPrice {
+            amount
+          }
+        }
+        productType
+        tags
+        totalInventory
+        totalVariants
+        tracksInventory
+        variants(first: 10) {
+          edges {
+            node {
+              id
+            }
+          }
+        }
+      }
+      userErrors {
+        field
+        message
+      }
+    }
+  }
+`;

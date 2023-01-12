@@ -17,6 +17,7 @@ import {
   listCollectionsQuery,
   listLocationsQuery,
   searchProductVariantsQuery,
+  updateProductQuery,
 } from "./queries";
 
 const log = debug("trigger:integrations:shopify");
@@ -54,6 +55,9 @@ class ShopifyRequestIntegration implements RequestIntegration {
       case "product.create": {
         return this.#createProduct(client, options.params);
       }
+      case "product.update": {
+        return this.#updateProduct(client, options.params);
+      }
       case "productVariants.search": {
         return this.#searchProductVariants(client, options.params);
       }
@@ -85,6 +89,13 @@ class ShopifyRequestIntegration implements RequestIntegration {
           shopify.schemas.CreateProductBodySchema.parse(params);
         return {
           title: `Create product: ${parsedParams.title}`,
+        };
+      }
+      case "product.update": {
+        const parsedParams =
+          shopify.schemas.UpdateProductBodySchema.parse(params);
+        return {
+          title: `Update product: ${parsedParams.id}`,
         };
       }
       case "productVariants.search": {
@@ -137,6 +148,7 @@ class ShopifyRequestIntegration implements RequestIntegration {
           title: `Add products to collection: ${parsedParams.collectionId}`,
         };
       }
+
       default: {
         return {
           title: "Unknown endpoint",
@@ -408,6 +420,98 @@ class ShopifyRequestIntegration implements RequestIntegration {
       return performedRequest;
     } catch (error) {
       log("product.create query error %O", error);
+      return {
+        ok: false,
+        isRetryable: false,
+        response: {
+          output: error,
+          context: {},
+        },
+      };
+    }
+  }
+
+  async #updateProduct(
+    client: Client,
+    params: any
+  ): Promise<PerformedRequestResponse> {
+    const parsedParams = shopify.schemas.UpdateProductBodySchema.parse(params);
+    log("product.update %O", parsedParams);
+
+    try {
+      const result = await client
+        .mutation(updateProductQuery, {
+          input: parsedParams,
+        })
+        .toPromise();
+
+      if (result.error) {
+        log("product.update failed %O", result.error);
+        return {
+          ok: false,
+          isRetryable: false,
+          response: {
+            output: result.error,
+            context: {},
+          },
+        };
+      }
+
+      if (result.data === undefined) {
+        log("product.update data undefined %O");
+        return {
+          ok: false,
+          isRetryable: false,
+          response: {
+            output: {
+              message: "No data returned",
+            },
+            context: {},
+          },
+        };
+      }
+
+      if (
+        result.data.productUpdate.userErrors &&
+        result.data.productUpdate.userErrors.length > 0
+      ) {
+        log("product.update userErrors %O", result.data.userErrors);
+        return {
+          ok: false,
+          isRetryable: false,
+          response: {
+            output: result.data.productUpdate.userErrors,
+            context: {},
+          },
+        };
+      }
+
+      const product = {
+        ...result.data.productUpdate.product,
+        images: result.data.productUpdate.product.images?.edges?.map(
+          (e: any) => e.node
+        ),
+        variants: result.data.productUpdate.product.variants?.edges?.map(
+          (e: any) => e.node
+        ),
+      };
+
+      const validatedProduct = shopify.schemas.ProductSchema.parse(product);
+
+      const performedRequest = {
+        ok: true,
+        isRetryable: false,
+        response: {
+          output: validatedProduct,
+          context: {},
+        },
+      };
+
+      log("product.update performedRequest %O", performedRequest);
+
+      return performedRequest;
+    } catch (error) {
+      log("product.update query error %O", error);
       return {
         ok: false,
         isRetryable: false,

@@ -235,3 +235,25 @@ new Trigger({
     return collection;
   },
 }).listen();
+
+new Trigger({
+  id: "shopify-update-product",
+  name: "Shopify update product",
+  apiKey: "trigger_dev_zC25mKNn6c0q",
+  endpoint: "ws://localhost:8889/ws",
+  logLevel: "debug",
+  on: customEvent({
+    name: "product.update",
+    schema: z.object({
+      id: z.string(),
+    }),
+  }),
+  run: async (event, ctx) => {
+    const product = await shopify.updateProduct("update-product", {
+      id: event.id,
+      descriptionHtml: `<h1>Awesome product title</h1><p>With incredible description</p>`,
+    });
+
+    return product;
+  },
+}).listen();
