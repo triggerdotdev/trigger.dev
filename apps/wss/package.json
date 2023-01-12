@@ -16,7 +16,8 @@
     "evt": "^2.4.13",
     "uuid": "^9.0.0",
     "ws": "^8.11.0",
-    "zod": "^3.20.2"
+    "zod": "^3.20.2",
+    "internal-pulsar": "workspace:*"
   },
   "devDependencies": {
     "@trigger.dev/tsconfig": "workspace:*",
