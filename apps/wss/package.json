@@ -17,13 +17,12 @@
     "uuid": "^9.0.0",
     "ws": "^8.11.0",
     "zod": "^3.20.2",
-    "internal-pulsar": "workspace:*"
+    "pulsar-client": "1.7.0"
   },
   "devDependencies": {
     "@trigger.dev/tsconfig": "workspace:*",
     "internal-bridge": "workspace:*",
     "internal-platform": "workspace:*",
-    "internal-pulsar": "workspace:*",
     "@trigger.dev/common-schemas": "workspace:*",
     "@types/debug": "^4.1.7",
     "@types/node": "16",

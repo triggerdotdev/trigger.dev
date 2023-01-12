@@ -25,7 +25,6 @@ RUN corepack enable
 ENV NODE_ENV production
 RUN npm config set python /usr/bin/python3
 RUN pnpm install --prod --frozen-lockfile
-RUN pnpm add pulsar-client@1.7.0 --filter wss
 
 FROM base AS builder
 WORKDIR /app

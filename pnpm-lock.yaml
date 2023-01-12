@@ -321,7 +321,7 @@ importers:
       evt: ^2.4.13
       internal-bridge: workspace:*
       internal-platform: workspace:*
-      internal-pulsar: workspace:*
+      pulsar-client: 1.7.0
       rimraf: ^3.0.2
       tsup: ^6.5.0
       typescript: ^4.9.4
@@ -330,7 +330,7 @@ importers:
       zod: ^3.20.2
     dependencies:
       evt: 2.4.13
-      internal-pulsar: link:../../packages/internal-pulsar
+      pulsar-client: 1.7.0
       uuid: 9.0.0
       ws: 8.12.0
       zod: 3.20.2
