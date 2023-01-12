@@ -58,7 +58,7 @@ export class TriggerClient<TSchema extends z.ZodTypeAny> {
     }
 
     this.#apiKey = apiKey;
-    this.#endpoint = this.#options.endpoint ?? "ws://wss.trigger.dev/ws";
+    this.#endpoint = this.#options.endpoint ?? "wss://wss.trigger.dev/ws";
     this.#logger = new Logger("trigger.dev", this.#options.logLevel);
   }
 
