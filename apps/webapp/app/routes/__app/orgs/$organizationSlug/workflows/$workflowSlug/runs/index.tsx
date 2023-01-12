@@ -70,6 +70,10 @@ export default function Page() {
   const workflow = useCurrentWorkflow();
   invariant(workflow, "Workflow not found");
 
+  const isLoading =
+    transition.state !== "idle" &&
+    transition.location.pathname.endsWith("/runs");
+
   return (
     <>
       <Title>Runs</Title>
@@ -99,7 +103,7 @@ export default function Page() {
           runs={runs}
           total={total}
           hasFilters={hasFilters}
-          isLoading={transition.state !== "idle"}
+          isLoading={isLoading}
         />
       </Panel>
       <PaginationControls
