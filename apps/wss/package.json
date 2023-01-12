@@ -14,16 +14,16 @@
   "author": "",
   "dependencies": {
     "evt": "^2.4.13",
-    "internal-bridge": "workspace:*",
-    "internal-platform": "workspace:*",
-    "internal-pulsar": "workspace:*",
-    "@trigger.dev/common-schemas": "workspace:*",
     "uuid": "^9.0.0",
     "ws": "^8.11.0",
     "zod": "^3.20.2"
   },
   "devDependencies": {
     "@trigger.dev/tsconfig": "workspace:*",
+    "internal-bridge": "workspace:*",
+    "internal-platform": "workspace:*",
+    "internal-pulsar": "workspace:*",
+    "@trigger.dev/common-schemas": "workspace:*",
     "@types/debug": "^4.1.7",
     "@types/node": "16",
     "@types/uuid": "^9.0.0",
