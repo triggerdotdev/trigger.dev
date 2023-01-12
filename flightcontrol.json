@@ -27,7 +27,7 @@
           "dockerContext": ".",
           "cpu": 4,
           "memory": 8,
-          "minInstances": 2,
+          "minInstances": 1,
           "maxInstances": 10,
           "domain": "app.trigger.dev",
           "port": 3000,
