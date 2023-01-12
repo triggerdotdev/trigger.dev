@@ -75,13 +75,20 @@ async function main() {
     const apiKey = req.headers.authorization;
 
     if (!apiKey || typeof apiKey !== "string") {
+      console.log("Invalid API Key, closing the connection");
+
       ws.close(1008, "Invalid API Key");
       return;
     }
 
     const keyPart = apiKey.split(" ")[1];
 
+    console.log("Initialization the TriggerServer now...");
+
     const triggerServer = new TriggerServer(ws, keyPart, commandPublisher);
+
+    console.log("triggerServer.listen()");
+
     triggerServer.listen();
 
     triggerServers.set(keyPart, triggerServer);

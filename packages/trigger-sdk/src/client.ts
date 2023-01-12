@@ -82,7 +82,10 @@ export class TriggerClient<TSchema extends z.ZodTypeAny> {
   async #initializeConnection(instanceId?: string) {
     const id = instanceId ?? v4();
 
-    this.#logger.debug("Initializing connection...", id);
+    this.#logger.debug("Initializing connection", {
+      id,
+      endpoint: this.#endpoint,
+    });
 
     const headers = { Authorization: `Bearer ${this.#apiKey}` };
 
