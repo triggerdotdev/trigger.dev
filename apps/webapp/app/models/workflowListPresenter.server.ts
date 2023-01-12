@@ -76,7 +76,7 @@ function getWorkflows(prismaClient: PrismaClient, organizationSlug: string) {
           status: true,
         },
         take: 1,
-        orderBy: { finishedAt: "desc" },
+        orderBy: { finishedAt: { sort: "desc", nulls: "last" } },
       },
     },
   });
