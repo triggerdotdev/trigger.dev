@@ -214,7 +214,7 @@ export default function Page() {
         </>
       )}
 
-      {run.status === "PENDING" && (
+      {run.status === "RUNNING" && (
         <div className="h-10 w-full ml-[10px] border-dashed border-l border-gradient border-slate-700"></div>
       )}
 
@@ -381,7 +381,7 @@ function StepPanel({
     case "ERROR":
       borderClass = "border-rose-700";
       break;
-    case "PENDING":
+    case "RUNNING":
       borderClass = "border-blue-700";
       break;
   }
@@ -500,7 +500,7 @@ function DelayDuration({
           {humanizeDuration(msDelay)}
         </Body>
       </div>
-      {step.status === "PENDING" && timeRemaining && (
+      {step.status === "RUNNING" && timeRemaining && (
         <div className="flex flex-col gap-1">
           <Body size="extra-small" className={workflowNodeUppercaseClasses}>
             Fires in
@@ -559,7 +559,7 @@ function DelayScheduled({
           {formatDateTime(scheduledDate, "long")}
         </Body>
       </div>
-      {step.status === "PENDING" && timeRemaining && (
+      {step.status === "RUNNING" && timeRemaining && (
         <div className="flex flex-col gap-1">
           <Body
             size="extra-small"
