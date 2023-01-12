@@ -163,3 +163,75 @@ new Trigger({
     return locations;
   },
 }).listen();
+
+new Trigger({
+  id: "shopify-create-product",
+  name: "Shopify create product",
+  apiKey: "trigger_dev_zC25mKNn6c0q",
+  endpoint: "ws://localhost:8889/ws",
+  logLevel: "debug",
+  on: customEvent({
+    name: "shopify.create-product",
+    schema: z.object({}),
+  }),
+  run: async (event, ctx) => {
+    const newProduct = await shopify.createProduct("create-product", {
+      descriptionHtml: "This is my brilliant <i>product description</i>.",
+      title: `Product for collection ${Math.floor(Math.random() * 1000)}`,
+      productType: "t-shirt",
+      vendor: "Nike",
+      options: ["Color", "Size"],
+      standardizedProductType: {
+        productTaxonomyNodeId: "gid://shopify/ProductTaxonomyNode/352",
+      },
+      variants: [
+        {
+          price: "99.99",
+          sku: "variant-1",
+          inventoryItem: {
+            tracked: true,
+          },
+          inventoryQuantities: [
+            {
+              availableQuantity: 1,
+              locationId: "gid://shopify/Location/76187369773",
+            },
+          ],
+          options: ["Maroon", "Tiny"],
+        },
+      ],
+    });
+
+    await ctx.fireEvent("send-new-product-created", {
+      name: "product.new",
+      payload: { id: newProduct.id },
+    });
+
+    return newProduct;
+  },
+}).listen();
+
+new Trigger({
+  id: "shopify-add-product-to-collection",
+  name: "Shopify add product to collection",
+  apiKey: "trigger_dev_zC25mKNn6c0q",
+  endpoint: "ws://localhost:8889/ws",
+  logLevel: "debug",
+  on: customEvent({
+    name: "product.new",
+    schema: z.object({
+      id: z.string(),
+    }),
+  }),
+  run: async (event, ctx) => {
+    const collection = await shopify.addProductsToCollection(
+      "add-products-to-collection",
+      {
+        collectionId: "gid://shopify/Collection/431864578349",
+        productIds: [event.id],
+      }
+    );
+
+    return collection;
+  },
+}).listen();

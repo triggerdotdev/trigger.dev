@@ -185,3 +185,19 @@ export const listLocationsQuery = gql`
     }
   }
 `;
+
+export const addProductsToCollectionQuery = gql`
+  mutation collectionAddProducts($id: ID!, $productIds: [ID!]!) {
+    collectionAddProducts(id: $id, productIds: $productIds) {
+      collection {
+        id
+        title
+        productsCount
+      }
+      userErrors {
+        field
+        message
+      }
+    }
+  }
+`;

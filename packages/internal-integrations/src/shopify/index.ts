@@ -9,6 +9,7 @@ import { Client, createClient, gql } from "@urql/core";
 import { shopify } from "internal-providers";
 import { z } from "zod";
 import {
+  addProductsToCollectionQuery,
   appendProductImagesQuery,
   createProductQuery,
   createProductVariantsQuery,
@@ -68,6 +69,9 @@ class ShopifyRequestIntegration implements RequestIntegration {
       case "locations.list": {
         return this.#listLocations(client, options.params);
       }
+      case "collection.addProducts": {
+        return this.#addProductsToCollection(client, options.params);
+      }
       default: {
         throw new Error(`Unknown endpoint: ${options.endpoint}`);
       }
@@ -124,6 +128,13 @@ class ShopifyRequestIntegration implements RequestIntegration {
       case "locations.list": {
         return {
           title: "List locations",
+        };
+      }
+      case "collection.addProducts": {
+        const parsedParams =
+          shopify.schemas.AddProductsToCollectionBodySchema.parse(params);
+        return {
+          title: `Add products to collection: ${parsedParams.collectionId}`,
         };
       }
       default: {
@@ -641,6 +652,94 @@ class ShopifyRequestIntegration implements RequestIntegration {
       return performedRequest;
     } catch (error) {
       log("locations.list query error %O", error);
+      return {
+        ok: false,
+        isRetryable: false,
+        response: {
+          output: error,
+          context: {},
+        },
+      };
+    }
+  }
+
+  async #addProductsToCollection(
+    client: Client,
+    params: any
+  ): Promise<PerformedRequestResponse> {
+    const parsedParams =
+      shopify.schemas.AddProductsToCollectionBodySchema.parse(params);
+    log("collection.addProducts %O", parsedParams);
+
+    try {
+      const result = await client
+        .mutation(addProductsToCollectionQuery, {
+          id: parsedParams.collectionId,
+          productIds: parsedParams.productIds,
+        })
+        .toPromise();
+
+      if (result.error) {
+        log("collection.addProducts failed %O", result.error);
+        return {
+          ok: false,
+          isRetryable: false,
+          response: {
+            output: result.error,
+            context: {},
+          },
+        };
+      }
+
+      if (result.data === undefined) {
+        log("collection.addProducts data undefined %O");
+        return {
+          ok: false,
+          isRetryable: false,
+          response: {
+            output: {
+              message: "No data returned",
+            },
+            context: {},
+          },
+        };
+      }
+
+      const userErrors = result.data.collectionAddProducts.userErrors;
+      if (userErrors && userErrors.length > 0) {
+        log(
+          "collection.addProducts userErrors %O",
+          result.data.productAppendImages
+        );
+        return {
+          ok: false,
+          isRetryable: false,
+          response: {
+            output: userErrors,
+            context: {},
+          },
+        };
+      }
+
+      const data = { collection: result.data.collectionAddProducts.collection };
+
+      const validatedProduct =
+        shopify.schemas.AddProductsToCollectionResponseSchema.parse(data);
+
+      const performedRequest = {
+        ok: true,
+        isRetryable: false,
+        response: {
+          output: validatedProduct,
+          context: {},
+        },
+      };
+
+      log("collection.addProducts performedRequest %O", performedRequest);
+
+      return performedRequest;
+    } catch (error) {
+      log("collection.addProducts query error %O", error);
       return {
         ok: false,
         isRetryable: false,

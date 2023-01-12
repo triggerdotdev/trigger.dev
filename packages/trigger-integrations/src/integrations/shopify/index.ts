@@ -180,3 +180,33 @@ export async function listLocations(
 
   return output;
 }
+
+export type AddProductsToCollectionBody = z.infer<
+  typeof shopify.schemas.AddProductsToCollectionBodySchema
+>;
+
+export type AddProductsToCollectionResponse = z.infer<
+  typeof shopify.schemas.AddProductsToCollectionResponseSchema
+>;
+
+export async function addProductsToCollection(
+  key: string,
+  options: AddProductsToCollectionBody
+): Promise<AddProductsToCollectionResponse> {
+  const run = getTriggerRun();
+
+  if (!run) {
+    throw new Error("Cannot call getProducts outside of a trigger run");
+  }
+
+  const output = await run.performRequest(key, {
+    service: "shopify",
+    endpoint: "collection.addProducts",
+    params: options,
+    response: {
+      schema: shopify.schemas.AddProductsToCollectionResponseSchema,
+    },
+  });
+
+  return output;
+}

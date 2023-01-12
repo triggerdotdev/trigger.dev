@@ -196,3 +196,16 @@ export const ListLocationsResponseSchema = z.array(
     isActive: z.boolean(),
   })
 );
+
+export const AddProductsToCollectionBodySchema = z.object({
+  collectionId: z.string(),
+  productIds: z.array(z.string()),
+});
+
+export const AddProductsToCollectionResponseSchema = z.object({
+  collection: z.object({
+    id: z.string(),
+    title: z.string(),
+    productsCount: z.number(),
+  }),
+});
