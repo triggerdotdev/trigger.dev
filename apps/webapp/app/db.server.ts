@@ -41,7 +41,7 @@ function getClient() {
         url: DATABASE_URL,
       },
     },
-    log: ["query", "info", "warn", "error"],
+    log: ["warn", "error"],
   });
 
   console.log(`2.0 🔌 prisma client connecting`);
