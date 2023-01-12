@@ -53,7 +53,7 @@ new Trigger({
       inventoryQuantities: [
         {
           availableQuantity: 10,
-          locationId: "gid://shopify/Location/76378800435",
+          locationId: "gid://shopify/Location/76187369773",
         },
       ],
       price: "12.34",
@@ -80,7 +80,7 @@ new Trigger({
   run: async (event, ctx) => {
     const newProduct = await shopify.createProduct("create-product", {
       descriptionHtml: "This is my brilliant <i>product description</i>.",
-      title: "Fantastic product",
+      title: `Fantastic product ${Math.floor(Math.random() * 1000)}`,
       productType: "t-shirt",
       vendor: "Nike",
       options: ["Color", "Size"],
