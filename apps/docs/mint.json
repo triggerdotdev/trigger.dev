@@ -29,13 +29,7 @@
     "name": "Join the waitlist",
     "url": "https://bcymafitv0e.typeform.com/tddsignup"
   },
-  "anchors": [
-    {
-      "name": "JSON Hero",
-      "icon": "code",
-      "url": "https://jsonhero.io/"
-    }
-  ],
+
   "navigation": [
     {
       "group": "Getting Started",
