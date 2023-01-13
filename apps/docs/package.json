@@ -2,6 +2,7 @@
   "name": "docs",
   "version": "1.0.0",
   "description": "Trigger.dev documentation",
+  "private": true,
   "scripts": {
     "dev": "PORT=3050 mintlify dev"
   },

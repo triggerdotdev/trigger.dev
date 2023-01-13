@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "description": "Web Socket server that hosts connect to and Apache Pulsar to route messages to and from workflows",
   "main": "dist/index.js",
+  "private": true,
   "scripts": {
     "clean": "rimraf dist",
     "build": "npm run clean && npm run build:tsup",
