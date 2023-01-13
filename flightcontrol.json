@@ -53,6 +53,13 @@
             "apps/webapp/styles/**",
             "apps/webapp/prisma/**",
             "apps/webapp/types/**",
+            "packages/internal-platform/src/**",
+            "packages/common-schemas/src/**",
+            "packages/internal-integrations/src/**",
+            "packages/internal-providers/src/**",
+            "packages/emails/src/**",
+            "packages/emails/emails/**",
+            "packages/internal-pulsar/src/**",
             "./pnpm-lock.yaml"
           ],
           "dependsOn": [
@@ -120,6 +127,10 @@
             "apps/wss/tsconfig.json",
             "apps/wss/tsup.config.ts",
             "apps/wss/package.json",
+            "packages/internal-platform/src/**",
+            "packages/internal-bridge/src/**",
+            "packages/common-schemas/src/**",
+            "packages/internal-pulsar/src/**",
             "./pnpm-lock.yaml"
           ],
           "envVariables": {
