@@ -3,7 +3,7 @@
   "logo": {
     "dark": "/logo/light.png",
     "light": "/logo/light.png",
-    "href": "https://trigger.dev"
+    "href": "https://app.trigger.dev"
   },
   "favicon": "/images/favicon.png",
   "colors": {
@@ -21,13 +21,13 @@
   },
   "topbarLinks": [
     {
-      "name": "Pricing",
-      "url": "https://trigger.dev/pricing"
+      "name": "GitHub",
+      "url": "https://github.com/triggerdotdev/trigger.dev"
     }
   ],
   "topbarCtaButton": {
     "name": "Join the waitlist",
-    "url": "https://bcymafitv0e.typeform.com/tddsignup"
+    "url": "https://bcymafitv0e.typeform.com/tddsignup#source=Docs"
   },
 
   "navigation": [
@@ -57,7 +57,7 @@
     }
   ],
   "footerSocials": {
-    "website": "https://trigger.dev",
+    "website": "https://app.trigger.dev",
     "twitter": "https://twitter.com/triggerdotdev"
   }
 }
