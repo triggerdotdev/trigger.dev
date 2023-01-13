@@ -20,7 +20,7 @@ export default function Email({ magicLink }: { magicLink: string }) {
   return (
     <Html>
       <Head />
-      <Preview>Login with this magic link</Preview>
+      <Preview>Login with this magic link 🪄</Preview>
       <Section style={main}>
         <Container style={container}>
           <Text style={h1}>Login to Trigger.dev</Text>

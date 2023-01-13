@@ -14,6 +14,7 @@ export const DeliverEmailSchema = z
   .discriminatedUnion("email", [
     z.object({
       email: z.literal("welcome"),
+
       name: z.string().optional(),
     }),
     z.object({

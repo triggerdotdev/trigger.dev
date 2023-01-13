@@ -22,7 +22,7 @@ export default function Email({
   return (
     <Html>
       <Head />
-      <Preview>Action required: Your workflow can't run!</Preview>
+      <Preview>Your workflow can't run!</Preview>
       <Section style={main}>
         <Text style={paragraph}>
           Your workflow {workflowId ?? "WORKFLOWID"} can’t run because it
