@@ -18,7 +18,7 @@ export const shopify = {
         description: `This is the name of your Shopify store`,
       },
     ],
-    documentation: `1. Follow (this guide)[https://help.shopify.com/en/manual/apps/custom-apps] to enable Custom apps`,
+    documentation: `1. Follow [this guide](https://help.shopify.com/en/manual/apps/custom-apps) to enable Custom apps`,
   },
   schemas,
 };
