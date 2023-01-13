@@ -1,11 +1,12 @@
 import type { APIConnection, ExternalSource } from ".prisma/client";
+import type { AccessInfo } from "internal-integrations";
 import { github } from "internal-integrations";
 import crypto from "node:crypto";
 import type { PrismaClient } from "~/db.server";
 import { prisma } from "~/db.server";
 import { env } from "~/env.server";
 import { findExternalSourceById } from "~/models/externalSource.server";
-import { AccessInfo, getAccessInfo } from "../accessInfo.server";
+import { getAccessInfo } from "../accessInfo.server";
 
 export class RegisterExternalSource {
   #prismaClient: PrismaClient;
