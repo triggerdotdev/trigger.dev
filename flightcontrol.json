@@ -7,7 +7,7 @@
       "region": "us-east-1",
       "source": {
         "branch": "main",
-        "trigger": "manual"
+        "trigger": "push"
       },
       "envVariables": {
         "PULSAR_ISSUER_URL": "https://auth.streamnative.cloud/",
