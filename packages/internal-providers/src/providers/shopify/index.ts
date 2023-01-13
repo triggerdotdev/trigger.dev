@@ -4,7 +4,7 @@ export const shopify = {
   name: "Shopify",
   slug: "shopify",
   icon: "/integrations/shopify.png",
-  enabledFor: "admins",
+  enabledFor: "all",
   authentication: {
     type: "api_key",
     header_name: "X-Shopify-Access-Token",
