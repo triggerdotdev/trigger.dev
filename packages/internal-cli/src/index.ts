@@ -41,7 +41,14 @@ program
           return Promise.resolve();
 
         const environmentClientId =
-          integration.authentication.environments[environment!].client_id;
+          integration.authentication.environments[environment!]?.client_id;
+
+        if (!environmentClientId) {
+          console.log(`No client id for ${integration.slug} in ${environment}`);
+          console.log("Skipping…");
+          return Promise.resolve();
+        }
+
         const secretId = `integrations/${integration.slug}/${environmentClientId}`;
         try {
           console.log(`Finding secret for id: ${secretId}`);
