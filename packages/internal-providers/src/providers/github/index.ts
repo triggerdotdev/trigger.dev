@@ -13,7 +13,7 @@ export const github = {
         client_id: "cd763219ce4005e58c00",
       },
       production: {
-        client_id: "abcdefg",
+        client_id: "98922f3fbb27485bae70",
       },
     },
   },
