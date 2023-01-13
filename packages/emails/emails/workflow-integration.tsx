@@ -22,7 +22,6 @@ export default function Email({
   return (
     <Html>
       <Head />
-      <Preview>Your workflow can't run!</Preview>
       <Section style={main}>
         <Text style={paragraph}>
           Your workflow {workflowId ?? "WORKFLOWID"} can’t run because it
@@ -30,7 +29,7 @@ export default function Email({
         </Text>
 
         <Text style={paragraph}>
-          To get back up and running click the button below.
+          To get back up and running, just click the button below.
         </Text>
 
         <Button href="" pX={20} pY={12} style={button}>

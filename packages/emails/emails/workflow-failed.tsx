@@ -20,7 +20,6 @@ export default function Email({
   return (
     <Html>
       <Head />
-      <Preview>Your workflow has failed to run.</Preview>
       <Section style={main}>
         <Text style={paragraph}>
           Your workflow, {workflowId ?? "WORKFLOWID"} has failed.

@@ -41,7 +41,7 @@ export default function Email({ name }: { name?: string }) {
 
         <Text style={bullets}>
           • Our{" "}
-          <Link style={anchor} href="">
+          <Link style={anchor} href="https://docs.trigger.dev/getting-started">
             quickstart guide
           </Link>{" "}
           to get you up and running in minutes
@@ -65,7 +65,7 @@ export default function Email({ name }: { name?: string }) {
 
         <Text style={bullets}>
           •{" "}
-          <Link style={anchor} href="https://docs.trigger.dev/quickstart">
+          <Link style={anchor} href="https://cal.com/team/triggerdotdev/call">
             Schedule a call with us
           </Link>{" "}
           about a workflow idea you have.
