@@ -1,8 +1,8 @@
-import {
-  PulsarClient,
-  PulsarProducer,
-  PulsarProducerConfig,
-} from "internal-pulsar";
+import type {
+  Client as PulsarClient,
+  Producer as PulsarProducer,
+  ProducerConfig as PulsarProducerConfig,
+} from "pulsar-client";
 import { Logger } from "../logger";
 import { MessageCatalogSchema } from "./messageCatalogSchema";
 import { ulid } from "ulid";

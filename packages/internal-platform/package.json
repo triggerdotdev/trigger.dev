@@ -7,6 +7,7 @@
   "types": "./src/index.ts",
   "devDependencies": {
     "@trigger.dev/tsconfig": "workspace:*",
+    "pulsar-client": "1.7.0",
     "@types/node": "16",
     "@types/node-fetch": "2.6",
     "typescript": "^4.9.4",
@@ -15,7 +16,6 @@
   "scripts": {},
   "dependencies": {
     "@trigger.dev/common-schemas": "workspace:*",
-    "internal-pulsar": "workspace:*",
     "node-fetch": "2.6",
     "ulid": "^2.3.0",
     "zod": "^3.20.2"

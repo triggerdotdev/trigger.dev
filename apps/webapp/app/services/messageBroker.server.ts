@@ -13,8 +13,9 @@ import {
   ZodPubSub,
   ZodSubscriber,
 } from "internal-platform";
-import type { PulsarClient } from "internal-pulsar";
-import { createPulsarClient, Topics } from "internal-pulsar";
+import type { PulsarClient } from "./pulsarClient.server";
+import { createPulsarClient } from "./pulsarClient.server";
+import { Topics } from "internal-pulsar";
 import { z } from "zod";
 import { env } from "~/env.server";
 import { findIntegrationRequestById } from "~/models/integrationRequest.server";

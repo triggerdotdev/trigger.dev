@@ -35,6 +35,11 @@ const EnvironmentSchema = z.object({
     .default("0")
     .transform((v) => v === "1"),
   REDIS_URL: z.string().default("redis://localhost:6379"),
+  PULSAR_CLIENT_ID: z.string().optional(),
+  PULSAR_CLIENT_SECRET: z.string().optional(),
+  PULSAR_ISSUER_URL: z.string().optional(),
+  PULSAR_AUDIENCE: z.string().optional(),
+  PULSAR_DEBUG: z.string().optional(),
 });
 
 export type Environment = z.infer<typeof EnvironmentSchema>;

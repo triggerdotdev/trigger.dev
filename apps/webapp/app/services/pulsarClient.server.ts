@@ -2,6 +2,7 @@ import Pulsar, {
   AuthenticationOauth2,
   AuthenticationToken,
 } from "pulsar-client";
+import { env } from "~/env.server";
 
 export type ClientOptions = {
   serviceUrl?: string;
@@ -26,19 +27,17 @@ export type PulsarClient = Pulsar.Client;
 export type PulsarProducerConfig = Pulsar.ProducerConfig;
 export type PulsarConsumerConfig = Pulsar.ConsumerConfig;
 
-function createPulsarClient(options?: ClientOptions): PulsarClient {
+export function createPulsarClient(options?: ClientOptions): PulsarClient {
   const opts = options || {};
 
   const serviceUrl =
-    opts.serviceUrl ||
-    process.env.PULSAR_SERVICE_URL ||
-    "pulsar://localhost:6650";
+    opts.serviceUrl || env.PULSAR_SERVICE_URL || "pulsar://localhost:6650";
 
   const authentication = opts.token
     ? new AuthenticationToken({ token: opts.token })
     : oauth2AuthenticationFromEnv();
 
-  if (process.env.PULSAR_DEBUG) {
+  if (env.PULSAR_DEBUG) {
     Pulsar.Client.setLogHandler((level, file, line, message) => {
       console.log("[%s][%s:%d] %s", level, file, line, message);
     });
@@ -54,10 +53,10 @@ function createPulsarClient(options?: ClientOptions): PulsarClient {
 }
 
 function oauth2AuthenticationFromEnv(): AuthenticationOauth2 | undefined {
-  const clientId = process.env.PULSAR_CLIENT_ID;
-  const clientSecret = process.env.PULSAR_CLIENT_SECRET;
-  const issuerUrl = process.env.PULSAR_ISSUER_URL;
-  const audience = process.env.PULSAR_AUDIENCE;
+  const clientId = env.PULSAR_CLIENT_ID;
+  const clientSecret = env.PULSAR_CLIENT_SECRET;
+  const issuerUrl = env.PULSAR_ISSUER_URL;
+  const audience = env.PULSAR_AUDIENCE;
 
   if (!clientId || !clientSecret || !issuerUrl || !audience) {
     return undefined;
@@ -71,5 +70,3 @@ function oauth2AuthenticationFromEnv(): AuthenticationOauth2 | undefined {
     audience,
   });
 }
-
-export const pulsarClient = createPulsarClient();

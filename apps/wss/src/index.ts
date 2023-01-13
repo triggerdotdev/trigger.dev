@@ -1,5 +1,5 @@
 import { commandCatalog, ZodPublisher } from "internal-platform";
-import { Topics } from "./pulsarClient";
+import { Topics } from "internal-pulsar";
 import { createServer } from "node:http";
 import process from "node:process";
 import { WebSocketServer } from "ws";

@@ -14,7 +14,7 @@ import {
   ZodPublisher,
   ZodSubscriber,
 } from "internal-platform";
-import { Topics } from "./pulsarClient";
+import { Topics } from "internal-pulsar";
 import { v4 } from "uuid";
 import { WebSocket } from "ws";
 import { z, ZodError } from "zod";

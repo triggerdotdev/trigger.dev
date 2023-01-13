@@ -11,7 +11,7 @@ import {
   ZodPublisher,
   ZodSubscriber,
 } from "internal-platform";
-import { Topics } from "./pulsarClient";
+import { Topics } from "internal-pulsar";
 import { z } from "zod";
 import { pulsarClient } from "./pulsarClient";
 

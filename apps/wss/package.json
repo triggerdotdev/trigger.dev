@@ -23,6 +23,7 @@
     "@trigger.dev/tsconfig": "workspace:*",
     "internal-bridge": "workspace:*",
     "internal-platform": "workspace:*",
+    "internal-pulsar": "workspace:*",
     "@trigger.dev/common-schemas": "workspace:*",
     "@types/debug": "^4.1.7",
     "@types/node": "16",
