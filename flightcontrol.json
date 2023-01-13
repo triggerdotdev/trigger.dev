@@ -11,11 +11,19 @@
       },
       "envVariables": {
         "PULSAR_ISSUER_URL": "https://auth.streamnative.cloud/",
-        "PULSAR_AUDIENCE": "urn:sn:pulsar:o-syacq:trigger-platform",
+        "PULSAR_AUDIENCE": {
+          "fromParameterStore": "/Prod/Pulsar/Audience"
+        },
         "PULSAR_TENANT": "triggerdotdev",
         "PULSAR_WORKFLOWS_NAMESPACE": "workflows",
         "PULSAR_QUEUES_NAMESPACE": "queues",
-        "PULSAR_SERVICE_URL": "pulsar+ssl://cluster1.o-syacq.snio.cloud:6651"
+        "PULSAR_SERVICE_URL": {
+          "fromParameterStore": "/Prod/Pulsar/ServiceURL"
+        },
+        "DOCKER_USERNAME": "maverickdotdev",
+        "DOCKER_PASSWORD": {
+          "fromParameterStore": "/Docker/Password"
+        }
       },
       "services": [
         {
@@ -54,20 +62,20 @@
             "FROM_EMAIL": "hello@email.trigger.dev",
             "REPLY_TO_EMAIL": "hello@trigger.dev",
             "RESEND_API_KEY": {
-              "fromParameterStore": "PROD_RESEND_API_KEY"
+              "fromParameterStore": "/Prod/webapp/RESEND_API_KEY"
             },
             "SENTRY_DSN": {
               "fromParameterStore": "SENTRY_DSN"
             },
             "SESSION_SECRET": {
-              "fromParameterStore": "PROD_SESSION_SECRET"
+              "fromParameterStore": "/Prod/webapp/SESSION_SECRET"
             },
             "MAGIC_LINK_SECRET": {
-              "fromParameterStore": "PROD_MAGIC_LINK_SECRET"
+              "fromParameterStore": "/Prod/webapp/MAGIC_LINK_SECRET"
             },
             "GITHUB_CLIENT_ID": "724e56fcebe940eb5b22",
             "GITHUB_SECRET": {
-              "fromParameterStore": "PROD_GITHUB_CLIENT_SECRET"
+              "fromParameterStore": "/Prod/webapp/GITHUB_SECRET"
             },
             "DATABASE_URL": {
               "fromService": {
@@ -76,15 +84,13 @@
               }
             },
             "PULSAR_CLIENT_ID": {
-              "fromParameterStore": "PROD_WEBAPP_PULSAR_CLIENT_ID"
+              "fromParameterStore": "/Prod/Pulsar/webapp/ClientId"
             },
             "PULSAR_CLIENT_SECRET": {
-              "fromParameterStore": "PROD_WEBAPP_PULSAR_CLIENT_SECRET"
+              "fromParameterStore": "/Prod/Pulsar/webapp/ClientSecret"
             },
-            "PULSAR_ROLE": "webapp@o-syacq.auth.streamnative.cloud",
-            "DOCKER_USERNAME": "maverickdotdev",
-            "DOCKER_PASSWORD": {
-              "fromParameterStore": "DOCKER_HUB_PASSWORD"
+            "PULSAR_ROLE": {
+              "fromParameterStore": "/Prod/Pulsar/webapp/Role"
             },
             "PIZZLY_HOST": "https://auth.trigger.dev",
             "TRIGGER_LOG_LEVEL": "debug",
@@ -115,17 +121,15 @@
           ],
           "envVariables": {
             "PULSAR_CLIENT_ID": {
-              "fromParameterStore": "PROD_WSS_PULSAR_CLIENT_ID"
+              "fromParameterStore": "/Prod/Pulsar/wss/ClientId"
             },
             "PULSAR_CLIENT_SECRET": {
-              "fromParameterStore": "PROD_WSS_PULSAR_CLIENT_SECRET"
+              "fromParameterStore": "/Prod/Pulsar/wss/ClientSecret"
             },
-            "PULSAR_ROLE": "websocketserver@o-syacq.auth.streamnative.cloud",
+            "PULSAR_ROLE": {
+              "fromParameterStore": "/Prod/Pulsar/wss/Role"
+            },
             "PLATFORM_API_URL": "https://app.trigger.dev",
-            "DOCKER_USERNAME": "maverickdotdev",
-            "DOCKER_PASSWORD": {
-              "fromParameterStore": "DOCKER_HUB_PASSWORD"
-            },
             "TRIGGER_LOG_LEVEL": "debug"
           }
         },
