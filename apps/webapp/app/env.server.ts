@@ -28,6 +28,7 @@ const EnvironmentSchema = z.object({
   FLY_REGION: z.string().optional(),
   SESSION_SECRET: z.string(),
   PIZZLY_HOST: z.string(),
+  PIZZLY_SECRET_KEY: z.string().optional(),
   PULSAR_SERVICE_URL: z.string().default("pulsar://localhost:6650"),
   PULSAR_ENABLED: z
     .string()

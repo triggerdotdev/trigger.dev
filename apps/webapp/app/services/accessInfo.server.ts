@@ -8,18 +8,24 @@ export async function getAccessInfo(
 ): Promise<AccessInfo | undefined> {
   switch (connection.authenticationMethod) {
     case "OAUTH": {
-      const accessToken = await pizzly.accessToken(
-        connection.apiIdentifier,
-        connection.id
-      );
-      if (accessToken == null) {
+      try {
+        const accessToken = await pizzly.accessToken(
+          connection.apiIdentifier,
+          connection.id
+        );
+        if (accessToken == null) {
+          return undefined;
+        }
+        //todo if it's an OAuth1 API then this will fail, as Pizzly returns an object
+        return {
+          type: "oauth2",
+          accessToken,
+        };
+      } catch (e) {
+        console.log("PIZZLY_ACCESS_TOKEN_FAILED");
+        console.error(e);
         return undefined;
       }
-      //todo if it's an OAuth1 API then this will fail, as Pizzly returns an object
-      return {
-        type: "oauth2",
-        accessToken,
-      };
     }
     case "API_KEY": {
       const parsed = apiKeyConfigSchema.safeParse(
