@@ -13,7 +13,7 @@ export const slack = {
         client_id: "276370297397.4579145654276",
       },
       production: {
-        client_id: "abcdefg",
+        client_id: "276370297397.4639924595715",
       },
     },
   },
