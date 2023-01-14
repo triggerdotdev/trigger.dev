@@ -73,7 +73,9 @@ export default function Page() {
       <div className="flex items-baseline justify-between">
         <Title>Overview</Title>
         <Body className="text-slate-400">
-          <span className="text-xs tracking-wide text-slate-500">ID: </span>
+          <span className="mr-1.5 text-xs tracking-wide text-slate-500">
+            ID
+          </span>
           {workflow.slug}
         </Body>
       </div>
