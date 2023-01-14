@@ -41,9 +41,9 @@ export default [
     ],
     external: Object.keys(packageJson.dependencies),
   },
-  {
-    input: "./dist/dts/trigger-integrations/src/index.d.ts",
-    output: [{ file: "dist/index.d.ts", format: "es" }],
-    plugins: [dts()],
-  },
+  // {
+  //   input: "./dist/dts/@trigger.dev/integrations/src/index.d.ts",
+  //   output: [{ file: "dist/index.d.ts", format: "es" }],
+  //   plugins: [dts()],
+  // },
 ];
