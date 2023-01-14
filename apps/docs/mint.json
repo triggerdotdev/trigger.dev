@@ -37,23 +37,19 @@
     },
     {
       "group": "Triggers",
-      "pages": [
-        "triggers/webhooks",
-        "triggers/custom-events",
-        "triggers/coming-soon"
-      ]
-    },
-    {
-      "group": "Requests",
-      "pages": ["requests/overview"]
+      "pages": ["triggers/webhooks", "triggers/custom-events"]
     },
     {
       "group": "Integrations",
       "pages": ["integrations/integrations", "integrations/authentication"]
     },
     {
-      "group": "Sample projects",
-      "pages": ["sample-projects/examples"]
+      "group": "Example workflows",
+      "pages": [
+        "sample-projects/github",
+        "sample-projects/shopify",
+        "sample-projects/slack"
+      ]
     }
   ],
   "footerSocials": {
