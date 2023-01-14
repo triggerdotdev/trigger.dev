@@ -701,6 +701,7 @@ importers:
       rimraf: ^3.0.2
       rollup: ^3.10.0
       rollup-plugin-dts: ^5.1.1
+      rollup-plugin-flat-dts: ^2.0.0
       rollup-plugin-peer-deps-external: ^2.2.4
       rollup-plugin-typescript2: ^0.34.1
       tslib: ^2.4.1
@@ -718,11 +719,12 @@ importers:
       internal-providers: link:../internal-providers
       rimraf: 3.0.2
       rollup: 3.10.0
-      rollup-plugin-dts: 5.1.1_eymahajmafh3u7vrzmo7ylp2pa
+      rollup-plugin-dts: 5.1.1_rollup@3.10.0
+      rollup-plugin-flat-dts: 2.0.0_rollup@3.10.0
       rollup-plugin-peer-deps-external: 2.2.4_rollup@3.10.0
-      rollup-plugin-typescript2: 0.34.1_eymahajmafh3u7vrzmo7ylp2pa
+      rollup-plugin-typescript2: 0.34.1_rollup@3.10.0
       tslib: 2.4.1
-      tsup: 6.5.0_typescript@4.9.4
+      tsup: 6.5.0
 
   packages/trigger-sdk:
     specifiers:
@@ -14349,7 +14351,7 @@ packages:
     dependencies:
       glob: 7.2.3
 
-  /rollup-plugin-dts/5.1.1_eymahajmafh3u7vrzmo7ylp2pa:
+  /rollup-plugin-dts/5.1.1_rollup@3.10.0:
     resolution: {integrity: sha512-zpgo52XmnLg8w4k3MScinFHZK1+ro6r7uVe34fJ0Ee8AM45FvgvTuvfWWaRgIpA4pQ1BHJuu2ospncZhkcJVeA==}
     engines: {node: '>=v14'}
     peerDependencies:
@@ -14358,9 +14360,23 @@ packages:
     dependencies:
       magic-string: 0.27.0
       rollup: 3.10.0
-      typescript: 4.9.4
     optionalDependencies:
       '@babel/code-frame': 7.18.6
+    dev: true
+
+  /rollup-plugin-flat-dts/2.0.0_rollup@3.10.0:
+    resolution: {integrity: sha512-xAvX5eiA3UJVzoA7rYyd/tGlSDCK8o6YJVkwUSpg2Q1LXQl5A/McjJq/jcNVhP1g9Wukr9LbGC6gMxg+ethcKg==}
+    peerDependencies:
+      rollup: 2.79.1 - 4.0
+      typescript: ^4.8.4 - 5.0
+    peerDependenciesMeta:
+      rollup:
+        optional: true
+    dependencies:
+      is-glob: 4.0.3
+      micromatch: 4.0.5
+      rollup: 3.10.0
+      source-map: 0.7.4
     dev: true
 
   /rollup-plugin-inject/3.0.2:
@@ -14386,7 +14402,7 @@ packages:
       rollup: 3.10.0
     dev: true
 
-  /rollup-plugin-typescript2/0.34.1_eymahajmafh3u7vrzmo7ylp2pa:
+  /rollup-plugin-typescript2/0.34.1_rollup@3.10.0:
     resolution: {integrity: sha512-P4cHLtGikESmqi1CA+tdMDUv8WbQV48mzPYt77TSTOPJpERyZ9TXdDgjSDix8Fkqce6soYz3+fa4lrC93IEkcw==}
     peerDependencies:
       rollup: '>=1.26.3'
@@ -14398,7 +14414,6 @@ packages:
       rollup: 3.10.0
       semver: 7.3.8
       tslib: 2.4.1
-      typescript: 4.9.4
     dev: true
 
   /rollup-pluginutils/2.8.2:

@@ -21,7 +21,7 @@ export function createIntegration<TActions extends Actions>(
 ): Integration<TActions> {
   const integration = {} as Integration<TActions>;
 
-  for (const [key, action] of Object.entries(actions)) {
+  for (const [key] of Object.entries(actions)) {
     integration[key as keyof typeof integration] = async (data) => {
       return data;
     };

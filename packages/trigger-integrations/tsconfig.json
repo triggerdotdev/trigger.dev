@@ -1,19 +1,24 @@
 {
-  "extends": "@trigger.dev/tsconfig/node16.json",
-  "include": ["./src/**/*.ts", "tsup.config.ts"],
   "compilerOptions": {
-    "module": "ESNext",
-    "moduleResolution": "node",
-    "experimentalDecorators": true,
-    "emitDecoratorMetadata": true,
+    "allowSyntheticDefaultImports": true,
     "declaration": true,
-    "declarationDir": "dist",
+    "declarationDir": "dist/dts",
+    "esModuleInterop": true,
+    "resolveJsonModule": true,
+    "lib": ["ES5", "ES2015", "ES2016", "DOM", "ESNext"],
+    "types": ["node"],
+    "module": "es2015",
+    "moduleResolution": "node",
+    "noImplicitAny": false,
+    "noUnusedLocals": true,
     "outDir": "dist/esm",
+    "sourceMap": true,
+    "strict": true,
+    "target": "ES6",
     "paths": {
       "@trigger.dev/sdk/*": ["../trigger-sdk/src/*"],
       "@trigger.dev/sdk": ["../trigger-sdk/src/index"]
-    },
-    "lib": ["DOM", "DOM.Iterable"]
+    }
   },
-  "exclude": ["node_modules"]
+  "include": ["./src/**/*.ts"]
 }
