@@ -247,7 +247,7 @@ function TriggerStep({ trigger }: { trigger: Trigger }) {
           title={triggerLabel(trigger.type)}
           startedAt={trigger.startedAt}
           finishedAt={null}
-          name="Initial wait"
+          // name="Initial wait"
           // integration={trigger.type === "WEBHOOK"}
         />
         <TriggerBody trigger={trigger} />
