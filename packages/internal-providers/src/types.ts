@@ -12,7 +12,6 @@ export type Provider = {
 export type OAuthAuthentication = {
   type: "oauth";
   scopes: string[];
-  environments: Record<string, { client_id: string }>;
 };
 
 export type APIKeyAuthentication = {

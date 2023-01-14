@@ -8,14 +8,6 @@ export const slack = {
   authentication: {
     type: "oauth",
     scopes: ["channels:read", "channels:join", "chat:write"],
-    environments: {
-      development: {
-        client_id: "276370297397.4579145654276",
-      },
-      production: {
-        client_id: "276370297397.4639924595715",
-      },
-    },
   },
   schemas,
 };
