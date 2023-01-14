@@ -1,14 +1,206 @@
 ---
 title: "Getting started with Trigger.dev"
-sidebarTitle: "Quick-start"
-description: "Trigger.dev quick-start guide"
+sidebarTitle: "Quick start"
+description: "Get your first workflow running in just a few minutes"
 ---
 
+Trigger.dev workflows are written in your codebase and run in your existing infrastructure. This means:
+
+- They are version controlled with the rest of your code.
+- They run locally and don't require you to use tunnels
+
 <Note>
-  Welcome to the Trigger.dev. Follow this quick-start guide to get up and
-  running.
+  Currently we require you to have a long-running Node.js server, e.g. Express.
+  Support for serverless is coming soon.
 </Note>
 
-## Creating your first workflow
+## 1. Installing @trigger.dev packages
 
-Coming soon...
+In your existing project install the packages:
+
+<Tabs>
+  <Tab title="npm">
+
+```bash
+npm install @trigger.dev/sdk @trigger.dev/integrations
+```
+
+  </Tab>
+  <Tab title="pnpm">
+
+```bash
+pnpm install @trigger.dev/sdk @trigger.dev/integrations
+```
+
+  </Tab>
+  <Tab title="yarn">
+
+```bash
+yarn add @trigger.dev/sdk @trigger.dev/integrations
+```
+
+  </Tab>
+</Tabs>
+
+What do the packages do?
+
+- `@trigger.dev/sdk` is required to use Trigger.dev, it allows you to run workflows
+- `@trigger.dev/integrations` allows you to easily subscribe to webhooks and use API calls from popular services
+
+## 2. Sign in to your Trigger.dev dashboard
+
+Go to [trigger.dev](https://app.trigger.dev) and sign up or login to your account.
+
+## 3. Get your API keys
+
+In the bottom-left corner of an Organization page you can find your API keys.
+![API Keys](/images/api-keys.png)
+
+## 4. Creating your first workflow
+
+Workflows are triggered by events. In this example, we have defined a custom event called `user.created`. We support many different types of events including webhooks, scheduled, and more coming soon.
+
+```ts first-workflow.ts
+import { Trigger, customEvent } from "@trigger.dev/sdk";
+import { slack } from "@trigger.dev/integrations";
+
+const postMessage = new Trigger({
+  id: "new-user",
+  name: "New user slack message",
+  apiKey: "<your_api_key>",
+  logLevel: "info",
+  on: customEvent({
+    name: "user.created",
+    schema: z.object({
+      name: z.string(),
+      email: z.string(),
+      paidPlan: z.boolean(),
+    }),
+  }),
+  run: async (event, ctx) => {
+    await ctx.logger.info("This log will appear on the Trigger.dev run page");
+
+    //send a message to the #new-users Slack channel with user details
+    const response = await slack.postMessage("send-to-slack", {
+      channel: "new-users",
+      text: `New user: ${event.name} (${event.email}) signed up. ${
+        paidPlan ? "They are paying" : "They are on the free plan"
+      }.`,
+    });
+
+    return response.message;
+  },
+});
+
+//this workflow will now connect and start listening for events
+postMessage.listen();
+```
+
+You'll notice that when we subscribe to the custom event we have to say the name of the event and provide a schema. Schemas are created using Zod. In this case events must send an object that has name, email, and paidPlan. If the event is triggered with an object that doesn't match this schema, the workflow won't run.
+
+<Note>
+  Above we set the API key inside the Trigger object. We recommend instead that
+  you add an environment variable called `TRIGGER_API_KEY`. That way you can use
+  your development API key locally and the production one when you deploy.
+</Note>
+
+## 6. Run your web server
+
+Run your server how you normally would, e.g. `npm run dev`. This will connect your workflow to Trigger.dev, so we can start sending you events. You should see some log messages in your server console (tip: you can turn these off by removing the `logLevel: "info"` from the code above).
+
+## 5. Testing your workflow from the dashboard
+
+Now that the workflow is connected to Trigger.dev we need to trigger it. You can easily test your workflow from [your Trigger.dev dashboard](https://app.trigger.dev).
+
+On the organization page you should see that the Workflow has now appeared (you may need to refresh the page from last time).
+
+//TODO: Image of Org page with a single workflow called "New user slack message"
+
+Move to the "New user slack message" and you will see the workflow page. There have been no runs yet.
+
+Move to the "Test" page and input a valid test event, remember the workflow expects a name, email and paidPlan. You can copy this:
+
+```json
+{
+  "name": "Rick Astley",
+  "email": "nevergonn@giveyou.up",
+  "paidPlan": true
+}
+```
+
+Hit the "Test" button and it will take us to our first run 🚀!
+
+## 6. The run page
+
+All of the steps in a workflow, including the initial event, can be viewed in detail. You will need to refresh the page if it's running to see it move between steps.
+
+But there's a problem, we've used Slack in our code and we haven't authenticated.
+
+## 7. Authenticating with Slack
+
+When a workflow step uses an API integration that you haven't already authenticated with, it will pause until you've authenticated.
+
+Simply click the "Connect with Slack" button and sign-in with your desired Slack workspace. As soon as you do, the workflow will pick up where it left off.
+
+Test complete!
+
+## 8. Triggering this workflow from code
+
+As this workflow uses a custom event, we need to manually trigger it from our code. Anywhere in your code you can do this:
+
+```ts
+import { sendEvent } from "@trigger.dev/sdk";
+
+/*
+...your other code
+*/
+
+await sendEvent({
+  apiKey: "<my_api_key>",
+  event: {
+    name: "Eleven",
+    email: "jane@hawksmoorhigh.edu",
+    paidPlan: true,
+  },
+});
+```
+
+When you run your server and this code executes, it will trigger the workflow. You will see this in the run list on your workflow page.
+
+## Next steps
+
+There are many things we didn't cover here, including Webhook and Scheduled triggers.
+
+### Triggers
+
+Triggers are what cause your workflows to run.
+
+<CardGroup>
+  <Card title="Webhooks" icon="rectangle-terminal" href="/triggers/webhooks">
+    Easily subscribe to the APIs you're using
+  </Card>
+  <Card title="Scheduled" icon="sliders" href="/triggers/scheduled">
+    Trigger your workflows on a repeating schedule
+  </Card>
+  <Card title="Custom events" icon="heading" href="/triggers/custom">
+    More details on custom events
+  </Card>
+  <Card title="More coming soon" icon="heading">
+    On received email, HTTP endpoint and AWS Event Bridge
+  </Card>
+</CardGroup>
+
+### Functions
+
+<CardGroup>
+  <Card title="API integrations" icon="rectangle-terminal" href="/integrations">
+    We are making it easy to use lots of APIs by adding integrations.
+  </Card>
+  <Card title="Delays" icon="sliders" href="/functions/delays">
+    Add delays to your workflows. They're resilient so it doesn't matter if your
+    server goes down.
+  </Card>
+  <Card title="Send event" icon="heading" href="/functions/send">
+    Send a custom event from a function, to trigger another function 🤯
+  </Card>
+</CardGroup>
