@@ -6,12 +6,13 @@
   "main": "./src/index.ts",
   "types": "./src/index.ts",
   "devDependencies": {
-    "@trigger.dev/tsconfig": "workspace:*",
     "@trigger.dev/common-schemas": "workspace:*",
+    "@trigger.dev/tsconfig": "workspace:*",
     "@types/debug": "^4.1.7",
     "@types/node": "16",
     "@types/uuid": "^9.0.0",
     "@types/ws": "^8.5.3",
+    "tslib": "^2.4.1",
     "tsx": "^3.12.1"
   },
   "scripts": {},

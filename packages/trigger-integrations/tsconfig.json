@@ -2,8 +2,13 @@
   "extends": "@trigger.dev/tsconfig/node16.json",
   "include": ["./src/**/*.ts", "tsup.config.ts"],
   "compilerOptions": {
+    "module": "ESNext",
+    "moduleResolution": "node",
     "experimentalDecorators": true,
     "emitDecoratorMetadata": true,
+    "declaration": true,
+    "declarationDir": "dist",
+    "outDir": "dist/esm",
     "paths": {
       "@trigger.dev/sdk/*": ["../trigger-sdk/src/*"],
       "@trigger.dev/sdk": ["../trigger-sdk/src/index"]

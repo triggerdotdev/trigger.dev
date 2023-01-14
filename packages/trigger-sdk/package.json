@@ -26,6 +26,7 @@
     "@types/ws": "^8.5.3",
     "internal-bridge": "workspace:*",
     "rimraf": "^3.0.2",
+    "tslib": "^2.4.1",
     "tsup": "^6.5.0",
     "tsx": "^3.12.1"
   },
