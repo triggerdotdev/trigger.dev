@@ -1,5 +1,4 @@
 import { Head } from "@react-email/head";
-
 import { Html } from "@react-email/html";
 import { Link } from "@react-email/link";
 import { Preview } from "@react-email/preview";
