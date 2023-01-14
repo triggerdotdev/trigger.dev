@@ -41,10 +41,19 @@
     },
     {
       "group": "Integrations",
-      "pages": ["integrations/integrations", "integrations/authentication"]
+      "pages": ["integrations/apis", "integrations/authentication"]
     },
     {
-      "group": "Example workflows",
+      "group": "Functions",
+      "pages": [
+        "functions/logging",
+        "functions/delays",
+        "functions/firing-events",
+        "functions/loops-conditionals-etc"
+      ]
+    },
+    {
+      "group": "Examples",
       "pages": [
         "sample-projects/github",
         "sample-projects/shopify",
@@ -54,6 +63,7 @@
   ],
   "footerSocials": {
     "website": "https://app.trigger.dev",
-    "twitter": "https://twitter.com/triggerdotdev"
+    "twitter": "https://twitter.com/triggerdotdev",
+    "github": "https://github.com/triggerdotdev/trigger.dev"
   }
 }
