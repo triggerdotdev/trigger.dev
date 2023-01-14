@@ -56,15 +56,13 @@
             "packages/internal-platform/src/**",
             "packages/common-schemas/src/**",
             "packages/internal-integrations/src/**",
-            "packages/internal-providers/src/**",
+            "packages/trigger-providers/src/**",
             "packages/emails/src/**",
             "packages/emails/emails/**",
             "packages/internal-pulsar/src/**",
             "./pnpm-lock.yaml"
           ],
-          "dependsOn": [
-            "p-db"
-          ],
+          "dependsOn": ["p-db"],
           "envVariables": {
             "FROM_EMAIL": "hello@email.trigger.dev",
             "REPLY_TO_EMAIL": "hello@trigger.dev",

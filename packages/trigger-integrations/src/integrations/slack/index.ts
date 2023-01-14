@@ -1,6 +1,6 @@
 import { getTriggerRun } from "@trigger.dev/sdk";
 import { z } from "zod";
-import { slack } from "internal-providers";
+import { slack } from "@trigger.dev/providers";
 
 export type PostMessageOptions = z.infer<
   typeof slack.schemas.PostMessageBodySchema

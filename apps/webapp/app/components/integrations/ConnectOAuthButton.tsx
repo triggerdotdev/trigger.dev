@@ -1,6 +1,6 @@
 import Pizzly from "@nangohq/pizzly-frontend";
 import { useFetcher } from "@remix-run/react";
-import type { Provider } from "internal-providers";
+import type { Provider } from "@trigger.dev/providers";
 import { useCallback, useEffect } from "react";
 import invariant from "tiny-invariant";
 import type { Response as CreateResponse } from "~/routes/resources/connection";

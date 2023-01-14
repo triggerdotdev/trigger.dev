@@ -77,7 +77,7 @@
     "humanize-duration": "^3.27.3",
     "internal-integrations": "workspace:*",
     "internal-platform": "workspace:*",
-    "internal-providers": "workspace:*",
+    "@trigger.dev/providers": "workspace:*",
     "internal-pulsar": "workspace:*",
     "ioredis": "^5.2.4",
     "javascript-time-ago": "^2.5.7",

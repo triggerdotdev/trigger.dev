@@ -1,4 +1,4 @@
-import type { Provider } from "internal-providers";
+import type { Provider } from "@trigger.dev/providers";
 import type { Workflow } from "~/models/workflow.server";
 import { ApiLogoIcon } from "../code/ApiLogoIcon";
 import CustomEvent from "../../assets/images/triggers/custom-event.png";

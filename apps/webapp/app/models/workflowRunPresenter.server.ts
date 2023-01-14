@@ -7,7 +7,7 @@ import {
 } from "@trigger.dev/common-schemas";
 import type { DisplayProperties } from "internal-integrations";
 import { slack, shopify } from "internal-integrations";
-import type { Provider } from "internal-providers";
+import type { Provider } from "@trigger.dev/providers";
 import invariant from "tiny-invariant";
 import type { PrismaClient } from "~/db.server";
 import { prisma } from "~/db.server";

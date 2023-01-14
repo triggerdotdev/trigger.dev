@@ -6,7 +6,7 @@ import {
   RequestIntegration,
 } from "../types";
 import { Client, createClient, gql } from "@urql/core";
-import { shopify } from "internal-providers";
+import { shopify } from "@trigger.dev/providers";
 import { z } from "zod";
 import {
   addProductsToCollectionQuery,

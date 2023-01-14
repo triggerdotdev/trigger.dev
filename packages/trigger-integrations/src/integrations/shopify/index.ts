@@ -1,6 +1,6 @@
 import { getTriggerRun } from "@trigger.dev/sdk";
 import { z } from "zod";
-import { shopify } from "internal-providers";
+import { shopify } from "@trigger.dev/providers";
 
 export type SearchVariantsOptions = z.infer<
   typeof shopify.schemas.SearchVariantsBodySchema

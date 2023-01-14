@@ -1,4 +1,4 @@
-import type { Provider } from "internal-providers";
+import type { Provider } from "@trigger.dev/providers";
 
 type Props = Omit<
   React.DetailedHTMLProps<

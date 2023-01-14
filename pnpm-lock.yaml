@@ -75,6 +75,7 @@ importers:
       '@testing-library/react': ^13.4.0
       '@testing-library/user-event': ^14.4.3
       '@trigger.dev/common-schemas': workspace:*
+      '@trigger.dev/providers': workspace:*
       '@trigger.dev/tailwind-config': '*'
       '@types/bcryptjs': ^2.4.2
       '@types/compression': ^1.7.2
@@ -121,7 +122,6 @@ importers:
       humanize-duration: ^3.27.3
       internal-integrations: workspace:*
       internal-platform: workspace:*
-      internal-providers: workspace:*
       internal-pulsar: workspace:*
       ioredis: ^5.2.4
       javascript-time-ago: ^2.5.7
@@ -202,6 +202,7 @@ importers:
       '@tailwindcss/forms': 0.5.3_tailwindcss@3.1.8
       '@tanstack/react-table': 8.7.6_biqbaboplfbrettd7655fr4n2y
       '@trigger.dev/common-schemas': link:../../packages/common-schemas
+      '@trigger.dev/providers': link:../../packages/trigger-providers
       '@uiw/react-codemirror': 4.19.5_aguurb4bmecpxzejz52amioxne
       bcryptjs: 2.4.3
       classnames: 2.3.2
@@ -216,7 +217,6 @@ importers:
       humanize-duration: 3.27.3
       internal-integrations: link:../../packages/internal-integrations
       internal-platform: link:../../packages/internal-platform
-      internal-providers: link:../../packages/internal-providers
       internal-pulsar: link:../../packages/internal-pulsar
       ioredis: 5.2.4
       javascript-time-ago: 2.5.9
@@ -581,11 +581,11 @@ importers:
     specifiers:
       '@aws-sdk/client-secrets-manager': ^3.238.0
       '@aws-sdk/credential-providers': ^3.238.0
+      '@trigger.dev/providers': workspace:*
       '@trigger.dev/tsconfig': workspace:*
       '@types/node': '16'
       '@types/node-fetch': '2.6'
       commander: ^9.4.1
-      internal-providers: workspace:*
       node-fetch: '2.6'
       tiny-invariant: ^1.2.0
       tsx: ^3.12.0
@@ -595,11 +595,11 @@ importers:
     devDependencies:
       '@aws-sdk/client-secrets-manager': 3.245.0
       '@aws-sdk/credential-providers': 3.245.0
+      '@trigger.dev/providers': link:../trigger-providers
       '@trigger.dev/tsconfig': link:../../config-packages/tsconfig
       '@types/node': 16.18.11
       '@types/node-fetch': 2.6.2
       commander: 9.5.0
-      internal-providers: link:../internal-providers
       tiny-invariant: 1.3.1
       tsx: 3.12.2
       zod: 3.20.2
@@ -609,13 +609,13 @@ importers:
       '@octokit/webhooks': ^10.4.0
       '@shopify/admin-graphql-api-utilities': ^2.0.1
       '@shopify/shopify-api': ^6.1.0
+      '@trigger.dev/providers': workspace:*
       '@trigger.dev/tsconfig': workspace:*
       '@types/debug': ^4.1.7
       '@types/node': '16'
       '@urql/core': ^3.1.1
       debug: ^4.3.4
       graphql: ^16.6.0
-      internal-providers: workspace:*
       typescript: ^4.9.4
       urql: ^3.0.3
       zod: ^3.20.2
@@ -629,10 +629,10 @@ importers:
       urql: 3.0.3_onqnqwb3ubg5opvemcqf7c2qhy
       zod: 3.20.2
     devDependencies:
+      '@trigger.dev/providers': link:../trigger-providers
       '@trigger.dev/tsconfig': link:../../config-packages/tsconfig
       '@types/debug': 4.1.7
       '@types/node': 16.18.11
-      internal-providers: link:../internal-providers
       typescript: 4.9.4
 
   packages/internal-platform:
@@ -660,23 +660,6 @@ importers:
       typescript: 4.9.4
       undici: 5.15.0
 
-  packages/internal-providers:
-    specifiers:
-      '@shopify/admin-graphql-api-utilities': ^2.0.1
-      '@trigger.dev/tsconfig': workspace:*
-      '@types/node': '16'
-      tiny-invariant: ^1.2.0
-      typescript: ^4.9.4
-      zod: ^3.20.2
-    dependencies:
-      '@shopify/admin-graphql-api-utilities': 2.0.1
-      tiny-invariant: 1.3.1
-      zod: 3.20.2
-    devDependencies:
-      '@trigger.dev/tsconfig': link:../../config-packages/tsconfig
-      '@types/node': 16.18.11
-      typescript: 4.9.4
-
   packages/internal-pulsar:
     specifiers:
       '@trigger.dev/tsconfig': workspace:*
@@ -689,10 +672,10 @@ importers:
 
   packages/trigger-integrations:
     specifiers:
+      '@trigger.dev/providers': workspace:*
       '@trigger.dev/sdk': workspace:*
       '@trigger.dev/tsconfig': workspace:*
       '@types/node': '16'
-      internal-providers: workspace:*
       rimraf: ^3.0.2
       tsup: ^6.5.0
       zod: ^3.20.2
@@ -700,11 +683,32 @@ importers:
       '@trigger.dev/sdk': link:../trigger-sdk
       zod: 3.20.2
     devDependencies:
+      '@trigger.dev/providers': link:../trigger-providers
       '@trigger.dev/tsconfig': link:../../config-packages/tsconfig
       '@types/node': 16.18.11
-      internal-providers: link:../internal-providers
       rimraf: 3.0.2
       tsup: 6.5.0
+
+  packages/trigger-providers:
+    specifiers:
+      '@shopify/admin-graphql-api-utilities': ^2.0.1
+      '@trigger.dev/tsconfig': workspace:*
+      '@types/node': '16'
+      rimraf: ^3.0.2
+      tiny-invariant: ^1.2.0
+      tsup: ^6.5.0
+      typescript: ^4.9.4
+      zod: ^3.20.2
+    dependencies:
+      '@shopify/admin-graphql-api-utilities': 2.0.1
+      tiny-invariant: 1.3.1
+      zod: 3.20.2
+    devDependencies:
+      '@trigger.dev/tsconfig': link:../../config-packages/tsconfig
+      '@types/node': 16.18.11
+      rimraf: 3.0.2
+      tsup: 6.5.0_typescript@4.9.4
+      typescript: 4.9.4
 
   packages/trigger-sdk:
     specifiers:
@@ -4063,7 +4067,7 @@ packages:
       '@jest/schemas': 29.0.0
       '@types/istanbul-lib-coverage': 2.0.4
       '@types/istanbul-reports': 3.0.1
-      '@types/node': 16.18.11
+      '@types/node': 18.11.18
       '@types/yargs': 17.0.19
       chalk: 4.1.2
     dev: true
@@ -10953,7 +10957,7 @@ packages:
     engines: {node: ^14.15.0 || ^16.10.0 || >=18.0.0}
     dependencies:
       '@jest/types': 29.3.1
-      '@types/node': 16.18.11
+      '@types/node': 18.11.18
       chalk: 4.1.2
       ci-info: 3.7.1
       graceful-fs: 4.2.10
