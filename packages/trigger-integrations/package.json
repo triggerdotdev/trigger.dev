@@ -4,7 +4,6 @@
   "description": "trigger.dev integrations",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
-  "module": "dist/index.es.js",
   "publishConfig": {
     "access": "public"
   },
@@ -12,28 +11,20 @@
     "dist"
   ],
   "devDependencies": {
-    "@rollup/plugin-commonjs": "^24.0.0",
-    "@rollup/plugin-json": "^6.0.0",
-    "@rollup/plugin-node-resolve": "^15.0.1",
     "@trigger.dev/tsconfig": "workspace:*",
-    "@types/node": "16",
     "internal-providers": "workspace:*",
+    "@types/node": "16",
     "rimraf": "^3.0.2",
-    "rollup": "^3.10.0",
-    "rollup-plugin-dts": "^5.1.1",
-    "rollup-plugin-peer-deps-external": "^2.2.4",
-    "rollup-plugin-typescript2": "^0.34.1",
-    "tslib": "^2.4.1",
     "tsup": "^6.5.0"
   },
   "scripts": {
-    "clean": "rm -rf ./dist",
-    "build": "npm run clean && npm run build:rollup",
-    "build:rollup": "rollup -c",
-    "dev": "npm run clean && rollup -c --watch"
+    "clean": "rimraf dist",
+    "build": "npm run clean && npm run build:tsup",
+    "build:tsup": "tsup",
+    "dev": "tsup --watch"
   },
   "dependencies": {
-    "@trigger.dev/sdk": "workspace:*",
-    "zod": "^3.20.2"
+    "zod": "^3.20.2",
+    "@trigger.dev/sdk": "workspace:*"
   }
 }
