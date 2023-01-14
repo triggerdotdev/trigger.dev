@@ -24,7 +24,7 @@ export function PanelHeader({
   name?: string;
 }) {
   return (
-    <div className="flex mb-4 pb-3 justify-between items-center border-b border-slate-700">
+    <div className="flex mb-4 pb-3 justify-between items-center border-b border-slate-850">
       <div className="flex gap-1 items-center">
         {icon}
         <Body size="small" className="uppercase text-slate-400 font-semibold">
@@ -32,7 +32,7 @@ export function PanelHeader({
         </Body>
         {name && (
           <div className="flex gap-3 items-center ml-2">
-            <span className="block h-5 border-l border-slate-700"></span>
+            <span className="block h-5 border-l border-slate-850"></span>
             <Body size="small" className="text-slate-400">
               {name}
             </Body>
