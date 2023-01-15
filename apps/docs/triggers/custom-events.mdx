@@ -1,7 +1,86 @@
 ---
-title: "Custom events"
+title: "Custom event triggers"
 sidebarTitle: "Custom events"
-description: "Custom events"
+description: "Custom event triggers allow you to run workflows from your own code (or your other workflows)"
 ---
 
+[Send an event](/functions/send-event) and any workflows that subscribe to that Custom event will get triggered.
+
+## Name and Schemas
+
+```ts
+customEvent({
+    name: "user.created",
+    schema: z.object({
+      name: z.string(),
+      email: z.string(),
+    }),
+  }),
+```
+
+### Name
+
+Custom event triggers have a `name`. They will only get triggered when a custom even with that name are sent.
+
+### Schema
+
+Custom event triggers have a schema. This is used to validate the data that is sent with the event. If the data does not match the schema, the workflow will not run.
+
 ## Example
+
+```ts
+import { Trigger, customEvent } from "@trigger.dev/sdk";
+import { slack } from "@trigger.dev/integrations";
+
+//this workflow will run when a "user.created" event is sent
+new Trigger({
+  id: "new-user-slack",
+  name: "New user slack message",
+  apiKey: "<your_api_key>",
+  //this is the custom event subscription
+  on: customEvent({
+    name: "user.created",
+    schema: z.object({
+      name: z.string(),
+      email: z.string(),
+      paidPlan: z.boolean(),
+    }),
+  }),
+  //this function is run when the custom event is received
+  run: async (event, ctx) => {
+    //send a message to the #new-users Slack channel with user details
+    const response = await slack.postMessage("send-to-slack", {
+      channel: "new-users",
+      text: `New user: ${event.name} (${event.email}) signed up. ${
+        event.paidPlan ? "They are paying" : "They are on the free plan"
+      }.`,
+    });
+
+    return response.message;
+  },
+}).listen();
+```
+
+That workflow will never run, unless an event is sent from your code somewhere – it can be sent from a completely different server.
+
+## Sending an event
+
+There is a [full guide on sending events](/functions/send-event) but here is a quick example:
+
+```ts
+import { sendEvent } from "@trigger.dev/sdk";
+
+//send an event with the name "user.created"
+await sendEvent({
+  name: "user.created",
+  data: {
+    name: "John Doe",
+    email: "john@doe.com",
+    paidPlan: true,
+  },
+});
+```
+
+<Note>
+  The same event can trigger many different workflows, it's not one-to-one.
+</Note>

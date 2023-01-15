@@ -1,7 +1,50 @@
 ---
 title: "Webhooks"
 sidebarTitle: "Webhooks"
-description: "A guide to using webhooks in Trigger.dev"
+description: "Webhooks allow you to subscribe to events from APIs you use."
 ---
 
-## Example
+If you want your server to be notified when one of your users has subscribed to your product, or someone has made a change to a support ticket, then you should use webhooks.
+
+## Advantages of using Trigger.dev for webhooks
+
+Webhooks can be difficult to work with, especially when developing locally. We make them far easier to use with our [integrations](/integrations/apis).
+
+- You don't need to register/unregister for webhooks, we do it for you
+- They work locally during development without needing to use tunnels (e.g. Ngrok)
+- We receive the webhook, then keep trying to send it to you until you receive it. If your server goes down, no problem.
+
+## Send a Slack message when a GitHub issue is labeled as Critical
+
+```ts
+import { Trigger, customEvent } from "@trigger.dev/sdk";
+import { github, slack } from "@trigger.dev/integrations";
+import { z } from "zod";
+
+new Trigger({
+  id: "my-workflow-1",
+  name: "Posts to Slack when GitHub Issue created or modified",
+  apiKey: "<my_api_key>",
+  //this is the webhook subscription
+  on: github.events.repoIssueEvent({
+    repo: "my-github-org/my-github-repo",
+  }),
+  //this function is run when the webhook fires
+  run: async (event, ctx) => {
+    if (event.action === "labeled") {
+      await ctx.logger.info(
+        `The issue ${event.issue.title} was labeled ${event.label.name}`
+      );
+
+      if (event.label.name === "critical") {
+        await slack.postMessage("send-to-slack", {
+          channel: "serious-issues",
+          text: `Critical issue: ${event.issue.title} was labeled ${event.label.name}`,
+        });
+      }
+    }
+
+    return event;
+  },
+}).listen();
+```
