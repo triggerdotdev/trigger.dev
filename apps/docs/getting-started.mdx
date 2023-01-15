@@ -22,21 +22,21 @@ In your existing project install the packages:
   <Tab title="npm">
 
 ```bash
-npm install @trigger.dev/sdk @trigger.dev/integrations
+npm install @trigger.dev/sdk @trigger.dev/integrations zod
 ```
 
   </Tab>
   <Tab title="pnpm">
 
 ```bash
-pnpm install @trigger.dev/sdk @trigger.dev/integrations
+pnpm install @trigger.dev/sdk @trigger.dev/integrations zod
 ```
 
   </Tab>
   <Tab title="yarn">
 
 ```bash
-yarn add @trigger.dev/sdk @trigger.dev/integrations
+yarn add @trigger.dev/sdk @trigger.dev/integrations zod
 ```
 
   </Tab>
@@ -46,6 +46,7 @@ What do the packages do?
 
 - `@trigger.dev/sdk` is required to use Trigger.dev, it allows you to run workflows.
 - `@trigger.dev/integrations` allows you to easily subscribe to webhooks and use API calls from popular services.
+- `zod` is used to define schemas (the expected shape of an object).
 
 ## 2. Sign in to your Trigger.dev dashboard
 
@@ -63,6 +64,7 @@ Workflows are triggered by events. In this example, we have defined a custom eve
 ```ts first-workflow.ts
 import { Trigger, customEvent } from "@trigger.dev/sdk";
 import { slack } from "@trigger.dev/integrations";
+import { z } from "zod";
 
 const postMessage = new Trigger({
   id: "new-user",
@@ -114,7 +116,7 @@ Now that the workflow is connected to Trigger.dev we need to trigger it. You can
 
 On the organization page you should see that the Workflow has now appeared (you may need to refresh the page from last time).
 
-//TODO: Image of Org page with a single workflow called "New user slack message"
+!["New user slack message" workflow](/images/workflow.png)
 
 Move to the "New user slack message" and you will see the workflow page. There have been no runs yet.
 
@@ -128,7 +130,9 @@ Move to the "Test" page and input a valid test event, remember the workflow expe
 }
 ```
 
-Hit the "Test" button and it will take us to our first run 🚀!
+Hit the "Run test" button and it will take us to our first run 🚀!
+
+![Test a run](/images/run-test.png)
 
 ## 6. The run page
 
@@ -136,13 +140,17 @@ All of the steps in a workflow, including the initial event, can be viewed in de
 
 But there's a problem, we've used Slack in our code and we haven't authenticated.
 
+![Test run failed](/images/run-failed.png)
+
 ## 7. Authenticating with Slack
 
 When a workflow step uses an API integration that you haven't already authenticated with, it will pause until you've authenticated.
 
-Simply click the "Connect with Slack" button and sign-in with your desired Slack workspace. As soon as you do, the workflow will pick up where it left off.
+Simply click the "Connect to Slack" button and sign-in with your desired Slack workspace. As soon as you do, the workflow will pick up where it left off.
 
 Test complete!
+
+![Test a run](/images/run-succeeded.png)
 
 ## 8. Triggering this workflow from code
 
