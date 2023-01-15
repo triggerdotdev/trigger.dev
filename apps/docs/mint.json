@@ -37,7 +37,11 @@
     },
     {
       "group": "Triggers",
-      "pages": ["triggers/webhooks", "triggers/custom-events"]
+      "pages": [
+        "triggers/webhooks",
+        "triggers/scheduled",
+        "triggers/custom-events"
+      ]
     },
     {
       "group": "Integrations",
@@ -53,12 +57,8 @@
       ]
     },
     {
-      "group": "Examples",
-      "pages": [
-        "sample-projects/github",
-        "sample-projects/shopify",
-        "sample-projects/slack"
-      ]
+      "group": "Example workflows",
+      "pages": ["examples/github", "examples/shopify", "examples/slack"]
     }
   ],
   "footerSocials": {
