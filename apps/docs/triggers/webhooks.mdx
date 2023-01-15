@@ -17,12 +17,11 @@ Webhooks can be difficult to work with, especially when developing locally. We m
 ## Send a Slack message when a GitHub issue is labeled as Critical
 
 ```ts
-import { Trigger, customEvent } from "@trigger.dev/sdk";
+import { Trigger } from "@trigger.dev/sdk";
 import { github, slack } from "@trigger.dev/integrations";
-import { z } from "zod";
 
 new Trigger({
-  id: "my-workflow-1",
+  id: "escalate-critical-issues",
   name: "Posts to Slack when GitHub Issue created or modified",
   apiKey: "<my_api_key>",
   //this is the webhook subscription
