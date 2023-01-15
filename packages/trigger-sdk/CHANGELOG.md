@@ -1,5 +1,11 @@
 # @trigger.dev/sdk
 
+## 0.2.0
+
+### Minor Changes
+
+- 8b7b8a8: Added scheduled events
+
 ## 0.1.2
 
 ### Patch Changes

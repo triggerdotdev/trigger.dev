@@ -1,5 +1,12 @@
 # @trigger.dev/integrations
 
+## 0.1.3
+
+### Patch Changes
+
+- Updated dependencies [8b7b8a8]
+  - @trigger.dev/sdk@0.2.0
+
 ## 0.1.2
 
 ### Patch Changes
