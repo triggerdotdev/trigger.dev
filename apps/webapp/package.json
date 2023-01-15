@@ -68,6 +68,7 @@
     "classnames": "^2.3.1",
     "clsx": "^1.2.1",
     "compression": "^1.7.4",
+    "cron-parser": "^4.7.1",
     "cross-env": "^7.0.3",
     "csstype": "^3.0.10",
     "cuid": "^2.1.8",

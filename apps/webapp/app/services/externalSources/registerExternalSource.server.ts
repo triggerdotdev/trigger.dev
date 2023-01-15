@@ -26,9 +26,9 @@ export class RegisterExternalSource {
       return true;
     }
 
-    if (!externalSource.connection) {
-      return true; // Somehow the connection slot was deleted, so by returning true we're saying we're done with this webhook
-    }
+    console.log("[RegisterExternalSource] registering external source", {
+      externalSource,
+    });
 
     switch (externalSource.type) {
       case "WEBHOOK": {
@@ -45,8 +45,12 @@ export class RegisterExternalSource {
 
   async #registerWebhook(
     externalSource: ExternalSource,
-    connection: APIConnection
+    connection?: APIConnection | null
   ) {
+    if (!connection) {
+      return true; // Somehow the connection slot was deleted, so by returning true we're saying we're done with this webhook
+    }
+
     const accessInfo = await getAccessInfo(connection);
     if (accessInfo == null) {
       throw new Error("No access token found for webhook");
@@ -103,10 +107,6 @@ export class RegisterExternalSource {
         : await findExternalSourceById(idOrExternalSource.id);
 
     if (!externalSource) {
-      return;
-    }
-
-    if (!externalSource.connection) {
       return;
     }
 

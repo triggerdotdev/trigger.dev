@@ -29,9 +29,9 @@ export type HttpEventTrigger = z.infer<typeof HttpEventTriggerSchema>;
 
 export const ScheduledEventTriggerSchema = z.object({
   type: z.literal("SCHEDULE"),
-  service: z.literal("trigger"),
+  service: z.literal("scheduler"),
   name: z.string(),
-  filter: EventFilterSchema,
+  source: JsonSchema,
 });
 export type ScheduledEventTrigger = z.infer<typeof ScheduledEventTriggerSchema>;
 

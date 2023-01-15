@@ -37,21 +37,12 @@ export class RegisterWorkflow {
     );
 
     if (validation.data.trigger.service !== "trigger") {
-      const externalSource = await this.#upsertExternalSource(
+      await this.#upsertExternalSource(
         validation.data,
-        organization
+        organization,
+        workflow,
+        environment
       );
-
-      if (externalSource) {
-        await this.#prismaClient.workflow.update({
-          where: {
-            id: workflow.id,
-          },
-          data: {
-            externalSourceId: externalSource.id,
-          },
-        });
-      }
     }
 
     await this.#upsertEventRule(
@@ -81,13 +72,13 @@ export class RegisterWorkflow {
         },
       },
       update: {
-        filter: payload.trigger.filter,
+        filter: "filter" in payload.trigger ? payload.trigger.filter : {},
       },
       create: {
         workflowId: workflow.id,
         environmentId: environment.id,
         organizationId: organization.id,
-        filter: payload.trigger.filter,
+        filter: "filter" in payload.trigger ? payload.trigger.filter : {},
         type: payload.trigger.type,
         trigger: payload.trigger,
       },
@@ -133,7 +124,9 @@ export class RegisterWorkflow {
 
   async #upsertExternalSource(
     payload: WorkflowMetadata,
-    organization: Organization
+    organization: Organization,
+    workflow: Workflow,
+    environment: RuntimeEnvironment
   ) {
     switch (payload.trigger.type) {
       case "WEBHOOK": {
@@ -179,11 +172,52 @@ export class RegisterWorkflow {
           });
         }
 
+        await this.#prismaClient.workflow.update({
+          where: {
+            id: workflow.id,
+          },
+          data: {
+            externalSourceId: externalSource.id,
+          },
+        });
+
         await taskQueue.publish("EXTERNAL_SOURCE_UPSERTED", {
           id: externalSource.id,
         });
 
         return externalSource;
+      }
+      case "SCHEDULE": {
+        if (!payload.trigger.source) {
+          return;
+        }
+
+        const schedulerSource = await this.#prismaClient.schedulerSource.upsert(
+          {
+            where: {
+              workflowId_environmentId: {
+                workflowId: workflow.id,
+                environmentId: environment.id,
+              },
+            },
+            update: {
+              schedule: payload.trigger.source,
+            },
+            create: {
+              organizationId: organization.id,
+              workflowId: workflow.id,
+              environmentId: environment.id,
+              schedule: payload.trigger.source,
+              status: "CREATED",
+            },
+          }
+        );
+
+        await taskQueue.publish("SCHEDULER_SOURCE_UPSERTED", {
+          id: schedulerSource.id,
+        });
+
+        return schedulerSource;
       }
       default: {
         return;

@@ -1,4 +1,7 @@
-import { JsonSchema } from "@trigger.dev/common-schemas";
+import {
+  JsonSchema,
+  ScheduledEventPayloadSchema,
+} from "@trigger.dev/common-schemas";
 import { DeliverEmailSchema } from "emails";
 import type {
   CommandCatalog,
@@ -38,6 +41,8 @@ import { PerformIntegrationRequest } from "./requests/performIntegrationRequest.
 import { StartIntegrationRequest } from "./requests/startIntegrationRequest.server";
 import { WaitForConnection } from "./requests/waitForConnection.server";
 import { WorkflowRunDisconnected } from "./runs/runDisconnected.server";
+import { DeliverScheduledEvent } from "./scheduler/deliverScheduledEvent.server";
+import { RegisterSchedulerSource } from "./scheduler/registerSchedulerSource.server";
 
 let pulsarClient: PulsarClient;
 let triggerPublisher: ZodPublisher<TriggerCatalog>;
@@ -316,6 +321,10 @@ const taskQueueCatalog = {
     data: z.object({ id: z.string() }),
     properties: z.object({}),
   },
+  SCHEDULER_SOURCE_UPSERTED: {
+    data: z.object({ id: z.string() }),
+    properties: z.object({}),
+  },
   EXTERNAL_SERVICE_UPSERTED: {
     data: z.object({ id: z.string() }),
     properties: z.object({}),
@@ -334,6 +343,13 @@ const taskQueueCatalog = {
   },
   DELIVER_EMAIL: {
     data: DeliverEmailSchema,
+    properties: z.object({}),
+  },
+  DELIVER_SCHEDULED_EVENT: {
+    data: z.object({
+      externalSourceId: z.string(),
+      payload: ScheduledEventPayloadSchema,
+    }),
     properties: z.object({}),
   },
 };
@@ -459,6 +475,13 @@ function createTaskQueue() {
 
         return isRegistered; // Returning true will mean we don't retry
       },
+      SCHEDULER_SOURCE_UPSERTED: async (id, data, properties) => {
+        const service = new RegisterSchedulerSource();
+
+        const isRegistered = await service.call(data.id);
+
+        return isRegistered; // Returning true will mean we don't retry
+      },
       EXTERNAL_SERVICE_UPSERTED: async (id, data, properties) => {
         const service = new HandleNewServiceConnection();
 
@@ -506,6 +529,11 @@ function createTaskQueue() {
       DELIVER_EMAIL: async (id, data, properties) => {
         await sendEmail(data);
         return true;
+      },
+      DELIVER_SCHEDULED_EVENT: async (id, data, properties) => {
+        const service = new DeliverScheduledEvent();
+
+        return service.call(data.externalSourceId, data.payload);
       },
     },
   });

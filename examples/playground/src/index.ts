@@ -1,4 +1,4 @@
-import { Trigger, customEvent } from "@trigger.dev/sdk";
+import { Trigger, customEvent, scheduleEvent } from "@trigger.dev/sdk";
 import { github, slack } from "@trigger.dev/integrations";
 import { z } from "zod";
 
@@ -19,6 +19,113 @@ import { z } from "zod";
 //     await ctx.logger.info(
 //       "This workflow will post a message to Slack immediately and display an Error, Info, Debug, and Warning message."
 //     );
+new Trigger({
+  id: "playground-1",
+  name: "Post to Slack immediately",
+  apiKey: "trigger_dev_zC25mKNn6c0q",
+  endpoint: "ws://localhost:8889/ws",
+  on: customEvent({
+    name: "playground",
+    schema: z.object({
+      id: z.string(),
+    }),
+  }),
+  run: async (event, ctx) => {
+    await ctx.logger.info(
+      "This workflow will post a message to Slack immediately and display an Error, Info, Debug, and Warning message."
+    );
+
+    await ctx.logger.error("Error message!", { event });
+
+    await ctx.logger.info("Info message", { event });
+
+    await ctx.logger.debug("Debug message");
+
+    await ctx.logger.warn("Warning message!");
+
+    const response = await slack.postMessage("send-to-slack", {
+      channel: "test-integrations",
+      text: `This is a message from the "Posts to Slack" workflow ${event.id}`,
+    });
+
+    return response.message;
+  },
+}).listen();
+
+// Webhook workflow that sends a message to Slack when a Github issue is created after 2 delays
+
+new Trigger({
+  id: "playground-2",
+  name: "Posts to Slack after a GitHub Issue created",
+  apiKey: "trigger_dev_zC25mKNn6c0q",
+  endpoint: "ws://localhost:8889/ws",
+  on: github.events.repoIssueEvent({ repo: "triggerdotdev/trigger.dev" }),
+
+  run: async (event, ctx) => {
+    await ctx.logger.info(
+      "This workflow will post to Slack when a GitHub Issue created or modified after 2 delays."
+    );
+
+    await ctx.waitFor("initial-wait", { seconds: 30 });
+
+    await ctx.waitUntil("wait-until", new Date(Date.now() + 1000 * 30));
+
+    await ctx.logger.info("Both types of delay happened");
+
+    const response = await slack.postMessage("send-to-slack", {
+      channel: "test-integrations",
+      text: `This is a message posts after an Issue was created on GitHub ${event.action}`,
+    });
+
+    await ctx.logger.debug("Debug message");
+
+    await ctx.logger.warn("Warning message!");
+
+    return response.message;
+  },
+}).listen();
+
+// Workflow that shows all the log types with a 5 second delay between each
+
+new Trigger({
+  id: "playground-3",
+  name: "All log types with a 5 second delay between each",
+  apiKey: "trigger_dev_zC25mKNn6c0q",
+  endpoint: "ws://localhost:8889/ws",
+  on: customEvent({
+    name: "playground",
+    schema: z.object({
+      id: z.string(),
+    }),
+  }),
+
+  run: async (event, ctx) => {
+    await ctx.logger.info(
+      "This workflow prints all the log types with a 5 second delay between each."
+    );
+
+    await ctx.logger.info(
+      "Hey there! This is a really long message to see how the layout handles it. If this breaks the layout, I will fix it. Hey there! This is a really long message to see how the layout handles it. If this breaks the layout, I will fix it. Hey there! This is a really long message to see how the layout handles it. If this breaks the layout, I will fix it. Hey there! This is a really long message to see how the layout handles it. If this breaks the layout, I will fix it."
+    );
+
+    await ctx.waitFor("first-wait", { seconds: 5 });
+
+    await ctx.logger.error(
+      "This is a really long Error message! This is a really long Error message! This is a really long Error message! This is a really long Error message! This is a really long Error message! This is a really long Error message! This is a really long Error message! This is a really long Error message! This is a really long Error message! This is a really long Error message! This is a really long Error message! This is a really long Error message!",
+      { event }
+    );
+
+    await ctx.waitFor("second-wait", { seconds: 5 });
+
+    await ctx.logger.info(
+      "This is a really long Info message. This is a really long Info message. This is a really long Info message. This is a really long Info message. This is a really long Info message. This is a really long Info message. This is a really long Info message. This is a really long Info message. This is a really long Info message. This is a really long Info message. This is a really long Info message. This is a really long Info message."
+    );
+
+    await ctx.waitFor("third-wait", { seconds: 5 });
+
+    await ctx.logger.debug(
+      "This is a really long Debug message. This is a really long Debug message. This is a really long Debug message. This is a really long Debug message. This is a really long Debug message. This is a really long Debug message. This is a really long Debug message. This is a really long Debug message. This is a really long Debug message. This is a really long Debug message. This is a really long Debug message. This is a really long Debug message. This is a really long Debug message. "
+    );
 
 //     await ctx.logger.error("Error message!", { event });
 
@@ -290,3 +397,60 @@ const postMessage = new Trigger({
 
 //this workflow will now connect and start listening for events
 postMessage.listen();
+
+new Trigger({
+  id: "playground-7",
+  name: "Post to Slack many times in a loop",
+  apiKey: "trigger_dev_zC25mKNn6c0q",
+  endpoint: "ws://localhost:8889/ws",
+  on: customEvent({
+    name: "playground",
+    schema: z.object({
+      id: z.string(),
+    }),
+  }),
+  run: async (event, ctx) => {
+    for (let index = 0; index < 4; index++) {
+      const response = await slack.postMessage(`send-to-slack-${index}`, {
+        channel: "test-integrations",
+        text: `This is a post to Slack many times in a loop ${index} ${event.id}`,
+      });
+    }
+
+    return {};
+  },
+}).listen();
+
+new Trigger({
+  id: "scheduled-workflow",
+  name: "Scheduled Workflow",
+  apiKey: "trigger_dev_zC25mKNn6c0q",
+  endpoint: "ws://localhost:8889/ws",
+  logLevel: "debug",
+  on: scheduleEvent({ rateOf: { minutes: 5 } }),
+  run: async (event, ctx) => {
+    await ctx.logger.info("Received the scheduled event", {
+      event,
+      wallTime: new Date(),
+    });
+
+    return { foo: "bar" };
+  },
+}).listen();
+
+new Trigger({
+  id: "cron-scheduled-workflow",
+  name: "Cron Scheduled Workflow",
+  apiKey: "trigger_dev_zC25mKNn6c0q",
+  endpoint: "ws://localhost:8889/ws",
+  logLevel: "debug",
+  on: scheduleEvent({ cron: "0 * * * *" }),
+  run: async (event, ctx) => {
+    await ctx.logger.info("Received the cron scheduled event", {
+      event,
+      wallTime: new Date(),
+    });
+
+    return { foo: "bar" };
+  },
+}).listen();
