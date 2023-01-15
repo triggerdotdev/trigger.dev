@@ -52,7 +52,7 @@
       "pages": [
         "functions/logging",
         "functions/delays",
-        "functions/firing-events",
+        "functions/send-event",
         "functions/loops-conditionals-etc"
       ]
     },
