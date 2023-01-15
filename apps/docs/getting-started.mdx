@@ -98,7 +98,12 @@ const postMessage = new Trigger({
 postMessage.listen();
 ```
 
-You'll notice that when we subscribe to the custom event we have to say the name of the event and provide a schema. Schemas are created using Zod. In this case events must send an object that has name, email, and paidPlan. If the event is triggered with an object that doesn't match this schema, the workflow won't run.
+You'll notice that when we subscribe to the custom event we have to say the name of the event and provide a schema. Schemas are created using Zod. In this case events must send an object that has `name`, `email`, and `paidPlan`.
+
+<Note>
+  If the event is triggered with an object that doesn't match this schema, the
+  workflow won't run.
+</Note>
 
 <Note>
   Above we set the API key inside the Trigger object. We recommend instead that
@@ -177,7 +182,7 @@ When you run your server and this code executes, it will trigger the workflow. Y
 
 ## Next steps
 
-There are many things we didn't cover here, including Webhook and Scheduled triggers.
+There are many things we didn't cover here, including Webhook and Scheduled triggers. Below are a some more features to explore:
 
 ### Triggers
 
