@@ -3,18 +3,10 @@ import {
   ScheduledEventPayloadSchema,
   ScheduleSourceSchema,
 } from "@trigger.dev/common-schemas";
-import type { PrismaClient } from "~/db.server";
-import { prisma } from "~/db.server";
 import { calculateNextScheduledEvent } from "~/utils/scheduler";
 import { taskQueue } from "../messageBroker.server";
 
 export class ScheduleNextEvent {
-  #prismaClient: PrismaClient;
-
-  constructor(prismaClient: PrismaClient = prisma) {
-    this.#prismaClient = prismaClient;
-  }
-
   async call(
     schedulerSource: SchedulerSource,
     fromEvent?: TriggerEvent
