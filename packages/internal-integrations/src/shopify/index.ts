@@ -14,6 +14,7 @@ import {
   createProductQuery,
   createProductVariantsQuery,
   defaultFirst,
+  getProductQuery,
   listCollectionsQuery,
   listLocationsQuery,
   searchProductVariantsQuery,
@@ -52,6 +53,9 @@ class ShopifyRequestIntegration implements RequestIntegration {
     });
 
     switch (options.endpoint) {
+      case "product.get": {
+        return this.#getProduct(client, options.params);
+      }
       case "product.create": {
         return this.#createProduct(client, options.params);
       }
@@ -84,6 +88,12 @@ class ShopifyRequestIntegration implements RequestIntegration {
 
   displayProperties(endpoint: string, params: any): DisplayProperties {
     switch (endpoint) {
+      case "product.get": {
+        const parsedParams = shopify.schemas.GetProductBodySchema.parse(params);
+        return {
+          title: `Get product: ${parsedParams.id}`,
+        };
+      }
       case "product.create": {
         const parsedParams =
           shopify.schemas.CreateProductBodySchema.parse(params);
@@ -328,6 +338,79 @@ class ShopifyRequestIntegration implements RequestIntegration {
       return performedRequest;
     } catch (error) {
       log("productVariant.create query error %O", error);
+      return {
+        ok: false,
+        isRetryable: false,
+        response: {
+          output: error,
+          context: {},
+        },
+      };
+    }
+  }
+
+  async #getProduct(
+    client: Client,
+    params: any
+  ): Promise<PerformedRequestResponse> {
+    const parsedParams = shopify.schemas.GetProductBodySchema.parse(params);
+    log("product.get %O", parsedParams);
+
+    try {
+      const result = await client
+        .query(getProductQuery, {
+          input: parsedParams.id,
+        })
+        .toPromise();
+
+      if (result.error) {
+        log("product.get failed %O", result.error);
+        return {
+          ok: false,
+          isRetryable: false,
+          response: {
+            output: result.error,
+            context: {},
+          },
+        };
+      }
+
+      if (result.data === undefined) {
+        log("product.get data undefined %O");
+        return {
+          ok: false,
+          isRetryable: false,
+          response: {
+            output: {
+              message: "No data returned",
+            },
+            context: {},
+          },
+        };
+      }
+
+      const product = {
+        ...result.data.product,
+        images: result.data.product.images?.edges?.map((e: any) => e.node),
+        variants: result.data.product.variants?.edges?.map((e: any) => e.node),
+      };
+
+      const validatedProduct = shopify.schemas.ProductSchema.parse(product);
+
+      const performedRequest = {
+        ok: true,
+        isRetryable: false,
+        response: {
+          output: validatedProduct,
+          context: {},
+        },
+      };
+
+      log("product.get performedRequest %O", performedRequest);
+
+      return performedRequest;
+    } catch (error) {
+      log("product.get query error %O", error);
       return {
         ok: false,
         isRetryable: false,

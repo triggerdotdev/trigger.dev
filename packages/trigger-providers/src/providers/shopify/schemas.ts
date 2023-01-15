@@ -116,6 +116,8 @@ export const CreateVariantBodySchema = z.object({
   weightUnit: z.string().optional(),
 });
 
+export const GetProductBodySchema = z.object({ id: z.string() });
+
 export const CreateProductBodySchema = z.object({
   title: z.string(),
   collectionsToJoin: z.array(z.string()).optional(),

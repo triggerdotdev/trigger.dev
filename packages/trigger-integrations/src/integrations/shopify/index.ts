@@ -65,6 +65,34 @@ export async function createProductVariant(
   return output;
 }
 
+export type GetProductBody = z.infer<
+  typeof shopify.schemas.GetProductBodySchema
+>;
+
+export type GetProductResponse = z.infer<typeof shopify.schemas.ProductSchema>;
+
+export async function getProduct(
+  key: string,
+  options: GetProductBody
+): Promise<GetProductResponse> {
+  const run = getTriggerRun();
+
+  if (!run) {
+    throw new Error("Cannot call getProduct outside of a trigger run");
+  }
+
+  const output = await run.performRequest(key, {
+    service: "shopify",
+    endpoint: "product.get",
+    params: options,
+    response: {
+      schema: shopify.schemas.ProductSchema,
+    },
+  });
+
+  return output;
+}
+
 export type CreateProductBody = z.infer<
   typeof shopify.schemas.CreateProductBodySchema
 >;

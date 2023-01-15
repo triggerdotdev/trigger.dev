@@ -119,6 +119,10 @@ new Trigger({
       ],
     });
 
+    const getProduct = await shopify.getProduct("get-product", {
+      id: newProduct.id,
+    });
+
     return newProduct;
   },
 }).listen();
