@@ -8,16 +8,6 @@ description: "Custom event triggers allow you to run workflows from your own cod
 
 ## Name and Schemas
 
-```ts
-customEvent({
-    name: "user.created",
-    schema: z.object({
-      name: z.string(),
-      email: z.string(),
-    }),
-  }),
-```
-
 ### Name
 
 Custom event triggers have a `name`. They will only get triggered when a custom even with that name are sent.
