@@ -39,8 +39,8 @@
       "group": "Triggers",
       "pages": [
         "triggers/webhooks",
-        "triggers/scheduled",
-        "triggers/custom-events"
+        "triggers/custom-events",
+        "triggers/scheduled"
       ]
     },
     {
