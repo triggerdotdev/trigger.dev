@@ -60,7 +60,7 @@ export const anchor = {
   color: "#2754C5",
   fontFamily:
     "-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif",
-  fontSize: "14px",
+  fontSize: "16px",
   textDecoration: "underline",
 };
 
@@ -83,4 +83,12 @@ export const footer = {
     '-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Ubuntu,sans-serif',
   fontSize: "12px",
   lineHeight: "16px",
+};
+
+export const footerAnchor = {
+  color: "#2754C5",
+  fontFamily:
+    "-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif",
+  fontSize: "12px",
+  textDecoration: "underline",
 };
