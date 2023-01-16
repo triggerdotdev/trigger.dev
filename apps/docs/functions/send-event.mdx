@@ -13,15 +13,13 @@ import { sendEvent } from "@trigger.dev/sdk";
 
 //send an event with the name "user.created"
 //and the payload
-await sendEvent({
+await sendEvent("start-fire-2", {
   name: "user.created",
-  payload: {
-    name: "John Doe",
-    email: "john@doe.com",
-    paidPlan: true,
-  },
+  payload: { userId: "123456" },
 });
 ```
+
+If you are calling this from inside a workflow, ensure that the first parameter is unique inside your workflow.
 
 ## Sending events from other workflows
 

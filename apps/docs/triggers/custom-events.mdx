@@ -65,15 +65,13 @@ There is a [full guide on sending events](/functions/send-event) but here is a q
 import { sendEvent } from "@trigger.dev/sdk";
 
 //send an event with the name "user.created"
-await sendEvent({
+await sendEvent("fire-user-created-event", {
   name: "user.created",
-  payload: {
-    name: "John Doe",
-    email: "john@doe.com",
-    paidPlan: true,
-  },
+  payload: { name: "John Doe", email: "john@doe.com", paidPlan: true },
 });
 ```
+
+If you are calling this from inside a workflow, ensure that the first parameter is unique inside your workflow.
 
 <Note>
   The same event can trigger many different workflows, just subscribe to the
