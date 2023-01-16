@@ -1,5 +1,6 @@
 import { z } from "zod";
-import { Trigger, customEvent } from "@trigger.dev/sdk";
+import { Trigger, customEvent, sendEvent } from "@trigger.dev/sdk";
+import { ulid } from "ulid";
 
 const userCreatedEvent = z.object({
   id: z.string(),
@@ -18,9 +19,14 @@ const trigger = new Trigger({
       myDate: new Date(),
     });
 
-    await ctx.fireEvent("start-fire", {
+    await ctx.sendEvent("start-fire", {
       name: "smoke.test",
       payload: { baz: "banana" },
+    });
+
+    await sendEvent("start-fire-2", {
+      name: "smoke.test2",
+      payload: { baz: "banana2" },
     });
 
     return { foo: "bar" };
@@ -28,3 +34,12 @@ const trigger = new Trigger({
 });
 
 trigger.listen();
+
+(async () => {
+  process.env.TRIGGER_API_KEY = "trigger_dev_zC25mKNn6c0q";
+  process.env.TRIGGER_API_URL = "http://localhost:3000";
+  await sendEvent(ulid(), {
+    name: "user.created",
+    payload: { id: "123" },
+  });
+})();

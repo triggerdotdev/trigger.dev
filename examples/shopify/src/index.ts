@@ -206,7 +206,7 @@ new Trigger({
       ],
     });
 
-    await ctx.fireEvent("send-new-product-created", {
+    await ctx.sendEvent("send-new-product-created", {
       name: "product.new",
       payload: { id: newProduct.id },
     });

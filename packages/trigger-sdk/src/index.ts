@@ -1,5 +1,6 @@
-export * from "./trigger";
 export * from "./events";
+export * from "./trigger";
+export * from "./customEvents";
 
 import { triggerRunLocalStorage } from "./localStorage";
 

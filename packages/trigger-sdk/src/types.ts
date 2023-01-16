@@ -1,7 +1,7 @@
 import { SerializableCustomEventSchema } from "@trigger.dev/common-schemas";
 import { z } from "zod";
 
-type CustomEvent = z.infer<typeof SerializableCustomEventSchema>;
+export type TriggerCustomEvent = z.infer<typeof SerializableCustomEventSchema>;
 
 export type WaitForOptions = {
   seconds?: number;
@@ -16,7 +16,7 @@ export interface TriggerContext {
   apiKey: string;
   organizationId: string;
   logger: TriggerLogger;
-  fireEvent(key: string, event: CustomEvent): Promise<void>;
+  sendEvent(key: string, event: TriggerCustomEvent): Promise<void>;
   waitFor(key: string, options: WaitForOptions): Promise<void>;
   waitUntil(key: string, date: Date): Promise<void>;
 }

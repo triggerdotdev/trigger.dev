@@ -252,7 +252,7 @@ export class TriggerClient<TSchema extends z.ZodTypeAny> {
                 timestamp: String(highPrecisionTimestamp()),
               });
             }),
-            fireEvent: async (key, event) => {
+            sendEvent: async (key, event) => {
               await serverRPC.send("SEND_EVENT", {
                 runId: data.id,
                 key,
@@ -340,6 +340,14 @@ export class TriggerClient<TSchema extends z.ZodTypeAny> {
                 const output = await result;
 
                 return options.response.schema.parse(output);
+              },
+              sendEvent: async (key, event) => {
+                await serverRPC.send("SEND_EVENT", {
+                  runId: data.id,
+                  key,
+                  event: JSON.parse(JSON.stringify(event)),
+                  timestamp: String(highPrecisionTimestamp()),
+                });
               },
             },
             () => {
@@ -440,7 +448,7 @@ export class TriggerClient<TSchema extends z.ZodTypeAny> {
 
   async #send<MethodName extends keyof typeof ServerRPCSchema>(
     methodName: MethodName,
-    request: z.input<typeof ServerRPCSchema[MethodName]["request"]>
+    request: z.input<(typeof ServerRPCSchema)[MethodName]["request"]>
   ) {
     if (!this.#serverRPC) throw new Error("serverRPC not initialized");
 

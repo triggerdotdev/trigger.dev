@@ -22,6 +22,7 @@
     "@trigger.dev/tsconfig": "workspace:*",
     "@types/debug": "^4.1.7",
     "@types/node": "16",
+    "@types/node-fetch": "2.6.x",
     "@types/uuid": "^9.0.0",
     "@types/ws": "^8.5.3",
     "internal-bridge": "workspace:*",
@@ -38,6 +39,7 @@
   "dependencies": {
     "debug": "^4.3.4",
     "evt": "^2.4.13",
+    "node-fetch": "2.6.x",
     "ulid": "^2.3.0",
     "uuid": "^9.0.0",
     "ws": "^8.11.0",

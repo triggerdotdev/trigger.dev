@@ -501,10 +501,12 @@ importers:
       '@trigger.dev/tsconfig': workspace:*
       '@types/node': '16'
       tsx: ^3.12.0
+      ulid: ^2.3.0
       zod: ^3.20.2
     dependencies:
       '@trigger.dev/integrations': link:../../packages/trigger-integrations
       '@trigger.dev/sdk': link:../../packages/trigger-sdk
+      ulid: 2.3.0
       zod: 3.20.2
     devDependencies:
       '@trigger.dev/tsconfig': link:../../config-packages/tsconfig
@@ -735,11 +737,13 @@ importers:
       '@trigger.dev/tsconfig': workspace:*
       '@types/debug': ^4.1.7
       '@types/node': '16'
+      '@types/node-fetch': 2.6.x
       '@types/uuid': ^9.0.0
       '@types/ws': ^8.5.3
       debug: ^4.3.4
       evt: ^2.4.13
       internal-bridge: workspace:*
+      node-fetch: 2.6.x
       rimraf: ^3.0.2
       tsup: ^6.5.0
       tsx: ^3.12.1
@@ -750,6 +754,7 @@ importers:
     dependencies:
       debug: 4.3.4
       evt: 2.4.13
+      node-fetch: 2.6.7
       ulid: 2.3.0
       uuid: 9.0.0
       ws: 8.12.0
@@ -759,6 +764,7 @@ importers:
       '@trigger.dev/tsconfig': link:../../config-packages/tsconfig
       '@types/debug': 4.1.7
       '@types/node': 16.18.11
+      '@types/node-fetch': 2.6.2
       '@types/uuid': 9.0.0
       '@types/ws': 8.5.4
       internal-bridge: link:../internal-bridge

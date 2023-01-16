@@ -144,7 +144,7 @@ export default function Page() {
       />
       <WorkflowStep
         step={{
-          type: "fireEvent",
+          type: "sendEvent",
           status: "complete",
           startedAt: new Date(),
           completedAt: new Date(),
@@ -298,7 +298,7 @@ function StepBody({ step }: { step: Step }) {
       return <Log log={step.message} />;
     case "delay":
       return <Delay step={step} />;
-    case "fireEvent":
+    case "sendEvent":
       return <Event event={step} />;
   }
   return <></>;
@@ -422,7 +422,7 @@ function stepTitle(step: Step): string {
       return "Delay";
     case "request":
       return "Request";
-    case "fireEvent":
+    case "sendEvent":
       return "Event";
     case "trigger":
       switch (step.trigger.on) {
@@ -451,7 +451,7 @@ function StepIcon({ step }: { step: Step }) {
       return <CalendarDaysIcon className={styleClass} />;
     case "request":
       return <DocumentTextIcon className={styleClass} />;
-    case "fireEvent":
+    case "sendEvent":
       return <DocumentTextIcon className={styleClass} />;
     case "trigger":
       switch (step.trigger.on) {
@@ -500,7 +500,7 @@ type RequestStep = CommonStepData & {
 };
 
 type EventStep = CommonStepData & {
-  type: "fireEvent";
+  type: "sendEvent";
   name: string;
   payload: any;
 };

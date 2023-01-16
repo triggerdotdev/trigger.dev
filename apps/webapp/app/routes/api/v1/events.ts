@@ -1,9 +1,14 @@
 import type { ActionArgs } from "@remix-run/server-runtime";
 import { json } from "@remix-run/server-runtime";
+import { CustomEventSchema } from "@trigger.dev/common-schemas";
+import { z } from "zod";
 import { authenticateApiRequest } from "~/services/apiAuth.server";
 import { IngestEvent } from "~/services/events/ingest.server";
-import { CustomEventSchema } from "@trigger.dev/common-schemas";
-import { ulid } from "ulid";
+
+const EventBodySchema = z.object({
+  id: z.string(),
+  event: CustomEventSchema,
+});
 
 export async function action({ request }: ActionArgs) {
   // Ensure this is a POST request
@@ -21,22 +26,22 @@ export async function action({ request }: ActionArgs) {
   // Now parse the request body
   const body = await request.json();
 
-  const customEvent = CustomEventSchema.safeParse(body);
+  const eventBody = EventBodySchema.safeParse(body);
 
-  if (!customEvent.success) {
-    return json({ error: customEvent.error.message }, { status: 400 });
+  if (!eventBody.success) {
+    return json({ error: eventBody.error.message }, { status: 400 });
   }
 
   const service = new IngestEvent();
 
   const result = await service.call(
     {
-      id: ulid(),
-      name: customEvent.data.name,
+      id: eventBody.data.id,
+      name: eventBody.data.event.name,
       type: "CUSTOM_EVENT",
       service: "trigger",
-      payload: customEvent.data.payload,
-      context: customEvent.data.context,
+      payload: eventBody.data.event.payload,
+      context: eventBody.data.event.context,
       apiKey: authenticatedEnv.apiKey,
     },
     authenticatedEnv.organization

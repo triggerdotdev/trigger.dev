@@ -6,6 +6,7 @@
   "dependencies": {
     "@trigger.dev/integrations": "workspace:*",
     "@trigger.dev/sdk": "workspace:*",
+    "ulid": "^2.3.0",
     "zod": "^3.20.2"
   },
   "devDependencies": {
