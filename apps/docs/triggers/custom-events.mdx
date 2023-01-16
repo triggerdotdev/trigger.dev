@@ -16,6 +16,10 @@ Custom event triggers have a `name`. They will only get triggered when a custom 
 
 Custom event triggers have a schema. This is used to validate the data that is sent with the event. If the data does not match the schema, the workflow will not run.
 
+It also means that inside your run function you will have type safety for the data you receive. We use [Zod](https://github.com/colinhacks/zod#installation) for our schemas – it's a fantastic library that allows you to define schemas in a very simple way.
+
+You can always start out by using `z.any()` as your schema, and then later on you can add more strict validation.
+
 ## Example
 
 ```ts
@@ -72,5 +76,6 @@ await sendEvent({
 ```
 
 <Note>
-  The same event can trigger many different workflows, it's not one-to-one.
+  The same event can trigger many different workflows, just subscribe to the
+  same event name to achieve this.
 </Note>
