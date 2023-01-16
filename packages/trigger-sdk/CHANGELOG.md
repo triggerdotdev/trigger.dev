@@ -1,5 +1,11 @@
 # @trigger.dev/sdk
 
+## 0.2.1
+
+### Patch Changes
+
+- 7d23a7b: Added the sendEvent function
+
 ## 0.2.0
 
 ### Minor Changes
