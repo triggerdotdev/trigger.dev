@@ -6,11 +6,15 @@ description: "You can trigger workflow steps to fire before and after a delay. T
 
 ## `waitFor` delay
 
-`waitFor` takes a unique key and an object that sets the desired time as a key value pair. If you include more than one of the same type of delay in a workflow, ensure you keep the key unique.
+`waitFor` takes a unique key and an object that sets the desired time as a key value pair.
 
 ```ts
 await ctx.waitFor("wait-for-1", { seconds: 30 });
 ```
+
+<Note>Reminder: Ensure all keys are unique across all triggers.</Note>
+
+### Example
 
 This example posts a message to Slack after a 30 second delay:
 
@@ -44,11 +48,15 @@ new Trigger({
 
 ## `waitUntil` delay
 
-`waitUntil` takes a unique key and a date function to set desired time. If you include more than one of the same type of delay in a workflow, ensure you keep the key unique.
+`waitUntil` takes a unique key and a date function to set desired time.
 
 ```ts
 await ctx.waitUntil("wait-until-1", new Date(Date.now() + 1000 * 60 * 1));
 ```
+
+<Note>Reminder: Ensure all keys are unique across all triggers.</Note>
+
+### Example
 
 This example posts a message to Slack 1 hour after the workflow triggers:
 
