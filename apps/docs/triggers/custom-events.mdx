@@ -63,7 +63,7 @@ import { sendEvent } from "@trigger.dev/sdk";
 //send an event with the name "user.created"
 await sendEvent({
   name: "user.created",
-  data: {
+  payload: {
     name: "John Doe",
     email: "john@doe.com",
     paidPlan: true,
