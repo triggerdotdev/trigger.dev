@@ -87,7 +87,7 @@ async function enableAction(
 
   return redirectBackWithSuccessMessage(
     request,
-    "Workflow successfully enabled. We will resuming triggering it for new events."
+    "Workflow successfully enabled. Triggering of new events will resume."
   );
 }
 
@@ -126,7 +126,7 @@ async function unarchiveAction(
 
   return redirectBackWithSuccessMessage(
     request,
-    "Workflow successfully unarchived. although it remains disabled. Please enable it to resuming triggering it for new events."
+    "Workflow successfully unarchived. Enable it to resume triggering of new events."
   );
 }
 
@@ -146,7 +146,7 @@ export default function Page() {
   return (
     <>
       <Title>Settings</Title>
-      <SubTitle>Workflow Status</SubTitle>
+      <SubTitle>Workflow status</SubTitle>
       {panel}
     </>
   );
@@ -162,10 +162,10 @@ function WorkflowReadyPanel({
       <div className="flex gap-4 items-center">
         <ApiLogoIcon size="regular" />
         <Header3 size="small" className="text-slate-300">
-          {workflow.title} is active.
+          {workflow.title} <span className="text-green-500">is active.</span>
         </Header3>
       </div>
-      <div className="flex gap-2">
+      <div className="flex gap-3">
         <Form
           method="post"
           onSubmit={(e) =>
@@ -183,7 +183,7 @@ function WorkflowReadyPanel({
           method="post"
           onSubmit={(e) =>
             !confirm(
-              "Archiving this workflow disable it and remove it from your list of workflows. Are you sure you want to archive this workflow?"
+              "Archiving this workflow disables it and removes it from your list of workflows. Are you sure you want to archive this workflow?"
             ) && e.preventDefault()
           }
         >
@@ -206,10 +206,10 @@ function WorkflowDisabledPanel({
       <div className="flex gap-4 items-center">
         <ApiLogoIcon size="regular" />
         <Header3 size="small" className="text-slate-300">
-          {workflow.title} is disabled.
+          {workflow.title} <span className="text-amber-300">is disabled.</span>
         </Header3>
       </div>
-      <div className="flex gap-2">
+      <div className="flex gap-3">
         <Form
           method="post"
           onSubmit={(e) =>
@@ -218,9 +218,9 @@ function WorkflowDisabledPanel({
             ) && e.preventDefault()
           }
         >
-          <SecondaryButton name="action" value="enable" type="submit">
+          <PrimaryButton name="action" value="enable" type="submit">
             Enable
-          </SecondaryButton>
+          </PrimaryButton>
         </Form>
 
         <Form
@@ -249,11 +249,11 @@ function WorkflowArchivedPanel({
     <Panel className="flex items-center justify-between !p-4">
       <div className="flex gap-4 items-center">
         <ApiLogoIcon size="regular" />
-        <Header3 size="small" className="text-rose-500">
-          {workflow.title} is archived.
+        <Header3 size="small" className="text-slate-300">
+          {workflow.title} <span className="text-rose-500">is archived.</span>
         </Header3>
       </div>
-      <div className="flex gap-2">
+      <div className="flex gap-3">
         <Form
           method="post"
           onSubmit={(e) =>
