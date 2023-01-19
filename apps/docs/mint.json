@@ -1,15 +1,15 @@
 {
-  "name": "API Hero",
+  "name": "Trigger.dev",
   "logo": {
     "dark": "/logo/light.png",
     "light": "/logo/light.png",
-    "href": "https://trigger.dev"
+    "href": "https://app.trigger.dev"
   },
   "favicon": "/images/favicon.png",
   "colors": {
     "primary": "#0fd122",
-    "light": "#e7ff52",
-    "dark": "#09ab18",
+    "light": "#41FF54",
+    "dark": "#632CCC",
     "anchors": {
       "from": "#069613",
       "to": "#0fd122"
@@ -21,26 +21,15 @@
   },
   "topbarLinks": [
     {
-      "name": "Pricing",
-      "url": "https://trigger.dev/pricing"
+      "name": "GitHub",
+      "url": "https://github.com/triggerdotdev/trigger.dev"
     }
   ],
   "topbarCtaButton": {
-    "name": "Join the waitlist",
-    "url": "https://bcymafitv0e.typeform.com/tddsignup"
+    "name": "Trigger.dev",
+    "url": "https://app.trigger.dev"
   },
-  "anchors": [
-    {
-      "name": "JSON Hero",
-      "icon": "code",
-      "url": "https://jsonhero.io/"
-    },
-    {
-      "name": "Community",
-      "icon": "discord",
-      "url": "https://mintlify.com/community"
-    }
-  ],
+
   "navigation": [
     {
       "group": "Getting Started",
@@ -51,24 +40,30 @@
       "pages": [
         "triggers/webhooks",
         "triggers/custom-events",
-        "triggers/coming-soon"
+        "triggers/scheduled"
       ]
     },
     {
-      "group": "Requests",
-      "pages": ["requests/overview"]
-    },
-    {
       "group": "Integrations",
-      "pages": ["integrations/integrations", "integrations/authentication"]
+      "pages": ["integrations/apis", "integrations/authentication"]
     },
     {
-      "group": "Sample projects",
-      "pages": ["sample-projects/examples"]
+      "group": "Functions",
+      "pages": [
+        "functions/logging",
+        "functions/delays",
+        "functions/send-event",
+        "functions/loops-conditionals-etc"
+      ]
+    },
+    {
+      "group": "Example workflows",
+      "pages": ["examples/github", "examples/shopify", "examples/slack"]
     }
   ],
   "footerSocials": {
-    "website": "https://trigger.dev",
-    "twitter": "https://twitter.com/triggerdotdev"
+    "website": "https://app.trigger.dev",
+    "twitter": "https://twitter.com/triggerdotdev",
+    "github": "https://github.com/triggerdotdev/trigger.dev"
   }
 }

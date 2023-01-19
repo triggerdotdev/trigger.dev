@@ -1,4 +1,4 @@
-import type { Provider } from "internal-providers";
+import type { Provider } from "@trigger.dev/providers";
 import { AddApiKeyButton } from "./AddApiKeyButton";
 import { ConnectOAuthButton } from "./ConnectOAuthButton";
 import { IntegrationIcon } from "./IntegrationIcon";

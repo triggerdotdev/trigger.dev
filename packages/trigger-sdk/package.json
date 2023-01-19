@@ -1,9 +1,12 @@
 {
   "name": "@trigger.dev/sdk",
-  "version": "0.0.1",
+  "version": "0.2.1",
   "description": "trigger.dev Node.JS SDK",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
+  "publishConfig": {
+    "access": "public"
+  },
   "files": [
     "dist"
   ],
@@ -12,17 +15,14 @@
       "import": "./dist/index.js",
       "require": "./dist/index.js"
     },
-    "./package.json": "./package.json",
-    "./internal": {
-      "import": "./dist/internal/index.js",
-      "require": "./dist/internal/index.js"
-    }
+    "./package.json": "./package.json"
   },
   "devDependencies": {
     "@trigger.dev/common-schemas": "workspace:*",
     "@trigger.dev/tsconfig": "workspace:*",
     "@types/debug": "^4.1.7",
-    "@types/node": "^18.11.9",
+    "@types/node": "16",
+    "@types/node-fetch": "2.6.x",
     "@types/uuid": "^9.0.0",
     "@types/ws": "^8.5.3",
     "internal-bridge": "workspace:*",
@@ -39,6 +39,7 @@
   "dependencies": {
     "debug": "^4.3.4",
     "evt": "^2.4.13",
+    "node-fetch": "2.6.x",
     "ulid": "^2.3.0",
     "uuid": "^9.0.0",
     "ws": "^8.11.0",

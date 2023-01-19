@@ -1,6 +1,6 @@
 import { Listbox } from "@headlessui/react";
 import { CheckIcon } from "@heroicons/react/24/outline";
-import { useFetcher, useSubmit } from "@remix-run/react";
+import { useFetcher, useSubmit, useTransition } from "@remix-run/react";
 import type { LoaderArgs } from "@remix-run/server-runtime";
 import classNames from "classnames";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -58,6 +58,8 @@ export default function Page() {
 
   const fetcher = useFetcher();
   const submit = useSubmit();
+  const transition = useTransition();
+
   const formRef = useRef<HTMLFormElement>(null);
 
   const submitForm = useCallback(() => {
@@ -67,6 +69,10 @@ export default function Page() {
 
   const workflow = useCurrentWorkflow();
   invariant(workflow, "Workflow not found");
+
+  const isLoading =
+    transition.state !== "idle" &&
+    transition.location.pathname.endsWith("/runs");
 
   return (
     <>
@@ -87,15 +93,25 @@ export default function Page() {
       >
         <StatusFilter statuses={filters.statuses} submitForm={submitForm} />
       </fetcher.Form>
-      <Panel className="p-0 overflow-hidden overflow-x-auto">
-        <RunsTable runs={runs} total={total} hasFilters={hasFilters} />
-        <PaginationControls
-          currentPage={page}
-          totalPages={pageCount}
-          pageSize={pageSize}
-          totalResults={total}
+      <Panel
+        className={classNames(
+          "p-0 overflow-hidden overflow-x-auto",
+          total === 0 ? "rounded-b-lg" : "rounded-b-none"
+        )}
+      >
+        <RunsTable
+          runs={runs}
+          total={total}
+          hasFilters={hasFilters}
+          isLoading={isLoading}
         />
       </Panel>
+      <PaginationControls
+        currentPage={page}
+        totalPages={pageCount}
+        pageSize={pageSize}
+        totalResults={total}
+      />
     </>
   );
 }
@@ -109,10 +125,6 @@ function StatusFilter({
 }) {
   const [selectedStatuses, setSelectedStatuses] =
     useState<WorkflowRunStatus[]>(statuses);
-
-  useEffect(() => {
-    setSelectedStatuses(statuses);
-  }, [statuses]);
 
   useEffect(() => {
     if (statuses.join("") === selectedStatuses.join("")) return;

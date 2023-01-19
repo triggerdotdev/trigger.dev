@@ -1,11 +1,12 @@
 import type { APIConnection, ExternalSource } from ".prisma/client";
+import type { AccessInfo } from "internal-integrations";
 import { github } from "internal-integrations";
 import crypto from "node:crypto";
 import type { PrismaClient } from "~/db.server";
 import { prisma } from "~/db.server";
 import { env } from "~/env.server";
 import { findExternalSourceById } from "~/models/externalSource.server";
-import { AccessInfo, getAccessInfo } from "../accessInfo.server";
+import { getAccessInfo } from "../accessInfo.server";
 
 export class RegisterExternalSource {
   #prismaClient: PrismaClient;
@@ -25,9 +26,9 @@ export class RegisterExternalSource {
       return true;
     }
 
-    if (!externalSource.connection) {
-      return true; // Somehow the connection slot was deleted, so by returning true we're saying we're done with this webhook
-    }
+    console.log("[RegisterExternalSource] registering external source", {
+      externalSource,
+    });
 
     switch (externalSource.type) {
       case "WEBHOOK": {
@@ -44,8 +45,12 @@ export class RegisterExternalSource {
 
   async #registerWebhook(
     externalSource: ExternalSource,
-    connection: APIConnection
+    connection?: APIConnection | null
   ) {
+    if (!connection) {
+      return true; // Somehow the connection slot was deleted, so by returning true we're saying we're done with this webhook
+    }
+
     const accessInfo = await getAccessInfo(connection);
     if (accessInfo == null) {
       throw new Error("No access token found for webhook");
@@ -102,10 +107,6 @@ export class RegisterExternalSource {
         : await findExternalSourceById(idOrExternalSource.id);
 
     if (!externalSource) {
-      return;
-    }
-
-    if (!externalSource.connection) {
       return;
     }
 

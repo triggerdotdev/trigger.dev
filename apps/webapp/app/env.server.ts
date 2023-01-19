@@ -28,12 +28,18 @@ const EnvironmentSchema = z.object({
   FLY_REGION: z.string().optional(),
   SESSION_SECRET: z.string(),
   PIZZLY_HOST: z.string(),
+  PIZZLY_SECRET_KEY: z.string().optional(),
   PULSAR_SERVICE_URL: z.string().default("pulsar://localhost:6650"),
   PULSAR_ENABLED: z
     .string()
     .default("0")
     .transform((v) => v === "1"),
   REDIS_URL: z.string().default("redis://localhost:6379"),
+  PULSAR_CLIENT_ID: z.string().optional(),
+  PULSAR_CLIENT_SECRET: z.string().optional(),
+  PULSAR_ISSUER_URL: z.string().optional(),
+  PULSAR_AUDIENCE: z.string().optional(),
+  PULSAR_DEBUG: z.string().optional(),
 });
 
 export type Environment = z.infer<typeof EnvironmentSchema>;

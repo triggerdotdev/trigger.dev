@@ -6,17 +6,24 @@
       "name": "Prod",
       "region": "us-east-1",
       "source": {
-        "branch": "dev",
-        "trigger": "manual"
+        "branch": "main",
+        "trigger": "push"
       },
       "envVariables": {
-        "NODE_ENV": "production",
         "PULSAR_ISSUER_URL": "https://auth.streamnative.cloud/",
-        "PULSAR_AUDIENCE": "urn:sn:pulsar:o-syacq:trigger-platform",
+        "PULSAR_AUDIENCE": {
+          "fromParameterStore": "/Prod/Pulsar/Audience"
+        },
         "PULSAR_TENANT": "triggerdotdev",
         "PULSAR_WORKFLOWS_NAMESPACE": "workflows",
         "PULSAR_QUEUES_NAMESPACE": "queues",
-        "PULSAR_SERVICE_URL": "pulsar+ssl://cluster1.o-syacq.snio.cloud:6651"
+        "PULSAR_SERVICE_URL": {
+          "fromParameterStore": "/Prod/Pulsar/ServiceURL"
+        },
+        "DOCKER_USERNAME": "maverickdotdev",
+        "DOCKER_PASSWORD": {
+          "fromParameterStore": "/Docker/Password"
+        }
       },
       "services": [
         {
@@ -28,7 +35,7 @@
           "dockerContext": ".",
           "cpu": 4,
           "memory": 8,
-          "minInstances": 2,
+          "minInstances": 1,
           "maxInstances": 10,
           "domain": "app.trigger.dev",
           "port": 3000,
@@ -46,29 +53,34 @@
             "apps/webapp/styles/**",
             "apps/webapp/prisma/**",
             "apps/webapp/types/**",
-            "apps/webapp/nixpacks.toml"
+            "packages/internal-platform/src/**",
+            "packages/common-schemas/src/**",
+            "packages/internal-integrations/src/**",
+            "packages/trigger-providers/src/**",
+            "packages/emails/src/**",
+            "packages/emails/emails/**",
+            "packages/internal-pulsar/src/**",
+            "./pnpm-lock.yaml"
           ],
-          "dependsOn": [
-            "p-db"
-          ],
+          "dependsOn": ["p-db"],
           "envVariables": {
             "FROM_EMAIL": "hello@email.trigger.dev",
             "REPLY_TO_EMAIL": "hello@trigger.dev",
             "RESEND_API_KEY": {
-              "fromParameterStore": "PROD_RESEND_API_KEY"
+              "fromParameterStore": "/Prod/webapp/RESEND_API_KEY"
             },
             "SENTRY_DSN": {
               "fromParameterStore": "SENTRY_DSN"
             },
             "SESSION_SECRET": {
-              "fromParameterStore": "PROD_SESSION_SECRET"
+              "fromParameterStore": "/Prod/webapp/SESSION_SECRET"
             },
             "MAGIC_LINK_SECRET": {
-              "fromParameterStore": "PROD_MAGIC_LINK_SECRET"
+              "fromParameterStore": "/Prod/webapp/MAGIC_LINK_SECRET"
             },
             "GITHUB_CLIENT_ID": "724e56fcebe940eb5b22",
             "GITHUB_SECRET": {
-              "fromParameterStore": "PROD_GITHUB_CLIENT_SECRET"
+              "fromParameterStore": "/Prod/webapp/GITHUB_SECRET"
             },
             "DATABASE_URL": {
               "fromService": {
@@ -76,34 +88,33 @@
                 "value": "dbConnectionString"
               }
             },
-            "PULSAR_ENABLED": "1",
             "PULSAR_CLIENT_ID": {
-              "fromParameterStore": "PROD_WEBAPP_PULSAR_CLIENT_ID"
+              "fromParameterStore": "/Prod/Pulsar/webapp/ClientId"
             },
             "PULSAR_CLIENT_SECRET": {
-              "fromParameterStore": "PROD_WEBAPP_PULSAR_CLIENT_SECRET"
+              "fromParameterStore": "/Prod/Pulsar/webapp/ClientSecret"
             },
-            "PULSAR_ROLE": "webapp@o-syacq.auth.streamnative.cloud",
-            "DOCKER_USERNAME": "maverickdotdev",
-            "DOCKER_PASSWORD": {
-              "fromParameterStore": "DOCKER_HUB_PASSWORD"
+            "PULSAR_ROLE": {
+              "fromParameterStore": "/Prod/Pulsar/webapp/Role"
             },
             "PIZZLY_HOST": "https://auth.trigger.dev",
+            "PIZZLY_SECRET_KEY": {
+              "fromParameterStore": "/Prod/webapp/PIZZLY_SECRET_KEY"
+            },
             "TRIGGER_LOG_LEVEL": "debug",
-            "PULSAR_DEBUG": true,
-            "DEBUG": "*"
+            "PULSAR_ENABLED": "1",
+            "PULSAR_DEBUG": true
           }
         },
         {
           "id": "p-wss",
           "name": "Prod WSS",
           "type": "fargate",
-          "buildType": "nodejs",
-          "installCommand": "pnpm i --filter wss",
-          "buildCommand": "pnpm run build --filter wss",
-          "startCommand": "pnpm run start --filter wss",
-          "cpu": 4,
-          "memory": 8,
+          "buildType": "docker",
+          "dockerfilePath": "./apps/wss/Dockerfile",
+          "dockerContext": ".",
+          "cpu": 2,
+          "memory": 4,
           "minInstances": 2,
           "maxInstances": 10,
           "domain": "wss.trigger.dev",
@@ -114,39 +125,38 @@
             "apps/wss/tsconfig.json",
             "apps/wss/tsup.config.ts",
             "apps/wss/package.json",
-            "apps/wss/nixpacks.toml"
+            "packages/internal-platform/src/**",
+            "packages/internal-bridge/src/**",
+            "packages/common-schemas/src/**",
+            "packages/internal-pulsar/src/**",
+            "./pnpm-lock.yaml"
           ],
           "envVariables": {
             "PULSAR_CLIENT_ID": {
-              "fromParameterStore": "PROD_WSS_PULSAR_CLIENT_ID"
+              "fromParameterStore": "/Prod/Pulsar/wss/ClientId"
             },
             "PULSAR_CLIENT_SECRET": {
-              "fromParameterStore": "PROD_WSS_PULSAR_CLIENT_SECRET"
+              "fromParameterStore": "/Prod/Pulsar/wss/ClientSecret"
             },
-            "PULSAR_ROLE": "websocketserver@o-syacq.auth.streamnative.cloud",
-            "AUTHORIZATION_URL": {
-              "fromService": {
-                "id": "p-webapp",
-                "value": "origin"
-              }
-            }
-          },
-          "dependsOn": [
-            "p-webapp"
-          ]
+            "PULSAR_ROLE": {
+              "fromParameterStore": "/Prod/Pulsar/wss/Role"
+            },
+            "PLATFORM_API_URL": "https://app.trigger.dev",
+            "TRIGGER_LOG_LEVEL": "debug"
+          }
         },
         {
           "id": "p-db",
           "name": "Prod Database",
           "type": "rds",
           "engine": "postgres",
-          "applyChangesImmediately": false,
+          "applyChangesImmediately": true,
           "engineVersion": "14",
           "autoUpgradeMinorVersions": true,
           "instanceSize": "db.m5.2xlarge",
           "storage": 4000,
           "maxStorage": 4000,
-          "private": true,
+          "private": false,
           "deletionProtection": true,
           "port": 5432
         },

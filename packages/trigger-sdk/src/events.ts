@@ -1,6 +1,8 @@
 import {
   EventFilterSchema,
   TriggerMetadataSchema,
+  ScheduleSourceSchema,
+  ScheduledEventPayloadSchema,
 } from "@trigger.dev/common-schemas";
 import { z } from "zod";
 
@@ -27,5 +29,21 @@ export function customEvent<TSchema extends z.ZodTypeAny>(
       filter: { event: [options.name] },
     },
     schema: options.schema,
+  };
+}
+
+export type TriggerScheduleOptions = z.infer<typeof ScheduleSourceSchema>;
+
+export function scheduleEvent(
+  options: TriggerScheduleOptions
+): TriggerEvent<typeof ScheduledEventPayloadSchema> {
+  return {
+    metadata: {
+      type: "SCHEDULE",
+      service: "scheduler",
+      name: "scheduled-event",
+      source: options,
+    },
+    schema: ScheduledEventPayloadSchema,
   };
 }

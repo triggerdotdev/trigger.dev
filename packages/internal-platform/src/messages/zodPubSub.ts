@@ -4,10 +4,10 @@ import { z } from "zod";
 import { PublishOptions, ZodPublisher } from "./zodPublisher";
 import { ZodSubscriber, ZodSubscriberHandlers } from "./zodSubscriber";
 import {
-  PulsarClient,
-  PulsarConsumerConfig,
-  PulsarProducerConfig,
-} from "internal-pulsar";
+  Client as PulsarClient,
+  ConsumerConfig as PulsarConsumerConfig,
+  ProducerConfig as PulsarProducerConfig,
+} from "pulsar-client";
 
 export type ZodPubSubOptions<TPubSubSchema extends MessageCatalogSchema> = {
   client: PulsarClient;

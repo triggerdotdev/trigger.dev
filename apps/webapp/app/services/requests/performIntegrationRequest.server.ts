@@ -1,14 +1,13 @@
-import {
+import type {
+  AccessInfo,
   CacheService,
   NormalizedResponse,
   PerformedRequestResponse,
-  shopify,
 } from "internal-integrations";
-import { slack } from "internal-integrations";
+import { shopify, slack } from "internal-integrations";
 import type { PrismaClient } from "~/db.server";
 import { prisma } from "~/db.server";
 import type { IntegrationRequest } from "~/models/integrationRequest.server";
-import type { AccessInfo } from "../accessInfo.server";
 import { getAccessInfo } from "../accessInfo.server";
 import { RedisCacheService } from "../cacheService.server";
 

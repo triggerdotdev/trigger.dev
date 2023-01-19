@@ -7,7 +7,7 @@ import {
   RequestIntegration,
   AccessInfo,
 } from "../types";
-import { slack } from "internal-providers";
+import { slack } from "@trigger.dev/providers";
 
 import debug from "debug";
 import { getAccessToken } from "../accessInfo";

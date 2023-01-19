@@ -26,25 +26,23 @@ cd packages/internal-cli
 2. Run the script
 
 ```bash
-pnpm run cli
+pnpm run cli <path_to_your_provider_json_file>
+```
+
+# Example provider JSON file
+
+```json
+{
+  "github": {
+    "client_id": "<github client id>"
+  },
+  "slack": {
+    "client_id": "<slack client id>"
+  }
+}
 ```
 
 # Options
-
-## Environment
-
-`-e` or `--environment`
-
-| Option        | Description                 | Default |
-| ------------- | --------------------------- | ------- |
-| `development` | The development environment | x       |
-| `production`  | The production environment  |         |
-
-Example:
-
-```bash
-pnpm run cli -e production
-```
 
 ## Pizzly host
 
@@ -56,7 +54,7 @@ Pass the base url for Pizzly, defaults to `http://localhost:3004`.
 
 `-s` or `--pizzlysecretkey`
 
-Pass the secret key for Pizzly, defaults to undefined which will work locally in the default configuration.
+Pass the secret key for Pizzly, defaults to undefined which will work locally in the default configuration. In production you will want to set a Pizzly secret key, see their docs for details.
 
 ## AWS profile
 

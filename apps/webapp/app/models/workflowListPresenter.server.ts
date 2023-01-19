@@ -1,7 +1,7 @@
 import type { DisplayProperties } from "internal-integrations";
 import { github } from "internal-integrations";
 import invariant from "tiny-invariant";
-import { triggerLabel } from "~/components/triggers/triggerTypes";
+import { triggerLabel } from "~/components/triggers/triggerLabel";
 import type { PrismaClient } from "~/db.server";
 import { prisma } from "~/db.server";
 import { getIntegration } from "~/utils/integrations";
@@ -76,7 +76,7 @@ function getWorkflows(prismaClient: PrismaClient, organizationSlug: string) {
           status: true,
         },
         take: 1,
-        orderBy: { finishedAt: "desc" },
+        orderBy: { finishedAt: { sort: "desc", nulls: "last" } },
       },
     },
   });

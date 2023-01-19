@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "description": "Web Socket server that hosts connect to and Apache Pulsar to route messages to and from workflows",
   "main": "dist/index.js",
+  "private": true,
   "scripts": {
     "clean": "rimraf dist",
     "build": "npm run clean && npm run build:tsup",
@@ -14,18 +15,19 @@
   "author": "",
   "dependencies": {
     "evt": "^2.4.13",
+    "uuid": "^9.0.0",
+    "ws": "^8.11.0",
+    "zod": "^3.20.2",
+    "pulsar-client": "1.7.0"
+  },
+  "devDependencies": {
+    "@trigger.dev/tsconfig": "workspace:*",
     "internal-bridge": "workspace:*",
     "internal-platform": "workspace:*",
     "internal-pulsar": "workspace:*",
     "@trigger.dev/common-schemas": "workspace:*",
-    "uuid": "^9.0.0",
-    "ws": "^8.11.0",
-    "zod": "^3.20.2"
-  },
-  "devDependencies": {
-    "@trigger.dev/tsconfig": "workspace:*",
     "@types/debug": "^4.1.7",
-    "@types/node": "^18.11.9",
+    "@types/node": "16",
     "@types/uuid": "^9.0.0",
     "@types/ws": "^8.5.3",
     "dotenv": "^16.0.3",

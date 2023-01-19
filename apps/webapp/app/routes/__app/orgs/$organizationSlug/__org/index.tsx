@@ -17,7 +17,7 @@ import { Header2, Header3 } from "~/components/primitives/text/Headers";
 import { SubTitle } from "~/components/primitives/text/SubTitle";
 import { Title } from "~/components/primitives/text/Title";
 import { runStatusLabel } from "~/components/runs/runStatus";
-import { triggerTypeIcon } from "~/components/triggers/triggerTypes";
+import { TriggerTypeIcon } from "~/components/triggers/TriggerIcons";
 import { useCurrentOrganization } from "~/hooks/useOrganizations";
 import type { WorkflowListItem } from "~/models/workflowListPresenter.server";
 import { WorkflowListPresenter } from "~/models/workflowListPresenter.server";
@@ -86,13 +86,18 @@ function WorkflowList({
               to={`/orgs/${currentOrganizationSlug}/workflows/${workflow.slug}`}
               className="block hover:bg-slate-850/40 transition"
             >
-              <div className="flex justify-between lg:items-center flex-col lg:flex-row flex-wrap lg:flex-nowrap pl-5 pr-4 py-4">
+              <div className="flex justify-between lg:items-center flex-col lg:flex-row flex-wrap lg:flex-nowrap pl-4 pr-4 py-4">
                 <div className="flex items-center flex-1 justify-between">
                   <div className="relative flex items-center">
                     {workflow.status !== "READY" && (
                       <ExclamationTriangleIcon className="absolute -top-1.5 -left-1.5 h-6 w-6 text-amber-500" />
                     )}
-                    <TriggerTypeIcon workflow={workflow} />
+                    <div className="p-3 bg-slate-850 rounded-md flex-shrink-0 self-start h-20 w-20 mr-4">
+                      <TriggerTypeIcon
+                        type={workflow.trigger.type}
+                        provider={workflow.integrations.source}
+                      />
+                    </div>
                     <div className="flex flex-col gap-1 mr-1 truncate">
                       <Header2
                         size="regular"
@@ -208,22 +213,5 @@ function WorkflowProperty({
         {content}
       </Body>
     </div>
-  );
-}
-
-function TriggerTypeIcon({ workflow }: { workflow: WorkflowListItem }) {
-  if (workflow.integrations.source) {
-    return (
-      <ApiLogoIcon
-        integration={workflow.integrations.source}
-        size="extra-large"
-        className="p-3 bg-slate-850 rounded-md flex-shrink-0 self-start lg:self-center mr-5"
-      />
-    );
-  }
-
-  return triggerTypeIcon(
-    workflow.trigger.type,
-    "p-3 bg-slate-850 rounded-md flex-shrink-0 self-start h-20 w-20 mr-4"
   );
 }

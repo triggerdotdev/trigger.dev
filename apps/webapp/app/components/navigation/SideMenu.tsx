@@ -130,7 +130,7 @@ function SideMenu({
           aria-label="Sidebar"
         >
           <div>
-            <div className="group flex items-center my-2 text-slate-400 rounded hover:bg-slate-900 transition divide-x divide-transparent hover:divide-slate-900">
+            <div className="group flex items-center my-2 text-slate-400 rounded hover:bg-slate-950 border border-transparent hover:border-slate-800 transition divide-x divide-transparent hover:divide-slate-900">
               <Link
                 to={backPath}
                 className="px-2 py-3 hover:bg-slate-800 rounded-l transition"

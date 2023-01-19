@@ -1,6 +1,5 @@
 import { z } from "zod";
 import { normalizeHeaders } from "../headers";
-
 import debug from "debug";
 
 const log = debug("trigger:integrations:services");

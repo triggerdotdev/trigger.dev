@@ -2,32 +2,69 @@ import { Command } from "commander";
 import * as fs from "node:fs";
 import { z } from "zod";
 import invariant from "tiny-invariant";
-import { getProviders } from "internal-providers";
+import { getProviders } from "@trigger.dev/providers";
 import { fromIni } from "@aws-sdk/credential-providers";
 import {
   SecretsManagerClient,
   GetSecretValueCommand,
 } from "@aws-sdk/client-secrets-manager";
+import fetch from "node-fetch";
+
+const providersSchema = z.record(
+  z.string(),
+  z.object({
+    client_id: z.string(),
+  })
+);
 
 const program = new Command();
 
 program
   .command("update")
   .description("Update the catalog")
-  .option("-e, --environment <environment>", "The environment to update")
+  .argument(
+    "<integration_file_path>",
+    "The file path to the integration file. Probably ../../apps/webapp/integrations.yml"
+  )
   .option("-p, --pizzlyhost <pizzly_host>", "Pizzly host")
   .option("-s, --pizzlysecretkey <pizzly_secret_key>", "Pizzly secret key")
   .option("-a, --awsprofile <aws_profile>", "AWS profile name")
   .action(
-    async (options: {
-      environment?: string;
-      pizzlyhost?: string;
-      pizzlysecretkey?: string;
-      awsprofile?: string;
-    }) => {
-      const environment = options.environment ?? "development";
-      const pizzly_host = options.pizzlyhost ?? "http://localhost:3004";
+    async (
+      integration_file_path: string,
+      options: {
+        pizzlyhost?: string;
+        pizzlysecretkey?: string;
+        awsprofile?: string;
+      }
+    ) => {
+      if (!integration_file_path) {
+        console.error(
+          "Missing integration file path.",
+          `You need to pass in the path to a JSON file which has this format: 
+          {
+            "github": {
+              "client_id": "<your_client_id>"
+            }
+          }
+          `
+        );
+        return;
+      }
 
+      const file = fs.readFileSync(integration_file_path, "utf8");
+      const json = JSON.parse(file);
+      const result = providersSchema.safeParse(json);
+
+      if (!result.success) {
+        console.error(
+          `Integration file ${integration_file_path} is in the wrong file format`,
+          result.error.format()
+        );
+        return;
+      }
+      const authProviders = result.data;
+      const pizzly_host = options.pizzlyhost ?? "http://localhost:3004";
       const providers = getProviders(true);
 
       const client = new SecretsManagerClient({
@@ -35,67 +72,81 @@ program
         credentials: fromIni({ profile: options.awsprofile ?? "default" }),
       });
 
-      const promises = providers.map(async (integration) => {
-        if (integration.authentication.type !== "oauth")
-          return Promise.resolve();
+      const promises = Object.entries(authProviders).map(
+        async ([service, authentication]) => {
+          const environmentClientId = authentication.client_id;
 
-        const environmentClientId =
-          integration.authentication.environments[environment!].client_id;
-        const secretId = `integrations/${integration.slug}/${environmentClientId}`;
-        try {
-          console.log(`Finding secret for id: ${secretId}`);
-
-          const response = await client.send(
-            new GetSecretValueCommand({
-              SecretId: secretId,
-              VersionStage: "AWSCURRENT", // VersionStage defaults to AWSCURRENT if unspecified
-            })
-          );
-
-          const secretData = response.SecretString;
-          invariant(secretData, `Secret data is missing: ${secretId}`);
-          const secretObject = JSON.parse(secretData);
-          const { client_secret } = z
-            .object({
-              client_secret: z.string(),
-            })
-            .parse(secretObject);
-
-          console.log(`Found secret for id: ${secretId}`);
-
-          const hasExistingConfig = await hasConfig(
-            pizzly_host,
-            integration.slug,
-            options.pizzlysecretkey
-          );
-
-          if (hasExistingConfig) {
-            const response = await updateConfig(
-              pizzly_host,
-              integration.slug,
-              environmentClientId,
-              client_secret,
-              integration.authentication.scopes,
-              options.pizzlysecretkey
-            );
-            console.log(`Updated config for ${integration.slug}`);
-          } else {
-            const response = await createConfig(
-              pizzly_host,
-              integration.slug,
-              environmentClientId,
-              client_secret,
-              integration.authentication.scopes,
-              options.pizzlysecretkey
-            );
-            console.log(`Created config for ${integration.slug}`);
+          if (!environmentClientId) {
+            console.log(`No client id for ${service}`);
+            console.log("Skipping…");
+            return Promise.resolve();
           }
-        } catch (error) {
-          // For a list of exceptions thrown, see
-          // https://docs.aws.amazon.com/secretsmanager/latest/apireference/API_GetSecretValue.html
-          throw error;
+
+          const provider = providers.find((p) => p.slug === service);
+          if (provider?.authentication.type !== "oauth") {
+            console.log(
+              `The provider ${service} is the wrong type ${provider?.authentication.type}. Must be oauth`
+            );
+            console.log("Skipping…");
+            return Promise.resolve();
+          }
+
+          const secretId = `integrations/${service}/${environmentClientId}`;
+          try {
+            console.log(`Finding secret for id: ${secretId}`);
+
+            const response = await client.send(
+              new GetSecretValueCommand({
+                SecretId: secretId,
+                VersionStage: "AWSCURRENT", // VersionStage defaults to AWSCURRENT if unspecified
+              })
+            );
+
+            const secretData = response.SecretString;
+            invariant(secretData, `Secret data is missing: ${secretId}`);
+            const secretObject = JSON.parse(secretData);
+            const { client_secret } = z
+              .object({
+                client_secret: z.string(),
+              })
+              .parse(secretObject);
+
+            console.log(`Found secret for id: ${secretId}`);
+
+            const hasExistingConfig = await hasConfig(
+              pizzly_host,
+              service,
+              options.pizzlysecretkey
+            );
+
+            if (hasExistingConfig) {
+              const response = await updateConfig(
+                pizzly_host,
+                service,
+                environmentClientId,
+                client_secret,
+                provider.authentication.scopes,
+                options.pizzlysecretkey
+              );
+              console.log(`Updated config for ${service}`);
+            } else {
+              const response = await createConfig(
+                pizzly_host,
+                service,
+                environmentClientId,
+                client_secret,
+                provider.authentication.scopes,
+                options.pizzlysecretkey
+              );
+              console.log(`Created config for ${service}`);
+            }
+          } catch (error) {
+            // For a list of exceptions thrown, see
+            // https://docs.aws.amazon.com/secretsmanager/latest/apireference/API_GetSecretValue.html
+            throw error;
+          }
         }
-      });
+      );
 
       await Promise.all(promises);
       console.log(`Added ${promises.length} secrets`);

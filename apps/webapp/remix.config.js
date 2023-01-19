@@ -12,7 +12,7 @@ module.exports = {
     "axios",
     "internal-platform",
     "internal-integrations",
-    "internal-providers",
+    "@trigger.dev/providers",
     "@trigger.dev/common-schemas",
     "emails",
     "internal-pulsar",

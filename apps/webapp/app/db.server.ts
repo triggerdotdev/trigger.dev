@@ -27,7 +27,13 @@ function getClient() {
   const { DATABASE_URL } = env;
   invariant(typeof DATABASE_URL === "string", "DATABASE_URL env var not set");
 
-  console.log(`🔌 setting up prisma client to ${DATABASE_URL}`);
+  // Remove the username:password in the url and print that to the console
+  const urlWithoutCredentials = new URL(DATABASE_URL);
+  urlWithoutCredentials.password = "";
+
+  console.log(
+    `1. 🔌 setting up prisma client to ${urlWithoutCredentials.toString()}`
+  );
 
   const client = new PrismaClient({
     datasources: {
@@ -35,10 +41,15 @@ function getClient() {
         url: DATABASE_URL,
       },
     },
+    log: ["warn", "error"],
   });
+
+  console.log(`2.0 🔌 prisma client connecting`);
 
   // connect eagerly
   client.$connect();
+
+  console.log(`3.0 🔌 prisma client connected`);
 
   return client;
 }

@@ -1,0 +1,30 @@
+---
+title: "Send event"
+sidebarTitle: "Send event"
+description: "Send events to trigger your custom events workflows."
+---
+
+## How to send an event
+
+You can send an event from anywhere in your code, including from inside another workflow.
+
+```ts
+import { sendEvent } from "@trigger.dev/sdk";
+
+//send an event with the name "user.created"
+//and the payload
+await sendEvent("start-fire-2", {
+  name: "user.created",
+  payload: { userId: "123456" },
+});
+```
+
+If you are calling this from inside a workflow, ensure that the first parameter is unique inside your workflow.
+
+## Sending events from other workflows
+
+It is useful to send events from workflows because you can split your logic into smaller chunks and reuse them.
+
+## Writing a workflow that is triggered by an event
+
+You should read [the documentation on custom events](/triggers/custom-events) to learn how to write a workflow that is triggered by an event.

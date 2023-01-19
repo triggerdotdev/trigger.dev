@@ -1,5 +1,5 @@
 {
-  "extends": "@trigger.dev/tsconfig/node18.json",
+  "extends": "@trigger.dev/tsconfig/node16.json",
   "include": ["./src/**/*.ts", "tsup.config.ts"],
   "compilerOptions": {
     "experimentalDecorators": true,

@@ -10,7 +10,7 @@
   },
   "devDependencies": {
     "@trigger.dev/tsconfig": "workspace:*",
-    "@types/node": "^18.11.9",
+    "@types/node": "16",
     "tsx": "^3.12.0"
   },
   "scripts": {

@@ -34,7 +34,10 @@
     "test:e2e:dev": "turbo run test:e2e:dev",
     "test:e2e:ci": "turbo run test:e2e:ci",
     "setup": "turbo run generate db:migrate:force db:seed",
-    "env:pull": "turbo run env:pull"
+    "env:pull": "turbo run env:pull",
+    "changeset:add": "changeset",
+    "changeset:version": "changeset version",
+    "changeset:release": "pnpm run build --filter @trigger.dev/integrations --filter @trigger.dev/sdk && changeset publish"
   },
   "devDependencies": {
     "@manypkg/cli": "^0.19.2",
@@ -48,5 +51,8 @@
     "tsx": "^3.7.1",
     "turbo": "^1.5.5"
   },
-  "packageManager": "pnpm@7.13.5"
+  "packageManager": "pnpm@7.13.5",
+  "dependencies": {
+    "@changesets/cli": "^2.26.0"
+  }
 }

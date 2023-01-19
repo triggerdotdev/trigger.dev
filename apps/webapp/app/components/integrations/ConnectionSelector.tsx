@@ -2,7 +2,7 @@ import { Popover, Transition } from "@headlessui/react";
 import { CheckIcon, ChevronUpDownIcon } from "@heroicons/react/24/outline";
 import { useFetcher } from "@remix-run/react";
 import classNames from "classnames";
-import type { Provider } from "internal-providers";
+import type { Provider } from "@trigger.dev/providers";
 import { Fragment } from "react";
 import type { APIConnection } from "~/models/apiConnection.server";
 import { BasicConnectButton } from "./ConnectButton";

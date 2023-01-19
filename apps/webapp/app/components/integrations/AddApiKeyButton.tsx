@@ -1,4 +1,4 @@
-import type { APIKeyAuthentication, Provider } from "internal-providers";
+import type { APIKeyAuthentication, Provider } from "@trigger.dev/providers";
 import { marked } from "marked";
 import { Fragment, useEffect, useState } from "react";
 import { PrimaryButton, SecondaryButton } from "../primitives/Buttons";

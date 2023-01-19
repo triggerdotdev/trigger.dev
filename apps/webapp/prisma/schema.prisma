@@ -4,9 +4,10 @@ datasource db {
 }
 
 generator client {
-  provider      = "prisma-client-js"
-  output        = "../node_modules/.prisma/client"
-  binaryTargets = ["native", "debian-openssl-1.1.x"]
+  provider        = "prisma-client-js"
+  output          = "../node_modules/.prisma/client"
+  binaryTargets   = ["native", "debian-openssl-1.1.x"]
+  previewFeatures = ["orderByNulls"]
 }
 
 model User {
@@ -43,13 +44,14 @@ model Organization {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  users           User[]
-  workflows       Workflow[]
-  environments    RuntimeEnvironment[]
-  apiConnections  APIConnection[]
-  events          TriggerEvent[]
-  externalSources ExternalSource[]
-  eventRules      EventRule[]
+  users            User[]
+  workflows        Workflow[]
+  environments     RuntimeEnvironment[]
+  apiConnections   APIConnection[]
+  events           TriggerEvent[]
+  externalSources  ExternalSource[]
+  eventRules       EventRule[]
+  schedulerSources SchedulerSource[]
 }
 
 model APIConnection {
@@ -101,9 +103,10 @@ model RuntimeEnvironment {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  events     TriggerEvent[]
-  runs       WorkflowRun[]
-  eventRules EventRule[]
+  events           TriggerEvent[]
+  runs             WorkflowRun[]
+  eventRules       EventRule[]
+  schedulerSources SchedulerSource[]
 
   @@unique([organizationId, slug])
 }
@@ -130,6 +133,7 @@ model Workflow {
   runs             WorkflowRun[]
   rules            EventRule[]
   externalServices ExternalService[]
+  schedulerSources SchedulerSource[]
 
   service    String   @default("trigger")
   eventNames String[]
@@ -205,12 +209,42 @@ model ExternalSource {
 enum ExternalSourceStatus {
   CREATED
   READY
+  CANCELLED
 }
 
 enum ExternalSourceType {
   WEBHOOK
   EVENT_BRIDGE
   HTTP_POLLING
+}
+
+model SchedulerSource {
+  id String @id @default(cuid())
+
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  organizationId String
+
+  workflow   Workflow @relation(fields: [workflowId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  workflowId String
+
+  environment   RuntimeEnvironment @relation(fields: [environmentId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  environmentId String
+
+  schedule Json
+
+  status SchedulerSourceStatus @default(CREATED)
+
+  readyAt   DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@unique([workflowId, environmentId])
+}
+
+enum SchedulerSourceStatus {
+  CREATED
+  READY
+  CANCELLED
 }
 
 model ExternalService {
@@ -286,8 +320,8 @@ model IntegrationResponse {
   request   IntegrationRequest @relation(fields: [requestId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   requestId String
 
-  output     Json
-  context    Json
+  output  Json
+  context Json
 
   createdAt DateTime @default(now())
 }

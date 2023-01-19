@@ -58,7 +58,7 @@ export class TriggerClient<TSchema extends z.ZodTypeAny> {
     }
 
     this.#apiKey = apiKey;
-    this.#endpoint = this.#options.endpoint ?? "ws://wss.trigger.dev/ws";
+    this.#endpoint = this.#options.endpoint ?? "wss://wss.trigger.dev/ws";
     this.#logger = new Logger("trigger.dev", this.#options.logLevel);
   }
 
@@ -82,7 +82,10 @@ export class TriggerClient<TSchema extends z.ZodTypeAny> {
   async #initializeConnection(instanceId?: string) {
     const id = instanceId ?? v4();
 
-    this.#logger.debug("Initializing connection...", id);
+    this.#logger.debug("Initializing connection", {
+      id,
+      endpoint: this.#endpoint,
+    });
 
     const headers = { Authorization: `Bearer ${this.#apiKey}` };
 
@@ -249,7 +252,7 @@ export class TriggerClient<TSchema extends z.ZodTypeAny> {
                 timestamp: String(highPrecisionTimestamp()),
               });
             }),
-            fireEvent: async (key, event) => {
+            sendEvent: async (key, event) => {
               await serverRPC.send("SEND_EVENT", {
                 runId: data.id,
                 key,
@@ -337,6 +340,14 @@ export class TriggerClient<TSchema extends z.ZodTypeAny> {
                 const output = await result;
 
                 return options.response.schema.parse(output);
+              },
+              sendEvent: async (key, event) => {
+                await serverRPC.send("SEND_EVENT", {
+                  runId: data.id,
+                  key,
+                  event: JSON.parse(JSON.stringify(event)),
+                  timestamp: String(highPrecisionTimestamp()),
+                });
               },
             },
             () => {
@@ -437,7 +448,7 @@ export class TriggerClient<TSchema extends z.ZodTypeAny> {
 
   async #send<MethodName extends keyof typeof ServerRPCSchema>(
     methodName: MethodName,
-    request: z.input<typeof ServerRPCSchema[MethodName]["request"]>
+    request: z.input<(typeof ServerRPCSchema)[MethodName]["request"]>
   ) {
     if (!this.#serverRPC) throw new Error("serverRPC not initialized");
 

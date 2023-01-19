@@ -36,7 +36,8 @@ import {
 } from "~/components/primitives/text/Headers";
 import { runStatusIcon, runStatusLabel } from "~/components/runs/runStatus";
 import { TriggerBody } from "~/components/triggers/Trigger";
-import { triggerInfo } from "~/components/triggers/triggerTypes";
+import { TriggerTypeIcon } from "~/components/triggers/TriggerIcons";
+import { triggerLabel } from "~/components/triggers/triggerLabel";
 import { useCurrentOrganization } from "~/hooks/useOrganizations";
 import { useCurrentWorkflow } from "~/hooks/useWorkflows";
 import type { WorkflowRunStatus } from "~/models/workflowRun.server";
@@ -158,7 +159,7 @@ export default function Page() {
 
       {run.status === "SUCCESS" && (
         <>
-          <div className="h-3 w-full ml-[10px] border-l border-slate-700"></div>
+          <div className="h-3 w-full ml-[10px] -mr-[10px] border-l border-slate-700"></div>
           <Panel>
             <PanelHeader
               icon={<CheckCircleIcon className="h-6 w-6 text-green-500" />}
@@ -213,7 +214,7 @@ export default function Page() {
         </>
       )}
 
-      {run.status === "PENDING" && (
+      {run.status === "RUNNING" && (
         <div className="h-10 w-full ml-[10px] border-dashed border-l border-gradient border-slate-700"></div>
       )}
 
@@ -235,11 +236,18 @@ function TriggerStep({ trigger }: { trigger: Trigger }) {
     <>
       <Panel className="mt-4">
         <PanelHeader
-          icon={triggerInfo[trigger.type].icon}
-          title={triggerInfo[trigger.type].label}
+          icon={
+            <div className="h-6 w-6 mr-1">
+              <TriggerTypeIcon
+                type={trigger.type}
+                provider={trigger.integration}
+              />
+            </div>
+          }
+          title={triggerLabel(trigger.type)}
           startedAt={trigger.startedAt}
           finishedAt={null}
-          name="Initial wait"
+          // name="Initial wait"
           // integration={trigger.type === "WEBHOOK"}
         />
         <TriggerBody trigger={trigger} />
@@ -252,7 +260,7 @@ function TriggerStep({ trigger }: { trigger: Trigger }) {
           />
         )}
       </Panel>
-      <div className="h-3 w-full ml-[10px] border-l border-slate-700"></div>
+      <div className="h-3 w-full ml-[10px] -mr-[10px] border-l border-slate-700"></div>
     </>
   );
 }
@@ -293,7 +301,7 @@ function WorkflowStep({ step }: { step: Step }) {
     case "LOG_MESSAGE":
       return (
         <div className="flex items-stretch w-full">
-          <div className="relative flex w-5 border-l border-slate-700 ml-2.5">
+          <div className="relative flex shrink-0 w-5 border-l border-slate-700 ml-2.5">
             <div className="absolute top-2 -left-[18px] p-1 bg-slate-850 rounded-full">
               <ChatBubbleOvalLeftEllipsisIcon
                 className={classNames("h-7 w-7", logColor[step.input.level])}
@@ -347,7 +355,7 @@ function WorkflowStep({ step }: { step: Step }) {
     default:
       return (
         <div className="flex items-stretch w-full">
-          <div className="relative flex w-5 border-l border-slate-700 ml-2.5">
+          <div className="relative flex shrink-0 w-5 border-l border-slate-700 ml-2.5">
             <div className="absolute top-[23px] -left-[18px] p-1 bg-slate-850 rounded-full">
               {runStatusIcon(step.status, "large")}
             </div>
@@ -373,7 +381,7 @@ function StepPanel({
     case "ERROR":
       borderClass = "border-rose-700";
       break;
-    case "PENDING":
+    case "RUNNING":
       borderClass = "border-blue-700";
       break;
   }
@@ -492,7 +500,7 @@ function DelayDuration({
           {humanizeDuration(msDelay)}
         </Body>
       </div>
-      {step.status === "PENDING" && timeRemaining && (
+      {step.status === "RUNNING" && timeRemaining && (
         <div className="flex flex-col gap-1">
           <Body size="extra-small" className={workflowNodeUppercaseClasses}>
             Fires in
@@ -551,7 +559,7 @@ function DelayScheduled({
           {formatDateTime(scheduledDate, "long")}
         </Body>
       </div>
-      {step.status === "PENDING" && timeRemaining && (
+      {step.status === "RUNNING" && timeRemaining && (
         <div className="flex flex-col gap-1">
           <Body
             size="extra-small"

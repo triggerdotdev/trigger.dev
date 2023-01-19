@@ -3,7 +3,11 @@ import {
   ChevronUpDownIcon,
   ArrowsRightLeftIcon,
 } from "@heroicons/react/24/outline";
-import { CheckIcon, PlusIcon } from "@heroicons/react/24/solid";
+import {
+  CheckIcon,
+  ExclamationTriangleIcon,
+  PlusIcon,
+} from "@heroicons/react/24/solid";
 import { Link } from "@remix-run/react";
 import classNames from "classnames";
 import { Fragment } from "react";
@@ -79,7 +83,10 @@ export function WorkflowMenu() {
                                 "!bg-slate-800"
                             )}
                           >
-                            <div className="flex items-center gap-2">
+                            <div className="relative flex items-center gap-2">
+                              {workflow.status !== "READY" && (
+                                <ExclamationTriangleIcon className="absolute -top-1.5 -left-2.5 h-3.5 w-3.5 text-amber-500" />
+                              )}
                               <ArrowsRightLeftIcon
                                 className="h-5 w-5 z-100"
                                 aria-hidden="true"

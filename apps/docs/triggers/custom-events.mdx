@@ -1,5 +1,79 @@
 ---
-title: "Custom events"
+title: "Custom event triggers"
 sidebarTitle: "Custom events"
-description: "Custom events"
+description: "Custom event triggers allow you to run workflows from your own code (or your other workflows)"
 ---
+
+[Send an event](/functions/send-event) and any workflows that subscribe to that Custom event will get triggered.
+
+## Name and Schemas
+
+### Name
+
+Custom event triggers have a `name`. They will only get triggered when a custom even with that name are sent.
+
+### Schema
+
+Custom event triggers have a schema. This is used to validate the data that is sent with the event. If the data does not match the schema, the workflow will not run.
+
+It also means that inside your run function you will have type safety for the data you receive. We use [Zod](https://github.com/colinhacks/zod#installation) for our schemas – it's a fantastic library that allows you to define schemas in a very simple way.
+
+You can always start out by using `z.any()` as your schema, and then later on you can add more strict validation.
+
+## Example
+
+```ts
+import { Trigger, customEvent } from "@trigger.dev/sdk";
+import { slack } from "@trigger.dev/integrations";
+
+//this workflow will run when a "user.created" event is sent
+new Trigger({
+  id: "new-user-slack",
+  name: "New user slack message",
+  apiKey: "<your_api_key>",
+  //this is the custom event subscription
+  on: customEvent({
+    name: "user.created",
+    schema: z.object({
+      name: z.string(),
+      email: z.string(),
+      paidPlan: z.boolean(),
+    }),
+  }),
+  //this function is run when the custom event is received
+  run: async (event, ctx) => {
+    //send a message to the #new-users Slack channel with user details
+    const response = await slack.postMessage("send-to-slack", {
+      channel: "new-users",
+      text: `New user: ${event.name} (${event.email}) signed up. ${
+        event.paidPlan ? "They are paying" : "They are on the free plan"
+      }.`,
+    });
+
+    return response.message;
+  },
+}).listen();
+```
+
+That workflow will never run, unless an event is sent from your code somewhere – it can be sent from a completely different server.
+
+## Sending an event
+
+There is a [full guide on sending events](/functions/send-event) but here is a quick example:
+
+```ts
+import { sendEvent } from "@trigger.dev/sdk";
+
+//send an event with the name "user.created"
+await sendEvent("fire-user-created-event", {
+  name: "user.created",
+  payload: { name: "John Doe", email: "john@doe.com", paidPlan: true },
+});
+```
+
+If you are calling this from inside a workflow, ensure that the first parameter is unique inside your workflow.
+
+<Note>
+  The same event can trigger many different workflows, just subscribe to the
+  same event name to achieve this.
+</Note>

@@ -1,0 +1,38 @@
+{
+  "name": "@trigger.dev/providers",
+  "version": "0.1.2",
+  "description": "trigger.dev API providers with schemas",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "publishConfig": {
+    "access": "public"
+  },
+  "files": [
+    "dist"
+  ],
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "require": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "devDependencies": {
+    "@trigger.dev/tsconfig": "workspace:*",
+    "@types/node": "16",
+    "typescript": "^4.9.4",
+    "rimraf": "^3.0.2",
+    "tsup": "^6.5.0"
+  },
+  "scripts": {
+    "clean": "rimraf dist",
+    "build": "npm run clean && npm run build:tsup",
+    "build:tsup": "tsup",
+    "dev": "tsup --watch"
+  },
+  "dependencies": {
+    "@shopify/admin-graphql-api-utilities": "^2.0.1",
+    "tiny-invariant": "^1.2.0",
+    "zod": "^3.20.2"
+  }
+}

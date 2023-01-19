@@ -1,16 +1,18 @@
 {
   "name": "@trigger.dev/integrations",
-  "version": "0.0.1",
+  "version": "0.1.4",
   "description": "trigger.dev integrations",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
+  "publishConfig": {
+    "access": "public"
+  },
   "files": [
     "dist"
   ],
   "devDependencies": {
     "@trigger.dev/tsconfig": "workspace:*",
-    "internal-providers": "workspace:*",
-    "@types/node": "^18.11.9",
+    "@types/node": "16",
     "rimraf": "^3.0.2",
     "tsup": "^6.5.0"
   },
@@ -22,6 +24,7 @@
   },
   "dependencies": {
     "zod": "^3.20.2",
-    "@trigger.dev/sdk": "workspace:*"
+    "@trigger.dev/sdk": "workspace:*",
+    "@trigger.dev/providers": "workspace:*"
   }
 }

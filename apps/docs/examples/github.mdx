@@ -1,0 +1,35 @@
+---
+title: "GitHub"
+sidebarTitle: "GitHub"
+description: "Here are some example workflows you could create using the GitHub integration."
+---
+
+You can explore all the supported GitHub functions [here](/).
+
+## When a GitHub issue is created or modified, post to Slack
+
+Integrations required: GitHub, Slack
+
+```ts
+import { Trigger, customEvent } from "@trigger.dev/sdk";
+import { github, slack } from "@trigger.dev/integrations";
+import { z } from "zod";
+
+new Trigger({
+  id: "my-workflow-1",
+  name: "Posts to Slack when GitHub Issue created or modified",
+  apiKey: "<my_api_key>",
+  on: github.events.repoIssueEvent({
+    repo: "my-github-org/my-github-repo",
+  }),
+
+  run: async (event, ctx) => {
+    const response = await slack.postMessage("send-to-slack", {
+      channel: "my-slack-channel-name",
+      text: `A new issue has been created or modified. ${event.action}`,
+    });
+
+    return response.message;
+  },
+}).listen();
+```
