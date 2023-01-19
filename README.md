@@ -1,8 +1,13 @@
 ![](apps/webapp/public/images/coming-soon-banner.png)
 
---- 
+
+ ### We are now accepting users 😊! Request early access [here](https://bcymafitv0e.typeform.com/tddsignup#source=GitHubReadme).
+
 &nbsp;
 
+ ---
+
+&nbsp;
 
 
 ![Logo](https://trigger.dev/_next/static/media/triggerdotdev-logo.9226e5d0.png?imwidth=256)
