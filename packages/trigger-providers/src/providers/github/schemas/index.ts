@@ -2,6 +2,7 @@ import { z } from "zod";
 import * as issues from "./issues";
 import * as issuesComments from "./issueComments";
 import * as pullRequest from "./pullRequests";
+import * as pullRequestComments from "./pullRequestComments";
 
 export const WebhookRepoSourceSchema = z.object({
   subresource: z.literal("repository"),
@@ -22,4 +23,4 @@ export const WebhookSourceSchema = z.union([
   WebhookOrganizationSourceSchema,
 ]);
 
-export { issues, issuesComments, pullRequest };
+export { issues, issuesComments, pullRequest, pullRequestComments };

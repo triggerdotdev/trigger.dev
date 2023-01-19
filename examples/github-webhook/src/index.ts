@@ -32,3 +32,19 @@ new Trigger({
     return {};
   },
 }).listen();
+
+new Trigger({
+  id: "github-webhook-pull_request_comment",
+  name: "GitHub PR comment: triggerdotdev/trigger.dev-examples",
+  apiKey: "trigger_dev_zC25mKNn6c0q",
+  endpoint: "ws://localhost:8889/ws",
+  logLevel: "debug",
+  on: github.events.pullRequestCommentEvent({
+    repo: "triggerdotdev/trigger.dev-examples",
+  }),
+  run: async (event, ctx) => {
+    await ctx.logger.info(`Action was ${event.action}`);
+
+    return {};
+  },
+}).listen();
