@@ -4,6 +4,7 @@ import invariant from "tiny-invariant";
 import { WorkflowConnections } from "~/components/integrations/WorkflowConnections";
 import { Panel } from "~/components/layout/Panel";
 import { PanelHeader } from "~/components/layout/PanelHeader";
+import { PanelInfo } from "~/components/layout/PanelInfo";
 import { PanelWarning } from "~/components/layout/PanelWarning";
 import {
   PrimaryLink,
@@ -85,20 +86,21 @@ export default function Page() {
       </div>
       {workflow.status !== "READY" && (
         <>
-          <SubTitle>1 issue</SubTitle>
           <PanelWarning className="mb-6">
             This workflow requires its APIs to be connected before it can run.
           </PanelWarning>
         </>
       )}
-      <PanelWarning className="mb-6">
+      <PanelInfo className="mb-6">
         <Body className="flex grow items-center justify-between">
-          This workflow is disabled.
+          This workflow is disabled. Runs cannot be triggered or tested while
+          disabled. If a run is currently in progress, it will fail.
         </Body>
+
         <TertiaryLink to="settings" className="mr-1">
           Settings
         </TertiaryLink>
-      </PanelWarning>
+      </PanelInfo>
       {apiConnectionCount > 0 && <WorkflowConnections />}
       {eventRule && (
         <>

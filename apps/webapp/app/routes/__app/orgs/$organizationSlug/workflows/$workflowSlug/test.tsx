@@ -5,10 +5,11 @@ import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import invariant from "tiny-invariant";
 import { JSONEditor } from "~/components/code/JSONEditor";
 import { Panel } from "~/components/layout/Panel";
+import { PanelInfo } from "~/components/layout/PanelInfo";
 import { PanelWarning } from "~/components/layout/PanelWarning";
-import { PrimaryButton } from "~/components/primitives/Buttons";
+import { PrimaryButton, TertiaryLink } from "~/components/primitives/Buttons";
 import { Select } from "~/components/primitives/Select";
-import { SubTitle } from "~/components/primitives/text/SubTitle";
+import { Body } from "~/components/primitives/text/Body";
 import { Title } from "~/components/primitives/text/Title";
 import { useCurrentOrganization } from "~/hooks/useOrganizations";
 import { useCurrentWorkflow } from "~/hooks/useWorkflows";
@@ -42,12 +43,20 @@ export default function Page() {
       <Title>Test</Title>
       {workflow.status !== "READY" && (
         <>
-          <SubTitle>1 issue</SubTitle>
           <PanelWarning className="mb-6">
             This workflow requires its APIs to be connected before it can run.
           </PanelWarning>
         </>
       )}
+      <PanelInfo className="mb-6">
+        <Body className="flex grow items-center justify-between">
+          This workflow is disabled. Runs cannot be triggered or tested while
+          disabled. If a run is currently in progress, it will fail.
+        </Body>
+        <TertiaryLink to="settings" className="mr-1">
+          Settings
+        </TertiaryLink>
+      </PanelInfo>
       {workflow.status === "READY" && (
         <Panel className="mt-4">
           <Tester

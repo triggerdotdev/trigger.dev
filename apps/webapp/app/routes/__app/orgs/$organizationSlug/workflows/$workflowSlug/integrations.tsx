@@ -1,6 +1,9 @@
 import invariant from "tiny-invariant";
 import { WorkflowConnections } from "~/components/integrations/WorkflowConnections";
+import { PanelInfo } from "~/components/layout/PanelInfo";
 import { PanelWarning } from "~/components/layout/PanelWarning";
+import { TertiaryLink } from "~/components/primitives/Buttons";
+import { Body } from "~/components/primitives/text/Body";
 import { SubTitle } from "~/components/primitives/text/SubTitle";
 import { Title } from "~/components/primitives/text/Title";
 import { useConnectionSlots } from "~/hooks/useConnectionSlots";
@@ -18,12 +21,20 @@ export default function Page() {
       <Title>Connected APIs</Title>
       {workflow.status !== "READY" && (
         <>
-          <SubTitle>1 issue</SubTitle>
           <PanelWarning className="mb-6">
             This workflow requires its APIs to be connected before it can run.
           </PanelWarning>
         </>
       )}
+      <PanelInfo className="mb-6">
+        <Body className="flex grow items-center justify-between">
+          This workflow is disabled. Runs cannot be triggered or tested while
+          disabled. If a run is currently in progress, it will fail.
+        </Body>
+        <TertiaryLink to="settings" className="mr-1">
+          Settings
+        </TertiaryLink>
+      </PanelInfo>
       {connectionSlots.source || connectionSlots.services.length > 0 ? (
         <WorkflowConnections />
       ) : (

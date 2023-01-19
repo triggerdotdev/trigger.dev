@@ -24,6 +24,9 @@ import { Title } from "~/components/primitives/text/Title";
 import { useCurrentWorkflow } from "~/hooks/useWorkflows";
 import { PanelWarning } from "~/components/layout/PanelWarning";
 import { SubTitle } from "~/components/primitives/text/SubTitle";
+import { TertiaryLink } from "~/components/primitives/Buttons";
+import { Body } from "~/components/primitives/text/Body";
+import { PanelInfo } from "~/components/layout/PanelInfo";
 
 export const loader = async ({ request, params }: LoaderArgs) => {
   const userId = await requireUserId(request);
@@ -79,12 +82,20 @@ export default function Page() {
       <Title>Runs</Title>
       {workflow.status !== "READY" && (
         <>
-          <SubTitle>1 issue</SubTitle>
           <PanelWarning className="mb-6">
             This workflow requires its APIs to be connected before it can run.
           </PanelWarning>
         </>
       )}
+      <PanelInfo className="mb-6">
+        <Body className="flex grow items-center justify-between">
+          This workflow is disabled. Runs cannot be triggered or tested while
+          disabled. If a run is currently in progress, it will fail.
+        </Body>
+        <TertiaryLink to="settings" className="mr-1">
+          Settings
+        </TertiaryLink>
+      </PanelInfo>
       <fetcher.Form
         method="get"
         className="pb-4 flex gap-2"

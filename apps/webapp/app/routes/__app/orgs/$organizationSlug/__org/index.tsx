@@ -4,6 +4,7 @@ import {
 } from "@heroicons/react/24/solid";
 import { Link } from "@remix-run/react";
 import type { LoaderArgs } from "@remix-run/server-runtime";
+import classNames from "classnames";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import invariant from "tiny-invariant";
 import { ApiLogoIcon } from "~/components/code/ApiLogoIcon";
@@ -84,7 +85,10 @@ function WorkflowList({
           <li key={workflow.id}>
             <Link
               to={`/orgs/${currentOrganizationSlug}/workflows/${workflow.slug}`}
-              className="block hover:bg-slate-850/40 transition"
+              className={classNames(
+                "block hover:bg-slate-850/40 transition",
+                workflowDisabled
+              )}
             >
               <div className="flex justify-between lg:items-center flex-col lg:flex-row flex-wrap lg:flex-nowrap pl-4 pr-4 py-4">
                 <div className="flex items-center flex-1 justify-between">
@@ -115,7 +119,6 @@ function WorkflowList({
                         </Header3>
                       </div>
                       <div className="flex flex-wrap gap-x-3 items-baseline">
-                        <WorkflowStatus label="Workflow" content="Disabled" />
                         {workflow.trigger.properties &&
                           workflow.trigger.properties.map((property) => (
                             <WorkflowProperty
@@ -217,21 +220,4 @@ function WorkflowProperty({
   );
 }
 
-function WorkflowStatus({
-  label,
-  content,
-}: {
-  label: string;
-  content: string;
-}) {
-  return (
-    <div className="flex items-baseline gap-x-1">
-      <Body size="extra-small" className="uppercase text-slate-500">
-        {label}
-      </Body>
-      <Body size="small" className="text-amber-400 truncate">
-        {content}
-      </Body>
-    </div>
-  );
-}
+const workflowDisabled = "opacity-30";
