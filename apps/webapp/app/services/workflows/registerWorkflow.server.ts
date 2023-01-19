@@ -36,6 +36,13 @@ export class RegisterWorkflow {
       organization
     );
 
+    if (workflow.isArchived) {
+      return {
+        status: "success" as const,
+        data: { id: workflow.id },
+      };
+    }
+
     if (validation.data.trigger.service !== "trigger") {
       await this.#upsertExternalSource(
         validation.data,

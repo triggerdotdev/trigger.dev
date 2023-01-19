@@ -87,13 +87,13 @@ function WorkflowList({
               to={`/orgs/${currentOrganizationSlug}/workflows/${workflow.slug}`}
               className={classNames(
                 "block hover:bg-slate-850/40 transition",
-                workflowDisabled
+                workflow.status === "DISABLED" ? workflowDisabled : ""
               )}
             >
               <div className="flex justify-between lg:items-center flex-col lg:flex-row flex-wrap lg:flex-nowrap pl-4 pr-4 py-4">
                 <div className="flex items-center flex-1 justify-between">
                   <div className="relative flex items-center">
-                    {workflow.status !== "READY" && (
+                    {workflow.status === "CREATED" && (
                       <ExclamationTriangleIcon className="absolute -top-1.5 -left-1.5 h-6 w-6 text-amber-500" />
                     )}
                     <div className="p-3 bg-slate-850 rounded-md flex-shrink-0 self-start h-20 w-20 mr-4">

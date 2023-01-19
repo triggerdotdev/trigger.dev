@@ -84,7 +84,7 @@ export function WorkflowMenu() {
                             )}
                           >
                             <div className="relative flex items-center gap-2">
-                              {workflow.status !== "READY" && (
+                              {workflow.status === "CREATED" && (
                                 <ExclamationTriangleIcon className="absolute -top-1.5 -left-2.5 h-3.5 w-3.5 text-amber-500" />
                               )}
                               <ArrowsRightLeftIcon

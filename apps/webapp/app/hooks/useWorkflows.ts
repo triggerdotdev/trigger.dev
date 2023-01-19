@@ -32,3 +32,5 @@ export function useCurrentWorkflow() {
 
   return result;
 }
+
+export type CurrentWorkflow = ReturnType<typeof useCurrentWorkflow>;

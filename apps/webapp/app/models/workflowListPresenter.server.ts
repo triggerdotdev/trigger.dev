@@ -57,7 +57,7 @@ export class WorkflowListPresenter {
 
 function getWorkflows(prismaClient: PrismaClient, organizationSlug: string) {
   return prismaClient.workflow.findMany({
-    where: { organization: { slug: organizationSlug } },
+    where: { organization: { slug: organizationSlug }, isArchived: false },
     include: {
       externalServices: {
         select: {
@@ -79,7 +79,10 @@ function getWorkflows(prismaClient: PrismaClient, organizationSlug: string) {
         orderBy: { finishedAt: { sort: "desc", nulls: "last" } },
       },
     },
-    orderBy: { title: "asc" },
+    orderBy: [
+      { disabledAt: { sort: "asc", nulls: "first" } },
+      { title: "asc" },
+    ],
   });
 }
 

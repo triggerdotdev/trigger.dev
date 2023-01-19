@@ -33,6 +33,7 @@ export class DispatchEvent {
         organizationId: event.organizationId ?? undefined,
         environmentId: event.environmentId ?? undefined,
         type: event.type,
+        enabled: true,
       },
       include: {
         workflow: true,
@@ -135,6 +136,10 @@ export class DispatchWorkflowRun {
     event: TriggerEvent,
     environment: RuntimeEnvironment
   ) {
+    if (workflow.status === "DISABLED") {
+      return true;
+    }
+
     const workflowRun = await this.#prismaClient.workflowRun.create({
       data: {
         workflow: {

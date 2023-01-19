@@ -41,22 +41,25 @@ export default function Page() {
   return (
     <>
       <Title>Test</Title>
-      {workflow.status !== "READY" && (
+      {workflow.status === "CREATED" && (
         <>
           <PanelWarning className="mb-6">
             This workflow requires its APIs to be connected before it can run.
           </PanelWarning>
         </>
       )}
-      <PanelInfo className="mb-6">
-        <Body className="flex grow items-center justify-between">
-          This workflow is disabled. Runs cannot be triggered or tested while
-          disabled. If a run is currently in progress, it will fail.
-        </Body>
-        <TertiaryLink to="settings" className="mr-1">
-          Settings
-        </TertiaryLink>
-      </PanelInfo>
+      {workflow.status === "DISABLED" && (
+        <PanelInfo className="mb-6">
+          <Body className="flex grow items-center justify-between">
+            This workflow is disabled. Runs cannot be triggered or tested while
+            disabled. Runs in progress will continue until complete.
+          </Body>
+          <TertiaryLink to="settings" className="mr-1">
+            Settings
+          </TertiaryLink>
+        </PanelInfo>
+      )}
+
       {workflow.status === "READY" && (
         <Panel className="mt-4">
           <Tester

@@ -138,6 +138,10 @@ model Workflow {
   service    String   @default("trigger")
   eventNames String[]
 
+  disabledAt DateTime?
+  archivedAt DateTime?
+  isArchived Boolean   @default(false)
+
   @@unique([organizationId, slug])
 }
 
@@ -161,6 +165,8 @@ model EventRule {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  enabled Boolean @default(true)
+
   runs WorkflowRun[]
 
   @@unique([workflowId, environmentId])
@@ -178,6 +184,7 @@ enum TriggerType {
 enum WorkflowStatus {
   CREATED
   READY
+  DISABLED
 }
 
 model ExternalSource {
