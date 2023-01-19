@@ -79,6 +79,7 @@ function getWorkflows(prismaClient: PrismaClient, organizationSlug: string) {
         orderBy: { finishedAt: { sort: "desc", nulls: "last" } },
       },
     },
+    orderBy: { title: "asc" },
   });
 }
 
