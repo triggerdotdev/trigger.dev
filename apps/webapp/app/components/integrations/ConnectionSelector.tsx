@@ -55,7 +55,7 @@ export function ConnectionSelector({
             <Popover.Button
               className={`
           ${open ? "" : ""}
-          inline-flex justify-between items-center rounded text-white bg-slate-700 shadow pl-3 pr-2 py-1.5 gap-2 text-sm hover:bg-slate-600/80 transition focus:outline-none`}
+          inline-flex justify-between items-center rounded text-slate-300 bg-slate-700 shadow pl-4 pr-3 py-2 gap-2 text-sm hover:bg-slate-600/80 transition focus:outline-none`}
             >
               <span className="transition text-sm text-slate-200">
                 {selectedConnection ? (

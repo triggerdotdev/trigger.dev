@@ -17,7 +17,7 @@ type ButtonProps = Parameters<typeof Listbox.Button>[0] & {
 };
 
 const buttonClassName =
-  "relative w-full rounded bg-slate-700 py-2 pl-3 pr-10 text-sm text-left shadow-md hover:cursor-pointer hover:bg-slate-600/80 transition";
+  "relative w-full rounded bg-slate-700 py-2 pl-4 pr-10 text-slate-300 text-sm text-left shadow-md hover:cursor-pointer hover:bg-slate-600/80 transition";
 function Button({ children, ...props }: ButtonProps) {
   return (
     <Listbox.Button
