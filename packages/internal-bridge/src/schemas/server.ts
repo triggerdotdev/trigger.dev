@@ -81,7 +81,7 @@ export const ServerRPCSchema = {
   COMPLETE_WORKFLOW_RUN: {
     request: z.object({
       runId: z.string(),
-      output: z.string(),
+      output: z.string().optional(),
       timestamp: z.string(),
     }),
     response: z.boolean(),

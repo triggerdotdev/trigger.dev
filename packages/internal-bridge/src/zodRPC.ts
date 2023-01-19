@@ -1,6 +1,7 @@
 import { z, ZodError } from "zod";
 import { createHash } from "node:crypto";
 import { IConnection } from "./types";
+import { Logger } from "./logger";
 
 export const RPCMessageSchema = z.object({
   id: z.string(),
@@ -45,6 +46,7 @@ export class ZodRPC<
   #receiver: ReceiverSchema;
   #handlers: ZodRPCHandlers<ReceiverSchema>;
   #pendingCalls = new Map<string, onResponseCallback>();
+  #logger: Logger = new Logger("ZodRPC");
 
   constructor(options: ZodRPCOptions<SenderSchema, ReceiverSchema>) {
     this.#connection = options.connection;
@@ -73,7 +75,7 @@ export class ZodRPC<
         await this.#onResponse(data);
       }
     } catch (err) {
-      console.error(err);
+      this.#logger.error(err);
     }
   }
 
@@ -82,14 +84,12 @@ export class ZodRPC<
       await this.#handleCall(message);
     } catch (callError) {
       if (callError instanceof ZodError) {
-        console.error(
-          `[ZodRPC][foobar] Received invalid call:\n${JSON.stringify(
-            message
-          )}: `,
+        this.#logger.error(
+          `[ZodRPC] Received invalid call:\n${JSON.stringify(message)}: `,
           callError.errors
         );
       } else {
-        console.error(
+        this.#logger.error(
           `[ZodRPC] Error handling call:\n${JSON.stringify(message)}: `,
           callError
         );
@@ -102,12 +102,12 @@ export class ZodRPC<
       await this.#handleResponse(message);
     } catch (callError) {
       if (callError instanceof ZodError) {
-        console.error(
+        this.#logger.error(
           `[ZodRPC] Received invalid response\n\n${JSON.stringify(message)}: `,
           callError.flatten()
         );
       } else {
-        console.error(
+        this.#logger.error(
           `[ZodRPC] Error handling response\n\n${JSON.stringify(message)}: `,
           callError
         );
@@ -153,6 +153,8 @@ export class ZodRPC<
       throw new Error(`There is no method for ${message.methodName}`);
     }
 
+    this.#logger.debug("Received call", { message });
+
     // struggling to get real inference here
     const inputs = method.request.parse(message.data);
 
@@ -169,7 +171,7 @@ export class ZodRPC<
     try {
       await this.#connection.send(preparedResponseText);
     } catch (err) {
-      console.error("Failed sending response", preparedResponseText, err);
+      this.#logger.error("Failed sending response", preparedResponseText, err);
     }
 
     return;

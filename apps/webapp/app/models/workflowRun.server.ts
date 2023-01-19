@@ -80,10 +80,10 @@ export async function failWorkflowRun(
 }
 
 export async function completeWorkflowRun(
-  output: string,
   runId: string,
   apiKey: string,
-  timestamp: string
+  timestamp: string,
+  output?: string | null
 ) {
   const workflowRun = await findWorkflowRunScopedToApiKey(runId, apiKey);
 
@@ -104,6 +104,9 @@ export async function completeWorkflowRun(
       },
     });
 
+    const parsedOutput =
+      typeof output === "string" ? JSON.parse(output) : undefined;
+
     await tx.workflowRunStep.upsert({
       where: {
         runId_idempotencyKey: {
@@ -115,7 +118,7 @@ export async function completeWorkflowRun(
         runId,
         idempotencyKey: "output",
         type: "OUTPUT",
-        output: JSON.parse(output),
+        output: parsedOutput === null ? undefined : parsedOutput,
         context: {},
         startedAt: new Date(),
         finishedAt: new Date(),

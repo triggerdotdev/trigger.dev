@@ -187,10 +187,10 @@ function createCommandSubscriber() {
       },
       WORKFLOW_RUN_COMPLETE: async (id, data, properties) => {
         await completeWorkflowRun(
-          data.output,
           properties["x-workflow-run-id"],
           properties["x-api-key"],
-          properties["x-timestamp"]
+          properties["x-timestamp"],
+          data.output
         );
 
         return true;

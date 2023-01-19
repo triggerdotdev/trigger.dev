@@ -5,7 +5,7 @@ import { WorkflowSendRunEventPropertiesSchema } from "../sharedSchemas";
 export const commands = {
   WORKFLOW_RUN_COMPLETE: {
     data: z.object({
-      output: z.string(),
+      output: z.string().optional(),
     }),
     properties: WorkflowSendRunEventPropertiesSchema,
   },
