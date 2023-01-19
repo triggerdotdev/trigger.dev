@@ -9,7 +9,7 @@ const primaryClasses = classnames(
 );
 const secondaryClasses = classnames(
   commonClasses,
-  "px-4 py-2 bg-transparent border border-slate-700 text-white hover:bg-white/5 hover:border-slate-700 focus:ring-slate-300 gap-2"
+  "px-4 py-2 bg-transparent ring-1 ring-slate-700 ring-inset text-white hover:bg-white/5 hover:border-slate-700 focus:ring-slate-300 gap-2"
 );
 const tertiaryClasses = classnames(
   commonClasses,
