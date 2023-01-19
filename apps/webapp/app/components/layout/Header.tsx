@@ -60,7 +60,7 @@ export function BreadcrumbDivider() {
         y1="0.6286"
         x2="0.6286"
         y2="24.6762"
-        opacity={0.5}
+        opacity={0.3}
         stroke="white"
         strokeLinecap="round"
       />
