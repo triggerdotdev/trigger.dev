@@ -1,4 +1,3 @@
-import { ArrowsRightLeftIcon } from "@heroicons/react/24/outline";
 import type { LoaderArgs } from "@remix-run/server-runtime";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import invariant from "tiny-invariant";
@@ -6,12 +5,7 @@ import { WorkflowConnections } from "~/components/integrations/WorkflowConnectio
 import { Panel } from "~/components/layout/Panel";
 import { PanelHeader } from "~/components/layout/PanelHeader";
 import { PanelWarning } from "~/components/layout/PanelWarning";
-import {
-  DangerButton,
-  PrimaryLink,
-  SecondaryButton,
-  SecondaryLink,
-} from "~/components/primitives/Buttons";
+import { PrimaryLink, SecondaryLink } from "~/components/primitives/Buttons";
 import { Body } from "~/components/primitives/text/Body";
 import { Header3 } from "~/components/primitives/text/Headers";
 import { SubTitle } from "~/components/primitives/text/SubTitle";
