@@ -1,13 +1,13 @@
 import { Trigger } from "@trigger.dev/sdk";
 import { github } from "@trigger.dev/integrations";
 
-const trigger = new Trigger({
+new Trigger({
   id: "github-webhook-9",
-  name: "GitHub changes made to triggerdotdev/trigger.dev-examples",
+  name: "GitHub issue: triggerdotdev/trigger.dev-examples",
   apiKey: "trigger_dev_zC25mKNn6c0q",
   endpoint: "ws://localhost:8889/ws",
   logLevel: "debug",
-  on: github.events.repoIssueEvent({
+  on: github.events.issueEvent({
     repo: "triggerdotdev/trigger.dev-examples",
   }),
   run: async (event, ctx) => {
@@ -15,6 +15,20 @@ const trigger = new Trigger({
 
     return {};
   },
-});
+}).listen();
 
-trigger.listen();
+new Trigger({
+  id: "github-webhook-issue_comment",
+  name: "GitHub issue comment: triggerdotdev/trigger.dev-examples",
+  apiKey: "trigger_dev_zC25mKNn6c0q",
+  endpoint: "ws://localhost:8889/ws",
+  logLevel: "debug",
+  on: github.events.issueCommentEvent({
+    repo: "triggerdotdev/trigger.dev-examples",
+  }),
+  run: async (event, ctx) => {
+    await ctx.logger.info(`Action was ${event.action}`);
+
+    return {};
+  },
+}).listen();

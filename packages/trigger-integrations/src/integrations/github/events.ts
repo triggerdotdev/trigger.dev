@@ -1,7 +1,7 @@
 import { TriggerEvent } from "@trigger.dev/sdk";
 import { github } from "@trigger.dev/providers";
 
-export function repoIssueEvent(params: {
+export function issueEvent(params: {
   repo: string;
 }): TriggerEvent<typeof github.schemas.issues.issuesEventSchema> {
   return {
@@ -29,30 +29,30 @@ export function repoIssueEvent(params: {
   };
 }
 
-export function orgIssueEvent(params: {
-  org: string;
-}): TriggerEvent<typeof github.schemas.issues.issuesEventSchema> {
+export function issueCommentEvent(params: {
+  repo: string;
+}): TriggerEvent<typeof github.schemas.issuesComments.issueCommentEventSchema> {
   return {
     metadata: {
       type: "WEBHOOK",
       service: "github",
-      name: "issues",
+      name: "issue_comment",
       filter: {
         service: ["github"],
         payload: {
-          organizaton: {
-            name: [params.org],
+          repository: {
+            full_name: [params.repo],
           },
         },
-        event: ["issues"],
+        event: ["issue_comment"],
       },
       source: github.schemas.WebhookSourceSchema.parse({
-        subresource: "organization",
+        subresource: "repository",
         scopes: ["repo"],
-        org: params.org,
-        events: ["issues"],
+        repo: params.repo,
+        events: ["issue_comment"],
       }),
     },
-    schema: github.schemas.issues.issuesEventSchema,
+    schema: github.schemas.issuesComments.issueCommentEventSchema,
   };
 }
