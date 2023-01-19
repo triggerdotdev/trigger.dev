@@ -362,6 +362,12 @@ export class TriggerClient<TSchema extends z.ZodTypeAny> {
                   return this.#trigger.options
                     .run(eventData, ctx)
                     .then((output) => {
+                      this.#logger.log(
+                        `Completed workflow '${this.#options.name}', run ${
+                          data.id
+                        } 🏃`
+                      );
+
                       return serverRPC.send("COMPLETE_WORKFLOW_RUN", {
                         runId: data.id,
                         output: JSON.stringify(output),
