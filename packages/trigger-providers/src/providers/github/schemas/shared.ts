@@ -165,6 +165,48 @@ export const repositorySchema = z.object({
   organization: z.string().optional(),
 });
 
+export const teamSchema = z.object({
+  name: z.string(),
+  id: z.number(),
+  node_id: z.string(),
+  slug: z.string(),
+  description: z.string().nullable(),
+  privacy: z.union([
+    z.literal("open"),
+    z.literal("closed"),
+    z.literal("secret"),
+  ]),
+  url: z.string(),
+  html_url: z.string(),
+  members_url: z.string(),
+  repositories_url: z.string(),
+  permission: z.string(),
+  parent: z
+    .object({
+      name: z.string(),
+      id: z.number(),
+      node_id: z.string(),
+      slug: z.string(),
+      description: z.string().nullable(),
+      privacy: z.union([
+        z.literal("open"),
+        z.literal("closed"),
+        z.literal("secret"),
+      ]),
+      url: z.string(),
+      html_url: z.string(),
+      members_url: z.string(),
+      repositories_url: z.string(),
+      permission: z.string(),
+    })
+    .optional()
+    .nullable(),
+});
+
+export const linkSchema = z.object({
+  href: z.string(),
+});
+
 export const appSchema = z.object({
   id: z.number(),
   slug: z.string().optional(),

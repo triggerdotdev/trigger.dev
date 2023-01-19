@@ -84,7 +84,7 @@ export const issueCommentEditedEventSchema = z.object({
   organization: organizationSchema.optional(),
 });
 
-export const issueCommentEventSchema = z.union([
+export const issueCommentEventSchema = z.discriminatedUnion("action", [
   issueCommentCreatedEventSchema,
   issueCommentDeletedEventSchema,
   issueCommentEditedEventSchema,

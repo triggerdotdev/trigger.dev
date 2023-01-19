@@ -56,3 +56,31 @@ export function issueCommentEvent(params: {
     schema: github.schemas.issuesComments.issueCommentEventSchema,
   };
 }
+
+export function pullRequestEvent(params: {
+  repo: string;
+}): TriggerEvent<typeof github.schemas.pullRequest.pullRequestEventSchema> {
+  return {
+    metadata: {
+      type: "WEBHOOK",
+      service: "github",
+      name: "pull_request",
+      filter: {
+        service: ["github"],
+        payload: {
+          repository: {
+            full_name: [params.repo],
+          },
+        },
+        event: ["pull_request"],
+      },
+      source: github.schemas.WebhookSourceSchema.parse({
+        subresource: "repository",
+        scopes: ["repo"],
+        repo: params.repo,
+        events: ["pull_request"],
+      }),
+    },
+    schema: github.schemas.pullRequest.pullRequestEventSchema,
+  };
+}
