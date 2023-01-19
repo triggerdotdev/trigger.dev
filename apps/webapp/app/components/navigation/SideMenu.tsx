@@ -10,6 +10,7 @@ import {
   BeakerIcon,
   ClipboardDocumentCheckIcon,
   Squares2X2Icon,
+  Cog6ToothIcon,
 } from "@heroicons/react/24/outline";
 import { Link, NavLink } from "@remix-run/react";
 import {
@@ -93,6 +94,11 @@ export function WorkflowsSideMenu() {
       name: "Connected APIs",
       icon: <Squares2X2Icon className={iconStyle} />,
       to: `integrations`,
+    },
+    {
+      name: "Settings",
+      icon: <Cog6ToothIcon className={iconStyle} />,
+      to: `settings`,
     },
   ];
 
