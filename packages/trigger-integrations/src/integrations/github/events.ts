@@ -3,7 +3,7 @@ import { github } from "@trigger.dev/providers";
 
 export function repoIssueEvent(params: {
   repo: string;
-}): TriggerEvent<typeof github.schemas.IssueEventSchema> {
+}): TriggerEvent<typeof github.schemas.issues.issuesEventSchema> {
   return {
     metadata: {
       type: "WEBHOOK",
@@ -25,13 +25,13 @@ export function repoIssueEvent(params: {
         events: ["issues"],
       }),
     },
-    schema: github.schemas.IssueEventSchema,
+    schema: github.schemas.issues.issuesEventSchema,
   };
 }
 
 export function orgIssueEvent(params: {
   org: string;
-}): TriggerEvent<typeof github.schemas.IssueEventSchema> {
+}): TriggerEvent<typeof github.schemas.issues.issuesEventSchema> {
   return {
     metadata: {
       type: "WEBHOOK",
@@ -53,6 +53,6 @@ export function orgIssueEvent(params: {
         events: ["issues"],
       }),
     },
-    schema: github.schemas.IssueEventSchema,
+    schema: github.schemas.issues.issuesEventSchema,
   };
 }

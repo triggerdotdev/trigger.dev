@@ -3,28 +3,17 @@ import { github } from "@trigger.dev/integrations";
 
 const trigger = new Trigger({
   id: "github-webhook-9",
-  name: "GitHub Issue changes for trigger.dev",
+  name: "GitHub changes made to triggerdotdev/trigger.dev-examples",
   apiKey: "trigger_dev_zC25mKNn6c0q",
   endpoint: "ws://localhost:8889/ws",
   logLevel: "debug",
-  on: github.events.repoIssueEvent({ repo: "triggerdotdev/trigger.dev" }),
+  on: github.events.repoIssueEvent({
+    repo: "triggerdotdev/trigger.dev-examples",
+  }),
   run: async (event, ctx) => {
-    await ctx.logger.info(
-      "Inside the github-webhook workflow, received event",
-      {
-        event,
-      }
-    );
+    await ctx.logger.info(`Action was ${event.action}`);
 
-    if (event.action === "assigned") {
-      await ctx.logger.info(`New assignee: ${event.assignee.login}`);
-      // await slack.sendMessage({
-      //   channel: "C01BQKZJZ7M",
-      //   text: `New issue: ${event.issue.title}`,
-      // });
-    }
-
-    return event;
+    return {};
   },
 });
 
