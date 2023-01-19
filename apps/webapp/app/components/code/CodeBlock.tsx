@@ -1,7 +1,9 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Prism from "prismjs";
 import "prismjs/components/prism-typescript";
 import "prismjs/components/prism-json";
+import "prismjs/plugins/line-numbers/prism-line-numbers";
+import "prismjs/plugins/line-numbers/prism-line-numbers.css";
 import { CopyTextButton } from "../CopyTextButton";
 import classNames from "classnames";
 
@@ -13,6 +15,7 @@ type CodeBlockProps = {
   showCopyButton?: boolean;
   align?: "top" | "center";
   maxHeight?: string;
+  showLineNumbers?: boolean;
   className?: string;
 };
 
@@ -22,16 +25,19 @@ export default function CodeBlock({
   showCopyButton = true,
   align = "center",
   maxHeight,
+  showLineNumbers = true,
   className,
 }: CodeBlockProps) {
-  const [codeHtml, setCodeHtml] = useState(code);
+  const codeRef = useRef<HTMLPreElement>(null);
   const [isCollapsed, setIsCollapsed] = useState(
     maxHeight === undefined ? false : true
   );
   useEffect(() => {
-    const val = Prism.highlight(code, Prism.languages[language], language);
-    setCodeHtml(val);
-  }, [code, language]);
+    if (!codeRef.current) {
+      return;
+    }
+    Prism.highlightAllUnder(codeRef.current);
+  }, [code, language, codeRef]);
 
   return (
     <div
@@ -42,10 +48,13 @@ export default function CodeBlock({
       )}
       style={{ maxHeight: isCollapsed ? maxHeight : undefined }}
     >
-      <pre className={`language-${language}`}>
+      <pre
+        className={classNames(showLineNumbers && `line-numbers`)}
+        ref={codeRef}
+      >
         <code
           className={`language-${language}`}
-          dangerouslySetInnerHTML={{ __html: codeHtml }}
+          dangerouslySetInnerHTML={{ __html: code }}
         ></code>
       </pre>
       {showCopyButton === true && (
