@@ -1,4 +1,4 @@
-import { ArrowsRightLeftIcon } from "@heroicons/react/24/outline";
+import { ApiLogoIcon } from "~/components/code/ApiLogoIcon";
 import { Panel } from "~/components/layout/Panel";
 import { SecondaryButton, DangerButton } from "~/components/primitives/Buttons";
 import { Header3 } from "~/components/primitives/text/Headers";
@@ -12,9 +12,12 @@ export default function Page() {
       <SubTitle>Workflow</SubTitle>
       <Panel className="flex items-center justify-between !p-4">
         <div className="flex gap-4 items-center">
-          <ArrowsRightLeftIcon className="h-10 w-10 p-2 rounded bg-slate-850 text-slate-400" />
+          <ApiLogoIcon
+            size="regular"
+            // integration={}
+          />
           <Header3 size="small" className="text-slate-300">
-            send-to-slack-on-new-domain is disabled
+            Send to Slack on a new domain is disabled
           </Header3>
         </div>
         <div className="flex gap-2">
