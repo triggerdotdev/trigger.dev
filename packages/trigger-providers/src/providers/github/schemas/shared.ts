@@ -406,3 +406,102 @@ export const labelSchema = z.object({
   color: z.string(),
   default: z.boolean(),
 });
+
+export const pullRequestAutoMergeSchema = z.object({
+  enabled_by: userSchema,
+  merge_method: z.union([
+    z.literal("merge"),
+    z.literal("squash"),
+    z.literal("rebase"),
+  ]),
+  commit_title: z.string(),
+  commit_message: z.string(),
+});
+
+export const simplePullRequestSchema = z.object({
+  url: z.string(),
+  id: z.number(),
+  node_id: z.string(),
+  html_url: z.string(),
+  diff_url: z.string(),
+  patch_url: z.string(),
+  issue_url: z.string(),
+  number: z.number(),
+  state: z.union([z.literal("open"), z.literal("closed")]),
+  locked: z.boolean(),
+  title: z.string(),
+  user: userSchema,
+  body: z.string().nullable(),
+  created_at: z.string(),
+  updated_at: z.string(),
+  closed_at: z.string().nullable(),
+  merged_at: z.string().nullable(),
+  merge_commit_sha: z.string().nullable(),
+  assignee: userSchema.nullable(),
+  assignees: z.array(userSchema),
+  requested_reviewers: z.array(z.union([userSchema, teamSchema])),
+  requested_teams: z.array(teamSchema),
+  labels: z.array(labelSchema),
+  milestone: milestoneSchema.nullable(),
+  draft: z.boolean(),
+  commits_url: z.string(),
+  review_comments_url: z.string(),
+  review_comment_url: z.string(),
+  comments_url: z.string(),
+  statuses_url: z.string(),
+  head: z.object({
+    label: z.string(),
+    ref: z.string(),
+    sha: z.string(),
+    user: userSchema,
+    repo: repositorySchema,
+  }),
+  base: z.object({
+    label: z.string(),
+    ref: z.string(),
+    sha: z.string(),
+    user: userSchema,
+    repo: repositorySchema,
+  }),
+  _links: z.object({
+    self: linkSchema,
+    html: linkSchema,
+    issue: linkSchema,
+    comments: linkSchema,
+    review_comments: linkSchema,
+    review_comment: linkSchema,
+    commits: linkSchema,
+    statuses: linkSchema,
+  }),
+  author_association: authorAssociationSchema,
+  auto_merge: pullRequestAutoMergeSchema.nullable(),
+  active_lock_reason: z
+    .union([
+      z.literal("resolved"),
+      z.literal("off-topic"),
+      z.literal("too heated"),
+      z.literal("spam"),
+    ])
+    .nullable(),
+});
+
+export const committerSchema = z.object({
+  name: z.string(),
+  email: z.string().nullable(),
+  date: z.string().optional(),
+  username: z.string().optional(),
+});
+
+export const commitSchema = z.object({
+  id: z.string(),
+  tree_id: z.string(),
+  distinct: z.boolean(),
+  message: z.string(),
+  timestamp: z.string(),
+  url: z.string(),
+  author: committerSchema,
+  committer: committerSchema,
+  added: z.array(z.string()),
+  modified: z.array(z.string()),
+  removed: z.array(z.string()),
+});

@@ -115,3 +115,63 @@ export function pullRequestCommentEvent(params: {
       github.schemas.pullRequestComments.pullRequestReviewCommentEventSchema,
   };
 }
+
+export function pullRequestReviewEvent(params: {
+  repo: string;
+}): TriggerEvent<
+  typeof github.schemas.pullRequestReviews.pullRequestReviewEventSchema
+> {
+  return {
+    metadata: {
+      type: "WEBHOOK",
+      service: "github",
+      name: "pull_request_review",
+      filter: {
+        service: ["github"],
+        payload: {
+          repository: {
+            full_name: [params.repo],
+          },
+        },
+        event: ["pull_request_review"],
+      },
+      source: github.schemas.WebhookSourceSchema.parse({
+        subresource: "repository",
+        scopes: ["repo"],
+        repo: params.repo,
+        events: ["pull_request_review"],
+      }),
+    },
+    schema: github.schemas.pullRequestReviews.pullRequestReviewEventSchema,
+  };
+}
+
+export function pushEvent(params: {
+  repo: string;
+}): TriggerEvent<
+  typeof github.schemas.push.pushEventSchema
+> {
+  return {
+    metadata: {
+      type: "WEBHOOK",
+      service: "github",
+      name: "push",
+      filter: {
+        service: ["github"],
+        payload: {
+          repository: {
+            full_name: [params.repo],
+          },
+        },
+        event: ["push"],
+      },
+      source: github.schemas.WebhookSourceSchema.parse({
+        subresource: "repository",
+        scopes: ["repo"],
+        repo: params.repo,
+        events: ["push"],
+      }),
+    },
+    schema: github.schemas.push.pushEventSchema
+  };
+}

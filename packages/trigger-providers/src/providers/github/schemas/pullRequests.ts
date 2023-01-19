@@ -6,21 +6,11 @@ import {
   linkSchema,
   milestoneSchema,
   organizationSchema,
+  pullRequestAutoMergeSchema,
   repositorySchema,
   teamSchema,
   userSchema,
 } from "./shared";
-
-export const pullRequestAutoMergeSchema = z.object({
-  enabled_by: userSchema,
-  merge_method: z.union([
-    z.literal("merge"),
-    z.literal("squash"),
-    z.literal("rebase"),
-  ]),
-  commit_title: z.string(),
-  commit_message: z.string(),
-});
 
 export const pullRequestSchema = z.object({
   url: z.string(),

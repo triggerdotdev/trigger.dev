@@ -1,5 +1,4 @@
 import { z } from "zod";
-import { pullRequestAutoMergeSchema } from "./pullRequests";
 import {
   userSchema,
   teamSchema,
@@ -11,6 +10,7 @@ import {
   installationLiteSchema,
   organizationSchema,
   reactionsSchema,
+  pullRequestAutoMergeSchema,
 } from "./shared";
 
 export const pullRequestReviewCommentSchema = z.object({

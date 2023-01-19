@@ -35,7 +35,7 @@ new Trigger({
 
 new Trigger({
   id: "github-webhook-pull_request_comment",
-  name: "GitHub PR comment: triggerdotdev/trigger.dev-examples",
+  name: "GitHub PR review comment: triggerdotdev/trigger.dev-examples",
   apiKey: "trigger_dev_zC25mKNn6c0q",
   endpoint: "ws://localhost:8889/ws",
   logLevel: "debug",
@@ -44,6 +44,38 @@ new Trigger({
   }),
   run: async (event, ctx) => {
     await ctx.logger.info(`Action was ${event.action}`);
+
+    return {};
+  },
+}).listen();
+
+new Trigger({
+  id: "github-webhook-pull_request_review",
+  name: "GitHub PR review: triggerdotdev/trigger.dev-examples",
+  apiKey: "trigger_dev_zC25mKNn6c0q",
+  endpoint: "ws://localhost:8889/ws",
+  logLevel: "debug",
+  on: github.events.pullRequestReviewEvent({
+    repo: "triggerdotdev/trigger.dev-examples",
+  }),
+  run: async (event, ctx) => {
+    await ctx.logger.info(`Action was ${event.action}`);
+
+    return {};
+  },
+}).listen();
+
+new Trigger({
+  id: "github-webhook-push",
+  name: "GitHub push: triggerdotdev/trigger.dev-examples",
+  apiKey: "trigger_dev_zC25mKNn6c0q",
+  endpoint: "ws://localhost:8889/ws",
+  logLevel: "debug",
+  on: github.events.pushEvent({
+    repo: "triggerdotdev/trigger.dev-examples",
+  }),
+  run: async (event, ctx) => {
+    await ctx.logger.info(`Push with commits`, event.commits);
 
     return {};
   },
