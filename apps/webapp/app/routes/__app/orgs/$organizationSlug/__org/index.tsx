@@ -114,7 +114,8 @@ function WorkflowList({
                           {workflow.trigger.title}
                         </Header3>
                       </div>
-                      <div className="flex flex-wrap gap-x-2 items-baseline">
+                      <div className="flex flex-wrap gap-x-3 items-baseline">
+                        <WorkflowStatus label="Workflow" content="Disabled" />
                         {workflow.trigger.properties &&
                           workflow.trigger.properties.map((property) => (
                             <WorkflowProperty
@@ -210,6 +211,25 @@ function WorkflowProperty({
         {label}
       </Body>
       <Body size="small" className="text-slate-400 truncate">
+        {content}
+      </Body>
+    </div>
+  );
+}
+
+function WorkflowStatus({
+  label,
+  content,
+}: {
+  label: string;
+  content: string;
+}) {
+  return (
+    <div className="flex items-baseline gap-x-1">
+      <Body size="extra-small" className="uppercase text-slate-500">
+        {label}
+      </Body>
+      <Body size="small" className="text-amber-400 truncate">
         {content}
       </Body>
     </div>
