@@ -5,9 +5,12 @@ import { WorkflowConnections } from "~/components/integrations/WorkflowConnectio
 import { Panel } from "~/components/layout/Panel";
 import { PanelHeader } from "~/components/layout/PanelHeader";
 import { PanelWarning } from "~/components/layout/PanelWarning";
-import { PrimaryLink, SecondaryLink } from "~/components/primitives/Buttons";
+import {
+  PrimaryLink,
+  SecondaryLink,
+  TertiaryLink,
+} from "~/components/primitives/Buttons";
 import { Body } from "~/components/primitives/text/Body";
-import { Header3 } from "~/components/primitives/text/Headers";
 import { SubTitle } from "~/components/primitives/text/SubTitle";
 import { Title } from "~/components/primitives/text/Title";
 import { RunsTable } from "~/components/runs/RunsTable";
@@ -88,6 +91,14 @@ export default function Page() {
           </PanelWarning>
         </>
       )}
+      <PanelWarning className="mb-6">
+        <Body className="flex grow items-center justify-between">
+          This workflow is disabled.
+        </Body>
+        <TertiaryLink to="settings" className="mr-1">
+          Settings
+        </TertiaryLink>
+      </PanelWarning>
       {apiConnectionCount > 0 && <WorkflowConnections />}
       {eventRule && (
         <>
