@@ -130,6 +130,9 @@ export async function init() {
 function createClient() {
   const client = createPulsarClient({
     serviceUrl: env.PULSAR_SERVICE_URL,
+    ioThreads: 5,
+    messageListenerThreads: 5,
+    operationTimeoutSeconds: 30,
   });
 
   console.log(`📡 Connected to pulsar at ${env.PULSAR_SERVICE_URL}`);
@@ -142,6 +145,7 @@ function createTriggerPublisher() {
     client: pulsarClient,
     config: {
       topic: Topics.triggers,
+      batchingEnabled: false,
     },
     schema: triggerCatalog,
   });
@@ -251,6 +255,7 @@ function createCommandResponsePublisher() {
     client: pulsarClient,
     config: {
       topic: Topics.runCommandResponses,
+      batchingEnabled: false,
     },
     schema: commandResponseCatalog,
   });

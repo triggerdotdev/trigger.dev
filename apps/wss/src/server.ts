@@ -296,7 +296,7 @@ export class TriggerServer {
   }
 
   async #initializeWorkflow(
-    data: z.infer<typeof ServerRPCSchema["INITIALIZE_HOST"]["request"]>
+    data: z.infer<(typeof ServerRPCSchema)["INITIALIZE_HOST"]["request"]>
   ) {
     if (this.#isInitialized) {
       throw new Error(
@@ -502,6 +502,7 @@ function createForwardHandler<
       client: pulsarClient,
       config: {
         topic: topicName,
+        batchingEnabled: false,
       },
     });
 

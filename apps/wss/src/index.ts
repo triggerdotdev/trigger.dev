@@ -58,6 +58,7 @@ async function main() {
     client: pulsarClient,
     config: {
       topic: Topics.runCommands,
+      batchingEnabled: false,
     },
   });
 
