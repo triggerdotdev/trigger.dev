@@ -1,9 +1,10 @@
 import { z } from "zod";
-import * as issues from "./issues";
+import * as commitComments from "./commitComments";
 import * as issuesComments from "./issueComments";
-import * as pullRequest from "./pullRequests";
+import * as issues from "./issues";
 import * as pullRequestComments from "./pullRequestComments";
 import * as pullRequestReviews from "./pullRequestReviews";
+import * as pullRequest from "./pullRequests";
 import * as push from "./pushes";
 
 export const WebhookRepoSourceSchema = z.object({
@@ -26,6 +27,7 @@ export const WebhookSourceSchema = z.union([
 ]);
 
 export {
+  commitComments,
   issues,
   issuesComments,
   pullRequest,

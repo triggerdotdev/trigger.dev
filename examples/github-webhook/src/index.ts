@@ -80,3 +80,19 @@ new Trigger({
     return {};
   },
 }).listen();
+
+new Trigger({
+  id: "github-webhook-commit_comment",
+  name: "GitHub commit comment: triggerdotdev/trigger.dev-examples",
+  apiKey: "trigger_dev_zC25mKNn6c0q",
+  endpoint: "ws://localhost:8889/ws",
+  logLevel: "debug",
+  on: github.events.commitCommentEvent({
+    repo: "triggerdotdev/trigger.dev-examples",
+  }),
+  run: async (event, ctx) => {
+    await ctx.logger.info(`Push with action ${event.action}`);
+
+    return {};
+  },
+}).listen();

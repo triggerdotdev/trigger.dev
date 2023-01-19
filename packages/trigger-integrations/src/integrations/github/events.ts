@@ -1,6 +1,36 @@
 import { TriggerEvent } from "@trigger.dev/sdk";
 import { github } from "@trigger.dev/providers";
 
+export function commitCommentEvent(params: {
+  repo: string;
+}): TriggerEvent<
+  typeof github.schemas.commitComments.commitCommentEventSchema
+> {
+  return {
+    metadata: {
+      type: "WEBHOOK",
+      service: "github",
+      name: "commit_comment",
+      filter: {
+        service: ["github"],
+        payload: {
+          repository: {
+            full_name: [params.repo],
+          },
+        },
+        event: ["commit_comment"],
+      },
+      source: github.schemas.WebhookSourceSchema.parse({
+        subresource: "repository",
+        scopes: ["repo"],
+        repo: params.repo,
+        events: ["commit_comment"],
+      }),
+    },
+    schema: github.schemas.commitComments.commitCommentEventSchema,
+  };
+}
+
 export function issueEvent(params: {
   repo: string;
 }): TriggerEvent<typeof github.schemas.issues.issuesEventSchema> {
@@ -148,9 +178,7 @@ export function pullRequestReviewEvent(params: {
 
 export function pushEvent(params: {
   repo: string;
-}): TriggerEvent<
-  typeof github.schemas.push.pushEventSchema
-> {
+}): TriggerEvent<typeof github.schemas.push.pushEventSchema> {
   return {
     metadata: {
       type: "WEBHOOK",
@@ -172,6 +200,6 @@ export function pushEvent(params: {
         events: ["push"],
       }),
     },
-    schema: github.schemas.push.pushEventSchema
+    schema: github.schemas.push.pushEventSchema,
   };
 }
