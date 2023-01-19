@@ -6,10 +6,7 @@ const roundedStyles = {
   roundedFull: "rounded",
 };
 
-type InputProps = React.DetailedHTMLProps<
-  React.InputHTMLAttributes<HTMLInputElement>,
-  HTMLInputElement
-> & {
+type InputProps = JSX.IntrinsicElements["input"] & {
   roundedEdges?: "roundedLeft" | "roundedRight" | "roundedFull";
 };
 
