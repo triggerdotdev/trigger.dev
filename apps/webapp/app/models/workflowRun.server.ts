@@ -173,6 +173,13 @@ export async function triggerEventInRun(
     },
     workflowRun.environment.organization
   );
+
+  await prisma.workflowRunStep.update({
+    where: { id: step.step.id },
+    data: {
+      status: "SUCCESS",
+    },
+  });
 }
 
 export async function logMessageInRun(
