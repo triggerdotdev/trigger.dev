@@ -18,6 +18,7 @@ import { requireUserId } from "~/services/session.server";
 import {
   redirectBackWithErrorMessage,
   redirectBackWithSuccessMessage,
+  redirectWithSuccessMessage,
 } from "~/models/message.server";
 import { DisableWorkflow } from "~/services/workflows/disableWorkflow.server";
 import { EnableWorkflow } from "~/services/workflows/enableWorkflow.server";
@@ -103,7 +104,8 @@ async function archiveAction(
     return redirectBackWithErrorMessage(request, result.message);
   }
 
-  return redirectBackWithSuccessMessage(
+  return redirectWithSuccessMessage(
+    `/orgs/${organizationSlug}`,
     request,
     "Workflow successfully archived."
   );
