@@ -110,6 +110,7 @@ export class RegisterWorkflow {
         type: payload.trigger.type,
         service: payload.trigger.service,
         eventNames: payload.trigger.name,
+        triggerTtlInSeconds: payload.triggerTTL,
       },
       create: {
         organizationId: organization.id,
@@ -120,6 +121,7 @@ export class RegisterWorkflow {
         status: payload.trigger.service === "trigger" ? "READY" : "CREATED",
         service: payload.trigger.service,
         eventNames: payload.trigger.name,
+        triggerTtlInSeconds: payload.triggerTTL,
       },
       include: {
         externalSource: true,

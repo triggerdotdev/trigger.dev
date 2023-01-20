@@ -12,6 +12,7 @@ const trigger = new Trigger({
   apiKey: "trigger_dev_zC25mKNn6c0q",
   endpoint: "ws://localhost:8889/ws",
   logLevel: "log",
+  triggerTTL: 60 * 60 * 24,
   on: customEvent({ name: "user.created", schema: userCreatedEvent }),
   run: async (event, ctx) => {
     await ctx.logger.info("Inside the smoke test workflow, received event", {

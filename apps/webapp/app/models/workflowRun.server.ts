@@ -19,6 +19,7 @@ export async function findWorklowRunById(id: string) {
     include: {
       event: true,
       environment: true,
+      workflow: true,
     },
   });
 }

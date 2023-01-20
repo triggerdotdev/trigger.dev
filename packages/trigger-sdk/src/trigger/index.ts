@@ -12,6 +12,13 @@ export type TriggerOptions<TSchema extends z.ZodTypeAny> = {
   apiKey?: string;
   endpoint?: string;
   logLevel?: LogLevel;
+
+  /**
+   * The TTL for the trigger in seconds. If the trigger is not run within this time, it will be aborted. Defaults to 3600 seconds (1 hour).
+   * @type {number}
+   */
+  triggerTTL?: number;
+
   run: (event: z.infer<TSchema>, ctx: TriggerContext) => Promise<any>;
 };
 

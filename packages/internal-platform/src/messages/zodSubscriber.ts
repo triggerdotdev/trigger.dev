@@ -14,13 +14,21 @@ import {
 import { z, ZodError } from "zod";
 import { ZodPubSubStatus } from "./types";
 
+export type SubscriberMessageAttributes = {
+  messageId: string;
+  eventTimestamp?: Date;
+  publishedTimestamp: Date;
+  redeliveryCount: number;
+};
+
 export type ZodSubscriberHandlers<
   TConsumerSchema extends MessageCatalogSchema
 > = {
   [K in keyof TConsumerSchema]: (
     id: string,
     data: z.infer<TConsumerSchema[K]["data"]>,
-    properties: z.infer<TConsumerSchema[K]["properties"]>
+    properties: z.infer<TConsumerSchema[K]["properties"]>,
+    attributes: SubscriberMessageAttributes
   ) => Promise<boolean>;
 };
 
@@ -109,8 +117,32 @@ export class ZodSubscriber<SubscriberSchema extends MessageCatalogSchema> {
 
     const properties = this.#getRawProperties(msg);
 
+    const messageId = msg.getMessageId();
+    const publishedTimestamp = msg.getPublishTimestamp();
+    const eventTimestamp = msg.getEventTimestamp();
+    const redeliveryCount = msg.getRedeliveryCount();
+
+    this.#logger.debug("#onMessage", {
+      messageId,
+      publishedTimestamp,
+      eventTimestamp,
+      redeliveryCount,
+    });
+
+    const messageAttributes = {
+      eventTimestamp:
+        eventTimestamp === 0 ? undefined : new Date(eventTimestamp),
+      messageId: messageId.toString(),
+      publishedTimestamp: new Date(publishedTimestamp),
+      redeliveryCount,
+    };
+
     try {
-      const wasHandled = await this.#handleMessage(messageData, properties);
+      const wasHandled = await this.#handleMessage(
+        messageData,
+        properties,
+        messageAttributes
+      );
 
       if (wasHandled) {
         await consumer.acknowledge(msg);
@@ -134,7 +166,8 @@ export class ZodSubscriber<SubscriberSchema extends MessageCatalogSchema> {
 
   async #handleMessage<K extends keyof SubscriberSchema>(
     rawMessage: MessageData,
-    rawProperties: Record<string, string> = {}
+    rawProperties: Record<string, string> = {},
+    messageAttributes: SubscriberMessageAttributes
   ): Promise<boolean> {
     const subscriberSchema = this.#schema;
     type TypeKeys = keyof typeof subscriberSchema;
@@ -160,7 +193,12 @@ export class ZodSubscriber<SubscriberSchema extends MessageCatalogSchema> {
 
     const handler = this.#handlers[typeName];
 
-    const returnValue = await handler(rawMessage.id, message, properties);
+    const returnValue = await handler(
+      rawMessage.id,
+      message,
+      properties,
+      messageAttributes
+    );
 
     return returnValue;
   }

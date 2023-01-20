@@ -427,6 +427,7 @@ new Trigger({
   apiKey: "trigger_dev_zC25mKNn6c0q",
   endpoint: "ws://localhost:8889/ws",
   logLevel: "debug",
+  triggerTTL: 5,
   on: scheduleEvent({ rateOf: { minutes: 4 } }),
   run: async (event, ctx) => {
     await ctx.logger.info("Received the scheduled event", {

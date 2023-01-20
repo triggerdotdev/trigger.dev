@@ -443,6 +443,7 @@ export class TriggerClient<TSchema extends z.ZodTypeAny> {
       trigger: this.#trigger.on.metadata,
       packageVersion: pkg.version,
       packageName: pkg.name,
+      triggerTTL: this.#options.triggerTTL,
     });
 
     if (response?.type === "error") {

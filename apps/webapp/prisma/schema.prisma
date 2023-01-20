@@ -142,6 +142,8 @@ model Workflow {
   archivedAt DateTime?
   isArchived Boolean   @default(false)
 
+  triggerTtlInSeconds Int @default(3600)
+
   @@unique([organizationId, slug])
 }
 
@@ -406,6 +408,9 @@ model WorkflowRun {
   startedAt  DateTime?
   finishedAt DateTime?
 
+  timedOutAt     DateTime?
+  timedOutReason String?
+
   isTest   Boolean              @default(false)
   requests IntegrationRequest[]
   delays   DurableDelay[]
@@ -417,6 +422,7 @@ enum WorkflowRunStatus {
   DISCONNECTED
   SUCCESS
   ERROR
+  TIMED_OUT
 }
 
 model WorkflowRunStep {

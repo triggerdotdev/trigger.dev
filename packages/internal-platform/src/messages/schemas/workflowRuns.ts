@@ -27,4 +27,12 @@ export const commands = {
     }),
     properties: WorkflowSendRunEventPropertiesSchema,
   },
+  WORKFLOW_RUN_TRIGGER_TIMEOUT: {
+    data: z.object({
+      id: z.string(),
+      ttl: z.number(),
+      elapsedSeconds: z.number(),
+    }),
+    properties: WorkflowSendRunEventPropertiesSchema,
+  },
 };

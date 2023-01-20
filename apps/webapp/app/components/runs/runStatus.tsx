@@ -21,6 +21,8 @@ export function runStatusTitle(status: WorkflowRunStatus): string {
       return "Disconnected";
     case "ERROR":
       return "Error";
+    case "TIMED_OUT":
+      return "Timed out";
   }
 }
 
@@ -36,6 +38,8 @@ export function runStatusLabel(status: WorkflowRunStatus): ReactNode {
       return <span className="text-amber-300">{runStatusTitle(status)}</span>;
     case "ERROR":
       return <span className="text-rose-500">{runStatusTitle(status)}</span>;
+    case "TIMED_OUT":
+      return <span className="text-amber-300">{runStatusTitle(status)}</span>;
   }
 }
 
@@ -88,6 +92,15 @@ export function runStatusIcon(
           className={classNames(
             iconSize === "small" ? smallClasses : largeClasses,
             "relative text-rose-500"
+          )}
+        />
+      );
+    case "TIMED_OUT":
+      return (
+        <ExclamationTriangleIcon
+          className={classNames(
+            iconSize === "small" ? smallClasses : largeClasses,
+            "relative text-amber-300"
           )}
         />
       );

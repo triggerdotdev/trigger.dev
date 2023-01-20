@@ -67,6 +67,7 @@ export class DeliverScheduledEvent {
         context: {},
         organizationId: schedulerSource.organizationId,
         environmentId: schedulerSource.environmentId,
+        timestamp: payload.scheduledTime,
       },
     });
 

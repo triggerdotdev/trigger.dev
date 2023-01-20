@@ -58,6 +58,7 @@ export const ServerRPCSchema = {
       trigger: TriggerMetadataSchema,
       packageVersion: z.string(),
       packageName: z.string(),
+      triggerTTL: z.number().optional(),
     }),
     response: z
       .discriminatedUnion("type", [
