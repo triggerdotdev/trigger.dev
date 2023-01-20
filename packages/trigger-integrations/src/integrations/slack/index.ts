@@ -3,7 +3,7 @@ import { z } from "zod";
 import { slack } from "@trigger.dev/providers";
 
 export type PostMessageOptions = z.infer<
-  typeof slack.schemas.PostMessageBodySchema
+  typeof slack.schemas.PostMessageOptionsSchema
 >;
 
 export type PostMessageResponse = z.infer<

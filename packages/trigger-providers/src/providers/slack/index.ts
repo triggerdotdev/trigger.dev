@@ -7,7 +7,15 @@ export const slack = {
   enabledFor: "all",
   authentication: {
     type: "oauth",
-    scopes: ["channels:read", "channels:join", "chat:write"],
+    scopes: [
+      "channels:read",
+      "channels:join",
+      "channels:manage",
+      "chat:write",
+      "groups:write",
+      "im:write",
+      "mpim:write",
+    ],
   },
   schemas,
 };

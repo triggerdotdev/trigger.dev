@@ -8,7 +8,6 @@ import {
   AccessInfo,
 } from "../types";
 import { slack } from "@trigger.dev/providers";
-
 import debug from "debug";
 import { getAccessToken } from "../accessInfo";
 import { z } from "zod";
@@ -66,7 +65,9 @@ class SlackRequestIntegration implements RequestIntegration {
     switch (endpoint) {
       case "chat.postMessage": {
         return {
-          title: `Post message to #${params.channel}`,
+          title: `Post message to ${
+            "channelName" in params ? params.channelName : params.channelId
+          }`,
           properties: [
             {
               key: "Text",
@@ -86,7 +87,7 @@ class SlackRequestIntegration implements RequestIntegration {
     params: any,
     cache?: CacheService
   ): Promise<PerformedRequestResponse> {
-    const parsedParams = slack.schemas.PostMessageBodySchema.parse(params);
+    const parsedParams = slack.schemas.PostMessageOptionsSchema.parse(params);
 
     log("chat.postMessage %O", parsedParams);
 
@@ -97,18 +98,30 @@ class SlackRequestIntegration implements RequestIntegration {
       baseUrl: this.baseUrl,
     });
 
-    const channel = await this.#findChannelId(
-      service,
-      parsedParams.channel,
-      cache
-    );
+    const channelId = await this.#findChannelId(service, params, cache);
 
-    log("found channelId %s", channel);
+    if (!channelId) {
+      return {
+        ok: false,
+        isRetryable: false,
+        response: {
+          output: {
+            message: `channelId not found`,
+          },
+          context: {
+            statusCode: 404,
+            headers: {},
+          },
+        },
+      };
+    }
+
+    log("found channelId %s", channelId);
 
     const response = await service.performRequest(this.#postMessageEndpoint, {
       ...parsedParams,
       link_names: 1,
-      channel,
+      channel: channelId,
     });
 
     if (!response.success) {
@@ -118,7 +131,7 @@ class SlackRequestIntegration implements RequestIntegration {
         ok: false,
         isRetryable: this.#isRetryable(response.statusCode),
         response: {
-          output: null,
+          output: {},
           context: {
             statusCode: response.statusCode,
             headers: response.headers,
@@ -130,19 +143,19 @@ class SlackRequestIntegration implements RequestIntegration {
     if (!response.data.ok && response.data.error === "not_in_channel") {
       log(
         "chat.postMessage failed with not_in_channel, attempting to join channel %s",
-        channel
+        channelId
       );
 
       // Attempt to join the channel, and then retry the request
       const joinResponse = await service.performRequest(
         this.#joinChannelEndpoint,
         {
-          channel,
+          channel: channelId,
         }
       );
 
       if (joinResponse.success && joinResponse.data.ok) {
-        log("joined channel %s, retrying postMessage", channel);
+        log("joined channel %s, retrying postMessage", channelId);
 
         return this.#postMessage(accessInfo, params);
       }
@@ -182,14 +195,23 @@ class SlackRequestIntegration implements RequestIntegration {
   // unless the channel is already provided in the format of a channelID (for example: "D8572TUFR" or "C01BQJZLJGZ")
   async #findChannelId(
     service: HttpService,
-    channel: string,
+    params: z.infer<typeof slack.schemas.ChannelNameOrIdSchema>,
     cache?: CacheService
-  ): Promise<string> {
-    if (channel.startsWith("C") || channel.startsWith("D")) {
-      return channel;
+  ): Promise<string | undefined> {
+    if ("channelId" in params) {
+      return params.channelId;
     }
 
-    const cachedChannelId = await cache?.get(channel);
+    if (!("channelName" in params)) {
+      throw new Error("Invalid params, mising channelId and channelName");
+    }
+
+    //if the channelName starts with a #, remove it
+    if (params.channelName.startsWith("#")) {
+      params.channelName = params.channelName.substring(1);
+    }
+
+    const cachedChannelId = await cache?.get(params.channelName);
 
     if (cachedChannelId) {
       return cachedChannelId;
@@ -202,16 +224,17 @@ class SlackRequestIntegration implements RequestIntegration {
     if (response.success && response.data.ok) {
       const { channels } = response.data;
 
-      const channelInfo = channels.find((c: any) => c.name === channel);
+      const channelInfo = channels.find(
+        (c: any) => c.name === params.channelName
+      );
 
       if (channelInfo) {
-        await cache?.set(channel, channelInfo.id, 60 * 60 * 24);
+        await cache?.set(params.channelName, channelInfo.id, 60 * 60 * 24);
+        return channelInfo.id;
       }
-
-      return channelInfo?.id || channel;
     }
 
-    return channel;
+    return undefined;
   }
 }
 

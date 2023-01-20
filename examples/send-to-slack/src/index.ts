@@ -2,7 +2,7 @@ import { Trigger, customEvent } from "@trigger.dev/sdk";
 import { slack } from "@trigger.dev/integrations";
 import { z } from "zod";
 
-const trigger = new Trigger({
+new Trigger({
   id: "send-to-slack-on-new-domain",
   name: "Send to Slack on new domain",
   apiKey: "trigger_dev_zC25mKNn6c0q",
@@ -21,17 +21,19 @@ const trigger = new Trigger({
       "Received domain.created event, waiting for 1 minutes..."
     );
 
-    await ctx.waitFor("initial-wait", { seconds: 5 });
-
     const response = await slack.postMessage("send-to-slack", {
-      channel: "test-integrations",
+      channelName: "test-integrations",
       text: `New domain created: ${event.domain} by customer ${event.customerId} cc @Eric #general`,
     });
 
-    await ctx.logger.debug("Debug message");
+    await ctx.waitFor("initial-wait", { seconds: 5 });
 
-    return response.message;
+    const secondResponse = await slack.postMessage("send-to-slack-channel-id", {
+      channelId: response.channel,
+      text: `Sent using the channelId: ${response.channel}`,
+    });
+
+    return {};
   },
-});
+}).listen();
 
-trigger.listen();
