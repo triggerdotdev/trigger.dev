@@ -22,10 +22,9 @@ new Trigger({
   on: github.events.repoIssueEvent({
     repo: "my-github-org/my-github-repo",
   }),
-
   run: async (event, ctx) => {
     const response = await slack.postMessage("send-to-slack", {
-      channel: "my-slack-channel-name",
+      channelName: "my-slack-channel-name",
       text: `A new issue has been created or modified. ${event.action}`,
     });
 
