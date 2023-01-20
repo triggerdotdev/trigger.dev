@@ -80,7 +80,8 @@ export function WorkflowMenu() {
                             className={classNames(
                               "flex items-center justify-between gap-1.5 mx-1 px-3 py-2 text-white rounded hover:bg-slate-800 transition",
                               workflow.slug === currentWorkflow?.slug &&
-                                "!bg-slate-800"
+                                "!bg-slate-800",
+                              workflow.status === "DISABLED" && "opacity-50"
                             )}
                           >
                             <div className="relative flex items-center gap-2">
