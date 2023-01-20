@@ -1,5 +1,12 @@
 # @trigger.dev/integrations
 
+## 0.1.7
+
+### Patch Changes
+
+- Updated dependencies [0b17912]
+  - @trigger.dev/sdk@0.2.4
+
 ## 0.1.6
 
 ### Patch Changes
