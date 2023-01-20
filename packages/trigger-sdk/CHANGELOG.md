@@ -1,5 +1,13 @@
 # @trigger.dev/sdk
 
+## 0.2.2
+
+### Patch Changes
+
+- 7f26548: Added some logging messages (and disabled any messages by default)
+- 5de2a1a: Fixed issue with workflow runs not completing when the run function returned undefined or null
+- d3c593c: Added triggerTTL option that prevents old events from running a workflow
+
 ## 0.2.1
 
 ### Patch Changes
