@@ -519,6 +519,8 @@ importers:
     specifiers:
       '@trigger.dev/tsconfig': workspace:*
       '@types/node': '16'
+      rimraf: ^3.0.2
+      tsup: ^6.5.0
       typescript: ^4.9.4
       zod: ^3.20.2
     dependencies:
@@ -526,6 +528,8 @@ importers:
     devDependencies:
       '@trigger.dev/tsconfig': link:../../config-packages/tsconfig
       '@types/node': 16.18.11
+      rimraf: 3.0.2
+      tsup: 6.5.0_typescript@4.9.4
       typescript: 4.9.4
 
   packages/emails:
