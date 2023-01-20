@@ -97,7 +97,7 @@ function WorkflowList({
                 <div className="flex items-center flex-1 justify-between">
                   <div className="relative flex items-center">
                     {workflow.status === "CREATED" && (
-                      <ExclamationTriangleIcon className="absolute -top-1.5 -left-1.5 h-6 w-6 text-amber-500" />
+                      <ExclamationTriangleIcon className="absolute -top-1.5 -left-1.5 h-6 w-6 text-amber-400" />
                     )}
                     <div className="p-3 bg-slate-850 rounded-md flex-shrink-0 self-start h-20 w-20 mr-4">
                       <TriggerTypeIcon

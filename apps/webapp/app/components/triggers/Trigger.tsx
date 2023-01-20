@@ -98,25 +98,46 @@ function RateOfScheduled({ source }: { source: ScheduleSourceRate }) {
       : source.rateOf.days;
 
   return (
-    <>
+    <div className="flex gap-2 items-baseline">
       <Body size="extra-small" className={workflowNodeUppercaseClasses}>
+        Runs
+      </Body>
+      <Body size="small" className="text-slate-300 normal-case tracking-normal">
         Every {value} {unit}
       </Body>
-    </>
+    </div>
   );
 }
 
 function AtScheduled({ source }: { source: ScheduleSourceCron }) {
   return (
-    <>
-      <Body size="extra-small" className={workflowNodeUppercaseClasses}>
-        {cronstrue.toString(source.cron, {
-          throwExceptionOnParseError: false,
-          verbose: false,
-          use24HourTimeFormat: true,
-        })}
-        {" - "}({source.cron})
-      </Body>
-    </>
+    <div className="flex flex-col gap-1.5">
+      <div className="flex items-baseline gap-2">
+        <Body size="extra-small" className={workflowNodeUppercaseClasses}>
+          Runs
+        </Body>
+        <Body
+          size="small"
+          className="text-slate-300 normal-case tracking-normal"
+        >
+          {cronstrue.toString(source.cron, {
+            throwExceptionOnParseError: false,
+            verbose: false,
+            use24HourTimeFormat: true,
+          })}
+        </Body>
+      </div>
+      <div className="flex items-baseline gap-2">
+        <Body size="extra-small" className={workflowNodeUppercaseClasses}>
+          Cron expression
+        </Body>
+        <Body
+          size="small"
+          className="text-slate-300 normal-case tracking-normal"
+        >
+          {source.cron}
+        </Body>
+      </div>
+    </div>
   );
 }
