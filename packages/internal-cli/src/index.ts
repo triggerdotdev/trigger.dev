@@ -67,6 +67,8 @@ program
       const pizzly_host = options.pizzlyhost ?? "http://localhost:3004";
       const providers = getProviders(true);
 
+      console.log(`Using pizzly host: ${pizzly_host}`);
+
       const client = new SecretsManagerClient({
         region: "us-east-1",
         credentials: fromIni({ profile: options.awsprofile ?? "default" }),
@@ -128,7 +130,10 @@ program
                 provider.authentication.scopes,
                 options.pizzlysecretkey
               );
-              console.log(`Updated config for ${service}`);
+              console.log(
+                `Updated config for ${service} with scopes`,
+                provider.authentication.scopes
+              );
             } else {
               const response = await createConfig(
                 pizzly_host,
@@ -138,7 +143,10 @@ program
                 provider.authentication.scopes,
                 options.pizzlysecretkey
               );
-              console.log(`Created config for ${service}`);
+              console.log(
+                `Created config for ${service} with scopes`,
+                provider.authentication.scopes
+              );
             }
           } catch (error) {
             // For a list of exceptions thrown, see

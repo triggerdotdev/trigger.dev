@@ -1,5 +1,11 @@
 # @trigger.dev/providers
 
+## 0.1.4
+
+### Patch Changes
+
+- ce0d4b9: When posting a message to Slack, you must explicitly specify either channelId or channelName
+
 ## 0.1.3
 
 ### Patch Changes

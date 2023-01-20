@@ -30,6 +30,17 @@ export const PostMessageBodySchema = z.object({
   text: z.string(),
 });
 
+export const ChannelNameOrIdSchema = z.union([
+  z.object({ channelId: z.string() }),
+  z.object({ channelName: z.string() }),
+]);
+
+export const PostMessageOptionsSchema = z
+  .object({
+    text: z.string(),
+  })
+  .and(ChannelNameOrIdSchema);
+
 export const JoinConversationSuccessResponseSchema = z.object({
   ok: z.literal(true),
   channel: z.object({

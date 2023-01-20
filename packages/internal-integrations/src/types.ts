@@ -19,7 +19,7 @@ export interface NormalizedRequest {
 }
 
 export interface NormalizedResponse {
-  output: any;
+  output: NonNullable<any>;
   context: any;
 }
 
