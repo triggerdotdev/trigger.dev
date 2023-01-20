@@ -1,5 +1,17 @@
 # @trigger.dev/integrations
 
+## 0.1.5
+
+### Patch Changes
+
+- b36f0d0: Added additional github webhook triggers, and improved the slack integration
+- Updated dependencies [7f26548]
+- Updated dependencies [5de2a1a]
+- Updated dependencies [d3c593c]
+- Updated dependencies [b36f0d0]
+  - @trigger.dev/sdk@0.2.2
+  - @trigger.dev/providers@0.1.3
+
 ## 0.1.4
 
 ### Patch Changes
