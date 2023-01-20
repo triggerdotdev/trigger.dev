@@ -2,19 +2,22 @@ import { Link } from "@remix-run/react";
 import classnames from "classnames";
 
 const commonClasses =
-  "inline-flex items-center justify-center max-w-max rounded px-4 py-2 text-sm transition whitespace-nowrap";
+  "inline-flex items-center justify-center max-w-max rounded text-sm transition whitespace-nowrap";
 const primaryClasses = classnames(
   commonClasses,
-  "bg-indigo-700 text-white hover:bg-indigo-600 focus:ring-indigo-800 gap-2"
+  "px-4 py-2 bg-indigo-700 text-white hover:bg-indigo-600 focus:ring-indigo-800 gap-2"
 );
 const secondaryClasses = classnames(
   commonClasses,
-  "bg-transparent border border-slate-700 text-white hover:bg-white/5 hover:border-slate-700 focus:ring-slate-300 gap-2"
+  "px-4 py-2 bg-transparent ring-1 ring-slate-700 ring-inset text-white hover:bg-white/5 hover:border-slate-700 focus:ring-slate-300 gap-2"
 );
-
 const tertiaryClasses = classnames(
   commonClasses,
   "text-white/60 hover:text-white gap-1"
+);
+const dangerClasses = classnames(
+  commonClasses,
+  "px-4 py-2 bg-rose-700 text-white hover:bg-rose-600 focus:ring-rose-800 gap-2"
 );
 
 type ButtonProps = React.DetailedHTMLProps<
@@ -52,6 +55,14 @@ export function SecondaryButton({
 export function TertiaryButton({ children, className, ...props }: ButtonProps) {
   return (
     <button className={classnames(tertiaryClasses, className)} {...props}>
+      {children}
+    </button>
+  );
+}
+
+export function DangerButton({ children, className, ...props }: ButtonProps) {
+  return (
+    <button className={classnames(dangerClasses, className)} {...props}>
       {children}
     </button>
   );

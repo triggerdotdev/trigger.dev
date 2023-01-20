@@ -296,7 +296,7 @@ export class TriggerServer {
   }
 
   async #initializeWorkflow(
-    data: z.infer<typeof ServerRPCSchema["INITIALIZE_HOST"]["request"]>
+    data: z.infer<(typeof ServerRPCSchema)["INITIALIZE_HOST"]["request"]>
   ) {
     if (this.#isInitialized) {
       throw new Error(
@@ -324,6 +324,7 @@ export class TriggerServer {
           name: data.packageName,
           version: data.packageVersion,
         },
+        triggerTTL: data.triggerTTL,
       });
 
       this.#workflowId = response.id;
@@ -340,7 +341,7 @@ export class TriggerServer {
           subscriptionInitialPosition: "Earliest",
         },
         handlers: {
-          TRIGGER_WORKFLOW: async (id, data, properties) => {
+          TRIGGER_WORKFLOW: async (id, data, properties, messageAttributes) => {
             this.#logger.debug("Received trigger", id, data, properties);
             // If the API keys don't match, then we should ignore it
             // This ensures the workflow is triggered for the correct environment
@@ -364,6 +365,33 @@ export class TriggerServer {
               throw new Error(
                 "Cannot trigger workflow without a trigger publisher"
               );
+            }
+
+            if (properties["x-ttl"] && messageAttributes.eventTimestamp) {
+              const ttl = properties["x-ttl"];
+              const eventTimestamp = messageAttributes.eventTimestamp;
+              const now = Date.now();
+              const elapsedMilliseconds = now - eventTimestamp.getTime();
+              const elapsedSeconds = elapsedMilliseconds / 1000;
+
+              if (elapsedSeconds > ttl) {
+                this.#logger.debug("Message is expired, ignoring", {
+                  messageAttributes,
+                  properties,
+                });
+
+                await this.#commandPublisher.publish(
+                  "WORKFLOW_RUN_TRIGGER_TIMEOUT",
+                  {
+                    id: data.id,
+                    ttl,
+                    elapsedSeconds,
+                  },
+                  { ...properties, "x-timestamp": String(Date.now()) }
+                );
+
+                return true;
+              }
             }
 
             this.#logger.debug("Triggering workflow", data, properties);
@@ -502,6 +530,7 @@ function createForwardHandler<
       client: pulsarClient,
       config: {
         topic: topicName,
+        batchingEnabled: false,
       },
     });
 

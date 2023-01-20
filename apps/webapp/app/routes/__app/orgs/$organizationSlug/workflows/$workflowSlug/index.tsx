@@ -4,8 +4,13 @@ import invariant from "tiny-invariant";
 import { WorkflowConnections } from "~/components/integrations/WorkflowConnections";
 import { Panel } from "~/components/layout/Panel";
 import { PanelHeader } from "~/components/layout/PanelHeader";
+import { PanelInfo } from "~/components/layout/PanelInfo";
 import { PanelWarning } from "~/components/layout/PanelWarning";
-import { PrimaryLink, SecondaryLink } from "~/components/primitives/Buttons";
+import {
+  PrimaryLink,
+  SecondaryLink,
+  TertiaryLink,
+} from "~/components/primitives/Buttons";
 import { Body } from "~/components/primitives/text/Body";
 import { SubTitle } from "~/components/primitives/text/SubTitle";
 import { Title } from "~/components/primitives/text/Title";
@@ -79,13 +84,24 @@ export default function Page() {
           {workflow.slug}
         </Body>
       </div>
-      {workflow.status !== "READY" && (
+      {workflow.status === "CREATED" && (
         <>
-          <SubTitle>1 issue</SubTitle>
           <PanelWarning className="mb-6">
             This workflow requires its APIs to be connected before it can run.
           </PanelWarning>
         </>
+      )}
+      {workflow.status === "DISABLED" && (
+        <PanelInfo className="mb-6">
+          <Body className="flex grow items-center justify-between">
+            This workflow is disabled. Runs cannot be triggered or tested while
+            disabled. Runs in progress will continue until complete.
+          </Body>
+
+          <TertiaryLink to="settings" className="mr-1">
+            Settings
+          </TertiaryLink>
+        </PanelInfo>
       )}
       {apiConnectionCount > 0 && <WorkflowConnections />}
       {eventRule && (
@@ -123,7 +139,7 @@ export default function Page() {
               View all
             </SecondaryLink>
           </div>
-          <Panel className="p-0 overflow-hidden overflow-x-auto">
+          <Panel className="p-0 overflow-hidden overflow-x-auto mb-6">
             <RunsTable
               runs={runs}
               total={total}

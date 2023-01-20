@@ -58,6 +58,7 @@ export const ServerRPCSchema = {
       trigger: TriggerMetadataSchema,
       packageVersion: z.string(),
       packageName: z.string(),
+      triggerTTL: z.number().optional(),
     }),
     response: z
       .discriminatedUnion("type", [
@@ -81,7 +82,7 @@ export const ServerRPCSchema = {
   COMPLETE_WORKFLOW_RUN: {
     request: z.object({
       runId: z.string(),
-      output: z.string(),
+      output: z.string().optional(),
       timestamp: z.string(),
     }),
     response: z.boolean(),

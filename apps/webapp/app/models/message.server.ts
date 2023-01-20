@@ -61,3 +61,19 @@ export async function redirectWithErrorMessage(
     },
   });
 }
+
+export async function redirectBackWithErrorMessage(
+  request: Request,
+  message: string
+) {
+  const url = new URL(request.url);
+  return redirectWithErrorMessage(url.pathname, request, message);
+}
+
+export async function redirectBackWithSuccessMessage(
+  request: Request,
+  message: string
+) {
+  const url = new URL(request.url);
+  return redirectWithSuccessMessage(url.pathname, request, message);
+}

@@ -19,7 +19,7 @@ export default function CreateNewWorkflow() {
           <span>Documentation</span>
         </PrimaryA>
         <SecondaryA
-          href="https://docs.trigger.dev"
+          href="https://docs.trigger.dev/examples/github"
           target="_blank"
           rel="noreferrer"
         >
@@ -51,7 +51,7 @@ export function CreateNewWorkflowNoWorkflows() {
               <span>Documentation</span>
             </PrimaryA>
             <SecondaryA
-              href="https://docs.trigger.dev"
+              href="https://docs.trigger.dev/examples/github"
               target="_blank"
               rel="noreferrer"
             >

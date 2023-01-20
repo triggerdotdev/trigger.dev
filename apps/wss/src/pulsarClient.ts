@@ -72,4 +72,8 @@ function oauth2AuthenticationFromEnv(): AuthenticationOauth2 | undefined {
   });
 }
 
-export const pulsarClient = createPulsarClient();
+export const pulsarClient = createPulsarClient({
+  ioThreads: 4,
+  messageListenerThreads: 4,
+  operationTimeoutSeconds: 30,
+});

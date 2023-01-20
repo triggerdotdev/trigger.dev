@@ -1,14 +1,21 @@
 // Create a logger class that uses the debug package internally
 
-export type LogLevel = "log" | "error" | "warn" | "info" | "debug";
+const logLevels = [
+  "disabled",
+  "log",
+  "error",
+  "warn",
+  "info",
+  "debug",
+] as const;
 
-const logLevels: Array<LogLevel> = ["log", "error", "warn", "info", "debug"];
+export type LogLevel = (typeof logLevels)[number];
 
 export class Logger {
   #name: string;
   readonly #level: number;
 
-  constructor(name: string, level: LogLevel = "info") {
+  constructor(name: string, level: LogLevel = "disabled") {
     this.#name = name;
     this.#level = logLevels.indexOf(
       (process.env.TRIGGER_LOG_LEVEL ?? level) as LogLevel
@@ -16,31 +23,31 @@ export class Logger {
   }
 
   log(...args: any[]) {
-    if (this.#level < 0) return;
+    if (this.#level < 1) return;
 
-    console.log(`[${formattedDateTime()}] [${this.#name}] `, ...args);
+    console.log(`[${this.#name}] `, ...args);
   }
 
   error(...args: any[]) {
-    if (this.#level < 1) return;
+    if (this.#level < 2) return;
 
     console.error(`[${formattedDateTime()}] [${this.#name}] `, ...args);
   }
 
   warn(...args: any[]) {
-    if (this.#level < 2) return;
+    if (this.#level < 3) return;
 
     console.warn(`[${formattedDateTime()}] [${this.#name}] `, ...args);
   }
 
   info(...args: any[]) {
-    if (this.#level < 3) return;
+    if (this.#level < 4) return;
 
     console.info(`[${formattedDateTime()}] [${this.#name}] `, ...args);
   }
 
   debug(...args: any[]) {
-    if (this.#level < 4) return;
+    if (this.#level < 5) return;
 
     console.debug(`[${formattedDateTime()}] [${this.#name}] `, ...args);
   }

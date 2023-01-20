@@ -138,6 +138,12 @@ model Workflow {
   service    String   @default("trigger")
   eventNames String[]
 
+  disabledAt DateTime?
+  archivedAt DateTime?
+  isArchived Boolean   @default(false)
+
+  triggerTtlInSeconds Int @default(3600)
+
   @@unique([organizationId, slug])
 }
 
@@ -161,6 +167,8 @@ model EventRule {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  enabled Boolean @default(true)
+
   runs WorkflowRun[]
 
   @@unique([workflowId, environmentId])
@@ -178,6 +186,7 @@ enum TriggerType {
 enum WorkflowStatus {
   CREATED
   READY
+  DISABLED
 }
 
 model ExternalSource {
@@ -399,6 +408,9 @@ model WorkflowRun {
   startedAt  DateTime?
   finishedAt DateTime?
 
+  timedOutAt     DateTime?
+  timedOutReason String?
+
   isTest   Boolean              @default(false)
   requests IntegrationRequest[]
   delays   DurableDelay[]
@@ -410,6 +422,7 @@ enum WorkflowRunStatus {
   DISCONNECTED
   SUCCESS
   ERROR
+  TIMED_OUT
 }
 
 model WorkflowRunStep {

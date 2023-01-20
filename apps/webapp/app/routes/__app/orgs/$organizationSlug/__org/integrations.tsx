@@ -1,4 +1,4 @@
-import { SquaresPlusIcon } from "@heroicons/react/24/outline";
+import { EnvelopeIcon } from "@heroicons/react/24/outline";
 import { PlusCircleIcon } from "@heroicons/react/24/solid";
 import type { LoaderArgs } from "@remix-run/server-runtime";
 import type { Provider } from "@trigger.dev/providers";
@@ -104,7 +104,7 @@ export default function Integrations() {
             className="flex flex-col group max-w-[160px] rounded-md bg-slate-800 border border-slate-800 gap-4 text-sm text-slate-200 items-center overflow-hidden hover:bg-slate-800/30 transition shadow-md disabled:opacity-50"
           >
             <div className="relative flex items-center justify-center w-full py-6 bg-black/20 border-b border-slate-800">
-              <SquaresPlusIcon className="h-20 w-20 text-slate-400" />
+              <EnvelopeIcon className="h-20 w-20 text-slate-400" />
             </div>
             <div className="flex flex-col items-center justify-center text-center leading-relaxed text-slate-400">
               <span className="px-2.5">Need an integration?</span>
@@ -129,7 +129,7 @@ function AddButtonContent({
   return (
     <>
       <div className="relative flex items-center justify-center w-full py-6 bg-black/20 border-b border-slate-800">
-        <PlusCircleIcon className="absolute h-7 w-7 top-[6px] right-[6px] z-10 text-slate-500 shadow-md" />
+        <PlusCircleIcon className="absolute h-7 w-7 top-[6px] right-[6px] z-10 text-green-600 shadow-md" />
         <img
           src={integration.icon}
           alt={integration.name}

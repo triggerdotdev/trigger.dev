@@ -7,23 +7,25 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import invariant from "tiny-invariant";
 import { Panel } from "~/components/layout/Panel";
+import { PanelInfo } from "~/components/layout/PanelInfo";
+import { PanelWarning } from "~/components/layout/PanelWarning";
 import { PaginationControls } from "~/components/Pagination";
+import { TertiaryLink } from "~/components/primitives/Buttons";
 import { StyledListBox } from "~/components/primitives/ListBox";
+import { Body } from "~/components/primitives/text/Body";
+import { Title } from "~/components/primitives/text/Title";
+import { RunsTable } from "~/components/runs/RunsTable";
 import {
   runStatusIcon,
   runStatusLabel,
   runStatusTitle,
 } from "~/components/runs/runStatus";
-import { RunsTable } from "~/components/runs/RunsTable";
+import { useCurrentWorkflow } from "~/hooks/useWorkflows";
+import { getRuntimeEnvironmentFromRequest } from "~/models/runtimeEnvironment.server";
 import type { WorkflowRunStatus } from "~/models/workflowRun.server";
 import { WorkflowRunListPresenter } from "~/models/workflowRunListPresenter.server";
-import { requireUserId } from "~/services/session.server";
-import { getRuntimeEnvironmentFromRequest } from "~/models/runtimeEnvironment.server";
 import { allStatuses } from "~/models/workflowRunStatus";
-import { Title } from "~/components/primitives/text/Title";
-import { useCurrentWorkflow } from "~/hooks/useWorkflows";
-import { PanelWarning } from "~/components/layout/PanelWarning";
-import { SubTitle } from "~/components/primitives/text/SubTitle";
+import { requireUserId } from "~/services/session.server";
 
 export const loader = async ({ request, params }: LoaderArgs) => {
   const userId = await requireUserId(request);
@@ -77,13 +79,23 @@ export default function Page() {
   return (
     <>
       <Title>Runs</Title>
-      {workflow.status !== "READY" && (
+      {workflow.status === "CREATED" && (
         <>
-          <SubTitle>1 issue</SubTitle>
           <PanelWarning className="mb-6">
             This workflow requires its APIs to be connected before it can run.
           </PanelWarning>
         </>
+      )}
+      {workflow.status === "DISABLED" && (
+        <PanelInfo className="mb-6">
+          <Body className="flex grow items-center justify-between">
+            This workflow is disabled. Runs cannot be triggered or tested while
+            disabled. Runs in progress will continue until complete.
+          </Body>
+          <TertiaryLink to="settings" className="mr-1">
+            Settings
+          </TertiaryLink>
+        </PanelInfo>
       )}
       <fetcher.Form
         method="get"

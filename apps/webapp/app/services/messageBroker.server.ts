@@ -43,6 +43,7 @@ import { WaitForConnection } from "./requests/waitForConnection.server";
 import { WorkflowRunDisconnected } from "./runs/runDisconnected.server";
 import { DeliverScheduledEvent } from "./scheduler/deliverScheduledEvent.server";
 import { RegisterSchedulerSource } from "./scheduler/registerSchedulerSource.server";
+import { WorkflowRunTriggerTimeout } from "./runs/runTriggerTimeout.server";
 
 let pulsarClient: PulsarClient;
 let triggerPublisher: ZodPublisher<TriggerCatalog>;
@@ -130,6 +131,9 @@ export async function init() {
 function createClient() {
   const client = createPulsarClient({
     serviceUrl: env.PULSAR_SERVICE_URL,
+    ioThreads: 5,
+    messageListenerThreads: 5,
+    operationTimeoutSeconds: 30,
   });
 
   console.log(`📡 Connected to pulsar at ${env.PULSAR_SERVICE_URL}`);
@@ -142,6 +146,7 @@ function createTriggerPublisher() {
     client: pulsarClient,
     config: {
       topic: Topics.triggers,
+      batchingEnabled: false,
     },
     schema: triggerCatalog,
   });
@@ -187,10 +192,10 @@ function createCommandSubscriber() {
       },
       WORKFLOW_RUN_COMPLETE: async (id, data, properties) => {
         await completeWorkflowRun(
-          data.output,
           properties["x-workflow-run-id"],
           properties["x-api-key"],
-          properties["x-timestamp"]
+          properties["x-timestamp"],
+          data.output
         );
 
         return true;
@@ -201,6 +206,13 @@ function createCommandSubscriber() {
         const success = await service.call(data.id, properties["x-timestamp"]);
 
         return !!success;
+      },
+      WORKFLOW_RUN_TRIGGER_TIMEOUT: async (id, data, properties) => {
+        const service = new WorkflowRunTriggerTimeout();
+
+        await service.call(data);
+
+        return true;
       },
       SEND_INTEGRATION_REQUEST: async (id, data, properties) => {
         const service = new CreateIntegrationRequest();
@@ -251,6 +263,7 @@ function createCommandResponsePublisher() {
     client: pulsarClient,
     config: {
       topic: Topics.runCommandResponses,
+      batchingEnabled: false,
     },
     schema: commandResponseCatalog,
   });
@@ -521,6 +534,10 @@ function createTaskQueue() {
             "x-workflow-id": run.workflowId,
             "x-env": run.environment.slug,
             "x-workflow-run-id": run.id,
+            "x-ttl": run.workflow.triggerTtlInSeconds,
+          },
+          {
+            eventTimestamp: run.event.timestamp.getTime(),
           }
         );
 

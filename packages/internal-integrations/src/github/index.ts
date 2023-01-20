@@ -8,14 +8,15 @@ import { Webhooks } from "@octokit/webhooks";
 import { z } from "zod";
 import { github } from "@trigger.dev/providers";
 import { getAccessToken } from "../accessInfo";
-import fetch from "node-fetch";
 
 export class GitHubWebhookIntegration implements WebhookIntegration {
   keyForSource(source: unknown): string {
     const githubSource = parseWebhookSource(source);
 
     if (githubSource.subresource === "repository") {
-      return `repository.${githubSource.repo}`;
+      return `repository.${githubSource.repo}.${githubSource.events.join(
+        "."
+      )}}`;
     } else if (githubSource.subresource === "organization") {
       return `organization.${githubSource.org}`;
     } else {

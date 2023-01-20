@@ -5,7 +5,7 @@ import { WorkflowSendRunEventPropertiesSchema } from "../sharedSchemas";
 export const commands = {
   WORKFLOW_RUN_COMPLETE: {
     data: z.object({
-      output: z.string(),
+      output: z.string().optional(),
     }),
     properties: WorkflowSendRunEventPropertiesSchema,
   },
@@ -24,6 +24,14 @@ export const commands = {
   WORKFLOW_RUN_DISCONNECTED: {
     data: z.object({
       id: z.string(),
+    }),
+    properties: WorkflowSendRunEventPropertiesSchema,
+  },
+  WORKFLOW_RUN_TRIGGER_TIMEOUT: {
+    data: z.object({
+      id: z.string(),
+      ttl: z.number(),
+      elapsedSeconds: z.number(),
     }),
     properties: WorkflowSendRunEventPropertiesSchema,
   },

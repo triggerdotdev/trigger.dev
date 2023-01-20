@@ -11,6 +11,7 @@ export const WorkflowMetadataSchema = z.object({
   name: z.string(),
   trigger: TriggerMetadataSchema,
   package: PackageMetadataSchema,
+  triggerTTL: z.number().optional(),
 });
 
 export type WorkflowMetadata = z.infer<typeof WorkflowMetadataSchema>;

@@ -16,6 +16,7 @@ export type PublishOptions = {
   partitionKey?: string;
   orderingKey?: string;
   id?: string;
+  eventTimestamp?: number;
 };
 
 type PendingMessages<PublisherSchema extends MessageCatalogSchema> = Array<{
@@ -216,6 +217,7 @@ export class ZodPublisher<PublisherSchema extends MessageCatalogSchema> {
       deliverAt: options?.deliverAt,
       partitionKey: options?.partitionKey,
       orderingKey: options?.orderingKey,
+      eventTimestamp: options?.eventTimestamp,
     });
 
     return response.toString();

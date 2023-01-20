@@ -52,6 +52,10 @@ export class DeliverScheduledEvent {
       return true;
     }
 
+    if (!eventRule.enabled) {
+      return true;
+    }
+
     // 1. Create a TriggerEvent
     const triggerEvent = await this.#prismaClient.triggerEvent.create({
       data: {
@@ -63,6 +67,7 @@ export class DeliverScheduledEvent {
         context: {},
         organizationId: schedulerSource.organizationId,
         environmentId: schedulerSource.environmentId,
+        timestamp: payload.scheduledTime,
       },
     });
 

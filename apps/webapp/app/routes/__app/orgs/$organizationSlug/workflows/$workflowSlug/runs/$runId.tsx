@@ -40,7 +40,7 @@ import { TriggerTypeIcon } from "~/components/triggers/TriggerIcons";
 import { triggerLabel } from "~/components/triggers/triggerLabel";
 import { useCurrentOrganization } from "~/hooks/useOrganizations";
 import { useCurrentWorkflow } from "~/hooks/useWorkflows";
-import type { WorkflowRunStatus } from "~/models/workflowRun.server";
+import { WorkflowRunStatus } from "~/models/workflowRun.server";
 import { WorkflowRunPresenter } from "~/models/workflowRunPresenter.server";
 import { requireUserId } from "~/services/session.server";
 import { dateDifference, formatDateTime } from "~/utils";
@@ -216,6 +216,29 @@ export default function Page() {
 
       {run.status === "RUNNING" && (
         <div className="h-10 w-full ml-[10px] border-dashed border-l border-gradient border-slate-700"></div>
+      )}
+
+      {run.status === "TIMED_OUT" && (
+        <>
+          <div className="h-3 w-full ml-[10px] -mr-[10px] border-l border-slate-700"></div>
+          <Panel>
+            <PanelHeader
+              icon={
+                <ExclamationTriangleIcon className="h-6 w-6 text-amber-300" />
+              }
+              title="Run timed out"
+              runId={run.id}
+            />
+            <div className="flex flex-col gap-1 text-slate-300">
+              <Body size="extra-small" className={workflowNodeUppercaseClasses}>
+                Reason
+              </Body>
+              <Body className={workflowNodeDelayClasses} size="small">
+                {run.timedOutReason}
+              </Body>
+            </div>
+          </Panel>
+        </>
       )}
 
       {run.error && <Error error={run.error} />}

@@ -117,6 +117,7 @@ export function AddApiKeyButton({
                 name="api_key"
                 placeholder="<api_key>"
                 spellCheck={false}
+                type="password"
               />
               {errors && <FormError errors={errors} path={["api_key"]} />}
             </InputGroup>

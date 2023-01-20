@@ -21,11 +21,11 @@ const trigger = new Trigger({
       "Received domain.created event, waiting for 1 minutes..."
     );
 
-    await ctx.waitFor("initial-wait", { minutes: 1 });
+    await ctx.waitFor("initial-wait", { seconds: 5 });
 
     const response = await slack.postMessage("send-to-slack", {
       channel: "test-integrations",
-      text: `New domain created: ${event.domain} by customer ${event.customerId}`,
+      text: `New domain created: ${event.domain} by customer ${event.customerId} cc @Eric #general`,
     });
 
     await ctx.logger.debug("Debug message");

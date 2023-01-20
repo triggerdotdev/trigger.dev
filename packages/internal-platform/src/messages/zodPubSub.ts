@@ -27,7 +27,11 @@ export class ZodPubSub<TPubSubSchema extends MessageCatalogSchema> {
   constructor(options: ZodPubSubOptions<TPubSubSchema>) {
     this.#publisher = new ZodPublisher({
       client: options.client,
-      config: { ...options.publisherConfig, topic: options.topic },
+      config: {
+        ...options.publisherConfig,
+        topic: options.topic,
+        batchingEnabled: false,
+      },
       schema: options.schema,
     });
 

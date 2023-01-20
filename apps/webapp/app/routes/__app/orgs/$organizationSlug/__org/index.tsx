@@ -4,6 +4,7 @@ import {
 } from "@heroicons/react/24/solid";
 import { Link } from "@remix-run/react";
 import type { LoaderArgs } from "@remix-run/server-runtime";
+import classNames from "classnames";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import invariant from "tiny-invariant";
 import { ApiLogoIcon } from "~/components/code/ApiLogoIcon";
@@ -19,6 +20,7 @@ import { Title } from "~/components/primitives/text/Title";
 import { runStatusLabel } from "~/components/runs/runStatus";
 import { TriggerTypeIcon } from "~/components/triggers/TriggerIcons";
 import { useCurrentOrganization } from "~/hooks/useOrganizations";
+import { getRuntimeEnvironmentFromRequest } from "~/models/runtimeEnvironment.server";
 import type { WorkflowListItem } from "~/models/workflowListPresenter.server";
 import { WorkflowListPresenter } from "~/models/workflowListPresenter.server";
 import { requireUserId } from "~/services/session.server";
@@ -28,10 +30,12 @@ export const loader = async ({ request, params }: LoaderArgs) => {
   await requireUserId(request);
   invariant(params.organizationSlug, "Organization slug is required");
 
+  const currentEnv = await getRuntimeEnvironmentFromRequest(request);
+
   const presenter = new WorkflowListPresenter();
 
   try {
-    const workflows = await presenter.data(params.organizationSlug);
+    const workflows = await presenter.data(params.organizationSlug, currentEnv);
     return typedjson({ workflows });
   } catch (error: any) {
     console.error(error);
@@ -84,13 +88,16 @@ function WorkflowList({
           <li key={workflow.id}>
             <Link
               to={`/orgs/${currentOrganizationSlug}/workflows/${workflow.slug}`}
-              className="block hover:bg-slate-850/40 transition"
+              className={classNames(
+                "block hover:bg-slate-850/40 transition",
+                workflow.status === "DISABLED" ? workflowDisabled : ""
+              )}
             >
               <div className="flex justify-between lg:items-center flex-col lg:flex-row flex-wrap lg:flex-nowrap pl-4 pr-4 py-4">
                 <div className="flex items-center flex-1 justify-between">
                   <div className="relative flex items-center">
-                    {workflow.status !== "READY" && (
-                      <ExclamationTriangleIcon className="absolute -top-1.5 -left-1.5 h-6 w-6 text-amber-500" />
+                    {workflow.status === "CREATED" && (
+                      <ExclamationTriangleIcon className="absolute -top-1.5 -left-1.5 h-6 w-6 text-amber-400" />
                     )}
                     <div className="p-3 bg-slate-850 rounded-md flex-shrink-0 self-start h-20 w-20 mr-4">
                       <TriggerTypeIcon
@@ -114,7 +121,7 @@ function WorkflowList({
                           {workflow.trigger.title}
                         </Header3>
                       </div>
-                      <div className="flex flex-wrap gap-x-2 items-baseline">
+                      <div className="flex flex-wrap gap-x-3 items-baseline">
                         {workflow.trigger.properties &&
                           workflow.trigger.properties.map((property) => (
                             <WorkflowProperty
@@ -215,3 +222,5 @@ function WorkflowProperty({
     </div>
   );
 }
+
+const workflowDisabled = "opacity-30";

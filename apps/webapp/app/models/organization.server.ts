@@ -28,6 +28,11 @@ export function getOrganizationFromSlug({
             },
           },
         },
+        where: { isArchived: false },
+        orderBy: [
+          { disabledAt: { sort: "asc", nulls: "first" } },
+          { title: "asc" },
+        ],
       },
       environments: {
         select: {

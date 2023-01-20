@@ -1,10 +1,11 @@
-import { BeakerIcon, InformationCircleIcon } from "@heroicons/react/24/outline";
+import { BeakerIcon } from "@heroicons/react/24/outline";
 import { Link } from "@remix-run/react";
 import classNames from "classnames";
 import humanizeDuration from "humanize-duration";
 import type { ReactNode } from "react";
 import type { WorkflowRunListPresenter } from "~/models/workflowRunListPresenter.server";
 import { dateDifference, formatDateTime } from "~/utils";
+import { PanelWarning } from "../layout/PanelWarning";
 import { Spinner } from "../primitives/Spinner";
 import { runStatusIcon, runStatusLabel } from "./runStatus";
 
@@ -151,10 +152,7 @@ function BlankRow({ children }: { children: ReactNode }) {
 export function NoRuns({ title }: { title: string }) {
   return (
     <div className="flex items-center justify-center">
-      <div className="flex items-center justify-center p-3 pr-4 gap-1 bg-yellow-200 border border-yellow-400 rounded-md text-yellow-700">
-        <InformationCircleIcon className="w-5 h-5" />
-        <span className="text-gray">{title}</span>
-      </div>
+      <PanelWarning className="max-w-max">{title}</PanelWarning>
     </div>
   );
 }

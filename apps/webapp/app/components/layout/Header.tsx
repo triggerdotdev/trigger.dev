@@ -26,7 +26,7 @@ export function Header({ children }: HeaderProps) {
 
       <div className="flex flex-1 justify-center">{children}</div>
 
-      <div className="flex items-center gap-1">
+      <div className="flex items-center gap-4">
         <TertiaryA href="https://docs.trigger.dev" target="_blank">
           <DocumentTextIcon className="h-5 w-5" />
           Docs
@@ -60,7 +60,7 @@ export function BreadcrumbDivider() {
         y1="0.6286"
         x2="0.6286"
         y2="24.6762"
-        opacity={0.5}
+        opacity={0.3}
         stroke="white"
         strokeLinecap="round"
       />
