@@ -11,8 +11,14 @@ import { slack } from "@trigger.dev/providers";
 
 import debug from "debug";
 import { getAccessToken } from "../accessInfo";
+import { z } from "zod";
 
 const log = debug("trigger:integrations:slack");
+
+const SendSlackMessageRequestBodySchema =
+  slack.schemas.PostMessageBodySchema.extend({
+    link_names: z.literal(1),
+  });
 
 class SlackRequestIntegration implements RequestIntegration {
   #joinChannelEndpoint = new HttpEndpoint<
@@ -32,7 +38,7 @@ class SlackRequestIntegration implements RequestIntegration {
 
   #postMessageEndpoint = new HttpEndpoint<
     typeof slack.schemas.PostMessageResponseSchema,
-    typeof slack.schemas.PostMessageBodySchema
+    typeof SendSlackMessageRequestBodySchema
   >({
     response: slack.schemas.PostMessageResponseSchema,
     method: "POST",
@@ -101,6 +107,7 @@ class SlackRequestIntegration implements RequestIntegration {
 
     const response = await service.performRequest(this.#postMessageEndpoint, {
       ...parsedParams,
+      link_names: 1,
       channel,
     });
 
