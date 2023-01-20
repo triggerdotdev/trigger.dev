@@ -1,5 +1,4 @@
 import type { RuntimeEnvironment } from ".prisma/client";
-import type { Session } from "@remix-run/node";
 import { createCookieSessionStorage } from "@remix-run/node";
 import { prisma } from "~/db.server";
 import { env } from "~/env.server";

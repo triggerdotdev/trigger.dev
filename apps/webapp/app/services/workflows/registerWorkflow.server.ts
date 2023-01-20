@@ -80,6 +80,7 @@ export class RegisterWorkflow {
       },
       update: {
         filter: "filter" in payload.trigger ? payload.trigger.filter : {},
+        trigger: payload.trigger,
       },
       create: {
         workflowId: workflow.id,

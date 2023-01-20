@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { EventFilterSchema } from "./events";
+import { EventFilterSchema, ScheduleSourceSchema } from "./events";
 import { JsonSchema } from "./json";
 
 export const CustomEventTriggerSchema = z.object({
@@ -31,7 +31,7 @@ export const ScheduledEventTriggerSchema = z.object({
   type: z.literal("SCHEDULE"),
   service: z.literal("scheduler"),
   name: z.string(),
-  source: JsonSchema,
+  source: ScheduleSourceSchema,
 });
 export type ScheduledEventTrigger = z.infer<typeof ScheduledEventTriggerSchema>;
 

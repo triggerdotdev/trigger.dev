@@ -20,6 +20,7 @@ import { Title } from "~/components/primitives/text/Title";
 import { runStatusLabel } from "~/components/runs/runStatus";
 import { TriggerTypeIcon } from "~/components/triggers/TriggerIcons";
 import { useCurrentOrganization } from "~/hooks/useOrganizations";
+import { getRuntimeEnvironmentFromRequest } from "~/models/runtimeEnvironment.server";
 import type { WorkflowListItem } from "~/models/workflowListPresenter.server";
 import { WorkflowListPresenter } from "~/models/workflowListPresenter.server";
 import { requireUserId } from "~/services/session.server";
@@ -29,10 +30,12 @@ export const loader = async ({ request, params }: LoaderArgs) => {
   await requireUserId(request);
   invariant(params.organizationSlug, "Organization slug is required");
 
+  const currentEnv = await getRuntimeEnvironmentFromRequest(request);
+
   const presenter = new WorkflowListPresenter();
 
   try {
-    const workflows = await presenter.data(params.organizationSlug);
+    const workflows = await presenter.data(params.organizationSlug, currentEnv);
     return typedjson({ workflows });
   } catch (error: any) {
     console.error(error);
