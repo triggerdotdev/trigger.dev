@@ -19,13 +19,13 @@ new Trigger({
   id: "my-workflow-1",
   name: "Posts to Slack when GitHub Issue created or modified",
   apiKey: "<my_api_key>",
-  on: github.events.repoIssueEvent({
+  on: github.events.issueEvent({
     repo: "my-github-org/my-github-repo",
   }),
 
   run: async (event, ctx) => {
     const response = await slack.postMessage("send-to-slack", {
-      channel: "my-slack-channel-name",
+      channelName: "my-slack-channel-name",
       text: `A new issue has been created or modified. ${event.action}`,
     });
 
