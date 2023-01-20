@@ -439,19 +439,19 @@ new Trigger({
   },
 }).listen();
 
-// new Trigger({
-//   id: "cron-scheduled-workflow",
-//   name: "Cron Scheduled Workflow",
-//   apiKey: "trigger_dev_zC25mKNn6c0q",
-//   endpoint: "ws://localhost:8889/ws",
-//   logLevel: "debug",
-//   on: scheduleEvent({ cron: "0 * * * *" }),
-//   run: async (event, ctx) => {
-//     await ctx.logger.info("Received the cron scheduled event", {
-//       event,
-//       wallTime: new Date(),
-//     });
+new Trigger({
+  id: "cron-scheduled-workflow",
+  name: "Cron Scheduled Workflow",
+  apiKey: "trigger_dev_zC25mKNn6c0q",
+  endpoint: "ws://localhost:8889/ws",
+  logLevel: "debug",
+  on: scheduleEvent({ cron: "0 * * * *" }),
+  run: async (event, ctx) => {
+    await ctx.logger.info("Received the cron scheduled event", {
+      event,
+      wallTime: new Date(),
+    });
 
-//     return { foo: "bar" };
-//   },
-// }).listen();
+    return { foo: "bar" };
+  },
+}).listen();
