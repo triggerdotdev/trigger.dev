@@ -62,6 +62,7 @@ export class WorkflowRunPresenter {
       error: workflowRun.error
         ? await ErrorSchema.parseAsync(workflowRun.error)
         : undefined,
+      timedOutReason: workflowRun.timedOutReason,
     };
   }
 }
