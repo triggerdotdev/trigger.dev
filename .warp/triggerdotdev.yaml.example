@@ -33,19 +33,6 @@ windows:
               commands:
                 - exec: pnpm run dev --filter webapp
             - cwd: /Users/eric/code/triggerdotdev/trigger.dev/apps/webapp
-      - title: sdk
-        layout:
-          split_direction: horizontal
-          panes:
-            - cwd: /Users/eric/code/triggerdotdev/trigger.dev
-            - split_direction: vertical
-              panes:
-                - cwd: /Users/eric/code/triggerdotdev/trigger.dev
-                  commands:
-                    - exec: pnpm run dev --filter @trigger.dev/sdk
-                - cwd: /Users/eric/code/triggerdotdev/trigger.dev
-                  commands:
-                    - exec: pnpm run dev --filter @trigger.dev/integrations
       - title: ngrok
         layout:
           split_direction: horizontal
