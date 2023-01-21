@@ -1,33 +1,13 @@
 {
+  "private": true,
   "name": "@trigger.dev/common-schemas",
   "version": "0.1.0",
   "description": "Common zod schemas used across trigger.dev applications and packages",
   "main": "./src/index.ts",
   "types": "./src/index.ts",
-  "publishConfig": {
-    "access": "public"
-  },
-  "files": [
-    "dist"
-  ],
-  "exports": {
-    ".": {
-      "import": "./dist/index.js",
-      "require": "./dist/index.js"
-    },
-    "./package.json": "./package.json"
-  },
-  "scripts": {
-    "clean": "rimraf dist",
-    "build": "npm run clean && npm run build:tsup",
-    "build:tsup": "tsup",
-    "dev": "tsup --watch"
-  },
   "devDependencies": {
     "@trigger.dev/tsconfig": "workspace:*",
     "@types/node": "16",
-    "rimraf": "^3.0.2",
-    "tsup": "^6.5.0",
     "typescript": "^4.9.4"
   },
   "dependencies": {

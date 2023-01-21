@@ -33,7 +33,7 @@
   "scripts": {
     "clean": "rimraf dist",
     "build": "npm run clean && npm run build:tsup",
-    "build:tsup": "tsup",
+    "build:tsup": "tsup --dts-resolve",
     "dev": "tsup --watch"
   },
   "dependencies": {
