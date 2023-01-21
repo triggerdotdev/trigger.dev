@@ -1,14 +1,16 @@
 {
   "extends": "@trigger.dev/tsconfig/node16.json",
-  "include": [
-    "./src/**/*.ts",
-    "../internal-providers/src/providers/slack/schemas.ts"
-  ],
+  "include": ["./src/**/*.ts"],
   "compilerOptions": {
     "experimentalDecorators": true,
     "emitDecoratorMetadata": true,
-    "paths": {},
+    "baseUrl": ".",
+    "paths": {
+      "@trigger.dev/providers": ["../trigger-providers/src/index.ts"],
+      "@trigger.dev/providers/*": ["../trigger-providers/src/*"]
+    },
     "lib": ["DOM"]
   },
+
   "exclude": ["node_modules"]
 }

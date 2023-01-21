@@ -19,8 +19,7 @@
   "scripts": {
     "clean": "rimraf dist",
     "build": "npm run clean && npm run build:tsup",
-    "build:tsup": "tsup",
-    "dev": "tsup --watch"
+    "build:tsup": "tsup"
   },
   "dependencies": {
     "zod": "^3.20.2",

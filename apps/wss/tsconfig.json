@@ -7,8 +7,14 @@
     "paths": {
       "internal-bridge/*": ["../../packages/internal-bridge/src/*"],
       "internal-bridge": ["../../packages/internal-bridge/src/index"],
+      "internal-platform": ["../../packages/internal-platform/src/index"],
+      "internal-platform/*": ["../../packages/internal-platform/src/*"],
       "internal-pulsar/*": ["../../packages/internal-pulsar/src/*"],
-      "internal-pulsar": ["../../packages/internal-pulsar/src/index"]
+      "internal-pulsar": ["../../packages/internal-pulsar/src/index"],
+      "@trigger.dev/common-schemas": [
+        "../../packages/common-schemas/src/index"
+      ],
+      "@trigger.dev/common-schemas/*": ["../../packages/common-schemas/src/*"]
     },
     "lib": ["DOM", "DOM.Iterable"]
   },
