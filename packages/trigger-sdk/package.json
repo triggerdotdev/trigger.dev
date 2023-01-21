@@ -1,6 +1,6 @@
 {
   "name": "@trigger.dev/sdk",
-  "version": "0.2.3",
+  "version": "0.2.5",
   "description": "trigger.dev Node.JS SDK",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -33,7 +33,7 @@
   "scripts": {
     "clean": "rimraf dist",
     "build": "npm run clean && npm run build:tsup",
-    "build:tsup": "tsup",
+    "build:tsup": "tsup --dts-resolve",
     "dev": "tsup --watch"
   },
   "dependencies": {

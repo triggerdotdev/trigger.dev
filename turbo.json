@@ -95,6 +95,9 @@
     "REPLY_TO_EMAIL",
     "RESEND_API_KEY",
     "PIZZLY_HOST",
-    "DEBUG"
+    "DEBUG",
+    "TRIGGER_LOG_LEVEL",
+    "TRIGGER_API_KEY",
+    "TRIGGER_API_URL"
   ]
 }

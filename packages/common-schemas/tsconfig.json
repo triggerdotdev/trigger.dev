@@ -4,6 +4,7 @@
   "compilerOptions": {
     "experimentalDecorators": true,
     "emitDecoratorMetadata": true,
+    "composite": true,
     "paths": {}
   },
   "exclude": ["node_modules"]
