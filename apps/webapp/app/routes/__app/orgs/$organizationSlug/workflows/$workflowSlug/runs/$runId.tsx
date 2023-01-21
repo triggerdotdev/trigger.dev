@@ -40,7 +40,7 @@ import { TriggerTypeIcon } from "~/components/triggers/TriggerIcons";
 import { triggerLabel } from "~/components/triggers/triggerLabel";
 import { useCurrentOrganization } from "~/hooks/useOrganizations";
 import { useCurrentWorkflow } from "~/hooks/useWorkflows";
-import { WorkflowRunStatus } from "~/models/workflowRun.server";
+import type { WorkflowRunStatus } from "~/models/workflowRun.server";
 import { WorkflowRunPresenter } from "~/models/workflowRunPresenter.server";
 import { requireUserId } from "~/services/session.server";
 import { dateDifference, formatDateTime } from "~/utils";
@@ -430,6 +430,15 @@ function StepHeader({ step }: { step: Step }) {
           integration={step.service.connection?.title}
         />
       );
+    case "FETCH_REQUEST":
+      return (
+        <PanelHeader
+          icon={stepInfo[step.type].icon}
+          title={step.title}
+          startedAt={step.startedAt}
+          finishedAt={step.finishedAt}
+        />
+      );
     default:
       return (
         <PanelHeader
@@ -464,6 +473,8 @@ function StepBody({ step }: { step: Step }) {
       return <CustomEventStep event={step} />;
     case "INTEGRATION_REQUEST":
       return <IntegrationRequestStep request={step} />;
+    case "FETCH_REQUEST":
+      return <FetchRequestStep request={step} />;
     case "DURABLE_DELAY":
       return <DelayStep step={step} />;
   }
@@ -705,6 +716,86 @@ function IntegrationRequestStep({
   );
 }
 
+function FetchRequestStep({
+  request,
+}: {
+  request: StepType<Step, "FETCH_REQUEST">;
+}) {
+  const organization = useCurrentOrganization();
+  invariant(organization, "Organization must be set");
+
+  return (
+    <>
+      <div className="mt-4">
+        {request.input && (
+          <>
+            <InputTitle />
+            <CodeBlock code={stringifyCode(request.input)} align="top" />
+          </>
+        )}
+      </div>
+
+      <div className="mt-4">
+        {request.requestStatus === "ERROR" ? (
+          <div>
+            <div className="flex gap-2 mb-2 mt-3 ">
+              <ExclamationTriangleIcon className="h-5 w-5 text-rose-500" />
+              <Body size="small" className="text-rose-500">
+                Failed with error:
+              </Body>
+            </div>
+            <CodeBlock
+              code={request.output ? stringifyCode(request.output) : ""}
+              align="top"
+              maxHeight="200px"
+              className="border border-rose-500"
+            />
+          </div>
+        ) : request.requestStatus === "RETRYING" ? (
+          <div>
+            <div className="flex gap-2 mb-2 mt-3 ">
+              <ExclamationTriangleIcon className="h-5 w-5 text-rose-500" />
+              <Body size="small" className="text-rose-500">
+                {request.lastResponse ? (
+                  <>Got a {request.lastResponse.status} response, retrying...</>
+                ) : (
+                  <>Retrying...</>
+                )}
+              </Body>
+            </div>
+            {request.output ? (
+              <CodeBlock
+                code={request.output ? stringifyCode(request.output) : ""}
+                align="top"
+                maxHeight="200px"
+                className="border border-rose-500"
+              />
+            ) : null}
+          </div>
+        ) : (
+          request.output && (
+            <>
+              <div className="flex justify-between">
+                <OutputTitle />
+                {request.retryCount > 0 && (
+                  <Body size="small" className="text-slate-400">
+                    {request.retryCount} retries
+                  </Body>
+                )}
+              </div>
+              <CodeBlock
+                code={stringifyCode(request.output)}
+                align="top"
+                maxHeight="200px"
+              />
+            </>
+          )
+        )}
+      </div>
+    </>
+  );
+}
+
 function Error({ error }: { error: Run["error"] }) {
   if (!error) return null;
 
@@ -752,6 +843,10 @@ const stepInfo: Record<Step["type"], { label: string; icon: ReactNode }> = {
   DISCONNECTION: {
     label: "Disconnected",
     icon: <ExclamationCircleIcon className={styleClass} />,
+  },
+  FETCH_REQUEST: {
+    label: "Fetch request",
+    icon: <GlobeAltIcon className={styleClass} />,
   },
 } as const;
 

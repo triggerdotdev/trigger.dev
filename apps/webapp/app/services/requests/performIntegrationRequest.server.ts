@@ -188,14 +188,14 @@ export class PerformIntegrationRequest {
   #calculateRetryInSeconds(
     retryCount: number,
     options: { factor: number; maxTimeout: number; minTimeout: number } = {
-      factor: 2,
+      factor: 1.8,
       minTimeout: 1000,
-      maxTimeout: Infinity,
+      maxTimeout: 60000,
     }
   ) {
     const timeout = options.factor ** retryCount * options.minTimeout;
 
-    return Math.min(timeout, options.maxTimeout);
+    return Math.min(timeout, options.maxTimeout) / 1000;
   }
 
   async #createResponse(
