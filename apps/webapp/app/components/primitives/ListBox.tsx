@@ -37,7 +37,7 @@ function Button({ children, ...props }: ButtonProps) {
 
 type OptionsProps = Parameters<typeof Listbox.Options>[0];
 const optionsClassName =
-  "absolute z-10 mt-1 max-h-60 w-full overflow-auto rounded p-1 bg-slate-700 text-base shadow-lg";
+  "absolute z-10 mt-1 max-h-96 w-full overflow-auto rounded p-1 bg-slate-700 text-base shadow-lg";
 function Options(props: OptionsProps) {
   return (
     <Listbox.Options
