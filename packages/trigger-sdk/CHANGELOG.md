@@ -1,5 +1,11 @@
 # @trigger.dev/sdk
 
+## 0.2.5
+
+### Patch Changes
+
+- 6673798: Bundling common-schemas into @trigger.dev/sdk
+
 ## 0.2.4
 
 ### Patch Changes

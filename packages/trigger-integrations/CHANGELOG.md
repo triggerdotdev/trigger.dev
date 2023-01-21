@@ -1,5 +1,13 @@
 # @trigger.dev/integrations
 
+## 0.1.8
+
+### Patch Changes
+
+- 6673798: Bundling common-schemas into @trigger.dev/sdk
+- Updated dependencies [6673798]
+  - @trigger.dev/sdk@0.2.5
+
 ## 0.1.7
 
 ### Patch Changes
