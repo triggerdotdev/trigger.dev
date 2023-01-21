@@ -25,7 +25,7 @@ new Trigger({
   name: "Posts to Slack when GitHub Issue created or modified",
   apiKey: "<my_api_key>",
   //this is the webhook subscription
-  on: github.events.repoIssueEvent({
+  on: github.events.issueEvent({
     repo: "my-github-org/my-github-repo",
   }),
   //this function is run when the webhook fires
