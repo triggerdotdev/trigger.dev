@@ -85,7 +85,12 @@ program
           }
 
           const provider = providers.find((p) => p.slug === service);
-          if (provider?.authentication.type !== "oauth") {
+          if (!provider) {
+            console.log(`No provider found for ${service}`);
+            console.log("Skipping…");
+            return Promise.resolve();
+          }
+          if (provider.authentication.type !== "oauth") {
             console.log(
               `The provider ${service} is the wrong type ${provider?.authentication.type}. Must be oauth`
             );

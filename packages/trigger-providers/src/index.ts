@@ -1,16 +1,18 @@
+import { airtable } from "./providers/airtable";
 import { github } from "./providers/github";
-import { slack } from "./providers/slack";
 import { shopify } from "./providers/shopify";
+import { slack } from "./providers/slack";
 import { Provider } from "./types";
 
 export type {
-  Provider,
   APIKeyAuthentication,
   OAuthAuthentication,
+  Provider,
 } from "./types";
+export { airtable, github, slack, shopify };
 
 const providerCatalog = {
-  providers: { github, slack, shopify },
+  providers: { airtable, github, slack, shopify },
 };
 
 export function getProviders(isAdmin: boolean): Provider[] {
@@ -28,5 +30,3 @@ export function getProviders(isAdmin: boolean): Provider[] {
     }
   }) as Provider[];
 }
-
-export { github, slack, shopify };
