@@ -21,7 +21,6 @@ import posthog from "posthog-js";
 import { withSentry } from "@sentry/remix";
 import { env } from "./env.server";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
-import { Body } from "./components/primitives/text/Body";
 import { PrimaryLink } from "./components/primitives/Buttons";
 
 export const links: LinksFunction = () => {
@@ -144,11 +143,13 @@ function App() {
                 background: "#D1FAE5",
                 padding: "16px 20px",
                 color: "#1E293B",
+                minWidth: "500px",
               },
               iconTheme: {
                 primary: "#10B981",
                 secondary: "#D1FAE5",
               },
+              duration: 5000,
             },
             error: {
               style: {
@@ -156,11 +157,13 @@ function App() {
                 background: "#FFE4E6",
                 padding: "16px 20px",
                 color: "#1E293B",
+                minWidth: "500px",
               },
               iconTheme: {
                 primary: "#F43F5E",
                 secondary: "#FFE4E6",
               },
+              duration: 5000,
             },
           }}
         />
