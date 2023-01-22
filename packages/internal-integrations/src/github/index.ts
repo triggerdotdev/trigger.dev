@@ -14,9 +14,7 @@ export class GitHubWebhookIntegration implements WebhookIntegration {
     const githubSource = parseWebhookSource(source);
 
     if (githubSource.subresource === "repository") {
-      return `repository.${githubSource.repo}.${githubSource.events.join(
-        "."
-      )}}`;
+      return `repository.${githubSource.repo}.${githubSource.events.join(".")}`;
     } else if (githubSource.subresource === "organization") {
       return `organization.${githubSource.org}`;
     } else {
