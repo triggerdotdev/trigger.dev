@@ -65,13 +65,13 @@ function CustomEvent({ event }: { event: CustomEventTrigger }) {
 function Scheduled({ event }: { event: ScheduledEventTrigger }) {
   return (
     <>
-      <Body size="extra-small" className={workflowNodeUppercaseClasses}>
+      <div className={workflowNodeUppercaseClasses}>
         {"rateOf" in event.source ? (
           <RateOfScheduled source={event.source} />
         ) : (
           <AtScheduled source={event.source} />
         )}
-      </Body>
+      </div>
     </>
   );
 }
