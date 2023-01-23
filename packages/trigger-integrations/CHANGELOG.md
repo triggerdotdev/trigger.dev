@@ -1,5 +1,15 @@
 # @trigger.dev/integrations
 
+## 0.1.9
+
+### Patch Changes
+
+- Updated dependencies [f350fca]
+- Updated dependencies [f316c6e]
+- Updated dependencies [c69c370]
+  - @trigger.dev/providers@0.1.5
+  - @trigger.dev/sdk@0.2.6
+
 ## 0.1.8
 
 ### Patch Changes

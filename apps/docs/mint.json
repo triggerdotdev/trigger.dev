@@ -29,11 +29,12 @@
     "name": "Trigger.dev",
     "url": "https://app.trigger.dev"
   },
-
   "navigation": [
     {
       "group": "Getting Started",
-      "pages": ["getting-started"]
+      "pages": [
+        "getting-started"
+      ]
     },
     {
       "group": "Triggers",
@@ -45,11 +46,25 @@
     },
     {
       "group": "Integrations",
-      "pages": ["integrations/apis", "integrations/authentication"]
+      "pages": [
+        {
+          "group": "APIs",
+          "pages": [
+            {
+              "group": "Slack",
+              "pages": [
+                "integrations/apis/slack/actions/post-message"
+              ]
+            }
+          ]
+        },
+        "integrations/authentication"
+      ]
     },
     {
       "group": "Functions",
       "pages": [
+        "functions/fetch",
         "functions/logging",
         "functions/delays",
         "functions/send-event",
@@ -57,8 +72,30 @@
       ]
     },
     {
+      "group": "Guides",
+      "pages": [
+        "guides/resumability",
+        "guides/zod"
+      ]
+    },
+    {
+      "group": "Webhook Catalog",
+      "pages": [
+        {
+          "group": "GitHub",
+          "pages": [
+            "integrations/apis/github/events/new-star"
+          ]
+        }
+      ]
+    },
+    {
       "group": "Example workflows",
-      "pages": ["examples/github", "examples/shopify", "examples/slack"]
+      "pages": [
+        "examples/github",
+        "examples/shopify",
+        "examples/slack"
+      ]
     }
   ],
   "footerSocials": {

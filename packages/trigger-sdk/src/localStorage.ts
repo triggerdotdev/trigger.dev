@@ -1,6 +1,11 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import { z } from "zod";
-import { TriggerCustomEvent } from "./types";
+import {
+  FetchOptions,
+  FetchResponse,
+  TriggerCustomEvent,
+  TriggerFetch,
+} from "./types";
 
 type PerformRequestOptions<TSchema extends z.ZodTypeAny> = {
   service: string;
@@ -17,6 +22,7 @@ type TriggerRunLocalStorage = {
     options: PerformRequestOptions<TSchema>
   ) => Promise<z.infer<TSchema>>;
   sendEvent: (key: string, event: TriggerCustomEvent) => Promise<void>;
+  fetch: TriggerFetch;
 };
 
 export const triggerRunLocalStorage =

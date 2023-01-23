@@ -1,5 +1,12 @@
 # @trigger.dev/sdk
 
+## 0.2.6
+
+### Patch Changes
+
+- f316c6e: Add ability to use fetch without having to use context param
+- c69c370: Added context.fetch to make generic fetch requests using Trigger.dev
+
 ## 0.2.5
 
 ### Patch Changes

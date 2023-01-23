@@ -19,7 +19,7 @@ export type WaitForOptions = {
 export type FetchOptions<
   TResponseBodySchema extends z.ZodTypeAny = z.ZodTypeAny
 > = {
-  method:
+  method?:
     | "GET"
     | "POST"
     | "PUT"
@@ -42,6 +42,12 @@ export type FetchResponse<
   status: number;
 };
 
+export type TriggerFetch = <TBodySchema extends z.ZodTypeAny = z.ZodTypeAny>(
+  key: string,
+  url: string | URL,
+  options: FetchOptions<TBodySchema>
+) => Promise<FetchResponse<TBodySchema>>;
+
 export interface TriggerContext {
   id: string;
   environment: string;
@@ -51,11 +57,7 @@ export interface TriggerContext {
   sendEvent(key: string, event: TriggerCustomEvent): Promise<void>;
   waitFor(key: string, options: WaitForOptions): Promise<void>;
   waitUntil(key: string, date: Date): Promise<void>;
-  fetch<TBodySchema extends z.ZodTypeAny = z.ZodTypeAny>(
-    key: string,
-    url: string | URL,
-    options: FetchOptions<TBodySchema>
-  ): Promise<FetchResponse<TBodySchema>>;
+  fetch: TriggerFetch;
 }
 
 export interface TriggerLogger {

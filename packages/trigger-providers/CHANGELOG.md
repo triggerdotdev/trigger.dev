@@ -1,5 +1,11 @@
 # @trigger.dev/providers
 
+## 0.1.5
+
+### Patch Changes
+
+- f350fca: Added new star event to the github webhook integrations
+
 ## 0.1.4
 
 ### Patch Changes

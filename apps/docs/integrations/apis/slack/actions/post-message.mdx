@@ -1,0 +1,109 @@
+---
+title: "Post Message"
+sidebarTitle: "Post Message"
+description: "Post a message to a Slack channel"
+---
+
+Publish slack messages to a public or private channel in your Slack Workspace as the Trigger.dev Slack bot. If you need to publish messages to your customer's Slack channels, consider using [Incoming Webhooks](https://api.slack.com/messaging/webhooks) and our [fetch](/functions/fetch) function.
+
+## Params
+
+<ParamField path="key" type="string" required={true}>
+  A unique string. Please see the [Keys and Resumability](/guides/resumability)
+  doc for more info.
+</ParamField>
+
+<ParamField path="message" type="object" required={true}>
+  <Expandable title="properties" defaultOpen={true}>
+    <ParamField path="channelName" type="string" required={false}>
+      The name of the channel, can optionally include the `#`. E.g. `#team`.
+      Alternatively you can use the `channelId` param.
+    </ParamField>
+
+    <ParamField path="channelId" type="string" required={false}>
+      The slack ID of the channel, e.g. `C04GWUTDC4W`. Can be used instead of `channelName`. Use `channelId` if the slack channel name could change.
+    </ParamField>
+
+    <ParamField path="text" type="string" required={true}>
+      The formatted text of the message to be published, formatted as [mrkdwn](https://api.slack.com/reference/surfaces/formatting#basics).
+    </ParamField>
+
+  </Expandable>
+</ParamField>
+
+## Response
+
+<ResponseField name="ok" type="boolean" default="true">
+  Always true; non-ok responses will halt the workflow run and throw an error.
+</ResponseField>
+
+<ResponseField name="channel" type="string">
+  The channel ID of the channel the message was published to.
+</ResponseField>
+
+<ResponseField name="ts" type="string">
+  The "timestamp ID" of the message, which can be used to update or delete the
+  message.
+</ResponseField>
+
+<ResponseField name="message" type="object">
+  <Expandable title="properties">
+    <ResponseField name="ts" type="string">
+      The "timestamp ID" of the message, which can be used to update or delete the message.
+    </ResponseField>
+
+    <ResponseField name="text" type="string">
+      The text published to the channel.
+    </ResponseField>
+
+    <ResponseField name="user" type="string">
+      The user ID of the user who published the message.
+    </ResponseField>
+
+    <ResponseField name="bot_id" type="string">
+      The bot ID of the bot that published the message.
+    </ResponseField>
+
+  </Expandable>
+</ResponseField>
+
+## Example Workflows
+
+<CodeGroup>
+
+```typescript Notify Slack on New Star
+import { slack, github } from "@trigger.dev/integrations";
+
+new Trigger({
+  id: "new-star",
+  name: "On New Star",
+  on: github.events.newStarEvent({
+    repo: "triggerdotdev/trigger.dev",
+  }),
+  run: async (event, ctx) => {
+    await slack.postMessage("⭐️ New Star", {
+      channelName: "github-stars",
+      text: `Repo ${event.repository.full_name} got a star from ${event.sender.login}, for a total of ${event.repository.stargazers_count} stars!`,
+    });
+  },
+}).listen();
+```
+
+</CodeGroup>
+
+## Example Response
+
+```json
+{
+  "ok": true,
+  "ts": "1673618429.084699",
+  "channel": "C04GWUTDC3W",
+  "message": {
+    "ts": "1673618429.084699",
+    "text": "New domain created: trigger.dev by customer 1st-ever-slack-workflow-yippie",
+    "type": "message",
+    "user": "U04JTTQ08SF",
+    "bot_id": "B04JR3DCB4M"
+  }
+}
+```
