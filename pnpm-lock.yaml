@@ -770,6 +770,7 @@ importers:
       uuid: ^9.0.0
       ws: ^8.11.0
       zod: ^3.20.2
+      zod-error: ^1.1.0
     dependencies:
       debug: 4.3.4
       evt: 2.4.13
@@ -778,6 +779,7 @@ importers:
       uuid: 9.0.0
       ws: 8.12.0
       zod: 3.20.2
+      zod-error: 1.1.0
     devDependencies:
       '@trigger.dev/common-schemas': link:../common-schemas
       '@trigger.dev/tsconfig': link:../../config-packages/tsconfig
@@ -16580,6 +16582,12 @@ packages:
   /yocto-queue/0.1.0:
     resolution: {integrity: sha512-rVksvsnNCdJ/ohGc6xgPwyN8eheCxsiLM8mxuE/t/mOVqJewPuO1miLpTHQiRgTKCLexL4MeAFVagts7HmNZ2Q==}
     engines: {node: '>=10'}
+
+  /zod-error/1.1.0:
+    resolution: {integrity: sha512-zZ0I9/eFQsaDqglBPOM5Y/kJzbTkoD6hNZGON/kcMe2WIfLse2DIwsZpLMfKwBmcciYaEg+DubtLMnAbZ4/rfA==}
+    dependencies:
+      zod: 3.20.2
+    dev: false
 
   /zod/3.20.2:
     resolution: {integrity: sha512-1MzNQdAvO+54H+EaK5YpyEy0T+Ejo/7YLHS93G3RnYWh5gaotGHwGeN/ZO687qEDU2y4CdStQYXVHIgrUl5UVQ==}

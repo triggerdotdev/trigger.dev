@@ -14,6 +14,13 @@ import { triggerRunLocalStorage } from "./localStorage";
 import { ContextLogger } from "./logger";
 import { Trigger, TriggerOptions } from "./trigger";
 import { TriggerContext, TriggerFetch } from "./types";
+import { generateErrorMessage, ErrorMessageOptions } from "zod-error";
+
+const zodErrorMessageOptions: ErrorMessageOptions = {
+  delimiter: {
+    error: " 🔥 ",
+  },
+};
 
 export class TriggerClient<TSchema extends z.ZodTypeAny> {
   #trigger: Trigger<TSchema>;
@@ -292,6 +299,26 @@ export class TriggerClient<TSchema extends z.ZodTypeAny> {
         TRIGGER_WORKFLOW: async (data) => {
           this.#logger.debug("Handling TRIGGER_WORKFLOW", data);
 
+          const parsedEventData = this.#options.on.schema.safeParse(
+            data.trigger.input
+          );
+
+          if (!parsedEventData.success) {
+            await serverRPC.send("SEND_WORKFLOW_ERROR", {
+              runId: data.id,
+              timestamp: String(highPrecisionTimestamp()),
+              error: {
+                name: "Event validation error",
+                message: generateErrorMessage(
+                  parsedEventData.error.issues,
+                  zodErrorMessageOptions
+                ),
+              },
+            });
+
+            return true;
+          }
+
           const fetchFunction: TriggerFetch = async (key, url, options) => {
             const result = new Promise<FetchOutput>((resolve, reject) => {
               this.#fetchCallbacks.set(messageKey(data.id, key), {
@@ -399,7 +426,7 @@ export class TriggerClient<TSchema extends z.ZodTypeAny> {
             fetch: fetchFunction,
           };
 
-          const eventData = this.#options.on.schema.parse(data.trigger.input);
+          const eventData = parsedEventData.data;
 
           this.#logger.debug("Parsed event data", eventData);
 

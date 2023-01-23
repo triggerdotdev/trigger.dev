@@ -11,7 +11,7 @@ const trigger = new Trigger({
   name: "My workflow",
   apiKey: "trigger_dev_zC25mKNn6c0q",
   endpoint: "ws://localhost:8889/ws",
-  logLevel: "log",
+  logLevel: "debug",
   triggerTTL: 60 * 60 * 24,
   on: customEvent({ name: "user.created", schema: userCreatedEvent }),
   run: async (event, ctx) => {
