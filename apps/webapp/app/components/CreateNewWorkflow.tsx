@@ -3,9 +3,10 @@ import { Panel } from "./layout/Panel";
 import { PrimaryA, SecondaryA } from "./primitives/Buttons";
 import { Body } from "./primitives/text/Body";
 import { SubTitle } from "./primitives/text/SubTitle";
-import onboarding from "../assets/images/onboarding-image.png";
 import { ApiLogoIcon } from "~/components/code/ApiLogoIcon";
 import { getProviders } from "@trigger.dev/providers";
+import onboarding from "../assets/images/onboarding-image.png";
+import discord from "../assets/images/discord.png";
 
 export default function CreateNewWorkflow() {
   return (
@@ -42,13 +43,10 @@ export function CreateNewWorkflowNoWorkflows() {
             Trigger.dev workflows are written in your own codebase and run in
             your existing infrastructure.
           </Body>
-          <Body
-            size="small"
-            className="mb-2 uppercase tracking-wide text-slate-400"
-          >
+          <Body size="small" className={allCapsTitleClasses}>
             To get started
           </Body>
-          <ol className="flex flex-col gap-2 list-decimal marker:text-slate-400 ml-5 mb-6">
+          <ol className="flex flex-col gap-2 list-decimal marker:text-slate-400 ml-5 mb-5">
             <li>
               Check out the Quick Start Guide to create your first workflow in
               your code.
@@ -80,10 +78,7 @@ export function CreateNewWorkflowNoWorkflows() {
               <span>Example workflows</span>
             </SecondaryA>
           </div>
-          <Body
-            size="small"
-            className="mb-2 uppercase tracking-wide text-slate-400"
-          >
+          <Body size="small" className={allCapsTitleClasses}>
             API integrations
           </Body>
           <Body className="mb-4">
@@ -97,7 +92,7 @@ export function CreateNewWorkflowNoWorkflows() {
             </a>{" "}
             and we'll add it.
           </Body>
-          <div className="flex gap-2 items-center">
+          <div className="flex gap-2 items-center mb-8">
             {getProviders(false).map((provider) => (
               <ApiLogoIcon
                 key={provider.slug}
@@ -113,11 +108,25 @@ export function CreateNewWorkflowNoWorkflows() {
               Fetch
             </Body>
           </div>
+          <Body size="small" className={allCapsTitleClasses}>
+            Join the community
+          </Body>
+          <Body className="mb-4">
+            To get help quickly and answers to any questions, join our Discord.
+          </Body>
+          <PrimaryA
+            href="https://discord.gg/kA47vcd8P6"
+            target="_blank"
+            rel="noreferrer"
+          >
+            <img src={discord} alt="Discord" className="h-3.5 -ml-1" />
+            <span>Join Discord</span>
+          </PrimaryA>
         </div>
         <div className="hidden xl:flex flex-col w-1/3">
           <img
             src={onboarding}
-            alt="Create a new Workflow"
+            alt="Logo"
             className="w-full h-full object-cover"
           />
         </div>
@@ -125,3 +134,5 @@ export function CreateNewWorkflowNoWorkflows() {
     </>
   );
 }
+
+const allCapsTitleClasses = "mb-2 uppercase tracking-wide text-slate-400";
