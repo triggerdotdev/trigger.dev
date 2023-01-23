@@ -19,16 +19,12 @@
     "default": "dark",
     "isHidden": true
   },
-  "topbarLinks": [
-    {
-      "name": "GitHub",
-      "url": "https://github.com/triggerdotdev/trigger.dev"
-    }
-  ],
+
   "topbarCtaButton": {
-    "name": "Get help",
-    "url": "/get-help"
+    "type": "github",
+    "url": "https://github.com/triggerdotdev/trigger.dev"
   },
+
   "anchors": [
     {
       "name": "Community",
@@ -96,6 +92,6 @@
   "footerSocials": {
     "twitter": "https://twitter.com/triggerdotdev",
     "github": "https://github.com/triggerdotdev/trigger.dev",
-    "discord": "https://discord.gg/4Z7Y4Z8"
+    "discord": "https://discord.gg/nkqV9xBYWy"
   }
 }
