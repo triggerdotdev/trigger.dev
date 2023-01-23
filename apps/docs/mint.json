@@ -32,9 +32,7 @@
   "navigation": [
     {
       "group": "Getting Started",
-      "pages": [
-        "getting-started"
-      ]
+      "pages": ["getting-started"]
     },
     {
       "group": "Triggers",
@@ -52,9 +50,7 @@
           "pages": [
             {
               "group": "Slack",
-              "pages": [
-                "integrations/apis/slack/actions/post-message"
-              ]
+              "pages": ["integrations/apis/slack/actions/post-message"]
             }
           ]
         },
@@ -73,34 +69,25 @@
     },
     {
       "group": "Guides",
-      "pages": [
-        "guides/resumability",
-        "guides/zod"
-      ]
+      "pages": ["guides/resumability", "guides/zod"]
     },
     {
       "group": "Webhook Catalog",
       "pages": [
         {
           "group": "GitHub",
-          "pages": [
-            "integrations/apis/github/events/new-star"
-          ]
+          "pages": ["integrations/apis/github/events/new-star"]
         }
       ]
     },
     {
       "group": "Example workflows",
-      "pages": [
-        "examples/github",
-        "examples/shopify",
-        "examples/slack"
-      ]
+      "pages": ["examples/github", "examples/shopify", "examples/slack"]
     }
   ],
   "footerSocials": {
-    "website": "https://app.trigger.dev",
     "twitter": "https://twitter.com/triggerdotdev",
-    "github": "https://github.com/triggerdotdev/trigger.dev"
+    "github": "https://github.com/triggerdotdev/trigger.dev",
+    "discord": "https://discord.gg/4Z7Y4Z8"
   }
 }
