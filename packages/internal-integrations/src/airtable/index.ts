@@ -25,6 +25,7 @@ export class AirtableWebhookIntegration implements WebhookIntegration {
   async handleWebhookRequest(options: HandleWebhookOptions) {
     const contentHash = options.request.headers["x-airtable-content-mac"];
 
+    //todo pass in raw body
     //todo – add webhook verification
     // if (options.secret && contentHash) {
     //   //Extract Signature header

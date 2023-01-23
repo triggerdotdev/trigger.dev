@@ -43,6 +43,7 @@ export type ErrorEventResponse = {
 export type TriggeredEventResponse = {
   status: "ok";
   data: ReceivedWebhook[];
+  lastDelivery: any;
 };
 
 export interface ReceivedWebhook {

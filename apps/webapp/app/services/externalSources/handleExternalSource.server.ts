@@ -44,6 +44,21 @@ export class HandleExternalSource {
 
     switch (possibleEvent.status) {
       case "ok": {
+        //todo try update ExternalSource, setting lastDelivery, increment version
+        const updatedSources =
+          await this.#prismaClient.externalSource.updateMany({
+            where: { id: externalSource.id, version: externalSource.version },
+            data: {
+              lastDelivery: possibleEvent.lastDelivery,
+              version: {
+                increment: 1,
+              },
+            },
+          });
+
+        //todo if updatedSources.count === 0, then just return
+
+        //todo move to another event called deliverWebhookEvents
         //loop over the events and ingest them
         for (let index = 0; index < possibleEvent.data.length; index++) {
           const { id, payload, event, timestamp, context } =
@@ -100,6 +115,10 @@ export class HandleExternalSource {
     }
   }
 
+  //todo Schema: add lastDelivery JSON column
+  //todo Schema: add version int column (default 0)
+  //todo pass lastDelivery into handleWebhookRequest (parsed by the webhook handler)
+
   async #handleWebhook(
     externalSource: NonNullable<ExternalSourceWithConnection>,
     serviceIdentifier: string,
@@ -127,6 +146,7 @@ export class HandleExternalSource {
           accessInfo,
           request,
           secret: externalSource.secret ?? undefined,
+          lastDelivery: externalSource.lastDelivery,
         });
       }
       case "airtable": {
