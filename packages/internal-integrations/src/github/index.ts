@@ -1,4 +1,5 @@
 import {
+  AccessInfo,
   DisplayProperty,
   HandleWebhookOptions,
   WebhookConfig,
@@ -34,7 +35,10 @@ export class GitHubWebhookIntegration implements WebhookIntegration {
     }
   }
 
-  handleWebhookRequest(options: HandleWebhookOptions) {
+  async handleWebhookRequest(
+    accessInfo: AccessInfo,
+    options: HandleWebhookOptions
+  ) {
     const deliveryId = options.request.headers["x-github-delivery"];
 
     const signature = options.request.headers["x-hub-signature-256"];

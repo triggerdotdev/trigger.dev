@@ -6,4 +6,9 @@ export const WebhookSourceSchema = z.object({
   events: z.array(z.string()),
 });
 
-export const allEvent = z.any();
+export const allEvent = z.object({
+  base: z.object({
+    id: z.string(),
+  }),
+  payloads: z.array(z.any()),
+});

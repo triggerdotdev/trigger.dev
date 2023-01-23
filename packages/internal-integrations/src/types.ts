@@ -67,11 +67,13 @@ export interface WebhookIntegration {
   keyForSource: (source: unknown) => string;
   registerWebhook: (config: WebhookConfig, source: unknown) => Promise<any>;
   handleWebhookRequest: (
+    accessInfo: AccessInfo,
     options: HandleWebhookOptions
-  ) =>
+  ) => Promise<
     | { status: "ok"; data: ReceivedWebhook }
     | { status: "ignored"; reason: string }
-    | { status: "error"; error: string };
+    | { status: "error"; error: string }
+  >;
   displayProperties: (source: unknown) => DisplayProperties;
 }
 

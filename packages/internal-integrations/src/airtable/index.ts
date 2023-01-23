@@ -1,5 +1,6 @@
 import { ulid } from "ulid";
 import {
+  AccessInfo,
   DisplayProperty,
   HandleWebhookOptions,
   WebhookConfig,
@@ -21,7 +22,10 @@ export class AirtableWebhookIntegration implements WebhookIntegration {
     return registerWebhook(config, airtableSource);
   }
 
-  handleWebhookRequest(options: HandleWebhookOptions) {
+  async handleWebhookRequest(
+    accessInfo: AccessInfo,
+    options: HandleWebhookOptions
+  ) {
     const contentHash = options.request.headers["x-airtable-content-mac"];
 
     //todo – add webhook verification
@@ -58,11 +62,42 @@ export class AirtableWebhookIntegration implements WebhookIntegration {
       "accept-encoding",
     ]);
 
+    //get the actual payloads
+    const payloads = await fetch(
+      `https://api.airtable.com/v0/bases/${options.request.body.base.id}/webhooks/${options.request.body.webhook.id}/payloads?limit=50
+    `,
+      {
+        method: "GET",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${getAccessToken(accessInfo)}`,
+        },
+      }
+    );
+
+    if (!payloads.ok) {
+      return {
+        status: "error" as const,
+        error: `AirtableWebhookIntegration: Could not fetch payloads for webhook. \nbaseId: ${options.request.body.base.id}, webhookId: ${options.request.body.webhook.id}\nerror: ${payloads.statusText}`,
+      };
+    }
+
+    const payloadsJson = await payloads.json();
+
+    //create the payload, combining the webhook payload with the actual payloads
+    type Payload = z.infer<typeof airtable.schemas.allEvent>;
+    const payload: Payload = {
+      base: {
+        id: options.request.body.base.id,
+      },
+      payloads: payloadsJson.payloads,
+    };
+
     return {
       status: "ok" as const,
       data: {
         id: ulid(),
-        payload: options.request.body,
+        payload,
         event: "all",
         context,
       },

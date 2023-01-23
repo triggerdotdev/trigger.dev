@@ -4,6 +4,7 @@ import { airtable, github } from "internal-integrations";
 import type { ExternalSourceWithConnection } from "~/models/externalSource.server";
 import type { NormalizedRequest } from "internal-integrations";
 import { IngestEvent } from "../events/ingest.server";
+import { getAccessInfo } from "../accessInfo.server";
 
 type IgnoredEventResponse = {
   status: "ignored";
@@ -123,15 +124,31 @@ export class HandleExternalSource {
     serviceIdentifier: string,
     request: NormalizedRequest
   ): Promise<HandledExternalEventResponse> {
+    if (externalSource.connection === null) {
+      return {
+        status: "error",
+        error: `Could not handle webhook with no API connection. ExternalSource id: ${externalSource.id}`,
+      };
+    }
+
+    const accessInfo = await getAccessInfo(externalSource.connection);
+
+    if (accessInfo === undefined) {
+      return {
+        status: "error",
+        error: `Could not handle webhook with no AccessInfo. ExternalSource id: ${externalSource.id}. Connection id: ${externalSource.connection.id}`,
+      };
+    }
+
     switch (serviceIdentifier) {
       case "github": {
-        return github.webhooks.handleWebhookRequest({
+        return await github.webhooks.handleWebhookRequest(accessInfo, {
           request,
           secret: externalSource.secret ?? undefined,
         });
       }
       case "airtable": {
-        return airtable.webhooks.handleWebhookRequest({
+        return await airtable.webhooks.handleWebhookRequest(accessInfo, {
           request,
           secret: externalSource.secret ?? undefined,
         });
