@@ -1,6 +1,6 @@
 import type { PrismaClient } from "~/db.server";
 import { prisma } from "~/db.server";
-import { github } from "internal-integrations";
+import { airtable, github } from "internal-integrations";
 import type { ExternalSourceWithConnection } from "~/models/externalSource.server";
 import type { NormalizedRequest } from "internal-integrations";
 import { IngestEvent } from "../events/ingest.server";
@@ -126,6 +126,12 @@ export class HandleExternalSource {
     switch (serviceIdentifier) {
       case "github": {
         return github.webhooks.handleWebhookRequest({
+          request,
+          secret: externalSource.secret ?? undefined,
+        });
+      }
+      case "airtable": {
+        return airtable.webhooks.handleWebhookRequest({
           request,
           secret: externalSource.secret ?? undefined,
         });

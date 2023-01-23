@@ -1,3 +1,5 @@
+import * as schemas from "./schemas";
+
 export const airtable = {
   name: "Airtable",
   slug: "airtable",
@@ -15,5 +17,5 @@ export const airtable = {
       "webhook:manage",
     ],
   },
-  schemas: {},
+  schemas,
 };

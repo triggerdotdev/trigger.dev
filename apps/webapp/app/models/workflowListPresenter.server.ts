@@ -2,7 +2,7 @@ import type { SchedulerSource } from ".prisma/client";
 import { ScheduleSourceSchema } from "@trigger.dev/common-schemas";
 import cronstrue from "cronstrue";
 import type { DisplayProperties } from "internal-integrations";
-import { github } from "internal-integrations";
+import { airtable, github } from "internal-integrations";
 import invariant from "tiny-invariant";
 import { triggerLabel } from "~/components/triggers/triggerLabel";
 import type { PrismaClient } from "~/db.server";
@@ -139,6 +139,11 @@ function triggerProperties(
       switch (externalSource.service) {
         case "github":
           displayProperties = github.webhooks.displayProperties(
+            externalSource.source
+          );
+          break;
+        case "airtable":
+          displayProperties = airtable.webhooks.displayProperties(
             externalSource.source
           );
           break;

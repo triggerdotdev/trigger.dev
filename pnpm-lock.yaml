@@ -657,6 +657,7 @@ importers:
       debug: ^4.3.4
       graphql: ^16.6.0
       typescript: ^4.9.4
+      ulid: ^2.3.0
       urql: ^3.0.3
       zod: ^3.20.2
     dependencies:
@@ -666,7 +667,8 @@ importers:
       '@urql/core': 3.1.1_graphql@16.6.0
       debug: 4.3.4
       graphql: 16.6.0
-      urql: 3.0.3_graphql@16.6.0
+      ulid: 2.3.0
+      urql: 3.0.3_onqnqwb3ubg5opvemcqf7c2qhy
       zod: 3.20.2
     devDependencies:
       '@trigger.dev/providers': link:../trigger-providers
@@ -15958,7 +15960,7 @@ packages:
       prepend-http: 2.0.0
     dev: true
 
-  /urql/3.0.3_graphql@16.6.0:
+  /urql/3.0.3_onqnqwb3ubg5opvemcqf7c2qhy:
     resolution: {integrity: sha512-aVUAMRLdc5AOk239DxgXt6ZxTl/fEmjr7oyU5OGo8uvpqu42FkeJErzd2qBzhAQ3DyusoZIbqbBLPlnKo/yy2A==}
     peerDependencies:
       graphql: ^0.11.0 || ^0.12.0 || ^0.13.0 || ^14.0.0 || ^15.0.0 || ^16.0.0
@@ -15966,6 +15968,7 @@ packages:
     dependencies:
       '@urql/core': 3.1.1_graphql@16.6.0
       graphql: 16.6.0
+      react: 18.2.0
       wonka: 6.1.2
     dev: false
 

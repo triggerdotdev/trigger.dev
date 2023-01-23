@@ -1,4 +1,4 @@
-import { github } from "internal-integrations";
+import { github, airtable } from "internal-integrations";
 import type { WorkflowMetadata } from "internal-platform";
 import { WorkflowMetadataSchema } from "internal-platform";
 import type { PrismaClient } from "~/db.server";
@@ -240,6 +240,9 @@ export class RegisterWorkflow {
       switch (payload.trigger.service) {
         case "github": {
           return github.webhooks.keyForSource(payload.trigger.source);
+        }
+        case "airtable": {
+          return airtable.webhooks.keyForSource(payload.trigger.source);
         }
         default: {
           return payload.trigger.service;

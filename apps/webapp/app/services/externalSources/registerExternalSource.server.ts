@@ -1,5 +1,5 @@
 import type { APIConnection, ExternalSource } from ".prisma/client";
-import type { AccessInfo } from "internal-integrations";
+import { AccessInfo, airtable } from "internal-integrations";
 import { github } from "internal-integrations";
 import crypto from "node:crypto";
 import type { PrismaClient } from "~/db.server";
@@ -123,6 +123,16 @@ export class RegisterExternalSource {
     switch (serviceIdentifier) {
       case "github": {
         return github.webhooks.registerWebhook(
+          {
+            callbackUrl,
+            secret,
+            accessInfo,
+          },
+          data
+        );
+      }
+      case "airtable": {
+        return airtable.webhooks.registerWebhook(
           {
             callbackUrl,
             secret,
