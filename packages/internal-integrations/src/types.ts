@@ -24,9 +24,26 @@ export interface NormalizedResponse {
 }
 
 export interface HandleWebhookOptions {
+  accessInfo: AccessInfo;
   request: NormalizedRequest;
   secret?: string;
+  options?: Record<string, any>;
 }
+
+export type IgnoredEventResponse = {
+  status: "ignored";
+  reason: string;
+};
+
+export type ErrorEventResponse = {
+  status: "error";
+  error: string;
+};
+
+export type TriggeredEventResponse = {
+  status: "ok";
+  data: ReceivedWebhook[];
+};
 
 export interface ReceivedWebhook {
   id: string;
@@ -63,17 +80,17 @@ export interface RequestIntegration {
   displayProperties: (endpoint: string, params: any) => DisplayProperties;
 }
 
+export type HandledExternalEventResponse =
+  | TriggeredEventResponse
+  | IgnoredEventResponse
+  | ErrorEventResponse;
+
 export interface WebhookIntegration {
   keyForSource: (source: unknown) => string;
   registerWebhook: (config: WebhookConfig, source: unknown) => Promise<any>;
   handleWebhookRequest: (
-    accessInfo: AccessInfo,
     options: HandleWebhookOptions
-  ) => Promise<
-    | { status: "ok"; data: ReceivedWebhook }
-    | { status: "ignored"; reason: string }
-    | { status: "error"; error: string }
-  >;
+  ) => Promise<HandledExternalEventResponse>;
   displayProperties: (source: unknown) => DisplayProperties;
 }
 

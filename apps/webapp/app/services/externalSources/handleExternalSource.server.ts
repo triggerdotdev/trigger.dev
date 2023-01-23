@@ -1,36 +1,13 @@
+import type {
+  HandledExternalEventResponse,
+  NormalizedRequest,
+} from "internal-integrations";
+import { airtable, github } from "internal-integrations";
 import type { PrismaClient } from "~/db.server";
 import { prisma } from "~/db.server";
-import { airtable, github } from "internal-integrations";
 import type { ExternalSourceWithConnection } from "~/models/externalSource.server";
-import type { NormalizedRequest } from "internal-integrations";
-import { IngestEvent } from "../events/ingest.server";
 import { getAccessInfo } from "../accessInfo.server";
-
-type IgnoredEventResponse = {
-  status: "ignored";
-  reason: string;
-};
-
-type ErrorEventResponse = {
-  status: "error";
-  error: string;
-};
-
-type TriggeredEventResponse = {
-  status: "ok";
-  data: {
-    id: string;
-    payload: any;
-    event: string;
-    timestamp?: string;
-    context?: any;
-  };
-};
-
-export type HandledExternalEventResponse =
-  | TriggeredEventResponse
-  | IgnoredEventResponse
-  | ErrorEventResponse;
+import { IngestEvent } from "../events/ingest.server";
 
 export class HandleExternalSource {
   #prismaClient: PrismaClient;
@@ -67,22 +44,26 @@ export class HandleExternalSource {
 
     switch (possibleEvent.status) {
       case "ok": {
-        const { id, payload, event, timestamp, context } = possibleEvent.data;
+        //loop over the events and ingest them
+        for (let index = 0; index < possibleEvent.data.length; index++) {
+          const { id, payload, event, timestamp, context } =
+            possibleEvent.data[index];
 
-        const ingestService = new IngestEvent();
+          const ingestService = new IngestEvent();
 
-        await ingestService.call(
-          {
-            id,
-            payload,
-            name: event,
-            type: externalSource.type,
-            service: serviceIdentifier,
-            timestamp,
-            context,
-          },
-          externalSource.organization
-        );
+          await ingestService.call(
+            {
+              id,
+              payload,
+              name: event,
+              type: externalSource.type,
+              service: serviceIdentifier,
+              timestamp,
+              context,
+            },
+            externalSource.organization
+          );
+        }
 
         return true;
       }
@@ -142,15 +123,29 @@ export class HandleExternalSource {
 
     switch (serviceIdentifier) {
       case "github": {
-        return await github.webhooks.handleWebhookRequest(accessInfo, {
+        return await github.webhooks.handleWebhookRequest({
+          accessInfo,
           request,
           secret: externalSource.secret ?? undefined,
         });
       }
       case "airtable": {
-        return await airtable.webhooks.handleWebhookRequest(accessInfo, {
+        const latestTriggerEvent = this.#prismaClient.triggerEvent.findFirst({
+          where: {
+            key: request.body.base.id,
+          },
+          orderBy: {
+            createdAt: "desc",
+          },
+        });
+
+        return await airtable.webhooks.handleWebhookRequest({
+          accessInfo,
           request,
           secret: externalSource.secret ?? undefined,
+          options: {
+            latestTriggerEvent,
+          },
         });
       }
       default: {

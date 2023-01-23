@@ -22,10 +22,7 @@ export class AirtableWebhookIntegration implements WebhookIntegration {
     return registerWebhook(config, airtableSource);
   }
 
-  async handleWebhookRequest(
-    accessInfo: AccessInfo,
-    options: HandleWebhookOptions
-  ) {
+  async handleWebhookRequest(options: HandleWebhookOptions) {
     const contentHash = options.request.headers["x-airtable-content-mac"];
 
     //todo – add webhook verification
@@ -62,45 +59,44 @@ export class AirtableWebhookIntegration implements WebhookIntegration {
       "accept-encoding",
     ]);
 
-    //get the actual payloads
-    const payloads = await fetch(
-      `https://api.airtable.com/v0/bases/${options.request.body.base.id}/webhooks/${options.request.body.webhook.id}/payloads?limit=50
-    `,
-      {
-        method: "GET",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${getAccessToken(accessInfo)}`,
-        },
-      }
-    );
-
-    if (!payloads.ok) {
-      return {
-        status: "error" as const,
-        error: `AirtableWebhookIntegration: Could not fetch payloads for webhook. \nbaseId: ${options.request.body.base.id}, webhookId: ${options.request.body.webhook.id}\nerror: ${payloads.statusText}`,
-      };
-    }
-
-    const payloadsJson = await payloads.json();
+    const baseId = options.request.body.baseId;
+    const webhookId = options.request.body.webhookId;
+    const accessToken = getAccessToken(options.accessInfo);
+    const latestTriggerEvent = options.options?.latestTriggerEvent;
+    const payloads = await getPayloads({
+      baseId,
+      webhookId,
+      accessToken,
+      latestTriggerEventId: latestTriggerEvent?.id,
+    });
 
     //create the payload, combining the webhook payload with the actual payloads
-    type Payload = z.infer<typeof airtable.schemas.allEvent>;
-    const payload: Payload = {
+    type AllEvent = z.infer<typeof airtable.schemas.allEventSchema>;
+    const allEvent: AllEvent = {
       base: {
-        id: options.request.body.base.id,
+        id: baseId,
       },
-      payloads: payloadsJson.payloads,
+      payloads: payloads ?? [],
     };
+
+    const id = triggerEventId({
+      baseId,
+      webhookId,
+      cursor: Math.max(...payloads.map((p) => p.baseTransactionNumber), 0) + 1,
+    });
 
     return {
       status: "ok" as const,
-      data: {
-        id: ulid(),
-        payload,
+      data: payloads.map((p) => ({
+        id: triggerEventId({
+          baseId,
+          webhookId,
+          cursor: p.baseTransactionNumber,
+        }),
+        payload: p,
         event: "all",
         context,
-      },
+      })),
     };
   }
 
@@ -179,6 +175,92 @@ async function registerWebhook(
   const webhook = await response.json();
 
   return webhook;
+}
+
+type Payload = z.infer<typeof airtable.schemas.payloadSchema>;
+
+async function getPayloads({
+  baseId,
+  webhookId,
+  accessToken,
+  latestTriggerEventId,
+}: {
+  baseId: string;
+  webhookId: string;
+  accessToken: string;
+  latestTriggerEventId?: string | null;
+}) {
+  let cursor = 1;
+  if (latestTriggerEventId) {
+    cursor = parseInt(latestTriggerEventId.split(":")[1]);
+  }
+
+  let getMore = true;
+  let allPayloads: Payload[] = [];
+  while (getMore) {
+    const payloads = await getPayload({
+      baseId,
+      webhookId,
+      accessToken,
+      cursor,
+    });
+
+    allPayloads.push(...payloads.payloads);
+
+    if (payloads.mightHaveMore === false) {
+      return allPayloads;
+    } else {
+      cursor = payloads.cursor;
+    }
+  }
+
+  return allPayloads;
+}
+
+async function getPayload({
+  baseId,
+  webhookId,
+  accessToken,
+  cursor,
+}: {
+  baseId: string;
+  webhookId: string;
+  accessToken: string;
+  cursor: number;
+}) {
+  const payloads = await fetch(
+    `https://api.airtable.com/v0/bases/${baseId}/webhooks/${webhookId}/payloads?limit=50&cursor=${cursor}
+  `,
+    {
+      method: "GET",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${accessToken}`,
+      },
+    }
+  );
+
+  if (!payloads.ok) {
+    throw {
+      status: "error" as const,
+      error: `AirtableWebhookIntegration: Could not fetch payloads for webhook. \nbaseId: ${baseId}, webhookId: ${webhookId}\nerror: ${payloads.statusText}`,
+    };
+  }
+
+  const payloadsJson = await payloads.json();
+  return airtable.schemas.WebhookPayloadListSchema.parse(payloadsJson);
+}
+
+function triggerEventId({
+  baseId,
+  webhookId,
+  cursor,
+}: {
+  baseId: string;
+  webhookId: string;
+  cursor: number;
+}) {
+  return `${baseId}-${webhookId}:${cursor}`;
 }
 
 function parseWebhookSource(source: unknown) {

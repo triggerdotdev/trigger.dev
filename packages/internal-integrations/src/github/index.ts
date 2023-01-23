@@ -35,10 +35,7 @@ export class GitHubWebhookIntegration implements WebhookIntegration {
     }
   }
 
-  async handleWebhookRequest(
-    accessInfo: AccessInfo,
-    options: HandleWebhookOptions
-  ) {
+  async handleWebhookRequest(options: HandleWebhookOptions) {
     const deliveryId = options.request.headers["x-github-delivery"];
 
     const signature = options.request.headers["x-hub-signature-256"];
@@ -76,7 +73,7 @@ export class GitHubWebhookIntegration implements WebhookIntegration {
 
     return {
       status: "ok" as const,
-      data: { id: deliveryId, payload: options.request.body, event, context },
+      data: [{ id: deliveryId, payload: options.request.body, event, context }],
     };
   }
 

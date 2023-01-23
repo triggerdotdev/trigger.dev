@@ -358,6 +358,7 @@ model TriggerEvent {
   timestamp DateTime    @default(now())
   payload   Json
   context   Json?
+  key       String?
 
   organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   organizationId String?
