@@ -3,7 +3,7 @@ import { airtable } from "@trigger.dev/providers";
 
 export function all(params: {
   baseId: string;
-}): TriggerEvent<typeof airtable.schemas.allEvent> {
+}): TriggerEvent<typeof airtable.schemas.allEventSchema> {
   return {
     metadata: {
       type: "WEBHOOK",
@@ -32,6 +32,6 @@ export function all(params: {
         events: ["all"],
       }),
     },
-    schema: airtable.schemas.allEvent,
+    schema: airtable.schemas.allEventSchema,
   };
 }

@@ -130,14 +130,15 @@ export class HandleExternalSource {
         });
       }
       case "airtable": {
-        const latestTriggerEvent = this.#prismaClient.triggerEvent.findFirst({
-          where: {
-            key: request.body.base.id,
-          },
-          orderBy: {
-            createdAt: "desc",
-          },
-        });
+        const latestTriggerEvent =
+          await this.#prismaClient.triggerEvent.findFirst({
+            where: {
+              key: request.body.base.id,
+            },
+            orderBy: {
+              createdAt: "desc",
+            },
+          });
 
         return await airtable.webhooks.handleWebhookRequest({
           accessInfo,

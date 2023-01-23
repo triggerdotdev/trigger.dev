@@ -59,8 +59,8 @@ export class AirtableWebhookIntegration implements WebhookIntegration {
       "accept-encoding",
     ]);
 
-    const baseId = options.request.body.baseId;
-    const webhookId = options.request.body.webhookId;
+    const baseId = options.request.body.base.id;
+    const webhookId = options.request.body.webhook.id;
     const accessToken = getAccessToken(options.accessInfo);
     const latestTriggerEvent = options.options?.latestTriggerEvent;
     const payloads = await getPayloads({
@@ -79,12 +79,6 @@ export class AirtableWebhookIntegration implements WebhookIntegration {
       payloads: payloads ?? [],
     };
 
-    const id = triggerEventId({
-      baseId,
-      webhookId,
-      cursor: Math.max(...payloads.map((p) => p.baseTransactionNumber), 0) + 1,
-    });
-
     return {
       status: "ok" as const,
       data: payloads.map((p) => ({
@@ -93,7 +87,12 @@ export class AirtableWebhookIntegration implements WebhookIntegration {
           webhookId,
           cursor: p.baseTransactionNumber,
         }),
-        payload: p,
+        payload: {
+          base: {
+            id: baseId,
+          },
+          ...p,
+        },
         event: "all",
         context,
       })),
