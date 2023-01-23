@@ -1,0 +1,206 @@
+---
+title: "Generic Fetch"
+sidebarTitle: "Fetch"
+description: "A generic fetch function that can be used to call any HTTP endpoint"
+---
+
+## Usage
+
+A `fetch` function is available to use inside a `Trigger.run` function through the `context` argument, and should be familiar for anyone who has used the standard [`fetch`](https://developer.mozilla.org/en-US/docs/Web/API/Fetch_API) API, with a few modifications.
+
+```ts
+import { Trigger } from "@trigger.dev/sdk";
+
+new Trigger({
+  id: "fetch-example",
+  name: "Fetch Example",
+  on: customEvent({
+    name: "example.fetch",
+  }),
+  run: async (event, ctx) => {
+    await ctx.fetch("Example Key", "http://httpbin.org/get");
+  },
+}).listen();
+```
+
+Notice the first parameter to `fetch` is a `key` that is used to identify this call to fetch to support resumability. Please see the [Resumability](/guides/resumability) guide for more information.
+
+You can also import `fetch` and use it outside of a `Trigger.run` function:
+
+```ts httpBin.ts
+import { fetch } from "@trigger.dev/sdk";
+
+export function httpBinGet() {
+  return fetch("Example Key", "http://httpbin.org/get");
+}
+```
+
+Now you can use the exported `httpBinGet` function inside your `Trigger.run` function:
+
+```ts
+import { Trigger } from "@trigger.dev/sdk";
+import { httpBinGet } from "./httpBin";
+
+new Trigger({
+  id: "fetch-example",
+  name: "Fetch Example",
+  on: customEvent({
+    name: "example.fetch",
+  }),
+  run: async (event, ctx) => {
+    await httpBinGet();
+  },
+}).listen();
+```
+
+This is useful if you want to wrap `fetch` to provide an SDK like experience inside your workflows.
+
+<Warning>
+  Calling `fetch` when not inside of a workflow run will result in a thrown
+  Error.
+</Warning>
+
+## Response
+
+The return value of `fetch` is a similar to a normal fetch response, but we will automatically parse the response body as JSON and provide it as `body`, like so:
+
+```ts
+const response = await ctx.fetch("Example Key", "http://httpbin.org/get");
+
+console.log(response.body.url); // http://httpbin.org/get
+```
+
+By default, the `body` is typed as `any`, but you can provide a [`Zod`](/guides/zod) schema to validate the response body and get a more specific type:
+
+```ts
+import { z } from "zod";
+
+const response = await ctx.fetch("Get HTTPBin", "http://httpbin.org/get", {
+  responseSchema: z.object({
+    url: z.string(),
+    origin: z.string(),
+    headers: z.record(z.string()),
+  }),
+});
+```
+
+Now the `body` will be typed as:
+
+```ts
+{
+  url: string;
+  origin: string;
+  headers: Record<string, string>;
+}
+```
+
+It's okay to not be comprehensive with the schema, as long as the response body matches the schema, it will be valid. Do note that any properties not included in the schema will be excluded, unless you use `.passthrough()`:
+
+```ts
+const response = await ctx.fetch("Get HTTPBin", "http://httpbin.org/get", {
+  responseSchema: z.object({
+    url: z.string(),
+    origin: z.string(),
+    headers: z.record(z.string()),
+  }),
+});
+
+console.log(response.body); // Only includes url, origin, and headers
+
+// Using passthrough():
+const response = await ctx.fetch("Get HTTPBin", "http://httpbin.org/get", {
+  responseSchema: z
+    .object({
+      url: z.string(),
+      origin: z.string(),
+      headers: z.record(z.string()),
+    })
+    .passthrough(),
+});
+
+console.log(response.body); // Includes url, origin, headers, and everything else
+```
+
+<Note>
+  The fetch function currently only supports JSON request and response bodies.
+</Note>
+
+## Secret values
+
+If you are using a header with a secret value, you can use our `secureString` [tagged template](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Template_literals#tagged_templates) to ensure that the value is not logged in the trigger.dev logs:
+
+```ts
+import { Trigger, secureString } from "@trigger.dev/sdk";
+
+new Trigger({
+  id: "fetch-example",
+  name: "Fetch Example",
+  on: customEvent({
+    name: "example.fetch",
+  }),
+  run: async (event, ctx) => {
+    await ctx.fetch("🔑 Secret API", "http://httpbin.org/post", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: secureString`Bearer ${process.env.SECRET_API_KEY}`,
+      },
+    });
+  },
+}).listen();
+```
+
+Which will show in the trigger.dev app as:
+
+![title](/images/secure-string.png)
+
+## Params
+
+<ParamField path="key" type="string" required={true}>
+  A unique string. Please see the [Keys and Resumability](/guides/resumability)
+  doc for more info.
+</ParamField>
+
+<ParamField path="url" type="string | URL" required={true}>
+  The URL to fetch.
+</ParamField>
+
+<ParamField path="options" type="object" required={false}>
+  <Expandable title="properties">
+    <ParamField path="method" type="string" required={false}>
+      The HTTP method to use. Defaults to `GET`.
+    </ParamField>
+
+    <ParamField path="headers" type="record" required={false}>
+      An object of headers to send with the request.
+    </ParamField>
+
+    <ParamField path="responseSchema" type="zod Schema" required={false}>
+      A [Zod](/guides/zod) schema to validate the response body.
+    </ParamField>
+
+    <ParamField path="body" type="json" required={false}>
+      The body to send with the request. Only valid for `POST`, `PUT`, and `PATCH`. You don't need to `JSON.stringify` before passing it in.
+    </ParamField>
+
+  </Expandable>
+</ParamField>
+
+## Response
+
+<ParamField path="ok" type="boolean">
+  Whether the response was successful. Will always be true because we throw an
+  error and stop the trigger if the response is not successful.
+</ParamField>
+
+<ParamField path="body" type="object" required={false}>
+  The response body, parsed with the `responseSchema` if provided.
+</ParamField>
+
+<ParamField path="status" type="number">
+  The HTTP status code.
+</ParamField>
+
+<ParamField path="headers" type="object">
+  The response headers.
+</ParamField>

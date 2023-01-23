@@ -12,7 +12,7 @@ export type PostMessageResponse = z.infer<
 
 export async function postMessage(
   key: string,
-  options: PostMessageOptions
+  message: PostMessageOptions
 ): Promise<PostMessageResponse> {
   const run = getTriggerRun();
 
@@ -23,7 +23,7 @@ export async function postMessage(
   const output = await run.performRequest(key, {
     service: "slack",
     endpoint: "chat.postMessage",
-    params: options,
+    params: message,
     response: {
       schema: slack.schemas.PostMessageSuccessResponseSchema,
     },

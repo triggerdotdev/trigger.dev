@@ -13,7 +13,7 @@ import { HostConnection, TimeoutError } from "./connection";
 import { triggerRunLocalStorage } from "./localStorage";
 import { ContextLogger } from "./logger";
 import { Trigger, TriggerOptions } from "./trigger";
-import { TriggerContext } from "./types";
+import { TriggerContext, TriggerFetch } from "./types";
 
 export class TriggerClient<TSchema extends z.ZodTypeAny> {
   #trigger: Trigger<TSchema>;
@@ -292,6 +292,38 @@ export class TriggerClient<TSchema extends z.ZodTypeAny> {
         TRIGGER_WORKFLOW: async (data) => {
           this.#logger.debug("Handling TRIGGER_WORKFLOW", data);
 
+          const fetchFunction: TriggerFetch = async (key, url, options) => {
+            const result = new Promise<FetchOutput>((resolve, reject) => {
+              this.#fetchCallbacks.set(messageKey(data.id, key), {
+                resolve,
+                reject,
+              });
+            });
+
+            await serverRPC.send("SEND_FETCH", {
+              runId: data.id,
+              key,
+              fetch: {
+                url: url.toString(),
+                method: options.method ?? "GET",
+                headers: options.headers,
+                body: options.body,
+              },
+              timestamp: String(highPrecisionTimestamp()),
+            });
+
+            const response = await result;
+
+            return {
+              status: response.status,
+              ok: response.ok,
+              headers: response.headers,
+              body: response.body
+                ? (options.responseSchema ?? z.any()).parse(response.body)
+                : undefined,
+            };
+          };
+
           const ctx: TriggerContext = {
             id: data.id,
             environment: data.meta.environment,
@@ -364,37 +396,7 @@ export class TriggerClient<TSchema extends z.ZodTypeAny> {
 
               return;
             },
-            fetch: async (key, url, options) => {
-              const result = new Promise<FetchOutput>((resolve, reject) => {
-                this.#fetchCallbacks.set(messageKey(data.id, key), {
-                  resolve,
-                  reject,
-                });
-              });
-
-              await serverRPC.send("SEND_FETCH", {
-                runId: data.id,
-                key,
-                fetch: {
-                  url: url.toString(),
-                  method: options.method,
-                  headers: options.headers,
-                  body: options.body,
-                },
-                timestamp: String(highPrecisionTimestamp()),
-              });
-
-              const response = await result;
-
-              return {
-                status: response.status,
-                ok: response.ok,
-                headers: response.headers,
-                body: response.body
-                  ? (options.responseSchema ?? z.any()).parse(response.body)
-                  : undefined,
-              };
-            },
+            fetch: fetchFunction,
           };
 
           const eventData = this.#options.on.schema.parse(data.trigger.input);
@@ -437,6 +439,7 @@ export class TriggerClient<TSchema extends z.ZodTypeAny> {
                   timestamp: String(highPrecisionTimestamp()),
                 });
               },
+              fetch: fetchFunction,
             },
             () => {
               this.#logger.debug("Running trigger...");

@@ -1,6 +1,7 @@
 export * from "./events";
 export * from "./trigger";
 export * from "./customEvents";
+export * from "./fetch";
 
 import { triggerRunLocalStorage } from "./localStorage";
 import { SecureString } from "./types";
