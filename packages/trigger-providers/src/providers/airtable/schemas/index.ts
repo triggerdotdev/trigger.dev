@@ -200,22 +200,24 @@ export const payloadSchema = z.object({
         .optional(),
       destroyedFieldIds: z.array(z.string()).optional(),
       destroyedRecordIds: z.array(z.string()).optional(),
-      changedViewsById: z.record(
-        z.object({
-          createdRecordsById: z
-            .record(
-              z.object({
-                cellValuesByFieldId: z.record(cellValueSchema),
-                createdTime: z.string(),
-              })
-            )
-            .optional(),
-          changedRecordsById: z
-            .record(currentPreviousUnchangedSchema)
-            .optional(),
-          destroyedRecordIds: z.array(z.string()).optional(),
-        })
-      ),
+      changedViewsById: z
+        .record(
+          z.object({
+            createdRecordsById: z
+              .record(
+                z.object({
+                  cellValuesByFieldId: z.record(cellValueSchema),
+                  createdTime: z.string(),
+                })
+              )
+              .optional(),
+            changedRecordsById: z
+              .record(currentPreviousUnchangedSchema)
+              .optional(),
+            destroyedRecordIds: z.array(z.string()).optional(),
+          })
+        )
+        .optional(),
     })
   ),
 });
