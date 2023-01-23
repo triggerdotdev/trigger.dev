@@ -1,4 +1,5 @@
 import {
+  FetchOutputSchema,
   JsonSchema,
   ScheduledEventPayloadSchema,
 } from "@trigger.dev/common-schemas";
@@ -44,6 +45,10 @@ import { WorkflowRunDisconnected } from "./runs/runDisconnected.server";
 import { DeliverScheduledEvent } from "./scheduler/deliverScheduledEvent.server";
 import { RegisterSchedulerSource } from "./scheduler/registerSchedulerSource.server";
 import { WorkflowRunTriggerTimeout } from "./runs/runTriggerTimeout.server";
+import { CreateFetchRequest } from "./fetches/createFetchRequest.server";
+import { findFetchRequestById } from "~/models/fetchRequest.server";
+import { StartFetchRequest } from "./fetches/startFetchRequest.server";
+import { PerformFetchRequest } from "./fetches/performFetchRequest.server";
 
 let pulsarClient: PulsarClient;
 let triggerPublisher: ZodPublisher<TriggerCatalog>;
@@ -227,6 +232,19 @@ function createCommandSubscriber() {
 
         return true;
       },
+      SEND_FETCH_REQUEST: async (id, data, properties) => {
+        const service = new CreateFetchRequest();
+
+        await service.call(
+          data.key,
+          properties["x-workflow-run-id"],
+          properties["x-api-key"],
+          properties["x-timestamp"],
+          data.fetch
+        );
+
+        return true;
+      },
       TRIGGER_CUSTOM_EVENT: async (id, data, properties) => {
         await triggerEventInRun(
           data.key,
@@ -276,6 +294,10 @@ const RequestCatalog = {
     data: z.object({ id: z.string() }),
     properties: z.object({}),
   },
+  PERFORM_FETCH_REQUEST: {
+    data: z.object({ id: z.string() }),
+    properties: z.object({}),
+  },
 };
 
 function createRequestTaskQueue() {
@@ -305,6 +327,30 @@ function createRequestTaskQueue() {
         } else {
           await pubSub.publish(
             "PERFORM_INTEGRATION_REQUEST",
+            {
+              id: data.id,
+            },
+            {},
+            { deliverAfter: response.retryInSeconds * 1000 }
+          );
+
+          return true;
+        }
+      },
+      PERFORM_FETCH_REQUEST: async (id, data, properties) => {
+        const service = new PerformFetchRequest();
+
+        const response = await service.call(data.id);
+
+        if (response.stop) {
+          await taskQueue.publish("RESOLVE_FETCH_REQUEST", {
+            id: data.id,
+          });
+
+          return true;
+        } else {
+          await pubSub.publish(
+            "PERFORM_FETCH_REQUEST",
             {
               id: data.id,
             },
@@ -347,6 +393,14 @@ const taskQueueCatalog = {
     properties: z.object({}),
   },
   RESOLVE_INTEGRATION_REQUEST: {
+    data: z.object({ id: z.string() }),
+    properties: z.object({}),
+  },
+  FETCH_REQUEST_CREATED: {
+    data: z.object({ id: z.string() }),
+    properties: z.object({}),
+  },
+  RESOLVE_FETCH_REQUEST: {
     data: z.object({ id: z.string() }),
     properties: z.object({}),
   },
@@ -468,6 +522,81 @@ function createTaskQueue() {
               error: integrationRequest.step.output as z.infer<
                 typeof JsonSchema
               >,
+            },
+            {
+              "x-workflow-run-id": run.id,
+              "x-api-key": run.environment.apiKey,
+              "x-org-id": run.environment.organizationId,
+              "x-workflow-id": run.workflowId,
+              "x-env": run.environment.slug,
+            }
+          );
+        }
+
+        return true;
+      },
+      FETCH_REQUEST_CREATED: async (id, data, properties) => {
+        const fetchRequest = await findFetchRequestById(data.id);
+
+        if (!fetchRequest) {
+          return true;
+        }
+
+        const service = new StartFetchRequest();
+        await service.call(fetchRequest, fetchRequest.step);
+
+        return true;
+      },
+      RESOLVE_FETCH_REQUEST: async (id, data, properties) => {
+        const fetchRequest = await findFetchRequestById(data.id);
+
+        if (!fetchRequest) {
+          return true;
+        }
+
+        const run = await findWorklowRunById(fetchRequest.runId);
+
+        if (!run) {
+          return true;
+        }
+
+        if (
+          fetchRequest.status !== "SUCCESS" &&
+          fetchRequest.status !== "ERROR"
+        ) {
+          return true;
+        }
+
+        if (fetchRequest.status === "SUCCESS") {
+          const output = fetchRequest.step.output as z.infer<
+            typeof FetchOutputSchema
+          >;
+
+          await commandResponsePublisher.publish(
+            "RESOLVE_FETCH_REQUEST",
+            {
+              id: fetchRequest.id,
+              key: fetchRequest.step.idempotencyKey,
+              output: {
+                ...output,
+                ok: true,
+              },
+            },
+            {
+              "x-workflow-run-id": run.id,
+              "x-api-key": run.environment.apiKey,
+              "x-org-id": run.environment.organizationId,
+              "x-workflow-id": run.workflowId,
+              "x-env": run.environment.slug,
+            }
+          );
+        } else {
+          await commandResponsePublisher.publish(
+            "REJECT_FETCH_REQUEST",
+            {
+              id: fetchRequest.id,
+              key: fetchRequest.step.idempotencyKey,
+              error: fetchRequest.step.output as z.infer<typeof JsonSchema>,
             },
             {
               "x-workflow-run-id": run.id,

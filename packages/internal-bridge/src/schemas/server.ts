@@ -1,5 +1,6 @@
 import {
   CustomEventSchema,
+  FetchRequestSchema,
   TriggerMetadataSchema,
   WaitSchema,
 } from "@trigger.dev/common-schemas";
@@ -24,6 +25,15 @@ export const ServerRPCSchema = {
         endpoint: z.string(),
         params: z.any(),
       }),
+      timestamp: z.string(),
+    }),
+    response: z.boolean(),
+  },
+  SEND_FETCH: {
+    request: z.object({
+      runId: z.string(),
+      key: z.string(),
+      fetch: FetchRequestSchema,
       timestamp: z.string(),
     }),
     response: z.boolean(),

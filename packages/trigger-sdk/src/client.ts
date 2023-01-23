@@ -1,3 +1,4 @@
+import { FetchOutput } from "@trigger.dev/common-schemas";
 import {
   HostRPCSchema,
   Logger,
@@ -41,6 +42,14 @@ export class TriggerClient<TSchema extends z.ZodTypeAny> {
     string,
     {
       resolve: () => void;
+      reject: (err?: any) => void;
+    }
+  >();
+
+  #fetchCallbacks = new Map<
+    string,
+    {
+      resolve: (output: FetchOutput) => void;
       reject: (err?: any) => void;
     }
   >();
@@ -232,6 +241,54 @@ export class TriggerClient<TSchema extends z.ZodTypeAny> {
 
           return true;
         },
+        RESOLVE_FETCH_REQUEST: async (data) => {
+          this.#logger.debug("Handling RESOLVE_FETCH_REQUEST", data);
+
+          const fetchCallbacks = this.#fetchCallbacks.get(
+            messageKey(data.meta.runId, data.key)
+          );
+
+          if (!fetchCallbacks) {
+            this.#logger.debug(
+              `Could not find fetch callbacks for request ID ${messageKey(
+                data.meta.runId,
+                data.key
+              )}. This can happen when a workflow run is resumed`
+            );
+
+            return true;
+          }
+
+          const { resolve } = fetchCallbacks;
+
+          resolve(data.output);
+
+          return true;
+        },
+        REJECT_FETCH_REQUEST: async (data) => {
+          this.#logger.debug("Handling REJECT_FETCH_REQUEST", data);
+
+          const fetchCallbacks = this.#fetchCallbacks.get(
+            messageKey(data.meta.runId, data.key)
+          );
+
+          if (!fetchCallbacks) {
+            this.#logger.debug(
+              `Could not find fetch callbacks for request ID ${messageKey(
+                data.meta.runId,
+                data.key
+              )}. This can happen when a workflow run is resumed`
+            );
+
+            return true;
+          }
+
+          const { reject } = fetchCallbacks;
+
+          reject(data.error);
+
+          return true;
+        },
         TRIGGER_WORKFLOW: async (data) => {
           this.#logger.debug("Handling TRIGGER_WORKFLOW", data);
 
@@ -306,6 +363,37 @@ export class TriggerClient<TSchema extends z.ZodTypeAny> {
               await result;
 
               return;
+            },
+            fetch: async (key, url, options) => {
+              const result = new Promise<FetchOutput>((resolve, reject) => {
+                this.#fetchCallbacks.set(messageKey(data.id, key), {
+                  resolve,
+                  reject,
+                });
+              });
+
+              await serverRPC.send("SEND_FETCH", {
+                runId: data.id,
+                key,
+                fetch: {
+                  url: url.toString(),
+                  method: options.method,
+                  headers: options.headers,
+                  body: options.body,
+                },
+                timestamp: String(highPrecisionTimestamp()),
+              });
+
+              const response = await result;
+
+              return {
+                status: response.status,
+                ok: response.ok,
+                headers: response.headers,
+                body: response.body
+                  ? (options.responseSchema ?? z.any()).parse(response.body)
+                  : undefined,
+              };
             },
           };
 

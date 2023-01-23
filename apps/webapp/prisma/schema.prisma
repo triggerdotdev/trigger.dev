@@ -411,9 +411,10 @@ model WorkflowRun {
   timedOutAt     DateTime?
   timedOutReason String?
 
-  isTest   Boolean              @default(false)
-  requests IntegrationRequest[]
-  delays   DurableDelay[]
+  isTest        Boolean              @default(false)
+  requests      IntegrationRequest[]
+  delays        DurableDelay[]
+  fetchRequests FetchRequest[]
 }
 
 enum WorkflowRunStatus {
@@ -449,6 +450,7 @@ model WorkflowRunStep {
 
   integrationRequest IntegrationRequest?
   delay              DurableDelay?
+  fetchRequest       FetchRequest?
 
   @@unique([runId, idempotencyKey])
 }
@@ -467,4 +469,47 @@ enum WorkflowRunStepType {
   CUSTOM_EVENT
   INTEGRATION_REQUEST
   DISCONNECTION
+  FETCH_REQUEST
+}
+
+model FetchRequest {
+  id String @id @default(cuid())
+
+  fetch Json
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  status FetchRequestStatus @default(PENDING)
+
+  run   WorkflowRun @relation(fields: [runId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  runId String
+
+  step   WorkflowRunStep @relation(fields: [stepId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  stepId String          @unique
+
+  retryCount Int             @default(0)
+  error      Json?
+  response   Json?
+  responses  FetchResponse[]
+}
+
+enum FetchRequestStatus {
+  PENDING
+  FETCHING
+  RETRYING
+  SUCCESS
+  ERROR
+}
+
+model FetchResponse {
+  id String @id @default(cuid())
+
+  request   FetchRequest @relation(fields: [requestId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  requestId String
+
+  output  Json
+  context Json
+
+  createdAt DateTime @default(now())
 }

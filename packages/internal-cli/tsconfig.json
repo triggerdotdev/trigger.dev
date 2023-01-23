@@ -6,7 +6,11 @@
     "emitDecoratorMetadata": true,
     "lib": ["esnext", "dom"],
     "outDir": "lib",
-    "moduleResolution": "node"
+    "moduleResolution": "node",
+    "paths": {
+      "@trigger.dev/providers": ["../trigger-providers/src/index"],
+      "@trigger.dev/providers/*": ["../trigger-providers/src/*"]
+    }
   },
   "exclude": ["node_modules", "**/*.test.*"]
 }

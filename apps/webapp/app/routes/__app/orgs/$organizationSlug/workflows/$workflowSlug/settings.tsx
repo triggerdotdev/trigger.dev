@@ -68,7 +68,7 @@ async function disableAction(
 
   return redirectBackWithSuccessMessage(
     request,
-    "Workflow successfully disabled. We will stop triggering it for new events."
+    "Workflow successfully disabled. No new events will run."
   );
 }
 
@@ -87,7 +87,7 @@ async function enableAction(
 
   return redirectBackWithSuccessMessage(
     request,
-    "Workflow successfully enabled. Triggering of new events will resume."
+    "Workflow successfully enabled. New events will resume."
   );
 }
 
@@ -126,7 +126,7 @@ async function unarchiveAction(
 
   return redirectBackWithSuccessMessage(
     request,
-    "Workflow successfully unarchived. Enable it to resume triggering of new events."
+    "Workflow successfully unarchived. Enable it to resume new events."
   );
 }
 

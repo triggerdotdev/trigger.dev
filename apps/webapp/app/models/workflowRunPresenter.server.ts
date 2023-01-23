@@ -1,13 +1,16 @@
+import type { SecureString } from "@trigger.dev/common-schemas";
+import { FetchResponseSchema } from "@trigger.dev/common-schemas";
 import {
   CustomEventSchema,
   ErrorSchema,
+  FetchRequestSchema,
   LogMessageSchema,
   TriggerMetadataSchema,
   WaitSchema,
 } from "@trigger.dev/common-schemas";
-import type { DisplayProperties } from "internal-integrations";
-import { slack, shopify } from "internal-integrations";
 import type { Provider } from "@trigger.dev/providers";
+import type { DisplayProperties } from "internal-integrations";
+import { shopify, slack } from "internal-integrations";
 import invariant from "tiny-invariant";
 import type { PrismaClient } from "~/db.server";
 import { prisma } from "~/db.server";
@@ -113,6 +116,31 @@ async function parseStep(
         ...base,
         type: "DISCONNECTION" as const,
       };
+    case "FETCH_REQUEST":
+      invariant(
+        original.fetchRequest,
+        `Fetch request is missing from run step ${original.id}}`
+      );
+
+      const fetchRequest = FetchRequestSchema.parse(original.input);
+      const lastFetchResponse = original.fetchRequest.responses[0];
+      const lastResponse = lastFetchResponse
+        ? FetchResponseSchema.parse(lastFetchResponse.output)
+        : undefined;
+
+      return {
+        ...base,
+        type: "FETCH_REQUEST" as const,
+        title: `${fetchRequest.method} ${fetchRequest.url}`,
+        input: {
+          headers: obfuscateHeaders(fetchRequest.headers),
+          body: fetchRequest.body,
+        },
+        output: original.output,
+        requestStatus: original.fetchRequest.status,
+        retryCount: original.fetchRequest.retryCount,
+        lastResponse,
+      };
     case "INTEGRATION_REQUEST":
       invariant(
         original.integrationRequest,
@@ -197,9 +225,46 @@ function getWorkflowRun(prismaClient: PrismaClient, id: string) {
               },
             },
           },
+          fetchRequest: {
+            include: {
+              responses: {
+                orderBy: { createdAt: "desc" },
+                take: 1,
+              },
+            },
+          },
         },
         orderBy: { ts: "asc" },
       },
     },
   });
+}
+
+function obfuscateHeaders(
+  headers?: Record<string, string | SecureString>
+): Record<string, string> {
+  if (!headers) {
+    return {};
+  }
+  return Object.fromEntries(
+    Object.entries(headers).map(([key, value]) => [
+      key,
+      typeof value === "string" ? value : obfuscateSecureString(value),
+    ])
+  );
+}
+
+// SecureString is an object with { strings: string[]; interpolations: string[]; }
+// So we need to build up a string from strings and replace interpolations with ****
+function obfuscateSecureString(value: SecureString) {
+  let result = "";
+
+  for (let i = 0; i < value.strings.length; i++) {
+    result += value.strings[i];
+    if (i < value.interpolations.length) {
+      result += "********";
+    }
+  }
+
+  return result;
 }

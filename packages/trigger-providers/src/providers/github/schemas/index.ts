@@ -6,6 +6,7 @@ import * as pullRequestComments from "./pullRequestComments";
 import * as pullRequestReviews from "./pullRequestReviews";
 import * as pullRequest from "./pullRequests";
 import * as push from "./pushes";
+import * as stars from "./stars";
 
 export const WebhookRepoSourceSchema = z.object({
   subresource: z.literal("repository"),
@@ -34,4 +35,5 @@ export {
   pullRequestComments,
   pullRequestReviews,
   push,
+  stars,
 };

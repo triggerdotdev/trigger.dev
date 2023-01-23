@@ -138,6 +138,60 @@ export class WorkflowRunController {
 
           return success;
         },
+        RESOLVE_FETCH_REQUEST: async (id, data, properties) => {
+          if (properties["x-workflow-run-id"] !== this.#runId) {
+            return true;
+          }
+
+          this.#logger.debug(
+            "Received resolve fetch request",
+            id,
+            data,
+            properties
+          );
+
+          const success = await this.#hostRPC.send("RESOLVE_FETCH_REQUEST", {
+            id: data.id,
+            output: data.output,
+            key: data.key,
+            meta: {
+              workflowId: properties["x-workflow-id"],
+              organizationId: properties["x-org-id"],
+              environment: properties["x-env"],
+              apiKey: properties["x-api-key"],
+              runId: properties["x-workflow-run-id"],
+            },
+          });
+
+          return success;
+        },
+        REJECT_FETCH_REQUEST: async (id, data, properties) => {
+          if (properties["x-workflow-run-id"] !== this.#runId) {
+            return true;
+          }
+
+          this.#logger.debug(
+            "Received reject fetch request",
+            id,
+            data,
+            properties
+          );
+
+          const success = await this.#hostRPC.send("REJECT_FETCH_REQUEST", {
+            id: data.id,
+            key: data.key,
+            error: data.error,
+            meta: {
+              workflowId: properties["x-workflow-id"],
+              organizationId: properties["x-org-id"],
+              environment: properties["x-env"],
+              apiKey: properties["x-api-key"],
+              runId: properties["x-workflow-run-id"],
+            },
+          });
+
+          return success;
+        },
       },
     });
   }

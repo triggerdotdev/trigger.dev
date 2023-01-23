@@ -203,3 +203,32 @@ export function pushEvent(params: {
     schema: github.schemas.push.pushEventSchema,
   };
 }
+
+export function newStarEvent(params: {
+  repo: string;
+}): TriggerEvent<typeof github.schemas.stars.starCreatedEventSchema> {
+  return {
+    metadata: {
+      type: "WEBHOOK",
+      service: "github",
+      name: "star",
+      filter: {
+        service: ["github"],
+        payload: {
+          repository: {
+            full_name: [params.repo],
+          },
+          action: ["created"],
+        },
+        event: ["star"],
+      },
+      source: github.schemas.WebhookSourceSchema.parse({
+        subresource: "repository",
+        scopes: ["repo"],
+        repo: params.repo,
+        events: ["star"],
+      }),
+    },
+    schema: github.schemas.stars.starCreatedEventSchema,
+  };
+}

@@ -29,7 +29,7 @@ services:
     networks:
       - app_network
   pizzly-server:
-    image: nangohq/pizzly-server:0.4.3
+    image: nangohq/pizzly-server:0.5.2
     container_name: trigger-pizzly-server
     restart: always
     env_file:

@@ -153,6 +153,21 @@ export class TriggerServer {
 
           return !!response;
         },
+        SEND_FETCH: async (request) => {
+          const runController = this.#runControllers.get(request.runId);
+
+          if (!runController) {
+            // TODO: need to recover from this issue by trying to reconnect
+            return false;
+          }
+
+          const response = await runController.publish("SEND_FETCH_REQUEST", {
+            key: request.key,
+            fetch: request.fetch,
+          });
+
+          return !!response;
+        },
         SEND_EVENT: async (request) => {
           const runController = this.#runControllers.get(request.runId);
 

@@ -4,7 +4,10 @@
   "compilerOptions": {
     "experimentalDecorators": true,
     "emitDecoratorMetadata": true,
-    "paths": {}
+    "paths": {
+      "@trigger.dev/common-schemas": ["../common-schemas/src/index"],
+      "@trigger.dev/common-schemas/*": ["../common-schemas/src/*"]
+    }
   },
   "exclude": ["node_modules"]
 }
