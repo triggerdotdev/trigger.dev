@@ -3,7 +3,7 @@
   "logo": {
     "dark": "/logo/light.png",
     "light": "/logo/light.png",
-    "href": "https://app.trigger.dev"
+    "href": "https://trigger.dev"
   },
   "favicon": "/images/favicon.png",
   "colors": {
@@ -26,13 +26,21 @@
     }
   ],
   "topbarCtaButton": {
-    "name": "Trigger.dev",
-    "url": "https://app.trigger.dev"
+    "name": "Get help",
+    "url": "/get-help"
   },
+  "anchors": [
+    {
+      "name": "Community",
+      "icon": "discord",
+      "url": "https://discord.gg/nkqV9xBYWy"
+    }
+  ],
+
   "navigation": [
     {
       "group": "Getting Started",
-      "pages": ["getting-started"]
+      "pages": ["getting-started", "get-help"]
     },
     {
       "group": "Triggers",
