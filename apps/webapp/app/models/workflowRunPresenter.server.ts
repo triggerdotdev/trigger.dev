@@ -10,7 +10,7 @@ import {
 } from "@trigger.dev/common-schemas";
 import type { Provider } from "@trigger.dev/providers";
 import type { DisplayProperties } from "internal-integrations";
-import { shopify, slack } from "internal-integrations";
+import { integrations as internalIntegrations } from "internal-integrations";
 import invariant from "tiny-invariant";
 import type { PrismaClient } from "~/db.server";
 import { prisma } from "~/db.server";
@@ -154,23 +154,18 @@ async function parseStep(
 
       let displayProperties: DisplayProperties;
 
-      switch (externalService.slug) {
-        case "slack":
-          displayProperties = slack.requests.displayProperties(
-            original.integrationRequest.endpoint,
-            original.integrationRequest.params
-          );
-          break;
-        case "shopify":
-          displayProperties = shopify.requests.displayProperties(
-            original.integrationRequest.endpoint,
-            original.integrationRequest.params
-          );
-          break;
-        default:
-          displayProperties = {
-            title: "Unknown integration",
-          };
+      const internalIntegration = internalIntegrations[externalService.slug];
+      const requests = internalIntegration?.requests;
+
+      if (requests) {
+        displayProperties = requests.displayProperties(
+          original.integrationRequest.endpoint,
+          original.integrationRequest.params
+        );
+      } else {
+        displayProperties = {
+          title: "Unknown integration",
+        };
       }
 
       return {
