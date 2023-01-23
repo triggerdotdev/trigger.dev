@@ -4,7 +4,8 @@ import { PrimaryA, SecondaryA } from "./primitives/Buttons";
 import { Body } from "./primitives/text/Body";
 import { SubTitle } from "./primitives/text/SubTitle";
 import onboarding from "../assets/images/onboarding-image.png";
-// import airtable from "../integrations/airtable.png";
+import { ApiLogoIcon } from "~/components/code/ApiLogoIcon";
+import { getProviders } from "@trigger.dev/providers";
 
 export default function CreateNewWorkflow() {
   return (
@@ -96,25 +97,21 @@ export function CreateNewWorkflowNoWorkflows() {
             </a>{" "}
             and we'll add it.
           </Body>
-          <div className="flex gap-2">
-            <div className="flex gap-4 items-center rounded pr-4 border border-slate-700/50">
-              <img src={onboarding} alt="Slack" className="rounded h-10 w-10" />
-              <Body size="small" className="text-slate-300">
-                Slack
-              </Body>
-            </div>
-            <div className="flex gap-4 items-center rounded pr-4 border border-slate-700/50">
-              <img
-                src={onboarding}
-                alt="Airtable"
-                className="rounded h-10 w-10"
+          <div className="flex gap-2 items-center">
+            {getProviders(false).map((provider) => (
+              <ApiLogoIcon
+                key={provider.slug}
+                integration={provider}
+                size="regular"
               />
-              <Body size="small" className="text-slate-300">
-                Airtable
-              </Body>
-            </div>
-
-            {/* <ApiLogoIcon integration="Airtable" size="regular" /> */}
+            ))}
+            <Body className="text-slate-300">+</Body>
+            <Body
+              size="small"
+              className="uppercase text-slate-400 bg-slate-850 py-2.5 px-4 rounded tracking-wide"
+            >
+              Fetch
+            </Body>
           </div>
         </div>
         <div className="hidden xl:flex flex-col w-1/3">
