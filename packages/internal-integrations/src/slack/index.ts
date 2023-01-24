@@ -11,6 +11,7 @@ import { slack } from "@trigger.dev/providers";
 import debug from "debug";
 import { getAccessToken } from "../accessInfo";
 import { z } from "zod";
+import { ReactNode } from "react";
 
 const log = debug("trigger:integrations:slack");
 
@@ -80,6 +81,10 @@ class SlackRequestIntegration implements RequestIntegration {
         throw new Error(`Unknown endpoint: ${endpoint}`);
       }
     }
+  }
+
+  renderComponent(input: any, output: any): ReactNode {
+    return null;
   }
 
   async #postMessage(

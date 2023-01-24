@@ -1,12 +1,13 @@
+import { shopify } from "@trigger.dev/providers";
+import { Client, createClient } from "@urql/core";
 import debug from "debug";
+import { ReactNode } from "react";
 import {
   DisplayProperties,
   PerformedRequestResponse,
   PerformRequestOptions,
   RequestIntegration,
 } from "../types";
-import { Client, createClient, gql } from "@urql/core";
-import { shopify } from "@trigger.dev/providers";
 import {
   addProductsToCollectionQuery,
   appendProductImagesQuery,
@@ -164,6 +165,10 @@ class ShopifyRequestIntegration implements RequestIntegration {
         };
       }
     }
+  }
+
+  renderComponent(input: any, output: any): ReactNode {
+    return null;
   }
 
   async #searchProductVariants(

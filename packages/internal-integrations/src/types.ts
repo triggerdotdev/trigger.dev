@@ -61,6 +61,7 @@ export interface RequestIntegration {
     options: PerformRequestOptions
   ) => Promise<PerformedRequestResponse>;
   displayProperties: (endpoint: string, params: any) => DisplayProperties;
+  renderComponent(input: any, output: any): React.ReactNode;
 }
 
 export interface WebhookIntegration {
