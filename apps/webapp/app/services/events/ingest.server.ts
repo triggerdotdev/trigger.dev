@@ -1,4 +1,5 @@
 import type { TriggerType } from ".prisma/client";
+import { ulid } from "ulid";
 import type { PrismaClient } from "~/db.server";
 import { prisma } from "~/db.server";
 import type { Organization } from "~/models/organization.server";
@@ -29,10 +30,12 @@ export class IngestEvent {
       ? await findEnvironmentByApiKey(options.apiKey)
       : undefined;
 
+    const id = options.id ?? ulid();
+
     // Create a new event in the database
     const event = await this.#prismaClient.triggerEvent.create({
       data: {
-        id: options.id,
+        id,
         organization: {
           connect: {
             id: organization.id,
