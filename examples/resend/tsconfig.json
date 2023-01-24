@@ -1,5 +1,8 @@
 {
   "extends": "@trigger.dev/tsconfig/examples.json",
-  "include": ["src/**/*.ts"],
-  "exclude": ["node_modules", "**/*.test.*"]
+  "include": ["src/**/*.ts", "src/index.tsx"],
+  "exclude": ["node_modules", "**/*.test.*"],
+  "compilerOptions": {
+    "jsx": "react"
+  }
 }

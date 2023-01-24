@@ -31,11 +31,20 @@ export async function sendEmail(
     html = message.html;
   }
 
-  const params = {
-    ...message,
-    html,
-    react: undefined,
-  };
+  let params: any;
+  if (html) {
+    params = {
+      ...message,
+      html,
+    };
+    delete params.react;
+  } else {
+    params = {
+      ...message,
+    };
+    delete params.react;
+    delete params.html;
+  }
 
   const output = await run.performRequest(key, {
     service: "resend",

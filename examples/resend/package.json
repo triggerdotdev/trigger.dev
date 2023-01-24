@@ -4,16 +4,31 @@
   "version": "0.0.1",
   "description": "Send an email using Resend",
   "dependencies": {
+    "@react-email/button": "^0.0.4",
+    "@react-email/container": "^0.0.4",
+    "@react-email/head": "^0.0.2",
+    "@react-email/heading": "^0.0.5",
+    "@react-email/hr": "^0.0.2",
+    "@react-email/html": "^0.0.2",
+    "@react-email/img": "^0.0.2",
+    "@react-email/link": "^0.0.2",
+    "@react-email/preview": "^0.0.2",
+    "@react-email/render": "^0.0.3",
+    "@react-email/section": "^0.0.1",
+    "@react-email/text": "^0.0.2",
     "@trigger.dev/integrations": "workspace:*",
     "@trigger.dev/sdk": "workspace:*",
+    "react": "^18.2.0",
     "zod": "^3.20.2"
   },
   "devDependencies": {
     "@trigger.dev/tsconfig": "workspace:*",
     "@types/node": "16",
+    "@types/react": "^18.0.21",
+    "react-email": "^1.6.1",
     "tsx": "^3.12.0"
   },
   "scripts": {
-    "dev": "tsx src/index.ts"
+    "dev": "tsx src/index.tsx"
   }
 }
