@@ -1,6 +1,6 @@
 {
   "name": "@trigger.dev/sdk",
-  "version": "0.2.6",
+  "version": "0.2.7",
   "description": "trigger.dev Node.JS SDK",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
