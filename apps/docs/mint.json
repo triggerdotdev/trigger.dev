@@ -15,6 +15,7 @@
       "to": "#0fd122"
     }
   },
+  "backgroundImage": "/images/docs-background.png",
   "modeToggle": {
     "default": "dark",
     "isHidden": true
