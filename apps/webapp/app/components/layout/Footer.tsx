@@ -22,11 +22,11 @@ export function Footer() {
         </a>
       </p>
 
-      <div className="flex">
-        {/* <a
+      <div className="flex gap-3">
+        <a
           target="_blank"
           rel="noopener noreferrer"
-          href="https://discord.com/channels/946768798457921646/1020286418343448586"
+          href="https://discord.gg/kA47vcd8P6"
           className={linkStyle}
         >
           Discord
@@ -38,7 +38,7 @@ export function Footer() {
           className={linkStyle}
         >
           Twitter
-        </a> */}
+        </a>
 
         <a href="mailto:hello@trigger.dev" className={linkStyle}>
           Get in touch

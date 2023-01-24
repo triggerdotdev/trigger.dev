@@ -1,0 +1,644 @@
+---
+title: "Pull Request Event"
+sidebarTitle: "Pull Requests"
+description: "Trigger a workflow whenever an pull_request action is performed in a GitHub repository."
+---
+
+## Usage
+
+```ts
+import { github } from "@trigger.dev/integrations";
+
+new Trigger({
+  id: "demo",
+  on: github.events.pullRequestEvent({
+    repo: "triggerdotdev/trigger.dev",
+  }),
+  run: async (event, ctx) => {},
+}).listen();
+```
+
+## Params
+
+<ParamField path="repo" type="string" required={true}>
+  The full path to the repository, including the organization
+</ParamField>
+
+## Event
+
+<ResponseField name="action" type="string">
+  The pull_request action, which can one of assigned, unassigned,
+  auto_merge_enabled, auto_merge_disabled, review_requested,
+  review_request_removed, ready_for_review, labeled, unlabeled, opened, edited,
+  closed, reopened, synchronize, ready_for_review, locked, unlocked, or
+  converted_to_draft.
+</ResponseField>
+
+<ResponseField name="number" type="number" required={true}>
+  The pull request number.
+</ResponseField>
+
+<ResponseField name="pull_request" type="object" required={true}>
+  The pull request object.
+</ResponseField>
+
+<ResponseField name="repository" type="object" required={true}>
+  A repository on GitHub.
+</ResponseField>
+
+<ResponseField name="sender" type="object" required={true}>
+  The GitHub user object who performed the action.
+</ResponseField>
+
+<ResponseField name="organization" type="object">
+  The organization object the repository belongs to.
+</ResponseField>
+
+## Additional event fields
+
+### review_requested/review_request_removed PRs
+
+<ResponseField name="requested_reviewer" type="object">
+  The GitHub user object who was requested to review the PR.
+</ResponseField>
+
+<ResponseField name="requested_team" type="object">
+  The GitHub team object who was requested to review the PR.
+</ResponseField>
+
+### labeled/unlabeled PRs
+
+<ResponseField name="label" type="object">
+  The label object.
+</ResponseField>
+
+### assigned/unassigned PRs
+
+<ResponseField name="assignee" type="object">
+  The assignee object.
+</ResponseField>
+
+### edited PRs
+
+<ResponseField name="changes" type="object">
+  <Expandable title="properties">
+    <ResponseField name="body" type="object">
+      <Expandable title="properties" defaultOpen={true}>
+        <ResponseField name="from" type="string">
+          The previous body text.
+        </ResponseField>
+      </Expandable>
+    </ResponseField>
+
+    <ResponseField name="title" type="object">
+      <Expandable title="properties" defaultOpen={true}>
+        <ResponseField name="from" type="string">
+          The previous title text.
+        </ResponseField>
+      </Expandable>
+    </ResponseField>
+
+    <ResponseField name="base" type="object">
+      <Expandable title="properties" defaultOpen={true}>
+        <ResponseField name="ref" type="object">
+          Use `ref.from` to get the previous base branch name.
+        </ResponseField>
+        <ResponseField name="sha" type="object">
+          Use `sha.from` to get the previous base branch SHA.
+        </ResponseField>
+      </Expandable>
+    </ResponseField>
+
+  </Expandable>
+</ResponseField>
+
+## Example Workflows
+
+<CodeGroup>
+
+```typescript Notify Slack on new PR
+new Trigger({
+  id: "new-pr",
+  name: "Notify Slack on new PR",
+  on: github.events.pullRequestEvent({
+    repo: "triggerdotdev/trigger.dev",
+  }),
+  run: async (event, ctx) => {
+    if (event.action === "opened") {
+      await slack.postMessage("New PR", {
+        channelName: "github-prs",
+        text: `New PR: ${event.pull_request.html_url}`,
+      });
+    }
+  },
+}).listen();
+```
+
+</CodeGroup>
+
+## Example Event payload
+
+```json
+{
+  "action": "opened",
+  "number": 4,
+  "sender": {
+    "id": 534,
+    "url": "https://api.github.com/users/ericallam",
+    "type": "User",
+    "login": "ericallam",
+    "node_id": "MDQ6VXNlcjUzNA==",
+    "html_url": "https://github.com/ericallam",
+    "gists_url": "https://api.github.com/users/ericallam/gists{/gist_id}",
+    "repos_url": "https://api.github.com/users/ericallam/repos",
+    "avatar_url": "https://avatars.githubusercontent.com/u/534?v=4",
+    "events_url": "https://api.github.com/users/ericallam/events{/privacy}",
+    "site_admin": false,
+    "gravatar_id": "",
+    "starred_url": "https://api.github.com/users/ericallam/starred{/owner}{/repo}",
+    "followers_url": "https://api.github.com/users/ericallam/followers",
+    "following_url": "https://api.github.com/users/ericallam/following{/other_user}",
+    "organizations_url": "https://api.github.com/users/ericallam/orgs",
+    "subscriptions_url": "https://api.github.com/users/ericallam/subscriptions",
+    "received_events_url": "https://api.github.com/users/ericallam/received_events"
+  },
+  "repository": {
+    "id": 588602633,
+    "url": "https://api.github.com/repos/triggerdotdev/trigger.dev-examples",
+    "fork": false,
+    "name": "trigger.dev-examples",
+    "size": 161,
+    "forks": 0,
+    "owner": {
+      "id": 95297378,
+      "url": "https://api.github.com/users/triggerdotdev",
+      "type": "Organization",
+      "login": "triggerdotdev",
+      "node_id": "O_kgDOBa4fYg",
+      "html_url": "https://github.com/triggerdotdev",
+      "gists_url": "https://api.github.com/users/triggerdotdev/gists{/gist_id}",
+      "repos_url": "https://api.github.com/users/triggerdotdev/repos",
+      "avatar_url": "https://avatars.githubusercontent.com/u/95297378?v=4",
+      "events_url": "https://api.github.com/users/triggerdotdev/events{/privacy}",
+      "site_admin": false,
+      "gravatar_id": "",
+      "starred_url": "https://api.github.com/users/triggerdotdev/starred{/owner}{/repo}",
+      "followers_url": "https://api.github.com/users/triggerdotdev/followers",
+      "following_url": "https://api.github.com/users/triggerdotdev/following{/other_user}",
+      "organizations_url": "https://api.github.com/users/triggerdotdev/orgs",
+      "subscriptions_url": "https://api.github.com/users/triggerdotdev/subscriptions",
+      "received_events_url": "https://api.github.com/users/triggerdotdev/received_events"
+    },
+    "topics": [],
+    "git_url": "git://github.com/triggerdotdev/trigger.dev-examples.git",
+    "license": null,
+    "node_id": "R_kgDOIxVdCQ",
+    "private": false,
+    "ssh_url": "git@github.com:triggerdotdev/trigger.dev-examples.git",
+    "svn_url": "https://github.com/triggerdotdev/trigger.dev-examples",
+    "archived": false,
+    "disabled": false,
+    "has_wiki": false,
+    "homepage": null,
+    "html_url": "https://github.com/triggerdotdev/trigger.dev-examples",
+    "keys_url": "https://api.github.com/repos/triggerdotdev/trigger.dev-examples/keys{/key_id}",
+    "language": "TypeScript",
+    "tags_url": "https://api.github.com/repos/triggerdotdev/trigger.dev-examples/tags",
+    "watchers": 1,
+    "blobs_url": "https://api.github.com/repos/triggerdotdev/trigger.dev-examples/git/blobs{/sha}",
+    "clone_url": "https://github.com/triggerdotdev/trigger.dev-examples.git",
+    "forks_url": "https://api.github.com/repos/triggerdotdev/trigger.dev-examples/forks",
+    "full_name": "triggerdotdev/trigger.dev-examples",
+    "has_pages": false,
+    "hooks_url": "https://api.github.com/repos/triggerdotdev/trigger.dev-examples/hooks",
+    "pulls_url": "https://api.github.com/repos/triggerdotdev/trigger.dev-examples/pulls{/number}",
+    "pushed_at": "2023-01-24T04:20:52Z",
+    "teams_url": "https://api.github.com/repos/triggerdotdev/trigger.dev-examples/teams",
+    "trees_url": "https://api.github.com/repos/triggerdotdev/trigger.dev-examples/git/trees{/sha}",
+    "created_at": "2023-01-13T14:26:45Z",
+    "events_url": "https://api.github.com/repos/triggerdotdev/trigger.dev-examples/events",
+    "has_issues": true,
+    "issues_url": "https://api.github.com/repos/triggerdotdev/trigger.dev-examples/issues{/number}",
+    "labels_url": "https://api.github.com/repos/triggerdotdev/trigger.dev-examples/labels{/name}",
+    "merges_url": "https://api.github.com/repos/triggerdotdev/trigger.dev-examples/merges",
+    "mirror_url": null,
+    "updated_at": "2023-01-23T14:22:40Z",
+    "visibility": "public",
+    "archive_url": "https://api.github.com/repos/triggerdotdev/trigger.dev-examples/{archive_format}{/ref}",
+    "commits_url": "https://api.github.com/repos/triggerdotdev/trigger.dev-examples/commits{/sha}",
+    "compare_url": "https://api.github.com/repos/triggerdotdev/trigger.dev-examples/compare/{base}...{head}",
+    "description": "Node.js project with multiple example Trigger.dev workflows",
+    "forks_count": 0,
+    "is_template": false,
+    "open_issues": 3,
+    "branches_url": "https://api.github.com/repos/triggerdotdev/trigger.dev-examples/branches{/branch}",
+    "comments_url": "https://api.github.com/repos/triggerdotdev/trigger.dev-examples/comments{/number}",
+    "contents_url": "https://api.github.com/repos/triggerdotdev/trigger.dev-examples/contents/{+path}",
+    "git_refs_url": "https://api.github.com/repos/triggerdotdev/trigger.dev-examples/git/refs{/sha}",
+    "git_tags_url": "https://api.github.com/repos/triggerdotdev/trigger.dev-examples/git/tags{/sha}",
+    "has_projects": true,
+    "releases_url": "https://api.github.com/repos/triggerdotdev/trigger.dev-examples/releases{/id}",
+    "statuses_url": "https://api.github.com/repos/triggerdotdev/trigger.dev-examples/statuses/{sha}",
+    "allow_forking": true,
+    "assignees_url": "https://api.github.com/repos/triggerdotdev/trigger.dev-examples/assignees{/user}",
+    "downloads_url": "https://api.github.com/repos/triggerdotdev/trigger.dev-examples/downloads",
+    "has_downloads": false,
+    "languages_url": "https://api.github.com/repos/triggerdotdev/trigger.dev-examples/languages",
+    "default_branch": "main",
+    "milestones_url": "https://api.github.com/repos/triggerdotdev/trigger.dev-examples/milestones{/number}",
+    "stargazers_url": "https://api.github.com/repos/triggerdotdev/trigger.dev-examples/stargazers",
+    "watchers_count": 1,
+    "deployments_url": "https://api.github.com/repos/triggerdotdev/trigger.dev-examples/deployments",
+    "git_commits_url": "https://api.github.com/repos/triggerdotdev/trigger.dev-examples/git/commits{/sha}",
+    "has_discussions": false,
+    "subscribers_url": "https://api.github.com/repos/triggerdotdev/trigger.dev-examples/subscribers",
+    "contributors_url": "https://api.github.com/repos/triggerdotdev/trigger.dev-examples/contributors",
+    "issue_events_url": "https://api.github.com/repos/triggerdotdev/trigger.dev-examples/issues/events{/number}",
+    "stargazers_count": 1,
+    "subscription_url": "https://api.github.com/repos/triggerdotdev/trigger.dev-examples/subscription",
+    "collaborators_url": "https://api.github.com/repos/triggerdotdev/trigger.dev-examples/collaborators{/collaborator}",
+    "issue_comment_url": "https://api.github.com/repos/triggerdotdev/trigger.dev-examples/issues/comments{/number}",
+    "notifications_url": "https://api.github.com/repos/triggerdotdev/trigger.dev-examples/notifications{?since,all,participating}",
+    "open_issues_count": 3,
+    "web_commit_signoff_required": false
+  },
+  "organization": {
+    "id": 95297378,
+    "url": "https://api.github.com/orgs/triggerdotdev",
+    "login": "triggerdotdev",
+    "node_id": "O_kgDOBa4fYg",
+    "hooks_url": "https://api.github.com/orgs/triggerdotdev/hooks",
+    "repos_url": "https://api.github.com/orgs/triggerdotdev/repos",
+    "avatar_url": "https://avatars.githubusercontent.com/u/95297378?v=4",
+    "events_url": "https://api.github.com/orgs/triggerdotdev/events",
+    "issues_url": "https://api.github.com/orgs/triggerdotdev/issues",
+    "description": "",
+    "members_url": "https://api.github.com/orgs/triggerdotdev/members{/member}",
+    "public_members_url": "https://api.github.com/orgs/triggerdotdev/public_members{/member}"
+  },
+  "pull_request": {
+    "id": 1214500311,
+    "url": "https://api.github.com/repos/triggerdotdev/trigger.dev-examples/pulls/4",
+    "base": {
+      "ref": "main",
+      "sha": "e7c0680e23fcd3e52d35ddfbb4076112c640d9fa",
+      "repo": {
+        "id": 588602633,
+        "url": "https://api.github.com/repos/triggerdotdev/trigger.dev-examples",
+        "fork": false,
+        "name": "trigger.dev-examples",
+        "size": 161,
+        "forks": 0,
+        "owner": {
+          "id": 95297378,
+          "url": "https://api.github.com/users/triggerdotdev",
+          "type": "Organization",
+          "login": "triggerdotdev",
+          "node_id": "O_kgDOBa4fYg",
+          "html_url": "https://github.com/triggerdotdev",
+          "gists_url": "https://api.github.com/users/triggerdotdev/gists{/gist_id}",
+          "repos_url": "https://api.github.com/users/triggerdotdev/repos",
+          "avatar_url": "https://avatars.githubusercontent.com/u/95297378?v=4",
+          "events_url": "https://api.github.com/users/triggerdotdev/events{/privacy}",
+          "site_admin": false,
+          "gravatar_id": "",
+          "starred_url": "https://api.github.com/users/triggerdotdev/starred{/owner}{/repo}",
+          "followers_url": "https://api.github.com/users/triggerdotdev/followers",
+          "following_url": "https://api.github.com/users/triggerdotdev/following{/other_user}",
+          "organizations_url": "https://api.github.com/users/triggerdotdev/orgs",
+          "subscriptions_url": "https://api.github.com/users/triggerdotdev/subscriptions",
+          "received_events_url": "https://api.github.com/users/triggerdotdev/received_events"
+        },
+        "topics": [],
+        "git_url": "git://github.com/triggerdotdev/trigger.dev-examples.git",
+        "license": null,
+        "node_id": "R_kgDOIxVdCQ",
+        "private": false,
+        "ssh_url": "git@github.com:triggerdotdev/trigger.dev-examples.git",
+        "svn_url": "https://github.com/triggerdotdev/trigger.dev-examples",
+        "archived": false,
+        "disabled": false,
+        "has_wiki": false,
+        "homepage": null,
+        "html_url": "https://github.com/triggerdotdev/trigger.dev-examples",
+        "keys_url": "https://api.github.com/repos/triggerdotdev/trigger.dev-examples/keys{/key_id}",
+        "language": "TypeScript",
+        "tags_url": "https://api.github.com/repos/triggerdotdev/trigger.dev-examples/tags",
+        "watchers": 1,
+        "blobs_url": "https://api.github.com/repos/triggerdotdev/trigger.dev-examples/git/blobs{/sha}",
+        "clone_url": "https://github.com/triggerdotdev/trigger.dev-examples.git",
+        "forks_url": "https://api.github.com/repos/triggerdotdev/trigger.dev-examples/forks",
+        "full_name": "triggerdotdev/trigger.dev-examples",
+        "has_pages": false,
+        "hooks_url": "https://api.github.com/repos/triggerdotdev/trigger.dev-examples/hooks",
+        "pulls_url": "https://api.github.com/repos/triggerdotdev/trigger.dev-examples/pulls{/number}",
+        "pushed_at": "2023-01-24T04:20:52Z",
+        "teams_url": "https://api.github.com/repos/triggerdotdev/trigger.dev-examples/teams",
+        "trees_url": "https://api.github.com/repos/triggerdotdev/trigger.dev-examples/git/trees{/sha}",
+        "created_at": "2023-01-13T14:26:45Z",
+        "events_url": "https://api.github.com/repos/triggerdotdev/trigger.dev-examples/events",
+        "has_issues": true,
+        "issues_url": "https://api.github.com/repos/triggerdotdev/trigger.dev-examples/issues{/number}",
+        "labels_url": "https://api.github.com/repos/triggerdotdev/trigger.dev-examples/labels{/name}",
+        "merges_url": "https://api.github.com/repos/triggerdotdev/trigger.dev-examples/merges",
+        "mirror_url": null,
+        "updated_at": "2023-01-23T14:22:40Z",
+        "visibility": "public",
+        "archive_url": "https://api.github.com/repos/triggerdotdev/trigger.dev-examples/{archive_format}{/ref}",
+        "commits_url": "https://api.github.com/repos/triggerdotdev/trigger.dev-examples/commits{/sha}",
+        "compare_url": "https://api.github.com/repos/triggerdotdev/trigger.dev-examples/compare/{base}...{head}",
+        "description": "Node.js project with multiple example Trigger.dev workflows",
+        "forks_count": 0,
+        "is_template": false,
+        "open_issues": 3,
+        "branches_url": "https://api.github.com/repos/triggerdotdev/trigger.dev-examples/branches{/branch}",
+        "comments_url": "https://api.github.com/repos/triggerdotdev/trigger.dev-examples/comments{/number}",
+        "contents_url": "https://api.github.com/repos/triggerdotdev/trigger.dev-examples/contents/{+path}",
+        "git_refs_url": "https://api.github.com/repos/triggerdotdev/trigger.dev-examples/git/refs{/sha}",
+        "git_tags_url": "https://api.github.com/repos/triggerdotdev/trigger.dev-examples/git/tags{/sha}",
+        "has_projects": true,
+        "releases_url": "https://api.github.com/repos/triggerdotdev/trigger.dev-examples/releases{/id}",
+        "statuses_url": "https://api.github.com/repos/triggerdotdev/trigger.dev-examples/statuses/{sha}",
+        "allow_forking": true,
+        "assignees_url": "https://api.github.com/repos/triggerdotdev/trigger.dev-examples/assignees{/user}",
+        "downloads_url": "https://api.github.com/repos/triggerdotdev/trigger.dev-examples/downloads",
+        "has_downloads": false,
+        "languages_url": "https://api.github.com/repos/triggerdotdev/trigger.dev-examples/languages",
+        "default_branch": "main",
+        "milestones_url": "https://api.github.com/repos/triggerdotdev/trigger.dev-examples/milestones{/number}",
+        "stargazers_url": "https://api.github.com/repos/triggerdotdev/trigger.dev-examples/stargazers",
+        "watchers_count": 1,
+        "deployments_url": "https://api.github.com/repos/triggerdotdev/trigger.dev-examples/deployments",
+        "git_commits_url": "https://api.github.com/repos/triggerdotdev/trigger.dev-examples/git/commits{/sha}",
+        "has_discussions": false,
+        "subscribers_url": "https://api.github.com/repos/triggerdotdev/trigger.dev-examples/subscribers",
+        "allow_auto_merge": false,
+        "contributors_url": "https://api.github.com/repos/triggerdotdev/trigger.dev-examples/contributors",
+        "issue_events_url": "https://api.github.com/repos/triggerdotdev/trigger.dev-examples/issues/events{/number}",
+        "stargazers_count": 1,
+        "subscription_url": "https://api.github.com/repos/triggerdotdev/trigger.dev-examples/subscription",
+        "collaborators_url": "https://api.github.com/repos/triggerdotdev/trigger.dev-examples/collaborators{/collaborator}",
+        "issue_comment_url": "https://api.github.com/repos/triggerdotdev/trigger.dev-examples/issues/comments{/number}",
+        "notifications_url": "https://api.github.com/repos/triggerdotdev/trigger.dev-examples/notifications{?since,all,participating}",
+        "open_issues_count": 3,
+        "allow_merge_commit": true,
+        "allow_rebase_merge": true,
+        "allow_squash_merge": true,
+        "merge_commit_title": "MERGE_MESSAGE",
+        "allow_update_branch": false,
+        "merge_commit_message": "PR_TITLE",
+        "delete_branch_on_merge": false,
+        "squash_merge_commit_title": "COMMIT_OR_PR_TITLE",
+        "squash_merge_commit_message": "COMMIT_MESSAGES",
+        "web_commit_signoff_required": false,
+        "use_squash_pr_title_as_default": false
+      },
+      "user": {
+        "id": 95297378,
+        "url": "https://api.github.com/users/triggerdotdev",
+        "type": "Organization",
+        "login": "triggerdotdev",
+        "node_id": "O_kgDOBa4fYg",
+        "html_url": "https://github.com/triggerdotdev",
+        "gists_url": "https://api.github.com/users/triggerdotdev/gists{/gist_id}",
+        "repos_url": "https://api.github.com/users/triggerdotdev/repos",
+        "avatar_url": "https://avatars.githubusercontent.com/u/95297378?v=4",
+        "events_url": "https://api.github.com/users/triggerdotdev/events{/privacy}",
+        "site_admin": false,
+        "gravatar_id": "",
+        "starred_url": "https://api.github.com/users/triggerdotdev/starred{/owner}{/repo}",
+        "followers_url": "https://api.github.com/users/triggerdotdev/followers",
+        "following_url": "https://api.github.com/users/triggerdotdev/following{/other_user}",
+        "organizations_url": "https://api.github.com/users/triggerdotdev/orgs",
+        "subscriptions_url": "https://api.github.com/users/triggerdotdev/subscriptions",
+        "received_events_url": "https://api.github.com/users/triggerdotdev/received_events"
+      },
+      "label": "triggerdotdev:main"
+    },
+    "body": null,
+    "head": {
+      "ref": "resend",
+      "sha": "efc58e149c06f4a45ebf7a0bf34ac25cdcd34b07",
+      "repo": {
+        "id": 588602633,
+        "url": "https://api.github.com/repos/triggerdotdev/trigger.dev-examples",
+        "fork": false,
+        "name": "trigger.dev-examples",
+        "size": 161,
+        "forks": 0,
+        "owner": {
+          "id": 95297378,
+          "url": "https://api.github.com/users/triggerdotdev",
+          "type": "Organization",
+          "login": "triggerdotdev",
+          "node_id": "O_kgDOBa4fYg",
+          "html_url": "https://github.com/triggerdotdev",
+          "gists_url": "https://api.github.com/users/triggerdotdev/gists{/gist_id}",
+          "repos_url": "https://api.github.com/users/triggerdotdev/repos",
+          "avatar_url": "https://avatars.githubusercontent.com/u/95297378?v=4",
+          "events_url": "https://api.github.com/users/triggerdotdev/events{/privacy}",
+          "site_admin": false,
+          "gravatar_id": "",
+          "starred_url": "https://api.github.com/users/triggerdotdev/starred{/owner}{/repo}",
+          "followers_url": "https://api.github.com/users/triggerdotdev/followers",
+          "following_url": "https://api.github.com/users/triggerdotdev/following{/other_user}",
+          "organizations_url": "https://api.github.com/users/triggerdotdev/orgs",
+          "subscriptions_url": "https://api.github.com/users/triggerdotdev/subscriptions",
+          "received_events_url": "https://api.github.com/users/triggerdotdev/received_events"
+        },
+        "topics": [],
+        "git_url": "git://github.com/triggerdotdev/trigger.dev-examples.git",
+        "license": null,
+        "node_id": "R_kgDOIxVdCQ",
+        "private": false,
+        "ssh_url": "git@github.com:triggerdotdev/trigger.dev-examples.git",
+        "svn_url": "https://github.com/triggerdotdev/trigger.dev-examples",
+        "archived": false,
+        "disabled": false,
+        "has_wiki": false,
+        "homepage": null,
+        "html_url": "https://github.com/triggerdotdev/trigger.dev-examples",
+        "keys_url": "https://api.github.com/repos/triggerdotdev/trigger.dev-examples/keys{/key_id}",
+        "language": "TypeScript",
+        "tags_url": "https://api.github.com/repos/triggerdotdev/trigger.dev-examples/tags",
+        "watchers": 1,
+        "blobs_url": "https://api.github.com/repos/triggerdotdev/trigger.dev-examples/git/blobs{/sha}",
+        "clone_url": "https://github.com/triggerdotdev/trigger.dev-examples.git",
+        "forks_url": "https://api.github.com/repos/triggerdotdev/trigger.dev-examples/forks",
+        "full_name": "triggerdotdev/trigger.dev-examples",
+        "has_pages": false,
+        "hooks_url": "https://api.github.com/repos/triggerdotdev/trigger.dev-examples/hooks",
+        "pulls_url": "https://api.github.com/repos/triggerdotdev/trigger.dev-examples/pulls{/number}",
+        "pushed_at": "2023-01-24T04:20:52Z",
+        "teams_url": "https://api.github.com/repos/triggerdotdev/trigger.dev-examples/teams",
+        "trees_url": "https://api.github.com/repos/triggerdotdev/trigger.dev-examples/git/trees{/sha}",
+        "created_at": "2023-01-13T14:26:45Z",
+        "events_url": "https://api.github.com/repos/triggerdotdev/trigger.dev-examples/events",
+        "has_issues": true,
+        "issues_url": "https://api.github.com/repos/triggerdotdev/trigger.dev-examples/issues{/number}",
+        "labels_url": "https://api.github.com/repos/triggerdotdev/trigger.dev-examples/labels{/name}",
+        "merges_url": "https://api.github.com/repos/triggerdotdev/trigger.dev-examples/merges",
+        "mirror_url": null,
+        "updated_at": "2023-01-23T14:22:40Z",
+        "visibility": "public",
+        "archive_url": "https://api.github.com/repos/triggerdotdev/trigger.dev-examples/{archive_format}{/ref}",
+        "commits_url": "https://api.github.com/repos/triggerdotdev/trigger.dev-examples/commits{/sha}",
+        "compare_url": "https://api.github.com/repos/triggerdotdev/trigger.dev-examples/compare/{base}...{head}",
+        "description": "Node.js project with multiple example Trigger.dev workflows",
+        "forks_count": 0,
+        "is_template": false,
+        "open_issues": 3,
+        "branches_url": "https://api.github.com/repos/triggerdotdev/trigger.dev-examples/branches{/branch}",
+        "comments_url": "https://api.github.com/repos/triggerdotdev/trigger.dev-examples/comments{/number}",
+        "contents_url": "https://api.github.com/repos/triggerdotdev/trigger.dev-examples/contents/{+path}",
+        "git_refs_url": "https://api.github.com/repos/triggerdotdev/trigger.dev-examples/git/refs{/sha}",
+        "git_tags_url": "https://api.github.com/repos/triggerdotdev/trigger.dev-examples/git/tags{/sha}",
+        "has_projects": true,
+        "releases_url": "https://api.github.com/repos/triggerdotdev/trigger.dev-examples/releases{/id}",
+        "statuses_url": "https://api.github.com/repos/triggerdotdev/trigger.dev-examples/statuses/{sha}",
+        "allow_forking": true,
+        "assignees_url": "https://api.github.com/repos/triggerdotdev/trigger.dev-examples/assignees{/user}",
+        "downloads_url": "https://api.github.com/repos/triggerdotdev/trigger.dev-examples/downloads",
+        "has_downloads": false,
+        "languages_url": "https://api.github.com/repos/triggerdotdev/trigger.dev-examples/languages",
+        "default_branch": "main",
+        "milestones_url": "https://api.github.com/repos/triggerdotdev/trigger.dev-examples/milestones{/number}",
+        "stargazers_url": "https://api.github.com/repos/triggerdotdev/trigger.dev-examples/stargazers",
+        "watchers_count": 1,
+        "deployments_url": "https://api.github.com/repos/triggerdotdev/trigger.dev-examples/deployments",
+        "git_commits_url": "https://api.github.com/repos/triggerdotdev/trigger.dev-examples/git/commits{/sha}",
+        "has_discussions": false,
+        "subscribers_url": "https://api.github.com/repos/triggerdotdev/trigger.dev-examples/subscribers",
+        "allow_auto_merge": false,
+        "contributors_url": "https://api.github.com/repos/triggerdotdev/trigger.dev-examples/contributors",
+        "issue_events_url": "https://api.github.com/repos/triggerdotdev/trigger.dev-examples/issues/events{/number}",
+        "stargazers_count": 1,
+        "subscription_url": "https://api.github.com/repos/triggerdotdev/trigger.dev-examples/subscription",
+        "collaborators_url": "https://api.github.com/repos/triggerdotdev/trigger.dev-examples/collaborators{/collaborator}",
+        "issue_comment_url": "https://api.github.com/repos/triggerdotdev/trigger.dev-examples/issues/comments{/number}",
+        "notifications_url": "https://api.github.com/repos/triggerdotdev/trigger.dev-examples/notifications{?since,all,participating}",
+        "open_issues_count": 3,
+        "allow_merge_commit": true,
+        "allow_rebase_merge": true,
+        "allow_squash_merge": true,
+        "merge_commit_title": "MERGE_MESSAGE",
+        "allow_update_branch": false,
+        "merge_commit_message": "PR_TITLE",
+        "delete_branch_on_merge": false,
+        "squash_merge_commit_title": "COMMIT_OR_PR_TITLE",
+        "squash_merge_commit_message": "COMMIT_MESSAGES",
+        "web_commit_signoff_required": false,
+        "use_squash_pr_title_as_default": false
+      },
+      "user": {
+        "id": 95297378,
+        "url": "https://api.github.com/users/triggerdotdev",
+        "type": "Organization",
+        "login": "triggerdotdev",
+        "node_id": "O_kgDOBa4fYg",
+        "html_url": "https://github.com/triggerdotdev",
+        "gists_url": "https://api.github.com/users/triggerdotdev/gists{/gist_id}",
+        "repos_url": "https://api.github.com/users/triggerdotdev/repos",
+        "avatar_url": "https://avatars.githubusercontent.com/u/95297378?v=4",
+        "events_url": "https://api.github.com/users/triggerdotdev/events{/privacy}",
+        "site_admin": false,
+        "gravatar_id": "",
+        "starred_url": "https://api.github.com/users/triggerdotdev/starred{/owner}{/repo}",
+        "followers_url": "https://api.github.com/users/triggerdotdev/followers",
+        "following_url": "https://api.github.com/users/triggerdotdev/following{/other_user}",
+        "organizations_url": "https://api.github.com/users/triggerdotdev/orgs",
+        "subscriptions_url": "https://api.github.com/users/triggerdotdev/subscriptions",
+        "received_events_url": "https://api.github.com/users/triggerdotdev/received_events"
+      },
+      "label": "triggerdotdev:resend"
+    },
+    "user": {
+      "id": 534,
+      "url": "https://api.github.com/users/ericallam",
+      "type": "User",
+      "login": "ericallam",
+      "node_id": "MDQ6VXNlcjUzNA==",
+      "html_url": "https://github.com/ericallam",
+      "gists_url": "https://api.github.com/users/ericallam/gists{/gist_id}",
+      "repos_url": "https://api.github.com/users/ericallam/repos",
+      "avatar_url": "https://avatars.githubusercontent.com/u/534?v=4",
+      "events_url": "https://api.github.com/users/ericallam/events{/privacy}",
+      "site_admin": false,
+      "gravatar_id": "",
+      "starred_url": "https://api.github.com/users/ericallam/starred{/owner}{/repo}",
+      "followers_url": "https://api.github.com/users/ericallam/followers",
+      "following_url": "https://api.github.com/users/ericallam/following{/other_user}",
+      "organizations_url": "https://api.github.com/users/ericallam/orgs",
+      "subscriptions_url": "https://api.github.com/users/ericallam/subscriptions",
+      "received_events_url": "https://api.github.com/users/ericallam/received_events"
+    },
+    "draft": false,
+    "state": "open",
+    "title": "Example PR",
+    "_links": {
+      "html": {
+        "href": "https://github.com/triggerdotdev/trigger.dev-examples/pull/4"
+      },
+      "self": {
+        "href": "https://api.github.com/repos/triggerdotdev/trigger.dev-examples/pulls/4"
+      },
+      "issue": {
+        "href": "https://api.github.com/repos/triggerdotdev/trigger.dev-examples/issues/4"
+      },
+      "commits": {
+        "href": "https://api.github.com/repos/triggerdotdev/trigger.dev-examples/pulls/4/commits"
+      },
+      "comments": {
+        "href": "https://api.github.com/repos/triggerdotdev/trigger.dev-examples/issues/4/comments"
+      },
+      "statuses": {
+        "href": "https://api.github.com/repos/triggerdotdev/trigger.dev-examples/statuses/efc58e149c06f4a45ebf7a0bf34ac25cdcd34b07"
+      },
+      "review_comment": {
+        "href": "https://api.github.com/repos/triggerdotdev/trigger.dev-examples/pulls/comments{/number}"
+      },
+      "review_comments": {
+        "href": "https://api.github.com/repos/triggerdotdev/trigger.dev-examples/pulls/4/comments"
+      }
+    },
+    "labels": [],
+    "locked": false,
+    "merged": false,
+    "number": 4,
+    "commits": 1,
+    "node_id": "PR_kwDOIxVdCc5IY83X",
+    "assignee": null,
+    "comments": 0,
+    "diff_url": "https://github.com/triggerdotdev/trigger.dev-examples/pull/4.diff",
+    "html_url": "https://github.com/triggerdotdev/trigger.dev-examples/pull/4",
+    "additions": 220,
+    "assignees": [],
+    "closed_at": null,
+    "deletions": 0,
+    "issue_url": "https://api.github.com/repos/triggerdotdev/trigger.dev-examples/issues/4",
+    "mergeable": null,
+    "merged_at": null,
+    "merged_by": null,
+    "milestone": null,
+    "patch_url": "https://github.com/triggerdotdev/trigger.dev-examples/pull/4.patch",
+    "auto_merge": null,
+    "created_at": "2023-01-24T04:20:51Z",
+    "rebaseable": null,
+    "updated_at": "2023-01-24T04:20:51Z",
+    "commits_url": "https://api.github.com/repos/triggerdotdev/trigger.dev-examples/pulls/4/commits",
+    "comments_url": "https://api.github.com/repos/triggerdotdev/trigger.dev-examples/issues/4/comments",
+    "statuses_url": "https://api.github.com/repos/triggerdotdev/trigger.dev-examples/statuses/efc58e149c06f4a45ebf7a0bf34ac25cdcd34b07",
+    "changed_files": 3,
+    "mergeable_state": "unknown",
+    "requested_teams": [],
+    "review_comments": 0,
+    "merge_commit_sha": null,
+    "active_lock_reason": null,
+    "author_association": "MEMBER",
+    "review_comment_url": "https://api.github.com/repos/triggerdotdev/trigger.dev-examples/pulls/comments{/number}",
+    "requested_reviewers": [],
+    "review_comments_url": "https://api.github.com/repos/triggerdotdev/trigger.dev-examples/pulls/4/comments",
+    "maintainer_can_modify": false
+  }
+}
+```

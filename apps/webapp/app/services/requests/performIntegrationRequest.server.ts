@@ -4,7 +4,7 @@ import type {
   NormalizedResponse,
   PerformedRequestResponse,
 } from "internal-integrations";
-import { shopify, slack } from "internal-integrations";
+import { resend, shopify, slack } from "internal-integrations";
 import type { PrismaClient } from "~/db.server";
 import { prisma } from "~/db.server";
 import type { IntegrationRequest } from "~/models/integrationRequest.server";
@@ -235,6 +235,14 @@ export class PerformIntegrationRequest {
       }
       case "shopify": {
         return shopify.requests.perform({
+          accessInfo,
+          endpoint: integrationRequest.endpoint,
+          params: integrationRequest.params,
+          cache,
+        });
+      }
+      case "resend": {
+        return resend.requests.perform({
           accessInfo,
           endpoint: integrationRequest.endpoint,
           params: integrationRequest.params,

@@ -1,9 +1,9 @@
-![](apps/webapp/public/images/coming-soon-banner.png)
-
-
- ### We are now accepting users 😊! Request early access [here](https://bcymafitv0e.typeform.com/tddsignup#source=GitHubReadme).
+### The Trigger.dev Private beta is now open. Sign up for access [here](https://bcymafitv0e.typeform.com/tddsignup#source=GitHubReadme).
 
 &nbsp;
+
+![Hero](https://raw.githubusercontent.com/triggerdotdev/trigger.dev/eebe37109e33beae6390ee19029fce8a5934c84b/apps/webapp/public/images/logo-banner.png)
+
 
  ---
 
@@ -12,7 +12,9 @@
 
 ![Logo](https://trigger.dev/_next/static/media/triggerdotdev-logo.9226e5d0.png?imwidth=256)
 
-[![Twitter Follow](https://img.shields.io/twitter/follow/triggerdotdev)](https://twitter.com/intent/follow?screen_name=triggerdotdev)
+[![Twitter](https://img.shields.io/twitter/url/https/twitter.com/triggerdotdev.svg?style=social&label=Follow%20%40trigger.dev)](https://twitter.com/triggerdotdev)
+
+
 
 # ⚙️ Automate complex workflows with code
 

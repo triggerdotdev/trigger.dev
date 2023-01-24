@@ -1,5 +1,6 @@
 import { airtable } from "./providers/airtable";
 import { github } from "./providers/github";
+import { resend } from "./providers/resend";
 import { shopify } from "./providers/shopify";
 import { slack } from "./providers/slack";
 import { Provider } from "./types";
@@ -9,10 +10,10 @@ export type {
   OAuthAuthentication,
   Provider,
 } from "./types";
-export { airtable, github, slack, shopify };
+export { airtable, github, resend, slack, shopify };
 
 const providerCatalog = {
-  providers: { airtable, github, slack, shopify },
+  providers: { airtable, github, resend, slack, shopify },
 };
 
 export function getProviders(isAdmin: boolean): Provider[] {

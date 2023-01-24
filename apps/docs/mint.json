@@ -3,7 +3,7 @@
   "logo": {
     "dark": "/logo/light.png",
     "light": "/logo/light.png",
-    "href": "https://app.trigger.dev"
+    "href": "https://trigger.dev"
   },
   "favicon": "/images/favicon.png",
   "colors": {
@@ -15,25 +15,43 @@
       "to": "#0fd122"
     }
   },
+  "backgroundImage": "/images/docs-background.png",
   "modeToggle": {
     "default": "dark",
     "isHidden": true
   },
-  "topbarLinks": [
+  "topbarCtaButton": {
+    "type": "github",
+    "url": "https://github.com/triggerdotdev/trigger.dev"
+  },
+  "anchors": [
+    {
+      "name": "Community",
+      "icon": "discord",
+      "url": "https://discord.gg/nkqV9xBYWy"
+    },
     {
       "name": "GitHub",
+      "icon": "github",
       "url": "https://github.com/triggerdotdev/trigger.dev"
     }
   ],
-  "topbarCtaButton": {
-    "name": "Trigger.dev",
-    "url": "https://app.trigger.dev"
-  },
   "navigation": [
     {
       "group": "Getting Started",
       "pages": [
-        "getting-started"
+        "welcome",
+        "getting-started",
+        "get-help"
+      ]
+    },
+    {
+      "group": "Examples",
+      "pages": [
+        "examples/examples",
+        "examples/slack",
+        "examples/github",
+        "examples/shopify"
       ]
     },
     {
@@ -55,6 +73,12 @@
               "pages": [
                 "integrations/apis/slack/actions/post-message"
               ]
+            },
+            {
+              "group": "Resend.com",
+              "pages": [
+                "integrations/apis/resend/actions/send-email"
+              ]
             }
           ]
         },
@@ -75,7 +99,8 @@
       "group": "Guides",
       "pages": [
         "guides/resumability",
-        "guides/zod"
+        "guides/zod",
+        "guides/event-driven"
       ]
     },
     {
@@ -84,23 +109,21 @@
         {
           "group": "GitHub",
           "pages": [
+            "integrations/apis/github/events/push",
+            "integrations/apis/github/events/issues",
+            "integrations/apis/github/events/issue-comments",
+            "integrations/apis/github/events/pull-requests",
+            "integrations/apis/github/events/pull-request-reviews",
+            "integrations/apis/github/events/pull-request-comments",
             "integrations/apis/github/events/new-star"
           ]
         }
       ]
-    },
-    {
-      "group": "Example workflows",
-      "pages": [
-        "examples/github",
-        "examples/shopify",
-        "examples/slack"
-      ]
     }
   ],
   "footerSocials": {
-    "website": "https://app.trigger.dev",
     "twitter": "https://twitter.com/triggerdotdev",
-    "github": "https://github.com/triggerdotdev/trigger.dev"
+    "github": "https://github.com/triggerdotdev/trigger.dev",
+    "discord": "https://discord.gg/nkqV9xBYWy"
   }
 }

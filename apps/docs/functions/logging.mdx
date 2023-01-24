@@ -4,4 +4,38 @@ sidebarTitle: "Logging"
 description: "There are 4 different types of logs you can add as workflow steps."
 ---
 
-## Coming soon
+If you'd like to add additional logging to your workflow run, you can use our built-in logging utility
+
+## Usage
+
+```ts
+import { Trigger } from "@trigger.dev/sdk";
+
+new Trigger({
+  id: "my-trigger",
+  on: scheduleEvent({ rateOf: { minutes: 5 } }),
+  run: async (event, ctx) => {
+    await ctx.logger.info("It's been 5 minutes since the last run!");
+  },
+}).listen();
+```
+
+This will log the message to your workflow run page in the Trigger dashboard
+
+There are 4 different types of logs you can add as workflow steps:
+
+```ts
+await ctx.logger.info("It's been 5 minutes since the last run!");
+await ctx.logger.debug("This is a debug log");
+await ctx.logger.warn("This is a warning");
+await ctx.logger.error("This is an error");
+```
+
+You can also include a second argument to the logger to add additional metadata to the log:
+
+```ts
+await ctx.logger.info("It's been 5 minutes since the last run!", {
+  foo: "bar",
+  baz: 123,
+});
+```

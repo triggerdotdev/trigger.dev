@@ -11,7 +11,7 @@ const trigger = new Trigger({
   name: "My workflow",
   apiKey: "trigger_dev_zC25mKNn6c0q",
   endpoint: "ws://localhost:8889/ws",
-  logLevel: "log",
+  logLevel: "debug",
   triggerTTL: 60 * 60 * 24,
   on: customEvent({ name: "user.created", schema: userCreatedEvent }),
   run: async (event, ctx) => {
@@ -35,3 +35,18 @@ const trigger = new Trigger({
 });
 
 trigger.listen();
+
+new Trigger({
+  id: "log-tests",
+  name: "My logs",
+  apiKey: "trigger_dev_zC25mKNn6c0q",
+  endpoint: "ws://localhost:8889/ws",
+  logLevel: "debug",
+  on: customEvent({ name: "user.created", schema: z.any() }),
+  run: async (event, ctx) => {
+    await ctx.logger.info("It's been 5 minutes since the last run!");
+    await ctx.logger.debug("This is a debug log");
+    await ctx.logger.warn("This is a warning");
+    await ctx.logger.error("This is an error");
+  },
+}).listen();

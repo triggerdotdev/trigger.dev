@@ -36,6 +36,7 @@ export class GitHubWebhookIntegration implements WebhookIntegration {
 
   handleWebhookRequest(options: HandleWebhookOptions) {
     const deliveryId = options.request.headers["x-github-delivery"];
+    const hookId = options.request.headers["x-github-hook-id"];
 
     const signature = options.request.headers["x-hub-signature-256"];
 
@@ -45,7 +46,7 @@ export class GitHubWebhookIntegration implements WebhookIntegration {
       });
 
       console.log(
-        `[${deliveryId}] GitHubWebhookIntegration: Verifying signature ${signature}`
+        `[delivery=${deliveryId}][hook=${hookId}] GitHubWebhookIntegration: Verifying signature ${signature}`
       );
 
       if (!githubWebhooks.verify(options.request.body, signature)) {
@@ -72,7 +73,7 @@ export class GitHubWebhookIntegration implements WebhookIntegration {
 
     return {
       status: "ok" as const,
-      data: { id: deliveryId, payload: options.request.body, event, context },
+      data: { id: hookId, payload: options.request.body, event, context },
     };
   }
 

@@ -1,5 +1,15 @@
 # @trigger.dev/integrations
 
+## 0.1.10
+
+### Patch Changes
+
+- c570f06: Added resend.com integration
+- Updated dependencies [39b167e]
+- Updated dependencies [c570f06]
+  - @trigger.dev/sdk@0.2.7
+  - @trigger.dev/providers@0.1.6
+
 ## 0.1.9
 
 ### Patch Changes

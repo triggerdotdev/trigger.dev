@@ -1,7 +1,72 @@
 ---
 title: "Resumability"
 sidebarTitle: "Keys and Resumability"
-description: "Keys and Resumability"
+description: "Understand how keys work to ensure resumability of long-running workflows in Trigger.dev"
 ---
 
-## Coming soon
+## Intro
+
+In this article, we'll cover how Trigger.dev handles resumability of long-running workflows. We'll also cover how to use keys to ensure that your workflows are resumable.
+
+## What is resumability?
+
+Resumability is the ability of a workflow run to continue from where it left off after a failure or interruption. For example, if a workflow run is interrupted due to a network failure, it should be able to resume from where it left off when the network is back up.
+
+We accomplish this by storing the state of the workflow run in a database, and when a workflow run is resumed we will call the `Trigger.run` function again.
+
+We use step "keys" to determine which steps have already been executed. If a step has already been executed, we will skip it and move on to the next step.
+
+## How to use keys
+
+Like we mentioned above, we use step keys to determine which steps have already been executed. They are defined by you inside your `Trigger.run` function, for example when you call `slack.postMessage`:
+
+```ts
+await slack.postMessage("⭐️ New Star", {
+  channelName: "github-stars",
+  text: `@${starredBy} just starred ${repoName}!`,
+});
+```
+
+In this example, the key is the string `"⭐️ New Star"`. This means that if the workflow is interrupted and then resumed, the `slack.postMessage` step will be skipped because it has already been executed.
+
+If you make multiple calls to `slack.postMessage`, you should use different keys for each call. For example:
+
+```ts
+await slack.postMessage("⭐️ New Star", {
+  channelName: "github-stars",
+  text: `@${starredBy} just starred ${repoName}!`,
+});
+
+await slack.postMessage("🚨 Critical Issue", {
+  channelName: "critical-issues",
+  text: `@${assignee} just opened a critical issue in ${repoName}!`,
+});
+```
+
+If you are calling a step multiple times with the same key, it will only be executed once. For example, if you call `slack.postMessage` with the key `"⭐️ New Star"` twice, it will only be executed once.
+
+## How to use keys with loops
+
+If you are using a loop, you should use the loop index as the key. For example:
+
+```ts
+for (let i = 0; i < 10; i++) {
+  await ctx.waitFor(`Wait ${i}`, { seconds: 30 });
+
+  await slack.postMessage(`⭐️ New Star ${i}`, {
+    channelName: "github-stars",
+    text: `@${starredBy} just starred ${repoName}!`,
+  });
+}
+```
+
+## When to use keys
+
+The following functions in Trigger.dev require a `key` parameter:
+
+- Integration actions (e.g. `slack.postMessage`)
+- [delays](/functions/delays)
+- [sendEvent](/functions/send-event)
+- [fetch](/functions/fetch)
+
+[Logging](/functions/logging) does not require a key, as we are currently using the log message as the key.

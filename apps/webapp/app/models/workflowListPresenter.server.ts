@@ -143,7 +143,10 @@ function triggerProperties(
           );
           break;
         default:
-          throw new Error(`Unsupported service ${externalSource.service}`);
+          displayProperties = {
+            title: externalSource.service,
+          };
+          break;
       }
 
       return {

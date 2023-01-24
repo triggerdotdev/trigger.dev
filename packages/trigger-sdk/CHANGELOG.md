@@ -1,5 +1,11 @@
 # @trigger.dev/sdk
 
+## 0.2.7
+
+### Patch Changes
+
+- 39b167e: Better handle event parsing errors from Zod
+
 ## 0.2.6
 
 ### Patch Changes

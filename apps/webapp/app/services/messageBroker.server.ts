@@ -1,5 +1,5 @@
+import type { FetchOutputSchema } from "@trigger.dev/common-schemas";
 import {
-  FetchOutputSchema,
   JsonSchema,
   ScheduledEventPayloadSchema,
 } from "@trigger.dev/common-schemas";
@@ -17,11 +17,10 @@ import {
   ZodPubSub,
   ZodSubscriber,
 } from "internal-platform";
-import type { PulsarClient } from "./pulsarClient.server";
-import { createPulsarClient } from "./pulsarClient.server";
 import { Topics } from "internal-pulsar";
 import { z } from "zod";
 import { env } from "~/env.server";
+import { findFetchRequestById } from "~/models/fetchRequest.server";
 import { findIntegrationRequestById } from "~/models/integrationRequest.server";
 import {
   completeWorkflowRun,
@@ -37,18 +36,19 @@ import { sendEmail } from "./email.server";
 import { DispatchEvent } from "./events/dispatch.server";
 import { HandleNewServiceConnection } from "./externalServices/handleNewConnection.server";
 import { RegisterExternalSource } from "./externalSources/registerExternalSource.server";
+import { CreateFetchRequest } from "./fetches/createFetchRequest.server";
+import { PerformFetchRequest } from "./fetches/performFetchRequest.server";
+import { StartFetchRequest } from "./fetches/startFetchRequest.server";
+import type { PulsarClient } from "./pulsarClient.server";
+import { createPulsarClient } from "./pulsarClient.server";
 import { CreateIntegrationRequest } from "./requests/createIntegrationRequest.server";
 import { PerformIntegrationRequest } from "./requests/performIntegrationRequest.server";
 import { StartIntegrationRequest } from "./requests/startIntegrationRequest.server";
 import { WaitForConnection } from "./requests/waitForConnection.server";
 import { WorkflowRunDisconnected } from "./runs/runDisconnected.server";
+import { WorkflowRunTriggerTimeout } from "./runs/runTriggerTimeout.server";
 import { DeliverScheduledEvent } from "./scheduler/deliverScheduledEvent.server";
 import { RegisterSchedulerSource } from "./scheduler/registerSchedulerSource.server";
-import { WorkflowRunTriggerTimeout } from "./runs/runTriggerTimeout.server";
-import { CreateFetchRequest } from "./fetches/createFetchRequest.server";
-import { findFetchRequestById } from "~/models/fetchRequest.server";
-import { StartFetchRequest } from "./fetches/startFetchRequest.server";
-import { PerformFetchRequest } from "./fetches/performFetchRequest.server";
 
 let pulsarClient: PulsarClient;
 let triggerPublisher: ZodPublisher<TriggerCatalog>;

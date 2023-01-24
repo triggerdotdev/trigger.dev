@@ -1,6 +1,6 @@
 {
   "name": "@trigger.dev/integrations",
-  "version": "0.1.9",
+  "version": "0.1.10",
   "description": "trigger.dev integrations",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -22,8 +22,9 @@
     "build:tsup": "tsup"
   },
   "dependencies": {
-    "zod": "^3.20.2",
+    "@react-email/render": "^0.0.3",
+    "@trigger.dev/providers": "workspace:*",
     "@trigger.dev/sdk": "workspace:*",
-    "@trigger.dev/providers": "workspace:*"
+    "zod": "^3.20.2"
   }
 }

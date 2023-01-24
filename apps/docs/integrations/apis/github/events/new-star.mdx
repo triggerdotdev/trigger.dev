@@ -4,9 +4,19 @@ sidebarTitle: "New Star"
 description: "Trigger a workflow whenever a user star's the specified GitHub repository."
 ---
 
-# New Star
+## Usage
 
-Trigger a workflow whenever a user star's the specified GitHub repository.
+```ts
+import { github } from "@trigger.dev/integrations";
+
+new Trigger({
+  id: "demo",
+  on: github.events.newStarEvent({
+    repo: "triggerdotdev/trigger.dev",
+  }),
+  run: async (event, ctx) => {},
+}).listen();
+```
 
 ## Params
 
@@ -39,17 +49,6 @@ Trigger a workflow whenever a user star's the specified GitHub repository.
 ## Example Workflows
 
 <CodeGroup>
-
-```typescript Basic
-new Trigger({
-  id: "new-star",
-  name: "On New Star",
-  on: github.events.newStarEvent({
-    repo: "triggerdotdev/trigger.dev",
-  }),
-  run: async (event, ctx) => {},
-}).listen();
-```
 
 ```typescript Notify Slack on New Star
 import { slack } from "@trigger.dev/integrations";
