@@ -79,6 +79,14 @@ export const action = async ({ request, params }: ActionArgs) => {
       );
     }
 
+    if (run === true) {
+      return redirectWithErrorMessage(
+        `/orgs/${organizationSlug}/workflows/${workflowSlug}/runs`,
+        request,
+        "This run is disabled"
+      );
+    }
+
     return redirectWithSuccessMessage(
       `/orgs/${organizationSlug}/workflows/${workflowSlug}/runs/${run.id}`,
       request,
