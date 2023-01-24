@@ -39,18 +39,15 @@
   "navigation": [
     {
       "group": "Getting Started",
-      "pages": [
-        "welcome",
-        "getting-started",
-        "get-help"
-      ]
+      "pages": ["welcome", "getting-started", "get-help"]
     },
     {
       "group": "Examples",
       "pages": [
+        "examples/examples",
+        "examples/slack",
         "examples/github",
-        "examples/shopify",
-        "examples/slack"
+        "examples/shopify"
       ]
     },
     {
@@ -69,9 +66,7 @@
           "pages": [
             {
               "group": "Slack",
-              "pages": [
-                "integrations/apis/slack/actions/post-message"
-              ]
+              "pages": ["integrations/apis/slack/actions/post-message"]
             }
           ]
         },
@@ -90,11 +85,7 @@
     },
     {
       "group": "Guides",
-      "pages": [
-        "guides/resumability",
-        "guides/zod",
-        "guides/event-driven"
-      ]
+      "pages": ["guides/resumability", "guides/zod", "guides/event-driven"]
     },
     {
       "group": "Webhook Catalog",
