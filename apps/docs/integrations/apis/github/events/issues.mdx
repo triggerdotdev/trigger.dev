@@ -4,6 +4,20 @@ sidebarTitle: "Issues"
 description: "Trigger a workflow whenever an issue action is performed in a GitHub repository."
 ---
 
+## Usage
+
+```ts
+import { github } from "@trigger.dev/integrations";
+
+new Trigger({
+  id: "demo",
+  on: github.events.issueEvent({
+    repo: "triggerdotdev/trigger.dev",
+  }),
+  run: async (event, ctx) => {},
+}).listen();
+```
+
 ## Params
 
 <ParamField path="repo" type="string" required={true}>
@@ -27,7 +41,7 @@ description: "Trigger a workflow whenever an issue action is performed in a GitH
 </ResponseField>
 
 <ResponseField name="sender" type="object" required={true}>
-  The GitHub user object who starred the repository.
+  The GitHub user object who performed the action.
 </ResponseField>
 
 <ResponseField name="organization" type="object">
@@ -103,25 +117,11 @@ description: "Trigger a workflow whenever an issue action is performed in a GitH
 
 ## Example Workflows
 
-<ResponseField name="issue" type="object" required={true}>
-  The issue object.
-</ResponseField>
-
 <CodeGroup>
-
-```typescript Basic
-const trigger = new Trigger({
-  id: "basic-example",
-  on: github.events.issueEvent({
-    repo: "triggerdotdev/trigger.dev",
-  }),
-  run: async (event, ctx) => {},
-});
-```
 
 ```typescript Notify Slack on Critical Issue
 new Trigger({
-  id: "github-issue-to-slack-message",
+  id: "github-to-slack",
   name: "Notify of critical issues",
   on: github.events.issueEvent({
     repo: "triggerdotdev/trigger.dev",
@@ -138,14 +138,14 @@ new Trigger({
 
     return event;
   },
-});
+}).listen();
 ```
 
 </CodeGroup>
 
 ## Example Event payload
 
-```json Example
+```json
 {
   "issue": {
     "id": 1514714160,

@@ -39,11 +39,19 @@
   "navigation": [
     {
       "group": "Getting Started",
-      "pages": ["welcome", "getting-started", "get-help"]
+      "pages": [
+        "welcome",
+        "getting-started",
+        "get-help"
+      ]
     },
     {
       "group": "Examples",
-      "pages": ["examples/github", "examples/shopify", "examples/slack"]
+      "pages": [
+        "examples/github",
+        "examples/shopify",
+        "examples/slack"
+      ]
     },
     {
       "group": "Triggers",
@@ -61,7 +69,9 @@
           "pages": [
             {
               "group": "Slack",
-              "pages": ["integrations/apis/slack/actions/post-message"]
+              "pages": [
+                "integrations/apis/slack/actions/post-message"
+              ]
             }
           ]
         },
@@ -80,7 +90,11 @@
     },
     {
       "group": "Guides",
-      "pages": ["guides/resumability", "guides/zod", "guides/event-driven"]
+      "pages": [
+        "guides/resumability",
+        "guides/zod",
+        "guides/event-driven"
+      ]
     },
     {
       "group": "Webhook Catalog",
@@ -88,7 +102,12 @@
         {
           "group": "GitHub",
           "pages": [
+            "integrations/apis/github/events/push",
             "integrations/apis/github/events/issues",
+            "integrations/apis/github/events/issue-comments",
+            "integrations/apis/github/events/pull-requests",
+            "integrations/apis/github/events/pull-request-reviews",
+            "integrations/apis/github/events/pull-request-comments",
             "integrations/apis/github/events/new-star"
           ]
         }
