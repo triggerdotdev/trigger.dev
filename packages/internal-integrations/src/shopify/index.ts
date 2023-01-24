@@ -1,7 +1,7 @@
 import { shopify } from "@trigger.dev/providers";
 import { Client, createClient } from "@urql/core";
 import debug from "debug";
-import { ReactNode } from "react";
+import type { ReactNode } from "react";
 import {
   DisplayProperties,
   PerformedRequestResponse,

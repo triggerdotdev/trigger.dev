@@ -1,0 +1,127 @@
+---
+title: "Send Email"
+sidebarTitle: "Send Email"
+description: "Send email using Resend.com"
+---
+
+Send email using Resend.com, which supports sending emails using React, HTML, and plain text. Resend.com is currently in private beta but you can request early access [here](https://resend.com/).
+
+<Note>
+  If you'd like to render emails using React, please see the [React.email
+  docs](https://react.email/)
+</Note>
+
+## Params
+
+<ParamField path="key" type="string" required={true}>
+  A unique string. Please see the [Keys and Resumability](/guides/resumability)
+  doc for more info.
+</ParamField>
+
+<ParamField path="message" type="object" required={true}>
+  <Expandable title="properties" defaultOpen={true}>
+    <ParamField path="text" type="string" required={false}>
+      The text of the email. If `html` is provided, this will be used as the
+      plain text version of the email.
+    </ParamField>
+
+    <ParamField path="html" type="string" required={false}>
+      The HTML of the email. If `text` is provided, this will be used as the
+      HTML version of the email.
+    </ParamField>
+
+    <ParamField path="react" type="react component" required={false}>
+      A React component that will be rendered to HTML and used as the email
+      content. Please see the [React.email docs](https://react.email/) for more info
+    </ParamField>
+
+    <ParamField path="subject" type="string" required={true}>
+      The subject of the email.
+    </ParamField>
+
+    <ParamField path="from" type="string" required={true}>
+      The email address of the sender.
+    </ParamField>
+
+    <ParamField path="to" type="string | string[]" required={true}>
+      One or more email addresses of the recipients.
+    </ParamField>
+
+    <ParamField path="cc" type="string | string[]" required={false}>
+      One or more email addresses of the CC recipients.
+    </ParamField>
+
+    <ParamField path="bcc" type="string | string[]" required={false}>
+      One or more email addresses of the BCC recipients.
+    </ParamField>
+
+    <ParamField path="replyTo" type="string | string[]" required={false}>
+      An optional email address to use as the reply-to address.
+    </ParamField>
+
+  </Expandable>
+</ParamField>
+
+## Response
+
+<ResponseField name="id" type="string">
+  The ID of the email.
+</ResponseField>
+
+<ResponseField name="from" type="string">
+  The email address of the sender.
+</ResponseField>
+
+<ResponseField name="to" type="string">
+  The email address of the recipient.
+</ResponseField>
+
+<ResponseField name="created_at" type="string">
+  The date and time the email was created.
+</ResponseField>
+
+## Example Workflows
+
+<CodeGroup>
+
+```typescript criticalIssue.tsx
+import { github, resend } from "@trigger.dev/integrations";
+import { CriticalIssueEmail } from "./emails";
+
+new Trigger({
+  id: "email-ops",
+  name: "On Critical Issue",
+  on: github.events.issueEvent({
+    repo: "triggerdotdev/trigger.dev",
+  }),
+  run: async (event, ctx) => {
+    if (event.action === "labeled" && event.label.name === "critical") {
+      await resend.sendEmail("🚨 Alert Ops", {
+        to: "ops@trigger.dev",
+        from: "internal@trigger.dev",
+        subject: `Critical issue: ${event.issue.title}`,
+        react: (
+          <CriticalIssueEmail
+            issue={event.issue}
+            sender={event.sender}
+            repo={event.repository}
+          />
+        ),
+      });
+    }
+  },
+}).listen();
+```
+
+</CodeGroup>
+
+## Example Response
+
+```json
+{
+  "id": "1673618429",
+  "from": "internal@trigger.dev",
+  "to": "ops@trigger.dev",
+  "created_at": "2023-01-24T14:38:26Z"
+}
+```

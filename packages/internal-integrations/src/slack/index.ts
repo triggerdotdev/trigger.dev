@@ -11,7 +11,7 @@ import { slack } from "@trigger.dev/providers";
 import debug from "debug";
 import { getAccessToken } from "../accessInfo";
 import { z } from "zod";
-import { ReactNode } from "react";
+import type { ReactNode } from "react";
 
 const log = debug("trigger:integrations:slack");
 
