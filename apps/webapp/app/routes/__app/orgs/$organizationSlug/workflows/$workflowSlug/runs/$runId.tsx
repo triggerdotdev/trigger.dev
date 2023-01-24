@@ -719,7 +719,7 @@ function IntegrationRequestStep({
           )
         )}
       </div>
-      {component !== null && (
+      {request.status === "SUCCESS" && component !== null && (
         <>
           <Body
             size="extra-small"

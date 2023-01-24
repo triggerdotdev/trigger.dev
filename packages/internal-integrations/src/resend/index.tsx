@@ -136,6 +136,22 @@ class ResendRequestIntegration implements RequestIntegration {
       };
     }
 
+    if (response.statusCode !== 200) {
+      log("email.send failed %O", response);
+
+      return {
+        ok: false,
+        isRetryable: this.#isRetryable(response.statusCode),
+        response: {
+          output: response.data,
+          context: {
+            statusCode: response.statusCode,
+            headers: response.headers,
+          },
+        },
+      };
+    }
+
     const performedRequest = {
       ok: response.success,
       isRetryable: this.#isRetryable(response.statusCode),
