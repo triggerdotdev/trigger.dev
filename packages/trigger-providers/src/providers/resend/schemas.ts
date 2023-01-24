@@ -23,12 +23,26 @@ export const SendEmailOptionsSchema = z
   })
   .and(BaseSendFieldsSchema);
 
-export const SendEmailBodySchema = BaseSendFieldsSchema.and(
+export const SendEmailBodySchema = BaseSendFieldsSchema.omit({
+  replyTo: true,
+}).and(
   z.object({
+    reply_to: z.string().optional(),
     text: z.string().optional(),
     html: z.string().optional(),
   })
 );
 
-export const SendEmailSuccessResponseSchema = z.any();
-export const SendEmailResponseSchema = z.any();
+export const SendEmailSuccessResponseSchema = z.object({
+  id: z.string(),
+  from: z.string(),
+  to: z.string(),
+  created_at: z.string().optional(),
+});
+export const SendEmailErrorResponseSchema = z.object({
+  error: z.object({ code: z.number(), type: z.string(), message: z.string() }),
+});
+export const SendEmailResponseSchema = z.union([
+  SendEmailSuccessResponseSchema,
+  SendEmailErrorResponseSchema,
+]);

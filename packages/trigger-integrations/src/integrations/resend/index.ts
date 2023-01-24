@@ -35,16 +35,18 @@ export async function sendEmail(
   if (html) {
     params = {
       ...message,
+      reply_to: message.replyTo,
       html,
     };
-    delete params.react;
   } else {
     params = {
       ...message,
+      reply_to: message.replyTo,
     };
-    delete params.react;
     delete params.html;
   }
+  delete params.replyTo;
+  delete params.react;
 
   const output = await run.performRequest(key, {
     service: "resend",

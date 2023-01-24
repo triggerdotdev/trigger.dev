@@ -94,10 +94,8 @@ class ResendRequestIntegration implements RequestIntegration {
       };
     }
 
-    const ok = response.data.ok;
-
     const performedRequest = {
-      ok,
+      ok: response.success,
       isRetryable: this.#isRetryable(response.statusCode),
       response: {
         output: response.data,
