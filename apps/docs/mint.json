@@ -28,15 +28,21 @@
       "name": "Community",
       "icon": "discord",
       "url": "https://discord.gg/nkqV9xBYWy"
+    },
+    {
+      "name": "GitHub",
+      "icon": "github",
+      "url": "https://github.com/triggerdotdev/trigger.dev"
     }
   ],
   "navigation": [
     {
       "group": "Getting Started",
-      "pages": [
-        "getting-started",
-        "get-help"
-      ]
+      "pages": ["welcome", "getting-started", "get-help"]
+    },
+    {
+      "group": "Examples",
+      "pages": ["examples/github", "examples/shopify", "examples/slack"]
     },
     {
       "group": "Triggers",
@@ -54,9 +60,7 @@
           "pages": [
             {
               "group": "Slack",
-              "pages": [
-                "integrations/apis/slack/actions/post-message"
-              ]
+              "pages": ["integrations/apis/slack/actions/post-message"]
             }
           ]
         },
@@ -75,11 +79,7 @@
     },
     {
       "group": "Guides",
-      "pages": [
-        "guides/resumability",
-        "guides/zod",
-        "guides/event-driven"
-      ]
+      "pages": ["guides/resumability", "guides/zod", "guides/event-driven"]
     },
     {
       "group": "Webhook Catalog",
@@ -91,14 +91,6 @@
             "integrations/apis/github/events/new-star"
           ]
         }
-      ]
-    },
-    {
-      "group": "Example workflows",
-      "pages": [
-        "examples/github",
-        "examples/shopify",
-        "examples/slack"
       ]
     }
   ],
