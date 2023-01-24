@@ -84,12 +84,17 @@ class ResendRequestIntegration implements RequestIntegration {
             <EmailInfo label="reply to" value={parsedInput.reply_to} />
           </div>
         </div>
-        <div className="px-4">
-          <div
-            dangerouslySetInnerHTML={{
-              __html: parsedInput.text ?? parsedInput.html ?? "",
-            }}
-          ></div>
+        <div className="px-4 text-slate-600">
+          {parsedInput.html && (
+            <div
+              dangerouslySetInnerHTML={{
+                __html: parsedInput.html,
+              }}
+            />
+          )}
+          {parsedInput.text && (
+            <div className="py-4 text-slate-600">{parsedInput.text}</div>
+          )}
         </div>
       </div>
     );
