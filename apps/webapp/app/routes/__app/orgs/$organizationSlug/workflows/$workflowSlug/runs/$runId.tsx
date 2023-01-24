@@ -19,6 +19,7 @@ import type { LoaderArgs } from "@remix-run/server-runtime";
 import type { Delay, Scheduled } from "@trigger.dev/common-schemas";
 import classNames from "classnames";
 import humanizeDuration from "humanize-duration";
+import { integrations } from "internal-integrations";
 import type { ReactNode } from "react";
 import { useEffect, useState } from "react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
@@ -642,6 +643,12 @@ function IntegrationRequestStep({
   const organization = useCurrentOrganization();
   invariant(organization, "Organization must be set");
 
+  const internalIntegration = integrations[request.service.slug];
+  const component = internalIntegration.requests?.renderComponent(
+    request.input,
+    request.output
+  );
+
   return (
     <>
       <Header2 size="small" className="text-slate-300 mb-2">
@@ -712,6 +719,17 @@ function IntegrationRequestStep({
           )
         )}
       </div>
+      {request.status === "SUCCESS" && component !== null && (
+        <>
+          <Body
+            size="extra-small"
+            className={`mt-4 mb-1 ${workflowNodeUppercaseClasses}`}
+          >
+            Preview
+          </Body>
+          <div>{component}</div>
+        </>
+      )}
     </>
   );
 }

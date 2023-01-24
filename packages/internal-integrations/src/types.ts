@@ -61,6 +61,7 @@ export interface RequestIntegration {
     options: PerformRequestOptions
   ) => Promise<PerformedRequestResponse>;
   displayProperties: (endpoint: string, params: any) => DisplayProperties;
+  renderComponent(input: any, output: any): React.ReactNode;
 }
 
 export interface WebhookIntegration {
@@ -79,3 +80,8 @@ export interface CacheService {
   get: (key: string) => Promise<string | null>;
   set: (key: string, value: string, ttl?: number) => Promise<void>;
 }
+
+export type InternalIntegration = {
+  requests?: RequestIntegration;
+  webhooks?: WebhookIntegration;
+};
