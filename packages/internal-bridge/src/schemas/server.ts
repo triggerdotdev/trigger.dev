@@ -1,6 +1,7 @@
 import {
   CustomEventSchema,
   FetchRequestSchema,
+  RetrySchema,
   TriggerMetadataSchema,
   WaitSchema,
 } from "@trigger.dev/common-schemas";

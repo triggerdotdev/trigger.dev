@@ -99,8 +99,17 @@
       "group": "Guides",
       "pages": [
         "guides/resumability",
+        "guides/event-filters",
         "guides/zod",
         "guides/event-driven"
+      ]
+    },
+    {
+      "group": "Reference",
+      "pages": [
+        "reference/trigger",
+        "reference/custom-event",
+        "reference/webhook-event"
       ]
     },
     {

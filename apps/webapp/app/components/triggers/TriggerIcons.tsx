@@ -47,6 +47,14 @@ export function TriggerTypeIcon({
       return (
         <img src={Schedule} alt={triggerLabel(type)} className={iconClasses} />
       );
+    case "WEBHOOK":
+      return (
+        <img
+          src={CustomEvent}
+          alt={triggerLabel(type)}
+          className={iconClasses}
+        />
+      );
     default:
       return null;
   }

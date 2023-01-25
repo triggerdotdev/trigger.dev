@@ -335,6 +335,7 @@ export class TriggerClient<TSchema extends z.ZodTypeAny> {
                 method: options.method ?? "GET",
                 headers: options.headers,
                 body: options.body,
+                retry: options.retry,
               },
               timestamp: String(highPrecisionTimestamp()),
             });
@@ -508,7 +509,14 @@ export class TriggerClient<TSchema extends z.ZodTypeAny> {
                           };
                         }
 
-                        console.error(anyError);
+                        const parsedError = z
+                          .object({ name: z.string(), message: z.string() })
+                          .passthrough()
+                          .safeParse(error);
+
+                        if (parsedError.success) {
+                          return parsedError.data;
+                        }
 
                         return {
                           name: "UnknownError",

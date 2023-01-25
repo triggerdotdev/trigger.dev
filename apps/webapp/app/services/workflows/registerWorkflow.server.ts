@@ -1,6 +1,7 @@
 import { github } from "internal-integrations";
 import type { WorkflowMetadata } from "internal-platform";
 import { WorkflowMetadataSchema } from "internal-platform";
+import crypto from "node:crypto";
 import type { PrismaClient } from "~/db.server";
 import { prisma } from "~/db.server";
 import type { Organization } from "~/models/organization.server";
@@ -140,46 +141,14 @@ export class RegisterWorkflow {
   ) {
     switch (payload.trigger.type) {
       case "WEBHOOK": {
-        if (!payload.trigger.source) {
+        const externalSource = await this.#upsertWebhookSource(
+          payload,
+          organization,
+          workflow
+        );
+
+        if (!externalSource) {
           return;
-        }
-
-        const existingConnection =
-          await this.#findLatestExistingConnectionInOrg(
-            payload.trigger.service,
-            organization
-          );
-
-        const externalSource = await this.#prismaClient.externalSource.upsert({
-          where: {
-            organizationId_key: {
-              key: this.#keyForExternalSource(payload),
-              organizationId: organization.id,
-            },
-          },
-          update: {
-            source: payload.trigger.source,
-          },
-          create: {
-            organizationId: organization.id,
-            key: this.#keyForExternalSource(payload),
-            type: "WEBHOOK",
-            source: payload.trigger.source,
-            status: "CREATED",
-            connectionId: existingConnection?.id,
-            service: payload.trigger.service,
-          },
-        });
-
-        if (!externalSource.connectionId && existingConnection) {
-          await this.#prismaClient.externalSource.update({
-            where: {
-              id: externalSource.id,
-            },
-            data: {
-              connectionId: existingConnection.id,
-            },
-          });
         }
 
         await this.#prismaClient.workflow.update({
@@ -232,6 +201,89 @@ export class RegisterWorkflow {
       default: {
         return;
       }
+    }
+  }
+
+  async #upsertWebhookSource(
+    payload: WorkflowMetadata,
+    organization: Organization,
+    workflow: Workflow
+  ) {
+    if (payload.trigger.type !== "WEBHOOK") {
+      return;
+    }
+
+    if (!payload.trigger.source) {
+      return;
+    }
+
+    const secret = crypto.randomBytes(16).toString("hex");
+
+    if (payload.trigger.manualRegistration) {
+      const externalSource = await this.#prismaClient.externalSource.upsert({
+        where: {
+          organizationId_key: {
+            key: `${workflow.id}-${payload.trigger.service}`,
+            organizationId: organization.id,
+          },
+        },
+        update: {
+          source: payload.trigger.source,
+        },
+        create: {
+          organizationId: organization.id,
+          key: `${workflow.id}-${payload.trigger.service}`,
+          type: "WEBHOOK",
+          source: payload.trigger.source,
+          status: "CREATED",
+          service: payload.trigger.service,
+          manualRegistration: true,
+          secret,
+        },
+      });
+
+      return externalSource;
+    } else {
+      const existingConnection = await this.#findLatestExistingConnectionInOrg(
+        payload.trigger.service,
+        organization
+      );
+
+      const externalSource = await this.#prismaClient.externalSource.upsert({
+        where: {
+          organizationId_key: {
+            key: this.#keyForExternalSource(payload),
+            organizationId: organization.id,
+          },
+        },
+        update: {
+          source: payload.trigger.source,
+        },
+        create: {
+          organizationId: organization.id,
+          key: this.#keyForExternalSource(payload),
+          type: "WEBHOOK",
+          source: payload.trigger.source,
+          status: "CREATED",
+          connectionId: existingConnection?.id,
+          service: payload.trigger.service,
+          manualRegistration: false,
+          secret,
+        },
+      });
+
+      if (!externalSource.connectionId && existingConnection) {
+        await this.#prismaClient.externalSource.update({
+          where: {
+            id: externalSource.id,
+          },
+          data: {
+            connectionId: existingConnection.id,
+          },
+        });
+      }
+
+      return externalSource;
     }
   }
 

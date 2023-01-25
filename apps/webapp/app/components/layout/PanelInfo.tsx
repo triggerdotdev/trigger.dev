@@ -14,7 +14,7 @@ export function PanelInfo({
 }) {
   return (
     <div
-      className={`flex gap-2.5 items-center bg-slate-400/10 border border-slate-600 w-full shadow-md rounded-md p-3 ${className}`}
+      className={`flex gap-2.5 items-start bg-slate-400/10 border border-slate-600 w-full shadow-md rounded-md p-3 ${className}`}
     >
       <InformationCircleIcon className="h-6 w-6 min-w-[24px] text-blue-500" />
       {children}

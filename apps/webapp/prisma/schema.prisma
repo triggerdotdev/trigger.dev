@@ -197,13 +197,14 @@ model ExternalSource {
 
   service String
 
-  workflows    Workflow[]
-  type         ExternalSourceType
-  key          String
-  source       Json
-  status       ExternalSourceStatus @default(CREATED)
-  externalData Json?
-  secret       String?
+  workflows          Workflow[]
+  type               ExternalSourceType
+  key                String
+  source             Json
+  status             ExternalSourceStatus @default(CREATED)
+  externalData       Json?
+  secret             String?
+  manualRegistration Boolean              @default(false)
 
   readyAt   DateTime?
   createdAt DateTime  @default(now())

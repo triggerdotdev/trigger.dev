@@ -3,6 +3,7 @@ import { RemixServer } from "@remix-run/react";
 import { renderToString } from "react-dom/server";
 import * as Sentry from "~/services/sentry.server";
 import * as MessageBroker from "~/services/messageBroker.server";
+import * as Triggers from "~/triggers/init.server";
 
 export default function handleRequest(
   request: Request,
@@ -26,3 +27,4 @@ export default function handleRequest(
 
 Sentry.init();
 MessageBroker.init();
+Triggers.init();

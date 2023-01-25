@@ -31,9 +31,9 @@ importers:
 
   apps/docs:
     specifiers:
-      mintlify: ^2.0.14
+      mintlify: ^2.0.15
     devDependencies:
-      mintlify: 2.0.14
+      mintlify: 2.0.15
 
   apps/webapp:
     specifiers:
@@ -75,7 +75,9 @@ importers:
       '@testing-library/react': ^13.4.0
       '@testing-library/user-event': ^14.4.3
       '@trigger.dev/common-schemas': workspace:*
+      '@trigger.dev/integrations': workspace:*
       '@trigger.dev/providers': workspace:*
+      '@trigger.dev/sdk': workspace:*
       '@trigger.dev/tailwind-config': '*'
       '@types/bcryptjs': ^2.4.2
       '@types/compression': ^1.7.2
@@ -122,6 +124,7 @@ importers:
       glob: ^8.0.3
       happy-dom: ^6.0.4
       humanize-duration: ^3.27.3
+      internal-bridge: workspace:*
       internal-integrations: workspace:*
       internal-platform: workspace:*
       internal-pulsar: workspace:*
@@ -176,6 +179,7 @@ importers:
       vite-tsconfig-paths: ^3.5.1
       vitest: ^0.23.4
       zod: ^3.20.2
+      zod-error: ^1.1.0
     dependencies:
       '@aws-sdk/client-s3': 3.245.0
       '@aws-sdk/s3-request-presigner': 3.245.0
@@ -204,7 +208,9 @@ importers:
       '@tailwindcss/forms': 0.5.3_tailwindcss@3.1.8
       '@tanstack/react-table': 8.7.6_biqbaboplfbrettd7655fr4n2y
       '@trigger.dev/common-schemas': link:../../packages/common-schemas
+      '@trigger.dev/integrations': link:../../packages/trigger-integrations
       '@trigger.dev/providers': link:../../packages/trigger-providers
+      '@trigger.dev/sdk': link:../../packages/trigger-sdk
       '@uiw/react-codemirror': 4.19.5_aguurb4bmecpxzejz52amioxne
       bcryptjs: 2.4.3
       classnames: 2.3.2
@@ -219,6 +225,7 @@ importers:
       emails: link:../../packages/emails
       express: 4.18.2
       humanize-duration: 3.27.3
+      internal-bridge: link:../../packages/internal-bridge
       internal-integrations: link:../../packages/internal-integrations
       internal-platform: link:../../packages/internal-platform
       internal-pulsar: link:../../packages/internal-pulsar
@@ -257,6 +264,7 @@ importers:
       tsx: 3.12.2
       ulid: 2.3.0
       zod: 3.20.2
+      zod-error: 1.1.0
     devDependencies:
       '@faker-js/faker': 7.6.0
       '@remix-run/dev': 1.10.0_biqbaboplfbrettd7655fr4n2y
@@ -810,6 +818,7 @@ importers:
       '@types/debug': ^4.1.7
       '@types/node': '16'
       '@types/node-fetch': 2.6.x
+      '@types/slug': ^5.0.3
       '@types/uuid': ^9.0.0
       '@types/ws': ^8.5.3
       debug: ^4.3.4
@@ -817,6 +826,7 @@ importers:
       internal-bridge: workspace:*
       node-fetch: 2.6.x
       rimraf: ^3.0.2
+      slug: ^6.0.0
       tsup: ^6.5.0
       tsx: ^3.12.1
       ulid: ^2.3.0
@@ -828,6 +838,7 @@ importers:
       debug: 4.3.4
       evt: 2.4.13
       node-fetch: 2.6.7
+      slug: 6.1.0
       ulid: 2.3.0
       uuid: 9.0.0
       ws: 8.12.0
@@ -839,6 +850,7 @@ importers:
       '@types/debug': 4.1.7
       '@types/node': 16.18.11
       '@types/node-fetch': 2.6.2
+      '@types/slug': 5.0.3
       '@types/uuid': 9.0.0
       '@types/ws': 8.5.4
       internal-bridge: link:../internal-bridge
@@ -6521,7 +6533,7 @@ packages:
   /axios/0.25.0_debug@4.3.4:
     resolution: {integrity: sha512-cD8FOb0tRH3uuEe6+evtAbgJtfxr7ly3fQjYcMcuPlgkwVS9xboaVIpcDV+cYQe+yGykgwZCs1pzjntcGa6l5g==}
     dependencies:
-      follow-redirects: 1.15.2
+      follow-redirects: 1.15.2_debug@4.3.4
     transitivePeerDependencies:
       - debug
     dev: true
@@ -6529,7 +6541,7 @@ packages:
   /axios/0.27.2:
     resolution: {integrity: sha512-t+yRIyySRTp/wua5xEr+z1q60QmLq8ABsS5O9Me1AsE5dfKqgnCFzwiCZZ/cGNd1lq4/7akDWMxdhVlucjmnOQ==}
     dependencies:
-      follow-redirects: 1.15.2
+      follow-redirects: 1.15.2_debug@4.3.4
       form-data: 4.0.0
     transitivePeerDependencies:
       - debug
@@ -6538,7 +6550,7 @@ packages:
   /axios/1.2.2:
     resolution: {integrity: sha512-bz/J4gS2S3I7mpN/YZfGFTqhXTYzRho8Ay38w2otuuDR322KzFIWm/4W2K6gIwvWaws5n+mnb7D1lN9uD+QH6Q==}
     dependencies:
-      follow-redirects: 1.15.2
+      follow-redirects: 1.15.2_debug@4.3.4
       form-data: 4.0.0
       proxy-from-env: 1.1.0
     transitivePeerDependencies:
@@ -9637,7 +9649,7 @@ packages:
     engines: {node: '>=0.4.0'}
     dev: true
 
-  /follow-redirects/1.15.2:
+  /follow-redirects/1.15.2_debug@4.3.4:
     resolution: {integrity: sha512-VQLG33o04KaQ8uYi2tVNbdrWp1QWxNNea+nmIB4EVM28v0hmP17z7aG1+wAkNzVq4KeXTq3221ye5qTJP91JwA==}
     engines: {node: '>=4.0'}
     peerDependencies:
@@ -9645,6 +9657,8 @@ packages:
     peerDependenciesMeta:
       debug:
         optional: true
+    dependencies:
+      debug: 4.3.4
 
   /for-each/0.3.3:
     resolution: {integrity: sha512-jqYfLp7mo9vIyQf8ykW2v7A+2N4QjeCeI5+Dz9XraiO1ign81wjiH7Fb9vSOWvQfNtmSa4H2RoQTrrXivdUZmw==}
@@ -9747,6 +9761,15 @@ packages:
   /fs-extra/10.1.0:
     resolution: {integrity: sha512-oRXApq54ETRj4eMiFzGnHWGy+zo5raudjuxN0b8H7s/RU2oW0Wvsx9O0ACRN/kRq9E8Vu/ReskGB5o3ji+FzHQ==}
     engines: {node: '>=12'}
+    dependencies:
+      graceful-fs: 4.2.10
+      jsonfile: 6.1.0
+      universalify: 2.0.0
+    dev: true
+
+  /fs-extra/11.1.0:
+    resolution: {integrity: sha512-0rcTq621PD5jM/e0a3EJoGC/1TC5ZBCERW82LQuwfGnCa1V8w7dpYH1yNu+SLb6E5dkeCBzKEyLGlFrnr+dUyw==}
+    engines: {node: '>=14.14'}
     dependencies:
       graceful-fs: 4.2.10
       jsonfile: 6.1.0
@@ -12514,8 +12537,8 @@ packages:
       yallist: 4.0.0
     dev: true
 
-  /mintlify/2.0.14:
-    resolution: {integrity: sha512-Xe6lE5w5hJKW70s1J+//CUzpH2QMhKF4sHMbxeA4baBIrtyQGdWfgeFjLaZrgXS/ghkQ16NU0Qtqs4EdilgtJg==}
+  /mintlify/2.0.15:
+    resolution: {integrity: sha512-GM/rXnEJunAVRsHbk/3utKgF0BO7l9wj6z3VH0Csp18sRKlb7GjucxeVzUX+jXPoKC+t9JX02WbQg28MHJ/etA==}
     engines: {node: '>=18.0.0'}
     hasBin: true
     dependencies:
@@ -12527,7 +12550,7 @@ packages:
       cheerio: 0.22.0
       chokidar: 3.5.3
       favicons: 7.0.2
-      fs-extra: 10.1.0
+      fs-extra: 11.1.0
       gray-matter: 4.0.3
       inquirer: 9.1.4
       is-absolute-url: 4.0.1
