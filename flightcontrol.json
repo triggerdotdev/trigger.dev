@@ -66,6 +66,9 @@
             "p-db"
           ],
           "envVariables": {
+            "TRIGGER_API_KEY": {
+              "fromParameterStore": "/Prod/webapp/TRIGGER_API_KEY"
+            },
             "FROM_EMAIL": "hello@email.trigger.dev",
             "REPLY_TO_EMAIL": "hello@trigger.dev",
             "RESEND_API_KEY": {
