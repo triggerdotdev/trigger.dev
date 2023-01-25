@@ -39,7 +39,10 @@ export const optionSchema = z.union([
 
 export const confirmSchema = z.object({
   title: plainTextElementSchema.optional(),
-  text: z.union([plainTextElementSchema, mrkdwnElementSchema]),
+  text: z.discriminatedUnion("type", [
+    plainTextElementSchema,
+    mrkdwnElementSchema,
+  ]),
   confirm: plainTextElementSchema.optional(),
   deny: plainTextElementSchema.optional(),
   style: z.union([z.literal("primary"), z.literal("danger")]).optional(),
@@ -429,7 +432,11 @@ export const imageBlockSchema = blockSchema.extend({
 export const contextBlockSchema = blockSchema.extend({
   type: z.literal("context"),
   elements: z.array(
-    z.union([imageElementSchema, plainTextElementSchema, mrkdwnElementSchema])
+    z.discriminatedUnion("type", [
+      imageElementSchema,
+      plainTextElementSchema,
+      mrkdwnElementSchema,
+    ])
   ),
 });
 
@@ -553,32 +560,41 @@ export const dialogSchema = z.object({
   state: z.string().optional(),
 });
 
-export const selectSchema = z.union([
+const selectSchemas = [
   usersSelectSchema,
   staticSelectSchema,
   conversationsSelectSchema,
   channelsSelectSchema,
   externalSelectSchema,
+];
+
+export const selectSchema = z.discriminatedUnion("type", [
+  selectSchemas[0],
+  ...selectSchemas.slice(1),
 ]);
 
-export const multiSelectSchema = z.union([
+const multiSelectSchemas = [
   multiUsersSelectSchema,
   multiStaticSelectSchema,
   multiConversationsSelectSchema,
   multiChannelsSelectSchema,
   multiExternalSelectSchema,
+];
+export const multiSelectSchema = z.discriminatedUnion("type", [
+  multiSelectSchemas[0],
+  ...multiSelectSchemas.slice(1),
 ]);
 
 export const actionsBlockSchema = blockSchema.extend({
   type: z.literal("actions"),
   elements: z.array(
-    z.union([
+    z.discriminatedUnion("type", [
       buttonSchema,
       overflowSchema,
       datepickerSchema,
       timepickerSchema,
       dateTimepickerSchema,
-      selectSchema,
+      ...selectSchemas,
       radioButtonsSchema,
       checkboxesSchema,
       actionSchema,
@@ -588,18 +604,25 @@ export const actionsBlockSchema = blockSchema.extend({
 
 export const sectionBlockSchema = blockSchema.extend({
   type: z.literal("section"),
-  text: z.union([plainTextElementSchema, mrkdwnElementSchema]).optional(),
+  text: z
+    .discriminatedUnion("type", [plainTextElementSchema, mrkdwnElementSchema])
+    .optional(),
   fields: z
-    .array(z.union([plainTextElementSchema, mrkdwnElementSchema]))
+    .array(
+      z.discriminatedUnion("type", [
+        plainTextElementSchema,
+        mrkdwnElementSchema,
+      ])
+    )
     .optional(),
   accessory: z
-    .union([
+    .discriminatedUnion("type", [
       buttonSchema,
       overflowSchema,
       datepickerSchema,
       timepickerSchema,
-      selectSchema,
-      multiSelectSchema,
+      ...selectSchemas,
+      ...multiSelectSchemas,
       actionSchema,
       imageElementSchema,
       radioButtonsSchema,
@@ -613,10 +636,10 @@ export const inputBlockSchema = blockSchema.extend({
   label: plainTextElementSchema,
   hint: plainTextElementSchema.optional(),
   optional: z.boolean().optional(),
-  element: z.union([
-    selectSchema,
-    multiSelectSchema,
+  element: z.discriminatedUnion("type", [
     datepickerSchema,
+    ...selectSchemas,
+    ...multiSelectSchemas,
     timepickerSchema,
     dateTimepickerSchema,
     plainTextInputSchema,
@@ -680,7 +703,7 @@ export const callUserSchema = z.union([
   callUserExternalSchema,
 ]);
 
-export const knownBlockSchema = z.union([
+const knownBlocks = [
   imageBlockSchema,
   contextBlockSchema,
   actionsBlockSchema,
@@ -690,10 +713,20 @@ export const knownBlockSchema = z.union([
   fileBlockSchema,
   headerBlockSchema,
   videoBlockSchema,
+];
+
+export const knownBlockSchema = z.discriminatedUnion("type", [
+  knownBlocks[0],
+  ...knownBlocks.slice(1),
+]);
+
+const anyBlockSchema = z.discriminatedUnion("type", [
+  blockSchema,
+  ...knownBlocks,
 ]);
 
 export const messageAttachmentSchema = z.object({
-  blocks: z.array(z.union([knownBlockSchema, blockSchema])).optional(),
+  blocks: z.array(anyBlockSchema).optional(),
   fallback: z.string().optional(),
   color: z
     .union([
@@ -742,7 +775,7 @@ export const linkUnfurlsSchema = z.record(messageAttachmentSchema);
 
 export const homeViewSchema = z.object({
   type: z.literal("home"),
-  blocks: z.array(z.union([knownBlockSchema, blockSchema])),
+  blocks: z.array(anyBlockSchema),
   private_metadata: z.string().optional(),
   callback_id: z.string().optional(),
   external_id: z.string().optional(),
@@ -751,7 +784,7 @@ export const homeViewSchema = z.object({
 export const modalViewSchema = z.object({
   type: z.literal("modal"),
   title: plainTextElementSchema,
-  blocks: z.array(z.union([knownBlockSchema, blockSchema])),
+  blocks: z.array(anyBlockSchema),
   close: plainTextElementSchema.optional(),
   submit: plainTextElementSchema.optional(),
   private_metadata: z.string().optional(),
@@ -763,13 +796,18 @@ export const modalViewSchema = z.object({
 
 export const workflowStepViewSchema = z.object({
   type: z.literal("workflow_step"),
-  blocks: z.array(z.union([knownBlockSchema, blockSchema])),
+  blocks: z.array(anyBlockSchema),
   private_metadata: z.string().optional(),
   callback_id: z.string().optional(),
   submit_disabled: z.boolean().optional(),
   external_id: z.string().optional(),
 });
 
-export const viewSchema: z.ZodUnion<
+export const viewSchema: z.ZodDiscriminatedUnion<
+  "type",
   [typeof homeViewSchema, typeof modalViewSchema, typeof workflowStepViewSchema]
-> = z.union([homeViewSchema, modalViewSchema, workflowStepViewSchema]);
+> = z.discriminatedUnion("type", [
+  homeViewSchema,
+  modalViewSchema,
+  workflowStepViewSchema,
+]);
