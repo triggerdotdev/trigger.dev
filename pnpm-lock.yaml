@@ -31,9 +31,9 @@ importers:
 
   apps/docs:
     specifiers:
-      mintlify: ^2.0.14
+      mintlify: ^2.0.15
     devDependencies:
-      mintlify: 2.0.14
+      mintlify: 2.0.15
 
   apps/webapp:
     specifiers:
@@ -9728,6 +9728,15 @@ packages:
       universalify: 2.0.0
     dev: true
 
+  /fs-extra/11.1.0:
+    resolution: {integrity: sha512-0rcTq621PD5jM/e0a3EJoGC/1TC5ZBCERW82LQuwfGnCa1V8w7dpYH1yNu+SLb6E5dkeCBzKEyLGlFrnr+dUyw==}
+    engines: {node: '>=14.14'}
+    dependencies:
+      graceful-fs: 4.2.10
+      jsonfile: 6.1.0
+      universalify: 2.0.0
+    dev: true
+
   /fs-extra/7.0.1:
     resolution: {integrity: sha512-YJDaCJZEnBmcbw13fvdAM9AwNOJwOzrE4pqMqBq5nFiEqXUqHwlK4B+3pUw6JNvfSPtX05xFHtYy/1ni01eGCw==}
     engines: {node: '>=6 <7 || >=8'}
@@ -12488,8 +12497,8 @@ packages:
       yallist: 4.0.0
     dev: true
 
-  /mintlify/2.0.14:
-    resolution: {integrity: sha512-Xe6lE5w5hJKW70s1J+//CUzpH2QMhKF4sHMbxeA4baBIrtyQGdWfgeFjLaZrgXS/ghkQ16NU0Qtqs4EdilgtJg==}
+  /mintlify/2.0.15:
+    resolution: {integrity: sha512-GM/rXnEJunAVRsHbk/3utKgF0BO7l9wj6z3VH0Csp18sRKlb7GjucxeVzUX+jXPoKC+t9JX02WbQg28MHJ/etA==}
     engines: {node: '>=18.0.0'}
     hasBin: true
     dependencies:
@@ -12501,7 +12510,7 @@ packages:
       cheerio: 0.22.0
       chokidar: 3.5.3
       favicons: 7.0.2
-      fs-extra: 10.1.0
+      fs-extra: 11.1.0
       gray-matter: 4.0.3
       inquirer: 9.1.4
       is-absolute-url: 4.0.1
