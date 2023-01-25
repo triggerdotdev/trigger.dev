@@ -6,7 +6,7 @@ import { CopyText } from "./CopyText";
 const variantStyle = {
   slate:
     "bg-slate-800 text-white rounded px-2 py-1 transition hover:text-slate-700 hover:bg-slate-700 hover:bg-slate-700 hover:text-slate-100 active:bg-slate-800 active:text-slate-300 focus-visible:outline-slate-900",
-  blue: "bg-indigo-600 rounded px-2 py-1 transition text-white hover:bg-indigo-500 active:bg-indigo-800 active:text-indigo-100 focus-visible:outline-indigo-600",
+  blue: "text-sm bg-indigo-700 rounded px-3 py-2 transition text-white hover:bg-indigo-600 active:bg-indigo-800 active:text-indigo-100 focus-visible:outline-indigo-600",
   darkTransparent:
     "bg-black/10 text-slate-900 rounded px-2 py-1 transition hover:bg-blue-50 active:bg-blue-200 active:text-slate-600 focus-visible:outline-white",
   lightTransparent:
@@ -37,7 +37,7 @@ export function CopyTextButton({
       {copied ? (
         <div
           className={classNames(
-            "flex items-center  hover:cursor-pointer",
+            "flex items-center hover:cursor-pointer",
             variantStyle[variant]
           )}
         >
@@ -46,7 +46,7 @@ export function CopyTextButton({
       ) : (
         <div
           className={classNames(
-            "flex items-center  hover:cursor-pointer",
+            "flex items-center hover:cursor-pointer",
             variantStyle[variant]
           )}
         >
