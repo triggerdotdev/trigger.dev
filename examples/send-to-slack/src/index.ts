@@ -116,11 +116,29 @@ new Trigger({
 
     await ctx.waitFor("initial-wait", { seconds: 5 });
 
-    const secondResponse = await slack.postMessage("send-to-slack-channel-id", {
-      channelId: response.channel,
-      text: `Sent using the channelId: ${response.channel}`,
+    await slack.postMessage("arnie", {
+      username: "Arnie",
+      icon_url:
+        "https://www.themoviedb.org/t/p/w500/zEMhugsgXIpnQqO31GpAJYMUZZ1.jpg",
+      channelName: "test-integrations",
+      text: getRandomQuote(),
     });
 
     return {};
   },
 }).listen();
+
+function getRandomQuote() {
+  const arnoldQuotes = [
+    "I'll be back.",
+    "Strength does not come from winning. Your struggles develop your strengths. When you go through hardships and decide not to surrender, that is strength.",
+    "The mind is the limit. As long as the mind can envision the fact that you can do something, you can do it, as long as you really believe 100 percent.",
+    "Success is not the key to happiness. Happiness is the key to success. If you love what you are doing, you will be successful.",
+    "For me life is continuously being hungry. The meaning of life is not simply to exist, to survive, but to move ahead, to go up, to achieve, to conquer.",
+    "The best activities for your health are pumping and humping.",
+    "I have a love interest in every one of my films: a gun.",
+    "You can have results or excuses, but not both.",
+  ];
+
+  return arnoldQuotes[Math.floor(Math.random() * arnoldQuotes.length)];
+}
