@@ -1,5 +1,14 @@
 # @trigger.dev/integrations
 
+## 0.1.11
+
+### Patch Changes
+
+- ddf4255: Added support for webhookEvent trigger
+- Updated dependencies [ddf4255]
+- Updated dependencies [2fd9e4f]
+  - @trigger.dev/sdk@0.2.8
+
 ## 0.1.10
 
 ### Patch Changes
