@@ -1,6 +1,8 @@
 import type { LoaderArgs } from "@remix-run/server-runtime";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import invariant from "tiny-invariant";
+import CodeBlock from "~/components/code/CodeBlock";
+import { CopyTextButton } from "~/components/CopyTextButton";
 import { WorkflowConnections } from "~/components/integrations/WorkflowConnections";
 import { Panel } from "~/components/layout/Panel";
 import { PanelHeader } from "~/components/layout/PanelHeader";
@@ -11,6 +13,7 @@ import {
   SecondaryLink,
   TertiaryLink,
 } from "~/components/primitives/Buttons";
+import { Input } from "~/components/primitives/Input";
 import { Body } from "~/components/primitives/text/Body";
 import { SubTitle } from "~/components/primitives/text/SubTitle";
 import { Title } from "~/components/primitives/text/Title";
@@ -91,11 +94,50 @@ export default function Page() {
           eventRule.trigger.manualRegistration &&
           workflow.externalSourceUrl ? (
             <PanelInfo className="mb-6">
-              Register webhook to activate this workflow:{" "}
-              {workflow.externalSourceUrl}{" "}
-              {workflow.externalSourceSecret && (
-                <>and secret {workflow.externalSourceSecret}</>
-              )}
+              <div className="flex flex-col">
+                <Body className="mb-6">
+                  Use these details to register your webhook – this usually
+                  involves logging in to the developer section of the service.
+                </Body>
+                <div className="flex gap-8">
+                  <div className="flex items-center gap-2">
+                    <div className="flex flex-col gap-2">
+                      <Body
+                        size="extra-small"
+                        className="text-slate-300 uppercase tracking-wide"
+                      >
+                        URL
+                      </Body>
+                      <div className="flex items-center gap-2">
+                        <Input value={workflow.externalSourceUrl} />
+                        <CopyTextButton
+                          value={workflow.externalSourceUrl}
+                        ></CopyTextButton>
+                      </div>
+                    </div>
+                  </div>
+                  {workflow.externalSourceSecret && (
+                    <div className="flex flex-col">
+                      <Body
+                        size="extra-small"
+                        className="text-slate-300 uppercase tracking-wide"
+                      >
+                        Secret
+                      </Body>
+                      <div className="flex items-center gap-2">
+                        <Input
+                          type="password"
+                          value={workflow.externalSourceSecret}
+                          className="mt-2"
+                        />
+                        <CopyTextButton
+                          value={workflow.externalSourceSecret}
+                        ></CopyTextButton>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
             </PanelInfo>
           ) : (
             <PanelWarning className="mb-6">
