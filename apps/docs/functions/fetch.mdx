@@ -6,7 +6,7 @@ description: "A generic fetch function that can be used to call any HTTP endpoin
 
 ## Usage
 
-A `fetch` function is available to use inside a `Trigger.run` function through the `context` argument, and should be familiar for anyone who has used the standard [`fetch`](https://developer.mozilla.org/en-US/docs/Web/API/Fetch_API) API, with a few modifications.
+A `fetch` function is available to use inside a `Trigger.run` function through the `context` argument, and should be familiar for anyone who has used the standard [fetch](https://developer.mozilla.org/en-US/docs/Web/API/Fetch_API) API, with a few modifications.
 
 ```ts
 import { Trigger } from "@trigger.dev/sdk";
@@ -75,7 +75,7 @@ const response = await ctx.fetch("Example Key", "http://httpbin.org/get");
 console.log(response.body.url); // http://httpbin.org/get
 ```
 
-By default, the `body` is typed as `any`, but you can provide a [`Zod`](/guides/zod) schema to validate the response body and get a more specific type:
+By default, the `body` is typed as `any`, but you can provide a [Zod](/guides/zod) schema to validate the response body and get a more specific type:
 
 ```ts
 import { z } from "zod";

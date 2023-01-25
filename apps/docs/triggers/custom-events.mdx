@@ -20,6 +20,43 @@ It also means that inside your run function the event param will be typed correc
 
 You can always start out by using `z.any()` as your schema, and then later on you can add more strict validation. See our [Zod guide](/guides/zod) for more information.
 
+## Filters
+
+You can also add filters to your custom event triggers. This allows you to filter out events that you don't want to run your workflow for.
+
+```ts
+new Trigger({
+  id: "new-user-slack",
+  name: "New user slack message",
+  on: customEvent({
+    name: "user.created",
+    schema: z.object({
+      name: z.string(),
+      email: z.string(),
+      paidPlan: z.boolean(),
+    }),
+    filter: {
+      //only run the workflow if the user is paying
+      paidPlan: [true],
+    },
+  }),
+  //this function is run when the custom event is received
+  run: async (event, ctx) => {
+    //send a message to the #new-users Slack channel with user details
+    const response = await slack.postMessage("send-to-slack", {
+      channel: "new-users",
+      text: `New user: ${event.name} (${event.email}) signed up. ${
+        event.paidPlan ? "They are paying" : "They are on the free plan"
+      }.`,
+    });
+
+    return response.message;
+  },
+}).listen();
+```
+
+Please see the [Event filters guide](/guides/event-filters) for more information.
+
 ## Example
 
 ```ts
