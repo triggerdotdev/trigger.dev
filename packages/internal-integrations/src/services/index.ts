@@ -9,7 +9,10 @@ export type HttpServiceOptions = {
   baseUrl: string;
 };
 
-export type HttpResponse<TResponseSchema extends z.ZodTypeAny> =
+export type HttpResponse<
+  TResponseSchema extends z.ZodTypeAny,
+  TErrorResponseSchema extends z.ZodTypeAny = z.AnyZodObject
+> =
   | {
       success: true;
       statusCode: number;
@@ -20,6 +23,7 @@ export type HttpResponse<TResponseSchema extends z.ZodTypeAny> =
       success: false;
       statusCode: number;
       headers: Record<string, string>;
+      error?: z.infer<TErrorResponseSchema>;
     };
 
 export class HttpService {
@@ -79,6 +83,13 @@ export class HttpService {
         parsedJson,
         parsedJson.error
       );
+
+      return {
+        success: false,
+        statusCode: response.status,
+        headers: normalizeHeaders(response.headers),
+        error: { type: "zod-parse", issues: parsedJson.error.issues },
+      };
     }
 
     return {

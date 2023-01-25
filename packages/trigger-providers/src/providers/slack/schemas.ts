@@ -7,7 +7,7 @@ export const PostMessageSuccessResponseSchema = z.object({
   ts: z.string(),
   message: z.object({
     text: z.string(),
-    user: z.string(),
+    user: z.string().optional(),
     bot_id: z.string(),
     attachments: z.array(z.unknown()).optional(),
     type: z.string(),

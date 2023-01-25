@@ -136,7 +136,7 @@ class SlackRequestIntegration implements RequestIntegration {
         ok: false,
         isRetryable: this.#isRetryable(response.statusCode),
         response: {
-          output: {},
+          output: response.error,
           context: {
             statusCode: response.statusCode,
             headers: response.headers,
