@@ -62,9 +62,7 @@
             "packages/internal-pulsar/src/**",
             "./pnpm-lock.yaml"
           ],
-          "dependsOn": [
-            "p-db"
-          ],
+          "dependsOn": ["p-db"],
           "envVariables": {
             "TRIGGER_API_KEY": {
               "fromParameterStore": "/Prod/webapp/TRIGGER_API_KEY"
@@ -105,6 +103,9 @@
             "PIZZLY_HOST": "https://auth.trigger.dev",
             "PIZZLY_SECRET_KEY": {
               "fromParameterStore": "/Prod/webapp/PIZZLY_SECRET_KEY"
+            },
+            "POSTHOG_PROJECT_KEY": {
+              "fromParameterStore": "/Prod/webapp/POSTHOG_PROJECT_KEY"
             },
             "TRIGGER_LOG_LEVEL": "debug",
             "PULSAR_ENABLED": "1",
@@ -237,9 +238,7 @@
             "packages/internal-pulsar/src/**",
             "./pnpm-lock.yaml"
           ],
-          "dependsOn": [
-            "s-db"
-          ],
+          "dependsOn": ["s-db"],
           "envVariables": {
             "FROM_EMAIL": "hello@email.trigger.dev",
             "REPLY_TO_EMAIL": "hello@trigger.dev",
