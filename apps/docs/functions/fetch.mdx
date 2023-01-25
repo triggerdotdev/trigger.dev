@@ -62,6 +62,11 @@ This is useful if you want to wrap `fetch` to provide an SDK like experience ins
 
 ## Response
 
+<Info>
+  Non-ok responses will currently halt the progress of a run, so `response.ok`
+  is always `true`
+</Info>
+
 The return value of `fetch` is a similar to a normal fetch response, but we will automatically parse the response body as JSON and provide it as `body`, like so:
 
 ```ts
@@ -153,6 +158,40 @@ new Trigger({
 Which will show in the trigger.dev app as:
 
 ![title](/images/secure-string.png)
+
+## Retrying
+
+By default, we will retry a failed request up to 10 times if it has one of the following status codes: `408`, `429`, `500`, `502`, `503`, `504`. You can override this behavior by providing a `retry` option:
+
+```ts
+await ctx.fetch("Example Key", "http://httpbin.org/get", {
+  retry: {
+    maxAttempts: 5,
+    statusCodes: [408, 429, 500, 502, 503, 504, 521, 522, 524],
+    minTimeout: 1000,
+    maxTimeout: 10000,
+    factor: 1.2,
+  },
+});
+```
+
+| Property    | Description                              | Default                                  |
+| ----------- | ---------------------------------------- | ---------------------------------------- |
+| enabled     | Enables retrying of failed requests      | true                                     |
+| factor      | The exponential factor of backoff        | 1.8                                      |
+| minTimeout  | The minimum amount of ms between retries | 1000                                     |
+| maxTimeout  | The maximum amount of ms between retries | 60000                                    |
+| statusCodes | The HTTP Status Codes that are retryable | `408`, `429`, `500`, `502`, `503`, `504` |
+
+If you'd like to disable retrying, simple pass in the `retry` option with `enabled` set to `false`:
+
+```ts
+await ctx.fetch("Example Key", "http://httpbin.org/get", {
+  retry: {
+    enabled: false,
+  },
+});
+```
 
 ## Params
 

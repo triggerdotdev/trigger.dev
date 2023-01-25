@@ -1,5 +1,5 @@
 import type { FetchRequest } from ".prisma/client";
-import type { SecureString } from "@trigger.dev/common-schemas";
+import type { RetrySchema, SecureString } from "@trigger.dev/common-schemas";
 import { FetchRequestSchema } from "@trigger.dev/common-schemas";
 import type {
   NormalizedResponse,
@@ -8,8 +8,6 @@ import type {
 import type { z } from "zod";
 import type { PrismaClient } from "~/db.server";
 import { prisma } from "~/db.server";
-
-const RETRYABLE_STATUS_CODES = [408, 429, 500, 502, 503, 504];
 
 type CallResponse =
   | {
@@ -36,12 +34,28 @@ export class PerformFetchRequest {
       return { stop: true };
     }
 
-    const performedRequest = await this.#performRequest(fetchRequest);
+    const request = FetchRequestSchema.parse(fetchRequest.fetch);
+
+    const retryConfig = {
+      enabled: true,
+      maxAttempts: 10,
+      minTimeout: 1000,
+      maxTimeout: 60000,
+      factor: 1.8,
+      statusCodes: [408, 429, 500, 502, 503, 504],
+      ...(request.retry ?? {}),
+    };
+
+    const performedRequest = await this.#performRequest(request, retryConfig);
 
     if (performedRequest.ok) {
       return this.#completeWithSuccess(fetchRequest, performedRequest.response);
     } else if (performedRequest.isRetryable) {
-      return this.#attemptRetry(fetchRequest, performedRequest.response);
+      return this.#attemptRetry(
+        retryConfig,
+        fetchRequest,
+        performedRequest.response
+      );
     } else {
       return this.#completeWithFailure(fetchRequest, performedRequest.response);
     }
@@ -108,21 +122,11 @@ export class PerformFetchRequest {
   }
 
   async #attemptRetry(
+    retry: z.infer<typeof RetrySchema>,
     fetchRequest: FetchRequest,
     response: NormalizedResponse
   ) {
-    if (fetchRequest.retryCount >= 10) {
-      await this.#prismaClient.fetchRequest.update({
-        where: {
-          id: fetchRequest.id,
-        },
-        data: {
-          retryCount: {
-            increment: 1,
-          },
-        },
-      });
-
+    if (fetchRequest.retryCount >= retry.maxAttempts) {
       return this.#completeWithFailure(fetchRequest, response);
     }
 
@@ -143,7 +147,8 @@ export class PerformFetchRequest {
     return {
       stop: false as const,
       retryInSeconds: this.#calculateRetryInSeconds(
-        updatedFetchRequest.retryCount
+        updatedFetchRequest.retryCount,
+        retry
       ),
     };
   }
@@ -151,15 +156,11 @@ export class PerformFetchRequest {
   // Exponential backoff with a configurable factor and a configurable maximum
   #calculateRetryInSeconds(
     retryCount: number,
-    options: { factor: number; maxTimeout: number; minTimeout: number } = {
-      factor: 1.8,
-      minTimeout: 1000,
-      maxTimeout: 60000,
-    }
+    retryOptions: z.infer<typeof RetrySchema>
   ) {
-    const timeout = options.factor ** retryCount * options.minTimeout;
+    const timeout = retryOptions.factor ** retryCount * retryOptions.minTimeout;
 
-    return Math.min(timeout, options.maxTimeout) / 1000;
+    return Math.min(timeout, retryOptions.maxTimeout) / 1000;
   }
 
   async #createResponse(
@@ -182,19 +183,36 @@ export class PerformFetchRequest {
   }
 
   async #performRequest(
-    fetchRequest: FetchRequest
+    request: z.infer<typeof FetchRequestSchema>,
+    retry: z.infer<typeof RetrySchema>
   ): Promise<PerformedRequestResponse> {
-    const request = FetchRequestSchema.parse(fetchRequest.fetch);
-    const requestInit = createFetchRequestInit(request);
+    try {
+      const requestInit = createFetchRequestInit(request);
 
-    const response = await fetch(request.url, requestInit);
+      const response = await fetch(request.url, requestInit);
 
-    const body = await this.#safeGetJson(response);
+      const body = await this.#safeGetJson(response);
 
-    if (response.ok) {
+      if (response.ok) {
+        return {
+          ok: true,
+          isRetryable: false,
+          response: {
+            output: {
+              status: response.status,
+              headers: headersToRecord(response.headers),
+              body,
+            },
+            context: {},
+          },
+        };
+      }
+
+      // Only retry on retryable status codes
       return {
-        ok: true,
-        isRetryable: false,
+        ok: false,
+        isRetryable:
+          retry.statusCodes.includes(response.status) && retry.enabled,
         response: {
           output: {
             status: response.status,
@@ -204,21 +222,33 @@ export class PerformFetchRequest {
           context: {},
         },
       };
+    } catch (error) {
+      if (error instanceof Error) {
+        return {
+          ok: false,
+          isRetryable: false,
+          response: {
+            output: {
+              name: error.name,
+              message: error.message,
+            },
+            context: {},
+          },
+        };
+      } else {
+        return {
+          ok: false,
+          isRetryable: false,
+          response: {
+            output: {
+              name: "UnknownError",
+              message: "Unknown error",
+            },
+            context: {},
+          },
+        };
+      }
     }
-
-    // Only retry on retryable status codes
-    return {
-      ok: false,
-      isRetryable: RETRYABLE_STATUS_CODES.includes(response.status),
-      response: {
-        output: {
-          status: response.status,
-          headers: headersToRecord(response.headers),
-          body,
-        },
-        context: {},
-      },
-    };
   }
 
   #safeGetJson = async (response: Response) => {

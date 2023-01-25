@@ -117,8 +117,10 @@ export class ZodRPC<
 
   public send<K extends keyof SenderSchema>(
     key: K,
-    data: z.infer<SenderSchema[K]["request"]>
+    data: z.input<SenderSchema[K]["request"]>
   ) {
+    this.#logger.debug("Sending call", { key, data });
+
     const id = generateStableId(this.#connection.id, key as string, data);
 
     const message = packageMessage({ id, methodName: key as string, data });

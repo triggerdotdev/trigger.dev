@@ -1,11 +1,6 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import { z } from "zod";
-import {
-  FetchOptions,
-  FetchResponse,
-  TriggerCustomEvent,
-  TriggerFetch,
-} from "./types";
+import { TriggerCustomEvent, TriggerFetch } from "./types";
 
 type PerformRequestOptions<TSchema extends z.ZodTypeAny> = {
   service: string;

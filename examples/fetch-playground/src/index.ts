@@ -20,6 +20,18 @@ new Trigger({
         .default("GET"),
       headers: z.record(z.string()).optional(),
       body: z.any().optional(),
+      retry: z
+        .object({
+          enabled: z.boolean().default(true),
+          maxAttempts: z.number().default(3),
+          minTimeout: z.number().default(1000),
+          maxTimeout: z.number().default(60000),
+          factor: z.number().default(1.8),
+          statusCodes: z
+            .array(z.number())
+            .default([408, 429, 500, 502, 503, 504]),
+        })
+        .optional(),
     }),
   }),
   run: async (event, ctx) => {
@@ -33,6 +45,7 @@ new Trigger({
       responseSchema: z.any(),
       headers: event.headers,
       body: event.body ? JSON.stringify(event.body) : undefined,
+      retry: event.retry,
     });
 
     await ctx.logger.info("Received the fetch response", {

@@ -8,6 +8,15 @@ export const SecureStringSchema = z.object({
 
 export type SecureString = z.infer<typeof SecureStringSchema>;
 
+export const RetrySchema = z.object({
+  enabled: z.boolean().default(true),
+  factor: z.number().default(1.8),
+  maxTimeout: z.number().default(60000),
+  minTimeout: z.number().default(1000),
+  maxAttempts: z.number().default(10),
+  statusCodes: z.array(z.number()).default([408, 429, 500, 502, 503, 504]),
+});
+
 export const FetchRequestSchema = z.object({
   url: z.string(),
   headers: z.record(z.union([z.string(), SecureStringSchema])).optional(),
@@ -22,6 +31,7 @@ export const FetchRequestSchema = z.object({
     "TRACE",
   ]),
   body: z.any(),
+  retry: RetrySchema.optional(),
 });
 
 export const FetchOutputSchema = z.object({
