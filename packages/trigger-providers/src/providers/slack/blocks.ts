@@ -75,7 +75,16 @@ export const actionSchema = z.object({
   type: z.string(),
   /**
    * @description: An identifier for this action. You can use this when you receive an interaction payload to
-   * {@link https://api.slack.com/interactivity/handling#payloads identify the source of the action}. Should be unique
+   * {@link https://api.slack.com/interactivity/hmergeling#payloads identify the source of the action}. Should be unique
+   * among all other `action_id`s in the containing block. Maximum length for this field is 255 characters.
+   */
+  action_id: z.string().optional(),
+});
+
+export const actionIdSchema = z.object({
+  /**
+   * @description: An identifier for this action. You can use this when you receive an interaction payload to
+   * {@link https://api.slack.com/interactivity/hmergeling#payloads identify the source of the action}. Should be unique
    * among all other `action_id`s in the containing block. Maximum length for this field is 255 characters.
    */
   action_id: z.string().optional(),
@@ -114,30 +123,29 @@ export const dispatchableSchema = z.object({
   dispatch_action_config: dispatchActionConfigSchema.optional(),
 });
 
-export const usersSelectSchema = actionSchema
-  .extend(confirmableSchema.shape)
-  .extend(focusableSchema.shape)
-  .extend(placeholdableSchema.shape)
-  .extend({
+export const usersSelectSchema = z
+  .object({
     type: z.literal("users_select"),
     initial_user: z.string().optional(),
-  });
+  })
+  .merge(actionIdSchema)
+  .merge(confirmableSchema)
+  .merge(focusableSchema)
+  .merge(placeholdableSchema);
 
-export const multiUsersSelectSchema = actionSchema
-  .extend(confirmableSchema.shape)
-  .extend(focusableSchema.shape)
-  .extend(placeholdableSchema.shape)
-  .extend({
+export const multiUsersSelectSchema = z
+  .object({
     type: z.literal("multi_users_select"),
     initial_users: z.array(z.string()).optional(),
     max_selected_items: z.number().optional(),
-  });
+  })
+  .merge(actionIdSchema)
+  .merge(confirmableSchema)
+  .merge(focusableSchema)
+  .merge(placeholdableSchema);
 
-export const staticSelectSchema = actionSchema
-  .extend(confirmableSchema.shape)
-  .extend(focusableSchema.shape)
-  .extend(placeholdableSchema.shape)
-  .extend({
+export const staticSelectSchema = z
+  .object({
     type: z.literal("static_select"),
     initial_option: plainTextOptionSchema.optional(),
     options: z.array(plainTextOptionSchema).optional(),
@@ -149,13 +157,14 @@ export const staticSelectSchema = actionSchema
         })
       )
       .optional(),
-  });
+  })
+  .merge(actionIdSchema)
+  .merge(confirmableSchema)
+  .merge(focusableSchema)
+  .merge(placeholdableSchema);
 
-export const multiStaticSelectSchema = actionSchema
-  .extend(confirmableSchema.shape)
-  .extend(focusableSchema.shape)
-  .extend(placeholdableSchema.shape)
-  .extend({
+export const multiStaticSelectSchema = z
+  .object({
     type: z.literal("multi_static_select"),
     initial_options: z.array(plainTextOptionSchema).optional(),
     options: z.array(plainTextOptionSchema).optional(),
@@ -168,13 +177,14 @@ export const multiStaticSelectSchema = actionSchema
       )
       .optional(),
     max_selected_items: z.number().optional(),
-  });
+  })
+  .merge(actionIdSchema)
+  .merge(confirmableSchema)
+  .merge(focusableSchema)
+  .merge(placeholdableSchema);
 
-export const conversationsSelectSchema = actionSchema
-  .extend(confirmableSchema.shape)
-  .extend(focusableSchema.shape)
-  .extend(placeholdableSchema.shape)
-  .extend({
+export const conversationsSelectSchema = z
+  .object({
     type: z.literal("conversations_select"),
     initial_conversation: z.string().optional(),
     response_url_enabled: z.boolean().optional(),
@@ -195,13 +205,14 @@ export const conversationsSelectSchema = actionSchema
         exclude_bot_users: z.boolean().optional(),
       })
       .optional(),
-  });
+  })
+  .merge(actionIdSchema)
+  .merge(confirmableSchema)
+  .merge(focusableSchema)
+  .merge(placeholdableSchema);
 
-export const multiConversationsSelectSchema = actionSchema
-  .extend(confirmableSchema.shape)
-  .extend(focusableSchema.shape)
-  .extend(placeholdableSchema.shape)
-  .extend({
+export const multiConversationsSelectSchema = z
+  .object({
     type: z.literal("multi_conversations_select"),
     initial_conversations: z.array(z.string()).optional(),
     max_selected_items: z.number().optional(),
@@ -222,128 +233,140 @@ export const multiConversationsSelectSchema = actionSchema
         exclude_bot_users: z.boolean().optional(),
       })
       .optional(),
-  });
+  })
+  .merge(actionIdSchema)
+  .merge(confirmableSchema)
+  .merge(focusableSchema)
+  .merge(placeholdableSchema);
 
-export const channelsSelectSchema = actionSchema
-  .extend(confirmableSchema.shape)
-  .extend(focusableSchema.shape)
-  .extend(placeholdableSchema.shape)
-  .extend({
+export const channelsSelectSchema = z
+  .object({
     type: z.literal("channels_select"),
     initial_channel: z.string().optional(),
-  });
+  })
+  .merge(actionIdSchema)
+  .merge(confirmableSchema)
+  .merge(focusableSchema)
+  .merge(placeholdableSchema);
 
-export const multiChannelsSelectSchema = actionSchema
-  .extend(confirmableSchema.shape)
-  .extend(focusableSchema.shape)
-  .extend(placeholdableSchema.shape)
-  .extend({
+export const multiChannelsSelectSchema = z
+  .object({
     type: z.literal("multi_channels_select"),
     initial_channels: z.array(z.string()).optional(),
     max_selected_items: z.number().optional(),
-  });
+  })
+  .merge(actionIdSchema)
+  .merge(confirmableSchema)
+  .merge(focusableSchema)
+  .merge(placeholdableSchema);
 
-export const externalSelectSchema = actionSchema
-  .extend(confirmableSchema.shape)
-  .extend(focusableSchema.shape)
-  .extend(placeholdableSchema.shape)
-  .extend({
+export const externalSelectSchema = z
+  .object({
     type: z.literal("external_select"),
     initial_option: plainTextOptionSchema.optional(),
     min_query_length: z.number().optional(),
-  });
+  })
+  .merge(actionIdSchema)
+  .merge(confirmableSchema)
+  .merge(focusableSchema)
+  .merge(placeholdableSchema);
 
-export const multiExternalSelectSchema = actionSchema
-  .extend(confirmableSchema.shape)
-  .extend(focusableSchema.shape)
-  .extend(placeholdableSchema.shape)
-  .extend({
+export const multiExternalSelectSchema = z
+  .object({
     type: z.literal("multi_external_select"),
     initial_options: z.array(plainTextOptionSchema).optional(),
     min_query_length: z.number().optional(),
     max_selected_items: z.number().optional(),
-  });
+  })
+  .merge(actionIdSchema)
+  .merge(confirmableSchema)
+  .merge(focusableSchema)
+  .merge(placeholdableSchema);
 
-export const buttonSchema = actionSchema
-  .extend(confirmableSchema.shape)
-  .extend({
+export const buttonSchema = z
+  .object({
     type: z.literal("button"),
     text: plainTextElementSchema,
     value: z.string().optional(),
     url: z.string().optional(),
     style: z.union([z.literal("danger"), z.literal("primary")]).optional(),
     accessibility_label: z.string().optional(),
-  });
+  })
+  .merge(actionIdSchema)
+  .merge(confirmableSchema);
 
-export const overflowSchema = actionSchema
-  .extend(confirmableSchema.shape)
-  .extend({
+export const overflowSchema = z
+  .object({
     type: z.literal("overflow"),
     options: z.array(plainTextOptionSchema),
-  });
+  })
+  .merge(actionIdSchema)
+  .merge(confirmableSchema);
 
-export const datepickerSchema = actionSchema
-  .extend(confirmableSchema.shape)
-  .extend(focusableSchema.shape)
-  .extend(placeholdableSchema.shape)
-  .extend({
+export const datepickerSchema = z
+  .object({
     type: z.literal("datepicker"),
     initial_date: z.string().optional(),
-  });
+  })
+  .merge(actionIdSchema)
+  .merge(confirmableSchema)
+  .merge(focusableSchema)
+  .merge(placeholdableSchema);
 
-export const timepickerSchema = actionSchema
-  .extend(confirmableSchema.shape)
-  .extend(focusableSchema.shape)
-  .extend(placeholdableSchema.shape)
-  .extend({
+export const timepickerSchema = z
+  .object({
     type: z.literal("timepicker"),
     initial_time: z.string().optional(),
     timezone: z.string().optional(),
-  });
+  })
+  .merge(actionIdSchema)
+  .merge(confirmableSchema)
+  .merge(focusableSchema)
+  .merge(placeholdableSchema);
 
-export const radioButtonsSchema = actionSchema
-  .extend(confirmableSchema.shape)
-  .extend(focusableSchema.shape)
-  .extend({
+export const radioButtonsSchema = z
+  .object({
     type: z.literal("radio_buttons"),
     initial_option: optionSchema.optional(),
     options: z.array(optionSchema),
-  });
+  })
+  .merge(actionIdSchema)
+  .merge(confirmableSchema)
+  .merge(focusableSchema);
 
 /**
  * @description An element that allows the selection of a time of day formatted as a UNIX timestamp. On desktop
- * clients, this time picker will take the form of a dropdown list and the date picker will take the form of a dropdown
- * calendar. Both options will have free-text entry for precise choices. On mobile clients, the time picker and date
+ * clients, this time picker will take the form of a dropdown list merge the date picker will take the form of a dropdown
+ * calendar. Both options will have free-text entry for precise choices. On mobile clients, the time picker merge date
  * picker will use native UIs.
  * {@link https://api.slack.com/reference/block-kit/block-elements#datetimepicker}
  */
-export const dateTimepickerSchema = actionSchema
-  .extend(confirmableSchema.shape)
-  .extend(focusableSchema.shape)
-  .extend({
+export const dateTimepickerSchema = z
+  .object({
     type: z.literal("datetimepicker"),
     /**
-     * @description The initial date and time that is selected when the element is loaded, represented as a UNIX
-     * timestamp in seconds. This should be in the format of 10 digits, for example 1628633820 represents the date and
+     * @description The initial date merge time that is selected when the element is loaded, represented as a UNIX
+     * timestamp in seconds. This should be in the format of 10 digits, for example 1628633820 represents the date merge
      * time August 10th, 2021 at 03:17pm PST.
      */
     initial_date_time: z.number().optional(),
-  });
+  })
+  .merge(actionIdSchema)
+  .merge(confirmableSchema)
+  .merge(focusableSchema);
 
-export const checkboxesSchema = actionSchema
-  .extend(confirmableSchema.shape)
-  .extend(focusableSchema.shape)
-  .extend({
+export const checkboxesSchema = z
+  .object({
     type: z.literal("checkboxes"),
     initial_options: z.array(optionSchema).optional(),
     options: z.array(optionSchema),
-  });
+  })
+  .merge(actionIdSchema)
+  .merge(confirmableSchema)
+  .merge(focusableSchema);
 
-export const plainTextInputSchema = actionSchema
-  .extend(dispatchableSchema.shape)
-  .extend(focusableSchema.shape)
-  .extend(placeholdableSchema.shape)
-  .extend({
+export const plainTextInputSchema = z
+  .object({
     type: z.literal("plain_text_input"),
     initial_value: z.string().optional(),
     multiline: z.boolean().optional(),
@@ -351,53 +374,56 @@ export const plainTextInputSchema = actionSchema
     max_length: z.number().optional(),
     dispatch_action_config: dispatchActionConfigSchema.optional(),
     focus_on_load: z.boolean().optional(),
-  });
+  })
+  .merge(actionIdSchema)
+  .merge(dispatchableSchema)
+  .merge(focusableSchema)
+  .merge(placeholdableSchema);
 
 /**
  * @description A URL input element, similar to the {@see PlainTextInput} element, creates a single line field where
  * a user can enter URL-encoded data.
  * {@link https://api.slack.com/reference/block-kit/block-elements#url}
  */
-export const uRLInputSchema = actionSchema
-  .extend(dispatchableSchema.shape)
-  .extend(focusableSchema.shape)
-  .extend(placeholdableSchema.shape)
-  .extend({
+export const uRLInputSchema = z
+  .object({
     type: z.literal("url_text_input"),
     /**
      * @description The initial value in the URL input when it is loaded.
      */
     initial_value: z.string().optional(),
-  });
+  })
+  .merge(actionIdSchema)
+  .merge(dispatchableSchema)
+  .merge(focusableSchema)
+  .merge(placeholdableSchema);
 
 /**
  * @description An email input element, similar to the {@see PlainTextInput} element, creates a single line field where
  * a user can enter an email address.
  * {@link https://api.slack.com/reference/block-kit/block-elements#email}
  */
-export const emailInputSchema = actionSchema
-  .extend(dispatchableSchema.shape)
-  .extend(focusableSchema.shape)
-  .extend(placeholdableSchema.shape)
-  .extend({
+export const emailInputSchema = z
+  .object({
     type: z.literal("email_text_input"),
     /**
      * @description The initial value in the email input when it is loaded.
      */
     initial_value: z.string().optional(),
-  });
+  })
+  .merge(actionIdSchema)
+  .merge(dispatchableSchema)
+  .merge(focusableSchema)
+  .merge(placeholdableSchema);
 
 /**
  * @description A number input element, similar to the {@see PlainTextInput} element, creates a single line field where
- * a user can a number. This input elements accepts floating point numbers, for example, 0.25, 5.5, and -10 are all
+ * a user can a number. This input elements accepts floating point numbers, for example, 0.25, 5.5, merge -10 are all
  * valid input values. Decimal numbers are only allowed when `is_decimal_allowed` is equal to `true`.
  * {@link https://api.slack.com/reference/block-kit/block-elements#number}
  */
-export const numberInputSchema = actionSchema
-  .extend(dispatchableSchema.shape)
-  .extend(focusableSchema.shape)
-  .extend(placeholdableSchema.shape)
-  .extend({
+export const numberInputSchema = z
+  .object({
     type: z.literal("number_input"),
     /**
      * @description Decimal numbers are allowed if this property is `true`, set the value to `false` otherwise.
@@ -415,7 +441,11 @@ export const numberInputSchema = actionSchema
      * @description The maximum value, cannot be less than `min_value`.
      */
     max_value: z.string().optional(),
-  });
+  })
+  .merge(actionIdSchema)
+  .merge(dispatchableSchema)
+  .merge(focusableSchema)
+  .merge(placeholdableSchema);
 
 export const blockSchema = z.object({
   type: z.string(),
@@ -569,8 +599,11 @@ const selectSchemas = [
 ];
 
 export const selectSchema = z.discriminatedUnion("type", [
-  selectSchemas[0],
-  ...selectSchemas.slice(1),
+  usersSelectSchema,
+  staticSelectSchema,
+  conversationsSelectSchema,
+  channelsSelectSchema,
+  externalSelectSchema,
 ]);
 
 const multiSelectSchemas = [
@@ -581,8 +614,11 @@ const multiSelectSchemas = [
   multiExternalSelectSchema,
 ];
 export const multiSelectSchema = z.discriminatedUnion("type", [
-  multiSelectSchemas[0],
-  ...multiSelectSchemas.slice(1),
+  multiUsersSelectSchema,
+  multiStaticSelectSchema,
+  multiConversationsSelectSchema,
+  multiChannelsSelectSchema,
+  multiExternalSelectSchema,
 ]);
 
 export const actionsBlockSchema = blockSchema.extend({
@@ -597,7 +633,6 @@ export const actionsBlockSchema = blockSchema.extend({
       ...selectSchemas,
       radioButtonsSchema,
       checkboxesSchema,
-      actionSchema,
     ])
   ),
 });
@@ -623,7 +658,6 @@ export const sectionBlockSchema = blockSchema.extend({
       timepickerSchema,
       ...selectSchemas,
       ...multiSelectSchemas,
-      actionSchema,
       imageElementSchema,
       radioButtonsSchema,
       checkboxesSchema,
@@ -716,13 +750,27 @@ const knownBlocks = [
 ];
 
 export const knownBlockSchema = z.discriminatedUnion("type", [
-  knownBlocks[0],
-  ...knownBlocks.slice(1),
+  imageBlockSchema,
+  contextBlockSchema,
+  actionsBlockSchema,
+  dividerBlockSchema,
+  sectionBlockSchema,
+  inputBlockSchema,
+  fileBlockSchema,
+  headerBlockSchema,
+  videoBlockSchema,
 ]);
 
 const anyBlockSchema = z.discriminatedUnion("type", [
-  blockSchema,
-  ...knownBlocks,
+  imageBlockSchema,
+  contextBlockSchema,
+  actionsBlockSchema,
+  dividerBlockSchema,
+  sectionBlockSchema,
+  inputBlockSchema,
+  fileBlockSchema,
+  headerBlockSchema,
+  videoBlockSchema,
 ]);
 
 export const messageAttachmentSchema = z.object({
