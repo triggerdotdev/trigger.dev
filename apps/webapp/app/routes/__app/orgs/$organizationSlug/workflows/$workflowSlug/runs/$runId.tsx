@@ -678,7 +678,11 @@ function IntegrationRequestStep({
         {request.input && (
           <>
             <InputTitle />
-            <CodeBlock code={stringifyCode(request.input)} align="top" />
+            <CodeBlock
+              code={stringifyCode(request.input)}
+              align="top"
+              maxHeight="200px"
+            />
           </>
         )}
       </div>
