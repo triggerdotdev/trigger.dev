@@ -67,7 +67,9 @@ export default function Page() {
             workflowSlug={workflow.slug}
             eventNames={workflow.eventNames}
             initialValue={
-              latestRun == null
+              workflow.type === "SCHEDULE"
+                ? JSON.stringify({ scheduledTime: new Date() }, null, 2)
+                : latestRun == null
                 ? "{\n\n}"
                 : JSON.stringify(latestRun.event.payload, null, 2)
             }
