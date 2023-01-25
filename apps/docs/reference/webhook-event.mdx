@@ -1,0 +1,63 @@
+---
+title: "webhookEvent Trigger"
+sidebarTitle: "webhookEvent"
+description: "Trigger a workflow when a webhook event is received"
+---
+
+## Usage
+
+```ts
+new Trigger({
+  id: "caldotcom-to-slack",
+  name: "Cal.com To Slack",
+  on: webhookEvent({
+    service: "cal.com",
+    eventName: "BOOKING_CREATED",
+    filter: {
+      triggerEvent: ["BOOKING_CREATED"],
+    },
+    schema: z.any(),
+    verifyPayload: {
+      enabled: true,
+      header: "X-Cal-Signature-256",
+    },
+  }),
+  run: async (event, ctx) => {},
+}).listen();
+```
+
+## Options
+
+<ParamField path="service" type="string" required={true}>
+  The name of the service that will be sending the webhook event.
+</ParamField>
+
+<ParamField path="name" type="string" required={true}>
+  The name of the event that will be sent by the service.
+</ParamField>
+
+<ParamField path="filter" type="object" required={false}>
+  An event filter to apply to the webhook event. See the [event filter
+  documentation](/reference/event-filters) for more information.
+</ParamField>
+
+<ParamField path="schema" type="Zod Schema" required={true}>
+  A Zod schema to validate the webhook event payload against. See our [Zod
+  guide](/guides/zod) for more information.
+</ParamField>
+
+<ParamField path="verifyPayload" type="object" required={false}>
+  Verify the payload of the webhook event. Currently only supports sha256 HMAC
+  signatures.
+  <Expandable title="properties">
+    <ParamField path="enabled" type="boolean" required={false}>
+      Whether to verify the payload of the webhook event. Defaults to `false`.
+    </ParamField>
+
+    <ParamField path="header" type="string" required={false}>
+      The name of the header that contains the signature to verify the payload
+      against. e.g. `X-Webhook-Signature`.
+    </ParamField>
+
+  </Expandable>
+</ParamField>

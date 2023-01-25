@@ -26,6 +26,7 @@ export function commitCommentEvent(params: {
         repo: params.repo,
         events: ["commit_comment"],
       }),
+      manualRegistration: false,
     },
     schema: github.schemas.commitComments.commitCommentEventSchema,
   };
@@ -54,6 +55,7 @@ export function issueEvent(params: {
         repo: params.repo,
         events: ["issues"],
       }),
+      manualRegistration: false,
     },
     schema: github.schemas.issues.issuesEventSchema,
   };
@@ -82,6 +84,7 @@ export function issueCommentEvent(params: {
         repo: params.repo,
         events: ["issue_comment"],
       }),
+      manualRegistration: false,
     },
     schema: github.schemas.issuesComments.issueCommentEventSchema,
   };
@@ -110,6 +113,7 @@ export function pullRequestEvent(params: {
         repo: params.repo,
         events: ["pull_request"],
       }),
+      manualRegistration: false,
     },
     schema: github.schemas.pullRequest.pullRequestEventSchema,
   };
@@ -140,6 +144,7 @@ export function pullRequestCommentEvent(params: {
         repo: params.repo,
         events: ["pull_request_review_comment"],
       }),
+      manualRegistration: false,
     },
     schema:
       github.schemas.pullRequestComments.pullRequestReviewCommentEventSchema,
@@ -171,6 +176,7 @@ export function pullRequestReviewEvent(params: {
         repo: params.repo,
         events: ["pull_request_review"],
       }),
+      manualRegistration: false,
     },
     schema: github.schemas.pullRequestReviews.pullRequestReviewEventSchema,
   };
@@ -199,6 +205,7 @@ export function pushEvent(params: {
         repo: params.repo,
         events: ["push"],
       }),
+      manualRegistration: false,
     },
     schema: github.schemas.push.pushEventSchema,
   };
@@ -228,6 +235,7 @@ export function newStarEvent(params: {
         repo: params.repo,
         events: ["star"],
       }),
+      manualRegistration: false,
     },
     schema: github.schemas.stars.starCreatedEventSchema,
   };

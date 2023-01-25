@@ -86,9 +86,22 @@ export default function Page() {
       </div>
       {workflow.status === "CREATED" && (
         <>
-          <PanelWarning className="mb-6">
-            This workflow requires its APIs to be connected before it can run.
-          </PanelWarning>
+          {eventRule &&
+          eventRule.trigger.type === "WEBHOOK" &&
+          eventRule.trigger.manualRegistration &&
+          workflow.externalSourceUrl ? (
+            <PanelInfo className="mb-6">
+              Register webhook to activate this workflow:{" "}
+              {workflow.externalSourceUrl}{" "}
+              {workflow.externalSourceSecret && (
+                <>and secret {workflow.externalSourceSecret}</>
+              )}
+            </PanelInfo>
+          ) : (
+            <PanelWarning className="mb-6">
+              This workflow requires its APIs to be connected before it can run.
+            </PanelWarning>
+          )}
         </>
       )}
       {workflow.status === "DISABLED" && (

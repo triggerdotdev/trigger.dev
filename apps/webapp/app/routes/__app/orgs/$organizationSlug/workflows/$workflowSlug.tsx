@@ -1,6 +1,9 @@
 import { Outlet } from "@remix-run/react";
 import type { LoaderArgs } from "@remix-run/server-runtime";
-import { TriggerMetadataSchema } from "@trigger.dev/common-schemas";
+import {
+  ManualWebhookSourceSchema,
+  TriggerMetadataSchema,
+} from "@trigger.dev/common-schemas";
 import { typedjson } from "remix-typedjson";
 import invariant from "tiny-invariant";
 import { Container } from "~/components/layout/Container";
@@ -9,6 +12,7 @@ import {
   WorkflowsSideMenu,
 } from "~/components/navigation/SideMenu";
 import { getConnectedApiConnectionsForOrganizationSlug } from "~/models/apiConnection.server";
+import { buildExternalSourceUrl } from "~/models/externalSource.server";
 import { getIntegrations } from "~/models/integrations.server";
 import { getRuntimeEnvironmentFromRequest } from "~/models/runtimeEnvironment.server";
 import { getWorkflowFromSlugs } from "~/models/workflow.server";
@@ -78,8 +82,28 @@ export const loader = async ({ request, params }: LoaderArgs) => {
     }),
   };
 
+  const externalSourceSecret =
+    workflow.externalSource &&
+    workflow.externalSource.manualRegistration &&
+    ManualWebhookSourceSchema.safeParse(workflow.externalSource.source)
+      .success &&
+    ManualWebhookSourceSchema.parse(workflow.externalSource.source)
+      .verifyPayload.enabled
+      ? workflow.externalSource.secret
+      : undefined;
+
   return typedjson({
-    workflow: { ...workflow, rules },
+    workflow: {
+      ...workflow,
+      rules,
+      externalSourceUrl: workflow.externalSource
+        ? buildExternalSourceUrl(
+            workflow.externalSource.id,
+            workflow.externalSource.service
+          )
+        : undefined,
+      externalSourceSecret: externalSourceSecret,
+    },
     currentEnvironmentSlug,
     connectionSlots,
   });

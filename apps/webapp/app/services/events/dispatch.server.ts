@@ -5,6 +5,7 @@ import { prisma } from "~/db.server";
 import type { RuntimeEnvironment } from "~/models/runtimeEnvironment.server";
 import type { Workflow } from "~/models/workflow.server";
 import { taskQueue } from "../messageBroker.server";
+import { generateErrorMessage } from "zod-error";
 
 export class DispatchEvent {
   #prismaClient: PrismaClient;
@@ -41,7 +42,15 @@ export class DispatchEvent {
       },
     });
 
+    console.log(
+      `Found ${eventRules.length} event rules to check for event ${
+        event.id
+      }: ${eventRules.map((eventRule) => eventRule.id).join(", ")}`
+    );
+
     const matcher = new EventMatcher(event);
+
+    console.log(`Matching event rules for event`, matcher.json);
 
     const matchingEventRules = eventRules.filter((eventRule) => {
       return matcher.matches(eventRule);
@@ -77,20 +86,28 @@ export class DispatchEvent {
 }
 
 class EventMatcher {
-  #json: any;
+  json: any;
 
   constructor(event: TriggerEvent) {
-    this.#json = this.#createEventJsonFromEvent(event);
+    this.json = this.#createEventJsonFromEvent(event);
   }
 
   public matches(eventRule: EventRule) {
+    console.log(`Matching against event rule ${eventRule.id}`);
+
     const filter = this.#parseFilter(eventRule);
 
     if (!filter.success) {
+      console.error(
+        `Could not parse filter for event rule ${
+          eventRule.id
+        }, returning false: ${generateErrorMessage(filter.error.issues)}`
+      );
+
       return false;
     }
 
-    return patternMatches(this.#json, filter.data);
+    return patternMatches(this.json, filter.data);
   }
 
   #parseFilter(eventRule: EventRule) {
@@ -104,6 +121,7 @@ class EventMatcher {
       event: event.name,
       service: event.service,
       payload: event.payload,
+      context: event.context,
     };
   }
 }
@@ -165,7 +183,39 @@ export class DispatchWorkflowRun {
         status: "PENDING",
         isTest: event.isTest,
       },
+      include: {
+        workflow: {
+          include: {
+            externalSource: true,
+          },
+        },
+      },
     });
+
+    if (
+      workflowRun.workflow.externalSource &&
+      workflowRun.workflow.externalSource.status === "CREATED"
+    ) {
+      await this.#prismaClient.externalSource.update({
+        where: {
+          id: workflowRun.workflow.externalSource.id,
+        },
+        data: {
+          status: "READY",
+        },
+      });
+
+      if (workflowRun.workflow.status === "CREATED") {
+        await this.#prismaClient.workflow.update({
+          where: {
+            id: workflowRun.workflow.id,
+          },
+          data: {
+            status: "READY",
+          },
+        });
+      }
+    }
 
     console.log(
       `Created workflow run ${workflowRun.id} for event rule ${eventRule.id}`

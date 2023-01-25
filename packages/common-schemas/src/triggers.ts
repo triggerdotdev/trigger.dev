@@ -15,7 +15,8 @@ export const WebhookEventTriggerSchema = z.object({
   service: z.string(),
   name: z.string(),
   filter: EventFilterSchema,
-  source: JsonSchema,
+  source: JsonSchema.optional(),
+  manualRegistration: z.boolean().default(false),
 });
 export type WebhookEventTrigger = z.infer<typeof WebhookEventTriggerSchema>;
 
