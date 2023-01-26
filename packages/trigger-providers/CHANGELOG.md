@@ -1,5 +1,11 @@
 # @trigger.dev/providers
 
+## 0.1.7
+
+### Patch Changes
+
+- 039321f: Improved types for the Resend integration
+
 ## 0.1.6
 
 ### Patch Changes

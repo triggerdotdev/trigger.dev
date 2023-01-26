@@ -13,7 +13,16 @@ export default defineConfig([
     bundle: true,
     splitting: false,
     dts: true,
-    external: ["http", "https", "util", "events", "tty", "os", "timers"],
+    external: [
+      "http",
+      "https",
+      "util",
+      "events",
+      "tty",
+      "os",
+      "timers",
+      "react",
+    ],
     esbuildPlugins: [],
   },
 ]);

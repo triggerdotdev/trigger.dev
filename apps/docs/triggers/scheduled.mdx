@@ -11,7 +11,7 @@ description: "Run a workflow on a recurring schedule"
 This job will run every 5 minutes, starting 5 minutes after this code is first run on your server (that includes running locally).
 
 ```ts
-import { Trigger, schedule } from "@trigger.dev/sdk";
+import { Trigger, scheduleEvent } from "@trigger.dev/sdk";
 
 new Trigger({
   id: "scheduled-workflow",
@@ -34,7 +34,7 @@ new Trigger({
 This job will run at 2:30pm every Monday. You can get help with [CRON syntax](https://crontab.guru/).
 
 ```ts
-import { Trigger, schedule } from "@trigger.dev/sdk";
+import { Trigger, scheduleEvent } from "@trigger.dev/sdk";
 
 new Trigger({
   id: "cron-scheduled-workflow",

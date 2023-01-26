@@ -1,5 +1,18 @@
 # @trigger.dev/sdk
 
+## 0.2.9
+
+### Patch Changes
+
+- 039321f: Improved types for the Resend integration
+
+## 0.2.8
+
+### Patch Changes
+
+- ddf4255: Added support for webhookEvent trigger
+- 2fd9e4f: Added retry options to fetch
+
 ## 0.2.7
 
 ### Patch Changes
