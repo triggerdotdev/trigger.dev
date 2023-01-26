@@ -84,14 +84,22 @@ export function CreateNewWorkflowNoWorkflows() {
           <Body className="mb-4">
             Easily authenticate with APIs using the supported integrations
             below. If there's an integration we don't yet support,{" "}
-            <a
-              href="mailto:help@trigger.dev"
-              className="underline decoration-slate-400 underline-offset-2 hover:decoration-white hover:text-white transition"
+            <script src="//embed.typeform.com/next/embed.js"></script>
+            <button
+              data-tf-popup="VwblgGDZ"
+              data-tf-opacity="100"
+              data-tf-size="100"
+              data-tf-iframe-props="title=Request an integration"
+              data-tf-auto-close="2000"
+              data-tf-transitive-search-params
+              data-tf-medium="snippet"
+              className="underline opacity-80 hover:opacity-100 transition underline-offset-2"
             >
-              let us know
-            </a>{" "}
+              vote for it here
+            </button>{" "}
             and we'll add it.
           </Body>
+          <script src="//embed.typeform.com/next/embed.js"></script>
           <div className="flex gap-2 items-center mb-8">
             {getProviders(false).map((provider) => (
               <ApiLogoIcon
@@ -106,6 +114,13 @@ export function CreateNewWorkflowNoWorkflows() {
               className="uppercase text-slate-400 bg-slate-850 py-2.5 px-4 rounded tracking-wide"
             >
               Fetch
+            </Body>
+            <Body className="text-slate-300">&</Body>
+            <Body
+              size="small"
+              className="uppercase text-slate-400 bg-slate-850 py-2.5 px-4 rounded tracking-wide"
+            >
+              Webhooks
             </Body>
           </div>
           <Body size="small" className={allCapsTitleClasses}>
