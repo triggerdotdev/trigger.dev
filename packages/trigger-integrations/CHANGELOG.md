@@ -1,5 +1,13 @@
 # @trigger.dev/integrations
 
+## 0.1.14
+
+### Patch Changes
+
+- 1d5b592: Don't require react in the distributed package
+- Updated dependencies [1d5b592]
+  - @trigger.dev/providers@0.1.8
+
 ## 0.1.13
 
 ### Patch Changes
