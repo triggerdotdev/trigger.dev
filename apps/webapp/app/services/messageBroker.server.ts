@@ -577,10 +577,7 @@ function createTaskQueue() {
             {
               id: fetchRequest.id,
               key: fetchRequest.step.idempotencyKey,
-              output: {
-                ...output,
-                ok: true,
-              },
+              output,
             },
             {
               "x-workflow-run-id": run.id,
