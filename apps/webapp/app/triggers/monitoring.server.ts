@@ -72,6 +72,10 @@ export const checkScheduler = new Trigger({
   logLevel: "info",
   triggerTTL: 600,
   run: async (event, context) => {
+    if (context.environment === "development" && !context.isTest) {
+      return;
+    }
+
     await context.sendEvent("health.check trigger.dev", {
       name: "health.check",
       payload: {
