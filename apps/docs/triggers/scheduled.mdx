@@ -83,3 +83,27 @@ This is especially useful for scheduled triggers that run on a very short interv
 <Tip>
   Set your `triggerTTL` to the same time (or double) as the rateOf the trigger.
 </Tip>
+
+## Live-only scheduled events
+
+In many cases, you only want scheduled events to run when your code is running on a server, and not locally during development. To do this, you can check the `context.environment` property together with the `context.isTest` property, like so:
+
+```ts
+new Trigger({
+  id: "check-scheduler",
+  name: "Check Scheduler",
+  on: scheduleEvent({ rateOf: { minutes: 10 } }),
+  logLevel: "info",
+  triggerTTL: 600,
+  run: async (event, context) => {
+    // Return if in development and not running a test
+    if (context.environment === "development" && !context.isTest) {
+      return;
+    }
+
+    // do stuff here
+  },
+}).listen();
+```
+
+By checking `context.isTest`, you can manually test scheduled events locally before pushing to live.
