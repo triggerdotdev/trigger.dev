@@ -1,6 +1,6 @@
 import { prisma } from "~/db.server";
 import type { ExternalSource } from ".prisma/client";
-import { env } from "process";
+import { env } from "~/env.server";
 
 export type { ExternalSource };
 
