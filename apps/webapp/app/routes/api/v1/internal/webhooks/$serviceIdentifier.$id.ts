@@ -33,7 +33,10 @@ export async function action({ request, params }: ActionArgs) {
   } catch (error) {
     return {
       status: 500,
-      body: error instanceof Error ? error.message : `Unknown error: ${error}`,
+      body:
+        error instanceof Error
+          ? error.message
+          : `Unknown error: ${JSON.stringify(error)}`,
     };
   }
 }
