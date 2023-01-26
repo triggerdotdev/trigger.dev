@@ -91,48 +91,61 @@ export default function Page() {
         <>
           {eventRule &&
           eventRule.trigger.type === "WEBHOOK" &&
-          eventRule.trigger.manualRegistration &&
-          workflow.externalSourceUrl ? (
+          workflow.externalSourceConfig?.type === "manual" ? (
             <PanelInfo className="mb-6 pb-4">
-              <div className="flex flex-col">
-                <Body className="mb-4">
-                  Use these details to register your webhook – this usually
-                  involves logging in to the developer section of the service.
-                </Body>
-                <div className="flex flex-col gap-2">
-                  <Body
-                    size="extra-small"
-                    className="text-slate-300 uppercase tracking-wide"
-                  >
-                    URL
+              {workflow.externalSourceConfig.data.success ? (
+                <div className="flex flex-col">
+                  <Body className="mb-4">
+                    Use these details to register your webhook – this usually
+                    involves logging in to the developer section of the service.
                   </Body>
-                  <div className="flex items-center gap-2 mb-4">
-                    <Input value={workflow.externalSourceUrl} />
-                    <CopyTextButton
-                      value={workflow.externalSourceUrl}
-                    ></CopyTextButton>
-                  </div>
-                </div>
-                {workflow.externalSourceSecret && (
                   <div className="flex flex-col gap-2">
                     <Body
                       size="extra-small"
                       className="text-slate-300 uppercase tracking-wide"
                     >
-                      Secret
+                      URL
                     </Body>
-                    <div className="flex items-center gap-2">
-                      <Input
-                        type="password"
-                        value={workflow.externalSourceSecret}
-                      />
+                    <div className="flex items-center gap-2 mb-4">
+                      <Input value={workflow.externalSourceConfig.data.url} />
                       <CopyTextButton
-                        value={workflow.externalSourceSecret}
+                        value={workflow.externalSourceConfig.data.url}
                       ></CopyTextButton>
                     </div>
                   </div>
-                )}
-              </div>
+                  {workflow.externalSourceConfig.data.secret && (
+                    <div className="flex flex-col gap-2">
+                      <Body
+                        size="extra-small"
+                        className="text-slate-300 uppercase tracking-wide"
+                      >
+                        Secret
+                      </Body>
+                      <div className="flex items-center gap-2">
+                        <Input
+                          type="password"
+                          value={workflow.externalSourceConfig.data.secret}
+                        />
+                        <CopyTextButton
+                          value={workflow.externalSourceConfig.data.secret}
+                        ></CopyTextButton>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="flex flex-col gap-2 w-full">
+                  <Body className="text-rose-500">
+                    Your custom webhook event is incorrectly formatted. See the
+                    error below
+                  </Body>
+                  <CodeBlock
+                    code={workflow.externalSourceConfig.data.error}
+                    className="border border-rose-500 w-full"
+                    align="top"
+                  />
+                </div>
+              )}
             </PanelInfo>
           ) : (
             <PanelWarning className="mb-6">

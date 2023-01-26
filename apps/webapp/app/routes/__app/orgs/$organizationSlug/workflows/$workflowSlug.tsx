@@ -18,6 +18,31 @@ import { getRuntimeEnvironmentFromRequest } from "~/models/runtimeEnvironment.se
 import { getWorkflowFromSlugs } from "~/models/workflow.server";
 import { requireUser } from "~/services/session.server";
 
+type ExternalSourceConfig =
+  | ExternalSourceIntegrationConfig
+  | ExternalSourceManualConfig;
+
+type ExternalSourceIntegrationConfig = {
+  type: "integration";
+  url: string;
+};
+
+type ExternalSourceManualConfig = {
+  type: "manual";
+  data: ManualConfigDataSuccess | ManualConfigDataError;
+};
+
+type ManualConfigDataError = {
+  success: false;
+  error: string;
+};
+
+type ManualConfigDataSuccess = {
+  success: true;
+  url: string;
+  secret?: string;
+};
+
 export const loader = async ({ request, params }: LoaderArgs) => {
   const user = await requireUser(request);
   const { organizationSlug, workflowSlug } = params;
@@ -82,27 +107,53 @@ export const loader = async ({ request, params }: LoaderArgs) => {
     }),
   };
 
-  const externalSourceSecret =
+  let externalSourceConfig: ExternalSourceConfig | undefined = undefined;
+
+  if (workflow.externalSource && !workflow.externalSource.manualRegistration) {
+    externalSourceConfig = {
+      type: "integration",
+      url: buildExternalSourceUrl(
+        workflow.externalSource.id,
+        workflow.externalSource.service
+      ),
+    };
+  } else if (
     workflow.externalSource &&
-    workflow.externalSource.manualRegistration &&
-    ManualWebhookSourceSchema.safeParse(workflow.externalSource.source)
-      .success &&
-    ManualWebhookSourceSchema.parse(workflow.externalSource.source)
-      .verifyPayload.enabled
-      ? workflow.externalSource.secret
-      : undefined;
+    workflow.externalSource.manualRegistration
+  ) {
+    const parsedManualWebhook = ManualWebhookSourceSchema.safeParse(
+      workflow.externalSource.source
+    );
+    if (parsedManualWebhook.success) {
+      externalSourceConfig = {
+        type: "manual",
+        data: {
+          success: true,
+          url: buildExternalSourceUrl(
+            workflow.externalSource.id,
+            workflow.externalSource.service
+          ),
+          secret: parsedManualWebhook.data.verifyPayload.enabled
+            ? workflow.externalSource.secret ?? undefined
+            : undefined,
+        },
+      };
+    } else {
+      externalSourceConfig = {
+        type: "manual",
+        data: {
+          success: false,
+          error: parsedManualWebhook.error.message,
+        },
+      };
+    }
+  }
 
   return typedjson({
     workflow: {
       ...workflow,
       rules,
-      externalSourceUrl: workflow.externalSource
-        ? buildExternalSourceUrl(
-            workflow.externalSource.id,
-            workflow.externalSource.service
-          )
-        : undefined,
-      externalSourceSecret: externalSourceSecret,
+      externalSourceConfig,
     },
     currentEnvironmentSlug,
     connectionSlots,
