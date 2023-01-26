@@ -67,7 +67,7 @@ export class RegisterExternalSource {
       externalSource.secret ?? crypto.randomBytes(32).toString("hex");
 
     const webhookUrl = buildExternalSourceUrl(
-      externalSource,
+      externalSource.id,
       connection.apiIdentifier
     );
 
