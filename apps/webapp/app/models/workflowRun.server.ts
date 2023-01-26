@@ -228,13 +228,18 @@ async function findWorkflowRunScopedToApiKey(id: string, apiKey: string) {
 
 export async function getMostRecentWorkflowRun({
   workflowSlug,
+  organizationSlug,
 }: {
   workflowSlug: string;
+  organizationSlug: string;
 }) {
   return prisma.workflowRun.findFirst({
     where: {
       workflow: {
         slug: workflowSlug,
+        organization: {
+          slug: organizationSlug,
+        },
       },
     },
     include: {
