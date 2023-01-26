@@ -31,9 +31,9 @@ importers:
 
   apps/docs:
     specifiers:
-      mintlify: ^2.0.15
+      mintlify: ^2.0.16
     devDependencies:
-      mintlify: 2.0.15
+      mintlify: 2.0.16
 
   apps/webapp:
     specifiers:
@@ -4303,8 +4303,8 @@ packages:
       globby: 11.1.0
       read-yaml-file: 1.1.0
 
-  /@mintlify/validation/0.1.4:
-    resolution: {integrity: sha512-O0WCLeFuAeUHeZuHntvZ0Pz5xBJLPoWspJa3teIX+C7IxrpW/I3hKa82CA2NRttmciud/DFWHgY7q1BomoRr9w==}
+  /@mintlify/validation/0.1.5:
+    resolution: {integrity: sha512-eXt/SVpoqrOb54HgsI4KVYlctJAAMtfU3iw0OvQBoO5EZiTXb9fsesFEPoWRgextpdEZua1Kw6tCUcgzuaBylg==}
     dependencies:
       zod: 3.20.2
       zod-to-json-schema: 3.20.2_zod@3.20.2
@@ -6552,7 +6552,7 @@ packages:
   /axios/1.2.2:
     resolution: {integrity: sha512-bz/J4gS2S3I7mpN/YZfGFTqhXTYzRho8Ay38w2otuuDR322KzFIWm/4W2K6gIwvWaws5n+mnb7D1lN9uD+QH6Q==}
     dependencies:
-      follow-redirects: 1.15.2_debug@4.3.4
+      follow-redirects: 1.15.2
       form-data: 4.0.0
       proxy-from-env: 1.1.0
     transitivePeerDependencies:
@@ -9651,6 +9651,15 @@ packages:
     engines: {node: '>=0.4.0'}
     dev: true
 
+  /follow-redirects/1.15.2:
+    resolution: {integrity: sha512-VQLG33o04KaQ8uYi2tVNbdrWp1QWxNNea+nmIB4EVM28v0hmP17z7aG1+wAkNzVq4KeXTq3221ye5qTJP91JwA==}
+    engines: {node: '>=4.0'}
+    peerDependencies:
+      debug: '*'
+    peerDependenciesMeta:
+      debug:
+        optional: true
+
   /follow-redirects/1.15.2_debug@4.3.4:
     resolution: {integrity: sha512-VQLG33o04KaQ8uYi2tVNbdrWp1QWxNNea+nmIB4EVM28v0hmP17z7aG1+wAkNzVq4KeXTq3221ye5qTJP91JwA==}
     engines: {node: '>=4.0'}
@@ -12539,13 +12548,13 @@ packages:
       yallist: 4.0.0
     dev: true
 
-  /mintlify/2.0.15:
-    resolution: {integrity: sha512-GM/rXnEJunAVRsHbk/3utKgF0BO7l9wj6z3VH0Csp18sRKlb7GjucxeVzUX+jXPoKC+t9JX02WbQg28MHJ/etA==}
+  /mintlify/2.0.16:
+    resolution: {integrity: sha512-8SppN2c2F6rt2QlYkDIqZZV9S2jXuUUbWo75eDGURMRfWxpFKGCRxsueY0Oerq/yO/Mlzg5ZNHutJHRipCgLcg==}
     engines: {node: '>=18.0.0'}
     hasBin: true
     dependencies:
       '@apidevtools/swagger-parser': 10.1.0_openapi-types@12.1.0
-      '@mintlify/validation': 0.1.4
+      '@mintlify/validation': 0.1.5
       '@octokit/rest': 19.0.7
       axios: 1.2.2
       chalk: 5.2.0
