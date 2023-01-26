@@ -1,13 +1,14 @@
+import { Webhooks } from "@octokit/webhooks";
+import { github } from "@trigger.dev/providers";
+import crypto from "crypto";
+import { z } from "zod";
+import { getAccessToken } from "../accessInfo";
 import {
   DisplayProperty,
   HandleWebhookOptions,
   WebhookConfig,
   WebhookIntegration,
 } from "../types";
-import { Webhooks } from "@octokit/webhooks";
-import { z } from "zod";
-import { github } from "@trigger.dev/providers";
-import { getAccessToken } from "../accessInfo";
 
 export class GitHubWebhookIntegration implements WebhookIntegration {
   keyForSource(source: unknown): string {
@@ -71,9 +72,11 @@ export class GitHubWebhookIntegration implements WebhookIntegration {
       "x-forwarded-proto",
     ]);
 
+    const id = md5Hash([hookId, deliveryId].join("-"));
+
     return {
       status: "ok" as const,
-      data: { id: hookId, payload: options.request.body, event, context },
+      data: { id, payload: options.request.body, event, context },
     };
   }
 
@@ -206,4 +209,11 @@ function omit<T extends Record<string, unknown>, K extends keyof T>(
   }
 
   return result;
+}
+
+function md5Hash(str: string): string {
+  const hash = crypto.createHash("md5");
+  hash.update(str);
+
+  return hash.digest("hex");
 }

@@ -1,0 +1,36 @@
+openapi: 3.0.3
+info:
+  title: Trigger.dev API
+  version: v1.0.0
+  description: Please see https://docs.trigger.dev for more details.
+  contact:
+    name: Eric
+    email: eric@trigger.dev
+    url: https://trigger.dev
+  termsOfService: https://trigger.dev/terms
+servers:
+  - url: https://app.trigger.dev/api/v1
+    description: Trigger.dev
+paths:
+  /events:
+    post:
+      summary: Send Custom Event
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/customEvent"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/customEventResponse"
+        "422":
+          description: Unprocessable Entity
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/error"

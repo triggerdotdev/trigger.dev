@@ -1,5 +1,12 @@
 # @trigger.dev/sdk
 
+## 0.2.10
+
+### Patch Changes
+
+- e37a200: Added lastRunAt to the scheduleEvent payload
+- e63d354: Added isTest to TriggerContext
+
 ## 0.2.9
 
 ### Patch Changes

@@ -7,6 +7,7 @@ const Catalog = {
     data: TriggerWorkflowMessageSchema,
     properties: WorkflowRunEventPropertiesSchema.extend({
       "x-ttl": z.coerce.number().optional(),
+      "x-is-test": z.string().default("false"),
     }),
   },
 };

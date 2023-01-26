@@ -9,6 +9,8 @@ description: "The Trigger class let's you define a workflow that is triggered by
 ### Usage
 
 ```ts
+import { customEvent, Trigger } from "@trigger.dev/sdk";
+
 const trigger = new Trigger({
   id: "user-created-notify-slack",
   name: "User Created - Notify Slack",
@@ -32,11 +34,6 @@ const trigger = new Trigger({
 
 <ParamField path="name" type="string" required={true}>
   A display name for this trigger.
-</ParamField>
-
-<ParamField path="apiKey" type="string" required={false}>
-  Your Trigger.dev API key. If not provided, the API key will be read from the
-  `TRIGGER_API_KEY` environment variable.
 </ParamField>
 
 <ParamField path="apiKey" type="string" required={false}>
@@ -85,6 +82,10 @@ const trigger = new Trigger({
 <ParamField path="logger" type="object">
   The logger object for this trigger. See the [Logging](/functions/logging) page
   for more info.
+</ParamField>
+
+<ParamField path="isTest" type="boolean">
+  Whether or not this trigger is being run as a test.
 </ParamField>
 
 <ParamField path="sendEvent" type="function">

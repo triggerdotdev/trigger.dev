@@ -39,6 +39,10 @@ new Trigger({
       wallTime: new Date(),
     });
 
+    if (ctx.isTest) {
+      await ctx.logger.warn("This is only a test");
+    }
+
     const response = await ctx.fetch("do-fetch", `${event.url}${event.path}`, {
       method: event.method,
       responseSchema: z.any(),

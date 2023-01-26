@@ -7,6 +7,8 @@ description: "Trigger a workflow when a webhook event is received"
 ## Usage
 
 ```ts
+import { webhookEvent, Trigger } from "@trigger.dev/sdk";
+
 new Trigger({
   id: "caldotcom-to-slack",
   name: "Cal.com To Slack",

@@ -4,6 +4,8 @@ sidebarTitle: "Scheduled"
 description: "Run a workflow on a recurring schedule"
 ---
 
+See the [reference](/reference/schedule-event) for more details.
+
 ## Examples
 
 ### Every 5 minutes
@@ -51,3 +53,33 @@ new Trigger({
   },
 }).listen();
 ```
+
+## Preventing late runs
+
+To prevent a scheduled trigger from running late, you can set a `triggerTTL` option when creating the `Trigger`, like so:
+
+```ts
+new Trigger({
+  id: "scheduled-workflow",
+  name: "Scheduled Workflow",
+  apiKey: "<your_api_key>",
+  on: scheduleEvent({ rateOf: { minutes: 5 } }),
+  triggerTTL: 300,
+  run: async (event, ctx) => {
+    await ctx.logger.info("Received the scheduled event", {
+      event,
+      wallTime: new Date(),
+    });
+
+    return { foo: "bar" };
+  },
+}).listen();
+```
+
+This will prevent the trigger from running if it is running more than `300` seconds behind, which can happen if the server running your `Trigger` code goes down or is otherwise unavailable.
+
+This is especially useful for scheduled triggers that run on a very short interval, like every minute, so you don't get a backlog of runs that all run at once when the server comes back online.
+
+<Tip>
+  Set your `triggerTTL` to the same time (or double) as the rateOf the trigger.
+</Tip>

@@ -26,6 +26,15 @@ export class RegisterExternalSource {
     }
 
     if (externalSource.status === "READY") {
+      await this.#prismaClient.workflow.updateMany({
+        where: {
+          externalSourceId: externalSource.id,
+        },
+        data: {
+          status: "READY",
+        },
+      });
+
       return true;
     }
 
