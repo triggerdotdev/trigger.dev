@@ -14,10 +14,10 @@
   "keywords": [],
   "author": "",
   "dependencies": {
-    "@trigger.dev/integrations": "^0.1.13",
-    "@trigger.dev/sdk": "^0.2.10",
     "pg": "^8.8.0",
-    "zod": "^3.20.2"
+    "zod": "^3.20.2",
+    "@trigger.dev/integrations": "^0.1.13",
+    "@trigger.dev/sdk": "^0.2.10"
   },
   "devDependencies": {
     "@trigger.dev/tsconfig": "workspace:*",

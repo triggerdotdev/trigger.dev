@@ -44,7 +44,7 @@
     "@tailwindcss/forms": "^0.5.3",
     "@tailwindcss/typography": "^0.5.8",
     "autoprefixer": "^10.4.12",
-    "eslint-config-custom": "*",
+    "eslint-config-custom": "workspace:*",
     "postcss": "^8.4.17",
     "prettier": "^2.5.1",
     "tailwindcss": "3.1.8",
