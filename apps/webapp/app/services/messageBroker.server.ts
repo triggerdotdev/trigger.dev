@@ -1,5 +1,6 @@
 import type { FetchOutputSchema } from "@trigger.dev/common-schemas";
 import {
+  CustomEventSchema,
   JsonSchema,
   ScheduledEventPayloadSchema,
 } from "@trigger.dev/common-schemas";
@@ -34,6 +35,7 @@ import { InitiateDelay } from "./delays/initiateDelay.server";
 import { ResolveDelay } from "./delays/resolveDelay.server";
 import { sendEmail } from "./email.server";
 import { DispatchEvent } from "./events/dispatch.server";
+import { IngestEvent } from "./events/ingest.server";
 import { HandleNewServiceConnection } from "./externalServices/handleNewConnection.server";
 import { RegisterExternalSource } from "./externalSources/registerExternalSource.server";
 import { CreateFetchRequest } from "./fetches/createFetchRequest.server";
@@ -419,6 +421,10 @@ const taskQueueCatalog = {
     }),
     properties: z.object({}),
   },
+  SEND_INTERNAL_EVENT: {
+    data: CustomEventSchema.extend({ id: z.string() }),
+    properties: z.object({}),
+  },
 };
 
 function createTaskQueue() {
@@ -678,6 +684,25 @@ function createTaskQueue() {
         const service = new DeliverScheduledEvent();
 
         return service.call(data.externalSourceId, data.payload);
+      },
+      SEND_INTERNAL_EVENT: async (id, data, properties, attributes) => {
+        if (attributes.redeliveryCount >= 4) {
+          return true;
+        }
+
+        const service = new IngestEvent();
+
+        const result = await service.call({
+          id: data.id,
+          name: data.name,
+          type: "CUSTOM_EVENT",
+          service: "trigger",
+          payload: data.payload,
+          context: data.context,
+          apiKey: env.INTERNAL_TRIGGER_API_KEY,
+        });
+
+        return result.status === "success";
       },
     },
   });

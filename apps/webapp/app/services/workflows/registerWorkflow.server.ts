@@ -99,6 +99,18 @@ export class RegisterWorkflow {
     payload: WorkflowMetadata,
     organization: Organization
   ) {
+    const existingWorkflow = await this.#prismaClient.workflow.findUnique({
+      where: {
+        organizationId_slug: {
+          organizationId: organization.id,
+          slug,
+        },
+      },
+      select: {
+        id: true,
+      },
+    });
+
     const workflow = await this.#prismaClient.workflow.upsert({
       where: {
         organizationId_slug: {
@@ -129,6 +141,16 @@ export class RegisterWorkflow {
         externalSource: true,
       },
     });
+
+    if (!existingWorkflow) {
+      await taskQueue.publish("SEND_INTERNAL_EVENT", {
+        id: workflow.id,
+        name: "workflow.created",
+        payload: {
+          id: workflow.id,
+        },
+      });
+    }
 
     return workflow;
   }
