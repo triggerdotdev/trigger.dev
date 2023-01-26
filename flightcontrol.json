@@ -62,11 +62,10 @@
             "packages/internal-pulsar/src/**",
             "./pnpm-lock.yaml"
           ],
-          "dependsOn": ["p-db"],
+          "dependsOn": [
+            "p-db"
+          ],
           "envVariables": {
-            "TRIGGER_API_KEY": {
-              "fromParameterStore": "/Prod/webapp/TRIGGER_API_KEY"
-            },
             "FROM_EMAIL": "hello@email.trigger.dev",
             "REPLY_TO_EMAIL": "hello@trigger.dev",
             "RESEND_API_KEY": {
@@ -148,7 +147,37 @@
               "fromParameterStore": "/Prod/Pulsar/wss/Role"
             },
             "PLATFORM_API_URL": "https://app.trigger.dev",
-            "TRIGGER_LOG_LEVEL": "debug"
+            "TRIGGER_LOG_LEVEL": "debug",
+            "TRIGGER_API_KEY": {
+              "fromParameterStore": "/Prod/webapp/TRIGGER_API_KEY"
+            }
+          }
+        },
+        {
+          "id": "p-triggers",
+          "name": "Prod Triggers",
+          "type": "fargate-worker",
+          "buildType": "docker",
+          "dockerfilePath": "./apps/internal-triggers/Dockerfile",
+          "dockerContext": ".",
+          "cpu": 1,
+          "memory": 2,
+          "minInstances": 1,
+          "maxInstances": 2,
+          "watchPaths": [
+            "apps/internal-triggers/src/**",
+            "apps/internal-triggers/tsconfig.json",
+            "apps/internal-triggers/tsup.config.ts",
+            "apps/internal-triggers/package.json"
+          ],
+          "envVariables": {
+            "TRIGGER_LOG_LEVEL": "debug",
+            "DATABASE_URL": {
+              "fromService": {
+                "id": "p-db",
+                "value": "dbConnectionString"
+              }
+            }
           }
         },
         {
@@ -238,7 +267,9 @@
             "packages/internal-pulsar/src/**",
             "./pnpm-lock.yaml"
           ],
-          "dependsOn": ["s-db"],
+          "dependsOn": [
+            "s-db"
+          ],
           "envVariables": {
             "FROM_EMAIL": "hello@email.trigger.dev",
             "REPLY_TO_EMAIL": "hello@trigger.dev",
