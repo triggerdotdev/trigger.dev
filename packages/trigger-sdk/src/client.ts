@@ -357,6 +357,7 @@ export class TriggerClient<TSchema extends z.ZodTypeAny> {
             environment: data.meta.environment,
             apiKey: data.meta.apiKey,
             organizationId: data.meta.organizationId,
+            isTest: data.meta.isTest,
             logger: new ContextLogger(async (level, message, properties) => {
               await serverRPC.send("SEND_LOG", {
                 runId: data.id,

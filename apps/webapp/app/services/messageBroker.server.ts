@@ -664,6 +664,7 @@ function createTaskQueue() {
             "x-env": run.environment.slug,
             "x-workflow-run-id": run.id,
             "x-ttl": run.workflow.triggerTtlInSeconds,
+            "x-is-test": run.isTest ? "true" : "false",
           },
           {
             eventTimestamp: run.event.timestamp.getTime(),

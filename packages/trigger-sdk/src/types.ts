@@ -62,6 +62,7 @@ export interface TriggerContext {
   apiKey: string;
   organizationId: string;
   logger: TriggerLogger;
+  isTest: boolean;
   sendEvent(key: string, event: TriggerCustomEvent): Promise<void>;
   waitFor(key: string, options: WaitForOptions): Promise<void>;
   waitUntil(key: string, date: Date): Promise<void>;
