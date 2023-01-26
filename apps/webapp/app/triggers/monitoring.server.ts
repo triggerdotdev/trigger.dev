@@ -13,15 +13,21 @@ export const uptimeCheck = new Trigger({
       return;
     }
 
+    const filterCondition = {
+      where: { createdAt: { gte: event.lastRunAt, lt: event.scheduledTime } },
+    };
+
     // Grab counts of workflows, runs, and steps
-    const userCount = await prisma.user.count();
-    const workflowCount = await prisma.workflow.count();
-    const runCount = await prisma.workflowRun.count();
-    const stepCount = await prisma.workflowRunStep.count();
+    const userCount = await prisma.user.count(filterCondition);
+    const workflowCount = await prisma.workflow.count(filterCondition);
+    const runCount = await prisma.workflowRun.count(filterCondition);
+    const stepCount = await prisma.workflowRunStep.count(filterCondition);
 
     await slack.postMessage("Uptime Notification", {
       channelName: "monitoring",
-      text: `[${context.environment}] Uptime Check: ${userCount} users, ${workflowCount} workflows, ${runCount} runs, ${stepCount} steps.`,
+      text: `[${
+        context.environment
+      }][${event.scheduledTime.toLocaleString()}] Uptime Check: ${userCount} new users, ${workflowCount} new workflows, ${runCount} new runs, ${stepCount} new steps.`,
     });
   },
 });
