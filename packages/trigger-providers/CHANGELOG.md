@@ -1,5 +1,11 @@
 # @trigger.dev/providers
 
+## 0.1.8
+
+### Patch Changes
+
+- 1d5b592: Don't require react in the distributed package
+
 ## 0.1.7
 
 ### Patch Changes

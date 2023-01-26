@@ -1,9 +1,0 @@
-{
-  "extends": "@trigger.dev/tsconfig/node16.json",
-  "include": ["./src/**/*.ts", "tsup.config.ts"],
-  "compilerOptions": {
-    "experimentalDecorators": true,
-    "emitDecoratorMetadata": true
-  },
-  "exclude": ["node_modules"]
-}
