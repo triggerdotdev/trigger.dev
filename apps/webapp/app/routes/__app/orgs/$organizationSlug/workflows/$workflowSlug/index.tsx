@@ -93,50 +93,45 @@ export default function Page() {
           eventRule.trigger.type === "WEBHOOK" &&
           eventRule.trigger.manualRegistration &&
           workflow.externalSourceUrl ? (
-            <PanelInfo className="mb-6">
+            <PanelInfo className="mb-6 pb-4">
               <div className="flex flex-col">
-                <Body className="mb-6">
+                <Body className="mb-4">
                   Use these details to register your webhook – this usually
                   involves logging in to the developer section of the service.
                 </Body>
-                <div className="flex gap-8">
-                  <div className="flex items-center gap-2">
-                    <div className="flex flex-col gap-2">
-                      <Body
-                        size="extra-small"
-                        className="text-slate-300 uppercase tracking-wide"
-                      >
-                        URL
-                      </Body>
-                      <div className="flex items-center gap-2">
-                        <Input value={workflow.externalSourceUrl} />
-                        <CopyTextButton
-                          value={workflow.externalSourceUrl}
-                        ></CopyTextButton>
-                      </div>
+                <div className="flex flex-col gap-2">
+                  <Body
+                    size="extra-small"
+                    className="text-slate-300 uppercase tracking-wide"
+                  >
+                    URL
+                  </Body>
+                  <div className="flex items-center gap-2 mb-4">
+                    <Input value={workflow.externalSourceUrl} />
+                    <CopyTextButton
+                      value={workflow.externalSourceUrl}
+                    ></CopyTextButton>
+                  </div>
+                </div>
+                {workflow.externalSourceSecret && (
+                  <div className="flex flex-col gap-2">
+                    <Body
+                      size="extra-small"
+                      className="text-slate-300 uppercase tracking-wide"
+                    >
+                      Secret
+                    </Body>
+                    <div className="flex items-center gap-2">
+                      <Input
+                        type="password"
+                        value={workflow.externalSourceSecret}
+                      />
+                      <CopyTextButton
+                        value={workflow.externalSourceSecret}
+                      ></CopyTextButton>
                     </div>
                   </div>
-                  {workflow.externalSourceSecret && (
-                    <div className="flex flex-col">
-                      <Body
-                        size="extra-small"
-                        className="text-slate-300 uppercase tracking-wide"
-                      >
-                        Secret
-                      </Body>
-                      <div className="flex items-center gap-2">
-                        <Input
-                          type="password"
-                          value={workflow.externalSourceSecret}
-                          className="mt-2"
-                        />
-                        <CopyTextButton
-                          value={workflow.externalSourceSecret}
-                        ></CopyTextButton>
-                      </div>
-                    </div>
-                  )}
-                </div>
+                )}
               </div>
             </PanelInfo>
           ) : (
