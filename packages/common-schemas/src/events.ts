@@ -29,6 +29,7 @@ export const EventFilterSchema: z.ZodType<EventFilter> = z.lazy(() =>
 );
 
 export const ScheduledEventPayloadSchema = z.object({
+  lastRunAt: z.coerce.date().optional(),
   scheduledTime: z.coerce.date(),
 });
 
