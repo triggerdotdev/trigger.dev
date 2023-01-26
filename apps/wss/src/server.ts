@@ -8,7 +8,6 @@ import {
 import {
   CommandCatalog,
   InternalApiClient,
-  MessageCatalogSchema,
   TriggerCatalog,
   triggerCatalog,
   ZodPublisher,
@@ -522,56 +521,4 @@ function safeJsonParse(json?: string) {
   } catch (error) {
     return undefined;
   }
-}
-
-function createForwardHandler<
-  TSubscriberSchema extends MessageCatalogSchema,
-  THandlerName extends keyof TSubscriberSchema
->(
-  schema: TSubscriberSchema,
-  handler: THandlerName,
-  logger: Logger,
-  topicFn: (
-    data: z.infer<TSubscriberSchema[THandlerName]["properties"]>
-  ) => string
-) {
-  return async (
-    id: string,
-    data: z.infer<TSubscriberSchema[THandlerName]["data"]>,
-    properties: z.infer<TSubscriberSchema[THandlerName]["properties"]>
-  ) => {
-    const topicName = topicFn(properties);
-
-    logger.debug(`Forwarding message to ${topicName}`, data, properties);
-
-    const runPublisher = new ZodPublisher({
-      schema: schema,
-      client: pulsarClient,
-      config: {
-        topic: topicName,
-        batchingEnabled: false,
-      },
-    });
-
-    await runPublisher.initialize();
-
-    try {
-      await runPublisher.publish(handler, data, properties);
-
-      logger.debug(`Forwarded message to ${topicName}`, data, properties);
-
-      return true;
-    } catch (e) {
-      logger.error(
-        `Failed to forward message to ${topicName}`,
-        e,
-        data,
-        properties
-      );
-
-      return false;
-    } finally {
-      await runPublisher.close();
-    }
-  };
 }
