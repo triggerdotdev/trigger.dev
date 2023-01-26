@@ -14,6 +14,7 @@ export const HostRPCSchema = {
         workflowId: z.string(),
         organizationId: z.string(),
         apiKey: z.string(),
+        isTest: z.boolean().default(false),
       }),
     }),
     response: z.boolean(),

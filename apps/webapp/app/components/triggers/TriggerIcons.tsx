@@ -4,6 +4,7 @@ import { ApiLogoIcon } from "../code/ApiLogoIcon";
 import CustomEvent from "../../assets/images/triggers/custom-event.png";
 import HttpEndpoint from "../../assets/images/triggers/http-endpoint.png";
 import Schedule from "../../assets/images/triggers/schedule.png";
+import Webhook from "../../assets/images/triggers/webhook.png";
 import { triggerLabel } from "./triggerLabel";
 
 type TriggerType = Workflow["type"];
@@ -46,6 +47,10 @@ export function TriggerTypeIcon({
     case "SCHEDULE":
       return (
         <img src={Schedule} alt={triggerLabel(type)} className={iconClasses} />
+      );
+    case "WEBHOOK":
+      return (
+        <img src={Webhook} alt={triggerLabel(type)} className={iconClasses} />
       );
     default:
       return null;

@@ -54,6 +54,14 @@ export class WorkflowRunListPresenter {
       where: {
         workflow: {
           slug: workflowSlug,
+          organization: {
+            slug: organizationSlug,
+            users: {
+              some: {
+                id: userId,
+              },
+            },
+          },
         },
         environment: {
           slug: environmentSlug,

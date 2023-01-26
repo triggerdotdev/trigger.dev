@@ -7,6 +7,6 @@
     "dev": "mintlify dev --port 3050"
   },
   "devDependencies": {
-    "mintlify": "^2.0.14"
+    "mintlify": "^2.0.16"
   }
 }

@@ -335,6 +335,7 @@ export class TriggerClient<TSchema extends z.ZodTypeAny> {
                 method: options.method ?? "GET",
                 headers: options.headers,
                 body: options.body,
+                retry: options.retry,
               },
               timestamp: String(highPrecisionTimestamp()),
             });
@@ -356,6 +357,7 @@ export class TriggerClient<TSchema extends z.ZodTypeAny> {
             environment: data.meta.environment,
             apiKey: data.meta.apiKey,
             organizationId: data.meta.organizationId,
+            isTest: data.meta.isTest,
             logger: new ContextLogger(async (level, message, properties) => {
               await serverRPC.send("SEND_LOG", {
                 runId: data.id,
@@ -508,7 +510,14 @@ export class TriggerClient<TSchema extends z.ZodTypeAny> {
                           };
                         }
 
-                        console.error(anyError);
+                        const parsedError = z
+                          .object({ name: z.string(), message: z.string() })
+                          .passthrough()
+                          .safeParse(error);
+
+                        if (parsedError.success) {
+                          return parsedError.data;
+                        }
 
                         return {
                           name: "UnknownError",

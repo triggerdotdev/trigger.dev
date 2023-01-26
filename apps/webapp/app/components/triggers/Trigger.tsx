@@ -36,6 +36,7 @@ function Webhook({ webhook }: { webhook: WebhookEventTrigger }) {
       </Header2>
       <div className="flex flex-col gap-1">
         {webhook.source &&
+          !webhook.manualRegistration &&
           Object.entries(webhook.source).map(([key, value]) => (
             <div key={key} className="flex gap-2 items-baseline">
               <Body size="extra-small" className={workflowNodeUppercaseClasses}>

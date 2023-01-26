@@ -1,6 +1,8 @@
 import type { LoaderArgs } from "@remix-run/server-runtime";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import invariant from "tiny-invariant";
+import CodeBlock from "~/components/code/CodeBlock";
+import { CopyTextButton } from "~/components/CopyTextButton";
 import { WorkflowConnections } from "~/components/integrations/WorkflowConnections";
 import { Panel } from "~/components/layout/Panel";
 import { PanelHeader } from "~/components/layout/PanelHeader";
@@ -11,6 +13,7 @@ import {
   SecondaryLink,
   TertiaryLink,
 } from "~/components/primitives/Buttons";
+import { Input } from "~/components/primitives/Input";
 import { Body } from "~/components/primitives/text/Body";
 import { SubTitle } from "~/components/primitives/text/SubTitle";
 import { Title } from "~/components/primitives/text/Title";
@@ -86,9 +89,69 @@ export default function Page() {
       </div>
       {workflow.status === "CREATED" && (
         <>
-          <PanelWarning className="mb-6">
-            This workflow requires its APIs to be connected before it can run.
-          </PanelWarning>
+          {eventRule &&
+          eventRule.trigger.type === "WEBHOOK" &&
+          workflow.externalSourceConfig?.type === "manual" ? (
+            <PanelInfo className="mb-6 pb-4">
+              {workflow.externalSourceConfig.data.success ? (
+                <div className="flex flex-col">
+                  <Body className="mb-4">
+                    Use these details to register your webhook – this usually
+                    involves logging in to the developer section of the service.
+                  </Body>
+                  <div className="flex flex-col gap-2">
+                    <Body
+                      size="extra-small"
+                      className="text-slate-300 uppercase tracking-wide"
+                    >
+                      URL
+                    </Body>
+                    <div className="flex items-center gap-2 mb-4">
+                      <Input value={workflow.externalSourceConfig.data.url} />
+                      <CopyTextButton
+                        value={workflow.externalSourceConfig.data.url}
+                      ></CopyTextButton>
+                    </div>
+                  </div>
+                  {workflow.externalSourceConfig.data.secret && (
+                    <div className="flex flex-col gap-2">
+                      <Body
+                        size="extra-small"
+                        className="text-slate-300 uppercase tracking-wide"
+                      >
+                        Secret
+                      </Body>
+                      <div className="flex items-center gap-2">
+                        <Input
+                          type="password"
+                          value={workflow.externalSourceConfig.data.secret}
+                        />
+                        <CopyTextButton
+                          value={workflow.externalSourceConfig.data.secret}
+                        ></CopyTextButton>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="flex flex-col gap-2 w-full">
+                  <Body className="text-rose-500">
+                    Your custom webhook event is incorrectly formatted. See the
+                    error below
+                  </Body>
+                  <CodeBlock
+                    code={workflow.externalSourceConfig.data.error}
+                    className="border border-rose-500 w-full"
+                    align="top"
+                  />
+                </div>
+              )}
+            </PanelInfo>
+          ) : (
+            <PanelWarning className="mb-6">
+              This workflow requires its APIs to be connected before it can run.
+            </PanelWarning>
+          )}
         </>
       )}
       {workflow.status === "DISABLED" && (

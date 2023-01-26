@@ -577,10 +577,7 @@ function createTaskQueue() {
             {
               id: fetchRequest.id,
               key: fetchRequest.step.idempotencyKey,
-              output: {
-                ...output,
-                ok: true,
-              },
+              output,
             },
             {
               "x-workflow-run-id": run.id,
@@ -664,6 +661,7 @@ function createTaskQueue() {
             "x-env": run.environment.slug,
             "x-workflow-run-id": run.id,
             "x-ttl": run.workflow.triggerTtlInSeconds,
+            "x-is-test": run.isTest ? "true" : "false",
           },
           {
             eventTimestamp: run.event.timestamp.getTime(),

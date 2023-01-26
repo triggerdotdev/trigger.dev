@@ -8,7 +8,6 @@ import {
 import {
   CommandCatalog,
   InternalApiClient,
-  MessageCatalogSchema,
   TriggerCatalog,
   triggerCatalog,
   ZodPublisher,
@@ -40,6 +39,7 @@ export class TriggerServer {
   #runControllers = new Map<string, WorkflowRunController>();
   #closedByServer = false;
   onClose: Evt<void>;
+  id: string;
 
   constructor(
     socket: WebSocket,
@@ -52,10 +52,11 @@ export class TriggerServer {
     this.#logger = new Logger("trigger.dev server");
     this.onClose = new Evt();
     this.#commandPublisher = publisher;
+    this.id = v4();
   }
 
-  async listen(instanceId?: string) {
-    await this.#initializeConnection(instanceId);
+  async listen() {
+    await this.#initializeConnection();
     this.#initializeRPC();
     this.#initializeServer();
   }
@@ -81,12 +82,12 @@ export class TriggerServer {
     this.onClose.post();
   }
 
-  async #initializeConnection(instanceId?: string) {
-    const id = instanceId ?? v4();
+  async #initializeConnection() {
+    this.#logger.debug("Initializing connection...", this.id);
 
-    this.#logger.debug("Initializing connection...", id);
-
-    const connection = new TriggerServerConnection(this.#socket, { id });
+    const connection = new TriggerServerConnection(this.#socket, {
+      id: this.id,
+    });
 
     connection.onClose.attach(async ([code, reason]) => {
       if (!this.#isConnected) {
@@ -95,7 +96,7 @@ export class TriggerServer {
 
       this.#closedByServer = false;
 
-      this.#logger.log(`Connection with host was closed (${code})`, id);
+      this.#logger.log(`Connection with host was closed (${code})`, this.id);
 
       if (reason) {
         this.#logger.error(reason);
@@ -104,7 +105,7 @@ export class TriggerServer {
       await this.close();
     });
 
-    this.#logger.debug("Connection initialized", id);
+    this.#logger.debug("Connection initialized", this.id);
 
     this.#connection = connection;
     this.#isConnected = true;
@@ -351,13 +352,12 @@ export class TriggerServer {
         client: pulsarClient,
         config: {
           topic: Topics.triggers,
-          subscription: `websocketserver-workflow-${this.#workflowId}`,
+          subscription: `websocketserver-${this.#workflowId}-${this.#apiKey}`,
           subscriptionType: "Shared",
           subscriptionInitialPosition: "Earliest",
         },
         handlers: {
           TRIGGER_WORKFLOW: async (id, data, properties, messageAttributes) => {
-            this.#logger.debug("Received trigger", id, data, properties);
             // If the API keys don't match, then we should ignore it
             // This ensures the workflow is triggered for the correct environment
             if (properties["x-api-key"] !== this.#apiKey) {
@@ -420,6 +420,10 @@ export class TriggerServer {
                 organizationId: properties["x-org-id"],
                 environment: properties["x-env"],
                 apiKey: properties["x-api-key"],
+                isTest:
+                  typeof properties["x-is-test"] === "string"
+                    ? properties["x-is-test"] === "true"
+                    : false,
               },
             });
 
@@ -518,56 +522,4 @@ function safeJsonParse(json?: string) {
   } catch (error) {
     return undefined;
   }
-}
-
-function createForwardHandler<
-  TSubscriberSchema extends MessageCatalogSchema,
-  THandlerName extends keyof TSubscriberSchema
->(
-  schema: TSubscriberSchema,
-  handler: THandlerName,
-  logger: Logger,
-  topicFn: (
-    data: z.infer<TSubscriberSchema[THandlerName]["properties"]>
-  ) => string
-) {
-  return async (
-    id: string,
-    data: z.infer<TSubscriberSchema[THandlerName]["data"]>,
-    properties: z.infer<TSubscriberSchema[THandlerName]["properties"]>
-  ) => {
-    const topicName = topicFn(properties);
-
-    logger.debug(`Forwarding message to ${topicName}`, data, properties);
-
-    const runPublisher = new ZodPublisher({
-      schema: schema,
-      client: pulsarClient,
-      config: {
-        topic: topicName,
-        batchingEnabled: false,
-      },
-    });
-
-    await runPublisher.initialize();
-
-    try {
-      await runPublisher.publish(handler, data, properties);
-
-      logger.debug(`Forwarded message to ${topicName}`, data, properties);
-
-      return true;
-    } catch (e) {
-      logger.error(
-        `Failed to forward message to ${topicName}`,
-        e,
-        data,
-        properties
-      );
-
-      return false;
-    } finally {
-      await runPublisher.close();
-    }
-  };
 }

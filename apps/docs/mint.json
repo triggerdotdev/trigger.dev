@@ -51,7 +51,8 @@
         "examples/examples",
         "examples/slack",
         "examples/github",
-        "examples/shopify"
+        "examples/shopify",
+        "examples/resend"
       ]
     },
     {
@@ -99,8 +100,18 @@
       "group": "Guides",
       "pages": [
         "guides/resumability",
+        "guides/event-filters",
         "guides/zod",
         "guides/event-driven"
+      ]
+    },
+    {
+      "group": "Reference",
+      "pages": [
+        "reference/trigger",
+        "reference/custom-event",
+        "reference/webhook-event",
+        "reference/schedule-event"
       ]
     },
     {

@@ -125,7 +125,9 @@ async function parseStep(
       const fetchRequest = FetchRequestSchema.parse(original.input);
       const lastFetchResponse = original.fetchRequest.responses[0];
       const lastResponse = lastFetchResponse
-        ? FetchResponseSchema.parse(lastFetchResponse.output)
+        ? FetchResponseSchema.safeParse(lastFetchResponse.output).success
+          ? FetchResponseSchema.parse(lastFetchResponse.output)
+          : undefined
         : undefined;
 
       return {

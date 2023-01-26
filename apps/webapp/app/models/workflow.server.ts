@@ -33,6 +33,8 @@ export function getWorkflowFromSlugs({
           connection: true,
           key: true,
           service: true,
+          manualRegistration: true,
+          secret: true,
         },
       },
       externalServices: {

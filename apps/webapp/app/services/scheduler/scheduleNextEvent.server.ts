@@ -29,7 +29,13 @@ export class ScheduleNextEvent {
 
     const messageId = await taskQueue.publish(
       "DELIVER_SCHEDULED_EVENT",
-      { externalSourceId: schedulerSource.id, payload: { scheduledTime } },
+      {
+        externalSourceId: schedulerSource.id,
+        payload: {
+          scheduledTime,
+          lastRunAt: fromEvent ? fromEvent.createdAt : undefined,
+        },
+      },
       {},
       { deliverAt: scheduledTime.getTime() }
     );

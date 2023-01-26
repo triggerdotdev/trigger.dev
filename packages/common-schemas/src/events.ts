@@ -29,6 +29,7 @@ export const EventFilterSchema: z.ZodType<EventFilter> = z.lazy(() =>
 );
 
 export const ScheduledEventPayloadSchema = z.object({
+  lastRunAt: z.coerce.date().optional(),
   scheduledTime: z.coerce.date(),
 });
 
@@ -62,3 +63,11 @@ export const ScheduleSourceSchema = z.union([
 ]);
 
 export type ScheduleSource = z.infer<typeof ScheduleSourceSchema>;
+
+export const ManualWebhookSourceSchema = z.object({
+  verifyPayload: z.object({
+    enabled: z.boolean(),
+    header: z.string().optional(),
+  }),
+  event: z.string(),
+});

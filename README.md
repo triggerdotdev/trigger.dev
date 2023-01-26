@@ -1,22 +1,13 @@
-### The Trigger.dev Private beta is now open. Sign up for access [here](https://bcymafitv0e.typeform.com/tddsignup#source=GitHubReadme).
-
-&nbsp;
-
 ![Hero](https://raw.githubusercontent.com/triggerdotdev/trigger.dev/eebe37109e33beae6390ee19029fce8a5934c84b/apps/webapp/public/images/logo-banner.png)
 
 
- ---
-
-&nbsp;
-
-
-![Logo](https://trigger.dev/_next/static/media/triggerdotdev-logo.9226e5d0.png?imwidth=256)
-
 [![Twitter](https://img.shields.io/twitter/url/https/twitter.com/triggerdotdev.svg?style=social&label=Follow%20%40trigger.dev)](https://twitter.com/triggerdotdev)
 
+[![Docs](https://img.shields.io/badge/-Documentation-blueviolet)](https://docs.trigger.dev)
 
 
-# ⚙️ Automate complex workflows with code
+
+# ⚙️ Effortless automation built for developers
 
 Trigger workflows from APIs, on a schedule, or on demand. API calls are easy with authentication handled for you. Add durable delays that survive server restarts.
 

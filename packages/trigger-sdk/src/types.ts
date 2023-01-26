@@ -31,6 +31,14 @@ export type FetchOptions<
   body?: z.infer<typeof SerializableJsonSchema>;
   headers?: Record<string, string | SecureString>;
   responseSchema?: TResponseBodySchema;
+  retry?: {
+    enabled?: boolean;
+    factor?: number;
+    maxTimeout?: number;
+    minTimeout?: number;
+    maxAttempts?: number;
+    statusCodes?: number[];
+  };
 };
 
 export type FetchResponse<
@@ -54,6 +62,7 @@ export interface TriggerContext {
   apiKey: string;
   organizationId: string;
   logger: TriggerLogger;
+  isTest: boolean;
   sendEvent(key: string, event: TriggerCustomEvent): Promise<void>;
   waitFor(key: string, options: WaitForOptions): Promise<void>;
   waitUntil(key: string, date: Date): Promise<void>;

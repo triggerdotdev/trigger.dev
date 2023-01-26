@@ -13,6 +13,7 @@ export interface WebhookConfig {
 }
 
 export interface NormalizedRequest {
+  rawBody: string;
   body: any;
   headers: Record<string, string>;
   searchParams: URLSearchParams;

@@ -92,14 +92,14 @@ async function main() {
 
     triggerServer.listen();
 
-    triggerServers.set(keyPart, triggerServer);
+    triggerServers.set(triggerServer.id, triggerServer);
 
     triggerServer.onClose.attach(() => {
       console.log(
-        `Trigger server for key ${keyPart} closed. Removing it from the map.`
+        `Trigger server id ${triggerServer.id} closed. Removing it from the map.`
       );
 
-      triggerServers.delete(keyPart);
+      triggerServers.delete(triggerServer.id);
     });
   });
 

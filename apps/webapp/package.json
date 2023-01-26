@@ -64,6 +64,9 @@
     "@tanstack/react-table": "^8.0.0-alpha.87",
     "@trigger.dev/common-schemas": "workspace:*",
     "@trigger.dev/providers": "workspace:*",
+    "@trigger.dev/sdk": "workspace:*",
+    "@trigger.dev/integrations": "workspace:*",
+    "internal-bridge": "workspace:*",
     "@uiw/react-codemirror": "^4.13.2",
     "bcryptjs": "^2.4.3",
     "classnames": "^2.3.1",
@@ -115,7 +118,8 @@
     "tiny-invariant": "^1.2.0",
     "tsx": "^3.4.3",
     "ulid": "^2.3.0",
-    "zod": "^3.20.2"
+    "zod": "^3.20.2",
+    "zod-error": "^1.1.0"
   },
   "devDependencies": {
     "@faker-js/faker": "^7.5.0",
@@ -129,7 +133,7 @@
     "@testing-library/jest-dom": "^5.16.5",
     "@testing-library/react": "^13.4.0",
     "@testing-library/user-event": "^14.4.3",
-    "@trigger.dev/tailwind-config": "*",
+    "@trigger.dev/tailwind-config": "workspace:*",
     "@types/bcryptjs": "^2.4.2",
     "@types/compression": "^1.7.2",
     "@types/eslint": "^8.4.6",

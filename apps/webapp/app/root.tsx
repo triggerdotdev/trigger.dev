@@ -143,7 +143,7 @@ function App() {
                 background: "#D1FAE5",
                 padding: "16px 20px",
                 color: "#1E293B",
-                minWidth: "500px",
+                maxWidth: "500px",
               },
               iconTheme: {
                 primary: "#10B981",
@@ -157,7 +157,7 @@ function App() {
                 background: "#FFE4E6",
                 padding: "16px 20px",
                 color: "#1E293B",
-                minWidth: "500px",
+                maxWidth: "500px",
               },
               iconTheme: {
                 primary: "#F43F5E",

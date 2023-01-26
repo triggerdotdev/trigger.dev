@@ -1,5 +1,39 @@
 # @trigger.dev/integrations
 
+## 0.1.14
+
+### Patch Changes
+
+- 1d5b592: Don't require react in the distributed package
+- Updated dependencies [1d5b592]
+  - @trigger.dev/providers@0.1.8
+
+## 0.1.13
+
+### Patch Changes
+
+- Updated dependencies [e37a200]
+- Updated dependencies [e63d354]
+  - @trigger.dev/sdk@0.2.10
+
+## 0.1.12
+
+### Patch Changes
+
+- 039321f: Improved types for the Resend integration
+- Updated dependencies [039321f]
+  - @trigger.dev/providers@0.1.7
+  - @trigger.dev/sdk@0.2.9
+
+## 0.1.11
+
+### Patch Changes
+
+- ddf4255: Added support for webhookEvent trigger
+- Updated dependencies [ddf4255]
+- Updated dependencies [2fd9e4f]
+  - @trigger.dev/sdk@0.2.8
+
 ## 0.1.10
 
 ### Patch Changes

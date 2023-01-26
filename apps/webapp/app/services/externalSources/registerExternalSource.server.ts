@@ -5,7 +5,10 @@ import crypto from "node:crypto";
 import type { PrismaClient } from "~/db.server";
 import { prisma } from "~/db.server";
 import { env } from "~/env.server";
-import { findExternalSourceById } from "~/models/externalSource.server";
+import {
+  buildExternalSourceUrl,
+  findExternalSourceById,
+} from "~/models/externalSource.server";
 import { getAccessInfo } from "../accessInfo.server";
 
 export class RegisterExternalSource {
@@ -23,6 +26,19 @@ export class RegisterExternalSource {
     }
 
     if (externalSource.status === "READY") {
+      await this.#prismaClient.workflow.updateMany({
+        where: {
+          externalSourceId: externalSource.id,
+        },
+        data: {
+          status: "READY",
+        },
+      });
+
+      return true;
+    }
+
+    if (externalSource.manualRegistration) {
       return true;
     }
 
@@ -56,9 +72,13 @@ export class RegisterExternalSource {
       throw new Error("No access token found for webhook");
     }
 
-    const secret = crypto.randomBytes(32).toString("hex");
+    const secret =
+      externalSource.secret ?? crypto.randomBytes(32).toString("hex");
 
-    const webhookUrl = `${env.APP_ORIGIN}/api/v1/internal/webhooks/${connection.apiIdentifier}/${externalSource.id}`;
+    const webhookUrl = buildExternalSourceUrl(
+      externalSource.id,
+      connection.apiIdentifier
+    );
 
     const serviceWebhook = await this.#registerWebhookWithConnection(
       externalSource.service,

@@ -4,9 +4,12 @@ sidebarTitle: "Send event"
 description: "Send events to trigger your custom events workflows."
 ---
 
-## How to send an event
+## Send an event
 
-You can send an event from anywhere in your code, including from inside another workflow.
+You can easily send an event from anywhere, including from inside another workflow. Events don't have to come from the same server as your workflow and can be sent as HTTP requests from any language (see our cURL example below for the format).
+
+<Tabs>
+  <Tab title="Our Node.js SDK">
 
 ```ts
 import { sendEvent } from "@trigger.dev/sdk";
@@ -19,6 +22,28 @@ await sendEvent("start-fire-2", {
 });
 ```
 
+  </Tab>
+  <Tab title="cURL">
+
+```bash
+curl --request POST \
+  --url https://app.trigger.dev/api/v1/events \
+  --header 'Authorization: Bearer <insert_api_key_here>' \
+  --header 'Content-Type: application/json' \
+  --data '{
+            "id": "<insert_unique_event_id>",
+            "event": {
+              "name": "user.created",
+              "payload": {
+                      "userId": "123456"
+              }
+            }
+          }'
+```
+
+  </Tab>
+</Tabs>
+
 If you are calling this from inside a workflow, ensure that the first parameter is unique inside your workflow.
 
 ## Sending events from other workflows
@@ -28,3 +53,7 @@ It is useful to send events from workflows because you can split your logic into
 ## Writing a workflow that is triggered by an event
 
 You should read [the documentation on custom events](/triggers/custom-events) to learn how to write a workflow that is triggered by an event.
+
+```
+
+```

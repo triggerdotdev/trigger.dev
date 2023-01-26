@@ -6,7 +6,7 @@ description: "A generic fetch function that can be used to call any HTTP endpoin
 
 ## Usage
 
-A `fetch` function is available to use inside a `Trigger.run` function through the `context` argument, and should be familiar for anyone who has used the standard [`fetch`](https://developer.mozilla.org/en-US/docs/Web/API/Fetch_API) API, with a few modifications.
+A `fetch` function is available to use inside a `Trigger.run` function through the `context` argument, and should be familiar for anyone who has used the standard [fetch](https://developer.mozilla.org/en-US/docs/Web/API/Fetch_API) API, with a few modifications.
 
 ```ts
 import { Trigger } from "@trigger.dev/sdk";
@@ -62,15 +62,22 @@ This is useful if you want to wrap `fetch` to provide an SDK like experience ins
 
 ## Response
 
+<Tip>
+  Make sure to check `response.ok`, as non-2xx status codes will not throw an
+  error and will instead return a response with `ok` set to `false`.
+</Tip>
+
 The return value of `fetch` is a similar to a normal fetch response, but we will automatically parse the response body as JSON and provide it as `body`, like so:
 
 ```ts
 const response = await ctx.fetch("Example Key", "http://httpbin.org/get");
 
-console.log(response.body.url); // http://httpbin.org/get
+if (response.body) {
+  console.log(response.body.url); // http://httpbin.org/get
+}
 ```
 
-By default, the `body` is typed as `any`, but you can provide a [`Zod`](/guides/zod) schema to validate the response body and get a more specific type:
+By default, the `body` is typed as `any`, but you can provide a [Zod](/guides/zod) schema to validate the response body and get a more specific type:
 
 ```ts
 import { z } from "zod";
@@ -154,6 +161,40 @@ Which will show in the trigger.dev app as:
 
 ![title](/images/secure-string.png)
 
+## Retrying
+
+By default, we will retry a failed request up to 10 times if it has one of the following status codes: `408`, `429`, `500`, `502`, `503`, `504`. You can override this behavior by providing a `retry` option:
+
+```ts
+await ctx.fetch("Example Key", "http://httpbin.org/get", {
+  retry: {
+    maxAttempts: 5,
+    statusCodes: [408, 429, 500, 502, 503, 504, 521, 522, 524],
+    minTimeout: 1000,
+    maxTimeout: 10000,
+    factor: 1.2,
+  },
+});
+```
+
+| Property    | Description                              | Default                                  |
+| ----------- | ---------------------------------------- | ---------------------------------------- |
+| enabled     | Enables retrying of failed requests      | true                                     |
+| factor      | The exponential factor of backoff        | 1.8                                      |
+| minTimeout  | The minimum amount of ms between retries | 1000                                     |
+| maxTimeout  | The maximum amount of ms between retries | 60000                                    |
+| statusCodes | The HTTP Status Codes that are retryable | `408`, `429`, `500`, `502`, `503`, `504` |
+
+If you'd like to disable retrying, simple pass in the `retry` option with `enabled` set to `false`:
+
+```ts
+await ctx.fetch("Example Key", "http://httpbin.org/get", {
+  retry: {
+    enabled: false,
+  },
+});
+```
+
 ## Params
 
 <ParamField path="key" type="string" required={true}>
@@ -189,18 +230,19 @@ Which will show in the trigger.dev app as:
 ## Response
 
 <ParamField path="ok" type="boolean">
-  Whether the response was successful. Will always be true because we throw an
-  error and stop the trigger if the response is not successful.
+  Whether the response was successful. Non-2xx status codes will have `ok =
+  false`.
 </ParamField>
 
 <ParamField path="body" type="object" required={false}>
-  The response body, parsed with the `responseSchema` if provided.
+  The response body, parsed with the `responseSchema` if provided. Can be
+  undefined if the response body is empty.
 </ParamField>
 
 <ParamField path="status" type="number">
   The HTTP status code.
 </ParamField>
 
-<ParamField path="headers" type="object">
+<ParamField path="headers" type="Record<string, string>">
   The response headers.
 </ParamField>

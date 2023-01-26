@@ -2,6 +2,7 @@ import {
   FetchOutputSchema,
   FetchRequestSchema,
   JsonSchema,
+  RetrySchema,
 } from "@trigger.dev/common-schemas";
 import { z } from "zod";
 import {

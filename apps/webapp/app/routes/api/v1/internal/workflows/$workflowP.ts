@@ -34,8 +34,10 @@ export async function action({ request, params }: ActionArgs) {
   );
 
   switch (result.status) {
-    case "validationError":
-      return json({ error: result.data }, { status: 400 });
+    case "validationError": {
+      return json({ error: result.errors }, { status: 400 });
+    }
+
     case "success":
       return json(result.data);
   }

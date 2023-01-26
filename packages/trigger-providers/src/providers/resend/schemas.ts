@@ -1,10 +1,7 @@
+import type { ReactElement } from "react";
 import { z } from "zod";
 
-const SimplifiedReactElementSchema = z.object({
-  type: z.any(),
-  props: z.any(),
-  key: z.union([z.string(), z.number()]).nullable(),
-});
+const ReactElementSchema = z.custom<ReactElement>();
 
 export const BaseSendFieldsSchema = z.object({
   from: z.string(),
@@ -19,7 +16,7 @@ export const SendEmailOptionsSchema = z
   .object({
     text: z.string().optional(),
     html: z.string().optional(),
-    react: SimplifiedReactElementSchema.optional(),
+    react: ReactElementSchema.optional(),
   })
   .and(BaseSendFieldsSchema);
 

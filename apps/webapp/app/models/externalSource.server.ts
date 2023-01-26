@@ -1,5 +1,8 @@
 import { prisma } from "~/db.server";
-export type { ExternalSource } from ".prisma/client";
+import type { ExternalSource } from ".prisma/client";
+import { env } from "~/env.server";
+
+export type { ExternalSource };
 
 export type ExternalSourceWithConnection = Awaited<
   ReturnType<typeof findExternalSourceById>
@@ -30,4 +33,8 @@ export async function connectExternalSource({
       connectionId: connectionId,
     },
   });
+}
+
+export function buildExternalSourceUrl(id: string, serviceIdentifier: string) {
+  return `${env.APP_ORIGIN}/api/v1/internal/webhooks/${serviceIdentifier}/${id}`;
 }

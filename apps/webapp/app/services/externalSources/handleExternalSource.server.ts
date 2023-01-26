@@ -4,6 +4,9 @@ import { github } from "internal-integrations";
 import type { ExternalSourceWithConnection } from "~/models/externalSource.server";
 import type { NormalizedRequest } from "internal-integrations";
 import { IngestEvent } from "../events/ingest.server";
+import { ManualWebhookSourceSchema } from "@trigger.dev/common-schemas";
+import { createHmac, timingSafeEqual } from "node:crypto";
+import { ulid } from "ulid";
 
 type IgnoredEventResponse = {
   status: "ignored";
@@ -41,14 +44,23 @@ export class HandleExternalSource {
   async #createNormalizedRequest(request: Request): Promise<NormalizedRequest> {
     const requestUrl = new URL(request.url);
     const rawSearchParams = requestUrl.searchParams;
-    const rawBody = await request.json();
+    const rawBody = await request.text();
     const rawHeaders = Object.fromEntries(request.headers.entries());
 
     return {
-      body: rawBody,
+      rawBody,
+      body: this.#safeJsonParse(rawBody),
       headers: rawHeaders,
       searchParams: rawSearchParams,
     };
+  }
+
+  #safeJsonParse(json: string): any {
+    try {
+      return JSON.parse(json);
+    } catch (error) {
+      return null;
+    }
   }
 
   public async call(
@@ -123,6 +135,14 @@ export class HandleExternalSource {
     serviceIdentifier: string,
     request: NormalizedRequest
   ): Promise<HandledExternalEventResponse> {
+    if (externalSource.manualRegistration) {
+      return this.#handleManualWebhook(
+        externalSource,
+        serviceIdentifier,
+        request
+      );
+    }
+
     switch (serviceIdentifier) {
       case "github": {
         return github.webhooks.handleWebhookRequest({
@@ -136,5 +156,49 @@ export class HandleExternalSource {
         );
       }
     }
+  }
+
+  async #handleManualWebhook(
+    externalSource: NonNullable<ExternalSourceWithConnection>,
+    serviceIdentifier: string,
+    request: NormalizedRequest
+  ): Promise<HandledExternalEventResponse> {
+    const source = ManualWebhookSourceSchema.parse(externalSource.source);
+
+    if (source.verifyPayload.enabled && source.verifyPayload.header) {
+      const hmac = createHmac("sha256", externalSource.secret!);
+      const digest = Buffer.from(
+        hmac.update(request.rawBody).digest("hex"),
+        "utf8"
+      );
+
+      const providerSigString =
+        request.headers[source.verifyPayload.header.toLowerCase()] || "";
+
+      const providerSig = Buffer.from(providerSigString, "utf8");
+
+      if (
+        digest.length !== providerSig.length ||
+        !timingSafeEqual(digest, providerSig)
+      ) {
+        return {
+          status: "error",
+          error: "Payload signature did not match",
+        };
+      }
+    }
+
+    return {
+      status: "ok",
+      data: {
+        id: ulid(),
+        payload: request.body,
+        event: source.event,
+        context: {
+          headers: request.headers,
+          externalSourceId: externalSource.id,
+        },
+      },
+    };
   }
 }

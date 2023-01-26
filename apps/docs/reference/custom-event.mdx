@@ -1,0 +1,40 @@
+---
+title: "customEvent Trigger"
+sidebarTitle: "customEvent"
+description: "Trigger a workflow when a custom event is received."
+---
+
+## Usage
+
+```ts
+import { customEvent, Trigger } from "@trigger.dev/sdk";
+
+new Trigger({
+  id: "user-created-notify-slack",
+  name: "User Created - Notify Slack",
+  on: customEvent({
+    name: "user.created",
+    schema: z.object({ id: z.string(), admin: z.boolean() }),
+    filter: {
+      admin: [false],
+    },
+  }),
+  run: async (event, ctx) => {},
+}).listen();
+```
+
+## Options
+
+<ParamField path="name" type="string" required={true}>
+  The name of the custom event to listen for.
+</ParamField>
+
+<ParamField path="filter" type="object" required={false}>
+  An event filter to apply to the custom event payload. See the [event filter
+  documentation](/guides/event-filters) for more information.
+</ParamField>
+
+<ParamField path="schema" type="Zod Schema" required={true}>
+  A Zod schema to validate the webhook event payload against. See our [Zod
+  guide](/guides/zod) for more information.
+</ParamField>

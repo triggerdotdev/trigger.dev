@@ -1,0 +1,53 @@
+---
+title: "Event Filters"
+sidebarTitle: "Event Filters"
+description: "Event filters are used to filter events based on their attributes."
+---
+
+Event filters are used to filter events based on their attributes in the [customEvent](/reference/custom-event) and [webhookEvent](/reference/webhook-event) triggers.
+
+They are declarative pattern-matching rules, modeled after [AWS EventBridge patterns](https://docs.aws.amazon.com/eventbridge/latest/userguide/eb-event-patterns.html).
+
+Given the following custom event payload:
+
+```json
+{
+{
+    "uid": "jexAgaeJFJsrGfans1pxqm",
+    "type": "15 Min Meeting",
+    "price": 0,
+    "title": "15 Min Meeting between Eric Allam and John Doe",
+    "length": 15,
+    "status": "ACCEPTED",
+    "endTime": "2023-01-25T16:00:00Z",
+    "bookingId": 198052,
+    "organizer": {
+      "id": 32794,
+      "name": "Eric Allam",
+      "email": "eric@trigger.dev",
+      "language": { "locale": "en" },
+      "timeZone": "Europe/London"
+    },
+  }
+}
+```
+
+The following event filter would match the event:
+
+```json
+{
+  "type": ["15 Min Meeting"],
+  "status": ["ACCEPTED", "REJECTED"],
+  "organizer": {
+    "name": ["Eric Allam"]
+  }
+}
+```
+
+For an event pattern to match an event, the event must contain all the field names listed in the event pattern. The field names must also appear in the event with the same nesting structure.
+
+The value of each field name in the event pattern must be an array of strings, numbers, or booleans. The event pattern matches the event if the value of the field name in the event is equal to any of the values in the array.
+
+Effectively, each array is an OR condition, and the entire event pattern is an AND condition.
+
+So the above event filter will match because `status == "ACCEPTED"`, and it would also match if `status == "REJECTED"`.

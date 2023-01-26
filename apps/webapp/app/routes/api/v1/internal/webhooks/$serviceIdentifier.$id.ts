@@ -17,7 +17,10 @@ export async function action({ request, params }: ActionArgs) {
     };
   }
 
-  if (externalSource.connection?.apiIdentifier !== serviceIdentifier) {
+  if (
+    !externalSource.manualRegistration &&
+    externalSource.connection?.apiIdentifier !== serviceIdentifier
+  ) {
     return { status: 500, body: "Service identifier does not match" };
   }
 
@@ -30,7 +33,10 @@ export async function action({ request, params }: ActionArgs) {
   } catch (error) {
     return {
       status: 500,
-      body: error instanceof Error ? error.message : `Unknown error: ${error}`,
+      body:
+        error instanceof Error
+          ? error.message
+          : `Unknown error: ${JSON.stringify(error)}`,
     };
   }
 }

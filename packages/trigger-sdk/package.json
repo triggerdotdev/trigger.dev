@@ -1,6 +1,6 @@
 {
   "name": "@trigger.dev/sdk",
-  "version": "0.2.7",
+  "version": "0.2.10",
   "description": "trigger.dev Node.JS SDK",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -23,6 +23,7 @@
     "@types/debug": "^4.1.7",
     "@types/node": "16",
     "@types/node-fetch": "2.6.x",
+    "@types/slug": "^5.0.3",
     "@types/uuid": "^9.0.0",
     "@types/ws": "^8.5.3",
     "internal-bridge": "workspace:*",
@@ -39,6 +40,7 @@
     "debug": "^4.3.4",
     "evt": "^2.4.13",
     "node-fetch": "2.6.x",
+    "slug": "^6.0.0",
     "ulid": "^2.3.0",
     "uuid": "^9.0.0",
     "ws": "^8.11.0",
