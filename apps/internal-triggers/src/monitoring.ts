@@ -1,34 +1,49 @@
 import { Trigger, scheduleEvent, customEvent } from "@trigger.dev/sdk";
 import { slack } from "@trigger.dev/integrations";
-import { prisma } from "~/db.server";
+import { getTableCount } from "./db";
 import { z } from "zod";
 
 export const uptimeCheck = new Trigger({
   id: "uptime-check",
   name: "Uptime Check",
   on: scheduleEvent({ rateOf: { minutes: 5 } }),
-  logLevel: "info",
+  logLevel: "debug",
   triggerTTL: 300,
+  endpoint: process.env.TRIGGER_WSS_URL,
   run: async (event, context) => {
     if (context.environment === "development" && !context.isTest) {
       return;
     }
 
-    const filterCondition = {
-      where: { createdAt: { gte: event.lastRunAt, lt: event.scheduledTime } },
-    };
+    const { lastRunAt, scheduledTime } = event;
+
+    if (!lastRunAt) {
+      return;
+    }
 
     // Grab counts of workflows, runs, and steps
-    const userCount = await prisma.user.count(filterCondition);
-    const workflowCount = await prisma.workflow.count(filterCondition);
-    const runCount = await prisma.workflowRun.count(filterCondition);
-    const stepCount = await prisma.workflowRunStep.count(filterCondition);
+    const userCount = await getTableCount("User", lastRunAt, scheduledTime);
+    const workflowCount = await getTableCount(
+      "Workflow",
+      lastRunAt,
+      scheduledTime
+    );
+    const runCount = await getTableCount(
+      "WorkflowRun",
+      lastRunAt,
+      scheduledTime
+    );
+    const stepCount = await getTableCount(
+      "WorkflowRunStep",
+      lastRunAt,
+      scheduledTime
+    );
 
     await slack.postMessage("Uptime Notification", {
       channelName: "monitoring",
       text: `[${
         context.environment
-      }][${event.scheduledTime.toLocaleString()}] Uptime Check: ${userCount} new users, ${workflowCount} new workflows, ${runCount} new runs, ${stepCount} new steps.`,
+      }][${event.scheduledTime.toLocaleString()}] Uptime Check: ${userCount} new users, ${workflowCount} new workflows, ${runCount} new runs, ${stepCount} new steps`,
     });
   },
 });
@@ -36,6 +51,9 @@ export const uptimeCheck = new Trigger({
 export const healthCheck = new Trigger({
   id: "health-check",
   name: "Health Check",
+  endpoint: process.env.TRIGGER_WSS_URL,
+  logLevel: "debug",
+  triggerTTL: 600,
   on: customEvent({
     name: "health.check",
     schema: z.object({
@@ -43,8 +61,6 @@ export const healthCheck = new Trigger({
       host: z.string(),
     }),
   }),
-  logLevel: "info",
-  triggerTTL: 600,
   run: async (event, context) => {
     const response = await context.fetch("fetch site", event.url, {
       method: "GET",
@@ -71,7 +87,12 @@ export const checkScheduler = new Trigger({
   on: scheduleEvent({ rateOf: { minutes: 10 } }),
   logLevel: "info",
   triggerTTL: 600,
+  endpoint: process.env.TRIGGER_WSS_URL,
   run: async (event, context) => {
+    if (context.environment === "development" && !context.isTest) {
+      return;
+    }
+
     await context.sendEvent("health.check trigger.dev", {
       name: "health.check",
       payload: {
