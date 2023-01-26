@@ -1,7 +1,3 @@
-### The Trigger.dev Private beta is now open. Sign up for access [here](https://bcymafitv0e.typeform.com/tddsignup#source=GitHubReadme).
-
-&nbsp;
-
 ![Hero](https://raw.githubusercontent.com/triggerdotdev/trigger.dev/eebe37109e33beae6390ee19029fce8a5934c84b/apps/webapp/public/images/logo-banner.png)
 
 
