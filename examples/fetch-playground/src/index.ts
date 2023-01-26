@@ -160,3 +160,34 @@ new Trigger({
     });
   },
 }).listen();
+
+new Trigger({
+  id: "site-check",
+  name: "Site Check",
+  on: customEvent({
+    name: "site.check",
+    schema: z.object({ url: z.string().url() }),
+  }),
+  apiKey: "trigger_dev_zC25mKNn6c0q",
+  endpoint: "ws://localhost:8889/ws",
+  logLevel: "debug",
+  triggerTTL: 60,
+  run: async (event, context) => {
+    const response = await context.fetch("do-fetch", event.url, {
+      method: "GET",
+      retry: {
+        enabled: false,
+      },
+    });
+
+    if (response.ok) {
+      await context.logger.info(`${event.url} is up!`);
+      return;
+    }
+
+    await slack.postMessage("Site is down", {
+      channelName: "monitoring",
+      text: `${event.url} is down: ${response.status}`,
+    });
+  },
+}).listen();

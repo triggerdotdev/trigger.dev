@@ -18,6 +18,10 @@ type CallResponse =
       retryInSeconds: number;
     };
 
+type PerformedFetchRequestResponse = PerformedRequestResponse & {
+  error: boolean;
+};
+
 export class PerformFetchRequest {
   #prismaClient: PrismaClient;
 
@@ -48,14 +52,23 @@ export class PerformFetchRequest {
 
     const performedRequest = await this.#performRequest(request, retryConfig);
 
-    if (performedRequest.ok) {
+    if (!performedRequest.error) {
+      if (performedRequest.ok) {
+        return this.#completeWithSuccess(
+          fetchRequest,
+          performedRequest.response
+        );
+      }
+
+      if (performedRequest.isRetryable) {
+        return this.#attemptRetry(
+          retryConfig,
+          fetchRequest,
+          performedRequest.response
+        );
+      }
+
       return this.#completeWithSuccess(fetchRequest, performedRequest.response);
-    } else if (performedRequest.isRetryable) {
-      return this.#attemptRetry(
-        retryConfig,
-        fetchRequest,
-        performedRequest.response
-      );
     } else {
       return this.#completeWithFailure(fetchRequest, performedRequest.response);
     }
@@ -185,7 +198,7 @@ export class PerformFetchRequest {
   async #performRequest(
     request: z.infer<typeof FetchRequestSchema>,
     retry: z.infer<typeof RetrySchema>
-  ): Promise<PerformedRequestResponse> {
+  ): Promise<PerformedFetchRequestResponse> {
     try {
       const requestInit = createFetchRequestInit(request);
 
@@ -197,8 +210,10 @@ export class PerformFetchRequest {
         return {
           ok: true,
           isRetryable: false,
+          error: false,
           response: {
             output: {
+              ok: true,
               status: response.status,
               headers: headersToRecord(response.headers),
               body,
@@ -213,8 +228,10 @@ export class PerformFetchRequest {
         ok: false,
         isRetryable:
           retry.statusCodes.includes(response.status) && retry.enabled,
+        error: false,
         response: {
           output: {
+            ok: false,
             status: response.status,
             headers: headersToRecord(response.headers),
             body,
@@ -227,6 +244,7 @@ export class PerformFetchRequest {
         return {
           ok: false,
           isRetryable: false,
+          error: true,
           response: {
             output: {
               name: error.name,
@@ -239,6 +257,7 @@ export class PerformFetchRequest {
         return {
           ok: false,
           isRetryable: false,
+          error: true,
           response: {
             output: {
               name: "UnknownError",
