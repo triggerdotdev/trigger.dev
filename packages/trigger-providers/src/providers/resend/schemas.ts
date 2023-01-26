@@ -1,4 +1,4 @@
-import { ReactElement } from "react";
+import type { ReactElement } from "react";
 import { z } from "zod";
 
 const ReactElementSchema = z.custom<ReactElement>();
