@@ -1,5 +1,8 @@
 import { Trigger, customEvent } from "@trigger.dev/sdk";
 import { slack } from "@trigger.dev/integrations";
+/** @jsxImportSource jsx-slack */
+import JSXSlack, { Actions, Blocks, Button, Section } from "jsx-slack";
+import { jsxslack } from "jsx-slack";
 import { z } from "zod";
 
 new Trigger({
@@ -152,48 +155,29 @@ new Trigger({
     schema: z.any(),
   }),
   run: async (event, ctx) => {
-    await slack.postMessage("send-to-slack", {
+    await slack.postMessage("jsx-test", {
       channelName: "test-integrations",
-      text: `Click on one of the buttons:`,
-      blocks: [
-        {
-          type: "actions",
-          block_id: BLOCK_ID,
-          elements: [
-            {
-              type: "button",
-              action_id: "close_issue_123",
-              text: {
-                type: "plain_text",
-                text: "Close Issue",
-                emoji: true,
-              },
-              value: "close_issue",
-            },
-            {
-              type: "button",
-              action_id: "comment_issue_123",
-              text: {
-                type: "plain_text",
-                text: "Comment",
-                emoji: true,
-              },
-              value: "comment_issue",
-            },
-            {
-              type: "button",
-              action_id: "view_issue_123",
-              text: {
-                type: "plain_text",
-                text: "View Issue",
-                emoji: true,
-              },
-              value: "view_issue",
-              url: "https://github.com/triggerdotdev/trigger.dev/issues/11",
-            },
-          ],
-        },
-      ],
+      text: "Test of jsx",
+      blocks: JSXSlack(
+        <Blocks>
+          <Section>This is using jsxslack</Section>
+          <Actions blockId={BLOCK_ID}>
+            <Button value="close_issue" actionId="close_issue_123">
+              Close Issue
+            </Button>
+            <Button value="comment_issue" actionId="comment_issue_123">
+              Comment
+            </Button>
+            <Button
+              value="view_issue"
+              actionId="view_issue_123"
+              url="https://github.com/triggerdotdev/trigger.dev/issues/11"
+            >
+              Comment
+            </Button>
+          </Actions>
+        </Blocks>
+      ),
     });
   },
 }).listen();
