@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { knownBlockSchema } from "./blocks";
 
 export const PostMessageSuccessResponseSchema = z.object({
   ok: z.literal(true),
@@ -6,7 +7,7 @@ export const PostMessageSuccessResponseSchema = z.object({
   ts: z.string(),
   message: z.object({
     text: z.string(),
-    user: z.string(),
+    user: z.string().optional(),
     bot_id: z.string(),
     attachments: z.array(z.unknown()).optional(),
     type: z.string(),
@@ -28,6 +29,10 @@ export const PostMessageResponseSchema = z.discriminatedUnion("ok", [
 export const PostMessageBodySchema = z.object({
   channel: z.string(),
   text: z.string(),
+  blocks: z.array(knownBlockSchema).optional(),
+  username: z.string().optional(),
+  icon_emoji: z.string().optional(),
+  icon_url: z.string().optional(),
 });
 
 export const ChannelNameOrIdSchema = z.union([
@@ -38,6 +43,10 @@ export const ChannelNameOrIdSchema = z.union([
 export const PostMessageOptionsSchema = z
   .object({
     text: z.string(),
+    blocks: z.array(knownBlockSchema).optional(),
+    username: z.string().optional(),
+    icon_emoji: z.string().optional(),
+    icon_url: z.string().optional(),
   })
   .and(ChannelNameOrIdSchema);
 

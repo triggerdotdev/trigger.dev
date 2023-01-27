@@ -794,6 +794,7 @@ importers:
       rimraf: ^3.0.2
       tiny-invariant: ^1.2.0
       tsup: ^6.5.0
+      type-fest: ^3.5.3
       typescript: ^4.9.4
       zod: ^3.20.2
     dependencies:
@@ -806,6 +807,7 @@ importers:
       '@types/react': 18.0.26
       rimraf: 3.0.2
       tsup: 6.5.0_typescript@4.9.4
+      type-fest: 3.5.3
       typescript: 4.9.4
 
   packages/trigger-sdk:
@@ -16034,6 +16036,11 @@ packages:
 
   /type-fest/3.5.1:
     resolution: {integrity: sha512-70T99cpILFk2fzwuljwWxmazSphFrdOe3gRHbp6bqs71pxFBbJwFqnmkLO2lQL6aLHxHmYAnP/sL+AJWpT70jA==}
+    engines: {node: '>=14.16'}
+    dev: true
+
+  /type-fest/3.5.3:
+    resolution: {integrity: sha512-V2+og4j/rWReWvaFrse3s9g2xvUv/K9Azm/xo6CjIuq7oeGqsoimC7+9/A3tfvNcbQf8RPSVj/HV81fB4DJrjA==}
     engines: {node: '>=14.16'}
     dev: true
 
