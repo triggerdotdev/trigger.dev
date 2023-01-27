@@ -231,6 +231,7 @@ export class PerformIntegrationRequest {
           endpoint: integrationRequest.endpoint,
           params: integrationRequest.params,
           cache,
+          metadata: { requestId: integrationRequest.id },
         });
       }
       case "shopify": {
@@ -239,6 +240,7 @@ export class PerformIntegrationRequest {
           endpoint: integrationRequest.endpoint,
           params: integrationRequest.params,
           cache,
+          metadata: { requestId: integrationRequest.id },
         });
       }
       case "resend": {
@@ -247,6 +249,7 @@ export class PerformIntegrationRequest {
           endpoint: integrationRequest.endpoint,
           params: integrationRequest.params,
           cache,
+          metadata: { requestId: integrationRequest.id },
         });
       }
       default: {

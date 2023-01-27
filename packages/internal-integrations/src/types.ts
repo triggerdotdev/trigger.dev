@@ -42,6 +42,7 @@ export type PerformRequestOptions = {
   endpoint: string;
   params: any;
   cache?: CacheService;
+  metadata?: Record<string, string>;
 };
 
 export type DisplayProperties = {

@@ -52,6 +52,7 @@ model Organization {
   externalSources  ExternalSource[]
   eventRules       EventRule[]
   schedulerSources SchedulerSource[]
+  internalSources  InternalSource[]
 }
 
 model APIConnection {
@@ -107,6 +108,7 @@ model RuntimeEnvironment {
   runs             WorkflowRun[]
   eventRules       EventRule[]
   schedulerSources SchedulerSource[]
+  internalSources  InternalSource[]
 
   @@unique([organizationId, slug])
 }
@@ -134,6 +136,7 @@ model Workflow {
   rules            EventRule[]
   externalServices ExternalService[]
   schedulerSources SchedulerSource[]
+  internalSources  InternalSource[]
 
   service    String   @default("trigger")
   eventNames String[]
@@ -181,6 +184,7 @@ enum TriggerType {
   HTTP_ENDPOINT
   EVENT_BRIDGE
   HTTP_POLLING
+  SLACK_INTERACTION
 }
 
 enum WorkflowStatus {
@@ -252,6 +256,41 @@ model SchedulerSource {
 }
 
 enum SchedulerSourceStatus {
+  CREATED
+  READY
+  CANCELLED
+}
+
+// We should eventually move SchedulerSource to this as it's more generic
+model InternalSource {
+  id String @id @default(cuid())
+
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  organizationId String
+
+  workflow   Workflow @relation(fields: [workflowId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  workflowId String
+
+  environment   RuntimeEnvironment @relation(fields: [environmentId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  environmentId String
+
+  type   InternalSourceType
+  source Json
+
+  status InternalSourceStatus @default(CREATED)
+
+  readyAt   DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@unique([workflowId, environmentId])
+}
+
+enum InternalSourceType {
+  SLACK
+}
+
+enum InternalSourceStatus {
   CREATED
   READY
   CANCELLED

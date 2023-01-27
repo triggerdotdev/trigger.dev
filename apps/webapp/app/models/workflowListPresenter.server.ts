@@ -1,5 +1,8 @@
-import type { SchedulerSource } from ".prisma/client";
-import { ScheduleSourceSchema } from "@trigger.dev/common-schemas";
+import type { SchedulerSource, InternalSource } from ".prisma/client";
+import {
+  ScheduleSourceSchema,
+  SlackInteractionSourceSchema,
+} from "@trigger.dev/common-schemas";
 import cronstrue from "cronstrue";
 import type { DisplayProperties } from "internal-integrations";
 import { github } from "internal-integrations";
@@ -60,7 +63,8 @@ export class WorkflowListPresenter {
         trigger: triggerProperties(
           workflow,
           workflow.externalSource ?? undefined,
-          workflow.schedulerSources[0] ?? undefined
+          workflow.schedulerSources[0] ?? undefined,
+          workflow.internalSources[0] ?? undefined
         ),
         integrations: {
           source: workflow.service
@@ -105,6 +109,17 @@ function getWorkflows(
         orderBy: { createdAt: "desc" },
         take: 1,
       },
+      internalSources: {
+        select: {
+          source: true,
+          type: true,
+        },
+        where: {
+          environmentId,
+        },
+        orderBy: { createdAt: "desc" },
+        take: 1,
+      },
       runs: {
         select: {
           finishedAt: true,
@@ -124,7 +139,8 @@ function getWorkflows(
 function triggerProperties(
   workflow: Pick<Workflow, "type" | "eventNames">,
   externalSource?: Pick<ExternalSource, "service" | "source">,
-  schedulerSource?: Pick<SchedulerSource, "schedule">
+  schedulerSource?: Pick<SchedulerSource, "schedule">,
+  internalSource?: Pick<InternalSource, "type" | "source">
 ): {
   type: Workflow["type"];
   typeTitle: string;
@@ -157,7 +173,14 @@ function triggerProperties(
       };
     }
     case "SCHEDULE": {
-      invariant(schedulerSource, "Scheduler source is required for schedule");
+      if (!schedulerSource) {
+        return {
+          type: workflow.type,
+          typeTitle: "Schedule",
+          title: "Not configured",
+        };
+      }
+
       const source = ScheduleSourceSchema.parse(schedulerSource.schedule);
 
       if ("rateOf" in source) {
@@ -205,6 +228,29 @@ function triggerProperties(
         typeTitle: "Custom event",
         title: `on: ${workflow.eventNames.join(", ")}`,
       };
+    case "SLACK_INTERACTION": {
+      if (!internalSource) {
+        return {
+          type: workflow.type,
+          typeTitle: "Slack interaction",
+          title: "on: Slack interaction",
+        };
+      }
+
+      const slackSource = SlackInteractionSourceSchema.parse(
+        internalSource.source
+      );
+
+      return {
+        type: workflow.type,
+        typeTitle: "Slack interaction",
+        title: `block_id = ${slackSource.blockId}`,
+        properties:
+          slackSource.actionIds.length > 0
+            ? [{ key: "Action ID", value: slackSource.actionIds.join(", ") }]
+            : undefined,
+      };
+    }
     default: {
       return {
         type: workflow.type,

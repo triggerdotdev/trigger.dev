@@ -18,10 +18,12 @@
         "groups:read",
         "im:read",
         "mpim:read",
-        "chat:write"
+        "chat:write",
+        "reactions:write"
       ],
       "bot": [
-        "chat:write"
+        "chat:write",
+        "reactions:write"
       ]
     }
   },

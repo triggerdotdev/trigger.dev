@@ -1,5 +1,8 @@
 import { z } from "zod";
 import { knownBlockSchema } from "./blocks";
+import { blockAction } from "./interactivity";
+
+export { blockAction };
 
 export const PostMessageSuccessResponseSchema = z.object({
   ok: z.literal(true),
@@ -50,6 +53,13 @@ export const PostMessageOptionsSchema = z
   })
   .and(ChannelNameOrIdSchema);
 
+export const AddReactionOptionsSchema = z
+  .object({
+    name: z.string(),
+    timestamp: z.string(),
+  })
+  .and(ChannelNameOrIdSchema);
+
 export const JoinConversationSuccessResponseSchema = z.object({
   ok: z.literal(true),
   channel: z.object({
@@ -78,5 +88,32 @@ export const ListConversationsSuccessResponseSchema = z.object({
 
 export const ListConversationsResponseSchema = z.discriminatedUnion("ok", [
   ListConversationsSuccessResponseSchema,
+  ErrorResponseSchema,
+]);
+
+export const PostMessageResponseOptionsSchema = z.object({
+  text: z.string().optional(),
+  blocks: z.array(knownBlockSchema).optional(),
+  response_type: z.enum(["in_channel"]).optional(),
+  replace_original: z.boolean().optional(),
+  delete_original: z.boolean().optional(),
+  thread_ts: z.string().optional(),
+});
+
+export const PostMessageResponseSuccessResponseSchema = z.object({
+  ok: z.literal(true),
+});
+
+export const PostMessageResponseResponseSchema = z.discriminatedUnion("ok", [
+  PostMessageResponseSuccessResponseSchema,
+  ErrorResponseSchema,
+]);
+
+export const AddReactionSuccessResponseSchema = z.object({
+  ok: z.literal(true),
+});
+
+export const AddReactionResponseSchema = z.discriminatedUnion("ok", [
+  AddReactionSuccessResponseSchema,
   ErrorResponseSchema,
 ]);

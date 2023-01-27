@@ -18,6 +18,9 @@ const log = debug("trigger:integrations:slack");
 const SendSlackMessageRequestBodySchema =
   slack.schemas.PostMessageBodySchema.extend({
     link_names: z.literal(1),
+    metadata: z
+      .object({ event_type: z.string(), event_payload: z.any() })
+      .optional(),
   });
 
 class SlackRequestIntegration implements RequestIntegration {
@@ -45,6 +48,15 @@ class SlackRequestIntegration implements RequestIntegration {
     path: "/chat.postMessage",
   });
 
+  #addReactionEndpoint = new HttpEndpoint<
+    typeof slack.schemas.AddReactionResponseSchema,
+    typeof slack.schemas.AddReactionOptionsSchema
+  >({
+    response: slack.schemas.AddReactionResponseSchema,
+    method: "POST",
+    path: "/reactions.add",
+  });
+
   constructor(private readonly baseUrl: string = "https://slack.com/api") {}
 
   perform(options: PerformRequestOptions): Promise<PerformedRequestResponse> {
@@ -53,7 +65,24 @@ class SlackRequestIntegration implements RequestIntegration {
         return this.#postMessage(
           options.accessInfo,
           options.params,
-          options.cache
+          options.cache,
+          options.metadata
+        );
+      }
+      case "chat.postMessageResponse": {
+        return this.#postMessageResponse(
+          options.accessInfo,
+          options.params,
+          options.cache,
+          options.metadata
+        );
+      }
+      case "reactions.add": {
+        return this.#addReaction(
+          options.accessInfo,
+          options.params,
+          options.cache,
+          options.metadata
         );
       }
       default: {
@@ -77,6 +106,24 @@ class SlackRequestIntegration implements RequestIntegration {
           ],
         };
       }
+      case "chat.postMessageResponse": {
+        return {
+          title: `Post response`,
+          properties: [],
+        };
+      }
+      case "reactions.add": {
+        return {
+          title: `Add reaction to message ${params.timestamp}`,
+          properties: [
+            {
+              key: "Reaction",
+              value: params.name,
+            },
+          ],
+        };
+      }
+
       default: {
         throw new Error(`Unknown endpoint: ${endpoint}`);
       }
@@ -90,7 +137,8 @@ class SlackRequestIntegration implements RequestIntegration {
   async #postMessage(
     accessInfo: AccessInfo,
     params: any,
-    cache?: CacheService
+    cache?: CacheService,
+    metadata?: Record<string, string>
   ): Promise<PerformedRequestResponse> {
     const parsedParams = slack.schemas.PostMessageOptionsSchema.parse(params);
 
@@ -127,6 +175,9 @@ class SlackRequestIntegration implements RequestIntegration {
       ...parsedParams,
       link_names: 1,
       channel: channelId,
+      metadata: metadata
+        ? { event_type: "post_message", event_payload: metadata }
+        : undefined,
     });
 
     if (!response.success) {
@@ -175,6 +226,172 @@ class SlackRequestIntegration implements RequestIntegration {
         output: response.data,
         context: {
           statusCode: response.statusCode,
+          headers: response.headers,
+        },
+      },
+    };
+
+    log("chat.postMessage performedRequest %O", performedRequest);
+
+    return performedRequest;
+  }
+
+  async #addReaction(
+    accessInfo: AccessInfo,
+    params: any,
+    cache?: CacheService,
+    metadata?: Record<string, string>
+  ): Promise<PerformedRequestResponse> {
+    const parsedParams = slack.schemas.AddReactionOptionsSchema.parse(params);
+
+    log("reactions.add %O", parsedParams);
+
+    const accessToken = getAccessToken(accessInfo);
+
+    const service = new HttpService({
+      accessToken,
+      baseUrl: this.baseUrl,
+    });
+
+    const channelId = await this.#findChannelId(service, parsedParams, cache);
+
+    if (!channelId) {
+      return {
+        ok: false,
+        isRetryable: false,
+        response: {
+          output: {
+            message: `channelId not found`,
+          },
+          context: {
+            statusCode: 404,
+            headers: {},
+          },
+        },
+      };
+    }
+
+    log("found channelId %s", channelId);
+
+    const response = await service.performRequest(this.#addReactionEndpoint, {
+      ...parsedParams,
+      // @ts-ignore
+      channel: channelId,
+    });
+
+    if (!response.success) {
+      log("reactions.add failed %O", response);
+
+      return {
+        ok: false,
+        isRetryable: this.#isRetryable(response.statusCode),
+        response: {
+          output: response.error,
+          context: {
+            statusCode: response.statusCode,
+            headers: response.headers,
+          },
+        },
+      };
+    }
+
+    if (!response.data.ok && response.data.error === "not_in_channel") {
+      log(
+        "reactions.add failed with not_in_channel, attempting to join channel %s",
+        channelId
+      );
+
+      // Attempt to join the channel, and then retry the request
+      const joinResponse = await service.performRequest(
+        this.#joinChannelEndpoint,
+        {
+          channel: channelId,
+        }
+      );
+
+      if (joinResponse.success && joinResponse.data.ok) {
+        log("joined channel %s, retrying reactions.add", channelId);
+
+        return this.#addReaction(accessInfo, params);
+      }
+    }
+
+    const ok = response.data.ok;
+
+    const performedRequest = {
+      ok,
+      isRetryable: this.#isRetryable(response.statusCode),
+      response: {
+        output: response.data,
+        context: {
+          statusCode: response.statusCode,
+          headers: response.headers,
+        },
+      },
+    };
+
+    log("chat.postMessage performedRequest %O", performedRequest);
+
+    return performedRequest;
+  }
+
+  async #postMessageResponse(
+    accessInfo: AccessInfo,
+    params: any,
+    cache?: CacheService,
+    metadata?: Record<string, string>
+  ): Promise<PerformedRequestResponse> {
+    const parsedParams = z
+      .object({
+        message: slack.schemas.PostMessageResponseOptionsSchema,
+        responseUrl: z.string(),
+      })
+      .parse(params);
+
+    log("chat.postMessageResponse %O", parsedParams);
+
+    const response = await fetch(parsedParams.responseUrl, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        ...parsedParams.message,
+        metadata: metadata
+          ? { event_type: "post_message_response", event_payload: metadata }
+          : undefined,
+      }),
+    });
+
+    if (!response.ok) {
+      log("chat.postMessageResponse failed %O", response);
+
+      const error = await safeGetJson(response);
+
+      return {
+        ok: false,
+        isRetryable: this.#isRetryable(response.status),
+        response: {
+          output: error
+            ? error
+            : { name: `${response.status}`, message: response.statusText },
+          context: {
+            statusCode: response.status,
+            headers: response.headers,
+          },
+        },
+      };
+    }
+
+    const output = await safeGetJson(response);
+
+    const performedRequest = {
+      ok: response.ok,
+      isRetryable: this.#isRetryable(response.status),
+      response: {
+        output,
+        context: {
+          statusCode: response.status,
           headers: response.headers,
         },
       },
@@ -244,3 +461,7 @@ class SlackRequestIntegration implements RequestIntegration {
 }
 
 export const requests = new SlackRequestIntegration();
+
+function safeGetJson(response: Response): Promise<unknown> {
+  return response.json().catch(() => null);
+}

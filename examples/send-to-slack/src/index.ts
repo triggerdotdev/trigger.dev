@@ -17,10 +17,6 @@ new Trigger({
     }),
   }),
   run: async (event, ctx) => {
-    await ctx.logger.info(
-      "Received domain.created event, waiting for 1 minutes..."
-    );
-
     const response = await slack.postMessage("send-to-slack", {
       channelName: "test-integrations",
       text: `New domain created: ${event.domain} by customer ${event.customerId} cc @Eric #general`,
@@ -142,3 +138,134 @@ function getRandomQuote() {
 
   return arnoldQuotes[Math.floor(Math.random() * arnoldQuotes.length)];
 }
+
+const BLOCK_ID = "issue.action.block";
+
+new Trigger({
+  id: "slack-interactivity",
+  name: "Testing Slack Interactivity",
+  apiKey: "trigger_dev_zC25mKNn6c0q",
+  endpoint: "ws://localhost:8889/ws",
+  logLevel: "debug",
+  on: customEvent({
+    name: "slack.interact",
+    schema: z.any(),
+  }),
+  run: async (event, ctx) => {
+    await slack.postMessage("send-to-slack", {
+      channelName: "test-integrations",
+      text: `Click on one of the buttons:`,
+      blocks: [
+        {
+          type: "actions",
+          block_id: BLOCK_ID,
+          elements: [
+            {
+              type: "button",
+              action_id: "close_issue_123",
+              text: {
+                type: "plain_text",
+                text: "Close Issue",
+                emoji: true,
+              },
+              value: "close_issue",
+            },
+            {
+              type: "button",
+              action_id: "comment_issue_123",
+              text: {
+                type: "plain_text",
+                text: "Comment",
+                emoji: true,
+              },
+              value: "comment_issue",
+            },
+            {
+              type: "button",
+              action_id: "view_issue_123",
+              text: {
+                type: "plain_text",
+                text: "View Issue",
+                emoji: true,
+              },
+              value: "view_issue",
+              url: "https://github.com/triggerdotdev/trigger.dev/issues/11",
+            },
+          ],
+        },
+      ],
+    });
+  },
+}).listen();
+
+const BLOCK_ID_2 = "release.action.block";
+
+new Trigger({
+  id: "slack-block-interaction",
+  name: "Slack Block Interaction",
+  apiKey: "trigger_dev_zC25mKNn6c0q",
+  endpoint: "ws://localhost:8889/ws",
+  logLevel: "debug",
+  on: slack.events.blockActionInteraction({
+    blockId: BLOCK_ID,
+    actionId: ["comment_issue_123", "close_issue_123"],
+  }),
+  run: async (event, ctx) => {
+    await slack.postMessageResponse("Response to user", event.response_url, {
+      text: `Thanks for clicking on the button!`,
+      replace_original: false,
+    });
+
+    await slack.postMessageResponse("Respond to everyone", event.response_url, {
+      text: `Now what do you want to do about the PR review?`,
+      replace_original: false,
+      response_type: "in_channel",
+      blocks: [
+        {
+          type: "actions",
+          block_id: BLOCK_ID_2,
+          elements: [
+            {
+              type: "button",
+              action_id: "submit_review_123",
+              text: {
+                type: "plain_text",
+                text: "Submit Review",
+                emoji: true,
+              },
+              value: "submit_review",
+            },
+            {
+              type: "button",
+              action_id: "close_review_123",
+              text: {
+                type: "plain_text",
+                text: "Close Review",
+                emoji: true,
+              },
+              value: "close_review",
+            },
+          ],
+        },
+      ],
+    });
+  },
+}).listen();
+
+new Trigger({
+  id: "slack-block-interaction-2",
+  name: "Slack Block Interaction 2",
+  apiKey: "trigger_dev_zC25mKNn6c0q",
+  endpoint: "ws://localhost:8889/ws",
+  logLevel: "debug",
+  on: slack.events.blockActionInteraction({
+    blockId: BLOCK_ID_2,
+  }),
+  run: async (event, ctx) => {
+    await slack.addReaction("React to message", {
+      name: "thumbsup",
+      timestamp: event.message.ts,
+      channelId: event.channel.id,
+    });
+  },
+}).listen();

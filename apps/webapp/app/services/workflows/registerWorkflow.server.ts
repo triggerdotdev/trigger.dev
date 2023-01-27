@@ -45,12 +45,23 @@ export class RegisterWorkflow {
     }
 
     if (validation.data.trigger.service !== "trigger") {
-      await this.#upsertExternalSource(
+      const source = await this.upsertSource(
         validation.data,
         organization,
         workflow,
         environment
       );
+
+      if (source && source.status === "READY") {
+        await this.#prismaClient.workflow.update({
+          where: {
+            id: workflow.id,
+          },
+          data: {
+            status: "READY",
+          },
+        });
+      }
     }
 
     await this.#upsertEventRule(
@@ -155,7 +166,7 @@ export class RegisterWorkflow {
     return workflow;
   }
 
-  async #upsertExternalSource(
+  async upsertSource(
     payload: WorkflowMetadata,
     organization: Organization,
     workflow: Workflow,
@@ -219,6 +230,31 @@ export class RegisterWorkflow {
         });
 
         return schedulerSource;
+      }
+      case "SLACK_INTERACTION": {
+        if (!payload.trigger.source) {
+          return;
+        }
+
+        return this.#prismaClient.internalSource.upsert({
+          where: {
+            workflowId_environmentId: {
+              workflowId: workflow.id,
+              environmentId: environment.id,
+            },
+          },
+          update: {
+            source: payload.trigger.source,
+          },
+          create: {
+            organizationId: organization.id,
+            workflowId: workflow.id,
+            environmentId: environment.id,
+            source: payload.trigger.source,
+            status: "READY",
+            type: "SLACK",
+          },
+        });
       }
       default: {
         return;

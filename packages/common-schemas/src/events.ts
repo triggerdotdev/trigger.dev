@@ -89,3 +89,12 @@ export const ManualWebhookSourceSchema = z.object({
   }),
   event: z.string(),
 });
+
+export const SlackInteractionSourceSchema = z.object({
+  blockId: z.string(),
+  actionIds: z.array(z.string()),
+});
+
+export type SlackInteractionSource = z.infer<
+  typeof SlackInteractionSourceSchema
+>;
