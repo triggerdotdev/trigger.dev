@@ -1,8 +1,13 @@
 import { Trigger, customEvent } from "@trigger.dev/sdk";
 import { slack } from "@trigger.dev/integrations";
-/** @jsxImportSource jsx-slack */
-import JSXSlack, { Actions, Blocks, Button, Section } from "jsx-slack";
-import { jsxslack } from "jsx-slack";
+import JSXSlack, {
+  Actions,
+  Blocks,
+  Button,
+  Section,
+  Select,
+  Option,
+} from "jsx-slack";
 import { z } from "zod";
 
 new Trigger({
@@ -143,6 +148,7 @@ function getRandomQuote() {
 }
 
 const BLOCK_ID = "issue.action.block";
+const BLOCK_ID_RATING = "issue.rating.block";
 
 new Trigger({
   id: "slack-interactivity",
@@ -176,6 +182,16 @@ new Trigger({
               Comment
             </Button>
           </Actions>
+          <Section blockId={BLOCK_ID_RATING}>
+            Rate this experience
+            <Select actionId="rating" placeholder="Rate it!">
+              <Option value="5">5 {":star:".repeat(5)}</Option>
+              <Option value="4">4 {":star:".repeat(4)}</Option>
+              <Option value="3">3 {":star:".repeat(3)}</Option>
+              <Option value="2">2 {":star:".repeat(2)}</Option>
+              <Option value="1">1 {":star:".repeat(1)}</Option>
+            </Select>
+          </Section>
         </Blocks>
       ),
     });
@@ -233,6 +249,28 @@ new Trigger({
         },
       ],
     });
+  },
+}).listen();
+
+new Trigger({
+  id: "slack-block-interaction-rating",
+  name: "Slack get rating",
+  apiKey: "trigger_dev_zC25mKNn6c0q",
+  endpoint: "ws://localhost:8889/ws",
+  logLevel: "debug",
+  on: slack.events.blockActionInteraction({
+    blockId: BLOCK_ID_RATING,
+    actionId: ["rating"],
+  }),
+  run: async (event, ctx) => {
+    const ratingAction = event.actions.find((a) => a.action_id === "rating");
+
+    if (ratingAction?.type === "static_select") {
+      await slack.postMessageResponse("Response to user", event.response_url, {
+        text: `Thanks for rating ${ratingAction.selected_option.value}!`,
+        replace_original: false,
+      });
+    }
   },
 }).listen();
 
