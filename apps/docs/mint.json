@@ -3,7 +3,7 @@
   "logo": {
     "dark": "/logo/light.png",
     "light": "/logo/light.png",
-    "href": "https://trigger.dev"
+    "href": "https://app.trigger.dev"
   },
   "favicon": "/images/favicon.png",
   "colors": {
@@ -20,6 +20,16 @@
     "default": "dark",
     "isHidden": true
   },
+  "topbarLinks": [
+    {
+      "name": "Login",
+      "url": "https://app.trigger.dev"
+    },
+    {
+      "name": "Sign up",
+      "url": "https://app.trigger.dev"
+    }
+  ],
   "topbarCtaButton": {
     "type": "github",
     "url": "https://github.com/triggerdotdev/trigger.dev"
@@ -39,11 +49,7 @@
   "navigation": [
     {
       "group": "Getting Started",
-      "pages": [
-        "welcome",
-        "getting-started",
-        "get-help"
-      ]
+      "pages": ["welcome", "getting-started", "get-help"]
     },
     {
       "group": "Examples",
@@ -71,15 +77,11 @@
           "pages": [
             {
               "group": "Slack",
-              "pages": [
-                "integrations/apis/slack/actions/post-message"
-              ]
+              "pages": ["integrations/apis/slack/actions/post-message"]
             },
             {
               "group": "Resend.com",
-              "pages": [
-                "integrations/apis/resend/actions/send-email"
-              ]
+              "pages": ["integrations/apis/resend/actions/send-email"]
             }
           ]
         },
