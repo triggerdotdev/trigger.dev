@@ -3,6 +3,7 @@ import type {
   ScheduledEventTrigger,
   ScheduleSourceCron,
   ScheduleSourceRate,
+  SlackInteractionEventTrigger,
   TriggerMetadata,
   WebhookEventTrigger,
 } from "@trigger.dev/common-schemas";
@@ -20,6 +21,8 @@ export function TriggerBody({ trigger }: { trigger: TriggerMetadata }) {
       return <CustomEvent event={trigger} />;
     case "HTTP_ENDPOINT":
       break;
+    case "SLACK_INTERACTION":
+      return <SlackInteraction trigger={trigger} />;
     default:
       break;
   }
@@ -27,6 +30,43 @@ export function TriggerBody({ trigger }: { trigger: TriggerMetadata }) {
 }
 
 const workflowNodeUppercaseClasses = "uppercase text-slate-400 tracking-wide";
+
+function SlackInteraction({
+  trigger,
+}: {
+  trigger: SlackInteractionEventTrigger;
+}) {
+  return (
+    <div className="flex flex-col gap-2">
+      <div className="flex gap-2 items-baseline">
+        <Body size="extra-small" className={workflowNodeUppercaseClasses}>
+          Name
+        </Body>
+        <Header2 size="small" className="text-slate-300 mb-2">
+          {trigger.name}
+        </Header2>
+      </div>
+      <div className="flex gap-2 items-baseline">
+        <Body size="extra-small" className={workflowNodeUppercaseClasses}>
+          Action
+        </Body>
+        <Header2 size="small" className="text-slate-300 mb-2">
+          {trigger.source.actionIds}
+        </Header2>
+      </div>
+      <div className="flex gap-2 items-baseline">
+        <Body size="extra-small" className={workflowNodeUppercaseClasses}>
+          Block
+        </Body>
+        <Header2 size="small" className="text-slate-300 mb-2">
+          {trigger.source.blockId}
+        </Header2>
+      </div>
+    </div>
+  );
+}
+
+// trigger.source.actionIds;
 
 function Webhook({ webhook }: { webhook: WebhookEventTrigger }) {
   return (
