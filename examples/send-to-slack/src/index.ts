@@ -262,6 +262,11 @@ new Trigger({
     blockId: BLOCK_ID_2,
   }),
   run: async (event, ctx) => {
+    if (!event.message) {
+      ctx.logger.debug(`No message found`);
+      return;
+    }
+
     await slack.addReaction("React to message", {
       name: "thumbsup",
       timestamp: event.message.ts,
