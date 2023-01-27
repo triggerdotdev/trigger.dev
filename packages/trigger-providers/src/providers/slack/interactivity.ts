@@ -2,10 +2,15 @@ import { z } from "zod";
 import {
   knownBlockSchema,
   mrkdwnElementSchema,
+  optionFieldSchema,
   plainTextElementSchema,
   viewSchema,
 } from "./blocks";
 
+const textSchema = z.discriminatedUnion("type", [
+  plainTextElementSchema,
+  mrkdwnElementSchema,
+]);
 const blockActionType = z.union([
   z.literal("block_actions"),
   z.literal("interactive_message"),
@@ -21,6 +26,7 @@ const commonActionSchema = z.object({
 
 const buttonAction = z.object({
   type: z.literal("button"),
+  text: textSchema.optional(),
   value: z.string(),
 });
 
@@ -46,15 +52,40 @@ const staticSelectAction = z.object({
 const userSelectAction = z.object({
   type: z.literal("users_select"),
   selected_user: z.string(),
+  initial_user: z.string().optional(),
 });
 
 const conversationsSelectAction = z.object({
   type: z.literal("conversations_select"),
   selected_conversation: z.string(),
+  initial_conversation: z.string().optional(),
 });
 const channelSelectAction = z.object({
   type: z.literal("channels_select"),
   selected_channel: z.string(),
+  initial_channel: z.string().optional(),
+});
+
+const datePickerAction = z.object({
+  type: z.literal("datepicker"),
+  selected_date: z.string(),
+  initial_date: z.string().optional(),
+});
+
+const checkboxesAction = z.object({
+  type: z.literal("checkboxes"),
+  selected_options: z.array(optionFieldSchema),
+});
+
+const radioButtonsSchema = z.object({
+  type: z.literal("radio_buttons"),
+  selectedOption: optionFieldSchema,
+});
+
+const timePickerSchema = z.object({
+  type: z.literal("timepicker"),
+  selected_time: z.string(),
+  initial_time: z.string().optional(),
 });
 
 const possibleActionsSchema = z.discriminatedUnion("type", [
@@ -63,6 +94,10 @@ const possibleActionsSchema = z.discriminatedUnion("type", [
   userSelectAction,
   conversationsSelectAction,
   channelSelectAction,
+  datePickerAction,
+  checkboxesAction,
+  radioButtonsSchema,
+  timePickerSchema,
 ]);
 const actionSchema = possibleActionsSchema.and(commonActionSchema);
 
