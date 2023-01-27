@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { knownBlockSchema } from "./blocks";
 
 const blockActionType = z.union([
   z.literal("block_actions"),
@@ -35,7 +36,7 @@ export const blockAction = z.object({
       user: z.string().optional(),
       ts: z.string(),
       app_id: z.string().optional(),
-      blocks: z.array(z.any()).optional(),
+      blocks: z.array(knownBlockSchema).optional(),
       team: z.string().optional(),
       metadata: z
         .object({
