@@ -3,7 +3,7 @@ import { json } from "@remix-run/server-runtime";
 import { CustomEventSchema } from "@trigger.dev/common-schemas";
 import { z } from "zod";
 import { authenticateApiRequest } from "~/services/apiAuth.server";
-import { IngestEvent } from "~/services/events/ingest.server";
+import { IngestCustomEvent } from "~/services/events/ingestCustomEvent.server";
 
 const EventBodySchema = z.object({
   id: z.string(),
@@ -32,20 +32,13 @@ export async function action({ request }: ActionArgs) {
     return json({ error: eventBody.error.message }, { status: 400 });
   }
 
-  const service = new IngestEvent();
+  const service = new IngestCustomEvent();
 
-  const result = await service.call(
-    {
-      id: eventBody.data.id,
-      name: eventBody.data.event.name,
-      type: "CUSTOM_EVENT",
-      service: "trigger",
-      payload: eventBody.data.event.payload,
-      context: eventBody.data.event.context,
-      apiKey: authenticatedEnv.apiKey,
-    },
-    authenticatedEnv.organization
-  );
+  await service.call({
+    id: eventBody.data.id,
+    event: eventBody.data.event,
+    apiKey: authenticatedEnv.apiKey,
+  });
 
-  return json(result.data);
+  return { status: 200 };
 }

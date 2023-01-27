@@ -35,33 +35,6 @@ importers:
     devDependencies:
       mintlify: 2.0.16
 
-  apps/internal-triggers:
-    specifiers:
-      '@trigger.dev/integrations': ^0.1.13
-      '@trigger.dev/sdk': ^0.2.10
-      '@trigger.dev/tsconfig': workspace:*
-      '@types/node': '16'
-      '@types/pg': ^8.6.6
-      dotenv: ^16.0.3
-      pg: ^8.8.0
-      rimraf: ^3.0.2
-      tsup: ^6.5.0
-      typescript: ^4.9.4
-      zod: ^3.20.2
-    dependencies:
-      '@trigger.dev/integrations': 0.1.13
-      '@trigger.dev/sdk': 0.2.10
-      pg: 8.8.0
-      zod: 3.20.2
-    devDependencies:
-      '@trigger.dev/tsconfig': link:../../config-packages/tsconfig
-      '@types/node': 16.18.11
-      '@types/pg': 8.6.6
-      dotenv: 16.0.3
-      rimraf: 3.0.2
-      tsup: 6.5.0_typescript@4.9.4
-      typescript: 4.9.4
-
   apps/webapp:
     specifiers:
       '@aws-sdk/client-s3': ^3.186.0
@@ -5412,48 +5385,6 @@ packages:
     engines: {node: '>= 6'}
     dev: true
 
-  /@trigger.dev/integrations/0.1.13:
-    resolution: {integrity: sha512-2CfQNGqdC82om8Zr+PAdZZWov5SPAAAuVGV39d/MTNFLHhJZmJx47nbc5nnT/ujPSkoRrvOolwl93rVeceYoYA==}
-    dependencies:
-      '@react-email/render': 0.0.3
-      '@trigger.dev/providers': 0.1.7
-      '@trigger.dev/sdk': 0.2.10
-      zod: 3.20.2
-    transitivePeerDependencies:
-      - bufferutil
-      - encoding
-      - react
-      - supports-color
-      - utf-8-validate
-    dev: false
-
-  /@trigger.dev/providers/0.1.7:
-    resolution: {integrity: sha512-wy7bh/bOGNgYbpUOJz59BkFU/0e3U0p7/5rClYY52QgAXZ9Z6c4JfocCqmYRxh+/Lb18N/wUd+vo5V9YfoyeIQ==}
-    dependencies:
-      '@shopify/admin-graphql-api-utilities': 2.0.1
-      tiny-invariant: 1.3.1
-      zod: 3.20.2
-    dev: false
-
-  /@trigger.dev/sdk/0.2.10:
-    resolution: {integrity: sha512-768mZmXi2iLgUfRIKOlpU3q9wRF6anhSnKoToJnRRzyAX3o6Kw5GkBXyM2QVuB5rt6psgbD+M4RKDaTnLpn/wQ==}
-    dependencies:
-      debug: 4.3.4
-      evt: 2.4.13
-      node-fetch: 2.6.7
-      slug: 6.1.0
-      ulid: 2.3.0
-      uuid: 9.0.0
-      ws: 8.12.0
-      zod: 3.20.2
-      zod-error: 1.1.0
-    transitivePeerDependencies:
-      - bufferutil
-      - encoding
-      - supports-color
-      - utf-8-validate
-    dev: false
-
   /@tsconfig/node10/1.0.9:
     resolution: {integrity: sha512-jNsYVVxU8v5g43Erja32laIDHXeoNvFEpX33OK4d6hljo3jDhCBDhx5dhCCTMWUojscpAagGiRkBKxpdl9fxqA==}
 
@@ -5723,14 +5654,6 @@ packages:
 
   /@types/normalize-package-data/2.4.1:
     resolution: {integrity: sha512-Gj7cI7z+98M282Tqmp2K5EIsoouUEzbBJhQQzDE3jSIRk6r9gsz0oUokqIUR4u1R3dMHo0pDHM7sNOHyhulypw==}
-
-  /@types/pg/8.6.6:
-    resolution: {integrity: sha512-O2xNmXebtwVekJDD+02udOncjVcMZQuTEQEMpKJ0ZRf5E7/9JJX3izhKUcUifBkyKpljyUM6BTgy2trmviKlpw==}
-    dependencies:
-      '@types/node': 18.11.18
-      pg-protocol: 1.5.0
-      pg-types: 2.2.0
-    dev: true
 
   /@types/prismjs/1.26.0:
     resolution: {integrity: sha512-ZTaqn/qSqUuAq1YwvOFQfVW1AR/oQJlLSZVustdjwI+GZ8kr0MSHBj0tsXPW1EqHubx50gtBEjbPGsdZwQwCjQ==}
@@ -6836,11 +6759,6 @@ packages:
   /buffer-indexof-polyfill/1.0.2:
     resolution: {integrity: sha512-I7wzHwA3t1/lwXQh+A5PbNvJxgfo5r3xulgpYDB5zckTu/Z9oUK9biouBKQUjEqzaz3HnAT6TYoovmE+GqSf7A==}
     engines: {node: '>=0.10'}
-
-  /buffer-writer/2.0.0:
-    resolution: {integrity: sha512-a7ZpuTZU1TRtnwyCNW3I5dc0wWNC3VR9S++Ewyk2HHZdrO3CQJqSpd+95Us590V6AL7JqUAH2IwZ/398PmNFgw==}
-    engines: {node: '>=4'}
-    dev: false
 
   /buffer/5.7.1:
     resolution: {integrity: sha512-EHcyIPBQ4BSGlvjB16k5KgAJ27CIsHY/2JBmCRReo48y9rQ3MaUzWX3KVlBa4U7MyX02HdVj0K7C3WaB3ju7FQ==}
@@ -13195,10 +13113,6 @@ packages:
       semver: 6.3.0
     dev: true
 
-  /packet-reader/1.0.0:
-    resolution: {integrity: sha512-HAKu/fG3HpHFO0AA8WE8q2g+gBJaZ9MG7fcKk+IJPLTGAD6Psw4443l+9DGRbOIh3/aXr7Phy0TjilYivJo5XQ==}
-    dev: false
-
   /pako/0.2.9:
     resolution: {integrity: sha512-NUcwaKxUxWrZLpDG+z/xZaCgQITkA/Dv4V/T6bw7VON6l1Xz/VnrBqrYjZQ12TamKHzITTfOEIYUj48y2KXImA==}
     dev: true
@@ -13357,59 +13271,6 @@ packages:
       is-reference: 3.0.1
     dev: true
 
-  /pg-connection-string/2.5.0:
-    resolution: {integrity: sha512-r5o/V/ORTA6TmUnyWZR9nCj1klXCO2CEKNRlVuJptZe85QuhFayC7WeMic7ndayT5IRIR0S0xFxFi2ousartlQ==}
-    dev: false
-
-  /pg-int8/1.0.1:
-    resolution: {integrity: sha512-WCtabS6t3c8SkpDBUlb1kjOs7l66xsGdKpIPZsg4wR+B3+u9UAum2odSsF9tnvxg80h4ZxLWMy4pRjOsFIqQpw==}
-    engines: {node: '>=4.0.0'}
-
-  /pg-pool/3.5.2_pg@8.8.0:
-    resolution: {integrity: sha512-His3Fh17Z4eg7oANLob6ZvH8xIVen3phEZh2QuyrIl4dQSDVEabNducv6ysROKpDNPSD+12tONZVWfSgMvDD9w==}
-    peerDependencies:
-      pg: '>=8.0'
-    dependencies:
-      pg: 8.8.0
-    dev: false
-
-  /pg-protocol/1.5.0:
-    resolution: {integrity: sha512-muRttij7H8TqRNu/DxrAJQITO4Ac7RmX3Klyr/9mJEOBeIpgnF8f9jAfRz5d3XwQZl5qBjF9gLsUtMPJE0vezQ==}
-
-  /pg-types/2.2.0:
-    resolution: {integrity: sha512-qTAAlrEsl8s4OiEQY69wDvcMIdQN6wdz5ojQiOy6YRMuynxenON0O5oCpJI6lshc6scgAY8qvJ2On/p+CXY0GA==}
-    engines: {node: '>=4'}
-    dependencies:
-      pg-int8: 1.0.1
-      postgres-array: 2.0.0
-      postgres-bytea: 1.0.0
-      postgres-date: 1.0.7
-      postgres-interval: 1.2.0
-
-  /pg/8.8.0:
-    resolution: {integrity: sha512-UXYN0ziKj+AeNNP7VDMwrehpACThH7LUl/p8TDFpEUuSejCUIwGSfxpHsPvtM6/WXFy6SU4E5RG4IJV/TZAGjw==}
-    engines: {node: '>= 8.0.0'}
-    peerDependencies:
-      pg-native: '>=3.0.1'
-    peerDependenciesMeta:
-      pg-native:
-        optional: true
-    dependencies:
-      buffer-writer: 2.0.0
-      packet-reader: 1.0.0
-      pg-connection-string: 2.5.0
-      pg-pool: 3.5.2_pg@8.8.0
-      pg-protocol: 1.5.0
-      pg-types: 2.2.0
-      pgpass: 1.0.5
-    dev: false
-
-  /pgpass/1.0.5:
-    resolution: {integrity: sha512-FdW9r/jQZhSeohs1Z3sI1yxFQNFvMcnmfuj4WBMUTxOrAyLMaTcE1aAMBiTlbMNaXvBCQuVi0R7hd8udDSP7ug==}
-    dependencies:
-      split2: 4.1.0
-    dev: false
-
   /picocolors/1.0.0:
     resolution: {integrity: sha512-1fygroTLlHu66zi26VoTDv8yRgm0Fccecssto+MhsZ0D/DGW2sm8E8AjW7NU5VVTRt5GxbeZ5qBuJr+HyLYkjQ==}
 
@@ -13562,24 +13423,6 @@ packages:
       nanoid: 3.3.4
       picocolors: 1.0.0
       source-map-js: 1.0.2
-
-  /postgres-array/2.0.0:
-    resolution: {integrity: sha512-VpZrUqU5A69eQyW2c5CA1jtLecCsN2U/bD6VilrFDWq5+5UIEVO7nazS3TEcHf1zuPYO/sqGvUvW62g86RXZuA==}
-    engines: {node: '>=4'}
-
-  /postgres-bytea/1.0.0:
-    resolution: {integrity: sha512-xy3pmLuQqRBZBXDULy7KbaitYqLcmxigw14Q5sj8QBVLqEwXfeybIKVWiqAXTlcvdvb0+xkOtDbfQMOf4lST1w==}
-    engines: {node: '>=0.10.0'}
-
-  /postgres-date/1.0.7:
-    resolution: {integrity: sha512-suDmjLVQg78nMK2UZ454hAG+OAW+HQPZ6n++TNDUX+L0+uUlLywnoxJKDou51Zm+zTCjrCl0Nq6J9C5hP9vK/Q==}
-    engines: {node: '>=0.10.0'}
-
-  /postgres-interval/1.2.0:
-    resolution: {integrity: sha512-9ZhXKM/rw350N1ovuWHbGxnGh/SNJ4cnxHiM0rxE4VN41wsg8P8zWn9hv/buK00RP4WvlOyr/RBDiptyxVbkZQ==}
-    engines: {node: '>=0.10.0'}
-    dependencies:
-      xtend: 4.0.2
 
   /posthog-js/1.39.4:
     resolution: {integrity: sha512-Elpf1gwyuObueXi89iH+9pP+WhpkiivP8Qwej4RzOLwSTa7Floaa4rgAw7rnCnX1PtRoJ3F0kqb6q9T+aZjRiA==}
@@ -15111,11 +14954,6 @@ packages:
     dependencies:
       through: 2.3.8
     dev: true
-
-  /split2/4.1.0:
-    resolution: {integrity: sha512-VBiJxFkxiXRlUIeyMQi8s4hgvKCSjtknJv/LVYbrgALPwf5zSKmEwV9Lst25AkvMDnvxODugjdl6KZgwKM1WYQ==}
-    engines: {node: '>= 10.x'}
-    dev: false
 
   /sprintf-js/1.0.3:
     resolution: {integrity: sha512-D9cPgkvLlV3t3IzL0D0YLvGA9Ahk4PcvVwUbN0dSGr1aP0Nrt4AEnTUbuGvquEC0mA64Gqt1fzirlRs5ibXx8g==}

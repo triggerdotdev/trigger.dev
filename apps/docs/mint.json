@@ -111,7 +111,8 @@
         "reference/trigger",
         "reference/custom-event",
         "reference/webhook-event",
-        "reference/schedule-event"
+        "reference/schedule-event",
+        "reference/send-event"
       ]
     },
     {

@@ -1,14 +1,16 @@
-import type { WorkflowRun, WorkflowRunStep } from ".prisma/client";
-import type { WorkflowRunStatus } from ".prisma/client";
+import type {
+  WorkflowRun,
+  WorkflowRunStatus,
+  WorkflowRunStep,
+} from ".prisma/client";
 import type {
   CustomEventSchema,
   ErrorSchema,
   LogMessageSchema,
 } from "@trigger.dev/common-schemas";
-import { ulid } from "ulid";
 import type { z } from "zod";
 import { prisma } from "~/db.server";
-import { IngestEvent } from "~/services/events/ingest.server";
+import { IngestCustomEvent } from "~/services/events/ingestCustomEvent.server";
 import { createStepOnce } from "./workflowRunStep.server";
 
 export type { WorkflowRun, WorkflowRunStep, WorkflowRunStatus };
@@ -160,20 +162,12 @@ export async function triggerEventInRun(
     return;
   }
 
-  const ingestService = new IngestEvent();
+  const ingestService = new IngestCustomEvent();
 
-  await ingestService.call(
-    {
-      id: ulid(),
-      name: event.name,
-      type: "CUSTOM_EVENT",
-      service: "trigger",
-      payload: event.payload,
-      context: event.context,
-      apiKey: workflowRun.environment.apiKey,
-    },
-    workflowRun.environment.organization
-  );
+  await ingestService.call({
+    apiKey: workflowRun.environment.apiKey,
+    event,
+  });
 
   await prisma.workflowRunStep.update({
     where: { id: step.step.id },

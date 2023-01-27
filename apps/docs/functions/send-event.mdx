@@ -31,7 +31,7 @@ curl --request POST \
   --header 'Authorization: Bearer <insert_api_key_here>' \
   --header 'Content-Type: application/json' \
   --data '{
-            "id": "<insert_unique_event_id>",
+            "id": "<optional unique event id>",
             "event": {
               "name": "user.created",
               "payload": {
@@ -48,12 +48,154 @@ If you are calling this from inside a workflow, ensure that the first parameter 
 
 ## Sending events from other workflows
 
-It is useful to send events from workflows because you can split your logic into smaller chunks and reuse them.
+It is useful to send events from workflows because you can split your logic into smaller chunks and reuse them. The below example shows how a scheduled workflow delegates the work via sending a custom event:
 
-## Writing a workflow that is triggered by an event
+<CodeGroup>
 
-You should read [the documentation on custom events](/triggers/custom-events) to learn how to write a workflow that is triggered by an event.
+```ts check-scheduler.ts
+new Trigger({
+  id: "check-scheduler",
+  name: "Check Scheduler",
+  on: scheduleEvent({ rateOf: { minutes: 10 } }),
+  run: async (event, context) => {
+    await context.sendEvent("health.check trigger.dev", {
+      name: "health.check",
+      payload: {
+        url: "https://trigger.dev",
+        host: "trigger.dev",
+      },
+    });
 
+    await context.sendEvent("health.check docs.trigger.dev", {
+      name: "health.check",
+      payload: {
+        url: "https://docs.trigger.dev",
+        host: "docs.trigger.dev",
+      },
+    });
+
+    await context.sendEvent("health.check app.trigger.dev", {
+      name: "health.check",
+      payload: {
+        url: "https://app.trigger.dev/healthcheck",
+        host: "app.trigger.dev",
+      },
+    });
+  },
+}).listen();
 ```
 
+```ts health-check.ts
+export const healthCheck = new Trigger({
+  id: "health-check",
+  name: "Health Check",
+  on: customEvent({
+    name: "health.check",
+    schema: z.object({
+      url: z.string().url(),
+      host: z.string(),
+    }),
+  }),
+  run: async (event, context) => {
+    const response = await context.fetch("fetch site", event.url, {
+      method: "GET",
+      retry: {
+        enabled: false,
+      },
+    });
+
+    if (response.ok) {
+      await context.logger.info(`${event.host} is up!`);
+      return;
+    }
+
+    await slack.postMessage("Site is down", {
+      channelName: "health-checks",
+      text: `${event.host} is down: ${response.status}`,
+    });
+  },
+}).listen();
+```
+
+</CodeGroup>
+
+## Delaying event delivery
+
+Through both our Node.js SDK and our HTTP API, you can delay the delivery of an event. This is useful if you want to send an event to trigger a workflow, but you want to wait for a certain amount of time before the event is delivered.
+
+Using the health check example above, we can delay the delivery of the `health.check` event in various ways:
+
+```ts
+new Trigger({
+  id: "check-scheduler",
+  name: "Check Scheduler",
+  on: scheduleEvent({ rateOf: { minutes: 10 } }),
+  run: async (event, context) => {
+    await context.sendEvent("health.check trigger.dev", {
+      name: "health.check",
+      payload: {
+        url: "https://trigger.dev",
+        host: "trigger.dev",
+      },
+      delay: { until: new Date(Date.now() + 1000 * 60 * 5) }, // Delay until a specific date
+    });
+
+    await context.sendEvent("health.check docs.trigger.dev", {
+      name: "health.check",
+      payload: {
+        url: "https://docs.trigger.dev",
+        host: "docs.trigger.dev",
+      },
+      delay: { minutes: 5 }, // Delay for a specific amount of time
+    });
+
+    await context.sendEvent("health.check app.trigger.dev", {
+      name: "health.check",
+      payload: {
+        url: "https://app.trigger.dev/healthcheck",
+        host: "app.trigger.dev",
+      },
+      delay: { seconds: 30 }, // Delay for a specific amount of time
+    });
+  },
+}).listen();
+```
+
+<Note>
+  When sending events in the context of a workflow run, adding a delay DOES NOT
+  add a delay to the workflow run, as sending a custom event is a
+  fire-and-forget action.
+</Note>
+
+You can add delays via the HTTP API by adding a `delay` object to the event:
+
+```bash
+curl --request POST \
+  --url https://app.trigger.dev/api/v1/events \
+  --header 'Authorization: Bearer <insert_api_key_here>' \
+  --header 'Content-Type: application/json' \
+  --data '{
+            "id": "<optional unique event id>",
+            "event": {
+              "name": "user.created",
+              "payload": {
+                      "userId": "123456"
+              },
+              "delay": {
+                "seconds": 30
+              }
+            }
+          }'
+```
+
+## Event deduplication
+
+When sending events, you can specify an `id` for the event. If you send an event with the same `id` multiple times, only the first event will be delivered. This is useful if you want to ensure that an event is only delivered once, even if you send it multiple times.
+
+```ts
+sendEvent({
+  id: "my-event-id",
+  name: "my-event",
+  payload: { foo: "bar" },
+});
 ```

@@ -6,6 +6,15 @@ export const CustomEventSchema = z.object({
   payload: JsonSchema,
   context: JsonSchema.optional(),
   timestamp: z.string().datetime().optional(),
+  delay: z
+    .union([
+      z.object({ seconds: z.number().int() }),
+      z.object({ minutes: z.number().int() }),
+      z.object({ hours: z.number().int() }),
+      z.object({ days: z.number().int() }),
+      z.object({ until: z.string().datetime() }),
+    ])
+    .optional(),
 });
 
 export const SerializableCustomEventSchema = z.object({
@@ -13,6 +22,15 @@ export const SerializableCustomEventSchema = z.object({
   payload: SerializableJsonSchema,
   context: SerializableJsonSchema.optional(),
   timestamp: z.string().datetime().optional(),
+  delay: z
+    .union([
+      z.object({ seconds: z.number().int() }),
+      z.object({ minutes: z.number().int() }),
+      z.object({ hours: z.number().int() }),
+      z.object({ days: z.number().int() }),
+      z.object({ until: z.date() }),
+    ])
+    .optional(),
 });
 
 const EventMatcherSchema = z.union([

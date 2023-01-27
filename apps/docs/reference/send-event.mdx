@@ -1,0 +1,97 @@
+---
+title: "sendEvent"
+sidebarTitle: "sendEvent"
+description: "Send a custom event to Trigger, from inside or outside of a workflow."
+---
+
+## Usage
+
+```ts
+import { Trigger, customEvent } from "@trigger.dev/sdk";
+
+new Trigger({
+  id: "usage",
+  name: "usage",
+  on: customEvent({
+    name: "user.created",
+    schema: z.any(),
+  }),
+  run: async (event, ctx) => {
+    await ctx.sendEvent("Sending context user.created event", {
+      name: "user.created",
+      payload: {
+        id: "1234_abc",
+      },
+    });
+  },
+}).listen();
+```
+
+You can also use `sendEvent` by importing it from `@trigger.dev/sdk`:
+
+```ts
+import { sendEvent } from "@trigger.dev/sdk";
+
+await sendEvent("Sending context user.created event", {
+  name: "user.created",
+  payload: {
+    id: "1234_abc",
+  },
+});
+```
+
+<Note>
+  If calling `sendEvent` from outside of a workflow run, it will make an HTTP
+  API request to app.trigger.dev to send the event. Make sure you set the
+  `TRIGGER_API_KEY` environment variable if you will be using it this way.
+</Note>
+
+## Parameters
+
+<ParamField path="key" type="string" required={true}>
+  A unique key for the event in the context of a workflow run. Please see the
+  [Keys and Resumability](/guides/resumability) guide for more info.
+</ParamField>
+
+<ParamField path="event" type="object" required={true}>
+  <Expandable title="properties" defaultOpen={true}>
+    <ParamField path="id" type="string" required={false}>
+      An optional unique ID for the event. If not provided, one will be
+      generated automatically (using `clid`). Set this field to perform event
+      deduplication.
+    </ParamField>
+
+    <ParamField path="name" type="string" required={true}>
+      The name of the event. This is the name you set when creating the
+      `customEvent` trigger.
+    </ParamField>
+
+    <ParamField path="payload" type="json object" required={true}>
+      The payload of the event.
+    </ParamField>
+
+    <ParamField path="timestamp" type="ISO8601 string" required={false}>
+      An optional timestamp for the event. If not provided, one will be generated. Must be in ISO 8601 format (e.g. `new Date().toISOString()`)
+    </ParamField>
+
+    <ParamField path="context" type="json object" required={false}>
+      An optional context object for the event. This can be used to pass
+      additional information about the event, such as the user who triggered
+      it. Note that this is not currently exposed to the workflow (coming soon).
+    </ParamField>
+
+    <ParamField path="delay" type="object" required={false}>
+      An optional delay object for the event. This can be used to delay the
+      event by a certain amount of time. Use one of the following options:
+
+      - `{ seconds: number }` - delay the event by a certain number of seconds
+      - `{ minutes: number }` - delay the event by a certain number of minutes
+      - `{ hours: number }` - delay the event by a certain number of hours
+      - `{ days: number }` - delay the event by a certain number of days
+      - `{ until: Date }` - delay the event until a certain date
+
+      See the [Delaying Event Delivery](/functions/send-event#delaying-event-delivery) docs for more info.
+    </ParamField>
+
+  </Expandable>
+</ParamField>

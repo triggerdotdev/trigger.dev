@@ -35,7 +35,7 @@ import { InitiateDelay } from "./delays/initiateDelay.server";
 import { ResolveDelay } from "./delays/resolveDelay.server";
 import { sendEmail } from "./email.server";
 import { DispatchEvent } from "./events/dispatch.server";
-import { IngestEvent } from "./events/ingest.server";
+import { IngestCustomEvent } from "./events/ingestCustomEvent.server";
 import { HandleNewServiceConnection } from "./externalServices/handleNewConnection.server";
 import { RegisterExternalSource } from "./externalSources/registerExternalSource.server";
 import { CreateFetchRequest } from "./fetches/createFetchRequest.server";
@@ -51,6 +51,7 @@ import { WorkflowRunDisconnected } from "./runs/runDisconnected.server";
 import { WorkflowRunTriggerTimeout } from "./runs/runTriggerTimeout.server";
 import { DeliverScheduledEvent } from "./scheduler/deliverScheduledEvent.server";
 import { RegisterSchedulerSource } from "./scheduler/registerSchedulerSource.server";
+import { omit } from "~/utils/objects";
 
 let pulsarClient: PulsarClient;
 let triggerPublisher: ZodPublisher<TriggerCatalog>;
@@ -374,6 +375,14 @@ const taskQueueCatalog = {
     data: z.object({ id: z.string() }),
     properties: z.object({}),
   },
+  INGEST_DELAYED_EVENT: {
+    data: z.object({
+      id: z.string().optional(),
+      apiKey: z.string(),
+      event: CustomEventSchema.omit({ delay: true }),
+    }),
+    properties: z.object({}),
+  },
   TRIGGER_WORKFLOW_RUN: {
     data: z.object({ id: z.string() }),
     properties: z.object({}),
@@ -646,6 +655,17 @@ function createTaskQueue() {
 
         return true;
       },
+      INGEST_DELAYED_EVENT: async (id, data, properties, attributes) => {
+        if (attributes.redeliveryCount >= 4) {
+          return true;
+        }
+
+        const ingestService = new IngestCustomEvent();
+
+        await ingestService.call(data);
+
+        return true;
+      },
       TRIGGER_WORKFLOW_RUN: async (id, data, properties) => {
         const run = await findWorklowRunById(data.id);
 
@@ -690,19 +710,19 @@ function createTaskQueue() {
           return true;
         }
 
-        const service = new IngestEvent();
+        if (!env.INTERNAL_TRIGGER_API_KEY) {
+          return true;
+        }
 
-        const result = await service.call({
+        const service = new IngestCustomEvent();
+
+        await service.call({
           id: data.id,
-          name: data.name,
-          type: "CUSTOM_EVENT",
-          service: "trigger",
-          payload: data.payload,
-          context: data.context,
+          event: omit(data, ["id"]),
           apiKey: env.INTERNAL_TRIGGER_API_KEY,
         });
 
-        return result.status === "success";
+        return true;
       },
     },
   });
