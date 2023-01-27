@@ -1,8 +1,6 @@
 import { z } from "zod";
 import {
-  blockSchema,
   knownBlockSchema,
-  messageAttachmentSchema,
   mrkdwnElementSchema,
   plainTextElementSchema,
   viewSchema,
@@ -45,9 +43,32 @@ const staticSelectAction = z.object({
     .optional(),
 });
 
-const actionSchema = z
-  .discriminatedUnion("type", [buttonAction, staticSelectAction])
-  .and(commonActionSchema);
+const userSelectAction = z.object({
+  type: z.literal("users_select"),
+  selected_user: z.string(),
+});
+
+const conversationsSelectAction = z.object({
+  type: z.literal("conversations_select"),
+  selected_conversation: z.string(),
+});
+const channelSelectAction = z.object({
+  type: z.literal("channels_select"),
+  selected_channel: z.string(),
+});
+
+const possibleActionsSchema = z.discriminatedUnion("type", [
+  buttonAction,
+  staticSelectAction,
+  userSelectAction,
+  conversationsSelectAction,
+  channelSelectAction,
+]);
+const actionSchema = possibleActionsSchema.and(commonActionSchema);
+
+const stateSchema = z.object({
+  values: z.record(z.record(possibleActionsSchema)),
+});
 
 const userSchema = z.object({
   id: z.string(),
@@ -101,23 +122,6 @@ const messageActionSchema = z.object({
       event_payload: z.object({ requestId: z.string() }),
     })
     .optional(),
-});
-
-const stateSchema = z.object({
-  values: z.record(
-    z.record(
-      z.object({
-        type: z.string(),
-        text: z
-          .discriminatedUnion("type", [
-            plainTextElementSchema,
-            mrkdwnElementSchema,
-          ])
-          .optional(),
-        value: z.string().optional(),
-      })
-    )
-  ),
 });
 
 export const blockAction: Zod.ZodObject<{
