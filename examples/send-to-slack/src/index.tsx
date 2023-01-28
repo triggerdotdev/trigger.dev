@@ -1,4 +1,4 @@
-import { Trigger, customEvent } from "@trigger.dev/sdk";
+import { Trigger, customEvent, scheduleEvent } from "@trigger.dev/sdk";
 import { slack } from "@trigger.dev/integrations";
 import JSXSlack, {
   Actions,
@@ -150,40 +150,38 @@ function getRandomQuote() {
 const BLOCK_ID = "issue.action.block";
 const BLOCK_ID_RATING = "issue.rating.block";
 
+//every minute see how your employees are doing, we don't recommend this frequency 😉
 new Trigger({
   id: "slack-interactivity",
   name: "Testing Slack Interactivity",
   apiKey: "trigger_dev_zC25mKNn6c0q",
   endpoint: "ws://localhost:8889/ws",
   logLevel: "debug",
-  on: customEvent({
-    name: "slack.interact",
-    schema: z.any(),
+  on: scheduleEvent({
+    rateOf: {
+      minutes: 1,
+    },
   }),
   run: async (event, ctx) => {
     await slack.postMessage("jsx-test", {
       channelName: "test-integrations",
-      text: "Test of jsx",
+      //text appears in Slack notifications on mobile/desktop
+      text: "How is your progress today?",
+      //import and use JSXSlack to make creating rich messages much easier
       blocks: JSXSlack(
         <Blocks>
-          <Section>This is using jsxslack</Section>
+          <Section>How is your progress today?</Section>
           <Actions blockId={BLOCK_ID}>
-            <Button value="close_issue" actionId="close_issue_123">
-              Close Issue
-            </Button>
-            <Button value="comment_issue" actionId="comment_issue_123">
-              Comment
+            <Button value="blocked" actionId="status-blocked">
+              I'm blocked
             </Button>
             <Button
-              value="view_issue"
-              actionId="view_issue_123"
-              url="https://github.com/triggerdotdev/trigger.dev/issues/11"
+              value="help"
+              actionId="status-help"
+              url="https://xkcd.com/1349/"
             >
-              Comment
+              Get help
             </Button>
-          </Actions>
-          <Section blockId={BLOCK_ID_RATING}>
-            Rate this experience
             <Select actionId="rating" placeholder="Rate it!">
               <Option value="5">5 {":star:".repeat(5)}</Option>
               <Option value="4">4 {":star:".repeat(4)}</Option>
@@ -191,7 +189,7 @@ new Trigger({
               <Option value="2">2 {":star:".repeat(2)}</Option>
               <Option value="1">1 {":star:".repeat(1)}</Option>
             </Select>
-          </Section>
+          </Actions>
         </Blocks>
       ),
     });
@@ -208,69 +206,54 @@ new Trigger({
   logLevel: "debug",
   on: slack.events.blockActionInteraction({
     blockId: BLOCK_ID,
-    actionId: ["comment_issue_123", "close_issue_123"],
+    actionId: ["status-blocked", "status-help", "rating"],
   }),
   run: async (event, ctx) => {
-    await slack.postMessageResponse("Response to user", event.response_url, {
-      text: `Thanks for clicking on the button!`,
-      replace_original: false,
+    //create promises from all the actions
+    const promises = event.actions.map((action) => {
+      switch (action.action_id) {
+        case "status-blocked": {
+          //the user is blocked so add a 😢 emoji as a reaction
+          if (event.message) {
+            return slack.addReaction("React to message", {
+              name: "cry",
+              timestamp: event.message.ts,
+              channelId: event.channel.id,
+            });
+          }
+        }
+        case "status-help": {
+          //the user needs help so add an 🆘 emoji as a reaction
+          if (event.message) {
+            return slack.addReaction("React to message", {
+              name: "sos",
+              timestamp: event.message.ts,
+              channelId: event.channel.id,
+            });
+          }
+        }
+        case "rating": {
+          if (action.type != "static_select") {
+            throw new Error("This action should be a select");
+          }
+
+          //post the rating as a message that appears below the original,
+          //only the user pressing the button will see this message
+          return slack.postMessageResponse(
+            "Added a comment to the issue",
+            event.response_url,
+            {
+              text: `You rated your day ${action.selected_option.value} stars`,
+              replace_original: false,
+            }
+          );
+        }
+        default:
+          return Promise.resolve();
+      }
     });
 
-    await slack.postMessageResponse("Respond to everyone", event.response_url, {
-      text: `Now what do you want to do about the PR review?`,
-      replace_original: false,
-      response_type: "in_channel",
-      blocks: [
-        {
-          type: "actions",
-          block_id: BLOCK_ID_2,
-          elements: [
-            {
-              type: "button",
-              action_id: "submit_review_123",
-              text: {
-                type: "plain_text",
-                text: "Submit Review",
-                emoji: true,
-              },
-              value: "submit_review",
-            },
-            {
-              type: "button",
-              action_id: "close_review_123",
-              text: {
-                type: "plain_text",
-                text: "Close Review",
-                emoji: true,
-              },
-              value: "close_review",
-            },
-          ],
-        },
-      ],
-    });
-  },
-}).listen();
-
-new Trigger({
-  id: "slack-block-interaction-rating",
-  name: "Slack get rating",
-  apiKey: "trigger_dev_zC25mKNn6c0q",
-  endpoint: "ws://localhost:8889/ws",
-  logLevel: "debug",
-  on: slack.events.blockActionInteraction({
-    blockId: BLOCK_ID_RATING,
-    actionId: ["rating"],
-  }),
-  run: async (event, ctx) => {
-    const ratingAction = event.actions.find((a) => a.action_id === "rating");
-
-    if (ratingAction?.type === "static_select") {
-      await slack.postMessageResponse("Response to user", event.response_url, {
-        text: `Thanks for rating ${ratingAction.selected_option.value}!`,
-        replace_original: false,
-      });
-    }
+    await Promise.all(promises);
   },
 }).listen();
 

@@ -28,6 +28,14 @@ Publish slack messages to a public or private channel in your Slack Workspace as
       The formatted text of the message to be published, formatted as [mrkdwn](https://api.slack.com/reference/surfaces/formatting#basics).
     </ParamField>
 
+    <ParamField path="blocks" type="object" required={false}>
+      You can use blocks to create a rich message with images, buttons, and more.
+
+      You can either pass in a JavaScript object or use [JSX Slack](https://github.com/yhatt/jsx-slack/) to create blocks. We highly recommend using JSX Slack, it's much easier to read and write. See the [block example](#) to see it in action.
+
+      Full full detail on block see the [Slack API docs](https://api.slack.com/reference/block-kit/blocks).
+    </ParamField>
+
   </Expandable>
 </ParamField>
 
@@ -69,6 +77,8 @@ Publish slack messages to a public or private channel in your Slack Workspace as
 
 ## Example Workflows
 
+### Notify Slack on New Star
+
 <CodeGroup>
 
 ```typescript Notify Slack on New Star
@@ -89,11 +99,7 @@ new Trigger({
 }).listen();
 ```
 
-</CodeGroup>
-
-## Example Response
-
-```json
+```json Example response
 {
   "ok": true,
   "ts": "1673618429.084699",
@@ -107,3 +113,128 @@ new Trigger({
   }
 }
 ```
+
+</CodeGroup>
+
+### Blocks with interactivity
+
+<CodeGroup>
+
+```typescript Blocks with interactivity
+import { slack } from "@trigger.dev/integrations";
+import JSXSlack, {
+  Actions,
+  Blocks,
+  Button,
+  Section,
+  Select,
+  Option,
+} from "jsx-slack";
+import { z } from "zod";
+
+const BLOCK_ID = "issue.action.block";
+
+//this workflow is triggered by sending a custom event
+//it posts a Slack message with some buttons
+new Trigger({
+  id: "slack-interactivity",
+  name: "Testing Slack Interactivity",
+  on: customEvent({
+    name: "slack.interact",
+    schema: z.any(),
+  }),
+  run: async (event, ctx) => {
+    await slack.postMessage("jsx-test", {
+      channelName: "test-integrations",
+      text: "Test of jsx",
+      blocks: JSXSlack(
+        <Blocks>
+          <Section>This is using jsxslack</Section>
+          <Actions blockId={BLOCK_ID}>
+            <Button value="close_issue" actionId="close_issue_123">
+              Close Issue
+            </Button>
+            <Button value="comment_issue" actionId="comment_issue_123">
+              Comment
+            </Button>
+            <Button
+              value="view_issue"
+              actionId="view_issue_123"
+              url="https://github.com/triggerdotdev/trigger.dev/issues/11"
+            >
+              Comment
+            </Button>
+          </Actions>
+        </Blocks>
+      ),
+    });
+  },
+}).listen();
+
+//this workflow receives the button click events
+new Trigger({
+  id: "slack-block-interaction",
+  name: "Slack Block Interaction",
+  on: slack.events.blockActionInteraction({
+    blockId: BLOCK_ID,
+    actionId: ["comment_issue_123", "close_issue_123"],
+  }),
+  run: async (event, ctx) => {
+    await slack.postMessageResponse("Response to user", event.response_url, {
+      text: `Thanks for clicking on the button!`,
+      replace_original: false,
+    });
+
+    await slack.postMessageResponse("Respond to everyone", event.response_url, {
+      text: `Now what do you want to do about the PR review?`,
+      replace_original: false,
+      response_type: "in_channel",
+      blocks: [
+        {
+          type: "actions",
+          block_id: BLOCK_ID_2,
+          elements: [
+            {
+              type: "button",
+              action_id: "submit_review_123",
+              text: {
+                type: "plain_text",
+                text: "Submit Review",
+                emoji: true,
+              },
+              value: "submit_review",
+            },
+            {
+              type: "button",
+              action_id: "close_review_123",
+              text: {
+                type: "plain_text",
+                text: "Close Review",
+                emoji: true,
+              },
+              value: "close_review",
+            },
+          ],
+        },
+      ],
+    });
+  },
+}).listen();
+```
+
+```json Example response
+{
+  "ok": true,
+  "ts": "1673618429.084699",
+  "channel": "C04GWUTDC3W",
+  "message": {
+    "ts": "1673618429.084699",
+    "text": "New domain created: trigger.dev by customer 1st-ever-slack-workflow-yippie",
+    "type": "message",
+    "user": "U04JTTQ08SF",
+    "bot_id": "B04JR3DCB4M"
+  }
+}
+```
+
+</CodeGroup>

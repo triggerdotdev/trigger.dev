@@ -45,30 +45,30 @@ const placeholderSchema = z.object({
 });
 const staticSelectAction = z.object({
   type: z.literal("static_select"),
-  selected_option: selectedOptionSchema,
+  selected_option: selectedOptionSchema.nullable(),
   placeholder: placeholderSchema.optional(),
 });
 
 const userSelectAction = z.object({
   type: z.literal("users_select"),
-  selected_user: z.string(),
+  selected_user: z.string().nullable(),
   initial_user: z.string().optional(),
 });
 
 const conversationsSelectAction = z.object({
   type: z.literal("conversations_select"),
-  selected_conversation: z.string(),
+  selected_conversation: z.string().nullable(),
   initial_conversation: z.string().optional(),
 });
 const channelSelectAction = z.object({
   type: z.literal("channels_select"),
-  selected_channel: z.string(),
+  selected_channel: z.string().nullable(),
   initial_channel: z.string().optional(),
 });
 
 const datePickerAction = z.object({
   type: z.literal("datepicker"),
-  selected_date: z.string(),
+  selected_date: z.string().nullable(),
   initial_date: z.string().optional(),
 });
 
@@ -84,7 +84,7 @@ const radioButtonsSchema = z.object({
 
 const timePickerSchema = z.object({
   type: z.literal("timepicker"),
-  selected_time: z.string(),
+  selected_time: z.string().nullable(),
   initial_time: z.string().optional(),
 });
 
@@ -120,8 +120,10 @@ const possibleActionsSchema = z.discriminatedUnion("type", [
   multiUsersSelectSchema,
   multiStaticSelectSchema,
 ]);
+
 const actionSchema = possibleActionsSchema.and(commonActionSchema);
 
+//state.values.issue.action.block.rating.selected_option
 const stateSchema = z.object({
   values: z.record(z.record(possibleActionsSchema)),
 });
