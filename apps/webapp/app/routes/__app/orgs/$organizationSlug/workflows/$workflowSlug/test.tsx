@@ -18,15 +18,11 @@ import { requireUserId } from "~/services/session.server";
 
 export const loader = async ({ request, params }: LoaderArgs) => {
   await requireUserId(request);
-  const { workflowSlug, organizationSlug } = params;
+  const { workflowSlug } = params;
   invariant(workflowSlug, "workflowSlug is required");
-  invariant(organizationSlug, "organizationSlug is required");
 
   try {
-    const latestRun = await getMostRecentWorkflowRun({
-      workflowSlug,
-      organizationSlug,
-    });
+    const latestRun = await getMostRecentWorkflowRun({ workflowSlug });
     return typedjson({ latestRun });
   } catch (error: any) {
     console.error(error);

@@ -25,21 +25,12 @@ export class IngestEvent {
     this.#prismaClient = prismaClient;
   }
 
-  public async call(options: IngestEventOptions, organization?: Organization) {
+  public async call(options: IngestEventOptions, organization: Organization) {
     const environment = options.apiKey
       ? await findEnvironmentByApiKey(options.apiKey)
       : undefined;
 
-    if (!environment && !organization) {
-      return {
-        status: "error" as const,
-        error: "No organization or environment found",
-      };
-    }
-
     const id = options.id ?? ulid();
-
-    const organizationId = organization?.id ?? environment?.organizationId;
 
     // Create a new event in the database
     const event = await this.#prismaClient.triggerEvent.create({
@@ -47,7 +38,7 @@ export class IngestEvent {
         id,
         organization: {
           connect: {
-            id: organizationId,
+            id: organization.id,
           },
         },
         environment: environment

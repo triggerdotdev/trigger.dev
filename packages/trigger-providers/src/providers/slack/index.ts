@@ -15,8 +15,6 @@ export const slack = {
       "groups:write",
       "im:write",
       "mpim:write",
-      "chat:write.customize",
-      "reactions:write",
     ],
   },
   schemas,

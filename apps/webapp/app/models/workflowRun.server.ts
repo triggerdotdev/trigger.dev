@@ -1,16 +1,14 @@
-import type {
-  WorkflowRun,
-  WorkflowRunStatus,
-  WorkflowRunStep,
-} from ".prisma/client";
+import type { WorkflowRun, WorkflowRunStep } from ".prisma/client";
+import type { WorkflowRunStatus } from ".prisma/client";
 import type {
   CustomEventSchema,
   ErrorSchema,
   LogMessageSchema,
 } from "@trigger.dev/common-schemas";
+import { ulid } from "ulid";
 import type { z } from "zod";
 import { prisma } from "~/db.server";
-import { IngestCustomEvent } from "~/services/events/ingestCustomEvent.server";
+import { IngestEvent } from "~/services/events/ingest.server";
 import { createStepOnce } from "./workflowRunStep.server";
 
 export type { WorkflowRun, WorkflowRunStep, WorkflowRunStatus };
@@ -162,12 +160,20 @@ export async function triggerEventInRun(
     return;
   }
 
-  const ingestService = new IngestCustomEvent();
+  const ingestService = new IngestEvent();
 
-  await ingestService.call({
-    apiKey: workflowRun.environment.apiKey,
-    event,
-  });
+  await ingestService.call(
+    {
+      id: ulid(),
+      name: event.name,
+      type: "CUSTOM_EVENT",
+      service: "trigger",
+      payload: event.payload,
+      context: event.context,
+      apiKey: workflowRun.environment.apiKey,
+    },
+    workflowRun.environment.organization
+  );
 
   await prisma.workflowRunStep.update({
     where: { id: step.step.id },
@@ -222,18 +228,13 @@ async function findWorkflowRunScopedToApiKey(id: string, apiKey: string) {
 
 export async function getMostRecentWorkflowRun({
   workflowSlug,
-  organizationSlug,
 }: {
   workflowSlug: string;
-  organizationSlug: string;
 }) {
   return prisma.workflowRun.findFirst({
     where: {
       workflow: {
         slug: workflowSlug,
-        organization: {
-          slug: organizationSlug,
-        },
       },
     },
     include: {

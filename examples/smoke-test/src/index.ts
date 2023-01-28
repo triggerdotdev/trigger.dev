@@ -23,13 +23,11 @@ const trigger = new Trigger({
     await ctx.sendEvent("start-fire", {
       name: "smoke.test",
       payload: { baz: "banana" },
-      delay: { until: new Date(Date.now() + 1000 * 60) },
     });
 
     await sendEvent("start-fire-2", {
       name: "smoke.test2",
       payload: { baz: "banana2" },
-      delay: { minutes: 1 },
     });
 
     return { foo: "bar" };
@@ -37,24 +35,6 @@ const trigger = new Trigger({
 });
 
 trigger.listen();
-
-new Trigger({
-  id: "smoke-test",
-  name: "Smoke Test",
-  apiKey: "trigger_dev_zC25mKNn6c0q",
-  endpoint: "ws://localhost:8889/ws",
-  logLevel: "debug",
-  on: customEvent({
-    name: "smoke.test",
-    schema: z.object({ baz: z.string() }),
-  }),
-  run: async (event, ctx) => {
-    await ctx.logger.info("Inside the smoke test workflow, received event", {
-      event,
-      myDate: new Date(),
-    });
-  },
-}).listen();
 
 new Trigger({
   id: "log-tests",

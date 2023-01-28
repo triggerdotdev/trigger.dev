@@ -107,9 +107,6 @@
               "fromParameterStore": "/Prod/webapp/POSTHOG_PROJECT_KEY"
             },
             "TRIGGER_LOG_LEVEL": "debug",
-            "INTERNAL_TRIGGER_API_KEY": {
-              "fromParameterStore": "/Prod/webapp/INTERNAL_TRIGGER_API_KEY"
-            },
             "PULSAR_ENABLED": "1",
             "PULSAR_DEBUG": true
           }
@@ -150,7 +147,10 @@
               "fromParameterStore": "/Prod/Pulsar/wss/Role"
             },
             "PLATFORM_API_URL": "https://app.trigger.dev",
-            "TRIGGER_LOG_LEVEL": "debug"
+            "TRIGGER_LOG_LEVEL": "debug",
+            "TRIGGER_API_KEY": {
+              "fromParameterStore": "/Prod/webapp/TRIGGER_API_KEY"
+            }
           }
         },
         {

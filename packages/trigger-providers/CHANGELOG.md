@@ -1,11 +1,5 @@
 # @trigger.dev/providers
 
-## 0.1.9
-
-### Patch Changes
-
-- b290410: Slack blocks support
-
 ## 0.1.8
 
 ### Patch Changes

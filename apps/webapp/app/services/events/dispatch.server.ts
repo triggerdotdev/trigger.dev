@@ -127,22 +127,14 @@ class EventMatcher {
 }
 
 function patternMatches(payload: any, pattern: any): boolean {
-  for (const [patternKey, patternValue] of Object.entries(pattern)) {
-    const payloadValue = payload[patternKey];
-
-    if (Array.isArray(patternValue)) {
-      if (patternValue.length > 0 && !patternValue.includes(payloadValue)) {
+  for (const [key, value] of Object.entries(pattern)) {
+    if (Array.isArray(value)) {
+      if (!value.includes(payload[key])) {
         return false;
       }
-    } else if (typeof patternValue === "object") {
-      if (Array.isArray(payloadValue)) {
-        if (!payloadValue.some((item) => patternMatches(item, patternValue))) {
-          return false;
-        }
-      } else {
-        if (!patternMatches(payloadValue, patternValue)) {
-          return false;
-        }
+    } else if (typeof value === "object") {
+      if (!patternMatches(payload[key], value)) {
+        return false;
       }
     }
   }

@@ -1,12 +1,5 @@
 # @trigger.dev/sdk
 
-## 0.2.11
-
-### Patch Changes
-
-- 52d21ac: Added support for delaying delivery when sending custom events
-- b290410: Slack blocks support
-
 ## 0.2.10
 
 ### Patch Changes

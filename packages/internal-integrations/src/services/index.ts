@@ -9,10 +9,7 @@ export type HttpServiceOptions = {
   baseUrl: string;
 };
 
-export type HttpResponse<
-  TResponseSchema extends z.ZodTypeAny,
-  TErrorResponseSchema extends z.ZodTypeAny = z.AnyZodObject
-> =
+export type HttpResponse<TResponseSchema extends z.ZodTypeAny> =
   | {
       success: true;
       statusCode: number;
@@ -23,7 +20,6 @@ export type HttpResponse<
       success: false;
       statusCode: number;
       headers: Record<string, string>;
-      error?: z.infer<TErrorResponseSchema>;
     };
 
 export class HttpService {
@@ -36,19 +32,17 @@ export class HttpService {
     endpoint: HttpEndpoint<TResponseSchema, TBodySchema>,
     body?: z.infer<TBodySchema>
   ): Promise<HttpResponse<TResponseSchema>> {
-    const url = `${this.options.baseUrl}${endpoint.options.path}`;
-    const method = endpoint.options.method;
-    const headers = {
-      Authorization: `Bearer ${this.options.accessToken}`,
-      "Content-Type": "application/json; charset=utf-8",
-    };
-    const actualBody = body ? JSON.stringify(body) : undefined;
-
-    const response = await fetch(url, {
-      method,
-      headers,
-      body: actualBody,
-    });
+    const response = await fetch(
+      `${this.options.baseUrl}${endpoint.options.path}`,
+      {
+        method: endpoint.options.method,
+        headers: {
+          Authorization: `Bearer ${this.options.accessToken}`,
+          "Content-Type": "application/json; charset=utf-8",
+        },
+        body: body ? JSON.stringify(body) : undefined,
+      }
+    );
 
     log(
       "%s%s response %d",
@@ -83,13 +77,6 @@ export class HttpService {
         parsedJson,
         parsedJson.error
       );
-
-      return {
-        success: false,
-        statusCode: response.status,
-        headers: normalizeHeaders(response.headers),
-        error: { type: "zod-parse", issues: parsedJson.error.issues },
-      };
     }
 
     return {

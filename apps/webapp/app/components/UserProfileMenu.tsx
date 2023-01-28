@@ -23,7 +23,7 @@ export function UserProfileMenu({ user }: { user: User }) {
         leaveFrom="transform opacity-100 scale-100"
         leaveTo="transform opacity-0 scale-95"
       >
-        <Menu.Items className="absolute right-0 mt-2 w-48 origin-top-right rounded-md overflow-hidden bg-slate-700 pb-1 pt-1 shadow-lg ring-1 ring-black ring-opacity-5 focus:outline-none">
+        <Menu.Items className="absolute right-0 mt-2 w-48 origin-top-right rounded-md bg-slate-700 pb-1 pt-1 shadow-lg ring-1 ring-black ring-opacity-5 focus:outline-none">
           {user.name ? (
             <Body
               size="small"
