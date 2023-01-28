@@ -97,16 +97,11 @@ export function formatDateTime(
   date: Date,
   style: "medium" | "long" = "medium"
 ): string {
-  try {
-    switch (style) {
-      case "long":
-        return dateFormatterLong.format(date);
-      case "medium":
-        return dateFormatter.format(date);
-    }
-  } catch (error) {
-    console.error(error);
-    return "Unknown";
+  switch (style) {
+    case "long":
+      return dateFormatterLong.format(date);
+    case "medium":
+      return dateFormatter.format(date);
   }
 }
 
