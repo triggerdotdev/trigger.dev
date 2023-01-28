@@ -30,23 +30,23 @@ const buttonAction = z.object({
   value: z.string(),
 });
 
+const selectedOptionSchema = z.object({
+  text: z.object({
+    type: z.string(),
+    text: z.string(),
+    emoji: z.boolean().optional(),
+  }),
+  value: z.string(),
+});
+const placeholderSchema = z.object({
+  type: z.string(),
+  text: z.string(),
+  emoji: z.boolean(),
+});
 const staticSelectAction = z.object({
   type: z.literal("static_select"),
-  selected_option: z.object({
-    text: z.object({
-      type: z.string(),
-      text: z.string(),
-      emoji: z.boolean().optional(),
-    }),
-    value: z.string(),
-  }),
-  placeholder: z
-    .object({
-      type: z.string(),
-      text: z.string(),
-      emoji: z.boolean(),
-    })
-    .optional(),
+  selected_option: selectedOptionSchema,
+  placeholder: placeholderSchema.optional(),
 });
 
 const userSelectAction = z.object({
@@ -88,6 +88,24 @@ const timePickerSchema = z.object({
   initial_time: z.string().optional(),
 });
 
+const plainTextInputSchema = z.object({
+  type: z.literal("plain_text_input"),
+  value: z.string().nullable(),
+  initial_value: z.string().optional(),
+});
+
+const multiUsersSelectSchema = z.object({
+  type: z.literal("multi_users_select"),
+  selected_users: z.array(z.string()),
+  initial_users: z.array(z.string()).optional(),
+});
+
+const multiStaticSelectSchema = z.object({
+  type: z.literal("multi_static_select"),
+  selected_options: z.array(selectedOptionSchema),
+  placeholder: placeholderSchema.optional(),
+});
+
 const possibleActionsSchema = z.discriminatedUnion("type", [
   buttonAction,
   staticSelectAction,
@@ -98,6 +116,9 @@ const possibleActionsSchema = z.discriminatedUnion("type", [
   checkboxesAction,
   radioButtonsSchema,
   timePickerSchema,
+  plainTextInputSchema,
+  multiUsersSelectSchema,
+  multiStaticSelectSchema,
 ]);
 const actionSchema = possibleActionsSchema.and(commonActionSchema);
 
