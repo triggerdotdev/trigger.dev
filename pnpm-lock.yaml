@@ -75,9 +75,7 @@ importers:
       '@testing-library/react': ^13.4.0
       '@testing-library/user-event': ^14.4.3
       '@trigger.dev/common-schemas': workspace:*
-      '@trigger.dev/integrations': workspace:*
       '@trigger.dev/providers': workspace:*
-      '@trigger.dev/sdk': workspace:*
       '@trigger.dev/tailwind-config': workspace:*
       '@types/bcryptjs': ^2.4.2
       '@types/compression': ^1.7.2
@@ -208,9 +206,7 @@ importers:
       '@tailwindcss/forms': 0.5.3_tailwindcss@3.1.8
       '@tanstack/react-table': 8.7.6_biqbaboplfbrettd7655fr4n2y
       '@trigger.dev/common-schemas': link:../../packages/common-schemas
-      '@trigger.dev/integrations': link:../../packages/trigger-integrations
       '@trigger.dev/providers': link:../../packages/trigger-providers
-      '@trigger.dev/sdk': link:../../packages/trigger-sdk
       '@uiw/react-codemirror': 4.19.5_aguurb4bmecpxzejz52amioxne
       bcryptjs: 2.4.3
       classnames: 2.3.2
