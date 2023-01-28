@@ -62,7 +62,7 @@ export function CreateNewWorkflowNoWorkflows() {
           </ol>
           <div className="flex gap-2 mb-8">
             <PrimaryA
-              href="https://docs.trigger.dev"
+              href="https://docs.trigger.dev/getting-started"
               target="_blank"
               rel="noreferrer"
             >
