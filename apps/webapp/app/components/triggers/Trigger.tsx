@@ -37,7 +37,7 @@ function SlackInteraction({
   trigger: SlackInteractionEventTrigger;
 }) {
   return (
-    <div className="flex flex-col gap-2">
+    <div className="flex flex-col">
       <div className="flex gap-2 items-baseline">
         <Body size="extra-small" className={workflowNodeUppercaseClasses}>
           Name
@@ -48,18 +48,18 @@ function SlackInteraction({
       </div>
       <div className="flex gap-2 items-baseline">
         <Body size="extra-small" className={workflowNodeUppercaseClasses}>
-          Action
-        </Body>
-        <Header2 size="small" className="text-slate-300 mb-2">
-          {trigger.source.actionIds}
-        </Header2>
-      </div>
-      <div className="flex gap-2 items-baseline">
-        <Body size="extra-small" className={workflowNodeUppercaseClasses}>
           Block
         </Body>
         <Header2 size="small" className="text-slate-300 mb-2">
           {trigger.source.blockId}
+        </Header2>
+      </div>
+      <div className="flex gap-2 items-baseline">
+        <Body size="extra-small" className={workflowNodeUppercaseClasses}>
+          Action
+        </Body>
+        <Header2 size="small" className="text-slate-300 mb-2">
+          {trigger.source.actionIds.join(", ")}
         </Header2>
       </div>
     </div>
