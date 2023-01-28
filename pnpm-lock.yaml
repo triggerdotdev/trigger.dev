@@ -164,7 +164,7 @@ importers:
       remix-auth: ^3.2.2
       remix-auth-email-link: ^1.4.2
       remix-auth-github: ^1.1.1
-      remix-typedjson: ^0.1.3
+      remix-typedjson: ~0.1.3
       remix-utils: ^3.4.0
       slug: ^6.0.0
       start-server-and-test: ^1.14.0

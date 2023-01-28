@@ -22,6 +22,7 @@ import { withSentry } from "@sentry/remix";
 import { env } from "./env.server";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { PrimaryLink } from "./components/primitives/Buttons";
+import { Body } from "./components/primitives/text/Body";
 
 export const links: LinksFunction = () => {
   return [
@@ -67,6 +68,31 @@ export function CatchBoundary() {
             <h1>
               {caught.status} {caught.statusText}
             </h1>
+            <PrimaryLink to="/" className="">
+              Back home
+            </PrimaryLink>
+          </div>
+          <Scripts />
+        </div>
+      </body>
+    </html>
+  );
+}
+
+export function ErrorBoundary({ error }: { error: any }) {
+  console.error(error);
+  return (
+    <html>
+      <head>
+        <title>Oops!</title>
+        <Meta />
+        <Links />
+      </head>
+      <body className="bg-slate-850">
+        <div className="flex items-center justify-center h-screen w-screen">
+          <div className="flex flex-col items-center justify-center space-y-4">
+            <h1>Oh no!</h1>
+            <Body size="small">{JSON.stringify(error)}</Body>
             <PrimaryLink to="/" className="">
               Back home
             </PrimaryLink>
