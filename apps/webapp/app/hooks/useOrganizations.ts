@@ -1,17 +1,17 @@
-import type {
-  getOrganizationFromSlug,
-  Organization,
-} from "~/models/organization.server";
-import type { PrismaReturnType } from "~/utils";
+import type { UseDataFunctionReturn } from "remix-typedjson";
+import type { loader as appLoader } from "~/routes/__app";
+import type { loader as orgLoader } from "~/routes/__app/orgs/$organizationSlug";
 import { hydrateObject, useMatchesData } from "~/utils";
 
-export function useOrganizations(): Organization[] | undefined {
+export function useOrganizations() {
   const routeMatch = useMatchesData("routes/__app");
 
   if (!routeMatch || !routeMatch.data.organizations) {
     return undefined;
   }
-  return hydrateObject<Organization[]>(routeMatch.data.organizations);
+  return hydrateObject<
+    UseDataFunctionReturn<typeof appLoader>["organizations"]
+  >(routeMatch.data.organizations);
 }
 
 export function useCurrentOrganization() {
@@ -26,7 +26,7 @@ export function useCurrentOrganization() {
   }
 
   const result = hydrateObject<
-    PrismaReturnType<typeof getOrganizationFromSlug>
+    UseDataFunctionReturn<typeof orgLoader>["organization"]
   >(routeMatch.data.organization);
 
   if (result == null) return undefined;
