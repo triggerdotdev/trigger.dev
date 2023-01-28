@@ -243,7 +243,7 @@ new Trigger({
             "Added a comment to the issue",
             event.response_url,
             {
-              text: `You rated your day ${action.selected_option.value} stars`,
+              text: `You rated your day ${action.selected_option?.value} stars`,
               replace_original: false,
             }
           );
