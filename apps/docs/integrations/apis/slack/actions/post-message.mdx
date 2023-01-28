@@ -127,12 +127,9 @@ In this examples there are two workflows:
 1. Messages your team every minute (!) and asks them how they're doing.
 2. Receives the interaction from users. It adds reactions when the buttons are pressed and posts a message when a user selects from the dropdown menu.
 
-Please note, that to use `jsx-slack` you will need to add the `jsxImportSource` pragma to the top of your file. This is because `jsx-slack` is not a React library, but it uses the same syntax as React. Also, you might need to add `"jsx": "react-jsx"` to your `compilerOption` in `tsconfig.json`. The workflow file needs to be a `.jsx` or `.tsx` file (like when you use React).
-
 <CodeGroup>
 
-```typescript workflow.tsx
-/** @jsxImportSource jsx-slack */
+```typescript Blocks with interactivity
 import { slack } from "@trigger.dev/integrations";
 import JSXSlack, {
   Actions,
@@ -210,7 +207,6 @@ new Trigger({
               channelId: event.channel.id,
             });
           }
-          break;
         }
         case "status-help": {
           //the user needs help so add an 🆘 emoji as a reaction
@@ -221,7 +217,6 @@ new Trigger({
               channelId: event.channel.id,
             });
           }
-          break;
         }
         case "rating": {
           if (action.type != "static_select") {
@@ -247,16 +242,6 @@ new Trigger({
     await Promise.all(promises);
   },
 }).listen();
-```
-
-```json tsconfig.json
-{
-  //other options
-  "compilerOptions": {
-    "jsx": "react-jsx"
-    //other options
-  }
-}
 ```
 
 </CodeGroup>

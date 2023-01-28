@@ -221,7 +221,6 @@ new Trigger({
               channelId: event.channel.id,
             });
           }
-          break;
         }
         case "status-help": {
           //the user needs help so add an 🆘 emoji as a reaction
@@ -232,7 +231,6 @@ new Trigger({
               channelId: event.channel.id,
             });
           }
-          break;
         }
         case "rating": {
           if (action.type != "static_select") {

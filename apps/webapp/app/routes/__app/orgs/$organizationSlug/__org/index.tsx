@@ -184,18 +184,15 @@ function WorkflowList({
 }
 
 function lastRunDescription(lastRun: WorkflowListItem["lastRun"]) {
-  if (lastRun === null || lastRun === undefined) {
+  if (lastRun === undefined) {
     return "Never";
   }
-
   if (lastRun.status === "SUCCESS") {
     if (lastRun.finishedAt) {
       return formatDateTime(lastRun.finishedAt);
-    } else {
-      return "Unknown";
     }
+    throw new Error("lastRun.finishedAt is undefined");
   }
-
   return runStatusLabel(lastRun.status);
 }
 
