@@ -9,10 +9,10 @@ import {
 } from "@heroicons/react/24/outline";
 import {
   ArrowPathRoundedSquareIcon,
+  ChatBubbleOvalLeftEllipsisIcon,
   CheckCircleIcon,
   ExclamationCircleIcon,
   ExclamationTriangleIcon,
-  ChatBubbleOvalLeftEllipsisIcon,
 } from "@heroicons/react/24/solid";
 import { useFetcher } from "@remix-run/react";
 import type { LoaderArgs } from "@remix-run/server-runtime";
@@ -623,6 +623,40 @@ function CustomEventStep({ event }: { event: StepType<Step, "CUSTOM_EVENT"> }) {
       <Header2 size="small" className="text-slate-300 mb-2">
         {event.input.name}
       </Header2>
+      {"delay" in event.input && event.input.delay && (
+        <>
+          <Body size="extra-small" className={workflowNodeUppercaseClasses}>
+            Delay
+          </Body>
+          <Body size="small" className="text-slate-300 mb-2">
+            {"seconds" in event.input.delay ? (
+              <>
+                {event.input.delay.seconds}{" "}
+                {event.input.delay.seconds > 1 ? "seconds" : "second"}
+              </>
+            ) : "minutes" in event.input.delay ? (
+              <>
+                {event.input.delay.minutes}{" "}
+                {event.input.delay.minutes > 1 ? "minutes" : "minute"}
+              </>
+            ) : "hours" in event.input.delay ? (
+              <>
+                {event.input.delay.hours}{" "}
+                {event.input.delay.hours > 1 ? "hours" : "hour"}
+              </>
+            ) : "days" in event.input.delay ? (
+              <>
+                {event.input.delay.days}{" "}
+                {event.input.delay.days > 1 ? "days" : "day"}
+              </>
+            ) : "until" in event.input.delay ? (
+              <>Until {event.input.delay.until}</>
+            ) : (
+              <></>
+            )}
+          </Body>
+        </>
+      )}
       <Header4>Payload</Header4>
       <CodeBlock code={stringifyCode(event.input.payload)} align="top" />
       {event.input.context && (
@@ -678,7 +712,11 @@ function IntegrationRequestStep({
         {request.input && (
           <>
             <InputTitle />
-            <CodeBlock code={stringifyCode(request.input)} align="top" />
+            <CodeBlock
+              code={stringifyCode(request.input)}
+              align="top"
+              maxHeight="200px"
+            />
           </>
         )}
       </div>

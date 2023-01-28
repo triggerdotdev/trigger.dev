@@ -1,5 +1,15 @@
 # @trigger.dev/integrations
 
+## 0.1.15
+
+### Patch Changes
+
+- b290410: Slack blocks support
+- Updated dependencies [52d21ac]
+- Updated dependencies [b290410]
+  - @trigger.dev/sdk@0.2.11
+  - @trigger.dev/providers@0.1.9
+
 ## 0.1.14
 
 ### Patch Changes

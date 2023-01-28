@@ -6,6 +6,7 @@
   "dependencies": {
     "@trigger.dev/integrations": "workspace:*",
     "@trigger.dev/sdk": "workspace:*",
+    "jsx-slack": "^5.3.0",
     "zod": "^3.20.2"
   },
   "devDependencies": {
@@ -14,6 +15,6 @@
     "tsx": "^3.12.0"
   },
   "scripts": {
-    "dev": "tsx src/index.ts"
+    "dev": "tsx src/index.tsx"
   }
 }

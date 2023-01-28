@@ -1,5 +1,6 @@
 import type { FetchOutputSchema } from "@trigger.dev/common-schemas";
 import {
+  CustomEventSchema,
   JsonSchema,
   ScheduledEventPayloadSchema,
 } from "@trigger.dev/common-schemas";
@@ -34,6 +35,7 @@ import { InitiateDelay } from "./delays/initiateDelay.server";
 import { ResolveDelay } from "./delays/resolveDelay.server";
 import { sendEmail } from "./email.server";
 import { DispatchEvent } from "./events/dispatch.server";
+import { IngestCustomEvent } from "./events/ingestCustomEvent.server";
 import { HandleNewServiceConnection } from "./externalServices/handleNewConnection.server";
 import { RegisterExternalSource } from "./externalSources/registerExternalSource.server";
 import { CreateFetchRequest } from "./fetches/createFetchRequest.server";
@@ -49,6 +51,7 @@ import { WorkflowRunDisconnected } from "./runs/runDisconnected.server";
 import { WorkflowRunTriggerTimeout } from "./runs/runTriggerTimeout.server";
 import { DeliverScheduledEvent } from "./scheduler/deliverScheduledEvent.server";
 import { RegisterSchedulerSource } from "./scheduler/registerSchedulerSource.server";
+import { omit } from "~/utils/objects";
 
 let pulsarClient: PulsarClient;
 let triggerPublisher: ZodPublisher<TriggerCatalog>;
@@ -372,6 +375,14 @@ const taskQueueCatalog = {
     data: z.object({ id: z.string() }),
     properties: z.object({}),
   },
+  INGEST_DELAYED_EVENT: {
+    data: z.object({
+      id: z.string().optional(),
+      apiKey: z.string(),
+      event: CustomEventSchema.omit({ delay: true }),
+    }),
+    properties: z.object({}),
+  },
   TRIGGER_WORKFLOW_RUN: {
     data: z.object({ id: z.string() }),
     properties: z.object({}),
@@ -417,6 +428,10 @@ const taskQueueCatalog = {
       externalSourceId: z.string(),
       payload: ScheduledEventPayloadSchema,
     }),
+    properties: z.object({}),
+  },
+  SEND_INTERNAL_EVENT: {
+    data: CustomEventSchema.extend({ id: z.string() }),
     properties: z.object({}),
   },
 };
@@ -640,6 +655,17 @@ function createTaskQueue() {
 
         return true;
       },
+      INGEST_DELAYED_EVENT: async (id, data, properties, attributes) => {
+        if (attributes.redeliveryCount >= 4) {
+          return true;
+        }
+
+        const ingestService = new IngestCustomEvent();
+
+        await ingestService.call(data);
+
+        return true;
+      },
       TRIGGER_WORKFLOW_RUN: async (id, data, properties) => {
         const run = await findWorklowRunById(data.id);
 
@@ -678,6 +704,25 @@ function createTaskQueue() {
         const service = new DeliverScheduledEvent();
 
         return service.call(data.externalSourceId, data.payload);
+      },
+      SEND_INTERNAL_EVENT: async (id, data, properties, attributes) => {
+        if (attributes.redeliveryCount >= 4) {
+          return true;
+        }
+
+        if (!env.INTERNAL_TRIGGER_API_KEY) {
+          return true;
+        }
+
+        const service = new IngestCustomEvent();
+
+        await service.call({
+          id: data.id,
+          event: omit(data, ["id"]),
+          apiKey: env.INTERNAL_TRIGGER_API_KEY,
+        });
+
+        return true;
       },
     },
   });

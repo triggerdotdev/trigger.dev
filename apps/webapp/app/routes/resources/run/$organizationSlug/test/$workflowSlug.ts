@@ -13,6 +13,7 @@ import {
 import { getWorkflowFromSlugs } from "~/models/workflow.server";
 import { CreateWorkflowTestRun } from "~/services/runs/createTestRun.server";
 import { requireUserId } from "~/services/session.server";
+import { safeJsonParse } from "~/utils/json";
 
 const requestSchema = z.object({
   eventName: z.string(),
@@ -39,7 +40,15 @@ export const action = async ({ request, params }: ActionArgs) => {
     const body = Object.fromEntries(formData.entries());
     const { eventName, payload, source } = requestSchema.parse(body);
 
-    const jsonPayload = JSON.parse(payload);
+    const jsonPayload = safeJsonParse(payload);
+
+    if (!jsonPayload) {
+      return redirectWithErrorMessage(
+        redirectUriForSource(source, organizationSlug, workflowSlug),
+        request,
+        "Invalid JSON payload"
+      );
+    }
 
     const workflow = await getWorkflowFromSlugs({
       userId,
@@ -97,6 +106,19 @@ export const action = async ({ request, params }: ActionArgs) => {
     throw new Response(error.message, { status: 400 });
   }
 };
+
+function redirectUriForSource(
+  source: "rerun" | "test",
+  organizationSlug: string,
+  workflowSlug: string,
+  runId?: string
+) {
+  if (source === "rerun") {
+    return `/orgs/${organizationSlug}/workflows/${workflowSlug}/runs/${runId}`;
+  } else {
+    return `/orgs/${organizationSlug}/workflows/${workflowSlug}/test`;
+  }
+}
 
 function errorMessageForSource(source: "rerun" | "test") {
   if (source === "rerun") {
