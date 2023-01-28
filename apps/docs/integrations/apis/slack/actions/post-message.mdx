@@ -28,6 +28,14 @@ Publish slack messages to a public or private channel in your Slack Workspace as
       The formatted text of the message to be published, formatted as [mrkdwn](https://api.slack.com/reference/surfaces/formatting#basics).
     </ParamField>
 
+    <ParamField path="blocks" type="object" required={false}>
+      You can use blocks to create a rich message with images, buttons, and more.
+
+      You can either pass in a JavaScript object or use [JSX Slack](https://github.com/yhatt/jsx-slack/) to create blocks. We highly recommend using JSX Slack, it's much easier to read and write. See the [block example](#) to see it in action.
+
+      Full full detail on block see the [Slack API docs](https://api.slack.com/reference/block-kit/blocks).
+    </ParamField>
+
   </Expandable>
 </ParamField>
 
@@ -69,6 +77,8 @@ Publish slack messages to a public or private channel in your Slack Workspace as
 
 ## Example Workflows
 
+### Notify Slack on New Star
+
 <CodeGroup>
 
 ```typescript Notify Slack on New Star
@@ -89,11 +99,7 @@ new Trigger({
 }).listen();
 ```
 
-</CodeGroup>
-
-## Example Response
-
-```json
+```json Example response
 {
   "ok": true,
   "ts": "1673618429.084699",
@@ -107,3 +113,135 @@ new Trigger({
   }
 }
 ```
+
+</CodeGroup>
+
+### Blocks with interactivity
+
+You can add interaction and richer visual elements using Blocks. The easiest way to add them is using `jsx-slack` (which is a separate npm package that you can install).
+
+This example messages your team every minute (!) and asks them how they're doing. There are two buttons and a dropdown menu.
+
+In this examples there are two workflows:
+
+1. Messages your team every minute (!) and asks them how they're doing.
+2. Receives the interaction from users. It adds reactions when the buttons are pressed and posts a message when a user selects from the dropdown menu.
+
+<CodeGroup>
+
+```typescript Blocks with interactivity
+import { slack } from "@trigger.dev/integrations";
+import JSXSlack, {
+  Actions,
+  Blocks,
+  Button,
+  Section,
+  Select,
+  Option,
+} from "jsx-slack";
+import { z } from "zod";
+
+const BLOCK_ID = "issue.action.block";
+
+//1. every minute see how your employees are doing, we don't recommend this frequency 😉
+new Trigger({
+  id: "slack-interactivity",
+  name: "Testing Slack Interactivity",
+  on: scheduleEvent({
+    rateOf: {
+      minutes: 1,
+    },
+  }),
+  run: async (event, ctx) => {
+    await slack.postMessage("jsx-test", {
+      channelName: "test-integrations",
+      //text appears in Slack notifications on mobile/desktop
+      text: "How is your progress today?",
+      //import and use JSXSlack to make creating rich messages much easier
+      blocks: JSXSlack(
+        <Blocks>
+          <Section>How is your progress today?</Section>
+          <Actions blockId={BLOCK_ID}>
+            <Button value="blocked" actionId="status-blocked">
+              I'm blocked
+            </Button>
+            <Button
+              value="help"
+              actionId="status-help"
+              url="https://xkcd.com/1349/"
+            >
+              Get help
+            </Button>
+            <Select actionId="rating" placeholder="Rate it!">
+              <Option value="5">5 {":star:".repeat(5)}</Option>
+              <Option value="4">4 {":star:".repeat(4)}</Option>
+              <Option value="3">3 {":star:".repeat(3)}</Option>
+              <Option value="2">2 {":star:".repeat(2)}</Option>
+              <Option value="1">1 {":star:".repeat(1)}</Option>
+            </Select>
+          </Actions>
+        </Blocks>
+      ),
+    });
+  },
+}).listen();
+
+//2. this workflow listens for Slack interactions filtered by the block id and actions we used above
+new Trigger({
+  id: "slack-block-interaction",
+  name: "Slack Block Interaction",
+  on: slack.events.blockActionInteraction({
+    blockId: BLOCK_ID,
+    actionId: ["status-blocked", "status-help", "rating"],
+  }),
+  run: async (event, ctx) => {
+    //create promises from all the actions
+    const promises = event.actions.map((action) => {
+      switch (action.action_id) {
+        case "status-blocked": {
+          //the user is blocked so add a 😢 emoji as a reaction
+          if (event.message) {
+            return slack.addReaction("React to message", {
+              name: "cry",
+              timestamp: event.message.ts,
+              channelId: event.channel.id,
+            });
+          }
+        }
+        case "status-help": {
+          //the user needs help so add an 🆘 emoji as a reaction
+          if (event.message) {
+            return slack.addReaction("React to message", {
+              name: "sos",
+              timestamp: event.message.ts,
+              channelId: event.channel.id,
+            });
+          }
+        }
+        case "rating": {
+          if (action.type != "static_select") {
+            throw new Error("This action should be a select");
+          }
+
+          //post the rating as a message that appears below the original,
+          //only the user pressing the button will see this message
+          return slack.postMessageResponse(
+            "Added a comment to the issue",
+            event.response_url,
+            {
+              text: `You rated your day ${action.selected_option?.value} stars`,
+              replace_original: false,
+            }
+          );
+        }
+        default:
+          return Promise.resolve();
+      }
+    });
+
+    await Promise.all(promises);
+  },
+}).listen();
+```
+
+</CodeGroup>
