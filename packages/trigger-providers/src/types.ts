@@ -9,6 +9,8 @@ export type Provider = {
   schemas: Record<string, ZodTypeAny>;
 };
 
+export type SerializableProvider = Omit<Provider, "schemas">;
+
 export type OAuthAuthentication = {
   type: "oauth";
   scopes: string[];

@@ -1,5 +1,3 @@
-import type { Provider } from "@trigger.dev/providers";
-
 type Props = Omit<
   React.DetailedHTMLProps<
     React.ImgHTMLAttributes<HTMLImageElement>,
@@ -7,7 +5,7 @@ type Props = Omit<
   >,
   "src" | "alt"
 > & {
-  integration?: Provider;
+  integration?: { icon: string; name: string };
   size?: Size;
 };
 
