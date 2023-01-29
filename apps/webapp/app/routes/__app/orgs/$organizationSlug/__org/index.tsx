@@ -8,7 +8,8 @@ import classNames from "classnames";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import invariant from "tiny-invariant";
 import { ApiLogoIcon } from "~/components/code/ApiLogoIcon";
-import CreateNewWorkflow, {
+import {
+  CreateNewWorkflow,
   CreateNewWorkflowNoWorkflows,
 } from "~/components/CreateNewWorkflow";
 import { Container } from "~/components/layout/Container";
@@ -20,6 +21,7 @@ import { Title } from "~/components/primitives/text/Title";
 import { runStatusLabel } from "~/components/runs/runStatus";
 import { TriggerTypeIcon } from "~/components/triggers/TriggerIcons";
 import { useCurrentOrganization } from "~/hooks/useOrganizations";
+import { getIntegrations } from "~/models/integrations.server";
 import { getRuntimeEnvironmentFromRequest } from "~/models/runtimeEnvironment.server";
 import type { WorkflowListItem } from "~/models/workflowListPresenter.server";
 import { WorkflowListPresenter } from "~/models/workflowListPresenter.server";
@@ -30,13 +32,14 @@ export const loader = async ({ request, params }: LoaderArgs) => {
   await requireUserId(request);
   invariant(params.organizationSlug, "Organization slug is required");
 
+  const providers = getIntegrations(false);
   const currentEnv = await getRuntimeEnvironmentFromRequest(request);
 
   const presenter = new WorkflowListPresenter();
 
   try {
     const workflows = await presenter.data(params.organizationSlug, currentEnv);
-    return typedjson({ workflows });
+    return typedjson({ workflows, providers });
   } catch (error: any) {
     console.error(error);
     throw new Response("Error ", { status: 400 });
@@ -44,7 +47,7 @@ export const loader = async ({ request, params }: LoaderArgs) => {
 };
 
 export default function Page() {
-  const { workflows } = useTypedLoaderData<typeof loader>();
+  const { workflows, providers } = useTypedLoaderData<typeof loader>();
   const currentOrganization = useCurrentOrganization();
   if (currentOrganization === undefined) {
     return <></>;
@@ -56,7 +59,7 @@ export default function Page() {
       {workflows.length === 0 ? (
         <>
           <SubTitle>Create your first workflow</SubTitle>
-          <CreateNewWorkflowNoWorkflows />
+          <CreateNewWorkflowNoWorkflows providers={providers} />
         </>
       ) : (
         <>
