@@ -4,32 +4,30 @@ sidebarTitle: "GitHub"
 description: "Here are some example workflows you could create using the GitHub integration."
 ---
 
-You can explore all the supported GitHub functions [here](/integrations/apis/github/events/push).
-
 ## When a GitHub issue is created or modified, post to Slack
 
 Integrations required: GitHub, Slack
 
 ```ts
-import { Trigger, customEvent } from "@trigger.dev/sdk";
 import { github, slack } from "@trigger.dev/integrations";
-import { z } from "zod";
+import { Trigger } from "@trigger.dev/sdk";
 
 new Trigger({
-  id: "my-workflow-1",
-  name: "Posts to Slack when GitHub Issue created or modified",
-  apiKey: "<my_api_key>",
-  on: github.events.issueEvent({
-    repo: "my-github-org/my-github-repo",
+  id: "new-github-star-to-slack",
+  name: "New GitHub Star",
+  apiKey: "<your_api_key>",
+  logLevel: "debug",
+  on: github.events.newStarEvent({
+    repo: "triggerdotdev/trigger.dev",
   }),
 
-  run: async (event, ctx) => {
-    const response = await slack.postMessage("send-to-slack", {
-      channelName: "my-slack-channel-name",
-      text: `A new issue has been created or modified. ${event.action}`,
+  run: async (event) => {
+    await slack.postMessage("github-stars", {
+      channelName: "github-stars",
+      text: `New GitHub star from \n<${event.sender.html_url}|${event.sender.login}>`,
     });
-
-    return response.message;
   },
 }).listen();
 ```
+
+You can explore all the supported GitHub functions [here](/integrations/apis/github/events/push).
