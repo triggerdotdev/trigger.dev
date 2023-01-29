@@ -84,6 +84,7 @@
     "internal-platform": "workspace:*",
     "internal-pulsar": "workspace:*",
     "ioredis": "^5.2.4",
+    "isbot": "^3.6.5",
     "javascript-time-ago": "^2.5.7",
     "json-query": "^2.2.2",
     "jsonata": "^1.8.6",
