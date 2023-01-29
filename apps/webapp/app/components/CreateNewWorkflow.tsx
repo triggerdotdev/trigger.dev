@@ -1,9 +1,7 @@
 import { ArrowTopRightOnSquareIcon } from "@heroicons/react/24/outline";
-import { useLoaderData } from "@remix-run/react";
-import type { LoaderArgs } from "@remix-run/server-runtime";
+import { SerializableProvider } from "@trigger.dev/providers";
 import { PopupButton } from "@typeform/embed-react";
 import { ApiLogoIcon } from "~/components/code/ApiLogoIcon";
-import { getIntegrations } from "~/models/integrations.server";
 import discord from "../assets/images/discord.png";
 import onboarding from "../assets/images/onboarding-image.png";
 import { Panel } from "./layout/Panel";
@@ -11,13 +9,7 @@ import { PrimaryA, SecondaryA } from "./primitives/Buttons";
 import { Body } from "./primitives/text/Body";
 import { SubTitle } from "./primitives/text/SubTitle";
 
-export async function loader({ params }: LoaderArgs) {
-  const integrations = getIntegrations(false);
-
-  return { integrations };
-}
-
-export default function CreateNewWorkflow() {
+export function CreateNewWorkflow() {
   return (
     <>
       <SubTitle>Create a new workflow</SubTitle>
@@ -43,9 +35,11 @@ export default function CreateNewWorkflow() {
   );
 }
 
-export function CreateNewWorkflowNoWorkflows() {
-  const { integrations } = useLoaderData<typeof loader>();
-
+export function CreateNewWorkflowNoWorkflows({
+  providers,
+}: {
+  providers: SerializableProvider[];
+}) {
   return (
     <>
       <Panel className="flex p-0 overflow-hidden">
@@ -104,7 +98,7 @@ export function CreateNewWorkflowNoWorkflows() {
             and we'll add it.
           </Body>
           <div className="flex gap-2 items-center flex-wrap mb-8">
-            {integrations.map((provider) => (
+            {providers.map((provider) => (
               <ApiLogoIcon
                 key={provider.slug}
                 integration={provider}
