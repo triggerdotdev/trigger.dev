@@ -128,6 +128,7 @@ importers:
       internal-platform: workspace:*
       internal-pulsar: workspace:*
       ioredis: ^5.2.4
+      isbot: ^3.6.5
       javascript-time-ago: ^2.5.7
       json-query: ^2.2.2
       jsonata: ^1.8.6
@@ -228,6 +229,7 @@ importers:
       internal-platform: link:../../packages/internal-platform
       internal-pulsar: link:../../packages/internal-pulsar
       ioredis: 5.2.4
+      isbot: 3.6.5
       javascript-time-ago: 2.5.9
       json-query: 2.2.2
       jsonata: 1.8.6
@@ -10886,6 +10888,11 @@ packages:
   /isarray/2.0.5:
     resolution: {integrity: sha512-xHjhDr3cNBK0BzdUJSPXZntQUx/mwMS5Rw4A7lPJ90XGAO6ISP/ePDNuo0vhqOZU+UD5JoodwCAAoZQd3FeAKw==}
     dev: true
+
+  /isbot/3.6.5:
+    resolution: {integrity: sha512-BchONELXt6yMad++BwGpa0oQxo/uD0keL7N15cYVf0A1oMIoNQ79OqeYdPMFWDrNhCqCbRuw9Y9F3QBjvAxZ5g==}
+    engines: {node: '>=12'}
+    dev: false
 
   /isexe/2.0.0:
     resolution: {integrity: sha512-RHxMLp9lnKHGHRng9QFhRCMbYAcVpn69smSGcq3f36xjgVVWThj4qqLbTLlq7Ssj8B+fIQ1EuCEGI2lKsyQeIw==}

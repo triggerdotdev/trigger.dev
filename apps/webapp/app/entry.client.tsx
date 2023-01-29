@@ -2,8 +2,25 @@ import { RemixBrowser, useLocation, useMatches } from "@remix-run/react";
 import { hydrateRoot } from "react-dom/client";
 import * as Sentry from "@sentry/remix";
 import { useEffect } from "react";
+import { startTransition, StrictMode } from "react";
 
-hydrateRoot(document, <RemixBrowser />);
+const hydrate = () =>
+  startTransition(() => {
+    hydrateRoot(
+      document,
+      <StrictMode>
+        <RemixBrowser />
+      </StrictMode>
+    );
+  });
+
+if (window.requestIdleCallback) {
+  window.requestIdleCallback(hydrate);
+} else {
+  // Safari doesn't support requestIdleCallback
+  // https://caniuse.com/requestidlecallback
+  window.setTimeout(hydrate, 1);
+}
 
 if (process.env.NODE_ENV === "production") {
   Sentry.init({
