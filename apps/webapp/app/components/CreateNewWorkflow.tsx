@@ -7,6 +7,7 @@ import { ApiLogoIcon } from "~/components/code/ApiLogoIcon";
 import { getProviders } from "@trigger.dev/providers";
 import onboarding from "../assets/images/onboarding-image.png";
 import discord from "../assets/images/discord.png";
+import { PopupButton } from "@typeform/embed-react";
 
 export default function CreateNewWorkflow() {
   return (
@@ -84,15 +85,15 @@ export function CreateNewWorkflowNoWorkflows() {
           <Body className="mb-4">
             Easily authenticate with APIs using the supported integrations
             below. If there's an integration we don't yet support,{" "}
-            <a
-              href="mailto:hello@trigger.dev"
-              className="text-slate-300 underline"
+            <PopupButton
+              id="VwblgGDZ"
+              className="underline opacity-80 hover:opacity-100 transition underline-offset-2"
             >
-              let us know
-            </a>{" "}
+              <span>vote for it here</span>
+            </PopupButton>{" "}
             and we'll add it.
           </Body>
-          <div className="flex gap-2 items-center mb-8">
+          <div className="flex gap-2 items-center flex-wrap mb-8">
             {getProviders(false).map((provider) => (
               <ApiLogoIcon
                 key={provider.slug}
