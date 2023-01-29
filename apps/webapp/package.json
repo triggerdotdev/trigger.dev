@@ -64,6 +64,7 @@
     "@tanstack/react-table": "^8.0.0-alpha.87",
     "@trigger.dev/common-schemas": "workspace:*",
     "@trigger.dev/providers": "workspace:*",
+    "@typeform/embed-react": "^2.14.1",
     "@uiw/react-codemirror": "^4.13.2",
     "bcryptjs": "^2.4.3",
     "classnames": "^2.3.1",

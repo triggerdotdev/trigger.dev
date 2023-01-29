@@ -1,5 +1,12 @@
 # @trigger.dev/integrations
 
+## 0.1.16
+
+### Patch Changes
+
+- Updated dependencies [5035e10]
+  - @trigger.dev/providers@0.1.10
+
 ## 0.1.15
 
 ### Patch Changes

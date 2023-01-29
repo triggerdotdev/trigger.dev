@@ -1,12 +1,21 @@
 import { ArrowTopRightOnSquareIcon } from "@heroicons/react/24/outline";
+import { useLoaderData } from "@remix-run/react";
+import type { LoaderArgs } from "@remix-run/server-runtime";
+import { PopupButton } from "@typeform/embed-react";
+import { ApiLogoIcon } from "~/components/code/ApiLogoIcon";
+import { getIntegrations } from "~/models/integrations.server";
+import discord from "../assets/images/discord.png";
+import onboarding from "../assets/images/onboarding-image.png";
 import { Panel } from "./layout/Panel";
 import { PrimaryA, SecondaryA } from "./primitives/Buttons";
 import { Body } from "./primitives/text/Body";
 import { SubTitle } from "./primitives/text/SubTitle";
-import { ApiLogoIcon } from "~/components/code/ApiLogoIcon";
-import { getProviders } from "@trigger.dev/providers";
-import onboarding from "../assets/images/onboarding-image.png";
-import discord from "../assets/images/discord.png";
+
+export async function loader({ params }: LoaderArgs) {
+  const integrations = getIntegrations(false);
+
+  return { integrations };
+}
 
 export default function CreateNewWorkflow() {
   return (
@@ -35,6 +44,8 @@ export default function CreateNewWorkflow() {
 }
 
 export function CreateNewWorkflowNoWorkflows() {
+  const { integrations } = useLoaderData<typeof loader>();
+
   return (
     <>
       <Panel className="flex p-0 overflow-hidden">
@@ -84,16 +95,16 @@ export function CreateNewWorkflowNoWorkflows() {
           <Body className="mb-4">
             Easily authenticate with APIs using the supported integrations
             below. If there's an integration we don't yet support,{" "}
-            <a
-              href="mailto:hello@trigger.dev"
-              className="text-slate-300 underline"
+            <PopupButton
+              id="VwblgGDZ"
+              className="underline opacity-80 hover:opacity-100 transition underline-offset-2"
             >
-              let us know
-            </a>{" "}
+              <span>vote for it here</span>
+            </PopupButton>{" "}
             and we'll add it.
           </Body>
-          <div className="flex gap-2 items-center mb-8">
-            {getProviders(false).map((provider) => (
+          <div className="flex gap-2 items-center flex-wrap mb-8">
+            {integrations.map((provider) => (
               <ApiLogoIcon
                 key={provider.slug}
                 integration={provider}

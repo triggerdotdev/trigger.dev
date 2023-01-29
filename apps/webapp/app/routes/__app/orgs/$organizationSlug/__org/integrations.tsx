@@ -1,7 +1,7 @@
 import { EnvelopeIcon } from "@heroicons/react/24/outline";
 import { PlusCircleIcon } from "@heroicons/react/24/solid";
 import type { LoaderArgs } from "@remix-run/server-runtime";
-import type { Provider } from "@trigger.dev/providers";
+import type { SerializableProvider } from "@trigger.dev/providers";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import invariant from "tiny-invariant";
 import { ApiLogoIcon } from "~/components/code/ApiLogoIcon";
@@ -123,7 +123,7 @@ function AddButtonContent({
   integration,
   status,
 }: {
-  integration: Provider;
+  integration: SerializableProvider;
   status: Status;
 }) {
   return (

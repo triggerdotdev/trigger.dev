@@ -1,14 +1,14 @@
 import type { SecureString } from "@trigger.dev/common-schemas";
-import { FetchResponseSchema } from "@trigger.dev/common-schemas";
 import {
   CustomEventSchema,
   ErrorSchema,
   FetchRequestSchema,
+  FetchResponseSchema,
   LogMessageSchema,
   TriggerMetadataSchema,
   WaitSchema,
 } from "@trigger.dev/common-schemas";
-import type { Provider } from "@trigger.dev/providers";
+import type { SerializableProvider } from "@trigger.dev/providers";
 import type { DisplayProperties } from "internal-integrations";
 import { integrations as internalIntegrations } from "internal-integrations";
 import invariant from "tiny-invariant";
@@ -78,7 +78,7 @@ async function parseStep(
   original: NonNullable<
     PrismaReturnType<typeof getWorkflowRun>
   >["tasks"][number],
-  integrations: Provider[]
+  integrations: SerializableProvider[]
 ) {
   const base = {
     id: original.id,

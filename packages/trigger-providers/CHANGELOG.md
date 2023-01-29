@@ -1,5 +1,11 @@
 # @trigger.dev/providers
 
+## 0.1.10
+
+### Patch Changes
+
+- 5035e10: Create SerializableProvider and omit non-serializable data from getProviders
+
 ## 0.1.9
 
 ### Patch Changes

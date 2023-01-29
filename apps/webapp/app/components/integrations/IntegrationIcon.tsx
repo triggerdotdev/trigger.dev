@@ -1,6 +1,10 @@
-import type { Provider } from "@trigger.dev/providers";
+import type { SerializableProvider } from "@trigger.dev/providers";
 
-export function IntegrationIcon({ integration }: { integration: Provider }) {
+export function IntegrationIcon({
+  integration,
+}: {
+  integration: SerializableProvider;
+}) {
   return (
     <img
       src={integration.icon}

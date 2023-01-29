@@ -1,16 +1,19 @@
-import type { APIKeyAuthentication, Provider } from "@trigger.dev/providers";
+import { InformationCircleIcon } from "@heroicons/react/24/outline";
+import type {
+  APIKeyAuthentication,
+  SerializableProvider,
+} from "@trigger.dev/providers";
 import { marked } from "marked";
 import { Fragment, useEffect, useState } from "react";
+import { useTypedFetcher } from "remix-typedjson";
+import type { Response as CreateResponse } from "~/routes/resources/connection";
 import { PrimaryButton, SecondaryButton } from "../primitives/Buttons";
 import { StyledDialog } from "../primitives/Dialog";
 import { FormError } from "../primitives/FormError";
 import { Input } from "../primitives/Input";
 import { InputGroup } from "../primitives/InputGroup";
 import { Label } from "../primitives/Label";
-import type { Response as CreateResponse } from "~/routes/resources/connection";
-import { useTypedFetcher } from "remix-typedjson";
 import { Body } from "../primitives/text/Body";
-import { InformationCircleIcon } from "@heroicons/react/24/outline";
 
 type Status = "loading" | "idle";
 
@@ -23,7 +26,7 @@ export function AddApiKeyButton({
   className,
   children,
 }: {
-  integration: Provider;
+  integration: SerializableProvider;
   authentication: APIKeyAuthentication;
   organizationId: string;
   sourceId?: string;

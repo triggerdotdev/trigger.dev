@@ -11,7 +11,7 @@ export default function AppLayout() {
   return (
     <>
       <div className="flex items-center justify-center m-20">
-        <ul className="grid grid-cols-3 max-w-8xl gap-2">
+        <ul className="grid grid-cols-4 max-w-8xl gap-2">
           {organizations ? (
             <OrganizationGrid organizations={organizations} />
           ) : (

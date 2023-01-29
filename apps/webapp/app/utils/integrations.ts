@@ -1,5 +1,8 @@
-import type { Provider } from "@trigger.dev/providers";
+import type { SerializableProvider } from "@trigger.dev/providers";
 
-export function getIntegration(integrations: Provider[], service?: string) {
+export function getIntegration(
+  integrations: SerializableProvider[],
+  service?: string
+) {
   return integrations.find((i) => i.slug === service);
 }

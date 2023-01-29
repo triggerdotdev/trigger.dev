@@ -182,4 +182,34 @@ const messageActionSchema = z.object({
     .optional(),
 });
 
-export const blockAction = z.any();
+export const blockAction: Zod.ZodObject<{
+  type: typeof blockActionType;
+  user: typeof userSchema;
+  api_app_id: Zod.ZodString;
+  container: typeof containerSchema;
+  trigger_id: z.ZodOptional<Zod.ZodString>;
+  team: typeof teamSchema;
+  enterprise: Zod.ZodAny;
+  is_enterprise_install: Zod.ZodBoolean;
+  channel: typeof channelSchema;
+  view: z.ZodOptional<typeof viewActionSchema>;
+  message: z.ZodOptional<typeof messageActionSchema>;
+  state: z.ZodOptional<typeof stateSchema>;
+  response_url: Zod.ZodString;
+  actions: Zod.ZodArray<typeof actionSchema>;
+}> = z.object({
+  type: blockActionType,
+  user: userSchema,
+  api_app_id: z.string(),
+  container: containerSchema,
+  trigger_id: z.string().optional(),
+  team: teamSchema,
+  enterprise: z.any(),
+  is_enterprise_install: z.boolean(),
+  channel: channelSchema,
+  view: viewActionSchema.optional(),
+  message: messageActionSchema.optional(),
+  state: stateSchema.optional(),
+  response_url: z.string(),
+  actions: z.array(actionSchema),
+});

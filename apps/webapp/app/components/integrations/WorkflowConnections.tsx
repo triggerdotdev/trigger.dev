@@ -3,7 +3,6 @@ import { useConnectionSlots } from "~/hooks/useConnectionSlots";
 import { useCurrentOrganization } from "~/hooks/useOrganizations";
 import { ApiLogoIcon } from "../code/ApiLogoIcon";
 import { List } from "../layout/List";
-import { Panel } from "../layout/Panel";
 import { Body } from "../primitives/text/Body";
 import { Header3 } from "../primitives/text/Headers";
 import { SubTitle } from "../primitives/text/SubTitle";
