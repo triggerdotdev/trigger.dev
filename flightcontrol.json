@@ -190,13 +190,13 @@
       "envVariables": {
         "PULSAR_ISSUER_URL": "https://auth.streamnative.cloud/",
         "PULSAR_AUDIENCE": {
-          "fromParameterStore": "/Staging/Pulsar/Audience"
+          "fromParameterStore": "/Prod/Pulsar/Audience"
         },
-        "PULSAR_TENANT": "triggerdotdev",
+        "PULSAR_TENANT": "triggerdotdev-staging",
         "PULSAR_WORKFLOWS_NAMESPACE": "workflows",
         "PULSAR_QUEUES_NAMESPACE": "queues",
         "PULSAR_SERVICE_URL": {
-          "fromParameterStore": "/Staging/Pulsar/ServiceURL"
+          "fromParameterStore": "/Prod/Pulsar/ServiceURL"
         },
         "DOCKER_USERNAME": "maverickdotdev",
         "DOCKER_PASSWORD": {
@@ -277,9 +277,9 @@
             "PULSAR_ROLE": {
               "fromParameterStore": "/Staging/Pulsar/webapp/Role"
             },
-            "PIZZLY_HOST": "https://staging-auth.trigger.dev",
+            "PIZZLY_HOST": "https://auth.trigger.dev",
             "PIZZLY_SECRET_KEY": {
-              "fromParameterStore": "/Staging/webapp/PIZZLY_SECRET_KEY"
+              "fromParameterStore": "/Prod/webapp/PIZZLY_SECRET_KEY"
             },
             "TRIGGER_LOG_LEVEL": "debug",
             "PULSAR_ENABLED": "1",
@@ -321,7 +321,7 @@
             "PULSAR_ROLE": {
               "fromParameterStore": "/Staging/Pulsar/wss/Role"
             },
-            "PLATFORM_API_URL": "https://app.trigger.dev",
+            "PLATFORM_API_URL": "https://app-staging.trigger.dev",
             "TRIGGER_LOG_LEVEL": "debug"
           }
         },
