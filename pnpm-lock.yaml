@@ -628,7 +628,9 @@ importers:
       zod: ^3.20.2
     dependencies:
       '@shopify/admin-graphql-api-utilities': 2.0.1
+      '@urql/core': 3.1.1_graphql@16.6.0
       debug: 4.3.4
+      urql: 3.0.3_onqnqwb3ubg5opvemcqf7c2qhy
       zod: 3.20.2
     devDependencies:
       '@shopify/shopify-api': 6.1.0
@@ -637,12 +639,10 @@ importers:
       '@trigger.dev/tsconfig': link:../../config-packages/tsconfig
       '@types/debug': 4.1.7
       '@types/node': 16.18.11
-      '@urql/core': 3.1.1_graphql@16.6.0
       graphql: 16.6.0
       react: 18.2.0
       rimraf: 3.0.2
       tsup: 6.5.0
-      urql: 3.0.3_onqnqwb3ubg5opvemcqf7c2qhy
 
   integrations/slack:
     specifiers:
@@ -6057,7 +6057,7 @@ packages:
     dependencies:
       graphql: 16.6.0
       wonka: 6.1.2
-    dev: true
+    dev: false
 
   /@vitejs/plugin-react/2.2.0_vite@3.2.5:
     resolution: {integrity: sha512-FFpefhvExd1toVRlokZgxgy2JtnBOdp4ZDsq7ldCWaqGSGn9UhWMAVm/1lxPL14JfNS5yGz+s9yFrQY6shoStA==}
@@ -10108,7 +10108,6 @@ packages:
   /graphql/16.6.0:
     resolution: {integrity: sha512-KPIBPDlW7NxrbT/eh4qPXz5FiFdL5UbaA0XUNz2Rp3Z3hqBSkbj0GVjwFDztsWVauZUWsbKHgMg++sk8UX0bkw==}
     engines: {node: ^12.22.0 || ^14.16.0 || ^16.0.0 || >=17.0.0}
-    dev: true
 
   /gray-matter/4.0.3:
     resolution: {integrity: sha512-5v6yZd4JK3eMI3FqqCouswVqwugaA9r4dNZB1wwcmrD02QkV5H0y7XBQW8QwQqEaZY1pM9aqORSORhJRdNK44Q==}
@@ -16234,7 +16233,7 @@ packages:
       graphql: 16.6.0
       react: 18.2.0
       wonka: 6.1.2
-    dev: true
+    dev: false
 
   /use-sync-external-store/1.2.0_react@18.2.0:
     resolution: {integrity: sha512-eEgnFxGQ1Ife9bzYs6VLi8/4X6CObHMw9Qr9tPY43iKwsPw8xE8+EFsf/2cFZ5S3esXgpWgtSCtLNS41F+sKPA==}
@@ -16618,7 +16617,7 @@ packages:
 
   /wonka/6.1.2:
     resolution: {integrity: sha512-zNrXPMccg/7OEp9tSfFkMgTvhhowqasiSHdJ3eCZolXxVTV/aT6HUTofoZk9gwRbGoFey/Nss3JaZKUMKMbofg==}
-    dev: true
+    dev: false
 
   /word-wrap/1.2.3:
     resolution: {integrity: sha512-Hz/mrNwitNRh/HUAtM/VT/5VH+ygD6DV7mYKZAtHOrbs8U7lvPS6xf7EJKMF0uW1KJCl0H701g3ZGus+muE5vQ==}
