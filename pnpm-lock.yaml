@@ -393,15 +393,15 @@ importers:
 
   examples/fetch-playground:
     specifiers:
-      '@trigger.dev/integrations': workspace:*
       '@trigger.dev/sdk': workspace:*
+      '@trigger.dev/slack': workspace:*
       '@trigger.dev/tsconfig': workspace:*
       '@types/node': '16'
       tsx: ^3.12.0
       zod: ^3.20.2
     dependencies:
-      '@trigger.dev/integrations': link:../../packages/trigger-integrations
       '@trigger.dev/sdk': link:../../packages/trigger-sdk
+      '@trigger.dev/slack': link:../../integrations/slack
       zod: 3.20.2
     devDependencies:
       '@trigger.dev/tsconfig': link:../../config-packages/tsconfig
@@ -491,15 +491,15 @@ importers:
 
   examples/schedule-to-slack:
     specifiers:
-      '@trigger.dev/integrations': workspace:*
       '@trigger.dev/sdk': workspace:*
+      '@trigger.dev/slack': workspace:*
       '@trigger.dev/tsconfig': workspace:*
       '@types/node': '16'
       tsx: ^3.12.0
       zod: ^3.20.2
     dependencies:
-      '@trigger.dev/integrations': link:../../packages/trigger-integrations
       '@trigger.dev/sdk': link:../../packages/trigger-sdk
+      '@trigger.dev/slack': link:../../integrations/slack
       zod: 3.20.2
     devDependencies:
       '@trigger.dev/tsconfig': link:../../config-packages/tsconfig
@@ -508,16 +508,16 @@ importers:
 
   examples/send-to-slack:
     specifiers:
-      '@trigger.dev/integrations': workspace:*
       '@trigger.dev/sdk': workspace:*
+      '@trigger.dev/slack': workspace:*
       '@trigger.dev/tsconfig': workspace:*
       '@types/node': '16'
       jsx-slack: ^5.3.0
       tsx: ^3.12.0
       zod: ^3.20.2
     dependencies:
-      '@trigger.dev/integrations': link:../../packages/trigger-integrations
       '@trigger.dev/sdk': link:../../packages/trigger-sdk
+      '@trigger.dev/slack': link:../../integrations/slack
       jsx-slack: 5.3.0
       zod: 3.20.2
     devDependencies:
@@ -544,7 +544,6 @@ importers:
 
   examples/smoke-test:
     specifiers:
-      '@trigger.dev/integrations': workspace:*
       '@trigger.dev/sdk': workspace:*
       '@trigger.dev/tsconfig': workspace:*
       '@types/node': '16'
@@ -552,7 +551,6 @@ importers:
       ulid: ^2.3.0
       zod: ^3.20.2
     dependencies:
-      '@trigger.dev/integrations': link:../../packages/trigger-integrations
       '@trigger.dev/sdk': link:../../packages/trigger-sdk
       ulid: 2.3.0
       zod: 3.20.2
@@ -578,6 +576,31 @@ importers:
       '@trigger.dev/integration-sdk': link:../../packages/integration-sdk
       '@trigger.dev/sdk': link:../../packages/trigger-sdk
       '@trigger.dev/tsconfig': link:../../config-packages/tsconfig
+      '@types/node': 16.18.11
+      rimraf: 3.0.2
+      tsup: 6.5.0
+
+  integrations/slack:
+    specifiers:
+      '@octokit/webhooks': ^10.4.0
+      '@trigger.dev/integration-sdk': workspace:*
+      '@trigger.dev/sdk': workspace:*
+      '@trigger.dev/tsconfig': workspace:*
+      '@types/debug': ^4.1.7
+      '@types/node': '16'
+      debug: ^4.3.4
+      rimraf: ^3.0.2
+      tsup: ^6.5.0
+      zod: ^3.20.2
+    dependencies:
+      '@octokit/webhooks': 10.5.1
+      debug: 4.3.4
+      zod: 3.20.2
+    devDependencies:
+      '@trigger.dev/integration-sdk': link:../../packages/integration-sdk
+      '@trigger.dev/sdk': link:../../packages/trigger-sdk
+      '@trigger.dev/tsconfig': link:../../config-packages/tsconfig
+      '@types/debug': 4.1.7
       '@types/node': 16.18.11
       rimraf: 3.0.2
       tsup: 6.5.0

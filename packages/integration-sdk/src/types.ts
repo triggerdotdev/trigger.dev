@@ -1,5 +1,7 @@
 import type { ReactNode } from "react";
 
+export type { ReactNode };
+
 export type AccessInfo =
   | { type: "oauth2"; accessToken: string }
   | {

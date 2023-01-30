@@ -12,7 +12,7 @@ import {
   WebhookOrganizationSourceSchema,
   WebhookRepoSourceSchema,
   WebhookSourceSchema,
-} from "./schemas";
+} from "../schemas";
 
 export class GitHubWebhookIntegration implements WebhookIntegration {
   keyForSource(source: unknown): string {

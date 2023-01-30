@@ -15,6 +15,7 @@ module.exports = {
     "internal-bridge",
     "@trigger.dev/providers",
     "@trigger.dev/github",
+    "@trigger.dev/slack",
     "@trigger.dev/common-schemas",
     "@trigger.dev/sdk",
     "@trigger.dev/integrations",

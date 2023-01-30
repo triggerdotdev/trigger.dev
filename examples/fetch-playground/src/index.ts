@@ -1,4 +1,4 @@
-import { slack } from "@trigger.dev/integrations";
+import * as slack from "@trigger.dev/slack";
 import { Trigger, customEvent, webhookEvent } from "@trigger.dev/sdk";
 
 import { z } from "zod";

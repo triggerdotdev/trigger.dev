@@ -35,6 +35,12 @@
       ],
       "@trigger.dev/github/*": [
         "../../integrations/github/src/*"
+      ],
+      "@trigger.dev/slack": [
+        "../../integrations/slack/src/index"
+      ],
+      "@trigger.dev/slack/*": [
+        "../../integrations/slack/src/*"
       ]
     }
   }
