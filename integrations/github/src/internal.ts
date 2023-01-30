@@ -1,7 +1,8 @@
-import { GitHubWebhookIntegration } from "./webhooks";
-import * as schemas from "./schemas";
+import { GitHubWebhookIntegration } from "./internal/webhooks";
 
-export const provider = {
+export const webhooks = new GitHubWebhookIntegration();
+
+export const metadata = {
   name: "GitHub",
   slug: "github",
   icon: "/integrations/github.png",
@@ -10,7 +11,6 @@ export const provider = {
     type: "oauth",
     scopes: ["repo"],
   },
-  schemas,
 };
 
-export const webhooks = new GitHubWebhookIntegration();
+export * as schemas from "./schemas";

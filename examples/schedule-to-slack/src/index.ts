@@ -1,5 +1,5 @@
 import { Trigger, scheduleEvent } from "@trigger.dev/sdk";
-import { slack } from "@trigger.dev/integrations";
+import * as slack from "@trigger.dev/slack";
 
 const trigger = new Trigger({
   id: "schedule-to-slack-2",
@@ -11,10 +11,10 @@ const trigger = new Trigger({
   run: async (event, ctx) => {
     await ctx.logger.info("It's me, the annoying slack bot!");
 
-    // const response = await slack.postMessage("slaaaaaack", {
-    //   channelName: "test-integrations",
-    //   text: `Hello, the time is ${event.scheduledTime}, and I was last run at ${event.lastRunAt}!`,
-    // });
+    const response = await slack.postMessage("slaaaaaack", {
+      channelName: "test-integrations",
+      text: `Hello, the time is ${event.scheduledTime}, and I was last run at ${event.lastRunAt}!`,
+    });
 
     return event;
   },

@@ -4,7 +4,7 @@
   "version": "0.0.1",
   "description": "A fetch playground for testing Trigger.dev functionality",
   "dependencies": {
-    "@trigger.dev/integrations": "workspace:*",
+    "@trigger.dev/slack": "workspace:*",
     "@trigger.dev/sdk": "workspace:*",
     "zod": "^3.20.2"
   },
