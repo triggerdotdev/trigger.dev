@@ -27,7 +27,6 @@
     "@trigger.dev/sdk": "workspace:*",
     "@trigger.dev/tsconfig": "workspace:*",
     "@trigger.dev/integration-sdk": "workspace:*",
-    "@octokit/webhooks": "^10.4.0",
     "@types/node": "16",
     "rimraf": "^3.0.2",
     "tsup": "^6.5.0"
@@ -41,6 +40,7 @@
     "build:tsup": "tsup"
   },
   "dependencies": {
-    "zod": "^3.20.2"
+    "zod": "^3.20.2",
+    "@octokit/webhooks": "^10.4.0"
   }
 }

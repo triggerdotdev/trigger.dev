@@ -572,9 +572,9 @@ importers:
       tsup: ^6.5.0
       zod: ^3.20.2
     dependencies:
+      '@octokit/webhooks': 10.5.1
       zod: 3.20.2
     devDependencies:
-      '@octokit/webhooks': 10.5.1
       '@trigger.dev/integration-sdk': link:../../packages/integration-sdk
       '@trigger.dev/sdk': link:../../packages/trigger-sdk
       '@trigger.dev/tsconfig': link:../../config-packages/tsconfig
@@ -4530,7 +4530,6 @@ packages:
 
   /@octokit/openapi-types/14.0.0:
     resolution: {integrity: sha512-HNWisMYlR8VCnNurDU6os2ikx0s0VyEjDYHNS/h4cgb8DeOxQ0n72HyinUtdDVxJhFy3FWLGl0DJhfEWk3P5Iw==}
-    dev: true
 
   /@octokit/openapi-types/16.0.0:
     resolution: {integrity: sha512-JbFWOqTJVLHZSUUoF4FzAZKYtqdxWu9Z5m2QQnOyEa04fOFljvyh7D3GYKbfuaSWisqehImiVIMG4eyJeP5VEA==}
@@ -4572,7 +4571,6 @@ packages:
       '@octokit/types': 8.1.0
       deprecation: 2.3.1
       once: 1.4.0
-    dev: true
 
   /@octokit/request/6.2.3:
     resolution: {integrity: sha512-TNAodj5yNzrrZ/VxP+H5HiYaZep0H3GU0O7PaF+fhDrt8FPrnkei9Aal/txsN/1P7V3CPiThG0tIvpPDYUsyAA==}
@@ -4604,7 +4602,6 @@ packages:
     resolution: {integrity: sha512-N4nLjzkiWBqVQqljTTsCrbvHGoWdWfcCeZjbHdggw7a9HbJMnxbK8A+UWdqwR4out30JarlSa3eqKyVK0n5aBg==}
     dependencies:
       '@octokit/openapi-types': 14.0.0
-    dev: true
 
   /@octokit/types/9.0.0:
     resolution: {integrity: sha512-LUewfj94xCMH2rbD5YJ+6AQ4AVjFYTgpp6rboWM5T7N3IsIF65SBEOVcYMGAEzO/kKNiNaW4LoWtoThOhH06gw==}
@@ -4615,11 +4612,11 @@ packages:
   /@octokit/webhooks-methods/3.0.2:
     resolution: {integrity: sha512-Vlnv5WBscf07tyAvfDbp7pTkMZUwk7z7VwEF32x6HqI+55QRwBTcT+D7DDjZXtad/1dU9E32x0HmtDlF9VIRaQ==}
     engines: {node: '>= 14'}
-    dev: true
+    dev: false
 
   /@octokit/webhooks-types/6.7.0:
     resolution: {integrity: sha512-bykm7UkSnxmb2uhSfcLM1Pity/LQ6ZBSdzy9HU0vXjR+2g+tzlmRhXb7Go8oj0TlgO+vDrTivGXju6zkzOGKjA==}
-    dev: true
+    dev: false
 
   /@octokit/webhooks/10.5.1:
     resolution: {integrity: sha512-6yGcfVbQGIkRm/vlU4Ld4r0YNOT6ly5Kp+t6R3UAT0amxGASFtZLzOJry0UQfvvidCxK5qT9jHXU0QUp6alatA==}
@@ -4629,7 +4626,7 @@ packages:
       '@octokit/webhooks-methods': 3.0.2
       '@octokit/webhooks-types': 6.7.0
       aggregate-error: 3.1.0
-    dev: true
+    dev: false
 
   /@open-draft/until/1.0.3:
     resolution: {integrity: sha512-Aq58f5HiWdyDlFffbbSjAlv596h/cOnt2DO1w3DOC7OJ5EHs0hd/nycJfiu9RJbT6Yk6F1knnRRXNSpxoIVZ9Q==}
@@ -8037,7 +8034,6 @@ packages:
 
   /deprecation/2.3.1:
     resolution: {integrity: sha512-xmHIy4F3scKVwMsQ4WnVaS8bHOx0DmVwRywosKhaILI0ywMDWPtBSku2HNxRvF7jtwDRsoEwYQSfbxj8b7RlJQ==}
-    dev: true
 
   /dequal/2.0.3:
     resolution: {integrity: sha512-0je+qPKHEMohvfRTCEo3CrPG6cAzAYgmzKyxRiYSSDkS6eGJdyVJm7WaYA5ECaAD9wLB2T4EEeymA5aFVcYXCA==}
