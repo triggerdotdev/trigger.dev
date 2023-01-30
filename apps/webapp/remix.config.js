@@ -22,6 +22,7 @@ module.exports = {
     "@trigger.dev/integration-sdk",
     "emails",
     "internal-pulsar",
+    "@octokit/webhooks",
   ],
   watchPaths: async () => {
     return [
