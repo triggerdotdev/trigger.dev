@@ -456,7 +456,7 @@ importers:
       '@react-email/render': ^0.0.3
       '@react-email/section': ^0.0.1
       '@react-email/text': ^0.0.2
-      '@trigger.dev/integrations': workspace:*
+      '@trigger.dev/resend': workspace:*
       '@trigger.dev/sdk': workspace:*
       '@trigger.dev/tsconfig': workspace:*
       '@types/node': '16'
@@ -478,7 +478,7 @@ importers:
       '@react-email/render': 0.0.3_react@18.2.0
       '@react-email/section': 0.0.1
       '@react-email/text': 0.0.2
-      '@trigger.dev/integrations': link:../../packages/trigger-integrations
+      '@trigger.dev/resend': link:../../integrations/resend
       '@trigger.dev/sdk': link:../../packages/trigger-sdk
       react: 18.2.0
       zod: 3.20.2
@@ -577,6 +577,33 @@ importers:
       '@trigger.dev/sdk': link:../../packages/trigger-sdk
       '@trigger.dev/tsconfig': link:../../config-packages/tsconfig
       '@types/node': 16.18.11
+      rimraf: 3.0.2
+      tsup: 6.5.0
+
+  integrations/resend:
+    specifiers:
+      '@react-email/render': ^0.0.3
+      '@trigger.dev/integration-sdk': workspace:*
+      '@trigger.dev/sdk': workspace:*
+      '@trigger.dev/tsconfig': workspace:*
+      '@types/debug': ^4.1.7
+      '@types/node': '16'
+      '@types/react': ^18.0.26
+      debug: ^4.3.4
+      rimraf: ^3.0.2
+      tsup: ^6.5.0
+      zod: ^3.20.2
+    dependencies:
+      '@react-email/render': 0.0.3
+      debug: 4.3.4
+      zod: 3.20.2
+    devDependencies:
+      '@trigger.dev/integration-sdk': link:../../packages/integration-sdk
+      '@trigger.dev/sdk': link:../../packages/trigger-sdk
+      '@trigger.dev/tsconfig': link:../../config-packages/tsconfig
+      '@types/debug': 4.1.7
+      '@types/node': 16.18.11
+      '@types/react': 18.0.26
       rimraf: 3.0.2
       tsup: 6.5.0
 

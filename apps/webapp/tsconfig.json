@@ -53,7 +53,9 @@
       "@trigger.dev/github": ["../../integrations/github/src/index"],
       "@trigger.dev/github/*": ["../../integrations/github/src/*"],
       "@trigger.dev/slack": ["../../integrations/slack/src/index"],
-      "@trigger.dev/slack/*": ["../../integrations/slack/src/*"]
+      "@trigger.dev/slack/*": ["../../integrations/slack/src/*"],
+      "@trigger.dev/resend": ["../../integrations/resend/src/index"],
+      "@trigger.dev/resend/*": ["../../integrations/resend/src/*"]
     },
     "noEmit": true
   }
