@@ -3,7 +3,8 @@
   "private": true,
   "workspaces": [
     "apps/*",
-    "packages/*"
+    "packages/*",
+    "integrations/*"
   ],
   "version": "0.0.1",
   "prisma": {

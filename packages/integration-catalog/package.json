@@ -2,6 +2,7 @@
   "name": "integration-catalog",
   "version": "0.1.16",
   "description": "Catalog of all the Trigger.dev integration packages",
+  "private": true,
   "devDependencies": {
     "@trigger.dev/tsconfig": "workspace:*",
     "@types/node": "16",
