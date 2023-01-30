@@ -1,0 +1,46 @@
+{
+  "name": "@trigger.dev/shopify",
+  "version": "0.1.16",
+  "description": "The official Shopify integration for Trigger.dev",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "require": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    },
+    "./package.json": "./package.json"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "files": [
+    "dist"
+  ],
+  "devDependencies": {
+    "@shopify/shopify-api": "^6.1.0",
+    "@trigger.dev/integration-sdk": "workspace:*",
+    "@trigger.dev/sdk": "workspace:*",
+    "@trigger.dev/tsconfig": "workspace:*",
+    "@types/debug": "^4.1.7",
+    "@types/node": "16",
+    "@urql/core": "^3.1.1",
+    "graphql": "^16.6.0",
+    "react": "^18.2.0",
+    "rimraf": "^3.0.2",
+    "tsup": "^6.5.0",
+    "urql": "^3.0.3"
+  },
+  "peerDependencies": {
+    "@trigger.dev/sdk": "workspace:*"
+  },
+  "scripts": {
+    "clean": "rimraf dist",
+    "build": "npm run clean && npm run build:tsup",
+    "build:tsup": "tsup"
+  },
+  "dependencies": {
+    "@shopify/admin-graphql-api-utilities": "^2.0.1",
+    "debug": "^4.3.4",
+    "zod": "^3.20.2"
+  }
+}

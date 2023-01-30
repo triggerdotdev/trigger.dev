@@ -4,9 +4,10 @@ import type {
   NormalizedResponse,
   PerformedRequestResponse,
 } from "@trigger.dev/integration-sdk";
-import { shopify } from "internal-integrations";
+
 import * as slack from "@trigger.dev/slack/internal";
 import * as resend from "@trigger.dev/resend/internal";
+import * as shopify from "@trigger.dev/shopify/internal";
 import type { PrismaClient } from "~/db.server";
 import { prisma } from "~/db.server";
 import type { IntegrationRequest } from "~/models/integrationRequest.server";
