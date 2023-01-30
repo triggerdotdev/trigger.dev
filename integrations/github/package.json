@@ -1,6 +1,6 @@
 {
   "name": "@trigger.dev/github",
-  "version": "0.1.16",
+  "version": "0.1.17",
   "description": "The official GitHub integration for Trigger.dev",
   "exports": {
     ".": {

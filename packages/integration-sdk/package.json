@@ -1,6 +1,6 @@
 {
   "name": "@trigger.dev/integration-sdk",
-  "version": "0.1.16",
+  "version": "0.1.17",
   "description": "trigger.dev SDK for integrations",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
