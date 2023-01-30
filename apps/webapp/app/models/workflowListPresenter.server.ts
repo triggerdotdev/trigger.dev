@@ -4,8 +4,8 @@ import {
   SlackInteractionSourceSchema,
 } from "@trigger.dev/common-schemas";
 import cronstrue from "cronstrue";
-import type { DisplayProperties } from "internal-integrations";
-import { github } from "internal-integrations";
+import type { DisplayProperties } from "@trigger.dev/integration-sdk";
+import * as github from "@trigger.dev/github/internal";
 import invariant from "tiny-invariant";
 import { triggerLabel } from "~/components/triggers/triggerLabel";
 import type { PrismaClient } from "~/db.server";

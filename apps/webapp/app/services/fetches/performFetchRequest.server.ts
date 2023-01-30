@@ -4,7 +4,7 @@ import { FetchRequestSchema } from "@trigger.dev/common-schemas";
 import type {
   NormalizedResponse,
   PerformedRequestResponse,
-} from "internal-integrations";
+} from "@trigger.dev/integration-sdk";
 import type { z } from "zod";
 import type { PrismaClient } from "~/db.server";
 import { prisma } from "~/db.server";

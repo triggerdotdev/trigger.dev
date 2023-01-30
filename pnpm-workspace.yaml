@@ -1,5 +1,6 @@
 packages:
   - "config-packages/*"
   - "packages/*"
+  - "integrations/*"
   - "apps/**"
   - "examples/*"

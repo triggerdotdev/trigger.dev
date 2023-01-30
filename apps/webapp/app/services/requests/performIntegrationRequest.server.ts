@@ -3,7 +3,7 @@ import type {
   CacheService,
   NormalizedResponse,
   PerformedRequestResponse,
-} from "internal-integrations";
+} from "@trigger.dev/integration-sdk";
 import { resend, shopify, slack } from "internal-integrations";
 import type { PrismaClient } from "~/db.server";
 import { prisma } from "~/db.server";
