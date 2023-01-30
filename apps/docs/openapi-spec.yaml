@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: Trigger.dev API
-  version: v1.0.0
+  version: v0.2.3
   description: Please see https://docs.trigger.dev for more details.
   contact:
     name: Eric
@@ -11,10 +11,25 @@ info:
 servers:
   - url: https://app.trigger.dev/api/v1
     description: Trigger.dev
+tags:
+  - name: "events"
+    description: "Send and manage custom events"
+externalDocs:
+  description: "Trigger.dev Docs"
+  url: "https://docs.trigger.dev"
+security:
+  - apiKey: []
 paths:
   /events:
     post:
       summary: Send Custom Event
+      description: Send a custom event to run your customEvent Triggers
+      operationId: "sendEvent"
+      tags:
+        - events
+      externalDocs:
+        description: "API method documentation"
+        url: "https://docs.trigger.dev/api/events/sendEvent"
       requestBody:
         required: true
         content:
@@ -27,10 +42,92 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/customEventResponse"
+                $ref: "#/components/schemas/customEvent"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/error"
+        "405":
+          description: Method not allowed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/error"
         "422":
           description: Unprocessable Entity
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/error"
+components:
+  schemas:
+    error:
+      type: object
+      properties:
+        error:
+          type: string
+    customEvent:
+      type: object
+      required:
+        - id
+        - event
+      properties:
+        id:
+          type: string
+          description: "A unique event identifier, can be used to deduplicate events. Use a sufficiently unique ID generator, such as UUIDv4"
+        event:
+          type: object
+          additionalProperties: false
+          required:
+            - name
+            - payload
+          properties:
+            name:
+              type: string
+              example: user.created
+              description: "The name of the event. This is the same value you'd use in your customEvent trigger code to listen for events"
+            payload:
+              type: object
+              additionalProperties: true
+              description: "The JSON payload of the event"
+            context:
+              type: object
+              additionalProperties: true
+              description: "An optional context object for the event. This can be used to pass additional information about the event, such as the user who triggered it. Note that this is not currently exposed to the workflow (coming soon)."
+            timestamp:
+              type: string
+              format: "date-time"
+              example: "2022-01-01T12:30:00Z"
+              description: "An optional timestamp for the event. If not provided, one will be generated. Must be in ISO 8601 format (e.g. new Date().toISOString())"
+            delay:
+              type: object
+              description: "An optional delay object for the event. This can be used to delay the event by a certain amount of time. "
+              oneOf:
+                - type: object
+                  properties:
+                    seconds:
+                      type: integer
+                - type: object
+                  properties:
+                    minutes:
+                      type: integer
+                - type: object
+                  properties:
+                    hours:
+                      type: integer
+                - type: object
+                  properties:
+                    days:
+                      type: integer
+                - type: object
+                  properties:
+                    until:
+                      type: string
+                      format: date-time
+  securitySchemes:
+    apiKey:
+      type: apiKey
+      in: header
+      name: Authorization
