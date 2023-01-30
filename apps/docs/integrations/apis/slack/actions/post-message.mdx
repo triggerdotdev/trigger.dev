@@ -82,7 +82,8 @@ Publish Slack messages to a public or private channel in your Slack Workspace as
 <CodeGroup>
 
 ```typescript Notify Slack on New GitHub Star
-import { slack, github } from "@trigger.dev/integrations";
+import * as github from "@trigger.dev/github";
+import * as slack from "@trigger.dev/slack";
 
 new Trigger({
   id: "new-star",
@@ -133,7 +134,7 @@ Please note, that to use `jsx-slack` you will need to add the `jsxImportSource` 
 
 ```typescript workflow.tsx
 /** @jsxImportSource jsx-slack */
-import { slack } from "@trigger.dev/integrations";
+import * as slack from "@trigger.dev/slack";
 import JSXSlack, {
   Actions,
   Blocks,

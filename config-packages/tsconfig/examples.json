@@ -24,12 +24,6 @@
       "@trigger.dev/sdk/*": [
         "../../packages/trigger-sdk/src/*"
       ],
-      "@trigger.dev/integrations": [
-        "../../packages/trigger-integrations/src/index"
-      ],
-      "@trigger.dev/integrations/*": [
-        "../../packages/trigger-integrations/src/*"
-      ],
       "@trigger.dev/github": [
         "../../integrations/github/src/index"
       ],

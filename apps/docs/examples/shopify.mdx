@@ -11,13 +11,12 @@ Integrations required: Shopify
 ```ts
 import { Trigger, customEvent } from "@trigger.dev/sdk";
 import { z } from "zod";
-import { shopify } from "@trigger.dev/integrations";
+import * as shopify from "@trigger.dev/shopify";
 
 new Trigger({
   id: "shopify-products",
   name: "Shopify products",
   apiKey: "<my_api_key>",
-  logLevel: "debug",
   on: customEvent({
     name: "shopify.products",
     schema: z.object({}),
@@ -76,13 +75,12 @@ Integrations required: Shopify
 ```ts
 import { Trigger, customEvent } from "@trigger.dev/sdk";
 import { z } from "zod";
-import { shopify } from "@trigger.dev/integrations";
+import * as shopify from "@trigger.dev/shopify";
 
 new Trigger({
   id: "shopify-update-product",
   name: "Shopify update product",
   apiKey: "<my_api_key>",
-  logLevel: "debug",
   on: customEvent({
     name: "product.update",
     schema: z.object({
@@ -107,13 +105,12 @@ Integrations required: Shopify
 ```ts
 import { Trigger, customEvent } from "@trigger.dev/sdk";
 import { z } from "zod";
-import { shopify } from "@trigger.dev/integrations";
+import * as shopify from "@trigger.dev/shopify";
 
 new Trigger({
   id: "shopify-add-product-to-collection",
   name: "Shopify add product to collection",
   apiKey: "<my_api_key>",
-  logLevel: "debug",
   on: customEvent({
     name: "product.new",
     schema: z.object({
@@ -141,7 +138,7 @@ Integrations required: Shopify
 ```ts
 import { Trigger, customEvent } from "@trigger.dev/sdk";
 import { z } from "zod";
-import { shopify } from "@trigger.dev/integrations";
+import * as shopify from "@trigger.dev/shopify";
 
 const sizes = ["Small", "Medium", "Large"];
 const colors = [
@@ -170,7 +167,6 @@ new Trigger({
   id: "shopify-product-variants",
   name: "Shopify product variants",
   apiKey: "<my_api_key>",
-  logLevel: "debug",
   on: customEvent({
     name: "shopify.product-variants",
     schema: z.object({}),

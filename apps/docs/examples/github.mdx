@@ -11,8 +11,9 @@ You can explore all the supported GitHub functions [here](/integrations/apis/git
 Integrations required: GitHub, Slack
 
 ```ts
-import { github, slack } from "@trigger.dev/integrations";
 import { Trigger } from "@trigger.dev/sdk";
+import * as github from "@trigger.dev/github";
+import * as slack from "@trigger.dev/slack";
 
 new Trigger({
   id: "new-github-star-to-slack",
@@ -35,8 +36,9 @@ new Trigger({
 Integrations required: GitHub, Slack
 
 ```ts
-import { github, slack } from "@trigger.dev/integrations";
 import { Trigger } from "@trigger.dev/sdk";
+import * as github from "@trigger.dev/github";
+import * as slack from "@trigger.dev/slack";
 
 new Trigger({
   id: "my-workflow-1",

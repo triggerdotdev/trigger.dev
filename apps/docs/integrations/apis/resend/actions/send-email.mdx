@@ -85,7 +85,8 @@ Send email using Resend.com, which supports sending emails using React, HTML, an
 <CodeGroup>
 
 ```typescript criticalIssue.tsx
-import { github, resend } from "@trigger.dev/integrations";
+import * as github from "@trigger.dev/github";
+import * as resend from "@trigger.dev/resend";
 import { CriticalIssueEmail } from "./emails";
 
 new Trigger({
