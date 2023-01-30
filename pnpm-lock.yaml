@@ -570,9 +570,9 @@ importers:
       tsup: ^6.5.0
       zod: ^3.20.2
     dependencies:
-      '@octokit/webhooks': 10.5.1
       zod: 3.20.2
     devDependencies:
+      '@octokit/webhooks': 10.5.1
       '@trigger.dev/integration-sdk': link:../../packages/integration-sdk
       '@trigger.dev/sdk': link:../../packages/trigger-sdk
       '@trigger.dev/tsconfig': link:../../config-packages/tsconfig
@@ -582,7 +582,6 @@ importers:
 
   integrations/slack:
     specifiers:
-      '@octokit/webhooks': ^10.4.0
       '@trigger.dev/integration-sdk': workspace:*
       '@trigger.dev/sdk': workspace:*
       '@trigger.dev/tsconfig': workspace:*
@@ -593,7 +592,6 @@ importers:
       tsup: ^6.5.0
       zod: ^3.20.2
     dependencies:
-      '@octokit/webhooks': 10.5.1
       debug: 4.3.4
       zod: 3.20.2
     devDependencies:
@@ -4615,11 +4613,9 @@ packages:
   /@octokit/webhooks-methods/3.0.2:
     resolution: {integrity: sha512-Vlnv5WBscf07tyAvfDbp7pTkMZUwk7z7VwEF32x6HqI+55QRwBTcT+D7DDjZXtad/1dU9E32x0HmtDlF9VIRaQ==}
     engines: {node: '>= 14'}
-    dev: false
 
   /@octokit/webhooks-types/6.7.0:
     resolution: {integrity: sha512-bykm7UkSnxmb2uhSfcLM1Pity/LQ6ZBSdzy9HU0vXjR+2g+tzlmRhXb7Go8oj0TlgO+vDrTivGXju6zkzOGKjA==}
-    dev: false
 
   /@octokit/webhooks/10.5.1:
     resolution: {integrity: sha512-6yGcfVbQGIkRm/vlU4Ld4r0YNOT6ly5Kp+t6R3UAT0amxGASFtZLzOJry0UQfvvidCxK5qT9jHXU0QUp6alatA==}
@@ -4629,7 +4625,6 @@ packages:
       '@octokit/webhooks-methods': 3.0.2
       '@octokit/webhooks-types': 6.7.0
       aggregate-error: 3.1.0
-    dev: false
 
   /@open-draft/until/1.0.3:
     resolution: {integrity: sha512-Aq58f5HiWdyDlFffbbSjAlv596h/cOnt2DO1w3DOC7OJ5EHs0hd/nycJfiu9RJbT6Yk6F1knnRRXNSpxoIVZ9Q==}
