@@ -43,7 +43,15 @@
       "emails": ["../../packages/emails/src/index"],
       "emails/*": ["../../packages/emails/src/*"],
       "internal-pulsar": ["../../packages/internal-pulsar/src/index"],
-      "internal-pulsar/*": ["../../packages/internal-pulsar/src/*"]
+      "internal-pulsar/*": ["../../packages/internal-pulsar/src/*"],
+      "@trigger.dev/integration-sdk": [
+        "../../packages/integration-sdk/src/index"
+      ],
+      "@trigger.dev/integration-sdk/*": [
+        "../../packages/integration-sdk/src/*"
+      ],
+      "@trigger.dev/github": ["../../integrations/github/src/index"],
+      "@trigger.dev/github/*": ["../../integrations/github/src/*"]
     },
     "noEmit": true
   }

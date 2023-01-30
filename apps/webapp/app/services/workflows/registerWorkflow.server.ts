@@ -1,4 +1,4 @@
-import { github } from "internal-integrations";
+import * as github from "@trigger.dev/github/internal";
 import type { WorkflowMetadata } from "internal-platform";
 import { WorkflowMetadataSchema } from "internal-platform";
 import crypto from "node:crypto";

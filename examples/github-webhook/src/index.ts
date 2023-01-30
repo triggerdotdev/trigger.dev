@@ -1,5 +1,5 @@
 import { Trigger } from "@trigger.dev/sdk";
-import { github } from "@trigger.dev/integrations";
+import { events } from "@trigger.dev/github";
 
 new Trigger({
   id: "github-webhook-9",
@@ -7,7 +7,7 @@ new Trigger({
   apiKey: "trigger_dev_zC25mKNn6c0q",
   endpoint: "ws://localhost:8889/ws",
   logLevel: "debug",
-  on: github.events.issueEvent({
+  on: events.issueEvent({
     repo: "triggerdotdev/trigger.dev-examples",
   }),
   run: async (event, ctx) => {
@@ -23,7 +23,7 @@ new Trigger({
   apiKey: "trigger_dev_zC25mKNn6c0q",
   endpoint: "ws://localhost:8889/ws",
   logLevel: "debug",
-  on: github.events.issueCommentEvent({
+  on: events.issueCommentEvent({
     repo: "triggerdotdev/trigger.dev-examples",
   }),
   run: async (event, ctx) => {
@@ -39,7 +39,7 @@ new Trigger({
   apiKey: "trigger_dev_zC25mKNn6c0q",
   endpoint: "ws://localhost:8889/ws",
   logLevel: "debug",
-  on: github.events.pullRequestEvent({
+  on: events.pullRequestEvent({
     repo: "triggerdotdev/trigger.dev-examples",
   }),
   run: async (event, ctx) => {
@@ -55,7 +55,7 @@ new Trigger({
   apiKey: "trigger_dev_zC25mKNn6c0q",
   endpoint: "ws://localhost:8889/ws",
   logLevel: "debug",
-  on: github.events.pullRequestCommentEvent({
+  on: events.pullRequestCommentEvent({
     repo: "triggerdotdev/trigger.dev-examples",
   }),
   run: async (event, ctx) => {
@@ -71,7 +71,7 @@ new Trigger({
   apiKey: "trigger_dev_zC25mKNn6c0q",
   endpoint: "ws://localhost:8889/ws",
   logLevel: "debug",
-  on: github.events.pullRequestReviewEvent({
+  on: events.pullRequestReviewEvent({
     repo: "triggerdotdev/trigger.dev-examples",
   }),
   run: async (event, ctx) => {
@@ -87,7 +87,7 @@ new Trigger({
   apiKey: "trigger_dev_zC25mKNn6c0q",
   endpoint: "ws://localhost:8889/ws",
   logLevel: "debug",
-  on: github.events.pushEvent({
+  on: events.pushEvent({
     repo: "triggerdotdev/trigger.dev-examples",
   }),
   run: async (event, ctx) => {
@@ -103,7 +103,7 @@ new Trigger({
   apiKey: "trigger_dev_zC25mKNn6c0q",
   endpoint: "ws://localhost:8889/ws",
   logLevel: "debug",
-  on: github.events.commitCommentEvent({
+  on: events.commitCommentEvent({
     repo: "triggerdotdev/trigger.dev-examples",
   }),
   run: async (event, ctx) => {
@@ -119,7 +119,7 @@ new Trigger({
   apiKey: "trigger_dev_zC25mKNn6c0q",
   endpoint: "ws://localhost:8889/ws",
   logLevel: "debug",
-  on: github.events.newStarEvent({
+  on: events.newStarEvent({
     repo: "triggerdotdev/trigger.dev-examples",
   }),
   run: async (event, ctx) => {

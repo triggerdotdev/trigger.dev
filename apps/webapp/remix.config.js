@@ -14,9 +14,11 @@ module.exports = {
     "internal-integrations",
     "internal-bridge",
     "@trigger.dev/providers",
+    "@trigger.dev/github",
     "@trigger.dev/common-schemas",
     "@trigger.dev/sdk",
     "@trigger.dev/integrations",
+    "@trigger.dev/integration-sdk",
     "emails",
     "internal-pulsar",
   ],
@@ -32,6 +34,7 @@ module.exports = {
       "../../packages/internal-platform/src/**/*",
       "../../packages/trigger-sdk/src/**/*",
       "../../packages/trigger-integrations/src/**/*",
+      "../../integrations/github/src/**/*",
     ];
   },
 };
