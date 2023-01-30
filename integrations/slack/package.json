@@ -34,7 +34,6 @@
     "build:tsup": "tsup"
   },
   "dependencies": {
-    "@octokit/webhooks": "^10.4.0",
     "debug": "^4.3.4",
     "zod": "^3.20.2"
   }
