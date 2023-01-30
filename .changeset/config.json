@@ -4,8 +4,12 @@
   "commit": false,
   "fixed": [],
   "linked": [],
-  "access": "restricted",
+  "access": "public",
   "baseBranch": "main",
   "updateInternalDependencies": "patch",
-  "ignore": ["wss", "webapp", "docs"]
+  "ignore": [
+    "wss",
+    "webapp",
+    "docs"
+  ]
 }

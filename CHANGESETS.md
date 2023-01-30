@@ -7,8 +7,11 @@ Trigger.dev uses [changesets](https://github.com/changesets/changesets) to manag
 To add a changeset, use `pnpm run changeset:add` and follow the instructions [here](https://github.com/changesets/changesets/blob/main/docs/adding-a-changeset.md). Please only ever select one of our public packages when adding a changeset, which currently are:
 
 - `@trigger.dev/sdk`
-- `@trigger.dev/integrations`
-- `@trigger.dev/providers`
+- `@trigger.dev/integration-sdk`
+- `@trigger.dev/github`
+- `@trigger.dev/slack`
+- `@trigger.dev/shopify`
+- `@trigger.dev/resend`
 
 ## Release instructions
 
