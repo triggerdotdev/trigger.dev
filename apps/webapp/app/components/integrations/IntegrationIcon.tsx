@@ -1,9 +1,9 @@
-import type { SerializableProvider } from "@trigger.dev/providers";
+import type { IntegrationMetadata } from "@trigger.dev/integration-sdk";
 
 export function IntegrationIcon({
   integration,
 }: {
-  integration: SerializableProvider;
+  integration: IntegrationMetadata;
 }) {
   return (
     <img

@@ -2,7 +2,6 @@ import type {
   DisplayProperties,
   PerformedRequestResponse,
   PerformRequestOptions,
-  ReactNode,
   RequestIntegration,
 } from "@trigger.dev/integration-sdk";
 import { Client, createClient } from "@urql/core";
@@ -176,10 +175,6 @@ export class ShopifyRequestIntegration implements RequestIntegration {
         };
       }
     }
-  }
-
-  renderComponent(input: any, output: any): ReactNode {
-    return null;
   }
 
   async #searchProductVariants(

@@ -1,8 +1,12 @@
+import type {
+  IntegrationMetadata,
+  InternalIntegration,
+} from "@trigger.dev/integration-sdk";
 import { ShopifyRequestIntegration } from "./internal/requests";
 
-export const requests = new ShopifyRequestIntegration();
+const requests = new ShopifyRequestIntegration();
 
-export const metadata = {
+const metadata: IntegrationMetadata = {
   name: "Shopify",
   slug: "shopify",
   icon: "/integrations/shopify.png",
@@ -22,6 +26,11 @@ export const metadata = {
     ],
     documentation: `1. Follow [this guide](https://help.shopify.com/en/manual/apps/custom-apps) to enable Custom apps`,
   },
+};
+
+export const internalIntegration: InternalIntegration = {
+  metadata,
+  requests,
 };
 
 export * as schemas from "./schemas";

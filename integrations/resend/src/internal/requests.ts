@@ -12,7 +12,6 @@ import type {
   AccessInfo,
 } from "@trigger.dev/integration-sdk";
 import debug from "debug";
-import React from "react";
 import { SendEmailResponseSchema, SendEmailBodySchema } from "../schemas";
 
 const log = debug("trigger:integrations:resend");
@@ -59,47 +58,6 @@ export class ResendRequestIntegration implements RequestIntegration {
         throw new Error(`Unknown endpoint: ${endpoint}`);
       }
     }
-  }
-
-  renderComponent(input: any, output: any): React.ReactNode {
-    const parsedInput = SendEmailBodySchema.parse(input);
-    return (
-      <div className="bg-white rounded-md">
-        <div className="flex px-2 h-8 items-center bg-slate-100 rounded-t-md">
-          <div className="flex h-8 gap-2 items-center bg-slate-100 rounded-t-md">
-            <div className="rounded-full bg-rose-500 w-3 h-3"></div>
-            <div className="rounded-full bg-orange-500 w-3 h-3"></div>
-            <div className="rounded-full bg-emerald-500 w-3 h-3"></div>
-          </div>
-        </div>
-        <div className="px-4 py-2 border-b border-slate-300">
-          <h2 className="text-lg text-slate-600 font-bold">
-            {parsedInput.from}
-          </h2>
-          <h2 className="text-slate-600">{parsedInput.subject}</h2>
-          <div className="flex gap-2">
-            <EmailInfo label="to" value={parsedInput.to} />
-            <EmailInfo label="cc" value={parsedInput.cc} />
-            <EmailInfo label="bcc" value={parsedInput.bcc} />
-          </div>
-          <div className="flex gap-2">
-            <EmailInfo label="reply to" value={parsedInput.reply_to} />
-          </div>
-        </div>
-        <div className="px-4 text-slate-600">
-          {parsedInput.html && (
-            <div
-              dangerouslySetInnerHTML={{
-                __html: parsedInput.html,
-              }}
-            />
-          )}
-          {parsedInput.text && (
-            <div className="py-4 text-slate-600">{parsedInput.text}</div>
-          )}
-        </div>
-      </div>
-    );
   }
 
   async #sendEmail(
@@ -181,23 +139,4 @@ export class ResendRequestIntegration implements RequestIntegration {
       statusCode === 504
     );
   }
-}
-
-function EmailInfo({
-  label,
-  value,
-}: {
-  label: string;
-  value?: string | string[];
-}) {
-  if (!value) {
-    return null;
-  }
-
-  return (
-    <div className="text-slate-500 text-sm flex items-baseline gap-2">
-      <h3 className="text-slate-400">{label}:</h3>
-      {typeof value === "string" ? value : value.join(", ")}
-    </div>
-  );
 }

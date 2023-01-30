@@ -7,7 +7,6 @@
     "src/internal/internal.tsxernal.tsx"
   ],
   "compilerOptions": {
-    "jsx": "react",
     "experimentalDecorators": true,
     "emitDecoratorMetadata": true,
     "lib": ["DOM", "DOM.Iterable", "ES2019"],

@@ -10,7 +10,7 @@
     "@types/node": "16",
     "@types/node-fetch": "2.6",
     "commander": "^9.4.1",
-    "@trigger.dev/providers": "workspace:*",
+    "integration-catalog": "workspace:*",
     "tiny-invariant": "^1.2.0",
     "tsx": "^3.12.0",
     "zod": "^3.20.2"

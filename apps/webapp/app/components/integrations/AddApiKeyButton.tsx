@@ -1,8 +1,8 @@
 import { InformationCircleIcon } from "@heroicons/react/24/outline";
 import type {
   APIKeyAuthentication,
-  SerializableProvider,
-} from "@trigger.dev/providers";
+  IntegrationMetadata,
+} from "@trigger.dev/integration-sdk";
 import { marked } from "marked";
 import { Fragment, useEffect, useState } from "react";
 import { useTypedFetcher } from "remix-typedjson";
@@ -26,7 +26,7 @@ export function AddApiKeyButton({
   className,
   children,
 }: {
-  integration: SerializableProvider;
+  integration: IntegrationMetadata;
   authentication: APIKeyAuthentication;
   organizationId: string;
   sourceId?: string;

@@ -2,7 +2,7 @@ import { Command } from "commander";
 import * as fs from "node:fs";
 import { z } from "zod";
 import invariant from "tiny-invariant";
-import { getProviders } from "@trigger.dev/providers";
+import { getIntegrations } from "integration-catalog";
 import { fromIni } from "@aws-sdk/credential-providers";
 import {
   SecretsManagerClient,

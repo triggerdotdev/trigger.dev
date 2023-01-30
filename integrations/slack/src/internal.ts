@@ -1,8 +1,12 @@
+import type {
+  IntegrationMetadata,
+  InternalIntegration,
+} from "@trigger.dev/integration-sdk";
 import { SlackRequestIntegration } from "./internal/requests";
 
-export const requests = new SlackRequestIntegration();
+const requests = new SlackRequestIntegration();
 
-export const metadata = {
+const metadata: IntegrationMetadata = {
   name: "Slack",
   slug: "slack",
   icon: "/integrations/slack.png",
@@ -21,6 +25,11 @@ export const metadata = {
       "reactions:write",
     ],
   },
+};
+
+export const internalIntegration: InternalIntegration = {
+  metadata,
+  requests,
 };
 
 export * as schemas from "./schemas";
