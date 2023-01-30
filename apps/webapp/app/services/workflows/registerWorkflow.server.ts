@@ -349,7 +349,9 @@ export class RegisterWorkflow {
     if (payload.trigger.type === "WEBHOOK") {
       switch (payload.trigger.service) {
         case "github": {
-          return github.webhooks.keyForSource(payload.trigger.source);
+          return github.internalIntegration.webhooks!.keyForSource(
+            payload.trigger.source
+          );
         }
         default: {
           return payload.trigger.service;

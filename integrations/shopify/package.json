@@ -8,13 +8,20 @@
       "require": "./dist/index.js",
       "types": "./dist/index.d.ts"
     },
+    "./internal": {
+      "import": "./dist/internal.js",
+      "require": "./dist/internal.js",
+      "types": "./dist/internal.d.ts"
+    },
     "./package.json": "./package.json"
   },
   "publishConfig": {
     "access": "public"
   },
   "files": [
-    "dist"
+    "dist/index.js",
+    "dist/index.d.ts",
+    "dist/index.js.map"
   ],
   "devDependencies": {
     "@shopify/shopify-api": "^6.1.0",
