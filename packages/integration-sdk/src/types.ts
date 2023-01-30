@@ -1,7 +1,3 @@
-import type { ReactNode } from "react";
-
-export type { ReactNode };
-
 export type AccessInfo =
   | { type: "oauth2"; accessToken: string }
   | {
@@ -67,7 +63,6 @@ export interface RequestIntegration {
     options: PerformRequestOptions
   ) => Promise<PerformedRequestResponse>;
   displayProperties: (endpoint: string, params: any) => DisplayProperties;
-  renderComponent(input: any, output: any): ReactNode;
 }
 
 export interface WebhookIntegration {
@@ -88,6 +83,34 @@ export interface CacheService {
 }
 
 export type InternalIntegration = {
+  metadata: IntegrationMetadata;
   requests?: RequestIntegration;
   webhooks?: WebhookIntegration;
+};
+
+export type IntegrationMetadata = {
+  name: string;
+  slug: string;
+  icon: string;
+  enabledFor: "all" | "admins" | "none";
+  authentication: OAuthAuthentication | APIKeyAuthentication;
+};
+
+export type OAuthAuthentication = {
+  type: "oauth";
+  scopes: string[];
+};
+
+export type APIKeyAuthentication = {
+  type: "api_key";
+  header_name: string;
+  header_type: "access_token" | "bearer";
+  documentation: string;
+  additionalFields?: {
+    key: string;
+    fieldType: "text";
+    name: string;
+    placeholder?: string;
+    description: string;
+  }[];
 };

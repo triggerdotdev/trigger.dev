@@ -14,7 +14,6 @@
     "@trigger.dev/tsconfig": "workspace:*",
     "@types/debug": "^4.1.7",
     "@types/node": "16",
-    "@types/react": "^18.0.21",
     "rimraf": "^3.0.2",
     "tsup": "^6.5.0"
   },

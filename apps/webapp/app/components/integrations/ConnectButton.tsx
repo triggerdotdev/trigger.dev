@@ -1,4 +1,4 @@
-import type { SerializableProvider } from "@trigger.dev/providers";
+import type { IntegrationMetadata } from "@trigger.dev/integration-sdk";
 import { AddApiKeyButton } from "./AddApiKeyButton";
 import { ConnectOAuthButton } from "./ConnectOAuthButton";
 import { IntegrationIcon } from "./IntegrationIcon";
@@ -13,7 +13,7 @@ export function ConnectButton({
   children,
   className,
 }: {
-  integration: SerializableProvider;
+  integration: IntegrationMetadata;
   organizationId: string;
   sourceId?: string;
   serviceId?: string;
@@ -55,7 +55,7 @@ export function BasicConnectButton({
   sourceId,
   serviceId,
 }: {
-  integration: SerializableProvider;
+  integration: IntegrationMetadata;
   organizationId: string;
   sourceId?: string;
   serviceId?: string;

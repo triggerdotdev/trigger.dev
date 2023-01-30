@@ -1,4 +1,4 @@
-import type { CacheService } from "internal-integrations";
+import type { CacheService } from "@trigger.dev/integration-sdk";
 import { redis } from "./redis.server";
 
 export class RedisCacheService implements CacheService {

@@ -1,5 +1,5 @@
 import type { APIConnection } from ".prisma/client";
-import type { AccessInfo } from "internal-integrations";
+import type { AccessInfo } from "@trigger.dev/integration-sdk";
 import { apiKeyConfigSchema } from "~/models/apiConnection.server";
 import { pizzly } from "./pizzly.server";
 

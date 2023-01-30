@@ -1,10 +1,12 @@
+import type {
+  IntegrationMetadata,
+  InternalIntegration,
+} from "@trigger.dev/integration-sdk";
 import { ResendRequestIntegration } from "./internal/requests";
 
-export const requests = new ResendRequestIntegration();
+const requests = new ResendRequestIntegration();
 
-export * as schemas from "./schemas";
-
-export const metadata = {
+const metadata: IntegrationMetadata = {
   name: "Resend",
   slug: "resend",
   icon: "/integrations/resend.png",
@@ -14,8 +16,15 @@ export const metadata = {
     header_name: "Authorization",
     header_type: "access_token",
     documentation: `1. Login to [Resend](https://resend.com)
-2. Go to the API Keys page
-3. Generate a new API key
-4. Paste it into the field below`,
+    2. Go to the API Keys page
+    3. Generate a new API key
+    4. Paste it into the field below`,
   },
 };
+
+export const internalIntegration: InternalIntegration = {
+  metadata,
+  requests,
+};
+
+export * as schemas from "./schemas";

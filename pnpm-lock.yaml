@@ -77,7 +77,9 @@ importers:
       '@trigger.dev/common-schemas': workspace:*
       '@trigger.dev/github': workspace:*
       '@trigger.dev/integration-sdk': workspace:*
-      '@trigger.dev/providers': workspace:*
+      '@trigger.dev/resend': workspace:*
+      '@trigger.dev/shopify': workspace:*
+      '@trigger.dev/slack': workspace:*
       '@trigger.dev/tailwind-config': workspace:*
       '@typeform/embed-react': ^2.14.1
       '@types/bcryptjs': ^2.4.2
@@ -125,8 +127,8 @@ importers:
       glob: ^8.0.3
       happy-dom: ^6.0.4
       humanize-duration: ^3.27.3
+      integration-catalog: workspace:*
       internal-bridge: workspace:*
-      internal-integrations: workspace:*
       internal-platform: workspace:*
       internal-pulsar: workspace:*
       ioredis: ^5.2.4
@@ -211,7 +213,9 @@ importers:
       '@tanstack/react-table': 8.7.6_biqbaboplfbrettd7655fr4n2y
       '@trigger.dev/common-schemas': link:../../packages/common-schemas
       '@trigger.dev/github': link:../../integrations/github
-      '@trigger.dev/providers': link:../../packages/trigger-providers
+      '@trigger.dev/resend': link:../../integrations/resend
+      '@trigger.dev/shopify': link:../../integrations/shopify
+      '@trigger.dev/slack': link:../../integrations/slack
       '@typeform/embed-react': 2.14.1_react@18.2.0
       '@uiw/react-codemirror': 4.19.5_k4ec5g7vuuzzonc3d6xbjnmmle
       bcryptjs: 2.4.3
@@ -227,8 +231,8 @@ importers:
       emails: link:../../packages/emails
       express: 4.18.2
       humanize-duration: 3.27.3
+      integration-catalog: link:../../packages/integration-catalog
       internal-bridge: link:../../packages/internal-bridge
-      internal-integrations: link:../../packages/internal-integrations
       internal-platform: link:../../packages/internal-platform
       internal-pulsar: link:../../packages/internal-pulsar
       ioredis: 5.2.4
@@ -427,14 +431,12 @@ importers:
 
   examples/playground:
     specifiers:
-      '@trigger.dev/integrations': workspace:*
       '@trigger.dev/sdk': workspace:*
       '@trigger.dev/tsconfig': workspace:*
       '@types/node': '16'
       tsx: ^3.12.0
       zod: ^3.20.2
     dependencies:
-      '@trigger.dev/integrations': link:../../packages/trigger-integrations
       '@trigger.dev/sdk': link:../../packages/trigger-sdk
       zod: 3.20.2
     devDependencies:
@@ -721,12 +723,29 @@ importers:
       '@trigger.dev/tsconfig': link:../../config-packages/tsconfig
       '@types/react': 18.0.26
 
+  packages/integration-catalog:
+    specifiers:
+      '@trigger.dev/github': workspace:*
+      '@trigger.dev/integration-sdk': workspace:*
+      '@trigger.dev/resend': workspace:*
+      '@trigger.dev/shopify': workspace:*
+      '@trigger.dev/slack': workspace:*
+      '@trigger.dev/tsconfig': workspace:*
+      '@types/node': '16'
+    devDependencies:
+      '@trigger.dev/github': link:../../integrations/github
+      '@trigger.dev/integration-sdk': link:../integration-sdk
+      '@trigger.dev/resend': link:../../integrations/resend
+      '@trigger.dev/shopify': link:../../integrations/shopify
+      '@trigger.dev/slack': link:../../integrations/slack
+      '@trigger.dev/tsconfig': link:../../config-packages/tsconfig
+      '@types/node': 16.18.11
+
   packages/integration-sdk:
     specifiers:
       '@trigger.dev/tsconfig': workspace:*
       '@types/debug': ^4.1.7
       '@types/node': '16'
-      '@types/react': ^18.0.21
       debug: ^4.3.4
       rimraf: ^3.0.2
       tsup: ^6.5.0
@@ -738,7 +757,6 @@ importers:
       '@trigger.dev/tsconfig': link:../../config-packages/tsconfig
       '@types/debug': 4.1.7
       '@types/node': 16.18.11
-      '@types/react': 18.0.26
       rimraf: 3.0.2
       tsup: 6.5.0
 
@@ -775,11 +793,11 @@ importers:
     specifiers:
       '@aws-sdk/client-secrets-manager': ^3.238.0
       '@aws-sdk/credential-providers': ^3.238.0
-      '@trigger.dev/providers': workspace:*
       '@trigger.dev/tsconfig': workspace:*
       '@types/node': '16'
       '@types/node-fetch': '2.6'
       commander: ^9.4.1
+      integration-catalog: workspace:*
       node-fetch: '2.6'
       tiny-invariant: ^1.2.0
       tsx: ^3.12.0
@@ -789,49 +807,14 @@ importers:
     devDependencies:
       '@aws-sdk/client-secrets-manager': 3.245.0
       '@aws-sdk/credential-providers': 3.245.0
-      '@trigger.dev/providers': link:../trigger-providers
       '@trigger.dev/tsconfig': link:../../config-packages/tsconfig
       '@types/node': 16.18.11
       '@types/node-fetch': 2.6.2
       commander: 9.5.0
+      integration-catalog: link:../integration-catalog
       tiny-invariant: 1.3.1
       tsx: 3.12.2
       zod: 3.20.2
-
-  packages/internal-integrations:
-    specifiers:
-      '@octokit/webhooks': ^10.4.0
-      '@shopify/admin-graphql-api-utilities': ^2.0.1
-      '@shopify/shopify-api': ^6.1.0
-      '@trigger.dev/providers': workspace:*
-      '@trigger.dev/tsconfig': workspace:*
-      '@types/debug': ^4.1.7
-      '@types/node': '16'
-      '@types/react': ^18.0.21
-      '@urql/core': ^3.1.1
-      debug: ^4.3.4
-      graphql: ^16.6.0
-      react: ^18.2.0
-      typescript: ^4.9.4
-      urql: ^3.0.3
-      zod: ^3.20.2
-    dependencies:
-      '@octokit/webhooks': 10.5.1
-      '@shopify/admin-graphql-api-utilities': 2.0.1
-      '@shopify/shopify-api': 6.1.0
-      '@urql/core': 3.1.1_graphql@16.6.0
-      debug: 4.3.4
-      graphql: 16.6.0
-      react: 18.2.0
-      urql: 3.0.3_onqnqwb3ubg5opvemcqf7c2qhy
-      zod: 3.20.2
-    devDependencies:
-      '@trigger.dev/providers': link:../trigger-providers
-      '@trigger.dev/tsconfig': link:../../config-packages/tsconfig
-      '@types/debug': 4.1.7
-      '@types/node': 16.18.11
-      '@types/react': 18.0.26
-      typescript: 4.9.4
 
   packages/internal-platform:
     specifiers:
@@ -866,52 +849,6 @@ importers:
     devDependencies:
       '@trigger.dev/tsconfig': link:../../config-packages/tsconfig
       '@types/node': 16.18.11
-      typescript: 4.9.4
-
-  packages/trigger-integrations:
-    specifiers:
-      '@react-email/render': ^0.0.3
-      '@trigger.dev/providers': workspace:*
-      '@trigger.dev/sdk': workspace:*
-      '@trigger.dev/tsconfig': workspace:*
-      '@types/node': '16'
-      rimraf: ^3.0.2
-      tsup: ^6.5.0
-      zod: ^3.20.2
-    dependencies:
-      '@react-email/render': 0.0.3
-      '@trigger.dev/providers': link:../trigger-providers
-      '@trigger.dev/sdk': link:../trigger-sdk
-      zod: 3.20.2
-    devDependencies:
-      '@trigger.dev/tsconfig': link:../../config-packages/tsconfig
-      '@types/node': 16.18.11
-      rimraf: 3.0.2
-      tsup: 6.5.0
-
-  packages/trigger-providers:
-    specifiers:
-      '@shopify/admin-graphql-api-utilities': ^2.0.1
-      '@trigger.dev/tsconfig': workspace:*
-      '@types/node': '16'
-      '@types/react': ^18.0.26
-      rimraf: ^3.0.2
-      tiny-invariant: ^1.2.0
-      tsup: ^6.5.0
-      type-fest: ^3.5.3
-      typescript: ^4.9.4
-      zod: ^3.20.2
-    dependencies:
-      '@shopify/admin-graphql-api-utilities': 2.0.1
-      tiny-invariant: 1.3.1
-      zod: 3.20.2
-    devDependencies:
-      '@trigger.dev/tsconfig': link:../../config-packages/tsconfig
-      '@types/node': 16.18.11
-      '@types/react': 18.0.26
-      rimraf: 3.0.2
-      tsup: 6.5.0_typescript@4.9.4
-      type-fest: 3.5.3
       typescript: 4.9.4
 
   packages/trigger-sdk:
@@ -4593,6 +4530,7 @@ packages:
 
   /@octokit/openapi-types/14.0.0:
     resolution: {integrity: sha512-HNWisMYlR8VCnNurDU6os2ikx0s0VyEjDYHNS/h4cgb8DeOxQ0n72HyinUtdDVxJhFy3FWLGl0DJhfEWk3P5Iw==}
+    dev: true
 
   /@octokit/openapi-types/16.0.0:
     resolution: {integrity: sha512-JbFWOqTJVLHZSUUoF4FzAZKYtqdxWu9Z5m2QQnOyEa04fOFljvyh7D3GYKbfuaSWisqehImiVIMG4eyJeP5VEA==}
@@ -4634,6 +4572,7 @@ packages:
       '@octokit/types': 8.1.0
       deprecation: 2.3.1
       once: 1.4.0
+    dev: true
 
   /@octokit/request/6.2.3:
     resolution: {integrity: sha512-TNAodj5yNzrrZ/VxP+H5HiYaZep0H3GU0O7PaF+fhDrt8FPrnkei9Aal/txsN/1P7V3CPiThG0tIvpPDYUsyAA==}
@@ -4665,6 +4604,7 @@ packages:
     resolution: {integrity: sha512-N4nLjzkiWBqVQqljTTsCrbvHGoWdWfcCeZjbHdggw7a9HbJMnxbK8A+UWdqwR4out30JarlSa3eqKyVK0n5aBg==}
     dependencies:
       '@octokit/openapi-types': 14.0.0
+    dev: true
 
   /@octokit/types/9.0.0:
     resolution: {integrity: sha512-LUewfj94xCMH2rbD5YJ+6AQ4AVjFYTgpp6rboWM5T7N3IsIF65SBEOVcYMGAEzO/kKNiNaW4LoWtoThOhH06gw==}
@@ -4675,9 +4615,11 @@ packages:
   /@octokit/webhooks-methods/3.0.2:
     resolution: {integrity: sha512-Vlnv5WBscf07tyAvfDbp7pTkMZUwk7z7VwEF32x6HqI+55QRwBTcT+D7DDjZXtad/1dU9E32x0HmtDlF9VIRaQ==}
     engines: {node: '>= 14'}
+    dev: true
 
   /@octokit/webhooks-types/6.7.0:
     resolution: {integrity: sha512-bykm7UkSnxmb2uhSfcLM1Pity/LQ6ZBSdzy9HU0vXjR+2g+tzlmRhXb7Go8oj0TlgO+vDrTivGXju6zkzOGKjA==}
+    dev: true
 
   /@octokit/webhooks/10.5.1:
     resolution: {integrity: sha512-6yGcfVbQGIkRm/vlU4Ld4r0YNOT6ly5Kp+t6R3UAT0amxGASFtZLzOJry0UQfvvidCxK5qT9jHXU0QUp6alatA==}
@@ -4687,6 +4629,7 @@ packages:
       '@octokit/webhooks-methods': 3.0.2
       '@octokit/webhooks-types': 6.7.0
       aggregate-error: 3.1.0
+    dev: true
 
   /@open-draft/until/1.0.3:
     resolution: {integrity: sha512-Aq58f5HiWdyDlFffbbSjAlv596h/cOnt2DO1w3DOC7OJ5EHs0hd/nycJfiu9RJbT6Yk6F1knnRRXNSpxoIVZ9Q==}
@@ -5247,6 +5190,7 @@ packages:
 
   /@shopify/network/1.6.4:
     resolution: {integrity: sha512-V+//Et386LnYdtNhQ3e33AKYfU25XEt8H5XYeMqPvJZpVvC9Z1lHKQMpmM/zq13VXjPUjt9/sNxHxMP3I6cbJg==}
+    dev: true
 
   /@shopify/shopify-api/6.1.0:
     resolution: {integrity: sha512-XUyeqqRLsp8L24allGlezw2ILQ9ej9LvWS0A6GIE6k4Ku3fQDnSDIOVI2LRRkrZG92ZO3CLoM0Lblq0K9Z8RMg==}
@@ -5261,6 +5205,7 @@ packages:
       uuid: 8.3.2
     transitivePeerDependencies:
       - encoding
+    dev: true
 
   /@sideway/address/4.1.4:
     resolution: {integrity: sha512-7vwq+rOHVWjyXxVlR76Agnvhy8I9rpzjosTESvmhNeXOXdZZB15Fl+TI9x1SiHZH5Jv2wTGduSxFDIaq0m3DUw==}
@@ -5607,6 +5552,7 @@ packages:
 
   /@types/cookiejar/2.1.2:
     resolution: {integrity: sha512-t73xJJrvdTjXrn4jLS9VSGRbz0nUY3cl2DMGDU48lKl+HR9dbbjW2A9r3g40VA++mQpy6uuHg33gy7du2BKpog==}
+    dev: true
 
   /@types/debug/4.1.7:
     resolution: {integrity: sha512-9AonUzyTjXXhEOa0DnqpzZi6VHlqKMswga9EXjpXnnqxwLtdvPPtlO8evrI5D9S6asFRCQ6v+wpiUKbw+vKqyg==}
@@ -5775,6 +5721,7 @@ packages:
     dependencies:
       '@types/node': 18.11.18
       form-data: 3.0.1
+    dev: true
 
   /@types/node/10.17.60:
     resolution: {integrity: sha512-F0KIgDJfy2nA3zMLmWGKxcH2ZVEtCZXHHdOQs2gSaQ27+lNeEfGxzkIw90aXswATX7AZ33tahPbzy6KAfUreVw==}
@@ -5889,11 +5836,13 @@ packages:
     dependencies:
       '@types/cookiejar': 2.1.2
       '@types/node': 18.11.18
+    dev: true
 
   /@types/supertest/2.0.12:
     resolution: {integrity: sha512-X3HPWTwXRerBZS7Mo1k6vMVR1Z6zmJcDVn5O/31whe0tnjE4te6ZJSJGq1RiqHPjzPdMTfjCFogDJmwng9xHaQ==}
     dependencies:
       '@types/superagent': 4.1.16
+    dev: true
 
   /@types/testing-library__jest-dom/5.14.5:
     resolution: {integrity: sha512-SBwbxYoyPIvxHbeHxTZX2Pe/74F/tX2/D3mMvzabdeJ25bBojfW0TyB8BHrbq/9zaaKICJZjLP+8r6AeZMFCuQ==}
@@ -6111,6 +6060,7 @@ packages:
     dependencies:
       graphql: 16.6.0
       wonka: 6.1.2
+    dev: true
 
   /@vitejs/plugin-react/2.2.0_vite@3.2.5:
     resolution: {integrity: sha512-FFpefhvExd1toVRlokZgxgy2JtnBOdp4ZDsq7ldCWaqGSGn9UhWMAVm/1lxPL14JfNS5yGz+s9yFrQY6shoStA==}
@@ -8087,6 +8037,7 @@ packages:
 
   /deprecation/2.3.1:
     resolution: {integrity: sha512-xmHIy4F3scKVwMsQ4WnVaS8bHOx0DmVwRywosKhaILI0ywMDWPtBSku2HNxRvF7jtwDRsoEwYQSfbxj8b7RlJQ==}
+    dev: true
 
   /dequal/2.0.3:
     resolution: {integrity: sha512-0je+qPKHEMohvfRTCEo3CrPG6cAzAYgmzKyxRiYSSDkS6eGJdyVJm7WaYA5ECaAD9wLB2T4EEeymA5aFVcYXCA==}
@@ -9700,6 +9651,7 @@ packages:
       asynckit: 0.4.0
       combined-stream: 1.0.8
       mime-types: 2.1.35
+    dev: true
 
   /form-data/4.0.0:
     resolution: {integrity: sha512-ETEklSGi5t0QMZuiXoA/Q6vcnxcLQP5vdugSpuAyi6SVGi2clPPp+xgEhuMaHC+zGgn31Kd235W35f7Hykkaww==}
@@ -10160,6 +10112,7 @@ packages:
   /graphql/16.6.0:
     resolution: {integrity: sha512-KPIBPDlW7NxrbT/eh4qPXz5FiFdL5UbaA0XUNz2Rp3Z3hqBSkbj0GVjwFDztsWVauZUWsbKHgMg++sk8UX0bkw==}
     engines: {node: ^12.22.0 || ^14.16.0 || ^16.0.0 || >=17.0.0}
+    dev: true
 
   /gray-matter/4.0.3:
     resolution: {integrity: sha512-5v6yZd4JK3eMI3FqqCouswVqwugaA9r4dNZB1wwcmrD02QkV5H0y7XBQW8QwQqEaZY1pM9aqORSORhJRdNK44Q==}
@@ -11142,6 +11095,7 @@ packages:
 
   /jose/4.11.2:
     resolution: {integrity: sha512-njj0VL2TsIxCtgzhO+9RRobBvws4oYyCM8TpvoUQwl/MbIM3NFJRR9+e6x0sS5xXaP1t6OCBkaBME98OV9zU5A==}
+    dev: true
 
   /joycon/3.1.1:
     resolution: {integrity: sha512-34wB/Y7MW7bzjKRjUKTa46I2Z7eV62Rkhva+KkopW7Qvv/OSWBqvkSY7vusOPrNuZcUG3tApvdVgNB8POj3SPw==}
@@ -11673,6 +11627,7 @@ packages:
     engines: {node: '>=10'}
     dependencies:
       yallist: 4.0.0
+    dev: true
 
   /lru_map/0.3.3:
     resolution: {integrity: sha512-Pn9cox5CsMYngeDbmChANltQl+5pi6XmTrraMSzhPmMBbmgcxmqWry0U3PGapCU1yB4/LqCcom7qhHZiF/jGfQ==}
@@ -14752,6 +14707,7 @@ packages:
     hasBin: true
     dependencies:
       lru-cache: 6.0.0
+    dev: true
 
   /send/0.18.0:
     resolution: {integrity: sha512-qqWzuOjSFOuqPjFe4NOsMLafToQQwBSOEpS+FwEt3A2V3vKubTquT3vmLTQpFgMXp8AlFWFuP1qKaJZOtPpVXg==}
@@ -16030,11 +15986,6 @@ packages:
     engines: {node: '>=14.16'}
     dev: true
 
-  /type-fest/3.5.3:
-    resolution: {integrity: sha512-V2+og4j/rWReWvaFrse3s9g2xvUv/K9Azm/xo6CjIuq7oeGqsoimC7+9/A3tfvNcbQf8RPSVj/HV81fB4DJrjA==}
-    engines: {node: '>=14.16'}
-    dev: true
-
   /type-is/1.6.18:
     resolution: {integrity: sha512-TkRKr9sUTxEH8MdfuCSP7VizJyzRNMjj2J2do2Jr3Kym598JVdEksuzPQCnlFPW4ky9Q+iA+ma9BGm06XQBy8g==}
     engines: {node: '>= 0.6'}
@@ -16287,6 +16238,7 @@ packages:
       graphql: 16.6.0
       react: 18.2.0
       wonka: 6.1.2
+    dev: true
 
   /use-sync-external-store/1.2.0_react@18.2.0:
     resolution: {integrity: sha512-eEgnFxGQ1Ife9bzYs6VLi8/4X6CObHMw9Qr9tPY43iKwsPw8xE8+EFsf/2cFZ5S3esXgpWgtSCtLNS41F+sKPA==}
@@ -16670,6 +16622,7 @@ packages:
 
   /wonka/6.1.2:
     resolution: {integrity: sha512-zNrXPMccg/7OEp9tSfFkMgTvhhowqasiSHdJ3eCZolXxVTV/aT6HUTofoZk9gwRbGoFey/Nss3JaZKUMKMbofg==}
+    dev: true
 
   /word-wrap/1.2.3:
     resolution: {integrity: sha512-Hz/mrNwitNRh/HUAtM/VT/5VH+ygD6DV7mYKZAtHOrbs8U7lvPS6xf7EJKMF0uW1KJCl0H701g3ZGus+muE5vQ==}
@@ -16818,6 +16771,7 @@ packages:
 
   /yallist/4.0.0:
     resolution: {integrity: sha512-3wdGidZyq5PB084XLES5TpOSRA3wjXAlIWMhum2kRcv/41Sn2emQ0dycQW4uZXLejwKvg6EsvbdlVL+FYEct7A==}
+    dev: true
 
   /yaml/1.10.2:
     resolution: {integrity: sha512-r3vXyErRCYJ7wg28yvBY5VSoAF8ZvlcW9/BwUzEtUsjvX/DKs24dIkuwjtuprwJJHsbyUbLApepYTR1BN4uHrg==}

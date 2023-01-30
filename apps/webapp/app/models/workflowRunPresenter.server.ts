@@ -8,16 +8,17 @@ import {
   TriggerMetadataSchema,
   WaitSchema,
 } from "@trigger.dev/common-schemas";
-import type { SerializableProvider } from "@trigger.dev/providers";
-import type { DisplayProperties } from "internal-integrations";
-import { integrations as internalIntegrations } from "internal-integrations";
+import type {
+  DisplayProperties,
+  InternalIntegration,
+} from "@trigger.dev/integration-sdk";
+import { SendEmailBodySchema } from "@trigger.dev/resend/schemas";
 import invariant from "tiny-invariant";
 import type { PrismaClient } from "~/db.server";
 import { prisma } from "~/db.server";
 import type { PrismaReturnType } from "~/utils";
 import { dateDifference } from "~/utils";
-import { getIntegration } from "~/utils/integrations";
-import { getIntegrations } from "./integrations.server";
+import { getIntegrationMetadata, getIntegrations } from "./integrations.server";
 import type { WorkflowRunStatus } from "./workflowRun.server";
 
 export class WorkflowRunPresenter {
@@ -59,13 +60,14 @@ export class WorkflowRunPresenter {
         dateDifference(workflowRun.startedAt, workflowRun.finishedAt),
       trigger: {
         ...trigger,
-        integration: getIntegration(integrations, trigger.service),
+        integration: getIntegrationMetadata(integrations, trigger.service),
       },
       steps,
       error: workflowRun.error
         ? await ErrorSchema.parseAsync(workflowRun.error)
         : undefined,
       timedOutReason: workflowRun.timedOutReason,
+      integrations: integrations.map((i) => i.metadata),
     };
   }
 }
@@ -78,7 +80,7 @@ async function parseStep(
   original: NonNullable<
     PrismaReturnType<typeof getWorkflowRun>
   >["tasks"][number],
-  integrations: SerializableProvider[]
+  integrations: InternalIntegration[]
 ) {
   const base = {
     id: original.id,
@@ -150,17 +152,14 @@ async function parseStep(
       );
       const externalService = original.integrationRequest.externalService;
       const integration = integrations.find(
-        (i) => i.slug === externalService.slug
+        (i) => i.metadata.slug === externalService.slug
       );
       invariant(integration, `Integration ${externalService.slug} not found`);
 
       let displayProperties: DisplayProperties;
 
-      const internalIntegration = internalIntegrations[externalService.slug];
-      const requests = internalIntegration?.requests;
-
-      if (requests) {
-        displayProperties = requests.displayProperties(
+      if (integration.requests) {
+        displayProperties = integration.requests.displayProperties(
           original.integrationRequest.endpoint,
           original.integrationRequest.params
         );
@@ -169,6 +168,14 @@ async function parseStep(
           title: "Unknown integration",
         };
       }
+
+      const customComponent =
+        integration.metadata.slug === "resend"
+          ? {
+              component: "resend" as const,
+              input: SendEmailBodySchema.parse(original.input),
+            }
+          : undefined;
 
       return {
         ...base,
@@ -184,9 +191,10 @@ async function parseStep(
           type: externalService.type,
           status: externalService.status,
           connection: externalService.connection,
-          integration,
+          integration: integration.metadata,
         },
         retryCount: original.integrationRequest.retryCount,
+        customComponent,
       };
   }
 

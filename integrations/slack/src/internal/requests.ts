@@ -6,7 +6,6 @@ import type {
   PerformRequestOptions,
   RequestIntegration,
   AccessInfo,
-  ReactNode,
 } from "@trigger.dev/integration-sdk";
 import debug from "debug";
 import { getAccessToken } from "@trigger.dev/integration-sdk";
@@ -138,10 +137,6 @@ export class SlackRequestIntegration implements RequestIntegration {
         throw new Error(`Unknown endpoint: ${endpoint}`);
       }
     }
-  }
-
-  renderComponent(input: any, output: any): ReactNode {
-    return null;
   }
 
   async #postMessage(

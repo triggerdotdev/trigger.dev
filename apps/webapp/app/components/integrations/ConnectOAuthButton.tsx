@@ -1,6 +1,6 @@
 import Pizzly from "@nangohq/pizzly-frontend";
 import { useFetcher } from "@remix-run/react";
-import type { SerializableProvider } from "@trigger.dev/providers";
+import type { IntegrationMetadata } from "@trigger.dev/integration-sdk";
 import { useCallback, useEffect } from "react";
 import invariant from "tiny-invariant";
 import type { Response as CreateResponse } from "~/routes/resources/connection";
@@ -18,7 +18,7 @@ export function ConnectOAuthButton({
   className,
   children,
 }: {
-  integration: SerializableProvider;
+  integration: IntegrationMetadata;
   organizationId: string;
   sourceId?: string;
   serviceId?: string;
