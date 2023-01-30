@@ -65,7 +65,7 @@ program
       }
       const authProviders = result.data;
       const pizzly_host = options.pizzlyhost ?? "http://localhost:3004";
-      const providers = getProviders(true);
+      const providers = getIntegrations(true);
 
       console.log(`Using pizzly host: ${pizzly_host}`);
 
@@ -84,15 +84,15 @@ program
             return Promise.resolve();
           }
 
-          const provider = providers.find((p) => p.slug === service);
+          const provider = providers.find((p) => p.metadata.slug === service);
           if (!provider) {
             console.log(`No provider found for ${service}`);
             console.log("Skipping…");
             return Promise.resolve();
           }
-          if (provider.authentication.type !== "oauth") {
+          if (provider.metadata.authentication.type !== "oauth") {
             console.log(
-              `The provider ${service} is the wrong type ${provider?.authentication.type}. Must be oauth`
+              `The provider ${service} is the wrong type ${provider?.metadata.authentication.type}. Must be oauth`
             );
             console.log("Skipping…");
             return Promise.resolve();
@@ -132,12 +132,12 @@ program
                 service,
                 environmentClientId,
                 client_secret,
-                provider.authentication.scopes,
+                provider.metadata.authentication.scopes,
                 options.pizzlysecretkey
               );
               console.log(
                 `Updated config for ${service} with scopes`,
-                provider.authentication.scopes
+                provider.metadata.authentication.scopes
               );
             } else {
               const response = await createConfig(
@@ -145,12 +145,12 @@ program
                 service,
                 environmentClientId,
                 client_secret,
-                provider.authentication.scopes,
+                provider.metadata.authentication.scopes,
                 options.pizzlysecretkey
               );
               console.log(
                 `Created config for ${service} with scopes`,
-                provider.authentication.scopes
+                provider.metadata.authentication.scopes
               );
             }
           } catch (error) {
