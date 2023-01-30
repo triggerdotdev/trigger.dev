@@ -4,6 +4,7 @@ import { CustomEventSchema } from "@trigger.dev/common-schemas";
 import { z } from "zod";
 import { authenticateApiRequest } from "~/services/apiAuth.server";
 import { IngestCustomEvent } from "~/services/events/ingestCustomEvent.server";
+import { generateErrorMessage } from "zod-error";
 
 const EventBodySchema = z.object({
   id: z.string(),
@@ -29,7 +30,10 @@ export async function action({ request }: ActionArgs) {
   const eventBody = EventBodySchema.safeParse(body);
 
   if (!eventBody.success) {
-    return json({ error: eventBody.error.message }, { status: 400 });
+    return json(
+      { error: generateErrorMessage(eventBody.error.issues) },
+      { status: 422 }
+    );
   }
 
   const service = new IngestCustomEvent();

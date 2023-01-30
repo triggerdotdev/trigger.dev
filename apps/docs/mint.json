@@ -126,6 +126,12 @@
       ]
     },
     {
+      "group": "API Reference",
+      "pages": [
+        "api/events/sendEvent"
+      ]
+    },
+    {
       "group": "Webhook Catalog",
       "pages": [
         {
@@ -147,5 +153,10 @@
     "twitter": "https://twitter.com/triggerdotdev",
     "github": "https://github.com/triggerdotdev/trigger.dev",
     "discord": "https://discord.gg/nkqV9xBYWy"
+  },
+  "api": {
+    "auth": {
+      "method": "bearer"
+    }
   }
 }
