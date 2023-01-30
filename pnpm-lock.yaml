@@ -527,15 +527,15 @@ importers:
 
   examples/shopify:
     specifiers:
-      '@trigger.dev/integrations': workspace:*
       '@trigger.dev/sdk': workspace:*
+      '@trigger.dev/shopify': workspace:*
       '@trigger.dev/tsconfig': workspace:*
       '@types/node': '16'
       tsx: ^3.12.0
       zod: ^3.20.2
     dependencies:
-      '@trigger.dev/integrations': link:../../packages/trigger-integrations
       '@trigger.dev/sdk': link:../../packages/trigger-sdk
+      '@trigger.dev/shopify': link:../../integrations/shopify
       zod: 3.20.2
     devDependencies:
       '@trigger.dev/tsconfig': link:../../config-packages/tsconfig
@@ -606,6 +606,41 @@ importers:
       '@types/react': 18.0.26
       rimraf: 3.0.2
       tsup: 6.5.0
+
+  integrations/shopify:
+    specifiers:
+      '@shopify/admin-graphql-api-utilities': ^2.0.1
+      '@shopify/shopify-api': ^6.1.0
+      '@trigger.dev/integration-sdk': workspace:*
+      '@trigger.dev/sdk': workspace:*
+      '@trigger.dev/tsconfig': workspace:*
+      '@types/debug': ^4.1.7
+      '@types/node': '16'
+      '@urql/core': ^3.1.1
+      debug: ^4.3.4
+      graphql: ^16.6.0
+      react: ^18.2.0
+      rimraf: ^3.0.2
+      tsup: ^6.5.0
+      urql: ^3.0.3
+      zod: ^3.20.2
+    dependencies:
+      '@shopify/admin-graphql-api-utilities': 2.0.1
+      debug: 4.3.4
+      zod: 3.20.2
+    devDependencies:
+      '@shopify/shopify-api': 6.1.0
+      '@trigger.dev/integration-sdk': link:../../packages/integration-sdk
+      '@trigger.dev/sdk': link:../../packages/trigger-sdk
+      '@trigger.dev/tsconfig': link:../../config-packages/tsconfig
+      '@types/debug': 4.1.7
+      '@types/node': 16.18.11
+      '@urql/core': 3.1.1_graphql@16.6.0
+      graphql: 16.6.0
+      react: 18.2.0
+      rimraf: 3.0.2
+      tsup: 6.5.0
+      urql: 3.0.3_onqnqwb3ubg5opvemcqf7c2qhy
 
   integrations/slack:
     specifiers:
@@ -5212,7 +5247,6 @@ packages:
 
   /@shopify/network/1.6.4:
     resolution: {integrity: sha512-V+//Et386LnYdtNhQ3e33AKYfU25XEt8H5XYeMqPvJZpVvC9Z1lHKQMpmM/zq13VXjPUjt9/sNxHxMP3I6cbJg==}
-    dev: false
 
   /@shopify/shopify-api/6.1.0:
     resolution: {integrity: sha512-XUyeqqRLsp8L24allGlezw2ILQ9ej9LvWS0A6GIE6k4Ku3fQDnSDIOVI2LRRkrZG92ZO3CLoM0Lblq0K9Z8RMg==}
@@ -5227,7 +5261,6 @@ packages:
       uuid: 8.3.2
     transitivePeerDependencies:
       - encoding
-    dev: false
 
   /@sideway/address/4.1.4:
     resolution: {integrity: sha512-7vwq+rOHVWjyXxVlR76Agnvhy8I9rpzjosTESvmhNeXOXdZZB15Fl+TI9x1SiHZH5Jv2wTGduSxFDIaq0m3DUw==}
@@ -5574,7 +5607,6 @@ packages:
 
   /@types/cookiejar/2.1.2:
     resolution: {integrity: sha512-t73xJJrvdTjXrn4jLS9VSGRbz0nUY3cl2DMGDU48lKl+HR9dbbjW2A9r3g40VA++mQpy6uuHg33gy7du2BKpog==}
-    dev: false
 
   /@types/debug/4.1.7:
     resolution: {integrity: sha512-9AonUzyTjXXhEOa0DnqpzZi6VHlqKMswga9EXjpXnnqxwLtdvPPtlO8evrI5D9S6asFRCQ6v+wpiUKbw+vKqyg==}
@@ -5857,13 +5889,11 @@ packages:
     dependencies:
       '@types/cookiejar': 2.1.2
       '@types/node': 18.11.18
-    dev: false
 
   /@types/supertest/2.0.12:
     resolution: {integrity: sha512-X3HPWTwXRerBZS7Mo1k6vMVR1Z6zmJcDVn5O/31whe0tnjE4te6ZJSJGq1RiqHPjzPdMTfjCFogDJmwng9xHaQ==}
     dependencies:
       '@types/superagent': 4.1.16
-    dev: false
 
   /@types/testing-library__jest-dom/5.14.5:
     resolution: {integrity: sha512-SBwbxYoyPIvxHbeHxTZX2Pe/74F/tX2/D3mMvzabdeJ25bBojfW0TyB8BHrbq/9zaaKICJZjLP+8r6AeZMFCuQ==}
@@ -6081,7 +6111,6 @@ packages:
     dependencies:
       graphql: 16.6.0
       wonka: 6.1.2
-    dev: false
 
   /@vitejs/plugin-react/2.2.0_vite@3.2.5:
     resolution: {integrity: sha512-FFpefhvExd1toVRlokZgxgy2JtnBOdp4ZDsq7ldCWaqGSGn9UhWMAVm/1lxPL14JfNS5yGz+s9yFrQY6shoStA==}
@@ -11113,7 +11142,6 @@ packages:
 
   /jose/4.11.2:
     resolution: {integrity: sha512-njj0VL2TsIxCtgzhO+9RRobBvws4oYyCM8TpvoUQwl/MbIM3NFJRR9+e6x0sS5xXaP1t6OCBkaBME98OV9zU5A==}
-    dev: false
 
   /joycon/3.1.1:
     resolution: {integrity: sha512-34wB/Y7MW7bzjKRjUKTa46I2Z7eV62Rkhva+KkopW7Qvv/OSWBqvkSY7vusOPrNuZcUG3tApvdVgNB8POj3SPw==}
@@ -16259,7 +16287,6 @@ packages:
       graphql: 16.6.0
       react: 18.2.0
       wonka: 6.1.2
-    dev: false
 
   /use-sync-external-store/1.2.0_react@18.2.0:
     resolution: {integrity: sha512-eEgnFxGQ1Ife9bzYs6VLi8/4X6CObHMw9Qr9tPY43iKwsPw8xE8+EFsf/2cFZ5S3esXgpWgtSCtLNS41F+sKPA==}
@@ -16643,7 +16670,6 @@ packages:
 
   /wonka/6.1.2:
     resolution: {integrity: sha512-zNrXPMccg/7OEp9tSfFkMgTvhhowqasiSHdJ3eCZolXxVTV/aT6HUTofoZk9gwRbGoFey/Nss3JaZKUMKMbofg==}
-    dev: false
 
   /word-wrap/1.2.3:
     resolution: {integrity: sha512-Hz/mrNwitNRh/HUAtM/VT/5VH+ygD6DV7mYKZAtHOrbs8U7lvPS6xf7EJKMF0uW1KJCl0H701g3ZGus+muE5vQ==}

@@ -17,6 +17,7 @@ module.exports = {
     "@trigger.dev/github",
     "@trigger.dev/slack",
     "@trigger.dev/resend",
+    "@trigger.dev/shopify",
     "@trigger.dev/common-schemas",
     "@trigger.dev/sdk",
     "@trigger.dev/integrations",
@@ -39,6 +40,7 @@ module.exports = {
       "../../integrations/github/src/**/*",
       "../../integrations/slack/src/**/*",
       "../../integrations/resend/src/**/*",
+      "../../integrations/shopify/src/**/*",
     ];
   },
 };
