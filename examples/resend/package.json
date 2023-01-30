@@ -16,7 +16,7 @@
     "@react-email/render": "^0.0.3",
     "@react-email/section": "^0.0.1",
     "@react-email/text": "^0.0.2",
-    "@trigger.dev/integrations": "workspace:*",
+    "@trigger.dev/resend": "workspace:*",
     "@trigger.dev/sdk": "workspace:*",
     "react": "^18.2.0",
     "zod": "^3.20.2"

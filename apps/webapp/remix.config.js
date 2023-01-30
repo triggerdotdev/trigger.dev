@@ -16,6 +16,7 @@ module.exports = {
     "@trigger.dev/providers",
     "@trigger.dev/github",
     "@trigger.dev/slack",
+    "@trigger.dev/resend",
     "@trigger.dev/common-schemas",
     "@trigger.dev/sdk",
     "@trigger.dev/integrations",
@@ -36,6 +37,8 @@ module.exports = {
       "../../packages/trigger-sdk/src/**/*",
       "../../packages/trigger-integrations/src/**/*",
       "../../integrations/github/src/**/*",
+      "../../integrations/slack/src/**/*",
+      "../../integrations/resend/src/**/*",
     ];
   },
 };

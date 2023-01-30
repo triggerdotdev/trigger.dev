@@ -41,6 +41,12 @@
       ],
       "@trigger.dev/slack/*": [
         "../../integrations/slack/src/*"
+      ],
+      "@trigger.dev/resend": [
+        "../../integrations/resend/src/index"
+      ],
+      "@trigger.dev/resend/*": [
+        "../../integrations/resend/src/*"
       ]
     }
   }
