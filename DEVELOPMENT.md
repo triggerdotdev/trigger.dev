@@ -188,16 +188,10 @@ pnpm run dev --filter=webapp
 pnpm run dev --filter=wss
 ```
 
-4. Run the @trigger.dev/sdk:dev
+4. Build all the @trigger.dev/\* packages
 
 ```bash
-pnpm run dev --filter=@trigger.dev/sdk
-```
-
-5. Run the @trigger.dev integrations
-
-```bash
-pnpm run dev --filter=@trigger.dev/integrations
+pnpm run dev --filter="@trigger.dev/*"
 ```
 
 ## Running the smoke test

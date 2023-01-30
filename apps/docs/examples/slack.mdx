@@ -10,7 +10,8 @@ Integrations required: Slack, GitHub
 
 ```ts
 import { Trigger, customEvent } from "@trigger.dev/sdk";
-import { github, slack } from "@trigger.dev/integrations";
+import * as slack from "@trigger.dev/slack";
+import * as github from "@trigger.dev/github";
 import { z } from "zod";
 
 new Trigger({

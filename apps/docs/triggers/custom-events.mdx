@@ -61,7 +61,7 @@ Please see the [Event filters guide](/guides/event-filters) for more information
 
 ```ts
 import { Trigger, customEvent } from "@trigger.dev/sdk";
-import { slack } from "@trigger.dev/integrations";
+import * as slack from "@trigger.dev/slack";
 import { z } from "zod";
 
 //this workflow will run when a "user.created" event is sent

@@ -19,7 +19,6 @@ module.exports = {
     "@trigger.dev/shopify",
     "@trigger.dev/common-schemas",
     "@trigger.dev/sdk",
-    "@trigger.dev/integrations",
     "@trigger.dev/integration-sdk",
     "emails",
     "internal-pulsar",

@@ -7,7 +7,7 @@ description: "Trigger a workflow whenever a user star's the specified GitHub rep
 ## Usage
 
 ```ts
-import { github } from "@trigger.dev/integrations";
+import * as github from "@trigger.dev/github";
 
 new Trigger({
   id: "demo",
@@ -51,7 +51,7 @@ new Trigger({
 <CodeGroup>
 
 ```typescript Notify Slack on New GitHub Star
-import { slack } from "@trigger.dev/integrations";
+import * as slack from "@trigger.dev/slack";
 
 new Trigger({
   id: "new-star",
