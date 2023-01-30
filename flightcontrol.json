@@ -258,7 +258,7 @@
             "MAGIC_LINK_SECRET": {
               "fromParameterStore": "/Staging/webapp/MAGIC_LINK_SECRET"
             },
-            "GITHUB_CLIENT_ID": "724e56fcebe940eb5b22",
+            "GITHUB_CLIENT_ID": "2da3c8e5c6e4e0a7964f",
             "GITHUB_SECRET": {
               "fromParameterStore": "/Staging/webapp/GITHUB_SECRET"
             },
