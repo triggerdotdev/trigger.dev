@@ -85,7 +85,7 @@ export interface WebhookIntegration {
   handleWebhookRequest: (
     options: HandleWebhookOptions
   ) =>
-    | { status: "ok"; data: ReceivedWebhook }
+    | { status: "ok"; data: ReceivedWebhook[] }
     | { status: "ignored"; reason: string }
     | { status: "error"; error: string };
   verifyWebhookRequest: (

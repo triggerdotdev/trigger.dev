@@ -12,13 +12,7 @@ export function messageEvent(params: {
       filter: {
         service: ["whatsapp"],
         payload: {
-          object: ["whatsapp_business_account"],
-          entry: {
-            id: [params.accountId],
-            changes: {
-              field: ["messages"],
-            },
-          },
+          type: ["message"],
         },
         event: ["messages"],
       },

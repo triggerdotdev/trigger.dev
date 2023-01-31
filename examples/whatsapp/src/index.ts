@@ -11,7 +11,7 @@ new Trigger({
     accountId: "114848614845931",
   }),
   run: async (event, ctx) => {
-    await ctx.logger.info(`Action was ${event.action}`);
+    await ctx.logger.info(`Action was ${event}`);
 
     return {};
   },

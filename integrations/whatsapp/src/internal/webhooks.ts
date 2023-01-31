@@ -1,6 +1,6 @@
 import crypto from "crypto";
 import { ulid } from "ulid";
-import { getAccessToken } from "@trigger.dev/integration-sdk";
+import { getAccessToken, ReceivedWebhook } from "@trigger.dev/integration-sdk";
 import type {
   DisplayProperty,
   HandleWebhookOptions,
@@ -15,9 +15,7 @@ export class WhatsAppWebhookIntegration implements WebhookIntegration {
 
     switch (whatsAppSource.subresource) {
       case "messages":
-        return `messages.${
-          whatsAppSource.accountId
-        }.${whatsAppSource.events.join(".")}`;
+        return `messages.${whatsAppSource.accountId}.${whatsAppSource.event}`;
       default:
         throw new Error(`Unknown subresource`);
     }
@@ -75,14 +73,11 @@ export class WhatsAppWebhookIntegration implements WebhookIntegration {
       "x-forwarded-proto",
     ]);
 
+    const data = getData(options.request.body, context);
+
     return {
       status: "ok" as const,
-      data: {
-        id: ulid(),
-        payload: options.request.body,
-        event: "messages",
-        context,
-      },
+      data,
     };
   }
 
@@ -97,7 +92,45 @@ function parseWebhookSource(source: unknown) {
   return WebhookSourceSchema.parse(source);
 }
 
-function handleMessagesEvent(options: HandleWebhookOptions) {}
+function getData(
+  body: any,
+  context: Record<string, string>
+): ReceivedWebhook[] {
+  const webhooks: ReceivedWebhook[] = [];
+  for (const entry of body.entry) {
+    for (const change of entry.changes) {
+      if (change.field === "messages") {
+        const messageData = change.value;
+
+        const metadata = messageData.metadata;
+        const contacts = messageData.contacts;
+
+        for (const message of messageData.messages) {
+          const timestamp = `${message.timestamp}000`;
+          webhooks.push({
+            id: message.id as string,
+            payload: {
+              type: "message",
+              contacts,
+              metadata,
+              message: {
+                ...message,
+                timestamp,
+              },
+            },
+            timestamp,
+            event: "messages",
+            context,
+          });
+        }
+      } else {
+        console.error(`Unknown field ${change.field}`);
+      }
+    }
+  }
+
+  return webhooks;
+}
 
 function omit<T extends Record<string, unknown>, K extends keyof T>(
   obj: T,

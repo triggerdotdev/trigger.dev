@@ -28,7 +28,7 @@ type TriggeredEventResponse = {
     event: string;
     timestamp?: string;
     context?: any;
-  };
+  }[];
 };
 
 export type HandledExternalEventResponse =
@@ -57,28 +57,30 @@ export class HandleExternalSource {
 
     switch (possibleEvent.status) {
       case "ok": {
-        const { id, payload, event, timestamp, context } = possibleEvent.data;
+        for (let index = 0; index < possibleEvent.data.length; index++) {
+          const { id, payload, event, timestamp, context } =
+            possibleEvent.data[index];
 
-        const ingestService = new IngestEvent();
+          const ingestService = new IngestEvent();
 
-        await ingestService.call(
-          {
-            id,
-            payload,
-            name: event,
-            type: externalSource.type,
-            service: serviceIdentifier,
-            timestamp,
-            context,
-          },
-          externalSource.organization
-        );
+          await ingestService.call(
+            {
+              id,
+              payload,
+              name: event,
+              type: externalSource.type,
+              service: serviceIdentifier,
+              timestamp,
+              context,
+            },
+            externalSource.organization
+          );
+        }
 
         return true;
       }
       case "ignored": {
         console.log(`Ignored external event: ${possibleEvent.reason}`);
-
         return true;
       }
       case "error": {
@@ -175,15 +177,17 @@ export class HandleExternalSource {
 
     return {
       status: "ok",
-      data: {
-        id: ulid(),
-        payload: request.body,
-        event: source.event,
-        context: {
-          headers: request.headers,
-          externalSourceId: externalSource.id,
+      data: [
+        {
+          id: ulid(),
+          payload: request.body,
+          event: source.event,
+          context: {
+            headers: request.headers,
+            externalSourceId: externalSource.id,
+          },
         },
-      },
+      ],
     };
   }
 }

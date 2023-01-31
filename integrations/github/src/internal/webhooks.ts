@@ -87,7 +87,7 @@ export class GitHubWebhookIntegration implements WebhookIntegration {
 
     return {
       status: "ok" as const,
-      data: { id, payload: options.request.body, event, context },
+      data: [{ id, payload: options.request.body, event, context }],
     };
   }
 
