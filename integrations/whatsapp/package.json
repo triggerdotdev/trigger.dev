@@ -1,0 +1,38 @@
+{
+  "name": "@trigger.dev/whatsapp",
+  "version": "0.1.16",
+  "description": "The official WhatsApp Business integration for Trigger.dev",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "require": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    },
+    "./package.json": "./package.json"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "files": [
+    "dist"
+  ],
+  "devDependencies": {
+    "@trigger.dev/sdk": "workspace:*",
+    "@trigger.dev/tsconfig": "workspace:*",
+    "@trigger.dev/integration-sdk": "workspace:*",
+    "@types/node": "16",
+    "rimraf": "^3.0.2",
+    "tsup": "^6.5.0"
+  },
+  "peerDependencies": {
+    "@trigger.dev/sdk": "workspace:*"
+  },
+  "scripts": {
+    "clean": "rimraf dist",
+    "build": "npm run clean && npm run build:tsup",
+    "build:tsup": "tsup"
+  },
+  "dependencies": {
+    "zod": "^3.20.2"
+  }
+}

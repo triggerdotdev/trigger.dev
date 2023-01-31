@@ -68,6 +68,7 @@
     "@trigger.dev/slack": "workspace:*",
     "@trigger.dev/resend": "workspace:*",
     "@trigger.dev/shopify": "workspace:*",
+    "@trigger.dev/whatsapp": "workspace:*",
     "@typeform/embed-react": "^2.14.1",
     "@uiw/react-codemirror": "^4.13.2",
     "bcryptjs": "^2.4.3",
