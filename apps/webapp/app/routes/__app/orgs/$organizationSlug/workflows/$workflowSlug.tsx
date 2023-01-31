@@ -75,7 +75,7 @@ export const loader = async ({ request, params }: LoaderArgs) => {
   });
 
   const externalSourceIntegration = integrations.find(
-    (i) => i.slug === workflow?.externalSource?.service
+    (i) => i.metadata.slug === workflow?.externalSource?.service
   );
   const externalSourceSlot =
     workflow.externalSource && externalSourceIntegration
@@ -84,14 +84,16 @@ export const loader = async ({ request, params }: LoaderArgs) => {
           possibleConnections: allConnections.filter(
             (a) => a.apiIdentifier === workflow?.externalSource?.service
           ),
-          integration: externalSourceIntegration,
+          integration: externalSourceIntegration.metadata,
         }
       : undefined;
 
   const connectionSlots = {
     source: externalSourceSlot,
     services: workflow.externalServices.flatMap((c) => {
-      const integration = integrations.find((i) => i.slug === c.service);
+      const integration = integrations.find(
+        (i) => i.metadata.slug === c.service
+      );
 
       if (!integration) {
         return [];
@@ -102,7 +104,7 @@ export const loader = async ({ request, params }: LoaderArgs) => {
         possibleConnections: allConnections.filter(
           (a) => a.apiIdentifier === c.service
         ),
-        integration,
+        integration: integration.metadata,
       };
     }),
   };

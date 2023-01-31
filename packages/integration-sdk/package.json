@@ -1,0 +1,29 @@
+{
+  "name": "@trigger.dev/integration-sdk",
+  "version": "0.1.17",
+  "description": "trigger.dev SDK for integrations",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "publishConfig": {
+    "access": "public"
+  },
+  "files": [
+    "dist"
+  ],
+  "devDependencies": {
+    "@trigger.dev/tsconfig": "workspace:*",
+    "@types/debug": "^4.1.7",
+    "@types/node": "16",
+    "rimraf": "^3.0.2",
+    "tsup": "^6.5.0"
+  },
+  "scripts": {
+    "clean": "rimraf dist",
+    "build": "npm run clean && npm run build:tsup",
+    "build:tsup": "tsup"
+  },
+  "dependencies": {
+    "debug": "^4.3.4",
+    "zod": "^3.20.2"
+  }
+}

@@ -3,7 +3,8 @@
   "private": true,
   "workspaces": [
     "apps/*",
-    "packages/*"
+    "packages/*",
+    "integrations/*"
   ],
   "version": "0.0.1",
   "prisma": {
@@ -37,7 +38,7 @@
     "env:pull": "turbo run env:pull",
     "changeset:add": "changeset",
     "changeset:version": "changeset version",
-    "changeset:release": "pnpm run build --filter @trigger.dev/integrations --filter @trigger.dev/sdk && changeset publish"
+    "changeset:release": "pnpm run build --filter \"@trigger.dev/*\" && changeset publish"
   },
   "devDependencies": {
     "@manypkg/cli": "^0.19.2",

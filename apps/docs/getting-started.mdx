@@ -22,21 +22,21 @@ In your existing project install the packages:
   <Tab title="npm">
 
 ```bash
-npm install @trigger.dev/sdk @trigger.dev/integrations zod
+npm install @trigger.dev/sdk @trigger.dev/slack zod
 ```
 
   </Tab>
   <Tab title="pnpm">
 
 ```bash
-pnpm install @trigger.dev/sdk @trigger.dev/integrations zod
+pnpm install @trigger.dev/sdk @trigger.dev/slack zod
 ```
 
   </Tab>
   <Tab title="yarn">
 
 ```bash
-yarn add @trigger.dev/sdk @trigger.dev/integrations zod
+yarn add @trigger.dev/sdk @trigger.dev/slack zod
 ```
 
   </Tab>
@@ -45,7 +45,7 @@ yarn add @trigger.dev/sdk @trigger.dev/integrations zod
 What do the packages do?
 
 - `@trigger.dev/sdk` is required to use Trigger.dev, it allows you to run workflows.
-- `@trigger.dev/integrations` allows you to easily subscribe to webhooks and use API calls from popular services.
+- `@trigger.dev/slack` is the official Slack integration, which allows you to interact with the Slack API.
 - `zod` is used to define schemas (the expected shape of an object).
 
 ## 2. Sign in to your Trigger.dev dashboard
@@ -63,14 +63,13 @@ Workflows are triggered by events. In this example, we have defined a custom eve
 
 ```ts first-workflow.ts
 import { Trigger, customEvent } from "@trigger.dev/sdk";
-import { slack } from "@trigger.dev/integrations";
+import { postMessage } from "@trigger.dev/slack";
 import { z } from "zod";
 
-const postMessage = new Trigger({
+new Trigger({
   id: "new-user",
   name: "New user slack message",
   apiKey: "<your_api_key>",
-  logLevel: "info",
   on: customEvent({
     name: "user.created",
     schema: z.object({
@@ -83,7 +82,7 @@ const postMessage = new Trigger({
     await ctx.logger.info("This log will appear on the Trigger.dev run page");
 
     //send a message to the #new-users Slack channel with user details
-    const response = await slack.postMessage("send-to-slack", {
+    const response = await postMessage("send-to-slack", {
       channel: "new-users",
       text: `New user: ${event.name} (${event.email}) signed up. ${
         event.paidPlan ? "They are paying" : "They are on the free plan"
@@ -92,10 +91,7 @@ const postMessage = new Trigger({
 
     return response.message;
   },
-});
-
-//this workflow will now connect and start listening for events
-postMessage.listen();
+}).listen();
 ```
 
 You'll notice that when we subscribe to the custom event we have to say the name of the event and provide a schema. Schemas are created using Zod. In this case events must send an object that has `name`, `email`, and `paidPlan`.
@@ -168,9 +164,9 @@ import { sendEvent } from "@trigger.dev/sdk";
 ...your other code
 */
 
-await sendEvent({
-  apiKey: "<my_api_key>",
-  event: {
+await sendEvent(uuidv4(), {
+  name: "user.created"
+  payload: {
     name: "Eleven",
     email: "jane@hawksmoorhigh.edu",
     paidPlan: true,
@@ -178,7 +174,15 @@ await sendEvent({
 });
 ```
 
+<Note>
+  If you are using `sendEvent` outside of a Trigger, make sure and set your API
+  key to the `TRIGGER_API_KEY` environment variable. See the
+  [sendEvent](/functions/send-event) docs for more info.
+</Note>
+
 When you run your server and this code executes, it will trigger the workflow. You will see this in the run list on your workflow page.
+
+You can also use our API to send events from other programming languages. See the [sendEvent](/api/events/sendEvent) API reference for more info.
 
 ## Next steps
 

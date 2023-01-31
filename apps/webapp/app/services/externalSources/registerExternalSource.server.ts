@@ -1,10 +1,9 @@
 import type { APIConnection, ExternalSource } from ".prisma/client";
-import type { AccessInfo } from "internal-integrations";
-import { github } from "internal-integrations";
+import type { AccessInfo } from "@trigger.dev/integration-sdk";
+import * as github from "@trigger.dev/github/internal";
 import crypto from "node:crypto";
 import type { PrismaClient } from "~/db.server";
 import { prisma } from "~/db.server";
-import { env } from "~/env.server";
 import {
   buildExternalSourceUrl,
   findExternalSourceById,
@@ -142,7 +141,7 @@ export class RegisterExternalSource {
   ) {
     switch (serviceIdentifier) {
       case "github": {
-        return github.webhooks.registerWebhook(
+        return github.internalIntegration.webhooks!.registerWebhook(
           {
             callbackUrl,
             secret,

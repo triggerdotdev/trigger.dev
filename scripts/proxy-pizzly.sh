@@ -20,4 +20,4 @@
 
 set -e -x
 
-ngrok http --subdomain=${1:-$NGROK_SUBDOMAIN} --region eu 3004
+ngrok http --subdomain=${1:-$NGROK_SUBDOMAIN} --region ${2:-eu} 3004

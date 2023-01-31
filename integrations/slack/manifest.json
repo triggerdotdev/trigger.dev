@@ -1,0 +1,52 @@
+{
+  "display_information": {
+    "name": "Trigger.dev",
+    "description": "Trigger.dev makes it easy to automate workflows in code",
+    "background_color": "#121321"
+  },
+  "features": {
+    "bot_user": {
+      "display_name": "Trigger.dev",
+      "always_online": false
+    }
+  },
+  "oauth_config": {
+    "redirect_urls": [
+      "https://auth.trigger.dev/oauth/callback"
+    ],
+    "scopes": {
+      "user": [
+        "channels:read",
+        "chat:write",
+        "groups:read",
+        "im:read",
+        "mpim:read",
+        "channels:write",
+        "groups:write",
+        "im:write",
+        "mpim:write",
+        "reactions:write"
+      ],
+      "bot": [
+        "chat:write",
+        "channels:manage",
+        "channels:join",
+        "channels:read",
+        "groups:write",
+        "im:write",
+        "incoming-webhook",
+        "mpim:write",
+        "reactions:write"
+      ]
+    }
+  },
+  "settings": {
+    "interactivity": {
+      "is_enabled": true,
+      "request_url": "https://app.trigger.dev/api/v1/internal/webhooks/slack/interactivity"
+    },
+    "org_deploy_enabled": false,
+    "socket_mode_enabled": false,
+    "token_rotation_enabled": false
+  }
+}

@@ -1,5 +1,5 @@
 import * as Sentry from "@sentry/remix";
-import { env } from "process";
+import { env } from "~/env.server";
 import { prisma } from "~/db.server";
 
 declare global {
@@ -21,10 +21,10 @@ export function init() {
     dsn: env.SENTRY_DSN,
     tracesSampleRate: 1,
     integrations: [new Sentry.Integrations.Prisma({ client: prisma })],
-    environment: env.NODE_ENV,
+    environment: env.APP_ENV,
     maxBreadcrumbs: 50,
     normalizeDepth: 5,
   });
 
-  console.log(`🚦 Sentry initialized in ${env.NODE_ENV} mode`);
+  console.log(`🚦 Sentry initialized in ${env.APP_ENV} mode`);
 }

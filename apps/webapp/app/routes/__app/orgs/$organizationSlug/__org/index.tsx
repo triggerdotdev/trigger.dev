@@ -21,7 +21,7 @@ import { Title } from "~/components/primitives/text/Title";
 import { runStatusLabel } from "~/components/runs/runStatus";
 import { TriggerTypeIcon } from "~/components/triggers/TriggerIcons";
 import { useCurrentOrganization } from "~/hooks/useOrganizations";
-import { getIntegrations } from "~/models/integrations.server";
+import { getIntegrationMetadatas } from "~/models/integrations.server";
 import { getRuntimeEnvironmentFromRequest } from "~/models/runtimeEnvironment.server";
 import type { WorkflowListItem } from "~/models/workflowListPresenter.server";
 import { WorkflowListPresenter } from "~/models/workflowListPresenter.server";
@@ -32,7 +32,7 @@ export const loader = async ({ request, params }: LoaderArgs) => {
   await requireUserId(request);
   invariant(params.organizationSlug, "Organization slug is required");
 
-  const providers = getIntegrations(false);
+  const providers = getIntegrationMetadatas(false);
   const currentEnv = await getRuntimeEnvironmentFromRequest(request);
 
   const presenter = new WorkflowListPresenter();

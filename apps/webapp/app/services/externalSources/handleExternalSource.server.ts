@@ -1,8 +1,8 @@
 import type { PrismaClient } from "~/db.server";
 import { prisma } from "~/db.server";
-import { github } from "internal-integrations";
+import * as github from "@trigger.dev/github/internal";
 import type { ExternalSourceWithConnection } from "~/models/externalSource.server";
-import type { NormalizedRequest } from "internal-integrations";
+import type { NormalizedRequest } from "@trigger.dev/integration-sdk";
 import { IngestEvent } from "../events/ingest.server";
 import { ManualWebhookSourceSchema } from "@trigger.dev/common-schemas";
 import { createHmac, timingSafeEqual } from "node:crypto";
@@ -145,7 +145,7 @@ export class HandleExternalSource {
 
     switch (serviceIdentifier) {
       case "github": {
-        return github.webhooks.handleWebhookRequest({
+        return github.internalIntegration.webhooks!.handleWebhookRequest({
           request,
           secret: externalSource.secret ?? undefined,
         });

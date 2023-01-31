@@ -1,4 +1,4 @@
-import { slack } from "@trigger.dev/providers";
+import { schemas } from "@trigger.dev/slack/internal";
 import { ulid } from "ulid";
 import { generateErrorMessage } from "zod-error";
 import type { PrismaClient } from "~/db.server";
@@ -15,7 +15,7 @@ export class HandleSlackInteractivity {
   public async call(payload: unknown) {
     console.log("payload", JSON.stringify(payload, null, 2));
 
-    const parsedPayload = slack.schemas.blockAction.safeParse(payload);
+    const parsedPayload = schemas.blockAction.safeParse(payload);
 
     if (!parsedPayload.success) {
       console.error(

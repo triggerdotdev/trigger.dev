@@ -8,8 +8,8 @@
     "outDir": "lib",
     "moduleResolution": "node",
     "paths": {
-      "@trigger.dev/providers": ["../trigger-providers/src/index"],
-      "@trigger.dev/providers/*": ["../trigger-providers/src/*"]
+      "integration-catalog": ["../integration-catalog/src/index"],
+      "integration-catalog/*": ["../integration-catalog/src/*"]
     }
   },
   "exclude": ["node_modules", "**/*.test.*"]

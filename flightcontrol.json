@@ -55,8 +55,8 @@
             "apps/webapp/types/**",
             "packages/internal-platform/src/**",
             "packages/common-schemas/src/**",
-            "packages/internal-integrations/src/**",
-            "packages/trigger-providers/src/**",
+            "integrations/*/src/**",
+            "packages/integration-catalog/src/**",
             "packages/emails/src/**",
             "packages/emails/emails/**",
             "packages/internal-pulsar/src/**",
@@ -185,18 +185,18 @@
       "region": "us-east-1",
       "source": {
         "branch": "dev",
-        "trigger": "manual"
+        "trigger": "push"
       },
       "envVariables": {
         "PULSAR_ISSUER_URL": "https://auth.streamnative.cloud/",
         "PULSAR_AUDIENCE": {
-          "fromParameterStore": "/Staging/Pulsar/Audience"
+          "fromParameterStore": "/Prod/Pulsar/Audience"
         },
-        "PULSAR_TENANT": "triggerdotdev",
+        "PULSAR_TENANT": "triggerdotdev-staging",
         "PULSAR_WORKFLOWS_NAMESPACE": "workflows",
         "PULSAR_QUEUES_NAMESPACE": "queues",
         "PULSAR_SERVICE_URL": {
-          "fromParameterStore": "/Staging/Pulsar/ServiceURL"
+          "fromParameterStore": "/Prod/Pulsar/ServiceURL"
         },
         "DOCKER_USERNAME": "maverickdotdev",
         "DOCKER_PASSWORD": {
@@ -233,8 +233,8 @@
             "apps/webapp/types/**",
             "packages/internal-platform/src/**",
             "packages/common-schemas/src/**",
-            "packages/internal-integrations/src/**",
-            "packages/trigger-providers/src/**",
+            "integrations/*/src/**",
+            "packages/integration-catalog/src/**",
             "packages/emails/src/**",
             "packages/emails/emails/**",
             "packages/internal-pulsar/src/**",
@@ -244,6 +244,7 @@
             "s-db"
           ],
           "envVariables": {
+            "APP_ENV": "staging",
             "FROM_EMAIL": "hello@email.trigger.dev",
             "REPLY_TO_EMAIL": "hello@trigger.dev",
             "RESEND_API_KEY": {
@@ -258,7 +259,7 @@
             "MAGIC_LINK_SECRET": {
               "fromParameterStore": "/Staging/webapp/MAGIC_LINK_SECRET"
             },
-            "GITHUB_CLIENT_ID": "724e56fcebe940eb5b22",
+            "GITHUB_CLIENT_ID": "2da3c8e5c6e4e0a7964f",
             "GITHUB_SECRET": {
               "fromParameterStore": "/Staging/webapp/GITHUB_SECRET"
             },
@@ -277,7 +278,7 @@
             "PULSAR_ROLE": {
               "fromParameterStore": "/Staging/Pulsar/webapp/Role"
             },
-            "PIZZLY_HOST": "https://staging-auth.trigger.dev",
+            "PIZZLY_HOST": "https://auth-staging.trigger.dev",
             "PIZZLY_SECRET_KEY": {
               "fromParameterStore": "/Staging/webapp/PIZZLY_SECRET_KEY"
             },
@@ -321,7 +322,7 @@
             "PULSAR_ROLE": {
               "fromParameterStore": "/Staging/Pulsar/wss/Role"
             },
-            "PLATFORM_API_URL": "https://app.trigger.dev",
+            "PLATFORM_API_URL": "https://app-staging.trigger.dev",
             "TRIGGER_LOG_LEVEL": "debug"
           }
         },

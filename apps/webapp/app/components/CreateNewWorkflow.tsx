@@ -1,5 +1,5 @@
 import { ArrowTopRightOnSquareIcon } from "@heroicons/react/24/outline";
-import { SerializableProvider } from "@trigger.dev/providers";
+import type { IntegrationMetadata } from "@trigger.dev/integration-sdk";
 import { PopupButton } from "@typeform/embed-react";
 import { ApiLogoIcon } from "~/components/code/ApiLogoIcon";
 import discord from "../assets/images/discord.png";
@@ -38,7 +38,7 @@ export function CreateNewWorkflow() {
 export function CreateNewWorkflowNoWorkflows({
   providers,
 }: {
-  providers: SerializableProvider[];
+  providers: IntegrationMetadata[];
 }) {
   return (
     <>

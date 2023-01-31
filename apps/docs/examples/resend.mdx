@@ -17,8 +17,9 @@ This workflow will get triggered and a Slack notification and welcom email will 
 Integrations required: Resend, Slack
 
 ```ts
-import { resend, slack } from "@trigger.dev/integrations";
 import { customEvent, Trigger, sendEvent } from "@trigger.dev/sdk";
+import * as resend from "@trigger.dev/resend";
+import * as slack from "@trigger.dev/slack";
 import React from "react";
 import { z } from "zod";
 import { getUser } from "../db";

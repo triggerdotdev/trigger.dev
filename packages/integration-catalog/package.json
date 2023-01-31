@@ -1,0 +1,17 @@
+{
+  "name": "integration-catalog",
+  "version": "0.1.16",
+  "description": "Catalog of all the Trigger.dev integration packages",
+  "private": true,
+  "devDependencies": {
+    "@trigger.dev/tsconfig": "workspace:*",
+    "@types/node": "16",
+    "@trigger.dev/slack": "workspace:*",
+    "@trigger.dev/github": "workspace:*",
+    "@trigger.dev/shopify": "workspace:*",
+    "@trigger.dev/resend": "workspace:*",
+    "@trigger.dev/integration-sdk": "workspace:*"
+  },
+  "scripts": {},
+  "dependencies": {}
+}

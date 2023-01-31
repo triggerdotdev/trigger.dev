@@ -4,13 +4,13 @@ import { CreateNewWorkflowNoWorkflows } from "~/components/CreateNewWorkflow";
 import { Container } from "~/components/layout/Container";
 import { SubTitle } from "~/components/primitives/text/SubTitle";
 import { Title } from "~/components/primitives/text/Title";
-import { getIntegrations } from "~/models/integrations.server";
+import { getIntegrationMetadatas } from "~/models/integrations.server";
 import { requireUserId } from "~/services/session.server";
 
 export const loader = async ({ request, params }: LoaderArgs) => {
   await requireUserId(request);
 
-  const providers = getIntegrations(false);
+  const providers = getIntegrationMetadatas(false);
 
   return typedjson({ providers });
 };

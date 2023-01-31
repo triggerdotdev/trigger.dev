@@ -63,7 +63,7 @@ export default function LoginPage() {
             </a>
             <div className="flex flex-col flex-grow justify-between items-center text-center pt-8 pb-12 px-10">
               <p className="text-base lg:text-lg">
-                Connect your GitHub account to get started.
+                Build better workflows with Trigger.dev.
               </p>
               <GitHubLoginButton className="mx-auto whitespace-nowrap" />
               <Link

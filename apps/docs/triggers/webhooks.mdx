@@ -32,7 +32,7 @@ Please [join our discord community](https://discord.gg/kA47vcd8P6) and let us kn
 We've documented all the support webhooks for each integration in the sidebar, for example the GitHub [newStarEvent](/integrations/apis/github/events/new-star) webhook:
 
 ```ts
-import { github } from "@trigger.dev/integrations";
+import * as github from "@trigger.dev/github";
 
 new Trigger({
   id: "demo",
@@ -83,7 +83,8 @@ Copy the URL and secret, and register the webhook with the provider (in this cas
 
 ```ts Github
 import { Trigger } from "@trigger.dev/sdk";
-import { github, slack } from "@trigger.dev/integrations";
+import * as github from "@trigger.dev/github";
+import * as slack from "@trigger.dev/slack";
 
 new Trigger({
   id: "escalate-critical-issues",

@@ -12,7 +12,7 @@ Inspired by [this post](https://serverlessland.com/event-driven-architecture/vis
 
 ```ts
 import { Trigger } from "@trigger.dev/sdk";
-import { github } from "@trigger.dev/integrations";
+import * as github from "@trigger.dev/github";
 import { db } from "./db.server";
 
 new Trigger({

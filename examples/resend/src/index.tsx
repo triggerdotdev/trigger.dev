@@ -1,5 +1,5 @@
 import { Trigger, customEvent } from "@trigger.dev/sdk";
-import { resend } from "@trigger.dev/integrations";
+import * as resend from "@trigger.dev/resend";
 import { Head } from "@react-email/head";
 import { Html } from "@react-email/html";
 import { Link } from "@react-email/link";
@@ -13,7 +13,7 @@ import { z } from "zod";
 new Trigger({
   id: "resend",
   name: "Resend text/html",
-  apiKey: "trigger_development_YpG7UQygbuT3",
+  apiKey: "trigger_development_Du0Tt9gYwsVg",
   endpoint: "ws://localhost:8889/ws",
   logLevel: "debug",
   on: customEvent({
@@ -48,7 +48,7 @@ new Trigger({
 new Trigger({
   id: "resend-react",
   name: "Resend React",
-  apiKey: "trigger_development_YpG7UQygbuT3",
+  apiKey: "trigger_development_Du0Tt9gYwsVg",
   endpoint: "ws://localhost:8889/ws",
   logLevel: "debug",
   on: customEvent({

@@ -4,7 +4,7 @@ sidebarTitle: "Post Message"
 description: "Post a message to a Slack channel"
 ---
 
-Publish slack messages to a public or private channel in your Slack Workspace as the Trigger.dev Slack bot. If you need to publish messages to your customer's Slack channels, consider using [Incoming Webhooks](https://api.slack.com/messaging/webhooks) and our [fetch](/functions/fetch) function.
+Publish Slack messages to a public or private channel in your Slack Workspace as the Trigger.dev Slack bot. If you need to publish messages to your customer's Slack channels, consider using [Incoming Webhooks](https://api.slack.com/messaging/webhooks) and our [fetch](/functions/fetch) function.
 
 ## Params
 
@@ -31,9 +31,9 @@ Publish slack messages to a public or private channel in your Slack Workspace as
     <ParamField path="blocks" type="object" required={false}>
       You can use blocks to create a rich message with images, buttons, and more.
 
-      You can either pass in a JavaScript object or use [JSX Slack](https://github.com/yhatt/jsx-slack/) to create blocks. We highly recommend using JSX Slack, it's much easier to read and write. See the [block example](#) to see it in action.
+      You can either pass in a JavaScript object or use [JSX Slack](https://github.com/yhatt/jsx-slack/) to create blocks. We highly recommend using JSX Slack as it's much easier to read and write. See the [block example](#blocks-with-interactivity) to see it in action.
 
-      Full full detail on block see the [Slack API docs](https://api.slack.com/reference/block-kit/blocks).
+      For full details on Slack blocks, see the [Slack API docs](https://api.slack.com/reference/block-kit/blocks).
     </ParamField>
 
   </Expandable>
@@ -77,12 +77,13 @@ Publish slack messages to a public or private channel in your Slack Workspace as
 
 ## Example Workflows
 
-### Notify Slack on New Star
+### Notify Slack on New GitHub Star
 
 <CodeGroup>
 
-```typescript Notify Slack on New Star
-import { slack, github } from "@trigger.dev/integrations";
+```typescript Notify Slack on New GitHub Star
+import * as github from "@trigger.dev/github";
+import * as slack from "@trigger.dev/slack";
 
 new Trigger({
   id: "new-star",
@@ -133,7 +134,7 @@ Please note, that to use `jsx-slack` you will need to add the `jsxImportSource` 
 
 ```typescript workflow.tsx
 /** @jsxImportSource jsx-slack */
-import { slack } from "@trigger.dev/integrations";
+import * as slack from "@trigger.dev/slack";
 import JSXSlack, {
   Actions,
   Blocks,

@@ -1,7 +1,7 @@
 import { Popover, Transition } from "@headlessui/react";
 import { CheckIcon, ChevronUpDownIcon } from "@heroicons/react/24/outline";
 import { useFetcher } from "@remix-run/react";
-import type { SerializableProvider } from "@trigger.dev/providers";
+import type { IntegrationMetadata } from "@trigger.dev/integration-sdk";
 import classNames from "classnames";
 import { Fragment } from "react";
 import type { APIConnection } from "~/models/apiConnection.server";
@@ -11,7 +11,7 @@ type Props = {
   type: "source" | "service";
   sourceServiceId: string;
   organizationId: string;
-  integration: SerializableProvider;
+  integration: IntegrationMetadata;
   connections: Pick<APIConnection, "id" | "title">[];
   selectedConnectionId?: string;
   className?: string;

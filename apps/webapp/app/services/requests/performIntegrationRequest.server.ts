@@ -3,8 +3,11 @@ import type {
   CacheService,
   NormalizedResponse,
   PerformedRequestResponse,
-} from "internal-integrations";
-import { resend, shopify, slack } from "internal-integrations";
+} from "@trigger.dev/integration-sdk";
+
+import * as slack from "@trigger.dev/slack/internal";
+import * as resend from "@trigger.dev/resend/internal";
+import * as shopify from "@trigger.dev/shopify/internal";
 import type { PrismaClient } from "~/db.server";
 import { prisma } from "~/db.server";
 import type { IntegrationRequest } from "~/models/integrationRequest.server";
@@ -226,7 +229,7 @@ export class PerformIntegrationRequest {
   ): Promise<PerformedRequestResponse> {
     switch (service) {
       case "slack": {
-        return slack.requests.perform({
+        return slack.internalIntegration.requests!.perform({
           accessInfo,
           endpoint: integrationRequest.endpoint,
           params: integrationRequest.params,
@@ -235,7 +238,7 @@ export class PerformIntegrationRequest {
         });
       }
       case "shopify": {
-        return shopify.requests.perform({
+        return shopify.internalIntegration.requests!.perform({
           accessInfo,
           endpoint: integrationRequest.endpoint,
           params: integrationRequest.params,
@@ -244,7 +247,7 @@ export class PerformIntegrationRequest {
         });
       }
       case "resend": {
-        return resend.requests.perform({
+        return resend.internalIntegration.requests!.perform({
           accessInfo,
           endpoint: integrationRequest.endpoint,
           params: integrationRequest.params,

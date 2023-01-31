@@ -1,7 +1,7 @@
 import { EnvelopeIcon } from "@heroicons/react/24/outline";
 import { PlusCircleIcon } from "@heroicons/react/24/solid";
 import type { LoaderArgs } from "@remix-run/server-runtime";
-import type { SerializableProvider } from "@trigger.dev/providers";
+import type { IntegrationMetadata } from "@trigger.dev/integration-sdk";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import invariant from "tiny-invariant";
 import { ApiLogoIcon } from "~/components/code/ApiLogoIcon";
@@ -15,10 +15,10 @@ import { SubTitle } from "~/components/primitives/text/SubTitle";
 import { Title } from "~/components/primitives/text/Title";
 import { useCurrentOrganization } from "~/hooks/useOrganizations";
 import { getConnectedApiConnectionsForOrganizationSlug } from "~/models/apiConnection.server";
-import { getIntegrations } from "~/models/integrations.server";
+import { getIntegrationMetadatas } from "~/models/integrations.server";
 import { requireUser } from "~/services/session.server";
 import { formatDateTime } from "~/utils";
-import { getIntegration } from "~/utils/integrations";
+import { findIntegrationMetadata } from "~/utils/integrationMetadata";
 
 export const loader = async ({ request, params }: LoaderArgs) => {
   const user = await requireUser(request);
@@ -30,7 +30,10 @@ export const loader = async ({ request, params }: LoaderArgs) => {
     slug: organizationSlug,
   });
 
-  return typedjson({ connections, integrations: getIntegrations(user.admin) });
+  return typedjson({
+    connections,
+    integrations: getIntegrationMetadatas(user.admin),
+  });
 };
 
 export default function Integrations() {
@@ -56,7 +59,7 @@ export default function Integrations() {
                   <li key={connection.id}>
                     <div className="flex gap-4 items-center px-4 py-4">
                       <ApiLogoIcon
-                        integration={getIntegration(
+                        integration={findIntegrationMetadata(
                           integrations,
                           connection.apiIdentifier
                         )}
@@ -123,7 +126,7 @@ function AddButtonContent({
   integration,
   status,
 }: {
-  integration: SerializableProvider;
+  integration: IntegrationMetadata;
   status: Status;
 }) {
   return (

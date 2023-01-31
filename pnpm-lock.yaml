@@ -75,7 +75,11 @@ importers:
       '@testing-library/react': ^13.4.0
       '@testing-library/user-event': ^14.4.3
       '@trigger.dev/common-schemas': workspace:*
-      '@trigger.dev/providers': workspace:*
+      '@trigger.dev/github': workspace:*
+      '@trigger.dev/integration-sdk': workspace:*
+      '@trigger.dev/resend': workspace:*
+      '@trigger.dev/shopify': workspace:*
+      '@trigger.dev/slack': workspace:*
       '@trigger.dev/tailwind-config': workspace:*
       '@typeform/embed-react': ^2.14.1
       '@types/bcryptjs': ^2.4.2
@@ -123,8 +127,8 @@ importers:
       glob: ^8.0.3
       happy-dom: ^6.0.4
       humanize-duration: ^3.27.3
+      integration-catalog: workspace:*
       internal-bridge: workspace:*
-      internal-integrations: workspace:*
       internal-platform: workspace:*
       internal-pulsar: workspace:*
       ioredis: ^5.2.4
@@ -184,7 +188,7 @@ importers:
       '@aws-sdk/client-s3': 3.245.0
       '@aws-sdk/s3-request-presigner': 3.245.0
       '@cfworker/json-schema': 1.12.5
-      '@codemirror/autocomplete': 6.4.0_eo6pz6bvsllvatnnwfprpuflde
+      '@codemirror/autocomplete': 6.4.0_czcfkg2f66rxeiodoti7r2gulu
       '@codemirror/commands': 6.1.3
       '@codemirror/lang-javascript': 6.1.2
       '@codemirror/lang-json': 6.0.1
@@ -208,9 +212,12 @@ importers:
       '@tailwindcss/forms': 0.5.3_tailwindcss@3.1.8
       '@tanstack/react-table': 8.7.6_biqbaboplfbrettd7655fr4n2y
       '@trigger.dev/common-schemas': link:../../packages/common-schemas
-      '@trigger.dev/providers': link:../../packages/trigger-providers
+      '@trigger.dev/github': link:../../integrations/github
+      '@trigger.dev/resend': link:../../integrations/resend
+      '@trigger.dev/shopify': link:../../integrations/shopify
+      '@trigger.dev/slack': link:../../integrations/slack
       '@typeform/embed-react': 2.14.1_react@18.2.0
-      '@uiw/react-codemirror': 4.19.5_aguurb4bmecpxzejz52amioxne
+      '@uiw/react-codemirror': 4.19.5_k4ec5g7vuuzzonc3d6xbjnmmle
       bcryptjs: 2.4.3
       classnames: 2.3.2
       clsx: 1.2.1
@@ -224,8 +231,8 @@ importers:
       emails: link:../../packages/emails
       express: 4.18.2
       humanize-duration: 3.27.3
+      integration-catalog: link:../../packages/integration-catalog
       internal-bridge: link:../../packages/internal-bridge
-      internal-integrations: link:../../packages/internal-integrations
       internal-platform: link:../../packages/internal-platform
       internal-pulsar: link:../../packages/internal-pulsar
       ioredis: 5.2.4
@@ -277,6 +284,7 @@ importers:
       '@testing-library/jest-dom': 5.16.5
       '@testing-library/react': 13.4.0_biqbaboplfbrettd7655fr4n2y
       '@testing-library/user-event': 14.4.3_ua4wuun3fnehcjqtqj2e2ldgpe
+      '@trigger.dev/integration-sdk': link:../../packages/integration-sdk
       '@trigger.dev/tailwind-config': link:../../config-packages/tailwind-config
       '@types/bcryptjs': 2.4.2
       '@types/compression': 1.7.2
@@ -389,15 +397,15 @@ importers:
 
   examples/fetch-playground:
     specifiers:
-      '@trigger.dev/integrations': workspace:*
       '@trigger.dev/sdk': workspace:*
+      '@trigger.dev/slack': workspace:*
       '@trigger.dev/tsconfig': workspace:*
       '@types/node': '16'
       tsx: ^3.12.0
       zod: ^3.20.2
     dependencies:
-      '@trigger.dev/integrations': link:../../packages/trigger-integrations
       '@trigger.dev/sdk': link:../../packages/trigger-sdk
+      '@trigger.dev/slack': link:../../integrations/slack
       zod: 3.20.2
     devDependencies:
       '@trigger.dev/tsconfig': link:../../config-packages/tsconfig
@@ -406,14 +414,14 @@ importers:
 
   examples/github-webhook:
     specifiers:
-      '@trigger.dev/integrations': workspace:*
+      '@trigger.dev/github': workspace:*
       '@trigger.dev/sdk': workspace:*
       '@trigger.dev/tsconfig': workspace:*
       '@types/node': '16'
       tsx: ^3.12.0
       zod: ^3.20.2
     dependencies:
-      '@trigger.dev/integrations': link:../../packages/trigger-integrations
+      '@trigger.dev/github': link:../../integrations/github
       '@trigger.dev/sdk': link:../../packages/trigger-sdk
       zod: 3.20.2
     devDependencies:
@@ -423,14 +431,12 @@ importers:
 
   examples/playground:
     specifiers:
-      '@trigger.dev/integrations': workspace:*
       '@trigger.dev/sdk': workspace:*
       '@trigger.dev/tsconfig': workspace:*
       '@types/node': '16'
       tsx: ^3.12.0
       zod: ^3.20.2
     dependencies:
-      '@trigger.dev/integrations': link:../../packages/trigger-integrations
       '@trigger.dev/sdk': link:../../packages/trigger-sdk
       zod: 3.20.2
     devDependencies:
@@ -452,7 +458,7 @@ importers:
       '@react-email/render': ^0.0.3
       '@react-email/section': ^0.0.1
       '@react-email/text': ^0.0.2
-      '@trigger.dev/integrations': workspace:*
+      '@trigger.dev/resend': workspace:*
       '@trigger.dev/sdk': workspace:*
       '@trigger.dev/tsconfig': workspace:*
       '@types/node': '16'
@@ -474,7 +480,7 @@ importers:
       '@react-email/render': 0.0.3_react@18.2.0
       '@react-email/section': 0.0.1
       '@react-email/text': 0.0.2
-      '@trigger.dev/integrations': link:../../packages/trigger-integrations
+      '@trigger.dev/resend': link:../../integrations/resend
       '@trigger.dev/sdk': link:../../packages/trigger-sdk
       react: 18.2.0
       zod: 3.20.2
@@ -487,15 +493,15 @@ importers:
 
   examples/schedule-to-slack:
     specifiers:
-      '@trigger.dev/integrations': workspace:*
       '@trigger.dev/sdk': workspace:*
+      '@trigger.dev/slack': workspace:*
       '@trigger.dev/tsconfig': workspace:*
       '@types/node': '16'
       tsx: ^3.12.0
       zod: ^3.20.2
     dependencies:
-      '@trigger.dev/integrations': link:../../packages/trigger-integrations
       '@trigger.dev/sdk': link:../../packages/trigger-sdk
+      '@trigger.dev/slack': link:../../integrations/slack
       zod: 3.20.2
     devDependencies:
       '@trigger.dev/tsconfig': link:../../config-packages/tsconfig
@@ -504,16 +510,16 @@ importers:
 
   examples/send-to-slack:
     specifiers:
-      '@trigger.dev/integrations': workspace:*
       '@trigger.dev/sdk': workspace:*
+      '@trigger.dev/slack': workspace:*
       '@trigger.dev/tsconfig': workspace:*
       '@types/node': '16'
       jsx-slack: ^5.3.0
       tsx: ^3.12.0
       zod: ^3.20.2
     dependencies:
-      '@trigger.dev/integrations': link:../../packages/trigger-integrations
       '@trigger.dev/sdk': link:../../packages/trigger-sdk
+      '@trigger.dev/slack': link:../../integrations/slack
       jsx-slack: 5.3.0
       zod: 3.20.2
     devDependencies:
@@ -523,15 +529,15 @@ importers:
 
   examples/shopify:
     specifiers:
-      '@trigger.dev/integrations': workspace:*
       '@trigger.dev/sdk': workspace:*
+      '@trigger.dev/shopify': workspace:*
       '@trigger.dev/tsconfig': workspace:*
       '@types/node': '16'
       tsx: ^3.12.0
       zod: ^3.20.2
     dependencies:
-      '@trigger.dev/integrations': link:../../packages/trigger-integrations
       '@trigger.dev/sdk': link:../../packages/trigger-sdk
+      '@trigger.dev/shopify': link:../../integrations/shopify
       zod: 3.20.2
     devDependencies:
       '@trigger.dev/tsconfig': link:../../config-packages/tsconfig
@@ -540,7 +546,6 @@ importers:
 
   examples/smoke-test:
     specifiers:
-      '@trigger.dev/integrations': workspace:*
       '@trigger.dev/sdk': workspace:*
       '@trigger.dev/tsconfig': workspace:*
       '@types/node': '16'
@@ -548,7 +553,6 @@ importers:
       ulid: ^2.3.0
       zod: ^3.20.2
     dependencies:
-      '@trigger.dev/integrations': link:../../packages/trigger-integrations
       '@trigger.dev/sdk': link:../../packages/trigger-sdk
       ulid: 2.3.0
       zod: 3.20.2
@@ -556,6 +560,112 @@ importers:
       '@trigger.dev/tsconfig': link:../../config-packages/tsconfig
       '@types/node': 16.18.11
       tsx: 3.12.2
+
+  integrations/github:
+    specifiers:
+      '@octokit/webhooks': ^10.4.0
+      '@trigger.dev/integration-sdk': workspace:*
+      '@trigger.dev/sdk': workspace:*
+      '@trigger.dev/tsconfig': workspace:*
+      '@types/node': '16'
+      rimraf: ^3.0.2
+      tsup: ^6.5.0
+      zod: ^3.20.2
+    dependencies:
+      '@octokit/webhooks': 10.5.1
+      zod: 3.20.2
+    devDependencies:
+      '@trigger.dev/integration-sdk': link:../../packages/integration-sdk
+      '@trigger.dev/sdk': link:../../packages/trigger-sdk
+      '@trigger.dev/tsconfig': link:../../config-packages/tsconfig
+      '@types/node': 16.18.11
+      rimraf: 3.0.2
+      tsup: 6.5.0
+
+  integrations/resend:
+    specifiers:
+      '@react-email/render': ^0.0.3
+      '@trigger.dev/integration-sdk': workspace:*
+      '@trigger.dev/sdk': workspace:*
+      '@trigger.dev/tsconfig': workspace:*
+      '@types/debug': ^4.1.7
+      '@types/node': '16'
+      '@types/react': ^18.0.26
+      debug: ^4.3.4
+      rimraf: ^3.0.2
+      tsup: ^6.5.0
+      zod: ^3.20.2
+    dependencies:
+      '@react-email/render': 0.0.3
+      debug: 4.3.4
+      zod: 3.20.2
+    devDependencies:
+      '@trigger.dev/integration-sdk': link:../../packages/integration-sdk
+      '@trigger.dev/sdk': link:../../packages/trigger-sdk
+      '@trigger.dev/tsconfig': link:../../config-packages/tsconfig
+      '@types/debug': 4.1.7
+      '@types/node': 16.18.11
+      '@types/react': 18.0.26
+      rimraf: 3.0.2
+      tsup: 6.5.0
+
+  integrations/shopify:
+    specifiers:
+      '@shopify/admin-graphql-api-utilities': ^2.0.1
+      '@shopify/shopify-api': ^6.1.0
+      '@trigger.dev/integration-sdk': workspace:*
+      '@trigger.dev/sdk': workspace:*
+      '@trigger.dev/tsconfig': workspace:*
+      '@types/debug': ^4.1.7
+      '@types/node': '16'
+      '@urql/core': ^3.1.1
+      debug: ^4.3.4
+      graphql: ^16.6.0
+      react: ^18.2.0
+      rimraf: ^3.0.2
+      tsup: ^6.5.0
+      urql: ^3.0.3
+      zod: ^3.20.2
+    dependencies:
+      '@shopify/admin-graphql-api-utilities': 2.0.1
+      '@urql/core': 3.1.1_graphql@16.6.0
+      debug: 4.3.4
+      urql: 3.0.3_onqnqwb3ubg5opvemcqf7c2qhy
+      zod: 3.20.2
+    devDependencies:
+      '@shopify/shopify-api': 6.1.0
+      '@trigger.dev/integration-sdk': link:../../packages/integration-sdk
+      '@trigger.dev/sdk': link:../../packages/trigger-sdk
+      '@trigger.dev/tsconfig': link:../../config-packages/tsconfig
+      '@types/debug': 4.1.7
+      '@types/node': 16.18.11
+      graphql: 16.6.0
+      react: 18.2.0
+      rimraf: 3.0.2
+      tsup: 6.5.0
+
+  integrations/slack:
+    specifiers:
+      '@trigger.dev/integration-sdk': workspace:*
+      '@trigger.dev/sdk': workspace:*
+      '@trigger.dev/tsconfig': workspace:*
+      '@types/debug': ^4.1.7
+      '@types/node': '16'
+      debug: ^4.3.4
+      rimraf: ^3.0.2
+      tsup: ^6.5.0
+      zod: ^3.20.2
+    dependencies:
+      debug: 4.3.4
+      zod: 3.20.2
+    devDependencies:
+      '@trigger.dev/integration-sdk': link:../../packages/integration-sdk
+      '@trigger.dev/sdk': link:../../packages/trigger-sdk
+      '@trigger.dev/tsconfig': link:../../config-packages/tsconfig
+      '@types/debug': 4.1.7
+      '@types/node': 16.18.11
+      rimraf: 3.0.2
+      tsup: 6.5.0
 
   packages/common-schemas:
     specifiers:
@@ -613,6 +723,43 @@ importers:
       '@trigger.dev/tsconfig': link:../../config-packages/tsconfig
       '@types/react': 18.0.26
 
+  packages/integration-catalog:
+    specifiers:
+      '@trigger.dev/github': workspace:*
+      '@trigger.dev/integration-sdk': workspace:*
+      '@trigger.dev/resend': workspace:*
+      '@trigger.dev/shopify': workspace:*
+      '@trigger.dev/slack': workspace:*
+      '@trigger.dev/tsconfig': workspace:*
+      '@types/node': '16'
+    devDependencies:
+      '@trigger.dev/github': link:../../integrations/github
+      '@trigger.dev/integration-sdk': link:../integration-sdk
+      '@trigger.dev/resend': link:../../integrations/resend
+      '@trigger.dev/shopify': link:../../integrations/shopify
+      '@trigger.dev/slack': link:../../integrations/slack
+      '@trigger.dev/tsconfig': link:../../config-packages/tsconfig
+      '@types/node': 16.18.11
+
+  packages/integration-sdk:
+    specifiers:
+      '@trigger.dev/tsconfig': workspace:*
+      '@types/debug': ^4.1.7
+      '@types/node': '16'
+      debug: ^4.3.4
+      rimraf: ^3.0.2
+      tsup: ^6.5.0
+      zod: ^3.20.2
+    dependencies:
+      debug: 4.3.4
+      zod: 3.20.2
+    devDependencies:
+      '@trigger.dev/tsconfig': link:../../config-packages/tsconfig
+      '@types/debug': 4.1.7
+      '@types/node': 16.18.11
+      rimraf: 3.0.2
+      tsup: 6.5.0
+
   packages/internal-bridge:
     specifiers:
       '@trigger.dev/common-schemas': workspace:*
@@ -646,11 +793,11 @@ importers:
     specifiers:
       '@aws-sdk/client-secrets-manager': ^3.238.0
       '@aws-sdk/credential-providers': ^3.238.0
-      '@trigger.dev/providers': workspace:*
       '@trigger.dev/tsconfig': workspace:*
       '@types/node': '16'
       '@types/node-fetch': '2.6'
       commander: ^9.4.1
+      integration-catalog: workspace:*
       node-fetch: '2.6'
       tiny-invariant: ^1.2.0
       tsx: ^3.12.0
@@ -660,49 +807,14 @@ importers:
     devDependencies:
       '@aws-sdk/client-secrets-manager': 3.245.0
       '@aws-sdk/credential-providers': 3.245.0
-      '@trigger.dev/providers': link:../trigger-providers
       '@trigger.dev/tsconfig': link:../../config-packages/tsconfig
       '@types/node': 16.18.11
       '@types/node-fetch': 2.6.2
       commander: 9.5.0
+      integration-catalog: link:../integration-catalog
       tiny-invariant: 1.3.1
       tsx: 3.12.2
       zod: 3.20.2
-
-  packages/internal-integrations:
-    specifiers:
-      '@octokit/webhooks': ^10.4.0
-      '@shopify/admin-graphql-api-utilities': ^2.0.1
-      '@shopify/shopify-api': ^6.1.0
-      '@trigger.dev/providers': workspace:*
-      '@trigger.dev/tsconfig': workspace:*
-      '@types/debug': ^4.1.7
-      '@types/node': '16'
-      '@types/react': ^18.0.21
-      '@urql/core': ^3.1.1
-      debug: ^4.3.4
-      graphql: ^16.6.0
-      react: ^18.2.0
-      typescript: ^4.9.4
-      urql: ^3.0.3
-      zod: ^3.20.2
-    dependencies:
-      '@octokit/webhooks': 10.5.1
-      '@shopify/admin-graphql-api-utilities': 2.0.1
-      '@shopify/shopify-api': 6.1.0
-      '@urql/core': 3.1.1_graphql@16.6.0
-      debug: 4.3.4
-      graphql: 16.6.0
-      react: 18.2.0
-      urql: 3.0.3_onqnqwb3ubg5opvemcqf7c2qhy
-      zod: 3.20.2
-    devDependencies:
-      '@trigger.dev/providers': link:../trigger-providers
-      '@trigger.dev/tsconfig': link:../../config-packages/tsconfig
-      '@types/debug': 4.1.7
-      '@types/node': 16.18.11
-      '@types/react': 18.0.26
-      typescript: 4.9.4
 
   packages/internal-platform:
     specifiers:
@@ -737,52 +849,6 @@ importers:
     devDependencies:
       '@trigger.dev/tsconfig': link:../../config-packages/tsconfig
       '@types/node': 16.18.11
-      typescript: 4.9.4
-
-  packages/trigger-integrations:
-    specifiers:
-      '@react-email/render': ^0.0.3
-      '@trigger.dev/providers': workspace:*
-      '@trigger.dev/sdk': workspace:*
-      '@trigger.dev/tsconfig': workspace:*
-      '@types/node': '16'
-      rimraf: ^3.0.2
-      tsup: ^6.5.0
-      zod: ^3.20.2
-    dependencies:
-      '@react-email/render': 0.0.3_react@18.2.0
-      '@trigger.dev/providers': link:../trigger-providers
-      '@trigger.dev/sdk': link:../trigger-sdk
-      zod: 3.20.2
-    devDependencies:
-      '@trigger.dev/tsconfig': link:../../config-packages/tsconfig
-      '@types/node': 16.18.11
-      rimraf: 3.0.2
-      tsup: 6.5.0
-
-  packages/trigger-providers:
-    specifiers:
-      '@shopify/admin-graphql-api-utilities': ^2.0.1
-      '@trigger.dev/tsconfig': workspace:*
-      '@types/node': '16'
-      '@types/react': ^18.0.26
-      rimraf: ^3.0.2
-      tiny-invariant: ^1.2.0
-      tsup: ^6.5.0
-      type-fest: ^3.5.3
-      typescript: ^4.9.4
-      zod: ^3.20.2
-    dependencies:
-      '@shopify/admin-graphql-api-utilities': 2.0.1
-      tiny-invariant: 1.3.1
-      zod: 3.20.2
-    devDependencies:
-      '@trigger.dev/tsconfig': link:../../config-packages/tsconfig
-      '@types/node': 16.18.11
-      '@types/react': 18.0.26
-      rimraf: 3.0.2
-      tsup: 6.5.0_typescript@4.9.4
-      type-fest: 3.5.3
       typescript: 4.9.4
 
   packages/trigger-sdk:
@@ -3457,13 +3523,12 @@ packages:
       prettier: 2.8.2
     dev: false
 
-  /@codemirror/autocomplete/6.4.0_eo6pz6bvsllvatnnwfprpuflde:
+  /@codemirror/autocomplete/6.4.0_czcfkg2f66rxeiodoti7r2gulu:
     resolution: {integrity: sha512-HLF2PnZAm1s4kGs30EiqKMgD7XsYaQ0XJnMR0rofEWQ5t5D60SfqpDIkIh1ze5tiEbyUWm8+VJ6W1/erVvBMIA==}
     peerDependencies:
       '@codemirror/language': ^6.0.0
       '@codemirror/state': ^6.0.0
       '@codemirror/view': ^6.0.0
-      '@lezer/common': ^1.0.0
     dependencies:
       '@codemirror/language': 6.3.2
       '@codemirror/state': 6.2.0
@@ -3483,7 +3548,7 @@ packages:
   /@codemirror/lang-javascript/6.1.2:
     resolution: {integrity: sha512-OcwLfZXdQ1OHrLiIcKCn7MqZ7nx205CMKlhe+vL88pe2ymhT9+2P+QhwkYGxMICj8TDHyp8HFKVwpiisUT7iEQ==}
     dependencies:
-      '@codemirror/autocomplete': 6.4.0_eo6pz6bvsllvatnnwfprpuflde
+      '@codemirror/autocomplete': 6.4.0_czcfkg2f66rxeiodoti7r2gulu
       '@codemirror/language': 6.3.2
       '@codemirror/lint': 6.1.0
       '@codemirror/state': 6.2.0
@@ -4681,6 +4746,16 @@ packages:
       react-dom: 18.2.0_react@18.2.0
     dev: false
 
+  /@react-email/render/0.0.3:
+    resolution: {integrity: sha512-+4eOrLGdTCJjoJU3PunekErjo3PFnhSDFjVINBHrfJT+1wlVdhWfDo7hFdzXJx/JOOYqmnZTilU/umGLdRumKQ==}
+    engines: {node: '>=18.0.0'}
+    dependencies:
+      pretty: 2.0.0
+      react-dom: 18.2.0
+    transitivePeerDependencies:
+      - react
+    dev: false
+
   /@react-email/render/0.0.3_react@18.2.0:
     resolution: {integrity: sha512-+4eOrLGdTCJjoJU3PunekErjo3PFnhSDFjVINBHrfJT+1wlVdhWfDo7hFdzXJx/JOOYqmnZTilU/umGLdRumKQ==}
     engines: {node: '>=18.0.0'}
@@ -4796,7 +4871,7 @@ packages:
       eslint: 8.31.0
       eslint-import-resolver-node: 0.3.6
       eslint-import-resolver-typescript: 3.5.3_hnftvkj7qg3s6bbigj4pr6djxy
-      eslint-plugin-import: 2.27.4_qdjeohovcytra7xto5vgmxssaq
+      eslint-plugin-import: 2.27.4_2ac3tknkazjoq5fxmuugu665ny
       eslint-plugin-jest: 26.9.0_ohsifnwenhmxgcp7mend4dnv74
       eslint-plugin-jest-dom: 4.0.3_eslint@8.31.0
       eslint-plugin-jsx-a11y: 6.7.1_eslint@8.31.0
@@ -5112,7 +5187,7 @@ packages:
 
   /@shopify/network/1.6.4:
     resolution: {integrity: sha512-V+//Et386LnYdtNhQ3e33AKYfU25XEt8H5XYeMqPvJZpVvC9Z1lHKQMpmM/zq13VXjPUjt9/sNxHxMP3I6cbJg==}
-    dev: false
+    dev: true
 
   /@shopify/shopify-api/6.1.0:
     resolution: {integrity: sha512-XUyeqqRLsp8L24allGlezw2ILQ9ej9LvWS0A6GIE6k4Ku3fQDnSDIOVI2LRRkrZG92ZO3CLoM0Lblq0K9Z8RMg==}
@@ -5127,7 +5202,7 @@ packages:
       uuid: 8.3.2
     transitivePeerDependencies:
       - encoding
-    dev: false
+    dev: true
 
   /@sideway/address/4.1.4:
     resolution: {integrity: sha512-7vwq+rOHVWjyXxVlR76Agnvhy8I9rpzjosTESvmhNeXOXdZZB15Fl+TI9x1SiHZH5Jv2wTGduSxFDIaq0m3DUw==}
@@ -5474,7 +5549,7 @@ packages:
 
   /@types/cookiejar/2.1.2:
     resolution: {integrity: sha512-t73xJJrvdTjXrn4jLS9VSGRbz0nUY3cl2DMGDU48lKl+HR9dbbjW2A9r3g40VA++mQpy6uuHg33gy7du2BKpog==}
-    dev: false
+    dev: true
 
   /@types/debug/4.1.7:
     resolution: {integrity: sha512-9AonUzyTjXXhEOa0DnqpzZi6VHlqKMswga9EXjpXnnqxwLtdvPPtlO8evrI5D9S6asFRCQ6v+wpiUKbw+vKqyg==}
@@ -5643,6 +5718,7 @@ packages:
     dependencies:
       '@types/node': 18.11.18
       form-data: 3.0.1
+    dev: true
 
   /@types/node/10.17.60:
     resolution: {integrity: sha512-F0KIgDJfy2nA3zMLmWGKxcH2ZVEtCZXHHdOQs2gSaQ27+lNeEfGxzkIw90aXswATX7AZ33tahPbzy6KAfUreVw==}
@@ -5757,13 +5833,13 @@ packages:
     dependencies:
       '@types/cookiejar': 2.1.2
       '@types/node': 18.11.18
-    dev: false
+    dev: true
 
   /@types/supertest/2.0.12:
     resolution: {integrity: sha512-X3HPWTwXRerBZS7Mo1k6vMVR1Z6zmJcDVn5O/31whe0tnjE4te6ZJSJGq1RiqHPjzPdMTfjCFogDJmwng9xHaQ==}
     dependencies:
       '@types/superagent': 4.1.16
-    dev: false
+    dev: true
 
   /@types/testing-library__jest-dom/5.14.5:
     resolution: {integrity: sha512-SBwbxYoyPIvxHbeHxTZX2Pe/74F/tX2/D3mMvzabdeJ25bBojfW0TyB8BHrbq/9zaaKICJZjLP+8r6AeZMFCuQ==}
@@ -5932,18 +6008,17 @@ packages:
       eslint-visitor-keys: 3.3.0
     dev: true
 
-  /@uiw/codemirror-extensions-basic-setup/4.19.5_tbeldtdcrf45b35pezgkzq2u4e:
+  /@uiw/codemirror-extensions-basic-setup/4.19.5_wd2tsis3in55bkaiwnc2c46tom:
     resolution: {integrity: sha512-1zt7ZPJ01xKkSW/KDy0FZNga0bngN1fC594wCVG7FBi60ehfcAucpooQ+JSPScKXopxcb+ugPKZvVLzr9/OfzA==}
     peerDependencies:
       '@codemirror/autocomplete': '>=6.0.0'
       '@codemirror/commands': '>=6.0.0'
       '@codemirror/language': '>=6.0.0'
-      '@codemirror/lint': '>=6.0.0'
       '@codemirror/search': '>=6.0.0'
       '@codemirror/state': '>=6.0.0'
       '@codemirror/view': '>=6.0.0'
     dependencies:
-      '@codemirror/autocomplete': 6.4.0_eo6pz6bvsllvatnnwfprpuflde
+      '@codemirror/autocomplete': 6.4.0_czcfkg2f66rxeiodoti7r2gulu
       '@codemirror/commands': 6.1.3
       '@codemirror/language': 6.3.2
       '@codemirror/lint': 6.1.0
@@ -5952,14 +6027,11 @@ packages:
       '@codemirror/view': 6.7.2
     dev: false
 
-  /@uiw/react-codemirror/4.19.5_aguurb4bmecpxzejz52amioxne:
+  /@uiw/react-codemirror/4.19.5_k4ec5g7vuuzzonc3d6xbjnmmle:
     resolution: {integrity: sha512-ZCHh8d7beXbF8/t7F1+yHht6A9Y6CdKeOkZq4A09lxJEnyTQrj1FMf2zvfaqc7K23KNjkTCtSlbqKKbVDgrWaw==}
     peerDependencies:
-      '@babel/runtime': '>=7.11.0'
       '@codemirror/state': '>=6.0.0'
-      '@codemirror/theme-one-dark': '>=6.0.0'
       '@codemirror/view': '>=6.0.0'
-      codemirror: '>=6.0.0'
       react: '>=16.8.0'
       react-dom: '>=16.8.0'
     dependencies:
@@ -5968,14 +6040,13 @@ packages:
       '@codemirror/state': 6.2.0
       '@codemirror/theme-one-dark': 6.1.0
       '@codemirror/view': 6.7.2
-      '@uiw/codemirror-extensions-basic-setup': 4.19.5_tbeldtdcrf45b35pezgkzq2u4e
-      codemirror: 6.0.1_@lezer+common@1.0.2
+      '@uiw/codemirror-extensions-basic-setup': 4.19.5_wd2tsis3in55bkaiwnc2c46tom
+      codemirror: 6.0.1
       react: 18.2.0
       react-dom: 18.2.0_react@18.2.0
     transitivePeerDependencies:
       - '@codemirror/autocomplete'
       - '@codemirror/language'
-      - '@codemirror/lint'
       - '@codemirror/search'
     dev: false
 
@@ -7286,18 +7357,16 @@ packages:
     engines: {node: '>=0.10.0'}
     dev: false
 
-  /codemirror/6.0.1_@lezer+common@1.0.2:
+  /codemirror/6.0.1:
     resolution: {integrity: sha512-J8j+nZ+CdWmIeFIGXEFbFPtpiYacFMDR8GlHK3IyHQJMCaVRfGx9NT+Hxivv1ckLWPvNdZqndbr/7lVhrf/Svg==}
     dependencies:
-      '@codemirror/autocomplete': 6.4.0_eo6pz6bvsllvatnnwfprpuflde
+      '@codemirror/autocomplete': 6.4.0_czcfkg2f66rxeiodoti7r2gulu
       '@codemirror/commands': 6.1.3
       '@codemirror/language': 6.3.2
       '@codemirror/lint': 6.1.0
       '@codemirror/search': 6.2.3
       '@codemirror/state': 6.2.0
       '@codemirror/view': 6.7.2
-    transitivePeerDependencies:
-      - '@lezer/common'
     dev: false
 
   /collection-visit/1.0.0:
@@ -8633,7 +8702,7 @@ packages:
       debug: 4.3.4
       enhanced-resolve: 5.12.0
       eslint: 8.31.0
-      eslint-plugin-import: 2.27.4_qdjeohovcytra7xto5vgmxssaq
+      eslint-plugin-import: 2.27.4_2ac3tknkazjoq5fxmuugu665ny
       get-tsconfig: 4.3.0
       globby: 13.1.3
       is-core-module: 2.11.0
@@ -8643,7 +8712,7 @@ packages:
       - supports-color
     dev: true
 
-  /eslint-module-utils/2.7.4_sqt5xxn4ciiurbqrzlaarm6ama:
+  /eslint-module-utils/2.7.4_v73lhamtbyinynmwa5fn7kpmfq:
     resolution: {integrity: sha512-j4GT+rqzCoRKHwURX7pddtIPGySnX9Si/cgMI5ztrcqOPtk5dDEeZ34CQVPphnqkJytlc97Vuk05Um2mJ3gEQA==}
     engines: {node: '>=4'}
     peerDependencies:
@@ -8668,6 +8737,7 @@ packages:
       debug: 3.2.7
       eslint: 8.31.0
       eslint-import-resolver-node: 0.3.7
+      eslint-import-resolver-typescript: 3.5.3_hnftvkj7qg3s6bbigj4pr6djxy
     transitivePeerDependencies:
       - supports-color
     dev: true
@@ -8692,7 +8762,7 @@ packages:
       regexpp: 3.2.0
     dev: true
 
-  /eslint-plugin-import/2.27.4_qdjeohovcytra7xto5vgmxssaq:
+  /eslint-plugin-import/2.27.4_2ac3tknkazjoq5fxmuugu665ny:
     resolution: {integrity: sha512-Z1jVt1EGKia1X9CnBCkpAOhWy8FgQ7OmJ/IblEkT82yrFU/xJaxwujaTzLWqigewwynRQ9mmHfX9MtAfhxm0sA==}
     engines: {node: '>=4'}
     peerDependencies:
@@ -8710,7 +8780,7 @@ packages:
       doctrine: 2.1.0
       eslint: 8.31.0
       eslint-import-resolver-node: 0.3.7
-      eslint-module-utils: 2.7.4_sqt5xxn4ciiurbqrzlaarm6ama
+      eslint-module-utils: 2.7.4_v73lhamtbyinynmwa5fn7kpmfq
       has: 1.0.3
       is-core-module: 2.11.0
       is-glob: 4.0.3
@@ -9577,6 +9647,7 @@ packages:
       asynckit: 0.4.0
       combined-stream: 1.0.8
       mime-types: 2.1.35
+    dev: true
 
   /form-data/4.0.0:
     resolution: {integrity: sha512-ETEklSGi5t0QMZuiXoA/Q6vcnxcLQP5vdugSpuAyi6SVGi2clPPp+xgEhuMaHC+zGgn31Kd235W35f7Hykkaww==}
@@ -11019,7 +11090,7 @@ packages:
 
   /jose/4.11.2:
     resolution: {integrity: sha512-njj0VL2TsIxCtgzhO+9RRobBvws4oYyCM8TpvoUQwl/MbIM3NFJRR9+e6x0sS5xXaP1t6OCBkaBME98OV9zU5A==}
-    dev: false
+    dev: true
 
   /joycon/3.1.1:
     resolution: {integrity: sha512-34wB/Y7MW7bzjKRjUKTa46I2Z7eV62Rkhva+KkopW7Qvv/OSWBqvkSY7vusOPrNuZcUG3tApvdVgNB8POj3SPw==}
@@ -11551,6 +11622,7 @@ packages:
     engines: {node: '>=10'}
     dependencies:
       yallist: 4.0.0
+    dev: true
 
   /lru_map/0.3.3:
     resolution: {integrity: sha512-Pn9cox5CsMYngeDbmChANltQl+5pi6XmTrraMSzhPmMBbmgcxmqWry0U3PGapCU1yB4/LqCcom7qhHZiF/jGfQ==}
@@ -13810,6 +13882,15 @@ packages:
       shallow-equal: 1.2.1
     dev: false
 
+  /react-dom/18.2.0:
+    resolution: {integrity: sha512-6IMTriUmvsjHUjNtEDudZfuDQUoWXVxKHhlEGSk81n4YFS+r/Kl99wXiwlVXtPBtJenozv2P+hxDsw9eA7Xo6g==}
+    peerDependencies:
+      react: ^18.2.0
+    dependencies:
+      loose-envify: 1.4.0
+      scheduler: 0.23.0
+    dev: false
+
   /react-dom/18.2.0_react@18.2.0:
     resolution: {integrity: sha512-6IMTriUmvsjHUjNtEDudZfuDQUoWXVxKHhlEGSk81n4YFS+r/Kl99wXiwlVXtPBtJenozv2P+hxDsw9eA7Xo6g==}
     peerDependencies:
@@ -14621,6 +14702,7 @@ packages:
     hasBin: true
     dependencies:
       lru-cache: 6.0.0
+    dev: true
 
   /send/0.18.0:
     resolution: {integrity: sha512-qqWzuOjSFOuqPjFe4NOsMLafToQQwBSOEpS+FwEt3A2V3vKubTquT3vmLTQpFgMXp8AlFWFuP1qKaJZOtPpVXg==}
@@ -15899,11 +15981,6 @@ packages:
     engines: {node: '>=14.16'}
     dev: true
 
-  /type-fest/3.5.3:
-    resolution: {integrity: sha512-V2+og4j/rWReWvaFrse3s9g2xvUv/K9Azm/xo6CjIuq7oeGqsoimC7+9/A3tfvNcbQf8RPSVj/HV81fB4DJrjA==}
-    engines: {node: '>=14.16'}
-    dev: true
-
   /type-is/1.6.18:
     resolution: {integrity: sha512-TkRKr9sUTxEH8MdfuCSP7VizJyzRNMjj2J2do2Jr3Kym598JVdEksuzPQCnlFPW4ky9Q+iA+ma9BGm06XQBy8g==}
     engines: {node: '>= 0.6'}
@@ -16689,6 +16766,7 @@ packages:
 
   /yallist/4.0.0:
     resolution: {integrity: sha512-3wdGidZyq5PB084XLES5TpOSRA3wjXAlIWMhum2kRcv/41Sn2emQ0dycQW4uZXLejwKvg6EsvbdlVL+FYEct7A==}
+    dev: true
 
   /yaml/1.10.2:
     resolution: {integrity: sha512-r3vXyErRCYJ7wg28yvBY5VSoAF8ZvlcW9/BwUzEtUsjvX/DKs24dIkuwjtuprwJJHsbyUbLApepYTR1BN4uHrg==}

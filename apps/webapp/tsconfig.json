@@ -20,22 +20,8 @@
       "~/*": ["./app/*"],
       "internal-platform": ["../../packages/internal-platform/src/index"],
       "internal-platform/*": ["../../packages/internal-platform/src/*"],
-      "internal-integrations": [
-        "../../packages/internal-integrations/src/index"
-      ],
-      "internal-integrations/*": ["../../packages/internal-integrations/src/*"],
       "internal-bridge": ["../../packages/internal-bridge/src/index"],
       "internal-bridge/*": ["../../packages/internal-bridge/src/*"],
-      "@trigger.dev/sdk": ["../../packages/trigger-sdk/src/index"],
-      "@trigger.dev/sdk/*": ["../../packages/trigger-sdk/src/*"],
-      "@trigger.dev/integrations": [
-        "../../packages/trigger-integrations/src/index"
-      ],
-      "@trigger.dev/integrations/*": [
-        "../../packages/trigger-integrations/src/*"
-      ],
-      "@trigger.dev/providers": ["../../packages/trigger-providers/src/index"],
-      "@trigger.dev/providers/*": ["../../packages/trigger-providers/src/*"],
       "@trigger.dev/common-schemas": [
         "../../packages/common-schemas/src/index"
       ],
@@ -43,7 +29,23 @@
       "emails": ["../../packages/emails/src/index"],
       "emails/*": ["../../packages/emails/src/*"],
       "internal-pulsar": ["../../packages/internal-pulsar/src/index"],
-      "internal-pulsar/*": ["../../packages/internal-pulsar/src/*"]
+      "internal-pulsar/*": ["../../packages/internal-pulsar/src/*"],
+      "@trigger.dev/integration-sdk": [
+        "../../packages/integration-sdk/src/index"
+      ],
+      "@trigger.dev/integration-sdk/*": [
+        "../../packages/integration-sdk/src/*"
+      ],
+      "@trigger.dev/github": ["../../integrations/github/src/index"],
+      "@trigger.dev/github/*": ["../../integrations/github/src/*"],
+      "@trigger.dev/slack": ["../../integrations/slack/src/index"],
+      "@trigger.dev/slack/*": ["../../integrations/slack/src/*"],
+      "@trigger.dev/resend": ["../../integrations/resend/src/index"],
+      "@trigger.dev/resend/*": ["../../integrations/resend/src/*"],
+      "@trigger.dev/shopify": ["../../integrations/shopify/src/index"],
+      "@trigger.dev/shopify/*": ["../../integrations/shopify/src/*"],
+      "integration-catalog": ["../../packages/integration-catalog/src/index"],
+      "integration-catalog/*": ["../../packages/integration-catalog/src/*"]
     },
     "noEmit": true
   }

@@ -4,14 +4,13 @@ import {
   SlackInteractionSourceSchema,
 } from "@trigger.dev/common-schemas";
 import cronstrue from "cronstrue";
-import type { DisplayProperties } from "internal-integrations";
-import { github } from "internal-integrations";
+import type { DisplayProperties } from "@trigger.dev/integration-sdk";
+import * as github from "@trigger.dev/github/internal";
 import invariant from "tiny-invariant";
 import { triggerLabel } from "~/components/triggers/triggerLabel";
 import type { PrismaClient } from "~/db.server";
 import { prisma } from "~/db.server";
-import { getIntegration } from "~/utils/integrations";
-import { getIntegrations } from "./integrations.server";
+import { getIntegrationMetadata, getIntegrations } from "./integrations.server";
 import { getRuntimeEnvironment } from "./runtimeEnvironment.server";
 import type { ExternalSource, Workflow } from "./workflow.server";
 
@@ -68,10 +67,10 @@ export class WorkflowListPresenter {
         ),
         integrations: {
           source: workflow.service
-            ? getIntegration(integrations, workflow.service)
+            ? getIntegrationMetadata(integrations, workflow.service)
             : undefined,
           services: workflow.externalServices.map((service) =>
-            getIntegration(integrations, service.service)
+            getIntegrationMetadata(integrations, service.service)
           ),
         },
         lastRun,
@@ -154,9 +153,16 @@ function triggerProperties(
       let displayProperties: DisplayProperties;
       switch (externalSource.service) {
         case "github":
-          displayProperties = github.webhooks.displayProperties(
-            externalSource.source
-          );
+          if (github.internalIntegration.webhooks) {
+            displayProperties =
+              github.internalIntegration.webhooks?.displayProperties(
+                externalSource.source
+              );
+          } else {
+            displayProperties = {
+              title: externalSource.service,
+            };
+          }
           break;
         default:
           displayProperties = {

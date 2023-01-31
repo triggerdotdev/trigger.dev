@@ -1,5 +1,5 @@
 import { Trigger, customEvent, scheduleEvent } from "@trigger.dev/sdk";
-import { slack } from "@trigger.dev/integrations";
+import * as slack from "@trigger.dev/slack";
 import JSXSlack, {
   Actions,
   Blocks,

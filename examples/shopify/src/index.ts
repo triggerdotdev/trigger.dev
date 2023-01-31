@@ -1,6 +1,6 @@
 import { Trigger, customEvent } from "@trigger.dev/sdk";
 import { z } from "zod";
-import { shopify } from "@trigger.dev/integrations";
+import * as shopify from "@trigger.dev/shopify";
 
 const sizes = ["Small", "Medium", "Large"];
 const colors = [

@@ -7,7 +7,7 @@ type GitHubLoginButtonProps = {
 };
 
 export function GitHubLoginButton({
-  label = "Login with GitHub",
+  label = "Continue with GitHub",
   className,
   onClick,
 }: GitHubLoginButtonProps) {
