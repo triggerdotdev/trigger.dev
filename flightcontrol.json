@@ -277,9 +277,9 @@
             "PULSAR_ROLE": {
               "fromParameterStore": "/Staging/Pulsar/webapp/Role"
             },
-            "PIZZLY_HOST": "https://auth.trigger.dev",
+            "PIZZLY_HOST": "https://auth-staging.trigger.dev",
             "PIZZLY_SECRET_KEY": {
-              "fromParameterStore": "/Prod/webapp/PIZZLY_SECRET_KEY"
+              "fromParameterStore": "/Staging/webapp/PIZZLY_SECRET_KEY"
             },
             "TRIGGER_LOG_LEVEL": "debug",
             "PULSAR_ENABLED": "1",
