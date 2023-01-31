@@ -1,6 +1,6 @@
 {
   "name": "@trigger.dev/resend",
-  "version": "0.1.16",
+  "version": "0.1.17",
   "description": "The official resend.com integration for Trigger.dev",
   "exports": {
     ".": {
@@ -8,13 +8,20 @@
       "require": "./dist/index.js",
       "types": "./dist/index.d.ts"
     },
+    "./internal": {
+      "import": "./dist/internal.js",
+      "require": "./dist/internal.js",
+      "types": "./dist/internal.d.ts"
+    },
     "./package.json": "./package.json"
   },
   "publishConfig": {
     "access": "public"
   },
   "files": [
-    "dist"
+    "dist/index.js",
+    "dist/index.d.ts",
+    "dist/index.js.map"
   ],
   "devDependencies": {
     "@trigger.dev/integration-sdk": "workspace:*",

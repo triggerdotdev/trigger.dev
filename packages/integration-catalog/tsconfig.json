@@ -19,9 +19,7 @@
       "@trigger.dev/resend": ["../../integrations/resend/src/index"],
       "@trigger.dev/resend/*": ["../../integrations/resend/src/*"],
       "@trigger.dev/shopify": ["../../integrations/shopify/src/index"],
-      "@trigger.dev/shopify/*": ["../../integrations/shopify/src/*"],
-      "@trigger.dev/whatsapp": ["../../integrations/whatsapp/src/index"],
-      "@trigger.dev/whatsapp/*": ["../../integrations/whatsapp/src/*"]
+      "@trigger.dev/shopify/*": ["../../integrations/shopify/src/*"]
     }
   },
   "exclude": ["node_modules"]

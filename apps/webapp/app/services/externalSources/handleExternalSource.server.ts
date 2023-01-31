@@ -145,7 +145,7 @@ export class HandleExternalSource {
 
     switch (serviceIdentifier) {
       case "github": {
-        return github.webhooks.handleWebhookRequest({
+        return github.internalIntegration.webhooks!.handleWebhookRequest({
           request,
           secret: externalSource.secret ?? undefined,
         });

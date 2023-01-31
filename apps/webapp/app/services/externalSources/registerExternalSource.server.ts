@@ -141,7 +141,7 @@ export class RegisterExternalSource {
   ) {
     switch (serviceIdentifier) {
       case "github": {
-        return github.webhooks.registerWebhook(
+        return github.internalIntegration.webhooks!.registerWebhook(
           {
             callbackUrl,
             secret,

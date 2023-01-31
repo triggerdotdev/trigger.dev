@@ -229,7 +229,7 @@ export class PerformIntegrationRequest {
   ): Promise<PerformedRequestResponse> {
     switch (service) {
       case "slack": {
-        return slack.requests.perform({
+        return slack.internalIntegration.requests!.perform({
           accessInfo,
           endpoint: integrationRequest.endpoint,
           params: integrationRequest.params,
@@ -238,7 +238,7 @@ export class PerformIntegrationRequest {
         });
       }
       case "shopify": {
-        return shopify.requests.perform({
+        return shopify.internalIntegration.requests!.perform({
           accessInfo,
           endpoint: integrationRequest.endpoint,
           params: integrationRequest.params,
@@ -247,7 +247,7 @@ export class PerformIntegrationRequest {
         });
       }
       case "resend": {
-        return resend.requests.perform({
+        return resend.internalIntegration.requests!.perform({
           accessInfo,
           endpoint: integrationRequest.endpoint,
           params: integrationRequest.params,
