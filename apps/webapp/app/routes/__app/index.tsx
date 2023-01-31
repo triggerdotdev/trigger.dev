@@ -11,7 +11,7 @@ export default function AppLayout() {
   return (
     <>
       <div className="flex items-center justify-center m-20">
-        <ul className="grid grid-cols-4 max-w-8xl gap-2">
+        <ul className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4  max-w-8xl gap-2">
           {organizations ? (
             <OrganizationGrid organizations={organizations} />
           ) : (
@@ -23,7 +23,7 @@ export default function AppLayout() {
             <Link
               to="orgs/new"
               className={classNames(
-                "border-2 border-slate-800 hover:border-transparent hover:bg-slate-800/50 hover:shadow-md",
+                "border-2 border-slate-800 text-center hover:border-transparent hover:bg-slate-800/50 hover:shadow-md",
                 boxClasses
               )}
             >
@@ -67,7 +67,7 @@ function OrganizationGridItem({
       <Link
         to={`orgs/${organization.slug}`}
         className={classNames(
-          "bg-slate-800 shadow-md hover:bg-slate-800/50",
+          "bg-slate-800 shadow-md text-center hover:bg-slate-800/50",
           boxClasses
         )}
       >
