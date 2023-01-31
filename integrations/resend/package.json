@@ -2,19 +2,8 @@
   "name": "@trigger.dev/resend",
   "version": "0.1.17",
   "description": "The official resend.com integration for Trigger.dev",
-  "exports": {
-    ".": {
-      "import": "./dist/index.js",
-      "require": "./dist/index.js",
-      "types": "./dist/index.d.ts"
-    },
-    "./internal": {
-      "import": "./dist/internal.js",
-      "require": "./dist/internal.js",
-      "types": "./dist/internal.d.ts"
-    },
-    "./package.json": "./package.json"
-  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
   "publishConfig": {
     "access": "public"
   },
