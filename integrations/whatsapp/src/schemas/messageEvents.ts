@@ -13,7 +13,7 @@ const contactSchema = z.object({
 const commonMessageData = z.object({
   id: z.string(),
   from: z.string(),
-  timestamp: z.date(),
+  timestamp: z.coerce.date(),
 });
 
 const textMessageEventSchema = z.object({

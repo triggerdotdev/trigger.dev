@@ -11,9 +11,7 @@ export function messageEvent(params: {
       name: "messages",
       filter: {
         service: ["whatsapp"],
-        payload: {
-          type: ["message"],
-        },
+        payload: {},
         event: ["messages"],
       },
       source: schemas.WebhookSourceSchema.parse({

@@ -115,10 +115,9 @@ function getData(
               metadata,
               message: {
                 ...message,
-                timestamp,
+                timestamp: parseInt(timestamp),
               },
             },
-            timestamp,
             event: "messages",
             context,
           });

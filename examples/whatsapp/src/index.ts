@@ -11,7 +11,8 @@ new Trigger({
     accountId: "114848614845931",
   }),
   run: async (event, ctx) => {
-    await ctx.logger.info(`Action was ${event}`);
+    await ctx.logger.info(`Message data`, event.message);
+    await ctx.logger.info(`Phone number`, event.contacts[0]);
 
     return {};
   },
