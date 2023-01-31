@@ -563,6 +563,23 @@ importers:
       '@types/node': 16.18.11
       tsx: 3.12.2
 
+  examples/whatsapp:
+    specifiers:
+      '@trigger.dev/sdk': workspace:*
+      '@trigger.dev/tsconfig': workspace:*
+      '@trigger.dev/whatsapp': workspace:*
+      '@types/node': '16'
+      tsx: ^3.12.0
+      zod: ^3.20.2
+    dependencies:
+      '@trigger.dev/sdk': link:../../packages/trigger-sdk
+      '@trigger.dev/whatsapp': link:../../integrations/whatsapp
+      zod: 3.20.2
+    devDependencies:
+      '@trigger.dev/tsconfig': link:../../config-packages/tsconfig
+      '@types/node': 16.18.11
+      tsx: 3.12.2
+
   integrations/github:
     specifiers:
       '@octokit/webhooks': ^10.4.0
@@ -677,8 +694,10 @@ importers:
       '@types/node': '16'
       rimraf: ^3.0.2
       tsup: ^6.5.0
+      ulid: ^2.3.0
       zod: ^3.20.2
     dependencies:
+      ulid: 2.3.0
       zod: 3.20.2
     devDependencies:
       '@trigger.dev/integration-sdk': link:../../packages/integration-sdk

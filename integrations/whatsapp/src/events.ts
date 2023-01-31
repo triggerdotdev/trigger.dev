@@ -2,24 +2,34 @@ import type { TriggerEvent } from "@trigger.dev/sdk";
 import * as schemas from "./schemas";
 
 export function messageEvent(params: {
-  repo: string;
+  accountId: string;
 }): TriggerEvent<typeof schemas.messageEvents.messageEventSchema> {
   return {
     metadata: {
       type: "WEBHOOK",
       service: "whatsapp",
-      name: "message",
+      name: "messages",
       filter: {
         service: ["whatsapp"],
-        payload: {},
-        event: ["message"],
+        payload: {
+          object: ["whatsapp_business_account"],
+          entry: {
+            id: [params.accountId],
+            changes: {
+              field: ["messages"],
+            },
+          },
+        },
+        event: ["messages"],
       },
-      source: {
+      source: schemas.WebhookSourceSchema.parse({
+        subresource: "messages",
+        accountId: params.accountId,
         verifyPayload: {
           enabled: true,
         },
-        event: "message",
-      },
+        event: "messages",
+      }),
       manualRegistration: true,
     },
     schema: schemas.messageEvents.messageEventSchema,
