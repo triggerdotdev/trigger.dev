@@ -1,12 +1,14 @@
-import type { PrismaClient } from "~/db.server";
-import { prisma } from "~/db.server";
-import * as github from "@trigger.dev/github/internal";
-import type { ExternalSourceWithConnection } from "~/models/externalSource.server";
-import type { NormalizedRequest } from "@trigger.dev/integration-sdk";
-import { IngestEvent } from "../events/ingest.server";
 import { ManualWebhookSourceSchema } from "@trigger.dev/common-schemas";
+import * as github from "@trigger.dev/github/internal";
+import type { NormalizedRequest } from "@trigger.dev/integration-sdk";
+import * as whatsapp from "@trigger.dev/whatsapp/internal";
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { ulid } from "ulid";
+import type { PrismaClient } from "~/db.server";
+import { prisma } from "~/db.server";
+import type { ExternalSourceWithConnection } from "~/models/externalSource.server";
+import { IngestEvent } from "../events/ingest.server";
+import { createNormalizedRequest } from "./utils";
 
 type IgnoredEventResponse = {
   status: "ignored";
@@ -41,35 +43,12 @@ export class HandleExternalSource {
     this.#prismaClient = prismaClient;
   }
 
-  async #createNormalizedRequest(request: Request): Promise<NormalizedRequest> {
-    const requestUrl = new URL(request.url);
-    const rawSearchParams = requestUrl.searchParams;
-    const rawBody = await request.text();
-    const rawHeaders = Object.fromEntries(request.headers.entries());
-
-    return {
-      rawBody,
-      body: this.#safeJsonParse(rawBody),
-      headers: rawHeaders,
-      searchParams: rawSearchParams,
-    };
-  }
-
-  #safeJsonParse(json: string): any {
-    try {
-      return JSON.parse(json);
-    } catch (error) {
-      return null;
-    }
-  }
-
   public async call(
     externalSource: NonNullable<ExternalSourceWithConnection>,
     serviceIdentifier: string,
     request: Request
   ) {
-    const normalizedRequest = await this.#createNormalizedRequest(request);
-
+    const normalizedRequest = await createNormalizedRequest(request);
     const possibleEvent = await this.#handleExternalSource(
       externalSource,
       serviceIdentifier,
@@ -135,6 +114,21 @@ export class HandleExternalSource {
     serviceIdentifier: string,
     request: NormalizedRequest
   ): Promise<HandledExternalEventResponse> {
+    switch (serviceIdentifier) {
+      case "github": {
+        return github.internalIntegration.webhooks!.handleWebhookRequest({
+          request,
+          secret: externalSource.secret ?? undefined,
+        });
+      }
+      case "whatsapp": {
+        return whatsapp.internalIntegration.webhooks!.handleWebhookRequest({
+          request,
+          secret: externalSource.secret ?? undefined,
+        });
+      }
+    }
+
     if (externalSource.manualRegistration) {
       return this.#handleManualWebhook(
         externalSource,
@@ -143,19 +137,10 @@ export class HandleExternalSource {
       );
     }
 
-    switch (serviceIdentifier) {
-      case "github": {
-        return github.internalIntegration.webhooks!.handleWebhookRequest({
-          request,
-          secret: externalSource.secret ?? undefined,
-        });
-      }
-      default: {
-        throw new Error(
-          `Could not handle webhook with unsupported service identifier: ${serviceIdentifier}`
-        );
-      }
-    }
+    return {
+      status: "ignored" as const,
+      reason: `Could not handle external source with unsupported service: ${serviceIdentifier}`,
+    };
   }
 
   async #handleManualWebhook(

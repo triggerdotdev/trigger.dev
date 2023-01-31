@@ -39,6 +39,13 @@ export class GitHubWebhookIntegration implements WebhookIntegration {
     }
   }
 
+  verifyWebhookRequest(options: HandleWebhookOptions) {
+    return {
+      status: "ok" as const,
+      data: undefined,
+    };
+  }
+
   handleWebhookRequest(options: HandleWebhookOptions) {
     const deliveryId = options.request.headers["x-github-delivery"];
     const hookId = options.request.headers["x-github-hook-id"];

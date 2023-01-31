@@ -19,12 +19,40 @@ export class WhatsAppWebhookIntegration implements WebhookIntegration {
     return Promise.reject("Not implemented");
   }
 
+  verifyWebhookRequest(options: HandleWebhookOptions) {
+    if (!options.request.searchParams.has("hub.verify_token")) {
+      return {
+        status: "ignored" as const,
+        reason: "Missing hub.verify_token",
+      };
+    }
+
+    if (
+      options.secret !== options.request.searchParams.get("hub.verify_token")
+    ) {
+      return {
+        status: "error" as const,
+        error: "Invalid secret",
+      };
+    }
+
+    return {
+      status: "ok" as const,
+      data: options.request.searchParams.get("hub.challenge"),
+    };
+  }
+
   handleWebhookRequest(options: HandleWebhookOptions) {
     console.log("Handling WhatsApp webhook request", options.request.body);
 
     return {
       status: "ok" as const,
-      data: { id: "", payload: options.request.body, event: "", context: {} },
+      data: {
+        id: "",
+        payload: options.request.body,
+        event: "",
+        context: {},
+      },
     };
   }
 

@@ -12,11 +12,25 @@ export interface WebhookConfig {
   secret: string;
 }
 
+export const httpMethods = <const>[
+  "GET",
+  "POST",
+  "PUT",
+  "PATCH",
+  "DELETE",
+  "HEAD",
+  "OPTIONS",
+  "TRACE",
+  "CONNECT",
+];
+export type HTTPMethod = (typeof httpMethods)[number];
+
 export interface NormalizedRequest {
   rawBody: string;
   body: any;
   headers: Record<string, string>;
   searchParams: URLSearchParams;
+  method: HTTPMethod;
 }
 
 export interface NormalizedResponse {
@@ -72,6 +86,12 @@ export interface WebhookIntegration {
     options: HandleWebhookOptions
   ) =>
     | { status: "ok"; data: ReceivedWebhook }
+    | { status: "ignored"; reason: string }
+    | { status: "error"; error: string };
+  verifyWebhookRequest: (
+    options: HandleWebhookOptions
+  ) =>
+    | { status: "ok"; data: any }
     | { status: "ignored"; reason: string }
     | { status: "error"; error: string };
   displayProperties: (source: unknown) => DisplayProperties;
