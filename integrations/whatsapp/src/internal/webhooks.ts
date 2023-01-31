@@ -65,27 +65,6 @@ export class WhatsAppWebhookIntegration implements WebhookIntegration {
       JSON.stringify(options.request.body)
     );
 
-    if (!options.secret) {
-      return {
-        status: "error" as const,
-        error: "Missing secret",
-      };
-    }
-
-    const calculatedChecksum = crypto
-      .createHmac("sha256", options.secret)
-      .update(options.request.rawBody)
-      .digest("hex");
-
-    const expected =
-      options.request.headers["x-hub-signature-256"].split("=")[1];
-    if (expected !== calculatedChecksum) {
-      return {
-        status: "error" as const,
-        error: "Invalid signature",
-      };
-    }
-
     const context = omit(options.request.headers, [
       "x-hub-signature-256",
       "x-hub-signature",
