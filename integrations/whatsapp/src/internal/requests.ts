@@ -32,7 +32,9 @@ export class WhatsAppRequestIntegration implements RequestIntegration {
     path: "/messages",
   });
 
-  constructor(private readonly baseUrl: string = "https://slack.com/api") {}
+  constructor(
+    private readonly baseUrl: string = "https://graph.facebook.com/v15.0"
+  ) {}
 
   perform(options: PerformRequestOptions): Promise<PerformedRequestResponse> {
     switch (options.endpoint) {

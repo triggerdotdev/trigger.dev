@@ -122,7 +122,9 @@ export const SendTemplateMessageBodySchema = z.object({
     .object({
       header: HeaderParameters.optional(),
       body: BodyParameters.optional(),
-      buttons: z.array(ButtonTemplateComponent.omit({ type: true })).optional(),
+      buttons: z
+        .array(ButtonTemplateComponent.omit({ type: true, index: true }))
+        .optional(),
     })
     .optional(),
 });
