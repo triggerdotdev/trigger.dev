@@ -23,6 +23,7 @@ FROM base AS production-deps
 WORKDIR /app
 RUN npm install turbo -g
 RUN corepack enable
+RUN pnpm --version
 ENV NODE_ENV production
 RUN npm config set python /usr/bin/python3
 COPY --from=pruner /app/out/full/apps/webapp/prisma/schema.prisma /app/apps/webapp/prisma/schema.prisma
