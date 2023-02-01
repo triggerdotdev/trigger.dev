@@ -112,6 +112,7 @@ new Trigger({
 
 <details><summary>Welcome email drip campaign
 </summary>
+
 _Integrations required: Slack, Resend_
 
 ```ts
