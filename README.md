@@ -1,11 +1,17 @@
+<div align="center">
+
 ![Hero](https://raw.githubusercontent.com/triggerdotdev/trigger.dev/eebe37109e33beae6390ee19029fce8a5934c84b/apps/webapp/public/images/logo-banner.png)
 
 [![Twitter](https://img.shields.io/twitter/url/https/twitter.com/triggerdotdev.svg?style=social&label=Follow%20%40trigger.dev)](https://twitter.com/triggerdotdev) ![YouTube Channel Subscribers](https://img.shields.io/youtube/channel/subscribers/UCu-PdxpWtIrrd7vW0N5T6ZA?style=social)
 ![GitHub Repo stars](https://img.shields.io/github/stars/triggerdotdev/trigger.dev?style=social)
 
-# **🛎 Trigger.dev**
-
 [Website](https://trigger.dev) | [Community](https://github.com/triggerdotdev/jsonhero-web) | [Docs](https://docs.trigger.dev)
+</div>
+
+
+# **🛎 Trigger.dev**
+The developer-first open source Zapier alternative.
+
 
 Trigger.dev is an open source platform that makes it easy for developers to create event-driven background tasks directly in their code. Build, test and run workflows locally using our SDK. Subscribe to webhooks, schedule jobs, run background jobs and add long delays easily and reliably. In our web app you get full visibility of every run your workflow has ever made making it easier to monitor and debug.
 
