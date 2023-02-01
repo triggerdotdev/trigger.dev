@@ -135,6 +135,12 @@ export const SendMessageResponseSchema = z.object({
   messages: z.array(z.object({ id: z.string() })),
 });
 
+const MessageContextSchema = z
+  .object({
+    message_id: z.string(),
+  })
+  .optional();
+
 export const SendTextMessageRequestBodySchema = z.object({
   messaging_product: z.literal("whatsapp"),
   recipient_type: z.literal("individual"),
@@ -144,6 +150,7 @@ export const SendTextMessageRequestBodySchema = z.object({
     body: z.string(),
     preview_url: z.boolean(),
   }),
+  context: MessageContextSchema,
 });
 
 export const SendTextMessageBodySchema = z.object({
@@ -151,4 +158,23 @@ export const SendTextMessageBodySchema = z.object({
   to: z.string(),
   text: z.string(),
   preview_url: z.boolean().optional(),
+  isReplyTo: z.string().optional(),
+});
+
+export const SendReactionMessageRequestBodySchema = z.object({
+  messaging_product: z.literal("whatsapp"),
+  recipient_type: z.literal("individual"),
+  to: z.string(),
+  type: z.literal("reaction"),
+  reaction: z.object({
+    message_id: z.string(),
+    emoji: z.string(),
+  }),
+});
+
+export const SendReactionMessageBodySchema = z.object({
+  fromId: z.string(),
+  to: z.string(),
+  isReplyTo: z.string(),
+  emoji: z.string(),
 });

@@ -63,3 +63,33 @@ export async function sendText(
 
   return output;
 }
+
+export type SendReactionMessageOptions = z.infer<
+  typeof schemas.messages.SendReactionMessageBodySchema
+>;
+
+export type SendReactionMessageResponse = z.infer<
+  typeof schemas.messages.SendMessageResponseSchema
+>;
+
+export async function sendReaction(
+  key: string,
+  message: SendReactionMessageOptions
+): Promise<SendReactionMessageResponse> {
+  const run = getTriggerRun();
+
+  if (!run) {
+    throw new Error("Cannot call sendReaction outside of a trigger run");
+  }
+
+  const output = await run.performRequest(key, {
+    service: "whatsapp",
+    endpoint: "message.sendReaction",
+    params: message,
+    response: {
+      schema: schemas.messages.SendMessageResponseSchema,
+    },
+  });
+
+  return output;
+}
