@@ -13,7 +13,7 @@ import { z } from "zod";
 import {
   SendTemplateMessageBodySchema,
   SendTemplateMessageRequestBodySchema,
-  SendMessageResponseSchema,
+  SendMessageSuccessResponseSchema,
   SendTextMessageBodySchema,
   SendTextMessageRequestBodySchema,
   SendReactionMessageBodySchema,
@@ -22,6 +22,9 @@ import {
   SendImageMessageRequestBodySchema,
   SendLocationMessageRequestBodySchema,
   SendLocationMessageBodySchema,
+  SendContactsMessageRequestBodySchema,
+  SendContactsMessageBodySchema,
+  SendMessageResponseSchema,
 } from "../schemas/messages";
 
 const log = debug("trigger:integrations:whatsapp");
@@ -44,6 +47,10 @@ type SendImageMessageRequestBody = z.infer<
 
 type SendLocationMessageRequestBody = z.infer<
   typeof SendLocationMessageRequestBodySchema
+>;
+
+type SendContactsMessageRequestBody = z.infer<
+  typeof SendContactsMessageRequestBodySchema
 >;
 
 export class WhatsAppRequestIntegration implements RequestIntegration {
@@ -86,6 +93,15 @@ export class WhatsAppRequestIntegration implements RequestIntegration {
   #sendLocationMessageEndpoint = new HttpEndpoint<
     typeof SendMessageResponseSchema,
     typeof SendLocationMessageRequestBodySchema
+  >({
+    response: SendMessageResponseSchema,
+    method: "POST",
+    path: "/messages",
+  });
+
+  #sendContactsMessageEndpoint = new HttpEndpoint<
+    typeof SendMessageResponseSchema,
+    typeof SendContactsMessageRequestBodySchema
   >({
     response: SendMessageResponseSchema,
     method: "POST",
@@ -138,6 +154,14 @@ export class WhatsAppRequestIntegration implements RequestIntegration {
           options.metadata
         );
       }
+      case "message.sendContacts": {
+        return this.#sendContactsMessage(
+          options.accessInfo,
+          options.params,
+          options.cache,
+          options.metadata
+        );
+      }
       default: {
         throw new Error(`Unknown endpoint: ${options.endpoint}`);
       }
@@ -178,6 +202,13 @@ export class WhatsAppRequestIntegration implements RequestIntegration {
         const parsedParams = SendLocationMessageBodySchema.parse(params);
         return {
           title: `Send location to ${parsedParams.to}`,
+          properties: [],
+        };
+      }
+      case "message.sendContacts": {
+        const parsedParams = SendContactsMessageBodySchema.parse(params);
+        return {
+          title: `Send contacts to ${parsedParams.to}`,
           properties: [],
         };
       }
@@ -269,7 +300,7 @@ export class WhatsAppRequestIntegration implements RequestIntegration {
       };
     }
 
-    const ok = response.statusCode === 200;
+    const ok = !("error" in response.data);
 
     const performedRequest = {
       ok,
@@ -341,7 +372,7 @@ export class WhatsAppRequestIntegration implements RequestIntegration {
       };
     }
 
-    const ok = response.statusCode === 200;
+    const ok = !("error" in response.data);
 
     const performedRequest = {
       ok,
@@ -410,7 +441,7 @@ export class WhatsAppRequestIntegration implements RequestIntegration {
       };
     }
 
-    const ok = response.statusCode === 200;
+    const ok = !("error" in response.data);
 
     const performedRequest = {
       ok,
@@ -482,7 +513,7 @@ export class WhatsAppRequestIntegration implements RequestIntegration {
       };
     }
 
-    const ok = response.statusCode === 200;
+    const ok = !("error" in response.data);
 
     const performedRequest = {
       ok,
@@ -556,7 +587,7 @@ export class WhatsAppRequestIntegration implements RequestIntegration {
       };
     }
 
-    const ok = response.statusCode === 200;
+    const ok = !("error" in response.data);
 
     const performedRequest = {
       ok,
@@ -571,6 +602,75 @@ export class WhatsAppRequestIntegration implements RequestIntegration {
     };
 
     log("message.sendLocation performedRequest %O", performedRequest);
+
+    return performedRequest;
+  }
+
+  async #sendContactsMessage(
+    accessInfo: AccessInfo,
+    params: any,
+    cache?: CacheService,
+    metadata?: Record<string, string>
+  ): Promise<PerformedRequestResponse> {
+    const parsedParams = SendContactsMessageBodySchema.parse(params);
+
+    log("message.sendContacts %O", parsedParams);
+
+    const accessToken = getAccessToken(accessInfo);
+
+    const service = new HttpService({
+      accessToken,
+      baseUrl: `${this.baseUrl}/${parsedParams.fromId}`,
+    });
+
+    //transform the data from the nice input format into the format that the API expects
+    const request: SendContactsMessageRequestBody = {
+      messaging_product: "whatsapp",
+      recipient_type: "individual",
+      to: parsedParams.to,
+      type: "contacts",
+      contacts: parsedParams.contacts,
+      context: parsedParams.isReplyTo
+        ? { message_id: parsedParams.isReplyTo }
+        : undefined,
+    };
+
+    const response = await service.performRequest(
+      this.#sendContactsMessageEndpoint,
+      request
+    );
+
+    if (!response.success) {
+      log("message.sendContacts failed %O", response);
+
+      return {
+        ok: false,
+        isRetryable: this.#isRetryable(response.statusCode),
+        response: {
+          output: response.error,
+          context: {
+            statusCode: response.statusCode,
+            headers: response.headers,
+          },
+        },
+      };
+    }
+
+    const ok = !("error" in response.data);
+
+    const performedRequest = {
+      ok,
+      isRetryable: this.#isRetryable(response.statusCode),
+      response: {
+        output: response.data,
+        context: {
+          statusCode: response.statusCode,
+          headers: response.headers,
+        },
+      },
+    };
+
+    log("message.sendContacts performedRequest %O", performedRequest);
 
     return performedRequest;
   }

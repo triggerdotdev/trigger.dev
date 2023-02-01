@@ -49,20 +49,6 @@ export class WhatsAppWebhookIntegration implements WebhookIntegration {
   }
 
   handleWebhookRequest(options: HandleWebhookOptions) {
-    console.log(
-      "Handling WhatsApp search params",
-      options.request.searchParams.toString()
-    );
-    console.log(
-      "Handling WhatsApp headers",
-      JSON.stringify(options.request.headers)
-    );
-
-    console.log(
-      "Handling WhatsApp webhook request",
-      JSON.stringify(options.request.body)
-    );
-
     const context = omit(options.request.headers, [
       "x-hub-signature-256",
       "x-hub-signature",

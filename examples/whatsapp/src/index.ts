@@ -1,6 +1,7 @@
 import { Trigger } from "@trigger.dev/sdk";
 import {
   events,
+  sendContacts,
   sendImage,
   sendLocation,
   sendReaction,
@@ -62,6 +63,25 @@ new Trigger({
       longitude: -122.084,
       name: "Trigger.dev HQ",
       address: "123 Main St, San Francisco, CA 94105",
+    });
+
+    const contactsResponse = await sendContacts("contacts", {
+      fromId: event.metadata.phone_number_id,
+      to: event.message.from,
+      contacts: [
+        {
+          name: {
+            first_name: "Matt",
+            last_name: "Aitken",
+            formatted_name: "Matt Aitken",
+          },
+          phones: [
+            {
+              phone: "+12345678901",
+            },
+          ],
+        },
+      ],
     });
   },
 }).listen();

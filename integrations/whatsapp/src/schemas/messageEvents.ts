@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { sharedContactSchema } from "./shared";
 
 const metadataSchema = z.object({
   display_phone_number: z.string(),
@@ -94,39 +95,6 @@ const locationMessageEventSchema = z.object({
     address: z.string().optional(),
     url: z.string().optional(),
   }),
-});
-
-const sharedContactSchema = z.object({
-  name: z
-    .object({
-      last_name: z.string().optional(),
-      first_name: z.string().optional(),
-      formatted_name: z.string().optional(),
-    })
-    .optional(),
-  emails: z
-    .array(z.object({ type: z.string().optional(), email: z.string() }))
-    .optional(),
-  phones: z
-    .array(
-      z.object({
-        type: z.string().optional(),
-        phone: z.string(),
-        wa_id: z.string().optional(),
-      })
-    )
-    .optional(),
-  birthday: z.string().optional(),
-  addresses: z
-    .array(
-      z.object({
-        zip: z.string().optional(),
-        city: z.string().optional(),
-        type: z.string().optional(),
-        street: z.string().optional(),
-      })
-    )
-    .optional(),
 });
 
 const contactsMessageEventSchema = z.object({

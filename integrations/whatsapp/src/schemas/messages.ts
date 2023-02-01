@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { sharedContactSchema } from "./shared";
 
 const TextParameter = z.object({
   type: z.literal("text"),
@@ -132,11 +133,32 @@ export const SendTemplateMessageBodySchema = z.object({
     .optional(),
 });
 
-export const SendMessageResponseSchema = z.object({
+export const SendMessageErrorResponseSchema = z
+  .object({
+    error: z.object({
+      message: z.string(),
+      type: z.string(),
+      code: z.number(),
+      error_data: z.object({
+        messaging_product: z.string(),
+        details: z.string(),
+      }),
+      error_subcode: z.number(),
+      fbtrace_id: z.string(),
+    }),
+  })
+  .passthrough();
+
+export const SendMessageSuccessResponseSchema = z.object({
   messaging_product: z.literal("whatsapp"),
   contacts: z.array(z.object({ input: z.string(), wa_id: z.string() })),
   messages: z.array(z.object({ id: z.string() })),
 });
+
+export const SendMessageResponseSchema = z.union([
+  SendMessageErrorResponseSchema,
+  SendMessageSuccessResponseSchema,
+]);
 
 const MessageContextSchema = z
   .object({
@@ -215,5 +237,21 @@ export const SendLocationMessageBodySchema = z.object({
   longitude: z.number(),
   name: z.string().optional(),
   address: z.string().optional(),
+  isReplyTo: z.string().optional(),
+});
+
+export const SendContactsMessageRequestBodySchema = z.object({
+  messaging_product: z.literal("whatsapp"),
+  recipient_type: z.literal("individual"),
+  to: z.string(),
+  type: z.literal("contacts"),
+  contacts: z.array(sharedContactSchema),
+  context: MessageContextSchema,
+});
+
+export const SendContactsMessageBodySchema = z.object({
+  fromId: z.string(),
+  to: z.string(),
+  contacts: z.array(sharedContactSchema),
   isReplyTo: z.string().optional(),
 });

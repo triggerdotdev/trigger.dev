@@ -9,7 +9,7 @@ export type SendTemplateMessageOptions = z.infer<
 >;
 
 export type SendTemplateMessageResponse = z.infer<
-  typeof schemas.messages.SendMessageResponseSchema
+  typeof schemas.messages.SendMessageSuccessResponseSchema
 >;
 
 export async function sendTemplate(
@@ -27,7 +27,7 @@ export async function sendTemplate(
     endpoint: "message.sendTemplate",
     params: message,
     response: {
-      schema: schemas.messages.SendMessageResponseSchema,
+      schema: schemas.messages.SendMessageSuccessResponseSchema,
     },
   });
 
@@ -39,7 +39,7 @@ export type SendTextMessageOptions = z.infer<
 >;
 
 export type SendTextMessageResponse = z.infer<
-  typeof schemas.messages.SendMessageResponseSchema
+  typeof schemas.messages.SendMessageSuccessResponseSchema
 >;
 
 export async function sendText(
@@ -57,7 +57,7 @@ export async function sendText(
     endpoint: "message.sendText",
     params: message,
     response: {
-      schema: schemas.messages.SendMessageResponseSchema,
+      schema: schemas.messages.SendMessageSuccessResponseSchema,
     },
   });
 
@@ -69,7 +69,7 @@ export type SendReactionMessageOptions = z.infer<
 >;
 
 export type SendReactionMessageResponse = z.infer<
-  typeof schemas.messages.SendMessageResponseSchema
+  typeof schemas.messages.SendMessageSuccessResponseSchema
 >;
 
 export async function sendReaction(
@@ -87,7 +87,7 @@ export async function sendReaction(
     endpoint: "message.sendReaction",
     params: message,
     response: {
-      schema: schemas.messages.SendMessageResponseSchema,
+      schema: schemas.messages.SendMessageSuccessResponseSchema,
     },
   });
 
@@ -99,7 +99,7 @@ export type SendImageMessageOptions = z.infer<
 >;
 
 export type SendImageMessageResponse = z.infer<
-  typeof schemas.messages.SendMessageResponseSchema
+  typeof schemas.messages.SendMessageSuccessResponseSchema
 >;
 
 export async function sendImage(
@@ -117,7 +117,7 @@ export async function sendImage(
     endpoint: "message.sendImage",
     params: message,
     response: {
-      schema: schemas.messages.SendMessageResponseSchema,
+      schema: schemas.messages.SendMessageSuccessResponseSchema,
     },
   });
 
@@ -129,7 +129,7 @@ export type SendLocationMessageOptions = z.infer<
 >;
 
 export type SendLocationMessageResponse = z.infer<
-  typeof schemas.messages.SendMessageResponseSchema
+  typeof schemas.messages.SendMessageSuccessResponseSchema
 >;
 
 export async function sendLocation(
@@ -147,7 +147,37 @@ export async function sendLocation(
     endpoint: "message.sendLocation",
     params: message,
     response: {
-      schema: schemas.messages.SendMessageResponseSchema,
+      schema: schemas.messages.SendMessageSuccessResponseSchema,
+    },
+  });
+
+  return output;
+}
+
+export type SendContactsMessageOptions = z.infer<
+  typeof schemas.messages.SendContactsMessageBodySchema
+>;
+
+export type SendContactsMessageResponse = z.infer<
+  typeof schemas.messages.SendMessageSuccessResponseSchema
+>;
+
+export async function sendContacts(
+  key: string,
+  message: SendContactsMessageOptions
+): Promise<SendContactsMessageResponse> {
+  const run = getTriggerRun();
+
+  if (!run) {
+    throw new Error("Cannot call sendContacts outside of a trigger run");
+  }
+
+  const output = await run.performRequest(key, {
+    service: "whatsapp",
+    endpoint: "message.sendContacts",
+    params: message,
+    response: {
+      schema: schemas.messages.SendMessageSuccessResponseSchema,
     },
   });
 
