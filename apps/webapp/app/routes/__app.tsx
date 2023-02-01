@@ -7,6 +7,7 @@ import { getOrganizations } from "~/models/organization.server";
 import { clearRedirectTo, commitSession } from "~/services/redirectTo.server";
 import { requireUserId } from "~/services/session.server";
 import { Header } from "~/components/layout/Header";
+import { NoMobileOverlay } from "~/components/NoMobileOverlay";
 
 export const loader = async ({ request }: LoaderArgs) => {
   const userId = await requireUserId(request);
@@ -27,6 +28,7 @@ export const loader = async ({ request }: LoaderArgs) => {
 export default function App() {
   return (
     <AppLayout>
+      <NoMobileOverlay />
       <Header />
       <AppBody>
         <Outlet />

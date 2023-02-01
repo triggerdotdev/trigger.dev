@@ -17,6 +17,14 @@ const EnvironmentSchema = z.object({
     // eslint-disable-next-line turbo/no-undeclared-env-vars
     .default(process.env.FC_URL ?? "https://app.trigger.dev"),
   SENTRY_DSN: z.string().optional(),
+  APP_ENV: z
+    .union([
+      z.literal("development"),
+      z.literal("production"),
+      z.literal("test"),
+      z.literal("staging"),
+    ])
+    .default(process.env.NODE_ENV),
   POSTHOG_PROJECT_KEY: z.string().optional(),
   MAGIC_LINK_SECRET: z.string(),
   GITHUB_CLIENT_ID: z.string(),
