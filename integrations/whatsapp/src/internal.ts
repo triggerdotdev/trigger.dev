@@ -3,8 +3,10 @@ import type {
   InternalIntegration,
 } from "@trigger.dev/integration-sdk";
 import { WhatsAppWebhookIntegration } from "./internal/webhooks";
+import { WhatsAppRequestIntegration } from "./internal/requests";
 
 const webhooks = new WhatsAppWebhookIntegration();
+const requests = new WhatsAppRequestIntegration();
 
 const metadata: IntegrationMetadata = {
   name: "WhatsApp Business Account",
@@ -22,6 +24,7 @@ const metadata: IntegrationMetadata = {
 export const internalIntegration: InternalIntegration = {
   metadata,
   webhooks,
+  requests,
 };
 
 export * as schemas from "./schemas";

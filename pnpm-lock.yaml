@@ -691,18 +691,22 @@ importers:
       '@trigger.dev/integration-sdk': workspace:*
       '@trigger.dev/sdk': workspace:*
       '@trigger.dev/tsconfig': workspace:*
+      '@types/debug': ^4.1.7
       '@types/node': '16'
+      debug: ^4.3.4
       rimraf: ^3.0.2
       tsup: ^6.5.0
       ulid: ^2.3.0
       zod: ^3.20.2
     dependencies:
+      debug: 4.3.4
       ulid: 2.3.0
       zod: 3.20.2
     devDependencies:
       '@trigger.dev/integration-sdk': link:../../packages/integration-sdk
       '@trigger.dev/sdk': link:../../packages/trigger-sdk
       '@trigger.dev/tsconfig': link:../../config-packages/tsconfig
+      '@types/debug': 4.1.7
       '@types/node': 16.18.11
       rimraf: 3.0.2
       tsup: 6.5.0
