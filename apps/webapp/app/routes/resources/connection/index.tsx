@@ -92,7 +92,7 @@ export const action = async ({ request }: ActionArgs) => {
 
     const parsed = parsedResult.data;
     const integrationInfo = getIntegrations(true).find(
-      (i) => i.slug === parsed.service
+      (i) => i.metadata.slug === parsed.service
     );
     if (!integrationInfo) {
       throw new Error("Integration not found");
@@ -109,7 +109,7 @@ export const action = async ({ request }: ActionArgs) => {
           .filter((connection) => connection.apiIdentifier === parsed.service)
           .sort((a, b) => a.title.localeCompare(b.title));
 
-        let title = integrationInfo.name;
+        let title = integrationInfo.metadata.name;
         if (connectionsForApiIdentifier.length > 0) {
           title += ` #${connectionsForApiIdentifier.length + 1}`;
         }
