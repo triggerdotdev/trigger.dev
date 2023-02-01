@@ -123,3 +123,33 @@ export async function sendImage(
 
   return output;
 }
+
+export type SendLocationMessageOptions = z.infer<
+  typeof schemas.messages.SendLocationMessageBodySchema
+>;
+
+export type SendLocationMessageResponse = z.infer<
+  typeof schemas.messages.SendMessageResponseSchema
+>;
+
+export async function sendLocation(
+  key: string,
+  message: SendLocationMessageOptions
+): Promise<SendLocationMessageResponse> {
+  const run = getTriggerRun();
+
+  if (!run) {
+    throw new Error("Cannot call sendLocation outside of a trigger run");
+  }
+
+  const output = await run.performRequest(key, {
+    service: "whatsapp",
+    endpoint: "message.sendLocation",
+    params: message,
+    response: {
+      schema: schemas.messages.SendMessageResponseSchema,
+    },
+  });
+
+  return output;
+}

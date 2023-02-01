@@ -2,6 +2,7 @@ import { Trigger } from "@trigger.dev/sdk";
 import {
   events,
   sendImage,
+  sendLocation,
   sendReaction,
   sendTemplate,
   sendText,
@@ -52,6 +53,15 @@ new Trigger({
       to: event.message.from,
       url: "https://app.trigger.dev/emails/logo.png",
       caption: "This is a genius caption",
+    });
+
+    const locationResponse = await sendLocation("location", {
+      fromId: event.metadata.phone_number_id,
+      to: event.message.from,
+      latitude: 37.422,
+      longitude: -122.084,
+      name: "Trigger.dev HQ",
+      address: "123 Main St, San Francisco, CA 94105",
     });
   },
 }).listen();

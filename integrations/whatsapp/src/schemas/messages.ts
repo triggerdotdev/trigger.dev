@@ -59,6 +59,13 @@ const ButtonTemplateComponent = z.object({
   ),
 });
 
+const LocationObject = z.object({
+  latitude: z.number(),
+  longitude: z.number(),
+  name: z.string().optional(),
+  address: z.string().optional(),
+});
+
 const HeaderParameters = z
   .discriminatedUnion("type", [
     TextParameter,
@@ -189,5 +196,24 @@ export const SendImageMessageBodySchema = z.object({
   to: z.string(),
   url: z.string(),
   caption: z.string().optional(),
+  isReplyTo: z.string().optional(),
+});
+
+export const SendLocationMessageRequestBodySchema = z.object({
+  messaging_product: z.literal("whatsapp"),
+  recipient_type: z.literal("individual"),
+  to: z.string(),
+  type: z.literal("location"),
+  location: LocationObject,
+  context: MessageContextSchema,
+});
+
+export const SendLocationMessageBodySchema = z.object({
+  fromId: z.string(),
+  to: z.string(),
+  latitude: z.number(),
+  longitude: z.number(),
+  name: z.string().optional(),
+  address: z.string().optional(),
   isReplyTo: z.string().optional(),
 });

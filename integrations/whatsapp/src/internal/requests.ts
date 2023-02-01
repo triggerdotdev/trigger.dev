@@ -20,6 +20,8 @@ import {
   SendReactionMessageRequestBodySchema,
   SendImageMessageBodySchema,
   SendImageMessageRequestBodySchema,
+  SendLocationMessageRequestBodySchema,
+  SendLocationMessageBodySchema,
 } from "../schemas/messages";
 
 const log = debug("trigger:integrations:whatsapp");
@@ -38,6 +40,10 @@ type SendReactionMessageRequestBody = z.infer<
 
 type SendImageMessageRequestBody = z.infer<
   typeof SendImageMessageRequestBodySchema
+>;
+
+type SendLocationMessageRequestBody = z.infer<
+  typeof SendLocationMessageRequestBodySchema
 >;
 
 export class WhatsAppRequestIntegration implements RequestIntegration {
@@ -71,6 +77,15 @@ export class WhatsAppRequestIntegration implements RequestIntegration {
   #sendImageMessageEndpoint = new HttpEndpoint<
     typeof SendMessageResponseSchema,
     typeof SendImageMessageRequestBodySchema
+  >({
+    response: SendMessageResponseSchema,
+    method: "POST",
+    path: "/messages",
+  });
+
+  #sendLocationMessageEndpoint = new HttpEndpoint<
+    typeof SendMessageResponseSchema,
+    typeof SendLocationMessageRequestBodySchema
   >({
     response: SendMessageResponseSchema,
     method: "POST",
@@ -115,6 +130,14 @@ export class WhatsAppRequestIntegration implements RequestIntegration {
           options.metadata
         );
       }
+      case "message.sendLocation": {
+        return this.#sendLocationMessage(
+          options.accessInfo,
+          options.params,
+          options.cache,
+          options.metadata
+        );
+      }
       default: {
         throw new Error(`Unknown endpoint: ${options.endpoint}`);
       }
@@ -148,6 +171,13 @@ export class WhatsAppRequestIntegration implements RequestIntegration {
         const parsedParams = SendImageMessageBodySchema.parse(params);
         return {
           title: `Send image (${parsedParams.url}) to ${parsedParams.to}`,
+          properties: [],
+        };
+      }
+      case "message.sendLocation": {
+        const parsedParams = SendLocationMessageBodySchema.parse(params);
+        return {
+          title: `Send location to ${parsedParams.to}`,
           properties: [],
         };
       }
@@ -467,6 +497,80 @@ export class WhatsAppRequestIntegration implements RequestIntegration {
     };
 
     log("message.sendImage performedRequest %O", performedRequest);
+
+    return performedRequest;
+  }
+
+  async #sendLocationMessage(
+    accessInfo: AccessInfo,
+    params: any,
+    cache?: CacheService,
+    metadata?: Record<string, string>
+  ): Promise<PerformedRequestResponse> {
+    const parsedParams = SendLocationMessageBodySchema.parse(params);
+
+    log("message.sendLocation %O", parsedParams);
+
+    const accessToken = getAccessToken(accessInfo);
+
+    const service = new HttpService({
+      accessToken,
+      baseUrl: `${this.baseUrl}/${parsedParams.fromId}`,
+    });
+
+    //transform the data from the nice input format into the format that the API expects
+    const request: SendLocationMessageRequestBody = {
+      messaging_product: "whatsapp",
+      recipient_type: "individual",
+      to: parsedParams.to,
+      type: "location",
+      location: {
+        latitude: parsedParams.latitude,
+        longitude: parsedParams.longitude,
+        name: parsedParams.name,
+        address: parsedParams.address,
+      },
+      context: parsedParams.isReplyTo
+        ? { message_id: parsedParams.isReplyTo }
+        : undefined,
+    };
+
+    const response = await service.performRequest(
+      this.#sendLocationMessageEndpoint,
+      request
+    );
+
+    if (!response.success) {
+      log("message.sendLocation failed %O", response);
+
+      return {
+        ok: false,
+        isRetryable: this.#isRetryable(response.statusCode),
+        response: {
+          output: response.error,
+          context: {
+            statusCode: response.statusCode,
+            headers: response.headers,
+          },
+        },
+      };
+    }
+
+    const ok = response.statusCode === 200;
+
+    const performedRequest = {
+      ok,
+      isRetryable: this.#isRetryable(response.statusCode),
+      response: {
+        output: response.data,
+        context: {
+          statusCode: response.statusCode,
+          headers: response.headers,
+        },
+      },
+    };
+
+    log("message.sendLocation performedRequest %O", performedRequest);
 
     return performedRequest;
   }
