@@ -139,11 +139,13 @@ export const SendMessageErrorResponseSchema = z
       message: z.string(),
       type: z.string(),
       code: z.number(),
-      error_data: z.object({
-        messaging_product: z.string(),
-        details: z.string(),
-      }),
-      error_subcode: z.number(),
+      error_data: z
+        .object({
+          messaging_product: z.string(),
+          details: z.string(),
+        })
+        .optional(),
+      error_subcode: z.number().optional(),
       fbtrace_id: z.string(),
     }),
   })
@@ -214,6 +216,73 @@ export const SendImageMessageRequestBodySchema = z.object({
 });
 
 export const SendImageMessageBodySchema = z.object({
+  fromId: z.string(),
+  to: z.string(),
+  url: z.string(),
+  caption: z.string().optional(),
+  isReplyTo: z.string().optional(),
+});
+
+export const SendVideoMessageRequestBodySchema = z.object({
+  messaging_product: z.literal("whatsapp"),
+  recipient_type: z.literal("individual"),
+  to: z.string(),
+  type: z.literal("video"),
+  video: MediaObject,
+  context: MessageContextSchema,
+});
+
+export const SendVideoMessageBodySchema = z.object({
+  fromId: z.string(),
+  to: z.string(),
+  url: z.string(),
+  caption: z.string().optional(),
+  isReplyTo: z.string().optional(),
+});
+
+export const SendAudioMessageRequestBodySchema = z.object({
+  messaging_product: z.literal("whatsapp"),
+  recipient_type: z.literal("individual"),
+  to: z.string(),
+  type: z.literal("audio"),
+  audio: MediaObject.omit({ caption: true }),
+  context: MessageContextSchema,
+});
+
+export const SendAudioMessageBodySchema = z.object({
+  fromId: z.string(),
+  to: z.string(),
+  url: z.string(),
+  isReplyTo: z.string().optional(),
+});
+
+export const SendDocumentMessageRequestBodySchema = z.object({
+  messaging_product: z.literal("whatsapp"),
+  recipient_type: z.literal("individual"),
+  to: z.string(),
+  type: z.literal("document"),
+  document: MediaObject,
+  context: MessageContextSchema,
+});
+
+export const SendDocumentMessageBodySchema = z.object({
+  fromId: z.string(),
+  to: z.string(),
+  url: z.string(),
+  caption: z.string().optional(),
+  isReplyTo: z.string().optional(),
+});
+
+export const SendStickerMessageRequestBodySchema = z.object({
+  messaging_product: z.literal("whatsapp"),
+  recipient_type: z.literal("individual"),
+  to: z.string(),
+  type: z.literal("sticker"),
+  sticker: MediaObject,
+  context: MessageContextSchema,
+});
+
+export const SendStickerMessageBodySchema = z.object({
   fromId: z.string(),
   to: z.string(),
   url: z.string(),

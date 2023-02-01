@@ -124,6 +124,126 @@ export async function sendImage(
   return output;
 }
 
+export type SendAudioMessageOptions = z.infer<
+  typeof schemas.messages.SendAudioMessageBodySchema
+>;
+
+export type SendAudioMessageResponse = z.infer<
+  typeof schemas.messages.SendMessageSuccessResponseSchema
+>;
+
+export async function sendAudio(
+  key: string,
+  message: SendAudioMessageOptions
+): Promise<SendAudioMessageResponse> {
+  const run = getTriggerRun();
+
+  if (!run) {
+    throw new Error("Cannot call sendAudio outside of a trigger run");
+  }
+
+  const output = await run.performRequest(key, {
+    service: "whatsapp",
+    endpoint: "message.sendAudio",
+    params: message,
+    response: {
+      schema: schemas.messages.SendMessageSuccessResponseSchema,
+    },
+  });
+
+  return output;
+}
+
+export type SendVideoMessageOptions = z.infer<
+  typeof schemas.messages.SendVideoMessageBodySchema
+>;
+
+export type SendVideoMessageResponse = z.infer<
+  typeof schemas.messages.SendMessageSuccessResponseSchema
+>;
+
+export async function sendVideo(
+  key: string,
+  message: SendVideoMessageOptions
+): Promise<SendVideoMessageResponse> {
+  const run = getTriggerRun();
+
+  if (!run) {
+    throw new Error("Cannot call sendVideo outside of a trigger run");
+  }
+
+  const output = await run.performRequest(key, {
+    service: "whatsapp",
+    endpoint: "message.sendVideo",
+    params: message,
+    response: {
+      schema: schemas.messages.SendMessageSuccessResponseSchema,
+    },
+  });
+
+  return output;
+}
+
+export type SendDocumentMessageOptions = z.infer<
+  typeof schemas.messages.SendDocumentMessageBodySchema
+>;
+
+export type SendDocumentMessageResponse = z.infer<
+  typeof schemas.messages.SendMessageSuccessResponseSchema
+>;
+
+export async function sendDocument(
+  key: string,
+  message: SendDocumentMessageOptions
+): Promise<SendDocumentMessageResponse> {
+  const run = getTriggerRun();
+
+  if (!run) {
+    throw new Error("Cannot call sendDocument outside of a trigger run");
+  }
+
+  const output = await run.performRequest(key, {
+    service: "whatsapp",
+    endpoint: "message.sendDocument",
+    params: message,
+    response: {
+      schema: schemas.messages.SendMessageSuccessResponseSchema,
+    },
+  });
+
+  return output;
+}
+
+export type SendStickerMessageOptions = z.infer<
+  typeof schemas.messages.SendStickerMessageBodySchema
+>;
+
+export type SendStickerMessageResponse = z.infer<
+  typeof schemas.messages.SendMessageSuccessResponseSchema
+>;
+
+export async function sendSticker(
+  key: string,
+  message: SendStickerMessageOptions
+): Promise<SendStickerMessageResponse> {
+  const run = getTriggerRun();
+
+  if (!run) {
+    throw new Error("Cannot call sendSticker outside of a trigger run");
+  }
+
+  const output = await run.performRequest(key, {
+    service: "whatsapp",
+    endpoint: "message.sendSticker",
+    params: message,
+    response: {
+      schema: schemas.messages.SendMessageSuccessResponseSchema,
+    },
+  });
+
+  return output;
+}
+
 export type SendLocationMessageOptions = z.infer<
   typeof schemas.messages.SendLocationMessageBodySchema
 >;

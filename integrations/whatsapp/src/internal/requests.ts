@@ -13,7 +13,6 @@ import { z } from "zod";
 import {
   SendTemplateMessageBodySchema,
   SendTemplateMessageRequestBodySchema,
-  SendMessageSuccessResponseSchema,
   SendTextMessageBodySchema,
   SendTextMessageRequestBodySchema,
   SendReactionMessageBodySchema,
@@ -25,6 +24,14 @@ import {
   SendContactsMessageRequestBodySchema,
   SendContactsMessageBodySchema,
   SendMessageResponseSchema,
+  SendAudioMessageRequestBodySchema,
+  SendVideoMessageRequestBodySchema,
+  SendDocumentMessageRequestBodySchema,
+  SendStickerMessageRequestBodySchema,
+  SendAudioMessageBodySchema,
+  SendVideoMessageBodySchema,
+  SendDocumentMessageBodySchema,
+  SendStickerMessageBodySchema,
 } from "../schemas/messages";
 
 const log = debug("trigger:integrations:whatsapp");
@@ -43,6 +50,22 @@ type SendReactionMessageRequestBody = z.infer<
 
 type SendImageMessageRequestBody = z.infer<
   typeof SendImageMessageRequestBodySchema
+>;
+
+type SendAudioMessageRequestBody = z.infer<
+  typeof SendAudioMessageRequestBodySchema
+>;
+
+type SendVideoMessageRequestBody = z.infer<
+  typeof SendVideoMessageRequestBodySchema
+>;
+
+type SendDocumentMessageRequestBody = z.infer<
+  typeof SendDocumentMessageRequestBodySchema
+>;
+
+type SendStickerMessageRequestBody = z.infer<
+  typeof SendStickerMessageRequestBodySchema
 >;
 
 type SendLocationMessageRequestBody = z.infer<
@@ -84,6 +107,42 @@ export class WhatsAppRequestIntegration implements RequestIntegration {
   #sendImageMessageEndpoint = new HttpEndpoint<
     typeof SendMessageResponseSchema,
     typeof SendImageMessageRequestBodySchema
+  >({
+    response: SendMessageResponseSchema,
+    method: "POST",
+    path: "/messages",
+  });
+
+  #sendAudioMessageEndpoint = new HttpEndpoint<
+    typeof SendMessageResponseSchema,
+    typeof SendAudioMessageRequestBodySchema
+  >({
+    response: SendMessageResponseSchema,
+    method: "POST",
+    path: "/messages",
+  });
+
+  #sendVideoMessageEndpoint = new HttpEndpoint<
+    typeof SendMessageResponseSchema,
+    typeof SendVideoMessageRequestBodySchema
+  >({
+    response: SendMessageResponseSchema,
+    method: "POST",
+    path: "/messages",
+  });
+
+  #sendDocumentMessageEndpoint = new HttpEndpoint<
+    typeof SendMessageResponseSchema,
+    typeof SendDocumentMessageRequestBodySchema
+  >({
+    response: SendMessageResponseSchema,
+    method: "POST",
+    path: "/messages",
+  });
+
+  #sendStickerMessageEndpoint = new HttpEndpoint<
+    typeof SendMessageResponseSchema,
+    typeof SendStickerMessageRequestBodySchema
   >({
     response: SendMessageResponseSchema,
     method: "POST",
@@ -146,6 +205,38 @@ export class WhatsAppRequestIntegration implements RequestIntegration {
           options.metadata
         );
       }
+      case "message.sendAudio": {
+        return this.#sendAudioMessage(
+          options.accessInfo,
+          options.params,
+          options.cache,
+          options.metadata
+        );
+      }
+      case "message.sendVideo": {
+        return this.#sendVideoMessage(
+          options.accessInfo,
+          options.params,
+          options.cache,
+          options.metadata
+        );
+      }
+      case "message.sendDocument": {
+        return this.#sendDocumentMessage(
+          options.accessInfo,
+          options.params,
+          options.cache,
+          options.metadata
+        );
+      }
+      case "message.sendSticker": {
+        return this.#sendStickerMessage(
+          options.accessInfo,
+          options.params,
+          options.cache,
+          options.metadata
+        );
+      }
       case "message.sendLocation": {
         return this.#sendLocationMessage(
           options.accessInfo,
@@ -195,6 +286,34 @@ export class WhatsAppRequestIntegration implements RequestIntegration {
         const parsedParams = SendImageMessageBodySchema.parse(params);
         return {
           title: `Send image (${parsedParams.url}) to ${parsedParams.to}`,
+          properties: [],
+        };
+      }
+      case "message.sendAudio": {
+        const parsedParams = SendAudioMessageBodySchema.parse(params);
+        return {
+          title: `Send audio (${parsedParams.url}) to ${parsedParams.to}`,
+          properties: [],
+        };
+      }
+      case "message.sendVideo": {
+        const parsedParams = SendVideoMessageBodySchema.parse(params);
+        return {
+          title: `Send video (${parsedParams.url}) to ${parsedParams.to}`,
+          properties: [],
+        };
+      }
+      case "message.sendDocument": {
+        const parsedParams = SendDocumentMessageBodySchema.parse(params);
+        return {
+          title: `Send document (${parsedParams.url}) to ${parsedParams.to}`,
+          properties: [],
+        };
+      }
+      case "message.sendSticker": {
+        const parsedParams = SendStickerMessageBodySchema.parse(params);
+        return {
+          title: `Send sticker (${parsedParams.url}) to ${parsedParams.to}`,
           properties: [],
         };
       }
@@ -528,6 +647,293 @@ export class WhatsAppRequestIntegration implements RequestIntegration {
     };
 
     log("message.sendImage performedRequest %O", performedRequest);
+
+    return performedRequest;
+  }
+
+  async #sendAudioMessage(
+    accessInfo: AccessInfo,
+    params: any,
+    cache?: CacheService,
+    metadata?: Record<string, string>
+  ): Promise<PerformedRequestResponse> {
+    const parsedParams = SendAudioMessageBodySchema.parse(params);
+
+    log("message.sendAudio %O", parsedParams);
+
+    const accessToken = getAccessToken(accessInfo);
+
+    const service = new HttpService({
+      accessToken,
+      baseUrl: `${this.baseUrl}/${parsedParams.fromId}`,
+    });
+
+    //transform the data from the nice input format into the format that the API expects
+    const request: SendAudioMessageRequestBody = {
+      messaging_product: "whatsapp",
+      recipient_type: "individual",
+      to: parsedParams.to,
+      type: "audio",
+      audio: {
+        link: parsedParams.url,
+      },
+      context: parsedParams.isReplyTo
+        ? { message_id: parsedParams.isReplyTo }
+        : undefined,
+    };
+
+    const response = await service.performRequest(
+      this.#sendAudioMessageEndpoint,
+      request
+    );
+
+    if (!response.success) {
+      log("message.sendAudio failed %O", response);
+
+      return {
+        ok: false,
+        isRetryable: this.#isRetryable(response.statusCode),
+        response: {
+          output: response.error,
+          context: {
+            statusCode: response.statusCode,
+            headers: response.headers,
+          },
+        },
+      };
+    }
+
+    const ok = !("error" in response.data);
+
+    const performedRequest = {
+      ok,
+      isRetryable: this.#isRetryable(response.statusCode),
+      response: {
+        output: response.data,
+        context: {
+          statusCode: response.statusCode,
+          headers: response.headers,
+        },
+      },
+    };
+
+    log("message.sendAudio performedRequest %O", performedRequest);
+
+    return performedRequest;
+  }
+
+  async #sendVideoMessage(
+    accessInfo: AccessInfo,
+    params: any,
+    cache?: CacheService,
+    metadata?: Record<string, string>
+  ): Promise<PerformedRequestResponse> {
+    const parsedParams = SendVideoMessageBodySchema.parse(params);
+
+    log("message.sendVideo %O", parsedParams);
+
+    const accessToken = getAccessToken(accessInfo);
+
+    const service = new HttpService({
+      accessToken,
+      baseUrl: `${this.baseUrl}/${parsedParams.fromId}`,
+    });
+
+    //transform the data from the nice input format into the format that the API expects
+    const request: SendVideoMessageRequestBody = {
+      messaging_product: "whatsapp",
+      recipient_type: "individual",
+      to: parsedParams.to,
+      type: "video",
+      video: {
+        link: parsedParams.url,
+        caption: parsedParams.caption,
+      },
+      context: parsedParams.isReplyTo
+        ? { message_id: parsedParams.isReplyTo }
+        : undefined,
+    };
+
+    const response = await service.performRequest(
+      this.#sendVideoMessageEndpoint,
+      request
+    );
+
+    if (!response.success) {
+      log("message.sendVideo failed %O", response);
+
+      return {
+        ok: false,
+        isRetryable: this.#isRetryable(response.statusCode),
+        response: {
+          output: response.error,
+          context: {
+            statusCode: response.statusCode,
+            headers: response.headers,
+          },
+        },
+      };
+    }
+
+    const ok = !("error" in response.data);
+
+    const performedRequest = {
+      ok,
+      isRetryable: this.#isRetryable(response.statusCode),
+      response: {
+        output: response.data,
+        context: {
+          statusCode: response.statusCode,
+          headers: response.headers,
+        },
+      },
+    };
+
+    log("message.sendVideo performedRequest %O", performedRequest);
+
+    return performedRequest;
+  }
+
+  async #sendDocumentMessage(
+    accessInfo: AccessInfo,
+    params: any,
+    cache?: CacheService,
+    metadata?: Record<string, string>
+  ): Promise<PerformedRequestResponse> {
+    const parsedParams = SendDocumentMessageBodySchema.parse(params);
+
+    log("message.sendDocument %O", parsedParams);
+
+    const accessToken = getAccessToken(accessInfo);
+
+    const service = new HttpService({
+      accessToken,
+      baseUrl: `${this.baseUrl}/${parsedParams.fromId}`,
+    });
+
+    //transform the data from the nice input format into the format that the API expects
+    const request: SendDocumentMessageRequestBody = {
+      messaging_product: "whatsapp",
+      recipient_type: "individual",
+      to: parsedParams.to,
+      type: "document",
+      document: {
+        link: parsedParams.url,
+        caption: parsedParams.caption,
+      },
+      context: parsedParams.isReplyTo
+        ? { message_id: parsedParams.isReplyTo }
+        : undefined,
+    };
+
+    const response = await service.performRequest(
+      this.#sendDocumentMessageEndpoint,
+      request
+    );
+
+    if (!response.success) {
+      log("message.sendDocument failed %O", response);
+
+      return {
+        ok: false,
+        isRetryable: this.#isRetryable(response.statusCode),
+        response: {
+          output: response.error,
+          context: {
+            statusCode: response.statusCode,
+            headers: response.headers,
+          },
+        },
+      };
+    }
+
+    const ok = !("error" in response.data);
+
+    const performedRequest = {
+      ok,
+      isRetryable: this.#isRetryable(response.statusCode),
+      response: {
+        output: response.data,
+        context: {
+          statusCode: response.statusCode,
+          headers: response.headers,
+        },
+      },
+    };
+
+    log("message.sendDocument performedRequest %O", performedRequest);
+
+    return performedRequest;
+  }
+
+  async #sendStickerMessage(
+    accessInfo: AccessInfo,
+    params: any,
+    cache?: CacheService,
+    metadata?: Record<string, string>
+  ): Promise<PerformedRequestResponse> {
+    const parsedParams = SendStickerMessageBodySchema.parse(params);
+
+    log("message.sendSticker %O", parsedParams);
+
+    const accessToken = getAccessToken(accessInfo);
+
+    const service = new HttpService({
+      accessToken,
+      baseUrl: `${this.baseUrl}/${parsedParams.fromId}`,
+    });
+
+    //transform the data from the nice input format into the format that the API expects
+    const request: SendStickerMessageRequestBody = {
+      messaging_product: "whatsapp",
+      recipient_type: "individual",
+      to: parsedParams.to,
+      type: "sticker",
+      sticker: {
+        link: parsedParams.url,
+        caption: parsedParams.caption,
+      },
+      context: parsedParams.isReplyTo
+        ? { message_id: parsedParams.isReplyTo }
+        : undefined,
+    };
+
+    const response = await service.performRequest(
+      this.#sendStickerMessageEndpoint,
+      request
+    );
+
+    if (!response.success) {
+      log("message.sendSticker failed %O", response);
+
+      return {
+        ok: false,
+        isRetryable: this.#isRetryable(response.statusCode),
+        response: {
+          output: response.error,
+          context: {
+            statusCode: response.statusCode,
+            headers: response.headers,
+          },
+        },
+      };
+    }
+
+    const ok = !("error" in response.data);
+
+    const performedRequest = {
+      ok,
+      isRetryable: this.#isRetryable(response.statusCode),
+      response: {
+        output: response.data,
+        context: {
+          statusCode: response.statusCode,
+          headers: response.headers,
+        },
+      },
+    };
+
+    log("message.sendSticker performedRequest %O", performedRequest);
 
     return performedRequest;
   }

@@ -1,12 +1,16 @@
 import { Trigger } from "@trigger.dev/sdk";
 import {
   events,
+  sendAudio,
   sendContacts,
+  sendDocument,
   sendImage,
   sendLocation,
   sendReaction,
+  sendSticker,
   sendTemplate,
   sendText,
+  sendVideo,
 } from "@trigger.dev/whatsapp";
 
 new Trigger({
@@ -54,6 +58,32 @@ new Trigger({
       to: event.message.from,
       url: "https://app.trigger.dev/emails/logo.png",
       caption: "This is a genius caption",
+    });
+
+    const videoResponse = await sendVideo("video", {
+      fromId: event.metadata.phone_number_id,
+      to: event.message.from,
+      url: "https://media.giphy.com/media/5i7umUqAOYYEw/giphy.mp4",
+      caption: "OMGGGG CATTTT",
+    });
+
+    const audioResponse = await sendAudio("audio", {
+      fromId: event.metadata.phone_number_id,
+      to: event.message.from,
+      url: "https://ssl.gstatic.com/dictionary/static/pronunciation/2022-03-02/audio/wi/wikipedia_en_gb_1.mp3",
+    });
+
+    const documentResponse = await sendDocument("doc", {
+      fromId: event.metadata.phone_number_id,
+      to: event.message.from,
+      url: "https://upload.wikimedia.org/wikipedia/commons/2/20/Re_example.pdf",
+      caption: "A pdf",
+    });
+
+    const stickerResponse = await sendSticker("stick", {
+      fromId: event.metadata.phone_number_id,
+      to: event.message.from,
+      url: "https://www.tyntec.com/sites/default/files/2020-07/tyntec_rocket_sticker_512px_001_.webp",
     });
 
     const locationResponse = await sendLocation("location", {
