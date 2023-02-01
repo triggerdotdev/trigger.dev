@@ -148,5 +148,12 @@
     "auth": {
       "method": "bearer"
     }
-  }
+  },
+  "analytics": {
+    "posthog": {
+        "apiKey": "required",
+        "apiHost": "optional"
+    }
 }
+}
+
