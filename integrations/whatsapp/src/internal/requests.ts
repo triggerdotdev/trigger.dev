@@ -13,21 +13,36 @@ import { z } from "zod";
 import {
   SendTemplateMessageBodySchema,
   SendTemplateMessageRequestBodySchema,
-  SendTemplateMessageResponseSchema,
+  SendMessageResponseSchema,
+  SendTextMessageBodySchema,
+  SendTextMessageRequestBodySchema,
 } from "../schemas/messages";
 
-const log = debug("trigger:integrations:slack");
+const log = debug("trigger:integrations:whatsapp");
 
 type SendTemplateMessageRequestBody = z.infer<
   typeof SendTemplateMessageRequestBodySchema
 >;
 
+type SendTextMessageRequestBody = z.infer<
+  typeof SendTextMessageRequestBodySchema
+>;
+
 export class WhatsAppRequestIntegration implements RequestIntegration {
   #sendTemplateMessageEndpoint = new HttpEndpoint<
-    typeof SendTemplateMessageResponseSchema,
+    typeof SendMessageResponseSchema,
     typeof SendTemplateMessageRequestBodySchema
   >({
-    response: SendTemplateMessageResponseSchema,
+    response: SendMessageResponseSchema,
+    method: "POST",
+    path: "/messages",
+  });
+
+  #sendTextMessageEndpoint = new HttpEndpoint<
+    typeof SendMessageResponseSchema,
+    typeof SendTextMessageRequestBodySchema
+  >({
+    response: SendMessageResponseSchema,
     method: "POST",
     path: "/messages",
   });
@@ -40,6 +55,14 @@ export class WhatsAppRequestIntegration implements RequestIntegration {
     switch (options.endpoint) {
       case "message.sendTemplate": {
         return this.#sendTemplateMessage(
+          options.accessInfo,
+          options.params,
+          options.cache,
+          options.metadata
+        );
+      }
+      case "message.sendText": {
+        return this.#sendTextMessage(
           options.accessInfo,
           options.params,
           options.cache,
@@ -163,6 +186,75 @@ export class WhatsAppRequestIntegration implements RequestIntegration {
     };
 
     log("message.sendTemplate performedRequest %O", performedRequest);
+
+    return performedRequest;
+  }
+
+  async #sendTextMessage(
+    accessInfo: AccessInfo,
+    params: any,
+    cache?: CacheService,
+    metadata?: Record<string, string>
+  ): Promise<PerformedRequestResponse> {
+    const parsedParams = SendTextMessageBodySchema.parse(params);
+
+    log("message.sendText %O", parsedParams);
+
+    const accessToken = getAccessToken(accessInfo);
+
+    const service = new HttpService({
+      accessToken,
+      baseUrl: `${this.baseUrl}/${parsedParams.fromId}`,
+    });
+
+    //transform the data from the nice input format into the format that the API expects
+    const request: SendTextMessageRequestBody = {
+      messaging_product: "whatsapp",
+      recipient_type: "individual",
+      to: parsedParams.to,
+      type: "text",
+      text: {
+        body: parsedParams.text,
+        preview_url: parsedParams.preview_url ?? true,
+      },
+    };
+
+    const response = await service.performRequest(
+      this.#sendTextMessageEndpoint,
+      request
+    );
+
+    if (!response.success) {
+      log("message.sendText failed %O", response);
+
+      return {
+        ok: false,
+        isRetryable: this.#isRetryable(response.statusCode),
+        response: {
+          output: response.error,
+          context: {
+            statusCode: response.statusCode,
+            headers: response.headers,
+          },
+        },
+      };
+    }
+
+    const ok = response.statusCode === 200;
+
+    const performedRequest = {
+      ok,
+      isRetryable: this.#isRetryable(response.statusCode),
+      response: {
+        output: response.data,
+        context: {
+          statusCode: response.statusCode,
+          headers: response.headers,
+        },
+      },
+    };
+
+    log("message.sendText performedRequest %O", performedRequest);
 
     return performedRequest;
   }

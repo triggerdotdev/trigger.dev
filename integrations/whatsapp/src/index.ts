@@ -9,7 +9,7 @@ export type SendTemplateMessageOptions = z.infer<
 >;
 
 export type SendTemplateMessageResponse = z.infer<
-  typeof schemas.messages.SendTemplateMessageResponseSchema
+  typeof schemas.messages.SendMessageResponseSchema
 >;
 
 export async function sendTemplate(
@@ -27,7 +27,37 @@ export async function sendTemplate(
     endpoint: "message.sendTemplate",
     params: message,
     response: {
-      schema: schemas.messages.SendTemplateMessageResponseSchema,
+      schema: schemas.messages.SendMessageResponseSchema,
+    },
+  });
+
+  return output;
+}
+
+export type SendTextMessageOptions = z.infer<
+  typeof schemas.messages.SendTextMessageBodySchema
+>;
+
+export type SendTextMessageResponse = z.infer<
+  typeof schemas.messages.SendMessageResponseSchema
+>;
+
+export async function sendText(
+  key: string,
+  message: SendTextMessageOptions
+): Promise<SendTextMessageResponse> {
+  const run = getTriggerRun();
+
+  if (!run) {
+    throw new Error("Cannot call sendText outside of a trigger run");
+  }
+
+  const output = await run.performRequest(key, {
+    service: "whatsapp",
+    endpoint: "message.sendText",
+    params: message,
+    response: {
+      schema: schemas.messages.SendMessageResponseSchema,
     },
   });
 

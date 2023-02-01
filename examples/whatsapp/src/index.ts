@@ -1,5 +1,5 @@
 import { Trigger } from "@trigger.dev/sdk";
-import { events, sendTemplate } from "@trigger.dev/whatsapp";
+import { events, sendTemplate, sendText } from "@trigger.dev/whatsapp";
 
 new Trigger({
   id: "whatsapp-webhook",
@@ -14,11 +14,17 @@ new Trigger({
     await ctx.logger.info(`Message data`, event.message);
     await ctx.logger.info(`Phone number`, event.contacts[0]);
 
-    const response = await sendTemplate("template-msg", {
+    const templateResponse = await sendTemplate("template-msg", {
       fromId: event.metadata.phone_number_id,
       to: event.message.from,
       template: "hello_world",
       languageCode: "en_US",
+    });
+
+    const textResponse = await sendText("text-msg", {
+      fromId: event.metadata.phone_number_id,
+      to: event.message.from,
+      text: "Hello! This is a text sent automatically from https://www.trigger.dev",
     });
   },
 }).listen();

@@ -129,8 +129,26 @@ export const SendTemplateMessageBodySchema = z.object({
     .optional(),
 });
 
-export const SendTemplateMessageResponseSchema = z.object({
+export const SendMessageResponseSchema = z.object({
   messaging_product: z.literal("whatsapp"),
   contacts: z.array(z.object({ input: z.string(), wa_id: z.string() })),
   messages: z.array(z.object({ id: z.string() })),
+});
+
+export const SendTextMessageRequestBodySchema = z.object({
+  messaging_product: z.literal("whatsapp"),
+  recipient_type: z.literal("individual"),
+  to: z.string(),
+  type: z.literal("text"),
+  text: z.object({
+    body: z.string(),
+    preview_url: z.boolean(),
+  }),
+});
+
+export const SendTextMessageBodySchema = z.object({
+  fromId: z.string(),
+  to: z.string(),
+  text: z.string(),
+  preview_url: z.boolean().optional(),
 });
