@@ -26,19 +26,18 @@ RUN corepack prepare pnpm@latest --activate
 ENV NODE_ENV production
 RUN npm config set python /usr/bin/python3
 RUN pnpm --version
-RUN pnpm install --prod --frozen-lockfile
+RUN pnpm install --prod --no-frozen-lockfile
 
 FROM base AS builder
 WORKDIR /app
 RUN npm install turbo -g
 COPY turbo.json turbo.json
 RUN corepack enable
-RUN corepack prepare pnpm@latest --activate
 COPY --from=pruner /app/out/full/ .
 RUN npm config set python /usr/bin/python3
 ENV NODE_ENV development
 RUN pnpm --version
-RUN pnpm install --ignore-scripts --frozen-lockfile
+RUN pnpm install --ignore-scripts --no-frozen-lockfile
 ENV NODE_ENV production
 RUN pnpm run build --filter=wss
 
