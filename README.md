@@ -9,7 +9,7 @@
 </div>
 
 
-# **🛎 Trigger.dev**
+# **⚡️ Trigger.dev**
 ### **The developer-first open source Zapier alternative.**
 
 
@@ -54,39 +54,15 @@ Trigger.dev is an open source platform that makes it easy for developers to crea
 
 &nbsp;
 
-# **🏃‍♀️ Quick start guide**
+# 🔬 **Anatomy of a workflow**
 
-### **1. Sign up at [trigger.dev](https://app.trigger.dev) and create a new organization.**
+* You create workflows in code on your server using our SDK
+* Each API integration is a separate package, e.g. `@trigger.dev/slack`
+* Each workflow has an event that triggers it, e.g. `github.events.newStarEvent`, `scheduleEvent`, `customEvent`
+* Each workflow has a `run` function that is called when the event is triggered
+* If we don't have an integration for the API you want to use, you can use `fetch` to call any HTTP endpoint and `webhookEvent` to subscribe to webhooks
 
-### **2. Install our SDK to your project:**
-
-<Tabs>
-  <Tab title="npm">
-
-```bash
-npm install @trigger.dev/sdk @trigger.dev/slack zod
-```
-
-  </Tab>
-  <Tab title="pnpm">
-
-```bash
-pnpm install @trigger.dev/sdk @trigger.dev/slack zod
-```
-
-  </Tab>
-  <Tab title="yarn">
-
-```bash
-yarn add @trigger.dev/sdk @trigger.dev/slack zod
-```
-
-  </Tab>
-</Tabs>
-
-### **3. Create a workflow file**
-
-**Example workflows:**
+## **Example workflows**
 
 <details open><summary> Post to Slack when a GitHub issue is created or modified
 </summary>
@@ -190,50 +166,14 @@ new Trigger({
 
 [More examples here](https://docs.trigger.dev/examples/examples)
 
-### **4. Sign in to your Trigger.dev dashboard and get your API keys**
+&nbsp;
 
-- Go to [trigger.dev](https://app.trigger.dev) and login to your account.
-- In the bottom-left corner of an Organization page you can find your API keys.
-- Copy the API key for the organization you want to use and add it to your workflow file.
+# 👀 **Viewing runs:**
 
-### **5. Test your workflow**
+One of the most powerful features of Trigger.dev is the [runs page](https://docs.trigger.dev/viewing-runs). All of the steps in a workflow, including the initial event, can be viewed in detail. See the status / output of each step, the logs, rich previews, errors and much more.
 
-Move to the "Test" page and input a valid test event, remember the workflow expects the types you have defined in the schema.
+![Viewing runs](https://mintlify.s3-us-west-1.amazonaws.com/api-hero/images/run-succeeded.png)
 
-Hit the "Run test" button and it will take us to our first run 🚀!
-
-### **6. The run page**
-
-All of the steps in a workflow, including the initial event, can be viewed in detail. You will need to refresh the page if it's running to see it move between steps.
-
-### **7. Authenticating integrations**
-
-When a workflow step uses an API integration that you haven't already authenticated with, it will pause until you've authenticated.
-
-Simply click the "Connect to [integration]" button and sign-in with your desired Slack workspace. As soon as you do, the workflow will pick up where it left off.
-
-Test complete!
-
-### **8. Triggering this workflow from code**
-
-As this workflow uses a custom event, we need to manually trigger it from our code. Anywhere in your code you can do this:
-
-```ts
-import { sendEvent } from "@trigger.dev/sdk";
-
-/*
-...your other code
-*/
-
-await sendEvent(uuidv4(), {
-  name: "user.created"
-  payload: {
-    name: "Eleven",
-    email: "jane@hawksmoorhigh.edu",
-    paidPlan: true,
-  },
-});
-```
 
 &nbsp;
 
