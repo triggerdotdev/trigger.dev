@@ -78,8 +78,16 @@ export class WhatsAppRequestIntegration implements RequestIntegration {
   displayProperties(endpoint: string, params: any): DisplayProperties {
     switch (endpoint) {
       case "message.sendTemplate": {
+        const parsedParams = SendTemplateMessageBodySchema.parse(params);
         return {
-          title: `Send template message`,
+          title: `Send template (${parsedParams.template}) to ${parsedParams.to}`,
+          properties: [],
+        };
+      }
+      case "message.sendText": {
+        const parsedParams = SendTextMessageBodySchema.parse(params);
+        return {
+          title: `Send text to ${parsedParams.to}`,
           properties: [],
         };
       }
