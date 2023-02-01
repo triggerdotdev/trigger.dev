@@ -1,7 +1,7 @@
 FROM node:16-bullseye AS pruner
 RUN apt-get update && apt-get install openssl -y
 WORKDIR /app
-RUN npm install turbo -g
+RUN npm install turbo@1.7.0 -g
 COPY . .
 RUN turbo prune --scope=wss --docker
 RUN find . -name "node_modules" -type d -prune -exec rm -rf '{}' +
@@ -22,7 +22,6 @@ COPY --from=pruner /app/out/pnpm-workspace.yaml ./pnpm-workspace.yaml
 FROM base AS production-deps
 WORKDIR /app
 RUN corepack enable
-RUN corepack prepare pnpm@latest --activate
 ENV NODE_ENV production
 RUN npm config set python /usr/bin/python3
 RUN pnpm --version
@@ -30,7 +29,7 @@ RUN pnpm install --prod --no-frozen-lockfile
 
 FROM base AS builder
 WORKDIR /app
-RUN npm install turbo -g
+RUN npm install turbo@1.7.0 -g
 COPY turbo.json turbo.json
 RUN corepack enable
 COPY --from=pruner /app/out/full/ .
@@ -48,7 +47,7 @@ ENV PULSAR_CPP_CLIENT_VERSION=2.10.3
 RUN wget https://archive.apache.org/dist/pulsar/pulsar-${PULSAR_CPP_CLIENT_VERSION}/DEB/apache-pulsar-client.deb -q
 RUN wget https://archive.apache.org/dist/pulsar/pulsar-${PULSAR_CPP_CLIENT_VERSION}/DEB/apache-pulsar-client-dev.deb -q
 RUN dpkg -i ./apache-pulsar-client*.deb
-RUN npm install turbo -g
+RUN npm install turbo@1.7.0 -g
 WORKDIR /app
 RUN corepack enable
 ENV NODE_ENV production
