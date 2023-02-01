@@ -1,11 +1,17 @@
+<div align="center">
+
 ![Hero](https://raw.githubusercontent.com/triggerdotdev/trigger.dev/eebe37109e33beae6390ee19029fce8a5934c84b/apps/webapp/public/images/logo-banner.png)
 
-[![Twitter](https://img.shields.io/twitter/url/https/twitter.com/triggerdotdev.svg?style=social&label=Follow%20%40trigger.dev)](https://twitter.com/triggerdotdev) ![YouTube Channel Subscribers](https://img.shields.io/youtube/channel/subscribers/UCu-PdxpWtIrrd7vW0N5T6ZA?style=social)
-![GitHub Repo stars](https://img.shields.io/github/stars/triggerdotdev/trigger.dev?style=social)
+[![Twitter](https://img.shields.io/twitter/url/https/twitter.com/triggerdotdev.svg?style=social&label=Follow%20%40trigger.dev)](https://twitter.com/triggerdotdev) [![YouTube Channel Subscribers](https://img.shields.io/youtube/channel/subscribers/UCu-PdxpWtIrrd7vW0N5T6ZA?style=social)](https://www.youtube.com/@triggerdotdev)
+[![GitHub Repo stars](https://img.shields.io/github/stars/triggerdotdev/trigger.dev?style=social)](https://github.com/triggerdotdev/trigger.dev)
 
-# **🛎 Trigger.dev**
+[Website](https://trigger.dev) | [Community](https://discord.gg/JtBAxBr2m3) | [Docs](https://docs.trigger.dev)
+</div>
 
-[Website](https://trigger.dev) | [Community](https://github.com/triggerdotdev/jsonhero-web) | [Docs](https://docs.trigger.dev)
+
+# **⚡️ Trigger.dev**
+### **The developer-first open source Zapier alternative.**
+
 
 Trigger.dev is an open source platform that makes it easy for developers to create event-driven background tasks directly in their code. Build, test and run workflows locally using our SDK. Subscribe to webhooks, schedule jobs, run background jobs and add long delays easily and reliably. In our web app you get full visibility of every run your workflow has ever made making it easier to monitor and debug.
 
@@ -19,7 +25,7 @@ Trigger.dev is an open source platform that makes it easy for developers to crea
 - 📆 [Schedule workflows](https://docs.trigger.dev/triggers/scheduled)—easily repeat tasks or use CRON syntax for advanced cases.
 - 🚦 Add [long delays](https://docs.trigger.dev/functions/delays) inside workflows (up to a year) and they will pick up where they left off.
 - 🤝 When your server goes down [it’s not a problem](https://docs.trigger.dev/guides/resumability), workflows will reconnect and continue.
-- 🪧 [View every step of every run](https://docs.trigger.dev/functions/viewing-runs), with data, previews and errors.
+- 🪧 [View every step of every run](https://docs.trigger.dev/viewing-runs), with data, previews and errors.
 - 👋 Connect to and authenticate with APIs using our custom integrations.
 - 🚗 If you have a custom use case, we support [Fetch for calling any HTTP endpoint](https://docs.trigger.dev/functions/fetch) or [webhooks](https://docs.trigger.dev/triggers/webhooks) for subscribing to events from APIs.
 - 📡 All API calls are automatically retried with exponential back off.
@@ -48,39 +54,15 @@ Trigger.dev is an open source platform that makes it easy for developers to crea
 
 &nbsp;
 
-# **🏃‍♀️ Quick start guide**
+# 🔬 **Anatomy of a workflow**
 
-### **1. Sign up at [trigger.dev](https://app.trigger.dev) and create a new organization.**
+* You create workflows in code on your server using our SDK
+* Each API integration is a separate package, e.g. `@trigger.dev/slack`
+* Each workflow has an event that triggers it, e.g. `github.events.newStarEvent`, `scheduleEvent`, `customEvent`
+* Each workflow has a `run` function that is called when the event is triggered
+* If we don't have an integration for the API you want to use, you can use `fetch` to call any HTTP endpoint and `webhookEvent` to subscribe to webhooks
 
-### **2. Install our SDK to your project:**
-
-<Tabs>
-  <Tab title="npm">
-
-```bash
-npm install @trigger.dev/sdk @trigger.dev/slack zod
-```
-
-  </Tab>
-  <Tab title="pnpm">
-
-```bash
-pnpm install @trigger.dev/sdk @trigger.dev/slack zod
-```
-
-  </Tab>
-  <Tab title="yarn">
-
-```bash
-yarn add @trigger.dev/sdk @trigger.dev/slack zod
-```
-
-  </Tab>
-</Tabs>
-
-### **3. Create a workflow file**
-
-**Example workflows:**
+## **Example workflows**
 
 <details open><summary> Post to Slack when a GitHub issue is created or modified
 </summary>
@@ -184,50 +166,14 @@ new Trigger({
 
 [More examples here](https://docs.trigger.dev/examples/examples)
 
-### **4. Sign in to your Trigger.dev dashboard and get your API keys**
+&nbsp;
 
-- Go to [trigger.dev](https://app.trigger.dev) and login to your account.
-- In the bottom-left corner of an Organization page you can find your API keys.
-- Copy the API key for the organization you want to use and add it to your workflow file.
+# 👀 **Viewing runs:**
 
-### **5. Test your workflow**
+One of the most powerful features of Trigger.dev is the [runs page](https://docs.trigger.dev/viewing-runs). All of the steps in a workflow, including the initial event, can be viewed in detail. See the status / output of each step, the logs, rich previews, errors and much more.
 
-Move to the "Test" page and input a valid test event, remember the workflow expects the types you have defined in the schema.
+![Viewing runs](https://mintlify.s3-us-west-1.amazonaws.com/api-hero/images/run-succeeded.png)
 
-Hit the "Run test" button and it will take us to our first run 🚀!
-
-### **6. The run page**
-
-All of the steps in a workflow, including the initial event, can be viewed in detail. You will need to refresh the page if it's running to see it move between steps.
-
-### **7. Authenticating integrations**
-
-When a workflow step uses an API integration that you haven't already authenticated with, it will pause until you've authenticated.
-
-Simply click the "Connect to [integration]" button and sign-in with your desired Slack workspace. As soon as you do, the workflow will pick up where it left off.
-
-Test complete!
-
-### **8. Triggering this workflow from code**
-
-As this workflow uses a custom event, we need to manually trigger it from our code. Anywhere in your code you can do this:
-
-```ts
-import { sendEvent } from "@trigger.dev/sdk";
-
-/*
-...your other code
-*/
-
-await sendEvent(uuidv4(), {
-  name: "user.created"
-  payload: {
-    name: "Eleven",
-    email: "jane@hawksmoorhigh.edu",
-    paidPlan: true,
-  },
-});
-```
 
 &nbsp;
 
