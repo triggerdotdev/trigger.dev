@@ -21,28 +21,24 @@ const DateTimeParameter = z.object({
   }),
 });
 
+const MediaObject = z.object({
+  link: z.string(),
+  caption: z.string().optional(),
+});
+
 const ImageParameter = z.object({
   type: z.literal("image"),
-  image: z.object({
-    link: z.string(),
-    caption: z.string().optional(),
-  }),
+  image: MediaObject,
 });
 
 const VideoParameter = z.object({
   type: z.literal("video"),
-  video: z.object({
-    link: z.string(),
-    caption: z.string().optional(),
-  }),
+  video: MediaObject,
 });
 
 const DocumentParameter = z.object({
   type: z.literal("document"),
-  video: z.object({
-    link: z.string(),
-    caption: z.string().optional(),
-  }),
+  video: MediaObject,
 });
 
 const ButtonTemplateComponent = z.object({
@@ -177,4 +173,21 @@ export const SendReactionMessageBodySchema = z.object({
   to: z.string(),
   isReplyTo: z.string(),
   emoji: z.string(),
+});
+
+export const SendImageMessageRequestBodySchema = z.object({
+  messaging_product: z.literal("whatsapp"),
+  recipient_type: z.literal("individual"),
+  to: z.string(),
+  type: z.literal("image"),
+  image: MediaObject,
+  context: MessageContextSchema,
+});
+
+export const SendImageMessageBodySchema = z.object({
+  fromId: z.string(),
+  to: z.string(),
+  url: z.string(),
+  caption: z.string().optional(),
+  isReplyTo: z.string().optional(),
 });

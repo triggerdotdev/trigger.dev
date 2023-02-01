@@ -18,6 +18,8 @@ import {
   SendTextMessageRequestBodySchema,
   SendReactionMessageBodySchema,
   SendReactionMessageRequestBodySchema,
+  SendImageMessageBodySchema,
+  SendImageMessageRequestBodySchema,
 } from "../schemas/messages";
 
 const log = debug("trigger:integrations:whatsapp");
@@ -32,6 +34,10 @@ type SendTextMessageRequestBody = z.infer<
 
 type SendReactionMessageRequestBody = z.infer<
   typeof SendReactionMessageRequestBodySchema
+>;
+
+type SendImageMessageRequestBody = z.infer<
+  typeof SendImageMessageRequestBodySchema
 >;
 
 export class WhatsAppRequestIntegration implements RequestIntegration {
@@ -56,6 +62,15 @@ export class WhatsAppRequestIntegration implements RequestIntegration {
   #sendReactionMessageEndpoint = new HttpEndpoint<
     typeof SendMessageResponseSchema,
     typeof SendReactionMessageRequestBodySchema
+  >({
+    response: SendMessageResponseSchema,
+    method: "POST",
+    path: "/messages",
+  });
+
+  #sendImageMessageEndpoint = new HttpEndpoint<
+    typeof SendMessageResponseSchema,
+    typeof SendImageMessageRequestBodySchema
   >({
     response: SendMessageResponseSchema,
     method: "POST",
@@ -92,6 +107,14 @@ export class WhatsAppRequestIntegration implements RequestIntegration {
           options.metadata
         );
       }
+      case "message.sendImage": {
+        return this.#sendImageMessage(
+          options.accessInfo,
+          options.params,
+          options.cache,
+          options.metadata
+        );
+      }
       default: {
         throw new Error(`Unknown endpoint: ${options.endpoint}`);
       }
@@ -118,6 +141,13 @@ export class WhatsAppRequestIntegration implements RequestIntegration {
         const parsedParams = SendReactionMessageBodySchema.parse(params);
         return {
           title: `Send ${parsedParams.emoji} reaction to ${parsedParams.to}`,
+          properties: [],
+        };
+      }
+      case "message.sendImage": {
+        const parsedParams = SendImageMessageBodySchema.parse(params);
+        return {
+          title: `Send image (${parsedParams.url}) to ${parsedParams.to}`,
           properties: [],
         };
       }
@@ -365,6 +395,78 @@ export class WhatsAppRequestIntegration implements RequestIntegration {
     };
 
     log("message.sendReaction performedRequest %O", performedRequest);
+
+    return performedRequest;
+  }
+
+  async #sendImageMessage(
+    accessInfo: AccessInfo,
+    params: any,
+    cache?: CacheService,
+    metadata?: Record<string, string>
+  ): Promise<PerformedRequestResponse> {
+    const parsedParams = SendImageMessageBodySchema.parse(params);
+
+    log("message.sendImage %O", parsedParams);
+
+    const accessToken = getAccessToken(accessInfo);
+
+    const service = new HttpService({
+      accessToken,
+      baseUrl: `${this.baseUrl}/${parsedParams.fromId}`,
+    });
+
+    //transform the data from the nice input format into the format that the API expects
+    const request: SendImageMessageRequestBody = {
+      messaging_product: "whatsapp",
+      recipient_type: "individual",
+      to: parsedParams.to,
+      type: "image",
+      image: {
+        link: parsedParams.url,
+        caption: parsedParams.caption,
+      },
+      context: parsedParams.isReplyTo
+        ? { message_id: parsedParams.isReplyTo }
+        : undefined,
+    };
+
+    const response = await service.performRequest(
+      this.#sendImageMessageEndpoint,
+      request
+    );
+
+    if (!response.success) {
+      log("message.sendImage failed %O", response);
+
+      return {
+        ok: false,
+        isRetryable: this.#isRetryable(response.statusCode),
+        response: {
+          output: response.error,
+          context: {
+            statusCode: response.statusCode,
+            headers: response.headers,
+          },
+        },
+      };
+    }
+
+    const ok = response.statusCode === 200;
+
+    const performedRequest = {
+      ok,
+      isRetryable: this.#isRetryable(response.statusCode),
+      response: {
+        output: response.data,
+        context: {
+          statusCode: response.statusCode,
+          headers: response.headers,
+        },
+      },
+    };
+
+    log("message.sendImage performedRequest %O", performedRequest);
 
     return performedRequest;
   }

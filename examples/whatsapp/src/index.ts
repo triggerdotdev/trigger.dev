@@ -1,6 +1,7 @@
 import { Trigger } from "@trigger.dev/sdk";
 import {
   events,
+  sendImage,
   sendReaction,
   sendTemplate,
   sendText,
@@ -44,6 +45,13 @@ new Trigger({
       to: event.message.from,
       text: "Hi, this is a reply to the automated message that was just sent",
       isReplyTo: textResponse.messages[0].id,
+    });
+
+    const imageResponse = await sendImage("image", {
+      fromId: event.metadata.phone_number_id,
+      to: event.message.from,
+      url: "https://app.trigger.dev/emails/logo.png",
+      caption: "This is a genius caption",
     });
   },
 }).listen();

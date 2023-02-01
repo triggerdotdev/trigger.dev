@@ -93,3 +93,33 @@ export async function sendReaction(
 
   return output;
 }
+
+export type SendImageMessageOptions = z.infer<
+  typeof schemas.messages.SendImageMessageBodySchema
+>;
+
+export type SendImageMessageResponse = z.infer<
+  typeof schemas.messages.SendMessageResponseSchema
+>;
+
+export async function sendImage(
+  key: string,
+  message: SendImageMessageOptions
+): Promise<SendImageMessageResponse> {
+  const run = getTriggerRun();
+
+  if (!run) {
+    throw new Error("Cannot call sendImage outside of a trigger run");
+  }
+
+  const output = await run.performRequest(key, {
+    service: "whatsapp",
+    endpoint: "message.sendImage",
+    params: message,
+    response: {
+      schema: schemas.messages.SendMessageResponseSchema,
+    },
+  });
+
+  return output;
+}
