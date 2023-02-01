@@ -55,10 +55,11 @@
       "group": "Example workflows",
       "pages": [
         "examples/examples",
-        "examples/slack",
         "examples/github",
         "examples/shopify",
-        "examples/resend"
+        "examples/slack",
+        "examples/resend",
+        "examples/whatsapp"
       ]
     },
     {
