@@ -49,14 +49,10 @@
   "navigation": [
     {
       "group": "Getting Started",
-      "pages": [
-        "welcome",
-        "getting-started",
-        "get-help"
-      ]
+      "pages": ["welcome", "getting-started", "get-help", "viewing-runs"]
     },
     {
-      "group": "Examples",
+      "group": "Example workflows",
       "pages": [
         "examples/examples",
         "examples/slack",
@@ -81,15 +77,11 @@
           "pages": [
             {
               "group": "Slack",
-              "pages": [
-                "integrations/apis/slack/actions/post-message"
-              ]
+              "pages": ["integrations/apis/slack/actions/post-message"]
             },
             {
               "group": "Resend.com",
-              "pages": [
-                "integrations/apis/resend/actions/send-email"
-              ]
+              "pages": ["integrations/apis/resend/actions/send-email"]
             }
           ]
         },
@@ -127,9 +119,7 @@
     },
     {
       "group": "API Reference",
-      "pages": [
-        "api/events/sendEvent"
-      ]
+      "pages": ["api/events/sendEvent"]
     },
     {
       "group": "Webhook Catalog",

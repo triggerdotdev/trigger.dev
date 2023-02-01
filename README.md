@@ -1,377 +1,258 @@
 ![Hero](https://raw.githubusercontent.com/triggerdotdev/trigger.dev/eebe37109e33beae6390ee19029fce8a5934c84b/apps/webapp/public/images/logo-banner.png)
 
+[![Twitter](https://img.shields.io/twitter/url/https/twitter.com/triggerdotdev.svg?style=social&label=Follow%20%40trigger.dev)](https://twitter.com/triggerdotdev) ![YouTube Channel Subscribers](https://img.shields.io/youtube/channel/subscribers/UCu-PdxpWtIrrd7vW0N5T6ZA?style=social)
+![GitHub Repo stars](https://img.shields.io/github/stars/triggerdotdev/trigger.dev?style=social)
 
-[![Twitter](https://img.shields.io/twitter/url/https/twitter.com/triggerdotdev.svg?style=social&label=Follow%20%40trigger.dev)](https://twitter.com/triggerdotdev)
+# **🛎 Trigger.dev**
 
-[![Docs](https://img.shields.io/badge/-Documentation-blueviolet)](https://docs.trigger.dev)
+[Website](https://trigger.dev) | [Community](https://github.com/triggerdotdev/jsonhero-web) | [Docs](https://docs.trigger.dev)
 
-
-
-# ⚙️ Effortless automation built for developers
-
-Trigger workflows from APIs, on a schedule, or on demand. API calls are easy with authentication handled for you. Add durable delays that survive server restarts.
-
-![Hero](https://trigger.dev/_next/static/media/hero-image.4c367bbf.png?imwidth=1920)
-
-# 💻 Developer-first features
-
-## In your codebase
-
-Trigger.dev is code-first so you can create workflows where they belong: in your codebase. Version control, localhost, test, review, and deploy like you're used to.
-
-## Secure by design
-
-Your workflows run on your servers, not ours. We only receive the data you choose to send to us.
+Trigger.dev is an open source platform that makes it easy for developers to create event-driven background tasks directly in their code. Build, test and run workflows locally using our SDK. Subscribe to webhooks, schedule jobs, run background jobs and add long delays easily and reliably. In our web app you get full visibility of every run your workflow has ever made making it easier to monitor and debug.
 
 &nbsp;
 
-# Hundreds of Integrations
+# **⭐️ Features:**
 
-Subscribe to API changes and make requests, we’ll handle authentication for you.
+- 👂 Easily subscribe to [webhooks](https://docs.trigger.dev/triggers/webhooks)
+  — they work locally without tunnelling.
+- 🔥 Fire your own [custom events](https://docs.trigger.dev/triggers/custom-events)—a single event can trigger multiple workflows.
+- 📆 [Schedule workflows](https://docs.trigger.dev/triggers/scheduled)—easily repeat tasks or use CRON syntax for advanced cases.
+- 🚦 Add [long delays](https://docs.trigger.dev/functions/delays) inside workflows (up to a year) and they will pick up where they left off.
+- 🤝 When your server goes down [it’s not a problem](https://docs.trigger.dev/guides/resumability), workflows will reconnect and continue.
+- 🪧 [View every step of every run](https://docs.trigger.dev/functions/viewing-runs), with data, previews and errors.
+- 👋 Connect to and authenticate with APIs using our custom integrations.
+- 🚗 If you have a custom use case, we support [Fetch for calling any HTTP endpoint](https://docs.trigger.dev/functions/fetch) or [webhooks](https://docs.trigger.dev/triggers/webhooks) for subscribing to events from APIs.
+- 📡 All API calls are automatically retried with exponential back off.
+- 😀 TypeScript SDK, so whether you’re using JavaScript or TypeScript you will have a great experience.
 
 &nbsp;
 
-# 🚀 Workflow examples
+# **🌱 Documentation:**
 
-## 🔄 Sync GitHub issues to Linear
+- [Getting Started with Trigger.dev](https://docs.trigger.dev/getting-started)
+- Example workflows
+  - [Welcome email drip campaign using Resend and Slack](https://docs.trigger.dev/examples/resend)
+  - [Post to Slack when a GitHub issue is created or modified](https://docs.trigger.dev/examples/slack)
+  - [Create a new product on Shopify](https://docs.trigger.dev/examples/shopify)
+  - [When a GitHub repo is starred, post information about the user to Slack](https://docs.trigger.dev/examples/github)
+- Triggers:
+  - [Webhooks](https://docs.trigger.dev/triggers/webhooks)
+  - [Custom events](https://docs.trigger.dev/triggers/custom-events)
+  - [Scheduled](https://docs.trigger.dev/triggers/scheduled)
+- Functions:
+  - [Fetch](https://docs.trigger.dev/functions/fetch)
+  - [Logging](https://docs.trigger.dev/functions/logging)
+  - [Delays](https://docs.trigger.dev/functions/delays)
+  - [Send event](https://docs.trigger.dev/functions/send-event)
+  - [Loops, conditionals, etc](https://docs.trigger.dev/functions/loops-conditionals-etc)
 
-![GitHub](https://img.shields.io/badge/-GitHub-gray) ![Linear](https://img.shields.io/badge/-Linear-blue)
+&nbsp;
 
-Triggered when a GitHub issue is created or updated. Query your database to map GitHub user ids to Linear user ids. Then create or update Linear issues.",
+# **🏃‍♀️ Quick start guide**
 
-```Typescript
+### **1. Sign up at [trigger.dev](https://app.trigger.dev) and create a new organization.**
 
-import { Trigger, github, linear } from "@trigger.dev/sdk";
+### **2. Install our SDK to your project:**
 
-new Trigger({
-name: "Sync Github issues to Linear",
-on: github.issueEvent({
-    repo: "acme/website",
-}),
-run: async (event, ctx) => {
-    const { issue, action } = event;
+<Tabs>
+  <Tab title="npm">
 
-    // Find the user in our local database
-    const assignee = await findUserByGithubId(issue.assignee?.id);
-
-    if (action === "opened") {
-    await linear.issueCreate({
-        id: issue.id,
-        title: issue.title,
-        description: issue.body,
-        assigneeId: assignee?.linearId,
-        teamId: ctx.env.LINEAR_TEAM_ID,
-    });
-    } else {
-    await linear.issueUpdate(issue.id, {
-        assigneeId: assignee?.linearId,
-        stateId:
-        action === "closed"
-            ? ctx.env.LINEAR_CLOSED_STATE_ID
-            : ctx.env.LINEAR_OPEN_STATE_ID,
-    });
-    }
-},
-}).listen();
-
+```bash
+npm install @trigger.dev/sdk @trigger.dev/slack zod
 ```
 
-&nbsp;
+  </Tab>
+  <Tab title="pnpm">
 
-## ✉️ Send emails to new users
+```bash
+pnpm install @trigger.dev/sdk @trigger.dev/slack zod
+```
 
-![User](https://img.shields.io/badge/-User-gray) ![Email](https://img.shields.io/badge/-Email-gray) ![Slack](https://img.shields.io/badge/-Slack-purple)
+  </Tab>
+  <Tab title="yarn">
 
-Triggered on demand by your other code when a user is created. We wait for 3 hours then send a follow-up email if the user hasn’t completed onboarding yet.
+```bash
+yarn add @trigger.dev/sdk @trigger.dev/slack zod
+```
 
-```Typescript
-import { Trigger, customEvent, slack, mailgun } from "@trigger.dev/sdk";
+  </Tab>
+</Tabs>
+
+### **3. Create a workflow file**
+
+**Example workflows:**
+
+<details open><summary> Post to Slack when a GitHub issue is created or modified
+</summary>
+
+_Integrations required: Slack, GitHub_
+
+```ts
+import { Trigger } from "@trigger.dev/sdk";
+import * as github from "@trigger.dev/github";
+import * as slack from "@trigger.dev/slack";
 
 new Trigger({
-  name: "Send Email to New Users",
-  on: customEvent<UserEvent>({ name: "user.created" }),
-  run: async (event, ctx) => {
-    // Wait for 3 hours before continuing
-    await ctx.waitFor({ hours: 3 });
+  id: "new-github-star-to-slack",
+  name: "New GitHub Star: triggerdotdev/trigger.dev",
+  apiKey: "<my_api_key>",
+  on: github.events.newStarEvent({
+    repo: "triggerdotdev/trigger.dev",
+  }),
+  run: async (event) => {
+    await slack.postMessage("github-stars", {
+      channelName: "github-stars",
+      text: `New GitHub star from \n<${event.sender.html_url}|${event.sender.login}>`,
+    });
+  },
+}).listen();
+```
 
-    // Lookup user in the database
-    const user = await findUserById(event.id);
+</details>
 
-    // only send email if user has not onboarded
-    if (!user.hasOnboarded) {
-      await mailgun.send({
-        to: user.email,
-        subject: "Welcome to our app!",
-        body: `Welcome to our app ${user.name}!}`,
-      });
+<details><summary>Welcome email drip campaign
+</summary>
 
-      await slack.sendMessage({
-        text: `Welcome email sent to ${user.email}`,
+_Integrations required: Slack, Resend_
+
+```ts
+import { customEvent, Trigger, sendEvent } from "@trigger.dev/sdk";
+import * as resend from "@trigger.dev/resend";
+import * as slack from "@trigger.dev/slack";
+import React from "react";
+import { z } from "zod";
+import { getUser } from "../db";
+import { InactiveEmail, TipsEmail, WelcomeEmail } from "./email-templates";
+
+new Trigger({
+  id: "welcome-email-campaign",
+  name: "Welcome email drip campaign",
+  apiKey: "<my_api_key>",
+  on: customEvent({
+    name: "user.created",
+    schema: z.object({
+      userId: z.string(),
+    }),
+  }),
+  async run(event, context) {
+    //get the user data from the database
+    const user = await getUser(event.userId);
+
+    await slack.postMessage("send-to-slack", {
+      channelName: "new-users",
+      text: `New user signed up: ${user.name} (${user.email})`,
+    });
+
+    //Send the first email
+    const welcomeResponse = await resend.sendEmail("welcome-email", {
+      from: "Trigger.dev <james@email.trigger.dev>",
+      replyTo: "James <james@trigger.dev>",
+      to: user.email,
+      subject: "Welcome to Trigger.dev",
+      react: <WelcomeEmail name={user.name} />,
+    });
+    await context.logger.debug(
+      `Sent welcome email to ${welcomeResponse.to} with id ${welcomeResponse.id}`
+    );
+
+    //wait 1 day, check if the user has created a workflow and send the appropriate email
+    await context.waitFor("wait-a-while", { days: 1 });
+    const updatedUser = await getUser(event.userId);
+
+    if (updatedUser.hasOnboarded) {
+      await resend.sendEmail("onboarding-complete", {
+        from: "Trigger.dev <james@email.trigger.dev>",
+        replyTo: "James <james@trigger.dev>",
+        to: updatedUser.email,
+        subject: "Pro tips for workflows",
+        react: <TipsEmail name={updatedUser.name} />,
       });
     } else {
-      await slack.sendMessage({
-        text: `User ${user.email} has already onboarded`,
+      await resend.sendEmail("onboarding-incomplete", {
+        from: "Trigger.dev <james@email.trigger.dev>",
+        replyTo: "James <james@trigger.dev>",
+        to: updatedUser.email,
+        subject: "Help with your first workflow",
+        react: <InactiveEmail name={updatedUser.name} />,
       });
     }
   },
 }).listen();
 ```
 
-&nbsp;
+</details>
 
-## 🚨 Escalate critical incidents
+[More examples here](https://docs.trigger.dev/examples/examples)
 
-![Intercom](https://img.shields.io/badge/-Intercom-blue) ![Linear](https://img.shields.io/badge/-Linear-blue) ![Slack](https://img.shields.io/badge/-Slack-purple) ![PagerDuty](https://img.shields.io/badge/-PagerDuty-green)
+### **4. Sign in to your Trigger.dev dashboard and get your API keys**
 
-Triggered when an Intercom incident happens. We create a Linear issue, send a Slack message and, if it’s an urgent incident, we alert whoever is on call.
+- Go to [trigger.dev](https://app.trigger.dev) and login to your account.
+- In the bottom-left corner of an Organization page you can find your API keys.
+- Copy the API key for the organization you want to use and add it to your workflow file.
 
-```Typescript
-import { Trigger, intercom, linear, slack, pagerduty } from "@trigger.dev/sdk";
+### **5. Test your workflow**
 
-new Trigger({
-  name: "Intercom Incident",
-  on: intercom.newIncident(),
-  run: async (event, ctx) => {
-    // Find the customer in the database
-    const customer = await db.query("SELECT * FROM users WHERE email = $1", [
-      event.email,
-    ]);
+Move to the "Test" page and input a valid test event, remember the workflow expects the types you have defined in the schema.
 
-    // Create linear ticket
-    const ticket = await linear.issueCreate({
-      title: event.title,
-      description: event.description,
-      assigneeId: ctx.env.LINEAR_ASSIGNEE_ID,
-      teamId: ctx.env.LINEAR_TEAM_ID,
-    });
+Hit the "Run test" button and it will take us to our first run 🚀!
 
-    // notify account manager
-    await slack.sendMessage({
-      text: `New incident for ${customer.name} in Linear: ${ticket.url}`,
-    });
+### **6. The run page**
 
-    if (event.severity === "urgent") {
-      // Create a pagerduty incident
-      await pagerduty.createIncident({
-        title: event.title,
-        description: event.description,
-        severity: "critical",
-        serviceId: ctx.env.PAGERDUTY_SERVICE_ID,
-      });
-    }
+All of the steps in a workflow, including the initial event, can be viewed in detail. You will need to refresh the page if it's running to see it move between steps.
+
+### **7. Authenticating integrations**
+
+When a workflow step uses an API integration that you haven't already authenticated with, it will pause until you've authenticated.
+
+Simply click the "Connect to [integration]" button and sign-in with your desired Slack workspace. As soon as you do, the workflow will pick up where it left off.
+
+Test complete!
+
+### **8. Triggering this workflow from code**
+
+As this workflow uses a custom event, we need to manually trigger it from our code. Anywhere in your code you can do this:
+
+```ts
+import { sendEvent } from "@trigger.dev/sdk";
+
+/*
+...your other code
+*/
+
+await sendEvent(uuidv4(), {
+  name: "user.created"
+  payload: {
+    name: "Eleven",
+    email: "jane@hawksmoorhigh.edu",
+    paidPlan: true,
   },
-}).listen();
+});
 ```
 
 &nbsp;
 
-# ⚡️ Trigger happy
+# **🏠 Running Trigger.dev locally:**
 
-Install our SDK and get instant access to an arsenal of triggers you can use in your code:
-
-
-### **Webhooks**
-
-Subscribe to webhooks without creating API endpoints. Plus they work locally without tunneling.
-
-```Typescript
-github.issueEvent({ repo: "acme/website" })
-```
-
-
-### **Scheduled (CRON)**
-
-Easily subscribe to a recurring schedule using human readable code or CRON syntax.
-
-```Typescript
-scheduleEvent({ every: { minutes: 30 } })
-```
-
-
-### **Custom Events**
-
-Trigger workflows from any event in your app. Send us your events, and we'll do the rest.
-
-```Typescript
-customEvent<YourType>({ name: "your.event" })
-```
-
-### **HTTP Endpoint**
-
-Expose a HTTP endpoint to trigger your workflows with the method and path of your choice.
-
-```Typescript
-httpEvent<User>({ method: "POST", path: "/users/:id" })
-```
-
-### **Receive Emails**
-
-Receive emails from your custom domain and trigger a workflow with the email metadata and content.
-
-```Typescript
-emailEvent({ address: "support@help.customdomain.io" })
-```
-
-### **AWS Event Bridge**
-
-Integrate with AWS Event Bridge to trigger workflows on your own Event Bridge events.
-
-```Typescript
-eventBridge<SupportRequest>({ bus: "customer-support" })
-```
+To run Trigger.dev locally, [follow these steps](https://github.com/triggerdotdev/trigger.dev/blob/main/DEVELOPMENT.md).
 
 &nbsp;
 
-# 🔋 Batteries included
+# **👏 Contributing:**
 
-### **Debugging and visibility**
+We are open source and love contributions!
 
-We provide a full history of all runs, so you can see exactly what happened.
-
-&nbsp;
-
-<img src="https://trigger.dev/_next/static/media/runs-diagram.c9ce4213.png" alt="Runs" width="400"/>
+- Request a feature in our [Discord community](https://discord.gg/JtBAxBr2m3)
+- Open a PR
 
 &nbsp;
 
----
+# **🧘‍♂️ Self-hosting guide:**
+
+_coming soon..._
 
 &nbsp;
 
-### **Survives downtime**
+# **📧 Support & contact:**
 
-Workflows pick up where they left off when your server or external APIs go down.
-
-&nbsp;
-
-<img src="https://trigger.dev/_next/static/media/retries-diagram.d90a00d9.png
-" alt="Retries" width="400"/>
-
-&nbsp;
-
-# Go from idea to production in minutes
-
-## **1. Code**
-
-Write workflows by creating triggers directly in your code. These can be 3rd-party integrations, custom events or on a schedule.
-
-## **2. Connect**
-
-When your server runs, your workflow will be registered and you can authenticate with any APIs you’re using.
-
-## **3. Test**
-
-When your server runs, your workflow will be registered and you can authenticate with any APIs you’re using.
-
-## **3. Deploy**
-
-Deploy your new workflow as you would any other code commit and inspect each workflow run in real time.
-
-&nbsp;
-
-# ✅ We ❤️ Open Source!
-
-You’ll always be able to host and run Trigger.dev yourself.
-
-We've also created [JSON Hero](https://github.com/triggerdotdev/jsonhero-web), an open source JSON viewer used by around 55,000 developers per month.
-
-&nbsp;
-
-# 🙋 FAQs
-
-<details><summary> Does my data get sent to your servers?</summary><br>
-
-Only what you choose to send. The main body of your workflow code runs on your infrastructure.
-For example when you do a database query, that never touches us.
-
-Data we will receive (and store to display on the Runs page in your dashboard):
-
-- Any data that triggers the start of a workflow
-- Any data you pass to one of our API integrations • Any data you choose to log using our logging function
-
-</details>
-
-<details><summary> How is this different to Zapier, Pipedream etc?</summary><br>
-
-Trigger.dev is a code-first workflow tool that lets you create workflows directly in your code, rather than using a UI builder like Zapier. This means you can stay in your own IDE and keep your internal data secure.
-
-</details>
-
-<details><summary>How long does this take to set up?</summary><br>
-
-Setting up Trigger.dev is simple and takes 2 minutes. Install our SDK to get started and check out the Getting Started documentation to start creating your first workflow.
-
-</details>
-
-<details><summary>Can I use version control or roll-backs?</summary><br>
-
-Yes. You create workflows directly in your own code so it’s version controlled with everything else.
-
-</details>
-
-<details><summary>How long does it take to code up a workflow?</summary><br>
-
-A simple workflow triggering two events from different services will take about 5 minutes to create.
-
-</details>
-
-<details><summary>Do you have all the integrations I need?</summary><br>
-
-Probably. Trigger.dev includes over 100 integrations including the most popular services. If you need a specific service that’s not available, you can request it, or create it yourself. We’re open source, so create an issue or Pull Request.
-
-</details>
-
-<details><summary>Can I build complex workflows?</summary><br>
-
-Yes. There’s no limit to the complexity on workflows you can create. Workflows are created in code so you can write conditional, looping, branching or time delayed logic.
-
-</details>
-
-<details><summary> Can I run Trigger.dev locally?</summary><br>
-
-Yes. Workflows are created in your code locally and, unlike webhooks, you don’t need to use tunneling to receive triggers.
-
-</details>
-
-<details><summary>How does the pricing model work?</summary><br>
-
-Our hosted product gives you free runs each month, after that you will need to select a paid tier. You can also self-host, view the open source repository for instructions.
-
-</details>
-
-<details><summary>Is Trigger.dev open source?</summary><br>
-
-Yes, Trigger.dev is open source. We are strong supporters of open source software, and our first product, [jsonhero.io](https://jsonhero.io), has a thriving open source community. Trigger.dev follows in that tradition.
-
-</details>
-
-<details><summary>Is Trigger.dev a no/low-code tool?</summary><br>
-
-No. Trigger.dev is designed for developers who want to create workflows directly in code, without using a UI builder like Zapier. This allows developers to stay in their familiar development environment and customise their workflows with code.
-
-</details>
-
-<details><summary>What languages / frameworks do you support?</summary><br>
-
-Currently there is support for Node.js. More frameworks will be added soon.
-
-</details>
-
-<details><summary>Can I use an API which doesn’t have webhooks?</summary><br>
-
-Yes. You can use a polling trigger to subscribe is no webhook exists.
-
-</details>
-
-<details><summary>Can non-coders use this product?</summary><br>
-
-Developers will need to create workflows. Anyone on the team can monitor running workflows in the Trigger dashboard.
-
-</details>
-&nbsp;
-
----
-
-&nbsp;
-
-If you have any other questions about Trigger.dev, [drop us an email](mailto:hello@trigger.dev), and one of the founders will get back to you.
+- Join our [Discord community](https://discord.gg/JtBAxBr2m3)
+- If you have any other questions, get in touch at [hello@trigger.dev](mailto:hello@trigger.dev)
