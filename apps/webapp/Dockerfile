@@ -26,7 +26,7 @@ RUN corepack enable
 ENV NODE_ENV production
 RUN npm config set python /usr/bin/python3
 COPY --from=pruner /app/out/full/apps/webapp/prisma/schema.prisma /app/apps/webapp/prisma/schema.prisma
-RUN pnpm install --prod --no-frozen-lockfile
+RUN pnpm install --prod --frozen-lockfile
 RUN pnpx prisma generate --schema /app/apps/webapp/prisma/schema.prisma
 
 FROM base AS builder
@@ -37,7 +37,7 @@ RUN corepack enable
 COPY --from=pruner /app/out/full/ .
 RUN npm config set python /usr/bin/python3
 ENV NODE_ENV development
-RUN pnpm install --ignore-scripts --no-frozen-lockfile
+RUN pnpm install --ignore-scripts --frozen-lockfile
 ENV NODE_ENV production
 RUN pnpm run generate
 RUN pnpm run build --filter=webapp...
