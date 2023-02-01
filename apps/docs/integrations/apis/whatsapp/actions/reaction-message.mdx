@@ -1,10 +1,10 @@
 ---
-title: "Send Text Message"
-sidebarTitle: "Text Message"
-description: "Post a text message to WhatsApp"
+title: "Send a Reaction Message"
+sidebarTitle: "Reaction Message"
+description: "Post a reaction to a WhatsApp message"
 ---
 
-Send WhatsApp text messages from your WhatsApp Business Account.
+Send WhatsApp reaction messages from your WhatsApp Business Account.
 
 ## Params
 
@@ -23,12 +23,12 @@ Send WhatsApp text messages from your WhatsApp Business Account.
       The phone number you want to send the message to.
     </ParamField>
 
-    <ParamField path="text" type="string" required={true}>
-      The text of the message to be sent.
+    <ParamField path="emoji" type="string" required={true}>
+      The emoji you want to react to the message with 🔥
     </ParamField>
 
-    <ParamField path="isReplyTo" type="string" required={false}>
-      Optionally, add the id of the message you want to reply to. It will appear as a reply in the WhatsApp chat.
+    <ParamField path="isReplyTo" type="string" required={true}>
+      This is required: add the id of the message you want to reply to.
     </ParamField>
 
   </Expandable>
@@ -56,7 +56,7 @@ Send WhatsApp text messages from your WhatsApp Business Account.
 
 ```typescript Automated reply to WhatsApp messages
 import { Trigger } from "@trigger.dev/sdk";
-import { events, sendText } from "@trigger.dev/whatsapp";
+import { events, sendVideo } from "@trigger.dev/whatsapp";
 
 new Trigger({
   id: "demo",
@@ -64,13 +64,12 @@ new Trigger({
     accountId: "<account_id>",
   }),
   run: async (event, ctx) => {
-    //send an automatic reply to the message
-    const textResponse = await sendText("text-msg", {
+    //send an automatic reaction to the message
+    const reactionResponse = await sendReaction("reaction", {
       fromId: event.metadata.phone_number_id,
       to: event.message.from,
-      text: "Hello! This is a text sent automatically from https://www.trigger.dev",
-      //this is optional – if set, the message will appear quoting the original message
       isReplyTo: event.message.id,
+      emoji: "🔥",
     });
   },
 }).listen();

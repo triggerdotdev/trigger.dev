@@ -1,10 +1,10 @@
 ---
-title: "Send Text Message"
-sidebarTitle: "Text Message"
-description: "Post a text message to WhatsApp"
+title: "Send a Location Message"
+sidebarTitle: "Location Message"
+description: "Post a location message to WhatsApp"
 ---
 
-Send WhatsApp text messages from your WhatsApp Business Account.
+Send WhatsApp location messages from your WhatsApp Business Account.
 
 ## Params
 
@@ -23,8 +23,20 @@ Send WhatsApp text messages from your WhatsApp Business Account.
       The phone number you want to send the message to.
     </ParamField>
 
-    <ParamField path="text" type="string" required={true}>
-      The text of the message to be sent.
+    <ParamField path="latitude" type="number" required={true}>
+      The latitude of the location to be sent.
+    </ParamField>
+
+    <ParamField path="longitude" type="number" required={true}>
+      The latitude of the location to be sent.
+    </ParamField>
+
+    <ParamField path="name" type="string" required={false}>
+      Name of the location. An address must be specified for this to appear.
+    </ParamField>
+
+    <ParamField path="address" type="string" required={false}>
+      The address of the location, in a single string.
     </ParamField>
 
     <ParamField path="isReplyTo" type="string" required={false}>
@@ -56,7 +68,7 @@ Send WhatsApp text messages from your WhatsApp Business Account.
 
 ```typescript Automated reply to WhatsApp messages
 import { Trigger } from "@trigger.dev/sdk";
-import { events, sendText } from "@trigger.dev/whatsapp";
+import { events, sendVideo } from "@trigger.dev/whatsapp";
 
 new Trigger({
   id: "demo",
@@ -64,13 +76,14 @@ new Trigger({
     accountId: "<account_id>",
   }),
   run: async (event, ctx) => {
-    //send an automatic reply to the message
-    const textResponse = await sendText("text-msg", {
+    //send an location message
+    const locationResponse = await sendLocation("location", {
       fromId: event.metadata.phone_number_id,
       to: event.message.from,
-      text: "Hello! This is a text sent automatically from https://www.trigger.dev",
-      //this is optional – if set, the message will appear quoting the original message
-      isReplyTo: event.message.id,
+      latitude: 37.422,
+      longitude: -122.084,
+      name: "Trigger.dev HQ",
+      address: "123 Main St, San Francisco, CA 94105",
     });
   },
 }).listen();
