@@ -24,6 +24,7 @@ WORKDIR /app
 RUN corepack enable
 ENV NODE_ENV production
 RUN npm config set python /usr/bin/python3
+RUN pnpm --version
 RUN pnpm install --prod --frozen-lockfile
 
 FROM base AS builder
@@ -34,6 +35,7 @@ RUN corepack enable
 COPY --from=pruner /app/out/full/ .
 RUN npm config set python /usr/bin/python3
 ENV NODE_ENV development
+RUN pnpm --version
 RUN pnpm install --ignore-scripts --frozen-lockfile
 ENV NODE_ENV production
 RUN pnpm run build --filter=wss
