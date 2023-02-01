@@ -2,15 +2,15 @@
 
 ![Hero](https://raw.githubusercontent.com/triggerdotdev/trigger.dev/eebe37109e33beae6390ee19029fce8a5934c84b/apps/webapp/public/images/logo-banner.png)
 
-[![Twitter](https://img.shields.io/twitter/url/https/twitter.com/triggerdotdev.svg?style=social&label=Follow%20%40trigger.dev)](https://twitter.com/triggerdotdev) ![YouTube Channel Subscribers](https://img.shields.io/youtube/channel/subscribers/UCu-PdxpWtIrrd7vW0N5T6ZA?style=social)
-![GitHub Repo stars](https://img.shields.io/github/stars/triggerdotdev/trigger.dev?style=social)
+[![Twitter](https://img.shields.io/twitter/url/https/twitter.com/triggerdotdev.svg?style=social&label=Follow%20%40trigger.dev)](https://twitter.com/triggerdotdev) [![YouTube Channel Subscribers](https://img.shields.io/youtube/channel/subscribers/UCu-PdxpWtIrrd7vW0N5T6ZA?style=social)](https://www.youtube.com/@triggerdotdev)
+[![GitHub Repo stars](https://img.shields.io/github/stars/triggerdotdev/trigger.dev?style=social)](https://github.com/triggerdotdev/trigger.dev)
 
-[Website](https://trigger.dev) | [Community](https://github.com/triggerdotdev/jsonhero-web) | [Docs](https://docs.trigger.dev)
+[Website](https://trigger.dev) | [Community](https://discord.gg/JtBAxBr2m3) | [Docs](https://docs.trigger.dev)
 </div>
 
 
 # **🛎 Trigger.dev**
-The developer-first open source Zapier alternative.
+### **The developer-first open source Zapier alternative.**
 
 
 Trigger.dev is an open source platform that makes it easy for developers to create event-driven background tasks directly in their code. Build, test and run workflows locally using our SDK. Subscribe to webhooks, schedule jobs, run background jobs and add long delays easily and reliably. In our web app you get full visibility of every run your workflow has ever made making it easier to monitor and debug.
@@ -25,7 +25,7 @@ Trigger.dev is an open source platform that makes it easy for developers to crea
 - 📆 [Schedule workflows](https://docs.trigger.dev/triggers/scheduled)—easily repeat tasks or use CRON syntax for advanced cases.
 - 🚦 Add [long delays](https://docs.trigger.dev/functions/delays) inside workflows (up to a year) and they will pick up where they left off.
 - 🤝 When your server goes down [it’s not a problem](https://docs.trigger.dev/guides/resumability), workflows will reconnect and continue.
-- 🪧 [View every step of every run](https://docs.trigger.dev/functions/viewing-runs), with data, previews and errors.
+- 🪧 [View every step of every run](https://docs.trigger.dev/viewing-runs), with data, previews and errors.
 - 👋 Connect to and authenticate with APIs using our custom integrations.
 - 🚗 If you have a custom use case, we support [Fetch for calling any HTTP endpoint](https://docs.trigger.dev/functions/fetch) or [webhooks](https://docs.trigger.dev/triggers/webhooks) for subscribing to events from APIs.
 - 📡 All API calls are automatically retried with exponential back off.
