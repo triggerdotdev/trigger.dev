@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import Prism from "prismjs";
 import "prismjs/components/prism-typescript";
 import "prismjs/components/prism-json";
+import "prismjs/components/prism-bash";
 import "prismjs/plugins/line-numbers/prism-line-numbers";
 import "prismjs/plugins/line-numbers/prism-line-numbers.css";
 import { CopyTextButton } from "../CopyTextButton";
@@ -11,7 +12,7 @@ Prism.manual = true;
 
 type CodeBlockProps = {
   code: string;
-  language?: "typescript" | "json";
+  language?: "typescript" | "json" | "bash";
   showCopyButton?: boolean;
   align?: "top" | "center";
   maxHeight?: string;
@@ -60,7 +61,7 @@ export default function CodeBlock({
       {showCopyButton === true && (
         <CopyTextButton
           className={classNames(
-            "absolute text-sm my-2 mx-2",
+            "absolute my-2 mx-2 text-sm",
             align === "center" ? " top-1/2 right-0" : "top-0 right-0"
           )}
           value={code}
@@ -68,9 +69,9 @@ export default function CodeBlock({
         />
       )}
       {maxHeight && (
-        <div className="absolute left-0 bottom-0 w-full flex items-center justify-center bg-gradient-to-b from-transparent to-[#0F172A]">
+        <div className="absolute left-0 bottom-0 flex w-full items-center justify-center bg-gradient-to-b from-transparent to-[#0F172A]">
           <button
-            className="bg-slate-800 rounded-full py-2 px-3.5 text-xs mb-1 hover:bg-slate-700 transition"
+            className="mb-1 rounded-full bg-slate-800 py-2 px-3.5 text-xs transition hover:bg-slate-700"
             onClick={(e) => setIsCollapsed((s) => !s)}
           >
             {isCollapsed ? "Expand" : "Collapse"}

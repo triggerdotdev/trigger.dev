@@ -34,7 +34,7 @@ export function Classic({ children, ...props }: HeadlessTabProps) {
 export function UnderlinedList({ children, ...props }: HeadlessTabListProps) {
   return (
     <HeadlessTab.List
-      className={"inline-flex space-x-4 border-b border-slate-700"}
+      className={"flex space-x-4 border-b border-slate-700"}
       {...props}
     >
       {children}
