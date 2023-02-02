@@ -12,13 +12,10 @@ import {
   InformationCircleIcon,
 } from "@heroicons/react/24/outline";
 import type { IntegrationMetadata } from "@trigger.dev/integration-sdk";
-import { PopupButton } from "@typeform/embed-react";
-import { ApiLogoIcon } from "~/components/code/ApiLogoIcon";
-import discord from "../assets/images/discord.png";
-import { Panel } from "./layout/Panel";
 import { PrimaryA, SecondaryA } from "./primitives/Buttons";
 import { Body } from "./primitives/text/Body";
 import { SubTitle } from "./primitives/text/SubTitle";
+import { newUserSlackMessage } from "./samples/new-user-slack-message";
 
 export function CreateNewWorkflow() {
   return (
@@ -83,6 +80,7 @@ export function CreateNewWorkflowNoWorkflows({
       <Tab.Group>
         <UnderlinedList>
           <Underlined>Start from an example</Underlined>
+          <Underlined>Start from an example</Underlined>
           <Underlined>Start from scratch</Underlined>
         </UnderlinedList>
         <Tab.Panels className="flex-grow pt-4">
@@ -137,3 +135,29 @@ export function CreateNewWorkflowNoWorkflows({
 }
 
 const allCapsTitleClasses = "mb-2 uppercase tracking-wide text-slate-400";
+
+const exampleProjects = [
+  {
+    name: "Send a Slack message when a new user signs up",
+    requiredPackages: "@trigger.dev/slack zod",
+    code: newUserSlackMessage,
+  },
+  {
+    name: "When a new user signs up, send them a series of emails",
+    requiredPackages: "@trigger.dev/slack zod",
+    code: "new Trigger() etc...",
+  },
+];
+
+const scratchProjects = [
+  {
+    name: "Send a Slack message when a new user signs up",
+    requiredPackages: "@trigger.dev/slack zod",
+    code: "code",
+  },
+  {
+    name: "When a new user signs up, send them a series of emails",
+    requiredPackages: "@trigger.dev/slack zod",
+    code: "new Trigger() etc...",
+  },
+];
