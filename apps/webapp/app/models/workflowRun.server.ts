@@ -48,7 +48,6 @@ export async function startWorkflowRun(id: string, apiKey: string) {
 
     await resolveDisconnectionStepsInRun(workflowRun.id);
   } else {
-    console.log(`[startWorkflowRun] ${workflowRun.id} is running`);
     await prisma.workflowRun.update({
       where: { id: workflowRun.id },
       data: {
