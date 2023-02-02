@@ -44,6 +44,8 @@
       "@trigger.dev/resend/*": ["../../integrations/resend/src/*"],
       "@trigger.dev/shopify": ["../../integrations/shopify/src/index"],
       "@trigger.dev/shopify/*": ["../../integrations/shopify/src/*"],
+      "@trigger.dev/whatsapp": ["../../integrations/whatsapp/src/index"],
+      "@trigger.dev/whatsapp/*": ["../../integrations/whatsapp/src/*"],
       "integration-catalog": ["../../packages/integration-catalog/src/index"],
       "integration-catalog/*": ["../../packages/integration-catalog/src/*"]
     },

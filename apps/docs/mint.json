@@ -55,10 +55,11 @@
       "group": "Example workflows",
       "pages": [
         "examples/examples",
-        "examples/slack",
         "examples/github",
         "examples/shopify",
-        "examples/resend"
+        "examples/slack",
+        "examples/resend",
+        "examples/whatsapp"
       ]
     },
     {
@@ -76,12 +77,53 @@
           "group": "APIs",
           "pages": [
             {
+              "group": "GitHub",
+              "pages": [
+                {
+                  "group": "Events",
+                  "pages": [
+                    "integrations/apis/github/events/issue-comments",
+                    "integrations/apis/github/events/issues",
+                    "integrations/apis/github/events/new-star",
+                    "integrations/apis/github/events/pull-request-comments",
+                    "integrations/apis/github/events/pull-request-reviews",
+                    "integrations/apis/github/events/pull-requests",
+                    "integrations/apis/github/events/push"
+                  ]
+                }
+              ]
+            },
+            {
               "group": "Slack",
               "pages": ["integrations/apis/slack/actions/post-message"]
             },
             {
               "group": "Resend.com",
               "pages": ["integrations/apis/resend/actions/send-email"]
+            },
+            {
+              "group": "WhatsApp",
+              "pages": [
+                "integrations/apis/whatsapp/index",
+                {
+                  "group": "Events",
+                  "pages": ["integrations/apis/whatsapp/events/message"]
+                },
+                {
+                  "group": "Actions",
+                  "pages": [
+                    "integrations/apis/whatsapp/actions/text-message",
+                    "integrations/apis/whatsapp/actions/reaction-message",
+                    "integrations/apis/whatsapp/actions/audio-message",
+                    "integrations/apis/whatsapp/actions/video-message",
+                    "integrations/apis/whatsapp/actions/document-message",
+                    "integrations/apis/whatsapp/actions/sticker-message",
+                    "integrations/apis/whatsapp/actions/template-message",
+                    "integrations/apis/whatsapp/actions/location-message",
+                    "integrations/apis/whatsapp/actions/contacts-message"
+                  ]
+                }
+              ]
             }
           ]
         },

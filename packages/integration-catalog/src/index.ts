@@ -2,6 +2,7 @@ import { internalIntegration as slack } from "@trigger.dev/slack/internal";
 import { internalIntegration as github } from "@trigger.dev/github/internal";
 import { internalIntegration as resend } from "@trigger.dev/resend/internal";
 import { internalIntegration as shopify } from "@trigger.dev/shopify/internal";
+import { internalIntegration as whatsapp } from "@trigger.dev/whatsapp/internal";
 
 import type { InternalIntegration } from "@trigger.dev/integration-sdk";
 
@@ -37,6 +38,7 @@ const catalog = {
     resend,
     shopify,
     slack,
+    whatsapp,
   },
 };
 

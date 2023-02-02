@@ -1,0 +1,99 @@
+---
+title: "Send Image Message"
+sidebarTitle: "Image Message"
+description: "Post a image message to WhatsApp"
+---
+
+Send WhatsApp image messages from your WhatsApp Business Account.
+
+## Params
+
+<ParamField path="key" type="string" required={true}>
+  A unique string. Please see the [Keys and Resumability](/guides/resumability)
+  doc for more info.
+</ParamField>
+
+<ParamField path="message" type="object" required={true}>
+  <Expandable title="properties" defaultOpen={true}>
+    <ParamField path="fromId" type="string" required={false}>
+      The id of the phone number you want to send the message from. You can find this in the your WhatsApp Business dashboard. Note, this is not the phone number.
+    </ParamField>
+
+    <ParamField path="to" type="string" required={false}>
+      The phone number you want to send the message to.
+    </ParamField>
+
+    <ParamField path="url" type="string" required={true}>
+      The url of the image to be sent.
+    </ParamField>
+
+    <ParamField path="caption" type="string" required={false}>
+      Optional caption that sits below the video
+    </ParamField>
+
+    <ParamField path="isReplyTo" type="string" required={false}>
+      Optionally, add the id of the message you want to reply to. It will appear as a reply in the WhatsApp chat.
+    </ParamField>
+
+  </Expandable>
+</ParamField>
+
+## Response
+
+<ResponseField name="contacts" type="object">
+  The contact information of who received the message
+</ResponseField>
+
+<ResponseField name="messages" type="object">
+  An array of message ids that were sent
+</ResponseField>
+
+<ResponseField name="messaging_product" type="string">
+  Always `whatsapp`
+</ResponseField>
+
+## Example Workflows
+
+### Notify Slack on New GitHub Star
+
+<CodeGroup>
+
+```typescript Automated reply to WhatsApp messages
+import { Trigger } from "@trigger.dev/sdk";
+import { events, sendImage } from "@trigger.dev/whatsapp";
+
+new Trigger({
+  id: "demo",
+  on: events.messageEvent({
+    accountId: "<account_id>",
+  }),
+  run: async (event, ctx) => {
+    //send an automatic image reply to the message
+    const imageResponse = await sendImage("image", {
+      fromId: event.metadata.phone_number_id,
+      to: event.message.from,
+      url: "https://app.trigger.dev/emails/logo.png",
+      caption: "This is a great caption",
+    });
+  },
+}).listen();
+```
+
+```json Example response
+{
+  "contacts": [
+    {
+      "input": "12345678901",
+      "wa_id": "12345678901"
+    }
+  ],
+  "messages": [
+    {
+      "id": "wamid.ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+    }
+  ],
+  "messaging_product": "whatsapp"
+}
+```
+
+</CodeGroup>

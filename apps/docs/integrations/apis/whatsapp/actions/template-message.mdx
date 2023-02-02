@@ -1,0 +1,178 @@
+---
+title: "Send Template Message"
+sidebarTitle: "Template Message"
+description: "Post a template message to WhatsApp"
+---
+
+Send WhatsApp template messages from your WhatsApp Business Account.
+
+## Params
+
+<ParamField path="key" type="string" required={true}>
+  A unique string. Please see the [Keys and Resumability](/guides/resumability)
+  doc for more info.
+</ParamField>
+
+<ParamField path="message" type="object" required={true}>
+  <Expandable title="properties" defaultOpen={true}>
+    <ParamField path="fromId" type="string" required={false}>
+      The id of the phone number you want to send the message from. You can find this in the your WhatsApp Business dashboard. Note, this is not the phone number.
+    </ParamField>
+
+    <ParamField path="to" type="string" required={false}>
+      The phone number you want to send the message to.
+    </ParamField>
+
+    <ParamField path="template" type="string" required={true}>
+      The name of the template you want to send. Note that these have to be approved by Meta before they can be used. You can find this in the your WhatsApp Business dashboard.
+    </ParamField>
+
+    <ParamField path="languageCode" type="string" required={true}>
+      The language code of the template you want to send, e.g. "en_US". You can find this in the your WhatsApp Business dashboard.
+    </ParamField>
+
+    <ParamField path="parameters" type="object" required={false}>
+      You can customise the message by providing values for variables in the template. There are three sections header, body and buttons. [Full WhatsApp documentation](https://developers.facebook.com/micro_site/url/?click_from_context_menu=true&country=GB&destination=https%3A%2F%2Fdevelopers.facebook.com%2Fdocs%2Fwhatsapp%2Fapi%2Fmessages%2Fmessage-templates%2F%23local&event_type=click&last_nav_impression_id=1gi9JORcnblgd3gKs&max_percent_page_viewed=52&max_viewport_height_px=1272&max_viewport_width_px=2560&orig_http_referrer=https%3A%2F%2Fdevelopers.facebook.com%2Fdocs%2Fwhatsapp%2Fapi%2Fmessages%2Fmessage-templates%2F&orig_request_uri=https%3A%2F%2Fdevelopers.facebook.com%2Fajax%2Fdocs%2Fnav%2F%3Fpath1%3Dwhatsapp%26path2%3Dapi%26path3%3Dmessages%26path4%3Dmessage-templates&region=emea&scrolled=true&session_id=1p7ElKefs7QDpKC36&site=developers)
+    </ParamField>
+
+  </Expandable>
+</ParamField>
+
+## Response
+
+<ResponseField name="contacts" type="object">
+  The contact information of who received the message
+</ResponseField>
+
+<ResponseField name="messages" type="object">
+  An array of message ids that were sent
+</ResponseField>
+
+<ResponseField name="messaging_product" type="string">
+  Always `whatsapp`
+</ResponseField>
+
+## Example Workflows
+
+### Notify Slack on New GitHub Star
+
+<CodeGroup>
+
+```typescript Automated reply to WhatsApp messages
+import { Trigger } from "@trigger.dev/sdk";
+import { events, sendText } from "@trigger.dev/whatsapp";
+
+new Trigger({
+  id: "demo",
+  on: events.messageEvent({
+    accountId: "<account_id>",
+  }),
+  run: async (event, ctx) => {
+    //send a templated message, with variables
+    //in this example we have included are the possible variables (mostly commented out)
+    const templateResponse = await sendTemplate("template-msg", {
+      fromId: event.metadata.phone_number_id,
+      to: event.message.from,
+      //this template must be approved in your WhatsApp Business Account
+      template: "hello_world",
+      languageCode: "en_US",
+      //you only need to include these if your template has variables
+      parameters: {
+        //only include this if your header has variables, they can be text, image, video or document
+        header: [
+          {
+            type: "text",
+            text: "Matt",
+          },
+          // {
+          //   type: "image",
+          //   image: {
+          //     link: "https://app.trigger.dev/emails/logo.png",
+          //     caption: "This is a logo",
+          //   },
+          // },
+          // {
+          //   type: "video",
+          //   video: {
+          //     link: "https://media.giphy.com/media/5i7umUqAOYYEw/giphy.mp4",
+          //     caption: "This is a fun video",
+          //   },
+          // },
+          // {
+          //   type: "document",
+          //   video: {
+          //     link: "https://upload.wikimedia.org/wikipedia/commons/2/20/Re_example.pdf",
+          //     caption: "This is a document",
+          //   },
+          // },
+        ],
+        //only include this if the body of your message has variables. They can be text, currency, date_time
+        body: [
+          {
+            type: "text",
+            text: "Matt",
+          },
+          // {
+          //   type: "currency",
+          //   currency: {
+          //     amount_1000: 1000,
+          //     code: "USD",
+          //     fallback_value: "1000 USD",
+          //   },
+          // },
+          // {
+          //   type: "date_time",
+          //   date_time: {
+          //     fallback_value: "2021-01-01",
+          //   },
+          // }
+        ],
+        //only include this if the buttons of your message have variables. They can be quick_reply or call_to_action
+        buttons: [
+          {
+            sub_type: "quick_reply",
+            parameters: [
+              {
+                type: "payload",
+                payload: "buy",
+              },
+              // {
+              //   type: "text",
+              //   text: "Buy now!",
+              // },
+            ],
+          },
+          {
+            sub_type: "call_to_action",
+            parameters: [
+              {
+                type: "text",
+                text: "Buy now!",
+              },
+            ],
+          },
+        ],
+      },
+    });
+  },
+}).listen();
+```
+
+```json Example response
+{
+  "contacts": [
+    {
+      "input": "12345678901",
+      "wa_id": "12345678901"
+    }
+  ],
+  "messages": [
+    {
+      "id": "wamid.ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+    }
+  ],
+  "messaging_product": "whatsapp"
+}
+```
+
+</CodeGroup>
