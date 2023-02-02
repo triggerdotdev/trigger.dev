@@ -112,6 +112,7 @@
     "react-hotkeys-hook": "^3.4.7",
     "react-query": "^3.39.1",
     "react-resizable-layout": "^0.2.4",
+    "react-use-intercom": "^3.0.1",
     "remix-auth": "^3.2.2",
     "remix-auth-email-link": "^1.4.2",
     "remix-auth-github": "^1.1.1",
