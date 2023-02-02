@@ -22,7 +22,7 @@ export class DispatchEvent {
     });
 
     if (!event) {
-      throw new Error("Event not found");
+      throw new Error(`Event not found: ${id}`);
     }
 
     console.log(

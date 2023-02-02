@@ -688,6 +688,7 @@ function createTaskQueue() {
             "x-workflow-run-id": run.id,
             "x-ttl": run.workflow.triggerTtlInSeconds,
             "x-is-test": run.isTest ? "true" : "false",
+            "x-app-origin": env.APP_ORIGIN,
           },
           {
             eventTimestamp: run.event.timestamp.getTime(),

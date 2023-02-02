@@ -8,23 +8,38 @@ description: "Here are some example workflows you could create using the Resend 
 Resend.com is currently in private beta but you can request early access [here](https://resend.com/).
 </Tip>
 
+To use the Resend integration you must first install the required packages:
+
+<Tabs>
+  <Tab title="npm">
+
+```bash
+npm install @trigger.dev/resend
+```
+
+  </Tab>
+  <Tab title="pnpm">
+
+```bash
+pnpm install @trigger.dev/resend
+```
+
+  </Tab>
+  <Tab title="yarn">
+
+```bash
+yarn add @trigger.dev/resend
+```
+
+  </Tab>
+</Tabs>
+
 ## Welcome email drip campaign
 
 This workflow will get triggered and a Slack notification and welcom email will be sent straight away.
 1 day later we check if the user has completed onboarding, if they have, they get a 'tips' email, otherwise they get a re-engagement email.
 
 Integrations required: Resend, Slack
-
-<iframe
-  width="100%"
-  height="440"
-  src="https://www.youtube.com/embed/aFlwD0frvnQ?rel=0"
-  title="YouTube video player"
-  frameborder="0"
-  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-  allowfullscreen
-></iframe>
-
 
 ```ts
 import { customEvent, Trigger, sendEvent } from "@trigger.dev/sdk";
@@ -90,3 +105,13 @@ new Trigger({
   },
 }).listen();
 ```
+
+<iframe
+  width="100%"
+  height="440"
+  src="https://www.youtube.com/embed/aFlwD0frvnQ?rel=0"
+  title="YouTube video player"
+  frameborder="0"
+  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+  allowfullscreen
+></iframe>

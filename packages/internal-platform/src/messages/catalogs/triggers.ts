@@ -8,6 +8,7 @@ const Catalog = {
     properties: WorkflowRunEventPropertiesSchema.extend({
       "x-ttl": z.coerce.number().optional(),
       "x-is-test": z.string().default("false"),
+      "x-app-origin": z.string().default("https://app.trigger.dev"),
     }),
   },
 };

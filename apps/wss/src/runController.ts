@@ -25,6 +25,7 @@ export type WorkflowRunControllerOptions = {
     apiKey: string;
     organizationId: string;
     isTest: boolean;
+    appOrigin: string;
   };
 };
 
@@ -39,6 +40,7 @@ export class WorkflowRunController {
     apiKey: string;
     organizationId: string;
     isTest: boolean;
+    appOrigin: string;
   };
 
   #logger: Logger;

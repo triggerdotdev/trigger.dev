@@ -1,12 +1,26 @@
-import { ArrowTopRightOnSquareIcon } from "@heroicons/react/24/outline";
+import { Tab } from "@headlessui/react";
+import {
+  LargeBox,
+  LargeBoxList,
+  Underlined,
+  UnderlinedList,
+} from "~/components/StyledTabs";
+import {
+  ArrowTopRightOnSquareIcon,
+  EnvelopeIcon,
+  StarIcon,
+} from "@heroicons/react/24/outline";
 import type { IntegrationMetadata } from "@trigger.dev/integration-sdk";
-import { PopupButton } from "@typeform/embed-react";
-import { ApiLogoIcon } from "~/components/code/ApiLogoIcon";
-import discord from "../assets/images/discord.png";
-import { Panel } from "./layout/Panel";
-import { PrimaryA, SecondaryA } from "./primitives/Buttons";
+import { PrimaryA, SecondaryA, TertiaryA } from "./primitives/Buttons";
 import { Body } from "./primitives/text/Body";
 import { SubTitle } from "./primitives/text/SubTitle";
+import { newUserSlackMessage } from "./samples/new-user-slack-message";
+import CodeBlock from "./code/CodeBlock";
+import { Header4 } from "./primitives/text/Headers";
+import classNames from "classnames";
+import { useCurrentEnvironment } from "~/hooks/useEnvironments";
+import invariant from "tiny-invariant";
+import { ReactNode } from "react";
 
 export function CreateNewWorkflow() {
   return (
@@ -18,7 +32,7 @@ export function CreateNewWorkflow() {
           target="_blank"
           rel="noreferrer"
         >
-          <ArrowTopRightOnSquareIcon className="w-4 h-4" />
+          <ArrowTopRightOnSquareIcon className="h-4 w-4" />
           <span>Documentation</span>
         </PrimaryA>
         <SecondaryA
@@ -26,7 +40,7 @@ export function CreateNewWorkflow() {
           target="_blank"
           rel="noreferrer"
         >
-          <ArrowTopRightOnSquareIcon className="w-4 h-4" />
+          <ArrowTopRightOnSquareIcon className="h-4 w-4" />
           <span>Example Workflows</span>
         </SecondaryA>
       </div>
@@ -39,88 +53,172 @@ export function CreateNewWorkflowNoWorkflows({
 }: {
   providers: IntegrationMetadata[];
 }) {
+  const environment = useCurrentEnvironment();
+  invariant(environment, "Environment must be defined");
   return (
     <>
-      <Panel className="flex flex-col p-6 overflow-hidden mb-6 max-w-4xl">
-        <Body className="mb-5 max-w-max px-3.5 py-2 bg-slate-700 rounded border border-slate-600">
+      {/* <div className="mb-5 flex max-w-max items-center gap-2 rounded border border-slate-600 bg-slate-700 px-3.5 py-2">
+        <InformationCircleIcon className="h-5 w-5 text-slate-300" />
+        <Body>
           Trigger.dev workflows are written in your own codebase and run in your
           existing infrastructure.
         </Body>
-        <Body size="small" className={allCapsTitleClasses}>
-          To get started
-        </Body>
-        <ol className="flex flex-col gap-2 list-decimal marker:text-slate-400 ml-5 mb-5">
-          <li>
-            Check out the Quick Start Guide to create your first workflow in
-            your code.
-          </li>
-          <li>
-            Trigger the workflow by writing a test on the Test page. The
-            workflow run will then appear on the Runs page.
-          </li>
-          <li>
-            If you need to authenticate with an API, the Runs page will display
-            a prompt to connect.
-          </li>
-        </ol>
-        <div className="flex gap-2">
-          <PrimaryA
-            href="https://docs.trigger.dev/getting-started"
-            target="_blank"
-            rel="noreferrer"
-          >
-            <ArrowTopRightOnSquareIcon className="w-4 h-4" />
-            <span>Quick Start Guide</span>
-          </PrimaryA>
-          <SecondaryA
-            href="https://docs.trigger.dev/examples/examples"
-            target="_blank"
-            rel="noreferrer"
-          >
-            <ArrowTopRightOnSquareIcon className="w-4 h-4" />
-            <span>Example workflows</span>
-          </SecondaryA>
-        </div>
-      </Panel>
-      <SubTitle>API integrations</SubTitle>
-      <Panel className="mb-6 p-6 max-w-4xl">
-        <Body className="mb-4 text-slate-300">
-          Easily authenticate with APIs using the supported integrations below.
-          If there's an integration we don't yet support,{" "}
-          <PopupButton
-            id="VwblgGDZ"
-            className="underline opacity-80 hover:opacity-100 transition underline-offset-2"
-          >
-            <span>vote for it here</span>
-          </PopupButton>{" "}
-          and we'll add it.
-        </Body>
-        <div className="flex gap-2 items-center flex-wrap">
-          {providers.map((provider) => (
-            <ApiLogoIcon
-              key={provider.slug}
-              integration={provider}
-              size="regular"
-            />
-          ))}
-          <Body className="text-slate-300">+</Body>
-          <Body
-            size="small"
-            className="uppercase text-slate-400 bg-slate-850 py-2.5 px-4 rounded tracking-wide"
-          >
-            Fetch
-          </Body>
-          <Body className="text-slate-300">&</Body>
-          <Body
-            size="small"
-            className="uppercase text-slate-400 bg-slate-850 py-2.5 px-4 rounded tracking-wide"
-          >
-            Webhooks
-          </Body>
-        </div>
-      </Panel>
-      <SubTitle>Join the community</SubTitle>
-      <Panel className="p-6 max-w-4xl">
+      </div> */}
+      <Header4 size="regular" className={subTitle}>
+        1. Install the Trigger.dev package
+      </Header4>
+      <InstallPackages packages={"@trigger.dev/sdk"} />
+      <Header4 size="regular" className={classNames("mt-10", subTitle)}>
+        2. Create your workflow
+      </Header4>
+      <Tab.Group>
+        <UnderlinedList>
+          <Underlined>Start from an example</Underlined>
+          <Underlined>Start from scratch</Underlined>
+        </UnderlinedList>
+        <Tab.Panels className="flex-grow pt-4">
+          <Tab.Panel className="relative h-full">
+            {/* Example projects titles */}
+            <Tab.Group>
+              <LargeBoxList>
+                {exampleProjects.map((project) => {
+                  return (
+                    <LargeBox key={project.name}>
+                      {project.icon}
+                      <Body>{project.name}</Body>
+                    </LargeBox>
+                  );
+                })}
+              </LargeBoxList>
+              {/* Example projects content */}
+              <Tab.Panels className="flex-grow pt-4">
+                {exampleProjects.map((project) => {
+                  return (
+                    <Tab.Panel key={project.name} className="relative h-full">
+                      <Body size="regular" className="mb-4 text-slate-300">
+                        {project.description}
+                      </Body>
+                      <Body size="regular" className="mb-2 text-slate-300">
+                        Install these extra API integration packages:
+                      </Body>
+                      <InstallPackages packages={project.requiredPackages} />
+                      <CodeBlock
+                        code={project.code(environment.apiKey)}
+                        align="top"
+                      />
+                    </Tab.Panel>
+                  );
+                })}
+              </Tab.Panels>
+            </Tab.Group>
+          </Tab.Panel>
+          <Tab.Panel className="relative h-full">
+            <Tab.Group>
+              {/* From scratch projects titles */}
+              <LargeBoxList>
+                {fromScratchProjects.map((project) => {
+                  return <LargeBox key={project.name}>{project.name}</LargeBox>;
+                })}
+              </LargeBoxList>
+              {/* From scratch projects content */}
+              <Tab.Panels className="flex-grow pt-4">
+                {fromScratchProjects.map((project) => {
+                  return (
+                    <Tab.Panel key={project.name} className="relative h-full">
+                      <CodeBlock
+                        code={project.code(environment.apiKey)}
+                        align="top"
+                      />
+                    </Tab.Panel>
+                  );
+                })}
+              </Tab.Panels>
+            </Tab.Group>
+          </Tab.Panel>
+        </Tab.Panels>
+      </Tab.Group>
+      <Header4 size="regular" className={classNames(subTitle, "mt-8")}>
+        3. Run your web server
+      </Header4>
+      <Body size="regular" className="mb-4 text-slate-300">
+        Run your server how you normally would, e.g.{" "}
+        <InlineCode>npm run dev</InlineCode>. This will connect your workflow to
+        Trigger.dev, so we can start sending you events. You should see some log
+        messages in your server console (tip: you can turn these off by removing
+        the <InlineCode>logLevel: "info"</InlineCode> from the code above).
+      </Body>
+      <Header4 size="regular" className={classNames(subTitle, "mt-8")}>
+        4. Test your workflow from the dashboard
+      </Header4>
+      <Body size="regular" className="mb-4 text-slate-300">
+        Now that the workflow is connected to Trigger.dev we need to trigger it.
+        You can easily test your workflow from your{" "}
+        <TertiaryA
+          href="https://app.trigger.dev/"
+          className="!text-base text-slate-200 underline decoration-green-500 underline-offset-2 transition hover:decoration-[3px]"
+        >
+          Trigger.dev
+        </TertiaryA>{" "}
+        dashboard.
+      </Body>
+      <Body size="regular" className="mb-4 text-slate-300">
+        On the organization page you should see that the Workflow has now
+        appeared (you may need to refresh the page from last time).
+      </Body>
+      <Body size="regular" className="mb-4 text-slate-300">
+        Click the new workflow and you will be take to the workflow page. There
+        have been no runs yet.
+      </Body>
+      <Body size="regular" className="mb-4 text-slate-300">
+        Click the “Test” page in the left hand menu and input a valid test
+        event. Remember the workflow expects a name, email and paidPlan. You can
+        copy this:
+      </Body>
+      <CodeBlock
+        code="test code"
+        align="top"
+        language="json"
+        className="mb-4"
+      />
+      <Body size="regular" className="mb-4 text-slate-300">
+        Hit the “Run test” button and it will take us to our first run.
+      </Body>
+      <Header4 size="regular" className={classNames(subTitle, "mt-8")}>
+        5. The run page
+      </Header4>
+      <Body size="regular" className="mb-4 text-slate-300">
+        All of the steps in a workflow, including the initial event, can be
+        viewed in detail. You will need to refresh the page if it’s running to
+        see it move between steps.
+      </Body>
+      <Body size="regular" className="mb-4 text-slate-300">
+        But there’s a problem, we’ve used Slack in our code and we haven’t
+        authenticated.
+      </Body>
+      <Header4 size="regular" className={classNames(subTitle, "mt-8")}>
+        6. Authenticating with Slack
+      </Header4>
+      <Body size="regular" className="mb-4 text-slate-300">
+        But there’s a problem, we’ve used Slack in our code but we haven’t
+        authenticated.
+      </Body>
+      <Body size="regular" className="mb-4 text-slate-300">
+        Simply click the “Connect to Slack” button and sign-in with your desired
+        Slack workspace. As soon as you do, the workflow will pick up where it
+        left off.
+      </Body>
+      <Body size="regular" className="mb-4 text-slate-300">
+        Test complete!
+      </Body>
+      <Header4 size="regular" className={classNames(subTitle, "mt-8")}>
+        7. Triggering this workflow from code
+      </Header4>
+      <Body size="regular" className="mb-4 text-slate-300">
+        As this workflow uses a custom event, we need to manually trigger it
+        from our code. Anywhere in your code you can do this:
+      </Body>
+      {/* <SubTitle>Join the community</SubTitle>
+      <Panel className="max-w-4xl p-6">
         <Body className="mb-4 text-slate-300">
           To get help quickly and answers to any questions, join our Discord.
         </Body>
@@ -129,12 +227,102 @@ export function CreateNewWorkflowNoWorkflows({
           target="_blank"
           rel="noreferrer"
         >
-          <img src={discord} alt="Discord" className="h-3.5 -ml-1" />
+          <img src={discord} alt="Discord" className="-ml-1 h-3.5" />
           <span>Join Discord</span>
         </PrimaryA>
-      </Panel>
+      </Panel> */}
     </>
   );
 }
 
-const allCapsTitleClasses = "mb-2 uppercase tracking-wide text-slate-400";
+const subTitle = "text-slate-200 font-semibold mb-4";
+const inlineCode =
+  "px-1 py-0.5 text-sm bg-slate-700 border border-slate-900 rounded text-slate-200";
+
+function InlineCode({ children }: { children: ReactNode }) {
+  return <code className={inlineCode}>{children}</code>;
+}
+
+const exampleProjects = [
+  {
+    name: "GitHub star → Slack",
+    requiredPackages: "@trigger.dev/slack @trigger.dev/github zod",
+    code: newUserSlackMessage,
+    icon: <StarIcon className="h-8 w-8 text-yellow-400" />,
+    description:
+      "This workflow posts a GitHub user's details to Slack every time you recieve a new GitHub star from them. You’ll notice that when we subscribe to the custom event we have to say the name of the event and provide a schema. Schemas are created using Zod. In this case events must send an object that has name, email, and paidPlan.",
+    testCode: `{
+    "name": "Rick Astley",
+    "email": "nevergonn@giveyou.up",
+    "paidPlan": true
+  }
+  `,
+  },
+  {
+    name: "New user → email",
+    requiredPackages: "@trigger.dev/slack zod",
+    code: newUserSlackMessage,
+    icon: <EnvelopeIcon className="h-8 w-8 text-blue-400" />,
+    description: "",
+    testCode: "",
+  },
+];
+
+const fromScratchProjects = [
+  {
+    name: "Webhook",
+    requiredPackages: "@trigger.dev/slack zod",
+    code: newUserSlackMessage,
+    description: "",
+  },
+  {
+    name: "Custom event",
+    requiredPackages: "@trigger.dev/slack zod",
+    code: newUserSlackMessage,
+    description: "",
+  },
+  {
+    name: "Scheduled (CRON)",
+    requiredPackages: "@trigger.dev/slack zod",
+    code: newUserSlackMessage,
+    description: "",
+  },
+];
+
+function InstallPackages({ packages }: { packages: string }) {
+  return (
+    <Tab.Group>
+      <UnderlinedList>
+        <Underlined>npm</Underlined>
+        <Underlined>pnpm</Underlined>
+        <Underlined>yarn</Underlined>
+      </UnderlinedList>
+      <Tab.Panels className="flex-grow">
+        <Tab.Panel className="relative h-full">
+          <CodeBlock
+            code={`npm install ${packages}`}
+            language="bash"
+            align="top"
+            showLineNumbers={false}
+          />
+        </Tab.Panel>
+        <Tab.Panel className="relative h-full">
+          <CodeBlock
+            code={`pnpm install ${packages}`}
+            language="bash"
+            align="top"
+            showLineNumbers={false}
+          />
+        </Tab.Panel>
+        <Tab.Panel className="relative h-full">
+          <CodeBlock
+            code={`yarn add ${packages}`}
+            language="bash"
+            align="top"
+            showLineNumbers={false}
+          />
+        </Tab.Panel>
+      </Tab.Panels>
+    </Tab.Group>
+  );
+}

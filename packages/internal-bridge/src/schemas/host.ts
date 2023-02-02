@@ -15,6 +15,7 @@ export const HostRPCSchema = {
         organizationId: z.string(),
         apiKey: z.string(),
         isTest: z.boolean().default(false),
+        appOrigin: z.string(),
       }),
     }),
     response: z.boolean(),

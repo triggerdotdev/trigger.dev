@@ -1,6 +1,7 @@
 import type { APIConnection, Organization } from ".prisma/client";
 import { z } from "zod";
 import { prisma } from "~/db.server";
+import { Workflow } from "./workflow.server";
 
 export { APIConnection };
 
@@ -116,4 +117,44 @@ export async function updateApiConnectionTitle({
       title,
     },
   });
+}
+
+export async function getApiConnectionsForWorkflow({
+  workflowId,
+}: {
+  workflowId: Workflow["id"];
+}) {
+  const workflow = await prisma.workflow.findUnique({
+    where: {
+      id: workflowId,
+    },
+    select: {
+      externalSource: {
+        select: {
+          service: true,
+          connection: true,
+        },
+      },
+      externalServices: {
+        select: {
+          service: true,
+          connection: true,
+        },
+      },
+    },
+  });
+
+  if (!workflow) return [];
+
+  let connections: APIConnection[] = [];
+  if (workflow.externalSource?.connection) {
+    connections.push(workflow.externalSource.connection);
+  }
+  workflow.externalServices.forEach((s) => {
+    if (s.connection) {
+      connections.push(s.connection);
+    }
+  });
+
+  return connections;
 }

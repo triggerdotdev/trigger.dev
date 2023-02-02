@@ -4,15 +4,12 @@ import type {
   NormalizedResponse,
   PerformedRequestResponse,
 } from "@trigger.dev/integration-sdk";
-
-import * as slack from "@trigger.dev/slack/internal";
-import * as resend from "@trigger.dev/resend/internal";
-import * as shopify from "@trigger.dev/shopify/internal";
 import type { PrismaClient } from "~/db.server";
 import { prisma } from "~/db.server";
 import type { IntegrationRequest } from "~/models/integrationRequest.server";
 import { getAccessInfo } from "../accessInfo.server";
 import { RedisCacheService } from "../cacheService.server";
+import { getIntegrations } from "~/models/integrations.server";
 
 type CallResponse =
   | {
@@ -67,7 +64,8 @@ export class PerformIntegrationRequest {
       integrationRequest.externalService.connection.apiIdentifier,
       accessInfo,
       integrationRequest,
-      cache
+      cache,
+      integrationRequest.externalService.workflowId
     );
 
     if (performedRequest.ok) {
@@ -225,39 +223,32 @@ export class PerformIntegrationRequest {
     service: string,
     accessInfo: AccessInfo,
     integrationRequest: IntegrationRequest,
-    cache: CacheService
+    cache: CacheService,
+    workflowId: string
   ): Promise<PerformedRequestResponse> {
-    switch (service) {
-      case "slack": {
-        return slack.internalIntegration.requests!.perform({
-          accessInfo,
-          endpoint: integrationRequest.endpoint,
-          params: integrationRequest.params,
-          cache,
-          metadata: { requestId: integrationRequest.id },
-        });
-      }
-      case "shopify": {
-        return shopify.internalIntegration.requests!.perform({
-          accessInfo,
-          endpoint: integrationRequest.endpoint,
-          params: integrationRequest.params,
-          cache,
-          metadata: { requestId: integrationRequest.id },
-        });
-      }
-      case "resend": {
-        return resend.internalIntegration.requests!.perform({
-          accessInfo,
-          endpoint: integrationRequest.endpoint,
-          params: integrationRequest.params,
-          cache,
-          metadata: { requestId: integrationRequest.id },
-        });
-      }
-      default: {
-        throw new Error(`Unknown service: ${service}`);
-      }
+    const integrationInfo = getIntegrations(true).find(
+      (i) => i.metadata.slug === service
+    );
+
+    if (!integrationInfo) {
+      throw new Error(`Unknown service: ${service}`);
     }
+
+    const { requests } = integrationInfo;
+
+    if (!requests) {
+      throw new Error(`Service ${service} does not support requests`);
+    }
+
+    return requests.perform({
+      accessInfo,
+      endpoint: integrationRequest.endpoint,
+      params: integrationRequest.params,
+      cache,
+      metadata: {
+        requestId: integrationRequest.id,
+        workflowId: workflowId,
+      },
+    });
   }
 }

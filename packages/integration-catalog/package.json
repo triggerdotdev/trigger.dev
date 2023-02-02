@@ -10,6 +10,7 @@
     "@trigger.dev/github": "workspace:*",
     "@trigger.dev/shopify": "workspace:*",
     "@trigger.dev/resend": "workspace:*",
+    "@trigger.dev/whatsapp": "workspace:*",
     "@trigger.dev/integration-sdk": "workspace:*"
   },
   "scripts": {},

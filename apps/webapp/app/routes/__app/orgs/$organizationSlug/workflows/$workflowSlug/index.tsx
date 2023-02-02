@@ -107,7 +107,10 @@ export default function Page() {
                       URL
                     </Body>
                     <div className="flex items-center gap-2 mb-4">
-                      <Input value={workflow.externalSourceConfig.data.url} />
+                      <Input
+                        value={workflow.externalSourceConfig.data.url}
+                        readOnly={true}
+                      />
                       <CopyTextButton
                         value={workflow.externalSourceConfig.data.url}
                       ></CopyTextButton>
@@ -125,6 +128,7 @@ export default function Page() {
                         <Input
                           type="password"
                           value={workflow.externalSourceConfig.data.secret}
+                          readOnly={true}
                         />
                         <CopyTextButton
                           value={workflow.externalSourceConfig.data.secret}

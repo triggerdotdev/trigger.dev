@@ -18,6 +18,8 @@ type TriggerRunLocalStorage = {
   ) => Promise<z.infer<TSchema>>;
   sendEvent: (key: string, event: TriggerCustomEvent) => Promise<void>;
   fetch: TriggerFetch;
+  workflowId: string;
+  appOrigin: string;
 };
 
 export const triggerRunLocalStorage =

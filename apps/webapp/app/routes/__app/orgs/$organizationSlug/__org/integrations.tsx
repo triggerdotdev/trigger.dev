@@ -57,7 +57,7 @@ export default function Integrations() {
               {connections.map((connection) => {
                 return (
                   <li key={connection.id}>
-                    <div className="flex gap-4 items-center px-4 py-4">
+                    <div className="flex items-center gap-4 px-4 py-4">
                       <ApiLogoIcon
                         integration={findIntegrationMetadata(
                           integrations,
@@ -89,13 +89,13 @@ export default function Integrations() {
 
       <div>
         <SubTitle>Add an API integration</SubTitle>
-        <div className="flex flex-wrap gap-2 w-full">
+        <div className="flex w-full flex-wrap gap-2">
           {integrations.map((integration) => (
             <ConnectButton
               key={integration.slug}
               integration={integration}
               organizationId={organization.id}
-              className="flex flex-col group max-w-[160px] rounded-md bg-slate-800 border border-slate-800 gap-4 text-sm text-slate-200 items-center overflow-hidden hover:bg-slate-800/30 transition shadow-md disabled:opacity-50"
+              className="group flex max-w-[160px] flex-col items-center gap-4 overflow-hidden rounded-md border border-slate-800 bg-slate-800 text-sm text-slate-200 shadow-md transition hover:bg-slate-800/30 disabled:opacity-50"
             >
               {(status) => (
                 <AddButtonContent integration={integration} status={status} />
@@ -104,14 +104,14 @@ export default function Integrations() {
           ))}
           <a
             href="mailto:hello@trigger.dev"
-            className="flex flex-col group max-w-[160px] rounded-md bg-slate-800 border border-slate-800 gap-4 text-sm text-slate-200 items-center overflow-hidden hover:bg-slate-800/30 transition shadow-md disabled:opacity-50"
+            className="group flex max-w-[160px] flex-col items-center gap-4 overflow-hidden rounded-md border border-slate-800 bg-slate-800 text-sm text-slate-200 shadow-md transition hover:bg-slate-800/30 disabled:opacity-50"
           >
-            <div className="relative flex items-center justify-center w-full py-6 bg-black/20 border-b border-slate-800">
+            <div className="relative flex w-full items-center justify-center border-b border-slate-800 bg-black/20 py-6">
               <EnvelopeIcon className="h-20 w-20 text-slate-400" />
             </div>
             <div className="flex flex-col items-center justify-center text-center leading-relaxed text-slate-400">
               <span className="px-2.5">Need an integration?</span>
-              <span className="px-6 text-slate-200 text-base">
+              <span className="px-6 text-base text-slate-200">
                 Let us know!
               </span>
             </div>
@@ -131,25 +131,25 @@ function AddButtonContent({
 }) {
   return (
     <>
-      <div className="relative flex items-center justify-center w-full py-6 bg-black/20 border-b border-slate-800">
-        <PlusCircleIcon className="absolute h-7 w-7 top-[6px] right-[6px] z-10 text-green-600 shadow-md" />
+      <div className="relative flex w-full items-center justify-center border-b border-slate-800 bg-black/20 py-6 px-10">
+        <PlusCircleIcon className="absolute top-[6px] right-[6px] z-10 h-7 w-7 text-green-600 shadow-md" />
         <img
           src={integration.icon}
           alt={integration.name}
-          className="h-20 group-hover:opacity-80 transition"
+          className="h-20 transition group-hover:opacity-80"
         />
       </div>
 
       {status === "loading" ? (
-        <span className="px-6 pb-4 leading-relaxed text-green-500 animate-pulse">
-          Connecting to{" "}
-          <span className="text-slate-200 text-base">{integration.name}</span>
-        </span>
+        <div className="flex animate-pulse flex-col px-3 pb-4 leading-relaxed text-green-500">
+          <span>Connecting to</span>
+          <span className="text-base text-slate-200">{integration.name}</span>
+        </div>
       ) : (
-        <span className="px-6 pb-4 leading-relaxed text-slate-400">
-          Connect to{" "}
-          <span className="text-slate-200 text-base">{integration.name}</span>
-        </span>
+        <div className="flex flex-col px-3 pb-4">
+          <span className="text-slate-400">Connect to</span>
+          <span className="text-base text-slate-200">{integration.name}</span>
+        </div>
       )}
     </>
   );
