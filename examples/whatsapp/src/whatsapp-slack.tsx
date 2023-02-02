@@ -109,23 +109,6 @@ new Trigger({
         event.trigger_id,
         JSXSlack(
           <Modal title="Your reply" close="Cancel" callbackId="submit-message">
-            <Header>
-              :tada: You're all set! This is your booking summary.
-            </Header>
-            <Divider />
-            <Section>
-              <Field>
-                <b>Attendee</b>
-                <br />
-                Katie Chen
-              </Field>
-              <Field>
-                <b>Date</b>
-                <br />
-                Oct 22-23
-              </Field>
-            </Section>
-
             <Textarea
               name="message"
               label="Message"
