@@ -4,11 +4,16 @@ sidebarTitle: "GitHub"
 description: "Here are some example workflows you could create using the GitHub integration."
 ---
 
-
-To use the GitHub integration you must first install the required packages:
-
+To use the GitHub integration you must install the required packages:
 <Tabs>
   <Tab title="npm">
+
+Trigger.dev SDK & GitHub packages for a new project:
+
+```bash
+npm install @trigger.dev/sdk @trigger.dev/github zod
+```
+GitHub packages for an existing project:
 
 ```bash
 npm install @trigger.dev/github
@@ -17,12 +22,24 @@ npm install @trigger.dev/github
   </Tab>
   <Tab title="pnpm">
 
+Trigger.dev SDK & GitHub packages for a new project:
+
+```bash
+pnpm install @trigger.dev/sdk @trigger.dev/github zod
+```
+GitHub packages for an existing project:
 ```bash
 pnpm install @trigger.dev/github
 ```
 
   </Tab>
   <Tab title="yarn">
+Trigger.dev SDK & GitHub packages for a new project:
+
+```bash
+yarn add @trigger.dev/sdk @trigger.dev/github zod
+```
+GitHub packages for an existing project:
 
 ```bash
 yarn add @trigger.dev/github
@@ -33,7 +50,7 @@ yarn add @trigger.dev/github
 
 You can explore all the supported GitHub functions [here](/integrations/apis/github/events/push).
 
-
+### Example workflows:
 ## When a GitHub repo is starred, post information about the user to Slack
 
 Integrations required: GitHub, Slack
@@ -58,6 +75,7 @@ new Trigger({
   },
 }).listen();
 ```
+
 
 ## When a GitHub issue is created or modified, post to Slack
 
