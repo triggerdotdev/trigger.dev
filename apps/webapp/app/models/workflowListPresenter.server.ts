@@ -243,9 +243,19 @@ function triggerProperties(
         };
       }
 
-      const slackSource = SlackInteractionSourceSchema.parse(
+      const result = SlackInteractionSourceSchema.safeParse(
         internalSource.source
       );
+
+      if (!result.success) {
+        return {
+          type: workflow.type,
+          typeTitle: "Slack interaction",
+          title: "on: Slack interaction",
+        };
+      }
+
+      const slackSource = result.data;
 
       const title =
         slackSource.type === "block_action"
