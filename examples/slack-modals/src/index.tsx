@@ -286,6 +286,13 @@ new Trigger({
   },
 }).listen();
 
+/*
+  ==============================================
+ /// Comments for the proposed whatsapp flow:
+ 1. send-slack-modal-catalog-message would be triggered by a whatsapp message
+ 2. slack-modal-catalog-block-interaction would be triggered by a button press in a slack message
+ 3. slack-modals-handle-catalog-submission would be triggered by a modal submission and send a whatsapp message
+*/
 new Trigger({
   id: "send-slack-modal-catalog-message",
   name: "Send Slack Modal Catalog Message",
@@ -420,6 +427,8 @@ new Trigger({
   }),
   run: async (event, ctx) => {
     await ctx.logger.info("Modal submission", { event });
+
+    event.view.state!.values["modal-catalog"].poll.selected_option.value;
 
     return event;
   },
