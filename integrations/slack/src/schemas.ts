@@ -35,6 +35,7 @@ export const PostMessageBodySchema = z.object({
   username: z.string().optional(),
   icon_emoji: z.string().optional(),
   icon_url: z.string().optional(),
+  thread_ts: z.string().optional(),
 });
 
 export const ChannelNameOrIdSchema = z.union([
@@ -49,6 +50,7 @@ export const PostMessageOptionsSchema = z
     username: z.string().optional(),
     icon_emoji: z.string().optional(),
     icon_url: z.string().optional(),
+    thread_ts: z.string().optional(),
   })
   .and(ChannelNameOrIdSchema);
 
