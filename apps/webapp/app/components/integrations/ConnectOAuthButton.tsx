@@ -28,7 +28,11 @@ export function ConnectOAuthButton({
   const { createFetcher, status } = useCreateConnection(sourceId, serviceId);
 
   return (
-    <createFetcher.Form method="post" action="/resources/connection?index">
+    <createFetcher.Form
+      method="post"
+      action="/resources/connection?index"
+      className="flex"
+    >
       <input type="hidden" name="type" value="oauth" />
       <input type="hidden" name="organizationId" value={organizationId} />
       <input type="hidden" name="service" value={integration.slug} />
