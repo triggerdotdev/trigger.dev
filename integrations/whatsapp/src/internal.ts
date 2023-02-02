@@ -9,7 +9,7 @@ const webhooks = new WhatsAppWebhookIntegration();
 const requests = new WhatsAppRequestIntegration();
 
 const metadata: IntegrationMetadata = {
-  name: "WhatsApp Business Account",
+  name: "WhatsApp Business",
   slug: "whatsapp",
   icon: "/integrations/whatsapp.png",
   enabledFor: "admins",

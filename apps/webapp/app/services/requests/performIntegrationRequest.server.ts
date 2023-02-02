@@ -4,10 +4,6 @@ import type {
   NormalizedResponse,
   PerformedRequestResponse,
 } from "@trigger.dev/integration-sdk";
-
-import * as slack from "@trigger.dev/slack/internal";
-import * as resend from "@trigger.dev/resend/internal";
-import * as shopify from "@trigger.dev/shopify/internal";
 import type { PrismaClient } from "~/db.server";
 import { prisma } from "~/db.server";
 import type { IntegrationRequest } from "~/models/integrationRequest.server";
@@ -68,7 +64,8 @@ export class PerformIntegrationRequest {
       integrationRequest.externalService.connection.apiIdentifier,
       accessInfo,
       integrationRequest,
-      cache
+      cache,
+      integrationRequest.externalService.workflowId
     );
 
     if (performedRequest.ok) {
@@ -226,7 +223,8 @@ export class PerformIntegrationRequest {
     service: string,
     accessInfo: AccessInfo,
     integrationRequest: IntegrationRequest,
-    cache: CacheService
+    cache: CacheService,
+    workflowId: string
   ): Promise<PerformedRequestResponse> {
     const integrationInfo = getIntegrations(true).find(
       (i) => i.metadata.slug === service
@@ -247,7 +245,10 @@ export class PerformIntegrationRequest {
       endpoint: integrationRequest.endpoint,
       params: integrationRequest.params,
       cache,
-      metadata: { requestId: integrationRequest.id },
+      metadata: {
+        requestId: integrationRequest.id,
+        workflowId: workflowId,
+      },
     });
   }
 }

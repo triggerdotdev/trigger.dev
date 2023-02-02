@@ -33,6 +33,7 @@ import {
   SendDocumentMessageBodySchema,
   SendStickerMessageBodySchema,
 } from "../schemas/messages";
+import { EventMediaObjectSchema } from "../schemas/messageEvents";
 
 const log = debug("trigger:integrations:whatsapp");
 
@@ -253,6 +254,14 @@ export class WhatsAppRequestIntegration implements RequestIntegration {
           options.metadata
         );
       }
+      case "media.getUrl": {
+        return this.#getMediaUrl(
+          options.accessInfo,
+          options.params,
+          options.cache,
+          options.metadata
+        );
+      }
       default: {
         throw new Error(`Unknown endpoint: ${options.endpoint}`);
       }
@@ -328,6 +337,13 @@ export class WhatsAppRequestIntegration implements RequestIntegration {
         const parsedParams = SendContactsMessageBodySchema.parse(params);
         return {
           title: `Send contacts to ${parsedParams.to}`,
+          properties: [],
+        };
+      }
+      case "media.getUrl": {
+        const parsedParams = EventMediaObjectSchema.parse(params);
+        return {
+          title: `Get media URL for id ${parsedParams.id}`,
           properties: [],
         };
       }
@@ -1079,6 +1095,32 @@ export class WhatsAppRequestIntegration implements RequestIntegration {
     log("message.sendContacts performedRequest %O", performedRequest);
 
     return performedRequest;
+  }
+
+  async #getMediaUrl(
+    accessInfo: AccessInfo,
+    params: any,
+    cache?: CacheService,
+    metadata?: Record<string, string>
+  ): Promise<PerformedRequestResponse> {
+    const parsedParams = EventMediaObjectSchema.parse(params);
+
+    log("message.getMediaUrl %O", parsedParams);
+
+    const url = `${process.env.APP_ORIGIN}/api/v1/internal/media/whatsapp/${
+      metadata?.workflowId
+    }/${parsedParams.id}?mime=${encodeURIComponent(
+      parsedParams.mime_type
+    )}&sha256=${parsedParams.sha256}`;
+
+    return {
+      ok: true,
+      isRetryable: true,
+      response: {
+        output: url,
+        context: {},
+      },
+    };
   }
 
   #isRetryable(statusCode: number): boolean {

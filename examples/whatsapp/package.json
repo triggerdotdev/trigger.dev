@@ -16,6 +16,7 @@
     "tsx": "^3.12.0"
   },
   "scripts": {
-    "dev": "tsx src/index.ts"
+    "dev": "tsx src/index.ts",
+    "whatsapp-slack": "tsx src/whatsapp-slack.tsx"
   }
 }

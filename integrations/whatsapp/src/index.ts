@@ -4,6 +4,12 @@ import * as events from "./events";
 import { schemas } from "./internal";
 export { events };
 
+export type MessageEvent = z.infer<
+  typeof schemas.messageEvents.messageEventSchema
+>;
+
+export type MessageEventMessage = MessageEvent["message"];
+
 export type SendTemplateMessageOptions = z.infer<
   typeof schemas.messages.SendTemplateMessageBodySchema
 >;
@@ -298,6 +304,32 @@ export async function sendContacts(
     params: message,
     response: {
       schema: schemas.messages.SendMessageSuccessResponseSchema,
+    },
+  });
+
+  return output;
+}
+
+export type GetMediaUrlOptions = z.infer<
+  typeof schemas.messageEvents.EventMediaObjectSchema
+>;
+
+export async function getMediaUrl(
+  key: string,
+  options: GetMediaUrlOptions
+): Promise<string> {
+  const run = getTriggerRun();
+
+  if (!run) {
+    throw new Error("Cannot call getMediaUrl outside of a trigger run");
+  }
+
+  const output = await run.performRequest(key, {
+    service: "whatsapp",
+    endpoint: "media.getUrl",
+    params: options,
+    response: {
+      schema: z.string(),
     },
   });
 
