@@ -52,9 +52,7 @@ new Trigger({
       }
       case "video": {
         const mediaUrl = await getMediaUrl(`getVideoUrl`, event.message.video);
-        messageBody = (
-          <Video videoUrl={mediaUrl} title="" alt="" thumbnailUrl="" />
-        );
+        messageBody = <Section>{mediaUrl}</Section>;
         break;
       }
       default:
