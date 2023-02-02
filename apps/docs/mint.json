@@ -104,6 +104,7 @@
             {
               "group": "WhatsApp",
               "pages": [
+                "integrations/apis/whatsapp/index",
                 {
                   "group": "Events",
                   "pages": ["integrations/apis/whatsapp/events/message"]
