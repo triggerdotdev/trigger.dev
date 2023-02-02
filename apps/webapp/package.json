@@ -46,7 +46,7 @@
     "@codemirror/search": "^6.2.3",
     "@codemirror/state": "^6.1.3",
     "@codemirror/view": "^6.5.0",
-    "@headlessui/react": "^1.6.4",
+    "@headlessui/react": "^1.7.8",
     "@heroicons/react": "^2.0.12",
     "@jsonhero/fetch-hero": "^0.2.2",
     "@keyv/redis": "^2.3.7",
