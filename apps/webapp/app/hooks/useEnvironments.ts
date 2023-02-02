@@ -36,9 +36,7 @@ export function useEnvironments(): RuntimeEnvironment[] | undefined {
 
 export function useCurrentEnvironment(): RuntimeEnvironment | undefined {
   const environments = useEnvironments();
-  const routeMatch = useMatchesData(
-    "routes/__app/orgs/$organizationSlug/workflows/$workflowSlug"
-  );
+  const routeMatch = useMatchesData("routes/__app/orgs/$organizationSlug");
 
   const currentEnvironmentSlug = routeMatch?.data.currentEnvironmentSlug;
   if (!currentEnvironmentSlug || !environments) {

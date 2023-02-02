@@ -60,38 +60,9 @@ export function CreateNewWorkflowNoWorkflows({
         </Body>
       </div> */}
       <Header4 size="regular" className={subTitle}>
-        1. Install the package
+        1. Install the Trigger.dev package
       </Header4>
-      <Tab.Group>
-        <UnderlinedList>
-          <Underlined>npm</Underlined>
-          <Underlined>pnpm</Underlined>
-          <Underlined>yarn</Underlined>
-        </UnderlinedList>
-        <Tab.Panels className="flex-grow">
-          <Tab.Panel className="relative h-full">
-            <CodeBlock
-              code="npm install @trigger.dev/sdk"
-              align="top"
-              showLineNumbers={false}
-            />
-          </Tab.Panel>
-          <Tab.Panel className="relative h-full">
-            <CodeBlock
-              code="pnpm install @trigger.dev/sdk"
-              align="top"
-              showLineNumbers={false}
-            />
-          </Tab.Panel>
-          <Tab.Panel className="relative h-full">
-            <CodeBlock
-              code="yarn add @trigger.dev/sdk"
-              align="top"
-              showLineNumbers={false}
-            />
-          </Tab.Panel>
-        </Tab.Panels>
-      </Tab.Group>
+      <InstallPackages packages={"@trigger.dev/sdk"} />
       <Header4 size="regular" className={classNames("mt-10", subTitle)}>
         2. Create your workflow
       </Header4>
@@ -114,16 +85,13 @@ export function CreateNewWorkflowNoWorkflows({
                 {exampleProjects.map((project) => {
                   return (
                     <Tab.Panel key={project.name} className="relative h-full">
-                      <Body size="regular">
-                        Install these extra API integration packages
+                      <Body size="regular" className="mb-4">
+                        {project.description}
                       </Body>
-                      <CodeBlock
-                        code={project.requiredPackages}
-                        align="top"
-                        showLineNumbers={false}
-                        className="mb-8"
-                      />
-                      <Body size="regular">{project.description}</Body>
+                      <Body size="regular" className="mb-2">
+                        Install these extra API integration packages:
+                      </Body>
+                      <InstallPackages packages={project.requiredPackages} />
                       <CodeBlock
                         code={project.code(environment.apiKey)}
                         align="top"
@@ -182,14 +150,14 @@ const allCapsTitleClasses = "mb-2 uppercase tracking-wide text-slate-400";
 
 const exampleProjects = [
   {
-    name: "New GitHub star recieved → Post details to Slack",
+    name: "GitHub star → Slack",
     requiredPackages: "@trigger.dev/slack @trigger.dev/github zod",
     code: newUserSlackMessage,
     description:
       "You’ll notice that when we subscribe to the custom event we have to say the name of the event and provide a schema. Schemas are created using Zod. In this case events must send an object that has name, email, and paidPlan.",
   },
   {
-    name: "New user signs up → send email campaign",
+    name: "New user → email",
     requiredPackages: "@trigger.dev/slack zod",
     code: newUserSlackMessage,
     description: "",
@@ -216,3 +184,41 @@ const fromScratchProjects = [
     description: "",
   },
 ];
+
+function InstallPackages({ packages }: { packages: string }) {
+  return (
+    <Tab.Group>
+      <UnderlinedList>
+        <Underlined>npm</Underlined>
+        <Underlined>pnpm</Underlined>
+        <Underlined>yarn</Underlined>
+      </UnderlinedList>
+      <Tab.Panels className="flex-grow">
+        <Tab.Panel className="relative h-full">
+          <CodeBlock
+            code={`npm install ${packages}`}
+            language="bash"
+            align="top"
+            showLineNumbers={false}
+          />
+        </Tab.Panel>
+        <Tab.Panel className="relative h-full">
+          <CodeBlock
+            code={`pnpm install ${packages}`}
+            language="bash"
+            align="top"
+            showLineNumbers={false}
+          />
+        </Tab.Panel>
+        <Tab.Panel className="relative h-full">
+          <CodeBlock
+            code={`yarn add ${packages}`}
+            language="bash"
+            align="top"
+            showLineNumbers={false}
+          />
+        </Tab.Panel>
+      </Tab.Panels>
+    </Tab.Group>
+  );
+}

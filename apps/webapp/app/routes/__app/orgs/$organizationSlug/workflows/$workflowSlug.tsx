@@ -157,7 +157,6 @@ export const loader = async ({ request, params }: LoaderArgs) => {
       rules,
       externalSourceConfig,
     },
-    currentEnvironmentSlug,
     connectionSlots,
   });
 };
