@@ -16,6 +16,7 @@ import { PrimaryA, SecondaryA } from "./primitives/Buttons";
 import { Body } from "./primitives/text/Body";
 import { SubTitle } from "./primitives/text/SubTitle";
 import { newUserSlackMessage } from "./samples/new-user-slack-message";
+import { link } from "fs";
 
 export function CreateNewWorkflow() {
   return (
@@ -80,15 +81,15 @@ export function CreateNewWorkflowNoWorkflows({
       <Tab.Group>
         <UnderlinedList>
           <Underlined>Start from an example</Underlined>
-          <Underlined>Start from an example</Underlined>
           <Underlined>Start from scratch</Underlined>
         </UnderlinedList>
         <Tab.Panels className="flex-grow pt-4">
           <Tab.Panel className="relative h-full">
             <Tab.Group>
               <LargeBoxList>
-                <LargeBox>New user Slack message</LargeBox>
-                <LargeBox>Welcome email campaign</LargeBox>
+                {exampleProjects.map((project) => {
+                  return <LargeBox key={project.name}>{project.name}</LargeBox>;
+                })}
               </LargeBoxList>
               <Tab.Panels className="flex-grow pt-4">
                 <Tab.Panel className="relative h-full">
@@ -143,7 +144,7 @@ const exampleProjects = [
     code: newUserSlackMessage,
   },
   {
-    name: "When a new user signs up, send them a series of emails",
+    name: "Welcome email campaign",
     requiredPackages: "@trigger.dev/slack zod",
     code: "new Trigger() etc...",
   },
