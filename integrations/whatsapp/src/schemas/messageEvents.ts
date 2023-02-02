@@ -28,33 +28,27 @@ const textMessageEventSchema = z.object({
   text: z.object({ body: z.string() }),
 });
 
+export const EventMediaObjectSchema = z.object({
+  id: z.string(),
+  mime_type: z.string(),
+  sha256: z.string().optional(),
+});
+
 const audioMessageEventSchema = z.object({
   type: z.literal("audio"),
-  audio: z.object({
-    id: z.string(),
-    mime_type: z.string(),
-    sha256: z.string().optional(),
+  audio: EventMediaObjectSchema.extend({
     voice: z.boolean().optional(),
   }),
 });
 
 const videoMessageEventSchema = z.object({
   type: z.literal("video"),
-  video: z.object({
-    id: z.string(),
-    mime_type: z.string(),
-    sha256: z.string().optional(),
-  }),
+  video: EventMediaObjectSchema,
 });
 
 const imageMessageEventSchema = z.object({
   type: z.literal("image"),
-  image: z.object({
-    id: z.string(),
-    mime_type: z.string(),
-    sha256: z.string().optional(),
-    caption: z.string().optional(),
-  }),
+  image: EventMediaObjectSchema.extend({ caption: z.string().optional() }),
 });
 
 const reactionMessageEventSchema = z.object({
@@ -67,20 +61,12 @@ const reactionMessageEventSchema = z.object({
 
 const stickerMessageEventSchema = z.object({
   type: z.literal("sticker"),
-  sticker: z.object({
-    id: z.string(),
-    sha256: z.string(),
-    animated: z.boolean(),
-    mime_type: z.string(),
-  }),
+  sticker: EventMediaObjectSchema.extend({ animated: z.boolean() }),
 });
 
 const documentMessageEventSchema = z.object({
   type: z.literal("document"),
-  document: z.object({
-    id: z.string(),
-    mime_type: z.string(),
-    sha256: z.string().optional(),
+  document: EventMediaObjectSchema.extend({
     filename: z.string().optional(),
     caption: z.string().optional(),
   }),
