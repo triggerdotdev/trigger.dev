@@ -1,6 +1,5 @@
-export const githubStars = `
-// When a GitHub issue is created or modified, post to Slack
-
+export function githubStars(apiKey: string) {
+  return `// When a GitHub issue is created or modified, post to Slack
 import { Trigger } from "@trigger.dev/sdk";
 import * as github from "@trigger.dev/github";
 import * as slack from "@trigger.dev/slack";
@@ -8,7 +7,7 @@ import * as slack from "@trigger.dev/slack";
 new Trigger({
   id: "my-workflow-1",
   name: "Posts to Slack when GitHub Issue created or modified",
-  apiKey: "<my_api_key>",
+  apiKey: "${apiKey}",
   on: github.events.issueEvent({
     repo: "my-github-org/my-github-repo",
   }),
@@ -22,3 +21,4 @@ new Trigger({
     return response.message;
   },
 }).listen();`;
+}

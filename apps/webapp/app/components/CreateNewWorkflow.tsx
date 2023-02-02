@@ -14,6 +14,8 @@ import { newUserSlackMessage } from "./samples/new-user-slack-message";
 import CodeBlock from "./code/CodeBlock";
 import { Header4 } from "./primitives/text/Headers";
 import classNames from "classnames";
+import { useCurrentEnvironment } from "~/hooks/useEnvironments";
+import invariant from "tiny-invariant";
 
 export function CreateNewWorkflow() {
   return (
@@ -46,6 +48,8 @@ export function CreateNewWorkflowNoWorkflows({
 }: {
   providers: IntegrationMetadata[];
 }) {
+  const environment = useCurrentEnvironment();
+  invariant(environment, "Environment must be defined");
   return (
     <>
       {/* <div className="mb-5 flex max-w-max items-center gap-2 rounded border border-slate-600 bg-slate-700 px-3.5 py-2">
@@ -111,10 +115,19 @@ export function CreateNewWorkflowNoWorkflows({
                   return (
                     <Tab.Panel key={project.name} className="relative h-full">
                       <Body size="regular">
-                        Install the extra API integration packages
+                        Install these extra API integration packages
                       </Body>
-                      <CodeBlock code={project.requiredPackages} align="top" />
-                      <CodeBlock code={project.code} align="top" />
+                      <CodeBlock
+                        code={project.requiredPackages}
+                        align="top"
+                        showLineNumbers={false}
+                        className="mb-8"
+                      />
+                      <Body size="regular">{project.description}</Body>
+                      <CodeBlock
+                        code={project.code(environment.apiKey)}
+                        align="top"
+                      />
                     </Tab.Panel>
                   );
                 })}
@@ -134,7 +147,10 @@ export function CreateNewWorkflowNoWorkflows({
                 {fromScratchProjects.map((project) => {
                   return (
                     <Tab.Panel key={project.name} className="relative h-full">
-                      <CodeBlock code={project.code} align="top" />
+                      <CodeBlock
+                        code={project.code(environment.apiKey)}
+                        align="top"
+                      />
                     </Tab.Panel>
                   );
                 })}
@@ -166,14 +182,17 @@ const allCapsTitleClasses = "mb-2 uppercase tracking-wide text-slate-400";
 
 const exampleProjects = [
   {
-    name: "New user signs up → Post Slack message",
-    requiredPackages: "@trigger.dev/slack zod",
+    name: "New GitHub star recieved → Post details to Slack",
+    requiredPackages: "@trigger.dev/slack @trigger.dev/github zod",
     code: newUserSlackMessage,
+    description:
+      "You’ll notice that when we subscribe to the custom event we have to say the name of the event and provide a schema. Schemas are created using Zod. In this case events must send an object that has name, email, and paidPlan.",
   },
   {
     name: "New user signs up → send email campaign",
     requiredPackages: "@trigger.dev/slack zod",
-    code: "new Trigger() etc...",
+    code: newUserSlackMessage,
+    description: "",
   },
 ];
 
@@ -181,16 +200,19 @@ const fromScratchProjects = [
   {
     name: "Webhook",
     requiredPackages: "@trigger.dev/slack zod",
-    code: "code",
+    code: newUserSlackMessage,
+    description: "",
   },
   {
     name: "Custom event",
     requiredPackages: "@trigger.dev/slack zod",
-    code: "new Trigger() etc...",
+    code: newUserSlackMessage,
+    description: "",
   },
   {
     name: "Scheduled (CRON)",
     requiredPackages: "@trigger.dev/slack zod",
-    code: "new Trigger() etc...",
+    code: newUserSlackMessage,
+    description: "",
   },
 ];

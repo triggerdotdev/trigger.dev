@@ -1,11 +1,12 @@
-export const newUserSlackMessage = `import { Trigger, customEvent } from "@trigger.dev/sdk";
+export function newUserSlackMessage(apiKey: string) {
+  return `import { Trigger, customEvent } from "@trigger.dev/sdk";
 import { postMessage } from "@trigger.dev/slack";
 import { z } from "zod";
 
 new Trigger({
   id: "new-user",
   name: "New user slack message",
-  apiKey: "<your_api_key>",
+  apiKey: "${apiKey}",
   on: customEvent({
     name: "user.created",
     schema: z.object({
@@ -28,3 +29,4 @@ new Trigger({
     return response.message;
   },
 }).listen();`;
+}
