@@ -17,7 +17,7 @@ const metadata: IntegrationMetadata = {
     type: "api_key",
     header_name: "Authorization",
     header_type: "access_token",
-    documentation: `You need to generate a "permanent access token"\nFollow the steps in [this documentation](https://developers.facebook.com/docs/whatsapp/business-management-api/get-started#1--acquire-an-access-token-using-a-system-user-or-facebook-login).`,
+    documentation: `You need to generate a "permanent access token".\n Follow the steps in the WhatsApp documentation [here](https://developers.facebook.com/docs/whatsapp/business-management-api/get-started#1--acquire-an-access-token-using-a-system-user-or-facebook-login).`,
   },
 };
 
