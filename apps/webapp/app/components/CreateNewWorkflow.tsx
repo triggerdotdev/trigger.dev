@@ -57,13 +57,6 @@ export function CreateNewWorkflowNoWorkflows({
   invariant(environment, "Environment must be defined");
   return (
     <>
-      {/* <div className="mb-5 flex max-w-max items-center gap-2 rounded border border-slate-600 bg-slate-700 px-3.5 py-2">
-        <InformationCircleIcon className="h-5 w-5 text-slate-300" />
-        <Body>
-          Trigger.dev workflows are written in your own codebase and run in your
-          existing infrastructure.
-        </Body>
-      </div> */}
       <Header4 size="regular" className={subTitle}>
         1. Install the Trigger.dev package
       </Header4>
@@ -78,7 +71,7 @@ export function CreateNewWorkflowNoWorkflows({
         </UnderlinedList>
         <Tab.Panels className="flex-grow pt-4">
           <Tab.Panel className="relative h-full">
-            {/* Example projects titles */}
+            {/* Example projects tabs */}
             <Tab.Group>
               <LargeBoxList>
                 {exampleProjects.map((project) => {
@@ -95,6 +88,12 @@ export function CreateNewWorkflowNoWorkflows({
                 {exampleProjects.map((project) => {
                   return (
                     <Tab.Panel key={project.name} className="relative h-full">
+                      <Header4
+                        size="small"
+                        className="mb-2 font-semibold text-slate-300"
+                      >
+                        {project.title}
+                      </Header4>
                       <Body size="regular" className="mb-4 text-slate-300">
                         {project.description}
                       </Body>
@@ -245,12 +244,13 @@ function InlineCode({ children }: { children: ReactNode }) {
 
 const exampleProjects = [
   {
+    icon: <StarIcon className="h-8 w-8 text-yellow-400" />,
     name: "GitHub star → Slack",
+    title: "When you receive a GitHub star, post that user's details to Slack",
+    description:
+      "Schemas are created using Zod. In this case events must send an object that has name, email, and paidPlan.",
     requiredPackages: "@trigger.dev/slack @trigger.dev/github zod",
     code: newUserSlackMessage,
-    icon: <StarIcon className="h-8 w-8 text-yellow-400" />,
-    description:
-      "This workflow posts a GitHub user's details to Slack every time you recieve a new GitHub star from them. You’ll notice that when we subscribe to the custom event we have to say the name of the event and provide a schema. Schemas are created using Zod. In this case events must send an object that has name, email, and paidPlan.",
     testCode: `{
     "name": "Rick Astley",
     "email": "nevergonn@giveyou.up",
@@ -259,11 +259,12 @@ const exampleProjects = [
   `,
   },
   {
+    icon: <EnvelopeIcon className="h-8 w-8 text-blue-400" />,
     name: "New user → email",
+    title: "When a new user signs up, send them a series of emails",
+    description: "Description here",
     requiredPackages: "@trigger.dev/slack zod",
     code: newUserSlackMessage,
-    icon: <EnvelopeIcon className="h-8 w-8 text-blue-400" />,
-    description: "",
     testCode: "",
   },
 ];
