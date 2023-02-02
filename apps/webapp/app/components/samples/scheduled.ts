@@ -1,4 +1,5 @@
-export const scheduled = `import { scheduleEvent, Trigger } from "@trigger.dev/sdk";
+export function scheduled() {
+return `import { scheduleEvent, Trigger } from "@trigger.dev/sdk";
 
 new Trigger({
   id: "usage",
@@ -18,3 +19,4 @@ new Trigger({
     // ...
   },
 }).listen();`;
+}

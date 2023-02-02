@@ -1,4 +1,5 @@
-export const customEvent = `import { customEvent, Trigger } from "@trigger.dev/sdk";
+export function customEvent() {
+return`import { customEvent, Trigger } from "@trigger.dev/sdk";
 
 new Trigger({
   id: "user-created-notify-slack",
@@ -12,3 +13,4 @@ new Trigger({
   }),
   run: async (event, ctx) => {},
 }).listen();`;
+}

@@ -1,11 +1,12 @@
-export const shopifyCreateNewProducts = `import { Trigger, customEvent } from "@trigger.dev/sdk";
+export function shopifyCreateNewProducts(apiKey: string) {
+return `import { Trigger, customEvent } from "@trigger.dev/sdk";
 import { z } from "zod";
 import * as shopify from "@trigger.dev/shopify";
 
 new Trigger({
   id: "shopify-products",
   name: "Shopify products",
-  apiKey: "<my_api_key>",
+  apiKey: "${apiKey}",
   on: customEvent({
     name: "shopify.products",
     schema: z.object({}),
@@ -56,3 +57,4 @@ new Trigger({
   },
 }).listen();
 `;
+}

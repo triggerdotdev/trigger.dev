@@ -1,11 +1,11 @@
-export const whatsappListenForMessageAndReply = `
-import { Trigger } from "@trigger.dev/sdk";
+export function whatsappListenForMessageAndReply(apiKey: string) {
+return `import { Trigger } from "@trigger.dev/sdk";
 import { events, sendReaction, sendText } from "@trigger.dev/whatsapp";
 
 new Trigger({
   id: "whatsapp-webhook",
   name: "Listen for WhatsApp messages and reply",
-  apiKey: "<my_api_key>",
+  apiKey: "${apiKey}",
   //this listens for all WhatsApp messages sent to your WhatsApp Business account
   on: events.messageEvent({
     accountId: "<your_account_id>",
@@ -32,7 +32,6 @@ new Trigger({
 
     //we support all other types of WhatsApp messages (audio, video, document, location, etc)
   },
-}).listen();
-`;
-
+}).listen();`;
+}
 

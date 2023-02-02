@@ -1,4 +1,6 @@
-export const webhook = `import { webhookEvent, Trigger } from "@trigger.dev/sdk";
+
+export function webhook() {
+return `import { webhookEvent, Trigger } from "@trigger.dev/sdk";
 
 new Trigger({
   id: "caldotcom-to-slack",
@@ -17,3 +19,4 @@ new Trigger({
   }),
   run: async (event, ctx) => {},
 }).listen();`;
+}
