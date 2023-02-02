@@ -4,8 +4,10 @@
   "version": "0.0.1",
   "description": "Example trigger.dev workflow that uses the WhatsApp Webhook integration",
   "dependencies": {
-    "@trigger.dev/whatsapp": "workspace:*",
     "@trigger.dev/sdk": "workspace:*",
+    "@trigger.dev/slack": "workspace:*",
+    "@trigger.dev/whatsapp": "workspace:*",
+    "jsx-slack": "^5.3.0",
     "zod": "^3.20.2"
   },
   "devDependencies": {
