@@ -420,6 +420,7 @@ export class TriggerServer {
                 organizationId: properties["x-org-id"],
                 environment: properties["x-env"],
                 apiKey: properties["x-api-key"],
+                appOrigin: properties["x-app-origin"],
                 isTest:
                   typeof properties["x-is-test"] === "string"
                     ? properties["x-is-test"] === "true"

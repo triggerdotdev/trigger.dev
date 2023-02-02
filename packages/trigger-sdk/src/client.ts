@@ -469,6 +469,8 @@ export class TriggerClient<TSchema extends z.ZodTypeAny> {
                 });
               },
               fetch: fetchFunction,
+              workflowId: data.meta.workflowId,
+              appOrigin: data.meta.appOrigin,
             },
             () => {
               this.#logger.debug("Running trigger...");
