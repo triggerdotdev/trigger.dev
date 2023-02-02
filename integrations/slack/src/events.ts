@@ -1,10 +1,13 @@
 import type { TriggerEvent } from "@trigger.dev/sdk";
-import { blockAction } from "./interactivity";
+import {
+  BlockActionInteractivityPayloadSchema,
+  ViewSubmissionInteractivityPayloadSchema,
+} from "./interactivity";
 
 export function blockActionInteraction(params: {
   blockId: string;
   actionId?: string | string[];
-}): TriggerEvent<typeof blockAction> {
+}): TriggerEvent<typeof BlockActionInteractivityPayloadSchema> {
   const actionIds =
     typeof params.actionId === "undefined"
       ? []
@@ -28,10 +31,44 @@ export function blockActionInteraction(params: {
         event: ["block.action"],
       },
       source: {
+        type: "block_action",
         blockId: params.blockId,
         actionIds,
       },
     },
-    schema: blockAction,
+    schema: BlockActionInteractivityPayloadSchema,
+  };
+}
+
+export function viewSubmissionInteraction(params: {
+  callbackId?: string | string[];
+}): TriggerEvent<typeof ViewSubmissionInteractivityPayloadSchema> {
+  const callbackIds =
+    typeof params.callbackId === "undefined"
+      ? []
+      : Array.isArray(params.callbackId)
+      ? params.callbackId
+      : [params.callbackId];
+
+  return {
+    metadata: {
+      type: "SLACK_INTERACTION",
+      service: "slack",
+      name: "view.submission",
+      filter: {
+        service: ["slack"],
+        payload: {
+          view: {
+            callback_id: callbackIds,
+          },
+        },
+        event: ["view.submission"],
+      },
+      source: {
+        type: "view_submission",
+        callbackIds,
+      },
+    },
+    schema: ViewSubmissionInteractivityPayloadSchema,
   };
 }

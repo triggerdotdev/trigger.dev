@@ -354,7 +354,7 @@ export class TriggerServer {
           topic: Topics.triggers,
           subscription: `websocketserver-${this.#workflowId}-${this.#apiKey}`,
           subscriptionType: "Shared",
-          subscriptionInitialPosition: "Earliest",
+          subscriptionInitialPosition: "Latest",
         },
         handlers: {
           TRIGGER_WORKFLOW: async (id, data, properties, messageAttributes) => {

@@ -471,6 +471,7 @@ export class TriggerClient<TSchema extends z.ZodTypeAny> {
               fetch: fetchFunction,
               workflowId: data.meta.workflowId,
               appOrigin: data.meta.appOrigin,
+              id: data.id,
             },
             () => {
               this.#logger.debug("Running trigger...");

@@ -22,14 +22,18 @@ export const mrkdwnOptionSchema = z.object({
   text: mrkdwnElementSchema,
   value: z.string().optional(),
   url: z.string().optional(),
-  description: plainTextElementSchema.optional(),
+  description: z
+    .discriminatedUnion("type", [mrkdwnElementSchema, plainTextElementSchema])
+    .optional(),
 });
 
 export const plainTextOptionSchema = z.object({
   text: plainTextElementSchema,
   value: z.string().optional(),
   url: z.string().optional(),
-  description: plainTextElementSchema.optional(),
+  description: z
+    .discriminatedUnion("type", [mrkdwnElementSchema, plainTextElementSchema])
+    .optional(),
 });
 
 export const optionSchema = z.union([

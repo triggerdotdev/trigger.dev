@@ -247,11 +247,17 @@ function triggerProperties(
         internalSource.source
       );
 
+      const title =
+        slackSource.type === "block_action"
+          ? `block_id = ${slackSource.blockId}`
+          : `callback_id = ${slackSource.callbackIds.join(", ")}`;
+
       return {
         type: workflow.type,
         typeTitle: "Slack interaction",
-        title: `block_id = ${slackSource.blockId}`,
+        title: title,
         properties:
+          slackSource.type === "block_action" &&
           slackSource.actionIds.length > 0
             ? [{ key: "Action ID", value: slackSource.actionIds.join(", ") }]
             : undefined,

@@ -20,6 +20,7 @@ type TriggerRunLocalStorage = {
   fetch: TriggerFetch;
   workflowId: string;
   appOrigin: string;
+  id: string;
 };
 
 export const triggerRunLocalStorage =

@@ -15,10 +15,13 @@ export async function action({ request }: ActionArgs) {
   const service = new HandleSlackInteractivity();
 
   try {
-    await service.call(parsedPayload);
+    return await service.call(parsedPayload);
   } catch (error) {
     console.error(error);
-  }
 
-  return { status: 200 };
+    return new Response(
+      error instanceof Error ? error.message : "Unknown error",
+      { status: 500 }
+    );
+  }
 }

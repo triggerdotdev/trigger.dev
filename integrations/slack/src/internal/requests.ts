@@ -17,10 +17,13 @@ import {
   JoinConversationBodySchema,
   JoinConversationResponseSchema,
   ListConversationsResponseSchema,
+  OpenViewBodySchema,
+  OpenViewResponseSchema,
   PostMessageBodySchema,
   PostMessageOptionsSchema,
   PostMessageResponseOptionsSchema,
   PostMessageResponseSchema,
+  UpdateViewBodySchema,
 } from "../schemas";
 
 const log = debug("trigger:integrations:slack");
@@ -66,6 +69,33 @@ export class SlackRequestIntegration implements RequestIntegration {
     path: "/reactions.add",
   });
 
+  #openViewEndpoint = new HttpEndpoint<
+    typeof OpenViewResponseSchema,
+    typeof OpenViewBodySchema
+  >({
+    response: OpenViewResponseSchema,
+    method: "POST",
+    path: "/views.open",
+  });
+
+  #pushViewEndpoint = new HttpEndpoint<
+    typeof OpenViewResponseSchema,
+    typeof OpenViewBodySchema
+  >({
+    response: OpenViewResponseSchema,
+    method: "POST",
+    path: "/views.push",
+  });
+
+  #updateViewEndpoint = new HttpEndpoint<
+    typeof OpenViewResponseSchema,
+    typeof UpdateViewBodySchema
+  >({
+    response: OpenViewResponseSchema,
+    method: "POST",
+    path: "/views.update",
+  });
+
   constructor(private readonly baseUrl: string = "https://slack.com/api") {}
 
   perform(options: PerformRequestOptions): Promise<PerformedRequestResponse> {
@@ -88,6 +118,30 @@ export class SlackRequestIntegration implements RequestIntegration {
       }
       case "reactions.add": {
         return this.#addReaction(
+          options.accessInfo,
+          options.params,
+          options.cache,
+          options.metadata
+        );
+      }
+      case "views.open": {
+        return this.#openView(
+          options.accessInfo,
+          options.params,
+          options.cache,
+          options.metadata
+        );
+      }
+      case "views.update": {
+        return this.#updateView(
+          options.accessInfo,
+          options.params,
+          options.cache,
+          options.metadata
+        );
+      }
+      case "views.push": {
+        return this.#pushView(
           options.accessInfo,
           options.params,
           options.cache,
@@ -130,6 +184,24 @@ export class SlackRequestIntegration implements RequestIntegration {
               value: params.name,
             },
           ],
+        };
+      }
+      case "views.open": {
+        return {
+          title: `Open view`,
+          properties: [],
+        };
+      }
+      case "views.update": {
+        return {
+          title: `Update view`,
+          properties: [],
+        };
+      }
+      case "views.push": {
+        return {
+          title: `Push view`,
+          properties: [],
         };
       }
 
@@ -335,7 +407,178 @@ export class SlackRequestIntegration implements RequestIntegration {
       },
     };
 
-    log("chat.postMessage performedRequest %O", performedRequest);
+    log("reactions.add performedRequest %O", performedRequest);
+
+    return performedRequest;
+  }
+
+  async #openView(
+    accessInfo: AccessInfo,
+    params: any,
+    cache?: CacheService,
+    metadata?: Record<string, string>
+  ): Promise<PerformedRequestResponse> {
+    const parsedParams = OpenViewBodySchema.parse(params);
+
+    log("views.open %O", parsedParams);
+
+    const accessToken = getAccessToken(accessInfo);
+
+    const service = new HttpService({
+      accessToken,
+      baseUrl: this.baseUrl,
+    });
+
+    const response = await service.performRequest(
+      this.#openViewEndpoint,
+      parsedParams
+    );
+
+    if (!response.success) {
+      log("views.open failed %O", response);
+
+      return {
+        ok: false,
+        isRetryable: this.#isRetryable(response.statusCode),
+        response: {
+          output: response.error,
+          context: {
+            statusCode: response.statusCode,
+            headers: response.headers,
+          },
+        },
+      };
+    }
+
+    const ok = response.data.ok;
+
+    const performedRequest = {
+      ok,
+      isRetryable: this.#isRetryable(response.statusCode),
+      response: {
+        output: response.data,
+        context: {
+          statusCode: response.statusCode,
+          headers: response.headers,
+        },
+      },
+    };
+
+    log("views.open performedRequest %O", performedRequest);
+
+    return performedRequest;
+  }
+
+  async #updateView(
+    accessInfo: AccessInfo,
+    params: any,
+    cache?: CacheService,
+    metadata?: Record<string, string>
+  ): Promise<PerformedRequestResponse> {
+    const parsedParams = UpdateViewBodySchema.parse(params);
+
+    log("views.update %O", parsedParams);
+
+    const accessToken = getAccessToken(accessInfo);
+
+    const service = new HttpService({
+      accessToken,
+      baseUrl: this.baseUrl,
+    });
+
+    const response = await service.performRequest(
+      this.#updateViewEndpoint,
+      parsedParams
+    );
+
+    if (!response.success) {
+      log("views.update failed %O", response);
+
+      return {
+        ok: false,
+        isRetryable: this.#isRetryable(response.statusCode),
+        response: {
+          output: response.error,
+          context: {
+            statusCode: response.statusCode,
+            headers: response.headers,
+          },
+        },
+      };
+    }
+
+    const ok = response.data.ok;
+
+    const performedRequest = {
+      ok,
+      isRetryable: this.#isRetryable(response.statusCode),
+      response: {
+        output: response.data,
+        context: {
+          statusCode: response.statusCode,
+          headers: response.headers,
+        },
+      },
+    };
+
+    log("views.update performedRequest %O", performedRequest);
+
+    return performedRequest;
+  }
+
+  async #pushView(
+    accessInfo: AccessInfo,
+    params: any,
+    cache?: CacheService,
+    metadata?: Record<string, string>
+  ): Promise<PerformedRequestResponse> {
+    const parsedParams = OpenViewBodySchema.parse(params);
+
+    log("views.push %O", parsedParams);
+
+    const accessToken = getAccessToken(accessInfo);
+
+    const service = new HttpService({
+      accessToken,
+      baseUrl: this.baseUrl,
+    });
+
+    const response = await service.performRequest(
+      this.#pushViewEndpoint,
+      parsedParams
+    );
+
+    if (!response.success) {
+      log("views.push failed %O", response);
+
+      return {
+        ok: false,
+        isRetryable: this.#isRetryable(response.statusCode),
+        response: {
+          output: response.error,
+          context: {
+            statusCode: response.statusCode,
+            headers: response.headers,
+          },
+        },
+      };
+    }
+
+    const ok = response.data.ok;
+
+    const performedRequest = {
+      ok,
+      isRetryable: this.#isRetryable(response.statusCode),
+      response: {
+        output: response.data,
+        context: {
+          statusCode: response.statusCode,
+          headers: response.headers,
+        },
+      },
+    };
+
+    log("views.push performedRequest %O", performedRequest);
 
     return performedRequest;
   }
