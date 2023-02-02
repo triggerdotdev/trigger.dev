@@ -5,15 +5,13 @@ import {
   Underlined,
   UnderlinedList,
 } from "~/components/StyledTabs";
-import { ArrowTopRightOnSquareIcon } from "@heroicons/react/24/outline";
-import type { IntegrationMetadata } from "@trigger.dev/integration-sdk";
 import {
-  PrimaryA,
-  PrimaryLink,
-  SecondaryA,
-  TertiaryA,
-  TertiaryLink,
-} from "./primitives/Buttons";
+  ArrowTopRightOnSquareIcon,
+  EnvelopeIcon,
+  StarIcon,
+} from "@heroicons/react/24/outline";
+import type { IntegrationMetadata } from "@trigger.dev/integration-sdk";
+import { PrimaryA, SecondaryA, TertiaryA } from "./primitives/Buttons";
 import { Body } from "./primitives/text/Body";
 import { SubTitle } from "./primitives/text/SubTitle";
 import { newUserSlackMessage } from "./samples/new-user-slack-message";
@@ -84,7 +82,12 @@ export function CreateNewWorkflowNoWorkflows({
             <Tab.Group>
               <LargeBoxList>
                 {exampleProjects.map((project) => {
-                  return <LargeBox key={project.name}>{project.name}</LargeBox>;
+                  return (
+                    <LargeBox key={project.name}>
+                      {project.icon}
+                      <Body>{project.name}</Body>
+                    </LargeBox>
+                  );
                 })}
               </LargeBoxList>
               {/* Example projects content */}
@@ -245,6 +248,7 @@ const exampleProjects = [
     name: "GitHub star → Slack",
     requiredPackages: "@trigger.dev/slack @trigger.dev/github zod",
     code: newUserSlackMessage,
+    icon: <StarIcon className="h-8 w-8 text-yellow-400" />,
     description:
       "This workflow posts a GitHub user's details to Slack every time you recieve a new GitHub star from them. You’ll notice that when we subscribe to the custom event we have to say the name of the event and provide a schema. Schemas are created using Zod. In this case events must send an object that has name, email, and paidPlan.",
     testCode: `{
@@ -258,6 +262,7 @@ const exampleProjects = [
     name: "New user → email",
     requiredPackages: "@trigger.dev/slack zod",
     code: newUserSlackMessage,
+    icon: <EnvelopeIcon className="h-8 w-8 text-blue-400" />,
     description: "",
     testCode: "",
   },

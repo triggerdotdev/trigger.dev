@@ -104,7 +104,7 @@ export function LargeBoxList({
 }: HeadlessTabListProps) {
   return (
     <HeadlessTab.List
-      className={classNames("flex max-w-fit gap-2", className)}
+      className={classNames("grid grid-cols-6 gap-2", className)}
       {...props}
     >
       {children}
@@ -118,9 +118,9 @@ export function LargeBox({ children, ...props }: HeadlessTabProps) {
       className={({ selected }: { selected: boolean }) =>
         classnames(
           selected
-            ? "rounded border border-transparent bg-indigo-600 text-white shadow outline-none"
-            : "rounded border border-slate-700  text-slate-300 transition hover:bg-slate-800 hover:text-slate-300 hover:shadow-none",
-          "flex whitespace-nowrap py-2 px-4 text-base font-medium"
+            ? "bg-slate-800 text-white shadow outline-none"
+            : "text-slate-300 transition hover:bg-slate-800/50 hover:text-slate-300 hover:shadow-none",
+          "flex flex-col items-center justify-center gap-4 rounded border border-slate-700 py-6 px-4 text-base font-medium"
         )
       }
       {...props}
