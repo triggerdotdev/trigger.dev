@@ -6,6 +6,8 @@ import * as slack from "@trigger.dev/slack";
 new Trigger({
   id: "github-issues-to-slack",
   name: "Posts to Slack when GitHub Issue created or modified",
+  // For security, we recommend moving this api key to your .env / secrets file. 
+  // Our env variable is called TRIGGER_API_KEY
   apiKey: "${apiKey}",
   on: github.events.issueEvent({
     repo: "my-github-org/my-github-repo",

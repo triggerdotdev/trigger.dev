@@ -10,6 +10,8 @@ import { InactiveEmail, TipsEmail, WelcomeEmail } from "./email-templates";
 new Trigger({
   id: "welcome-email-campaign",
   name: "Welcome email drip campaign",
+  // For security, we recommend moving this api key to your .env / secrets file. 
+  // Our env variable is called TRIGGER_API_KEY
   apiKey: "${apiKey}",
   on: customEvent({
     name: "user.created",

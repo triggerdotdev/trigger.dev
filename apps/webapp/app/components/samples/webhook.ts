@@ -1,4 +1,3 @@
-
 export function webhook() {
 return `import { webhookEvent, Trigger } from "@trigger.dev/sdk";
 

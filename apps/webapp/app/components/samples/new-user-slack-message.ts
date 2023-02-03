@@ -6,6 +6,8 @@ import { z } from "zod";
 new Trigger({
   id: "new-user",
   name: "New user slack message",
+  // For security, we recommend moving this api key to your .env / secrets file. 
+  // Our env variable is called TRIGGER_API_KEY
   apiKey: "${apiKey}",
   on: customEvent({
     name: "user.created",
