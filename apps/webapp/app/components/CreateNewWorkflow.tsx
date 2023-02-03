@@ -20,7 +20,7 @@ import { Header4 } from "./primitives/text/Headers";
 import classNames from "classnames";
 import { useCurrentEnvironment } from "~/hooks/useEnvironments";
 import invariant from "tiny-invariant";
-import { ReactNode } from "react";
+import type { ReactNode } from "react";
 
 export function CreateNewWorkflow() {
   return (
