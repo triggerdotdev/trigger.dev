@@ -103,9 +103,12 @@ function WorkflowList({
                 workflow.status === "DISABLED" ? workflowDisabled : ""
               )}
             >
-              <div className="absolute top-2 -right-8 rotate-45 bg-green-700 px-8 font-semibold uppercase tracking-wide shadow-md">
-                New
-              </div>
+              {workflow.lastRun === undefined && (
+                <div className="absolute top-2 -right-8 rotate-45 bg-green-700 px-8 font-semibold uppercase tracking-wide shadow-md">
+                  New
+                </div>
+              )}
+
               <div className="flex flex-col flex-wrap justify-between py-4 pl-4 pr-4 lg:flex-row lg:flex-nowrap lg:items-center">
                 <div className="flex flex-1 items-center justify-between">
                   <div className="relative flex items-center">
