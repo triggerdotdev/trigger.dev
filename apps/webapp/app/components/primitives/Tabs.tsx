@@ -104,7 +104,7 @@ export function LargeBoxList({
 }: HeadlessTabListProps) {
   return (
     <HeadlessTab.List
-      className={classNames("grid grid-cols-6 gap-2", className)}
+      className={classNames("grid grid-cols-carousel gap-2", className)}
       {...props}
     >
       {children}

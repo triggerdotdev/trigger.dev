@@ -59,22 +59,26 @@ export default function NewWorkflowPage() {
         </Header4>
       </div>
       <Tab.Group>
-        <UnderlinedList>
-          <Underlined>Start from an example</Underlined>
-          <Underlined>Start from scratch</Underlined>
-        </UnderlinedList>
+        <div className={maxWidth}>
+          <UnderlinedList>
+            <Underlined>Start from an example</Underlined>
+            <Underlined>Start from scratch</Underlined>
+          </UnderlinedList>
+        </div>
         <Tab.Panels className="flex-grow pt-4">
           <Tab.Panel className="relative h-full">
             {/* Example projects tabs */}
             <Tab.Group>
-              <div className="w-4xl overflow-hidden overflow-x-auto">
+              <div className="-ml-12 max-w-[59rem] overflow-hidden overflow-x-auto  border-r border-slate-700 pl-12">
                 <LargeBoxList>
                   {exampleProjects.map((project) => {
                     return (
-                      <LargeBox key={project.name}>
-                        {project.icon}
-                        <Body>{project.name}</Body>
-                      </LargeBox>
+                      <>
+                        <LargeBox key={project.name}>
+                          {project.icon}
+                          <Body>{project.name}</Body>
+                        </LargeBox>
+                      </>
                     );
                   })}
                 </LargeBoxList>
@@ -84,7 +88,7 @@ export default function NewWorkflowPage() {
                 {exampleProjects.map((project) => {
                   return (
                     <Tab.Panel key={project.name} className="relative h-full">
-                      <div className="mb-4 flex items-center gap-2">
+                      <div className="mb-4 mt-4 flex items-center gap-2">
                         {project.icon}
                         <Header4
                           size="small"
@@ -97,7 +101,7 @@ export default function NewWorkflowPage() {
                         {project.description}
                       </Body>
                       <Body size="regular" className="mb-2 text-slate-400">
-                        Install these extra API integration packages:
+                        Install these additional API integration packages:
                       </Body>
                       <InstallPackages packages={project.requiredPackages} />
                       <Body size="regular" className="mb-2 mt-4 text-slate-400">
@@ -172,11 +176,15 @@ export default function NewWorkflowPage() {
           <Tab.Panel className="relative h-full">
             <Tab.Group>
               {/* From scratch projects titles */}
-              <LargeBoxList>
-                {fromScratchProjects.map((project) => {
-                  return <LargeBox key={project.name}>{project.name}</LargeBox>;
-                })}
-              </LargeBoxList>
+              <div className="-ml-12 max-w-[59rem] overflow-hidden overflow-x-auto pl-12">
+                <LargeBoxList>
+                  {fromScratchProjects.map((project) => {
+                    return (
+                      <LargeBox key={project.name}>{project.name}</LargeBox>
+                    );
+                  })}
+                </LargeBoxList>
+              </div>
               {/* From scratch projects content */}
               <Tab.Panels className={classNames("flex-grow pt-4", maxWidth)}>
                 {fromScratchProjects.map((project) => {

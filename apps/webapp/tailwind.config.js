@@ -18,6 +18,9 @@ module.exports = {
         },
         toxic: toxicColors[500],
       },
+      gridTemplateColumns: {
+        'carousel': 'repeat(6, 200px)',
+      }
     },
   },
 };
