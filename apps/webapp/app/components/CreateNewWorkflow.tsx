@@ -66,7 +66,7 @@ export function CreateNewWorkflowNoWorkflows({
   }
   invariant(environment, "Environment must be defined");
   return (
-    <>
+    <div className="max-w-4xl">
       <Header4 size="regular" className={subTitle}>
         1. Install the Trigger.dev package
       </Header4>
@@ -159,33 +159,30 @@ export function CreateNewWorkflowNoWorkflows({
                         size="regular"
                         className={classNames(subTitle, "mt-8")}
                       >
-                        4. Test your workflow from the dashboard
+                        5. Test your workflow from the dashboard
                       </Header4>
                       <Body size="regular" className="mb-4 text-slate-400">
-                        Now that the workflow is connected to Trigger.dev we
-                        need to trigger it. You can easily test your workflow
-                        from your{" "}
-                        <TertiaryA
-                          href="https://app.trigger.dev/"
+                        On the{" "}
+                        <TertiaryLink
+                          to={`/orgs/${currentOrganization.slug}`}
                           className="!text-base text-slate-400 underline decoration-green-500 underline-offset-2 transition hover:decoration-[3px]"
                         >
-                          Trigger.dev
-                        </TertiaryA>{" "}
-                        dashboard.
+                          Organization page
+                        </TertiaryLink>{" "}
+                        you should see that the Workflow has now appeared (you
+                        may need to refresh the page since running your server
+                        in the previous step).
                       </Body>
                       <Body size="regular" className="mb-4 text-slate-400">
-                        On the organization page you should see that the
-                        Workflow has now appeared (you may need to refresh the
-                        page from last time).
+                        The workflow is connected to Trigger.dev so the next
+                        step is to trigger it. You can easily test your workflow
+                        by clicking on it from the Workflows page and selecting
+                        the Test tab in the side menu.
                       </Body>
+
                       <Body size="regular" className="mb-4 text-slate-400">
-                        Click the new workflow and you will be take to the
-                        workflow page. There have been no runs yet.
-                      </Body>
-                      <Body size="regular" className="mb-4 text-slate-400">
-                        Click the “Test” page in the left hand menu and input a
-                        valid test event. Remember the workflow expects a name,
-                        email and paidPlan. You can copy this:
+                        In the test field, input a valid test event. You can
+                        copy this example:
                       </Body>
                       <CodeBlock
                         code="test code"
@@ -194,52 +191,8 @@ export function CreateNewWorkflowNoWorkflows({
                         className="mb-4"
                       />
                       <Body size="regular" className="mb-4 text-slate-400">
-                        Hit the “Run test” button and it will take us to our
-                        first run.
-                      </Body>
-                      <Header4
-                        size="regular"
-                        className={classNames(subTitle, "mt-8")}
-                      >
-                        5. The run page
-                      </Header4>
-                      <Body size="regular" className="mb-4 text-slate-400">
-                        All of the steps in a workflow, including the initial
-                        event, can be viewed in detail. You will need to refresh
-                        the page if it’s running to see it move between steps.
-                      </Body>
-                      <Body size="regular" className="mb-4 text-slate-400">
-                        But there’s a problem, we’ve used Slack in our code and
-                        we haven’t authenticated.
-                      </Body>
-                      <Header4
-                        size="regular"
-                        className={classNames(subTitle, "mt-8")}
-                      >
-                        6. Authenticating with Slack
-                      </Header4>
-                      <Body size="regular" className="mb-4 text-slate-400">
-                        But there’s a problem, we’ve used Slack in our code but
-                        we haven’t authenticated.
-                      </Body>
-                      <Body size="regular" className="mb-4 text-slate-400">
-                        Simply click the “Connect to Slack” button and sign-in
-                        with your desired Slack workspace. As soon as you do,
-                        the workflow will pick up where it left off.
-                      </Body>
-                      <Body size="regular" className="mb-4 text-slate-400">
-                        Test complete!
-                      </Body>
-                      <Header4
-                        size="regular"
-                        className={classNames(subTitle, "mt-8")}
-                      >
-                        7. Triggering this workflow from code
-                      </Header4>
-                      <Body size="regular" className="mb-4 text-slate-400">
-                        As this workflow uses a custom event, we need to
-                        manually trigger it from our code. Anywhere in your code
-                        you can do this:
+                        Hit the “Run test” button and it will take you to the
+                        run. Refresh the page to see it move between steps.
                       </Body>
                     </Tab.Panel>
                   );
@@ -272,7 +225,7 @@ export function CreateNewWorkflowNoWorkflows({
           </Tab.Panel>
         </Tab.Panels>
       </Tab.Group>
-    </>
+    </div>
   );
 }
 
