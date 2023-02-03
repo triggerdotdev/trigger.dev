@@ -11,7 +11,12 @@ import {
   StarIcon,
 } from "@heroicons/react/24/outline";
 import type { IntegrationMetadata } from "@trigger.dev/integration-sdk";
-import { PrimaryA, SecondaryA, TertiaryA } from "./primitives/Buttons";
+import {
+  PrimaryA,
+  SecondaryA,
+  TertiaryA,
+  TertiaryLink,
+} from "./primitives/Buttons";
 import { Body } from "./primitives/text/Body";
 import { SubTitle } from "./primitives/text/SubTitle";
 import { newUserSlackMessage } from "./samples/new-user-slack-message";
@@ -21,6 +26,7 @@ import classNames from "classnames";
 import { useCurrentEnvironment } from "~/hooks/useEnvironments";
 import invariant from "tiny-invariant";
 import type { ReactNode } from "react";
+import { useCurrentOrganization } from "~/hooks/useOrganizations";
 
 export function CreateNewWorkflow() {
   return (
@@ -54,6 +60,10 @@ export function CreateNewWorkflowNoWorkflows({
   providers: IntegrationMetadata[];
 }) {
   const environment = useCurrentEnvironment();
+  const currentOrganization = useCurrentOrganization();
+  if (currentOrganization === undefined) {
+    return <></>;
+  }
   invariant(environment, "Environment must be defined");
   return (
     <>
@@ -88,12 +98,15 @@ export function CreateNewWorkflowNoWorkflows({
                 {exampleProjects.map((project) => {
                   return (
                     <Tab.Panel key={project.name} className="relative h-full">
-                      <Header4
-                        size="small"
-                        className="mb-2 font-semibold text-slate-300"
-                      >
-                        {project.title}
-                      </Header4>
+                      <div className="mb-4 flex items-center gap-2">
+                        {project.icon}
+                        <Header4
+                          size="small"
+                          className="font-semibold text-slate-300"
+                        >
+                          {project.title}
+                        </Header4>
+                      </div>
                       <Body size="regular" className="mb-4 text-slate-400">
                         {project.description}
                       </Body>
@@ -101,14 +114,133 @@ export function CreateNewWorkflowNoWorkflows({
                         Install these extra API integration packages:
                       </Body>
                       <InstallPackages packages={project.requiredPackages} />
-                      <Body size="regular" className="mb-2 text-slate-400">
-                        Copy this code into your project. Your API key is
-                        already inserted.
+                      <Body size="regular" className="mb-2 mt-4 text-slate-400">
+                        Copy this code into your project. Your API key has
+                        already been inserted.
                       </Body>
                       <CodeBlock
                         code={project.code(environment.apiKey)}
                         align="top"
                       />
+                      <Header4
+                        size="regular"
+                        className={classNames(subTitle, "mt-8")}
+                      >
+                        3. Authenticate with {project.packagesCopy}
+                      </Header4>
+                      <Body size="regular" className="mb-4 text-slate-400">
+                        This project requires an API integration with{" "}
+                        {project.packagesCopy}. Add these now in the{" "}
+                        <TertiaryLink
+                          to={`/orgs/${currentOrganization.slug}/integrations`}
+                          className="!text-base text-slate-400 underline decoration-green-500 underline-offset-2 transition hover:decoration-[3px]"
+                        >
+                          API Integrations tab
+                        </TertiaryLink>
+                        . Once you've authenticated, return here and continue
+                        with the next step.
+                      </Body>
+                      <Header4
+                        size="regular"
+                        className={classNames(subTitle, "mt-8")}
+                      >
+                        4. Run your web server
+                      </Header4>
+                      <Body size="regular" className="mb-4 text-slate-400">
+                        Run your server how you normally would, e.g.{" "}
+                        <InlineCode>npm run dev</InlineCode>. This will connect
+                        your workflow to Trigger.dev, so we can start sending
+                        you events. You should see some log messages in your
+                        server console (tip: you can turn these off by removing
+                        the <InlineCode>logLevel: "info"</InlineCode> from the
+                        code above).
+                      </Body>
+                      <Header4
+                        size="regular"
+                        className={classNames(subTitle, "mt-8")}
+                      >
+                        4. Test your workflow from the dashboard
+                      </Header4>
+                      <Body size="regular" className="mb-4 text-slate-400">
+                        Now that the workflow is connected to Trigger.dev we
+                        need to trigger it. You can easily test your workflow
+                        from your{" "}
+                        <TertiaryA
+                          href="https://app.trigger.dev/"
+                          className="!text-base text-slate-400 underline decoration-green-500 underline-offset-2 transition hover:decoration-[3px]"
+                        >
+                          Trigger.dev
+                        </TertiaryA>{" "}
+                        dashboard.
+                      </Body>
+                      <Body size="regular" className="mb-4 text-slate-400">
+                        On the organization page you should see that the
+                        Workflow has now appeared (you may need to refresh the
+                        page from last time).
+                      </Body>
+                      <Body size="regular" className="mb-4 text-slate-400">
+                        Click the new workflow and you will be take to the
+                        workflow page. There have been no runs yet.
+                      </Body>
+                      <Body size="regular" className="mb-4 text-slate-400">
+                        Click the “Test” page in the left hand menu and input a
+                        valid test event. Remember the workflow expects a name,
+                        email and paidPlan. You can copy this:
+                      </Body>
+                      <CodeBlock
+                        code="test code"
+                        align="top"
+                        language="json"
+                        className="mb-4"
+                      />
+                      <Body size="regular" className="mb-4 text-slate-400">
+                        Hit the “Run test” button and it will take us to our
+                        first run.
+                      </Body>
+                      <Header4
+                        size="regular"
+                        className={classNames(subTitle, "mt-8")}
+                      >
+                        5. The run page
+                      </Header4>
+                      <Body size="regular" className="mb-4 text-slate-400">
+                        All of the steps in a workflow, including the initial
+                        event, can be viewed in detail. You will need to refresh
+                        the page if it’s running to see it move between steps.
+                      </Body>
+                      <Body size="regular" className="mb-4 text-slate-400">
+                        But there’s a problem, we’ve used Slack in our code and
+                        we haven’t authenticated.
+                      </Body>
+                      <Header4
+                        size="regular"
+                        className={classNames(subTitle, "mt-8")}
+                      >
+                        6. Authenticating with Slack
+                      </Header4>
+                      <Body size="regular" className="mb-4 text-slate-400">
+                        But there’s a problem, we’ve used Slack in our code but
+                        we haven’t authenticated.
+                      </Body>
+                      <Body size="regular" className="mb-4 text-slate-400">
+                        Simply click the “Connect to Slack” button and sign-in
+                        with your desired Slack workspace. As soon as you do,
+                        the workflow will pick up where it left off.
+                      </Body>
+                      <Body size="regular" className="mb-4 text-slate-400">
+                        Test complete!
+                      </Body>
+                      <Header4
+                        size="regular"
+                        className={classNames(subTitle, "mt-8")}
+                      >
+                        7. Triggering this workflow from code
+                      </Header4>
+                      <Body size="regular" className="mb-4 text-slate-400">
+                        As this workflow uses a custom event, we need to
+                        manually trigger it from our code. Anywhere in your code
+                        you can do this:
+                      </Body>
                     </Tab.Panel>
                   );
                 })}
@@ -140,100 +272,6 @@ export function CreateNewWorkflowNoWorkflows({
           </Tab.Panel>
         </Tab.Panels>
       </Tab.Group>
-      <Header4 size="regular" className={classNames(subTitle, "mt-8")}>
-        3. Run your web server
-      </Header4>
-      <Body size="regular" className="mb-4 text-slate-400">
-        Run your server how you normally would, e.g.{" "}
-        <InlineCode>npm run dev</InlineCode>. This will connect your workflow to
-        Trigger.dev, so we can start sending you events. You should see some log
-        messages in your server console (tip: you can turn these off by removing
-        the <InlineCode>logLevel: "info"</InlineCode> from the code above).
-      </Body>
-      <Header4 size="regular" className={classNames(subTitle, "mt-8")}>
-        4. Test your workflow from the dashboard
-      </Header4>
-      <Body size="regular" className="mb-4 text-slate-400">
-        Now that the workflow is connected to Trigger.dev we need to trigger it.
-        You can easily test your workflow from your{" "}
-        <TertiaryA
-          href="https://app.trigger.dev/"
-          className="!text-base text-slate-400 underline decoration-green-500 underline-offset-2 transition hover:decoration-[3px]"
-        >
-          Trigger.dev
-        </TertiaryA>{" "}
-        dashboard.
-      </Body>
-      <Body size="regular" className="mb-4 text-slate-400">
-        On the organization page you should see that the Workflow has now
-        appeared (you may need to refresh the page from last time).
-      </Body>
-      <Body size="regular" className="mb-4 text-slate-400">
-        Click the new workflow and you will be take to the workflow page. There
-        have been no runs yet.
-      </Body>
-      <Body size="regular" className="mb-4 text-slate-400">
-        Click the “Test” page in the left hand menu and input a valid test
-        event. Remember the workflow expects a name, email and paidPlan. You can
-        copy this:
-      </Body>
-      <CodeBlock
-        code="test code"
-        align="top"
-        language="json"
-        className="mb-4"
-      />
-      <Body size="regular" className="mb-4 text-slate-400">
-        Hit the “Run test” button and it will take us to our first run.
-      </Body>
-      <Header4 size="regular" className={classNames(subTitle, "mt-8")}>
-        5. The run page
-      </Header4>
-      <Body size="regular" className="mb-4 text-slate-400">
-        All of the steps in a workflow, including the initial event, can be
-        viewed in detail. You will need to refresh the page if it’s running to
-        see it move between steps.
-      </Body>
-      <Body size="regular" className="mb-4 text-slate-400">
-        But there’s a problem, we’ve used Slack in our code and we haven’t
-        authenticated.
-      </Body>
-      <Header4 size="regular" className={classNames(subTitle, "mt-8")}>
-        6. Authenticating with Slack
-      </Header4>
-      <Body size="regular" className="mb-4 text-slate-400">
-        But there’s a problem, we’ve used Slack in our code but we haven’t
-        authenticated.
-      </Body>
-      <Body size="regular" className="mb-4 text-slate-400">
-        Simply click the “Connect to Slack” button and sign-in with your desired
-        Slack workspace. As soon as you do, the workflow will pick up where it
-        left off.
-      </Body>
-      <Body size="regular" className="mb-4 text-slate-400">
-        Test complete!
-      </Body>
-      <Header4 size="regular" className={classNames(subTitle, "mt-8")}>
-        7. Triggering this workflow from code
-      </Header4>
-      <Body size="regular" className="mb-4 text-slate-400">
-        As this workflow uses a custom event, we need to manually trigger it
-        from our code. Anywhere in your code you can do this:
-      </Body>
-      {/* <SubTitle>Join the community</SubTitle>
-      <Panel className="max-w-4xl p-6">
-        <Body className="mb-4 text-slate-300">
-          To get help quickly and answers to any questions, join our Discord.
-        </Body>
-        <PrimaryA
-          href="https://discord.gg/kA47vcd8P6"
-          target="_blank"
-          rel="noreferrer"
-        >
-          <img src={discord} alt="Discord" className="-ml-1 h-3.5" />
-          <span>Join Discord</span>
-        </PrimaryA>
-      </Panel> */}
     </>
   );
 }
@@ -254,6 +292,7 @@ const exampleProjects = [
     description:
       "Schemas are created using Zod. In this case events must send an object that has name, email, and paidPlan.",
     requiredPackages: "@trigger.dev/slack @trigger.dev/github zod",
+    packagesCopy: "GitHub and Slack",
     code: newUserSlackMessage,
     testCode: `{
     "name": "Rick Astley",
@@ -268,6 +307,7 @@ const exampleProjects = [
     title: "When a new user signs up, send them a series of emails",
     description: "Description here",
     requiredPackages: "@trigger.dev/slack zod",
+    packagesCopy: "Slack",
     code: newUserSlackMessage,
     testCode: "",
   },
