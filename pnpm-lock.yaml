@@ -48,7 +48,7 @@ importers:
       '@codemirror/search': ^6.2.3
       '@codemirror/state': ^6.1.3
       '@codemirror/view': ^6.5.0
-      '@faker-js/faker': ^7.5.0
+      '@faker-js/faker': ^7.6.0
       '@headlessui/react': ^1.6.4
       '@heroicons/react': ^2.0.12
       '@jsonhero/fetch-hero': ^0.2.2
@@ -136,6 +136,7 @@ importers:
       isbot: ^3.6.5
       javascript-time-ago: ^2.5.7
       json-query: ^2.2.2
+      json-schema-faker: 0.5.0-rcv.46
       jsonata: ^1.8.6
       jsonschema: ^1.4.1
       keyv: ^4.3.2
@@ -242,6 +243,7 @@ importers:
       isbot: 3.6.5
       javascript-time-ago: 2.5.9
       json-query: 2.2.2
+      json-schema-faker: 0.5.0-rcv.46
       jsonata: 1.8.6
       jsonschema: 1.4.1
       keyv: 4.5.2
@@ -966,6 +968,7 @@ importers:
       ws: ^8.11.0
       zod: ^3.20.2
       zod-error: ^1.1.0
+      zod-to-json-schema: ^3.20.2
     dependencies:
       debug: 4.3.4
       evt: 2.4.13
@@ -976,6 +979,7 @@ importers:
       ws: 8.12.0
       zod: 3.20.2
       zod-error: 1.1.0
+      zod-to-json-schema: 3.20.2_zod@3.20.2
     devDependencies:
       '@trigger.dev/common-schemas': link:../common-schemas
       '@trigger.dev/tsconfig': link:../../config-packages/tsconfig
@@ -9749,6 +9753,10 @@ packages:
       combined-stream: 1.0.8
       mime-types: 2.1.35
 
+  /format-util/1.0.5:
+    resolution: {integrity: sha512-varLbTj0e0yVyRpqQhuWV+8hlePAgaoFRhNFj50BNjEIrw1/DphHSObtqwskVCPWNgzwPoQrZAbfa/SBiicNeg==}
+    dev: false
+
   /format/0.2.2:
     resolution: {integrity: sha512-wzsgA6WOq+09wrU1tsJ09udeR/YZRaeArL9e1wPbFg3GG2yDnC2ldKpxs4xunpFF9DgqCqOIra3bc1HWrJ37Ww==}
     engines: {node: '>=0.4.x'}
@@ -11298,6 +11306,23 @@ packages:
     resolution: {integrity: sha512-y+IcVZSdqNmS4fO8t1uZF6RMMs0xh3SrTjJr9bp1X3+v0Q13+7Cyv12dSmKwDswp/H427BVtpkLWhGxYu3ZWRA==}
     dev: false
 
+  /json-schema-faker/0.5.0-rcv.46:
+    resolution: {integrity: sha512-Q+sGrxptZfezwm7M9W9VmHT9E8s5fWPCaRC4J2zUjb3CmDsxokiCBdHdS/psu91Tafc/ITv+GtIztGzUVT2zIg==}
+    hasBin: true
+    dependencies:
+      json-schema-ref-parser: 6.1.0
+      jsonpath-plus: 5.1.0
+    dev: false
+
+  /json-schema-ref-parser/6.1.0:
+    resolution: {integrity: sha512-pXe9H1m6IgIpXmE5JSb8epilNTGsmTb2iPohAXpOdhqGFbQjNeHHsZxU+C8w6T81GZxSPFLeUoqDJmzxx5IGuw==}
+    deprecated: Please switch to @apidevtools/json-schema-ref-parser
+    dependencies:
+      call-me-maybe: 1.0.2
+      js-yaml: 3.14.1
+      ono: 4.0.11
+    dev: false
+
   /json-schema-traverse/0.4.1:
     resolution: {integrity: sha512-xbbCH5dCYU5T8LcEhhuh7HJ88HXuW3qsI3Y0zOZFKfZEHcpWiHU/Jxzk629Brsab/mMiHQti9wMP+845RPe3Vg==}
     dev: true
@@ -11348,6 +11373,11 @@ packages:
     optionalDependencies:
       graceful-fs: 4.2.10
     dev: true
+
+  /jsonpath-plus/5.1.0:
+    resolution: {integrity: sha512-890w2Pjtj0iswAxalRlt2kHthi6HKrXEfZcn+ZNZptv7F3rUGIeDuZo+C+h4vXBHLEsVjJrHeCm35nYeZLzSBQ==}
+    engines: {node: '>=10.0.0'}
+    dev: false
 
   /jsonschema/1.4.1:
     resolution: {integrity: sha512-S6cATIPVv1z0IlxdN+zUk5EPjkGCdnhN4wVSBlvoUO1tOLJootbo9CquNJmbIh4yikWHiUedhRYrNPn1arpEmQ==}
@@ -13100,6 +13130,12 @@ packages:
     engines: {node: '>=6'}
     dependencies:
       mimic-fn: 2.1.0
+
+  /ono/4.0.11:
+    resolution: {integrity: sha512-jQ31cORBFE6td25deYeD80wxKBMj+zBmHTrVxnc6CKhx8gho6ipmWM5zj/oeoqioZ99yqBls9Z/9Nss7J26G2g==}
+    dependencies:
+      format-util: 1.0.5
+    dev: false
 
   /open/8.4.0:
     resolution: {integrity: sha512-XgFPPM+B28FtCCgSb9I+s9szOC1vZRSwgWsRUA5ylIxRTgKozqjOCrVOqGsYABPYK5qnfqClxZTFBa8PKt2v6Q==}

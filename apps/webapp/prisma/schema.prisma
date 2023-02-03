@@ -120,6 +120,8 @@ model Workflow {
 
   packageJson Json?
 
+  jsonSchema Json?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
