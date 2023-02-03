@@ -1,0 +1,152 @@
+---
+title: "Run Once"
+sidebarTitle: "Run Once"
+description: "Perform an action only once per run, even if your server is restarted."
+---
+
+## Usage
+
+A `runOnce` function is available to use inside a `Trigger.run` function through the `context` argument, allowing you to run a callback function only once [\*](#caveats) per run, based on the key you provide. This makes it so you can write code that participates in the Trigger.dev resumability system, even if your server is restarted.
+
+<Note>
+  Please see our detailed [Keys and Resumability guide](/guides/resumability)
+  for more information on how Trigger.dev handles resumability.
+</Note>
+
+```ts
+import { Trigger } from "@trigger.dev/sdk";
+
+new Trigger({
+  id: "run-once-example",
+  name: "Run Once Example",
+  on: customEvent({
+    name: "example.runOnce",
+  }),
+  run: async (event, ctx) => {
+    await ctx.runOnce("Example Key", async (idempotencyKey) =>
+      performIdempotentAction(idempotencyKey)
+    );
+  },
+}).listen();
+```
+
+The `performIdempotentAction` above is only called once [\*](#caveats) per run, even if the server is restarted. The `idempotencyKey` is a unique key that is generated for each run, and is used to ensure that the action is only performed once per run.
+
+<Info>
+  The Stripe API is a great example of an API that uses idempotency keys to
+  ensure that an action is only performed once. You can read more about it in
+  their [Idempotent Requests
+  docs](https://stripe.com/docs/api/idempotent_requests)
+</Info>
+
+Your callback can also optionally return a value, and that value will be returned from the `runOnce` function.
+
+```ts
+import { Trigger } from "@trigger.dev/sdk";
+
+new Trigger({
+  id: "run-once-example",
+  name: "Run Once Example",
+  on: customEvent({
+    name: "example.runOnce",
+  }),
+  run: async (event, ctx) => {
+    const output = await ctx.runOnce("Example Key", async (idempotencyKey) =>
+      performIdempotentAction(idempotencyKey)
+    );
+
+    // Do something with the output
+    // ...
+  },
+}).listen();
+```
+
+In your app.trigger.dev run dashboard we will also display the output of your `runOnce` function, so you can see what it returned easily:
+
+![Run Once Output](/images/run-once-output.png)
+
+## Caveats
+
+As you may have noticed above, we've used cleverly placed asterisks above to signal that your callback passed to the `runOnce` function MAY actually be called more than once, in certain situations.
+
+It's possible that in between us running the `runOnce` callback and attempting to send the result to trigger.dev, an issue occurs and we are unable to save the result. If this happens, and we [resume](/guides/resumability) the same run at a later time, your callback function will be called again (but with the same idempotency key).
+
+This is why it's important that your callback function is truly idempotent. If you're not sure what that means, we recommend reading the [Stripe docs on idempotent requests](https://stripe.com/docs/api/idempotent_requests).
+
+## Local Only
+
+If you don't want to send the result of the `runOnce` callback to trigger.dev, you can alternatively use the `runOnceLocalOnly` function. This is useful if you want to use the `runOnce` functionality, but don't want to store the value in the Trigger.dev database.
+
+<Warning>
+  `runOnceLocalOnly` will ALWAYS call your callback function, so be extra sure
+  your callback is truly idempotent. See below for more information.
+</Warning>
+
+```ts
+import { Trigger } from "@trigger.dev/sdk";
+
+new Trigger({
+  id: "run-once-local-only-example",
+  name: "Run Once Local Only Example",
+  on: customEvent({
+    name: "example.runOnce",
+  }),
+  run: async (event, ctx) => {
+    const output = await ctx.runOnceLocalOnly(
+      "Example Key",
+      async (idempotencyKey) => performIdempotentAction(idempotencyKey)
+    );
+
+    // Do something with the output
+    // ...
+  },
+}).listen();
+```
+
+## Real World Example
+
+Let's say you want to use the Stripe SDK to make an idempotent charge to a customer using trigger.dev. You can use the `runOnce` function to generate an `idempotencyKey` and pass it to the Stripe SDK, ensuring that the charge is only made once per run.
+
+```ts
+import { Trigger } from "@trigger.dev/sdk";
+import Stripe from "stripe";
+import z from "zod";
+
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, {
+  apiVersion: "2020-08-27",
+});
+
+new Trigger({
+  id: "stripe-charge",
+  name: "Stripe Charge",
+  on: customEvent({
+    name: "example.stripeCharge",
+    schema: z.object({
+      orderId: z.string(),
+      customerId: z.string(),
+      amount: z.number(),
+    }),
+  }),
+  run: async (event, ctx) => {
+    const { customerId, amount, orderId } = event.data;
+
+    const stripeResponse = await ctx.runOnce(
+      orderId,
+      async (idempotencyKey) => {
+        return await stripe.charges.create(
+          {
+            amount,
+            currency: "usd",
+            customer: customerId,
+          },
+          {
+            idempotencyKey,
+          }
+        );
+      }
+    );
+
+    return stripeResponse;
+  },
+}).listen();
+```

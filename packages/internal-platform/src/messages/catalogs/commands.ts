@@ -4,6 +4,7 @@ import { commands as logs } from "../schemas/logs";
 import { commands as customEvents } from "../schemas/customEvents";
 import { commands as delays } from "../schemas/delays";
 import { commands as fetchRequests } from "../schemas/fetchRequests";
+import { commands as runOnce } from "../schemas/runOnce";
 
 const Catalog = {
   ...integrationRequests,
@@ -12,6 +13,7 @@ const Catalog = {
   ...customEvents,
   ...delays,
   ...fetchRequests,
+  ...runOnce,
 };
 
 export default Catalog;

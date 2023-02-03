@@ -49,7 +49,12 @@
   "navigation": [
     {
       "group": "Getting Started",
-      "pages": ["welcome", "getting-started", "get-help", "viewing-runs"]
+      "pages": [
+        "welcome",
+        "getting-started",
+        "get-help",
+        "viewing-runs"
+      ]
     },
     {
       "group": "Example workflows",
@@ -95,11 +100,15 @@
             },
             {
               "group": "Slack",
-              "pages": ["integrations/apis/slack/actions/post-message"]
+              "pages": [
+                "integrations/apis/slack/actions/post-message"
+              ]
             },
             {
               "group": "Resend.com",
-              "pages": ["integrations/apis/resend/actions/send-email"]
+              "pages": [
+                "integrations/apis/resend/actions/send-email"
+              ]
             },
             {
               "group": "WhatsApp",
@@ -107,7 +116,9 @@
                 "integrations/apis/whatsapp/index",
                 {
                   "group": "Events",
-                  "pages": ["integrations/apis/whatsapp/events/message"]
+                  "pages": [
+                    "integrations/apis/whatsapp/events/message"
+                  ]
                 },
                 {
                   "group": "Actions",
@@ -137,6 +148,7 @@
         "functions/logging",
         "functions/delays",
         "functions/send-event",
+        "functions/run-once",
         "functions/loops-conditionals-etc"
       ]
     },
@@ -161,7 +173,9 @@
     },
     {
       "group": "API Reference",
-      "pages": ["api/events/sendEvent"]
+      "pages": [
+        "api/events/sendEvent"
+      ]
     },
     {
       "group": "Webhook Catalog",
@@ -193,8 +207,7 @@
   },
   "analytics": {
     "posthog": {
-        "apiKey": "phc_cU8Ow5tDcy9alp09yWYpad98CHafOsfsXK3HzLM6uy0"
+      "apiKey": "phc_cU8Ow5tDcy9alp09yWYpad98CHafOsfsXK3HzLM6uy0"
     }
+  }
 }
-}
-

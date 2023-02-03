@@ -1,6 +1,8 @@
 import {
+  CompleteRunOnceSchema,
   CustomEventSchema,
   FetchRequestSchema,
+  InitializeRunOnceSchema,
   RetrySchema,
   TriggerMetadataSchema,
   WaitSchema,
@@ -107,6 +109,24 @@ export const ServerRPCSchema = {
         stackTrace: z.string().optional(),
       }),
       timestamp: z.string(),
+    }),
+    response: z.boolean(),
+  },
+  INITIALIZE_RUN_ONCE: {
+    request: z.object({
+      runId: z.string(),
+      key: z.string(),
+      timestamp: z.string(),
+      runOnce: InitializeRunOnceSchema,
+    }),
+    response: z.boolean(),
+  },
+  COMPLETE_RUN_ONCE: {
+    request: z.object({
+      runId: z.string(),
+      key: z.string(),
+      timestamp: z.string(),
+      runOnce: CompleteRunOnceSchema,
     }),
     response: z.boolean(),
   },

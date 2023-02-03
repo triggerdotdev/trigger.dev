@@ -52,6 +52,9 @@ import { WorkflowRunTriggerTimeout } from "./runs/runTriggerTimeout.server";
 import { DeliverScheduledEvent } from "./scheduler/deliverScheduledEvent.server";
 import { RegisterSchedulerSource } from "./scheduler/registerSchedulerSource.server";
 import { omit } from "~/utils/objects";
+import { findWorkflowStepById } from "~/models/workflowRunStep.server";
+import { InitializeRunOnce } from "./runOnce/initializeRunOnce.server";
+import { CompleteRunOnce } from "./runOnce/completeRunOnce.server";
 
 let pulsarClient: PulsarClient;
 let triggerPublisher: ZodPublisher<TriggerCatalog>;
@@ -273,6 +276,25 @@ function createCommandSubscriber() {
 
         return true;
       },
+      INITIALIZE_RUN_ONCE: async (id, data, properties) => {
+        const service = new InitializeRunOnce();
+
+        await service.call(
+          properties["x-workflow-run-id"],
+          data.key,
+          properties["x-timestamp"],
+          data.runOnce
+        );
+
+        return true;
+      },
+      COMPLETE_RUN_ONCE: async (id, data, properties) => {
+        const service = new CompleteRunOnce();
+
+        await service.call(data.runOnce);
+
+        return true;
+      },
     },
   });
 
@@ -432,6 +454,10 @@ const taskQueueCatalog = {
   },
   SEND_INTERNAL_EVENT: {
     data: CustomEventSchema.extend({ id: z.string() }),
+    properties: z.object({}),
+  },
+  RESOLVE_RUN_ONCE: {
+    data: z.object({ stepId: z.string(), hasRun: z.boolean() }),
     properties: z.object({}),
   },
 };
@@ -621,6 +647,37 @@ function createTaskQueue() {
         }
 
         return true;
+      },
+      RESOLVE_RUN_ONCE: async (id, data, properties) => {
+        const step = await findWorkflowStepById(data.stepId);
+
+        if (!step) {
+          return true;
+        }
+
+        const response = await commandResponsePublisher.publish(
+          "RESOLVE_RUN_ONCE",
+          {
+            id: step.id,
+            key: step.idempotencyKey,
+            runOnce: {
+              idempotencyKey: step.id,
+              output: step.output
+                ? JSON.parse(JSON.stringify(step.output))
+                : undefined,
+              hasRun: data.hasRun,
+            },
+          },
+          {
+            "x-workflow-run-id": step.run.id,
+            "x-api-key": step.run.environment.apiKey,
+            "x-org-id": step.run.environment.organizationId,
+            "x-workflow-id": step.run.workflowId,
+            "x-env": step.run.environment.slug,
+          }
+        );
+
+        return !!response;
       },
       EXTERNAL_SOURCE_UPSERTED: async (id, data, properties) => {
         const service = new RegisterExternalSource();

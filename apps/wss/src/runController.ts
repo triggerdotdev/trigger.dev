@@ -115,6 +115,28 @@ export class WorkflowRunController {
 
           return success;
         },
+        RESOLVE_RUN_ONCE: async (id, data, properties) => {
+          if (properties["x-workflow-run-id"] !== this.#runId) {
+            return true;
+          }
+
+          this.#logger.debug("Received resolve runOnce", id, data, properties);
+
+          const success = await this.#hostRPC.send("RESOLVE_RUN_ONCE", {
+            id: data.id,
+            output: data.runOnce,
+            key: data.key,
+            meta: {
+              workflowId: properties["x-workflow-id"],
+              organizationId: properties["x-org-id"],
+              environment: properties["x-env"],
+              apiKey: properties["x-api-key"],
+              runId: properties["x-workflow-run-id"],
+            },
+          });
+
+          return success;
+        },
         REJECT_INTEGRATION_REQUEST: async (id, data, properties) => {
           if (properties["x-workflow-run-id"] !== this.#runId) {
             return true;
