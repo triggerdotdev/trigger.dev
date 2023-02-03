@@ -1,3 +1,5 @@
+import { EventRule } from ".prisma/client";
+import { ExclamationTriangleIcon } from "@heroicons/react/24/outline";
 import type { LoaderArgs } from "@remix-run/server-runtime";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import invariant from "tiny-invariant";
@@ -15,6 +17,7 @@ import {
 } from "~/components/primitives/Buttons";
 import { Input } from "~/components/primitives/Input";
 import { Body } from "~/components/primitives/text/Body";
+import { Header3 } from "~/components/primitives/text/Headers";
 import { SubTitle } from "~/components/primitives/text/SubTitle";
 import { Title } from "~/components/primitives/text/Title";
 import { RunsTable } from "~/components/runs/RunsTable";
@@ -102,11 +105,11 @@ export default function Page() {
                   <div className="flex flex-col gap-2">
                     <Body
                       size="extra-small"
-                      className="text-slate-300 uppercase tracking-wide"
+                      className="uppercase tracking-wide text-slate-300"
                     >
                       URL
                     </Body>
-                    <div className="flex items-center gap-2 mb-4">
+                    <div className="mb-4 flex items-center gap-2">
                       <Input
                         value={workflow.externalSourceConfig.data.url}
                         readOnly={true}
@@ -120,7 +123,7 @@ export default function Page() {
                     <div className="flex flex-col gap-2">
                       <Body
                         size="extra-small"
-                        className="text-slate-300 uppercase tracking-wide"
+                        className="uppercase tracking-wide text-slate-300"
                       >
                         Secret
                       </Body>
@@ -138,14 +141,14 @@ export default function Page() {
                   )}
                 </div>
               ) : (
-                <div className="flex flex-col gap-2 w-full">
+                <div className="flex w-full flex-col gap-2">
                   <Body className="text-rose-500">
                     Your custom webhook event is incorrectly formatted. See the
                     error below
                   </Body>
                   <CodeBlock
                     code={workflow.externalSourceConfig.data.error}
-                    className="border border-rose-500 w-full"
+                    className="w-full border border-rose-500"
                     align="top"
                   />
                 </div>
@@ -173,7 +176,7 @@ export default function Page() {
       {apiConnectionCount > 0 && <WorkflowConnections />}
       {eventRule && (
         <>
-          <div className="flex justify-between items-end">
+          <div className="flex items-end justify-between">
             <SubTitle>Workflow type</SubTitle>
             <SecondaryLink to="test" className="mb-2">
               Run a test
@@ -182,7 +185,7 @@ export default function Page() {
           <Panel className="mb-4">
             <PanelHeader
               icon={
-                <div className="h-6 w-6 mr-1">
+                <div className="mr-1 h-6 w-6">
                   <TriggerTypeIcon
                     type={eventRule.trigger.type}
                     provider={connectionSlots.source?.integration}
@@ -200,13 +203,13 @@ export default function Page() {
 
       {total > 0 ? (
         <>
-          <div className="flex justify-between items-end">
+          <div className="flex items-end justify-between">
             <SubTitle>Last {pageSize} runs</SubTitle>
             <SecondaryLink to="runs" className="mb-2">
               View all
             </SecondaryLink>
           </div>
-          <Panel className="p-0 overflow-hidden overflow-x-auto mb-6">
+          <Panel className="mb-6 overflow-hidden overflow-x-auto p-0">
             <RunsTable
               runs={runs}
               total={total}
@@ -216,10 +219,19 @@ export default function Page() {
           </Panel>
         </>
       ) : (
-        <>
-          <SubTitle>No workflows run yet</SubTitle>
-          <PrimaryLink to="test">Test your workflow</PrimaryLink>
-        </>
+        <Panel>
+          <div className="flex items-start gap-2 p-1">
+            <ExclamationTriangleIcon className="mt-1 h-5 w-5 text-amber-400" />
+            <div>
+              <Header3>This workflow hasn't been run yet</Header3>
+              <Body className="mt-1 mb-2 text-slate-300">
+                If you want to quickly test the workflow, you can use the test
+                feature.
+              </Body>
+              <PrimaryLink to="test">Test your workflow</PrimaryLink>
+            </div>
+          </div>
+        </Panel>
       )}
     </>
   );
