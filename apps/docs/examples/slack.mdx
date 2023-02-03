@@ -8,50 +8,38 @@ To use the Slack integration you must install the required packages:
 <Tabs>
   <Tab title="npm">
 
-Trigger.dev SDK & Slack packages for a new project:
+### Example workflows:
+## Post to Slack when a GitHub issue is created or modified
+
+Integrations required: Slack, GitHub
+
+Packages required:
+<Tabs>
+  <Tab title="npm">
 
 ```bash
-npm install @trigger.dev/sdk @trigger.dev/slack zod
-```
-Slack packages for an existing project:
-
-```bash
-npm install @trigger.dev/slack
+npm install @trigger.dev/slack @trigger.dev/github
 ```
 
   </Tab>
   <Tab title="pnpm">
 
-Trigger.dev SDK & Slack packages for a new project:
-
 ```bash
-pnpm install @trigger.dev/sdk @trigger.dev/slack zod
-```
-Slack packages for an existing project:
-```bash
-pnpm install @trigger.dev/slack
+pnpm install @trigger.dev/slack @trigger.dev/github
 ```
 
   </Tab>
   <Tab title="yarn">
-Trigger.dev SDK & Slack packages for a new project:
 
 ```bash
-yarn add @trigger.dev/sdk @trigger.dev/slack zod
-```
-Slack packages for an existing project:
-
-```bash
-yarn add @trigger.dev/slack
+yarn add @trigger.dev/slack @trigger.dev/github
 ```
 
   </Tab>
 </Tabs>
 
-### Example workflows:
-## Post to Slack when a GitHub issue is created or modified
+Workflow code:
 
-Integrations required: Slack, GitHub
 
 ```ts
 import { Trigger, customEvent } from "@trigger.dev/sdk";

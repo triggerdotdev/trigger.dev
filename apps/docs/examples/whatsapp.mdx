@@ -6,16 +6,15 @@ description: "Here are some example workflows you could create using the WhatsAp
 
 For more information about the WhatsApp integration, check out the [integration page](/integrations/apis/whatsapp).
 
-To use the GitHub integration you must install the required packages:
+### Example workflows:
+
+## Listen for WhatsApp messages and reply
+
+Integrations required: WhatsApp
+
+Packages required:
 <Tabs>
   <Tab title="npm">
-
-Trigger.dev SDK & WhatsApp packages for a new project:
-
-```bash
-npm install @trigger.dev/sdk @trigger.dev/whatsapp zod
-```
-WhatsApp packages for an existing project:
 
 ```bash
 npm install @trigger.dev/whatsapp
@@ -24,24 +23,12 @@ npm install @trigger.dev/whatsapp
   </Tab>
   <Tab title="pnpm">
 
-Trigger.dev SDK & WhatsApp packages for a new project:
-
-```bash
-pnpm install @trigger.dev/sdk @trigger.dev/whatsapp zod
-```
-WhatsApp packages for an existing project:
 ```bash
 pnpm install @trigger.dev/whatsapp
 ```
 
   </Tab>
   <Tab title="yarn">
-Trigger.dev SDK & WhatsApp packages for a new project:
-
-```bash
-yarn add @trigger.dev/sdk @trigger.dev/whatsapp zod
-```
-WhatsApp packages for an existing project:
 
 ```bash
 yarn add @trigger.dev/whatsapp
@@ -50,11 +37,7 @@ yarn add @trigger.dev/whatsapp
   </Tab>
 </Tabs>
 
-### Example workflows:
-
-## Listen for WhatsApp messages and reply
-
-Integrations required: WhatsApp
+Workflow code:
 
 ```ts
 import { Trigger } from "@trigger.dev/sdk";

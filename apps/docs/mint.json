@@ -56,9 +56,9 @@
       "pages": [
         "examples/examples",
         "examples/github",
+        "examples/resend",
         "examples/shopify",
         "examples/slack",
-        "examples/resend",
         "examples/whatsapp"
       ]
     },

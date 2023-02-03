@@ -4,49 +4,7 @@ sidebarTitle: "GitHub"
 description: "Here are some example workflows you could create using the GitHub integration."
 ---
 
-To use the GitHub integration you must install the required packages:
-<Tabs>
-  <Tab title="npm">
 
-Trigger.dev SDK & GitHub packages for a new project:
-
-```bash
-npm install @trigger.dev/sdk @trigger.dev/github zod
-```
-GitHub packages for an existing project:
-
-```bash
-npm install @trigger.dev/github
-```
-
-  </Tab>
-  <Tab title="pnpm">
-
-Trigger.dev SDK & GitHub packages for a new project:
-
-```bash
-pnpm install @trigger.dev/sdk @trigger.dev/github zod
-```
-GitHub packages for an existing project:
-```bash
-pnpm install @trigger.dev/github
-```
-
-  </Tab>
-  <Tab title="yarn">
-Trigger.dev SDK & GitHub packages for a new project:
-
-```bash
-yarn add @trigger.dev/sdk @trigger.dev/github zod
-```
-GitHub packages for an existing project:
-
-```bash
-yarn add @trigger.dev/github
-```
-
-  </Tab>
-</Tabs>
 
 You can explore all the supported GitHub functions [here](/integrations/apis/github/events/push).
 
@@ -54,6 +12,33 @@ You can explore all the supported GitHub functions [here](/integrations/apis/git
 ## When a GitHub repo is starred, post information about the user to Slack
 
 Integrations required: GitHub, Slack
+
+Packages required:
+<Tabs>
+  <Tab title="npm">
+
+```bash
+npm install @trigger.dev/github @trigger.dev/slack
+```
+
+  </Tab>
+  <Tab title="pnpm">
+
+```bash
+pnpm install @trigger.dev/github @trigger.dev/slack
+```
+
+  </Tab>
+  <Tab title="yarn">
+
+```bash
+yarn add @trigger.dev/github @trigger.dev/slack
+```
+
+  </Tab>
+</Tabs>
+
+Workflow code:
 
 ```ts
 import { Trigger } from "@trigger.dev/sdk";
@@ -80,6 +65,33 @@ new Trigger({
 ## When a GitHub issue is created or modified, post to Slack
 
 Integrations required: GitHub, Slack
+
+Packages required:
+<Tabs>
+  <Tab title="npm">
+
+```bash
+npm install @trigger.dev/github @trigger.dev/slack
+```
+
+  </Tab>
+  <Tab title="pnpm">
+
+```bash
+pnpm install @trigger.dev/github @trigger.dev/slack
+```
+
+  </Tab>
+  <Tab title="yarn">
+
+```bash
+yarn add @trigger.dev/github @trigger.dev/slack
+```
+
+  </Tab>
+</Tabs>
+
+Workflow code:
 
 ```ts
 import { Trigger } from "@trigger.dev/sdk";

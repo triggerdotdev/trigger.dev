@@ -8,50 +8,6 @@ description: "Here are some example workflows you could create using the Resend 
 Resend.com is currently in private beta but you can request early access [here](https://resend.com/).
 </Tip>
 
-To use the Resend integration you must install the required packages:
-<Tabs>
-  <Tab title="npm">
-
-Trigger.dev SDK & Resend packages for a new project:
-
-```bash
-npm install @trigger.dev/sdk @trigger.dev/resend zod
-```
-Resend packages for an existing project:
-
-```bash
-npm install @trigger.dev/resend
-```
-
-  </Tab>
-  <Tab title="pnpm">
-
-Trigger.dev SDK & Resend packages for a new project:
-
-```bash
-pnpm install @trigger.dev/sdk @trigger.dev/resend zod
-```
-Resend packages for an existing project:
-```bash
-pnpm install @trigger.dev/resend
-```
-
-  </Tab>
-  <Tab title="yarn">
-Trigger.dev SDK & Resend packages for a new project:
-
-```bash
-yarn add @trigger.dev/sdk @trigger.dev/resend zod
-```
-Resend packages for an existing project:
-
-```bash
-yarn add @trigger.dev/resend
-```
-
-  </Tab>
-</Tabs>
-
 ### Example workflows:
 ## Welcome email drip campaign
 
@@ -59,6 +15,33 @@ This workflow will get triggered and a Slack notification and welcome email will
 1 day later we check if the user has completed onboarding, if they have, they get a 'tips' email, otherwise they get a re-engagement email.
 
 Integrations required: Resend, Slack
+
+Packages required:
+<Tabs>
+  <Tab title="npm">
+
+```bash
+npm install @trigger.dev/resend @trigger.dev/slack
+```
+
+  </Tab>
+  <Tab title="pnpm">
+
+```bash
+pnpm install @trigger.dev/resend @trigger.dev/slack
+```
+
+  </Tab>
+  <Tab title="yarn">
+
+```bash
+yarn add @trigger.dev/resend @trigger.dev/slack
+```
+
+  </Tab>
+</Tabs>
+
+Workflow code:
 
 ```ts
 import { customEvent, Trigger, sendEvent } from "@trigger.dev/sdk";
