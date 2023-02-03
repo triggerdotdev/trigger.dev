@@ -1,7 +1,6 @@
 import {
   StarIcon,
   EnvelopeIcon,
-  ExclamationCircleIcon,
   ShoppingCartIcon,
   ChatBubbleOvalLeftEllipsisIcon,
   UserIcon,
@@ -32,7 +31,7 @@ export const exampleProjects = [
 
   {
     icon: <EnvelopeIcon className="h-8 w-8 text-blue-400" />,
-    name: "New user → email campaign",
+    name: "New user → email",
     title:
       "When a new user signs up, post a message to Slack and send them a series of emails",
     description:
@@ -52,7 +51,7 @@ export const exampleProjects = [
 
   {
     icon: <ShoppingCartIcon className="h-8 w-8 text-purple-400" />,
-    name: "Create product → Shopify",
+    name: "New item → Shopify",
     title: "When a custom event is triggered, create a new product in Shopify",
     description:
       "This workflow is triggered by a custom event. Once it is triggered, a new product is created in Shopify with the specified details.",
@@ -72,7 +71,7 @@ export const exampleProjects = [
 
   {
     icon: <ChatBubbleOvalLeftEllipsisIcon className="h-8 w-8 text-green-400" />,
-    name: "WhatsApp → Slack reply",
+    name: "WhatsApp → Slack",
     title: "Listen for WhatsApp messages and automatically reply",
     description:
       "This workflow is triggered when a WhatsApp message has been received. When received, a pre-determined reply is sent.",
@@ -97,13 +96,13 @@ export const fromScratchProjects = [
       "Custom event triggers allow you to run workflows from your own code (or your other workflows).",
   },
   {
-    name: "Scheduled (recurring))",
+    name: "Scheduled (recurring)",
     requiredPackages: "@trigger.dev/sdk zod",
     code: scheduled,
     description: "Run a workflow every 10 minutes.",
   },
   {
-    name: "Scheduled - (CRON)",
+    name: "Scheduled (CRON)",
     requiredPackages: "@trigger.dev/sdk zod",
     code: scheduledCron,
     description: "This job will run at 2:30pm every Monday.",
