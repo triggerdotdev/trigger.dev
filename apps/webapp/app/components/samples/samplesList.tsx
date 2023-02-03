@@ -41,7 +41,7 @@ export const exampleProjects = [
     code: resendEmailDripCampaign,
   },
   {
-    icon: <UserIcon className="h-8 w-8 text-yellow-400" />,
+    icon: <UserIcon className="h-8 w-8 text-rose-400" />,
     name: "New user → Slack",
     title: "When a new user signs up, post a message to Slack",
     description:
