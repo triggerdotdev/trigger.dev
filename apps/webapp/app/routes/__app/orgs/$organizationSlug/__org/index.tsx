@@ -65,7 +65,7 @@ export default function Page() {
             </Body>
           </PanelInfo>
           <PrimaryLink to={`/orgs/${currentOrganization.slug}/workflows/new`}>
-            Create new workflow
+            Create first workflow
           </PrimaryLink>
         </>
       ) : (
