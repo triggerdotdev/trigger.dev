@@ -106,8 +106,8 @@ export function CreateNewWorkflowNoWorkflows({
                       </Body>
                       <InstallPackages packages={project.requiredPackages} />
                       <Body size="regular" className="mb-2 mt-4 text-slate-400">
-                        Copy this code into your project. Your API key has
-                        already been inserted.
+                        Copy this example code into your project. Your API key
+                        has already been inserted.
                       </Body>
                       <CodeBlock
                         code={project.code(environment.apiKey)}
@@ -204,10 +204,71 @@ export function CreateNewWorkflowNoWorkflows({
                 {fromScratchProjects.map((project) => {
                   return (
                     <Tab.Panel key={project.name} className="relative h-full">
+                      <Body size="regular" className="mb-4 text-slate-400">
+                        {project.description}
+                      </Body>
+                      <Body size="regular" className="mb-2 mt-4 text-slate-400">
+                        Copy this example code into your project. Your API key
+                        has already been inserted.
+                      </Body>
                       <CodeBlock
                         code={project.code(environment.apiKey)}
                         align="top"
                       />
+                      <Header4
+                        size="regular"
+                        className={classNames(subTitle, "mt-8")}
+                      >
+                        4. Run your web server
+                      </Header4>
+                      <Body size="regular" className="mb-4 text-slate-400">
+                        Run your server how you normally would, e.g.{" "}
+                        <InlineCode>npm run dev</InlineCode>. This will connect
+                        your workflow to Trigger.dev, so we can start sending
+                        you events. You should see some log messages in your
+                        server console (tip: you can turn these off by removing
+                        the <InlineCode>logLevel: "info"</InlineCode> from the
+                        code above).
+                      </Body>
+                      <Header4
+                        size="regular"
+                        className={classNames(subTitle, "mt-8")}
+                      >
+                        5. Test your workflow from the dashboard
+                      </Header4>
+                      <Body size="regular" className="mb-4 text-slate-400">
+                        On the{" "}
+                        <TertiaryLink
+                          to={`/orgs/${currentOrganization.slug}`}
+                          className="!text-base text-slate-400 underline decoration-green-500 underline-offset-2 transition hover:decoration-[3px]"
+                        >
+                          Organization page
+                        </TertiaryLink>{" "}
+                        you should see that the Workflow has now appeared (you
+                        may need to refresh the page since running your server
+                        in the previous step).
+                      </Body>
+                      <Body size="regular" className="mb-4 text-slate-400">
+                        The workflow is connected to Trigger.dev so the next
+                        step is to trigger it. You can easily test your workflow
+                        by clicking on it from the Workflows page and selecting
+                        the Test tab in the side menu.
+                      </Body>
+
+                      <Body size="regular" className="mb-4 text-slate-400">
+                        In the test field, input a valid test event. You can
+                        copy this example:
+                      </Body>
+                      <CodeBlock
+                        code="test code"
+                        align="top"
+                        language="json"
+                        className="mb-4"
+                      />
+                      <Body size="regular" className="mb-4 text-slate-400">
+                        Hit the “Run test” button and it will take you to the
+                        run. Refresh the page to see it move between steps.
+                      </Body>
                     </Tab.Panel>
                   );
                 })}
