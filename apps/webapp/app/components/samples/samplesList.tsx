@@ -4,6 +4,8 @@ import {
   ExclamationCircleIcon,
   ShoppingCartIcon,
   ChatBubbleOvalLeftEllipsisIcon,
+  UserIcon,
+  DocumentTextIcon,
 } from "@heroicons/react/24/outline";
 import { customEvent } from "./custom-event";
 import { githubIssues } from "./github-issues";
@@ -20,61 +22,32 @@ import { scheduledCron } from "./scheduled-cron";
 export const exampleProjects = [
   {
     icon: <StarIcon className="h-8 w-8 text-yellow-400" />,
-    name: "New user → Slack",
-    title: "When a new user signs up, post a message to Slack",
-    description:
-      "This workflow is triggered when a new user signs up. The user's details will then be posted in a specific Slack channel.",
-    requiredPackages: "@trigger.dev/slack zod",
-    code: newUserSlackMessage,
-    packagesCopy: "Slack",
-    testCode: `{
-      "name": "Rick Astley",
-      "email": "nevergonn@giveyou.up",
-      "paidPlan": true
-    }
-    `,
-  },
-  {
-    icon: <StarIcon className="h-8 w-8 text-yellow-400" />,
     name: "GitHub star → Slack",
     title: "When you receive a GitHub star, post that user's details to Slack",
     description:
       "This workflow is triggered when a GitHub user adds a star to a repository. The user's details will then be posted in a specific Slack channel.",
     requiredPackages: "@trigger.dev/github @trigger.dev/slack zod",
     code: githubStars,
-    packagesCopy: "GitHub and Slack",
-    testCode: `{
-   
-    }
-    `,
   },
-  {
-    icon: <ExclamationCircleIcon className="h-8 w-8 text-orange-400" />,
-    name: "GitHub issue → Slack",
-    title: "When a GitHub issue is created or modified, post it to Slack",
-    description:
-      "This workflow is triggered when a new issue is created or modified in GitHub. The issue will then be posted in a specific Slack channel.",
-    requiredPackages: "@trigger.dev/github @trigger.dev/slack zod",
-    code: githubIssues,
-    packagesCopy: "GitHub and Slack",
-    testCode: `{
-  
-    }
-    `,
-  },
+
   {
     icon: <EnvelopeIcon className="h-8 w-8 text-blue-400" />,
     name: "New user → email campaign",
-    title: "When a new user signs up, post a message to Slack and send them a series of emails",
+    title:
+      "When a new user signs up, post a message to Slack and send them a series of emails",
     description:
       "This workflow is triggered when a new user signs up. A welcome email is sent straight away and an alert is sent to a specific Slack channel. 1 day later it checks if the user has completed the onboarding, if they have, they get a ‘tips’ email, otherwise they get a re-engagement email.",
     requiredPackages: "@trigger.dev/resend @trigger.dev/slack zod",
     code: resendEmailDripCampaign,
-    packagesCopy: "Resend and Slack",
-    testCode: `{
-  
-    }
-    `,
+  },
+  {
+    icon: <UserIcon className="h-8 w-8 text-yellow-400" />,
+    name: "New user → Slack",
+    title: "When a new user signs up, post a message to Slack",
+    description:
+      "This workflow is triggered when a new user signs up. The user's details will then be posted in a specific Slack channel.",
+    requiredPackages: "@trigger.dev/slack zod",
+    code: newUserSlackMessage,
   },
 
   {
@@ -86,10 +59,15 @@ export const exampleProjects = [
     requiredPackages: "@trigger.dev/shopify zod",
     code: shopifyCreateNewProducts,
     packagesCopy: "Shopify",
-    testCode: `{
-  
-    }
-    `,
+  },
+  {
+    icon: <DocumentTextIcon className="h-8 w-8 text-orange-400" />,
+    name: "GitHub issue → Slack",
+    title: "When a GitHub issue is created or modified, post it to Slack",
+    description:
+      "This workflow is triggered when a new issue is created or modified in GitHub. The issue will then be posted in a specific Slack channel.",
+    requiredPackages: "@trigger.dev/github @trigger.dev/slack zod",
+    code: githubIssues,
   },
 
   {
@@ -101,10 +79,6 @@ export const exampleProjects = [
     requiredPackages: "@trigger.dev/whatsapp zod",
     code: whatsappListenForMessageAndReply,
     packagesCopy: "WhatsApp",
-    testCode: `{
-  
-    }
-    `,
   },
 ];
 
