@@ -60,8 +60,8 @@ export default function Page() {
           <SubTitle>0 workflows</SubTitle>
           <PanelInfo className="mb-4 max-w-max p-4 pr-6">
             <Body className="text-slate-300">
-              You current don't have any workflows. Create a workflow, then
-              return here to view and run it.
+              You don't have any workflows yet. They will appear here once
+              connected.
             </Body>
           </PanelInfo>
           <PrimaryLink to={`/orgs/${currentOrganization.slug}/workflows/new`}>
