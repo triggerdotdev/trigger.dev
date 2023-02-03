@@ -13,32 +13,34 @@ import {
 import { useCurrentEnvironment } from "~/hooks/useEnvironments";
 import { useCurrentOrganization } from "~/hooks/useOrganizations";
 import CodeBlock from "./code/CodeBlock";
-import { PrimaryA, SecondaryA, TertiaryLink } from "./primitives/Buttons";
+import { PrimaryLink, SecondaryA, TertiaryLink } from "./primitives/Buttons";
 import { Body } from "./primitives/text/Body";
 import { Header4 } from "./primitives/text/Headers";
 import { SubTitle } from "./primitives/text/SubTitle";
 import { exampleProjects, fromScratchProjects } from "./samples/samplesList";
 
 export function CreateNewWorkflow() {
+  const currentOrganization = useCurrentOrganization();
+  if (currentOrganization === undefined) {
+    return <></>;
+  }
   return (
     <>
       <SubTitle>Create a new workflow</SubTitle>
       <div className="flex gap-2">
-        <PrimaryA
+        <PrimaryLink
+          to={`/orgs/${currentOrganization.slug}/workflows/new`}
+          rel="noreferrer"
+        >
+          Create a workflow
+        </PrimaryLink>
+        <SecondaryA
           href="https://docs.trigger.dev"
           target="_blank"
           rel="noreferrer"
         >
           <ArrowTopRightOnSquareIcon className="h-4 w-4" />
           <span>Documentation</span>
-        </PrimaryA>
-        <SecondaryA
-          href="https://docs.trigger.dev/examples/examples"
-          target="_blank"
-          rel="noreferrer"
-        >
-          <ArrowTopRightOnSquareIcon className="h-4 w-4" />
-          <span>Example Workflows</span>
         </SecondaryA>
       </div>
     </>
