@@ -1,4 +1,8 @@
 import { Tab } from "@headlessui/react";
+import {
+  CheckCircleIcon,
+  ExclamationTriangleIcon,
+} from "@heroicons/react/24/outline";
 import type { ActionArgs, LoaderArgs } from "@remix-run/server-runtime";
 import { redirect } from "@remix-run/server-runtime";
 import classNames from "classnames";
@@ -9,6 +13,7 @@ import CodeBlock from "~/components/code/CodeBlock";
 import { InlineCode } from "~/components/code/InlineCode";
 import { InstallPackages } from "~/components/CreateNewWorkflow";
 import { Container } from "~/components/layout/Container";
+import { Panel } from "~/components/layout/Panel";
 import {
   PrimaryButton,
   PrimaryLink,
@@ -117,7 +122,7 @@ export default function NewWorkflowPage() {
           <Tab.Panel className="relative h-full">
             {/* Example projects tabs */}
             <Tab.Group>
-              <div className="scrollbar-hide -ml-12 max-w-[59rem] overflow-hidden overflow-x-auto border-r border-slate-700 pl-12">
+              <div className="-ml-12 max-w-[59rem] overflow-hidden overflow-x-auto border-r border-slate-700 pl-12 scrollbar-hide">
                 <LargeBoxList>
                   {exampleProjects.map((project) => {
                     return (
@@ -241,47 +246,70 @@ function CheckForWorkflows() {
 
   if (fetchWorkflowCount.state !== "idle") {
     return (
-      <div>
-        <Spinner />
-      </div>
+      <Panel>
+        <div className="mb-3 flex items-center gap-2">
+          <Spinner />
+          <Body size="regular" className="text-slate-300">
+            Waiting for your workflow to connect...
+          </Body>
+        </div>
+        <PrimaryButton>Connecting…</PrimaryButton>
+      </Panel>
     );
   }
 
   if (fetchWorkflowCount.data === undefined) {
     return (
       <fetchWorkflowCount.Form method="post">
-        <PrimaryButton type="submit">
-          Check my workflow connection
-        </PrimaryButton>
+        <Panel>
+          <div className="mb-3 flex items-center gap-2">
+            <Spinner />
+            <Body size="regular" className="text-slate-300">
+              Waiting for your workflow to connect...
+            </Body>
+          </div>
+          <PrimaryButton type="submit">
+            Check my workflow connection
+          </PrimaryButton>
+        </Panel>
       </fetchWorkflowCount.Form>
     );
   } else {
     if (fetchWorkflowCount.data.hasNewWorkflows) {
       return (
         <div>
-          <Header4 size="small" className="font-semibold text-slate-300">
-            Great, "{fetchWorkflowCount.data.newWorkflow?.title}" is connected!
-            <PrimaryLink
-              to={`../workflows/${fetchWorkflowCount.data.newWorkflow?.slug}`}
-            >
-              View workflow
-            </PrimaryLink>
-          </Header4>
+          <Panel>
+            <div className="flex items-center gap-2">
+              <CheckCircleIcon className="h-5 w-5 text-green-400" />
+              <Body size="regular" className="font-semibold text-slate-300">
+                Great, "{fetchWorkflowCount.data.newWorkflow?.title}" is
+                connected!
+                <PrimaryLink
+                  to={`../workflows/${fetchWorkflowCount.data.newWorkflow?.slug}`}
+                >
+                  View workflow
+                </PrimaryLink>
+              </Body>
+            </div>
+          </Panel>
         </div>
       );
     } else {
       return (
-        <div>
-          <Header4 size="small" className="font-semibold text-slate-300">
-            Hmm it doesn't seem like your workflow has connected yet.
-          </Header4>
-          <Body>Are you running your server?</Body>
+        <Panel>
+          <div className="mb-3 flex items-center gap-2">
+            <ExclamationTriangleIcon className="h-5 w-5 text-amber-400" />
+            <Body size="regular" className="text-slate-300">
+              It doesn't seem like your workflow has connected yet. Check your
+              server is running and try again.
+            </Body>
+          </div>
           <fetchWorkflowCount.Form method="post">
             <PrimaryButton type="submit">
               Check my workflow connection
             </PrimaryButton>
           </fetchWorkflowCount.Form>
-        </div>
+        </Panel>
       );
     }
   }
