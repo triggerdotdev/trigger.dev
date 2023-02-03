@@ -30,9 +30,6 @@ const log = debug("trigger:integrations:slack");
 
 const SendSlackMessageRequestBodySchema = PostMessageBodySchema.extend({
   link_names: z.literal(1),
-  metadata: z
-    .object({ event_type: z.string(), event_payload: z.any() })
-    .optional(),
 });
 
 export class SlackRequestIntegration implements RequestIntegration {
@@ -247,14 +244,33 @@ export class SlackRequestIntegration implements RequestIntegration {
     }
 
     log("found channelId %s", channelId);
+    let bodyMetadata: z.infer<
+      typeof SendSlackMessageRequestBodySchema
+    >["metadata"] = {
+      event_type: "post_message",
+    };
+    if (metadata) {
+      bodyMetadata = {
+        ...bodyMetadata,
+        event_payload: {
+          ...(parsedParams.metadata ?? {}),
+          __trigger: metadata,
+        },
+      };
+    } else {
+      bodyMetadata = {
+        ...bodyMetadata,
+        event_payload: {
+          ...(parsedParams.metadata ?? {}),
+        },
+      };
+    }
 
     const response = await service.performRequest(this.#postMessageEndpoint, {
       ...parsedParams,
       link_names: 1,
       channel: channelId,
-      metadata: metadata
-        ? { event_type: "post_message", event_payload: metadata }
-        : undefined,
+      metadata: metadata ? bodyMetadata : undefined,
     });
 
     if (!response.success) {

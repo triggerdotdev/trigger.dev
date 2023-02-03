@@ -71,7 +71,16 @@ export class HandleSlackInteractivity {
         return;
       }
 
-      const { requestId } = payload.message.metadata.event_payload;
+      const parsedPayload =
+        schemas.InternalMessageMetadataPayloadSchema.safeParse(
+          payload.message.metadata.event_payload
+        );
+
+      if (!parsedPayload.success) {
+        return;
+      }
+
+      const { requestId } = parsedPayload.data.__trigger;
 
       const integrationRequest =
         await this.#prismaClient.integrationRequest.findUnique({

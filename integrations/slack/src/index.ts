@@ -106,6 +106,7 @@ export type OpenViewOptions = z.infer<typeof schemas.ModalSchema>;
 export type OpenViewInteractionOptions = {
   onSubmit?: "clear" | "close" | "none";
   validationSchema?: z.ZodObject<any, any>;
+  metadata?: Record<string, any>;
 };
 
 export async function openView(
@@ -217,7 +218,11 @@ function decoratePrivateMetadata(
   const onSubmit = options?.onSubmit;
   const validationSchema = options?.validationSchema;
 
-  const privateMetadata = JSON.parse(existingMetadata);
+  let privateMetadata = JSON.parse(existingMetadata);
+
+  if (options?.metadata) {
+    privateMetadata = { ...privateMetadata, ...options.metadata };
+  }
 
   privateMetadata.__trigger = {
     runId: runId,

@@ -76,12 +76,15 @@ new Trigger({
           <Context>At: {dateFormatter.format(event.message.timestamp)}</Context>
           {messageBody}
           <Actions blockId="launch-modal">
-            <Button value={event.message.from} actionId="reply">
+            <Button value="reply" actionId="reply">
               Reply
             </Button>
           </Actions>
         </Blocks>
       ),
+      metadata: {
+        whatsAppMessage: event.message,
+      },
     });
   },
 }).listen();
@@ -102,6 +105,10 @@ new Trigger({
     }
 
     const action = event.actions[0];
+    ctx;
+
+    const whatsAppMessage =
+      event.message?.metadata?.event_payload.whatsAppMessage;
 
     if (action.action_id === "reply" && action.type === "button") {
       await slack.openView(
@@ -116,13 +123,15 @@ new Trigger({
               maxLength={500}
               id="messageField"
             />
-
-            <Input type="hidden" name="from" value={action.value} />
             <Input type="submit" value="submit" />
           </Modal>
         ),
         {
           onSubmit: "close",
+          metadata: {
+            whatsAppMessage,
+            thread_ts: event.message?.ts,
+          },
         }
       );
     }
@@ -141,37 +150,43 @@ new Trigger({
   run: async (event, ctx) => {
     await ctx.logger.info("Modal submission", { event });
 
-    const message = event.view.state?.values.messageField.message
+    //the message from the input field in Slack
+    const usersResponse = event.view.state?.values.messageField.message
       .value as string;
+
+    //get the data from the previous messages/panels
     const privateMetadata =
       event.view.private_metadata && JSON.parse(event.view.private_metadata);
-    const from = privateMetadata?.from;
+    await ctx.logger.info("Private metadata", privateMetadata);
 
-    if (!from || !message) {
-      await ctx.logger.error("No message or from", { event });
+    const whatsAppMessage = privateMetadata?.whatsAppMessage;
+
+    if (!whatsAppMessage || !usersResponse) {
+      await ctx.logger.error("No message or original message", { event });
       return;
     }
 
     //send WhatsApp message
     await sendText("send-whatsapp", {
       fromId: "102119172798864",
-      to: from,
-      text: message,
+      to: whatsAppMessage.from,
+      text: usersResponse,
     });
 
     //send message in Slack
     await slack.postMessage("slack-reply", {
       channelName: "test-integrations",
-      text: `Replied with: ${message}`,
+      text: `Replied with: ${usersResponse}`,
       blocks: JSXSlack(
         <Blocks>
           <Header>Reply from @{event.user.username}</Header>
           <Context>
-            At: {dateFormatter.format(new Date())} To: {from}
+            At: {dateFormatter.format(new Date())} To: {whatsAppMessage.from}
           </Context>
-          <Section>{message}</Section>
+          <Section>{usersResponse}</Section>
         </Blocks>
       ),
+      thread_ts: privateMetadata?.thread_ts,
     });
 
     return event;

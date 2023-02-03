@@ -183,9 +183,15 @@ const messageActionSchema = z.object({
   metadata: z
     .object({
       event_type: z.string(),
-      event_payload: z.object({ requestId: z.string() }),
+      event_payload: z.any(),
     })
     .optional(),
+});
+
+export const InternalMessageMetadataPayloadSchema = z.object({
+  __trigger: z.object({
+    requestId: z.string(),
+  }),
 });
 
 export const BlockActionInteractivityPayloadSchema: Zod.ZodObject<{
