@@ -201,6 +201,7 @@ export class DispatchWorkflowRun {
     });
 
     if (
+      !workflowRun.isTest &&
       workflowRun.workflow.externalSource &&
       workflowRun.workflow.externalSource.status === "CREATED"
     ) {

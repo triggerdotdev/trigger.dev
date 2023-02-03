@@ -3,10 +3,15 @@ import {
   TriggerMetadataSchema,
   ScheduleSourceSchema,
   ScheduledEventPayloadSchema,
+} from "@trigger.dev/common-schemas";
+import type {
+  CustomEventTrigger,
   EventFilter,
+  WebhookEventTrigger,
 } from "@trigger.dev/common-schemas";
 import { z } from "zod";
 import slugify from "slug";
+import zodToJsonSchema from "zod-to-json-schema";
 
 export type EventRule = z.infer<typeof EventFilterSchema>;
 
@@ -30,6 +35,7 @@ export function customEvent<TSchema extends z.ZodTypeAny>(
       service: "trigger",
       name: options.name,
       filter: { event: [options.name], payload: options.filter ?? {} },
+      schema: zodToJsonSchema(options.schema) as CustomEventTrigger["schema"],
     },
     schema: options.schema,
   };
@@ -80,6 +86,7 @@ export function webhookEvent<TSchema extends z.ZodTypeAny>(
         event: options.eventName,
       },
       manualRegistration: true,
+      schema: zodToJsonSchema(options.schema) as WebhookEventTrigger["schema"],
     },
     schema: options.schema,
   };

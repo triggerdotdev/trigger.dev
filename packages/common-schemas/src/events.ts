@@ -90,10 +90,21 @@ export const ManualWebhookSourceSchema = z.object({
   event: z.string(),
 });
 
-export const SlackInteractionSourceSchema = z.object({
+export const SlackBlockInteractionSourceSchema = z.object({
+  type: z.literal("block_action"),
   blockId: z.string(),
   actionIds: z.array(z.string()),
 });
+
+export const SlackViewSubmissionInteractionSourceSchema = z.object({
+  type: z.literal("view_submission"),
+  callbackIds: z.array(z.string()),
+});
+
+export const SlackInteractionSourceSchema = z.discriminatedUnion("type", [
+  SlackBlockInteractionSourceSchema,
+  SlackViewSubmissionInteractionSourceSchema,
+]);
 
 export type SlackInteractionSource = z.infer<
   typeof SlackInteractionSourceSchema

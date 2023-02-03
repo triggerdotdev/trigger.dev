@@ -120,6 +120,8 @@ model Workflow {
 
   packageJson Json?
 
+  jsonSchema Json?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -510,6 +512,7 @@ enum WorkflowRunStepType {
   INTEGRATION_REQUEST
   DISCONNECTION
   FETCH_REQUEST
+  RUN_ONCE
 }
 
 model FetchRequest {

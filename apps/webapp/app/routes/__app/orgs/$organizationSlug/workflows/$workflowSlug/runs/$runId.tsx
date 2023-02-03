@@ -6,6 +6,7 @@ import {
   ChevronUpIcon,
   ClockIcon,
   GlobeAltIcon,
+  KeyIcon,
 } from "@heroicons/react/24/outline";
 import {
   ArrowPathRoundedSquareIcon,
@@ -82,15 +83,15 @@ export default function Page() {
 
   return (
     <>
-      <div className="flex sticky -top-12 py-4 -mt-4 -ml-1 pl-1 bg-slate-850 justify-between items-center z-10">
+      <div className="sticky -top-12 z-10 -mt-4 -ml-1 flex items-center justify-between bg-slate-850 py-4 pl-1">
         <Header1 className="truncate text-slate-300">Run {run.id}</Header1>
         <div className="flex gap-2">
           {run.isTest && (
             <Body
               size="extra-small"
-              className="flex items-center pl-2 pr-3 py-0.5 rounded uppercase whitespace-nowrap tracking-wide text-slate-500"
+              className="flex items-center whitespace-nowrap rounded py-0.5 pl-2 pr-3 uppercase tracking-wide text-slate-500"
             >
-              <BeakerIcon className="h-4 w-4 mr-1" />
+              <BeakerIcon className="mr-1 h-4 w-4" />
               Test Run
             </Body>
           )}
@@ -122,28 +123,28 @@ export default function Page() {
                 }
               }}
             >
-              <ArrowPathRoundedSquareIcon className="h-5 w-5 -ml-1" />
+              <ArrowPathRoundedSquareIcon className="-ml-1 h-5 w-5" />
               Rerun
             </PrimaryButton>
           </rerunFetcher.Form>
         </div>
       </div>
 
-      <ul className="flex gap-6 ml-[-3px] flex-wrap">
-        <li className="flex gap-2 items-center">
+      <ul className="ml-[-3px] flex flex-wrap gap-6">
+        <li className="flex items-center gap-2">
           {runStatusIcon(run.status, "large")}
           <Header2 size="small" className="text-slate-400">
             {runStatusLabel(run.status)}
           </Header2>
         </li>
-        <li className="flex gap-1 items-center">
+        <li className="flex items-center gap-1">
           <Header2 size="small" className="text-slate-400">
             {run.startedAt &&
               `Started: ${formatDateTime(run.startedAt, "long")}`}
           </Header2>
         </li>
         {run.duration && (
-          <li className="flex gap-1 items-center">
+          <li className="flex items-center gap-1">
             <Header2 size="small" className="text-slate-400">
               Duration: {humanizeDuration(run.duration)}
             </Header2>
@@ -161,7 +162,7 @@ export default function Page() {
 
       {run.status === "SUCCESS" && (
         <>
-          <div className="h-3 w-full ml-[10px] -mr-[10px] border-l border-slate-700"></div>
+          <div className="ml-[10px] -mr-[10px] h-3 w-full border-l border-slate-700"></div>
           <Panel>
             <PanelHeader
               icon={<CheckCircleIcon className="h-6 w-6 text-green-500" />}
@@ -217,12 +218,12 @@ export default function Page() {
       )}
 
       {run.status === "RUNNING" && (
-        <div className="h-10 w-full ml-[10px] border-dashed border-l border-gradient border-slate-700"></div>
+        <div className="border-gradient ml-[10px] h-10 w-full border-l border-dashed border-slate-700"></div>
       )}
 
       {run.status === "TIMED_OUT" && (
         <>
-          <div className="h-3 w-full ml-[10px] -mr-[10px] border-l border-slate-700"></div>
+          <div className="ml-[10px] -mr-[10px] h-3 w-full border-l border-slate-700"></div>
           <Panel>
             <PanelHeader
               icon={
@@ -262,7 +263,7 @@ function TriggerStep({ trigger }: { trigger: Trigger }) {
       <Panel className="mt-4">
         <PanelHeader
           icon={
-            <div className="h-6 w-6 mr-1">
+            <div className="mr-1 h-6 w-6">
               <TriggerTypeIcon
                 type={trigger.type}
                 provider={trigger.integration}
@@ -285,7 +286,7 @@ function TriggerStep({ trigger }: { trigger: Trigger }) {
           />
         )}
       </Panel>
-      <div className="h-3 w-full ml-[10px] -mr-[10px] border-l border-slate-700"></div>
+      <div className="ml-[10px] -mr-[10px] h-3 w-full border-l border-slate-700"></div>
     </>
   );
 }
@@ -298,16 +299,16 @@ function WorkflowStep({ step }: { step: Step }) {
   switch (step.type) {
     case "DISCONNECTION":
       return (
-        <div className="flex items-stretch w-full">
-          <div className="relative flex w-5 border-l border-dashed border-slate-700 ml-2.5">
-            <div className="absolute top-2 -left-[18px] p-1 bg-slate-850 rounded-full">
+        <div className="flex w-full items-stretch">
+          <div className="relative ml-2.5 flex w-5 border-l border-dashed border-slate-700">
+            <div className="absolute top-2 -left-[18px] rounded-full bg-slate-850 p-1">
               {runStatusIcon("DISCONNECTED", "large")}
             </div>
           </div>
 
           <Body
             size="small"
-            className={classNames("font-mono my-4 ml-0.5 text-slate-400")}
+            className={classNames("my-4 ml-0.5 font-mono text-slate-400")}
           >
             {step.startedAt && step.finishedAt
               ? `The run disconnected for ${humanizeDuration(
@@ -325,16 +326,16 @@ function WorkflowStep({ step }: { step: Step }) {
       );
     case "LOG_MESSAGE":
       return (
-        <div className="flex items-stretch w-full">
-          <div className="relative flex shrink-0 w-5 border-l border-slate-700 ml-2.5">
-            <div className="absolute top-2 -left-[18px] p-1 bg-slate-850 rounded-full">
+        <div className="flex w-full items-stretch">
+          <div className="relative ml-2.5 flex w-5 shrink-0 border-l border-slate-700">
+            <div className="absolute top-2 -left-[18px] rounded-full bg-slate-850 p-1">
               <ChatBubbleOvalLeftEllipsisIcon
                 className={classNames("h-7 w-7", logColor[step.input.level])}
               />
             </div>
           </div>
-          <div className="flex flex-col gap-2 w-full my-4">
-            <div className={classNames("flex gap-2 items-center")}>
+          <div className="my-4 flex w-full flex-col gap-2">
+            <div className={classNames("flex items-center gap-2")}>
               <Body
                 size="small"
                 className={classNames(
@@ -349,14 +350,14 @@ function WorkflowStep({ step }: { step: Step }) {
                 Object.keys(step.input.properties).length !== 0 && (
                   <button
                     onClick={toggleCodeBlock}
-                    className="text-sm text-slate-400 hover:text-slate-200 transition"
+                    className="text-sm text-slate-400 transition hover:text-slate-200"
                   >
                     {showCodeBlock ? (
-                      <span className="flex gap-1 items-center">
+                      <span className="flex items-center gap-1">
                         Hide custom fields <ChevronUpIcon className="h-4 w-4" />
                       </span>
                     ) : (
-                      <span className="flex gap-1 items-center">
+                      <span className="flex items-center gap-1">
                         View custom fields{" "}
                         <ChevronDownIcon className="h-4 w-4" />
                       </span>
@@ -379,9 +380,9 @@ function WorkflowStep({ step }: { step: Step }) {
       );
     default:
       return (
-        <div className="flex items-stretch w-full">
-          <div className="relative flex shrink-0 w-5 border-l border-slate-700 ml-2.5">
-            <div className="absolute top-[23px] -left-[18px] p-1 bg-slate-850 rounded-full">
+        <div className="flex w-full items-stretch">
+          <div className="relative ml-2.5 flex w-5 shrink-0 border-l border-slate-700">
+            <div className="absolute top-[23px] -left-[18px] rounded-full bg-slate-850 p-1">
               {runStatusIcon(step.status, "large")}
             </div>
           </div>
@@ -423,7 +424,7 @@ function StepHeader({ step }: { step: Step }) {
             <img
               src={step.service.integration.icon}
               alt={step.service.integration.name}
-              className="h-5 w-5 mr-1"
+              className="mr-1 h-5 w-5"
             />
           }
           title={step.service.integration.name}
@@ -473,6 +474,8 @@ function StepBody({ step }: { step: Step }) {
   switch (step.type) {
     case "CUSTOM_EVENT":
       return <CustomEventStep event={step} />;
+    case "RUN_ONCE":
+      return <RunOnceStep event={step} />;
     case "INTEGRATION_REQUEST":
       return <IntegrationRequestStep request={step} />;
     case "FETCH_REQUEST":
@@ -584,7 +587,7 @@ function DelayScheduled({
 
   return (
     <div className="grid grid-cols-2 gap-2 text-slate-300">
-      <div className="flex flex-col gap-1 items-stretch">
+      <div className="flex flex-col items-stretch gap-1">
         <Body size="extra-small" className={workflowNodeUppercaseClasses}>
           Fires at
         </Body>
@@ -621,7 +624,7 @@ function CustomEventStep({ event }: { event: StepType<Step, "CUSTOM_EVENT"> }) {
       <Body size="extra-small" className={workflowNodeUppercaseClasses}>
         Name
       </Body>
-      <Header2 size="small" className="text-slate-300 mb-2">
+      <Header2 size="small" className="mb-2 text-slate-300">
         {event.input.name}
       </Header2>
       {"delay" in event.input && event.input.delay && (
@@ -629,7 +632,7 @@ function CustomEventStep({ event }: { event: StepType<Step, "CUSTOM_EVENT"> }) {
           <Body size="extra-small" className={workflowNodeUppercaseClasses}>
             Delay
           </Body>
-          <Body size="small" className="text-slate-300 mb-2">
+          <Body size="small" className="mb-2 text-slate-300">
             {"seconds" in event.input.delay ? (
               <>
                 {event.input.delay.seconds}{" "}
@@ -670,6 +673,25 @@ function CustomEventStep({ event }: { event: StepType<Step, "CUSTOM_EVENT"> }) {
   );
 }
 
+function RunOnceStep({ event }: { event: StepType<Step, "RUN_ONCE"> }) {
+  return (
+    <>
+      <Body size="extra-small" className={workflowNodeUppercaseClasses}>
+        Idempotency Key
+      </Body>
+      <Header2 size="small" className="mb-2 text-slate-300">
+        {event.idempotencyKey}
+      </Header2>
+      {event.output && (
+        <>
+          <Header4>Output</Header4>
+          <CodeBlock code={stringifyCode(event.output)} align="top" />
+        </>
+      )}
+    </>
+  );
+}
+
 function IntegrationRequestStep({
   request,
 }: {
@@ -684,14 +706,14 @@ function IntegrationRequestStep({
 
   return (
     <>
-      <Header2 size="small" className="text-slate-300 mb-2">
+      <Header2 size="small" className="mb-2 text-slate-300">
         {request.displayProperties.title}
       </Header2>
       {request.service.connection === null && (
         <>
-          <div className="flex items-center gap-2 rounded-md bg-rose-500/10 border border-rose-600 p-3 mb-2">
-            <ExclamationCircleIcon className="h-6 w-6 mr-1 text-rose-500" />
-            <div className="flex gap-2 items-center justify-between flex-wrap w-full">
+          <div className="mb-2 flex items-center gap-2 rounded-md border border-rose-600 bg-rose-500/10 p-3">
+            <ExclamationCircleIcon className="mr-1 h-6 w-6 text-rose-500" />
+            <div className="flex w-full flex-wrap items-center justify-between gap-2">
               <Body>
                 You need to connect to {request.service.integration.name} to
                 continue this workflow.
@@ -723,7 +745,7 @@ function IntegrationRequestStep({
       <div className="mt-4">
         {request.requestStatus === "ERROR" ? (
           <div>
-            <div className="flex gap-2 mb-2 mt-3 ">
+            <div className="mb-2 mt-3 flex gap-2 ">
               <ExclamationTriangleIcon className="h-5 w-5 text-rose-500" />
               <Body size="small" className="text-rose-500">
                 Failed with error:
@@ -793,7 +815,7 @@ function FetchRequestStep({
       <div className="mt-4">
         {request.requestStatus === "ERROR" ? (
           <div>
-            <div className="flex gap-2 mb-2 mt-3 ">
+            <div className="mb-2 mt-3 flex gap-2 ">
               <ExclamationTriangleIcon className="h-5 w-5 text-rose-500" />
               <Body size="small" className="text-rose-500">
                 Failed with error:
@@ -808,7 +830,7 @@ function FetchRequestStep({
           </div>
         ) : request.requestStatus === "RETRYING" ? (
           <div>
-            <div className="flex gap-2 mb-2 mt-3 ">
+            <div className="mb-2 mt-3 flex gap-2 ">
               <ExclamationTriangleIcon className="h-5 w-5 text-rose-500" />
               <Body size="small" className="text-rose-500">
                 {request.lastResponse ? (
@@ -856,7 +878,7 @@ function Error({ error }: { error: Run["error"] }) {
 
   return (
     <>
-      <div className="flex gap-2 mb-2 mt-3 ">
+      <div className="mb-2 mt-3 flex gap-2 ">
         <ExclamationTriangleIcon className="h-5 w-5 text-rose-500" />
         <Body size="small" className="text-slate-300">
           Failed with error:
@@ -903,6 +925,10 @@ const stepInfo: Record<Step["type"], { label: string; icon: ReactNode }> = {
     label: "Fetch request",
     icon: <GlobeAltIcon className={styleClass} />,
   },
+  RUN_ONCE: {
+    label: "Run once",
+    icon: <KeyIcon className={styleClass} />,
+  },
 } as const;
 
 type LogLevel = StepType<Step, "LOG_MESSAGE">["input"]["level"];
@@ -921,16 +947,16 @@ function renderCustomComponent({
   input: z.infer<typeof resendSchemas.SendEmailBodySchema>;
 }) {
   return (
-    <div className="bg-white rounded-md">
-      <div className="flex px-2 h-8 items-center bg-slate-100 rounded-t-md">
-        <div className="flex h-8 gap-2 items-center bg-slate-100 rounded-t-md">
-          <div className="rounded-full bg-rose-500 w-3 h-3"></div>
-          <div className="rounded-full bg-orange-500 w-3 h-3"></div>
-          <div className="rounded-full bg-emerald-500 w-3 h-3"></div>
+    <div className="rounded-md bg-white">
+      <div className="flex h-8 items-center rounded-t-md bg-slate-100 px-2">
+        <div className="flex h-8 items-center gap-2 rounded-t-md bg-slate-100">
+          <div className="h-3 w-3 rounded-full bg-rose-500"></div>
+          <div className="h-3 w-3 rounded-full bg-orange-500"></div>
+          <div className="h-3 w-3 rounded-full bg-emerald-500"></div>
         </div>
       </div>
-      <div className="px-4 py-2 border-b border-slate-300">
-        <h2 className="text-lg text-slate-600 font-bold">{input.from}</h2>
+      <div className="border-b border-slate-300 px-4 py-2">
+        <h2 className="text-lg font-bold text-slate-600">{input.from}</h2>
         <h2 className="text-slate-600">{input.subject}</h2>
         <div className="flex gap-2">
           <EmailInfo label="to" value={input.to} />
@@ -966,7 +992,7 @@ function EmailInfo({
   }
 
   return (
-    <div className="text-slate-500 text-sm flex items-baseline gap-2">
+    <div className="flex items-baseline gap-2 text-sm text-slate-500">
       <h3 className="text-slate-400">{label}:</h3>
       {typeof value === "string" ? value : value.join(", ")}
     </div>

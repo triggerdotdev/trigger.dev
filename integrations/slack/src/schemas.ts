@@ -1,8 +1,7 @@
 import { z } from "zod";
-import { knownBlockSchema } from "./blocks";
-import { blockAction } from "./interactivity";
+import { knownBlockSchema, plainTextElementSchema } from "./blocks";
 
-export { blockAction };
+export * from "./interactivity";
 
 export const PostMessageSuccessResponseSchema = z.object({
   ok: z.literal(true),
@@ -36,6 +35,10 @@ export const PostMessageBodySchema = z.object({
   username: z.string().optional(),
   icon_emoji: z.string().optional(),
   icon_url: z.string().optional(),
+  thread_ts: z.string().optional(),
+  metadata: z
+    .object({ event_type: z.string(), event_payload: z.any() })
+    .optional(),
 });
 
 export const ChannelNameOrIdSchema = z.union([
@@ -50,6 +53,8 @@ export const PostMessageOptionsSchema = z
     username: z.string().optional(),
     icon_emoji: z.string().optional(),
     icon_url: z.string().optional(),
+    thread_ts: z.string().optional(),
+    metadata: z.any().optional(),
   })
   .and(ChannelNameOrIdSchema);
 
@@ -117,3 +122,45 @@ export const AddReactionResponseSchema = z.discriminatedUnion("ok", [
   AddReactionSuccessResponseSchema,
   ErrorResponseSchema,
 ]);
+
+export const ModalSchema = z.object({
+  type: z.literal("modal"),
+  title: plainTextElementSchema,
+  blocks: z.array(knownBlockSchema),
+  private_metadata: z.string().optional(),
+  callback_id: z.string().optional(),
+  close: plainTextElementSchema.optional(),
+  submit: plainTextElementSchema.optional(),
+  clear_on_close: z.boolean().optional(),
+  notify_on_close: z.boolean().optional(),
+  external_id: z.string().optional(),
+  submit_disabled: z.boolean().optional(),
+});
+
+export const OpenViewBodySchema = z.object({
+  trigger_id: z.string(),
+  view: ModalSchema,
+});
+
+export const OpenViewSuccessResponseSchema = z.object({
+  ok: z.literal(true),
+  view: z.object({
+    id: z.string(),
+    team_id: z.string(),
+    type: z.string(),
+    private_metadata: z.string(),
+    callback_id: z.string(),
+  }),
+});
+
+export const OpenViewResponseSchema = z.discriminatedUnion("ok", [
+  OpenViewSuccessResponseSchema,
+  ErrorResponseSchema,
+]);
+
+export const UpdateViewBodySchema = z.object({
+  view_id: z.string().optional(),
+  hash: z.string().optional(),
+  external_id: z.string().optional(),
+  view: ModalSchema,
+});

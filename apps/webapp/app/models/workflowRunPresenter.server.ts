@@ -89,6 +89,13 @@ async function parseStep(
     status: original.status,
   };
   switch (original.type) {
+    case "RUN_ONCE":
+      return {
+        ...base,
+        type: "RUN_ONCE" as const,
+        output: original.output,
+        idempotencyKey: original.id,
+      };
     case "LOG_MESSAGE":
       return {
         ...base,

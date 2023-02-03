@@ -4,8 +4,13 @@ sidebarTitle: "Shopify"
 description: "Here are some example workflows you could create using the Shopify integration."
 ---
 
-To use the Resend integration you must first install the required packages:
+### Example workflows:
 
+## Create a new product
+
+Integrations required: Shopify
+
+Packages required:
 <Tabs>
   <Tab title="npm">
 
@@ -26,11 +31,11 @@ pnpm install @trigger.dev/shopify
 ```bash
 yarn add @trigger.dev/shopify
 ```
+
   </Tab>
 </Tabs>
-## Create a new product
 
-Integrations required: Shopify
+Workflow code:
 
 ```ts
 import { Trigger, customEvent } from "@trigger.dev/sdk";

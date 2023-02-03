@@ -22,6 +22,8 @@ const zodErrorMessageOptions: ErrorMessageOptions = {
   },
 };
 
+type RunOnceOutput = { idempotencyKey: string; hasRun: boolean; output?: any };
+
 export class TriggerClient<TSchema extends z.ZodTypeAny> {
   #trigger: Trigger<TSchema>;
   #options: TriggerOptions<TSchema>;
@@ -57,6 +59,14 @@ export class TriggerClient<TSchema extends z.ZodTypeAny> {
     string,
     {
       resolve: (output: FetchOutput) => void;
+      reject: (err?: any) => void;
+    }
+  >();
+
+  #runOnceCallbacks = new Map<
+    string,
+    {
+      resolve: (output: RunOnceOutput) => void;
       reject: (err?: any) => void;
     }
   >();
@@ -197,6 +207,30 @@ export class TriggerClient<TSchema extends z.ZodTypeAny> {
           const { resolve } = waitCallbacks;
 
           resolve();
+
+          return true;
+        },
+        RESOLVE_RUN_ONCE: async (data) => {
+          this.#logger.debug("Handling RESOLVE_RUN_ONCE", data);
+
+          const runOnceCallbacks = this.#runOnceCallbacks.get(
+            messageKey(data.meta.runId, data.key)
+          );
+
+          if (!runOnceCallbacks) {
+            this.#logger.debug(
+              `Could not find runOnce callbacks for request ID ${messageKey(
+                data.meta.runId,
+                data.key
+              )}. This can happen when a workflow run is resumed`
+            );
+
+            return true;
+          }
+
+          const { resolve } = runOnceCallbacks;
+
+          resolve(data.output);
 
           return true;
         },
@@ -425,6 +459,67 @@ export class TriggerClient<TSchema extends z.ZodTypeAny> {
 
               return;
             },
+            runOnce: async (key, callback) => {
+              const result = new Promise<RunOnceOutput>((resolve, reject) => {
+                this.#runOnceCallbacks.set(messageKey(data.id, key), {
+                  resolve,
+                  reject,
+                });
+              });
+
+              await serverRPC.send("INITIALIZE_RUN_ONCE", {
+                runId: data.id,
+                key,
+                runOnce: {
+                  type: "REMOTE",
+                },
+                timestamp: String(highPrecisionTimestamp()),
+              });
+
+              const { idempotencyKey, hasRun, output } = await result;
+
+              if (hasRun) {
+                return output;
+              }
+
+              const callbackResult = await callback(idempotencyKey);
+
+              await serverRPC.send("COMPLETE_RUN_ONCE", {
+                runId: data.id,
+                key,
+                runOnce: {
+                  type: "REMOTE",
+                  idempotencyKey,
+                  output: callbackResult
+                    ? JSON.stringify(callbackResult)
+                    : undefined,
+                },
+                timestamp: String(highPrecisionTimestamp()),
+              });
+
+              return callbackResult;
+            },
+            runOnceLocalOnly: async (key, callback) => {
+              const result = new Promise<RunOnceOutput>((resolve, reject) => {
+                this.#runOnceCallbacks.set(messageKey(data.id, key), {
+                  resolve,
+                  reject,
+                });
+              });
+
+              await serverRPC.send("INITIALIZE_RUN_ONCE", {
+                runId: data.id,
+                key,
+                runOnce: {
+                  type: "LOCAL_ONLY",
+                },
+                timestamp: String(highPrecisionTimestamp()),
+              });
+
+              const { idempotencyKey } = await result;
+
+              return callback(idempotencyKey);
+            },
             fetch: fetchFunction,
           };
 
@@ -471,6 +566,7 @@ export class TriggerClient<TSchema extends z.ZodTypeAny> {
               fetch: fetchFunction,
               workflowId: data.meta.workflowId,
               appOrigin: data.meta.appOrigin,
+              id: data.id,
             },
             () => {
               this.#logger.debug("Running trigger...");

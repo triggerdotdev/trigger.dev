@@ -11,4 +11,7 @@ export const WebhookSourceSchema = z.object({
   }),
 });
 
+export type MessageEvent = z.infer<typeof messageEvents.messageEventSchema>;
+export type MessageEventMessage = MessageEvent["message"];
+
 export { messageEvents, messages };
