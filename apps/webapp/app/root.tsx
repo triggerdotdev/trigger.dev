@@ -8,7 +8,7 @@ import {
   ScrollRestoration,
   useCatch,
 } from "@remix-run/react";
-
+import { createHead } from "remix-island";
 import tailwindStylesheetUrl from "./styles/tailwind.css";
 import prismStylesheetUrl from "./styles/prism.css";
 import prismThemeStylesheetUrl from "./styles/prism-trigger-theme.css";
@@ -38,6 +38,13 @@ export const meta: MetaFunction = () => ({
   viewport: "width=device-width,initial-scale=1",
 });
 
+export const Head = createHead(() => (
+  <>
+    <Meta />
+    <Links />
+  </>
+));
+
 export const loader = async ({ request }: LoaderArgs) => {
   const session = await getSession(request.headers.get("cookie"));
   const toastMessage = session.get("toastMessage") as ToastMessage;
@@ -63,7 +70,7 @@ export function CatchBoundary() {
         <Links />
       </head>
       <body className="bg-slate-850">
-        <div className="flex items-center justify-center h-screen w-screen">
+        <div className="flex h-screen w-screen items-center justify-center">
           <div className="flex flex-col items-center justify-center space-y-4">
             <h1>
               {caught.status} {caught.statusText}
@@ -89,7 +96,7 @@ export function ErrorBoundary({ error }: { error: any }) {
         <Links />
       </head>
       <body className="bg-slate-850">
-        <div className="flex items-center justify-center h-screen w-screen">
+        <div className="flex h-screen w-screen items-center justify-center">
           <div className="flex flex-col items-center justify-center space-y-4">
             <h1>Oh no!</h1>
             <Body size="small">{JSON.stringify(error)}</Body>
@@ -152,52 +159,47 @@ function App() {
   }, [user]);
 
   return (
-    <html lang="en" className="h-full">
-      <head>
-        <Meta />
-        <Links />
-      </head>
-      <body className="h-full overflow-hidden">
-        <Outlet />
-        <Toaster
-          position="top-right"
-          toastOptions={{
-            className: "",
-            success: {
-              style: {
-                border: "1px solid #10B981",
-                background: "#D1FAE5",
-                padding: "16px 20px",
-                color: "#1E293B",
-                maxWidth: "500px",
-              },
-              iconTheme: {
-                primary: "#10B981",
-                secondary: "#D1FAE5",
-              },
-              duration: 5000,
+    <>
+      <Head />
+      <Outlet />
+      <Toaster
+        position="top-right"
+        toastOptions={{
+          className: "",
+          success: {
+            style: {
+              border: "1px solid #10B981",
+              background: "#D1FAE5",
+              padding: "16px 20px",
+              color: "#1E293B",
+              maxWidth: "500px",
             },
-            error: {
-              style: {
-                border: "1px solid #F43F5E",
-                background: "#FFE4E6",
-                padding: "16px 20px",
-                color: "#1E293B",
-                maxWidth: "500px",
-              },
-              iconTheme: {
-                primary: "#F43F5E",
-                secondary: "#FFE4E6",
-              },
-              duration: 5000,
+            iconTheme: {
+              primary: "#10B981",
+              secondary: "#D1FAE5",
             },
-          }}
-        />
-        <ScrollRestoration />
-        <Scripts />
-        <LiveReload />
-      </body>
-    </html>
+            duration: 5000,
+          },
+          error: {
+            style: {
+              border: "1px solid #F43F5E",
+              background: "#FFE4E6",
+              padding: "16px 20px",
+              color: "#1E293B",
+              maxWidth: "500px",
+            },
+            iconTheme: {
+              primary: "#F43F5E",
+              secondary: "#FFE4E6",
+            },
+            duration: 5000,
+          },
+        }}
+      />
+      <ScrollRestoration />
+      <Scripts />
+      <LiveReload />
+    </>
   );
 }
 
