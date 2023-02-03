@@ -113,29 +113,12 @@ export function CreateNewWorkflowNoWorkflows({
                         code={project.code(environment.apiKey)}
                         align="top"
                       />
+
                       <Header4
                         size="regular"
                         className={classNames(subTitle, "mt-8")}
                       >
-                        3. Authenticate with {project.packagesCopy}
-                      </Header4>
-                      <Body size="regular" className="mb-4 text-slate-400">
-                        This project requires an API integration with{" "}
-                        {project.packagesCopy}. Add these now in the{" "}
-                        <TertiaryLink
-                          to={`/orgs/${currentOrganization.slug}/integrations`}
-                          className="!text-base text-slate-400 underline decoration-green-500 underline-offset-2 transition hover:decoration-[3px]"
-                        >
-                          API Integrations tab
-                        </TertiaryLink>
-                        . Once you've authenticated, return here and continue
-                        with the next step.
-                      </Body>
-                      <Header4
-                        size="regular"
-                        className={classNames(subTitle, "mt-8")}
-                      >
-                        4. Run your web server
+                        3. Run your web server
                       </Header4>
                       <Body size="regular" className="mb-4 text-slate-400">
                         Run your server how you normally would, e.g.{" "}
@@ -150,7 +133,7 @@ export function CreateNewWorkflowNoWorkflows({
                         size="regular"
                         className={classNames(subTitle, "mt-8")}
                       >
-                        5. Test your workflow from the dashboard
+                        4. Test your workflow from the dashboard
                       </Header4>
                       <Body size="regular" className="mb-4 text-slate-400">
                         On the{" "}
