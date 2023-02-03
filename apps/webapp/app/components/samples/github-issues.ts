@@ -4,7 +4,7 @@ import * as github from "@trigger.dev/github";
 import * as slack from "@trigger.dev/slack";
 
 new Trigger({
-  id: "my-workflow-1",
+  id: "github-issues-to-slack",
   name: "Posts to Slack when GitHub Issue created or modified",
   apiKey: "${apiKey}",
   on: github.events.issueEvent({
