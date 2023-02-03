@@ -49,7 +49,7 @@ export function Underlined({ children, ...props }: HeadlessTabProps) {
         classnames(
           selected
             ? "border-indigo-500 text-slate-300 outline-none"
-            : "border-transparent text-slate-500 hover:border-slate-200 hover:text-slate-200",
+            : "border-transparent text-slate-400 hover:border-slate-200 hover:text-slate-200",
           "disabled:text-slate-300 disabled:hover:border-transparent",
           "flex whitespace-nowrap border-b-2 py-2 px-4 text-base font-medium transition"
         )
