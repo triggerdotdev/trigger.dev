@@ -167,6 +167,7 @@ importers:
       react-hotkeys-hook: ^3.4.7
       react-query: ^3.39.1
       react-resizable-layout: ^0.2.4
+      react-use-intercom: ^3.0.2
       remix-auth: ^3.4.0
       remix-auth-email-link: ^1.5.2
       remix-auth-github: ^1.3.0
@@ -267,6 +268,7 @@ importers:
       react-hotkeys-hook: 3.4.7_biqbaboplfbrettd7655fr4n2y
       react-query: 3.39.2_biqbaboplfbrettd7655fr4n2y
       react-resizable-layout: 0.2.4_biqbaboplfbrettd7655fr4n2y
+      react-use-intercom: 3.0.2_biqbaboplfbrettd7655fr4n2y
       remix-auth: 3.4.0_lmtt5r35rmkeqdlvkpo3d5l4ia
       remix-auth-email-link: 1.5.2_ynr7gzkhaqxia4i6pdigmtuncy
       remix-auth-github: 1.3.0_ynr7gzkhaqxia4i6pdigmtuncy
@@ -14165,6 +14167,17 @@ packages:
     dependencies:
       '@remix-run/router': 1.3.1
       react: 18.2.0
+    dev: false
+
+  /react-use-intercom/3.0.2_biqbaboplfbrettd7655fr4n2y:
+    resolution: {integrity: sha512-1zp97bK3Hx9W6NJZS2wO6gA+eGlWZf1J+nj8+P22a8ORsnWiUYpZ12Kzco8vv9Qn+0Gbb6eX9lkkrLXf5noXyg==}
+    engines: {node: '>=10'}
+    peerDependencies:
+      react: '>=16.8.0'
+      react-dom: '>=16.8.0'
+    dependencies:
+      react: 18.2.0
+      react-dom: 18.2.0_react@18.2.0
     dev: false
 
   /react/18.2.0:
