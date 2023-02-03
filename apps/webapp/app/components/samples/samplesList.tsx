@@ -1,12 +1,33 @@
 import { StarIcon, EnvelopeIcon, ExclamationCircleIcon, ShoppingCartIcon, ChatBubbleOvalLeftEllipsisIcon } from "@heroicons/react/24/outline";
+import { customEvent } from "./custom-event";
 import { githubIssues } from "./github-issues";
 import { githubStars } from "./github-stars";
 import { newUserSlackMessage } from "./new-user-slack-message";
 import { resendEmailDripCampaign } from "./resend-email-drip-campaign";
 import { shopifyCreateNewProducts } from "./shopify-create-new-product";
+import { webhook } from "./webhook";
+import { scheduled } from "./scheduled";
+
 import { whatsappListenForMessageAndReply } from "./whatsapp-listen-for-message-and-reply";
+import { scheduledCron } from "./scheduled-cron";
 
 export const exampleProjects = [
+  {
+    icon: <StarIcon className="h-8 w-8 text-yellow-400" />,
+    name: "New user → Slack message",
+    title: "When a new user signs up, post a message to Slack",
+    description:
+      "This workflow is triggered when a new user signs up. The user's details will then be posted in a specific Slack channel.",
+    requiredPackages: "@trigger.dev/slack zod",
+    code: newUserSlackMessage,
+    packagesCopy: "Slack",
+    testCode: `{
+      "name": "Rick Astley",
+      "email": "nevergonn@giveyou.up",
+      "paidPlan": true
+    }
+    `,
+  },
   {
     icon: <StarIcon className="h-8 w-8 text-yellow-400" />,
     name: "GitHub star → Slack",
@@ -17,9 +38,7 @@ export const exampleProjects = [
     code: githubStars,
     packagesCopy: "GitHub and Slack",
     testCode: `{
-      "name": "Rick Astley",
-      "email": "nevergonn@giveyou.up",
-      "paidPlan": true
+   
     }
     `,
   },
@@ -86,20 +105,27 @@ export const exampleProjects = [
 export const fromScratchProjects = [
   {
     name: "Webhook",
-    requiredPackages: "@trigger.dev/slack zod",
-    code: newUserSlackMessage,
-    description: "",
+    requiredPackages: "@trigger.dev/sdk zod",
+    code: webhook,
+    description: "Webhooks allow you to subscribe to events from APIs you use",
   },
   {
     name: "Custom event",
-    requiredPackages: "@trigger.dev/slack zod",
-    code: newUserSlackMessage,
-    description: "",
+    requiredPackages: "@trigger.dev/sdk zod",
+    code: customEvent,
+    description:
+      "Custom event triggers allow you to run workflows from your own code (or your other workflows)",
   },
   {
-    name: "Scheduled (CRON)",
-    requiredPackages: "@trigger.dev/slack zod",
-    code: newUserSlackMessage,
-    description: "",
+    name: "Scheduled - recurring",
+    requiredPackages: "@trigger.dev/sdk zod",
+    code: scheduled,
+    description: "Run a workflow every 10 minutes",
+  },
+  {
+    name: "Scheduled - (CRON)",
+    requiredPackages: "@trigger.dev/sdk zod",
+    code: scheduledCron,
+    description: "This job will run at 2:30pm every Monday.",
   },
 ];
