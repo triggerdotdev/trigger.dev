@@ -118,6 +118,7 @@
     "remix-typedjson": "~0.1.3",
     "remix-utils": "^3.4.0",
     "slug": "^6.0.0",
+    "tailwind-scrollbar-hide": "^1.1.7",
     "tiny-invariant": "^1.2.0",
     "tsx": "^3.4.3",
     "ulid": "^2.3.0",
