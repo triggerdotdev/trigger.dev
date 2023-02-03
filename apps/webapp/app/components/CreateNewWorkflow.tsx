@@ -208,8 +208,7 @@ export function CreateNewWorkflowNoWorkflows({
                         {project.description}
                       </Body>
                       <Body size="regular" className="mb-2 mt-4 text-slate-400">
-                        Copy this example code into your project. Your API key
-                        has already been inserted.
+                        Copy this example code into your project.
                       </Body>
                       <CodeBlock
                         code={project.code(environment.apiKey)}
@@ -219,7 +218,7 @@ export function CreateNewWorkflowNoWorkflows({
                         size="regular"
                         className={classNames(subTitle, "mt-8")}
                       >
-                        4. Run your web server
+                        3. Run your web server
                       </Header4>
                       <Body size="regular" className="mb-4 text-slate-400">
                         Run your server how you normally would, e.g.{" "}
@@ -234,7 +233,7 @@ export function CreateNewWorkflowNoWorkflows({
                         size="regular"
                         className={classNames(subTitle, "mt-8")}
                       >
-                        5. Test your workflow from the dashboard
+                        4. Test your workflow from the dashboard
                       </Header4>
                       <Body size="regular" className="mb-4 text-slate-400">
                         On the{" "}
@@ -256,15 +255,9 @@ export function CreateNewWorkflowNoWorkflows({
                       </Body>
 
                       <Body size="regular" className="mb-4 text-slate-400">
-                        In the test field, input a valid test event. You can
-                        copy this example:
+                        In the test field, input a valid test event.
                       </Body>
-                      <CodeBlock
-                        code="test code"
-                        align="top"
-                        language="json"
-                        className="mb-4"
-                      />
+
                       <Body size="regular" className="mb-4 text-slate-400">
                         Hit the “Run test” button and it will take you to the
                         run. Refresh the page to see it move between steps.
