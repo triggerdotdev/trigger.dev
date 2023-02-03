@@ -25,6 +25,7 @@ const dateFormatter = new Intl.DateTimeFormat("en-US", {
   dateStyle: "short",
 });
 
+// this trigger listens for WhatsApp messages and sends them to Slack
 new Trigger({
   id: "whatsapp-to-slack",
   name: "WhatsApp: load messages",
@@ -37,6 +38,7 @@ new Trigger({
   run: async (event, ctx) => {
     ctx.logger.debug("event", event);
 
+    //this generates Slack blocks from the WhatsApp message
     const messageBody = await createMessageBody(event.message);
 
     await slack.postMessage("jsx-test", {
@@ -56,6 +58,7 @@ new Trigger({
           </Actions>
         </Blocks>
       ),
+      //pass the WhatsApp message to the next trigger
       metadata: {
         whatsAppMessage: event.message,
       },
@@ -63,6 +66,7 @@ new Trigger({
   },
 }).listen();
 
+//this trigger creates a Slack modal when a user presses the Reply button
 new Trigger({
   id: "whatsapp-to-slack-modal",
   name: "WhatsApp: show message composer",
@@ -78,15 +82,16 @@ new Trigger({
       return;
     }
 
+    //get the action (presing the reply button) and the original WhatsApp message
     const action = event.actions[0];
-    ctx;
-
     const whatsAppMessage =
       event.message?.metadata?.event_payload.whatsAppMessage;
 
+    //generate Slack blocks from the WhatsApp message
     const messageBody = await createMessageBody(whatsAppMessage);
 
     if (action.action_id === "reply" && action.type === "button") {
+      //show a reply modal, with the original message and an input field for the reply
       await slack.openView(
         "Opening view",
         event.trigger_id,
@@ -107,6 +112,7 @@ new Trigger({
         ),
         {
           onSubmit: "close",
+          //pass the original WhatsApp message to the next trigger, and the original Slack message so we can thread replies
           metadata: {
             whatsAppMessage,
             thread_ts: event.message?.ts,
@@ -117,6 +123,7 @@ new Trigger({
   },
 }).listen();
 
+//this trigger sends the reply from Slack to WhatsApp
 new Trigger({
   id: "whatsapp-composed-slack-message",
   name: "WhatsApp: send message from Slack",
@@ -137,7 +144,6 @@ new Trigger({
     const privateMetadata =
       event.view.private_metadata && JSON.parse(event.view.private_metadata);
     await ctx.logger.info("Private metadata", privateMetadata);
-
     const whatsAppMessage = privateMetadata?.whatsAppMessage;
 
     if (!whatsAppMessage || !usersResponse) {
@@ -152,7 +158,7 @@ new Trigger({
       text: usersResponse,
     });
 
-    //send message in Slack
+    //send message in the Slack thread
     await slack.postMessage("slack-reply", {
       channelName: "whatsapp-support",
       text: `Replied with: ${usersResponse}`,
@@ -172,6 +178,7 @@ new Trigger({
   },
 }).listen();
 
+//creates different Slack blocks depending on the type of WhatsApp message (e.g. text, image, etc.)
 async function createMessageBody(message: MessageEventMessage) {
   switch (message.type) {
     case "text": {
