@@ -1,32 +1,23 @@
 import { Tab } from "@headlessui/react";
+import { ArrowTopRightOnSquareIcon } from "@heroicons/react/24/outline";
+import type { IntegrationMetadata } from "@trigger.dev/integration-sdk";
+import classNames from "classnames";
+import type { ReactNode } from "react";
+import invariant from "tiny-invariant";
 import {
   LargeBox,
   LargeBoxList,
   Underlined,
   UnderlinedList,
 } from "~/components/StyledTabs";
-import {
-  ArrowTopRightOnSquareIcon,
-  EnvelopeIcon,
-  StarIcon,
-} from "@heroicons/react/24/outline";
-import type { IntegrationMetadata } from "@trigger.dev/integration-sdk";
-import {
-  PrimaryA,
-  SecondaryA,
-  TertiaryA,
-  TertiaryLink,
-} from "./primitives/Buttons";
-import { Body } from "./primitives/text/Body";
-import { SubTitle } from "./primitives/text/SubTitle";
-import { newUserSlackMessage } from "./samples/new-user-slack-message";
-import CodeBlock from "./code/CodeBlock";
-import { Header4 } from "./primitives/text/Headers";
-import classNames from "classnames";
 import { useCurrentEnvironment } from "~/hooks/useEnvironments";
-import invariant from "tiny-invariant";
-import type { ReactNode } from "react";
 import { useCurrentOrganization } from "~/hooks/useOrganizations";
+import CodeBlock from "./code/CodeBlock";
+import { PrimaryA, SecondaryA, TertiaryLink } from "./primitives/Buttons";
+import { Body } from "./primitives/text/Body";
+import { Header4 } from "./primitives/text/Headers";
+import { SubTitle } from "./primitives/text/SubTitle";
+import { exampleProjects, fromScratchProjects } from "./samples/samplesList";
 
 export function CreateNewWorkflow() {
   return (
@@ -236,57 +227,6 @@ const inlineCode =
 function InlineCode({ children }: { children: ReactNode }) {
   return <code className={inlineCode}>{children}</code>;
 }
-
-const exampleProjects = [
-  {
-    icon: <StarIcon className="h-8 w-8 text-yellow-400" />,
-    name: "GitHub star → Slack",
-    title: "When you receive a GitHub star, post that user's details to Slack",
-    description:
-      "Schemas are created using Zod. In this case events must send an object that has name, email, and paidPlan.",
-    requiredPackages: "@trigger.dev/slack @trigger.dev/github zod",
-    packagesCopy: "GitHub and Slack",
-    code: newUserSlackMessage,
-    testCode: `{
-    "name": "Rick Astley",
-    "email": "nevergonn@giveyou.up",
-    "paidPlan": true
-  }
-  `,
-  },
-  {
-    icon: <EnvelopeIcon className="h-8 w-8 text-blue-400" />,
-    name: "New user → email",
-    title: "When a new user signs up, send them a series of emails",
-    description: "Description here",
-    requiredPackages: "@trigger.dev/slack zod",
-    packagesCopy: "Slack",
-    code: newUserSlackMessage,
-    testCode: "",
-  },
-];
-
-const fromScratchProjects = [
-  {
-    name: "Webhook",
-    requiredPackages: "@trigger.dev/slack zod",
-    code: newUserSlackMessage,
-    description: "",
-  },
-  {
-    name: "Custom event",
-    requiredPackages: "@trigger.dev/slack zod",
-    code: newUserSlackMessage,
-    description: "",
-  },
-  {
-    name: "Scheduled (CRON)",
-    requiredPackages: "@trigger.dev/slack zod",
-    code: newUserSlackMessage,
-    description: "",
-  },
-];
-
 function InstallPackages({ packages }: { packages: string }) {
   return (
     <Tab.Group>

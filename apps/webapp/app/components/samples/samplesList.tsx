@@ -1,4 +1,10 @@
-import { StarIcon, EnvelopeIcon, ExclamationCircleIcon, ShoppingCartIcon, ChatBubbleOvalLeftEllipsisIcon } from "@heroicons/react/24/outline";
+import {
+  StarIcon,
+  EnvelopeIcon,
+  ExclamationCircleIcon,
+  ShoppingCartIcon,
+  ChatBubbleOvalLeftEllipsisIcon,
+} from "@heroicons/react/24/outline";
 import { customEvent } from "./custom-event";
 import { githubIssues } from "./github-issues";
 import { githubStars } from "./github-stars";
