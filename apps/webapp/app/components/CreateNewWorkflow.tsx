@@ -101,6 +101,10 @@ export function CreateNewWorkflowNoWorkflows({
                         Install these extra API integration packages:
                       </Body>
                       <InstallPackages packages={project.requiredPackages} />
+                      <Body size="regular" className="mb-2 text-slate-400">
+                        Copy this code into your project. Your API key is
+                        already inserted.
+                      </Body>
                       <CodeBlock
                         code={project.code(environment.apiKey)}
                         align="top"
