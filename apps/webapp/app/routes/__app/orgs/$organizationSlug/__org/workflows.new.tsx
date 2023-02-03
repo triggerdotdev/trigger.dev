@@ -1,13 +1,20 @@
 import { Tab } from "@headlessui/react";
-import type { LoaderArgs } from "@remix-run/server-runtime";
+import type { ActionArgs, LoaderArgs } from "@remix-run/server-runtime";
+import { redirect } from "@remix-run/server-runtime";
 import classNames from "classnames";
-import { typedjson } from "remix-typedjson";
+import { typedjson, useTypedFetcher } from "remix-typedjson";
 import invariant from "tiny-invariant";
+import { z } from "zod";
 import CodeBlock from "~/components/code/CodeBlock";
 import { InlineCode } from "~/components/code/InlineCode";
 import { InstallPackages } from "~/components/CreateNewWorkflow";
 import { Container } from "~/components/layout/Container";
-import { TertiaryLink } from "~/components/primitives/Buttons";
+import {
+  PrimaryButton,
+  PrimaryLink,
+  TertiaryLink,
+} from "~/components/primitives/Buttons";
+import { Spinner } from "~/components/primitives/Spinner";
 import {
   LargeBox,
   LargeBoxList,
@@ -24,14 +31,58 @@ import {
 import { useCurrentEnvironment } from "~/hooks/useEnvironments";
 import { useCurrentOrganization } from "~/hooks/useOrganizations";
 import { getIntegrationMetadatas } from "~/models/integrations.server";
+import { getOrganizationFromSlug } from "~/models/organization.server";
 import { requireUserId } from "~/services/session.server";
+
+const urlSearchParamsSchema = z.object({
+  date: z.coerce.number().transform((value) => new Date(value)),
+});
 
 export const loader = async ({ request, params }: LoaderArgs) => {
   await requireUserId(request);
 
+  //add the date to the url so we can tell if a workflow is new
+  const url = new URL(request.url);
+  const searchObject = Object.fromEntries(url.searchParams ?? {});
+  const result = urlSearchParamsSchema.safeParse(searchObject);
+  if (!result.success) {
+    url.searchParams.set("date", new Date().getTime().toString());
+    throw redirect(url.toString());
+  }
+
   const providers = getIntegrationMetadatas(false);
 
   return typedjson({ providers });
+};
+
+export const action = async ({ request, params }: ActionArgs) => {
+  const userId = await requireUserId(request);
+  const { organizationSlug } = params;
+  invariant(organizationSlug, "organizationSlug is required");
+
+  const url = new URL(request.url);
+  const result = urlSearchParamsSchema.safeParse(
+    Object.fromEntries(url.searchParams)
+  );
+
+  if (!result.success) {
+    console.error("workflows.new action: Invalid date");
+    return typedjson({ hasNewWorkflows: false, newWorkflow: undefined });
+  }
+
+  const organization = await getOrganizationFromSlug({
+    slug: organizationSlug,
+    userId,
+  });
+
+  const newWorkflow = organization?.workflows.find((workflow) => {
+    return workflow.createdAt > result.data.date;
+  });
+
+  return typedjson({
+    hasNewWorkflows: newWorkflow ? true : false,
+    newWorkflow,
+  });
 };
 
 const maxWidth = "max-w-4xl";
@@ -40,15 +91,13 @@ const subTitle = "text-slate-200 font-semibold mb-4";
 export default function NewWorkflowPage() {
   const environment = useCurrentEnvironment();
   const currentOrganization = useCurrentOrganization();
-  if (currentOrganization === undefined) {
-    return <></>;
-  }
+  invariant(currentOrganization, "Organization must be defined");
   invariant(environment, "Environment must be defined");
 
   return (
     <Container>
+      <CheckForWorkflows />
       <Title>Create a new workflow</Title>
-
       <div className={maxWidth}>
         <Header4 size="regular" className={subTitle}>
           1. Install the Trigger.dev package
@@ -225,4 +274,53 @@ export default function NewWorkflowPage() {
       </Tab.Group>
     </Container>
   );
+}
+
+function CheckForWorkflows() {
+  const fetchWorkflowCount = useTypedFetcher<typeof action>();
+
+  if (fetchWorkflowCount.state !== "idle") {
+    return (
+      <div>
+        <Spinner />
+      </div>
+    );
+  }
+
+  if (fetchWorkflowCount.data === undefined) {
+    return (
+      <fetchWorkflowCount.Form method="post">
+        <PrimaryButton type="submit">I’ve connected my workflow</PrimaryButton>
+      </fetchWorkflowCount.Form>
+    );
+  } else {
+    if (fetchWorkflowCount.data.hasNewWorkflows) {
+      return (
+        <div>
+          <Header4 size="small" className="font-semibold text-slate-300">
+            Great, "{fetchWorkflowCount.data.newWorkflow?.title}" is connected!
+            <PrimaryLink
+              to={`../workflows/${fetchWorkflowCount.data.newWorkflow?.slug}`}
+            >
+              View workflow
+            </PrimaryLink>
+          </Header4>
+        </div>
+      );
+    } else {
+      return (
+        <div>
+          <Header4 size="small" className="font-semibold text-slate-300">
+            Hmm it doesn't seem like your workflow has connected yet.
+          </Header4>
+          <Body>Are you running your server?</Body>
+          <fetchWorkflowCount.Form method="post">
+            <PrimaryButton type="submit">
+              I’ve connected my workflow
+            </PrimaryButton>
+          </fetchWorkflowCount.Form>
+        </div>
+      );
+    }
+  }
 }
