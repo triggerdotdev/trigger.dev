@@ -64,8 +64,8 @@ export const exampleProjects = [
   },
   {
     icon: <EnvelopeIcon className="h-8 w-8 text-blue-400" />,
-    name: "New user email → Slack",
-    title: "When a new user signs up, send them a series of emails",
+    name: "New user → email campaign",
+    title: "When a new user signs up, post a message to Slack and send them a series of emails",
     description:
       "This workflow is triggered when a new user signs up. A welcome email is sent straight away and an alert is sent to a specific Slack channel. 1 day later it checks if the user has completed the onboarding, if they have, they get a ‘tips’ email, otherwise they get a re-engagement email.",
     requiredPackages: "@trigger.dev/resend @trigger.dev/slack zod",
