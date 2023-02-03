@@ -17,8 +17,6 @@ export class HandleSlackInteractivity {
   }
 
   public async call(payload: unknown) {
-    console.log("payload", JSON.stringify(payload, null, 2));
-
     const parsedPayload = schemas.InteractivityPayloadSchema.safeParse(payload);
 
     if (!parsedPayload.success) {
