@@ -284,13 +284,13 @@ function CheckForWorkflows() {
               <Body size="regular" className="font-semibold text-slate-300">
                 Great, "{fetchWorkflowCount.data.newWorkflow?.title}" is
                 connected!
-                <PrimaryLink
-                  to={`../workflows/${fetchWorkflowCount.data.newWorkflow?.slug}`}
-                >
-                  View workflow
-                </PrimaryLink>
               </Body>
             </div>
+            <PrimaryLink
+              to={`../workflows/${fetchWorkflowCount.data.newWorkflow?.slug}`}
+            >
+              View workflow
+            </PrimaryLink>
           </Panel>
         </div>
       );
