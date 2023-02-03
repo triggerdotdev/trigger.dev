@@ -15,14 +15,10 @@ import JSXSlack, {
   Context,
   Image,
   Modal,
-  Divider,
-  Field,
   Input,
   Textarea,
 } from "jsx-slack";
 import * as slack from "@trigger.dev/slack";
-
-const SLACK_BLOCK_ID = "launch.modal";
 
 const dateFormatter = new Intl.DateTimeFormat("en-US", {
   timeStyle: "short",
@@ -40,33 +36,11 @@ new Trigger({
   }),
   run: async (event, ctx) => {
     ctx.logger.debug("event", event);
-    let messageBody = <></>;
 
-    switch (event.message.type) {
-      case "text": {
-        messageBody = <Section>{event.message.text.body}</Section>;
-        break;
-      }
-      case "image": {
-        const mediaUrl = await getMediaUrl(`getImageUrl`, event.message.image);
-        messageBody = (
-          <Image src={mediaUrl} alt={event.message.image.caption ?? ""} />
-        );
-        break;
-      }
-      case "video": {
-        const mediaUrl = await getMediaUrl(`getVideoUrl`, event.message.video);
-        messageBody = <Section>{mediaUrl}</Section>;
-        break;
-      }
-      default:
-        messageBody = (
-          <Section>Unsupported message type: {event.message.type}</Section>
-        );
-    }
+    const messageBody = await createMessageBody(event.message);
 
     await slack.postMessage("jsx-test", {
-      channelName: "test-integrations",
+      channelName: "whatsapp-support",
       //text appears in Slack notifications on mobile/desktop
       text: "How is your progress today?",
       //import and use JSXSlack to make creating rich messages much easier
@@ -110,12 +84,17 @@ new Trigger({
     const whatsAppMessage =
       event.message?.metadata?.event_payload.whatsAppMessage;
 
+    const messageBody = await createMessageBody(whatsAppMessage);
+
     if (action.action_id === "reply" && action.type === "button") {
       await slack.openView(
         "Opening view",
         event.trigger_id,
         JSXSlack(
           <Modal title="Your reply" close="Cancel" callbackId="submit-message">
+            <Header>Original message</Header>
+            {messageBody}
+            <Header>Your reply</Header>
             <Textarea
               name="message"
               label="Message"
@@ -175,7 +154,7 @@ new Trigger({
 
     //send message in Slack
     await slack.postMessage("slack-reply", {
-      channelName: "test-integrations",
+      channelName: "whatsapp-support",
       text: `Replied with: ${usersResponse}`,
       blocks: JSXSlack(
         <Blocks>
@@ -192,3 +171,27 @@ new Trigger({
     return event;
   },
 }).listen();
+
+async function createMessageBody(message: MessageEventMessage) {
+  switch (message.type) {
+    case "text": {
+      return <Section>{message.text.body}</Section>;
+    }
+    case "image": {
+      const mediaUrl = await getMediaUrl(`getImageUrl`, message.image);
+      return (
+        <Image
+          src={mediaUrl}
+          alt={message.image.caption ?? ""}
+          title={message.image.caption ?? ""}
+        />
+      );
+    }
+    case "video": {
+      const mediaUrl = await getMediaUrl(`getVideoUrl`, message.video);
+      return <Section>{mediaUrl}</Section>;
+    }
+    default:
+      return <Section>Unsupported message type: {message.type}</Section>;
+  }
+}
