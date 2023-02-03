@@ -121,12 +121,10 @@ export default function NewWorkflowPage() {
                 <LargeBoxList>
                   {exampleProjects.map((project) => {
                     return (
-                      <>
-                        <LargeBox key={project.name}>
-                          {project.icon}
-                          <Body>{project.name}</Body>
-                        </LargeBox>
-                      </>
+                      <LargeBox key={project.name}>
+                        {project.icon}
+                        <Body>{project.name}</Body>
+                      </LargeBox>
                     );
                   })}
                 </LargeBoxList>
