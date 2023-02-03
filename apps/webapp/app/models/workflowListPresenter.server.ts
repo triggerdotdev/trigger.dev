@@ -243,11 +243,11 @@ function triggerProperties(
         };
       }
 
-      const result = SlackInteractionSourceSchema.safeParse(
+      const slackSource = SlackInteractionSourceSchema.safeParse(
         internalSource.source
       );
 
-      if (!result.success) {
+      if (!slackSource.success) {
         return {
           type: workflow.type,
           typeTitle: "Slack interaction",
@@ -255,21 +255,24 @@ function triggerProperties(
         };
       }
 
-      const slackSource = result.data;
-
       const title =
-        slackSource.type === "block_action"
-          ? `block_id = ${slackSource.blockId}`
-          : `callback_id = ${slackSource.callbackIds.join(", ")}`;
+        slackSource.data.type === "block_action"
+          ? `block_id = ${slackSource.data.blockId}`
+          : `callback_id = ${slackSource.data.callbackIds.join(", ")}`;
 
       return {
         type: workflow.type,
         typeTitle: "Slack interaction",
         title: title,
         properties:
-          slackSource.type === "block_action" &&
-          slackSource.actionIds.length > 0
-            ? [{ key: "Action ID", value: slackSource.actionIds.join(", ") }]
+          slackSource.data.type === "block_action" &&
+          slackSource.data.actionIds.length > 0
+            ? [
+                {
+                  key: "Action ID",
+                  value: slackSource.data.actionIds.join(", "),
+                },
+              ]
             : undefined,
       };
     }
