@@ -57,12 +57,12 @@ importers:
       '@nangohq/pizzly-frontend': ^0.3.7
       '@nangohq/pizzly-node': ^0.4.1
       '@prisma/client': ^4.3.0
-      '@remix-run/dev': ^1.12.0
-      '@remix-run/eslint-config': ^1.12.0
-      '@remix-run/express': ^1.12.0
-      '@remix-run/node': ^1.12.0
-      '@remix-run/react': ^1.12.0
-      '@remix-run/server-runtime': ^1.12.0
+      '@remix-run/dev': ^1.7.2
+      '@remix-run/eslint-config': ^1.7.2
+      '@remix-run/express': ^1.7.2
+      '@remix-run/node': ^1.7.2
+      '@remix-run/react': ^1.7.2
+      '@remix-run/server-runtime': ^1.7.0
       '@sentry/remix': ^7.28.1
       '@swc/core': ^1.3.4
       '@swc/helpers': ^0.4.11
@@ -168,12 +168,11 @@ importers:
       react-query: ^3.39.1
       react-resizable-layout: ^0.2.4
       react-use-intercom: ^3.0.2
-      remix-auth: ^3.4.0
-      remix-auth-email-link: ^1.5.2
-      remix-auth-github: ^1.3.0
-      remix-island: ^0.1.0
-      remix-typedjson: ~0.1.7
-      remix-utils: ^6.0.0
+      remix-auth: ^3.2.2
+      remix-auth-email-link: ^1.4.2
+      remix-auth-github: ^1.1.1
+      remix-typedjson: ~0.1.3
+      remix-utils: ^3.4.0
       slug: ^6.0.0
       start-server-and-test: ^1.14.0
       tailwind-scrollbar-hide: ^1.1.7
@@ -272,9 +271,8 @@ importers:
       remix-auth: 3.4.0_lmtt5r35rmkeqdlvkpo3d5l4ia
       remix-auth-email-link: 1.5.2_ynr7gzkhaqxia4i6pdigmtuncy
       remix-auth-github: 1.3.0_ynr7gzkhaqxia4i6pdigmtuncy
-      remix-island: 0.1.0_6xbhxjcq6gx3y4bzqvnp6ned7a
       remix-typedjson: 0.1.7_k5y2daox7aauvboegbwzqxs4oa
-      remix-utils: 6.0.0_lno6cfhrx2fvn6exiu6cka7m24
+      remix-utils: 3.4.0_7a5jtd7cmrm3rzhsqs47enm6la
       slug: 6.1.0
       tailwind-scrollbar-hide: 1.1.7
       tiny-invariant: 1.3.1
@@ -14519,20 +14517,6 @@ packages:
       uuid: 8.3.2
     dev: false
 
-  /remix-island/0.1.0_6xbhxjcq6gx3y4bzqvnp6ned7a:
-    resolution: {integrity: sha512-Jt6fjEmA2QoOHpC4TLOpX/tLf96a2d4Ub9CMSjWEL2Z+RVALc6sVZ92Bns8VesjOXngEwYBu8LtpoyF4wqsnhQ==}
-    peerDependencies:
-      '@remix-run/react': '>= 1'
-      '@remix-run/server-runtime': '>= 1'
-      react: '>= 16.8'
-      react-dom: '>= 16.8'
-    dependencies:
-      '@remix-run/react': 1.12.0_biqbaboplfbrettd7655fr4n2y
-      '@remix-run/server-runtime': 1.12.0
-      react: 18.2.0
-      react-dom: 18.2.0_react@18.2.0
-    dev: false
-
   /remix-typedjson/0.1.7_k5y2daox7aauvboegbwzqxs4oa:
     resolution: {integrity: sha512-h7WoKbKBGsVdZZp3s79U5SDrMvQ3We7BjGaSIPxchnJOTS3GUDat0kBoy/gh9TVKRf5KYCee+K1UlFAYQmLQsA==}
     peerDependencies:
@@ -14545,14 +14529,13 @@ packages:
       react: 18.2.0
     dev: false
 
-  /remix-utils/6.0.0_lno6cfhrx2fvn6exiu6cka7m24:
-    resolution: {integrity: sha512-S7Xec0YHZxGFEDawWpIbU7HQAZC0j51FmAvcCyBRuxjo71aAIMdmez47dgF8T91yxpHV1xlIKPL7LhBzmYsOZw==}
+  /remix-utils/3.4.0_7a5jtd7cmrm3rzhsqs47enm6la:
+    resolution: {integrity: sha512-rfRZlqUj49jmsqm/T7lKG/TDCf3WD3r+CzbkPxwTxX52YQULWLY55+jfS7OwuQ/H9+iJS+YG0N+P1+dml3o02A==}
     engines: {node: '>=14'}
     peerDependencies:
-      '@remix-run/react': ^1.10.0
-      '@remix-run/server-runtime': ^1.10.0
+      '@remix-run/react': ^1.1.1
+      '@remix-run/server-runtime': ^1.1.1
       react: ^16.8.0 || ^17.0.0 || ^18.0.0
-      zod: ^3.19.1
     dependencies:
       '@remix-run/react': 1.12.0_biqbaboplfbrettd7655fr4n2y
       '@remix-run/server-runtime': 1.12.0
@@ -14562,7 +14545,6 @@ packages:
       schema-dts: 1.1.0_typescript@4.9.4
       type-fest: 2.19.0
       uuid: 8.3.2
-      zod: 3.20.2
     transitivePeerDependencies:
       - typescript
     dev: false
