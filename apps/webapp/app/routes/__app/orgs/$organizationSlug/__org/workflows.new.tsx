@@ -2,7 +2,6 @@ import type { LoaderArgs } from "@remix-run/server-runtime";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { CreateNewWorkflowNoWorkflows } from "~/components/CreateNewWorkflow";
 import { Container } from "~/components/layout/Container";
-import { SubTitle } from "~/components/primitives/text/SubTitle";
 import { Title } from "~/components/primitives/text/Title";
 import { getIntegrationMetadatas } from "~/models/integrations.server";
 import { requireUserId } from "~/services/session.server";
@@ -20,8 +19,7 @@ export default function NewWorkflowPage() {
 
   return (
     <Container>
-      <Title>New Workflow</Title>
-      <SubTitle>Create a new workflow</SubTitle>
+      <Title>Create a new workflow</Title>
       <CreateNewWorkflowNoWorkflows providers={providers} />
     </Container>
   );
