@@ -1,0 +1,164 @@
+---
+title: "Block Actions"
+sidebarTitle: "Block Actions"
+description: "Trigger a workflow when a user interacts with a BlockKit interaction component (e.g. buttons, menus, etc.)"
+---
+
+## Overview
+
+If you send a message with BlockKit components, you can trigger a workflow when a user interacts with those components. For example, you can trigger a workflow when a user clicks a button, selects an option from a menu, or submits a modal.
+
+The event will be the [block_action event payload](https://api.slack.com/reference/interaction-payloads/block-actions#fields) from Slack, which includes the `actions` array. You can use the `actions` array to determine which action was triggered, and the `block_id` and `action_id` to determine which component was interacted with.
+
+A very simple example would be to first send a message to a channel with a button, and then trigger a workflow when the button is clicked:
+
+<CodeGroup>
+
+```typescript Send Message with Button
+import * as slack from "@trigger.dev/slack";
+import { z } from "zod";
+
+const BLOCK_ID = "employee-ping";
+
+new Trigger({
+  id: "send-message-with-button",
+  name: "Send Message with Button",
+  on: scheduleEvent({
+    rateOf: {
+      minutes: 5,
+    },
+  }),
+  run: async (event, ctx) => {
+    await slack.postMessage("Are you still there?", {
+      channelName: "employee-ping",
+      //text appears in Slack notifications on mobile/desktop
+      text: "Are you still there?",
+      blocks: [
+        {
+          type: "section",
+          text: {
+            type: "mrkdwn",
+            text: "Are you still there?",
+            verbatim: true,
+          },
+        },
+        {
+          type: "actions",
+          block_id: BLOCK_ID, // this is the block_id that we'll use to identify the message
+          elements: [
+            {
+              type: "button",
+              action_id: "nope",
+              text: {
+                type: "plain_text",
+                text: "I'm at lunch",
+                emoji: true,
+              },
+              value: "lunch",
+            },
+            {
+              type: "button",
+              action_id: "youbet",
+              text: {
+                type: "plain_text",
+                text: "Still here!",
+                emoji: true,
+              },
+              value: "in-my-seat",
+            },
+          ],
+        },
+      ],
+    });
+  },
+}).listen();
+```
+
+```typescript Listen for Button Click
+import * as slack from "@trigger.dev/slack";
+import { z } from "zod";
+
+const BLOCK_ID = "employee-ping";
+
+new Trigger({
+  id: "employee-ping-event",
+  name: "Listen for Employee Ping",
+  on: slack.events.blockActionInteraction({
+    blockId: BLOCK_ID,
+  }),
+  run: async (event, ctx) => {
+    const action = event.actions[0];
+
+    if (action.action_id === "nope") {
+      await slack.postMessage("respond to employee", {
+        channelName: "employee-ping",
+        text: "Okay, I'll ping you again in 5 minutes.",
+      });
+    } else if (action.action_id === "youbet") {
+      await slack.postMessage("respond to employee", {
+        channelName: "employee-ping",
+        text: "Great! I'll ping you again in 5 minutes.",
+      });
+    }
+  },
+}).listen();
+```
+
+</CodeGroup>
+
+## Params
+
+<ParamField path="blockId" type="string" required={true}>
+  The `block_id` of the BlockKit component that you want to listen for.
+</ParamField>
+
+<ParamField path="actionId" type="string | string[]" required={false}>
+  The `action_id` of the BlockKit component that you want to listen for. If you
+  don't specify an `actionId`, the workflow will be triggered for any action on
+  the specified `blockId`. You can also specify an array of `action_id`s to
+  listen for multiple actions.
+</ParamField>
+
+## Event Payload
+
+Please see the [Slack Block Actions event payload](https://api.slack.com/reference/interaction-payloads/block-actions#fields) for more information.
+
+<ResponseField name="type" type="string">
+  The type of event. This will always be `block_actions`.
+</ResponseField>
+
+<ResponseField name="trigger_id" type="string">
+  A short-lived ID that can be used to open a modal. See the [openView
+  docs](../actions/open-view)
+</ResponseField>
+
+<ResponseField name="response_url" type="string">
+  A short-lived URL that can be used to send a response to the user. See the
+  [postMessageResponse docs](../actions/post-message-response) for more
+  information.
+</ResponseField>
+
+<ResponseField name="user" type="user object">
+  The user that triggered the event.
+</ResponseField>
+
+<ResponseField name="message" type="message object">
+  The message that the user interacted with.
+</ResponseField>
+
+<ResponseField name="view" type="view object">
+  The view that the user interacted with.
+</ResponseField>
+
+<ResponseField name="actions" type="Array<action>">
+  An array of actions that the user interacted with. `actions.action_id` can be
+  used to determine which action was triggered. (e.g. which button was clicked)
+</ResponseField>
+
+<ResponseField name="team" type="team object">
+  The team that the user is a part of.
+</ResponseField>
+
+<ResponseField name="channel" type="channel object">
+  The channel where the interaction took place.
+</ResponseField>

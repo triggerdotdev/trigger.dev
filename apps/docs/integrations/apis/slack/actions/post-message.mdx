@@ -36,6 +36,33 @@ Publish Slack messages to a public or private channel in your Slack Workspace as
       For full details on Slack blocks, see the [Slack API docs](https://api.slack.com/reference/block-kit/blocks).
     </ParamField>
 
+    <ParamField path="thread_ts" type="string" required={false}>
+      The "timestamp ID" of the message to reply to. If not specified, the
+      message will be published as a new thread.
+    </ParamField>
+
+    <ParamField path="metadata" type="object" required={false}>
+      A JSON object that will be attached to the message. This can be used to
+      store custom data about the message, but will not be displayed to users. Useful for passing data to a [blockActionInteraction](../events/block-action-interaction) trigger.
+    </ParamField>
+
+    <ParamField path="username" type="string" required={false}>
+      The name of the bot that will publish the message. If not specified, the
+      message will be published as the Trigger.dev Slack bot.
+    </ParamField>
+
+    <ParamField path="icon_emoji" type="string" required={false}>
+      The emoji to use as the icon for the bot that will publish the message.
+      If not specified, the message will be published as the Trigger.dev Slack
+      bot.
+    </ParamField>
+
+    <ParamField path="icon_url" type="string" required={false}>
+      The URL of an image to use as the icon for the bot that will publish the
+      message. If not specified, the message will be published as the
+      Trigger.dev Slack bot.
+    </ParamField>
+
   </Expandable>
 </ParamField>
 

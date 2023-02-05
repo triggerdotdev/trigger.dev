@@ -101,7 +101,9 @@
             {
               "group": "Slack",
               "pages": [
-                "integrations/apis/slack/actions/post-message"
+                "integrations/apis/slack/actions/post-message",
+                "integrations/apis/slack/actions/post-message-response",
+                "integrations/apis/slack/actions/add-reaction"
               ]
             },
             {
@@ -180,6 +182,12 @@
     {
       "group": "Webhook Catalog",
       "pages": [
+        {
+          "group": "Slack",
+          "pages": [
+            "integrations/apis/slack/events/block-action-interaction"
+          ]
+        },
         {
           "group": "GitHub",
           "pages": [

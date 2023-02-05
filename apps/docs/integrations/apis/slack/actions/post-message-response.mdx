@@ -1,0 +1,113 @@
+---
+title: "Post Message Response"
+sidebarTitle: "Post Message Response"
+description: "Post a Slack message in response to a user interaction in Slack"
+---
+
+Post a message to slack when you receive a [blockActionInteraction](../events/block-action-interaction) event with a `response_url`. For example, if you publish a message with a button and the user clicks the button, you can use this action to post a message in response to the user's click.
+
+There are three different types of responses you can send:
+
+- **Ephemeral**: A message that only the user who clicked the button will see and do not persist in the channel or across apps. This is the default.
+- **In Channel**: A message that will be published to the channel and will persist across apps. Everyone in the channel will see the message.
+- **Update**: Update the original message with new text or blocks.
+
+Here's a table with the different `message` params you can use for each type of response (`text` and `blocks` are supported for all three types of responses)
+
+| Param              | Ephemeral   | In Channel     | Update      |
+| ------------------ | ----------- | -------------- | ----------- |
+| `replace_original` | `false`     | `false`        | `true`      |
+| `response_type`    | `undefined` | `"in_channel"` | `undefined` |
+
+## Params
+
+<ParamField path="key" type="string" required={true}>
+  A unique string. Please see the [Keys and Resumability](/guides/resumability)
+  doc for more info.
+</ParamField>
+
+<ParamField path="message" type="object" required={true}>
+  <Expandable title="properties" defaultOpen={true}>
+    <ParamField path="text" type="string" required={true}>
+      The formatted text of the message to be published, formatted as [mrkdwn](https://api.slack.com/reference/surfaces/formatting#basics).
+    </ParamField>
+
+    <ParamField path="blocks" type="object" required={false}>
+      You can use blocks to create a rich message with images, buttons, and more.
+
+      You can either pass in a JavaScript object or use [JSX Slack](https://github.com/yhatt/jsx-slack/) to create blocks. We highly recommend using JSX Slack as it's much easier to read and write. See the [block example](#blocks-with-interactivity) to see it in action.
+
+      For full details on Slack blocks, see the [Slack API docs](https://api.slack.com/reference/block-kit/blocks).
+    </ParamField>
+
+    <ParamField path="response_type" type="'in_channel' | undefined" required={false}>
+      Set the `'in_channel'` response type to publish the message to the channel. If not specified, the message will be ephemeral.
+    </ParamField>
+
+    <ParamField path="replace_original" type="boolean" required={false} default="false">
+      Set to `true` to update the original message with new text or blocks. If not specified, the message will be ephemeral or published to the channel.
+    </ParamField>
+
+    <ParamField path="delete_original" type="boolean" required={false} default="false">
+      Set to `true` to delete the original message.
+    </ParamField>
+
+    <ParamField path="thread_ts" type="string" required={false}>
+      The "timestamp ID" of the message to reply to. If not specified, the
+      message will be published as a new thread.
+    </ParamField>
+
+  </Expandable>
+</ParamField>
+
+## Response
+
+<ResponseField name="ok" type="boolean" default="true">
+  Always true; non-ok responses will halt the workflow run and throw an error.
+</ResponseField>
+
+## Example Workflows
+
+<CodeGroup>
+
+```ts triggers.ts
+import { Trigger } from "@trigger.dev/sdk";
+import * as slack from "@trigger.dev/slack";
+import { z } from "zod";
+
+new Trigger({
+  id: "slack-block-interaction",
+  name: "Slack Block Interaction",
+  on: slack.events.blockActionInteraction({
+    blockId: "issue.action.block",
+    actionId: ["status-blocked", "status-help", "rating"],
+  }),
+  run: async (event, ctx) => {
+    if (!event.response_url) {
+      return;
+    }
+
+    // Post an ephemeral message
+    return slack.postMessageResponse(
+      "Added a comment to the issue",
+      event.response_url,
+      {
+        text: `You rated your day ${action.selected_option?.value} stars`,
+        replace_original: false,
+      }
+    );
+
+    // Post an a message to the channel
+    return slack.postMessageResponse(
+      "Added a comment to the issue",
+      event.response_url,
+      {
+        text: `Another rating of ${action.selected_option?.value} stars!`,
+        response_type: "in_channel",
+      }
+    );
+  },
+}).listen();
+```
+
+</CodeGroup>
