@@ -31,9 +31,9 @@ importers:
 
   apps/docs:
     specifiers:
-      mintlify: ^2.0.16
+      mintlify: ^2.0.17
     devDependencies:
-      mintlify: 2.0.16
+      mintlify: 2.0.17
 
   apps/webapp:
     specifiers:
@@ -12552,8 +12552,8 @@ packages:
       yallist: 4.0.0
     dev: true
 
-  /mintlify/2.0.16:
-    resolution: {integrity: sha512-8SppN2c2F6rt2QlYkDIqZZV9S2jXuUUbWo75eDGURMRfWxpFKGCRxsueY0Oerq/yO/Mlzg5ZNHutJHRipCgLcg==}
+  /mintlify/2.0.17:
+    resolution: {integrity: sha512-W7pyIj0AGJYR+vR8E08E7BTMhANW2Kfe3NpfNRdMp+TL1ju50iN49U2T+MBCKQJAycCwXXX2nXf3Cve5sIDdzA==}
     engines: {node: '>=18.0.0'}
     hasBin: true
     dependencies:
