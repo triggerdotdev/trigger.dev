@@ -103,7 +103,8 @@
               "pages": [
                 "integrations/apis/slack/actions/post-message",
                 "integrations/apis/slack/actions/post-message-response",
-                "integrations/apis/slack/actions/add-reaction"
+                "integrations/apis/slack/actions/add-reaction",
+                "integrations/apis/slack/actions/open-view"
               ]
             },
             {
