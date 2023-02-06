@@ -1,4 +1,4 @@
-import { getTriggerRun } from "@trigger.dev/sdk/index";
+import { getTriggerRun } from "@trigger.dev/sdk";
 import { z } from "zod";
 import * as events from "./events";
 import { schemas } from "./internal";
