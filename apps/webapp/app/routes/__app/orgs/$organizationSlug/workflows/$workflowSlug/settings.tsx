@@ -12,7 +12,7 @@ import type { CurrentWorkflow } from "~/hooks/useWorkflows";
 import { useCurrentWorkflow } from "~/hooks/useWorkflows";
 import invariant from "tiny-invariant";
 import { Form } from "@remix-run/react";
-import type { ActionArgs } from "@remix-run/server-runtime";
+import type { ActionArgs, LoaderArgs } from "@remix-run/server-runtime";
 import { z } from "zod";
 import { requireUserId } from "~/services/session.server";
 import {
@@ -24,6 +24,10 @@ import { DisableWorkflow } from "~/services/workflows/disableWorkflow.server";
 import { EnableWorkflow } from "~/services/workflows/enableWorkflow.server";
 import { ArchiveWorkflow } from "~/services/workflows/archiveWorkflow.server";
 import { UnarchiveWorkflow } from "~/services/workflows/unarchiveWorkflow.server";
+import { PanelWarning } from "~/components/layout/PanelWarning";
+import { typedjson, useTypedLoaderData } from "remix-typedjson";
+import { getRuntimeEnvironmentFromRequest } from "~/models/runtimeEnvironment.server";
+import { WorkflowTestPresenter } from "~/presenters/testPresenter.server";
 
 const ActionSchema = z.enum(["disable", "enable", "archive", "unarchive"]);
 const FormSchema = z.object({
@@ -130,7 +134,28 @@ async function unarchiveAction(
   );
 }
 
+export const loader = async ({ request, params }: LoaderArgs) => {
+  await requireUserId(request);
+  const { workflowSlug, organizationSlug } = params;
+  invariant(workflowSlug, "workflowSlug is required");
+  invariant(organizationSlug, "organizationSlug is required");
+
+  const environmentSlug = await getRuntimeEnvironmentFromRequest(request);
+
+  try {
+    const presenter = new WorkflowTestPresenter();
+
+    return typedjson(
+      await presenter.data({ workflowSlug, organizationSlug, environmentSlug })
+    );
+  } catch (error: any) {
+    console.error(error);
+    throw new Response("Error ", { status: 400 });
+  }
+};
+
 export default function Page() {
+  const { payload, status } = useTypedLoaderData<typeof loader>();
   const workflow = useCurrentWorkflow();
   invariant(workflow, "Workflow not found");
 
@@ -146,8 +171,17 @@ export default function Page() {
   return (
     <>
       <Title>Settings</Title>
-      <SubTitle>Workflow status</SubTitle>
-      {panel}
+      {status === "CREATED" ? (
+        <PanelWarning
+          message="This workflow requires its APIs to be connected before it can run."
+          className="mb-6"
+        />
+      ) : (
+        <>
+          <SubTitle>Workflow status</SubTitle>
+          {panel}
+        </>
+      )}
     </>
   );
 }
@@ -159,7 +193,7 @@ function WorkflowReadyPanel({
 }) {
   return (
     <Panel className="flex items-center justify-between !p-4">
-      <div className="flex gap-4 items-center">
+      <div className="flex items-center gap-4">
         <ApiLogoIcon size="regular" />
         <Header3 size="small" className="text-slate-300">
           {workflow.title} <span className="text-green-500">is active.</span>
@@ -203,7 +237,7 @@ function WorkflowDisabledPanel({
 }) {
   return (
     <Panel className="flex items-center justify-between !p-4">
-      <div className="flex gap-4 items-center">
+      <div className="flex items-center gap-4">
         <ApiLogoIcon size="regular" />
         <Header3 size="small" className="text-slate-300">
           {workflow.title} <span className="text-amber-300">is disabled.</span>
@@ -247,7 +281,7 @@ function WorkflowArchivedPanel({
 }) {
   return (
     <Panel className="flex items-center justify-between !p-4">
-      <div className="flex gap-4 items-center">
+      <div className="flex items-center gap-4">
         <ApiLogoIcon size="regular" />
         <Header3 size="small" className="text-slate-300">
           {workflow.title} <span className="text-rose-500">is archived.</span>
