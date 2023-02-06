@@ -248,7 +248,7 @@ export default function NewWorkflowPage() {
                               started. Or learn more about {project.name}s in
                               the{" "}
                               <TertiaryA
-                                href="https://docs.trigger.dev/welcome"
+                                href={project.docsLink}
                                 target={"_blank"}
                                 className="!text-base text-slate-400 underline decoration-green-500 underline-offset-2 hover:text-white hover:decoration-green-400"
                               >

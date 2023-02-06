@@ -86,25 +86,47 @@ export const fromScratchProjects = [
     name: "Webhook",
     requiredPackages: "@trigger.dev/sdk zod",
     code: webhook,
-    description: "Webhooks allow you to subscribe to events from APIs you use.",
+    docsLink: "https://docs.trigger.dev/triggers/webhooks",
+    description:
+      "Webhooks allow you to subscribe to events from APIs but can be difficult to work with, especially when developing locally. Trigger.dev makes using webhooks easy:",
+    bulletPoint1:
+      "You don’t need to register/unregister for webhooks, we do it for you.",
+    bulletPoint2:
+      "They work locally during development without needing to use tunnels (e.g. Ngrok).",
+    bulletPoint3:
+      "We receive the webhook, then keep trying to send it to you until you receive it. If your server goes down, no problem.",
   },
   {
     name: "Custom event",
     requiredPackages: "@trigger.dev/sdk zod",
     code: customEvent,
+    docsLink: "https://docs.trigger.dev/triggers/custom-events",
     description:
-      "Custom event triggers allow you to run workflows from your own code (or your other workflows).",
+      "Custom event triggers allow you to run workflows from your own code (or your other workflows). Send an event and any workflows that subscribe to that custom event will get triggered. You can easily send an event from anywhere, including from inside another workflow. Events don’t have to come from the same server as your workflow and can be sent as HTTP requests from any language.",
+    bulletPoint1: "",
+    bulletPoint2: "",
+    bulletPoint3: "",
   },
   {
     name: "Scheduled (recurring)",
     requiredPackages: "@trigger.dev/sdk zod",
     code: scheduled,
-    description: "Run a workflow every 10 minutes.",
+    docsLink: "https://docs.trigger.dev/triggers/scheduled",
+    description:
+      "Run a workflow on a recurring schedule. The example below will run every 5 minutes, starting 5 minutes after this code is first run on your server (that includes running locally).",
+    bulletPoint1: "",
+    bulletPoint2: "",
+    bulletPoint3: "",
   },
   {
     name: "Scheduled (CRON)",
     requiredPackages: "@trigger.dev/sdk zod",
     code: scheduledCron,
-    description: "This job will run at 2:30pm every Monday.",
+    docsLink: "https://docs.trigger.dev/triggers/scheduled",
+    description:
+      "Run a workflow on a recurring schedule. The example job below will run at 2:30pm every Monday.",
+    bulletPoint1: "",
+    bulletPoint2: "",
+    bulletPoint3: "",
   },
 ];

@@ -1,25 +1,18 @@
 export function scheduled() {
-return `import { scheduleEvent, Trigger } from "@trigger.dev/sdk";
+  return `import { Trigger, scheduleEvent } from "@trigger.dev/sdk";
 
 new Trigger({
-  id: "usage",
-  name: "usage",
-  on: scheduleEvent({ rateof: { minutes: 10 } }),
+  id: "scheduled-workflow",
+  name: "Scheduled Workflow",
+  apiKey: "<your_api_key>",
+  on: scheduleEvent({ rateOf: { minutes: 5 } }),
   run: async (event, ctx) => {
-    const { lastRunAt, scheduledTime } = event;
+    await ctx.logger.info("Received the scheduled event", {
+      event,
+      wallTime: new Date(),
+    });
 
-    const query = \`SELECT * FROM users WHERE created_at < \${scheduledTime}\`;
-
-    if (lastRunAt) {
-      query += \` AND created_at > \${lastRunAt}\`;
-    }
-
-    const latestUsers = await db.query(query);
-
-    // ...
+    return { foo: "bar" };
   },
 }).listen();`;
 }
-
-
-
