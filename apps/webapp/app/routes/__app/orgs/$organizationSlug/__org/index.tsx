@@ -58,15 +58,15 @@ export default function Page() {
       {workflows.length === 0 ? (
         <>
           <SubTitle>0 workflows</SubTitle>
-          <PanelInfo className="mb-4 max-w-max p-4 pr-6">
-            <Body className="text-slate-300">
-              You don't have any workflows yet. They will appear here once
-              connected.
-            </Body>
+          <PanelInfo
+            message="You don't have any workflows yet. They will appear here once
+              connected."
+            className="mb-4 max-w-4xl p-4 pr-6"
+          >
+            <PrimaryLink to={`/orgs/${currentOrganization.slug}/workflows/new`}>
+              Create first workflow
+            </PrimaryLink>
           </PanelInfo>
-          <PrimaryLink to={`/orgs/${currentOrganization.slug}/workflows/new`}>
-            Create first workflow
-          </PrimaryLink>
         </>
       ) : (
         <>

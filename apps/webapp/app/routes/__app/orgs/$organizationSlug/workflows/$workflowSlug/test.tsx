@@ -57,11 +57,11 @@ export default function Page() {
         />
       )}
       {status === "DISABLED" ? (
-        <PanelInfo className="mb-6">
-          <Body className="flex grow items-center justify-between">
-            This workflow is disabled. Runs cannot be triggered or tested while
-            disabled. Runs in progress will continue until complete.
-          </Body>
+        <PanelInfo
+          message="This workflow is disabled. Runs cannot be triggered or tested while
+        disabled. Runs in progress will continue until complete."
+          className="mb-6"
+        >
           <TertiaryLink to="settings" className="mr-1">
             Settings
           </TertiaryLink>
