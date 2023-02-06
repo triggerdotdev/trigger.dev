@@ -213,13 +213,14 @@ yarn add jsx-slack
   </Tab>
 </Tabs>
 
-If you aren't already using React in your project, you will need to update your `tsconfig.json` file to add the `compilerOptions.jsx` option:
+If you aren't already using React in your project, you will need to update your `tsconfig.json` file to add the `compilerOptions.jsx` option, and ensure to include `.tsx` files in your `include` array:
 
 ```json
 {
   "compilerOptions": {
     "jsx": "react-jsx"
-  }
+  },
+  "include": ["src/**/*.ts", "src/**/*.tsx"]
 }
 ```
 
