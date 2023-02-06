@@ -90,8 +90,10 @@ export const action = async ({ request, params }: ActionArgs) => {
   });
 };
 
-const maxWidth = "max-w-4xl";
+const maxWidth = "max-w-4xl pl-12";
 const subTitle = "text-slate-200 font-semibold mb-4";
+const stepNumber =
+  "mr-3 rounded border border-slate-700 bg-slate-800 px-2.5 text-base py-1.5 text-green-400 shadow";
 
 export default function NewWorkflowPage() {
   const environment = useCurrentEnvironment();
@@ -102,15 +104,16 @@ export default function NewWorkflowPage() {
   return (
     <Container>
       <Title>Create a new workflow</Title>
+      <Header4 size="regular" className={subTitle}>
+        <span className={stepNumber}>1</span>
+        Install the Trigger.dev package
+      </Header4>
       <div className={maxWidth}>
-        <Header4 size="regular" className={subTitle}>
-          1. Install the Trigger.dev package
-        </Header4>
         <InstallPackages packages={"@trigger.dev/sdk"} />
-        <Header4 size="regular" className={classNames("mt-10", subTitle)}>
-          2. Create your workflow
-        </Header4>
       </div>
+      <Header4 size="regular" className={classNames("mt-10", subTitle)}>
+        <span className={stepNumber}>2</span>Create your workflow
+      </Header4>
       <Tab.Group>
         <div className={maxWidth}>
           <UnderlinedList>
@@ -122,7 +125,7 @@ export default function NewWorkflowPage() {
           <Tab.Panel className="relative h-full">
             {/* Example projects tabs */}
             <Tab.Group>
-              <div className="-ml-12 max-w-[59rem] overflow-hidden overflow-x-auto border-r border-slate-700 pl-12 scrollbar-hide">
+              <div className="-ml-12 mr-[5rem] max-w-[59rem] overflow-hidden overflow-x-auto border-r border-slate-700 pl-[6rem] scrollbar-hide">
                 <LargeBoxList>
                   {exampleProjects.map((project) => {
                     return (
@@ -135,51 +138,58 @@ export default function NewWorkflowPage() {
                 </LargeBoxList>
               </div>
               {/* Example projects content */}
-              <Tab.Panels className={classNames("flex-grow pt-4", maxWidth)}>
+              <Tab.Panels className={classNames("flex-grow pt-4")}>
                 {exampleProjects.map((project) => {
                   return (
                     <Tab.Panel key={project.name} className="relative h-full">
-                      <div className="mb-4 mt-4 flex items-center gap-2">
-                        {project.icon}
-                        <Header4
-                          size="small"
-                          className="font-semibold text-slate-300"
+                      <div className={maxWidth}>
+                        <div className="mb-4 mt-4 flex items-center gap-2">
+                          {project.icon}
+                          <Header4
+                            size="small"
+                            className="font-semibold text-slate-300"
+                          >
+                            {project.title}
+                          </Header4>
+                        </div>
+                        <Body size="regular" className="mb-4 text-slate-400">
+                          {project.description}
+                        </Body>
+                        <Body size="regular" className="mb-2 text-slate-400">
+                          Install these additional API integration packages:
+                        </Body>
+                        <InstallPackages packages={project.requiredPackages} />
+                        <Body
+                          size="regular"
+                          className="mb-2 mt-4 text-slate-400"
                         >
-                          {project.title}
-                        </Header4>
+                          Copy this example code into your project. Your API key
+                          has already been inserted.
+                        </Body>
+                        <CodeBlock
+                          code={project.code(environment.apiKey)}
+                          align="top"
+                        />
                       </div>
-                      <Body size="regular" className="mb-4 text-slate-400">
-                        {project.description}
-                      </Body>
-                      <Body size="regular" className="mb-2 text-slate-400">
-                        Install these additional API integration packages:
-                      </Body>
-                      <InstallPackages packages={project.requiredPackages} />
-                      <Body size="regular" className="mb-2 mt-4 text-slate-400">
-                        Copy this example code into your project. Your API key
-                        has already been inserted.
-                      </Body>
-                      <CodeBlock
-                        code={project.code(environment.apiKey)}
-                        align="top"
-                      />
 
                       <Header4
                         size="regular"
                         className={classNames(subTitle, "mt-8")}
                       >
-                        3. Run your web server
+                        <span className={stepNumber}>3</span>Run your web server
                       </Header4>
-                      <Body size="regular" className="mb-4 text-slate-400">
-                        Run your server how you normally would, e.g.{" "}
-                        <InlineCode>npm run dev</InlineCode>. This will connect
-                        your workflow to Trigger.dev, so we can start sending
-                        you events. You should see some log messages in your
-                        server console (tip: you can turn these off by removing
-                        the <InlineCode>logLevel: "info"</InlineCode> from the
-                        code above).
-                      </Body>
-                      <CheckForWorkflows />
+                      <div className={maxWidth}>
+                        <Body size="regular" className="mb-4 text-slate-400">
+                          Run your server as you typically do, e.g.{" "}
+                          <InlineCode>npm run dev</InlineCode>. This will
+                          connect your workflow to Trigger.dev, so we can start
+                          sending you events. You should see some log messages
+                          in your server console (tip: you can turn these off by
+                          removing the <InlineCode>logLevel: "info"</InlineCode>{" "}
+                          from the code above).
+                        </Body>
+                        <CheckForWorkflows />
+                      </div>
                     </Tab.Panel>
                   );
                 })}
@@ -189,7 +199,7 @@ export default function NewWorkflowPage() {
           <Tab.Panel className="relative h-full">
             <Tab.Group>
               {/* From scratch projects titles */}
-              <div className="-ml-12 max-w-[59rem] overflow-hidden overflow-x-auto pl-12">
+              <div className="-ml-12 max-w-[59rem] overflow-hidden overflow-x-auto pl-[6rem]">
                 <LargeBoxList>
                   {fromScratchProjects.map((project) => {
                     return (
@@ -199,36 +209,43 @@ export default function NewWorkflowPage() {
                 </LargeBoxList>
               </div>
               {/* From scratch projects content */}
-              <Tab.Panels className={classNames("flex-grow pt-4", maxWidth)}>
+              <Tab.Panels className={classNames("flex-grow pt-4")}>
                 {fromScratchProjects.map((project) => {
                   return (
                     <Tab.Panel key={project.name} className="relative h-full">
-                      <Body size="regular" className="mb-4 text-slate-400">
-                        {project.description}
-                      </Body>
-                      <Body size="regular" className="mb-2 mt-4 text-slate-400">
-                        Copy this example code into your project.
-                      </Body>
-                      <CodeBlock
-                        code={project.code(environment.apiKey)}
-                        align="top"
-                      />
+                      <div className={maxWidth}>
+                        <Body size="regular" className="mb-4 text-slate-400">
+                          {project.description}
+                        </Body>
+                        <Body
+                          size="regular"
+                          className="mb-2 mt-4 text-slate-400"
+                        >
+                          Copy this example code into your project.
+                        </Body>
+                        <CodeBlock
+                          code={project.code(environment.apiKey)}
+                          align="top"
+                        />
+                      </div>
                       <Header4
                         size="regular"
                         className={classNames(subTitle, "mt-8")}
                       >
-                        3. Run your web server
+                        <span className={stepNumber}>3</span>Run your web server
                       </Header4>
-                      <CheckForWorkflows />
-                      <Body size="regular" className="mb-4 text-slate-400">
-                        Run your server how you normally would, e.g.{" "}
-                        <InlineCode>npm run dev</InlineCode>. This will connect
-                        your workflow to Trigger.dev, so we can start sending
-                        you events. You should see some log messages in your
-                        server console (tip: you can turn these off by removing
-                        the <InlineCode>logLevel: "info"</InlineCode> from the
-                        code above).
-                      </Body>
+                      <div className={maxWidth}>
+                        <Body size="regular" className="mb-4 text-slate-400">
+                          Run your server as you typically do, e.g.{" "}
+                          <InlineCode>npm run dev</InlineCode>. This will
+                          connect your workflow to Trigger.dev, so we can start
+                          sending you events. You should see some log messages
+                          in your server console (tip: you can turn these off by
+                          removing the <InlineCode>logLevel: "info"</InlineCode>{" "}
+                          from the code above).
+                        </Body>
+                        <CheckForWorkflows />
+                      </div>
                     </Tab.Panel>
                   );
                 })}
@@ -265,7 +282,7 @@ function CheckForWorkflows() {
           <div className="mb-3 flex items-center gap-2">
             <Spinner />
             <Body size="regular" className="text-slate-300">
-              Waiting for your workflow to connect...
+              Waiting for your workflow to connect…
             </Body>
           </div>
           <PrimaryButton type="submit">
