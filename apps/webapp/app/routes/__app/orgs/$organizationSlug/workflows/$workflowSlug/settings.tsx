@@ -134,33 +134,12 @@ async function unarchiveAction(
   );
 }
 
-export const loader = async ({ request, params }: LoaderArgs) => {
-  await requireUserId(request);
-  const { workflowSlug, organizationSlug } = params;
-  invariant(workflowSlug, "workflowSlug is required");
-  invariant(organizationSlug, "organizationSlug is required");
-
-  const environmentSlug = await getRuntimeEnvironmentFromRequest(request);
-
-  try {
-    const presenter = new WorkflowTestPresenter();
-
-    return typedjson(
-      await presenter.data({ workflowSlug, organizationSlug, environmentSlug })
-    );
-  } catch (error: any) {
-    console.error(error);
-    throw new Response("Error ", { status: 400 });
-  }
-};
-
 export default function Page() {
-  const { payload, status } = useTypedLoaderData<typeof loader>();
   const workflow = useCurrentWorkflow();
   invariant(workflow, "Workflow not found");
 
   const panel =
-    workflow.status === "READY" ? (
+    workflow.status === "READY" || workflow.status === "CREATED" ? (
       <WorkflowReadyPanel workflow={workflow} />
     ) : workflow.isArchived ? (
       <WorkflowArchivedPanel workflow={workflow} />
@@ -171,17 +150,8 @@ export default function Page() {
   return (
     <>
       <Title>Settings</Title>
-      {status === "CREATED" ? (
-        <PanelWarning
-          message="This workflow requires its APIs to be connected before it can run."
-          className="mb-6"
-        />
-      ) : (
-        <>
-          <SubTitle>Workflow status</SubTitle>
-          {panel}
-        </>
-      )}
+      <SubTitle>Workflow status</SubTitle>
+      {panel}
     </>
   );
 }
