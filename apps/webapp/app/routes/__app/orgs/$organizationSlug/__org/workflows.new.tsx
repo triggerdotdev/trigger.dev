@@ -17,7 +17,7 @@ import { Panel } from "~/components/layout/Panel";
 import {
   PrimaryButton,
   PrimaryLink,
-  TertiaryLink,
+  TertiaryA,
 } from "~/components/primitives/Buttons";
 import { Spinner } from "~/components/primitives/Spinner";
 import {
@@ -90,10 +90,10 @@ export const action = async ({ request, params }: ActionArgs) => {
   });
 };
 
-const maxWidth = "max-w-4xl pl-12";
-const subTitle = "text-slate-200 font-semibold mb-4";
-const stepNumber =
-  "mr-3 rounded border border-slate-700 bg-slate-800 px-2.5 text-base py-1.5 text-green-400 shadow";
+const maxWidth = "flex max-w-4xl";
+const subTitle = "text-slate-200 font-semibold mb-3";
+const carousel =
+  "-ml-[26px] overflow-hidden overflow-x-auto pl-[1.5rem] scrollbar-hide";
 
 export default function NewWorkflowPage() {
   const environment = useCurrentEnvironment();
@@ -104,157 +104,212 @@ export default function NewWorkflowPage() {
   return (
     <Container>
       <Title>Create a new workflow</Title>
-      <Header4 size="regular" className={subTitle}>
-        <span className={stepNumber}>1</span>
-        Install the Trigger.dev package
-      </Header4>
-      <div className={maxWidth}>
-        <InstallPackages packages={"@trigger.dev/sdk"} />
-      </div>
-      <Header4 size="regular" className={classNames("mt-10", subTitle)}>
-        <span className={stepNumber}>2</span>Create your workflow
-      </Header4>
-      <Tab.Group>
-        <div className={maxWidth}>
-          <UnderlinedList>
-            <Underlined>Start from an example</Underlined>
-            <Underlined>Start from scratch</Underlined>
-          </UnderlinedList>
+      <div className={classNames(maxWidth)}>
+        <StepNumber stepNumber="1" drawLine />
+        <div className="mb-6 w-full">
+          <Header4 size="regular" className={subTitle}>
+            Install the Trigger.dev package
+          </Header4>
+          <InstallPackages packages={"@trigger.dev/sdk"} />
         </div>
-        <Tab.Panels className="flex-grow pt-4">
-          <Tab.Panel className="relative h-full">
-            {/* Example projects tabs */}
-            <Tab.Group>
-              <div className="-ml-12 mr-[5rem] max-w-[59rem] overflow-hidden overflow-x-auto border-r border-slate-700 pl-[6rem] scrollbar-hide">
-                <LargeBoxList>
-                  {exampleProjects.map((project) => {
-                    return (
-                      <LargeBox key={project.name}>
-                        {project.icon}
-                        <Body>{project.name}</Body>
-                      </LargeBox>
-                    );
-                  })}
-                </LargeBoxList>
-              </div>
-              {/* Example projects content */}
-              <Tab.Panels className={classNames("flex-grow pt-4")}>
-                {exampleProjects.map((project) => {
-                  return (
-                    <Tab.Panel key={project.name} className="relative h-full">
-                      <div className={maxWidth}>
-                        <div className="mb-4 mt-4 flex items-center gap-2">
-                          {project.icon}
-                          <Header4
-                            size="small"
-                            className="font-semibold text-slate-300"
-                          >
-                            {project.title}
-                          </Header4>
-                        </div>
-                        <Body size="regular" className="mb-4 text-slate-400">
-                          {project.description}
-                        </Body>
-                        <Body size="regular" className="mb-2 text-slate-400">
-                          Install these additional API integration packages:
-                        </Body>
-                        <InstallPackages packages={project.requiredPackages} />
-                        <Body
-                          size="regular"
-                          className="mb-2 mt-4 text-slate-400"
+      </div>
+      <Tab.Group>
+        <div className={classNames(maxWidth)}>
+          <StepNumber stepNumber="2" drawLine />
+          <div className="mb-6 w-full pr-10">
+            <Header4 size="regular" className={classNames(subTitle)}>
+              Create your workflow
+            </Header4>
+            <UnderlinedList>
+              <Underlined>Start from an example</Underlined>
+              <Underlined>Start from scratch</Underlined>
+            </UnderlinedList>
+            <Tab.Panels className="flex-grow pt-4">
+              <Tab.Panel className="relative h-full">
+                {/* Example projects tabs */}
+                <Tab.Group>
+                  <div
+                    className={classNames(
+                      carousel,
+                      "border-r border-slate-700"
+                    )}
+                  >
+                    <LargeBoxList>
+                      {exampleProjects.map((project) => {
+                        return (
+                          <LargeBox key={project.name}>
+                            {project.icon}
+                            <Body>{project.name}</Body>
+                          </LargeBox>
+                        );
+                      })}
+                    </LargeBoxList>
+                  </div>
+                  {/* Example projects content */}
+                  <Tab.Panels className={classNames("flex-grow pt-4")}>
+                    {exampleProjects.map((project) => {
+                      return (
+                        <Tab.Panel
+                          key={project.name}
+                          className="relative h-full"
                         >
-                          Copy this example code into your project. Your API key
-                          has already been inserted.
-                        </Body>
-                        <CodeBlock
-                          code={project.code(environment.apiKey)}
-                          align="top"
-                        />
-                      </div>
-
-                      <Header4
-                        size="regular"
-                        className={classNames(subTitle, "mt-8")}
-                      >
-                        <span className={stepNumber}>3</span>Run your web server
-                      </Header4>
-                      <div className={maxWidth}>
-                        <Body size="regular" className="mb-4 text-slate-400">
-                          Run your server as you typically do, e.g.{" "}
-                          <InlineCode>npm run dev</InlineCode>. This will
-                          connect your workflow to Trigger.dev, so we can start
-                          sending you events. You should see some log messages
-                          in your server console (tip: you can turn these off by
-                          removing the <InlineCode>logLevel: "info"</InlineCode>{" "}
-                          from the code above).
-                        </Body>
-                        <CheckForWorkflows />
-                      </div>
-                    </Tab.Panel>
-                  );
-                })}
-              </Tab.Panels>
-            </Tab.Group>
-          </Tab.Panel>
-          <Tab.Panel className="relative h-full">
-            <Tab.Group>
-              {/* From scratch projects titles */}
-              <div className="-ml-12 max-w-[59rem] overflow-hidden overflow-x-auto pl-[6rem]">
-                <LargeBoxList>
-                  {fromScratchProjects.map((project) => {
-                    return (
-                      <LargeBox key={project.name}>{project.name}</LargeBox>
-                    );
-                  })}
-                </LargeBoxList>
-              </div>
-              {/* From scratch projects content */}
-              <Tab.Panels className={classNames("flex-grow pt-4")}>
-                {fromScratchProjects.map((project) => {
-                  return (
-                    <Tab.Panel key={project.name} className="relative h-full">
-                      <div className={maxWidth}>
-                        <Body size="regular" className="mb-4 text-slate-400">
-                          {project.description}
-                        </Body>
-                        <Body
-                          size="regular"
-                          className="mb-2 mt-4 text-slate-400"
+                          <div className="">
+                            <div className="mb-4 mt-4 flex items-center gap-2">
+                              {project.icon}
+                              <Header4
+                                size="small"
+                                className="font-semibold text-slate-300"
+                              >
+                                {project.title}
+                              </Header4>
+                            </div>
+                            <Body
+                              size="regular"
+                              className="mb-4 text-slate-400"
+                            >
+                              {project.description}
+                            </Body>
+                            <Body
+                              size="regular"
+                              className="mb-2 text-slate-400"
+                            >
+                              Install these additional API integration packages:
+                            </Body>
+                            <InstallPackages
+                              packages={project.requiredPackages}
+                            />
+                            <Body
+                              size="regular"
+                              className="mb-2 mt-4 text-slate-400"
+                            >
+                              Copy this example code into your project. Your API
+                              key has already been inserted.
+                            </Body>
+                            <CodeBlock
+                              code={project.code(environment.apiKey)}
+                              align="top"
+                            />
+                          </div>
+                        </Tab.Panel>
+                      );
+                    })}
+                  </Tab.Panels>
+                </Tab.Group>
+              </Tab.Panel>
+              <Tab.Panel className="relative h-full">
+                <Tab.Group>
+                  {/* From scratch projects titles */}
+                  <div className={classNames(carousel)}>
+                    <LargeBoxList>
+                      {fromScratchProjects.map((project) => {
+                        return (
+                          <LargeBox key={project.name}>{project.name}</LargeBox>
+                        );
+                      })}
+                    </LargeBoxList>
+                  </div>
+                  {/* From scratch projects content */}
+                  <Tab.Panels className={classNames("flex-grow pt-4")}>
+                    {fromScratchProjects.map((project) => {
+                      return (
+                        <Tab.Panel
+                          key={project.name}
+                          className="relative h-full"
                         >
-                          Copy this example code into your project.
-                        </Body>
-                        <CodeBlock
-                          code={project.code(environment.apiKey)}
-                          align="top"
-                        />
-                      </div>
-                      <Header4
-                        size="regular"
-                        className={classNames(subTitle, "mt-8")}
-                      >
-                        <span className={stepNumber}>3</span>Run your web server
-                      </Header4>
-                      <div className={maxWidth}>
-                        <Body size="regular" className="mb-4 text-slate-400">
-                          Run your server as you typically do, e.g.{" "}
-                          <InlineCode>npm run dev</InlineCode>. This will
-                          connect your workflow to Trigger.dev, so we can start
-                          sending you events. You should see some log messages
-                          in your server console (tip: you can turn these off by
-                          removing the <InlineCode>logLevel: "info"</InlineCode>{" "}
-                          from the code above).
-                        </Body>
-                        <CheckForWorkflows />
-                      </div>
-                    </Tab.Panel>
-                  );
-                })}
-              </Tab.Panels>
-            </Tab.Group>
-          </Tab.Panel>
-        </Tab.Panels>
+                          <div className="">
+                            <Body
+                              size="regular"
+                              className="mb-4 text-slate-400"
+                            >
+                              {project.description}
+                            </Body>
+                            <ul className="ml-[17px] list-disc text-slate-400 marker:text-indigo-400">
+                              {project.bulletPoint1 ? (
+                                <li>{project.bulletPoint1}</li>
+                              ) : (
+                                ""
+                              )}
+                              {project.bulletPoint2 ? (
+                                <li>{project.bulletPoint2}</li>
+                              ) : (
+                                ""
+                              )}
+                              {project.bulletPoint3 ? (
+                                <li>{project.bulletPoint3}</li>
+                              ) : (
+                                ""
+                              )}
+                            </ul>
+                            <Body
+                              size="regular"
+                              className="mb-2 mt-4 text-slate-400"
+                            >
+                              Use this example code in your project to get
+                              started. Or learn more about {project.name}s in
+                              the{" "}
+                              <TertiaryA
+                                href="https://docs.trigger.dev/welcome"
+                                target={"_blank"}
+                                className="!text-base text-slate-400 underline decoration-green-500 underline-offset-2 hover:text-white hover:decoration-green-400"
+                              >
+                                docs
+                              </TertiaryA>
+                              .
+                            </Body>
+                            <CodeBlock
+                              code={project.code(environment.apiKey)}
+                              align="top"
+                            />
+                          </div>
+                        </Tab.Panel>
+                      );
+                    })}
+                  </Tab.Panels>
+                </Tab.Group>
+              </Tab.Panel>
+            </Tab.Panels>
+          </div>
+        </div>
       </Tab.Group>
+      <div className={classNames(maxWidth)}>
+        <StepNumber stepNumber="3" />
+        <div className="w-full">
+          <Header4 size="regular" className={subTitle}>
+            Run your web server
+          </Header4>
+          <Body size="regular" className="mb-4 text-slate-400">
+            Run your server as you typically do, e.g.{" "}
+            <InlineCode>npm run dev</InlineCode>. This will connect your
+            workflow to Trigger.dev, so we can start sending you events. You
+            should see some log messages in your server console (tip: you can
+            turn these off by removing the{" "}
+            <InlineCode>logLevel: "info"</InlineCode> from the code above).
+          </Body>
+          <CheckForWorkflows />
+        </div>
+      </div>
     </Container>
+  );
+}
+
+function StepNumber({
+  stepNumber,
+  drawLine,
+}: {
+  stepNumber: string;
+  drawLine?: boolean;
+}) {
+  return (
+    <div className="mr-3 flex flex-col items-center justify-center">
+      <span className="flex h-7 w-7 items-center justify-center rounded border border-slate-700 bg-slate-800 text-base text-green-400 shadow">
+        {stepNumber}
+      </span>
+      {drawLine ? (
+        <div className="h-full border-l border-slate-700"></div>
+      ) : (
+        <div className="h-full"></div>
+      )}
+    </div>
   );
 }
 
