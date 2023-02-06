@@ -1,6 +1,6 @@
 {
   "name": "@trigger.dev/slack",
-  "version": "0.1.18",
+  "version": "0.1.19-next.0",
   "description": "The official Slack integration for Trigger.dev",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",

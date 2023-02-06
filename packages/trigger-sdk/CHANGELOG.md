@@ -1,5 +1,13 @@
 # @trigger.dev/sdk
 
+## 0.2.12-next.0
+
+### Patch Changes
+
+- 2a51c5a: Generate and send JSON Schema for custom and webhook events
+- 0d2d9a0: Added runOnce and runOnceLocalOnly to support running idempotent actions
+- 0e4ec8d: Added views and view submission support to Slack integration
+
 ## 0.2.11
 
 ### Patch Changes
