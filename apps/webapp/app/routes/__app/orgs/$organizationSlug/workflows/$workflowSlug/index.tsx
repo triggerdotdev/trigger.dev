@@ -155,9 +155,10 @@ export default function Page() {
               )}
             </PanelInfo>
           ) : (
-            <PanelWarning className="mb-6">
-              This workflow requires its APIs to be connected before it can run.
-            </PanelWarning>
+            <PanelWarning
+              className="mb-6"
+              message="This workflow requires its APIs to be connected before it can run."
+            />
           )}
         </>
       )}
@@ -182,7 +183,7 @@ export default function Page() {
               Run a test
             </SecondaryLink>
           </div>
-          <Panel className="mb-4">
+          <Panel className="mb-6">
             <PanelHeader
               icon={
                 <div className="mr-1 h-6 w-6">
@@ -219,19 +220,28 @@ export default function Page() {
           </Panel>
         </>
       ) : (
-        <Panel>
-          <div className="flex items-start gap-2 p-1">
-            <ExclamationTriangleIcon className="mt-1 h-5 w-5 text-amber-400" />
-            <div>
+        <>
+          <SubTitle>Workflow runs</SubTitle>
+          <PanelWarning
+            message="This workflow hasn't been run yet. Test it now to view runs here."
+            className="flex justify-between"
+          >
+            <PrimaryLink to="test">Test your workflow</PrimaryLink>
+          </PanelWarning>
+          {/* <Panel className="flex flex-col items-start gap-2 p-6">
+            <div className="flex items-center gap-2">
+              <ExclamationTriangleIcon className="h-6 w-6 text-amber-400" />
               <Header3>This workflow hasn't been run yet</Header3>
+            </div>
+            <div className="flex flex-col">
               <Body className="mt-1 mb-2 text-slate-300">
                 If you want to quickly test the workflow, you can use the test
                 feature.
               </Body>
               <PrimaryLink to="test">Test your workflow</PrimaryLink>
             </div>
-          </div>
-        </Panel>
+          </Panel> */}
+        </>
       )}
     </>
   );
