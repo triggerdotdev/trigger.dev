@@ -4,7 +4,9 @@ export function scheduledCron(apiKey: string) {
 new Trigger({
   id: "cron-scheduled-workflow",
   name: "Cron Scheduled Workflow",
-  apiKey: "<your_api_key>",
+  // For security, we recommend moving this api key to your .env / secrets file. 
+  // Our env variable is called TRIGGER_API_KEY
+  apiKey: "${apiKey}",
   on: scheduleEvent({ cron: "30 14 * * 1" }),
   run: async (event, ctx) => {
     await ctx.logger.info("Received the cron scheduled event", {

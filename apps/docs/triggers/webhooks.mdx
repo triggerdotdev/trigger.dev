@@ -50,6 +50,9 @@ Once you've connected to Trigger.dev, and authorized your GitHub account, we'll 
 If we haven't built out the integration you need, you can use our `webhookEvent` function to create a webhook subscription. You'll need to register the webhook yourself, but we'll take care of the rest. Here's an example for triggering events when a new booking happens in [Cal.com](https://cal.com):
 
 ```ts
+import { Trigger, webhookEvent } from "@trigger.dev/sdk";
+import { z } from "zod";
+
 new Trigger({
   id: "caldotcom-to-slack",
   name: "Cal.com To Slack",
