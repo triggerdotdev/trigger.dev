@@ -301,7 +301,7 @@ function StepNumber({
 }) {
   return (
     <div className="mr-3 flex flex-col items-center justify-center">
-      <span className="flex h-7 w-7 items-center justify-center rounded border border-slate-700 bg-slate-800 text-base text-green-400 shadow">
+      <span className="flex h-7 w-7 items-center justify-center rounded border border-slate-700 bg-slate-800 py-1 text-sm text-green-400 shadow">
         {stepNumber}
       </span>
       {drawLine ? (
