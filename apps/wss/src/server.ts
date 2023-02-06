@@ -169,6 +169,36 @@ export class TriggerServer {
 
           return !!response;
         },
+        INITIALIZE_RUN_ONCE: async (request) => {
+          const runController = this.#runControllers.get(request.runId);
+
+          if (!runController) {
+            // TODO: need to recover from this issue by trying to reconnect
+            return false;
+          }
+
+          const response = await runController.publish("INITIALIZE_RUN_ONCE", {
+            key: request.key,
+            runOnce: request.runOnce,
+          });
+
+          return !!response;
+        },
+        COMPLETE_RUN_ONCE: async (request) => {
+          const runController = this.#runControllers.get(request.runId);
+
+          if (!runController) {
+            // TODO: need to recover from this issue by trying to reconnect
+            return false;
+          }
+
+          const response = await runController.publish("COMPLETE_RUN_ONCE", {
+            key: request.key,
+            runOnce: request.runOnce,
+          });
+
+          return !!response;
+        },
         SEND_EVENT: async (request) => {
           const runController = this.#runControllers.get(request.runId);
 

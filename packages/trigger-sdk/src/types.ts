@@ -56,6 +56,8 @@ export type TriggerFetch = <TBodySchema extends z.ZodTypeAny = z.ZodTypeAny>(
   options: FetchOptions<TBodySchema>
 ) => Promise<FetchResponse<TBodySchema>>;
 
+export type TriggerRunOnceCallback = (idempotencyKey: string) => Promise<any>;
+
 export interface TriggerContext {
   id: string;
   environment: string;
@@ -66,6 +68,14 @@ export interface TriggerContext {
   sendEvent(key: string, event: TriggerCustomEvent): Promise<void>;
   waitFor(key: string, options: WaitForOptions): Promise<void>;
   waitUntil(key: string, date: Date): Promise<void>;
+  runOnce<T extends TriggerRunOnceCallback>(
+    key: string,
+    callback: T
+  ): Promise<Awaited<ReturnType<T>>>;
+  runOnceLocalOnly<T extends TriggerRunOnceCallback>(
+    key: string,
+    callback: T
+  ): Promise<Awaited<ReturnType<T>>>;
   fetch: TriggerFetch;
 }
 

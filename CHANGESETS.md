@@ -19,3 +19,8 @@ Based on the instructions [here](https://github.com/changesets/changesets/blob/m
 
 1. Run `pnpm run changeset:version`
 2. Run `pnpm run changeset:release`
+
+## Pre-release instructions
+
+- Switch into pre-release mode by running `pnpm run changeset:next`.
+- Switch back into normal mode by running `pnpm run changeset:normal`.

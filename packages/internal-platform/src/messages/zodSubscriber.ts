@@ -10,6 +10,7 @@ import {
   MessageData,
   MessageDataSchema,
 } from "./messageCatalogSchema";
+import { generateErrorMessage } from "zod-error";
 
 import { z, ZodError } from "zod";
 import { ZodPubSubStatus } from "./types";
@@ -153,7 +154,7 @@ export class ZodSubscriber<SubscriberSchema extends MessageCatalogSchema> {
           "[ZodSubscriber] Received invalid message data or properties",
           messageData,
           properties,
-          e.format()
+          generateErrorMessage(e.issues)
         );
       } else {
         this.#logger.error("[ZodSubscriber] Error handling message", e);

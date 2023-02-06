@@ -34,7 +34,7 @@ export function Classic({ children, ...props }: HeadlessTabProps) {
 export function UnderlinedList({ children, ...props }: HeadlessTabListProps) {
   return (
     <HeadlessTab.List
-      className={"-mb-px flex space-x-4 border-b border-slate-200"}
+      className={"-mb-px flex space-x-4 border-b border-slate-700"}
       {...props}
     >
       {children}
@@ -48,10 +48,10 @@ export function Underlined({ children, ...props }: HeadlessTabProps) {
       className={({ selected }: { selected: boolean }) =>
         classnames(
           selected
-            ? "border-blue-500 text-slate-900 outline-none"
-            : "border-transparent text-slate-800 hover:border-slate-200 hover:text-slate-700",
+            ? "border-slate-300 text-slate-300 outline-none"
+            : "border-transparent text-slate-400 hover:border-slate-200 hover:text-slate-200",
           "disabled:text-slate-300 disabled:hover:border-transparent",
-          "flex whitespace-nowrap border-b-2 py-2 px-4 text-xs font-medium"
+          "flex whitespace-nowrap border-b-2 py-2 px-4 text-base font-medium transition"
         )
       }
       {...props}
@@ -69,7 +69,7 @@ export function SegmentedList({
   return (
     <HeadlessTab.List
       className={classNames(
-        "flex ml-8 gap-0.5 max-w-fit bg-slate-200 rounded-md p-0.5 border border-slate-300",
+        "flex max-w-fit gap-0.5 rounded-md bg-slate-800 p-1",
         className
       )}
       {...props}
@@ -85,9 +85,42 @@ export function Segmented({ children, ...props }: HeadlessTabProps) {
       className={({ selected }: { selected: boolean }) =>
         classnames(
           selected
-            ? "bg-blue-500 text-white rounded shadow outline-none"
-            : "text-slate-800 hover:bg-slate-300 rounded hover:text-slate-700 hover:shadow-none transition",
+            ? "rounded bg-indigo-600 text-white shadow outline-none"
+            : "rounded text-slate-300 transition hover:bg-slate-700 hover:text-slate-300 hover:shadow-none",
           "flex whitespace-nowrap py-2 px-4 text-xs font-medium"
+        )
+      }
+      {...props}
+    >
+      {children}
+    </HeadlessTab>
+  );
+}
+
+export function LargeBoxList({
+  children,
+  className,
+  ...props
+}: HeadlessTabListProps) {
+  return (
+    <HeadlessTab.List
+      className={classNames("grid grid-cols-carousel gap-2", className)}
+      {...props}
+    >
+      {children}
+    </HeadlessTab.List>
+  );
+}
+
+export function LargeBox({ children, ...props }: HeadlessTabProps) {
+  return (
+    <HeadlessTab
+      className={({ selected }: { selected: boolean }) =>
+        classnames(
+          selected
+            ? "bg-slate-800 text-white shadow outline-none"
+            : "text-slate-300 transition hover:bg-slate-800/50 hover:text-slate-300 hover:shadow-none",
+          "flex flex-col items-center justify-center gap-4 rounded border border-slate-700 py-6 px-4 text-base font-medium"
         )
       }
       {...props}

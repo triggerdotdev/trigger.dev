@@ -6,6 +6,8 @@ import * as shopify from "@trigger.dev/shopify";
 new Trigger({
   id: "shopify-products",
   name: "Shopify products",
+  // For security, we recommend moving this api key to your .env / secrets file. 
+  // Our env variable is called TRIGGER_API_KEY
   apiKey: "${apiKey}",
   on: customEvent({
     name: "shopify.products",

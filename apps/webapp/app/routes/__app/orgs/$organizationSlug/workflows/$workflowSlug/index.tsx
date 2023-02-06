@@ -1,3 +1,4 @@
+import { InformationCircleIcon } from "@heroicons/react/24/outline";
 import type { LoaderArgs } from "@remix-run/server-runtime";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import invariant from "tiny-invariant";
@@ -92,7 +93,8 @@ export default function Page() {
           {eventRule &&
           eventRule.trigger.type === "WEBHOOK" &&
           workflow.externalSourceConfig?.type === "manual" ? (
-            <PanelInfo className="mb-6 pb-4">
+            <div className="mb-6 flex w-full justify-start gap-4 rounded-md border border-slate-600 bg-slate-400/10 py-3 pl-3 pr-3 pb-4 shadow-md">
+              <InformationCircleIcon className="h-6 w-6 min-w-[24px] text-blue-500" />
               {workflow.externalSourceConfig.data.success ? (
                 <div className="flex flex-col">
                   <Body className="mb-4">
@@ -102,11 +104,11 @@ export default function Page() {
                   <div className="flex flex-col gap-2">
                     <Body
                       size="extra-small"
-                      className="text-slate-300 uppercase tracking-wide"
+                      className="uppercase tracking-wide text-slate-300"
                     >
                       URL
                     </Body>
-                    <div className="flex items-center gap-2 mb-4">
+                    <div className="mb-4 flex items-center gap-2">
                       <Input
                         value={workflow.externalSourceConfig.data.url}
                         readOnly={true}
@@ -120,7 +122,7 @@ export default function Page() {
                     <div className="flex flex-col gap-2">
                       <Body
                         size="extra-small"
-                        className="text-slate-300 uppercase tracking-wide"
+                        className="uppercase tracking-wide text-slate-300"
                       >
                         Secret
                       </Body>
@@ -138,33 +140,33 @@ export default function Page() {
                   )}
                 </div>
               ) : (
-                <div className="flex flex-col gap-2 w-full">
+                <div className="flex w-full flex-col gap-2">
                   <Body className="text-rose-500">
                     Your custom webhook event is incorrectly formatted. See the
                     error below
                   </Body>
                   <CodeBlock
                     code={workflow.externalSourceConfig.data.error}
-                    className="border border-rose-500 w-full"
+                    className="w-full border border-rose-500"
                     align="top"
                   />
                 </div>
               )}
-            </PanelInfo>
+            </div>
           ) : (
-            <PanelWarning className="mb-6">
-              This workflow requires its APIs to be connected before it can run.
-            </PanelWarning>
+            <PanelWarning
+              className="mb-6"
+              message="This workflow requires its APIs to be connected before it can run."
+            />
           )}
         </>
       )}
       {workflow.status === "DISABLED" && (
-        <PanelInfo className="mb-6">
-          <Body className="flex grow items-center justify-between">
-            This workflow is disabled. Runs cannot be triggered or tested while
-            disabled. Runs in progress will continue until complete.
-          </Body>
-
+        <PanelInfo
+          message="This workflow is disabled. Runs cannot be triggered or tested while
+        disabled. Runs in progress will continue until complete."
+          className="mb-6"
+        >
           <TertiaryLink to="settings" className="mr-1">
             Settings
           </TertiaryLink>
@@ -173,16 +175,16 @@ export default function Page() {
       {apiConnectionCount > 0 && <WorkflowConnections />}
       {eventRule && (
         <>
-          <div className="flex justify-between items-end">
+          <div className="flex items-end justify-between">
             <SubTitle>Workflow type</SubTitle>
             <SecondaryLink to="test" className="mb-2">
-              Run a test
+              Test workflow
             </SecondaryLink>
           </div>
-          <Panel className="mb-4">
+          <Panel className="mb-6">
             <PanelHeader
               icon={
-                <div className="h-6 w-6 mr-1">
+                <div className="mr-1 h-6 w-6">
                   <TriggerTypeIcon
                     type={eventRule.trigger.type}
                     provider={connectionSlots.source?.integration}
@@ -200,13 +202,13 @@ export default function Page() {
 
       {total > 0 ? (
         <>
-          <div className="flex justify-between items-end">
+          <div className="flex items-end justify-between">
             <SubTitle>Last {pageSize} runs</SubTitle>
             <SecondaryLink to="runs" className="mb-2">
               View all
             </SecondaryLink>
           </div>
-          <Panel className="p-0 overflow-hidden overflow-x-auto mb-6">
+          <Panel className="mb-6 overflow-hidden overflow-x-auto p-0">
             <RunsTable
               runs={runs}
               total={total}
@@ -217,8 +219,26 @@ export default function Page() {
         </>
       ) : (
         <>
-          <SubTitle>No workflows run yet</SubTitle>
-          <PrimaryLink to="test">Test your workflow</PrimaryLink>
+          <SubTitle>Workflow runs</SubTitle>
+          <PanelWarning
+            message="This workflow hasn't been run yet. Test it to view runs here."
+            className="flex justify-between"
+          >
+            <PrimaryLink to="test">Test your workflow</PrimaryLink>
+          </PanelWarning>
+          {/* <Panel className="flex flex-col items-start gap-2 p-6">
+            <div className="flex items-center gap-2">
+              <ExclamationTriangleIcon className="h-6 w-6 text-amber-400" />
+              <Header3>This workflow hasn't been run yet</Header3>
+            </div>
+            <div className="flex flex-col">
+              <Body className="mt-1 mb-2 text-slate-300">
+                If you want to quickly test the workflow, you can use the test
+                feature.
+              </Body>
+              <PrimaryLink to="test">Test your workflow</PrimaryLink>
+            </div>
+          </Panel> */}
         </>
       )}
     </>

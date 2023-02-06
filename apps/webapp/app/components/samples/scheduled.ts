@@ -1,22 +1,20 @@
-export function scheduled() {
-return `import { scheduleEvent, Trigger } from "@trigger.dev/sdk";
+export function scheduled(apiKey: string) {
+  return `import { Trigger, scheduleEvent } from "@trigger.dev/sdk";
 
 new Trigger({
-  id: "usage",
-  name: "usage",
-  on: scheduleEvent({ rateof: { minutes: 10 } }),
+  id: "scheduled-workflow",
+  name: "Scheduled Workflow",
+  // For security, we recommend moving this api key to your .env / secrets file. 
+  // Our env variable is called TRIGGER_API_KEY
+  apiKey: "${apiKey}",
+  on: scheduleEvent({ rateOf: { minutes: 5 } }),
   run: async (event, ctx) => {
-    const { lastRunAt, scheduledTime } = event;
+    await ctx.logger.info("Received the scheduled event", {
+      event,
+      wallTime: new Date(),
+    });
 
-    const query = \`SELECT * FROM users WHERE created_at < \${scheduledTime}\`;
-
-    if (lastRunAt) {
-      query += \` AND created_at > \${lastRunAt}\`;
-    }
-
-    const latestUsers = await db.query(query);
-
-    // ...
+    return { foo: "bar" };
   },
 }).listen();`;
 }

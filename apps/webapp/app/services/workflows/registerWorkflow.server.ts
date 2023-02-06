@@ -136,6 +136,12 @@ export class RegisterWorkflow {
         service: payload.trigger.service,
         eventNames: payload.trigger.name,
         triggerTtlInSeconds: payload.triggerTTL,
+        jsonSchema:
+          "schema" in payload.trigger
+            ? payload.trigger.schema
+              ? payload.trigger.schema
+              : undefined
+            : undefined,
       },
       create: {
         organizationId: organization.id,
@@ -147,6 +153,12 @@ export class RegisterWorkflow {
         service: payload.trigger.service,
         eventNames: payload.trigger.name,
         triggerTtlInSeconds: payload.triggerTTL,
+        jsonSchema:
+          "schema" in payload.trigger
+            ? payload.trigger.schema
+              ? payload.trigger.schema
+              : undefined
+            : undefined,
       },
       include: {
         externalSource: true,

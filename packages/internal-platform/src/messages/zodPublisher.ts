@@ -6,6 +6,7 @@ import type {
 import { Logger } from "../logger";
 import { MessageCatalogSchema } from "./messageCatalogSchema";
 import { ulid } from "ulid";
+import { generateErrorMessage } from "zod-error";
 
 import { z, ZodError } from "zod";
 import { ZodPubSubStatus } from "./types";
@@ -171,7 +172,8 @@ export class ZodPublisher<PublisherSchema extends MessageCatalogSchema> {
         this.#logger.error(
           "[ZodPublisher] Could not publish invalid message data or properties",
           data,
-          properties
+          properties,
+          generateErrorMessage(e.issues)
         );
       } else {
         this.#logger.error("[ZodPublisher] Error handling message", e);

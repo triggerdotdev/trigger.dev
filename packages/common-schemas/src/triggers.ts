@@ -11,6 +11,7 @@ export const CustomEventTriggerSchema = z.object({
   service: z.literal("trigger"),
   name: z.string(),
   filter: EventFilterSchema,
+  schema: JsonSchema.optional(),
 });
 export type CustomEventTrigger = z.infer<typeof CustomEventTriggerSchema>;
 
@@ -21,6 +22,7 @@ export const WebhookEventTriggerSchema = z.object({
   filter: EventFilterSchema,
   source: JsonSchema.optional(),
   manualRegistration: z.boolean().default(false),
+  schema: JsonSchema.optional(),
 });
 export type WebhookEventTrigger = z.infer<typeof WebhookEventTriggerSchema>;
 

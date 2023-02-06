@@ -97,10 +97,10 @@ export function RunsTable({
           })
         )}
         {isLoading && (
-          <tr className="absolute top-0 left-0 w-full h-full bg-slate-800/90">
+          <tr className="absolute top-0 left-0 h-full w-full bg-slate-800/90">
             <td
               colSpan={6}
-              className="flex items-center justify-center gap-2 text-white h-full"
+              className="flex h-full items-center justify-center gap-2 text-white"
             >
               <Spinner /> Loading…
             </td>
@@ -125,7 +125,7 @@ function Cell({
   alignment?: "left" | "right";
 }) {
   return (
-    <td className="group-hover:bg-slate-850/50 transition cursor-pointer">
+    <td className="cursor-pointer transition group-hover:bg-slate-850/50">
       <Link
         to={to}
         className={classNames(
@@ -142,7 +142,7 @@ function Cell({
 function BlankRow({ children }: { children: ReactNode }) {
   return (
     <tr>
-      <td colSpan={6} className="py-6 text-sm text-center">
+      <td colSpan={6} className="py-6 text-center text-sm">
         {children}
       </td>
     </tr>
@@ -152,7 +152,7 @@ function BlankRow({ children }: { children: ReactNode }) {
 export function NoRuns({ title }: { title: string }) {
   return (
     <div className="flex items-center justify-center">
-      <PanelWarning className="max-w-max">{title}</PanelWarning>
+      <PanelWarning message={title} className="max-w-max" />
     </div>
   );
 }

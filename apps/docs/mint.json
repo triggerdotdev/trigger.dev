@@ -49,16 +49,22 @@
   "navigation": [
     {
       "group": "Getting Started",
-      "pages": ["welcome", "getting-started", "get-help", "viewing-runs"]
+      "pages": [
+        "welcome",
+        "getting-started",
+        "get-help",
+        "viewing-runs",
+        "changelog"
+      ]
     },
     {
       "group": "Example workflows",
       "pages": [
         "examples/examples",
         "examples/github",
+        "examples/resend",
         "examples/shopify",
         "examples/slack",
-        "examples/resend",
         "examples/whatsapp"
       ]
     },
@@ -95,11 +101,18 @@
             },
             {
               "group": "Slack",
-              "pages": ["integrations/apis/slack/actions/post-message"]
+              "pages": [
+                "integrations/apis/slack/actions/post-message",
+                "integrations/apis/slack/actions/post-message-response",
+                "integrations/apis/slack/actions/add-reaction",
+                "integrations/apis/slack/actions/open-view"
+              ]
             },
             {
               "group": "Resend.com",
-              "pages": ["integrations/apis/resend/actions/send-email"]
+              "pages": [
+                "integrations/apis/resend/actions/send-email"
+              ]
             },
             {
               "group": "WhatsApp",
@@ -107,7 +120,9 @@
                 "integrations/apis/whatsapp/index",
                 {
                   "group": "Events",
-                  "pages": ["integrations/apis/whatsapp/events/message"]
+                  "pages": [
+                    "integrations/apis/whatsapp/events/message"
+                  ]
                 },
                 {
                   "group": "Actions",
@@ -137,6 +152,7 @@
         "functions/logging",
         "functions/delays",
         "functions/send-event",
+        "functions/run-once",
         "functions/loops-conditionals-etc"
       ]
     },
@@ -161,11 +177,20 @@
     },
     {
       "group": "API Reference",
-      "pages": ["api/events/sendEvent"]
+      "pages": [
+        "api-reference/events/sendEvent"
+      ]
     },
     {
       "group": "Webhook Catalog",
       "pages": [
+        {
+          "group": "Slack",
+          "pages": [
+            "integrations/apis/slack/events/block-action-interaction",
+            "integrations/apis/slack/events/view-submission-interaction"
+          ]
+        },
         {
           "group": "GitHub",
           "pages": [
@@ -193,8 +218,7 @@
   },
   "analytics": {
     "posthog": {
-        "apiKey": "phc_cU8Ow5tDcy9alp09yWYpad98CHafOsfsXK3HzLM6uy0"
+      "apiKey": "phc_cU8Ow5tDcy9alp09yWYpad98CHafOsfsXK3HzLM6uy0"
     }
+  }
 }
-}
-

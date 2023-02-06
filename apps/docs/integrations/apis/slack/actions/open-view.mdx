@@ -1,0 +1,634 @@
+---
+title: "Open View"
+sidebarTitle: "Open View"
+description: "Open a view for a user, usually in response to a user action."
+---
+
+Open a modal view for a user after a button click or other user action. The view is a modal that blocks other user interactions with your app, and can be used to collect more complex input from users.
+
+To be able to open a view, you must first acquire a `trigger_id` from a user interaction, such as a button click. See the [blockActionInteraction docs](../events/block-action-interaction) for more info on triggering on user actions.
+
+<Note>
+  `trigger_id`'s are valid for only 3 seconds, so make sure not to add any
+  delays before calling `openView`
+</Note>
+
+## Usage
+
+There are 3 steps to opening a view:
+
+1. Post a message to a channel with an interactive component (button, select menu, etc).
+2. Listen for a user interaction with that component (using [blockActionInteraction](../events/block-action-interaction)).
+3. Call `openView` with the `trigger_id` from the interaction.
+
+<CodeGroup>
+
+```ts step1.ts
+// This is inside a Trigger.run handler, but extracted for brevity
+await slack.postMessage("New Issue", {
+  channelName: "github-issues",
+  text: "There is a new GitHub issue in the repo",
+  metadata: { githubIssueId },
+  blocks: [
+    {
+      type: "actions",
+      block_id: "new.issue", // this is the block_id that we'll use to identify the message
+      elements: [
+        {
+          type: "button",
+          action_id: "reply",
+          text: {
+            type: "plain_text",
+            text: "Reply to Issue",
+          },
+          value: "reply",
+        },
+      ],
+    },
+  ],
+});
+```
+
+```ts step2.ts
+new Trigger({
+  id: "github-issue-slack-interaction",
+  name: "GitHub Issue Slack Interaction",
+  on: slack.events.blockActionInteraction({
+    blockId: "new.issue",
+  }),
+  run: async (event, ctx) => {
+    // Use the trigger_id from the event to open the view
+  },
+}).listen();
+```
+
+```ts step3.ts
+new Trigger({
+  id: "github-issue-slack-interaction",
+  name: "GitHub Issue Slack Interaction",
+  on: slack.events.blockActionInteraction({
+    blockId: "new.issue",
+  }),
+  run: async (event, ctx) => {
+    await slack.openView("Get the reply", event.trigger_id, {
+      type: "modal",
+      callback_id: "reply",
+      title: {
+        type: "plain_text",
+        text: "Reply to Issue",
+      },
+      blocks: [
+        {
+          type: "input",
+          block_id: "replyInput",
+          element: {
+            type: "plain_text_input",
+            action_id: "reply",
+          },
+          label: {
+            type: "plain_text",
+            text: "Reply",
+          },
+        },
+      ],
+      submit: {
+        type: "plain_text",
+        text: "Submit",
+      },
+    });
+  },
+}).listen();
+```
+
+</CodeGroup>
+
+## Modal Validation
+
+You can optional provide a validation schema (using [Zod](/guides/zod)) which we will use to validate the view submission and provide feedback to the user.
+
+For example, we could make sure the `replyInput` above is more than 3 characters and less than 500 characters:
+
+```ts
+await slack.openView(
+  "Get the reply",
+  event.trigger_id,
+  {
+    type: "modal",
+    callback_id: "reply",
+    title: {
+      type: "plain_text",
+      text: "Reply to Issue",
+    },
+    blocks: [
+      {
+        type: "input",
+        block_id: "replyInput",
+        element: {
+          type: "plain_text_input",
+          action_id: "reply",
+        },
+        label: {
+          type: "plain_text",
+          text: "Reply",
+        },
+      },
+    ],
+    submit: {
+      type: "plain_text",
+      text: "Submit",
+    },
+  },
+  {
+    validationSchema: z.object({
+      replyInput: z.string().min(3).max(500),
+    }),
+  }
+);
+```
+
+Note that the `block_id` of the input is used as the key in the validation schema (not the `action_id`).
+
+The above example will show an error message if the user submits a reply that is less than 3 characters or more than 500 characters, but you might want to provide an even better experience by using the built-in validation provided by BlockKit:
+
+```ts
+await slack.openView("Get the reply", event.trigger_id, {
+  type: "modal",
+  callback_id: "reply",
+  title: {
+    type: "plain_text",
+    text: "Reply to Issue",
+  },
+  blocks: [
+    {
+      type: "input",
+      block_id: "replyInput",
+      element: {
+        type: "plain_text_input",
+        action_id: "reply",
+      },
+      label: {
+        type: "plain_text",
+        text: "Reply",
+      },
+      min_length: 3,
+      max_length: 500,
+    },
+  ],
+  submit: {
+    type: "plain_text",
+    text: "Submit",
+  },
+});
+```
+
+See Slack's [Block Element reference docs](https://api.slack.com/reference/block-kit/block-elements) page for more information the properties you can use to control a user's input.
+
+## JSX Slack
+
+You can use the [JSX Slack](https://github.com/yhatt/jsx-slack/) project to build your views in a more declarative way:
+
+### Step 1: Install and configure JSX Slack
+
+<Tabs>
+  <Tab title="npm">
+
+```bash
+npm install jsx-slack
+```
+
+  </Tab>
+  <Tab title="pnpm">
+
+```bash
+pnpm add jsx-slack
+```
+
+  </Tab>
+  <Tab title="yarn">
+
+```bash
+yarn add jsx-slack
+```
+
+  </Tab>
+</Tabs>
+
+If you aren't already using React in your project, you will need to update your `tsconfig.json` file to add the `compilerOptions.jsx` option, and ensure to include `.tsx` files in your `include` array:
+
+```json
+{
+  "compilerOptions": {
+    "jsx": "react-jsx"
+  },
+  "include": ["src/**/*.ts", "src/**/*.tsx"]
+}
+```
+
+### Step 2: Create your Modal
+
+```tsx modals.tsx
+/** @jsxImportSource jsx-slack */
+import JSXSlack, {
+  Actions,
+  Input,
+  Textarea,
+  Section,
+  Header,
+  Modal,
+} from "jsx-slack";
+
+export function replyModal(title: string, callbackId: string) {
+  return JSXSlack(
+    <Modal title="Your reply" close="Cancel" callbackId={callbackId}>
+      <Header>Issue title</Header>
+      <Section>{title}</Section>
+      <Header>Your reply</Header>
+      <Textarea
+        name="message"
+        label="Message"
+        placeholder="Your message"
+        maxLength={500}
+        id="messageInput"
+      />
+      <Input type="submit" value="submit" />
+    </Modal>
+  );
+}
+```
+
+### Step 3: Open the Modal
+
+```ts
+import { replyModal } from "./modals";
+
+await slack.openView(
+  "Get the reply",
+  event.trigger_id,
+  replyModal("Issue title", "reply")
+);
+```
+
+## Handling a View Submission
+
+To get the results of a view submission, you can use the [viewSubmissionInteraction](../events/view-submission-interaction) event, providing the `callback_id` of the view you want to listen for:
+
+```ts
+new Trigger({
+  id: "handle-view-submission",
+  name: "Handle View Submission",
+  on: slack.events.viewSubmissionInteraction({
+    callbackId: "reply",
+  }),
+  run: async (event, ctx) => {
+    // use event.view.state.values to get the values of the inputs
+  },
+}).listen();
+```
+
+For more information please see the [viewSubmissionInteraction docs](../events/view-submission-interaction).
+
+## Passing custom data
+
+There are a few ways you can pass custom data to your view submission handler when opening a view:
+
+### Using the `metadata` option
+
+When calling `openView`, you can pass a 4th argument which is object with a `metadata` property. This will be passed to your view submission handler as `event.view.private_metadata`:
+
+<CodeGroup>
+
+```ts openView.ts
+import { replyModal } from "./modals";
+
+await slack.openView(
+  "Get the reply",
+  event.trigger_id,
+  replyModal("Issue title", "reply"),
+  {
+    metadata: {
+      issueId: "123",
+      thread_ts: event.message.ts,
+    },
+  }
+);
+```
+
+```ts viewSubmissionInteraction.ts
+new Trigger({
+  id: "handle-view-submission",
+  name: "Handle View Submission",
+  on: slack.events.viewSubmissionInteraction({
+    callbackId: "reply",
+  }),
+  run: async (event, ctx) => {
+    // event.view.private_metadata will be:
+    // {
+    //   issueId: "123",
+    //   thread_ts: "123.456"
+    // }
+    //
+    // use event.view.private_metadata.thread_ts to post a reply to a message in a thread
+    await slack.postMessage("Reply", {
+      channelName: "github-issues",
+      text: event.view.state.values.messageInput.message.value,
+      thread_ts: event.view.private_metadata.thread_ts,
+    });
+  },
+}).listen();
+```
+
+</CodeGroup>
+
+## Params
+
+<ParamField path="key" type="string" required={true}>
+  A unique string. Please see the [Keys and Resumability](/guides/resumability)
+  doc for more info.
+</ParamField>
+
+<ParamField path="trigger_id" type="string" required={true}>
+  The trigger ID from the original event. Must be called within 3 seconds of the
+  original event.
+</ParamField>
+
+<ParamField path="view" type="view object" required={true}>
+  The view to open.
+
+  <Expandable title="properties">
+    <ParamField path="type" type="string" required={true}>
+      Must be `modal`.
+    </ParamField>
+
+    <ParamField path="callback_id" type="string" required={false}>
+      A unique identifier for the view. You can use this when you trigger on the [viewSubmissionInteraction](../events/view-submission-interaction) event. If not specified, a unique identifier will be generated. Maximum length for this field is 255 characters.
+    </ParamField>
+
+    <ParamField path="title" type="plain_text object" required={true}>
+      The title that appears in the top-left of the modal. Must be a plain_text text element with a max length of 24 characters.
+    </ParamField>
+
+    <ParamField path="blocks" type="Array<block>" required={true}>
+      An array of [blocks](https://api.slack.com/reference/block-kit/blocks) that defines the content of the view. Max of 100 blocks.
+    </ParamField>
+
+    <ParamField path="submit_disabled" type="boolean">
+      Whether the submit button is disabled until the user makes changes to the view. Defaults to `false`.
+    </ParamField>
+
+  </Expandable>
+</ParamField>
+
+<ParamField path="options" type="object" required={false}>
+  <Expandable title="properties">
+    <ParamField path="validationSchema" type="ZodObject" required={false}>
+      A [Zod](/guides/zod) object schema to validate the view submission. If the schema fails, the view submission will be rejected and the user will be shown an error message.
+    </ParamField>
+
+    <ParamField path="onSubmit" type="string" required={false}>
+      One of `"clear" | "close" | "none"` to specify what happens after the view is submitted. Defaults to `"close"`. `"clear"` will clear all the modals in the stack, `"close"` will close the current modal, and `"none"` will do nothing.
+    </ParamField>
+
+    <ParamField path="metadata" type="object" required={false}>
+      A custom object that will be passed to the [viewSubmissionInteraction](../events/view-submission-interaction) event as `event.view.private_metadata`.
+    </ParamField>
+
+  </Expandable>
+</ParamField>
+
+## Response
+
+<ResponseField name="ok" type="boolean" default="true">
+  Always true; non-ok responses will halt the workflow run and throw an error.
+</ResponseField>
+
+<ResponseField name="view" type="object">
+  <Expandable title="properties">
+    <ResponseField name="id" type="string">
+      The unique ID of the view. You can use this to update the view later.
+    </ResponseField>
+
+    <ResponseField name="team_id" type="string">
+      The ID of the workspace where the view was opened.
+    </ResponseField>
+
+    <ResponseField name="type" type="string">
+      The type of view. Always `modal`.
+    </ResponseField>
+
+    <ResponseField name="private_metadata" type="object">
+      The metadata that was passed to the view when it was opened.
+    </ResponseField>
+
+    <ResponseField name="callback_id" type="string">
+      The callback ID that was passed to the view when it was opened.
+    </ResponseField>
+
+  </Expandable>
+</ResponseField>
+
+## Example Workflow
+
+The following example combines WhatsApp and Slack to create a workflow that allows you to receive WhatsApp messages in Slack, and use a modal to compose a reply.
+
+<CodeGroup>
+
+```tsx whatsappToSlack.tsx
+/** @jsxImportSource jsx-slack */
+import { Trigger } from "@trigger.dev/sdk";
+import {
+  events,
+  sendText,
+  getMediaUrl,
+  MessageEventMessage,
+} from "@trigger.dev/whatsapp";
+import JSXSlack, {
+  Actions,
+  Blocks,
+  Button,
+  Section,
+  Header,
+  Context,
+  Image,
+  Modal,
+  Input,
+  Textarea,
+} from "jsx-slack";
+import * as slack from "@trigger.dev/slack";
+
+const dateFormatter = new Intl.DateTimeFormat("en-US", {
+  timeStyle: "short",
+  dateStyle: "short",
+});
+
+// this trigger listens for WhatsApp messages and sends them to Slack
+new Trigger({
+  id: "whatsapp-to-slack",
+  name: "WhatsApp: load messages",
+  on: events.messageEvent({
+    accountId: "<account id>",
+  }),
+  run: async (event, ctx) => {
+    //this generates Slack blocks from the WhatsApp message
+    const messageBody = await createMessageBody(event.message);
+
+    await slack.postMessage("jsx-test", {
+      channelName: "whatsapp-support",
+      //text appears in Slack notifications on mobile/desktop
+      text: "How is your progress today?",
+      //import and use JSXSlack to make creating rich messages much easier
+      blocks: JSXSlack(
+        <Blocks>
+          <Header>From: {event.message.from}</Header>
+          <Context>At: {dateFormatter.format(event.message.timestamp)}</Context>
+          {messageBody}
+          <Actions blockId="launch-modal">
+            <Button value="reply" actionId="reply">
+              Reply
+            </Button>
+          </Actions>
+        </Blocks>
+      ),
+      //pass the WhatsApp message to the next trigger
+      metadata: {
+        whatsAppMessage: event.message,
+      },
+    });
+  },
+}).listen();
+```
+
+```tsx replyButtonInteraction.tsx
+//this trigger creates a Slack modal when a user presses the Reply button
+new Trigger({
+  id: "whatsapp-to-slack-modal",
+  name: "WhatsApp: show message composer",
+  on: slack.events.blockActionInteraction({
+    blockId: "launch-modal",
+  }),
+  run: async (event, ctx) => {
+    if (!event.trigger_id) {
+      return;
+    }
+
+    //get the action (pressing the reply button) and the original WhatsApp message
+    const action = event.actions[0];
+    const whatsAppMessage =
+      event.message?.metadata?.event_payload.whatsAppMessage;
+
+    //generate Slack blocks from the WhatsApp message
+    const messageBody = await createMessageBody(whatsAppMessage);
+
+    if (action.action_id === "reply" && action.type === "button") {
+      //show a reply modal, with the original message and an input field for the reply
+      await slack.openView(
+        "Opening view",
+        event.trigger_id,
+        JSXSlack(
+          <Modal title="Your reply" close="Cancel" callbackId="submit-message">
+            <Header>Original message</Header>
+            {messageBody}
+            <Header>Your reply</Header>
+            <Textarea
+              name="message"
+              label="Message"
+              placeholder="Your message"
+              maxLength={500}
+              id="messageField"
+            />
+            <Input type="submit" value="submit" />
+          </Modal>
+        ),
+        {
+          onSubmit: "close",
+          //pass the original WhatsApp message to the next trigger, and the original Slack message so we can thread replies
+          metadata: {
+            whatsAppMessage,
+            thread_ts: event.message?.ts,
+          },
+        }
+      );
+    }
+  },
+}).listen();
+```
+
+```tsx replyModalSubmission.tsx
+//this trigger sends the reply from Slack to WhatsApp
+new Trigger({
+  id: "whatsapp-composed-slack-message",
+  name: "WhatsApp: send message from Slack",
+  on: slack.events.viewSubmissionInteraction({
+    callbackId: "submit-message",
+  }),
+  run: async (event, ctx) => {
+    await ctx.logger.info("Modal submission", { event });
+
+    //the message from the input field in Slack
+    const usersResponse = event.view.state?.values.messageField.message
+      .value as string;
+
+    //get the data from the previous messages/panels
+    const privateMetadata =
+      event.view.private_metadata && JSON.parse(event.view.private_metadata);
+    await ctx.logger.info("Private metadata", privateMetadata);
+    const whatsAppMessage = privateMetadata?.whatsAppMessage;
+
+    if (!whatsAppMessage || !usersResponse) {
+      await ctx.logger.error("No message or original message", { event });
+      return;
+    }
+
+    //send WhatsApp message
+    await sendText("send-whatsapp", {
+      fromId: "102119172798864",
+      to: whatsAppMessage.from,
+      text: usersResponse,
+    });
+
+    //send message in the Slack thread
+    await slack.postMessage("slack-reply", {
+      channelName: "whatsapp-support",
+      text: `Replied with: ${usersResponse}`,
+      blocks: JSXSlack(
+        <Blocks>
+          <Header>Reply from @{event.user.username}</Header>
+          <Context>
+            At: {dateFormatter.format(new Date())} To: {whatsAppMessage.from}
+          </Context>
+          <Section>{usersResponse}</Section>
+        </Blocks>
+      ),
+      thread_ts: privateMetadata?.thread_ts,
+    });
+
+    return event;
+  },
+}).listen();
+
+//creates different Slack blocks depending on the type of WhatsApp message (e.g. text, image, etc.)
+async function createMessageBody(message: MessageEventMessage) {
+  switch (message.type) {
+    case "text": {
+      return <Section>{message.text.body}</Section>;
+    }
+    case "image": {
+      const mediaUrl = await getMediaUrl(`getImageUrl`, message.image);
+      return (
+        <Image
+          src={mediaUrl}
+          alt={message.image.caption ?? ""}
+          title={message.image.caption ?? ""}
+        />
+      );
+    }
+    case "video": {
+      const mediaUrl = await getMediaUrl(`getVideoUrl`, message.video);
+      return <Section>{mediaUrl}</Section>;
+    }
+    default:
+      return <Section>Unsupported message type: {message.type}</Section>;
+  }
+}
+```
+
+</CodeGroup>

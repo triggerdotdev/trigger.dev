@@ -218,7 +218,7 @@ new Trigger({
             return slack.addReaction("React to message", {
               name: "cry",
               timestamp: event.message.ts,
-              channelId: event.channel.id,
+              channelId: event.channel!.id,
             });
           }
           break;
@@ -229,7 +229,7 @@ new Trigger({
             return slack.addReaction("React to message", {
               name: "sos",
               timestamp: event.message.ts,
-              channelId: event.channel.id,
+              channelId: event.channel!.id,
             });
           }
           break;
@@ -243,7 +243,7 @@ new Trigger({
           //only the user pressing the button will see this message
           return slack.postMessageResponse(
             "Added a comment to the issue",
-            event.response_url,
+            event.response_url!,
             {
               text: `You rated your day ${action.selected_option?.value} stars`,
               replace_original: false,
@@ -277,7 +277,7 @@ new Trigger({
     await slack.addReaction("React to message", {
       name: "thumbsup",
       timestamp: event.message.ts,
-      channelId: event.channel.id,
+      channelId: event.channel!.id,
     });
   },
 }).listen();

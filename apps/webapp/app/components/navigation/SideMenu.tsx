@@ -11,6 +11,7 @@ import {
   ClipboardDocumentCheckIcon,
   Squares2X2Icon,
   Cog6ToothIcon,
+  PlusCircleIcon,
 } from "@heroicons/react/24/outline";
 import { Link, NavLink } from "@remix-run/react";
 import {
@@ -24,7 +25,7 @@ import invariant from "tiny-invariant";
 import { CopyText } from "../CopyText";
 
 export function SideMenuContainer({ children }: { children: React.ReactNode }) {
-  return <div className="grid grid-cols-[300px_2fr] h-full">{children}</div>;
+  return <div className="grid h-full grid-cols-[300px_2fr]">{children}</div>;
 }
 
 type SideMenuItem = {
@@ -58,6 +59,11 @@ export function OrganizationsSideMenu() {
       name: "Team",
       icon: <UsersIcon className={iconStyle} />,
       to: `/orgs/${currentOrganization.slug}/members`,
+    },
+    {
+      name: "New Workflow",
+      icon: <PlusCircleIcon className={iconStyle} />,
+      to: `/orgs/${currentOrganization.slug}/workflows/new`,
     },
   ];
 
@@ -129,24 +135,24 @@ function SideMenu({
   invariant(organization, "Organization must be defined");
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col bg-slate-950 border-r border-slate-800">
+    <div className="flex min-h-0 flex-1 flex-col border-r border-slate-800 bg-slate-950">
       <div className="flex flex-1 flex-col overflow-y-auto pb-4">
         <nav
-          className="mt-2 flex flex-col h-full justify-between space-y-1 px-2"
+          className="mt-2 flex h-full flex-col justify-between space-y-1 px-2"
           aria-label="Sidebar"
         >
           <div>
-            <div className="group flex items-center my-2 text-slate-400 rounded hover:bg-slate-950 border border-transparent hover:border-slate-800 transition divide-x divide-transparent hover:divide-slate-900">
+            <div className="group my-2 flex items-center divide-x divide-transparent rounded border border-transparent text-slate-400 transition hover:divide-slate-900 hover:border-slate-800 hover:bg-slate-950">
               <Link
                 to={backPath}
-                className="px-2 py-3 hover:bg-slate-800 rounded-l transition"
+                className="rounded-l px-2 py-3 transition hover:bg-slate-800"
               >
                 <ChevronLeftIcon className="h-5 w-5 text-slate-400" />
               </Link>
 
               <Header1
                 size="small"
-                className="pl-2 py-2 w-full text-slate-400 rounded-r hover:bg-slate-800 transition whitespace-nowrap text-ellipsis overflow-hidden"
+                className="w-full overflow-hidden text-ellipsis whitespace-nowrap rounded-r py-2 pl-2 text-slate-400 transition hover:bg-slate-800"
               >
                 <Link to="">{title}</Link>
               </Header1>
@@ -167,17 +173,17 @@ function SideMenu({
             ))}
           </div>
           <div className="flex flex-col gap-6">
-            <ul className="flex flex-col gap-6 ml-3 mr-2">
+            <ul className="ml-3 mr-2 flex flex-col gap-6">
               {organization.environments.map((environment) => {
                 return (
                   <li
                     key={environment.id}
-                    className="flex flex-col gap-1.5 justify-between w-full"
+                    className="flex w-full flex-col justify-between gap-1.5"
                   >
                     <div className="flex justify-between">
                       <Body
                         size="extra-small"
-                        className={`text-slate-300 overflow-hidden ${menuSmallTitleStyle}`}
+                        className={`overflow-hidden text-slate-300 ${menuSmallTitleStyle}`}
                       >
                         {environment.slug} api key
                       </Body>
@@ -186,11 +192,11 @@ function SideMenu({
                         value={environment.apiKey}
                       /> */}
                     </div>
-                    <div className="relative overflow-hidden text-sm select-all text-slate-400 p-1 pl-2 rounded-sm border border-slate-800">
-                      <span className="block absolute pointer-events-none right-7 top-0 bg-gradient-to-r from-transparent to-slate-950 w-20 h-6"></span>
+                    <div className="relative select-all overflow-hidden rounded-sm border border-slate-800 p-1 pl-2 text-sm text-slate-400">
+                      <span className="pointer-events-none absolute right-7 top-0 block h-6 w-20 bg-gradient-to-r from-transparent to-slate-950"></span>
                       <CopyText
                         value={environment.apiKey}
-                        className="group absolute flex right-0 top-0 items-center justify-center rounded-sm w-7 h-full bg-slate-950 border-l border-slate-800 hover:bg-slate-900 transition hover:cursor-pointer active:bg-green-900"
+                        className="group absolute right-0 top-0 flex h-full w-7 items-center justify-center rounded-sm border-l border-slate-800 bg-slate-950 transition hover:cursor-pointer hover:bg-slate-900 active:bg-green-900"
                       >
                         <ClipboardDocumentCheckIcon className="h-5 w-5 group-active:text-green-500" />
                       </CopyText>
@@ -200,7 +206,7 @@ function SideMenu({
                 );
               })}
             </ul>
-            <ul className="flex flex-col gap-3 ml-3">
+            <ul className="ml-3 flex flex-col gap-3">
               <li>
                 <Body size="extra-small" className={menuSmallTitleStyle}>
                   Help and resources

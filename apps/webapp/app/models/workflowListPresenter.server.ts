@@ -243,17 +243,36 @@ function triggerProperties(
         };
       }
 
-      const slackSource = SlackInteractionSourceSchema.parse(
+      const slackSource = SlackInteractionSourceSchema.safeParse(
         internalSource.source
       );
+
+      if (!slackSource.success) {
+        return {
+          type: workflow.type,
+          typeTitle: "Slack interaction",
+          title: "on: Slack interaction",
+        };
+      }
+
+      const title =
+        slackSource.data.type === "block_action"
+          ? `block_id = ${slackSource.data.blockId}`
+          : `callback_id = ${slackSource.data.callbackIds.join(", ")}`;
 
       return {
         type: workflow.type,
         typeTitle: "Slack interaction",
-        title: `block_id = ${slackSource.blockId}`,
+        title: title,
         properties:
-          slackSource.actionIds.length > 0
-            ? [{ key: "Action ID", value: slackSource.actionIds.join(", ") }]
+          slackSource.data.type === "block_action" &&
+          slackSource.data.actionIds.length > 0
+            ? [
+                {
+                  key: "Action ID",
+                  value: slackSource.data.actionIds.join(", "),
+                },
+              ]
             : undefined,
       };
     }

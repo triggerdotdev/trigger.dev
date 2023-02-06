@@ -1,5 +1,9 @@
 import { z } from "zod";
-import { FetchOutputSchema, JsonSchema } from "@trigger.dev/common-schemas";
+import {
+  FetchOutputSchema,
+  JsonSchema,
+  ResolveRunOnceOuputSchema,
+} from "@trigger.dev/common-schemas";
 
 export const HostRPCSchema = {
   TRIGGER_WORKFLOW: {
@@ -84,6 +88,21 @@ export const HostRPCSchema = {
       id: z.string(),
       key: z.string(),
       error: JsonSchema.default({}),
+      meta: z.object({
+        environment: z.string(),
+        workflowId: z.string(),
+        organizationId: z.string(),
+        apiKey: z.string(),
+        runId: z.string(),
+      }),
+    }),
+    response: z.boolean(),
+  },
+  RESOLVE_RUN_ONCE: {
+    request: z.object({
+      id: z.string(),
+      key: z.string(),
+      output: ResolveRunOnceOuputSchema,
       meta: z.object({
         environment: z.string(),
         workflowId: z.string(),

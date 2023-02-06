@@ -1,0 +1,326 @@
+---
+title: "View Submission"
+sidebarTitle: "View Submission"
+description: "Trigger a workflow when a user submits a modal view."
+---
+
+## Overview
+
+If you open a modal view with a submit button, you can trigger a workflow when the user submits the view using this trigger. See the [openView docs](../actions/open-view) for more information on how to open a modal view.
+
+The event will be the [view_submission event payload](https://api.slack.com/reference/interaction-payloads/views#view_submission) from Slack, which includes the `view.state.values` object which you can use to access the values of the inputs in the view.
+
+For example, given the following view:
+
+```ts
+await slack.openView("Get the reply", event.trigger_id, {
+  type: "modal",
+  callback_id: "message-reply",
+  title: {
+    type: "plain_text",
+    text: "Reply to Issue",
+  },
+  blocks: [
+    {
+      type: "input",
+      block_id: "replyInput",
+      element: {
+        type: "plain_text_input",
+        action_id: "reply",
+      },
+      label: {
+        type: "plain_text",
+        text: "Reply",
+      },
+    },
+  ],
+  submit: {
+    type: "plain_text",
+    text: "Submit",
+  },
+});
+```
+
+The event payload would have the following shape:
+
+```json
+{
+  // ...
+  "view": {
+    "id": "V04N2P0G797",
+    "type": "modal",
+    "state": {
+      "values": {
+        "replyInput": {
+          "reply": {
+            "type": "plain_text_input",
+            "value": "This is the reply!"
+          }
+        }
+      }
+    }
+    // ...
+  }
+}
+```
+
+## Callback IDs
+
+You can optionally provide callback ID for the view in order to only trigger on specific views. The callback ID is specified in the `callback_id` property of the view. In the example above, the callback ID is `"message-reply"`:
+
+```ts
+import * as slack from "@trigger.dev/slack";
+
+new Trigger({
+  on: slack.events.viewSubmissionInteraction({
+    callbackId: "message-reply",
+  }),
+});
+```
+
+You can also provide an array of callback IDs to trigger on multiple views:
+
+```ts
+import * as slack from "@trigger.dev/slack";
+
+new Trigger({
+  on: slack.events.viewSubmissionInteraction({
+    callbackId: ["message-reply", "another-view"],
+  }),
+});
+```
+
+## Limitations
+
+Because of the way the Slack API works, you cannot update the view or push a new view through the API when handling a view submission. The only way to update or push a view in a view submission interaction is with a [response_action](https://api.slack.com/surfaces/modals/using#updating_response), which we currently do not support. If you'd like this feature, please don't hesitate to [get in touch!](/get-help)
+
+## Event payload
+
+Please see the [Slack View Submission event payload](https://api.slack.com/reference/interaction-payloads/views#view_submission) for more information.
+
+<ResponseField name="type" type="string">
+  The type of event, which will always be `view_submission`.
+</ResponseField>
+
+<ResponseField name="view" type="view object">
+  The view that the user interacted with.
+</ResponseField>
+
+<ResponseField name="user" type="user object">
+  The user that submitted the view.
+</ResponseField>
+
+<ResponseField name="team" type="team object">
+  The team that the user is a part of.
+</ResponseField>
+
+<ResponseField name="channel" type="channel object">
+  The channel where the interaction took place.
+</ResponseField>
+
+## Example Workflow
+
+The following example combines WhatsApp and Slack to create a workflow that allows you to receive WhatsApp messages in Slack, and use a modal to compose a reply.
+
+<CodeGroup>
+
+```tsx whatsappToSlack.tsx
+/** @jsxImportSource jsx-slack */
+import { Trigger } from "@trigger.dev/sdk";
+import {
+  events,
+  sendText,
+  getMediaUrl,
+  MessageEventMessage,
+} from "@trigger.dev/whatsapp";
+import JSXSlack, {
+  Actions,
+  Blocks,
+  Button,
+  Section,
+  Header,
+  Context,
+  Image,
+  Modal,
+  Input,
+  Textarea,
+} from "jsx-slack";
+import * as slack from "@trigger.dev/slack";
+
+const dateFormatter = new Intl.DateTimeFormat("en-US", {
+  timeStyle: "short",
+  dateStyle: "short",
+});
+
+// this trigger listens for WhatsApp messages and sends them to Slack
+new Trigger({
+  id: "whatsapp-to-slack",
+  name: "WhatsApp: load messages",
+  on: events.messageEvent({
+    accountId: "<account id>",
+  }),
+  run: async (event, ctx) => {
+    //this generates Slack blocks from the WhatsApp message
+    const messageBody = await createMessageBody(event.message);
+
+    await slack.postMessage("jsx-test", {
+      channelName: "whatsapp-support",
+      //text appears in Slack notifications on mobile/desktop
+      text: "How is your progress today?",
+      //import and use JSXSlack to make creating rich messages much easier
+      blocks: JSXSlack(
+        <Blocks>
+          <Header>From: {event.message.from}</Header>
+          <Context>At: {dateFormatter.format(event.message.timestamp)}</Context>
+          {messageBody}
+          <Actions blockId="launch-modal">
+            <Button value="reply" actionId="reply">
+              Reply
+            </Button>
+          </Actions>
+        </Blocks>
+      ),
+      //pass the WhatsApp message to the next trigger
+      metadata: {
+        whatsAppMessage: event.message,
+      },
+    });
+  },
+}).listen();
+```
+
+```tsx replyButtonInteraction.tsx
+//this trigger creates a Slack modal when a user presses the Reply button
+new Trigger({
+  id: "whatsapp-to-slack-modal",
+  name: "WhatsApp: show message composer",
+  on: slack.events.blockActionInteraction({
+    blockId: "launch-modal",
+  }),
+  run: async (event, ctx) => {
+    if (!event.trigger_id) {
+      return;
+    }
+
+    //get the action (pressing the reply button) and the original WhatsApp message
+    const action = event.actions[0];
+    const whatsAppMessage =
+      event.message?.metadata?.event_payload.whatsAppMessage;
+
+    //generate Slack blocks from the WhatsApp message
+    const messageBody = await createMessageBody(whatsAppMessage);
+
+    if (action.action_id === "reply" && action.type === "button") {
+      //show a reply modal, with the original message and an input field for the reply
+      await slack.openView(
+        "Opening view",
+        event.trigger_id,
+        JSXSlack(
+          <Modal title="Your reply" close="Cancel" callbackId="submit-message">
+            <Header>Original message</Header>
+            {messageBody}
+            <Header>Your reply</Header>
+            <Textarea
+              name="message"
+              label="Message"
+              placeholder="Your message"
+              maxLength={500}
+              id="messageField"
+            />
+            <Input type="submit" value="submit" />
+          </Modal>
+        ),
+        {
+          onSubmit: "close",
+          //pass the original WhatsApp message to the next trigger, and the original Slack message so we can thread replies
+          metadata: {
+            whatsAppMessage,
+            thread_ts: event.message?.ts,
+          },
+        }
+      );
+    }
+  },
+}).listen();
+```
+
+```tsx replyModalSubmission.tsx
+//this trigger sends the reply from Slack to WhatsApp
+new Trigger({
+  id: "whatsapp-composed-slack-message",
+  name: "WhatsApp: send message from Slack",
+  on: slack.events.viewSubmissionInteraction({
+    callbackId: "submit-message",
+  }),
+  run: async (event, ctx) => {
+    await ctx.logger.info("Modal submission", { event });
+
+    //the message from the input field in Slack
+    const usersResponse = event.view.state?.values.messageField.message
+      .value as string;
+
+    //get the data from the previous messages/panels
+    const privateMetadata =
+      event.view.private_metadata && JSON.parse(event.view.private_metadata);
+    await ctx.logger.info("Private metadata", privateMetadata);
+    const whatsAppMessage = privateMetadata?.whatsAppMessage;
+
+    if (!whatsAppMessage || !usersResponse) {
+      await ctx.logger.error("No message or original message", { event });
+      return;
+    }
+
+    //send WhatsApp message
+    await sendText("send-whatsapp", {
+      fromId: "102119172798864",
+      to: whatsAppMessage.from,
+      text: usersResponse,
+    });
+
+    //send message in the Slack thread
+    await slack.postMessage("slack-reply", {
+      channelName: "whatsapp-support",
+      text: `Replied with: ${usersResponse}`,
+      blocks: JSXSlack(
+        <Blocks>
+          <Header>Reply from @{event.user.username}</Header>
+          <Context>
+            At: {dateFormatter.format(new Date())} To: {whatsAppMessage.from}
+          </Context>
+          <Section>{usersResponse}</Section>
+        </Blocks>
+      ),
+      thread_ts: privateMetadata?.thread_ts,
+    });
+
+    return event;
+  },
+}).listen();
+
+//creates different Slack blocks depending on the type of WhatsApp message (e.g. text, image, etc.)
+async function createMessageBody(message: MessageEventMessage) {
+  switch (message.type) {
+    case "text": {
+      return <Section>{message.text.body}</Section>;
+    }
+    case "image": {
+      const mediaUrl = await getMediaUrl(`getImageUrl`, message.image);
+      return (
+        <Image
+          src={mediaUrl}
+          alt={message.image.caption ?? ""}
+          title={message.image.caption ?? ""}
+        />
+      );
+    }
+    case "video": {
+      const mediaUrl = await getMediaUrl(`getVideoUrl`, message.video);
+      return <Section>{mediaUrl}</Section>;
+    }
+    default:
+      return <Section>Unsupported message type: {message.type}</Section>;
+  }
+}
+```
+
+</CodeGroup>

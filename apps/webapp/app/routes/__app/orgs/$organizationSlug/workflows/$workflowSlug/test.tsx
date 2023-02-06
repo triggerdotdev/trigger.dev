@@ -13,7 +13,8 @@ import { Body } from "~/components/primitives/text/Body";
 import { Title } from "~/components/primitives/text/Title";
 import { useCurrentOrganization } from "~/hooks/useOrganizations";
 import { useCurrentWorkflow } from "~/hooks/useWorkflows";
-import { getMostRecentWorkflowRun } from "~/models/workflowRun.server";
+import { getRuntimeEnvironmentFromRequest } from "~/models/runtimeEnvironment.server";
+import { WorkflowTestPresenter } from "~/presenters/testPresenter.server";
 import { requireUserId } from "~/services/session.server";
 
 export const loader = async ({ request, params }: LoaderArgs) => {
@@ -22,12 +23,14 @@ export const loader = async ({ request, params }: LoaderArgs) => {
   invariant(workflowSlug, "workflowSlug is required");
   invariant(organizationSlug, "organizationSlug is required");
 
+  const environmentSlug = await getRuntimeEnvironmentFromRequest(request);
+
   try {
-    const latestRun = await getMostRecentWorkflowRun({
-      workflowSlug,
-      organizationSlug,
-    });
-    return typedjson({ latestRun });
+    const presenter = new WorkflowTestPresenter();
+
+    return typedjson(
+      await presenter.data({ workflowSlug, organizationSlug, environmentSlug })
+    );
   } catch (error: any) {
     console.error(error);
     throw new Response("Error ", { status: 400 });
@@ -35,7 +38,7 @@ export const loader = async ({ request, params }: LoaderArgs) => {
 };
 
 export default function Page() {
-  const { latestRun } = useTypedLoaderData<typeof loader>();
+  const { payload, status } = useTypedLoaderData<typeof loader>();
 
   const organization = useCurrentOrganization();
   invariant(organization, "Organization not found");
@@ -45,38 +48,29 @@ export default function Page() {
   return (
     <>
       <Title>Test</Title>
-      {workflow.status === "CREATED" && (
-        <>
-          <PanelWarning className="mb-6">
-            This workflow requires its APIs to be connected before it can run.
-          </PanelWarning>
-        </>
+      {status === "CREATED" && (
+        <PanelWarning
+          message="This workflow requires its APIs to be connected before it can run."
+          className="mb-6"
+        />
       )}
-      {workflow.status === "DISABLED" && (
-        <PanelInfo className="mb-6">
-          <Body className="flex grow items-center justify-between">
-            This workflow is disabled. Runs cannot be triggered or tested while
-            disabled. Runs in progress will continue until complete.
-          </Body>
+      {status === "DISABLED" ? (
+        <PanelInfo
+          message="This workflow is disabled. Runs cannot be triggered or tested while
+        disabled. Runs in progress will continue until complete."
+          className="mb-6"
+        >
           <TertiaryLink to="settings" className="mr-1">
             Settings
           </TertiaryLink>
         </PanelInfo>
-      )}
-
-      {workflow.status === "READY" && (
+      ) : (
         <Panel className="mt-4">
           <Tester
             organizationSlug={organization.slug}
             workflowSlug={workflow.slug}
             eventNames={workflow.eventNames}
-            initialValue={
-              workflow.type === "SCHEDULE"
-                ? JSON.stringify({ scheduledTime: new Date() }, null, 2)
-                : latestRun == null
-                ? "{\n\n}"
-                : JSON.stringify(latestRun.event.payload, null, 2)
-            }
+            initialValue={JSON.stringify(payload, null, 2)}
           />
         </Panel>
       )}

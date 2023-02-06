@@ -11,10 +11,6 @@ const textSchema = z.discriminatedUnion("type", [
   plainTextElementSchema,
   mrkdwnElementSchema,
 ]);
-const blockActionType = z.union([
-  z.literal("block_actions"),
-  z.literal("interactive_message"),
-]);
 
 const sourceType = z.literal("message");
 
@@ -135,12 +131,22 @@ const userSchema = z.object({
   team_id: z.string(),
 });
 
-const containerSchema = z.object({
-  type: sourceType,
+const viewContainerSchema = z.object({
+  type: z.literal("view"),
+  view_id: z.string(),
+});
+
+const messageContainerSchema = z.object({
+  type: z.literal("message"),
   message_ts: z.string(),
   channel_id: z.string(),
   is_ephemeral: z.boolean(),
 });
+
+const containerSchema = z.discriminatedUnion("type", [
+  viewContainerSchema,
+  messageContainerSchema,
+]);
 
 const teamSchema = z.object({ id: z.string(), domain: z.string() });
 const channelSchema = z.object({ id: z.string(), name: z.string() });
@@ -154,7 +160,7 @@ const viewActionDataSchema = z.object({
     })
     .optional(),
   hash: z.string(),
-  previous_view_id: z.string().optional(),
+  previous_view_id: z.string().nullable().optional(),
   root_view_id: z.string().optional(),
   app_id: z.string().optional(),
   app_installed_team_id: z.string().optional(),
@@ -177,39 +183,105 @@ const messageActionSchema = z.object({
   metadata: z
     .object({
       event_type: z.string(),
-      event_payload: z.object({ requestId: z.string() }),
+      event_payload: z.any(),
     })
     .optional(),
 });
 
-export const blockAction: Zod.ZodObject<{
-  type: typeof blockActionType;
+export const InternalMessageMetadataPayloadSchema = z.object({
+  __trigger: z.object({
+    requestId: z.string(),
+  }),
+});
+
+export const BlockActionInteractivityPayloadSchema: Zod.ZodObject<{
+  type: z.ZodLiteral<"block_actions">;
+  team: typeof teamSchema;
   user: typeof userSchema;
   api_app_id: Zod.ZodString;
-  container: typeof containerSchema;
+  container: z.ZodOptional<typeof containerSchema>;
   trigger_id: z.ZodOptional<Zod.ZodString>;
-  team: typeof teamSchema;
-  enterprise: Zod.ZodAny;
-  is_enterprise_install: Zod.ZodBoolean;
-  channel: typeof channelSchema;
+  channel: z.ZodOptional<typeof channelSchema>;
   view: z.ZodOptional<typeof viewActionSchema>;
   message: z.ZodOptional<typeof messageActionSchema>;
   state: z.ZodOptional<typeof stateSchema>;
-  response_url: Zod.ZodString;
+  response_url: z.ZodOptional<Zod.ZodString>;
   actions: Zod.ZodArray<typeof actionSchema>;
 }> = z.object({
-  type: blockActionType,
+  type: z.literal("block_actions"),
+  team: teamSchema,
   user: userSchema,
   api_app_id: z.string(),
-  container: containerSchema,
+  container: containerSchema.optional(),
   trigger_id: z.string().optional(),
-  team: teamSchema,
-  enterprise: z.any(),
-  is_enterprise_install: z.boolean(),
-  channel: channelSchema,
+  channel: channelSchema.optional(),
   view: viewActionSchema.optional(),
   message: messageActionSchema.optional(),
   state: stateSchema.optional(),
-  response_url: z.string(),
+  response_url: z.string().optional(),
   actions: z.array(actionSchema),
+});
+
+const ResponseUrlObjectSchema = z.object({
+  response_url: z.string(),
+  block_id: z.string(),
+  action_id: z.string(),
+  channel_id: z.string(),
+});
+
+export const ViewSubmissionInteractivityPayloadSchema: Zod.ZodObject<{
+  type: z.ZodLiteral<"view_submission">;
+  team: typeof teamSchema;
+  user: typeof userSchema;
+  view: typeof viewActionSchema;
+  response_urls: Zod.ZodArray<typeof ResponseUrlObjectSchema>;
+  api_app_id: Zod.ZodString;
+  trigger_id: z.ZodOptional<Zod.ZodString>;
+  token: z.ZodOptional<Zod.ZodString>;
+}> = z.object({
+  type: z.literal("view_submission"),
+  team: teamSchema,
+  user: userSchema,
+  view: viewActionSchema,
+  response_urls: z.array(ResponseUrlObjectSchema),
+  api_app_id: z.string(),
+  trigger_id: z.string().optional(),
+  token: z.string().optional(),
+});
+
+export const ViewClosedInteractivityPayloadSchema: Zod.ZodObject<{
+  type: z.ZodLiteral<"view_closed">;
+  team: typeof teamSchema;
+  user: typeof userSchema;
+  view: typeof viewActionSchema;
+  is_cleared: Zod.ZodBoolean;
+  api_app_id: Zod.ZodString;
+}> = z.object({
+  type: z.literal("view_closed"),
+  team: teamSchema,
+  user: userSchema,
+  view: viewActionSchema,
+  is_cleared: z.boolean(),
+  api_app_id: z.string(),
+});
+
+export const InteractivityPayloadSchema: Zod.ZodDiscriminatedUnion<
+  "type",
+  [
+    typeof BlockActionInteractivityPayloadSchema,
+    typeof ViewSubmissionInteractivityPayloadSchema,
+    typeof ViewClosedInteractivityPayloadSchema
+  ]
+> = z.discriminatedUnion("type", [
+  BlockActionInteractivityPayloadSchema,
+  ViewSubmissionInteractivityPayloadSchema,
+  ViewClosedInteractivityPayloadSchema,
+]);
+
+export const ViewPrivateMetadataSchema = z.object({
+  __trigger: z.object({
+    runId: z.string(),
+    onSubmit: z.enum(["clear", "close", "none"]),
+    validationSchema: z.any().optional(),
+  }),
 });

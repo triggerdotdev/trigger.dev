@@ -1,0 +1,28 @@
+---
+title: "Changelog"
+description: "We release features and fixes weekly! See some of the changes we have made."
+---
+
+## Feb 6 2023 Release
+
+#### app.trigger.dev
+
+- Improved the onboarding experience for new users, as well as users creating a new workflow.
+- Test editor now suggests example JSON for `customEvent` and `webhookEvent` actions.
+- Added a support widget to the bottom right of the screen.
+
+#### @trigger.dev/sdk - v0.2.12
+
+- Added `runOnce` and `runOnceLocalOnly` functions to support running custom idempotent actions. [Docs](/functions/run-once)
+- We will now serialize and send the Zod schemas for `customEvent` and `webhookEvent` to trigger.dev to support better test JSON generation (using `json-schema-faker`).
+
+#### @trigger.dev/slack - v0.1.19
+
+- Added support for opening modal views and handling view submissions. See [openView](/integrations/apis/slack/actions/open-view) and [viewSubmissionInteraction](/integrations/apis/slack/events/view-submission-interaction) docs for more info.
+- Added support for triggering on BlockKit actions and posting responses. See [blockActionInteraction](/integrations/apis/slack/events/block-action-interaction) and [postMessageResponse](/integrations/apis/slack/actions/post-message-response) docs for more info.
+- Added ability to add reactions to messages. See [addReaction](/integrations/apis/slack/actions/add-reaction) docs for more info.
+- You can now post a message in a thread using the `thread_ts` option in [postMessage](/integrations/apis/slack/actions/post-message).
+
+#### @trigger.dev/whatsapp - v0.1.17
+
+Initial release of our WhatsApp integration. Includes support for sending and receiving messages. See the [docs](/integrations/apis/whatsapp) for more info.

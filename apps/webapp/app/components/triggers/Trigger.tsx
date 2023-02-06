@@ -46,22 +46,36 @@ function SlackInteraction({
           {trigger.name}
         </Header2>
       </div>
-      <div className="flex gap-2 items-baseline">
-        <Body size="extra-small" className={workflowNodeUppercaseClasses}>
-          Block
-        </Body>
-        <Header2 size="small" className="text-slate-300 mb-2">
-          {trigger.source.blockId}
-        </Header2>
-      </div>
-      <div className="flex gap-2 items-baseline">
-        <Body size="extra-small" className={workflowNodeUppercaseClasses}>
-          Action
-        </Body>
-        <Header2 size="small" className="text-slate-300 mb-2">
-          {trigger.source.actionIds.join(", ")}
-        </Header2>
-      </div>
+      {trigger.source.type === "block_action" && (
+        <div className="flex gap-2 items-baseline">
+          <Body size="extra-small" className={workflowNodeUppercaseClasses}>
+            Block
+          </Body>
+          <Header2 size="small" className="text-slate-300 mb-2">
+            {trigger.source.blockId}
+          </Header2>
+        </div>
+      )}
+      {trigger.source.type === "block_action" && (
+        <div className="flex gap-2 items-baseline">
+          <Body size="extra-small" className={workflowNodeUppercaseClasses}>
+            Action
+          </Body>
+          <Header2 size="small" className="text-slate-300 mb-2">
+            {trigger.source.actionIds.join(", ")}
+          </Header2>
+        </div>
+      )}
+      {trigger.source.type === "view_submission" && (
+        <div className="flex gap-2 items-baseline">
+          <Body size="extra-small" className={workflowNodeUppercaseClasses}>
+            Callback IDs
+          </Body>
+          <Header2 size="small" className="text-slate-300 mb-2">
+            {trigger.source.callbackIds.join(", ")}
+          </Header2>
+        </div>
+      )}
     </div>
   );
 }

@@ -8,12 +8,11 @@ import classNames from "classnames";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import invariant from "tiny-invariant";
 import { ApiLogoIcon } from "~/components/code/ApiLogoIcon";
-import {
-  CreateNewWorkflow,
-  CreateNewWorkflowNoWorkflows,
-} from "~/components/CreateNewWorkflow";
+import { CreateNewWorkflow } from "~/components/CreateNewWorkflow";
 import { Container } from "~/components/layout/Container";
 import { List } from "~/components/layout/List";
+import { PanelInfo } from "~/components/layout/PanelInfo";
+import { PrimaryLink } from "~/components/primitives/Buttons";
 import { Body } from "~/components/primitives/text/Body";
 import { Header2, Header3 } from "~/components/primitives/text/Headers";
 import { SubTitle } from "~/components/primitives/text/SubTitle";
@@ -55,15 +54,22 @@ export default function Page() {
 
   return (
     <Container>
+      <Title>Workflows</Title>
       {workflows.length === 0 ? (
         <>
-          <Title>Create your first workflow</Title>
-
-          <CreateNewWorkflowNoWorkflows providers={providers} />
+          <SubTitle>0 workflows</SubTitle>
+          <PanelInfo
+            message="You don't have any workflows yet. They will appear here once
+              connected."
+            className="mb-4 max-w-4xl p-4 pr-6"
+          >
+            <PrimaryLink to={`/orgs/${currentOrganization.slug}/workflows/new`}>
+              Create first workflow
+            </PrimaryLink>
+          </PanelInfo>
         </>
       ) : (
         <>
-          <Title>Workflows</Title>
           <SubTitle>
             {workflows.length} active workflow{workflows.length > 1 ? "s" : ""}
           </SubTitle>
@@ -93,10 +99,16 @@ function WorkflowList({
             <Link
               to={`/orgs/${currentOrganizationSlug}/workflows/${workflow.slug}`}
               className={classNames(
-                "block transition hover:bg-slate-850/40",
+                "relative block overflow-hidden transition hover:bg-slate-850/40",
                 workflow.status === "DISABLED" ? workflowDisabled : ""
               )}
             >
+              {workflow.lastRun === undefined && (
+                <div className="absolute top-2 -right-8 rotate-45 bg-green-700 px-8 py-0.5 text-xs font-semibold uppercase tracking-wide text-green-200 shadow-md">
+                  New
+                </div>
+              )}
+
               <div className="flex flex-col flex-wrap justify-between py-4 pl-4 pr-4 lg:flex-row lg:flex-nowrap lg:items-center">
                 <div className="flex flex-1 items-center justify-between">
                   <div className="relative flex items-center">

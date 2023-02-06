@@ -64,3 +64,23 @@ export async function createStepOnce(
     throw e;
   }
 }
+
+export async function findWorkflowStepById(stepId: string) {
+  return prisma.workflowRunStep.findUnique({
+    where: {
+      id: stepId,
+    },
+    include: {
+      run: {
+        include: {
+          workflow: true,
+          environment: {
+            include: {
+              organization: true,
+            },
+          },
+        },
+      },
+    },
+  });
+}

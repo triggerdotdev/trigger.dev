@@ -1,6 +1,6 @@
 {
   "name": "@trigger.dev/sdk",
-  "version": "0.2.11",
+  "version": "0.2.12",
   "description": "trigger.dev Node.JS SDK",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -45,6 +45,7 @@
     "uuid": "^9.0.0",
     "ws": "^8.11.0",
     "zod": "^3.20.2",
-    "zod-error": "^1.1.0"
+    "zod-error": "^1.1.0",
+    "zod-to-json-schema": "^3.20.2"
   }
 }

@@ -12,7 +12,7 @@ import type { CurrentWorkflow } from "~/hooks/useWorkflows";
 import { useCurrentWorkflow } from "~/hooks/useWorkflows";
 import invariant from "tiny-invariant";
 import { Form } from "@remix-run/react";
-import type { ActionArgs } from "@remix-run/server-runtime";
+import type { ActionArgs, LoaderArgs } from "@remix-run/server-runtime";
 import { z } from "zod";
 import { requireUserId } from "~/services/session.server";
 import {
@@ -24,6 +24,10 @@ import { DisableWorkflow } from "~/services/workflows/disableWorkflow.server";
 import { EnableWorkflow } from "~/services/workflows/enableWorkflow.server";
 import { ArchiveWorkflow } from "~/services/workflows/archiveWorkflow.server";
 import { UnarchiveWorkflow } from "~/services/workflows/unarchiveWorkflow.server";
+import { PanelWarning } from "~/components/layout/PanelWarning";
+import { typedjson, useTypedLoaderData } from "remix-typedjson";
+import { getRuntimeEnvironmentFromRequest } from "~/models/runtimeEnvironment.server";
+import { WorkflowTestPresenter } from "~/presenters/testPresenter.server";
 
 const ActionSchema = z.enum(["disable", "enable", "archive", "unarchive"]);
 const FormSchema = z.object({
@@ -135,7 +139,7 @@ export default function Page() {
   invariant(workflow, "Workflow not found");
 
   const panel =
-    workflow.status === "READY" ? (
+    workflow.status === "READY" || workflow.status === "CREATED" ? (
       <WorkflowReadyPanel workflow={workflow} />
     ) : workflow.isArchived ? (
       <WorkflowArchivedPanel workflow={workflow} />
@@ -159,7 +163,7 @@ function WorkflowReadyPanel({
 }) {
   return (
     <Panel className="flex items-center justify-between !p-4">
-      <div className="flex gap-4 items-center">
+      <div className="flex items-center gap-4">
         <ApiLogoIcon size="regular" />
         <Header3 size="small" className="text-slate-300">
           {workflow.title} <span className="text-green-500">is active.</span>
@@ -203,7 +207,7 @@ function WorkflowDisabledPanel({
 }) {
   return (
     <Panel className="flex items-center justify-between !p-4">
-      <div className="flex gap-4 items-center">
+      <div className="flex items-center gap-4">
         <ApiLogoIcon size="regular" />
         <Header3 size="small" className="text-slate-300">
           {workflow.title} <span className="text-amber-300">is disabled.</span>
@@ -247,7 +251,7 @@ function WorkflowArchivedPanel({
 }) {
   return (
     <Panel className="flex items-center justify-between !p-4">
-      <div className="flex gap-4 items-center">
+      <div className="flex items-center gap-4">
         <ApiLogoIcon size="regular" />
         <Header3 size="small" className="text-slate-300">
           {workflow.title} <span className="text-rose-500">is archived.</span>

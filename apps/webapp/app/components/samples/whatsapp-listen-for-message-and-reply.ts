@@ -5,6 +5,8 @@ import { events, sendReaction, sendText } from "@trigger.dev/whatsapp";
 new Trigger({
   id: "whatsapp-webhook",
   name: "Listen for WhatsApp messages and reply",
+  // For security, we recommend moving this api key to your .env / secrets file. 
+  // Our env variable is called TRIGGER_API_KEY
   apiKey: "${apiKey}",
   //this listens for all WhatsApp messages sent to your WhatsApp Business account
   on: events.messageEvent({
