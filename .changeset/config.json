@@ -7,9 +7,5 @@
   "access": "public",
   "baseBranch": "main",
   "updateInternalDependencies": "patch",
-  "ignore": [
-    "wss",
-    "webapp",
-    "docs"
-  ]
+  "ignore": ["wss", "webapp"]
 }
