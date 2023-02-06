@@ -1,5 +1,4 @@
-import { EventRule } from ".prisma/client";
-import { ExclamationTriangleIcon } from "@heroicons/react/24/outline";
+import { InformationCircleIcon } from "@heroicons/react/24/outline";
 import type { LoaderArgs } from "@remix-run/server-runtime";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import invariant from "tiny-invariant";
@@ -17,7 +16,6 @@ import {
 } from "~/components/primitives/Buttons";
 import { Input } from "~/components/primitives/Input";
 import { Body } from "~/components/primitives/text/Body";
-import { Header3 } from "~/components/primitives/text/Headers";
 import { SubTitle } from "~/components/primitives/text/SubTitle";
 import { Title } from "~/components/primitives/text/Title";
 import { RunsTable } from "~/components/runs/RunsTable";
@@ -95,7 +93,8 @@ export default function Page() {
           {eventRule &&
           eventRule.trigger.type === "WEBHOOK" &&
           workflow.externalSourceConfig?.type === "manual" ? (
-            <PanelInfo className="mb-6 pb-4">
+            <div className="mb-6 flex w-full justify-start gap-4 rounded-md border border-slate-600 bg-slate-400/10 py-3 pl-3 pr-3 pb-4 shadow-md">
+              <InformationCircleIcon className="h-6 w-6 min-w-[24px] text-blue-500" />
               {workflow.externalSourceConfig.data.success ? (
                 <div className="flex flex-col">
                   <Body className="mb-4">
@@ -153,7 +152,7 @@ export default function Page() {
                   />
                 </div>
               )}
-            </PanelInfo>
+            </div>
           ) : (
             <PanelWarning
               className="mb-6"
@@ -163,12 +162,11 @@ export default function Page() {
         </>
       )}
       {workflow.status === "DISABLED" && (
-        <PanelInfo className="mb-6">
-          <Body className="flex grow items-center justify-between">
-            This workflow is disabled. Runs cannot be triggered or tested while
-            disabled. Runs in progress will continue until complete.
-          </Body>
-
+        <PanelInfo
+          message="This workflow is disabled. Runs cannot be triggered or tested while
+        disabled. Runs in progress will continue until complete."
+          className="mb-6"
+        >
           <TertiaryLink to="settings" className="mr-1">
             Settings
           </TertiaryLink>
