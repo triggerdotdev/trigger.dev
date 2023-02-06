@@ -180,7 +180,7 @@ export default function Page() {
           <div className="flex items-end justify-between">
             <SubTitle>Workflow type</SubTitle>
             <SecondaryLink to="test" className="mb-2">
-              Run a test
+              Test workflow
             </SecondaryLink>
           </div>
           <Panel className="mb-6">
@@ -223,7 +223,7 @@ export default function Page() {
         <>
           <SubTitle>Workflow runs</SubTitle>
           <PanelWarning
-            message="This workflow hasn't been run yet. Test it now to view runs here."
+            message="This workflow hasn't been run yet. Test it to view runs here."
             className="flex justify-between"
           >
             <PrimaryLink to="test">Test your workflow</PrimaryLink>
