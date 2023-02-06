@@ -45,8 +45,6 @@ export default function Page() {
   const workflow = useCurrentWorkflow();
   invariant(workflow, "Workflow not found");
 
-  console.log("Workflow status is", { status, payload });
-
   return (
     <>
       <Title>Test</Title>
