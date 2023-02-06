@@ -53,7 +53,7 @@ export function InstallPackages({ packages }: { packages: string }) {
         </Tab.Panel>
         <Tab.Panel className="relative h-full">
           <CodeBlock
-            code={`pnpm install ${packages}`}
+            code={`pnpm add ${packages}`}
             language="bash"
             align="top"
             showLineNumbers={false}
