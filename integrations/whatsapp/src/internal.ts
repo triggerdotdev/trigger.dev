@@ -12,7 +12,7 @@ const metadata: IntegrationMetadata = {
   name: "WhatsApp Business",
   slug: "whatsapp",
   icon: "/integrations/whatsapp.png",
-  enabledFor: "admins",
+  enabledFor: "all",
   authentication: {
     type: "api_key",
     header_name: "Authorization",
