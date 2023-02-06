@@ -58,7 +58,7 @@
     "@remix-run/node": "^1.7.2",
     "@remix-run/react": "^1.7.2",
     "@remix-run/server-runtime": "^1.7.0",
-    "@sentry/remix": "^7.28.1",
+    "@sentry/remix": "^7.36.0",
     "@tailwindcss/forms": "^0.5.2",
     "@tanstack/react-table": "^8.0.0-alpha.87",
     "@trigger.dev/common-schemas": "workspace:*",
