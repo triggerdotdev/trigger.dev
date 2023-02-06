@@ -69,7 +69,7 @@ export class WorkflowTestPresenter {
     if (workflow.type === "SCHEDULE") {
       return {
         scheduledTime: new Date(),
-        lastRunAt: lastRun?.startedAt,
+        lastRunAt: lastRun?.startedAt ?? undefined,
       };
     }
 
