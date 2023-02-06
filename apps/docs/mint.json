@@ -186,7 +186,8 @@
         {
           "group": "Slack",
           "pages": [
-            "integrations/apis/slack/events/block-action-interaction"
+            "integrations/apis/slack/events/block-action-interaction",
+            "integrations/apis/slack/events/view-submission-interaction"
           ]
         },
         {
