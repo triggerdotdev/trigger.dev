@@ -81,9 +81,10 @@ export default function Page() {
       <Title>Runs</Title>
       {workflow.status === "CREATED" && (
         <>
-          <PanelWarning className="mb-6">
-            This workflow requires its APIs to be connected before it can run.
-          </PanelWarning>
+          <PanelWarning
+            message="This workflow requires its APIs to be connected before it can run."
+            className="mb-6"
+          />
         </>
       )}
       {workflow.status === "DISABLED" && (
@@ -99,7 +100,7 @@ export default function Page() {
       )}
       <fetcher.Form
         method="get"
-        className="pb-4 flex gap-2"
+        className="flex gap-2 pb-4"
         onChange={submitForm}
         ref={formRef}
       >
@@ -107,7 +108,7 @@ export default function Page() {
       </fetcher.Form>
       <Panel
         className={classNames(
-          "p-0 overflow-hidden overflow-x-auto",
+          "overflow-hidden overflow-x-auto p-0",
           total === 0 ? "rounded-b-lg" : "rounded-b-none"
         )}
       >
@@ -172,7 +173,7 @@ function StatusFilter({
                     <span
                       className={classNames(
                         selected ? "" : "",
-                        "flex truncate font-semibold items-center gap-1"
+                        "flex items-center gap-1 truncate font-semibold"
                       )}
                     >
                       {runStatusIcon(status, "small")}

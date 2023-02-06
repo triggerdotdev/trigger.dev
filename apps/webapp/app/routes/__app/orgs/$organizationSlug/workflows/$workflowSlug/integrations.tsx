@@ -21,9 +21,10 @@ export default function Page() {
       <Title>Connected APIs</Title>
       {workflow.status === "CREATED" && (
         <>
-          <PanelWarning className="mb-6">
-            This workflow requires its APIs to be connected before it can run.
-          </PanelWarning>
+          <PanelWarning
+            message="This workflow requires its APIs to be connected before it can run."
+            className="mb-6"
+          />
         </>
       )}
       {workflow.status === "DISABLED" && (

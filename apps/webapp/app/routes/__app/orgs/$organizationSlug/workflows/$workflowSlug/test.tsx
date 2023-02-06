@@ -51,11 +51,10 @@ export default function Page() {
     <>
       <Title>Test</Title>
       {status === "CREATED" && (
-        <>
-          <PanelWarning className="mb-6">
-            This workflow requires its APIs to be connected before it can run.
-          </PanelWarning>
-        </>
+        <PanelWarning
+          message="This workflow requires its APIs to be connected before it can run."
+          className="mb-6"
+        />
       )}
       {status === "DISABLED" ? (
         <PanelInfo className="mb-6">
