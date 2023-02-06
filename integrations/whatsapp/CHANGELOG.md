@@ -1,5 +1,11 @@
 # @trigger.dev/whatsapp
 
+## 0.1.17-next.1
+
+### Patch Changes
+
+- 13b6d96: Fix for link to internal file in sdk
+
 ## 0.1.17-next.0
 
 ### Patch Changes
