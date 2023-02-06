@@ -104,7 +104,7 @@ function WorkflowList({
               )}
             >
               {workflow.lastRun === undefined && (
-                <div className="absolute top-2 -right-8 rotate-45 bg-green-700 px-8 font-semibold uppercase tracking-wide shadow-md">
+                <div className="absolute top-2 -right-8 rotate-45 bg-green-700 px-8 py-0.5 text-xs font-semibold uppercase tracking-wide text-green-200 shadow-md">
                   New
                 </div>
               )}
