@@ -237,14 +237,14 @@ export default function Page() {
       {run.status === "RUNNING" && (
         <div className="flex w-full items-stretch">
           <div className="relative ml-2.5 flex w-5 border-l border-dashed border-slate-700">
-            <div className="absolute top-2 -left-[18px] rounded-full bg-slate-850 p-1">
-              {runStatusIcon("RUNNING", "large")}
+            <div className="absolute top-[13px] -left-[13px] rounded-full bg-slate-850 p-1">
+              {runStatusIcon("RUNNING", "small")}
             </div>
           </div>
 
           <Body
             size="small"
-            className={classNames("my-4 ml-0.5 font-mono text-slate-400")}
+            className={classNames("my-4 ml-0 font-mono text-slate-400")}
           >
             <span className="flex items-center gap-2">
               Last refreshed {timeFormatter.format(lastRefreshed)}.{" "}
