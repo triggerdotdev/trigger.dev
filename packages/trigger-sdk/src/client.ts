@@ -85,13 +85,24 @@ export class TriggerClient<TSchema extends z.ZodTypeAny> {
 
     this.#apiKey = apiKey;
     this.#endpoint = this.#options.endpoint ?? "wss://wss.trigger.dev/ws";
-    this.#logger = new Logger("trigger.dev", this.#options.logLevel);
+    this.#logger = new Logger(
+      ["trigger.dev", this.#options.id],
+      this.#options.logLevel
+    );
   }
 
   async listen(instanceId?: string) {
-    await this.#initializeConnection(instanceId);
-    this.#initializeRPC();
-    this.#initializeHost();
+    try {
+      await this.#initializeConnection(instanceId);
+      this.#initializeRPC();
+      await this.#initializeHost();
+
+      this.#logger.log(`✨ Connected and listening for events`);
+    } catch (error) {
+      this.#logger.log(`🚩 Could not connect to trigger.dev`);
+
+      this.close();
+    }
   }
 
   close() {
@@ -580,11 +591,7 @@ export class TriggerClient<TSchema extends z.ZodTypeAny> {
                   return this.#trigger.options
                     .run(eventData, ctx)
                     .then((output) => {
-                      this.#logger.log(
-                        `Completed workflow '${this.#options.name}', run ${
-                          data.id
-                        } 🏃`
-                      );
+                      this.#logger.log(`Run ${data.id} complete 🏃`);
 
                       return serverRPC.send("COMPLETE_WORKFLOW_RUN", {
                         runId: data.id,

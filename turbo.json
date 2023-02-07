@@ -124,6 +124,7 @@
     "DEBUG",
     "TRIGGER_LOG_LEVEL",
     "TRIGGER_API_KEY",
-    "TRIGGER_API_URL"
+    "TRIGGER_API_URL",
+    "APP_ENV"
   ]
 }

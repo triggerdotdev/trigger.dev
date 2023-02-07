@@ -13,10 +13,20 @@ export type LogLevel = (typeof logLevels)[number];
 
 export class Logger {
   #name: string;
+  #tags: string[];
   readonly #level: number;
 
-  constructor(name: string, level: LogLevel = "disabled") {
-    this.#name = name;
+  constructor(name: string | string[], level: LogLevel = "log") {
+    if (typeof name === "string") {
+      this.#name = name;
+      this.#tags = [];
+    } else {
+      const [n, ...tags] = name;
+
+      this.#name = n;
+      this.#tags = tags;
+    }
+
     this.#level = logLevels.indexOf(
       (process.env.TRIGGER_LOG_LEVEL ?? level) as LogLevel
     );
@@ -25,31 +35,55 @@ export class Logger {
   log(...args: any[]) {
     if (this.#level < 1) return;
 
-    console.log(`[${this.#name}] `, ...args);
+    console.log(`${this.#formatName()} `, ...[...args, ...this.#formatTags()]);
   }
 
   error(...args: any[]) {
     if (this.#level < 2) return;
 
-    console.error(`[${formattedDateTime()}] [${this.#name}] `, ...args);
+    console.error(
+      `[${formattedDateTime()}] ${this.#formatName()} `,
+      ...[...args, ...this.#formatTags()]
+    );
   }
 
   warn(...args: any[]) {
     if (this.#level < 3) return;
 
-    console.warn(`[${formattedDateTime()}] [${this.#name}] `, ...args);
+    console.warn(
+      `[${formattedDateTime()}] ${this.#formatName()} `,
+      ...[...args, ...this.#formatTags()]
+    );
   }
 
   info(...args: any[]) {
     if (this.#level < 4) return;
 
-    console.info(`[${formattedDateTime()}] [${this.#name}] `, ...args);
+    console.info(
+      `[${formattedDateTime()}] ${this.#formatName()} `,
+      ...[...args, ...this.#formatTags()]
+    );
   }
 
   debug(...args: any[]) {
     if (this.#level < 5) return;
 
-    console.debug(`[${formattedDateTime()}] [${this.#name}] `, ...args);
+    console.debug(
+      `[${formattedDateTime()}] ${this.#formatName()} `,
+      ...[...args, ...this.#formatTags()]
+    );
+  }
+
+  #formatName() {
+    if (Array.isArray(this.#name)) {
+      return this.#name.map((name) => `[${name}]`).join("");
+    }
+
+    return `[${this.#name}]`;
+  }
+
+  #formatTags() {
+    return this.#tags.map((tag) => `[${tag}]`);
   }
 }
 
