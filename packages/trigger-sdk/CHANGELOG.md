@@ -1,5 +1,11 @@
 # @trigger.dev/sdk
 
+## 0.2.13
+
+### Patch Changes
+
+- 710bcc2: Handle errors when calling listen and provide some log feedback
+
 ## 0.2.12
 
 ### Patch Changes

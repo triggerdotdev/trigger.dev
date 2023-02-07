@@ -1,5 +1,12 @@
 # @trigger.dev/slack
 
+## 0.1.20
+
+### Patch Changes
+
+- Updated dependencies [710bcc2]
+  - @trigger.dev/sdk@0.2.13
+
 ## 0.1.19
 
 ### Patch Changes
