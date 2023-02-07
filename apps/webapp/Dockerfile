@@ -42,8 +42,6 @@ ENV NODE_ENV production
 RUN pnpm run generate
 RUN pnpm run build --filter=webapp...
 RUN pnpx prisma migrate deploy --schema apps/webapp/prisma/schema.prisma
-RUN cd apps/webapp && pnpm run sentry-upload
-RUN cd apps/webapp && pnpm run clean:sourcemaps
 
 # Runner
 FROM node:16-bullseye AS runner
