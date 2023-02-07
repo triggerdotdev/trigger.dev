@@ -74,6 +74,11 @@
             "SENTRY_DSN": {
               "fromParameterStore": "SENTRY_DSN"
             },
+            "SENTRY_PROJECT": "triggerdev-web",
+            "SENTRY_ORG": "triggerdev",
+            "SENTRY_AUTH_TOKEN": {
+              "fromParameterStore": "SENTRY_AUTH_TOKEN"
+            },
             "SESSION_SECRET": {
               "fromParameterStore": "/Prod/webapp/SESSION_SECRET"
             },

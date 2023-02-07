@@ -40,7 +40,9 @@
     "changeset:version": "changeset version",
     "changeset:release": "pnpm run build --filter \"@trigger.dev/*\" && changeset publish",
     "changeset:next": "changeset pre enter next",
-    "changeset:normal": "changeset pre exit"
+    "changeset:normal": "changeset pre exit",
+    "sentry-upload": "turbo run sentry-upload",
+    "clean:sourcemaps": "turbo run clean:sourcemaps"
   },
   "devDependencies": {
     "@manypkg/cli": "^0.19.2",

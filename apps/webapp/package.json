@@ -27,7 +27,12 @@
     "env:pull": "pnpm dlx infisical pull dev",
     "generate": "prisma generate",
     "db:migrate:deploy": "prisma migrate deploy",
-    "db:migrate:dev": "prisma migrate dev"
+    "db:migrate:dev": "prisma migrate dev",
+    "generate:sourcemaps": "remix build --sourcemap",
+    "sentry-upload": "pnpm run generate:sourcemaps && sentry-upload-sourcemaps",
+    "clean:sourcemaps": "run-s clean:sourcemaps:*",
+    "clean:sourcemaps:public": "rimraf ./build/**/*.map",
+    "clean:sourcemaps:build": "rimraf ./public/build/**/*.map"
   },
   "eslintIgnore": [
     "/node_modules",
@@ -181,6 +186,7 @@
     "prettier-plugin-tailwindcss": "^0.1.13",
     "prisma": "^4.3.0",
     "react-date-range": "^1.4.0",
+    "rimraf": "^3.0.2",
     "start-server-and-test": "^1.14.0",
     "tailwindcss": "3.1.8",
     "ts-node": "^10.7.0",

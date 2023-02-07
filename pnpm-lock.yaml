@@ -173,6 +173,7 @@ importers:
       remix-auth-github: ^1.1.1
       remix-typedjson: ~0.1.3
       remix-utils: ^3.4.0
+      rimraf: ^3.0.2
       slug: ^6.0.0
       start-server-and-test: ^1.14.0
       tailwind-scrollbar-hide: ^1.1.7
@@ -333,6 +334,7 @@ importers:
       prettier: 2.8.2
       prettier-plugin-tailwindcss: 0.1.13_prettier@2.8.2
       prisma: 4.8.1
+      rimraf: 3.0.2
       start-server-and-test: 1.15.2
       tailwindcss: 3.1.8_aesdjsunmf4wiehhujt67my7tu
       ts-node: 10.9.1_fodzh64fuekdilycyvke2qmf2e
