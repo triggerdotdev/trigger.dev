@@ -1,5 +1,6 @@
 import { BeakerIcon } from "@heroicons/react/20/solid";
 import {
+  ArrowPathIcon,
   BoltIcon,
   ChatBubbleLeftEllipsisIcon,
   ChevronDownIcon,
@@ -21,7 +22,7 @@ import type { Delay, Scheduled } from "@trigger.dev/common-schemas";
 import type { schemas as resendSchemas } from "@trigger.dev/resend/internal";
 import classNames from "classnames";
 import humanizeDuration from "humanize-duration";
-import type { ReactNode } from "react";
+import { ReactNode, useCallback } from "react";
 import { useEffect, useState } from "react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import invariant from "tiny-invariant";
@@ -30,7 +31,11 @@ import CodeBlock from "~/components/code/CodeBlock";
 import { BasicConnectButton } from "~/components/integrations/ConnectButton";
 import { Panel } from "~/components/layout/Panel";
 import { PanelHeader } from "~/components/layout/PanelHeader";
-import { PrimaryButton } from "~/components/primitives/Buttons";
+import {
+  PrimaryButton,
+  TertiaryA,
+  TertiaryButton,
+} from "~/components/primitives/Buttons";
 import { Body } from "~/components/primitives/text/Body";
 import {
   Header1,
@@ -70,6 +75,12 @@ type Trigger = Run["trigger"];
 type Step = Run["steps"][number];
 type StepType<T, K extends Step["type"]> = T extends { type: K } ? T : never;
 
+const timeFormatter = new Intl.DateTimeFormat("default", {
+  hour: "2-digit",
+  minute: "2-digit",
+  hour12: true,
+});
+
 export default function Page() {
   const rerunFetcher = useFetcher();
   const { run } = useTypedLoaderData<typeof loader>();
@@ -80,6 +91,12 @@ export default function Page() {
   invariant(organization, "organization is required");
   const workflow = useCurrentWorkflow();
   invariant(workflow, "workflow is required");
+
+  const [lastRefreshed, setLastRefreshed] = useState(new Date());
+
+  const reload = useCallback(() => {
+    document.location.reload();
+  }, []);
 
   return (
     <>
@@ -218,7 +235,29 @@ export default function Page() {
       )}
 
       {run.status === "RUNNING" && (
-        <div className="border-gradient ml-[10px] h-10 w-full border-l border-dashed border-slate-700"></div>
+        <div className="flex w-full items-stretch">
+          <div className="relative ml-2.5 flex w-5 border-l border-dashed border-slate-700">
+            <div className="absolute top-[13px] -left-[13px] rounded-full bg-slate-850 p-1">
+              {runStatusIcon("RUNNING", "small")}
+            </div>
+          </div>
+
+          <Body
+            size="small"
+            className={classNames("my-4 ml-0 font-mono text-slate-400")}
+          >
+            <span className="flex items-center gap-2">
+              Last refreshed {timeFormatter.format(lastRefreshed)}.{" "}
+              <TertiaryButton
+                onClick={() => reload()}
+                className="underline decoration-green-500 underline-offset-4"
+              >
+                <ArrowPathIcon className="h-4 w-4 text-slate-400" />
+                Refresh
+              </TertiaryButton>
+            </span>
+          </Body>
+        </div>
       )}
 
       {run.status === "TIMED_OUT" && (

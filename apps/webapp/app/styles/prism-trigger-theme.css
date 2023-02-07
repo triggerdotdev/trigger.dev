@@ -99,10 +99,10 @@ pre.line-numbers > code {
 .line-numbers .line-numbers-rows {
   position: absolute;
   pointer-events: none;
-  top: 0;
+  top: -2px;
   font-size: 100%;
-  left: -3.8em;
-  width: 3em; /* works for line-numbers below 1000 lines */
+  left: -2em;
+  width: 1.6em; /* works for line-numbers below 1000 lines */
   letter-spacing: -1px;
   border-right: 0px solid rgb(79, 75, 104);
 
@@ -122,7 +122,7 @@ pre.line-numbers > code {
   content: counter(linenumber);
   color: rgb(79, 75, 104);
   display: block;
-  padding-right: 0.8em;
+  padding-right: 0.6em;
   text-align: right;
 }
 
@@ -170,7 +170,7 @@ div.code-toolbar > .toolbar a,
 div.code-toolbar > .toolbar button,
 div.code-toolbar > .toolbar span {
   color: var(--foreground);
-  font-size: 0.8em;
+  font-size: 0.875rem;
   padding: 0.5em;
   background: var(--comment);
   border-radius: 0.5em;

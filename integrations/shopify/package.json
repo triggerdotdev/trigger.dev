@@ -1,6 +1,6 @@
 {
   "name": "@trigger.dev/shopify",
-  "version": "0.1.19",
+  "version": "0.1.20",
   "description": "The official Shopify integration for Trigger.dev",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
