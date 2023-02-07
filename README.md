@@ -194,9 +194,10 @@ We are open source and love contributions!
 
 # **🧘‍♂️ Self-hosting guide:**
 
-_coming soon..._
+Please subscribe to the [GitHub issue](https://github.com/triggerdotdev/trigger.dev/issues/48) to be notified when it's live.
 
 &nbsp;
+
 
 # **📧 Support & contact:**
 
