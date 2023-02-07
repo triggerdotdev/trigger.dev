@@ -76,8 +76,8 @@ type Step = Run["steps"][number];
 type StepType<T, K extends Step["type"]> = T extends { type: K } ? T : never;
 
 const timeFormatter = new Intl.DateTimeFormat("default", {
-  hour: "numeric",
-  minute: "numeric",
+  hour: "2-digit",
+  minute: "2-digit",
   hour12: true,
 });
 
