@@ -92,8 +92,7 @@ export const action = async ({ request, params }: ActionArgs) => {
 
 const maxWidth = "flex max-w-4xl";
 const subTitle = "text-slate-200 font-semibold mb-3";
-const carousel =
-  "-ml-[26px] overflow-hidden overflow-x-auto pl-[1.5rem] scrollbar-hide";
+const carousel = "-ml-[26px] overflow-hidden overflow-x-auto pl-[1.5rem]";
 
 export default function NewWorkflowPage() {
   const environment = useCurrentEnvironment();
