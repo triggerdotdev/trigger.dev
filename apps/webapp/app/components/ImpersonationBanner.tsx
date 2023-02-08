@@ -1,20 +1,32 @@
-import { TertiaryA } from "./primitives/Buttons";
+import { Form } from "@remix-run/react";
+import { TertiaryA, TertiaryButton } from "./primitives/Buttons";
 import { Body } from "./primitives/text/Body";
 
-export function ImpersonationBanner() {
+export function ImpersonationBanner({
+  impersonationId,
+}: {
+  impersonationId: string;
+}) {
   return (
-    <div className="grid grid-cols-3 items-center bg-gradient-to-r from-amber-500 via-amber-400 to-amber-500 text-center px-4">
+    <div className="grid grid-cols-3 items-center bg-gradient-to-r from-amber-500 via-amber-400 to-amber-500 px-4 text-center">
       <span></span>
       <Body size="small" className="text-slate-800">
         You are impersonating{" "}
-        <span className="font-semibold">James Ritchie</span>
+        <span className="font-semibold">{impersonationId}</span>
       </Body>
-      <TertiaryA
-        href="/api/auth/logout"
-        className="justify-self-end text-slate-700 hover:!text-slate-900"
+      <Form
+        action="/resources/impersonation"
+        method="delete"
+        reloadDocument
+        className="justify-self-end"
       >
-        Stop impersonating
-      </TertiaryA>
+        <TertiaryButton
+          type="submit"
+          className="text-slate-700 hover:!text-slate-900"
+        >
+          Stop impersonating
+        </TertiaryButton>
+      </Form>
     </div>
   );
 }
