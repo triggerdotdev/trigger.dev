@@ -125,11 +125,13 @@ class BehaviouralAnalytics {
       organizationId,
       workflowId,
       workflowRun,
+      runCount,
     }: {
       userId: string;
       organizationId: string;
       workflowId: string;
       workflowRun: WorkflowRun;
+      runCount: number;
     }) => {
       if (this.client === undefined) return;
       this.#capture({
@@ -151,6 +153,9 @@ class BehaviouralAnalytics {
           timedOutAt: workflowRun.timedOutAt,
           timedOutReason: workflowRun.timedOutReason,
           isTest: workflowRun.isTest,
+        },
+        userProperties: {
+          runCount: runCount,
         },
         organizationId: organizationId,
         workflowId: workflowId,

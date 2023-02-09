@@ -22,6 +22,17 @@ export class WorkflowRunCreatedEvent {
                 users: {
                   select: {
                     id: true,
+                    organizations: {
+                      select: {
+                        workflows: {
+                          select: {
+                            _count: {
+                              select: { runs: true },
+                            },
+                          },
+                        },
+                      },
+                    },
                   },
                 },
               },
@@ -37,11 +48,21 @@ export class WorkflowRunCreatedEvent {
     }
 
     workflowRun.workflow.organization.users.forEach((user) => {
+      const runCount = user.organizations.reduce(
+        (acc, org) =>
+          acc +
+          org.workflows.reduce(
+            (acc, workflow) => acc + workflow._count.runs,
+            0
+          ),
+        0
+      );
       analytics.workflowRun.new({
         workflowRun,
         userId: user.id,
         organizationId: workflowRun.workflow.organization.id,
         workflowId: workflowRun.workflow.id,
+        runCount,
       });
     });
 
