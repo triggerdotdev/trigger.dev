@@ -1,9 +1,13 @@
 import { Body } from "../primitives/text/Body";
 import { Header1 } from "../primitives/text/Headers";
+import Slack from "../../../public/integrations/slack.png";
+import SlackTemplateBg from "../../../public/images/templates/slack-template.png";
+
+
 
 export function TemplatesGrid() {
   return (
-    <div className="grid grid-cols-3 gap-8 w-full flex-wrap mt-8">
+    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-8 w-full flex-wrap mt-8">
       <TemplateCard />
       <TemplateCard />
       <TemplateCard />
@@ -16,11 +20,18 @@ export function TemplatesGrid() {
 
 function TemplateCard() {
   return (
-    <div className=" group w-full items-center overflow-hidden rounded-md border border-slate-800 bg-slate-800 text-sm text-slate-200 shadow-md transition hover:bg-slate-800/30 disabled:opacity-50">
-      <div className="group-hover:opacity-90 transition relative h-32 w-full bg-slate-600">
+    <div className=" group w-full items-center overflow-hidden rounded-md border border-slate-900 bg-slate-800 text-sm text-slate-200 shadow-md transition hover:cursor-pointer hover:bg-slate-800/30 disabled:opacity-50">
+      <div className="relative h-36 w-full bg-slate-600 transition group-hover:opacity-90">
+        <img
+          src={SlackTemplateBg}
+          alt="Slack-template"
+          className="object-cover h-full w-auto group-hover:object-scale-down transition"
+        />
         <div className="absolute bottom-2 left-2">
           <div className="flex flex-row gap-x-2">
-            <div className="group-hover:border-slate-700 h-12 w-12 rounded-lg border-[1px] border-slate-600 bg-slate-800 transition"></div>
+            <div className="flex h-12 w-12 items-center justify-center rounded-lg border-[1px] border-slate-600 bg-slate-800 transition group-hover:border-slate-700 group-hover:bg-slate-900">
+              <img src={Slack} alt="Slack" className="h-8 w-8" />
+            </div>
           </div>
         </div>
       </div>
