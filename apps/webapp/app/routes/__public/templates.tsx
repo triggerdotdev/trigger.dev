@@ -7,7 +7,7 @@ export default function TemplatesLayout() {
   return (
     <Container className="mx-auto flex w-full max-w-5xl flex-col">
       <div className="flex w-full items-center justify-between">
-        <Header1>Choose a template</Header1>
+        <Header1 className="mb-6">Choose a template</Header1>
         <TertiaryLink to="/">Self-host instead</TertiaryLink>
       </div>
       <TemplatesGrid />
