@@ -8,7 +8,6 @@ import {
   ScrollRestoration,
   useCatch,
 } from "@remix-run/react";
-
 import tailwindStylesheetUrl from "./styles/tailwind.css";
 import prismStylesheetUrl from "./styles/prism.css";
 import prismThemeStylesheetUrl from "./styles/prism-trigger-theme.css";
@@ -17,12 +16,12 @@ import { Toaster, toast } from "react-hot-toast";
 import type { ToastMessage } from "~/models/message.server";
 import { commitSession, getSession } from "~/models/message.server";
 import { useEffect, useRef } from "react";
-import posthog from "posthog-js";
 import { withSentry } from "@sentry/remix";
 import { env } from "./env.server";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { PrimaryLink } from "./components/primitives/Buttons";
 import { Body } from "./components/primitives/text/Body";
+import { usePostHog } from "./hooks/usePostHog";
 
 export const links: LinksFunction = () => {
   return [
@@ -63,7 +62,7 @@ export function CatchBoundary() {
         <Links />
       </head>
       <body className="bg-slate-850">
-        <div className="flex items-center justify-center h-screen w-screen">
+        <div className="flex h-screen w-screen items-center justify-center">
           <div className="flex flex-col items-center justify-center space-y-4">
             <h1>
               {caught.status} {caught.statusText}
@@ -89,7 +88,7 @@ export function ErrorBoundary({ error }: { error: any }) {
         <Links />
       </head>
       <body className="bg-slate-850">
-        <div className="flex items-center justify-center h-screen w-screen">
+        <div className="flex h-screen w-screen items-center justify-center">
           <div className="flex flex-col items-center justify-center space-y-4">
             <h1>Oh no!</h1>
             <Body size="small">{JSON.stringify(error)}</Body>
@@ -105,9 +104,9 @@ export function ErrorBoundary({ error }: { error: any }) {
 }
 
 function App() {
-  const { toastMessage, posthogProjectKey, user } =
+  const { toastMessage, posthogProjectKey } =
     useTypedLoaderData<typeof loader>();
-  const postHogInitialised = useRef<boolean>(false);
+  usePostHog(posthogProjectKey);
 
   useEffect(() => {
     if (!toastMessage) {
@@ -126,30 +125,6 @@ function App() {
         throw new Error(`${type} is not handled`);
     }
   }, [toastMessage]);
-
-  useEffect(() => {
-    if (posthogProjectKey !== undefined) {
-      posthog.init(posthogProjectKey, {
-        api_host: "https://app.posthog.com",
-        loaded: function (posthog) {
-          if (user !== null) {
-            posthog.identify(user.id, { email: user.email });
-          }
-        },
-      });
-      postHogInitialised.current = true;
-    }
-  });
-
-  useEffect(() => {
-    if (postHogInitialised.current) {
-      if (user === null) {
-        posthog.reset();
-      } else {
-        posthog.identify(user.id, { email: user.email });
-      }
-    }
-  }, [user]);
 
   return (
     <html lang="en" className="h-full">
