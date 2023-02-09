@@ -28,5 +28,5 @@ export async function postAuthentication({
     });
   }
 
-  analytics.identify(user);
+  analytics.identifyUser({ user, isNewUser });
 }

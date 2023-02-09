@@ -34,13 +34,7 @@ export function getOrganizationFromSlug({
           { title: "asc" },
         ],
       },
-      environments: {
-        select: {
-          id: true,
-          slug: true,
-          apiKey: true,
-        },
-      },
+      environments: true,
     },
     where: { slug, users: { some: { id: userId } } },
   });
