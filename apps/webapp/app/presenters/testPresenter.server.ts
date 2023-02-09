@@ -2,6 +2,10 @@ import type { PrismaClient } from "~/db.server";
 import { prisma } from "~/db.server";
 import { JSONSchemaFaker } from "json-schema-faker";
 import type { Workflow, WorkflowRun } from ".prisma/client";
+import { getIntegration } from "integration-catalog";
+import { getIntegrations } from "~/models/integrations.server";
+import { EventRule } from "~/models/workflow.server";
+import { TriggerMetadataSchema } from "@trigger.dev/common-schemas";
 
 export class WorkflowTestPresenter {
   #prismaClient: PrismaClient;
@@ -27,6 +31,13 @@ export class WorkflowTestPresenter {
         },
       },
       include: {
+        rules: {
+          where: {
+            environment: {
+              slug: environmentSlug,
+            },
+          },
+        },
         runs: {
           where: {
             environment: {
@@ -49,7 +60,11 @@ export class WorkflowTestPresenter {
       throw new Error("Workflow not found");
     }
 
-    const payload = await this.#getPayload(workflow, workflow.runs[0]);
+    const payload = await this.#getPayload(
+      workflow,
+      workflow.runs[0],
+      workflow.rules[0]
+    );
 
     const status =
       workflow.status === "CREATED"
@@ -64,7 +79,8 @@ export class WorkflowTestPresenter {
 
   async #getPayload(
     workflow: Workflow,
-    lastRun?: WorkflowRun & { event: { payload: any } }
+    lastRun?: WorkflowRun & { event: { payload: any } },
+    rule?: EventRule
   ) {
     if (workflow.type === "SCHEDULE") {
       return {
@@ -80,6 +96,22 @@ export class WorkflowTestPresenter {
     if (workflow.jsonSchema) {
       // @ts-ignore
       return JSONSchemaFaker.generate(workflow.jsonSchema);
+    }
+
+    if (workflow.type === "WEBHOOK") {
+      const integration = getIntegration(workflow.service);
+      if (!integration) {
+        return {};
+      }
+
+      const trigger = await TriggerMetadataSchema.safeParseAsync(rule?.trigger);
+
+      if (!trigger.success) {
+        return {};
+      }
+
+      const example = integration.webhooks?.examples(trigger.data.name);
+      return example?.payload ?? {};
     }
 
     return {};

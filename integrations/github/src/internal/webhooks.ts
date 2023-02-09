@@ -13,6 +13,7 @@ import {
   WebhookRepoSourceSchema,
   WebhookSourceSchema,
 } from "../schemas";
+import { examples } from "./examples";
 
 export class GitHubWebhookIntegration implements WebhookIntegration {
   keyForSource(source: unknown): string {
@@ -122,6 +123,10 @@ export class GitHubWebhookIntegration implements WebhookIntegration {
     }
 
     return { title, properties };
+  }
+
+  examples(eventName: string) {
+    return examples[eventName];
   }
 }
 

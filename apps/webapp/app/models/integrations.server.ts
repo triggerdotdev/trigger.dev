@@ -9,6 +9,10 @@ export function getIntegrationMetadatas(showAdminOnly: boolean) {
   return getInternalIntegrations(showAdminOnly).map((i) => i.metadata);
 }
 
+export function getIntegration(name: string) {
+  return getIntegrations(true).find((i) => i.metadata.slug === name);
+}
+
 export function getIntegrationMetadata(
   integrations: Array<InternalIntegration>,
   name: string
