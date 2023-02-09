@@ -6,7 +6,7 @@ import { useCurrentOrganization } from "./useOrganizations";
 import { useOptionalUser } from "./useUser";
 import { useCurrentWorkflow } from "./useWorkflows";
 
-export const usePostHog = (apiKey?: string, logging = true): void => {
+export const usePostHog = (apiKey?: string, logging = false): void => {
   const postHogInitialized = useRef(false);
   const location = useLocation();
   const user = useOptionalUser();
