@@ -16,6 +16,7 @@ import { buildExternalSourceUrl } from "~/models/externalSource.server";
 import { getIntegrations } from "~/models/integrations.server";
 import { getRuntimeEnvironmentFromRequest } from "~/models/runtimeEnvironment.server";
 import { getWorkflowFromSlugs } from "~/models/workflow.server";
+import { analytics } from "~/services/analytics.server";
 import { requireUser } from "~/services/session.server";
 
 type ExternalSourceConfig =
@@ -59,16 +60,14 @@ export const loader = async ({ request, params }: LoaderArgs) => {
     throw new Response("Not Found", { status: 404 });
   }
 
+  analytics.identifyWorkflow({ workflow });
+
   const integrations = getIntegrations(user.admin);
 
   const rules = workflow.rules.map((r) => ({
     ...r,
     trigger: TriggerMetadataSchema.parse(r.trigger),
   }));
-
-  const currentEnvironmentSlug = await getRuntimeEnvironmentFromRequest(
-    request
-  );
 
   const allConnections = await getConnectedApiConnectionsForOrganizationSlug({
     slug: organizationSlug,
