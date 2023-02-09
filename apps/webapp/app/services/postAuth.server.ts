@@ -1,6 +1,7 @@
 import { createFirstOrganization } from "~/models/organization.server";
 import type { User } from "~/models/user.server";
 import * as emailProvider from "~/services/email.server";
+import { analytics } from "./analytics.server";
 import { taskQueue } from "./messageBroker.server";
 
 export async function postAuthentication({
@@ -9,7 +10,7 @@ export async function postAuthentication({
   isNewUser,
 }: {
   user: User;
-  loginMethod: "MAGIC_LINK" | "GITHUB";
+  loginMethod: User["authenticationMethod"];
   isNewUser: boolean;
 }) {
   if (isNewUser) {
@@ -26,4 +27,6 @@ export async function postAuthentication({
       },
     });
   }
+
+  analytics.identify(user);
 }
