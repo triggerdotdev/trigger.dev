@@ -60,7 +60,7 @@ export const loader = async ({ request, params }: LoaderArgs) => {
     throw new Response("Not Found", { status: 404 });
   }
 
-  analytics.identifyWorkflow({ workflow });
+  analytics.workflow.identify({ workflow });
 
   const integrations = getIntegrations(user.admin);
 

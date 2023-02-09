@@ -21,7 +21,7 @@ export const loader = async ({ request, params }: LoaderArgs) => {
     throw new Response("Not Found", { status: 404 });
   }
 
-  analytics.identifyOrganization({ organization });
+  analytics.organization.identify({ organization });
 
   const currentEnvironmentSlug = await getRuntimeEnvironmentFromRequest(
     request
@@ -34,7 +34,7 @@ export const loader = async ({ request, params }: LoaderArgs) => {
     throw new Response("Not Found", { status: 404 });
   }
 
-  analytics.identifyEnvironment({ environment: currentEnvironment });
+  analytics.environment.identify({ environment: currentEnvironment });
 
   return typedjson({
     organization,
