@@ -6,8 +6,7 @@ import * as React from "react";
 import { PrimaryButton, SecondaryLink } from "~/components/primitives/Buttons";
 import { Header1 } from "~/components/primitives/text/Headers";
 import { createOrganization } from "~/models/organization.server";
-import { analytics } from "~/services/analytics.server";
-import { requireUser, requireUserId } from "~/services/session.server";
+import { requireUserId } from "~/services/session.server";
 
 type ActionData = {
   errors?: {
