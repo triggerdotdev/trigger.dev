@@ -6,6 +6,7 @@ import { findOrCreateUser } from "~/models/user.server";
 import type { AuthUser } from "./authUser";
 import { scheduleWelcomeEmail } from "./email.server";
 import { taskQueue } from "./messageBroker.server";
+import { postAuthentication } from "./postAuth.server";
 
 const gitHubStrategy = new GitHubStrategy(
   {
@@ -29,20 +30,7 @@ const gitHubStrategy = new GitHubStrategy(
         authenticationExtraParams: extraParams,
       });
 
-      if (isNewUser) {
-        await createFirstOrganization(user);
-        await scheduleWelcomeEmail(user);
-
-        await taskQueue.publish("SEND_INTERNAL_EVENT", {
-          id: user.id,
-          name: "user.created",
-          payload: {
-            id: user.id,
-            source: "GITHUB",
-            admin: user.admin,
-          },
-        });
-      }
+      await postAuthentication({ user, isNewUser, loginMethod: "GITHUB" });
 
       return {
         userId: user.id,
