@@ -62,6 +62,13 @@ class BehaviouralAnalytics {
         userId,
         event: "organization created",
         organizationId: organization.id,
+        eventProperties: {
+          id: organization.id,
+          slug: organization.slug,
+          title: organization.title,
+          createdAt: organization.createdAt,
+          updatedAt: organization.updatedAt,
+        },
         userProperties: {
           organizationCount: organizationCount,
         },
@@ -112,6 +119,25 @@ class BehaviouralAnalytics {
         event: "workflow created",
         organizationId: organizationId,
         workflowId: workflow.id,
+        eventProperties: {
+          id: workflow.id,
+          slug: workflow.slug,
+          title: workflow.title,
+          packageJson: workflow.packageJson,
+          jsonSchema: workflow.jsonSchema,
+          createdAt: workflow.createdAt,
+          updatedAt: workflow.updatedAt,
+          organizationId: workflow.organizationId,
+          type: workflow.type,
+          status: workflow.status,
+          externalSourceId: workflow.externalSourceId,
+          service: workflow.service,
+          eventNames: workflow.eventNames,
+          disabledAt: workflow.disabledAt,
+          archivedAt: workflow.archivedAt,
+          isArchived: workflow.isArchived,
+          triggerTtlInSeconds: workflow.triggerTtlInSeconds,
+        },
         userProperties: {
           workflowCount: workflowCount,
         },
@@ -210,7 +236,7 @@ class BehaviouralAnalytics {
     if (event.eventProperties) {
       properties = {
         ...properties,
-        ...event.userProperties,
+        ...event.eventProperties,
       };
     }
 
@@ -228,12 +254,13 @@ class BehaviouralAnalytics {
       };
     }
 
-    this.client.capture({
+    const eventData = {
       distinctId: event.userId,
       event: event.event,
       properties,
       groups,
-    });
+    };
+    this.client.capture(eventData);
   }
 }
 
