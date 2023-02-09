@@ -157,43 +157,6 @@ class BehaviouralAnalytics {
         environmentId: workflowRun.environmentId,
       });
     },
-    completed: ({
-      userId,
-      organizationId,
-      workflowId,
-      workflowRun,
-    }: {
-      userId: string;
-      organizationId: string;
-      workflowId: string;
-      workflowRun: WorkflowRun;
-    }) => {
-      if (this.client === undefined) return;
-      this.#capture({
-        userId,
-        event: "workflow run completed",
-        eventProperties: {
-          id: workflowRun.id,
-          workflowId: workflowRun.workflowId,
-          environmentId: workflowRun.environmentId,
-          eventRuleId: workflowRun.eventRuleId,
-          eventId: workflowRun.eventId,
-          error: workflowRun.error,
-          status: workflowRun.status,
-          attemptCount: workflowRun.attemptCount,
-          createdAt: workflowRun.createdAt,
-          updatedAt: workflowRun.updatedAt,
-          startedAt: workflowRun.startedAt,
-          finishedAt: workflowRun.finishedAt,
-          timedOutAt: workflowRun.timedOutAt,
-          timedOutReason: workflowRun.timedOutReason,
-          isTest: workflowRun.isTest,
-        },
-        organizationId: organizationId,
-        workflowId: workflowId,
-        environmentId: workflowRun.environmentId,
-      });
-    },
   };
 
   environment = {
