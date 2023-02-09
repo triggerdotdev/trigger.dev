@@ -4,6 +4,7 @@ import type { Organization } from "~/models/organization.server";
 import type { RuntimeEnvironment } from "~/models/runtimeEnvironment.server";
 import type { User } from "~/models/user.server";
 import type { Workflow } from "~/models/workflow.server";
+import { WorkflowRun } from "~/models/workflowRun.server";
 
 class BehaviouralAnalytics {
   client: PostHog | undefined = undefined;
@@ -48,18 +49,17 @@ class BehaviouralAnalytics {
       });
     },
     new: ({
-      user,
+      userId,
       organization,
       organizationCount,
     }: {
-      user: User;
+      userId: string;
       organization: Organization;
       organizationCount: number;
     }) => {
-      //todo add org_count to user props
       if (this.client === undefined) return;
       this.#capture({
-        userId: user.id,
+        userId,
         event: "organization created",
         organizationId: organization.id,
         userProperties: {
@@ -93,6 +93,105 @@ class BehaviouralAnalytics {
           isArchived: workflow.isArchived,
           triggerTtlInSeconds: workflow.triggerTtlInSeconds,
         },
+      });
+    },
+    new: ({
+      userId,
+      organizationId,
+      workflow,
+      workflowCount,
+    }: {
+      userId: string;
+      organizationId: string;
+      workflow: Workflow;
+      workflowCount: number;
+    }) => {
+      if (this.client === undefined) return;
+      this.#capture({
+        userId,
+        event: "workflow created",
+        organizationId: organizationId,
+        workflowId: workflow.id,
+        userProperties: {
+          workflowCount: workflowCount,
+        },
+      });
+    },
+  };
+
+  workflowRun = {
+    new: ({
+      userId,
+      organizationId,
+      workflowId,
+      workflowRun,
+    }: {
+      userId: string;
+      organizationId: string;
+      workflowId: string;
+      workflowRun: WorkflowRun;
+    }) => {
+      if (this.client === undefined) return;
+      this.#capture({
+        userId,
+        event: "workflow run created",
+        eventProperties: {
+          id: workflowRun.id,
+          workflowId: workflowRun.workflowId,
+          environmentId: workflowRun.environmentId,
+          eventRuleId: workflowRun.eventRuleId,
+          eventId: workflowRun.eventId,
+          error: workflowRun.error,
+          status: workflowRun.status,
+          attemptCount: workflowRun.attemptCount,
+          createdAt: workflowRun.createdAt,
+          updatedAt: workflowRun.updatedAt,
+          startedAt: workflowRun.startedAt,
+          finishedAt: workflowRun.finishedAt,
+          timedOutAt: workflowRun.timedOutAt,
+          timedOutReason: workflowRun.timedOutReason,
+          isTest: workflowRun.isTest,
+        },
+        organizationId: organizationId,
+        workflowId: workflowId,
+        environmentId: workflowRun.environmentId,
+      });
+    },
+    completed: ({
+      userId,
+      organizationId,
+      workflowId,
+      workflowRun,
+    }: {
+      userId: string;
+      organizationId: string;
+      workflowId: string;
+      workflowRun: WorkflowRun;
+    }) => {
+      if (this.client === undefined) return;
+      this.#capture({
+        userId,
+        event: "workflow run completed",
+        eventProperties: {
+          id: workflowRun.id,
+          workflowId: workflowRun.workflowId,
+          environmentId: workflowRun.environmentId,
+          eventRuleId: workflowRun.eventRuleId,
+          eventId: workflowRun.eventId,
+          error: workflowRun.error,
+          status: workflowRun.status,
+          attemptCount: workflowRun.attemptCount,
+          createdAt: workflowRun.createdAt,
+          updatedAt: workflowRun.updatedAt,
+          startedAt: workflowRun.startedAt,
+          finishedAt: workflowRun.finishedAt,
+          timedOutAt: workflowRun.timedOutAt,
+          timedOutReason: workflowRun.timedOutReason,
+          isTest: workflowRun.isTest,
+        },
+        organizationId: organizationId,
+        workflowId: workflowId,
+        environmentId: workflowRun.environmentId,
       });
     },
   };
@@ -132,6 +231,13 @@ class BehaviouralAnalytics {
       };
     }
 
+    if (event.environmentId) {
+      groups = {
+        ...groups,
+        environment: event.environmentId,
+      };
+    }
+
     let properties: Record<string, any> = {};
     if (event.eventProperties) {
       properties = {
@@ -168,6 +274,7 @@ type CaptureEvent = {
   event: string;
   organizationId?: string;
   workflowId?: string;
+  environmentId?: string;
   eventProperties?: Record<string, any>;
   userProperties?: Record<string, any>;
   userOnceProperties?: Record<string, any>;

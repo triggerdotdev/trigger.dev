@@ -14,7 +14,8 @@ export class OrganizationCreatedEvent {
       where: { id },
       include: {
         users: {
-          include: {
+          select: {
+            id: true,
             _count: {
               select: { organizations: true },
             },
@@ -32,7 +33,7 @@ export class OrganizationCreatedEvent {
     organization.users.forEach((user) => {
       analytics.organization.new({
         organization,
-        user,
+        userId: user.id,
         organizationCount: user._count.organizations,
       });
     });

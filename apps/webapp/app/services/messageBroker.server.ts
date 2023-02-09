@@ -56,6 +56,8 @@ import { findWorkflowStepById } from "~/models/workflowRunStep.server";
 import { InitializeRunOnce } from "./runOnce/initializeRunOnce.server";
 import { CompleteRunOnce } from "./runOnce/completeRunOnce.server";
 import { OrganizationCreatedEvent } from "./analyticsEvents/organizationCreated.server";
+import { WorkflowCreatedEvent } from "./analyticsEvents/workflowCreated.server";
+import { WorkflowRunCreatedEvent } from "./analyticsEvents/workflowRunCreated.server";
 
 let pulsarClient: PulsarClient;
 let triggerPublisher: ZodPublisher<TriggerCatalog>;
@@ -465,6 +467,14 @@ const taskQueueCatalog = {
     data: z.object({ id: z.string() }),
     properties: z.object({}),
   },
+  WORKFLOW_CREATED: {
+    data: z.object({ id: z.string() }),
+    properties: z.object({}),
+  },
+  WORKFLOW_RUN_CREATED: {
+    data: z.object({ id: z.string() }),
+    properties: z.object({}),
+  },
 };
 
 function createTaskQueue() {
@@ -793,6 +803,22 @@ function createTaskQueue() {
         }
 
         const service = new OrganizationCreatedEvent();
+        return service.call(data.id);
+      },
+      WORKFLOW_CREATED: async (id, data, properties, attributes) => {
+        if (attributes.redeliveryCount >= 4) {
+          return true;
+        }
+
+        const service = new WorkflowCreatedEvent();
+        return service.call(data.id);
+      },
+      WORKFLOW_RUN_CREATED: async (id, data, properties, attributes) => {
+        if (attributes.redeliveryCount >= 4) {
+          return true;
+        }
+
+        const service = new WorkflowRunCreatedEvent();
         return service.call(data.id);
       },
     },

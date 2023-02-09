@@ -233,6 +233,9 @@ export class DispatchWorkflowRun {
     await taskQueue.publish("TRIGGER_WORKFLOW_RUN", {
       id: workflowRun.id,
     });
+    await taskQueue.publish("WORKFLOW_RUN_CREATED", {
+      id: workflowRun.id,
+    });
 
     return workflowRun;
   }
