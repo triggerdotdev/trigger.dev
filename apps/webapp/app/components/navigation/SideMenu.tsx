@@ -44,28 +44,34 @@ export function OrganizationsSideMenu() {
     return null;
   }
 
-  const items: SideMenuItem[] = [
+  let items: SideMenuItem[] = [
     {
       name: "Workflows",
       icon: <ArrowsRightLeftIcon className={iconStyle} />,
       to: `/orgs/${currentOrganization.slug}`,
     },
-    {
-      name: "API Integrations",
-      icon: <SquaresPlusIcon className={iconStyle} />,
-      to: `/orgs/${currentOrganization.slug}/integrations`,
-    },
-    {
-      name: "Team",
-      icon: <UsersIcon className={iconStyle} />,
-      to: `/orgs/${currentOrganization.slug}/members`,
-    },
-    {
-      name: "New Workflow",
-      icon: <PlusCircleIcon className={iconStyle} />,
-      to: `/orgs/${currentOrganization.slug}/workflows/new`,
-    },
   ];
+
+  if (currentOrganization.workflows.length > 0) {
+    items = [
+      ...items,
+      {
+        name: "API Integrations",
+        icon: <SquaresPlusIcon className={iconStyle} />,
+        to: `/orgs/${currentOrganization.slug}/integrations`,
+      },
+      {
+        name: "Team",
+        icon: <UsersIcon className={iconStyle} />,
+        to: `/orgs/${currentOrganization.slug}/members`,
+      },
+      {
+        name: "New Workflow",
+        icon: <PlusCircleIcon className={iconStyle} />,
+        to: `/orgs/${currentOrganization.slug}/workflows/new`,
+      },
+    ];
+  }
 
   return (
     <SideMenu title={currentOrganization.title} items={items} backPath="/" />
