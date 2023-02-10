@@ -20,7 +20,7 @@ export async function loader({ request }: LoaderArgs) {
   const authorization = await service.call(ParamSchema.parse(params));
 
   if (authorization) {
-    return redirect(`/orgs/${authorization.organization.slug}/workflows/start`);
+    return redirect(`/orgs/${authorization.organization.slug}/templates/add`);
   } else {
     return redirect(`/`);
   }

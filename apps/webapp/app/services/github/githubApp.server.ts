@@ -6,6 +6,7 @@ import { createUnauthenticatedAuth } from "@octokit/auth-unauthenticated";
 import { env } from "~/env.server";
 import { Options } from "@octokit/oauth-app/dist-types/types";
 import type { Endpoints } from "@octokit/types";
+import { z } from "zod";
 
 export const octokit = env.GITHUB_APP_PRIVATE_KEY
   ? new Octokit({
@@ -166,3 +167,70 @@ export async function getAppInstallation({
 
   return response.data;
 }
+
+type CreateRepositoryFromTemplateEndpoint =
+  Endpoints["POST /repos/{template_owner}/{template_repo}/generate"];
+
+export async function createRepositoryFromTemplate(
+  parameters: CreateRepositoryFromTemplateEndpoint["parameters"],
+  { installationId }: { installationId?: number }
+) {
+  if (typeof octokit === "undefined") {
+    return;
+  }
+
+  const kit = installationId ? await getOctokit(installationId) : octokit;
+
+  const response = await kit.request(
+    "POST /repos/{template_owner}/{template_repo}/generate",
+    parameters
+  );
+
+  return response.data;
+}
+
+async function getOctokit(installationId: number): Promise<Octokit> {
+  return octokit!.auth({
+    type: "installation",
+    installationId,
+    factory(auth: any) {
+      return new auth.octokit.constructor({
+        ...auth.octokitOptions,
+        authStrategy: createAppAuth,
+        ...{
+          auth: {
+            ...auth,
+            installationId,
+          },
+        },
+      });
+    },
+  }) as Promise<Octokit>;
+}
+
+export const AccountSchema = z.object({
+  login: z.string(),
+  id: z.number(),
+  node_id: z.string(),
+  name: z.string().optional(),
+  email: z.string().optional().nullable(),
+  avatar_url: z.string(),
+  gravatar_id: z.string(),
+  url: z.string(),
+  html_url: z.string(),
+  followers_url: z.string(),
+  following_url: z.string(),
+  gists_url: z.string(),
+  starred_url: z.string(),
+  subscriptions_url: z.string(),
+  organizations_url: z.string(),
+  repos_url: z.string(),
+  events_url: z.string(),
+  received_events_url: z.string(),
+  type: z.union([
+    z.literal("Bot"),
+    z.literal("User"),
+    z.literal("Organization"),
+  ]),
+  site_admin: z.boolean(),
+});
