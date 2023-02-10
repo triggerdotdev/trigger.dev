@@ -1,5 +1,5 @@
 import { Webhooks, EmitterWebhookEvent } from "@octokit/webhooks";
-import { Octokit } from "@octokit/core";
+import { Octokit } from "@octokit/rest";
 import { createAppAuth } from "@octokit/auth-app";
 import { OAuthApp } from "@octokit/oauth-app";
 import { createUnauthenticatedAuth } from "@octokit/auth-unauthenticated";
@@ -88,6 +88,19 @@ function createWebhooks() {
       await taskQueue.publish("GITHUB_APP_INSTALLATION_DELETED", {
         id: payload.installation.id,
       });
+    }
+  );
+  global.__github_webhooks__.on(
+    "repository.created",
+    async ({ octokit, payload }) => {
+      await taskQueue.publish(
+        "GITHUB_APP_REPOSITORY_CREATED",
+        {
+          id: payload.repository.id,
+        },
+        {},
+        { deliverAfter: 1000 * 10 }
+      );
     }
   );
 
@@ -202,6 +215,12 @@ export async function createRepositoryFromTemplate(
   );
 
   return response.data;
+}
+
+export async function getOctokitRest(installationId: number) {
+  const installationKit = await getOctokit(installationId);
+
+  return installationKit.rest;
 }
 
 async function getOctokit(installationId: number): Promise<Octokit> {

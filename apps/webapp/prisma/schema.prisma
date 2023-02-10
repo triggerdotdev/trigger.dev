@@ -623,6 +623,7 @@ model OrganizationTemplate {
   authorizationId String
 
   name          String
+  repositoryId  Int     @unique
   repositoryUrl String
   private       Boolean
 

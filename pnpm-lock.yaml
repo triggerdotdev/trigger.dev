@@ -55,6 +55,7 @@ importers:
       '@octokit/auth-unauthenticated': ^3.0.4
       '@octokit/core': ^4.2.0
       '@octokit/oauth-app': ^4.2.0
+      '@octokit/rest': ^19.0.7
       '@octokit/types': ^9.0.0
       '@octokit/webhooks': ^10.4.0
       '@prisma/client': ^4.3.0
@@ -216,6 +217,7 @@ importers:
       '@octokit/auth-unauthenticated': 3.0.4
       '@octokit/core': 4.2.0
       '@octokit/oauth-app': 4.2.0
+      '@octokit/rest': 19.0.7
       '@octokit/webhooks': 10.5.1
       '@prisma/client': 4.8.1_prisma@4.8.1
       '@remix-run/express': 1.12.0_express@4.18.2
@@ -4684,6 +4686,25 @@ packages:
       '@octokit/types': 9.0.0
     dev: false
 
+  /@octokit/plugin-request-log/1.0.4_@octokit+core@4.2.0:
+    resolution: {integrity: sha512-mLUsMkgP7K/cnFEw07kWqXGF5LKrOkD+lhCrKvPHXWDywAwuDUeDwWBpc69XK3pNX0uKiVt8g5z96PJ6z9xCFA==}
+    peerDependencies:
+      '@octokit/core': '>=3'
+    dependencies:
+      '@octokit/core': 4.2.0
+    dev: false
+
+  /@octokit/plugin-rest-endpoint-methods/7.0.1_@octokit+core@4.2.0:
+    resolution: {integrity: sha512-pnCaLwZBudK5xCdrR823xHGNgqOzRnJ/mpC/76YPpNP7DybdsJtP7mdOwh+wYZxK5jqeQuhu59ogMI4NRlBUvA==}
+    engines: {node: '>= 14'}
+    peerDependencies:
+      '@octokit/core': '>=3'
+    dependencies:
+      '@octokit/core': 4.2.0
+      '@octokit/types': 9.0.0
+      deprecation: 2.3.1
+    dev: false
+
   /@octokit/request-error/3.0.3:
     resolution: {integrity: sha512-crqw3V5Iy2uOU5Np+8M/YexTlT8zxCfI+qu+LxUB7SZpje4Qmx3mub5DfEKSO8Ylyk0aogi6TYdf6kxzh2BguQ==}
     engines: {node: '>= 14'}
@@ -4703,6 +4724,18 @@ packages:
       is-plain-object: 5.0.0
       node-fetch: 2.6.7
       universal-user-agent: 6.0.0
+    transitivePeerDependencies:
+      - encoding
+    dev: false
+
+  /@octokit/rest/19.0.7:
+    resolution: {integrity: sha512-HRtSfjrWmWVNp2uAkEpQnuGMJsu/+dBr47dRc5QVgsCbnIc1+GFEaoKBWkYG+zjrsHpSqcAElMio+n10c0b5JA==}
+    engines: {node: '>= 14'}
+    dependencies:
+      '@octokit/core': 4.2.0
+      '@octokit/plugin-paginate-rest': 6.0.0_@octokit+core@4.2.0
+      '@octokit/plugin-request-log': 1.0.4_@octokit+core@4.2.0
+      '@octokit/plugin-rest-endpoint-methods': 7.0.1_@octokit+core@4.2.0
     transitivePeerDependencies:
       - encoding
     dev: false

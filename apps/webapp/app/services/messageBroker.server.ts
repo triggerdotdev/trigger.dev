@@ -56,6 +56,7 @@ import { findWorkflowStepById } from "~/models/workflowRunStep.server";
 import { InitializeRunOnce } from "./runOnce/initializeRunOnce.server";
 import { CompleteRunOnce } from "./runOnce/completeRunOnce.server";
 import { prisma } from "~/db.server";
+import { GithubRepositoryCreated } from "./github/repositoryCreated.server";
 
 let pulsarClient: PulsarClient;
 let triggerPublisher: ZodPublisher<TriggerCatalog>;
@@ -465,6 +466,10 @@ const taskQueueCatalog = {
     data: z.object({ id: z.number() }),
     properties: z.object({}),
   },
+  GITHUB_APP_REPOSITORY_CREATED: {
+    data: z.object({ id: z.number() }),
+    properties: z.object({}),
+  },
 };
 
 function createTaskQueue() {
@@ -802,6 +807,22 @@ function createTaskQueue() {
             installationId: data.id,
           },
         });
+
+        return true;
+      },
+      GITHUB_APP_REPOSITORY_CREATED: async (
+        id,
+        data,
+        properties,
+        attributes
+      ) => {
+        if (attributes.redeliveryCount >= 4) {
+          return true;
+        }
+
+        const service = new GithubRepositoryCreated();
+
+        await service.call(data.id);
 
         return true;
       },

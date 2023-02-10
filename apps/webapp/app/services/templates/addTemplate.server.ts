@@ -1,15 +1,12 @@
 import { z } from "zod";
+import { generateErrorMessage } from "zod-error";
 import type { PrismaClient } from "~/db.server";
 import { prisma } from "~/db.server";
-import { env } from "~/env.server";
-import { generateErrorMessage } from "zod-error";
 import {
   AccountSchema,
   createRepositoryFromTemplate,
-  octokit,
+  getOctokitRest,
 } from "../github/githubApp.server";
-import { createAppAuth } from "@octokit/auth-app";
-import { Octokit } from "@octokit/core";
 
 const FormSchema = z.object({
   name: z.string().min(3).max(100),
@@ -72,13 +69,6 @@ export class AddTemplateService {
       };
     }
 
-    if (!octokit) {
-      return {
-        type: "error" as const,
-        message: "GitHub App not configured",
-      };
-    }
-
     const account = AccountSchema.safeParse(appAuthorization.account);
 
     if (!account.success) {
@@ -117,6 +107,7 @@ export class AddTemplateService {
       await this.#prismaClient.organizationTemplate.create({
         data: {
           name: data.name,
+          repositoryId: githubRepository.id,
           repositoryUrl: githubRepository.html_url,
           repositoryData: githubRepository,
           template: {
