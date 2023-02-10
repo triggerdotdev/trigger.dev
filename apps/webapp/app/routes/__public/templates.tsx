@@ -74,30 +74,28 @@ function Step2() {
       <div className="mb-6">
         <SubTitle className="flex items-center">
           <StepNumber active stepNumber="2" />
-          Would you like to start with a template?
+          Would you like to create a new GitHub repository?
         </SubTitle>
         <Panel className="flex w-full items-center justify-between">
           <div className="grid w-full grid-cols-2 gap-x-4">
             <button className={buttonStyles}>
-              <div className={classNames("bg-green-400", labelStyles)}>
+              {/* <div className={classNames("bg-green-400", labelStyles)}>
                 Easy
-              </div>
-              <CubeIcon className="h-10 w-10 text-indigo-400" />
-              <Header3>I'll start with a template</Header3>
+              </div> */}
+              <CubeTransparentIcon className="h-10 w-10 text-indigo-400" />
+              <Header3>I want to create a new repo</Header3>
               <Body size="small" className="text-slate-400">
-                We'll setup a new GitHub repository with your template
-                installed.
+                We'll setup a new GitHub repository and install your template.
               </Body>
             </button>
             <button className={buttonStyles}>
-              <div className={classNames("bg-rose-400", labelStyles)}>
+              {/* <div className={classNames("bg-rose-400", labelStyles)}>
                 Advanced
-              </div>
-              <CubeTransparentIcon className="h-10 w-10 text-rose-500" />
-              <Header3>I'll start from scratch</Header3>
+              </div> */}
+              <CubeIcon className="h-10 w-10 text-amber-400" />
+              <Header3>I want to use an existing repo</Header3>
               <Body size="small" className="text-slate-400">
-                We'll setup a new GitHub repository but with a boilerplate
-                template.
+                Use an existing repo.
               </Body>
             </button>
           </div>
