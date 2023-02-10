@@ -58,6 +58,12 @@
     "@lezer/highlight": "^1.1.2",
     "@nangohq/pizzly-frontend": "^0.3.7",
     "@nangohq/pizzly-node": "^0.4.1",
+    "@octokit/app": "^13.1.2",
+    "@octokit/auth-app": "^4.0.9",
+    "@octokit/auth-unauthenticated": "^3.0.4",
+    "@octokit/core": "^4.2.0",
+    "@octokit/oauth-app": "^4.2.0",
+    "@octokit/webhooks": "^10.4.0",
     "@prisma/client": "^4.3.0",
     "@remix-run/express": "^1.7.2",
     "@remix-run/node": "^1.7.2",
@@ -134,6 +140,7 @@
   },
   "devDependencies": {
     "@faker-js/faker": "^7.6.0",
+    "@octokit/types": "^9.0.0",
     "@remix-run/dev": "^1.7.2",
     "@remix-run/eslint-config": "^1.7.2",
     "@swc/core": "^1.3.4",
@@ -166,6 +173,7 @@
     "@types/slug": "^5.0.3",
     "@vitejs/plugin-react": "^2.0.1",
     "@vitest/coverage-c8": "^0.23.4",
+    "auth-unauthenticated": "link:@types/@octokit/auth-unauthenticated",
     "autoprefixer": "^10.4.7",
     "c8": "^7.11.3",
     "cli-ux": "^6.0.9",
@@ -194,7 +202,8 @@
     "typescript": "^4.8.4",
     "vite": "^3.1.4",
     "vite-tsconfig-paths": "^3.5.1",
-    "vitest": "^0.23.4"
+    "vitest": "^0.23.4",
+    "webhooks": "link:@types/@octokit/webhooks"
   },
   "engines": {
     "node": ">=16.0.0"
