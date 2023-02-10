@@ -7,6 +7,7 @@ import { env } from "~/env.server";
 import { Options } from "@octokit/oauth-app/dist-types/types";
 import type { Endpoints } from "@octokit/types";
 import { z } from "zod";
+import { taskQueue } from "../messageBroker.server";
 
 export const octokit = env.GITHUB_APP_PRIVATE_KEY
   ? new Octokit({
@@ -81,7 +82,21 @@ function createWebhooks() {
   );
 
   global.__github_webhooks__.on("push", ({ octokit, payload }) => {});
-  global.__github_webhooks__.onAny((event) => {});
+  global.__github_webhooks__.on(
+    "installation.deleted",
+    async ({ octokit, payload }) => {
+      await taskQueue.publish("GITHUB_APP_INSTALLATION_DELETED", {
+        id: payload.installation.id,
+      });
+    }
+  );
+
+  global.__github_webhooks__.onAny(({ id, name, payload }) => {
+    console.log(
+      `[github-webhook] ${name} event received: ${id}`,
+      JSON.stringify(payload, null, 2)
+    );
+  });
 
   return global.__github_webhooks__;
 }

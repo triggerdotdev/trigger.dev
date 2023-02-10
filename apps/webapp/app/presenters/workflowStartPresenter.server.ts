@@ -13,9 +13,11 @@ export class WorkflowStartPresenter {
   async data({
     organizationSlug,
     userId,
+    templateId,
   }: {
     organizationSlug: string;
     userId: string;
+    templateId?: string;
   }) {
     const appAuthorizations =
       await this.#prismaClient.gitHubAppAuthorization.findMany({
@@ -47,6 +49,14 @@ export class WorkflowStartPresenter {
       }
     );
 
+    const template = templateId
+      ? await this.#prismaClient.template.findUnique({
+          where: {
+            id: templateId,
+          },
+        })
+      : undefined;
+
     const templates = await this.#prismaClient.template.findMany({
       orderBy: {
         priority: "asc",
@@ -56,6 +66,7 @@ export class WorkflowStartPresenter {
     return {
       appAuthorizations: authorizationsWithAccounts,
       templates,
+      template,
     };
   }
 }

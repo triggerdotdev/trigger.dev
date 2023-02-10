@@ -55,6 +55,7 @@ import { omit } from "~/utils/objects";
 import { findWorkflowStepById } from "~/models/workflowRunStep.server";
 import { InitializeRunOnce } from "./runOnce/initializeRunOnce.server";
 import { CompleteRunOnce } from "./runOnce/completeRunOnce.server";
+import { prisma } from "~/db.server";
 
 let pulsarClient: PulsarClient;
 let triggerPublisher: ZodPublisher<TriggerCatalog>;
@@ -460,6 +461,10 @@ const taskQueueCatalog = {
     data: z.object({ stepId: z.string(), hasRun: z.boolean() }),
     properties: z.object({}),
   },
+  GITHUB_APP_INSTALLATION_DELETED: {
+    data: z.object({ id: z.number() }),
+    properties: z.object({}),
+  },
 };
 
 function createTaskQueue() {
@@ -778,6 +783,24 @@ function createTaskQueue() {
           id: data.id,
           event: omit(data, ["id"]),
           apiKey: env.INTERNAL_TRIGGER_API_KEY,
+        });
+
+        return true;
+      },
+      GITHUB_APP_INSTALLATION_DELETED: async (
+        id,
+        data,
+        properties,
+        attributes
+      ) => {
+        if (attributes.redeliveryCount >= 4) {
+          return true;
+        }
+
+        await prisma.gitHubAppAuthorization.deleteMany({
+          where: {
+            installationId: data.id,
+          },
         });
 
         return true;

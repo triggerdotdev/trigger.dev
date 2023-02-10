@@ -12,9 +12,11 @@ export class StartAppInstallation {
   public async call({
     userId,
     organizationSlug,
+    templateId,
   }: {
     userId: string;
     organizationSlug: string;
+    templateId?: string;
   }) {
     if (!env.GITHUB_APP_NAME) {
       return;
@@ -34,6 +36,7 @@ export class StartAppInstallation {
       data: {
         organizationId: organization.id,
         userId,
+        templateId,
       },
     });
 

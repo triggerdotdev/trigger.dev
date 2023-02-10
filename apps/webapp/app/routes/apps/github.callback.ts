@@ -17,10 +17,16 @@ export async function loader({ request }: LoaderArgs) {
 
   const service = new AppInstallationCallback();
 
-  const authorization = await service.call(ParamSchema.parse(params));
+  const result = await service.call(ParamSchema.parse(params));
 
-  if (authorization) {
-    return redirect(`/orgs/${authorization.organization.slug}/templates/add`);
+  if (result) {
+    const { authorization, templateId } = result;
+
+    return redirect(
+      `/orgs/${authorization.organization.slug}/templates/add${
+        templateId ? `?templateId=${templateId}` : ""
+      }`
+    );
   } else {
     return redirect(`/`);
   }

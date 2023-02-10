@@ -91,6 +91,6 @@ export class AppInstallationCallback {
       },
     });
 
-    return authorization;
+    return { authorization, templateId: attempt.templateId };
   }
 }

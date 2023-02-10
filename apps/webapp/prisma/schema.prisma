@@ -561,9 +561,10 @@ model FetchResponse {
 }
 
 model GitHubAppAuthorizationAttempt {
-  id             String @id @default(cuid())
+  id             String  @id @default(cuid())
   userId         String
   organizationId String
+  templateId     String?
 }
 
 model GitHubAppAuthorization {

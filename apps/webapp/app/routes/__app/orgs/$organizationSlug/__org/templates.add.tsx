@@ -26,9 +26,15 @@ export async function loader({ params, request }: LoaderArgs) {
     .object({ organizationSlug: z.string() })
     .parse(params);
 
+  const { templateId } = z
+    .object({ templateId: z.string().optional() })
+    .parse(Object.fromEntries(new URL(request.url).searchParams));
+
   const presenter = new WorkflowStartPresenter();
 
-  return typedjson(await presenter.data({ organizationSlug, userId }));
+  return typedjson(
+    await presenter.data({ organizationSlug, userId, templateId })
+  );
 }
 
 export async function action({ params, request }: ActionArgs) {
@@ -37,8 +43,6 @@ export async function action({ params, request }: ActionArgs) {
     .object({ organizationSlug: z.string() })
     .parse(params);
   const payload = Object.fromEntries(await request.formData());
-
-  console.log({ payload, organizationSlug, userId });
 
   const service = new AddTemplateService();
 
@@ -62,7 +66,8 @@ export async function action({ params, request }: ActionArgs) {
 }
 
 export default function AddTemplatePage() {
-  const { appAuthorizations, templates } = useTypedLoaderData<typeof loader>();
+  const { appAuthorizations, templates, template } =
+    useTypedLoaderData<typeof loader>();
   const environment = useCurrentEnvironment();
   const currentOrganization = useCurrentOrganization();
   invariant(currentOrganization, "Organization must be defined");
@@ -73,7 +78,11 @@ export default function AddTemplatePage() {
   return (
     <Container>
       <Form method="post" reloadDocument>
-        <Title>Deploy a new workflow</Title>
+        {template ? (
+          <Title>Deploy a new workflow from {template.title}</Title>
+        ) : (
+          <Title>Deploy a new workflow</Title>
+        )}
 
         {actionData?.type === "error" && (
           <div
@@ -97,17 +106,21 @@ export default function AddTemplatePage() {
           </select>
         </InputGroup>
 
-        <InputGroup>
-          <Label htmlFor="templateId">Choose a template</Label>
+        {template ? (
+          <input type="hidden" name="templateId" value={template.id} />
+        ) : (
+          <InputGroup>
+            <Label htmlFor="templateId">Choose a template</Label>
 
-          <select name="templateId" required>
-            {templates.map((template) => (
-              <option value={template.id} key={template.id}>
-                {template.title}
-              </option>
-            ))}
-          </select>
-        </InputGroup>
+            <select name="templateId" required>
+              {templates.map((template) => (
+                <option value={template.id} key={template.id}>
+                  {template.title}
+                </option>
+              ))}
+            </select>
+          </InputGroup>
+        )}
 
         <InputGroup>
           <Label htmlFor="name">Choose a name</Label>
