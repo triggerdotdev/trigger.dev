@@ -92,7 +92,7 @@ export function MarketingHeader() {
                 title="Docs"
                 aria-label="Docs"
                 target="_blank"
-                className="transform hover:text-toxic-500"
+                className="transform text-slate-200 hover:text-toxic-500"
               >
                 Docs
               </NavLink>
@@ -102,15 +102,15 @@ export function MarketingHeader() {
                 title="Examples"
                 aria-label="Examples"
                 target="_blank"
-                className="transform hover:text-toxic-500"
+                className="transform text-slate-200 hover:text-toxic-500"
               >
                 Examples
               </NavLink>
               <NavLink
-                to="/pricing"
+                to="http://trigger.dev/pricing"
                 title="Pricing"
                 aria-label="Pricing"
-                className="transform hover:text-toxic-500"
+                className="transform text-slate-200 hover:text-toxic-500"
               >
                 Pricing
               </NavLink>
@@ -142,7 +142,7 @@ export function MarketingHeader() {
               to="https://app.trigger.dev"
               title="Login"
               aria-label="Login"
-              className="hidden transform font-semibold hover:text-toxic-500 md:flex"
+              className="hidden transform font-semibold text-slate-200 hover:text-toxic-500 md:flex"
             >
               Login
             </NavLink>
