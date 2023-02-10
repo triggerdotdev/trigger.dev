@@ -32,7 +32,8 @@
     "sentry-upload": "pnpm run generate:sourcemaps && sentry-upload-sourcemaps",
     "clean:sourcemaps": "run-s clean:sourcemaps:*",
     "clean:sourcemaps:public": "rimraf ./build/**/*.map",
-    "clean:sourcemaps:build": "rimraf ./public/build/**/*.map"
+    "clean:sourcemaps:build": "rimraf ./public/build/**/*.map",
+    "idev": "infisical run -- run-p dev:*"
   },
   "eslintIgnore": [
     "/node_modules",
