@@ -151,12 +151,14 @@ class BehaviouralAnalytics {
       organizationId,
       workflowId,
       workflowRun,
+      environmentType,
       runCount,
     }: {
       userId: string;
       organizationId: string;
       workflowId: string;
       workflowRun: WorkflowRun;
+      environmentType: string;
       runCount: number;
     }) => {
       if (this.client === undefined) return;
@@ -167,6 +169,7 @@ class BehaviouralAnalytics {
           id: workflowRun.id,
           workflowId: workflowRun.workflowId,
           environmentId: workflowRun.environmentId,
+          environmentType,
           eventRuleId: workflowRun.eventRuleId,
           eventId: workflowRun.eventId,
           error: workflowRun.error,

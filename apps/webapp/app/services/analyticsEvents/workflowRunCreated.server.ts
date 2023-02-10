@@ -13,6 +13,9 @@ export class WorkflowRunCreatedEvent {
     const workflowRun = await this.#prismaClient.workflowRun.findUnique({
       where: { id },
       include: {
+        environment: {
+          select: { slug: true },
+        },
         workflow: {
           select: {
             id: true,
@@ -62,6 +65,7 @@ export class WorkflowRunCreatedEvent {
         userId: user.id,
         organizationId: workflowRun.workflow.organization.id,
         workflowId: workflowRun.workflow.id,
+        environmentType: workflowRun.environment.slug,
         runCount,
       });
     });
