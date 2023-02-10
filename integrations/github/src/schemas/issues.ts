@@ -26,13 +26,13 @@ export const issueSchema = z.object({
   labels: z.array(labelSchema).optional(),
   state: z.union([z.literal("open"), z.literal("closed")]).optional(),
   locked: z.boolean().optional(),
-  assignee: userSchema.optional().nullable(),
+  assignee: userSchema.optional().nullish(),
   assignees: z.array(userSchema),
-  milestone: milestoneSchema.nullable(),
+  milestone: milestoneSchema.nullish(),
   comments: z.number(),
   created_at: z.string(),
   updated_at: z.string(),
-  closed_at: z.string().nullable(),
+  closed_at: z.string().nullish(),
   author_association: authorAssociationSchema,
   active_lock_reason: z
     .union([
@@ -41,28 +41,28 @@ export const issueSchema = z.object({
       z.literal("too heated"),
       z.literal("spam"),
     ])
-    .nullable(),
+    .nullish(),
   draft: z.boolean().optional(),
-  performed_via_github_app: appSchema.optional().nullable(),
+  performed_via_github_app: appSchema.optional().nullish(),
   pull_request: z
     .object({
       url: z.string().optional(),
       html_url: z.string().optional(),
       diff_url: z.string().optional(),
       patch_url: z.string().optional(),
-      merged_at: z.string().optional().nullable(),
+      merged_at: z.string().optional().nullish(),
     })
     .optional(),
-  body: z.string().nullable(),
-  reactions: reactionsSchema,
+  body: z.string().nullish(),
+  reactions: reactionsSchema.optional(),
   timeline_url: z.string().optional(),
-  state_reason: z.string().optional().nullable(),
+  state_reason: z.string().optional().nullish(),
 });
 
 export const issuesAssignedEventSchema = z.object({
   action: z.literal("assigned"),
   issue: issueSchema,
-  assignee: userSchema.optional().nullable(),
+  assignee: userSchema.optional().nullish(),
   repository: repositorySchema,
   sender: userSchema,
   installation: installationLiteSchema.optional(),
@@ -150,7 +150,7 @@ export const issuesLockedEventSchema = z.object({
           z.literal("too heated"),
           z.literal("spam"),
         ])
-        .nullable(),
+        .nullish(),
     })
   ),
   repository: repositorySchema,
@@ -231,7 +231,7 @@ export const issuesTransferredEventSchema = z.object({
 export const issuesUnassignedEventSchema = z.object({
   action: z.literal("unassigned"),
   issue: issueSchema,
-  assignee: userSchema.optional().nullable(),
+  assignee: userSchema.optional().nullish(),
   repository: repositorySchema,
   sender: userSchema,
   installation: installationLiteSchema.optional(),
@@ -253,7 +253,7 @@ export const issuesUnlockedEventSchema = z.object({
   issue: issueSchema.and(
     z.object({
       locked: z.literal(false),
-      active_lock_reason: z.null(),
+      active_lock_reason: z.null().optional(),
     })
   ),
   repository: repositorySchema,
