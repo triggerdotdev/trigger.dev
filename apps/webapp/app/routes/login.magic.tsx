@@ -10,7 +10,7 @@ import { ArrowLeftIcon } from "@heroicons/react/24/solid";
 import { InboxArrowDownIcon } from "@heroicons/react/24/outline";
 import { z } from "zod";
 import { LoginPromoPanel } from "~/components/LoginPromoPanel";
-import { Logo, LogoSvg } from "~/components/Logo";
+import { LogoSvg } from "~/components/Logo";
 import { Input } from "~/components/primitives/Input";
 import { PrimaryButton } from "~/components/primitives/Buttons";
 
@@ -65,12 +65,12 @@ export default function LoginMagicLinkPage() {
   return (
     <div className="flex h-screen w-screen justify-between overflow-y-scroll bg-slate-900">
       <LoginPromoPanel />
-      <div className="flex grow items-center justify-center bg-gradient-background h-full w-full p-4">
-        <div className="flex w-full max-w-xl flex-col justify-between rounded-lg bg-slate-850 shadow-md min-h-[430px]">
+      <div className="bg-gradient-background flex h-full w-full grow items-center justify-center p-4">
+        <div className="flex min-h-[430px] w-full max-w-xl flex-col justify-between rounded-lg bg-slate-850 shadow-md">
           <Form className="flex h-full flex-grow flex-col" method="post">
             <a
               href="https://trigger.dev"
-              className="flex w-full justify-center mt-12"
+              className="mt-12 flex w-full justify-center"
             >
               <LogoSvg className="h-10 lg:h-14" />
             </a>
@@ -104,7 +104,7 @@ export default function LoginMagicLinkPage() {
                 </>
               ) : (
                 <>
-                  <p className="text-base lg:text-lg text-slate-200">
+                  <p className="text-base text-slate-200 lg:text-lg">
                     Enter your email address to get started.
                   </p>
                   <div className="flex w-full max-w-sm flex-col">
@@ -121,7 +121,7 @@ export default function LoginMagicLinkPage() {
                     transition.type === "actionSubmission" &&
                     transition.submission.formData.get("action") === "send" ? (
                       <PrimaryButton
-                        className="flex mt-2 py-3 w-full !max-w-full"
+                        className="mt-2 flex w-full !max-w-full py-3"
                         name="action"
                         value="send"
                         type="submit"
@@ -130,7 +130,7 @@ export default function LoginMagicLinkPage() {
                       </PrimaryButton>
                     ) : (
                       <PrimaryButton
-                        className="flex mt-2 py-3 w-full !max-w-full"
+                        className="mt-2 flex w-full !max-w-full py-3"
                         name="action"
                         value="send"
                         type="submit"

@@ -21,7 +21,7 @@ export function PaginationControls({
   }
 
   return (
-    <div className="flex items-center justify-between rounded-b-lg border-t border-slate-850 bg-slate-700/20 pl-4 pr-3 py-3 text-slate-400">
+    <div className="flex items-center justify-between rounded-b-lg border-t border-slate-850 bg-slate-700/20 py-3 pl-4 pr-3 text-slate-400">
       <div className="flex flex-1 justify-between sm:hidden">
         {currentPage > 1 && (
           <Link
@@ -59,7 +59,7 @@ export function PaginationControls({
             <LinkDisabled
               to={pageUrl(location, currentPage - 1)}
               disabled={currentPage === 1}
-              className="relative inline-flex items-center rounded-l border border-slate-500 bg-slate-700/20 px-2 text-xs font-medium text-slate-400 hover:bg-slate-400 hover:text-slate-800 hover:border-slate-400 focus:z-20 transition"
+              className="relative inline-flex items-center rounded-l border border-slate-500 bg-slate-700/20 px-2 text-xs font-medium text-slate-400 transition hover:border-slate-400 hover:bg-slate-400 hover:text-slate-800 focus:z-20"
               disabledClassName="opacity-30 cursor-default hover:bg-slate-700/20 hover:border-slate-500 hover:!text-slate-400"
             >
               <span className="sr-only">Previous</span>
@@ -73,7 +73,7 @@ export function PaginationControls({
             <LinkDisabled
               to={pageUrl(location, currentPage + 1)}
               disabled={currentPage === totalPages}
-              className="relative inline-flex items-center rounded-r border border-slate-500 bg-slate-700/20 px-2 text-xs font-medium text-slate-400 hover:bg-slate-400 hover:text-slate-800 hover:border-slate-400 focus:z-20 transition"
+              className="relative inline-flex items-center rounded-r border border-slate-500 bg-slate-700/20 px-2 text-xs font-medium text-slate-400 transition hover:border-slate-400 hover:bg-slate-400 hover:text-slate-800 focus:z-20"
               disabledClassName="opacity-30 cursor-default hover:bg-slate-700/20 hover:border-slate-500 hover:!text-slate-400"
             >
               <span className="sr-only">Next</span>
@@ -138,23 +138,6 @@ function PageLinkComponent({
       </span>
     );
   }
-}
-
-function NextPreviousButton({
-  path,
-  children,
-}: {
-  path: string;
-  children: any;
-}) {
-  return (
-    <Link
-      to={path}
-      className="relative inline-flex items-center rounded-l-md border border-slate-300 bg-slate-700/20 px-2 py-2 text-xs font-medium text-slate-500 hover:bg-slate-50 focus:z-20"
-    >
-      {children}
-    </Link>
-  );
 }
 
 type PageLink = EllipsisPageLink | SpecificPageLink;

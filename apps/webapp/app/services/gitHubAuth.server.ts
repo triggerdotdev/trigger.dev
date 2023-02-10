@@ -1,11 +1,8 @@
 import type { Authenticator } from "remix-auth";
 import { GitHubStrategy } from "remix-auth-github";
 import { env } from "~/env.server";
-import { createFirstOrganization } from "~/models/organization.server";
 import { findOrCreateUser } from "~/models/user.server";
 import type { AuthUser } from "./authUser";
-import { scheduleWelcomeEmail } from "./email.server";
-import { taskQueue } from "./messageBroker.server";
 import { postAuthentication } from "./postAuth.server";
 
 const gitHubStrategy = new GitHubStrategy(
