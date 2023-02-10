@@ -19,6 +19,10 @@ const dangerClasses = classnames(
   commonClasses,
   "px-4 py-2 bg-rose-700 text-white hover:bg-rose-600 focus:ring-rose-800 gap-2"
 );
+const toxicClasses = classnames(
+  commonClasses,
+  "px-3 py-1 bg-gradient-to-r from-acid-500 to-toxic-500 text-slate-1000 !text-base font-bold hover:from-acid-600 hover:to-toxic-600 focus:ring-slate-300"
+);
 
 type ButtonProps = React.DetailedHTMLProps<
   React.ButtonHTMLAttributes<HTMLButtonElement>,
@@ -96,6 +100,22 @@ export function SecondaryLink({
 export function TertiaryLink({ children, className, to, ...props }: LinkProps) {
   return (
     <Link to={to} className={classnames(tertiaryClasses, className)} {...props}>
+      {children}
+    </Link>
+  );
+}
+
+export function DangerLink({ children, className, to, ...props }: LinkProps) {
+  return (
+    <Link to={to} className={classnames(dangerClasses, className)} {...props}>
+      {children}
+    </Link>
+  );
+}
+
+export function ToxicLink({ children, className, to, ...props }: LinkProps) {
+  return (
+    <Link to={to} className={classnames(toxicClasses, className)} {...props}>
       {children}
     </Link>
   );

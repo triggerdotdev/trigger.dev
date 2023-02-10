@@ -1,8 +1,6 @@
 /** @type {import('tailwindcss').Config} */
 const parentConfig = require("@trigger.dev/tailwind-config/tailwind.config");
-const toxicColors = {
-  500: "#41FF54",
-};
+
 module.exports = {
   ...parentConfig,
   theme: {
@@ -16,7 +14,21 @@ module.exports = {
           950: '#0A1423',
           850: '#141D2E',
         },
-        toxic: toxicColors[500],
+        acid: {
+          400: "#F1FF98",
+          500: "#E7FF52",
+          600: "#FFF067",
+        },
+        toxic: {
+          400: "#8EFF9A",
+          500: "#41FF54",
+          600: "#00FFA3",
+        },
+      },
+      backgroundImage: {
+        "gradient-radial": "radial-gradient(var(--tw-gradient-stops))",
+        "gradient-primary": `linear-gradient(90deg, acid-500 0%, toxic-500 100%)`,
+        "gradient-primary-hover": `linear-gradient(80deg, acid-600 0%, toxic-600 100%)`,
       },
       gridTemplateColumns: {
         'carousel': 'repeat(6, 200px)',

@@ -2,7 +2,7 @@ import { Popover, Transition } from "@headlessui/react";
 import { Link, NavLink } from "@remix-run/react";
 import { Fragment } from "react";
 import { Logo } from "../Logo";
-import { PrimaryLink } from "../primitives/Buttons";
+import { PrimaryLink, ToxicLink } from "../primitives/Buttons";
 import { MobileNavIcon, MobileNavLink } from "../primitives/NavLink";
 
 function MobileNavigation() {
@@ -92,7 +92,7 @@ export function MarketingHeader() {
                 title="Docs"
                 aria-label="Docs"
                 target="_blank"
-                className="hover:text-toxic-500"
+                className="transform hover:text-toxic-500"
               >
                 Docs
               </NavLink>
@@ -102,7 +102,7 @@ export function MarketingHeader() {
                 title="Examples"
                 aria-label="Examples"
                 target="_blank"
-                className="hover:text-toxic-500"
+                className="transform hover:text-toxic-500"
               >
                 Examples
               </NavLink>
@@ -110,20 +110,20 @@ export function MarketingHeader() {
                 to="/pricing"
                 title="Pricing"
                 aria-label="Pricing"
-                className="hover:text-toxic-500"
+                className="transform hover:text-toxic-500"
               >
                 Pricing
               </NavLink>
             </div>
           </div>
-          <div className="flex items-center justify-center gap-x-2 md:gap-x-4 lg:gap-x-5">
+          <div className="flex items-center justify-center gap-x-4 md:gap-x-4 lg:gap-x-6">
             <a
               href="https://github.com/triggerdotdev/trigger.dev"
               rel="noreferrer"
               aria-label="Trigger.dev GitHub"
               target="_blank"
               title="Trigger.dev GitHub"
-              className="hover:text-toxic-500 text-toxic-500 hidden items-center text-right text-xs text-slate-500 transition md:flex"
+              className="hidden items-center text-right text-xs text-slate-500 transition hover:text-toxic-500 md:flex"
             >
               <svg
                 width="24"
@@ -142,18 +142,18 @@ export function MarketingHeader() {
               to="https://app.trigger.dev"
               title="Login"
               aria-label="Login"
-              className="hidden font-semibold md:flex"
+              className="hidden transform font-semibold hover:text-toxic-500 md:flex"
             >
               Login
             </NavLink>
 
-            <PrimaryLink
+            <ToxicLink
               className="font-lg whitespace-nowrap "
               to="https://app.trigger.dev"
             >
               <span className="hidden sm:block">Sign up</span>
               <span className="block sm:hidden">Sign up</span>
-            </PrimaryLink>
+            </ToxicLink>
 
             <div className="-mr-1 md:hidden">
               <MobileNavigation />
