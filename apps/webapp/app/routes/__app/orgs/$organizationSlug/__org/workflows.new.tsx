@@ -291,7 +291,7 @@ export default function NewWorkflowPage() {
   );
 }
 
-function StepNumber({
+export function StepNumber({
   stepNumber,
   drawLine,
 }: {
