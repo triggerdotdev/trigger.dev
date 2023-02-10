@@ -36,7 +36,7 @@ function Step1() {
   return (
     <div className="mb-6">
       <SubTitle className="flex items-center">
-        <StepNumber stepNumber="1" />
+        <StepNumber active stepNumber="1" />
         Where do you want your workflow hosted?
       </SubTitle>
       <Panel className="flex w-full items-center justify-between">
@@ -73,7 +73,7 @@ function Step2() {
       </div>
       <div className="mb-6">
         <SubTitle className="flex items-center">
-          <StepNumber stepNumber="2" />
+          <StepNumber active stepNumber="2" />
           Would you like to start with a template?
         </SubTitle>
         <Panel className="flex w-full items-center justify-between">
@@ -126,7 +126,7 @@ function Step3() {
       </div>
       <div className="mb-6">
         <SubTitle className="flex items-center">
-          <StepNumber stepNumber="3" />
+          <StepNumber active stepNumber="3" />
           Which template would you like to use?
         </SubTitle>
         <TemplatesGrid />
@@ -161,7 +161,7 @@ function Step4() {
       </div>
       <div className="mb-6">
         <SubTitle className="flex items-center">
-          <StepNumber stepNumber="4" />
+          <StepNumber active stepNumber="4" />
           You're nearly done!
         </SubTitle>
         <TemplateOverview />
