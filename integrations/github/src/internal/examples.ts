@@ -1,7 +1,5 @@
 import { WebhookExample } from "@trigger.dev/integration-sdk/types";
 
-const commit_comment = {};
-
 export const examples: Record<string, WebhookExample> = {
   commit_comment: {
     name: "Commit created event",
