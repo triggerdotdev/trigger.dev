@@ -1,11 +1,10 @@
+import type { Workflow, WorkflowRun } from ".prisma/client";
+import { TriggerMetadataSchema } from "@trigger.dev/common-schemas";
+import { getIntegration } from "integration-catalog";
+import { JSONSchemaFaker } from "json-schema-faker";
 import type { PrismaClient } from "~/db.server";
 import { prisma } from "~/db.server";
-import { JSONSchemaFaker } from "json-schema-faker";
-import type { Workflow, WorkflowRun } from ".prisma/client";
-import { getIntegration } from "integration-catalog";
-import { getIntegrations } from "~/models/integrations.server";
-import { EventRule } from "~/models/workflow.server";
-import { TriggerMetadataSchema } from "@trigger.dev/common-schemas";
+import type { EventRule } from "~/models/workflow.server";
 
 export class WorkflowTestPresenter {
   #prismaClient: PrismaClient;

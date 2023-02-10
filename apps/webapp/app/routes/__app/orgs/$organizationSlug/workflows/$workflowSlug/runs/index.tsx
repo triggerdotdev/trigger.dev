@@ -12,7 +12,6 @@ import { PanelWarning } from "~/components/layout/PanelWarning";
 import { PaginationControls } from "~/components/Pagination";
 import { TertiaryLink } from "~/components/primitives/Buttons";
 import { StyledListBox } from "~/components/primitives/ListBox";
-import { Body } from "~/components/primitives/text/Body";
 import { Title } from "~/components/primitives/text/Title";
 import { RunsTable } from "~/components/runs/RunsTable";
 import {

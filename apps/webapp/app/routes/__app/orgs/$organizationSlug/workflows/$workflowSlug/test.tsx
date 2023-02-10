@@ -9,7 +9,6 @@ import { PanelInfo } from "~/components/layout/PanelInfo";
 import { PanelWarning } from "~/components/layout/PanelWarning";
 import { PrimaryButton, TertiaryLink } from "~/components/primitives/Buttons";
 import { Select } from "~/components/primitives/Select";
-import { Body } from "~/components/primitives/text/Body";
 import { Title } from "~/components/primitives/text/Title";
 import { useCurrentOrganization } from "~/hooks/useOrganizations";
 import { useCurrentWorkflow } from "~/hooks/useWorkflows";

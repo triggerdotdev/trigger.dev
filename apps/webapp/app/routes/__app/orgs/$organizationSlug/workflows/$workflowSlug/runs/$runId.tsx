@@ -22,8 +22,8 @@ import type { Delay, Scheduled } from "@trigger.dev/common-schemas";
 import type { schemas as resendSchemas } from "@trigger.dev/resend/internal";
 import classNames from "classnames";
 import humanizeDuration from "humanize-duration";
-import { ReactNode, useCallback } from "react";
-import { useEffect, useState } from "react";
+import type { ReactNode } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import invariant from "tiny-invariant";
 import type { z } from "zod";
@@ -31,11 +31,7 @@ import CodeBlock from "~/components/code/CodeBlock";
 import { BasicConnectButton } from "~/components/integrations/ConnectButton";
 import { Panel } from "~/components/layout/Panel";
 import { PanelHeader } from "~/components/layout/PanelHeader";
-import {
-  PrimaryButton,
-  TertiaryA,
-  TertiaryButton,
-} from "~/components/primitives/Buttons";
+import { PrimaryButton, TertiaryButton } from "~/components/primitives/Buttons";
 import { Body } from "~/components/primitives/text/Body";
 import {
   Header1,
@@ -92,7 +88,7 @@ export default function Page() {
   const workflow = useCurrentWorkflow();
   invariant(workflow, "workflow is required");
 
-  const [lastRefreshed, setLastRefreshed] = useState(new Date());
+  const [lastRefreshed] = useState(new Date());
 
   const reload = useCallback(() => {
     document.location.reload();

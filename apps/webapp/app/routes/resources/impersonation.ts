@@ -1,4 +1,4 @@
-import { ActionArgs } from "@remix-run/server-runtime";
+import type { ActionArgs } from "@remix-run/server-runtime";
 import { redirect } from "remix-typedjson";
 import {
   clearImpersonationId,

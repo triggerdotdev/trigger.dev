@@ -51,12 +51,12 @@ export default function App() {
 }
 
 function IntercomSurvey() {
-  const { boot, shutdown, hide, show, update } = useIntercom();
+  const { boot, shutdown } = useIntercom();
 
   useEffect(() => {
     boot({});
     return () => shutdown();
-  }, []);
+  }, [boot, shutdown]);
 
   return <></>;
 }

@@ -4,7 +4,7 @@ import { json, redirect } from "@remix-run/node";
 import { Form, Link, useLoaderData } from "@remix-run/react";
 import { GitHubLoginButton } from "~/components/GitHubLoginButton";
 import { LoginPromoPanel } from "~/components/LoginPromoPanel";
-import { Logo, LogoSvg } from "~/components/Logo";
+import { LogoSvg } from "~/components/Logo";
 import { commitSession, setRedirectTo } from "~/services/redirectTo.server";
 import { getUserId } from "~/services/session.server";
 
@@ -46,10 +46,10 @@ export default function LoginPage() {
   return (
     <div className="flex h-screen w-screen justify-between overflow-y-scroll bg-slate-900">
       <LoginPromoPanel />
-      <div className="flex grow items-center justify-center h-full w-full p-4">
-        <div className="flex w-full max-w-xl flex-col justify-between rounded-lg bg-slate-850 shadow-md min-h-[430px]">
+      <div className="flex h-full w-full grow items-center justify-center p-4">
+        <div className="flex min-h-[430px] w-full max-w-xl flex-col justify-between rounded-lg bg-slate-850 shadow-md">
           <Form
-            className="flex flex-col flex-grow"
+            className="flex flex-grow flex-col"
             action={`/auth/github${
               data.redirectTo ? `?redirectTo=${data.redirectTo}` : ""
             }`}
@@ -57,11 +57,11 @@ export default function LoginPage() {
           >
             <a
               href="https://trigger.dev"
-              className="flex w-full justify-center mt-12 px-4"
+              className="mt-12 flex w-full justify-center px-4"
             >
               <LogoSvg className="h-14" />
             </a>
-            <div className="flex flex-col flex-grow justify-between items-center text-center pt-8 pb-12 px-10">
+            <div className="flex flex-grow flex-col items-center justify-between px-10 pt-8 pb-12 text-center">
               <p className="text-base lg:text-lg">
                 Build better workflows with Trigger.dev.
               </p>

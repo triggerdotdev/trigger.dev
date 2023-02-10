@@ -4,7 +4,7 @@ import type { Organization } from "~/models/organization.server";
 import type { RuntimeEnvironment } from "~/models/runtimeEnvironment.server";
 import type { User } from "~/models/user.server";
 import type { Workflow } from "~/models/workflow.server";
-import { WorkflowRun } from "~/models/workflowRun.server";
+import type { WorkflowRun } from "~/models/workflowRun.server";
 
 class BehaviouralAnalytics {
   client: PostHog | undefined = undefined;

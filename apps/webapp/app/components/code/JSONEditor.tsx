@@ -8,7 +8,7 @@ import { useCodeMirror } from "@uiw/react-codemirror";
 import classNames from "classnames";
 import { useRef, useEffect } from "react";
 import { getEditorSetup } from "./codeMirrorSetup";
-import { darkTheme, lightTheme } from "./codeMirrorTheme";
+import { darkTheme } from "./codeMirrorTheme";
 
 export interface JSONEditorProps extends Omit<ReactCodeMirrorProps, "onBlur"> {
   content: string;

@@ -15,7 +15,7 @@ import { getUser } from "./services/session.server";
 import { Toaster, toast } from "react-hot-toast";
 import type { ToastMessage } from "~/models/message.server";
 import { commitSession, getSession } from "~/models/message.server";
-import { useEffect, useRef } from "react";
+import { useEffect } from "react";
 import { withSentry } from "@sentry/remix";
 import { env } from "./env.server";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
