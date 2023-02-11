@@ -3,8 +3,12 @@ import {
   CubeIcon,
   CubeTransparentIcon,
   HomeIcon,
+  MinusCircleIcon,
+  MinusIcon,
+  XMarkIcon,
 } from "@heroicons/react/24/outline";
 import classNames from "classnames";
+import { useState } from "react";
 import { Container } from "~/components/layout/Container";
 import { Panel } from "~/components/layout/Panel";
 import { TertiaryLink } from "~/components/primitives/Buttons";
@@ -14,11 +18,6 @@ import { SubTitle } from "~/components/primitives/text/SubTitle";
 import { TemplateOverview } from "~/components/templates/TemplateOverview";
 import { TemplatesGrid } from "~/components/templates/TemplatesGrid";
 import { StepNumber } from "../__app/orgs/$organizationSlug/__org/workflows.new";
-
-const buttonStyles =
-  "relative flex flex-col group items-center justify-start hover:bg-slate-700 px-4 shadow gap-4 rounded bg-slate-700/50 py-8 border border-slate-700 transition";
-const labelStyles =
-  "absolute top-0 right-0 uppercase text-xs text-slate-900 px-2 py-1 font-semibold rounded-bl rounded-tr";
 
 export default function TemplatesLayout() {
   return (
@@ -32,7 +31,17 @@ export default function TemplatesLayout() {
   );
 }
 
+type Step1Props = {
+  showVisitedButtonState: () => void;
+};
+
 function Step1() {
+  const [buttonVisited, setbuttonVisited] = useState(true);
+
+  function showVisitedButtonState() {
+    setbuttonVisited(!buttonVisited);
+  }
+
   return (
     <div className="mb-6">
       <SubTitle className="flex items-center">
@@ -48,15 +57,38 @@ function Step1() {
               I will deploy the code to my own servers.
             </Body>
           </button>
-          <button className={buttonStyles}>
-            <CloudIcon className="h-10 w-10 text-blue-400" />
-            <Header3>Host the workflow for me in the cloud</Header3>
-            <Body size="small" className="text-slate-400">
-              Trigger.dev can host and handle the servers for me.
-            </Body>
-          </button>
+          {buttonVisited ? (
+            <Step1Hosted showVisitedButtonState={showVisitedButtonState} />
+          ) : (
+            <Step1HostedVisited />
+          )}
         </div>
       </Panel>
+    </div>
+  );
+}
+
+function Step1Hosted({ showVisitedButtonState }: Step1Props) {
+  return (
+    <button onClick={showVisitedButtonState} className={buttonStyles}>
+      <CloudIcon className="h-10 w-10 text-blue-400" />
+      <Header3>Host the workflow for me in the cloud</Header3>
+      <Body size="small" className="text-slate-400">
+        Trigger.dev can host and handle the servers for me.
+      </Body>
+    </button>
+  );
+}
+
+function Step1HostedVisited() {
+  return (
+    <div className="relative flex flex-col items-center justify-start gap-4 rounded border border-dashed border-slate-950 bg-slate-800 px-4 py-8 transition">
+      <XMarkIcon className="absolute top-9 left-[calc(50%-20px)] h-10 w-10 text-rose-500" />
+      <CloudIcon className="h-10 w-10 text-blue-400/50" />
+      <Header3>Hosting coming soon…</Header3>
+      <Body size="small" className="text-center text-slate-400">
+        We're working hard to bring a cloud hosted service.
+      </Body>
     </div>
   );
 }
@@ -167,3 +199,8 @@ function Step4() {
     </>
   );
 }
+
+const buttonStyles =
+  "relative flex flex-col items-center justify-start hover:bg-slate-700 px-4 shadow gap-4 rounded bg-slate-700/50 py-8 border border-slate-700 transition";
+const labelStyles =
+  "absolute top-0 right-0 uppercase text-xs text-slate-900 px-2 py-1 font-semibold rounded-bl rounded-tr";
