@@ -8,24 +8,41 @@ import {
 import { Link } from "@remix-run/react";
 import classNames from "classnames";
 import { useState } from "react";
+import { InstallPackages } from "~/components/CreateNewWorkflow";
 import { Container } from "~/components/layout/Container";
 import { Panel } from "~/components/layout/Panel";
-import { TertiaryLink } from "~/components/primitives/Buttons";
+import {
+  PrimaryLink,
+  TertiaryA,
+  TertiaryLink,
+} from "~/components/primitives/Buttons";
+import { LargeBox, LargeBoxList } from "~/components/primitives/Tabs";
 import { Body } from "~/components/primitives/text/Body";
 import { Header1, Header3 } from "~/components/primitives/text/Headers";
 import { SubTitle } from "~/components/primitives/text/SubTitle";
 import { TemplateOverview } from "~/components/templates/TemplateOverview";
 import { TemplatesGrid } from "~/components/templates/TemplatesGrid";
 import { StepNumber } from "../__app/orgs/$organizationSlug/__org/workflows.new";
+import {
+  exampleProjects,
+  fromScratchProjects,
+} from "~/components/samples/samplesList";
+import { Tab } from "@headlessui/react";
+import CodeBlock from "~/components/code/CodeBlock";
+import { useCurrentEnvironment } from "~/hooks/useEnvironments";
+import { useCurrentOrganization } from "~/hooks/useOrganizations";
+import invariant from "tiny-invariant";
 
 export default function TemplatesLayout() {
   return (
     <Container className="mx-auto flex w-full max-w-5xl flex-col">
       <Header1 className="mb-6">Get started</Header1>
-      <Step1 />
-      <Step2 />
-      <Step31 />
-      <Step32 />
+      {/* <Step1 /> */}
+      {/* <Step2 /> */}
+      {/* <Step3NewRepo1 /> */}
+      {/* <Step3NewRepo2 /> */}
+      {/* <Step3ExistingRepo1 /> */}
+      <Step3ExistingRepo2 />
     </Container>
   );
 }
@@ -110,12 +127,12 @@ function Step2() {
   );
 }
 
-function Step31() {
+function Step3NewRepo1() {
   return (
     <>
       <div className="flex items-center justify-between">
         <SubTitle className="flex items-center">
-          <StepNumber stepNumber="✓" />
+          <StepNumber />
           <Link to="#" className="transition hover:text-slate-300">
             I'll host the workflow myself
           </Link>
@@ -124,7 +141,7 @@ function Step31() {
       </div>
       <div className="flex items-center justify-between">
         <SubTitle className="flex items-center">
-          <StepNumber stepNumber="✓" />
+          <StepNumber />
           <Link to="#" className="transition hover:text-slate-300">
             I'll start with a template
           </Link>
@@ -142,12 +159,12 @@ function Step31() {
   );
 }
 
-function Step32() {
+function Step3NewRepo2() {
   return (
     <>
       <div className="flex items-center justify-between">
         <SubTitle className="flex items-center">
-          <StepNumber stepNumber="✓" />
+          <StepNumber />
           <Link to="#" className="transition hover:text-slate-300">
             I'll host the workflow myself
           </Link>
@@ -156,7 +173,7 @@ function Step32() {
       </div>
       <div className="flex items-center justify-between">
         <SubTitle className="flex items-center">
-          <StepNumber stepNumber="✓" />
+          <StepNumber />
           <Link to="#" className="transition hover:text-slate-300">
             I'll start with a template
           </Link>
@@ -165,7 +182,7 @@ function Step32() {
       </div>
       <div className="flex items-center justify-between">
         <SubTitle className="flex items-center">
-          <StepNumber stepNumber="✓" />
+          <StepNumber />
           <Link to="#" className="transition hover:text-slate-300">
             The template i've chosen is: GitHub Issue to Slack
           </Link>
@@ -178,6 +195,146 @@ function Step32() {
           You're nearly done!
         </SubTitle>
         <TemplateOverview />
+      </div>
+    </>
+  );
+}
+
+function Step3ExistingRepo1() {
+  return (
+    <>
+      <div className="flex items-center justify-between">
+        <SubTitle className="flex items-center">
+          <StepNumber />
+          <Link to="#" className="transition hover:text-slate-300">
+            I'll host the workflow myself
+          </Link>
+        </SubTitle>
+        <TertiaryLink to="#">Change answer</TertiaryLink>
+      </div>
+      <div className="flex items-center justify-between">
+        <SubTitle className="flex items-center">
+          <StepNumber />
+          <Link to="#" className="transition hover:text-slate-300">
+            I'll host the repo myself
+          </Link>
+        </SubTitle>
+        <TertiaryLink to="#">Change answer</TertiaryLink>
+      </div>
+      <div className="mb-6">
+        <SubTitle className="flex items-center">
+          <StepNumber active stepNumber="3" />
+          Install the Trigger.dev package
+        </SubTitle>
+        <Panel className="flex flex-col gap-3">
+          <InstallPackages packages={"@trigger.dev/sdk"} />
+          <PrimaryLink to="#">Continue</PrimaryLink>
+        </Panel>
+      </div>
+    </>
+  );
+}
+
+function Step3ExistingRepo2() {
+  const environment = useCurrentEnvironment();
+  const currentOrganization = useCurrentOrganization();
+  invariant(currentOrganization, "Organization must be defined");
+  invariant(environment, "Environment must be defined");
+  return (
+    <>
+      <div className="flex items-center justify-between">
+        <SubTitle className="flex items-center">
+          <StepNumber />
+          <Link to="#" className="transition hover:text-slate-300">
+            I'll host the workflow myself
+          </Link>
+        </SubTitle>
+        <TertiaryLink to="#">Change answer</TertiaryLink>
+      </div>
+      <div className="flex items-center justify-between">
+        <SubTitle className="flex items-center">
+          <StepNumber />
+          <Link to="#" className="transition hover:text-slate-300">
+            I'll host the repo myself
+          </Link>
+        </SubTitle>
+        <TertiaryLink to="#">Change answer</TertiaryLink>
+      </div>
+      <div className="flex items-center justify-between">
+        <SubTitle className="flex items-center">
+          <StepNumber />
+          <Link to="#" className="transition hover:text-slate-300">
+            I've installed the Trigger.dev package
+          </Link>
+        </SubTitle>
+        <TertiaryLink to="#">Change answer</TertiaryLink>
+      </div>
+      <div className="mb-6">
+        <SubTitle className="flex items-center">
+          <StepNumber active stepNumber="4" />
+          Choose an example or start from scratch
+        </SubTitle>
+        <TemplatesGrid />
+        <Body className="my-4">Start your workflow from scratch</Body>
+        <Tab.Panel className="relative h-full">
+          <Tab.Group>
+            {/* From scratch projects titles */}
+            <div className={classNames(carousel)}>
+              <LargeBoxList>
+                {fromScratchProjects.map((project) => {
+                  return <LargeBox key={project.name}>{project.name}</LargeBox>;
+                })}
+              </LargeBoxList>
+            </div>
+            {/* From scratch projects content */}
+            <Tab.Panels className={classNames("flex-grow pt-4")}>
+              {fromScratchProjects.map((project) => {
+                return (
+                  <Tab.Panel key={project.name} className="relative h-full">
+                    <div className="">
+                      <Body size="regular" className="mb-4 text-slate-400">
+                        {project.description}
+                      </Body>
+                      <ul className="ml-[17px] list-disc text-slate-400 marker:text-indigo-400">
+                        {project.bulletPoint1 ? (
+                          <li>{project.bulletPoint1}</li>
+                        ) : (
+                          ""
+                        )}
+                        {project.bulletPoint2 ? (
+                          <li>{project.bulletPoint2}</li>
+                        ) : (
+                          ""
+                        )}
+                        {project.bulletPoint3 ? (
+                          <li>{project.bulletPoint3}</li>
+                        ) : (
+                          ""
+                        )}
+                      </ul>
+                      <Body size="regular" className="mb-2 mt-4 text-slate-400">
+                        Use this example code in your project to get started. Or
+                        learn more about {project.name}s in the{" "}
+                        <TertiaryA
+                          href={project.docsLink}
+                          target={"_blank"}
+                          className="!text-base text-slate-400 underline decoration-green-500 underline-offset-2 hover:text-white hover:decoration-green-400"
+                        >
+                          docs
+                        </TertiaryA>
+                        .
+                      </Body>
+                      <CodeBlock
+                        code={project.code(environment.apiKey)}
+                        align="top"
+                      />
+                    </div>
+                  </Tab.Panel>
+                );
+              })}
+            </Tab.Panels>
+          </Tab.Group>
+        </Tab.Panel>
       </div>
     </>
   );
@@ -211,3 +368,4 @@ const buttonStyles =
   "relative flex flex-col items-center justify-start hover:bg-slate-700 px-4 shadow gap-4 rounded bg-slate-700/50 py-8 border border-slate-700 transition";
 const labelStyles =
   "absolute top-0 right-0 uppercase text-xs text-slate-900 px-2 py-1 font-semibold rounded-bl rounded-tr";
+const carousel = "-ml-[26px] overflow-hidden overflow-x-auto pl-[1.5rem]";
