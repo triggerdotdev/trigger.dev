@@ -2,14 +2,10 @@ import {
   CloudIcon,
   CubeIcon,
   CubeTransparentIcon,
-  EllipsisHorizontalCircleIcon,
-  EllipsisHorizontalIcon,
   HomeIcon,
-  MinusCircleIcon,
-  MinusIcon,
   RocketLaunchIcon,
-  XMarkIcon,
 } from "@heroicons/react/24/outline";
+import { Link } from "@remix-run/react";
 import classNames from "classnames";
 import { useState } from "react";
 import { Container } from "~/components/layout/Container";
@@ -28,8 +24,8 @@ export default function TemplatesLayout() {
       <Header1 className="mb-6">Get started</Header1>
       <Step1 />
       <Step2 />
-      <Step3 />
-      <Step4 />
+      <Step31 />
+      <Step32 />
     </Container>
   );
 }
@@ -77,9 +73,11 @@ function Step2() {
       <div className="flex items-center justify-between">
         <SubTitle className="flex items-center">
           <StepNumber />
-          I'll host the workflow myself
+          <Link to="#" className="transition hover:text-slate-300">
+            I'll host the workflow myself
+          </Link>
         </SubTitle>
-        <TertiaryLink to="/">Change answer</TertiaryLink>
+        <TertiaryLink to="#">Change answer</TertiaryLink>
       </div>
       <div className="mb-6">
         <SubTitle className="flex items-center">
@@ -89,9 +87,9 @@ function Step2() {
         <Panel className="flex w-full items-center justify-between">
           <div className="grid w-full grid-cols-2 gap-x-4">
             <button className={buttonStyles}>
-              {/* <div className={classNames("bg-green-400", labelStyles)}>
-                Easy
-              </div> */}
+              <div className={classNames("bg-green-400", labelStyles)}>
+                Recommended
+              </div>
               <CubeTransparentIcon className="h-10 w-10 text-indigo-400" />
               <Header3>I want to create a new repo</Header3>
               <Body size="small" className="text-slate-400">
@@ -99,10 +97,7 @@ function Step2() {
               </Body>
             </button>
             <button className={buttonStyles}>
-              {/* <div className={classNames("bg-rose-400", labelStyles)}>
-                Advanced
-              </div> */}
-              <CubeIcon className="h-10 w-10 text-amber-400" />
+              <CubeIcon className="h-10 w-10 text-orange-400" />
               <Header3>I want to use an existing repo</Header3>
               <Body size="small" className="text-slate-400">
                 Use an existing repo.
@@ -115,22 +110,26 @@ function Step2() {
   );
 }
 
-function Step3() {
+function Step31() {
   return (
     <>
       <div className="flex items-center justify-between">
         <SubTitle className="flex items-center">
           <StepNumber stepNumber="✓" />
-          I'll host the workflow myself
+          <Link to="#" className="transition hover:text-slate-300">
+            I'll host the workflow myself
+          </Link>
         </SubTitle>
-        <TertiaryLink to="/">Change answer</TertiaryLink>
+        <TertiaryLink to="#">Change answer</TertiaryLink>
       </div>
       <div className="flex items-center justify-between">
         <SubTitle className="flex items-center">
           <StepNumber stepNumber="✓" />
-          I'll start with a template
+          <Link to="#" className="transition hover:text-slate-300">
+            I'll start with a template
+          </Link>
         </SubTitle>
-        <TertiaryLink to="/">Change answer</TertiaryLink>
+        <TertiaryLink to="#">Change answer</TertiaryLink>
       </div>
       <div className="mb-6">
         <SubTitle className="flex items-center">
@@ -143,29 +142,35 @@ function Step3() {
   );
 }
 
-function Step4() {
+function Step32() {
   return (
     <>
       <div className="flex items-center justify-between">
         <SubTitle className="flex items-center">
           <StepNumber stepNumber="✓" />
-          I'll host the workflow myself
+          <Link to="#" className="transition hover:text-slate-300">
+            I'll host the workflow myself
+          </Link>
         </SubTitle>
-        <TertiaryLink to="/">Change answer</TertiaryLink>
+        <TertiaryLink to="#">Change answer</TertiaryLink>
       </div>
       <div className="flex items-center justify-between">
         <SubTitle className="flex items-center">
           <StepNumber stepNumber="✓" />
-          I'll start with a template
+          <Link to="#" className="transition hover:text-slate-300">
+            I'll start with a template
+          </Link>
         </SubTitle>
-        <TertiaryLink to="/">Change answer</TertiaryLink>
+        <TertiaryLink to="#">Change answer</TertiaryLink>
       </div>
       <div className="flex items-center justify-between">
         <SubTitle className="flex items-center">
           <StepNumber stepNumber="✓" />
-          The template i've chosen is: GitHub Issue to Slack
+          <Link to="#" className="transition hover:text-slate-300">
+            The template i've chosen is: GitHub Issue to Slack
+          </Link>
         </SubTitle>
-        <TertiaryLink to="/">Change answer</TertiaryLink>
+        <TertiaryLink to="#">Change answer</TertiaryLink>
       </div>
       <div className="mb-6">
         <SubTitle className="flex items-center">
