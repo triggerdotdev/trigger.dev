@@ -13,7 +13,7 @@ const secondaryClasses = classnames(
 );
 const tertiaryClasses = classnames(
   commonClasses,
-  "text-white/60 hover:text-white gap-1"
+  "text-slate-100/60 hover:text-white gap-1"
 );
 const dangerClasses = classnames(
   commonClasses,
