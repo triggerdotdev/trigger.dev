@@ -296,19 +296,19 @@ export function StepNumber({
   drawLine,
   active = false,
 }: {
-  stepNumber: string;
+  stepNumber?: string;
   drawLine?: boolean;
   active?: boolean;
 }) {
   return (
     <div className="mr-3 flex flex-col items-center justify-center">
       {active ? (
-        <span className="flex h-7 w-7 items-center justify-center rounded border border-green-900 bg-green-500 py-1 text-sm font-semibold text-slate-900 shadow">
+        <span className="flex h-7 w-7 items-center justify-center rounded bg-green-600 py-1 text-sm font-semibold text-slate-900 shadow">
           {stepNumber}
         </span>
       ) : (
         <span className="flex h-7 w-7 items-center justify-center rounded border border-slate-700 bg-slate-800 py-1 text-sm font-semibold text-green-400 shadow">
-          {stepNumber}
+          ✓
         </span>
       )}
 

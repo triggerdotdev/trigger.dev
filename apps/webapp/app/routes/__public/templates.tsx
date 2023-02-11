@@ -2,9 +2,12 @@ import {
   CloudIcon,
   CubeIcon,
   CubeTransparentIcon,
+  EllipsisHorizontalCircleIcon,
+  EllipsisHorizontalIcon,
   HomeIcon,
   MinusCircleIcon,
   MinusIcon,
+  RocketLaunchIcon,
   XMarkIcon,
 } from "@heroicons/react/24/outline";
 import classNames from "classnames";
@@ -68,37 +71,12 @@ function Step1() {
   );
 }
 
-function Step1Hosted({ showVisitedButtonState }: Step1Props) {
-  return (
-    <button onClick={showVisitedButtonState} className={buttonStyles}>
-      <CloudIcon className="h-10 w-10 text-blue-400" />
-      <Header3>Host the workflow for me in the cloud</Header3>
-      <Body size="small" className="text-slate-400">
-        Trigger.dev can host and handle the servers for me.
-      </Body>
-    </button>
-  );
-}
-
-function Step1HostedVisited() {
-  return (
-    <div className="relative flex flex-col items-center justify-start gap-4 rounded border border-dashed border-slate-950 bg-slate-800 px-4 py-8 transition">
-      <XMarkIcon className="absolute top-9 left-[calc(50%-20px)] h-10 w-10 text-rose-500" />
-      <CloudIcon className="h-10 w-10 text-blue-400/50" />
-      <Header3>Hosting coming soon…</Header3>
-      <Body size="small" className="text-center text-slate-400">
-        We're working hard to bring a cloud hosted service.
-      </Body>
-    </div>
-  );
-}
-
 function Step2() {
   return (
     <>
       <div className="flex items-center justify-between">
         <SubTitle className="flex items-center">
-          <StepNumber stepNumber="✓" />
+          <StepNumber />
           I'll host the workflow myself
         </SubTitle>
         <TertiaryLink to="/">Change answer</TertiaryLink>
@@ -197,6 +175,30 @@ function Step4() {
         <TemplateOverview />
       </div>
     </>
+  );
+}
+
+function Step1Hosted({ showVisitedButtonState }: Step1Props) {
+  return (
+    <button onClick={showVisitedButtonState} className={buttonStyles}>
+      <CloudIcon className="h-10 w-10 text-blue-400" />
+      <Header3>Host the workflow for me in the cloud</Header3>
+      <Body size="small" className="text-slate-400">
+        Trigger.dev can host and handle the servers for me.
+      </Body>
+    </button>
+  );
+}
+
+function Step1HostedVisited() {
+  return (
+    <div className="relative flex flex-col items-center justify-start gap-4 rounded border border-dashed border-slate-950 bg-slate-800 px-4 py-8 transition">
+      <RocketLaunchIcon className="h-10 w-10 animate-pulse text-blue-400" />
+      <Header3>Cloud hosting coming soon…</Header3>
+      <Body size="small" className="text-center text-slate-400">
+        We're working hard to bring you a cloud hosted service.
+      </Body>
+    </div>
   );
 }
 
