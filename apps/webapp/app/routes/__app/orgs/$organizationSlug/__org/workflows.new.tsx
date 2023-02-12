@@ -1,11 +1,17 @@
-import { Tab } from "@headlessui/react";
 import {
   CheckCircleIcon,
+  CloudIcon,
+  CubeIcon,
+  CubeTransparentIcon,
   ExclamationTriangleIcon,
+  HomeIcon,
+  RocketLaunchIcon,
 } from "@heroicons/react/24/outline";
+import { Link } from "@remix-run/react";
 import type { ActionArgs, LoaderArgs } from "@remix-run/server-runtime";
 import { redirect } from "@remix-run/server-runtime";
 import classNames from "classnames";
+import { useState } from "react";
 import { typedjson, useTypedFetcher } from "remix-typedjson";
 import invariant from "tiny-invariant";
 import { z } from "zod";
@@ -18,21 +24,19 @@ import {
   PrimaryButton,
   PrimaryLink,
   TertiaryA,
+  TertiaryLink,
 } from "~/components/primitives/Buttons";
 import { Spinner } from "~/components/primitives/Spinner";
-import {
-  LargeBox,
-  LargeBoxList,
-  Underlined,
-  UnderlinedList,
-} from "~/components/primitives/Tabs";
 import { Body } from "~/components/primitives/text/Body";
-import { Header4 } from "~/components/primitives/text/Headers";
+import { Header3, Header4 } from "~/components/primitives/text/Headers";
+import { SubTitle } from "~/components/primitives/text/SubTitle";
 import { Title } from "~/components/primitives/text/Title";
 import {
   exampleProjects,
   fromScratchProjects,
 } from "~/components/samples/samplesList";
+import { TemplateOverview } from "~/components/templates/TemplateOverview";
+import { TemplatesGrid } from "~/components/templates/TemplatesGrid";
 import { useCurrentEnvironment } from "~/hooks/useEnvironments";
 import { useCurrentOrganization } from "~/hooks/useOrganizations";
 import { getIntegrationMetadatas } from "~/models/integrations.server";
@@ -90,10 +94,6 @@ export const action = async ({ request, params }: ActionArgs) => {
   });
 };
 
-const maxWidth = "flex max-w-4xl";
-const subTitle = "text-slate-200 font-semibold mb-3";
-const carousel = "-ml-[26px] overflow-hidden overflow-x-auto pl-[1.5rem]";
-
 export default function NewWorkflowPage() {
   const environment = useCurrentEnvironment();
   const currentOrganization = useCurrentOrganization();
@@ -103,192 +103,558 @@ export default function NewWorkflowPage() {
   return (
     <Container>
       <Title>Create a new workflow</Title>
-      <div className={classNames(maxWidth)}>
-        <StepNumber stepNumber="1" drawLine />
-        <div className="mb-6 w-full">
-          <Header4 size="regular" className={subTitle}>
-            Install the Trigger.dev package
-          </Header4>
-          <InstallPackages packages={"@trigger.dev/sdk"} />
-        </div>
-      </div>
-      <Tab.Group>
-        <div className={classNames(maxWidth)}>
-          <StepNumber stepNumber="2" drawLine />
-          <div className="mb-6 w-full pr-10">
-            <Header4 size="regular" className={classNames(subTitle)}>
-              Create your workflow
-            </Header4>
-            <UnderlinedList>
-              <Underlined>Start from an example</Underlined>
-              <Underlined>Start from scratch</Underlined>
-            </UnderlinedList>
-            <Tab.Panels className="flex-grow pt-4">
-              <Tab.Panel className="relative h-full">
-                {/* Example projects tabs */}
-                <Tab.Group>
-                  <div
-                    className={classNames(
-                      carousel,
-                      "border-r border-slate-700"
-                    )}
-                  >
-                    <LargeBoxList>
-                      {exampleProjects.map((project) => {
-                        return (
-                          <LargeBox key={project.name}>
-                            {project.icon}
-                            <Body>{project.name}</Body>
-                          </LargeBox>
-                        );
-                      })}
-                    </LargeBoxList>
-                  </div>
-                  {/* Example projects content */}
-                  <Tab.Panels className={classNames("flex-grow pt-4")}>
-                    {exampleProjects.map((project) => {
-                      return (
-                        <Tab.Panel
-                          key={project.name}
-                          className="relative h-full"
-                        >
-                          <div className="">
-                            <div className="mb-4 mt-4 flex items-center gap-2">
-                              {project.icon}
-                              <Header4
-                                size="small"
-                                className="font-semibold text-slate-300"
-                              >
-                                {project.title}
-                              </Header4>
-                            </div>
-                            <Body
-                              size="regular"
-                              className="mb-4 text-slate-400"
-                            >
-                              {project.description}
-                            </Body>
-                            <Body
-                              size="regular"
-                              className="mb-2 text-slate-400"
-                            >
-                              Install these additional API integration packages:
-                            </Body>
-                            <InstallPackages
-                              packages={project.requiredPackages}
-                            />
-                            <Body
-                              size="regular"
-                              className="mb-2 mt-4 text-slate-400"
-                            >
-                              Copy this example code into your project. Your API
-                              key has already been inserted.
-                            </Body>
-                            <CodeBlock
-                              code={project.code(environment.apiKey)}
-                              align="top"
-                            />
-                          </div>
-                        </Tab.Panel>
-                      );
-                    })}
-                  </Tab.Panels>
-                </Tab.Group>
-              </Tab.Panel>
-              <Tab.Panel className="relative h-full">
-                <Tab.Group>
-                  {/* From scratch projects titles */}
-                  <div className={classNames(carousel)}>
-                    <LargeBoxList>
-                      {fromScratchProjects.map((project) => {
-                        return (
-                          <LargeBox key={project.name}>{project.name}</LargeBox>
-                        );
-                      })}
-                    </LargeBoxList>
-                  </div>
-                  {/* From scratch projects content */}
-                  <Tab.Panels className={classNames("flex-grow pt-4")}>
-                    {fromScratchProjects.map((project) => {
-                      return (
-                        <Tab.Panel
-                          key={project.name}
-                          className="relative h-full"
-                        >
-                          <div className="">
-                            <Body
-                              size="regular"
-                              className="mb-4 text-slate-400"
-                            >
-                              {project.description}
-                            </Body>
-                            <ul className="ml-[17px] list-disc text-slate-400 marker:text-indigo-400">
-                              {project.bulletPoint1 ? (
-                                <li>{project.bulletPoint1}</li>
-                              ) : (
-                                ""
-                              )}
-                              {project.bulletPoint2 ? (
-                                <li>{project.bulletPoint2}</li>
-                              ) : (
-                                ""
-                              )}
-                              {project.bulletPoint3 ? (
-                                <li>{project.bulletPoint3}</li>
-                              ) : (
-                                ""
-                              )}
-                            </ul>
-                            <Body
-                              size="regular"
-                              className="mb-2 mt-4 text-slate-400"
-                            >
-                              Use this example code in your project to get
-                              started. Or learn more about {project.name}s in
-                              the{" "}
-                              <TertiaryA
-                                href={project.docsLink}
-                                target={"_blank"}
-                                className="!text-base text-slate-400 underline decoration-green-500 underline-offset-2 hover:text-white hover:decoration-green-400"
-                              >
-                                docs
-                              </TertiaryA>
-                              .
-                            </Body>
-                            <CodeBlock
-                              code={project.code(environment.apiKey)}
-                              align="top"
-                            />
-                          </div>
-                        </Tab.Panel>
-                      );
-                    })}
-                  </Tab.Panels>
-                </Tab.Group>
-              </Tab.Panel>
-            </Tab.Panels>
-          </div>
-        </div>
-      </Tab.Group>
-      <div className={classNames(maxWidth)}>
-        <StepNumber stepNumber="3" />
-        <div className="w-full">
-          <Header4 size="regular" className={subTitle}>
-            Run your web server
-          </Header4>
-          <Body size="regular" className="mb-4 text-slate-400">
-            Run your server as you typically do, e.g.{" "}
-            <InlineCode>npm run dev</InlineCode>. This will connect your
-            workflow to Trigger.dev, so we can start sending you events. You
-            should see some log messages in your server console (tip: you can
-            turn these off by removing the{" "}
-            <InlineCode>logLevel: "info"</InlineCode> from the code above).
-          </Body>
-          <CheckForWorkflows />
-        </div>
-      </div>
+      {/* <Step1 /> */}
+      {/* <Step2 /> */}
+      {/* <Step3NewRepo1 /> */}
+      <Step3NewRepo2 />
+      {/* <Step3ExistingRepo1 /> */}
+      {/* <Step3ExistingRepo2 /> */}
+      {/* <Step3ExistingRepo3 /> */}
+      {/* <Step3ExistingRepo4 /> */}
+      {/* <Step3ExistingRepo5 /> */}
     </Container>
   );
+}
+
+type Step1Props = {
+  showVisitedButtonState: () => void;
+};
+
+function Step1() {
+  const [buttonVisited, setbuttonVisited] = useState(true);
+
+  function showVisitedButtonState() {
+    setbuttonVisited(!buttonVisited);
+  }
+
+  return (
+    <div className={classNames(maxWidth, "mb-6")}>
+      <SubTitle className="flex items-center">
+        <StepNumber active stepNumber="1" />
+        Where do you want your workflow hosted?
+      </SubTitle>
+      <Panel className="flex w-full items-center justify-between">
+        <div className="grid w-full grid-cols-2 gap-x-4">
+          <button className={buttonStyles}>
+            <HomeIcon className="h-10 w-10 text-green-400" />
+            <Header3>I'll host the workflow myself</Header3>
+            <Body size="small" className="text-slate-400">
+              I will deploy the code to my own servers.
+            </Body>
+          </button>
+          {buttonVisited ? (
+            <Step1Hosted showVisitedButtonState={showVisitedButtonState} />
+          ) : (
+            <Step1HostedVisited />
+          )}
+        </div>
+      </Panel>
+    </div>
+  );
+}
+
+function Step2() {
+  return (
+    <div className={classNames(maxWidth, "flex flex-col")}>
+      <div className="flex items-center justify-between">
+        <SubTitle className="flex items-center">
+          <StepNumber />
+          <Link to="#" className="transition hover:text-slate-300">
+            I'll host the workflow myself
+          </Link>
+        </SubTitle>
+        <TertiaryLink to="#">Change answer</TertiaryLink>
+      </div>
+      <div className="mb-6">
+        <SubTitle className="flex items-center">
+          <StepNumber active stepNumber="2" />
+          Would you like to create a new GitHub repository?
+        </SubTitle>
+        <Panel className="flex w-full items-center justify-between">
+          <div className="grid w-full grid-cols-2 gap-x-4">
+            <button className={buttonStyles}>
+              <div className={classNames("bg-green-400", labelStyles)}>
+                Recommended
+              </div>
+              <CubeTransparentIcon className="h-10 w-10 text-indigo-400" />
+              <Header3>I want to create a new repo</Header3>
+              <Body size="small" className="text-slate-400">
+                We'll setup a new GitHub repository and install your template.
+              </Body>
+            </button>
+            <button className={buttonStyles}>
+              <CubeIcon className="h-10 w-10 text-orange-400" />
+              <Header3>I want to use an existing repo</Header3>
+              <Body size="small" className="text-slate-400">
+                Use an existing repo.
+              </Body>
+            </button>
+          </div>
+        </Panel>
+      </div>
+    </div>
+  );
+}
+
+function Step3NewRepo1() {
+  return (
+    <div className={classNames(maxWidth)}>
+      <div className="flex items-center justify-between">
+        <SubTitle className="flex items-center">
+          <StepNumber />
+          <Link to="#" className="transition hover:text-slate-300">
+            I'll host the workflow myself
+          </Link>
+        </SubTitle>
+        <TertiaryLink to="#">Change answer</TertiaryLink>
+      </div>
+      <div className="flex items-center justify-between">
+        <SubTitle className="flex items-center">
+          <StepNumber />
+          <Link to="#" className="transition hover:text-slate-300">
+            I'll start with a template
+          </Link>
+        </SubTitle>
+        <TertiaryLink to="#">Change answer</TertiaryLink>
+      </div>
+      <div className="mb-6">
+        <SubTitle className="flex items-center">
+          <StepNumber active stepNumber="3" />
+          Which template would you like to use?
+        </SubTitle>
+        <TemplatesGrid />
+      </div>
+    </div>
+  );
+}
+
+function Step3NewRepo2() {
+  return (
+    <div className={classNames(maxWidth)}>
+      <div className="flex items-center justify-between">
+        <SubTitle className="flex items-center">
+          <StepNumber />
+          <Link to="#" className="transition hover:text-slate-300">
+            I'll host the workflow myself
+          </Link>
+        </SubTitle>
+        <TertiaryLink to="#">Change answer</TertiaryLink>
+      </div>
+      <div className="flex items-center justify-between">
+        <SubTitle className="flex items-center">
+          <StepNumber />
+          <Link to="#" className="transition hover:text-slate-300">
+            I'll start with a template
+          </Link>
+        </SubTitle>
+        <TertiaryLink to="#">Change answer</TertiaryLink>
+      </div>
+      <div className="flex items-center justify-between">
+        <SubTitle className="flex items-center">
+          <StepNumber />
+          <Link to="#" className="transition hover:text-slate-300">
+            The template i've chosen is: GitHub Issue to Slack
+          </Link>
+        </SubTitle>
+        <TertiaryLink to="#">Change answer</TertiaryLink>
+      </div>
+      <div className="mb-6">
+        <SubTitle className="flex items-center">
+          <StepNumber active stepNumber="4" />
+          Confirm your chosen template
+        </SubTitle>
+        <TemplateOverview />
+      </div>
+    </div>
+  );
+}
+
+function Step3ExistingRepo1() {
+  return (
+    <div className={classNames(maxWidth)}>
+      <div className="flex items-center justify-between">
+        <SubTitle className="flex items-center">
+          <StepNumber />
+          <Link to="#" className="transition hover:text-slate-300">
+            I'll host the workflow myself
+          </Link>
+        </SubTitle>
+        <TertiaryLink to="#">Change answer</TertiaryLink>
+      </div>
+      <div className="flex items-center justify-between">
+        <SubTitle className="flex items-center">
+          <StepNumber />
+          <Link to="#" className="transition hover:text-slate-300">
+            I'll use an existing repo
+          </Link>
+        </SubTitle>
+        <TertiaryLink to="#">Change answer</TertiaryLink>
+      </div>
+      <div className="mb-6">
+        <SubTitle className="flex items-center">
+          <StepNumber active stepNumber="3" />
+          Install the Trigger.dev package
+        </SubTitle>
+        <Panel className="flex flex-col gap-2 px-4 pb-4">
+          <InstallPackages packages={"@trigger.dev/sdk"} />
+          <PrimaryLink to="#">Continue</PrimaryLink>
+        </Panel>
+      </div>
+    </div>
+  );
+}
+
+function Step3ExistingRepo2() {
+  const environment = useCurrentEnvironment();
+  const currentOrganization = useCurrentOrganization();
+  invariant(currentOrganization, "Organization must be defined");
+  invariant(environment, "Environment must be defined");
+  return (
+    <div className={classNames("flex flex-col", maxWidth)}>
+      <div className="flex items-center justify-between">
+        <SubTitle className="flex items-center">
+          <StepNumber />
+          <Link to="#" className="transition hover:text-slate-300">
+            I'll host the workflow myself
+          </Link>
+        </SubTitle>
+        <TertiaryLink to="#">Change answer</TertiaryLink>
+      </div>
+      <div className="flex items-center justify-between">
+        <SubTitle className="flex items-center">
+          <StepNumber />
+          <Link to="#" className="transition hover:text-slate-300">
+            I'll host the repo myself
+          </Link>
+        </SubTitle>
+        <TertiaryLink to="#">Change answer</TertiaryLink>
+      </div>
+      <div className="flex items-center justify-between">
+        <SubTitle className="flex items-center">
+          <StepNumber />
+          <Link to="#" className="transition hover:text-slate-300">
+            I've installed the Trigger.dev package
+          </Link>
+        </SubTitle>
+        <TertiaryLink to="#">Change answer</TertiaryLink>
+      </div>
+      <div className="mb-6">
+        <SubTitle className="flex items-center">
+          <StepNumber active stepNumber="4" />
+          Choose a template
+        </SubTitle>
+        <TemplatesGrid />
+        {fromScratchProjects[0].name}
+      </div>
+    </div>
+  );
+}
+
+function Step3ExistingRepo3() {
+  return (
+    <div className={maxWidth}>
+      <div className="flex items-center justify-between">
+        <SubTitle className="flex items-center">
+          <StepNumber />
+          <Link to="#" className="transition hover:text-slate-300">
+            I'll host the workflow myself
+          </Link>
+        </SubTitle>
+        <TertiaryLink to="#">Change answer</TertiaryLink>
+      </div>
+      <div className="flex items-center justify-between">
+        <SubTitle className="flex items-center">
+          <StepNumber />
+          <Link to="#" className="transition hover:text-slate-300">
+            I'll host the repo myself
+          </Link>
+        </SubTitle>
+        <TertiaryLink to="#">Change answer</TertiaryLink>
+      </div>
+      <div className="flex items-center justify-between">
+        <SubTitle className="flex items-center">
+          <StepNumber />
+          <Link to="#" className="transition hover:text-slate-300">
+            I've installed the Trigger.dev package
+          </Link>
+        </SubTitle>
+        <TertiaryLink to="#">Change answer</TertiaryLink>
+      </div>
+      <div className="flex items-center justify-between">
+        <SubTitle className="flex items-center">
+          <StepNumber />
+          <Link to="#" className="transition hover:text-slate-300">
+            I've chosen the template: GitHub Issue to Slack
+          </Link>
+        </SubTitle>
+        <TertiaryLink to="#">Change answer</TertiaryLink>
+      </div>
+      <div>
+        <SubTitle className="flex items-center">
+          <StepNumber active stepNumber="5" />
+          Install the additional packages for this template
+        </SubTitle>
+      </div>
+      <Panel className="px-4 py-4">
+        <InstallPackages packages={exampleProjects[0].requiredPackages} />
+        <PrimaryLink className="mt-2" to="#">
+          Continue
+        </PrimaryLink>
+      </Panel>
+    </div>
+  );
+}
+
+function Step3ExistingRepo4() {
+  return (
+    <div className={maxWidth}>
+      <div className="flex items-center justify-between">
+        <SubTitle className="flex items-center">
+          <StepNumber />
+          <Link to="#" className="transition hover:text-slate-300">
+            I'll host the workflow myself
+          </Link>
+        </SubTitle>
+        <TertiaryLink to="#">Change answer</TertiaryLink>
+      </div>
+      <div className="flex items-center justify-between">
+        <SubTitle className="flex items-center">
+          <StepNumber />
+          <Link to="#" className="transition hover:text-slate-300">
+            I'll host the repo myself
+          </Link>
+        </SubTitle>
+        <TertiaryLink to="#">Change answer</TertiaryLink>
+      </div>
+      <div className="flex items-center justify-between">
+        <SubTitle className="flex items-center">
+          <StepNumber />
+          <Link to="#" className="transition hover:text-slate-300">
+            I've installed the Trigger.dev package
+          </Link>
+        </SubTitle>
+        <TertiaryLink to="#">Change answer</TertiaryLink>
+      </div>
+      <div className="flex items-center justify-between">
+        <SubTitle className="flex items-center">
+          <StepNumber />
+          <Link to="#" className="transition hover:text-slate-300">
+            I've chosen the template: GitHub Issue to Slack
+          </Link>
+        </SubTitle>
+        <TertiaryLink to="#">Change answer</TertiaryLink>
+      </div>
+      <div className="flex items-center justify-between">
+        <SubTitle className="flex items-center">
+          <StepNumber />
+          <Link to="#" className="transition hover:text-slate-300">
+            I've installed the additional packages
+          </Link>
+        </SubTitle>
+        <TertiaryLink to="#">Change answer</TertiaryLink>
+      </div>
+      <SubTitle className="flex items-center">
+        <StepNumber active stepNumber="6" />
+        Copy the example code into your project
+      </SubTitle>
+      <Panel className="px-4 py-4">
+        <Header4
+          size="extra-small"
+          className="mb-2 font-semibold text-slate-300"
+        >
+          {exampleProjects[0].title}
+        </Header4>
+        <Body size="regular" className="mb-4 text-slate-400">
+          {exampleProjects[0].description}
+        </Body>
+        <Body size="regular" className="mb-2 mt-4 text-slate-400">
+          Copy this example code into your project. Your API key has already
+          been inserted.
+        </Body>
+        {/* <CodeBlock
+          code={exampleProjects[0].code(environment.apiKey)}
+          align="top"
+        /> */}
+        <PrimaryLink className="mt-2" to="#">
+          Continue
+        </PrimaryLink>
+      </Panel>
+    </div>
+  );
+}
+
+function Step3ExistingRepo5() {
+  return (
+    <div className={maxWidth}>
+      <div className="flex items-center justify-between">
+        <SubTitle className="flex items-center">
+          <StepNumber />
+          <Link to="#" className="transition hover:text-slate-300">
+            I'll host the workflow myself
+          </Link>
+        </SubTitle>
+        <TertiaryLink to="#">Change answer</TertiaryLink>
+      </div>
+      <div className="flex items-center justify-between">
+        <SubTitle className="flex items-center">
+          <StepNumber />
+          <Link to="#" className="transition hover:text-slate-300">
+            I'll host the repo myself
+          </Link>
+        </SubTitle>
+        <TertiaryLink to="#">Change answer</TertiaryLink>
+      </div>
+      <div className="flex items-center justify-between">
+        <SubTitle className="flex items-center">
+          <StepNumber />
+          <Link to="#" className="transition hover:text-slate-300">
+            I've installed the Trigger.dev package
+          </Link>
+        </SubTitle>
+        <TertiaryLink to="#">Change answer</TertiaryLink>
+      </div>
+      <div className="flex items-center justify-between">
+        <SubTitle className="flex items-center">
+          <StepNumber />
+          <Link to="#" className="transition hover:text-slate-300">
+            I've chosen the template: GitHub Issue to Slack
+          </Link>
+        </SubTitle>
+        <TertiaryLink to="#">Change answer</TertiaryLink>
+      </div>
+      <div className="flex items-center justify-between">
+        <SubTitle className="flex items-center">
+          <StepNumber />
+          <Link to="#" className="transition hover:text-slate-300">
+            I've installed the additional packages
+          </Link>
+        </SubTitle>
+        <TertiaryLink to="#">Change answer</TertiaryLink>
+      </div>
+      <div className="flex items-center justify-between">
+        <SubTitle className="flex items-center">
+          <StepNumber />
+          <Link to="#" className="transition hover:text-slate-300">
+            I've added the example code to my project
+          </Link>
+        </SubTitle>
+        <TertiaryLink to="#">Change answer</TertiaryLink>
+      </div>
+      <SubTitle className="flex items-center">
+        <StepNumber active stepNumber="7" />
+        Lastly, run your web server
+      </SubTitle>
+      <Panel className="px-4 py-4">
+        <Body size="regular" className="mb-4 text-slate-400">
+          Run your server as you typically do, e.g.{" "}
+          <InlineCode>npm run dev</InlineCode>. This will connect your workflow
+          to Trigger.dev, so we can start sending you events. You should see
+          some log messages in your server console (tip: you can turn these off
+          by removing the <InlineCode>logLevel: "info"</InlineCode> from the
+          code above).
+        </Body>
+        <CheckForWorkflows />
+      </Panel>
+    </div>
+  );
+}
+
+function Step1Hosted({ showVisitedButtonState }: Step1Props) {
+  return (
+    <button onClick={showVisitedButtonState} className={buttonStyles}>
+      <CloudIcon className="h-10 w-10 text-blue-400" />
+      <Header3>Host the workflow for me in the cloud</Header3>
+      <Body size="small" className="text-slate-400">
+        Trigger.dev can host and handle the servers for me.
+      </Body>
+    </button>
+  );
+}
+
+function Step1HostedVisited() {
+  return (
+    <div className="relative flex flex-col items-center justify-start gap-4 rounded border border-dashed border-slate-950 bg-slate-800 px-4 py-8 transition">
+      <RocketLaunchIcon className="h-10 w-10 animate-pulse text-blue-400" />
+      <Header3>Cloud hosting coming soon…</Header3>
+      <Body size="small" className="text-center text-slate-400">
+        We're working hard to bring you a cloud hosted service.
+      </Body>
+    </div>
+  );
+}
+
+function CheckForWorkflows() {
+  const fetchWorkflowCount = useTypedFetcher<typeof action>();
+
+  if (fetchWorkflowCount.state !== "idle") {
+    return (
+      <div className="flex items-center justify-between rounded bg-slate-850 p-3 pl-4">
+        <div className="mb-3 flex items-center gap-2">
+          <Spinner />
+          <Body size="regular" className="text-slate-300">
+            Waiting for your workflow to connect...
+          </Body>
+        </div>
+        <PrimaryButton>Connecting…</PrimaryButton>
+      </div>
+    );
+  }
+
+  if (fetchWorkflowCount.data === undefined) {
+    return (
+      <fetchWorkflowCount.Form method="post">
+        <div className="flex items-center justify-between rounded bg-slate-850 p-3 pl-4">
+          <div className="flex items-center gap-2">
+            <Spinner />
+            <Body size="regular" className="text-slate-300">
+              Waiting for your workflow to connect…
+            </Body>
+          </div>
+          <PrimaryButton type="submit">
+            Check my workflow connection
+          </PrimaryButton>
+        </div>
+      </fetchWorkflowCount.Form>
+    );
+  } else {
+    if (fetchWorkflowCount.data.hasNewWorkflows) {
+      return (
+        <div>
+          <div className="flex items-center justify-between rounded bg-slate-850 p-3 pl-4">
+            <div className="flex items-center gap-2">
+              <CheckCircleIcon className="h-5 w-5 text-green-400" />
+              <Body size="regular" className="font-semibold text-slate-300">
+                Great, "{fetchWorkflowCount.data.newWorkflow?.title}" is
+                connected!
+              </Body>
+            </div>
+            <PrimaryLink
+              to={`../workflows/${fetchWorkflowCount.data.newWorkflow?.slug}`}
+            >
+              View workflow
+            </PrimaryLink>
+          </div>
+        </div>
+      );
+    } else {
+      return (
+        <div className="flex items-center justify-between rounded bg-slate-850 p-3 pl-4">
+          <div className="mb-3 flex items-center gap-2">
+            <ExclamationTriangleIcon className="h-5 w-5 text-amber-400" />
+            <Body size="regular" className="text-slate-300">
+              It doesn't seem like your workflow has connected yet. Check your
+              server is running and try again.
+            </Body>
+          </div>
+          <fetchWorkflowCount.Form method="post">
+            <PrimaryButton type="submit">
+              Check my workflow connection
+            </PrimaryButton>
+          </fetchWorkflowCount.Form>
+        </div>
+      );
+    }
+  }
 }
 
 export function StepNumber({
@@ -321,76 +687,8 @@ export function StepNumber({
   );
 }
 
-function CheckForWorkflows() {
-  const fetchWorkflowCount = useTypedFetcher<typeof action>();
-
-  if (fetchWorkflowCount.state !== "idle") {
-    return (
-      <Panel>
-        <div className="mb-3 flex items-center gap-2">
-          <Spinner />
-          <Body size="regular" className="text-slate-300">
-            Waiting for your workflow to connect...
-          </Body>
-        </div>
-        <PrimaryButton>Connecting…</PrimaryButton>
-      </Panel>
-    );
-  }
-
-  if (fetchWorkflowCount.data === undefined) {
-    return (
-      <fetchWorkflowCount.Form method="post">
-        <Panel>
-          <div className="mb-3 flex items-center gap-2">
-            <Spinner />
-            <Body size="regular" className="text-slate-300">
-              Waiting for your workflow to connect…
-            </Body>
-          </div>
-          <PrimaryButton type="submit">
-            Check my workflow connection
-          </PrimaryButton>
-        </Panel>
-      </fetchWorkflowCount.Form>
-    );
-  } else {
-    if (fetchWorkflowCount.data.hasNewWorkflows) {
-      return (
-        <div>
-          <Panel>
-            <div className="flex items-center gap-2">
-              <CheckCircleIcon className="h-5 w-5 text-green-400" />
-              <Body size="regular" className="font-semibold text-slate-300">
-                Great, "{fetchWorkflowCount.data.newWorkflow?.title}" is
-                connected!
-              </Body>
-            </div>
-            <PrimaryLink
-              to={`../workflows/${fetchWorkflowCount.data.newWorkflow?.slug}`}
-            >
-              View workflow
-            </PrimaryLink>
-          </Panel>
-        </div>
-      );
-    } else {
-      return (
-        <Panel>
-          <div className="mb-3 flex items-center gap-2">
-            <ExclamationTriangleIcon className="h-5 w-5 text-amber-400" />
-            <Body size="regular" className="text-slate-300">
-              It doesn't seem like your workflow has connected yet. Check your
-              server is running and try again.
-            </Body>
-          </div>
-          <fetchWorkflowCount.Form method="post">
-            <PrimaryButton type="submit">
-              Check my workflow connection
-            </PrimaryButton>
-          </fetchWorkflowCount.Form>
-        </Panel>
-      );
-    }
-  }
-}
+const buttonStyles =
+  "relative flex flex-col items-center justify-start hover:bg-slate-700 px-4 shadow gap-4 rounded bg-slate-700/50 py-8 border border-slate-700 transition";
+const labelStyles =
+  "absolute top-0 right-0 uppercase text-xs text-slate-900 px-2 py-1 font-semibold rounded-bl rounded-tr";
+const maxWidth = "flex flex-col max-w-4xl";
