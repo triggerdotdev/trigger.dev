@@ -106,12 +106,12 @@ export default function NewWorkflowPage() {
       {/* <Step1 /> */}
       {/* <Step2 /> */}
       {/* <Step3NewRepo1 /> */}
-      <Step3NewRepo2 />
-      {/* <Step3ExistingRepo1 /> */}
+      {/* <Step3NewRepo2 /> */}
       {/* <Step3ExistingRepo2 /> */}
       {/* <Step3ExistingRepo3 /> */}
       {/* <Step3ExistingRepo4 /> */}
       {/* <Step3ExistingRepo5 /> */}
+      <Step3ExistingRepo6 />
     </Container>
   );
 }
@@ -174,7 +174,7 @@ function Step2() {
           <div className="grid w-full grid-cols-2 gap-x-4">
             <button className={buttonStyles}>
               <div className={classNames("bg-green-400", labelStyles)}>
-                Recommended
+                Easy (2 mins)
               </div>
               <CubeTransparentIcon className="h-10 w-10 text-indigo-400" />
               <Header3>I want to create a new repo</Header3>
@@ -186,7 +186,7 @@ function Step2() {
               <CubeIcon className="h-10 w-10 text-orange-400" />
               <Header3>I want to use an existing repo</Header3>
               <Body size="small" className="text-slate-400">
-                Use an existing repo.
+                I want my workflow to be alongside my existing code.
               </Body>
             </button>
           </div>
@@ -253,7 +253,7 @@ function Step3NewRepo2() {
         <SubTitle className="flex items-center">
           <StepNumber />
           <Link to="#" className="transition hover:text-slate-300">
-            The template i've chosen is: GitHub Issue to Slack
+            I chose the {exampleProjects[0].name} template
           </Link>
         </SubTitle>
         <TertiaryLink to="#">Change answer</TertiaryLink>
@@ -263,41 +263,8 @@ function Step3NewRepo2() {
           <StepNumber active stepNumber="4" />
           Confirm your chosen template
         </SubTitle>
-        <TemplateOverview />
-      </div>
-    </div>
-  );
-}
-
-function Step3ExistingRepo1() {
-  return (
-    <div className={classNames(maxWidth)}>
-      <div className="flex items-center justify-between">
-        <SubTitle className="flex items-center">
-          <StepNumber />
-          <Link to="#" className="transition hover:text-slate-300">
-            I'll host the workflow myself
-          </Link>
-        </SubTitle>
-        <TertiaryLink to="#">Change answer</TertiaryLink>
-      </div>
-      <div className="flex items-center justify-between">
-        <SubTitle className="flex items-center">
-          <StepNumber />
-          <Link to="#" className="transition hover:text-slate-300">
-            I'll use an existing repo
-          </Link>
-        </SubTitle>
-        <TertiaryLink to="#">Change answer</TertiaryLink>
-      </div>
-      <div className="mb-6">
-        <SubTitle className="flex items-center">
-          <StepNumber active stepNumber="3" />
-          Install the Trigger.dev package
-        </SubTitle>
-        <Panel className="flex flex-col gap-2 px-4 pb-4">
-          <InstallPackages packages={"@trigger.dev/sdk"} />
-          <PrimaryLink to="#">Continue</PrimaryLink>
+        <Panel className="px-4 py-4">
+          <TemplateOverview />
         </Panel>
       </div>
     </div>
@@ -324,24 +291,15 @@ function Step3ExistingRepo2() {
         <SubTitle className="flex items-center">
           <StepNumber />
           <Link to="#" className="transition hover:text-slate-300">
-            I'll host the repo myself
-          </Link>
-        </SubTitle>
-        <TertiaryLink to="#">Change answer</TertiaryLink>
-      </div>
-      <div className="flex items-center justify-between">
-        <SubTitle className="flex items-center">
-          <StepNumber />
-          <Link to="#" className="transition hover:text-slate-300">
-            I've installed the Trigger.dev package
+            I'll use an existing repo
           </Link>
         </SubTitle>
         <TertiaryLink to="#">Change answer</TertiaryLink>
       </div>
       <div className="mb-6">
         <SubTitle className="flex items-center">
-          <StepNumber active stepNumber="4" />
-          Choose a template
+          <StepNumber active stepNumber="3" />
+          Choose an example
         </SubTitle>
         <TemplatesGrid />
         {fromScratchProjects[0].name}
@@ -366,16 +324,7 @@ function Step3ExistingRepo3() {
         <SubTitle className="flex items-center">
           <StepNumber />
           <Link to="#" className="transition hover:text-slate-300">
-            I'll host the repo myself
-          </Link>
-        </SubTitle>
-        <TertiaryLink to="#">Change answer</TertiaryLink>
-      </div>
-      <div className="flex items-center justify-between">
-        <SubTitle className="flex items-center">
-          <StepNumber />
-          <Link to="#" className="transition hover:text-slate-300">
-            I've installed the Trigger.dev package
+            I'll use an existing repo
           </Link>
         </SubTitle>
         <TertiaryLink to="#">Change answer</TertiaryLink>
@@ -391,8 +340,8 @@ function Step3ExistingRepo3() {
       </div>
       <div>
         <SubTitle className="flex items-center">
-          <StepNumber active stepNumber="5" />
-          Install the additional packages for this template
+          <StepNumber active stepNumber="4" />
+          Install the Trigger.dev packages for this example
         </SubTitle>
       </div>
       <Panel className="px-4 py-4">
@@ -406,6 +355,8 @@ function Step3ExistingRepo3() {
 }
 
 function Step3ExistingRepo4() {
+  const environment = useCurrentEnvironment();
+  invariant(environment, "Environment must be defined");
   return (
     <div className={maxWidth}>
       <div className="flex items-center justify-between">
@@ -421,16 +372,7 @@ function Step3ExistingRepo4() {
         <SubTitle className="flex items-center">
           <StepNumber />
           <Link to="#" className="transition hover:text-slate-300">
-            I'll host the repo myself
-          </Link>
-        </SubTitle>
-        <TertiaryLink to="#">Change answer</TertiaryLink>
-      </div>
-      <div className="flex items-center justify-between">
-        <SubTitle className="flex items-center">
-          <StepNumber />
-          <Link to="#" className="transition hover:text-slate-300">
-            I've installed the Trigger.dev package
+            I'll use an existing repo
           </Link>
         </SubTitle>
         <TertiaryLink to="#">Change answer</TertiaryLink>
@@ -448,33 +390,23 @@ function Step3ExistingRepo4() {
         <SubTitle className="flex items-center">
           <StepNumber />
           <Link to="#" className="transition hover:text-slate-300">
-            I've installed the additional packages
+            I've installed the packages
           </Link>
         </SubTitle>
         <TertiaryLink to="#">Change answer</TertiaryLink>
       </div>
       <SubTitle className="flex items-center">
-        <StepNumber active stepNumber="6" />
+        <StepNumber active stepNumber="5" />
         Copy the example code into your project
       </SubTitle>
       <Panel className="px-4 py-4">
-        <Header4
-          size="extra-small"
-          className="mb-2 font-semibold text-slate-300"
-        >
-          {exampleProjects[0].title}
-        </Header4>
-        <Body size="regular" className="mb-4 text-slate-400">
-          {exampleProjects[0].description}
+        <Body size="regular" className="mb-2 text-slate-400">
+          Your API key has already been inserted.
         </Body>
-        <Body size="regular" className="mb-2 mt-4 text-slate-400">
-          Copy this example code into your project. Your API key has already
-          been inserted.
-        </Body>
-        {/* <CodeBlock
+        <CodeBlock
           code={exampleProjects[0].code(environment.apiKey)}
           align="top"
-        /> */}
+        />
         <PrimaryLink className="mt-2" to="#">
           Continue
         </PrimaryLink>
@@ -499,16 +431,7 @@ function Step3ExistingRepo5() {
         <SubTitle className="flex items-center">
           <StepNumber />
           <Link to="#" className="transition hover:text-slate-300">
-            I'll host the repo myself
-          </Link>
-        </SubTitle>
-        <TertiaryLink to="#">Change answer</TertiaryLink>
-      </div>
-      <div className="flex items-center justify-between">
-        <SubTitle className="flex items-center">
-          <StepNumber />
-          <Link to="#" className="transition hover:text-slate-300">
-            I've installed the Trigger.dev package
+            I'll use an existing repo
           </Link>
         </SubTitle>
         <TertiaryLink to="#">Change answer</TertiaryLink>
@@ -526,7 +449,7 @@ function Step3ExistingRepo5() {
         <SubTitle className="flex items-center">
           <StepNumber />
           <Link to="#" className="transition hover:text-slate-300">
-            I've installed the additional packages
+            I've installed the packages
           </Link>
         </SubTitle>
         <TertiaryLink to="#">Change answer</TertiaryLink>
@@ -536,6 +459,77 @@ function Step3ExistingRepo5() {
           <StepNumber />
           <Link to="#" className="transition hover:text-slate-300">
             I've added the example code to my project
+          </Link>
+        </SubTitle>
+        <TertiaryLink to="#">Change answer</TertiaryLink>
+      </div>
+      <SubTitle className="flex items-center">
+        <StepNumber active stepNumber="6" />
+        Check your workflow file is running
+      </SubTitle>
+      <Panel className="px-4 py-4">
+        <Body size="regular" className="mb-4 text-slate-400">
+          Ensure that your workflow file is run.
+        </Body>
+        <PrimaryLink to="#">Continue</PrimaryLink>
+      </Panel>
+    </div>
+  );
+}
+
+function Step3ExistingRepo6() {
+  return (
+    <div className={maxWidth}>
+      <div className="flex items-center justify-between">
+        <SubTitle className="flex items-center">
+          <StepNumber />
+          <Link to="#" className="transition hover:text-slate-300">
+            I'll host the workflow myself
+          </Link>
+        </SubTitle>
+        <TertiaryLink to="#">Change answer</TertiaryLink>
+      </div>
+      <div className="flex items-center justify-between">
+        <SubTitle className="flex items-center">
+          <StepNumber />
+          <Link to="#" className="transition hover:text-slate-300">
+            I'll use an existing repo
+          </Link>
+        </SubTitle>
+        <TertiaryLink to="#">Change answer</TertiaryLink>
+      </div>
+      <div className="flex items-center justify-between">
+        <SubTitle className="flex items-center">
+          <StepNumber />
+          <Link to="#" className="transition hover:text-slate-300">
+            I've chosen the template: GitHub Issue to Slack
+          </Link>
+        </SubTitle>
+        <TertiaryLink to="#">Change answer</TertiaryLink>
+      </div>
+      <div className="flex items-center justify-between">
+        <SubTitle className="flex items-center">
+          <StepNumber />
+          <Link to="#" className="transition hover:text-slate-300">
+            I've installed the packages
+          </Link>
+        </SubTitle>
+        <TertiaryLink to="#">Change answer</TertiaryLink>
+      </div>
+      <div className="flex items-center justify-between">
+        <SubTitle className="flex items-center">
+          <StepNumber />
+          <Link to="#" className="transition hover:text-slate-300">
+            I've added the example code to my project
+          </Link>
+        </SubTitle>
+        <TertiaryLink to="#">Change answer</TertiaryLink>
+      </div>
+      <div className="flex items-center justify-between">
+        <SubTitle className="flex items-center">
+          <StepNumber />
+          <Link to="#" className="transition hover:text-slate-300">
+            My workflow file is running
           </Link>
         </SubTitle>
         <TertiaryLink to="#">Change answer</TertiaryLink>
@@ -588,7 +582,7 @@ function CheckForWorkflows() {
 
   if (fetchWorkflowCount.state !== "idle") {
     return (
-      <div className="flex items-center justify-between rounded bg-slate-850 p-3 pl-4">
+      <div className="flex items-center justify-between rounded bg-slate-850 p-3 pl-5">
         <div className="mb-3 flex items-center gap-2">
           <Spinner />
           <Body size="regular" className="text-slate-300">
@@ -603,7 +597,7 @@ function CheckForWorkflows() {
   if (fetchWorkflowCount.data === undefined) {
     return (
       <fetchWorkflowCount.Form method="post">
-        <div className="flex items-center justify-between rounded bg-slate-850 p-3 pl-4">
+        <div className="flex items-center justify-between rounded bg-slate-850 p-3 pl-5">
           <div className="flex items-center gap-2">
             <Spinner />
             <Body size="regular" className="text-slate-300">
@@ -620,7 +614,7 @@ function CheckForWorkflows() {
     if (fetchWorkflowCount.data.hasNewWorkflows) {
       return (
         <div>
-          <div className="flex items-center justify-between rounded bg-slate-850 p-3 pl-4">
+          <div className="flex items-center justify-between rounded bg-slate-850 p-3 pl-5">
             <div className="flex items-center gap-2">
               <CheckCircleIcon className="h-5 w-5 text-green-400" />
               <Body size="regular" className="font-semibold text-slate-300">
@@ -638,7 +632,7 @@ function CheckForWorkflows() {
       );
     } else {
       return (
-        <div className="flex items-center justify-between rounded bg-slate-850 p-3 pl-4">
+        <div className="flex items-center justify-between rounded bg-slate-850 p-3 pl-5">
           <div className="mb-3 flex items-center gap-2">
             <ExclamationTriangleIcon className="h-5 w-5 text-amber-400" />
             <Body size="regular" className="text-slate-300">
