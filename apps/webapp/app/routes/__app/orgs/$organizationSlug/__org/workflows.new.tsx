@@ -38,6 +38,7 @@ import {
   fromScratchProjects,
 } from "~/components/samples/samplesList";
 import {
+  ExampleBlankOverview,
   ExampleOverview,
   FromScratchOverview,
 } from "~/components/templates/ExampleOverview";
@@ -270,10 +271,7 @@ function Step3ExistingRepo1() {
               Browse examples to use as a starting point. (Opens in a modal)
             </SubTitle>
             <div className="grid grid-cols-4 gap-2">
-              <div className={buttonStyles}>
-                <CubeTransparentIcon className="h-8 w-8 text-slate-400" />
-                <Body>Blank example</Body>
-              </div>
+              <ExampleBlankOverview />
               <ExampleOverview {...exampleProjects[0]} />
             </div>
             <SubTitle className="mt-6">Or start from scratch</SubTitle>
