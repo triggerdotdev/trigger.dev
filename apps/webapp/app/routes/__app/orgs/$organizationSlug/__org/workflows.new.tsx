@@ -305,6 +305,10 @@ function Step3ExistingRepo2() {
             Browse examples to use as a starting point. (Opens in a modal)
           </SubTitle>
           <div className="grid grid-cols-4 gap-2">
+            <div className={buttonStyles}>
+              <CubeTransparentIcon className="h-8 w-8 text-slate-400" />
+              <Body>Blank example</Body>
+            </div>
             {exampleProjects.map((project) => {
               return (
                 <div key={project.name} className={buttonStyles}>
