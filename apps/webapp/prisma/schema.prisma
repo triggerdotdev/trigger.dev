@@ -641,6 +641,4 @@ enum OrganizationTemplateStatus {
   CREATED
   READY_TO_DEPLOY
   DEPLOYED
-  READY_TO_TEST
-  READY_TO_RUN
 }

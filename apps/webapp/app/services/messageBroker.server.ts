@@ -483,6 +483,10 @@ const taskQueueCatalog = {
     data: z.object({ id: z.number() }),
     properties: z.object({}),
   },
+  WORKFLOW_CREATED: {
+    data: z.object({ id: z.string() }),
+    properties: z.object({}),
+  },
 };
 
 function createTaskQueue() {
@@ -839,6 +843,17 @@ function createTaskQueue() {
 
         return true;
       },
+      WORKFLOW_CREATED: async (id, data, properties, attributes) => {
+        if (attributes.redeliveryCount >= 4) {
+          return true;
+        }
+
+        const service = new WorkflowCreated();
+
+        await service.call(data.id);
+
+        return true;
+      },
     },
   });
 
@@ -859,6 +874,7 @@ export { taskQueue, requestTaskQueue, appEventPublisher };
 
 import { ZodEventSubscriber } from "internal-platform";
 import { EventEmitter } from "stream";
+import { WorkflowCreated } from "./workflows/events/workflowCreated.server";
 
 export async function createEventEmitter({
   id,

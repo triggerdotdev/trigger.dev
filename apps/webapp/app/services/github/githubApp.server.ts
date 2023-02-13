@@ -98,7 +98,8 @@ function createWebhooks() {
         {
           id: payload.repository.id,
         },
-        {}
+        {},
+        { deliverAfter: 1000 * 10 }
       );
     }
   );
