@@ -14,11 +14,29 @@ import { resendEmailDripCampaign } from "./resend-email-drip-campaign";
 import { shopifyCreateNewProducts } from "./shopify-create-new-product";
 import { webhook } from "./webhook";
 import { scheduled } from "./scheduled";
-
 import { whatsappListenForMessageAndReply } from "./whatsapp-listen-for-message-and-reply";
 import { scheduledCron } from "./scheduled-cron";
 
-export const exampleProjects = [
+export type ExampleProject = {
+  icon: React.ReactNode;
+  name: string;
+  title: string;
+  description: string;
+  requiredPackages: string;
+  code: (apiKey: string) => string;
+  packagesCopy?: string;
+};
+
+export type FromScratchProjects = {
+  icon: React.ReactNode;
+  name: string;
+  title: string;
+  description: string;
+  requiredPackages: string;
+  code: string;
+};
+
+export const exampleProjects: ExampleProject[] = [
   {
     icon: <StarIcon className="h-8 w-8 text-yellow-400" />,
     name: "GitHub star → Slack",
