@@ -1,18 +1,18 @@
 import { IndentationText, NewLineKind, Project, QuoteKind } from "ts-morph";
 import { Service } from "core/service/types";
 import fs from "fs/promises";
+import path from "path";
 import { generateInputOutputSchemas } from "generators/combineSchemas";
 import { getTypesFromSchema } from "generators/generateTypes";
-import { dirname } from "path";
 import rimraf from "rimraf";
 
-const appDir = require.main ? dirname(require.main.filename) : process.cwd();
+const appDir = process.cwd();
 
 export async function generateService(service: Service) {
-  const basePath = `sdks/@trigger.dev/${service.service}`;
+  const basePath = `generated-integrations/${service.service}`;
 
   //remove folder
-  const absolutePath = `${appDir}/${basePath}/`;
+  const absolutePath = path.join(appDir, "../..", basePath);
 
   console.log(`Removing ${absolutePath}...`);
   rimraf.sync(absolutePath);
@@ -30,9 +30,9 @@ export async function generateService(service: Service) {
   });
 
   try {
-    project.createDirectory(basePath);
-    await generateTemplatedFiles(project, basePath, service);
-    await generateFunctionsAndTypes(project, basePath, service);
+    project.createDirectory(absolutePath);
+    await generateTemplatedFiles(project, absolutePath, service);
+    await generateFunctionsAndTypes(project, absolutePath, service);
     await project.save();
   } catch (e) {
     console.error(e);

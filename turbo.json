@@ -84,7 +84,8 @@
       "cache": false
     },
     "generate-integrations": {
-      "cache": false
+      "cache": false,
+      "outputs": ["generated-integrations/**"]
     }
   },
   "globalDependencies": [".env"],
