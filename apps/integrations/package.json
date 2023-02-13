@@ -15,6 +15,7 @@
   },
   "dependencies": {
     "@cfworker/json-schema": "^1.12.5",
+    "@prisma/client": "^4.3.0",
     "@trigger.dev/sdk": "^0.2.13",
     "express": "^4.18.1",
     "express-async-errors": "^3.1.1",
@@ -40,6 +41,7 @@
     "eslint-plugin-n": "^15.6.1",
     "eslint-plugin-promise": "^6.1.1",
     "nodemon": "^2.0.19",
+    "prisma": "^4.3.0",
     "rimraf": "^4.1.2",
     "tiny-invariant": "^1.2.0",
     "ts-morph": "^17.0.1",
