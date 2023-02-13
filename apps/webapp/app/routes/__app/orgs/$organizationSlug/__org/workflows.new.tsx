@@ -1,3 +1,4 @@
+import { Dialog, Transition } from "@headlessui/react";
 import {
   CheckCircleIcon,
   CloudIcon,
@@ -11,7 +12,7 @@ import { Link } from "@remix-run/react";
 import type { ActionArgs, LoaderArgs } from "@remix-run/server-runtime";
 import { redirect } from "@remix-run/server-runtime";
 import classNames from "classnames";
-import { useState } from "react";
+import { Fragment, useState } from "react";
 import { typedjson, useTypedFetcher } from "remix-typedjson";
 import invariant from "tiny-invariant";
 import { z } from "zod";
@@ -275,62 +276,91 @@ function Step3ExistingRepo2() {
   const currentOrganization = useCurrentOrganization();
   invariant(currentOrganization, "Organization must be defined");
   invariant(environment, "Environment must be defined");
+  let [isOpen, setIsOpen] = useState(true);
   return (
-    <div className={classNames("flex flex-col", maxWidth)}>
-      <div className="flex items-center justify-between">
-        <SubTitle className="flex items-center">
-          <StepNumber />
-          <Link to="#" className="transition hover:text-slate-300">
-            I'll host the workflow myself
-          </Link>
-        </SubTitle>
-        <TertiaryLink to="#">Change answer</TertiaryLink>
-      </div>
-      <div className="flex items-center justify-between">
-        <SubTitle className="flex items-center">
-          <StepNumber />
-          <Link to="#" className="transition hover:text-slate-300">
-            I'll use an existing repo
-          </Link>
-        </SubTitle>
-        <TertiaryLink to="#">Change answer</TertiaryLink>
-      </div>
-      <div className="mb-6">
-        <SubTitle className="flex items-center">
-          <StepNumber active stepNumber="3" />
-          Choose an example
-        </SubTitle>
-        <Panel className="px-4 py-4">
-          <SubTitle>
-            Browse examples to use as a starting point. (Opens in a modal)
-          </SubTitle>
-          <div className="grid grid-cols-4 gap-2">
-            <div className={buttonStyles}>
-              <CubeTransparentIcon className="h-8 w-8 text-slate-400" />
-              <Body>Blank example</Body>
+    <>
+      <Transition
+        show={isOpen}
+        enter="transition duration-100 ease-out"
+        enterFrom="transform scale-95 opacity-0"
+        enterTo="transform scale-100 opacity-100"
+        leave="transition duration-75 ease-out"
+        leaveFrom="transform scale-100 opacity-100"
+        leaveTo="transform scale-95 opacity-0"
+        as={Fragment}
+      >
+        <Dialog onClose={() => setIsOpen(false)} className="relative z-50">
+          <div className="fixed inset-0 bg-black/30" aria-hidden="true" />
+          <div className="fixed inset-0 overflow-y-auto">
+            <div className="flex min-h-full items-center justify-center p-4">
+              <Dialog.Panel className="mx-auto max-w-5xl rounded bg-slate-800 p-4 shadow-lg">
+                <TemplateOverview />
+              </Dialog.Panel>
             </div>
-            {exampleProjects.map((project) => {
-              return (
-                <div key={project.name} className={buttonStyles}>
-                  {project.icon}
-                  <Body>{project.name}</Body>
-                </div>
-              );
-            })}
           </div>
-          <SubTitle className="mt-6">Or start from scratch</SubTitle>
-          <div className="grid grid-cols-4 gap-2">
-            {fromScratchProjects.map((project) => {
-              return (
-                <div key={project.name} className={buttonStyles}>
-                  {project.name}
-                </div>
-              );
-            })}
-          </div>
-        </Panel>
+        </Dialog>
+      </Transition>
+      <div className={classNames("flex flex-col", maxWidth)}>
+        <div className="flex items-center justify-between">
+          <SubTitle className="flex items-center">
+            <StepNumber />
+            <Link to="#" className="transition hover:text-slate-300">
+              I'll host the workflow myself
+            </Link>
+          </SubTitle>
+          <TertiaryLink to="#">Change answer</TertiaryLink>
+        </div>
+        <div className="flex items-center justify-between">
+          <SubTitle className="flex items-center">
+            <StepNumber />
+            <Link to="#" className="transition hover:text-slate-300">
+              I'll use an existing repo
+            </Link>
+          </SubTitle>
+          <TertiaryLink to="#">Change answer</TertiaryLink>
+        </div>
+        <div className="mb-6">
+          <SubTitle className="flex items-center">
+            <StepNumber active stepNumber="3" />
+            Choose an example
+          </SubTitle>
+          <Panel className="px-4 py-4">
+            <SubTitle>
+              Browse examples to use as a starting point. (Opens in a modal)
+            </SubTitle>
+            <div className="grid grid-cols-4 gap-2">
+              <div className={buttonStyles}>
+                <CubeTransparentIcon className="h-8 w-8 text-slate-400" />
+                <Body>Blank example</Body>
+              </div>
+              {exampleProjects.map((project) => {
+                return (
+                  <button
+                    key={project.name}
+                    type="button"
+                    onClick={(e) => setIsOpen(true)}
+                    className={buttonStyles}
+                  >
+                    {project.icon}
+                    <Body>{project.name}</Body>
+                  </button>
+                );
+              })}
+            </div>
+            <SubTitle className="mt-6">Or start from scratch</SubTitle>
+            <div className="grid grid-cols-4 gap-2">
+              {fromScratchProjects.map((project) => {
+                return (
+                  <div key={project.name} className={buttonStyles}>
+                    {project.name}
+                  </div>
+                );
+              })}
+            </div>
+          </Panel>
+        </div>
       </div>
-    </div>
+    </>
   );
 }
 
