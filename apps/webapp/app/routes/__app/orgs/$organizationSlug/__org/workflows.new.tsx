@@ -8,6 +8,7 @@ import {
   HomeIcon,
   RocketLaunchIcon,
 } from "@heroicons/react/24/outline";
+import { XCircleIcon } from "@heroicons/react/24/solid";
 import { Link } from "@remix-run/react";
 import type { ActionArgs, LoaderArgs } from "@remix-run/server-runtime";
 import { redirect } from "@remix-run/server-runtime";
@@ -26,6 +27,7 @@ import {
   PrimaryLink,
   TertiaryLink,
 } from "~/components/primitives/Buttons";
+import { StyledDialog } from "~/components/primitives/Dialog";
 import { Spinner } from "~/components/primitives/Spinner";
 import { Body } from "~/components/primitives/text/Body";
 import { Header3 } from "~/components/primitives/text/Headers";
@@ -276,30 +278,29 @@ function Step3ExistingRepo2() {
   const currentOrganization = useCurrentOrganization();
   invariant(currentOrganization, "Organization must be defined");
   invariant(environment, "Environment must be defined");
-  let [isOpen, setIsOpen] = useState(true);
+  let [isOpen, setIsOpen] = useState(false);
   return (
     <>
-      <Transition
+      <StyledDialog.Dialog
+        onClose={(e) => setIsOpen(false)}
+        appear
         show={isOpen}
-        enter="transition duration-100 ease-out"
-        enterFrom="transform scale-95 opacity-0"
-        enterTo="transform scale-100 opacity-100"
-        leave="transition duration-75 ease-out"
-        leaveFrom="transform scale-100 opacity-100"
-        leaveTo="transform scale-95 opacity-0"
         as={Fragment}
       >
-        <Dialog onClose={() => setIsOpen(false)} className="relative z-50">
-          <div className="fixed inset-0 bg-black/30" aria-hidden="true" />
-          <div className="fixed inset-0 overflow-y-auto">
-            <div className="flex min-h-full items-center justify-center p-4">
-              <Dialog.Panel className="mx-auto max-w-5xl rounded bg-slate-800 p-4 shadow-lg">
-                <TemplateOverview />
-              </Dialog.Panel>
-            </div>
+        <div className="fixed inset-0 overflow-y-auto">
+          <div className="flex min-h-full items-center justify-center p-4">
+            <StyledDialog.Panel className="relative mx-auto w-96 min-w-[1000px] max-w-5xl rounded bg-white">
+              <button
+                onClick={() => setIsOpen(false)}
+                className="absolute top-0 -right-12 text-slate-600 transition hover:text-slate-500"
+              >
+                <XCircleIcon className="h-10 w-10" />
+              </button>
+              <TemplateOverview />
+            </StyledDialog.Panel>
           </div>
-        </Dialog>
-      </Transition>
+        </div>
+      </StyledDialog.Dialog>
       <div className={classNames("flex flex-col", maxWidth)}>
         <div className="flex items-center justify-between">
           <SubTitle className="flex items-center">
