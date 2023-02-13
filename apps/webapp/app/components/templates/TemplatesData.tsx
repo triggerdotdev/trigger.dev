@@ -1,10 +1,18 @@
-// import Slack from "../../../public/integrations/slack.png";
-// import SlackTemplateBg from "../../../public/images/templates/slack-template.png";
 import GitHubStarsTemplateBg from "../../../public/images/templates/github-stars-template-bg.png";
 import ResendSlackTemplateBg from "../../../public/images/templates/resend-slack-template-bg.png";
 import ShopifyTemplateBg from "../../../public/images/templates/shopify-template-bg.png";
 
-export const TemplateData = [
+export type TemplateData = {
+  title: string;
+  shortTitle: string;
+  description: string;
+  imageURL: string;
+  githubRepoURL: string;
+  services: string[];
+  documentation?: string;
+};
+
+export const templateData = [
   {
     title: "Slack notifications when a GitHub repo is starred",
     shortTitle: "GitHub stars to Slack",
@@ -13,6 +21,7 @@ export const TemplateData = [
     imageURL: GitHubStarsTemplateBg,
     githubRepoURL: "repo-url",
     services: ["slack", "github"],
+    documentation: "```js\nconsole.log('hello world')\n```"
   },
   {
     title: "New user welcome email drip campaign",

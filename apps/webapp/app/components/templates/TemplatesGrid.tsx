@@ -1,19 +1,19 @@
 import { Body } from "../primitives/text/Body";
 import { Header1 } from "../primitives/text/Headers";
-import { TemplateData } from "./TemplatesData";
+import { templateData } from "./TemplatesData";
 import Slack from "../../../public/integrations/slack.png";
 
 
 export function TemplatesGrid() {
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 w-full flex-wrap mt-8">
-      {TemplateData.map((template) => {
+    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 w-full flex-wrap mt-8">
+      {templateData.map((template) => {
 return (
   <div
     key={template.title}
-    className=" group w-full items-center overflow-hidden rounded-md border border-slate-700 bg-slate-800 text-sm text-slate-200 shadow-md transition hover:cursor-pointer hover:border-slate-700 hover:bg-slate-800/30 disabled:opacity-50" 
+    className=" group w-full items-center overflow-hidden rounded-md border border-slate-700 bg-slate-800 text-sm text-slate-200 shadow-md transition hover:cursor-pointer hover:border-slate-700 hover:bg-slate-800/30 disabled:opacity-50"
   >
-    <div className="relative h-32 bg-slate-600  transition group-hover:opacity-90">
+    <div className="relative h-24 w-full bg-slate-600  transition group-hover:opacity-90">
       <img
         src={template.imageURL}
         alt=""
@@ -33,7 +33,6 @@ return (
       <Body size="small" className="text-slate-400">
         {template.description}
       </Body>
-
     </div>
   </div>
 );
