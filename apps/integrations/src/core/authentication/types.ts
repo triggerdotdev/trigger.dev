@@ -1,39 +1,47 @@
-export type IntegrationAuthentication = Record<
-string,
-AuthenticationDefinition
->
+import { z } from "zod";
 
-type AuthenticationDefinition = OAuth2
+export type IntegrationAuthentication = Record<
+  string,
+  AuthenticationDefinition
+>;
+
+type AuthenticationDefinition = OAuth2;
 
 interface OAuth2 {
   type: "oauth2";
-  placement: AuthenticationPlacement
-  authorizationUrl: string
-  tokenUrl: string
+  placement: AuthenticationPlacement;
+  authorizationUrl: string;
+  tokenUrl: string;
   flow: "accessCode" | "implicit" | "password" | "application";
-  scopes: Record<string, string>
+  scopes: Record<string, string>;
 }
 
-type AuthenticationPlacement = HeaderAuthentication
+type AuthenticationPlacement = HeaderAuthentication;
 
 interface HeaderAuthentication {
   in: "header";
   type: "basic" | "bearer";
-  key: string
+  key: string;
 }
 
-export type AuthCredentials = OAuth2Credentials | APIKeyCredentials
+const OAuth2CredentialsSchema = z.object({
+  type: z.literal("oauth2"),
+  name: z.string(),
+  accessToken: z.string(),
+  scopes: z.array(z.string()),
+});
 
-interface OAuth2Credentials {
-  type: "oauth2";
-  name: string
-  accessToken: string
-  scopes: string[]
-}
-interface APIKeyCredentials {
-  type: "api_key";
-  name: string
-  api_key: string
-  additionalFields?: Record<string, string>
-  scopes: string[]
-}
+const APIKeyCredentialsSchema = z.object({
+  type: z.literal("api_key"),
+  name: z.string(),
+  api_key: z.string(),
+  additionalFields: z.record(z.string(), z.string()).optional(),
+  scopes: z.array(z.string()),
+});
+
+export const AuthCredentialsSchema = z.discriminatedUnion("type", [
+  OAuth2CredentialsSchema,
+  APIKeyCredentialsSchema,
+]);
+
+export type AuthCredentials = z.infer<typeof AuthCredentialsSchema>;

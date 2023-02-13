@@ -6,6 +6,8 @@ dotenv.config();
 const app: Express = express();
 const port = process.env.PORT ?? 3006;
 
+app.use(express.json());
+
 app.get("/", (req: Request, res: Response) => {
   res.send("Trigger.dev integrations service");
 });

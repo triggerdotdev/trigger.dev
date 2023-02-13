@@ -22,7 +22,8 @@
     "json-schema-deref-sync": "^0.14.0",
     "json-schema-to-typescript": "^11.0.3",
     "loglevel": "^1.8.1",
-    "node-fetch": "^3.3.0"
+    "node-fetch": "^3.3.0",
+    "zod": "^3.20.2"
   },
   "devDependencies": {
     "@types/eslint": "^8.4.6",
