@@ -600,6 +600,7 @@ model Template {
   description   String
   imageUrl      String
   repositoryUrl String
+  markdownDocs  String @default("Documentation\n\nThis template does not have any documentation yet.")
 
   priority Int @default(0)
 
