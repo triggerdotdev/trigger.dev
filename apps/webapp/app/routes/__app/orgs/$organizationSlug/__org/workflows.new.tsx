@@ -23,12 +23,11 @@ import { Panel } from "~/components/layout/Panel";
 import {
   PrimaryButton,
   PrimaryLink,
-  TertiaryA,
   TertiaryLink,
 } from "~/components/primitives/Buttons";
 import { Spinner } from "~/components/primitives/Spinner";
 import { Body } from "~/components/primitives/text/Body";
-import { Header3, Header4 } from "~/components/primitives/text/Headers";
+import { Header3 } from "~/components/primitives/text/Headers";
 import { SubTitle } from "~/components/primitives/text/SubTitle";
 import { Title } from "~/components/primitives/text/Title";
 import {
@@ -107,11 +106,11 @@ export default function NewWorkflowPage() {
       {/* <Step2 /> */}
       {/* <Step3NewRepo1 /> */}
       {/* <Step3NewRepo2 /> */}
-      {/* <Step3ExistingRepo2 /> */}
+      <Step3ExistingRepo2 />
       {/* <Step3ExistingRepo3 /> */}
       {/* <Step3ExistingRepo4 /> */}
       {/* <Step3ExistingRepo5 /> */}
-      <Step3ExistingRepo6 />
+      {/* <Step3ExistingRepo6 /> */}
     </Container>
   );
 }
@@ -301,8 +300,31 @@ function Step3ExistingRepo2() {
           <StepNumber active stepNumber="3" />
           Choose an example
         </SubTitle>
-        <TemplatesGrid />
-        {fromScratchProjects[0].name}
+        <Panel className="px-4 py-4">
+          <SubTitle>
+            Browse examples to use as a starting point. (Opens in a modal)
+          </SubTitle>
+          <div className="grid grid-cols-4 gap-2">
+            {exampleProjects.map((project) => {
+              return (
+                <div key={project.name} className={buttonStyles}>
+                  {project.icon}
+                  <Body>{project.name}</Body>
+                </div>
+              );
+            })}
+          </div>
+          <SubTitle className="mt-6">Or start from scratch</SubTitle>
+          <div className="grid grid-cols-4 gap-2">
+            {fromScratchProjects.map((project) => {
+              return (
+                <div key={project.name} className={buttonStyles}>
+                  {project.name}
+                </div>
+              );
+            })}
+          </div>
+        </Panel>
       </div>
     </div>
   );
@@ -682,7 +704,7 @@ export function StepNumber({
 }
 
 const buttonStyles =
-  "relative flex flex-col items-center justify-start hover:bg-slate-700 px-4 shadow gap-4 rounded bg-slate-700/50 py-8 border border-slate-700 transition";
+  "relative flex flex-col cursor-pointer items-center justify-start hover:bg-slate-700 px-4 shadow gap-4 rounded bg-slate-700/50 py-8 border border-slate-700 transition";
 const labelStyles =
   "absolute top-0 right-0 uppercase text-xs text-slate-900 px-2 py-1 font-semibold rounded-bl rounded-tr";
 const maxWidth = "flex flex-col max-w-4xl";
