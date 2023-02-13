@@ -109,12 +109,11 @@ export default function NewWorkflowPage() {
       {/* <Step1 /> */}
       {/* <Step2 /> */}
       {/* <Step3NewRepo1 /> */}
-      <Step3NewRepo2 />
+      <Step3ExistingRepo1 />
       {/* <Step3ExistingRepo2 /> */}
       {/* <Step3ExistingRepo3 /> */}
       {/* <Step3ExistingRepo4 /> */}
       {/* <Step3ExistingRepo5 /> */}
-      {/* <Step3ExistingRepo6 /> */}
     </Container>
   );
 }
@@ -231,48 +230,7 @@ function Step3NewRepo1() {
   );
 }
 
-function Step3NewRepo2() {
-  return (
-    <div className={classNames(maxWidth)}>
-      <div className="flex items-center justify-between">
-        <SubTitle className="flex items-center">
-          <StepNumber />
-          <Link to="#" className="transition hover:text-slate-300">
-            I'll host the workflow myself
-          </Link>
-        </SubTitle>
-        <TertiaryLink to="#">Change answer</TertiaryLink>
-      </div>
-      <div className="flex items-center justify-between">
-        <SubTitle className="flex items-center">
-          <StepNumber />
-          <Link to="#" className="transition hover:text-slate-300">
-            I'll start with a template
-          </Link>
-        </SubTitle>
-        <TertiaryLink to="#">Change answer</TertiaryLink>
-      </div>
-      <div className="flex items-center justify-between">
-        <SubTitle className="flex items-center">
-          <StepNumber />
-          <Link to="#" className="transition hover:text-slate-300">
-            I chose the {exampleProjects[0].name} template
-          </Link>
-        </SubTitle>
-        <TertiaryLink to="#">Change answer</TertiaryLink>
-      </div>
-      <div className="mb-6">
-        <SubTitle className="flex items-center">
-          <StepNumber active stepNumber="4" />
-          Confirm your chosen template
-        </SubTitle>
-        <TemplateOverview {...templateData[0]} />
-      </div>
-    </div>
-  );
-}
-
-function Step3ExistingRepo2() {
+function Step3ExistingRepo1() {
   const environment = useCurrentEnvironment();
   const currentOrganization = useCurrentOrganization();
   invariant(currentOrganization, "Organization must be defined");
@@ -364,7 +322,7 @@ function Step3ExistingRepo2() {
   );
 }
 
-function Step3ExistingRepo3() {
+function Step3ExistingRepo2() {
   return (
     <div className={maxWidth}>
       <div className="flex items-center justify-between">
@@ -410,7 +368,7 @@ function Step3ExistingRepo3() {
   );
 }
 
-function Step3ExistingRepo4() {
+function Step3ExistingRepo3() {
   const environment = useCurrentEnvironment();
   invariant(environment, "Environment must be defined");
   return (
@@ -471,7 +429,7 @@ function Step3ExistingRepo4() {
   );
 }
 
-function Step3ExistingRepo5() {
+function Step3ExistingRepo4() {
   return (
     <div className={maxWidth}>
       <div className="flex items-center justify-between">
@@ -533,7 +491,7 @@ function Step3ExistingRepo5() {
   );
 }
 
-function Step3ExistingRepo6() {
+function Step3ExistingRepo5() {
   return (
     <div className={maxWidth}>
       <div className="flex items-center justify-between">
