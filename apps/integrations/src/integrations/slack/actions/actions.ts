@@ -48,7 +48,7 @@ export const chatPostMessage: Action = {
       };
     }
 
-    //we add __internal metadata so we can associate messages with workflow runs
+    //we add __trigger metadata so we can associate messages with workflow runs
     let bodyMetadata: {
       event_payload?: any;
       event_type: string;
@@ -60,7 +60,7 @@ export const chatPostMessage: Action = {
         ...bodyMetadata,
         event_payload: {
           ...(data.body?.metadata ?? {}),
-          __internal: metadata,
+          __trigger: metadata,
         },
       };
     } else {
