@@ -8,7 +8,7 @@ import { marked } from "marked";
 
 export function TemplateOverview({ documentation, title, description, githubRepoURL, imageURL }: TemplateData) {
   return (
-    <div className="flex h-full w-full ">
+    <div className="flex h-full w-full">
       <div className="flex w-full flex-col gap-y-2 bg-slate-900 p-4">
         <div className="h-32 w-full bg-slate-600 transition group-hover:opacity-90">
           <img
@@ -20,7 +20,7 @@ export function TemplateOverview({ documentation, title, description, githubRepo
 
         {documentation && (
           <div
-            className="prose prose-sm prose-invert"
+            className="prose"
             dangerouslySetInnerHTML={{
               __html: marked(documentation),
             }}
