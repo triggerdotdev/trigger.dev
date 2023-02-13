@@ -28,12 +28,14 @@ export type ExampleProject = {
 };
 
 export type FromScratchProjects = {
-  icon: React.ReactNode;
   name: string;
-  title: string;
   description: string;
+  docsLink?: string;
   requiredPackages: string;
-  code: string;
+  code: (apiKey: string) => string;
+  bulletPoint1?: string;
+  bulletPoint2?: string;
+  bulletPoint3?: string;
 };
 
 export const exampleProjects: ExampleProject[] = [
@@ -102,7 +104,7 @@ export const exampleProjects: ExampleProject[] = [
   },
 ];
 
-export const fromScratchProjects = [
+export const fromScratchProjects: FromScratchProjects[] = [
   {
     name: "Webhook",
     requiredPackages: "@trigger.dev/sdk zod",

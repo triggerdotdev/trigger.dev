@@ -37,7 +37,10 @@ import {
   exampleProjects,
   fromScratchProjects,
 } from "~/components/samples/samplesList";
-import { ExampleOverview } from "~/components/templates/ExampleOverview";
+import {
+  ExampleOverview,
+  FromScratchOverview,
+} from "~/components/templates/ExampleOverview";
 import { TemplateOverview } from "~/components/templates/TemplateOverview";
 import { templateData } from "~/components/templates/TemplatesData";
 import { TemplatesGrid } from "~/components/templates/TemplatesGrid";
@@ -236,7 +239,6 @@ function Step3ExistingRepo1() {
   const currentOrganization = useCurrentOrganization();
   invariant(currentOrganization, "Organization must be defined");
   invariant(environment, "Environment must be defined");
-  let [isOpen, setIsOpen] = useState(false);
   return (
     <>
       <div className={classNames("flex flex-col", maxWidth)}>
@@ -276,13 +278,7 @@ function Step3ExistingRepo1() {
             </div>
             <SubTitle className="mt-6">Or start from scratch</SubTitle>
             <div className="grid grid-cols-4 gap-2">
-              {fromScratchProjects.map((project) => {
-                return (
-                  <div key={project.name} className={buttonStyles}>
-                    {project.name}
-                  </div>
-                );
-              })}
+              <FromScratchOverview {...fromScratchProjects[0]} />
             </div>
           </Panel>
         </div>
