@@ -6,6 +6,7 @@ export default defineConfig([
     entry: ["./src/index.ts"],
     outDir: "./dist",
     platform: "node",
+    target: "node16",
     format: ["cjs"],
     legacyOutput: true,
     sourcemap: true,
