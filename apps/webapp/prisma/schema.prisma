@@ -627,8 +627,19 @@ model OrganizationTemplate {
   repositoryUrl String
   private       Boolean
 
+  status OrganizationTemplateStatus @default(PENDING)
+
   repositoryData Json
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+enum OrganizationTemplateStatus {
+  PENDING
+  CREATED
+  READY_TO_DEPLOY
+  DEPLOYED
+  READY_TO_TEST
+  READY_TO_RUN
 }

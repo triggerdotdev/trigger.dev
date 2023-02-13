@@ -5,10 +5,11 @@ import {
   ScheduledEventPayloadSchema,
 } from "@trigger.dev/common-schemas";
 import { DeliverEmailSchema } from "emails";
-import type {
+import {
   CommandCatalog,
   CommandResponseCatalog,
   TriggerCatalog,
+  ZodEventPublisher,
 } from "internal-platform";
 import {
   commandCatalog,
@@ -64,6 +65,7 @@ let commandResponsePublisher: ZodPublisher<CommandResponseCatalog>;
 let commandSubscriber: ZodSubscriber<CommandCatalog>;
 let taskQueue: ZodPubSub<typeof taskQueueCatalog>;
 let requestTaskQueue: ZodPubSub<typeof RequestCatalog>;
+let appEventPublisher: ZodEventPublisher;
 
 declare global {
   var __pulsar_client__: typeof pulsarClient;
@@ -72,6 +74,7 @@ declare global {
   var __command_response_publisher__: typeof commandResponsePublisher;
   var __task_queue__: typeof taskQueue;
   var __request_task_queue__: typeof requestTaskQueue;
+  var __app_event_publisher__: typeof appEventPublisher;
 }
 
 export async function init() {
@@ -134,11 +137,21 @@ export async function init() {
     requestTaskQueue = global.__request_task_queue__;
   }
 
+  if (env.NODE_ENV === "production") {
+    appEventPublisher = createAppEventPublisher();
+  } else {
+    if (!global.__app_event_publisher__) {
+      global.__app_event_publisher__ = createAppEventPublisher();
+    }
+    appEventPublisher = global.__app_event_publisher__;
+  }
+
   await commandResponsePublisher.initialize();
   await triggerPublisher.initialize();
   await taskQueue.initialize();
   await requestTaskQueue.initialize();
   await commandSubscriber.initialize();
+  await appEventPublisher.initialize();
 }
 
 function createClient() {
@@ -832,4 +845,52 @@ function createTaskQueue() {
   return taskQueue;
 }
 
-export { taskQueue, requestTaskQueue };
+function createAppEventPublisher() {
+  return new ZodEventPublisher({
+    client: pulsarClient,
+    config: {
+      topic: "webapp-events",
+      batchingEnabled: false,
+    },
+  });
+}
+
+export { taskQueue, requestTaskQueue, appEventPublisher };
+
+import { ZodEventSubscriber } from "internal-platform";
+import { EventEmitter } from "stream";
+
+export async function createEventEmitter({
+  id,
+  filter,
+}: {
+  id: string;
+  filter: Record<string, string>;
+}) {
+  const eventEmitter = new EventEmitter();
+
+  const eventSubscriber = new ZodEventSubscriber({
+    client: pulsarClient,
+    config: {
+      subscription: `webapp-${id}`,
+      topic: "webapp-events",
+    },
+    handler: async (id, name, data, properties, attributes) => {
+      if (attributes.redeliveryCount >= 4) {
+        return true;
+      }
+
+      eventEmitter.emit(name, data);
+      return true;
+    },
+    filter,
+  });
+
+  await eventSubscriber.initialize();
+
+  eventEmitter.on("removeListener", async () => {
+    await eventSubscriber.close();
+  });
+
+  return eventEmitter;
+}

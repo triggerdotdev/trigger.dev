@@ -1,6 +1,7 @@
 import type { PrismaClient } from "~/db.server";
 import { prisma } from "~/db.server";
 import { getOctokitRest } from "~/services/github/githubApp.server";
+import { appEventPublisher } from "../messageBroker.server";
 
 export class GithubRepositoryCreated {
   #prismaClient: PrismaClient;
@@ -58,5 +59,25 @@ export class GithubRepositoryCreated {
       content: Buffer.from(readmeContent).toString("base64"),
       sha: readme.data.sha,
     });
+
+    await this.#prismaClient.organizationTemplate.update({
+      where: {
+        id: organizationTemplate.id,
+      },
+      data: {
+        status: "READY_TO_DEPLOY",
+      },
+    });
+
+    await appEventPublisher.publish(
+      "organization-template.updated",
+      {
+        id: organizationTemplate.id,
+        status: "READY_TO_DEPLOY",
+      },
+      {
+        "x-organization-template-id": organizationTemplate.id,
+      }
+    );
   }
 }

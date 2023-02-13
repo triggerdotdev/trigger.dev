@@ -107,6 +107,7 @@ export class AddTemplateService {
       await this.#prismaClient.organizationTemplate.create({
         data: {
           name: data.name,
+          status: "CREATED",
           repositoryId: githubRepository.id,
           repositoryUrl: githubRepository.html_url,
           repositoryData: githubRepository,
