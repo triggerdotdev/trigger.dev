@@ -266,7 +266,7 @@ function Step3NewRepo2() {
           Confirm your chosen template
         </SubTitle>
         <Panel className="px-4 py-4">
-          <TemplateOverview />
+          <TemplateOverview {...templateData[0]} />
         </Panel>
       </div>
     </div>
@@ -296,7 +296,7 @@ function Step3ExistingRepo2() {
               >
                 <XCircleIcon className="h-10 w-10" />
               </button>
-              <TemplateOverview />
+              <TemplateOverview {...templateData[0]} />
             </StyledDialog.Panel>
           </div>
         </div>
