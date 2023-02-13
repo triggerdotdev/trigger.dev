@@ -1,4 +1,5 @@
 import { AuthCredentialsSchema } from "core/authentication/types";
+import { validateInputs } from "core/validation/inputs";
 import { Request, Response } from "express";
 import { catalog } from "integrations/catalog";
 import { z } from "zod";
@@ -43,8 +44,6 @@ export async function handleAction(req: Request, res: Response) {
     return;
   }
 
-  console.log("body", req.body);
-
   const bodyResult = bodySchema.safeParse(req.body);
 
   if (!bodyResult.success) {
@@ -57,10 +56,25 @@ export async function handleAction(req: Request, res: Response) {
     return;
   }
 
+  const inputValidationResult = await validateInputs(
+    matchingAction.spec.input,
+    bodyResult.data
+  );
+  if (!inputValidationResult.success) {
+    res.status(400).send(
+      JSON.stringify({
+        success: false,
+        error: inputValidationResult.error,
+      })
+    );
+    return;
+  }
+
   try {
     const data = await matchingAction.action(bodyResult.data);
     res.send(JSON.stringify(data));
   } catch (e: any) {
+    console.error(e);
     res
       .status(500)
       .send(JSON.stringify({ success: false, errors: e.toString() }));

@@ -12,6 +12,13 @@
       "cwd": "${workspaceFolder}"
     },
     {
+      "command": "pnpm run dev --filter integrations",
+      "name": "Run integrations",
+      "request": "launch",
+      "type": "node-terminal",
+      "cwd": "${workspaceFolder}"
+    },
+    {
       "type": "chrome",
       "request": "launch",
       "name": "Chrome webapp",

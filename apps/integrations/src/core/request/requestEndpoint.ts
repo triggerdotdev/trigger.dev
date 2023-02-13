@@ -18,6 +18,12 @@ export async function requestEndpoint(
   let path = endpointSpec.path;
 
   // validate the request body
+  if (body == null && request.body?.schema != null) {
+    throw {
+      type: "missing_body",
+    };
+  }
+
   const requestValid = await validate(body, request.body?.schema);
   if (!requestValid.success) {
     throw {

@@ -7,11 +7,17 @@ export type RequestError =
   | ExtraParametersError
   | InsufficientScopesError
   | MissingResponseSpec
-  | ResponseBodyInvalid;
+  | ResponseBodyInvalid
+  | BodyMissing
+  | MissingCredentialsError;
 
 export interface RequestBodyInvalid {
   type: "request_body_invalid";
   errors: any[];
+}
+
+export interface BodyMissing {
+  type: "missing_body";
 }
 
 export interface ParameterMissing {
@@ -27,7 +33,7 @@ export interface ParametersInvalid {
     name: string;
     value: any;
   };
-  errors: Array<{ name: string; errors: JSONSchemaError[] }>;
+  errors: JSONSchemaError[];
 }
 
 export interface ExtraParametersError {
