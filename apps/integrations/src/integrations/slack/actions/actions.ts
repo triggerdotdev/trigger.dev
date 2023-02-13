@@ -48,9 +48,34 @@ export const chatPostMessage: Action = {
       };
     }
 
+    //we add __internal metadata so we can associate messages with workflow runs
+    let bodyMetadata: {
+      event_payload?: any;
+      event_type: string;
+    } = {
+      event_type: "post_message",
+    };
+    if (metadata) {
+      bodyMetadata = {
+        ...bodyMetadata,
+        event_payload: {
+          ...(data.body?.metadata ?? {}),
+          __internal: metadata,
+        },
+      };
+    } else {
+      bodyMetadata = {
+        ...bodyMetadata,
+        event_payload: {
+          ...(data.body?.metadata ?? {}),
+        },
+      };
+    }
+
     const postMessageBody = {
       ...data.body,
       channel: channelId,
+      metadata: metadata ? bodyMetadata : undefined,
     };
 
     //todo add extra passed in metadata to the metadata property
