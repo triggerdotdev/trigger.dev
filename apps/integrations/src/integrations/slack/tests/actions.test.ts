@@ -1,7 +1,11 @@
 import { expect, test } from "vitest";
 import { chatPostMessage, conversationsList } from "../actions/actions";
 
+const authToken = () => process.env.SLACK_TOKEN ?? "";
+
 test("/conversations.list success", async () => {
+  const accessToken = authToken();
+  expect(accessToken).not.toEqual("");
   try {
     const data = await conversationsList.action({
       parameters: {
@@ -10,7 +14,7 @@ test("/conversations.list success", async () => {
       credentials: {
         type: "oauth2",
         name: "slackAuth",
-        accessToken: "xoxb-276370297397-4578980839603-5mrIOR6E5KQGhOwtAYTaMC2x",
+        accessToken,
         scopes: ["conversations:read"],
       },
     });
@@ -25,6 +29,9 @@ test("/conversations.list success", async () => {
 });
 
 test("/chat.postMessage success with name", async () => {
+  const accessToken = authToken();
+  expect(accessToken).not.toEqual("");
+
   try {
     const data = await chatPostMessage.action({
       body: {
@@ -34,7 +41,7 @@ test("/chat.postMessage success with name", async () => {
       credentials: {
         type: "oauth2",
         name: "slackAuth",
-        accessToken: "xoxb-276370297397-4578980839603-5mrIOR6E5KQGhOwtAYTaMC2x",
+        accessToken,
         scopes: [
           "chat:write:user",
           "chat:write:bot",
@@ -55,6 +62,9 @@ test("/chat.postMessage success with name", async () => {
 });
 
 test("/chat.postMessage failed with bad name", async () => {
+  const accessToken = authToken();
+  expect(accessToken).not.toEqual("");
+
   try {
     const data = await chatPostMessage.action({
       body: {
@@ -64,7 +74,7 @@ test("/chat.postMessage failed with bad name", async () => {
       credentials: {
         type: "oauth2",
         name: "slackAuth",
-        accessToken: "xoxb-276370297397-4578980839603-5mrIOR6E5KQGhOwtAYTaMC2x",
+        accessToken,
         scopes: [
           "chat:write:user",
           "chat:write:bot",

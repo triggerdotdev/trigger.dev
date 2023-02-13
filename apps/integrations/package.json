@@ -16,7 +16,6 @@
   "dependencies": {
     "@cfworker/json-schema": "^1.12.5",
     "@trigger.dev/sdk": "^0.2.13",
-    "dotenv": "^16.0.3",
     "express": "^4.18.1",
     "express-async-errors": "^3.1.1",
     "json-pointer": "^0.6.2",
@@ -32,6 +31,7 @@
     "@types/node": "^18.13.0",
     "@typescript-eslint/eslint-plugin": "^5.51.0",
     "concurrently": "^7.6.0",
+    "dotenv": "^16.0.3",
     "eslint": "^8.34.0",
     "eslint-config-prettier": "^8.5.0",
     "eslint-config-standard-with-typescript": "^34.0.0",
@@ -40,6 +40,7 @@
     "eslint-plugin-promise": "^6.1.1",
     "nodemon": "^2.0.19",
     "rimraf": "^4.1.2",
+    "tiny-invariant": "^1.2.0",
     "ts-morph": "^17.0.1",
     "tsup": "^6.6.2",
     "tsx": "^3.12.3",

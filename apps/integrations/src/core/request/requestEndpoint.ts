@@ -2,12 +2,12 @@ import { applyCredentials } from "core/authentication/credentials";
 import { EndpointSpec, EndpointSpecResponse } from "core/endpoint/types";
 import { JSONSchemaError } from "core/schemas/types";
 import { validate } from "core/schemas/validate";
-import fetch, { type Response } from "node-fetch";
+import { type Response } from "node-fetch";
 import {
-  RequestSpec,
+  FetchConfig,
   RequestData,
   RequestResponse,
-  FetchConfig,
+  RequestSpec,
 } from "./types";
 
 export async function requestEndpoint(
@@ -18,7 +18,7 @@ export async function requestEndpoint(
   let path = endpointSpec.path;
 
   // validate the request body
-  const requestValid = validate(body, request.body?.schema);
+  const requestValid = await validate(body, request.body?.schema);
   if (!requestValid.success) {
     throw {
       type: "request_body_invalid",
@@ -49,7 +49,7 @@ export async function requestEndpoint(
 
       const element = parameters[name];
       //validate the parameter against the schema
-      const valid = validate(element, parameter.schema);
+      const valid = await validate(element, parameter.schema);
       if (!valid.success) {
         throw {
           type: "parameter_invalid",
@@ -121,6 +121,7 @@ export async function requestEndpoint(
     headers: fetchConfig.headers,
     body: fetchConfig.body,
   };
+  const fetch = await getFetch();
   const response = await fetch(fetchConfig.url, fetchObject);
   const json = await safeGetJson(response);
 
@@ -139,7 +140,7 @@ export async function requestEndpoint(
   // start with the first spec and loop through them, if one succeeds then return that
   const specErrors: Array<{ name: string; errors: JSONSchemaError[] }> = [];
   for (const spec of responseSpecs) {
-    const responseValid = validate(json, spec.schema);
+    const responseValid = await validate(json, spec.schema);
     if (responseValid.success) {
       return {
         success: spec.success,
@@ -160,6 +161,10 @@ export async function requestEndpoint(
     body: json,
     errors: specErrors,
   };
+}
+
+async function getFetch() {
+  return (await import("node-fetch")).default;
 }
 
 async function safeGetJson(response: Response) {

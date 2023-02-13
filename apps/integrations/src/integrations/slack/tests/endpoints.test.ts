@@ -1,5 +1,6 @@
 import { expect, test } from "vitest";
 import endpoints from "../endpoints/endpoints";
+const authToken = () => process.env.SLACK_TOKEN ?? "";
 
 test("missing credentials", async () => {
   try {
@@ -15,6 +16,9 @@ test("missing credentials", async () => {
 });
 
 test("/chat.postMessage success", async () => {
+  const accessToken = authToken();
+  expect(accessToken).not.toEqual("");
+
   try {
     const data = await endpoints.chatPostMessage.request({
       body: {
@@ -24,7 +28,7 @@ test("/chat.postMessage success", async () => {
       credentials: {
         type: "oauth2",
         name: "slackAuth",
-        accessToken: "xoxb-276370297397-4578980839603-5mrIOR6E5KQGhOwtAYTaMC2x",
+        accessToken,
         scopes: ["chat:write:user", "chat:write:bot"],
       },
     });
@@ -43,6 +47,8 @@ test("/chat.postMessage success", async () => {
 });
 
 test("/chat.postMessage bad channel", async () => {
+  const accessToken = authToken();
+  expect(accessToken).not.toEqual("");
   try {
     const data = await endpoints.chatPostMessage.request({
       body: {
@@ -52,7 +58,7 @@ test("/chat.postMessage bad channel", async () => {
       credentials: {
         type: "oauth2",
         name: "slackAuth",
-        accessToken: "xoxb-276370297397-4578980839603-5mrIOR6E5KQGhOwtAYTaMC2x",
+        accessToken,
         scopes: ["chat:write:user", "chat:write:bot"],
       },
     });
@@ -68,6 +74,9 @@ test("/chat.postMessage bad channel", async () => {
 });
 
 test("/conversations.list success", async () => {
+  const accessToken = authToken();
+  expect(accessToken).not.toEqual("");
+
   try {
     const data = await endpoints.conversationsList.request({
       parameters: {
@@ -76,7 +85,7 @@ test("/conversations.list success", async () => {
       credentials: {
         type: "oauth2",
         name: "slackAuth",
-        accessToken: "xoxb-276370297397-4578980839603-5mrIOR6E5KQGhOwtAYTaMC2x",
+        accessToken,
         scopes: ["conversations:read"],
       },
     });

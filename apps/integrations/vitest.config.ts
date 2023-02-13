@@ -8,5 +8,6 @@ export default defineConfig({
   plugins: [tsconfigPaths()],
   test: {
     globals: true,
+    setupFiles: ["dotenv/config"],
   },
 });
