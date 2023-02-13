@@ -82,6 +82,9 @@
     },
     "clean:sourcemaps": {
       "cache": false
+    },
+    "generate-sdks": {
+      "cache": false
     }
   },
   "globalDependencies": [".env"],

@@ -1,0 +1,41 @@
+{
+  "private": true,
+  "name": "integrations",
+  "version": "1.0.0",
+  "description": "API integrations in a format that can be used to generate clients",
+  "main": "src/index.ts",
+  "scripts": {
+    "test": "vitest",
+    "lint": "eslint src/**",
+    "lint-fix": "eslint --fix src/**",
+    "generate-sdks": "tsx src/trigger/sdk/generate.ts"
+  },
+  "dependencies": {
+    "@cfworker/json-schema": "^1.12.5",
+    "@trigger.dev/sdk": "^0.2.13",
+    "json-pointer": "^0.6.2",
+    "json-schema-deref-sync": "^0.14.0",
+    "json-schema-to-typescript": "^11.0.3",
+    "node-fetch": "^3.3.0"
+  },
+  "devDependencies": {
+    "@types/eslint": "^8.4.6",
+    "@types/json-pointer": "^1.0.31",
+    "@types/node": "^18.13.0",
+    "@typescript-eslint/eslint-plugin": "^5.51.0",
+    "eslint": "^8.34.0",
+    "eslint-config-prettier": "^8.5.0",
+    "eslint-config-standard-with-typescript": "^34.0.0",
+    "eslint-plugin-import": "^2.27.5",
+    "eslint-plugin-n": "^15.6.1",
+    "eslint-plugin-promise": "^6.1.1",
+    "rimraf": "^4.1.2",
+    "ts-morph": "^17.0.1",
+    "tsup": "^6.6.2",
+    "tsx": "^3.12.3",
+    "typescript": "^4.9.5",
+    "vite": "^4.1.1",
+    "vite-tsconfig-paths": "^4.0.5",
+    "vitest": "^0.28.4"
+  }
+}
