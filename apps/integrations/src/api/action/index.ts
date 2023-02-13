@@ -1,3 +1,4 @@
+import { PostgresCacheService } from "cache/postgresCache";
 import { AuthCredentialsSchema } from "core/authentication/types";
 import { validateInputs } from "core/validation/inputs";
 import { Request, Response } from "express";
@@ -8,7 +9,11 @@ const bodySchema = z.object({
   parameters: z.record(z.string(), z.any()).optional(),
   credentials: AuthCredentialsSchema.optional(),
   body: z.any().optional(),
-  metadata: z.record(z.string(), z.any()).optional(),
+  metadata: z.object({
+    requestId: z.string(),
+    workflowId: z.string(),
+    connectionId: z.string(),
+  }),
 });
 
 export async function handleAction(req: Request, res: Response) {
@@ -72,11 +77,12 @@ export async function handleAction(req: Request, res: Response) {
   }
 
   const { credentials, parameters, body, metadata } = bodyResult.data;
+  const cache = new PostgresCacheService(metadata.connectionId);
 
   try {
     const data = await matchingAction.action(
       { credentials, parameters, body },
-      undefined,
+      cache,
       metadata
     );
     res.send(JSON.stringify(data));
