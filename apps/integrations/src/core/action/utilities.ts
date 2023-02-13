@@ -1,6 +1,7 @@
 import { Endpoint } from "core/endpoint/types";
+import { InputSpec, OutputSpec } from "./types";
 
-export function makeInputSpec(endpoint: Endpoint) {
+export function makeInputSpec(endpoint: Endpoint): InputSpec {
   return {
     security: endpoint.spec.endpointSpec.security,
     parameters: endpoint.spec.endpointSpec.parameters,
@@ -8,7 +9,7 @@ export function makeInputSpec(endpoint: Endpoint) {
   };
 }
 
-export function makeOutputSpec(endpoint: Endpoint) {
+export function makeOutputSpec(endpoint: Endpoint): OutputSpec {
   return {
     responses: endpoint.spec.endpointSpec.responses,
   };
