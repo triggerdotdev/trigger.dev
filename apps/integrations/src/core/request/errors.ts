@@ -1,4 +1,4 @@
-import { type ErrorObject } from "ajv";
+import { JSONSchemaError } from "core/schemas/types";
 
 export type RequestError =
   | RequestBodyInvalid
@@ -27,7 +27,7 @@ export interface ParametersInvalid {
     name: string;
     value: any;
   };
-  errors: Array<{ name: string; errors: ErrorObject[] }>;
+  errors: Array<{ name: string; errors: JSONSchemaError[] }>;
 }
 
 export interface ExtraParametersError {
@@ -54,7 +54,7 @@ export interface MissingResponseSpec {
 
 export interface ResponseBodyInvalid {
   type: "response_invalid";
-  errors: Array<{ name: string; errors: ErrorObject[] }>;
+  errors: Array<{ name: string; errors: JSONSchemaError[] }>;
   status: number;
   body?: any;
 }

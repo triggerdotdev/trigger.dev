@@ -1,6 +1,6 @@
-import { type ErrorObject } from "ajv";
 import { applyCredentials } from "core/authentication/credentials";
 import { EndpointSpec, EndpointSpecResponse } from "core/endpoint/types";
+import { JSONSchemaError } from "core/schemas/types";
 import { validate } from "core/schemas/validate";
 import fetch, { type Response } from "node-fetch";
 import {
@@ -137,7 +137,7 @@ export async function requestEndpoint(
   }
 
   // start with the first spec and loop through them, if one succeeds then return that
-  const specErrors: Array<{ name: string; errors: ErrorObject[] }> = [];
+  const specErrors: Array<{ name: string; errors: JSONSchemaError[] }> = [];
   for (const spec of responseSpecs) {
     const responseValid = validate(json, spec.schema);
     if (responseValid.success) {

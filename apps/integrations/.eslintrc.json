@@ -4,6 +4,10 @@
     "plugin:@typescript-eslint/recommended",
     "prettier"
   ],
+  "env": {
+    "node": true,
+    "commonjs": true
+  },
   "parser": "@typescript-eslint/parser",
   "plugins": ["@typescript-eslint"],
   "root": true,

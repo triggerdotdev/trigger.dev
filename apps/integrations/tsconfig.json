@@ -3,6 +3,7 @@
   "display": "Node 16",
   "compilerOptions": {
     "baseUrl": "./src",
+    "outDir": "./dist",
     "experimentalDecorators": true,
     "emitDecoratorMetadata": true,
     "lib": ["DOM", "DOM.Iterable", "ES2019"],
