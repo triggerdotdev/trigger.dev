@@ -37,6 +37,7 @@ import {
   exampleProjects,
   fromScratchProjects,
 } from "~/components/samples/samplesList";
+import { ExampleOverview } from "~/components/templates/ExampleOverview";
 import { TemplateOverview } from "~/components/templates/TemplateOverview";
 import { templateData } from "~/components/templates/TemplatesData";
 import { TemplatesGrid } from "~/components/templates/TemplatesGrid";
@@ -108,7 +109,7 @@ export default function NewWorkflowPage() {
       <Title>Create a new workflow</Title>
       {/* <Step1 /> */}
       {/* <Step2 /> */}
-      {/* <Step3NewRepo1 /> */}
+      <Step3NewRepo1 />
       <Step3ExistingRepo1 />
       {/* <Step3ExistingRepo2 /> */}
       {/* <Step3ExistingRepo3 /> */}
@@ -238,26 +239,6 @@ function Step3ExistingRepo1() {
   let [isOpen, setIsOpen] = useState(false);
   return (
     <>
-      <StyledDialog.Dialog
-        onClose={(e) => setIsOpen(false)}
-        appear
-        show={isOpen}
-        as={Fragment}
-      >
-        <div className="fixed inset-0 overflow-y-auto">
-          <div className="flex min-h-full items-center justify-center p-4">
-            <StyledDialog.Panel className="relative mx-auto max-w-5xl overflow-hidden rounded-md">
-              <button
-                onClick={() => setIsOpen(false)}
-                className="absolute top-0 -right-12 text-slate-600 transition hover:text-slate-500"
-              >
-                <XCircleIcon className="h-10 w-10" />
-              </button>
-              <TemplateOverview {...templateData[0]} />
-            </StyledDialog.Panel>
-          </div>
-        </div>
-      </StyledDialog.Dialog>
       <div className={classNames("flex flex-col", maxWidth)}>
         <div className="flex items-center justify-between">
           <SubTitle className="flex items-center">
@@ -291,19 +272,7 @@ function Step3ExistingRepo1() {
                 <CubeTransparentIcon className="h-8 w-8 text-slate-400" />
                 <Body>Blank example</Body>
               </div>
-              {exampleProjects.map((project) => {
-                return (
-                  <button
-                    key={project.name}
-                    type="button"
-                    onClick={(e) => setIsOpen(true)}
-                    className={buttonStyles}
-                  >
-                    {project.icon}
-                    <Body>{project.name}</Body>
-                  </button>
-                );
-              })}
+              <ExampleOverview {...exampleProjects[0]} />
             </div>
             <SubTitle className="mt-6">Or start from scratch</SubTitle>
             <div className="grid grid-cols-4 gap-2">
