@@ -83,7 +83,7 @@
     "clean:sourcemaps": {
       "cache": false
     },
-    "generate-sdks": {
+    "generate-integrations": {
       "cache": false
     }
   },

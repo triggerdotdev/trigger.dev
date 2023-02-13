@@ -44,7 +44,7 @@
     "changeset:normal": "changeset pre exit",
     "sentry-upload": "turbo run sentry-upload",
     "clean:sourcemaps": "turbo run clean:sourcemaps",
-    "generate-sdks": "turbo run generate-sdks"
+    "generate-integrations": "turbo run generate-integrations"
   },
   "devDependencies": {
     "@manypkg/cli": "^0.19.2",
