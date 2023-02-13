@@ -39,7 +39,7 @@ export function ExampleOverview({
           <div className="flex min-h-full items-center justify-center p-4">
             <StyledDialog.Panel className="mx-auto flex max-w-3xl items-start gap-2 overflow-hidden">
               <div className="flex h-full w-full flex-col overflow-hidden rounded-md bg-slate-800 text-left">
-                <div className="flex flex-col items-center justify-between gap-4 bg-slate-850 px-4 py-8">
+                <div className="flex flex-col items-center justify-between gap-4 border-b border-slate-850/80 bg-slate-700/30 px-4 py-12">
                   {icon}
                   <Header2 size="regular" className="font-semibold">
                     {name}
