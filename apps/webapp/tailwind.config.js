@@ -32,6 +32,13 @@ module.exports = {
       },
       gridTemplateColumns: {
         'carousel': 'repeat(6, 200px)',
+      },
+      keyframes: {
+        float: {
+          '0%': { transform: 'translatey(0px)' },
+          '50%': { transform: 'translatey(7px)' },
+          '100%': { transform: 'translatey(0px)' },
+        }
       }
     },
   },
