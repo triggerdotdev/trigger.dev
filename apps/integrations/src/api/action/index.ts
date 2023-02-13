@@ -8,6 +8,7 @@ const bodySchema = z.object({
   parameters: z.record(z.string(), z.any()).optional(),
   credentials: AuthCredentialsSchema.optional(),
   body: z.any().optional(),
+  metadata: z.record(z.string(), z.any()).optional(),
 });
 
 export async function handleAction(req: Request, res: Response) {
@@ -70,8 +71,14 @@ export async function handleAction(req: Request, res: Response) {
     return;
   }
 
+  const { credentials, parameters, body, metadata } = bodyResult.data;
+
   try {
-    const data = await matchingAction.action(bodyResult.data);
+    const data = await matchingAction.action(
+      { credentials, parameters, body },
+      undefined,
+      metadata
+    );
     res.send(JSON.stringify(data));
   } catch (e: any) {
     console.error(e);

@@ -12,7 +12,7 @@ export type OutputSpec = {
   responses: EndpointSpec["responses"];
 };
 
-export type Metadata = Record<string, string>;
+export type Metadata = Record<string, any>;
 
 export type Action = {
   name: string;
