@@ -38,6 +38,7 @@ import {
   fromScratchProjects,
 } from "~/components/samples/samplesList";
 import { TemplateOverview } from "~/components/templates/TemplateOverview";
+import { templateData } from "~/components/templates/TemplatesData";
 import { TemplatesGrid } from "~/components/templates/TemplatesGrid";
 import { useCurrentEnvironment } from "~/hooks/useEnvironments";
 import { useCurrentOrganization } from "~/hooks/useOrganizations";
@@ -108,8 +109,8 @@ export default function NewWorkflowPage() {
       {/* <Step1 /> */}
       {/* <Step2 /> */}
       {/* <Step3NewRepo1 /> */}
-      {/* <Step3NewRepo2 /> */}
-      <Step3ExistingRepo2 />
+      <Step3NewRepo2 />
+      {/* <Step3ExistingRepo2 /> */}
       {/* <Step3ExistingRepo3 /> */}
       {/* <Step3ExistingRepo4 /> */}
       {/* <Step3ExistingRepo5 /> */}
@@ -265,9 +266,7 @@ function Step3NewRepo2() {
           <StepNumber active stepNumber="4" />
           Confirm your chosen template
         </SubTitle>
-        <Panel className="px-4 py-4">
-          <TemplateOverview {...templateData[0]} />
-        </Panel>
+        <TemplateOverview {...templateData[0]} />
       </div>
     </div>
   );
@@ -289,7 +288,7 @@ function Step3ExistingRepo2() {
       >
         <div className="fixed inset-0 overflow-y-auto">
           <div className="flex min-h-full items-center justify-center p-4">
-            <StyledDialog.Panel className="relative mx-auto w-96 min-w-[1000px] max-w-5xl rounded bg-white">
+            <StyledDialog.Panel className="relative mx-auto max-w-5xl overflow-hidden rounded-md">
               <button
                 onClick={() => setIsOpen(false)}
                 className="absolute top-0 -right-12 text-slate-600 transition hover:text-slate-500"
