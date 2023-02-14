@@ -155,9 +155,7 @@ export async function handleAction(req: Request, res: Response) {
   }
 
   const { metadata } = parsedRequestBody.data;
-  const cache = new PostgresCacheService(
-    `${metadata.connectionId}-${metadata.workflowId}`
-  );
+  const cache = new PostgresCacheService(`${metadata.connectionId}-${service}`);
 
   try {
     const data = await matchingAction.action(
