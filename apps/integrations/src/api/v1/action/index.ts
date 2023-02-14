@@ -5,6 +5,8 @@ import { validateInputs } from "core/validation/inputs";
 import { Request, Response } from "express";
 import { catalog } from "integrations/catalog";
 import { z } from "zod";
+import { createParametersBody } from "./createParametersBody";
+import { getServiceAction } from "./validation";
 
 const requestBodySchema = z.object({
   credentials: z.object({ accessToken: z.string() }).optional(),
@@ -28,42 +30,16 @@ type NormalizedResponse = {
 };
 
 export async function handleAction(req: Request, res: Response) {
-  const { service, action } = req.params;
+  const serviceActionResult = getServiceAction(req.params);
 
-  const matchingService = Object.values(catalog.services).find(
-    (s) => s.service === service
-  );
-
-  if (!matchingService) {
-    res.status(404).send(
-      JSON.stringify(
-        error(404, false, {
-          type: "missing_service",
-          message: "Service not found",
-          service,
-        })
-      )
-    );
+  if (!serviceActionResult.success) {
+    res
+      .status(404)
+      .send(JSON.stringify(error(404, false, serviceActionResult.error)));
     return;
   }
 
-  const matchingAction = Object.values(matchingService.actions).find(
-    (a) => a.name === action
-  );
-
-  if (!matchingAction) {
-    res.status(404).send(
-      JSON.stringify(
-        error(404, false, {
-          type: "missing_action",
-          message: "Action not found",
-          service,
-          action,
-        })
-      )
-    );
-    return;
-  }
+  const { service, action } = serviceActionResult;
 
   const parsedRequestBody = requestBodySchema.safeParse(req.body);
 
@@ -85,17 +61,12 @@ export async function handleAction(req: Request, res: Response) {
   //for v1 of this API we're building the credentials from the action
   //this is fine for now but we'll want to use the connection in future to cover complex cases
   let credentials: AuthCredentials | undefined = undefined;
-  if (
-    parsedRequestBody.data.credentials &&
-    matchingAction.spec.input.security
-  ) {
-    const firstSecurityMethod = Object.entries(
-      matchingAction.spec.input.security
-    )[0];
+  if (parsedRequestBody.data.credentials && action.spec.input.security) {
+    const firstSecurityMethod = Object.entries(action.spec.input.security)[0];
     if (firstSecurityMethod) {
       const [name, scopes] = firstSecurityMethod;
       //get the full info from the service
-      const securityMethod = matchingService.authentication[name];
+      const securityMethod = service.authentication[name];
 
       switch (securityMethod.type) {
         case "oauth2":
@@ -112,41 +83,16 @@ export async function handleAction(req: Request, res: Response) {
     }
   }
 
-  //separate the parameters and body by looking at the spec and pulling properties out
-  let parameters: Record<string, any> | undefined = undefined;
-  let body: any = undefined;
-
-  if (parsedRequestBody.data.params) {
-    matchingAction.spec.input.parameters?.forEach((p) => {
-      if (!parameters) {
-        parameters = {};
-      }
-      parameters[p.name] = parsedRequestBody.data.params?.[p.name];
-    });
-
-    const bodyProperties = matchingAction.spec.input.body?.properties;
-    if (bodyProperties) {
-      body = {};
-      Object.keys(bodyProperties).forEach((name) => {
-        const value = parsedRequestBody.data.params?.[name];
-        if (value !== undefined) {
-          body[name] = value;
-        }
-      });
-    }
-  }
-
-  console.log("parameters", parameters);
-  console.log("body", body);
-
-  const inputValidationResult = await validateInputs(
-    matchingAction.spec.input,
-    {
-      parameters,
-      body,
-      credentials,
-    }
+  const { parameters, body } = createParametersBody(
+    action.spec.input,
+    parsedRequestBody.data.params
   );
+
+  const inputValidationResult = await validateInputs(action.spec.input, {
+    parameters,
+    body,
+    credentials,
+  });
   if (!inputValidationResult.success) {
     res
       .status(400)
@@ -158,7 +104,7 @@ export async function handleAction(req: Request, res: Response) {
   const cache = new PostgresCacheService(`${metadata.connectionId}-${service}`);
 
   try {
-    const data = await matchingAction.action(
+    const data = await action.action(
       { credentials, parameters, body },
       cache,
       metadata
@@ -167,7 +113,7 @@ export async function handleAction(req: Request, res: Response) {
     //convert into the format for the webapp
     const response: ReturnResponse = {
       ok: true,
-      isRetryable: isRetryable(matchingService, data.status),
+      isRetryable: isRetryable(service, data.status),
       response: {
         output: data.body ?? {},
         context: {

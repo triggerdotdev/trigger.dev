@@ -40,7 +40,7 @@ export async function validateInputs(
     }
   }
 
-  // validate the request body exists it it should
+  // validate the request body exists if it should
   if (body == null && inputSpec.body != null) {
     return {
       success: false,

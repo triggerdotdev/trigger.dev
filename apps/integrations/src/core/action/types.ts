@@ -14,7 +14,7 @@ export type OutputSpec = {
 
 export type Metadata = Record<string, any>;
 
-type DisplayProperties = {
+export type DisplayProperties = {
   title: string;
 };
 
