@@ -1,10 +1,8 @@
 import { PostgresCacheService } from "cache/postgresCache";
 import { AuthCredentials } from "core/authentication/types";
-import { RequestError } from "core/request/errors";
 import { Service } from "core/service/types";
 import { validateInputs } from "core/validation/inputs";
 import { Request, Response } from "express";
-import { stat } from "fs";
 import { catalog } from "integrations/catalog";
 import { z } from "zod";
 
@@ -157,7 +155,9 @@ export async function handleAction(req: Request, res: Response) {
   }
 
   const { metadata } = parsedRequestBody.data;
-  const cache = new PostgresCacheService(metadata.connectionId);
+  const cache = new PostgresCacheService(
+    `${metadata.connectionId}-${metadata.workflowId}`
+  );
 
   try {
     const data = await matchingAction.action(
