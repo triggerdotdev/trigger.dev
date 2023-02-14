@@ -28,6 +28,7 @@
     "generate": "prisma generate",
     "db:migrate:deploy": "prisma migrate deploy",
     "db:migrate:dev": "prisma migrate dev",
+    "db:seed": "ts-node prisma/seed.ts",
     "generate:sourcemaps": "remix build --sourcemap",
     "sentry-upload": "pnpm run generate:sourcemaps && sentry-upload-sourcemaps",
     "clean:sourcemaps": "run-s clean:sourcemaps:*",

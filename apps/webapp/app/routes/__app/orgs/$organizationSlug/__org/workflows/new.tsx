@@ -1,19 +1,11 @@
-import { Dialog, Transition } from "@headlessui/react";
 import {
   CheckCircleIcon,
-  CloudIcon,
-  CubeIcon,
-  CubeTransparentIcon,
   ExclamationTriangleIcon,
-  HomeIcon,
-  RocketLaunchIcon,
 } from "@heroicons/react/24/outline";
-import { SunIcon, XCircleIcon } from "@heroicons/react/24/solid";
-import { Link } from "@remix-run/react";
+import { Link, Outlet } from "@remix-run/react";
 import type { ActionArgs, LoaderArgs } from "@remix-run/server-runtime";
 import { redirect } from "@remix-run/server-runtime";
 import classNames from "classnames";
-import { Fragment, useState } from "react";
 import { typedjson, useTypedFetcher } from "remix-typedjson";
 import invariant from "tiny-invariant";
 import { z } from "zod";
@@ -27,10 +19,8 @@ import {
   PrimaryLink,
   TertiaryLink,
 } from "~/components/primitives/Buttons";
-import { StyledDialog } from "~/components/primitives/Dialog";
 import { Spinner } from "~/components/primitives/Spinner";
 import { Body } from "~/components/primitives/text/Body";
-import { Header2, Header3 } from "~/components/primitives/text/Headers";
 import { SubTitle } from "~/components/primitives/text/SubTitle";
 import { Title } from "~/components/primitives/text/Title";
 import {
@@ -42,9 +32,6 @@ import {
   ExampleOverview,
   FromScratchOverview,
 } from "~/components/templates/ExampleOverview";
-import { TemplateOverview } from "~/components/templates/TemplateOverview";
-import { templateData } from "~/components/templates/TemplatesData";
-import { TemplatesGrid } from "~/components/templates/TemplatesGrid";
 import { useCurrentEnvironment } from "~/hooks/useEnvironments";
 import { useCurrentOrganization } from "~/hooks/useOrganizations";
 import { getIntegrationMetadatas } from "~/models/integrations.server";
@@ -111,169 +98,8 @@ export default function NewWorkflowPage() {
   return (
     <Container>
       <Title>Create a new workflow</Title>
-      <Step1 />
-      {/* <Step2 /> */}
-      {/* <Step3NewRepo1 /> */}
-      {/* <Step3ExistingRepo1 /> */}
-      {/* <Step3ExistingRepo2 /> */}
-      {/* <Step3ExistingRepo3 /> */}
-      {/* <Step3ExistingRepo4 /> */}
-      {/* <Step3ExistingRepo5 /> */}
+      <Outlet />
     </Container>
-  );
-}
-
-type Step1Props = {
-  showVisitedButtonState: () => void;
-};
-
-function Step1() {
-  let [isOpen, setIsOpen] = useState(false);
-  return (
-    <>
-      <StyledDialog.Dialog
-        onClose={(e) => setIsOpen(false)}
-        appear
-        show={isOpen}
-        as={Fragment}
-      >
-        <div className="fixed inset-0 overflow-y-auto">
-          <div className="flex min-h-full items-center justify-center p-4">
-            <StyledDialog.Panel className="mx-auto flex max-w-3xl items-start gap-2 overflow-hidden">
-              <div className="flex h-full w-full flex-col overflow-hidden rounded-md bg-slate-800 text-left">
-                <div className="relative flex flex-col items-center justify-between gap-5 overflow-hidden border-b border-slate-850/80 bg-blue-400 px-4 py-12">
-                  <CloudIcon className="absolute top-2 -left-4 h-28 w-28 animate-pulse text-white" />
-                  <CloudIcon className="absolute top-16 right-16 h-16 w-16 animate-pulse text-white" />
-                  <SunIcon className="absolute -top-12 -right-12 h-32 w-32 text-yellow-400" />
-                  <RocketLaunchIcon className="h-20 w-20 animate-[float_3s_ease-in-out_infinite] text-slate-800" />
-                  <Header3>Cloud hosting coming soon…</Header3>
-                </div>
-                <div className="p-6">
-                  <Body size="small" className="text-center text-slate-400">
-                    We're working hard to bring you a cloud hosted service.
-                  </Body>
-                  <PrimaryButton
-                    onClick={() => setIsOpen(false)}
-                    className="mt-2 w-full"
-                  >
-                    Got it
-                  </PrimaryButton>
-                </div>
-              </div>
-              <button
-                onClick={() => setIsOpen(false)}
-                className="sticky top-0 text-slate-600 transition hover:text-slate-500"
-              >
-                <XCircleIcon className="h-10 w-10" />
-              </button>
-            </StyledDialog.Panel>
-          </div>
-        </div>
-      </StyledDialog.Dialog>
-      <div className={classNames(maxWidth, "mb-6")}>
-        <SubTitle className="flex items-center">
-          <StepNumber active stepNumber="1" />
-          Where do you want your workflow hosted?
-        </SubTitle>
-        <Panel className="flex w-full items-center justify-between">
-          <div className="grid w-full grid-cols-2 gap-x-4">
-            <button className={buttonStyles}>
-              <HomeIcon className="h-10 w-10 text-green-400" />
-              <Header3>I'll host the workflow myself</Header3>
-              <Body size="small" className="text-slate-400">
-                I will deploy the code to my own servers.
-              </Body>
-            </button>
-            <button
-              type="button"
-              onClick={(e) => setIsOpen(true)}
-              className={buttonStyles}
-            >
-              <CloudIcon className="h-10 w-10 text-blue-400" />
-              <Header3>Host the workflow for me in the cloud</Header3>
-              <Body size="small" className="text-slate-400">
-                Trigger.dev can host and handle the servers for me.
-              </Body>
-            </button>
-          </div>
-        </Panel>
-      </div>
-    </>
-  );
-}
-
-function Step2() {
-  return (
-    <div className={classNames(maxWidth, "flex flex-col")}>
-      <div className="flex items-center justify-between">
-        <SubTitle className="flex items-center">
-          <StepNumber />
-          <Link to="#" className="transition hover:text-slate-300">
-            I'll host the workflow myself
-          </Link>
-        </SubTitle>
-        <TertiaryLink to="#">Change answer</TertiaryLink>
-      </div>
-      <div className="mb-6">
-        <SubTitle className="flex items-center">
-          <StepNumber active stepNumber="2" />
-          Would you like to create a new GitHub repository?
-        </SubTitle>
-        <Panel className="flex w-full items-center justify-between">
-          <div className="grid w-full grid-cols-2 gap-x-4">
-            <button className={buttonStyles}>
-              <div className={classNames("bg-green-400", labelStyles)}>
-                Easy (2 mins)
-              </div>
-              <CubeTransparentIcon className="h-10 w-10 text-indigo-400" />
-              <Header3>I want to create a new repo</Header3>
-              <Body size="small" className="text-slate-400">
-                We'll setup a new GitHub repository and install your template.
-              </Body>
-            </button>
-            <button className={buttonStyles}>
-              <CubeIcon className="h-10 w-10 text-orange-400" />
-              <Header3>I want to use an existing repo</Header3>
-              <Body size="small" className="text-slate-400">
-                I want my workflow to be alongside my existing code.
-              </Body>
-            </button>
-          </div>
-        </Panel>
-      </div>
-    </div>
-  );
-}
-
-function Step3NewRepo1() {
-  return (
-    <div className={classNames(maxWidth)}>
-      <div className="flex items-center justify-between">
-        <SubTitle className="flex items-center">
-          <StepNumber />
-          <Link to="#" className="transition hover:text-slate-300">
-            I'll host the workflow myself
-          </Link>
-        </SubTitle>
-        <TertiaryLink to="#">Change answer</TertiaryLink>
-      </div>
-      <div className="flex items-center justify-between">
-        <SubTitle className="flex items-center">
-          <StepNumber />
-          <Link to="#" className="transition hover:text-slate-300">
-            I'll start with a template
-          </Link>
-        </SubTitle>
-        <TertiaryLink to="#">Change answer</TertiaryLink>
-      </div>
-      <div className="mb-6">
-        <SubTitle className="flex items-center">
-          <StepNumber active stepNumber="3" />
-          Which template would you like to use?
-        </SubTitle>
-        <TemplatesGrid />
-      </div>
-    </div>
   );
 }
 

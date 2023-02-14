@@ -1,5 +1,6 @@
 import type { InternalIntegration } from "@trigger.dev/integration-sdk";
 import { getIntegrations as getInternalIntegrations } from "integration-catalog";
+import invariant from "tiny-invariant";
 
 export function getIntegrations(showAdminOnly: boolean) {
   return getInternalIntegrations(showAdminOnly);
@@ -15,4 +16,14 @@ export function getIntegrationMetadata(
 ) {
   const integration = integrations.find((i) => i.metadata.slug === name);
   return integration ? integration.metadata : undefined;
+}
+
+export function getIntegrationMetadataByService(service: string) {
+  const integrations = getIntegrationMetadatas(true);
+
+  const metadata = integrations.find((i) => i.slug.includes(service));
+
+  invariant(metadata, `Integration not found for service ${service}`);
+
+  return metadata;
 }

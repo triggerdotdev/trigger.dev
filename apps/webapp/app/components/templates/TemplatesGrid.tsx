@@ -1,26 +1,34 @@
+import { XCircleIcon } from "@heroicons/react/24/solid";
+import { Fragment, useState } from "react";
+import { TemplateListItem } from "~/presenters/templateListPresenter.server";
+import { ApiLogoIcon } from "../code/ApiLogoIcon";
+import { StyledDialog } from "../primitives/Dialog";
 import { Body } from "../primitives/text/Body";
 import { Header1 } from "../primitives/text/Headers";
-import { templateData } from "./TemplatesData";
-import Slack from "../../../public/integrations/slack.png";
-import { Fragment, useState } from "react";
-import { StyledDialog } from "../primitives/Dialog";
 import { TemplateOverview } from "./TemplateOverview";
-import { XCircleIcon } from "@heroicons/react/24/solid";
 
-export function TemplatesGrid() {
-  let [isOpen, setIsOpen] = useState(false);
+export function TemplatesGrid({
+  templates,
+}: {
+  templates: Array<TemplateListItem>;
+}) {
+  const [openedTemplate, setOpenedTemplate] = useState<TemplateListItem | null>(
+    null
+  );
+  const isOpen = openedTemplate !== null;
+
   return (
     <>
       <StyledDialog.Dialog
-        onClose={(e) => setIsOpen(false)}
+        onClose={(e) => setOpenedTemplate(null)}
         appear
         show={isOpen}
         as={Fragment}
       >
         <StyledDialog.Panel className="relative mx-auto flex max-h-[80vh] max-w-5xl items-start gap-2 overflow-hidden overflow-y-auto rounded-md">
-          <TemplateOverview {...templateData[0]} />
+          {openedTemplate && <TemplateOverview template={openedTemplate} />}
           <button
-            onClick={() => setIsOpen(false)}
+            onClick={() => setOpenedTemplate(null)}
             className="sticky top-0 text-slate-600 transition hover:text-slate-500"
           >
             <XCircleIcon className="h-10 w-10" />
@@ -28,28 +36,30 @@ export function TemplatesGrid() {
         </StyledDialog.Panel>
       </StyledDialog.Dialog>
       <div className="grid w-full grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
-        {templateData.map((template) => {
+        {templates.map((template) => {
           return (
             <button
               key={template.title}
               type="button"
-              onClick={(e) => setIsOpen(true)}
+              onClick={(e) => setOpenedTemplate(template)}
               className="group w-full items-center overflow-hidden rounded-md border border-slate-700 bg-slate-800 text-left text-sm text-slate-200 shadow-md transition hover:cursor-pointer hover:border-slate-700 hover:bg-slate-800/30 disabled:opacity-50"
             >
               <div className="h-24 w-full bg-slate-600 transition group-hover:opacity-90">
                 <img
-                  src={template.imageURL}
+                  src={template.imageUrl}
                   alt=""
                   className="h-full w-full object-cover"
                 />
               </div>
               <div className="flex flex-col gap-y-1 p-4">
-                <div
-                  key="integration"
-                  className="mb-1 flex h-8 w-8 items-center justify-center rounded-lg border-[1px] border-slate-700 bg-slate-900 transition group-hover:border-slate-800 group-hover:bg-slate-900"
-                >
-                  <img src={Slack} alt="Slack" className="h-5 w-5" />
-                </div>
+                {template.services.map((service) => (
+                  <div
+                    key={service.slug}
+                    className=" mb-1 flex h-8 w-8 items-center justify-center rounded border-[1px] border-slate-700 bg-slate-900 transition group-hover:border-slate-800 group-hover:bg-slate-900"
+                  >
+                    <ApiLogoIcon integration={service} size="regular" />
+                  </div>
+                ))}
                 <Header1 size="small" className="font-semibold">
                   {template.title}
                 </Header1>
