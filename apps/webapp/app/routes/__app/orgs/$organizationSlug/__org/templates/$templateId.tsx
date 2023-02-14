@@ -92,7 +92,7 @@ function OrganizationTemplateReady(loaderData: LoaderData) {
           </SubTitle>
         </div>
       ) : (
-        <div className="mt-4 mb-0.5 flex items-center gap-1">
+        <div className="mt-4 mb-1 flex items-center gap-1">
           <CheckCircleIcon className="h-6 w-6 text-green-400" />
           <SubTitle className="mb-0">Template deployed to Render</SubTitle>
         </div>
@@ -179,8 +179,8 @@ function DeploySection({
     );
   } else {
     return (
-      <div className="max-w-4xl">
-        <div className="mt-4 mb-0.5 flex items-center gap-1">
+      <div className="mt-6 max-w-4xl">
+        <div className="mb-1 flex items-center gap-1">
           <CheckCircleIcon className="h-6 w-6 text-green-400" />
           <SubTitle className="mb-0">Workflow successfully created</SubTitle>
         </div>
