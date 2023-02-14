@@ -20,9 +20,6 @@ const checkAuthentication = function (
     return;
   }
 
-  console.log("authHeader", authHeader);
-  console.log(process.env.API_TOKEN);
-
   const auth = authHeader.split(" ");
   if (auth.length !== 2 || auth[0] !== "Bearer") {
     res.status(401).send("Unauthorized");
