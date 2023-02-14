@@ -63,12 +63,15 @@ export function TemplatesGrid({
                     </div>
                   ))}
                 </div>
-                <Header1 size="small" className="font-semibold mb-2">
+                          <div className="flex flex-col gap-y-2 ">
+
+                <Header1 size="small" className="font-semibold">
                   {template.title}
                 </Header1>
                 <Body size="small" className="text-slate-400">
                   {template.description}
                 </Body>
+              </div>
               </div>
             </button>
           );
