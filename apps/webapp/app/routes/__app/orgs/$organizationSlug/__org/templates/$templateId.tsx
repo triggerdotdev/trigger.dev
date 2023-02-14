@@ -1,7 +1,9 @@
 import {
   ArrowTopRightOnSquareIcon,
+  CheckIcon,
   ClipboardDocumentCheckIcon,
 } from "@heroicons/react/24/outline";
+import { CheckCircleIcon } from "@heroicons/react/24/solid";
 import { useRevalidator } from "@remix-run/react";
 import { LoaderArgs } from "@remix-run/server-runtime";
 import { useEffect } from "react";
@@ -82,19 +84,21 @@ function OrganizationTemplateByStatus(loaderData: LoaderData) {
 function OrganizationTemplateReady(loaderData: LoaderData) {
   return (
     <div>
-      <div className="mt-4 mb-0.5 flex items-center gap-2">
-        <Spinner />
-        <SubTitle className="mb-0">
-          Template ready and waiting to deploy
-        </SubTitle>
-      </div>
-      <Panel className="max-w-4xl">
-        <TemplateHeader
-          organizationTemplate={loaderData.organizationTemplate}
-        />
-
-        <DeploySection {...loaderData} />
-      </Panel>
+      {loaderData.organizationTemplate.status === "READY_TO_DEPLOY" ? (
+        <div className="mt-4 mb-0.5 flex items-center gap-2">
+          <Spinner />
+          <SubTitle className="mb-0">
+            Template ready and waiting to deploy
+          </SubTitle>
+        </div>
+      ) : (
+        <div className="mt-4 mb-0.5 flex items-center gap-1">
+          <CheckCircleIcon className="h-6 w-6 text-green-400" />
+          <SubTitle className="mb-0">Template deployed to Render</SubTitle>
+        </div>
+      )}
+      <TemplateHeader organizationTemplate={loaderData.organizationTemplate} />
+      <DeploySection {...loaderData} />
     </div>
   );
 }
@@ -105,29 +109,31 @@ function TemplateHeader({
   organizationTemplate: LoaderData["organizationTemplate"];
 }) {
   return (
-    <div className="grid grid-cols-4 gap-4">
-      <div className="col-span-3">
-        <Label className="text-sm text-slate-500">Repo URL</Label>
-        <div className="flex items-center justify-between rounded bg-slate-850 py-2 pl-3 pr-2">
-          <span className="select-all">
-            {organizationTemplate.repositoryUrl}
-          </span>
-          <a
-            href={organizationTemplate.repositoryUrl}
-            target="_blank"
-            className="group"
-          >
-            <ArrowTopRightOnSquareIcon className="h-[18px] w-[18px] text-slate-200 transition group-hover:text-green-500" />
-          </a>
+    <Panel className="max-w-4xl">
+      <div className="grid grid-cols-4 gap-4">
+        <div className="col-span-3">
+          <Label className="text-sm text-slate-500">Repo URL</Label>
+          <div className="flex items-center justify-between rounded bg-slate-850 py-2 pl-3 pr-2">
+            <span className="select-all">
+              {organizationTemplate.repositoryUrl}
+            </span>
+            <a
+              href={organizationTemplate.repositoryUrl}
+              target="_blank"
+              className="group"
+            >
+              <ArrowTopRightOnSquareIcon className="h-[18px] w-[18px] text-slate-200 transition group-hover:text-green-500" />
+            </a>
+          </div>
+        </div>
+        <div>
+          <Label className="text-sm text-slate-500">Type</Label>
+          <div className="flex items-center rounded bg-slate-850 py-2 px-3 text-slate-500">
+            {organizationTemplate.private ? "Private repo" : "Public repo"}
+          </div>
         </div>
       </div>
-      <div>
-        <Label className="text-sm text-slate-500">Type</Label>
-        <div className="flex items-center rounded bg-slate-850 py-2 px-3 text-slate-500">
-          {organizationTemplate.private ? "Private repo" : "Public repo"}
-        </div>
-      </div>
-    </div>
+    </Panel>
   );
 }
 
@@ -148,7 +154,7 @@ function DeploySection({
 
   if (organizationTemplate.status === "READY_TO_DEPLOY") {
     return (
-      <>
+      <Panel className="max-w-4xl">
         <div className="grid grid-cols-1">
           <div className="mt-2">
             <Label className="text-sm text-slate-500">API key</Label>
@@ -169,20 +175,21 @@ function DeploySection({
             />
           </a>
         </div>
-      </>
+      </Panel>
     );
   } else {
     return (
-      <>
-        <div className="flex justify-center">
-          Deployed, view workflows here:
+      <div className="max-w-4xl">
+        <div className="mt-4 mb-0.5 flex items-center gap-1">
+          <CheckCircleIcon className="h-6 w-6 text-green-400" />
+          <SubTitle className="mb-0">Workflow successfully created</SubTitle>
         </div>
 
         <WorkflowList
           workflows={workflows}
           currentOrganizationSlug={currentOrganization.slug}
         />
-      </>
+      </div>
     );
   }
 }
