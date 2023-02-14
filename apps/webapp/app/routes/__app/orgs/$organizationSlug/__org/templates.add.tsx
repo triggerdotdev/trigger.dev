@@ -9,11 +9,15 @@ import {
 import invariant from "tiny-invariant";
 import { z } from "zod";
 import { Container } from "~/components/layout/Container";
+import { Panel } from "~/components/layout/Panel";
 import { PanelWarning } from "~/components/layout/PanelWarning";
 import { PrimaryButton } from "~/components/primitives/Buttons";
 import { Input } from "~/components/primitives/Input";
 import { InputGroup } from "~/components/primitives/InputGroup";
 import { Label } from "~/components/primitives/Label";
+import { Select } from "~/components/primitives/Select";
+import { Body } from "~/components/primitives/text/Body";
+import { SubTitle } from "~/components/primitives/text/SubTitle";
 import { Title } from "~/components/primitives/text/Title";
 import { useCurrentEnvironment } from "~/hooks/useEnvironments";
 import { useCurrentOrganization } from "~/hooks/useOrganizations";
@@ -78,12 +82,8 @@ export default function AddTemplatePage() {
 
   return (
     <Container>
-      <Form method="post" reloadDocument>
-        {template ? (
-          <Title>Deploy a new workflow from {template.title}</Title>
-        ) : (
-          <Title>Deploy a new workflow</Title>
-        )}
+      <Form method="post" reloadDocument className="max-w-4xl">
+        <Title>You're almost done</Title>
 
         {actionData?.type === "error" && (
           <PanelWarning
@@ -91,54 +91,81 @@ export default function AddTemplatePage() {
             className="relative rounded border border-red-400 bg-red-100 px-4 py-3 text-red-700"
           ></PanelWarning>
         )}
-
-        <InputGroup>
-          <Label htmlFor="appAuthorizationId">Select a GitHub account</Label>
-
-          <select name="appAuthorizationId" required>
-            {appAuthorizations.map((appAuthorization) => (
-              <option value={appAuthorization.id} key={appAuthorization.id}>
-                {appAuthorization.account.login}
-              </option>
-            ))}
-          </select>
-        </InputGroup>
-
         {template ? (
-          <input type="hidden" name="templateId" value={template.id} />
+          <SubTitle>
+            Configure GitHub for your{" "}
+            <span className="italic">{template.title}</span> workflow
+          </SubTitle>
         ) : (
-          <InputGroup>
-            <Label htmlFor="templateId">Choose a template</Label>
-
-            <select name="templateId" required>
-              {templates.map((template) => (
-                <option value={template.id} key={template.id}>
-                  {template.title}
-                </option>
-              ))}
-            </select>
-          </InputGroup>
+          <SubTitle>Configure GitHub for your new workflow</SubTitle>
         )}
+        <Panel className="!p-4">
+          <div className="mb-3 grid grid-cols-2 gap-4">
+            <InputGroup>
+              <Label htmlFor="appAuthorizationId">
+                Select a GitHub account
+              </Label>
+              <Select name="appAuthorizationId" required>
+                {appAuthorizations.map((appAuthorization) => (
+                  <option value={appAuthorization.id} key={appAuthorization.id}>
+                    {appAuthorization.account.login}
+                  </option>
+                ))}
+              </Select>
+            </InputGroup>
 
-        <InputGroup>
-          <Label htmlFor="name">Choose a name</Label>
+            {template ? (
+              <input type="hidden" name="templateId" value={template.id} />
+            ) : (
+              <InputGroup>
+                <Label htmlFor="templateId">Choose a template</Label>
 
-          <Input
-            id="name"
-            name="name"
-            placeholder="Repository name"
-            spellCheck={false}
-            className="pl-9"
-          />
-        </InputGroup>
+                <Select name="templateId" required>
+                  {templates.map((template) => (
+                    <option value={template.id} key={template.id}>
+                      {template.title}
+                    </option>
+                  ))}
+                </Select>
+              </InputGroup>
+            )}
+          </div>
+          <div className="mb-4 grid grid-cols-2 gap-4">
+            <InputGroup>
+              <Label htmlFor="name">Choose a name</Label>
 
-        <InputGroup>
-          <Label htmlFor="private">
-            Private <input type="checkbox" name="private" />
-          </Label>
-        </InputGroup>
-
-        <PrimaryButton type="submit">Add Template</PrimaryButton>
+              <Input
+                id="name"
+                name="name"
+                placeholder="Repository name"
+                spellCheck={false}
+                className=""
+              />
+            </InputGroup>
+            <div>
+              <p className="mb-1 text-sm text-slate-500">
+                Set the repo as private
+              </p>
+              <div className="flex w-full items-center rounded bg-black/20 px-3 py-2.5">
+                <Label
+                  htmlFor="private"
+                  className="flex cursor-pointer items-center gap-2 text-sm text-slate-300"
+                >
+                  <input
+                    type="checkbox"
+                    name="private"
+                    id="private"
+                    className="border-3 h-4 w-4 cursor-pointer rounded border-black bg-slate-200 transition hover:bg-slate-300 focus:outline-none"
+                  />
+                  Private repo
+                </Label>
+              </div>
+            </div>
+          </div>
+          <div className="flex justify-end">
+            <PrimaryButton type="submit">Add Template</PrimaryButton>
+          </div>
+        </Panel>
       </Form>
     </Container>
   );
