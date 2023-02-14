@@ -16,12 +16,14 @@ import { TriggerTypeIcon } from "../triggers/TriggerIcons";
 export function WorkflowList({
   workflows,
   currentOrganizationSlug,
+  className,
 }: {
   workflows: WorkflowListItem[];
   currentOrganizationSlug: string;
+  className?: string;
 }) {
   return (
-    <List>
+    <List className={className}>
       {workflows.map((workflow) => {
         return (
           <li key={workflow.id}>
