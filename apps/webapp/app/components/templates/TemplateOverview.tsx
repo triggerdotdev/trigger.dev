@@ -1,4 +1,3 @@
-import { marked } from "marked";
 import { TemplateListItem } from "~/presenters/templateListPresenter.server";
 import { ApiLogoIcon } from "../code/ApiLogoIcon";
 import { OctoKitty } from "../GitHubLoginButton";
@@ -7,7 +6,7 @@ import { Body } from "../primitives/text/Body";
 import { Header2 } from "../primitives/text/Headers";
 
 export function TemplateOverview({ template }: { template: TemplateListItem }) {
-  const { markdownDocs, title, description, repositoryUrl, imageUrl, id } =
+  const { docsHTML, title, description, repositoryUrl, imageUrl, id } =
     template;
 
   return (
@@ -26,7 +25,7 @@ export function TemplateOverview({ template }: { template: TemplateListItem }) {
             <p
               className="prose prose-sm prose-invert"
               dangerouslySetInnerHTML={{
-                __html: marked(markdownDocs),
+                __html: docsHTML,
               }}
             />
           </div>

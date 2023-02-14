@@ -1,10 +1,8 @@
-import { Link } from "@remix-run/react";
 import classNames from "classnames";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { BackToStep1, BackToStep2 } from "~/components/onboarding/BackToSteps";
 import { onboarding } from "~/components/onboarding/classNames";
 import { StepNumber } from "~/components/onboarding/StepNumber";
-import { TertiaryLink } from "~/components/primitives/Buttons";
 import { SubTitle } from "~/components/primitives/text/SubTitle";
 import { TemplatesGrid } from "~/components/templates/TemplatesGrid";
 import { TemplateListPresenter } from "~/presenters/templateListPresenter.server";

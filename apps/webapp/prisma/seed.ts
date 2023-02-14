@@ -25,6 +25,7 @@ async function seed() {
     priority: 0,
     services: [],
     workflowIds: ["basic-starter"],
+    markdownDocs: await readTemplateDocsFile("basic-starter"),
   };
 
   const githubStarsToSlack = {
