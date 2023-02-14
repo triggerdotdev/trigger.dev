@@ -8,4 +8,5 @@ export const slack: Service = {
   version: "1.0.0",
   authentication,
   actions,
+  retryableStatusCodes: [408, 429, 500, 502, 503, 504],
 };
