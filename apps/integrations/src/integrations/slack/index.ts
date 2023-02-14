@@ -6,6 +6,7 @@ export const slack: Service = {
   name: "Slack",
   service: "slack",
   version: "1.0.0",
+  live: false,
   authentication,
   actions,
   retryableStatusCodes: [408, 429, 500, 502, 503, 504],
