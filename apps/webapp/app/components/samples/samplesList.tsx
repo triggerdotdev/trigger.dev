@@ -5,6 +5,7 @@ import {
   ChatBubbleOvalLeftEllipsisIcon,
   UserIcon,
   DocumentTextIcon,
+  CubeTransparentIcon,
 } from "@heroicons/react/24/outline";
 import { customEvent } from "./custom-event";
 import { githubIssues } from "./github-issues";
@@ -18,27 +19,19 @@ import { whatsappListenForMessageAndReply } from "./whatsapp-listen-for-message-
 import { scheduledCron } from "./scheduled-cron";
 
 export type ExampleProject = {
-  icon: React.ReactNode;
   name: string;
-  title: string;
+  title?: string;
+  icon?: React.ReactNode;
+  docsLink?: string;
   description: string;
   requiredPackages: string;
   code: (apiKey: string) => string;
   packagesCopy?: string;
+  bulletPoints?: string[];
+  type: "example" | "from-scratch" | "blank";
 };
 
-export type FromScratchProjects = {
-  name: string;
-  description: string;
-  docsLink?: string;
-  requiredPackages: string;
-  code: (apiKey: string) => string;
-  bulletPoint1?: string;
-  bulletPoint2?: string;
-  bulletPoint3?: string;
-};
-
-export const exampleProjects: ExampleProject[] = [
+export const allExamples: ExampleProject[] = [
   {
     icon: <StarIcon className="h-8 w-8 text-yellow-400" />,
     name: "GitHub star → Slack",
@@ -48,8 +41,8 @@ export const exampleProjects: ExampleProject[] = [
     requiredPackages:
       "@trigger.dev/sdk @trigger.dev/github @trigger.dev/slack zod",
     code: githubStars,
+    type: "example",
   },
-
   {
     icon: <EnvelopeIcon className="h-8 w-8 text-blue-400" />,
     name: "New user → email",
@@ -60,6 +53,7 @@ export const exampleProjects: ExampleProject[] = [
     requiredPackages:
       "@trigger.dev/sdk @trigger.dev/resend @trigger.dev/slack zod",
     code: resendEmailDripCampaign,
+    type: "example",
   },
   {
     icon: <UserIcon className="h-8 w-8 text-rose-400" />,
@@ -69,6 +63,7 @@ export const exampleProjects: ExampleProject[] = [
       "This workflow is triggered when a new user signs up. The user's details will then be posted in a specific Slack channel.",
     requiredPackages: "@trigger.dev/sdk @trigger.dev/slack zod",
     code: newUserSlackMessage,
+    type: "example",
   },
 
   {
@@ -80,6 +75,7 @@ export const exampleProjects: ExampleProject[] = [
     requiredPackages: "@trigger.dev/sdk @trigger.dev/shopify zod",
     code: shopifyCreateNewProducts,
     packagesCopy: "Shopify",
+    type: "example",
   },
   {
     icon: <DocumentTextIcon className="h-8 w-8 text-orange-400" />,
@@ -90,6 +86,7 @@ export const exampleProjects: ExampleProject[] = [
     requiredPackages:
       "@trigger.dev/sdk @trigger.dev/github @trigger.dev/slack zod",
     code: githubIssues,
+    type: "example",
   },
 
   {
@@ -101,10 +98,8 @@ export const exampleProjects: ExampleProject[] = [
     requiredPackages: "@trigger.dev/sdk @trigger.dev/whatsapp zod",
     code: whatsappListenForMessageAndReply,
     packagesCopy: "WhatsApp",
+    type: "example",
   },
-];
-
-export const fromScratchProjects: FromScratchProjects[] = [
   {
     name: "Webhook",
     requiredPackages: "@trigger.dev/sdk zod",
@@ -112,12 +107,12 @@ export const fromScratchProjects: FromScratchProjects[] = [
     docsLink: "https://docs.trigger.dev/triggers/webhooks",
     description:
       "Webhooks allow you to subscribe to events from APIs but can be difficult to work with, especially when developing locally. Trigger.dev makes using webhooks easy:",
-    bulletPoint1:
+    bulletPoints: [
       "You don’t need to register/unregister for webhooks, we do it for you.",
-    bulletPoint2:
       "They work locally during development without needing to use tunnels (e.g. Ngrok).",
-    bulletPoint3:
       "We receive the webhook, then keep trying to send it to you until you receive it. If your server goes down, no problem.",
+    ],
+    type: "from-scratch",
   },
   {
     name: "Custom event",
@@ -126,9 +121,7 @@ export const fromScratchProjects: FromScratchProjects[] = [
     docsLink: "https://docs.trigger.dev/triggers/custom-events",
     description:
       "Custom event triggers allow you to run workflows from your own code (or your other workflows). Send an event and any workflows that subscribe to that custom event will get triggered. You can easily send an event from anywhere, including from inside another workflow. Events don’t have to come from the same server as your workflow and can be sent as HTTP requests from any language.",
-    bulletPoint1: "",
-    bulletPoint2: "",
-    bulletPoint3: "",
+    type: "from-scratch",
   },
   {
     name: "Scheduled (recurring)",
@@ -137,9 +130,7 @@ export const fromScratchProjects: FromScratchProjects[] = [
     docsLink: "https://docs.trigger.dev/triggers/scheduled",
     description:
       "Run a workflow on a recurring schedule. The example below will run every 5 minutes, starting 5 minutes after this code is first run on your server (that includes running locally).",
-    bulletPoint1: "",
-    bulletPoint2: "",
-    bulletPoint3: "",
+    type: "from-scratch",
   },
   {
     name: "Scheduled (CRON)",
@@ -148,8 +139,14 @@ export const fromScratchProjects: FromScratchProjects[] = [
     docsLink: "https://docs.trigger.dev/triggers/scheduled",
     description:
       "Run a workflow on a recurring schedule. The example job below will run at 2:30pm every Monday.",
-    bulletPoint1: "",
-    bulletPoint2: "",
-    bulletPoint3: "",
+    type: "from-scratch",
   },
 ];
+
+export const exampleProjects = allExamples.filter(
+  (example) => example.type === "example"
+);
+
+export const fromScratchProjects = allExamples.filter(
+  (example) => example.type === "from-scratch"
+);

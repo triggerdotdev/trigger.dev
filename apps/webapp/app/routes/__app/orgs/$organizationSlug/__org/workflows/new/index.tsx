@@ -10,12 +10,12 @@ import classNames from "classnames";
 import { Fragment, useState } from "react";
 import { Panel } from "~/components/layout/Panel";
 import { onboarding } from "~/components/onboarding/classNames";
+import { StepNumber } from "~/components/onboarding/StepNumber";
 import { PrimaryButton } from "~/components/primitives/Buttons";
 import { StyledDialog } from "~/components/primitives/Dialog";
 import { Body } from "~/components/primitives/text/Body";
 import { Header3 } from "~/components/primitives/text/Headers";
 import { SubTitle } from "~/components/primitives/text/SubTitle";
-import { StepNumber } from "../new";
 
 export default function NewWorkflowStep1Page() {
   return <Step1 />;

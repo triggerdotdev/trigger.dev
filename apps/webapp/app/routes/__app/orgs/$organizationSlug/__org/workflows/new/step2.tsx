@@ -3,11 +3,11 @@ import { Link } from "@remix-run/react";
 import classNames from "classnames";
 import { Panel } from "~/components/layout/Panel";
 import { onboarding } from "~/components/onboarding/classNames";
+import { StepNumber } from "~/components/onboarding/StepNumber";
 import { TertiaryLink } from "~/components/primitives/Buttons";
 import { Body } from "~/components/primitives/text/Body";
 import { Header3 } from "~/components/primitives/text/Headers";
 import { SubTitle } from "~/components/primitives/text/SubTitle";
-import { StepNumber } from "../new";
 
 export default function NewWorkflowStep2Page() {
   return <Step2 />;
@@ -19,11 +19,11 @@ function Step2() {
       <div className="flex items-center justify-between">
         <SubTitle className="flex items-center">
           <StepNumber />
-          <Link to="#" className="transition hover:text-slate-300">
+          <Link to=".." className="transition hover:text-slate-300">
             I'll host the workflow myself
           </Link>
         </SubTitle>
-        <TertiaryLink to="#">Change answer</TertiaryLink>
+        <TertiaryLink to="..">Change answer</TertiaryLink>
       </div>
       <div className="mb-6">
         <SubTitle className="flex items-center">
@@ -44,13 +44,13 @@ function Step2() {
                 We'll setup a new GitHub repository and install your template.
               </Body>
             </Link>
-            <button className={onboarding.buttonStyles}>
+            <Link to="../existingRepo" className={onboarding.buttonStyles}>
               <CubeIcon className="h-10 w-10 text-orange-400" />
               <Header3>I want to use an existing repo</Header3>
               <Body size="small" className="text-slate-400">
                 I want my workflow to be alongside my existing code.
               </Body>
-            </button>
+            </Link>
           </div>
         </Panel>
       </div>

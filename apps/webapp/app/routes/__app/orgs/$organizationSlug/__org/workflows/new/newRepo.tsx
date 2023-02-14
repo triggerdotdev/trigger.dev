@@ -1,6 +1,7 @@
 import { Link } from "@remix-run/react";
 import classNames from "classnames";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
+import { BackToStep1, BackToStep2 } from "~/components/onboarding/BackToSteps";
 import { onboarding } from "~/components/onboarding/classNames";
 import { StepNumber } from "~/components/onboarding/StepNumber";
 import { TertiaryLink } from "~/components/primitives/Buttons";
@@ -20,22 +21,10 @@ export default function Step3NewRepo1() {
   return (
     <div className={classNames(onboarding.maxWidth)}>
       <div className="flex items-center justify-between">
-        <SubTitle className="flex items-center">
-          <StepNumber />
-          <Link to="#" className="transition hover:text-slate-300">
-            I'll host the workflow myself
-          </Link>
-        </SubTitle>
-        <TertiaryLink to="#">Change answer</TertiaryLink>
+        <BackToStep1 />
       </div>
       <div className="flex items-center justify-between">
-        <SubTitle className="flex items-center">
-          <StepNumber />
-          <Link to="#" className="transition hover:text-slate-300">
-            I'll start with a template
-          </Link>
-        </SubTitle>
-        <TertiaryLink to="#">Change answer</TertiaryLink>
+        <BackToStep2 />
       </div>
       <div className="mb-6">
         <SubTitle className="flex items-center">

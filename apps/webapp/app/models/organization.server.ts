@@ -46,6 +46,28 @@ export function getOrganizationFromSlug({
   });
 }
 
+export function getWorkflowsCreatedSinceDate(
+  userId: string,
+  slug: string,
+  since: Date
+) {
+  return prisma.workflow.findMany({
+    where: {
+      organization: {
+        users: {
+          some: {
+            id: userId,
+          },
+        },
+        slug,
+      },
+      createdAt: {
+        gte: since,
+      },
+    },
+  });
+}
+
 export function getOrganizations({ userId }: { userId: User["id"] }) {
   return prisma.organization.findMany({
     where: { users: { some: { id: userId } } },
