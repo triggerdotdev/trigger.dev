@@ -51,9 +51,12 @@ export interface EndpointSpecResponse {
   schema: JSONSchema;
 }
 
-interface EndpointSpecMetadata {
+export interface EndpointSpecMetadata {
   name: string;
   description: string;
+  displayProperties: {
+    title: string;
+  };
   externalDocs?: ExternalDocs;
   tags: string[];
 }

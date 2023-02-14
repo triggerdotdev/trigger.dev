@@ -1,4 +1,4 @@
-import { makeRequestAction } from "core/action/simpleAction";
+import { makeAdvancedAction, makeSimpleAction } from "core/action/makeAction";
 import { Action } from "core/action/types";
 import {
   combineSecurityScopes,
@@ -9,15 +9,12 @@ import { CacheService } from "core/cache/types";
 import { RequestData } from "core/request/types";
 import endpoints from "../endpoints/endpoints";
 
-export const conversationsList: Action = makeRequestAction(
+export const conversationsList: Action = makeSimpleAction(
   endpoints.conversationsList
 );
 
-export const chatPostMessage: Action = {
-  name: endpoints.chatPostMessage.spec.endpointSpec.metadata.name,
-  description: endpoints.chatPostMessage.spec.endpointSpec.metadata.description,
-  path: endpoints.chatPostMessage.spec.endpointSpec.path,
-  method: endpoints.chatPostMessage.spec.endpointSpec.method,
+export const chatPostMessage: Action = makeAdvancedAction({
+  endpoint: endpoints.chatPostMessage,
   spec: {
     input: {
       ...makeInputSpec(endpoints.chatPostMessage),
@@ -117,7 +114,7 @@ export const chatPostMessage: Action = {
       credentials: data.credentials,
     });
   },
-};
+});
 
 async function getChannelId({
   channel,

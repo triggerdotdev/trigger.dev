@@ -28,6 +28,9 @@ export const chatPostMessage: EndpointSpec = {
   metadata: {
     name: "postMessage",
     description: "Post a message to a channel",
+    displayProperties: {
+      title: "Post message to ${body.channel}",
+    },
     externalDocs: {
       description: "API method documentation",
       url: "https://api.slack.com/methods/chat.postMessage",
@@ -220,6 +223,9 @@ export const conversationsList: EndpointSpec = {
   metadata: {
     name: "conversationsList",
     description: "Lists all channels in a Slack team.",
+    displayProperties: {
+      title: "List channels",
+    },
     externalDocs: {
       description: "API method documentation",
       url: "https://api.slack.com/methods/conversations.list",
@@ -298,6 +304,9 @@ export const conversationsJoin: EndpointSpec = {
   metadata: {
     name: "conversationsJoin",
     description: "Joins an existing conversation.",
+    displayProperties: {
+      title: "Join ${body.channel}",
+    },
     externalDocs: {
       description: "API method documentation",
       url: "https://api.slack.com/methods/conversations.join",

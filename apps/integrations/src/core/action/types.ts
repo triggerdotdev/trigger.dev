@@ -14,6 +14,10 @@ export type OutputSpec = {
 
 export type Metadata = Record<string, any>;
 
+type DisplayProperties = {
+  title: string;
+};
+
 export type Action = {
   name: string;
   description: string;
@@ -31,4 +35,8 @@ export type Action = {
     /** Additional metadata that can be used to modify the request */
     metadata?: Metadata
   ) => Promise<RequestResponse>;
+  getDisplayProperties: (
+    /** The data to be sent to the endpoint */
+    data: RequestData
+  ) => Promise<DisplayProperties>;
 };
