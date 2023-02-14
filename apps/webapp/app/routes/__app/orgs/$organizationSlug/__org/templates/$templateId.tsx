@@ -1,4 +1,7 @@
-import { ClipboardDocumentCheckIcon } from "@heroicons/react/24/outline";
+import {
+  ArrowTopRightOnSquareIcon,
+  ClipboardDocumentCheckIcon,
+} from "@heroicons/react/24/outline";
 import { useRevalidator } from "@remix-run/react";
 import { LoaderArgs } from "@remix-run/server-runtime";
 import { useEffect } from "react";
@@ -9,8 +12,14 @@ import {
 } from "remix-typedjson";
 import { useEventSource } from "remix-utils";
 import { CopyText } from "~/components/CopyText";
+import { CopyTextButton } from "~/components/CopyTextButton";
 import { Container } from "~/components/layout/Container";
+import { Panel } from "~/components/layout/Panel";
+import { Label } from "~/components/primitives/Label";
+import { Spinner } from "~/components/primitives/Spinner";
+import { Body } from "~/components/primitives/text/Body";
 import { Header1 } from "~/components/primitives/text/Headers";
+import { SubTitle } from "~/components/primitives/text/SubTitle";
 import { WorkflowList } from "~/components/workflows/workflowList";
 import { useCurrentOrganization } from "~/hooks/useOrganizations";
 import { getRuntimeEnvironmentFromRequest } from "~/models/runtimeEnvironment.server";
@@ -49,8 +58,6 @@ export default function TemplatePage() {
   return (
     <Container>
       <Header1>{loaderData.organizationTemplate.template.title}</Header1>
-      <br />
-
       {organizationTemplateByStatus}
     </Container>
   );
@@ -62,9 +69,10 @@ function OrganizationTemplateByStatus(loaderData: LoaderData) {
     loaderData.organizationTemplate.status === "CREATED"
   ) {
     return (
-      <div className="flex justify-center">
-        <div className="h-32 w-32 animate-spin rounded-full border-b-2 border-slate-50"></div>
-      </div>
+      <Panel className="mt-4 flex max-w-4xl items-center gap-2 py-4 pl-4">
+        <Spinner />
+        <Body>Setting up the template in your new repo…</Body>
+      </Panel>
     );
   }
 
@@ -74,10 +82,19 @@ function OrganizationTemplateByStatus(loaderData: LoaderData) {
 function OrganizationTemplateReady(loaderData: LoaderData) {
   return (
     <div>
-      <p>Organization Template ready to deploy</p>
-      <TemplateHeader organizationTemplate={loaderData.organizationTemplate} />
+      <div className="mt-4 mb-0.5 flex items-center gap-2">
+        <Spinner />
+        <SubTitle className="mb-0">
+          Template ready and waiting to deploy
+        </SubTitle>
+      </div>
+      <Panel className="max-w-4xl">
+        <TemplateHeader
+          organizationTemplate={loaderData.organizationTemplate}
+        />
 
-      <DeploySection {...loaderData} />
+        <DeploySection {...loaderData} />
+      </Panel>
     </div>
   );
 }
@@ -88,17 +105,29 @@ function TemplateHeader({
   organizationTemplate: LoaderData["organizationTemplate"];
 }) {
   return (
-    <dl className="space-y-2">
-      <dt className="font-bold">Repo URL</dt>
-      <dd>
-        <a href={organizationTemplate.repositoryUrl} target="_blank">
-          {organizationTemplate.repositoryUrl}
-        </a>
-      </dd>
-
-      <dt className="font-bold">Is Private</dt>
-      <dd>{organizationTemplate.private ? "Yes" : "No"}</dd>
-    </dl>
+    <div className="grid grid-cols-4 gap-4">
+      <div className="col-span-3">
+        <Label className="text-sm text-slate-500">Repo URL</Label>
+        <div className="flex items-center justify-between rounded bg-slate-850 py-2 pl-3 pr-2">
+          <span className="select-all">
+            {organizationTemplate.repositoryUrl}
+          </span>
+          <a
+            href={organizationTemplate.repositoryUrl}
+            target="_blank"
+            className="group"
+          >
+            <ArrowTopRightOnSquareIcon className="h-[18px] w-[18px] text-slate-200 transition group-hover:text-green-500" />
+          </a>
+        </div>
+      </div>
+      <div>
+        <Label className="text-sm text-slate-500">Type</Label>
+        <div className="flex items-center rounded bg-slate-850 py-2 px-3 text-slate-500">
+          {organizationTemplate.private ? "Private repo" : "Public repo"}
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -120,27 +149,25 @@ function DeploySection({
   if (organizationTemplate.status === "READY_TO_DEPLOY") {
     return (
       <>
-        <a
-          href={`https://render.com/deploy?repo=${organizationTemplate.repositoryUrl}`}
-          target="_blank"
-        >
-          <img
-            src="https://render.com/images/deploy-to-render-button.svg"
-            alt="Deploy to Render"
-          />
-        </a>
-        <div className="flex justify-center">
-          <div className="h-32 w-32 animate-spin rounded-full border-b-2 border-slate-50"></div>
-        </div>
-        <div className="relative select-all overflow-hidden rounded-sm border border-slate-800 p-1 pl-2 text-sm text-slate-400">
-          <span className="pointer-events-none absolute right-7 top-0 block h-6 w-20 bg-gradient-to-r from-transparent to-slate-950"></span>
-          <CopyText
-            value={apiKey}
-            className="group absolute right-0 top-0 flex h-full w-7 items-center justify-center rounded-sm border-l border-slate-800 bg-slate-950 transition hover:cursor-pointer hover:bg-slate-900 active:bg-green-900"
+        <div className="grid grid-cols-1">
+          <div className="mt-2">
+            <Label className="text-sm text-slate-500">API key</Label>
+            <div className="flex items-center justify-between rounded bg-slate-850 py-1 pl-3 pr-1 text-slate-300">
+              <span className="select-all">{apiKey}</span>
+              <CopyTextButton value={apiKey} />
+            </div>
+          </div>
+          <a
+            href={`https://render.com/deploy?repo=${organizationTemplate.repositoryUrl}`}
+            target="_blank"
+            className="mt-6 place-self-end"
           >
-            <ClipboardDocumentCheckIcon className="h-5 w-5 group-active:text-green-500" />
-          </CopyText>
-          {apiKey}
+            <img
+              src="https://render.com/images/deploy-to-render-button.svg"
+              alt="Deploy to Render"
+              className="h-10"
+            />
+          </a>
         </div>
       </>
     );
