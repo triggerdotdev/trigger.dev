@@ -26,6 +26,7 @@ async function seed() {
     services: [],
     workflowIds: ["basic-starter"],
     markdownDocs: await readTemplateDocsFile("basic-starter"),
+    runLocalDocs: await readTemplateDocsFile("basic-starter-local"),
   };
 
   const githubStarsToSlack = {
