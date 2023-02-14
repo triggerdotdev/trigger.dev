@@ -92,3 +92,14 @@ test("/chat.postMessage failed with bad name", async () => {
     expect(e).toEqual(null);
   }
 });
+
+test("Get display properties", async () => {
+  const displayProperties = await chatPostMessage.displayProperties({
+    body: {
+      channel: "my-channel",
+      text: "Using the channel name",
+    },
+  });
+
+  expect(displayProperties.title).toEqual("Post message to my-channel");
+});

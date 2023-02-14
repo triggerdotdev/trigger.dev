@@ -35,7 +35,7 @@ export type Action = {
     /** Additional metadata that can be used to modify the request */
     metadata?: Metadata
   ) => Promise<RequestResponse>;
-  getDisplayProperties: (
+  displayProperties: (
     /** The data to be sent to the endpoint */
     data: RequestData
   ) => Promise<DisplayProperties>;
