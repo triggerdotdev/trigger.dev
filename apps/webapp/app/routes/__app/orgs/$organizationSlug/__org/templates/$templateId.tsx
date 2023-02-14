@@ -4,16 +4,17 @@ import {
   CheckIcon,
   ClipboardDocumentCheckIcon,
   ClockIcon,
-  HomeIcon,
 } from "@heroicons/react/24/outline";
 import {
+  HomeIcon,
   CheckCircleIcon,
   FolderIcon,
   CloudIcon,
+  XCircleIcon,
 } from "@heroicons/react/24/solid";
 import { useRevalidator } from "@remix-run/react";
 import { LoaderArgs } from "@remix-run/server-runtime";
-import { useEffect } from "react";
+import { Fragment, useEffect, useState } from "react";
 import {
   typedjson,
   UseDataFunctionReturn,
@@ -28,6 +29,7 @@ import {
   PrimaryButton,
   SecondaryButton,
 } from "~/components/primitives/Buttons";
+import { StyledDialog } from "~/components/primitives/Dialog";
 import { Input } from "~/components/primitives/Input";
 import { InputGroup } from "~/components/primitives/InputGroup";
 import { Label } from "~/components/primitives/Label";
@@ -107,7 +109,7 @@ function OrganizationTemplateByStatus(loaderData: LoaderData) {
 
 function OrganizationTemplateReady(loaderData: LoaderData) {
   return (
-    <div>
+    <>
       {loaderData.organizationTemplate.status === "READY_TO_DEPLOY" ? (
         <>
           <GitHubConfigured />
@@ -139,7 +141,7 @@ function OrganizationTemplateReady(loaderData: LoaderData) {
           </Panel>
         </>
       )}
-    </div>
+    </>
   );
 }
 
@@ -187,6 +189,7 @@ function DeploySection({
   workflows: LoaderData["workflows"];
 }) {
   const currentOrganization = useCurrentOrganization();
+  let [isOpen, setIsOpen] = useState(false);
 
   if (!currentOrganization) {
     return null;
@@ -195,6 +198,45 @@ function DeploySection({
   if (organizationTemplate.status === "READY_TO_DEPLOY") {
     return (
       <>
+        <StyledDialog.Dialog
+          onClose={(e) => setIsOpen(false)}
+          appear
+          show={isOpen}
+          as={Fragment}
+        >
+          <div className="fixed inset-0 overflow-y-auto">
+            <div className="flex min-h-full items-center justify-center p-4">
+              <StyledDialog.Panel className="mx-auto flex max-w-3xl items-start gap-2 overflow-hidden">
+                <div className="flex h-full w-full flex-col overflow-hidden rounded-md bg-slate-800 text-left">
+                  <div className="relative flex flex-col items-center justify-between gap-5 overflow-hidden border-b border-slate-850/80 bg-blue-400 px-4 py-12">
+                    <CloudIcon className="absolute top-2 -left-4 h-28 w-28 text-white/50" />
+                    <HomeIcon className="absolute bottom-0 right-[calc(50%-2rem)] h-16 w-16 text-stone-900" />
+                    <CloudIcon className="absolute top-4 right-6 h-16 w-16 text-white/50" />
+                    <div className="absolute bottom-0 h-2 w-full bg-green-700"></div>
+                    <Header3 className="mb-4">Self host your workflow</Header3>
+                  </div>
+                  <div className="p-6">
+                    <Body size="small" className="text-center text-slate-400">
+                      Code goes here
+                    </Body>
+                    <PrimaryButton
+                      onClick={() => setIsOpen(false)}
+                      className="mt-6 w-full"
+                    >
+                      Close
+                    </PrimaryButton>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setIsOpen(false)}
+                  className="sticky top-0 text-slate-600 transition hover:text-slate-500"
+                >
+                  <XCircleIcon className="h-10 w-10" />
+                </button>
+              </StyledDialog.Panel>
+            </div>
+          </div>
+        </StyledDialog.Dialog>
         <div className="mt-2">
           <Label className="text-sm text-slate-500">API key</Label>
           <div className="flex items-center justify-between rounded bg-slate-850 py-2.5 px-3 text-slate-300">
@@ -203,7 +245,7 @@ function DeploySection({
           </div>
         </div>
         <div className="mt-6 flex items-center justify-end gap-3">
-          <PrimaryButton>
+          <PrimaryButton onClick={(e) => setIsOpen(true)}>
             <HomeIcon className="h-5 w-5 text-slate-200" />
             Self host
           </PrimaryButton>
