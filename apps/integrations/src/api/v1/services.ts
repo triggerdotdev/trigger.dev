@@ -3,7 +3,7 @@ import { Service } from "core/service/types";
 import { Request, Response } from "express";
 import { catalog } from "integrations/catalog";
 
-export type ServiceMetadata = {
+type ServiceMetadata = {
   name: string;
   service: string;
   version: string;
