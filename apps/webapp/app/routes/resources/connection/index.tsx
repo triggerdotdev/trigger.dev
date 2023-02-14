@@ -11,7 +11,7 @@ import {
 } from "~/models/apiConnection.server";
 import { connectExternalService } from "~/models/externalService.server";
 import { connectExternalSource } from "~/models/externalSource.server";
-import { getIntegrationMetadatas } from "~/models/integrations.server";
+import { getServiceMetadatas } from "~/models/integrations.server";
 import { taskQueue } from "~/services/messageBroker.server";
 import { requireUserId } from "~/services/session.server";
 
@@ -91,9 +91,7 @@ export const action = async ({ request }: ActionArgs) => {
     }
 
     const parsed = parsedResult.data;
-    const integrationInfo = getIntegrationMetadatas(true).find(
-      (i) => i.service === parsed.service
-    );
+    const integrationInfo = (await getServiceMetadatas(true))[parsed.service];
     if (!integrationInfo) {
       throw new Error("Integration not found");
     }

@@ -7,9 +7,9 @@ import type {
 import type { PrismaClient } from "~/db.server";
 import { prisma } from "~/db.server";
 import type { IntegrationRequest } from "~/models/integrationRequest.server";
+import { getVersion1Integrations } from "~/models/integrations.server";
 import { getAccessInfo } from "../accessInfo.server";
 import { RedisCacheService } from "../cacheService.server";
-import { getIntegrations } from "~/models/integrations.server";
 import { integrationsClient } from "../integrationsClient.server";
 
 type CallResponse =
@@ -231,7 +231,7 @@ export class PerformIntegrationRequest {
   ): Promise<PerformedRequestResponse> {
     switch (integrationRequest.version) {
       case "1": {
-        const integrationInfo = getIntegrations(true).find(
+        const integrationInfo = getVersion1Integrations(true).find(
           (i) => i.metadata.service === service
         );
 

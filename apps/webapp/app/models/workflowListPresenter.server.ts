@@ -10,9 +10,9 @@ import invariant from "tiny-invariant";
 import { triggerLabel } from "~/components/triggers/triggerLabel";
 import type { PrismaClient } from "~/db.server";
 import { prisma } from "~/db.server";
-import { getIntegrationMetadata, getIntegrations } from "./integrations.server";
 import { getRuntimeEnvironment } from "./runtimeEnvironment.server";
 import type { ExternalSource, Workflow } from "./workflow.server";
+import { getServiceMetadatas } from "./integrations.server";
 
 export type WorkflowListItem = Awaited<
   ReturnType<WorkflowListPresenter["data"]>
@@ -43,7 +43,7 @@ export class WorkflowListPresenter {
       organizationSlug,
       runtimeEnvironment.id
     );
-    const integrations = getIntegrations(true);
+    const servicesMetadata = await getServiceMetadatas(true);
 
     return workflows.map((workflow) => {
       const lastRun =
@@ -67,10 +67,10 @@ export class WorkflowListPresenter {
         ),
         integrations: {
           source: workflow.service
-            ? getIntegrationMetadata(integrations, workflow.service)
+            ? servicesMetadata[workflow.service]
             : undefined,
-          services: workflow.externalServices.map((service) =>
-            getIntegrationMetadata(integrations, service.service)
+          services: workflow.externalServices.map(
+            (service) => servicesMetadata[service.service]
           ),
         },
         lastRun,

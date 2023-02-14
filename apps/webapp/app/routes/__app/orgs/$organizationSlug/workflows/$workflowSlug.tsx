@@ -13,7 +13,7 @@ import {
 } from "~/components/navigation/SideMenu";
 import { getConnectedApiConnectionsForOrganizationSlug } from "~/models/apiConnection.server";
 import { buildExternalSourceUrl } from "~/models/externalSource.server";
-import { getIntegrations } from "~/models/integrations.server";
+import { getServiceMetadatas } from "~/models/integrations.server";
 import { getWorkflowFromSlugs } from "~/models/workflow.server";
 import { analytics } from "~/services/analytics.server";
 import { requireUser } from "~/services/session.server";
@@ -61,7 +61,7 @@ export const loader = async ({ request, params }: LoaderArgs) => {
 
   analytics.workflow.identify({ workflow });
 
-  const integrations = getIntegrations(user.admin);
+  const servicesMetadatas = await getServiceMetadatas(user.admin);
 
   const rules = workflow.rules.map((r) => ({
     ...r,
@@ -72,28 +72,28 @@ export const loader = async ({ request, params }: LoaderArgs) => {
     slug: organizationSlug,
   });
 
-  const externalSourceIntegration = integrations.find(
-    (i) => i.metadata.service === workflow?.externalSource?.service
-  );
+  const externalSourceService = workflow?.externalSource?.service;
+
+  const externalSourceServiceMetadata = externalSourceService
+    ? servicesMetadatas[externalSourceService]
+    : undefined;
   const externalSourceSlot =
-    workflow.externalSource && externalSourceIntegration
+    workflow.externalSource && externalSourceServiceMetadata
       ? {
           ...workflow.externalSource,
           possibleConnections: allConnections.filter(
             (a) => a.apiIdentifier === workflow?.externalSource?.service
           ),
-          integration: externalSourceIntegration.metadata,
+          integration: externalSourceServiceMetadata,
         }
       : undefined;
 
   const connectionSlots = {
     source: externalSourceSlot,
     services: workflow.externalServices.flatMap((c) => {
-      const integration = integrations.find(
-        (i) => i.metadata.service === c.service
-      );
+      const serviceMetadata = servicesMetadatas[c.service];
 
-      if (!integration) {
+      if (!serviceMetadata) {
         return [];
       }
 
@@ -102,7 +102,7 @@ export const loader = async ({ request, params }: LoaderArgs) => {
         possibleConnections: allConnections.filter(
           (a) => a.apiIdentifier === c.service
         ),
-        integration: integration.metadata,
+        integration: serviceMetadata,
       };
     }),
   };

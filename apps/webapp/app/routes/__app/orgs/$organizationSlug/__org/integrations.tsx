@@ -15,10 +15,9 @@ import { SubTitle } from "~/components/primitives/text/SubTitle";
 import { Title } from "~/components/primitives/text/Title";
 import { useCurrentOrganization } from "~/hooks/useOrganizations";
 import { getConnectedApiConnectionsForOrganizationSlug } from "~/models/apiConnection.server";
-import { getIntegrationMetadatas } from "~/models/integrations.server";
+import { getServiceMetadatas } from "~/models/integrations.server";
 import { requireUser } from "~/services/session.server";
 import { formatDateTime } from "~/utils";
-import { findIntegrationMetadata } from "~/utils/integrationMetadata";
 
 export const loader = async ({ request, params }: LoaderArgs) => {
   const user = await requireUser(request);
@@ -32,12 +31,12 @@ export const loader = async ({ request, params }: LoaderArgs) => {
 
   return typedjson({
     connections,
-    integrations: getIntegrationMetadatas(user.admin),
+    services: await getServiceMetadatas(user.admin),
   });
 };
 
 export default function Integrations() {
-  const { connections, integrations } = useTypedLoaderData<typeof loader>();
+  const { connections, services } = useTypedLoaderData<typeof loader>();
   const organization = useCurrentOrganization();
   invariant(organization, "Organization not found");
 
@@ -59,10 +58,7 @@ export default function Integrations() {
                   <li key={connection.id}>
                     <div className="flex items-center gap-4 px-4 py-4">
                       <ApiLogoIcon
-                        integration={findIntegrationMetadata(
-                          integrations,
-                          connection.apiIdentifier
-                        )}
+                        integration={services[connection.apiIdentifier]}
                         size="regular"
                       />
                       <div className="flex flex-col gap-2">
@@ -90,18 +86,20 @@ export default function Integrations() {
       <div>
         <SubTitle>Add an API integration</SubTitle>
         <div className="flex w-full flex-wrap gap-2">
-          {integrations.map((integration) => (
-            <ConnectButton
-              key={integration.service}
-              integration={integration}
-              organizationId={organization.id}
-              className="group flex max-w-[160px] flex-col items-center gap-4 overflow-hidden rounded-md border border-slate-800 bg-slate-800 text-sm text-slate-200 shadow-md transition hover:bg-slate-800/30 disabled:opacity-50"
-            >
-              {(status) => (
-                <AddButtonContent integration={integration} status={status} />
-              )}
-            </ConnectButton>
-          ))}
+          {Object.values(services)
+            .sort((a, b) => a.name.localeCompare(b.name))
+            .map((integration) => (
+              <ConnectButton
+                key={integration.service}
+                integration={integration}
+                organizationId={organization.id}
+                className="group flex max-w-[160px] flex-col items-center gap-4 overflow-hidden rounded-md border border-slate-800 bg-slate-800 text-sm text-slate-200 shadow-md transition hover:bg-slate-800/30 disabled:opacity-50"
+              >
+                {(status) => (
+                  <AddButtonContent integration={integration} status={status} />
+                )}
+              </ConnectButton>
+            ))}
           <a
             href="mailto:hello@trigger.dev"
             className="group flex max-w-[160px] flex-col items-center gap-4 overflow-hidden rounded-md border border-slate-800 bg-slate-800 text-sm text-slate-200 shadow-md transition hover:bg-slate-800/30 disabled:opacity-50"

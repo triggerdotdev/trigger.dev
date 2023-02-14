@@ -20,13 +20,6 @@ const catalog = {
   },
 };
 
-export function getIntegration(name: string): InternalIntegration;
-export function getIntegration<
-  T extends keyof (typeof catalog)["integrations"]
->(name: T): InternalIntegration {
-  return catalog.integrations[name];
-}
-
 export function getIntegrations(isAdmin: boolean): Array<InternalIntegration> {
   const integrations = Object.values(catalog.integrations);
   const found = integrations.filter((integration) => {

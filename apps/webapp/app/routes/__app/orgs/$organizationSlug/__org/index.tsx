@@ -20,7 +20,6 @@ import { Title } from "~/components/primitives/text/Title";
 import { runStatusLabel } from "~/components/runs/runStatus";
 import { TriggerTypeIcon } from "~/components/triggers/TriggerIcons";
 import { useCurrentOrganization } from "~/hooks/useOrganizations";
-import { getIntegrationMetadatas } from "~/models/integrations.server";
 import { getRuntimeEnvironmentFromRequest } from "~/models/runtimeEnvironment.server";
 import type { WorkflowListItem } from "~/models/workflowListPresenter.server";
 import { WorkflowListPresenter } from "~/models/workflowListPresenter.server";
@@ -31,14 +30,13 @@ export const loader = async ({ request, params }: LoaderArgs) => {
   await requireUserId(request);
   invariant(params.organizationSlug, "Organization slug is required");
 
-  const providers = getIntegrationMetadatas(false);
   const currentEnv = await getRuntimeEnvironmentFromRequest(request);
 
   const presenter = new WorkflowListPresenter();
 
   try {
     const workflows = await presenter.data(params.organizationSlug, currentEnv);
-    return typedjson({ workflows, providers });
+    return typedjson({ workflows });
   } catch (error: any) {
     console.error(error);
     throw new Response("Error ", { status: 400 });

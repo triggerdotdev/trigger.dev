@@ -35,7 +35,6 @@ import {
 } from "~/components/samples/samplesList";
 import { useCurrentEnvironment } from "~/hooks/useEnvironments";
 import { useCurrentOrganization } from "~/hooks/useOrganizations";
-import { getIntegrationMetadatas } from "~/models/integrations.server";
 import { getOrganizationFromSlug } from "~/models/organization.server";
 import { requireUserId } from "~/services/session.server";
 
@@ -55,9 +54,7 @@ export const loader = async ({ request, params }: LoaderArgs) => {
     throw redirect(url.toString());
   }
 
-  const providers = getIntegrationMetadatas(false);
-
-  return typedjson({ providers });
+  return typedjson({});
 };
 
 export const action = async ({ request, params }: ActionArgs) => {

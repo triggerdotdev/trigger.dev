@@ -2,6 +2,7 @@ import type { IntegrationRequest } from ".prisma/client";
 import type {
   AccessInfo,
   PerformedRequestResponse,
+  ServiceMetadata,
 } from "@trigger.dev/integration-sdk";
 import { env } from "~/env.server";
 
@@ -79,7 +80,7 @@ class IntegrationsClient {
     }
   }
 
-  async getServices() {
+  async getServices(): Promise<{ services: Record<string, ServiceMetadata> }> {
     const response = await fetch(`${this.#baseUrl}/services`, {
       method: "GET",
       headers: {
