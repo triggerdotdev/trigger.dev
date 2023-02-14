@@ -51,19 +51,19 @@ export function TemplatesGrid({
                   className="h-full w-full object-cover"
                 />
               </div>
-              <div className="flex flex-col gap-y-2 p-4">
+              <div className="flex flex-col p-4">
                 <div className="flex flex-row gap-x-1">
                   {template.services.map((service) => (
                     <div key={service.slug} className="">
                       <ApiLogoIcon
                         integration={service}
                         size="regular"
-                        className="flex h-8 w-8 items-center justify-center rounded border-[1px] border-slate-700 bg-slate-900 transition group-hover:border-slate-600 group-hover:bg-slate-900/80"
+                        className="flex mb-2 h-8 w-8 items-center justify-center rounded border-[1px] border-slate-700 bg-slate-900 transition group-hover:border-slate-600 group-hover:bg-slate-900/80"
                       />
                     </div>
                   ))}
                 </div>
-                <Header1 size="small" className="font-semibold">
+                <Header1 size="small" className="font-semibold mb-2">
                   {template.title}
                 </Header1>
                 <Body size="small" className="text-slate-400">
