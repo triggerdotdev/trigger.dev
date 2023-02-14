@@ -4,6 +4,7 @@ import {
   CheckIcon,
   ClipboardDocumentCheckIcon,
   ClockIcon,
+  HomeIcon,
 } from "@heroicons/react/24/outline";
 import {
   CheckCircleIcon,
@@ -23,7 +24,10 @@ import { CopyText } from "~/components/CopyText";
 import { CopyTextButton } from "~/components/CopyTextButton";
 import { Container } from "~/components/layout/Container";
 import { Panel } from "~/components/layout/Panel";
-import { PrimaryButton } from "~/components/primitives/Buttons";
+import {
+  PrimaryButton,
+  SecondaryButton,
+} from "~/components/primitives/Buttons";
 import { Input } from "~/components/primitives/Input";
 import { InputGroup } from "~/components/primitives/InputGroup";
 import { Label } from "~/components/primitives/Label";
@@ -107,14 +111,14 @@ function OrganizationTemplateReady(loaderData: LoaderData) {
       {loaderData.organizationTemplate.status === "READY_TO_DEPLOY" ? (
         <>
           <GitHubConfigured />
-          <div className="mt-4 mb-0.5 flex items-center gap-2">
+          <div className="mt-4 mb-1 flex items-center gap-2">
             <Spinner />
             <SubTitle className="mb-0">
               {loaderData.organizationTemplate.template.title} template ready
               and waiting to deploy
             </SubTitle>
           </div>
-          <Panel className="max-w-4xl p-4">
+          <Panel className="max-w-4xl !p-4">
             <TemplateHeader
               organizationTemplate={loaderData.organizationTemplate}
             />
@@ -191,23 +195,30 @@ function DeploySection({
   if (organizationTemplate.status === "READY_TO_DEPLOY") {
     return (
       <>
-        <div className="grid grid-cols-1">
-          <div className="mt-2">
-            <Label className="text-sm text-slate-500">API key</Label>
-            <div className="flex items-center justify-between rounded bg-slate-850 py-1 pl-3 pr-1 text-slate-300">
-              <span className="select-all">{apiKey}</span>
-              <CopyTextButton value={apiKey} />
-            </div>
+        <div className="mt-2">
+          <Label className="text-sm text-slate-500">API key</Label>
+          <div className="flex items-center justify-between rounded bg-slate-850 py-2.5 px-3 text-slate-300">
+            <span className="select-all">{apiKey}</span>
+            <CopyTextButton variant="text" value={apiKey} />
           </div>
+        </div>
+        <div className="mt-6 flex items-center justify-end gap-3">
+          <PrimaryButton>
+            <HomeIcon className="h-5 w-5 text-slate-200" />
+            Self host
+          </PrimaryButton>
+          <Body size="small" className="uppercase text-slate-500">
+            or
+          </Body>
           <a
             href={`https://render.com/deploy?repo=${organizationTemplate.repositoryUrl}`}
             target="_blank"
-            className="mt-6 place-self-end"
+            className="transition hover:opacity-80"
           >
             <img
               src="https://render.com/images/deploy-to-render-button.svg"
               alt="Deploy to Render"
-              className="h-10"
+              className="h-[36px]"
             />
           </a>
         </div>
@@ -320,7 +331,7 @@ function TempBlankState() {
   return (
     <div className="mt-6">
       <SubTitle className="text-slate-600">Deploy</SubTitle>
-      <Panel className="flex h-80 w-full max-w-4xl items-center justify-center gap-6 ">
+      <Panel className="flex h-80 w-full max-w-4xl items-center justify-center gap-6">
         <FolderIcon className="h-10 w-10 text-slate-600" />
         <div className="h-[1px] w-16 border border-dashed border-slate-600"></div>
         <CloudIcon className="h-10 w-10 text-slate-600" />
