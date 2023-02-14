@@ -23,6 +23,7 @@ import { useCurrentOrganization } from "~/hooks/useOrganizations";
 import { WorkflowStartPresenter } from "~/presenters/workflowStartPresenter.server";
 import { requireUserId } from "~/services/session.server";
 import { AddTemplateService } from "~/services/templates/addTemplate.server";
+import { DeployBlankState } from "./templates/$templateId";
 
 export async function loader({ params, request }: LoaderArgs) {
   const userId = await requireUserId(request);
@@ -166,6 +167,7 @@ export default function AddTemplatePage() {
           </div>
         </Panel>
       </Form>
+      <DeployBlankState />
     </Container>
   );
 }

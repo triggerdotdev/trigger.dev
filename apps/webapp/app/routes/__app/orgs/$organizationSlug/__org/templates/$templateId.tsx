@@ -88,7 +88,7 @@ function OrganizationTemplateByStatus(loaderData: LoaderData) {
           </SubTitle>
         </div>
         <ConfiguringGithubState />
-        <TempBlankState />
+        <DeployBlankState />
       </>
     );
   }
@@ -360,7 +360,7 @@ function GitHubConfigured() {
   );
 }
 
-function TempBlankState() {
+export function DeployBlankState() {
   return (
     <div className="mt-6">
       <SubTitle className="text-slate-600">Deploy</SubTitle>
