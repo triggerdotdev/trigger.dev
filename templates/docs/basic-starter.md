@@ -1,6 +1,6 @@
 ## ✨ Trigger.dev Basic Starter
 
-This repo is a basic starting point that has a single (very simple) trigger:
+This template is a basic starting point that has a single (very simple) trigger:
 
 ```ts
 import { Trigger, customEvent } from "@trigger.dev/sdk";

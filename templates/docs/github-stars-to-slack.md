@@ -1,31 +1,31 @@
-### 🚀 Installation
+## ✨ Trigger.dev GitHub Stars to Slack
 
-This is the Github stars to slack trigger.dev template
+This template contains a [GitHub newStarEvent](https://docs.trigger.dev/integrations/apis/github/events/new-star) Trigger that will run whenever the specified repository gets a new ⭐️:
 
+```ts
+import { Trigger } from "@trigger.dev/sdk";
+import * as github from "@trigger.dev/github";
+import * as slack from "@trigger.dev/slack";
+
+const repo =
+  process.env.GITHUB_REPOSITORY ?? "triggerdotdev/github-stars-to-slack";
+
+new Trigger({
+  id: "github-stars-to-slack",
+  name: "GitHub Stars to Slack",
+  on: github.events.newStarEvent({
+    repo,
+  }),
+  run: async (event) => {
+    await slack.postMessage("⭐️", {
+      channelName: "github-stars",
+      text: `New GitHub star from \n<${event.sender.html_url}|${event.sender.login}>. You now have ${event.repository.stargazers_count} stars!`,
+    });
+  },
+}).listen();
 ```
-npm i -g mintlify
-```
 
-### 👩‍💻 Development
+## ✍️ Customize it
 
-Run the following command at the root of your Mintlify application to preview changes locally.
-
-```
-mintlify dev
-```
-
-Note - `mintlify dev` requires `yarn` and it's recommended you install it as a global installation. If you don't have yarn installed already run `npm install --global yarn` in your terminal.
-
-### Custom Ports
-
-Mintlify uses port 3000 by default. You can use the `--port` flag to customize the port Mintlify runs on. For example, use this command to run in port 3333:
-
-```
-mintlify dev --port 3333
-```
-
-You will see an error like this if you try to run Mintlify in a port that's already taken:
-
-```
-Error: listen EADDRINUSE: address already in use :::3000
-```
+1. Make sure and set the `GITHUB_REPOSITORY` environment variable to a repo that you manage.
+2. Feel free to customize [postMessage](https://docs.trigger.dev/integrations/apis/slack/actions/post-message) call with more data from the [newStar Event](https://docs.trigger.dev/integrations/apis/github/events/new-star#event)

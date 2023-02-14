@@ -41,6 +41,7 @@ async function seed() {
     services: ["github", "slack"],
     workflowIds: ["github-stars-to-slack"],
     markdownDocs: await readTemplateDocsFile("github-stars-to-slack"),
+    runLocalDocs: await readTemplateDocsFile("github-stars-to-slack-local"),
   };
 
   await prisma.template.upsert({
