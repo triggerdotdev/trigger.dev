@@ -1,11 +1,10 @@
-import { CubeTransparentIcon } from "@heroicons/react/24/outline";
 import { XCircleIcon } from "@heroicons/react/24/solid";
 import React, { Fragment, useState } from "react";
 import invariant from "tiny-invariant";
 import {
   ExampleProject,
   exampleProjects,
-  fromScratchProjects,
+  fromScratchProjects
 } from "~/components/samples/samplesList";
 import { useCurrentEnvironment } from "~/hooks/useEnvironments";
 import CodeBlock from "../code/CodeBlock";
@@ -37,18 +36,27 @@ export function ExampleOverview({
           show={isOpen}
           as={Fragment}
         >
-          <StyledDialog.Panel className="top-0 mx-auto flex max-h-[90vh] max-w-5xl flex-row items-start gap-2 overflow-hidden overflow-y-auto rounded-md p-4">
+          <StyledDialog.Panel className="top-0 mx-auto flex max-h-[90vh] max-w-5xl flex-row items-start gap-2 overflow-hidden overflow-y-auto rounded-md">
             <div className="h-full max-h-[80vh] w-full flex-col overflow-scroll rounded-md bg-slate-800 text-left">
-              <div className="flex flex-row gap-y-4 p-6">
+              <div className="flex flex-row gap-y-4 p-4">
                 <div className="flex flex-col">
                   <CodeBlock
                     code={openProject.code(environment.apiKey)}
                     align="top"
-                    maxHeight="700px"
-                    className="flex overflow-scroll w-[650px]"
+                    maxHeight="600px"
+                    className="flex w-[650px] overflow-scroll"
                   />
                 </div>
                 <div className="flex w-80 flex-col gap-y-4 pl-4">
+                  <PrimaryButton
+                    className="min-w-full place-self-end"
+                    onClick={() => {
+                      setOpenProject(null);
+                      onSelectedProject(openProject);
+                    }}
+                  >
+                    Use this example
+                  </PrimaryButton>
                   <div className="flex flex-col items-start justify-start gap-y-4 border-b border-slate-850/80 bg-slate-700/30 px-4 py-4">
                     {openProject.icon}
                     <Header2 size="regular" className="font-semibold">
@@ -59,16 +67,6 @@ export function ExampleOverview({
                     {openProject.title}
                   </Header2>
                   <Body>{openProject.description}</Body>
-
-                  <PrimaryButton
-                    className="mt-2 w-full"
-                    onClick={() => {
-                      setOpenProject(null);
-                      onSelectedProject(openProject);
-                    }}
-                  >
-                    Use this example
-                  </PrimaryButton>
                 </div>
               </div>
             </div>
@@ -119,36 +117,43 @@ export function FromScratchOverview({
           as={Fragment}
         >
           <div className="fixed inset-0 overflow-y-auto">
-            <div className="flex min-h-full items-center justify-center p-4">
-              <StyledDialog.Panel className="mx-auto flex max-w-3xl items-start gap-2 overflow-hidden">
+            <div className="flex min-h-full items-center justify-center">
+              <StyledDialog.Panel className="top-0 mx-auto flex max-h-[90vh] max-w-5xl flex-row items-start gap-2 overflow-hidden overflow-y-auto rounded-md p-4">
                 <div className="flex h-full w-full flex-col overflow-hidden rounded-md bg-slate-800 text-left">
-                  <div className="flex flex-col items-center justify-between gap-4 border-b border-slate-850/80 bg-slate-700/30 px-4 py-12">
-                    <Header2 size="regular" className="font-semibold">
-                      {openProject.name}
-                    </Header2>
-                  </div>
-                  <div className="p-6">
-                    <Body>{openProject.description}</Body>
-                    {openProject.bulletPoints && (
-                      <ul className="list-disc pl-4 text-slate-300">
-                        {openProject.bulletPoints.map((point, i) => (
-                          <li key={i}>{point}</li>
-                        ))}
-                      </ul>
-                    )}
-                    <CodeBlock
-                      code={openProject.code(environment.apiKey)}
-                      align="top"
-                    />
-                    <PrimaryButton
-                      className="mt-2 w-full"
-                      onClick={() => {
-                        setOpenProject(null);
-                        onSelectedProject(openProject);
-                      }}
-                    >
-                      Use this example
-                    </PrimaryButton>
+                  <div className="flex flex-row items-start justify-start gap-4 border-b border-slate-850/80 bg-slate-700/30 p-4">
+                    <div className="flex flex-col">
+                      <CodeBlock
+                        code={openProject.code(environment.apiKey)}
+                        align="top"
+                        maxHeight="600px"
+                        className="flex w-[650px] overflow-scroll"
+                      />
+                    </div>
+
+                    <div className="flex w-80 flex-col gap-y-4 items-start justify-start">
+                      <PrimaryButton
+                        className="min-w-full"
+                        onClick={() => {
+                          setOpenProject(null);
+                          onSelectedProject(openProject);
+                        }}
+                      >
+                        Use this example
+                      </PrimaryButton>
+
+                      <Header2 size="regular" className="font-semibold">
+                        {openProject.name}
+                      </Header2>
+
+                        <Body>{openProject.description}</Body>
+                        {openProject.bulletPoints && (
+                          <ul className="list-disc pl-4 text-slate-300">
+                            {openProject.bulletPoints.map((point, i) => (
+                              <li key={i}>{point}</li>
+                            ))}
+                          </ul>
+                        )}
+                    </div>
                   </div>
                 </div>
                 <button
