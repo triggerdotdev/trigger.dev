@@ -8,7 +8,7 @@ const requests = new ResendRequestIntegration();
 
 const metadata: ServiceMetadata = {
   name: "Resend",
-  slug: "resend",
+  service: "resend",
   icon: "/integrations/resend.png",
   enabledFor: "all",
   authentication: {

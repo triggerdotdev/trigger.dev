@@ -10,7 +10,7 @@ const requests = new WhatsAppRequestIntegration();
 
 const metadata: ServiceMetadata = {
   name: "WhatsApp Business",
-  slug: "whatsapp",
+  service: "whatsapp",
   icon: "/integrations/whatsapp.png",
   enabledFor: "all",
   authentication: {

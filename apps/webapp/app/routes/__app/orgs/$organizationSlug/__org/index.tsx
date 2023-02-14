@@ -178,7 +178,7 @@ function WorkflowList({
                         return (
                           <ApiLogoIcon
                             size="regular"
-                            key={service.slug}
+                            key={service.service}
                             integration={service}
                           />
                         );

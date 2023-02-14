@@ -92,7 +92,7 @@ export default function Integrations() {
         <div className="flex w-full flex-wrap gap-2">
           {integrations.map((integration) => (
             <ConnectButton
-              key={integration.slug}
+              key={integration.service}
               integration={integration}
               organizationId={organization.id}
               className="group flex max-w-[160px] flex-col items-center gap-4 overflow-hidden rounded-md border border-slate-800 bg-slate-800 text-sm text-slate-200 shadow-md transition hover:bg-slate-800/30 disabled:opacity-50"

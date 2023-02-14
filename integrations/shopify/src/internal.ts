@@ -8,7 +8,7 @@ const requests = new ShopifyRequestIntegration();
 
 const metadata: ServiceMetadata = {
   name: "Shopify",
-  slug: "shopify",
+  service: "shopify",
   icon: "/integrations/shopify.png",
   enabledFor: "all",
   authentication: {

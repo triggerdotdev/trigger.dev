@@ -8,7 +8,7 @@ const requests = new SlackRequestIntegration();
 
 const metadata: ServiceMetadata = {
   name: "Slack",
-  slug: "slack",
+  service: "slack",
   icon: "/integrations/slack.png",
   enabledFor: "all",
   authentication: {

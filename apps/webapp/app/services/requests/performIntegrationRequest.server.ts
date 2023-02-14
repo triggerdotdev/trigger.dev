@@ -233,7 +233,7 @@ export class PerformIntegrationRequest {
     switch (integrationRequest.version) {
       case "1": {
         const integrationInfo = getIntegrations(true).find(
-          (i) => i.metadata.slug === service
+          (i) => i.metadata.service === service
         );
 
         if (!integrationInfo) {

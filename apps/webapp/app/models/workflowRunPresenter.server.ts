@@ -159,7 +159,7 @@ async function parseStep(
       );
       const externalService = original.integrationRequest.externalService;
       const integration = integrations.find(
-        (i) => i.metadata.slug === externalService.slug
+        (i) => i.metadata.service === externalService.slug
       );
       invariant(integration, `Integration ${externalService.slug} not found`);
 
@@ -177,7 +177,7 @@ async function parseStep(
       }
 
       const customComponent =
-        integration.metadata.slug === "resend"
+        integration.metadata.service === "resend"
           ? {
               component: "resend" as const,
               input: SendEmailBodySchema.parse(original.input),

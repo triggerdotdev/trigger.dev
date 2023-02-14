@@ -116,7 +116,7 @@ export type InternalIntegration = {
 
 export type ServiceMetadata = {
   name: string;
-  slug: string;
+  service: string;
   icon: string;
   enabledFor: "all" | "admins" | "none";
   authentication: OAuthAuthentication | APIKeyAuthentication;

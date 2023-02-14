@@ -8,7 +8,7 @@ const webhooks = new GitHubWebhookIntegration();
 
 const metadata: ServiceMetadata = {
   name: "GitHub",
-  slug: "github",
+  service: "github",
   icon: "/integrations/github.png",
   enabledFor: "all",
   authentication: {

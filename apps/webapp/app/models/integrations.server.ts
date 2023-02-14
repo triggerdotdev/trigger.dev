@@ -12,13 +12,13 @@ export function getIntegrationMetadatas(showAdminOnly: boolean) {
 }
 
 export function getIntegration(name: string) {
-  return getIntegrations(true).find((i) => i.metadata.slug === name);
+  return getIntegrations(true).find((i) => i.metadata.service === name);
 }
 
 export function getIntegrationMetadata(
   integrations: Array<InternalIntegration>,
   name: string
 ) {
-  const integration = integrations.find((i) => i.metadata.slug === name);
+  const integration = integrations.find((i) => i.metadata.service === name);
   return integration ? integration.metadata : undefined;
 }

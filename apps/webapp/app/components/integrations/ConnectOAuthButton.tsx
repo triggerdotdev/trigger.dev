@@ -35,7 +35,7 @@ export function ConnectOAuthButton({
     >
       <input type="hidden" name="type" value="oauth" />
       <input type="hidden" name="organizationId" value={organizationId} />
-      <input type="hidden" name="service" value={integration.slug} />
+      <input type="hidden" name="service" value={integration.service} />
       <button
         type="submit"
         disabled={status === "loading"}

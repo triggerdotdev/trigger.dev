@@ -92,7 +92,7 @@ export const action = async ({ request }: ActionArgs) => {
 
     const parsed = parsedResult.data;
     const integrationInfo = getIntegrationMetadatas(true).find(
-      (i) => i.slug === parsed.service
+      (i) => i.service === parsed.service
     );
     if (!integrationInfo) {
       throw new Error("Integration not found");

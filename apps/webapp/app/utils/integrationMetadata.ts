@@ -4,5 +4,5 @@ export function findIntegrationMetadata(
   integrations: Array<ServiceMetadata>,
   slug: string
 ) {
-  return integrations.find((i) => i.slug === slug);
+  return integrations.find((i) => i.service === slug);
 }

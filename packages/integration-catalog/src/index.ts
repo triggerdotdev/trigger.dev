@@ -9,7 +9,7 @@ import type { InternalIntegration } from "@trigger.dev/integration-sdk";
 export const airtable: InternalIntegration = {
   metadata: {
     name: "Airtable",
-    slug: "airtable",
+    service: "airtable",
     icon: "/integrations/airtable.png",
     enabledFor: "admins",
     authentication: {
