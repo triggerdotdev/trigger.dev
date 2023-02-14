@@ -16,7 +16,6 @@ import { Input } from "~/components/primitives/Input";
 import { InputGroup } from "~/components/primitives/InputGroup";
 import { Label } from "~/components/primitives/Label";
 import { Select } from "~/components/primitives/Select";
-import { Body } from "~/components/primitives/text/Body";
 import { SubTitle } from "~/components/primitives/text/SubTitle";
 import { Title } from "~/components/primitives/text/Title";
 import { useCurrentEnvironment } from "~/hooks/useEnvironments";
@@ -88,7 +87,7 @@ export default function AddTemplatePage() {
         {actionData?.type === "error" && (
           <PanelWarning
             message={actionData.errors}
-            className="relative rounded border border-red-400 bg-red-100 px-4 py-3 text-red-700"
+            className="mb-4"
           ></PanelWarning>
         )}
         {template ? (
