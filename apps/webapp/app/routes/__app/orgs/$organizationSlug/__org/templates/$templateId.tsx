@@ -173,10 +173,12 @@ function DeploySection({
   organizationTemplate,
   apiKey,
   workflows,
+  runLocalDocsHTML,
 }: {
   organizationTemplate: LoaderData["organizationTemplate"];
   apiKey: string;
   workflows: LoaderData["workflows"];
+  runLocalDocsHTML: LoaderData["runLocalDocsHTML"];
 }) {
   const currentOrganization = useCurrentOrganization();
   let [isOpen, setIsOpen] = useState(false);
@@ -206,9 +208,16 @@ function DeploySection({
                     <Header3 className="mb-4">Run locally</Header3>
                   </div>
                   <div className="p-6">
-                    <Body size="small" className="text-center text-slate-400">
-                      Code goes here
-                    </Body>
+                    <div className="flex h-full w-full flex-col gap-y-1 rounded ">
+                      <div className="flex rounded bg-slate-900/75 p-4">
+                        <p
+                          className="prose prose-sm prose-invert"
+                          dangerouslySetInnerHTML={{
+                            __html: runLocalDocsHTML,
+                          }}
+                        />
+                      </div>
+                    </div>
                     <PrimaryButton
                       onClick={() => setIsOpen(false)}
                       className="mt-6 w-full"

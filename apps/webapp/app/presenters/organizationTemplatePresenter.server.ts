@@ -1,6 +1,7 @@
 import type { PrismaClient } from "~/db.server";
 import { prisma } from "~/db.server";
 import { getRuntimeEnvironment } from "~/models/runtimeEnvironment.server";
+import { renderMarkdown } from "~/services/renderMarkdown.server";
 import { WorkflowsPresenter } from "./workflowsPresenter.server";
 
 export class OrganizationTemplatePresenter {
@@ -50,6 +51,28 @@ export class OrganizationTemplatePresenter {
       organizationTemplate,
       apiKey: runtimeEnvironment.apiKey,
       workflows,
+      runLocalDocsHTML: renderLocalDocsHTML(
+        organizationTemplate.repositoryUrl,
+        organizationTemplate.template.repositoryUrl,
+        runtimeEnvironment.apiKey,
+        organizationTemplate.template.runLocalDocs
+      ),
     };
   }
+}
+
+// Replace the templateRepoUrl in localDocs with the finalRepoUrl, and then renderMarkdown
+function renderLocalDocsHTML(
+  finalRepoUrl: string,
+  templateRepoUrl: string,
+  apiKey: string,
+  localDocs: string
+) {
+  const localDocsWithFinalRepoUrl = localDocs
+    .replace(templateRepoUrl, finalRepoUrl)
+    .replace("<APIKEY>", apiKey)
+    .replace("<API_KEY>", apiKey)
+    .replace("<your api key>", apiKey);
+
+  return renderMarkdown(localDocsWithFinalRepoUrl);
 }
