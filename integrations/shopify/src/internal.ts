@@ -10,21 +10,26 @@ const metadata: ServiceMetadata = {
   name: "Shopify",
   service: "shopify",
   icon: "/integrations/shopify.png",
-  enabledFor: "all",
+  live: true,
   authentication: {
-    type: "api_key",
-    header_name: "X-Shopify-Access-Token",
-    header_type: "access_token",
-    additionalFields: [
-      {
-        key: "store_name",
-        fieldType: "text",
-        name: "Store name",
-        placeholder: "mystore",
-        description: `This is the name of your Shopify store`,
+    apikey: {
+      type: "api_key",
+      placement: {
+        in: "header",
+        type: "bearer",
+        key: "X-Shopify-Access-Token",
       },
-    ],
-    documentation: `1. Follow [this guide](https://help.shopify.com/en/manual/apps/custom-apps) to enable Custom apps`,
+      additionalFields: [
+        {
+          key: "store_name",
+          fieldType: "text",
+          name: "Store name",
+          placeholder: "mystore",
+          description: `This is the name of your Shopify store`,
+        },
+      ],
+      documentation: `1. Follow [this guide](https://help.shopify.com/en/manual/apps/custom-apps) to enable Custom apps`,
+    },
   },
 };
 

@@ -10,7 +10,6 @@ import type { IntegrationRequest } from "~/models/integrationRequest.server";
 import { getAccessInfo } from "../accessInfo.server";
 import { RedisCacheService } from "../cacheService.server";
 import { getIntegrations } from "~/models/integrations.server";
-import { env } from "~/env.server";
 import { integrationsClient } from "../integrationsClient.server";
 
 type CallResponse =

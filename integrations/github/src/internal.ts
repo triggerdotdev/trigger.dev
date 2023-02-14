@@ -10,10 +10,20 @@ const metadata: ServiceMetadata = {
   name: "GitHub",
   service: "github",
   icon: "/integrations/github.png",
-  enabledFor: "all",
+  live: true,
   authentication: {
-    type: "oauth",
-    scopes: ["repo"],
+    oauth: {
+      type: "oauth2",
+      placement: {
+        in: "header",
+        type: "bearer",
+        key: "Authorization",
+      },
+      authorizationUrl: "https://github.com/login/oauth/authorize",
+      tokenUrl: "https://github.com/login/oauth/access_token",
+      flow: "accessCode",
+      scopes: { repo: "repo" },
+    },
   },
 };
 

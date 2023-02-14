@@ -46,7 +46,7 @@ export const loader = async ({ request, params }: LoaderArgs) => {
 };
 
 export default function Page() {
-  const { workflows, providers } = useTypedLoaderData<typeof loader>();
+  const { workflows } = useTypedLoaderData<typeof loader>();
   const currentOrganization = useCurrentOrganization();
   if (currentOrganization === undefined) {
     return <></>;

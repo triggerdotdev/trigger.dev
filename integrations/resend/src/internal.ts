@@ -10,15 +10,20 @@ const metadata: ServiceMetadata = {
   name: "Resend",
   service: "resend",
   icon: "/integrations/resend.png",
-  enabledFor: "all",
+  live: true,
   authentication: {
-    type: "api_key",
-    header_name: "Authorization",
-    header_type: "access_token",
-    documentation: `1. Login to [Resend](https://resend.com)
+    apiKey: {
+      type: "api_key",
+      placement: {
+        in: "header",
+        type: "bearer",
+        key: "Authorization",
+      },
+      documentation: `1. Login to [Resend](https://resend.com)
     2. Go to the API Keys page
     3. Generate a new API key
     4. Paste it into the field below`,
+    },
   },
 };
 

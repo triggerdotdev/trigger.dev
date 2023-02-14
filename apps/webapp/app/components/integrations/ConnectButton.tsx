@@ -20,8 +20,9 @@ export function ConnectButton({
   children: (status: Status) => React.ReactNode;
   className?: string;
 }) {
-  switch (integration.authentication.type) {
-    case "oauth":
+  const authentication = Object.values(integration.authentication)[0];
+  switch (authentication.type) {
+    case "oauth2":
       return (
         <ConnectOAuthButton
           integration={integration}
@@ -36,7 +37,7 @@ export function ConnectButton({
       return (
         <AddApiKeyButton
           integration={integration}
-          authentication={integration.authentication}
+          authentication={authentication}
           organizationId={organizationId}
           sourceId={sourceId}
           serviceId={serviceId}

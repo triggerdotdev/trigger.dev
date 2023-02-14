@@ -118,19 +118,22 @@ export type ServiceMetadata = {
   name: string;
   service: string;
   icon: string;
-  enabledFor: "all" | "admins" | "none";
-  authentication: OAuthAuthentication | APIKeyAuthentication;
+  live: boolean;
+  authentication: Record<string, OAuth2Authentication | APIKeyAuthentication>;
 };
 
-export type OAuthAuthentication = {
-  type: "oauth";
-  scopes: string[];
+export type OAuth2Authentication = {
+  type: "oauth2";
+  placement: AuthenticationPlacement;
+  authorizationUrl: string;
+  tokenUrl: string;
+  flow: "accessCode" | "implicit" | "password" | "application";
+  scopes: Record<string, string>;
 };
 
 export type APIKeyAuthentication = {
   type: "api_key";
-  header_name: string;
-  header_type: "access_token" | "bearer";
+  placement: AuthenticationPlacement;
   documentation: string;
   additionalFields?: {
     key: string;
@@ -140,3 +143,11 @@ export type APIKeyAuthentication = {
     description: string;
   }[];
 };
+
+type AuthenticationPlacement = HeaderAuthentication;
+
+interface HeaderAuthentication {
+  in: "header";
+  type: "basic" | "bearer";
+  key: string;
+}
