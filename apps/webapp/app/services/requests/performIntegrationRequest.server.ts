@@ -11,6 +11,7 @@ import { getAccessInfo } from "../accessInfo.server";
 import { RedisCacheService } from "../cacheService.server";
 import { getIntegrations } from "~/models/integrations.server";
 import { env } from "~/env.server";
+import { integrationsClient } from "../integrationsClient.server";
 
 type CallResponse =
   | {
@@ -257,57 +258,13 @@ export class PerformIntegrationRequest {
         });
       }
       case "2": {
-        let credentials: { accessToken: string } | undefined = undefined;
-        switch (accessInfo.type) {
-          case "oauth2":
-            credentials = {
-              accessToken: accessInfo.accessToken,
-            };
-            break;
-          case "api_key":
-            credentials = {
-              accessToken: accessInfo.api_key,
-            };
-        }
-
-        try {
-          const response = await fetch(
-            `${env.INTEGRATIONS_API_ORIGIN}/api/v1/${service}/action/${integrationRequest.endpoint}`,
-            {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-                Authorization: `Bearer ${env.INTEGRATIONS_API_KEY}`,
-              },
-              body: JSON.stringify({
-                credentials,
-                params: integrationRequest.params,
-                metadata: {
-                  requestId: integrationRequest.id,
-                  workflowId: workflowId,
-                  connectionId,
-                },
-              }),
-            }
-          );
-
-          const json = await response.json();
-          return json;
-        } catch (e) {
-          console.error(e);
-          return {
-            ok: false,
-            isRetryable: true,
-            response: {
-              output: {
-                error: {
-                  message: JSON.stringify(e),
-                },
-              },
-              context: {},
-            },
-          };
-        }
+        integrationsClient.performRequest({
+          service,
+          accessInfo,
+          integrationRequest,
+          workflowId,
+          connectionId,
+        });
       }
       default: {
         throw new Error(
