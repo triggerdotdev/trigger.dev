@@ -196,7 +196,7 @@
     "typescript": "^4.8.4",
     "vite": "^3.1.4",
     "vite-tsconfig-paths": "^3.5.1",
-    "vitest": "^0.28.4"
+    "vitest": "^0.23.4"
   },
   "engines": {
     "node": ">=16.0.0"
