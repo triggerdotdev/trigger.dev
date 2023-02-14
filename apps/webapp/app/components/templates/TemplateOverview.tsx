@@ -32,14 +32,19 @@ export function TemplateOverview({ template }: { template: TemplateListItem }) {
           </div>
         </div>
         <div className="sticky top-[220px] ml-2 flex h-max w-[240px] min-w-[240px] flex-col gap-y-3 rounded-r  px-4">
-          {template.services.map((service) => (
-            <div
-              key={service.slug}
-              className=" mb-1 flex h-8 w-8 items-center justify-center rounded border-[1px] border-slate-700 bg-slate-900 transition group-hover:border-slate-800 group-hover:bg-slate-900"
-            >
-              <ApiLogoIcon integration={service} size="regular" />
-            </div>
-          ))}
+          
+                <div className="flex flex-row gap-x-1">
+                  {template.services.map((service) => (
+                    <div key={service.slug} className="">
+                      <ApiLogoIcon
+                        integration={service}
+                        size="regular"
+                        className="flex h-8 w-8 items-center justify-center rounded border-[1px] border-slate-700 bg-slate-900 transition group-hover:border-slate-600 group-hover:bg-slate-900/80"
+                      />
+                    </div>
+                  ))}
+                </div>
+       
 
           <Header2 size="regular" className="font-semibold">
             {title}
@@ -48,7 +53,9 @@ export function TemplateOverview({ template }: { template: TemplateListItem }) {
 
           <TertiaryA href={repositoryUrl} target="_blank">
             <OctoKitty className="h-4 w-4" />
-            <Body className="font-mono ">{repositoryUrl}</Body>
+            <Body size="extra-small" className="font-mono truncate">
+              {repositoryUrl.replace("https://github.com/triggerdotdev", "") }
+              </Body>
           </TertiaryA>
 
           <PrimaryLink
