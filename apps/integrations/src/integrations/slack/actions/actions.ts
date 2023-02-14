@@ -78,9 +78,6 @@ export const chatPostMessage: Action = {
       metadata: metadata ? bodyMetadata : undefined,
     };
 
-    //todo add extra passed in metadata to the metadata property
-    //
-
     const postResponse = await endpoints.chatPostMessage.request({
       parameters: data.parameters,
       body: postMessageBody,
