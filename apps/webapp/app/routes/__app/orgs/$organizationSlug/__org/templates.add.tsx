@@ -9,6 +9,7 @@ import {
 import invariant from "tiny-invariant";
 import { z } from "zod";
 import { Container } from "~/components/layout/Container";
+import { PanelWarning } from "~/components/layout/PanelWarning";
 import { PrimaryButton } from "~/components/primitives/Buttons";
 import { Input } from "~/components/primitives/Input";
 import { InputGroup } from "~/components/primitives/InputGroup";
@@ -85,13 +86,10 @@ export default function AddTemplatePage() {
         )}
 
         {actionData?.type === "error" && (
-          <div
+          <PanelWarning
+            message={actionData.errors}
             className="relative rounded border border-red-400 bg-red-100 px-4 py-3 text-red-700"
-            role="alert"
-          >
-            <strong className="font-bold">Error!</strong>
-            <span className="block sm:inline">{actionData.errors}</span>
-          </div>
+          ></PanelWarning>
         )}
 
         <InputGroup>
