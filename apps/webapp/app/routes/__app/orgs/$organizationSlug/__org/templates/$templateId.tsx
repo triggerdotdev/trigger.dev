@@ -129,9 +129,10 @@ function OrganizationTemplateReady(loaderData: LoaderData) {
         </>
       ) : (
         <>
+          <GitHubConfigured />
           <div className="mt-4 mb-1 flex items-center gap-1">
             <CheckCircleIcon className="h-6 w-6 text-green-400" />
-            <SubTitle className="mb-0">Template deployed to Render</SubTitle>
+            <SubTitle className="mb-0">Template deployed</SubTitle>
           </div>
           <Panel className="max-w-4xl">
             <TemplateHeader
@@ -268,16 +269,17 @@ function DeploySection({
     );
   } else {
     return (
-      <div className="mt-6 max-w-4xl">
-        <div className="mb-1 flex items-center gap-1">
-          <CheckCircleIcon className="h-6 w-6 text-green-400" />
-          <SubTitle className="mb-0">Workflow successfully created</SubTitle>
+      <div className="mt-4 max-w-4xl">
+        <Label className="mb-3 text-sm text-slate-500">
+          View your new workflow:
+        </Label>
+        <div className="rounded-md bg-slate-850 p-4">
+          <WorkflowList
+            className="!mb-0"
+            workflows={workflows}
+            currentOrganizationSlug={currentOrganization.slug}
+          />
         </div>
-
-        <WorkflowList
-          workflows={workflows}
-          currentOrganizationSlug={currentOrganization.slug}
-        />
       </div>
     );
   }
@@ -287,7 +289,7 @@ function ConfiguringGithubState() {
   return (
     <Panel className="pointer-events-none relative max-w-4xl overflow-hidden !p-4">
       <div className="absolute top-0 left-0 flex h-full w-full flex-col items-center justify-center gap-4 bg-slate-850/50">
-        <ClockIcon className="h-10 w-10 animate-pulse text-slate-500" />
+        <ClockIcon className="h-10 w-10 animate-pulse text-indigo-500" />
         <Body>This can take up to 1 minute</Body>
       </div>
       <div className="mb-3 grid grid-cols-2 gap-4">
