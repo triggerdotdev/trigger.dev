@@ -32,23 +32,23 @@ export function TemplateOverview({ template }: { template: TemplateListItem }) {
           </div>
         </div>
         <div className="sticky top-[220px] ml-2 flex h-max w-[240px] min-w-[240px] flex-col rounded-r  px-4">
-          <div className="flex flex-row gap-x-1">
-            {template.services.map((service) => (
-              <div key={service.slug} className="">
-                <ApiLogoIcon
-                  integration={service}
-                  size="regular"
-                  className="flex h-8 w-8 mb-3 items-center justify-center rounded border-[1px] border-slate-700 bg-slate-900 transition group-hover:border-slate-600 group-hover:bg-slate-900/80"
-                />
-              </div>
-            ))}
-          </div>
-
           <div className="flex flex-col gap-y-3 ">
             <Header2 size="regular" className="font-semibold">
               {title}
             </Header2>
             <Body>{description}</Body>
+
+            <div className="flex flex-row gap-x-1">
+              {template.services.map((service) => (
+                <div key={service.slug} className="">
+                  <ApiLogoIcon
+                    integration={service}
+                    size="regular"
+                    className="flex h-8 w-8 items-center justify-center rounded border-[1px] border-slate-700 bg-slate-900 transition group-hover:border-slate-600 group-hover:bg-slate-900/80"
+                  />
+                </div>
+              ))}
+            </div>
 
             <TertiaryA href={repositoryUrl} target="_blank">
               <OctoKitty className="h-4 w-4" />
