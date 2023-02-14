@@ -1,15 +1,12 @@
 import {
-  ArrowSmallRightIcon,
   ArrowTopRightOnSquareIcon,
-  CheckIcon,
-  ClipboardDocumentCheckIcon,
   ClockIcon,
 } from "@heroicons/react/24/outline";
 import {
-  HomeIcon,
   CheckCircleIcon,
-  FolderIcon,
   CloudIcon,
+  FolderIcon,
+  HomeIcon,
   XCircleIcon,
 } from "@heroicons/react/24/solid";
 import { useRevalidator } from "@remix-run/react";
@@ -21,14 +18,10 @@ import {
   useTypedLoaderData,
 } from "remix-typedjson";
 import { useEventSource } from "remix-utils";
-import { CopyText } from "~/components/CopyText";
 import { CopyTextButton } from "~/components/CopyTextButton";
 import { Container } from "~/components/layout/Container";
 import { Panel } from "~/components/layout/Panel";
-import {
-  PrimaryButton,
-  SecondaryButton,
-} from "~/components/primitives/Buttons";
+import { PrimaryButton } from "~/components/primitives/Buttons";
 import { StyledDialog } from "~/components/primitives/Dialog";
 import { Input } from "~/components/primitives/Input";
 import { InputGroup } from "~/components/primitives/InputGroup";
@@ -36,11 +29,7 @@ import { Label } from "~/components/primitives/Label";
 import { Select } from "~/components/primitives/Select";
 import { Spinner } from "~/components/primitives/Spinner";
 import { Body } from "~/components/primitives/text/Body";
-import {
-  Header1,
-  Header2,
-  Header3,
-} from "~/components/primitives/text/Headers";
+import { Header1, Header3 } from "~/components/primitives/text/Headers";
 import { SubTitle } from "~/components/primitives/text/SubTitle";
 import { WorkflowList } from "~/components/workflows/workflowList";
 import { useCurrentOrganization } from "~/hooks/useOrganizations";
