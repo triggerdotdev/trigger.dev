@@ -1,7 +1,10 @@
 import { PostgresCacheService } from "cache/postgresCache";
 import { AuthCredentials } from "core/authentication/types";
+import { RequestError } from "core/request/errors";
+import { Service } from "core/service/types";
 import { validateInputs } from "core/validation/inputs";
 import { Request, Response } from "express";
+import { stat } from "fs";
 import { catalog } from "integrations/catalog";
 import { z } from "zod";
 
@@ -15,6 +18,17 @@ const requestBodySchema = z.object({
   }),
 });
 
+type ReturnResponse = {
+  response: NormalizedResponse;
+  isRetryable: boolean;
+  ok: boolean;
+};
+
+type NormalizedResponse = {
+  output: NonNullable<any>;
+  context: any;
+};
+
 export async function handleAction(req: Request, res: Response) {
   const { service, action } = req.params;
 
@@ -24,11 +38,13 @@ export async function handleAction(req: Request, res: Response) {
 
   if (!matchingService) {
     res.status(404).send(
-      JSON.stringify({
-        success: false,
-        service,
-        error: { type: "missing_service", message: "Service not found" },
-      })
+      JSON.stringify(
+        error(404, false, {
+          type: "missing_service",
+          message: "Service not found",
+          service,
+        })
+      )
     );
     return;
   }
@@ -39,12 +55,14 @@ export async function handleAction(req: Request, res: Response) {
 
   if (!matchingAction) {
     res.status(404).send(
-      JSON.stringify({
-        success: false,
-        service,
-        action,
-        error: { type: "missing_action", message: "Action not found" },
-      })
+      JSON.stringify(
+        error(404, false, {
+          type: "missing_action",
+          message: "Action not found",
+          service,
+          action,
+        })
+      )
     );
     return;
   }
@@ -53,10 +71,15 @@ export async function handleAction(req: Request, res: Response) {
 
   if (!parsedRequestBody.success) {
     res.status(400).send(
-      JSON.stringify({
-        success: false,
-        error: { type: "invalid_body", issues: parsedRequestBody.error.issues },
-      })
+      JSON.stringify(
+        error(400, false, {
+          type: "invalid_body",
+          message: "Action not found",
+          service,
+          action,
+          issues: parsedRequestBody.error.issues,
+        })
+      )
     );
     return;
   }
@@ -127,12 +150,9 @@ export async function handleAction(req: Request, res: Response) {
     }
   );
   if (!inputValidationResult.success) {
-    res.status(400).send(
-      JSON.stringify({
-        success: false,
-        error: inputValidationResult.error,
-      })
-    );
+    res
+      .status(400)
+      .send(JSON.stringify(error(400, false, inputValidationResult.error)));
     return;
   }
 
@@ -145,11 +165,60 @@ export async function handleAction(req: Request, res: Response) {
       cache,
       metadata
     );
-    res.send(JSON.stringify(data));
+
+    //convert into the format for the webapp
+    const response: ReturnResponse = {
+      ok: true,
+      isRetryable: isRetryable(matchingService, data.status),
+      response: {
+        output: data.body ?? {},
+        context: {
+          statusCode: data.status,
+          headers: data.headers,
+        },
+      },
+    };
+    res.send(JSON.stringify(response));
   } catch (e: any) {
     console.error(e);
+
+    if (e instanceof Error) {
+      res
+        .status(500)
+        .send(JSON.stringify(error(500, false, { error: JSON.stringify(e) })));
+      return;
+    }
+
+    if ("error" in e) {
+      res.status(500).send(JSON.stringify(error(500, false, e.error)));
+      return;
+    }
+
     res
       .status(500)
-      .send(JSON.stringify({ success: false, errors: e.toString() }));
+      .send(JSON.stringify(error(500, false, { error: JSON.stringify(e) })));
   }
+}
+
+function isRetryable(service: Service, status: number): boolean {
+  return service.retryableStatusCodes.includes(status);
+}
+
+function error(
+  status: number,
+  isRetryable: boolean,
+  error: Record<string, any>
+): ReturnResponse {
+  const response: ReturnResponse = {
+    ok: false,
+    isRetryable,
+    response: {
+      output: error,
+      context: {
+        statusCode: status,
+        headers: {},
+      },
+    },
+  };
+  return response;
 }

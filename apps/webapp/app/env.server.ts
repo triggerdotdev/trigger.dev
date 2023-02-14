@@ -49,6 +49,8 @@ const EnvironmentSchema = z.object({
   PULSAR_AUDIENCE: z.string().optional(),
   PULSAR_DEBUG: z.string().optional(),
   INTERNAL_TRIGGER_API_KEY: z.string().optional(),
+  INTEGRATIONS_API_KEY: z.string(),
+  INTEGRATIONS_API_ORIGIN: z.string(),
 });
 
 export type Environment = z.infer<typeof EnvironmentSchema>;
