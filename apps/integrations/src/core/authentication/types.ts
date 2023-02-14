@@ -5,16 +5,29 @@ export type IntegrationAuthentication = Record<
   AuthenticationDefinition
 >;
 
-type AuthenticationDefinition = OAuth2;
+type AuthenticationDefinition = OAuth2Authentication | APIKeyAuthentication;
 
-interface OAuth2 {
+type OAuth2Authentication = {
   type: "oauth2";
   placement: AuthenticationPlacement;
   authorizationUrl: string;
   tokenUrl: string;
   flow: "accessCode" | "implicit" | "password" | "application";
   scopes: Record<string, string>;
-}
+};
+
+type APIKeyAuthentication = {
+  type: "api_key";
+  placement: AuthenticationPlacement;
+  documentation: string;
+  additionalFields?: {
+    key: string;
+    fieldType: "text";
+    name: string;
+    placeholder?: string;
+    description: string;
+  }[];
+};
 
 type AuthenticationPlacement = HeaderAuthentication;
 
