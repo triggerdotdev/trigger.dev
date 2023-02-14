@@ -1,24 +1,39 @@
 import { JSONSchema } from "./types";
 
 export async function validate(data: any, schema?: JSONSchema) {
-  if (!schema) {
+  try {
+    if (!schema) {
+      return {
+        success: true as const,
+      };
+    }
+    const Validator = await getValidator();
+    const validator = new Validator(schema);
+    const result = validator.validate(data);
+    if (!result.valid) {
+      return {
+        success: false as const,
+        errors: result.errors,
+      };
+    }
+
     return {
       success: true as const,
     };
-  }
-  const Validator = await getValidator();
-  const validator = new Validator(schema);
-  const result = validator.validate(data);
-  if (!result.valid) {
+  } catch (e: any) {
+    console.error(e);
     return {
       success: false as const,
-      errors: result.errors,
+      errors: [
+        {
+          keyword: "undefined",
+          keywordLocation: "undefined",
+          instanceLocation: "undefined",
+          error: e.toString(),
+        },
+      ],
     };
   }
-
-  return {
-    success: true as const,
-  };
 }
 
 async function getValidator() {
