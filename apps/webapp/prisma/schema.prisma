@@ -335,6 +335,7 @@ model IntegrationRequest {
 
   params   Json
   endpoint String
+  version String @default("1")
 
   externalService   ExternalService @relation(fields: [externalServiceId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   externalServiceId String

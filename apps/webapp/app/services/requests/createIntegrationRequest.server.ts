@@ -21,6 +21,7 @@ export class CreateIntegrationRequest {
       service: string;
       endpoint: string;
       params?: any;
+      version?: string;
     }
   ) {
     const environment = await this.#prismaClient.runtimeEnvironment.findUnique({
@@ -60,6 +61,7 @@ export class CreateIntegrationRequest {
       context: {
         service: data.service,
         endpoint: data.endpoint,
+        version: data.version,
       },
       status: "PENDING",
       ts: timestamp,

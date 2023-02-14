@@ -27,6 +27,7 @@ export const ServerRPCSchema = {
         service: z.string(),
         endpoint: z.string(),
         params: z.any(),
+        version: z.string().optional(),
       }),
       timestamp: z.string(),
     }),

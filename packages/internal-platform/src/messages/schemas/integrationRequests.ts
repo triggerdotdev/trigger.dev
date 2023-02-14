@@ -29,6 +29,7 @@ export const commands = {
     data: z.object({
       key: z.string(),
       request: z.object({
+        version: z.string().optional(),
         service: z.string(),
         endpoint: z.string(),
         params: z.any(),
