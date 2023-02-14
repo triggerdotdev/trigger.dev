@@ -213,7 +213,7 @@ function DeploySection({
                     <HomeIcon className="absolute bottom-0 right-[calc(50%-2rem)] h-16 w-16 text-stone-900" />
                     <CloudIcon className="absolute top-4 right-6 h-16 w-16 text-white/50" />
                     <div className="absolute bottom-0 h-2 w-full bg-green-700"></div>
-                    <Header3 className="mb-4">Self host your workflow</Header3>
+                    <Header3 className="mb-4">Run locally</Header3>
                   </div>
                   <div className="p-6">
                     <Body size="small" className="text-center text-slate-400">
@@ -247,7 +247,7 @@ function DeploySection({
         <div className="mt-6 flex items-center justify-end gap-3">
           <PrimaryButton onClick={(e) => setIsOpen(true)}>
             <HomeIcon className="h-5 w-5 text-slate-200" />
-            Self host
+            Run locally
           </PrimaryButton>
           <Body size="small" className="uppercase text-slate-500">
             or
