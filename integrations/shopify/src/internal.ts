@@ -1,12 +1,12 @@
 import type {
-  IntegrationMetadata,
+  ServiceMetadata,
   InternalIntegration,
 } from "@trigger.dev/integration-sdk";
 import { ShopifyRequestIntegration } from "./internal/requests";
 
 const requests = new ShopifyRequestIntegration();
 
-const metadata: IntegrationMetadata = {
+const metadata: ServiceMetadata = {
   name: "Shopify",
   slug: "shopify",
   icon: "/integrations/shopify.png",

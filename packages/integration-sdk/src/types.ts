@@ -109,12 +109,12 @@ export interface CacheService {
 }
 
 export type InternalIntegration = {
-  metadata: IntegrationMetadata;
+  metadata: ServiceMetadata;
   requests?: RequestIntegration;
   webhooks?: WebhookIntegration;
 };
 
-export type IntegrationMetadata = {
+export type ServiceMetadata = {
   name: string;
   slug: string;
   icon: string;

@@ -1,7 +1,7 @@
 import { InformationCircleIcon } from "@heroicons/react/24/outline";
 import type {
   APIKeyAuthentication,
-  IntegrationMetadata,
+  ServiceMetadata,
 } from "@trigger.dev/integration-sdk";
 import { marked } from "marked";
 import { Fragment, useEffect, useState } from "react";
@@ -26,7 +26,7 @@ export function AddApiKeyButton({
   className,
   children,
 }: {
-  integration: IntegrationMetadata;
+  integration: ServiceMetadata;
   authentication: APIKeyAuthentication;
   organizationId: string;
   sourceId?: string;
@@ -68,8 +68,8 @@ export function AddApiKeyButton({
           <StyledDialog.Title>
             Add your {integration.name} API keys
           </StyledDialog.Title>
-          <div className="overflow-hidden overflow-y-auto max-h-40 mb-3 mt-4 bg-slate-700/50 rounded px-4 pb-3 pt-4">
-            <div className="flex gap-0.5 items-center -m-0.5 mb-1 text-slate-400">
+          <div className="mb-3 mt-4 max-h-40 overflow-hidden overflow-y-auto rounded bg-slate-700/50 px-4 pb-3 pt-4">
+            <div className="-m-0.5 mb-1 flex items-center gap-0.5 text-slate-400">
               <InformationCircleIcon className="h-5 w-5" />
               <Body size="small" className="uppercase tracking-wide">
                 Instructions
@@ -99,7 +99,7 @@ export function AddApiKeyButton({
                 <img
                   src={integration.icon}
                   alt={integration.icon}
-                  className="flex pointer-events-none z-10 -mr-7 ml-2.5 mt-2.5 w-5 h-5"
+                  className="pointer-events-none z-10 -mr-7 ml-2.5 mt-2.5 flex h-5 w-5"
                 />
                 <Input
                   id="title"

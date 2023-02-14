@@ -1,12 +1,12 @@
 import type {
-  IntegrationMetadata,
+  ServiceMetadata,
   InternalIntegration,
 } from "@trigger.dev/integration-sdk";
 import { SlackRequestIntegration } from "./internal/requests";
 
 const requests = new SlackRequestIntegration();
 
-const metadata: IntegrationMetadata = {
+const metadata: ServiceMetadata = {
   name: "Slack",
   slug: "slack",
   icon: "/integrations/slack.png",

@@ -1,7 +1,7 @@
-import type { IntegrationMetadata } from "@trigger.dev/integration-sdk";
+import type { ServiceMetadata } from "@trigger.dev/integration-sdk";
 
 export function findIntegrationMetadata(
-  integrations: Array<IntegrationMetadata>,
+  integrations: Array<ServiceMetadata>,
   slug: string
 ) {
   return integrations.find((i) => i.slug === slug);

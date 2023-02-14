@@ -1,6 +1,8 @@
 import type { InternalIntegration } from "@trigger.dev/integration-sdk";
 import { getIntegrations as getInternalIntegrations } from "integration-catalog";
 
+//todo get integrations for the service, and merge with the old ones
+
 export function getIntegrations(showAdminOnly: boolean) {
   return getInternalIntegrations(showAdminOnly);
 }

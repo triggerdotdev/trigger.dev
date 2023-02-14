@@ -1,12 +1,12 @@
 import type {
-  IntegrationMetadata,
+  ServiceMetadata,
   InternalIntegration,
 } from "@trigger.dev/integration-sdk";
 import { ResendRequestIntegration } from "./internal/requests";
 
 const requests = new ResendRequestIntegration();
 
-const metadata: IntegrationMetadata = {
+const metadata: ServiceMetadata = {
   name: "Resend",
   slug: "resend",
   icon: "/integrations/resend.png",

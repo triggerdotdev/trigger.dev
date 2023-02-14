@@ -1,12 +1,12 @@
 import type {
-  IntegrationMetadata,
+  ServiceMetadata,
   InternalIntegration,
 } from "@trigger.dev/integration-sdk";
 import { GitHubWebhookIntegration } from "./internal/webhooks";
 
 const webhooks = new GitHubWebhookIntegration();
 
-const metadata: IntegrationMetadata = {
+const metadata: ServiceMetadata = {
   name: "GitHub",
   slug: "github",
   icon: "/integrations/github.png",

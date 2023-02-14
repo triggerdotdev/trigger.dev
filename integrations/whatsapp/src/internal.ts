@@ -1,5 +1,5 @@
 import type {
-  IntegrationMetadata,
+  ServiceMetadata,
   InternalIntegration,
 } from "@trigger.dev/integration-sdk";
 import { WhatsAppWebhookIntegration } from "./internal/webhooks";
@@ -8,7 +8,7 @@ import { WhatsAppRequestIntegration } from "./internal/requests";
 const webhooks = new WhatsAppWebhookIntegration();
 const requests = new WhatsAppRequestIntegration();
 
-const metadata: IntegrationMetadata = {
+const metadata: ServiceMetadata = {
   name: "WhatsApp Business",
   slug: "whatsapp",
   icon: "/integrations/whatsapp.png",
