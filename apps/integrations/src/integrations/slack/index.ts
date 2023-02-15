@@ -5,7 +5,7 @@ import * as actions from "./actions/actions";
 export const slack: Service = {
   name: "Slack",
   service: "slack",
-  version: "1.0.0",
+  version: "2.0.0",
   live: false,
   authentication,
   actions,
