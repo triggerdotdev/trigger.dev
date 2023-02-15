@@ -103,9 +103,9 @@ class IntegrationsClient {
     name: string;
     params: any;
   }): Promise<DisplayProperties | undefined> {
-    const response = await fetch(
-      `${this.#baseUrl}/${service}/action/${name}/display`,
-      {
+    try {
+      const url = `${this.#baseUrl}/${service}/action/${name}/display`;
+      const response = await fetch(url, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -114,11 +114,17 @@ class IntegrationsClient {
         body: JSON.stringify({
           params,
         }),
-      }
-    );
+      });
 
-    const json = await response.json();
-    return json;
+      if (!response.ok) return undefined;
+      const json = await response.json();
+
+      if (!json.success) return undefined;
+      return json.properties;
+    } catch (e) {
+      console.error(e);
+      return undefined;
+    }
   }
 }
 
