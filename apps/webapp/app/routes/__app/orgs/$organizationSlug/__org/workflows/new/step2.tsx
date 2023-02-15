@@ -40,7 +40,7 @@ function Step2() {
               </div>
               <CubeTransparentIcon className="h-10 w-10 text-indigo-400" />
               <Header3>I want to create a new repo</Header3>
-              <Body size="small" className="text-slate-400">
+              <Body size="small" className="text-center text-slate-400">
                 We'll setup a new GitHub repository and install your template.
               </Body>
             </Link>
