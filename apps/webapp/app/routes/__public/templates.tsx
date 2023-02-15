@@ -4,7 +4,7 @@ import { Header2 } from "~/components/primitives/text/Headers";
 
 export default function TemplatesLayout() {
   return (
-    <Container className="mx-auto mt-20 lg:mt-24 flex w-full max-w-5xl flex-col items-center justify-center">
+    <Container className="mx-auto mt-12 lg:mt-18 flex w-full max-w-5xl flex-col items-center justify-center">
       <h1 className="mb-6 text-center font-title text-5xl font-semibold text-slate-200">
         Placeholder logged out templates
       </h1>
