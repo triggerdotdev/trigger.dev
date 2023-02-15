@@ -152,3 +152,11 @@ export function TertiaryA({ children, className, href, ...props }: AProps) {
     </a>
   );
 }
+
+export function ToxicA({ children, className, href, ...props }: AProps) {
+  return (
+    <a href={href} className={classnames(toxicClasses, className)} {...props}>
+      {children}
+    </a>
+  );
+}
