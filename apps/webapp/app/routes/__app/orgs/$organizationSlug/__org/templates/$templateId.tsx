@@ -89,7 +89,7 @@ function OrganizationTemplateByStatus(loaderData: LoaderData) {
   ) {
     return (
       <>
-        <ConnectedToGithub accountName={loaderData.githubAccount.login} />
+        <ConnectedToGithub />
         <div className="mt-4 mb-2 flex max-w-4xl items-center gap-2">
           <Spinner />
           <SubTitle className="mb-0">
@@ -122,7 +122,7 @@ function OrganizationTemplateReady(loaderData: LoaderData) {
     <>
       {loaderData.organizationTemplate.status === "READY_TO_DEPLOY" ? (
         <>
-          <ConnectedToGithub accountName={loaderData.githubAccount.login} />
+          <ConnectedToGithub />
           {githubConfigured}
           <div className="mt-4 mb-1 flex items-center gap-2">
             <Spinner />
@@ -140,7 +140,7 @@ function OrganizationTemplateReady(loaderData: LoaderData) {
         </>
       ) : (
         <>
-          <ConnectedToGithub accountName={loaderData.githubAccount.login} />
+          <ConnectedToGithub />
           {githubConfigured}
           <div className="mt-4 flex items-center gap-1">
             <SubTitle className="flex items-center">
@@ -375,24 +375,13 @@ function ConfiguringGithubState({
 }
 
 // Skeleton and completed states
-
-export function ConnectedToGithub({ accountName }: { accountName: string }) {
+export function ConnectedToGithub() {
   return (
     <div className="mt-6">
       <SubTitle className="flex items-center">
         <StepNumber complete />
-        GitHub connected
+        GitHub connected 🔌
       </SubTitle>
-      <Panel className="relative mb-6 flex w-full max-w-4xl items-center gap-2 !p-4">
-        <OctoKitty className="h-5 w-5 opacity-40" />
-        <a
-          href={`https://github.com/${accountName}`}
-          target="_blank"
-          className="font-sm text-slate-400 transition hover:text-white"
-        >
-          https://github.com/{accountName}
-        </a>
-      </Panel>
     </div>
   );
 }
@@ -410,7 +399,7 @@ function GitHubConfigured({
     <div className="mb-6">
       <SubTitle className="mt-4 flex items-center">
         <StepNumber complete />
-        GitHub configured
+        GitHub repository created 🚀
       </SubTitle>
       <Panel className="pointer-events-none relative max-w-4xl overflow-hidden !p-4">
         <div className="absolute top-0 left-0 flex h-full w-full flex-col items-center justify-center gap-4 bg-slate-850/40"></div>

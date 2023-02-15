@@ -28,7 +28,7 @@ import { useCurrentOrganization } from "~/hooks/useOrganizations";
 import { WorkflowStartPresenter } from "~/presenters/workflowStartPresenter.server";
 import { requireUserId } from "~/services/session.server";
 import { AddTemplateService } from "~/services/templates/addTemplate.server";
-import { DeployBlankState } from "./templates/$templateId";
+import { ConnectedToGithub, DeployBlankState } from "./templates/$templateId";
 
 export async function loader({ params, request }: LoaderArgs) {
   const userId = await requireUserId(request);
@@ -116,19 +116,25 @@ export default function AddTemplatePage() {
           ) : (
             <></>
           )}
-          {/* Todo: Fix this state */}
-          <ConnectToGithub />
-          <ConfigureGithub />
+
+          {appAuthorizations.length === 0 ? (
+            <>
+              <ConnectToGithub />
+              <ConfigureGithub />
+            </>
+          ) : (
+            <ConnectedToGithub />
+          )}
 
           {template ? (
             <SubTitle className="flex items-center">
               <StepNumber active stepNumber="2" />
-              Configure GitHub for your workflow: {template.title}
+              Where should we create the new repository?
             </SubTitle>
           ) : (
             <SubTitle className="flex items-center">
               <StepNumber active stepNumber="2" />
-              Configure GitHub for your new workflow
+              Where should we create the new repository?
             </SubTitle>
           )}
           <Panel className="!p-4">
@@ -181,12 +187,18 @@ export default function AddTemplatePage() {
             </div>
             <div className="mb-4 grid grid-cols-2 gap-4">
               <InputGroup>
-                <Label htmlFor="name">Choose a name</Label>
+                <Label htmlFor="name">
+                  Choose a repository name (required)
+                </Label>
 
                 <Input
                   id="name"
                   name="name"
-                  placeholder="Repository name"
+                  placeholder={`e.g. ${
+                    template
+                      ? `trigger.dev-${template.slug}`
+                      : `my-trigger.dev-workflows`
+                  }`}
                   spellCheck={false}
                   className=""
                 />
