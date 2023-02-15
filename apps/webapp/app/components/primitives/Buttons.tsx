@@ -21,7 +21,7 @@ const dangerClasses = classnames(
 );
 const toxicClasses = classnames(
   commonClasses,
-  "px-3 py-1 transition bg-gradient-to-r from-acid-500 to-toxic-500 text-slate-1000 !text-base font-bold hover:from-acid-600 hover:to-toxic-600 focus:ring-slate-300"
+  "hover:cursor-pointer px-3 py-1 transition bg-gradient-to-r from-acid-500 to-toxic-500 text-slate-1000 !text-base font-bold hover:from-acid-600 hover:to-toxic-600 focus:ring-slate-300"
 );
 
 type ButtonProps = React.DetailedHTMLProps<

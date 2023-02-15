@@ -8,7 +8,7 @@ import {
 } from "~/components/samples/samplesList";
 import { useCurrentEnvironment } from "~/hooks/useEnvironments";
 import CodeBlock from "../code/CodeBlock";
-import { PrimaryButton } from "../primitives/Buttons";
+import { PrimaryButton, ToxicA } from "../primitives/Buttons";
 import { StyledDialog } from "../primitives/Dialog";
 import { Body } from "../primitives/text/Body";
 import { Header2 } from "../primitives/text/Headers";
@@ -48,16 +48,24 @@ export function ExampleOverview({
                   />
                 </div>
                 <div className="flex w-80 flex-col gap-y-4 pl-4">
-                  <PrimaryButton
-                    className="min-w-full place-self-end"
+                
+
+                  <ToxicA
+                    className="group flex h-12 min-w-full"
                     onClick={() => {
                       setOpenProject(null);
                       onSelectedProject(openProject);
                     }}
                   >
-                    Use this example
-                  </PrimaryButton>
-                  <div className="flex flex-col items-start justify-start gap-y-4 border-b border-slate-850/80 bg-slate-700/30 px-4 py-4">
+                    <span> Use this template </span>
+                    <span
+                      className="ml-1 transition group-hover:translate-x-0.5"
+                      aria-hidden="true"
+                    >
+                      &rarr;
+                    </span>
+                  </ToxicA>
+                  <div className="flex flex-col rounded items-start justify-start gap-y-4  bg-slate-700/30 px-4 py-4">
                     {openProject.icon}
                     <Header2 size="regular" className="font-semibold">
                       {openProject.name}
@@ -130,29 +138,37 @@ export function FromScratchOverview({
                       />
                     </div>
 
-                    <div className="flex w-80 flex-col gap-y-4 items-start justify-start">
-                      <PrimaryButton
-                        className="min-w-full"
+                    <div className="flex w-80 flex-col items-start justify-start gap-y-4">
+                     
+
+                      <ToxicA
+                        className="group flex h-12 min-w-full"
                         onClick={() => {
                           setOpenProject(null);
                           onSelectedProject(openProject);
                         }}
                       >
-                        Use this example
-                      </PrimaryButton>
+                        <span> Use this template </span>
+                        <span
+                          className="ml-1 transition group-hover:translate-x-0.5"
+                          aria-hidden="true"
+                        >
+                          &rarr;
+                        </span>
+                      </ToxicA>
 
                       <Header2 size="regular" className="font-semibold">
                         {openProject.name}
                       </Header2>
 
-                        <Body>{openProject.description}</Body>
-                        {openProject.bulletPoints && (
-                          <ul className="list-disc pl-4 text-slate-300">
-                            {openProject.bulletPoints.map((point, i) => (
-                              <li key={i}>{point}</li>
-                            ))}
-                          </ul>
-                        )}
+                      <Body>{openProject.description}</Body>
+                      {openProject.bulletPoints && (
+                        <ul className="list-disc pl-4 text-slate-300">
+                          {openProject.bulletPoints.map((point, i) => (
+                            <li key={i}>{point}</li>
+                          ))}
+                        </ul>
+                      )}
                     </div>
                   </div>
                 </div>
