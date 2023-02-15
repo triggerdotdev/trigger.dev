@@ -43,6 +43,24 @@ async function seed() {
     runLocalDocs: await readTemplateDocsFile("github-stars-to-slack-local"),
   };
 
+  const resendWelcomeDripCampaign = {
+    repositoryUrl:
+      "https://github.com/triggerdotdev/resend-welcome-drip-campaign",
+    imageUrl:
+      "https://imagedelivery.net/3TbraffuDZ4aEf8KWOmI_w/10a0661d-dda6-4a70-d1b5-8576ad63bd00/public",
+    title: "Send a Welcome Drip Campaign to new users",
+    shortTitle: "Resend.com drip campaign",
+    description:
+      "When a new user is created, send them a Welcome Drip Campaign from Resend.com and react.email",
+    priority: 2,
+    services: ["resend"],
+    workflowIds: ["resend-welcome-drip-campaign"],
+    markdownDocs: await readTemplateDocsFile("resend-welcome-drip-campaign"),
+    runLocalDocs: await readTemplateDocsFile(
+      "resend-welcome-drip-campaign-local"
+    ),
+  };
+
   await prisma.template.upsert({
     where: { slug: "basic-starter" },
     update: basicStarter,
@@ -58,6 +76,15 @@ async function seed() {
     create: {
       slug: "github-stars-to-slack",
       ...githubStarsToSlack,
+    },
+  });
+
+  await prisma.template.upsert({
+    where: { slug: "resend-welcome-drip-campaign" },
+    update: resendWelcomeDripCampaign,
+    create: {
+      slug: "resend-welcome-drip-campaign",
+      ...resendWelcomeDripCampaign,
     },
   });
 }
