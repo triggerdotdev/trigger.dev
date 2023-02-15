@@ -11,6 +11,10 @@ import { NoMobileOverlay } from "~/components/NoMobileOverlay";
 import { IntercomProvider, useIntercom } from "react-use-intercom";
 import { useEffect } from "react";
 import { getImpersonationId } from "~/services/impersonation.server";
+import {
+  clearCurrentTemplate,
+  commitCurrentTemplateSession,
+} from "~/services/currentTemplate.server";
 
 export const loader = async ({ request }: LoaderArgs) => {
   const userId = await requireUserId(request);
@@ -23,9 +27,15 @@ export const loader = async ({ request }: LoaderArgs) => {
       impersonationId,
     },
     {
-      headers: {
-        "Set-Cookie": await commitSession(await clearRedirectTo(request)),
-      },
+      headers: [
+        ["Set-Cookie", await commitSession(await clearRedirectTo(request))],
+        [
+          "Set-Cookie",
+          await commitCurrentTemplateSession(
+            await clearCurrentTemplate(request)
+          ),
+        ],
+      ],
     }
   );
 };

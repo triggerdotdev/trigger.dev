@@ -1,29 +1,33 @@
 import { EnvelopeIcon } from "@heroicons/react/24/solid";
-import type { LoaderFunction, MetaFunction } from "@remix-run/node";
-import { json, redirect } from "@remix-run/node";
-import { Form, Link, useLoaderData } from "@remix-run/react";
+import type { LoaderArgs, MetaFunction } from "@remix-run/node";
+import { Form, Link } from "@remix-run/react";
+import { redirect, typedjson, useTypedLoaderData } from "remix-typedjson";
 import { GitHubLoginButton } from "~/components/GitHubLoginButton";
 import { LoginPromoPanel } from "~/components/LoginPromoPanel";
-import { Logo, LogoSvg } from "~/components/Logo";
+import { LogoSvg } from "~/components/Logo";
+import { TemplatePresenter } from "~/presenters/templatePresenter.server";
+import { getCurrentTemplate } from "~/services/currentTemplate.server";
 import { commitSession, setRedirectTo } from "~/services/redirectTo.server";
 import { getUserId } from "~/services/session.server";
 
-type LoaderData = {
-  redirectTo?: string;
-};
-
-export const loader: LoaderFunction = async ({ request }) => {
+export async function loader({ request }: LoaderArgs) {
   const userId = await getUserId(request);
   if (userId) return redirect("/");
 
   const url = new URL(request.url);
   const redirectTo = url.searchParams.get("redirectTo");
 
+  const templateId = await getCurrentTemplate(request);
+
+  const templateData = templateId
+    ? await new TemplatePresenter().data({ id: templateId })
+    : null;
+
   if (redirectTo) {
     const session = await setRedirectTo(request, redirectTo);
 
-    return json<LoaderData>(
-      { redirectTo },
+    return typedjson(
+      { redirectTo, template: templateData?.template },
       {
         headers: {
           "Set-Cookie": await commitSession(session),
@@ -31,9 +35,9 @@ export const loader: LoaderFunction = async ({ request }) => {
       }
     );
   } else {
-    return json({});
+    return typedjson({ template: templateData?.template, redirectTo: null });
   }
-};
+}
 
 export const meta: MetaFunction = () => {
   return {
@@ -42,14 +46,15 @@ export const meta: MetaFunction = () => {
 };
 
 export default function LoginPage() {
-  const data = useLoaderData<LoaderData>();
+  const data = useTypedLoaderData<typeof loader>();
+
   return (
     <div className="flex h-screen w-screen justify-between overflow-y-scroll bg-slate-900">
-      <LoginPromoPanel />
-      <div className="flex grow items-center justify-center h-full w-full p-4">
-        <div className="flex w-full max-w-xl flex-col justify-between rounded-lg bg-slate-850 shadow-md min-h-[430px]">
+      <LoginPromoPanel template={data.template} />
+      <div className="flex h-full w-full grow items-center justify-center p-4">
+        <div className="flex min-h-[430px] w-full max-w-xl flex-col justify-between rounded-lg bg-slate-850 shadow-md">
           <Form
-            className="flex flex-col flex-grow"
+            className="flex flex-grow flex-col"
             action={`/auth/github${
               data.redirectTo ? `?redirectTo=${data.redirectTo}` : ""
             }`}
@@ -57,11 +62,11 @@ export default function LoginPage() {
           >
             <a
               href="https://trigger.dev"
-              className="flex w-full justify-center mt-12 px-4"
+              className="mt-12 flex w-full justify-center px-4"
             >
               <LogoSvg className="h-14" />
             </a>
-            <div className="flex flex-col flex-grow justify-between items-center text-center pt-8 pb-12 px-10">
+            <div className="flex flex-grow flex-col items-center justify-between px-10 pt-8 pb-12 text-center">
               <p className="text-base lg:text-lg">
                 Build better workflows with Trigger.dev.
               </p>

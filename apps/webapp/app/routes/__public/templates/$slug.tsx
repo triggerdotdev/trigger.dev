@@ -10,7 +10,7 @@ export async function loader({ params }: LoaderArgs) {
 
   const presenter = new TemplatePresenter();
 
-  return typedjson(await presenter.data(slug));
+  return typedjson(await presenter.data({ slug }));
 }
 
 export default function TemplateSlugPage() {
