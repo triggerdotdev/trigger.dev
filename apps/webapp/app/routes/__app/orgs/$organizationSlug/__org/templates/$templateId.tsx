@@ -235,7 +235,7 @@ function DeploySection({
                   <div className="p-6">
                     <div className="flex h-full w-full flex-col gap-y-1 rounded ">
                       <div className="flex rounded bg-slate-900/75 p-4">
-                        <p
+                        <div
                           className="prose prose-sm prose-invert"
                           dangerouslySetInnerHTML={{
                             __html: runLocalDocsHTML,

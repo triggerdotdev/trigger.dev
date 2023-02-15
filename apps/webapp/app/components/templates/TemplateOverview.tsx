@@ -22,7 +22,7 @@ export function TemplateOverview({ template }: { template: TemplateListItem }) {
       <div className="flex flex-row">
         <div className="flex h-full w-full flex-col gap-y-1 rounded ">
           <div className="flex rounded bg-slate-900/75 p-4">
-            <p
+            <div
               className="prose prose-sm prose-invert"
               dangerouslySetInnerHTML={{
                 __html: docsHTML,
