@@ -42,7 +42,6 @@ export default function Public() {
 
   return (
     <LayoutComponent>
-      <NoMobileOverlay />
       {loaderData.userId ? <Header /> : <MarketingHeader />}
       <AppBody>
         <Outlet />
