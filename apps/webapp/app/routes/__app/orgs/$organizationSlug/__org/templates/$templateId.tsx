@@ -87,7 +87,7 @@ function OrganizationTemplateByStatus(loaderData: LoaderData) {
         <div>
           <TemplateCard template={loaderData.template} />
         </div>
-        <ConnectedToGithub />
+        <ConnectedToGithub accountName={loaderData.githubAccount.login} />
         <div className="mt-4 mb-2 flex max-w-4xl items-center gap-2">
           <Spinner />
           <SubTitle className="mb-0">
@@ -123,7 +123,7 @@ function OrganizationTemplateReady(loaderData: LoaderData) {
           <div>
             <TemplateCard template={loaderData.template} />
           </div>
-          <ConnectedToGithub />
+          <ConnectedToGithub accountName={loaderData.githubAccount.login} />
           {githubConfigured}
           <div className="mt-4 mb-1 flex items-center gap-2">
             <Spinner />
@@ -141,7 +141,7 @@ function OrganizationTemplateReady(loaderData: LoaderData) {
         </>
       ) : (
         <>
-          <ConnectedToGithub />
+          <ConnectedToGithub accountName={loaderData.githubAccount.login} />
           {githubConfigured}
           <div className="mt-4 mb-1 flex items-center gap-1">
             <CheckCircleIcon className="h-6 w-6 text-green-400" />
@@ -369,7 +369,7 @@ function ConfiguringGithubState({
     </Panel>
   );
 }
-function ConnectedToGithub() {
+function ConnectedToGithub({ accountName }: { accountName: string }) {
   return (
     <div className="mt-6">
       <SubTitle className="flex items-center">
@@ -379,11 +379,11 @@ function ConnectedToGithub() {
       <Panel className="relative flex w-full max-w-4xl items-center gap-2 !p-4">
         <OctoKitty className="h-5 w-5 opacity-40" />
         <a
-          href="https://github.com/triggerdotdev"
+          href={`https://github.com/${accountName}`}
           target="_blank"
           className="font-sm text-slate-400 transition hover:text-white"
         >
-          https://github.com/triggerdotdev
+          https://github.com/{accountName}
         </a>
       </Panel>
     </div>
