@@ -66,6 +66,11 @@ export type DisplayProperties = {
 
 export type DisplayProperty = { key: string; value: string | number | boolean };
 
+export type WebhookExample = {
+  name: string;
+  payload: any;
+};
+
 export interface PerformedRequestResponse {
   response: NormalizedResponse;
   isRetryable: boolean;
@@ -95,6 +100,7 @@ export interface WebhookIntegration {
     | { status: "ignored"; reason: string }
     | { status: "error"; error: string };
   displayProperties: (source: unknown) => DisplayProperties;
+  examples: (eventName: string) => WebhookExample | undefined;
 }
 
 export interface CacheService {

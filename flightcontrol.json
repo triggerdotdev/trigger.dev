@@ -62,9 +62,7 @@
             "packages/internal-pulsar/src/**",
             "./pnpm-lock.yaml"
           ],
-          "dependsOn": [
-            "p-db"
-          ],
+          "dependsOn": ["p-db"],
           "envVariables": {
             "FROM_EMAIL": "hello@email.trigger.dev",
             "REPLY_TO_EMAIL": "hello@trigger.dev",
@@ -245,9 +243,7 @@
             "packages/internal-pulsar/src/**",
             "./pnpm-lock.yaml"
           ],
-          "dependsOn": [
-            "s-db"
-          ],
+          "dependsOn": ["s-db"],
           "envVariables": {
             "APP_ENV": "staging",
             "FROM_EMAIL": "hello@email.trigger.dev",
@@ -291,6 +287,9 @@
             "PIZZLY_HOST": "https://auth-staging.trigger.dev",
             "PIZZLY_SECRET_KEY": {
               "fromParameterStore": "/Staging/webapp/PIZZLY_SECRET_KEY"
+            },
+            "POSTHOG_PROJECT_KEY": {
+              "fromParameterStore": "/Staging/webapp/POSTHOG_PROJECT_KEY"
             },
             "TRIGGER_LOG_LEVEL": "debug",
             "PULSAR_ENABLED": "1",

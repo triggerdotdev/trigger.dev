@@ -22,8 +22,8 @@ export const issueCommentSchema = z.object({
   updated_at: z.string(),
   author_association: authorAssociationSchema,
   body: z.string(),
-  reactions: reactionsSchema,
-  performed_via_github_app: appSchema.nullable(),
+  reactions: reactionsSchema.optional(),
+  performed_via_github_app: appSchema.nullish(),
 });
 
 export const issueCommentCreatedEventSchema = z.object({

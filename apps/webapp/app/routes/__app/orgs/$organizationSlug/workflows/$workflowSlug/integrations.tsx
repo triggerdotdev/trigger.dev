@@ -3,7 +3,6 @@ import { WorkflowConnections } from "~/components/integrations/WorkflowConnectio
 import { PanelInfo } from "~/components/layout/PanelInfo";
 import { PanelWarning } from "~/components/layout/PanelWarning";
 import { TertiaryLink } from "~/components/primitives/Buttons";
-import { Body } from "~/components/primitives/text/Body";
 import { SubTitle } from "~/components/primitives/text/SubTitle";
 import { Title } from "~/components/primitives/text/Title";
 import { useConnectionSlots } from "~/hooks/useConnectionSlots";

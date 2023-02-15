@@ -2,9 +2,7 @@
   "$schema": "https://turborepo.org/schema.json",
   "pipeline": {
     "build": {
-      "dependsOn": [
-        "^build"
-      ],
+      "dependsOn": ["^build"],
       "outputs": [
         "dist/**",
         "public/build/**",
@@ -14,20 +12,12 @@
       ]
     },
     "webapp#start": {
-      "dependsOn": [
-        "^build"
-      ],
-      "outputs": [
-        "public/build/**"
-      ]
+      "dependsOn": ["^build"],
+      "outputs": ["public/build/**"]
     },
     "start": {
-      "dependsOn": [
-        "^build"
-      ],
-      "outputs": [
-        "public/build/**"
-      ]
+      "dependsOn": ["^build"],
+      "outputs": ["public/build/**"]
     },
     "db:migrate:deploy": {
       "outputs": []
@@ -48,10 +38,11 @@
     "dev": {
       "cache": false
     },
+    "idev": {
+      "cache": false
+    },
     "generate": {
-      "dependsOn": [
-        "^generate"
-      ]
+      "dependsOn": ["^generate"]
     },
     "lint": {
       "outputs": []
@@ -68,22 +59,16 @@
       "cache": false
     },
     "test:e2e:dev": {
-      "dependsOn": [
-        "^build"
-      ],
+      "dependsOn": ["^build"],
       "outputs": [],
       "cache": false
     },
     "test:e2e:ci": {
-      "dependsOn": [
-        "^build"
-      ],
+      "dependsOn": ["^build"],
       "outputs": []
     },
     "typecheck": {
-      "dependsOn": [
-        "^build"
-      ],
+      "dependsOn": ["^build"],
       "outputs": []
     },
     "clean": {
@@ -99,9 +84,7 @@
       "cache": false
     }
   },
-  "globalDependencies": [
-    ".env"
-  ],
+  "globalDependencies": [".env"],
   "globalEnv": [
     "NODE_ENV",
     "REMIX_APP_PORT",

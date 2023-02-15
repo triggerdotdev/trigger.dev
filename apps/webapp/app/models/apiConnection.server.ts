@@ -1,7 +1,7 @@
 import type { APIConnection, Organization } from ".prisma/client";
 import { z } from "zod";
 import { prisma } from "~/db.server";
-import { Workflow } from "./workflow.server";
+import type { Workflow } from "./workflow.server";
 
 export { APIConnection };
 

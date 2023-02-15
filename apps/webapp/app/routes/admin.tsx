@@ -1,9 +1,12 @@
 import { Dialog, Transition } from "@headlessui/react";
 import { HomeIcon, XMarkIcon } from "@heroicons/react/24/outline";
+import { UserCircleIcon } from "@heroicons/react/24/solid";
 import { Outlet } from "@remix-run/react";
 import type { LoaderArgs } from "@remix-run/server-runtime";
+import classNames from "classnames";
 import { Fragment, useState } from "react";
 import { redirect, typedjson, useTypedLoaderData } from "remix-typedjson";
+import type { User } from "~/models/user.server";
 import { getUser, requireUserId } from "~/services/session.server";
 import { UserCircleIcon } from "@heroicons/react/24/solid";
 import classNames from "classnames";

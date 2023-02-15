@@ -1,9 +1,10 @@
 import { Form } from "@remix-run/react";
+import type { ActionArgs } from "@remix-run/server-runtime";
+import { redirect } from "@remix-run/server-runtime";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
-import { adminGetUsers } from "~/models/admin.server";
-import { PrimaryButton } from "~/components/primitives/Buttons";
-import { ActionArgs, redirect } from "@remix-run/server-runtime";
 import { z } from "zod";
+import { PrimaryButton } from "~/components/primitives/Buttons";
+import { adminGetUsers } from "~/models/admin.server";
 import {
   commitImpersonationSession,
   setImpersonationId,

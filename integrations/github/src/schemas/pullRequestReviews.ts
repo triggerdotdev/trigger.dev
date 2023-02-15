@@ -72,7 +72,7 @@ export const pullRequestReviewSubmittedEventSchema = z.object({
   sender: userSchema,
 });
 
-export const pullRequestReviewEventSchema = z.union([
+export const pullRequestReviewEventSchema = z.discriminatedUnion("action", [
   pullRequestReviewDismissedEventSchema,
   pullRequestReviewEditedEventSchema,
   pullRequestReviewSubmittedEventSchema,

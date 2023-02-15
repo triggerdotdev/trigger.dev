@@ -9,6 +9,7 @@ import {
   commitCurrentOrgSession,
   setCurrentOrg,
 } from "~/services/currentOrganization.server";
+import { analytics } from "~/services/analytics.server";
 
 export const loader = async ({ request, params }: LoaderArgs) => {
   const userId = await requireUserId(request);
@@ -24,14 +25,29 @@ export const loader = async ({ request, params }: LoaderArgs) => {
     throw new Response("Not Found", { status: 404 });
   }
 
+  analytics.organization.identify({ organization });
+
   const currentEnvironmentSlug = await getRuntimeEnvironmentFromRequest(
     request
   );
+  const currentEnvironment = organization.environments?.find(
+    (e) => e.slug === currentEnvironmentSlug
+  );
+
+  if (currentEnvironment == null) {
+    throw new Response("Not Found", { status: 404 });
+  }
 
   const session = await setCurrentOrg(organization.slug, request);
 
+  analytics.environment.identify({ environment: currentEnvironment });
+
   return typedjson(
-    { organization, currentEnvironmentSlug },
+    {
+      organization,
+      currentEnvironment,
+      currentEnvironmentSlug,
+    },
     {
       headers: {
         "Set-Cookie": await commitCurrentOrgSession(session),

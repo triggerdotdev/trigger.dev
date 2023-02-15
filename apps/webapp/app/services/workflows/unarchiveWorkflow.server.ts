@@ -1,6 +1,5 @@
 import type { PrismaClient } from "~/db.server";
 import { prisma } from "~/db.server";
-import { DisableWorkflow } from "./disableWorkflow.server";
 
 export class UnarchiveWorkflow {
   #prismaClient: PrismaClient;

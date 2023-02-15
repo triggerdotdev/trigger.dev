@@ -1,5 +1,5 @@
 import { Form } from "@remix-run/react";
-import { TertiaryA, TertiaryButton } from "./primitives/Buttons";
+import { TertiaryButton } from "./primitives/Buttons";
 import { Body } from "./primitives/text/Body";
 
 export function ImpersonationBanner({

@@ -2,7 +2,7 @@ import { InboxArrowDownIcon } from "@heroicons/react/24/outline";
 import { ArrowLeftIcon } from "@heroicons/react/24/solid";
 import type { ActionArgs, LoaderArgs, MetaFunction } from "@remix-run/node";
 import { redirect } from "@remix-run/node";
-import { Form, Link, useLoaderData, useTransition } from "@remix-run/react";
+import { Form, Link, useTransition } from "@remix-run/react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
 import { LoginPromoPanel } from "~/components/LoginPromoPanel";

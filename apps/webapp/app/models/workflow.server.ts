@@ -7,7 +7,7 @@ import type {
 import { prisma } from "~/db.server";
 export type { Workflow } from ".prisma/client";
 
-export type { ExternalSource } from ".prisma/client";
+export type { ExternalSource, EventRule } from ".prisma/client";
 
 export type WorkflowWithExternalSource = Workflow & {
   externalSource: ExternalSource;

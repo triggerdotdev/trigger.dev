@@ -33,7 +33,8 @@
     "sentry-upload": "pnpm run generate:sourcemaps && sentry-upload-sourcemaps",
     "clean:sourcemaps": "run-s clean:sourcemaps:*",
     "clean:sourcemaps:public": "rimraf ./build/**/*.map",
-    "clean:sourcemaps:build": "rimraf ./public/build/**/*.map"
+    "clean:sourcemaps:build": "rimraf ./public/build/**/*.map",
+    "idev": "infisical run -- run-p dev:*"
   },
   "eslintIgnore": [
     "/node_modules",
@@ -114,6 +115,7 @@
     "openapi-types": "^12.0.0",
     "postcss-import": "^14.1.0",
     "posthog-js": "^1.31.0",
+    "posthog-node": "^2.4.0",
     "pretty-bytes": "^6.0.0",
     "prism-react-renderer": "^1.3.5",
     "prismjs": "^1.29.0",

@@ -169,6 +169,9 @@ export class RegisterWorkflow {
       await taskQueue.publish("WORKFLOW_CREATED", {
         id: workflow.id,
       });
+      await taskQueue.publish("WORKFLOW_CREATED", {
+        id: workflow.id,
+      });
     }
 
     return workflow;

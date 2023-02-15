@@ -8,6 +8,7 @@ import type {
   WebhookIntegration,
 } from "@trigger.dev/integration-sdk";
 import { WebhookSourceSchema } from "../schemas";
+import { examples } from "./examples";
 
 export class WhatsAppWebhookIntegration implements WebhookIntegration {
   keyForSource(source: unknown): string {
@@ -69,6 +70,10 @@ export class WhatsAppWebhookIntegration implements WebhookIntegration {
 
   displayProperties(source: unknown) {
     return { title: "WhatsApp", properties: [] };
+  }
+
+  examples(eventName: string) {
+    return examples[eventName];
   }
 }
 

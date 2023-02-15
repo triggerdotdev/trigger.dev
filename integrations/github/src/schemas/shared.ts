@@ -5,7 +5,7 @@ export const userSchema = z.object({
   id: z.number(),
   node_id: z.string(),
   name: z.string().optional(),
-  email: z.string().optional().nullable(),
+  email: z.string().optional().nullish(),
   avatar_url: z.string(),
   gravatar_id: z.string(),
   url: z.string(),
@@ -31,7 +31,7 @@ export const licenseSchema = z.object({
   key: z.string(),
   name: z.string(),
   spdx_id: z.string(),
-  url: z.string().nullable(),
+  url: z.string().nullish(),
   node_id: z.string(),
 });
 
@@ -53,7 +53,7 @@ export const organizationSchema = z.object({
   members_url: z.string(),
   public_members_url: z.string(),
   avatar_url: z.string(),
-  description: z.string().nullable(),
+  description: z.string().nullish(),
 });
 
 export const repositorySchema = z.object({
@@ -64,7 +64,7 @@ export const repositorySchema = z.object({
   private: z.boolean(),
   owner: userSchema,
   html_url: z.string(),
-  description: z.string().nullable(),
+  description: z.string().nullish(),
   fork: z.boolean(),
   url: z.string(),
   forks_url: z.string(),
@@ -105,27 +105,27 @@ export const repositorySchema = z.object({
   deployments_url: z.string(),
   created_at: z.union([z.number(), z.string()]),
   updated_at: z.string(),
-  pushed_at: z.union([z.number(), z.string()]).nullable(),
+  pushed_at: z.union([z.number(), z.string()]).nullish(),
   git_url: z.string(),
   ssh_url: z.string(),
   clone_url: z.string(),
   svn_url: z.string(),
-  homepage: z.string().nullable(),
+  homepage: z.string().nullish(),
   size: z.number(),
   stargazers_count: z.number(),
   watchers_count: z.number(),
-  language: z.string().nullable(),
+  language: z.string().nullish(),
   has_issues: z.boolean(),
   has_projects: z.boolean(),
   has_downloads: z.boolean(),
   has_wiki: z.boolean(),
   has_pages: z.boolean(),
   forks_count: z.number(),
-  mirror_url: z.string().nullable(),
+  mirror_url: z.string().nullish(),
   archived: z.boolean(),
   disabled: z.boolean().optional(),
   open_issues_count: z.number(),
-  license: licenseSchema.nullable(),
+  license: licenseSchema.nullish(),
   forks: z.number(),
   open_issues: z.number(),
   watchers: z.number(),
@@ -142,14 +142,12 @@ export const repositorySchema = z.object({
   squash_merge_commit_title: z.string().optional(),
   merge_commit_message: z.string().optional(),
   merge_commit_title: z.string().optional(),
-  is_template: z.boolean(),
-  web_commit_signoff_required: z.boolean(),
-  topics: z.array(z.string()),
-  visibility: z.union([
-    z.literal("public"),
-    z.literal("private"),
-    z.literal("internal"),
-  ]),
+  is_template: z.boolean().optional(),
+  web_commit_signoff_required: z.boolean().optional(),
+  topics: z.array(z.string()).optional(),
+  visibility: z
+    .union([z.literal("public"), z.literal("private"), z.literal("internal")])
+    .optional(),
   delete_branch_on_merge: z.boolean().optional(),
   master_branch: z.string().optional(),
   permissions: z
@@ -170,7 +168,7 @@ export const teamSchema = z.object({
   id: z.number(),
   node_id: z.string(),
   slug: z.string(),
-  description: z.string().nullable(),
+  description: z.string().nullish(),
   privacy: z.union([
     z.literal("open"),
     z.literal("closed"),
@@ -187,7 +185,7 @@ export const teamSchema = z.object({
       id: z.number(),
       node_id: z.string(),
       slug: z.string(),
-      description: z.string().nullable(),
+      description: z.string().nullish(),
       privacy: z.union([
         z.literal("open"),
         z.literal("closed"),
@@ -200,7 +198,7 @@ export const teamSchema = z.object({
       permission: z.string(),
     })
     .optional()
-    .nullable(),
+    .nullish(),
 });
 
 export const linkSchema = z.object({
@@ -213,7 +211,7 @@ export const appSchema = z.object({
   node_id: z.string(),
   owner: userSchema,
   name: z.string(),
-  description: z.string().nullable(),
+  description: z.string().nullish(),
   external_url: z.string(),
   html_url: z.string(),
   created_at: z.string(),
@@ -386,15 +384,15 @@ export const milestoneSchema = z.object({
   node_id: z.string(),
   number: z.number(),
   title: z.string(),
-  description: z.string().nullable(),
+  description: z.string().nullish(),
   creator: userSchema,
   open_issues: z.number(),
   closed_issues: z.number(),
   state: z.union([z.literal("open"), z.literal("closed")]),
   created_at: z.string(),
   updated_at: z.string(),
-  due_on: z.string().nullable(),
-  closed_at: z.string().nullable(),
+  due_on: z.string().nullish(),
+  closed_at: z.string().nullish(),
 });
 
 export const labelSchema = z.object({
@@ -402,7 +400,7 @@ export const labelSchema = z.object({
   node_id: z.string(),
   url: z.string(),
   name: z.string(),
-  description: z.string().nullable(),
+  description: z.string().nullish(),
   color: z.string(),
   default: z.boolean(),
 });
@@ -431,19 +429,19 @@ export const simplePullRequestSchema = z.object({
   locked: z.boolean(),
   title: z.string(),
   user: userSchema,
-  body: z.string().nullable(),
+  body: z.string().nullish(),
   created_at: z.string(),
   updated_at: z.string(),
-  closed_at: z.string().nullable(),
-  merged_at: z.string().nullable(),
-  merge_commit_sha: z.string().nullable(),
-  assignee: userSchema.nullable(),
+  closed_at: z.string().nullish(),
+  merged_at: z.string().nullish(),
+  merge_commit_sha: z.string().nullish(),
+  assignee: userSchema.nullish(),
   assignees: z.array(userSchema),
   requested_reviewers: z.array(z.union([userSchema, teamSchema])),
   requested_teams: z.array(teamSchema),
   labels: z.array(labelSchema),
-  milestone: milestoneSchema.nullable(),
-  draft: z.boolean(),
+  milestone: milestoneSchema.nullish(),
+  draft: z.boolean().nullish(),
   commits_url: z.string(),
   review_comments_url: z.string(),
   review_comment_url: z.string(),
@@ -474,7 +472,7 @@ export const simplePullRequestSchema = z.object({
     statuses: linkSchema,
   }),
   author_association: authorAssociationSchema,
-  auto_merge: pullRequestAutoMergeSchema.nullable(),
+  auto_merge: pullRequestAutoMergeSchema.nullish(),
   active_lock_reason: z
     .union([
       z.literal("resolved"),
@@ -482,12 +480,12 @@ export const simplePullRequestSchema = z.object({
       z.literal("too heated"),
       z.literal("spam"),
     ])
-    .nullable(),
+    .nullish(),
 });
 
 export const committerSchema = z.object({
   name: z.string(),
-  email: z.string().nullable(),
+  email: z.string().nullish(),
   date: z.string().optional(),
   username: z.string().optional(),
 });
