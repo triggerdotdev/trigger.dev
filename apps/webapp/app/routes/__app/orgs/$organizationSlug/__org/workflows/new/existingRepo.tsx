@@ -86,6 +86,7 @@ type ExistingRepoState =
       selectedProject: ExampleProject;
     }
   | { step: "copy-example-code"; selectedProject: ExampleProject }
+  | { step: "import-code"; selectedProject: ExampleProject }
   | {
       step: "run-code";
       selectedProject: ExampleProject;
@@ -97,6 +98,7 @@ type ExistingRepoAction =
   | { type: "example-chosen"; payload: ExampleProject }
   | { type: "packages-installed" }
   | { type: "code-copied" }
+  | { type: "code-imported" }
   | { type: "code-run" };
 
 const reducer = (
@@ -125,6 +127,15 @@ const reducer = (
         step: "copy-example-code",
       };
     case "code-copied":
+      if (state.step === "choose-example") {
+        return state;
+      }
+
+      return {
+        ...state,
+        step: "import-code",
+      };
+    case "code-imported":
       if (state.step === "choose-example") {
         return state;
       }
@@ -246,6 +257,40 @@ export default function Step3ExistingRepo1() {
               </PrimaryButton>
             </Panel>
           </>
+        ) : state.step === "import-code" ? (
+          <>
+            <>
+              <ChosenExample
+                project={state.selectedProject}
+                dispatch={dispatch}
+              />
+              <InstalledPackages
+                project={state.selectedProject}
+                dispatch={dispatch}
+              />
+              <AddedCode dispatch={dispatch} />
+              <SubTitle className="flex items-center">
+                <StepNumber active stepNumber="6" />
+                Import the example code to make sure it's included
+              </SubTitle>
+              <Panel className="px-4 py-4">
+                <Body size="regular" className="mb-2 text-slate-400">
+                  If you've put the code in a standalone file (e.g.
+                  <span className="rounded-md bg-[#0F172A] px-2">
+                    src/triggers.ts
+                  </span>
+                  ), then you'll need to import it to make sure it runs:
+                </Body>
+                <CodeBlock code={`import "./triggers";`} align="top" />
+                <PrimaryButton
+                  className="mt-2"
+                  onClick={() => dispatch({ type: "code-imported" })}
+                >
+                  Continue
+                </PrimaryButton>
+              </Panel>
+            </>
+          </>
         ) : state.step === "run-code" ? (
           <>
             <ChosenExample
@@ -257,8 +302,9 @@ export default function Step3ExistingRepo1() {
               dispatch={dispatch}
             />
             <AddedCode dispatch={dispatch} />
+            <CodeImported dispatch={dispatch} />
             <SubTitle className="flex items-center">
-              <StepNumber active stepNumber="6" />
+              <StepNumber active stepNumber="7" />
               Lastly, run your web server
             </SubTitle>
             <Panel className="px-4 py-4">
@@ -336,6 +382,29 @@ function InstalledPackages({
           })
         }
       >
+        Change answer
+      </TertiaryButton>
+    </div>
+  );
+}
+
+function CodeImported({
+  dispatch,
+}: {
+  dispatch: Dispatch<ExistingRepoAction>;
+}) {
+  return (
+    <div className="flex items-center justify-between">
+      <SubTitle className="flex items-center">
+        <StepNumber complete />
+        <button
+          className="transition hover:text-slate-300"
+          onClick={() => dispatch({ type: "code-copied" })}
+        >
+          I've imported the code into my project
+        </button>
+      </SubTitle>
+      <TertiaryButton onClick={() => dispatch({ type: "code-copied" })}>
         Change answer
       </TertiaryButton>
     </div>
