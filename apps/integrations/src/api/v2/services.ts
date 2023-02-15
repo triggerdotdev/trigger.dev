@@ -15,6 +15,7 @@ type ServiceMetadata = {
 export async function handleServices(req: Request, res: Response) {
   const servicesMetadata: Record<string, ServiceMetadata> = {};
   Object.entries(catalog.services).forEach(([key, service]) => {
+    if (service.live === false) return;
     const metadata = omitExtraInfo(service);
     servicesMetadata[key] = {
       ...metadata,
