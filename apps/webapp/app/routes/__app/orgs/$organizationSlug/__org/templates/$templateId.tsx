@@ -145,9 +145,11 @@ function OrganizationTemplateReady(loaderData: LoaderData) {
         <>
           <ConnectedToGithub accountName={loaderData.githubAccount.login} />
           {githubConfigured}
-          <div className="mt-4 mb-1 flex items-center gap-1">
-            <CheckCircleIcon className="h-6 w-6 text-green-400" />
-            <SubTitle className="mb-0">Template deployed</SubTitle>
+          <div className="mt-4 flex items-center gap-1">
+            <SubTitle className="flex items-center">
+              <StepNumber />
+              Template deployed
+            </SubTitle>
           </div>
           <Panel className="max-w-4xl">
             <TemplateHeader
@@ -299,9 +301,10 @@ function DeploySection({
         <Label className="mb-3 text-sm text-slate-500">
           View your new workflow:
         </Label>
-        <div className="rounded-md bg-slate-850 p-4">
+        <div className="relative mt-4 rounded-md bg-slate-850 p-4">
+          <div className="absolute inset-2.5 z-0 h-[calc(100%-20px)] w-[calc(100%-20px)] animate-pulse rounded-md bg-gradient-to-r from-indigo-500 to-pink-500 blur-sm"></div>
           <WorkflowList
-            className="!mb-0"
+            className="relative z-50 !mb-0"
             workflows={workflows}
             currentOrganizationSlug={currentOrganization.slug}
           />
@@ -414,7 +417,7 @@ function GitHubConfigured({
         <div className="absolute top-0 left-0 flex h-full w-full flex-col items-center justify-center gap-4 bg-slate-850/40"></div>
         <div className="mb-3 grid grid-cols-2 gap-4">
           <InputGroup>
-            <Label htmlFor="appAuthorizationId">Select a GitHub account</Label>
+            <Label htmlFor="appAuthorizationId">GitHub account</Label>
             <Select name="appAuthorizationId" required>
               <option>{githubAccount}</option>
             </Select>
@@ -422,7 +425,7 @@ function GitHubConfigured({
         </div>
         <div className="mb-4 grid grid-cols-2 gap-4">
           <InputGroup>
-            <Label htmlFor="name">Choose a name</Label>
+            <Label htmlFor="name">Repo name</Label>
             <Input
               id="name"
               name="name"
@@ -432,9 +435,7 @@ function GitHubConfigured({
             />
           </InputGroup>
           <div>
-            <p className="mb-1 text-sm text-slate-500">
-              Set the repo as private
-            </p>
+            <p className="mb-1 text-sm text-slate-500">Repo</p>
             <div className="flex w-full items-center rounded bg-black/20 px-3 py-2.5">
               <Label
                 htmlFor="private"
