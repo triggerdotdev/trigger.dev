@@ -40,6 +40,7 @@
     "eslint-plugin-import": "^2.27.5",
     "eslint-plugin-n": "^15.6.1",
     "eslint-plugin-promise": "^6.1.1",
+    "nock": "^13.3.0",
     "nodemon": "^2.0.19",
     "prisma": "^4.3.0",
     "rimraf": "^4.1.2",
