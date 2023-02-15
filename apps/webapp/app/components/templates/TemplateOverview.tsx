@@ -13,8 +13,8 @@ export function TemplateOverview({ template }: { template: TemplateListItem }) {
     <div className="rounded-lg bg-slate-800 px-4 pb-4 text-left">
       <div className="sticky top-0 h-4 w-full bg-gradient-to-b from-slate-800"></div>
       <div className="flex flex-row">
-        <div className="flex h-full w-full flex-col gap-y-1 rounded ">
-          <div className="z-90 h-[140px] w-full border  border-slate-800 transition group-hover:opacity-90">
+        <div className="flex h-full w-full flex-col gap-y-4 rounded ">
+          <div className="z-90 h-[128px] w-full border  border-slate-800 transition group-hover:opacity-90">
             <img
               src={imageUrl}
               alt=""
@@ -44,7 +44,7 @@ export function TemplateOverview({ template }: { template: TemplateListItem }) {
                 &rarr;
               </span>
             </ToxicA>
-            <Header2 size="regular" className="font-semibold">
+            <Header2 size="regular" className="font-semibold mt-4">
               {title}
             </Header2>
             <Body>{description}</Body>
