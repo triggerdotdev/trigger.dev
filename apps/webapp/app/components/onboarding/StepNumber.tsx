@@ -2,10 +2,12 @@ export function StepNumber({
   stepNumber,
   drawLine,
   active = false,
+  complete = false,
 }: {
   stepNumber?: string;
   drawLine?: boolean;
   active?: boolean;
+  complete?: boolean;
 }) {
   return (
     <div className="mr-3 flex flex-col items-center justify-center">
@@ -15,7 +17,7 @@ export function StepNumber({
         </span>
       ) : (
         <span className="flex h-7 w-7 items-center justify-center rounded border border-slate-700 bg-slate-800 py-1 text-sm font-semibold text-green-400 shadow">
-          ✓
+          {complete ? "✓" : stepNumber}
         </span>
       )}
 

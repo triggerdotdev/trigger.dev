@@ -147,7 +147,7 @@ function OrganizationTemplateReady(loaderData: LoaderData) {
           {githubConfigured}
           <div className="mt-4 flex items-center gap-1">
             <SubTitle className="flex items-center">
-              <StepNumber />
+              <StepNumber complete />
               Template deployed
             </SubTitle>
           </div>
@@ -380,7 +380,7 @@ function ConnectedToGithub({ accountName }: { accountName: string }) {
   return (
     <div className="mt-6">
       <SubTitle className="flex items-center">
-        <StepNumber />
+        <StepNumber complete />
         GitHub connected
       </SubTitle>
       <Panel className="relative mb-6 flex w-full max-w-4xl items-center gap-2 !p-4">
@@ -410,7 +410,7 @@ function GitHubConfigured({
   return (
     <div className="mb-6">
       <SubTitle className="mt-4 flex items-center">
-        <StepNumber />
+        <StepNumber complete />
         GitHub configured
       </SubTitle>
       <Panel className="pointer-events-none relative max-w-4xl overflow-hidden !p-4">
@@ -462,8 +462,11 @@ function GitHubConfigured({
 export function DeployBlankState() {
   return (
     <div className="mt-6">
-      <SubTitle className="text-slate-600">Deploy</SubTitle>
-      <Panel className="flex h-80 w-full max-w-4xl items-center justify-center gap-6">
+      <SubTitle className="flex items-center">
+        <StepNumber stepNumber="3" />
+        Deploy
+      </SubTitle>
+      <Panel className="flex h-56 w-full max-w-4xl items-center justify-center gap-6">
         <FolderIcon className="h-10 w-10 text-slate-600" />
         <div className="h-[1px] w-16 border border-dashed border-slate-600"></div>
         <CloudIcon className="h-10 w-10 text-slate-600" />

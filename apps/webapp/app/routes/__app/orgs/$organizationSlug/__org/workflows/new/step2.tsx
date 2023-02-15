@@ -18,7 +18,7 @@ function Step2() {
     <div className={classNames(onboarding.maxWidth, "flex flex-col")}>
       <div className="flex items-center justify-between">
         <SubTitle className="flex items-center">
-          <StepNumber />
+          <StepNumber complete />
           <Link to=".." className="transition hover:text-slate-300">
             I'll host the workflow myself
           </Link>

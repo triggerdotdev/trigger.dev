@@ -290,7 +290,7 @@ function ChosenExample({
   return (
     <div className="flex items-center justify-between">
       <SubTitle className="flex items-center">
-        <StepNumber />
+        <StepNumber complete />
         <button
           className="transition hover:text-slate-300"
           onClick={() => dispatch({ type: "clear-choice" })}
@@ -315,7 +315,7 @@ function InstalledPackages({
   return (
     <div className="flex items-center justify-between">
       <SubTitle className="flex items-center">
-        <StepNumber />
+        <StepNumber complete />
         <button
           className="transition hover:text-slate-300"
           onClick={() =>
@@ -346,7 +346,7 @@ function AddedCode({ dispatch }: { dispatch: Dispatch<ExistingRepoAction> }) {
   return (
     <div className="flex items-center justify-between">
       <SubTitle className="flex items-center">
-        <StepNumber />
+        <StepNumber complete />
         <button
           className="transition hover:text-slate-300"
           onClick={() => dispatch({ type: "packages-installed" })}
@@ -367,7 +367,7 @@ function CheckForWorkflows() {
   if (fetchWorkflowCount.state !== "idle") {
     return (
       <div className="flex items-center justify-between rounded bg-slate-850 p-3 pl-5">
-        <div className="mb-3 flex items-center gap-2">
+        <div className="flex items-center gap-2">
           <Spinner />
           <Body size="regular" className="text-slate-300">
             Waiting for your workflow to connect...
@@ -417,12 +417,14 @@ function CheckForWorkflows() {
     } else {
       return (
         <div className="flex items-center justify-between rounded bg-slate-850 p-3 pl-5">
-          <div className="mb-3 flex items-center gap-2">
+          <div className="flex items-center gap-2">
             <ExclamationTriangleIcon className="h-5 w-5 text-amber-400" />
-            <Body size="regular" className="text-slate-300">
-              It doesn't seem like your workflow has connected yet. Check your
-              server is running and try again.
-            </Body>
+            <div>
+              <Body size="regular" className="text-slate-300">
+                It doesn't seem like your workflow has connected yet.
+              </Body>
+              <Body>Check your server is running and try again.</Body>
+            </div>
           </div>
           <fetchWorkflowCount.Form method="post">
             <PrimaryButton type="submit">

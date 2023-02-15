@@ -7,7 +7,7 @@ export function BackToStep1() {
   return (
     <>
       <SubTitle className="flex items-center">
-        <StepNumber />
+        <StepNumber complete />
         <Link to=".." className="transition hover:text-slate-300">
           I'll host the workflow myself
         </Link>
@@ -21,7 +21,7 @@ export function BackToStep2() {
   return (
     <>
       <SubTitle className="flex items-center">
-        <StepNumber />
+        <StepNumber complete />
         <Link to="../step2" className="transition hover:text-slate-300">
           I'll start with a template
         </Link>
