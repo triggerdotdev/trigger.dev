@@ -5,7 +5,7 @@
   "version": "0.2.0",
   "configurations": [
     {
-      "command": "pnpm run dev --filter webapp",
+      "command": "pnpm run idev --filter webapp",
       "name": "Run webapp",
       "request": "launch",
       "type": "node-terminal",
