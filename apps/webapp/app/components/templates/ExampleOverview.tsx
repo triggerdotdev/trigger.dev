@@ -43,7 +43,6 @@ export function ExampleOverview({
                   <CodeBlock
                     code={openProject.code(environment.apiKey)}
                     align="top"
-                    maxHeight="600px"
                     className="flex w-[650px] overflow-scroll"
                   />
                 </div>
@@ -132,8 +131,7 @@ export function FromScratchOverview({
                     <div className="flex flex-col">
                       <CodeBlock
                         code={openProject.code(environment.apiKey)}
-                        align="top"
-                        maxHeight="600px"
+                        align="top"                        
                         className="flex w-[650px] overflow-scroll"
                       />
                     </div>
