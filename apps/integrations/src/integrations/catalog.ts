@@ -1,8 +1,8 @@
 import { Catalog } from "core/catalog";
-import { slack } from "./slack";
+import { slackv2 } from "./slack";
 
 export const catalog: Catalog = {
   services: {
-    slack,
+    slackv2,
   },
 };

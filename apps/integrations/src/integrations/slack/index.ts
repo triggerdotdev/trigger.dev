@@ -2,9 +2,9 @@ import { Service } from "core/service/types";
 import { authentication } from "./authentication";
 import * as actions from "./actions/actions";
 
-export const slack: Service = {
+export const slackv2: Service = {
   name: "Slack",
-  service: "slack",
+  service: "slackv2",
   version: "2.0.0",
   live: false,
   authentication,

@@ -16,7 +16,7 @@ export async function postMessage(
 
   const output = await run.performRequest(key, {
     version: "2",
-    service: "slack",
+    service: "slackv2",
     endpoint: "/chat.postMessage",
     params,
   });
@@ -39,7 +39,7 @@ export async function conversationsList(
 
   const output = await run.performRequest(key, {
     version: "2",
-    service: "slack",
+    service: "slackv2",
     endpoint: "/conversations.list",
     params,
   });
