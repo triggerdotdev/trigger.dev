@@ -8,6 +8,12 @@ module.exports = {
     
     extend: {
       ...parentConfig.extend,
+
+      fontFamily: {
+        sans: ["Inter", "sans-serif"],
+        title: ["Poppins", "sans-serif"],
+        mono: ["Roboto Mono", "monospace"],
+      },
       colors: {
         'slate': {
           1000: '#060F1E',
