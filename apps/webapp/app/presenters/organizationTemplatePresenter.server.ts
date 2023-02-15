@@ -1,8 +1,10 @@
 import type { PrismaClient } from "~/db.server";
 import { prisma } from "~/db.server";
+import { getIntegrationMetadataByService } from "~/models/integrations.server";
 import { getRuntimeEnvironment } from "~/models/runtimeEnvironment.server";
 import { AccountSchema } from "~/services/github/githubApp.server";
 import { renderMarkdown } from "~/services/renderMarkdown.server";
+import { TemplateListItem } from "./templateListPresenter.server";
 import { WorkflowsPresenter } from "./workflowsPresenter.server";
 
 export class OrganizationTemplatePresenter {
@@ -57,7 +59,16 @@ export class OrganizationTemplatePresenter {
       organizationTemplate.repositoryUrl.split("/").pop() ??
       "missing repository name";
 
+    const template: TemplateListItem = {
+      ...organizationTemplate.template,
+      services: organizationTemplate.template.services.map(
+        getIntegrationMetadataByService
+      ),
+      docsHTML: renderMarkdown(organizationTemplate.template.markdownDocs),
+    };
+
     return {
+      template,
       organizationTemplate,
       apiKey: runtimeEnvironment.apiKey,
       workflows,

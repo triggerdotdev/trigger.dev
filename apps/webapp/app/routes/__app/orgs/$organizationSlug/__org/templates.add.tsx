@@ -18,6 +18,7 @@ import { Label } from "~/components/primitives/Label";
 import { Select } from "~/components/primitives/Select";
 import { SubTitle } from "~/components/primitives/text/SubTitle";
 import { Title } from "~/components/primitives/text/Title";
+import { TemplateCard } from "~/components/templates/TemplateCard";
 import { useCurrentEnvironment } from "~/hooks/useEnvironments";
 import { useCurrentOrganization } from "~/hooks/useOrganizations";
 import { WorkflowStartPresenter } from "~/presenters/workflowStartPresenter.server";
@@ -82,6 +83,12 @@ export default function AddTemplatePage() {
 
   return (
     <Container>
+      {template && (
+        <div>
+          <TemplateCard template={template} />
+        </div>
+      )}
+
       <Form method="post" className="max-w-4xl" reloadDocument>
         <Title>You're almost done</Title>
 

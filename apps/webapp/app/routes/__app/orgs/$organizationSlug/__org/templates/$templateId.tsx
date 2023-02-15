@@ -31,6 +31,7 @@ import { Spinner } from "~/components/primitives/Spinner";
 import { Body } from "~/components/primitives/text/Body";
 import { Header1, Header3 } from "~/components/primitives/text/Headers";
 import { SubTitle } from "~/components/primitives/text/SubTitle";
+import { TemplateCard } from "~/components/templates/TemplateCard";
 import { WorkflowList } from "~/components/workflows/workflowList";
 import { useCurrentOrganization } from "~/hooks/useOrganizations";
 import { getRuntimeEnvironmentFromRequest } from "~/models/runtimeEnvironment.server";
@@ -81,6 +82,9 @@ function OrganizationTemplateByStatus(loaderData: LoaderData) {
   ) {
     return (
       <>
+        <div>
+          <TemplateCard template={loaderData.template} />
+        </div>
         <div className="mt-4 mb-2 flex max-w-4xl items-center gap-2">
           <Spinner />
           <SubTitle className="mb-0">
@@ -113,6 +117,9 @@ function OrganizationTemplateReady(loaderData: LoaderData) {
     <>
       {loaderData.organizationTemplate.status === "READY_TO_DEPLOY" ? (
         <>
+          <div>
+            <TemplateCard template={loaderData.template} />
+          </div>
           {githubConfigured}
           <div className="mt-4 mb-1 flex items-center gap-2">
             <Spinner />

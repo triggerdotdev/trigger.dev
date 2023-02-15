@@ -1,7 +1,10 @@
 import { z } from "zod";
 import type { PrismaClient } from "~/db.server";
 import { prisma } from "~/db.server";
+import { getIntegrationMetadataByService } from "~/models/integrations.server";
 import { AccountSchema } from "~/services/github/githubApp.server";
+import { renderMarkdown } from "~/services/renderMarkdown.server";
+import { TemplateListItem } from "./templateListPresenter.server";
 
 export class WorkflowStartPresenter {
   #prismaClient: PrismaClient;
@@ -49,13 +52,7 @@ export class WorkflowStartPresenter {
       }
     );
 
-    const template = templateId
-      ? await this.#prismaClient.template.findUnique({
-          where: {
-            id: templateId,
-          },
-        })
-      : undefined;
+    const template = await this.#getTemplate(templateId);
 
     const templates = await this.#prismaClient.template.findMany({
       orderBy: {
@@ -67,6 +64,30 @@ export class WorkflowStartPresenter {
       appAuthorizations: authorizationsWithAccounts,
       templates,
       template,
+    };
+  }
+
+  async #getTemplate(
+    templateId: string | undefined
+  ): Promise<TemplateListItem | undefined> {
+    if (!templateId) {
+      return;
+    }
+
+    const template = await this.#prismaClient.template.findUnique({
+      where: {
+        id: templateId,
+      },
+    });
+
+    if (!template) {
+      return;
+    }
+
+    return {
+      ...template,
+      services: template.services.map(getIntegrationMetadataByService),
+      docsHTML: renderMarkdown(template.markdownDocs),
     };
   }
 }
