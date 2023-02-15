@@ -110,23 +110,6 @@ importers:
       vite-tsconfig-paths: 4.0.5_typescript@4.9.5
       vitest: 0.28.5
 
-  apps/integrations/src/trigger/sdk/templates:
-    specifiers:
-      '@trigger.dev/sdk': workspace:*
-      '@types/debug': ^4.1.7
-      '@types/node': '16'
-      debug: ^4.3.4
-      rimraf: ^3.0.2
-      tsup: ^6.5.0
-    dependencies:
-      debug: 4.3.4
-    devDependencies:
-      '@trigger.dev/sdk': link:../../../../../../packages/trigger-sdk
-      '@types/debug': 4.1.7
-      '@types/node': 16.18.11
-      rimraf: 3.0.2
-      tsup: 6.5.0
-
   apps/webapp:
     specifiers:
       '@aws-sdk/client-s3': ^3.186.0
@@ -648,6 +631,25 @@ importers:
       '@types/node': 16.18.11
       tsx: 3.12.2
 
+  examples/send-to-slack-v2:
+    specifiers:
+      '@trigger.dev/sdk': workspace:*
+      '@trigger.dev/slackv2': workspace:*
+      '@trigger.dev/tsconfig': workspace:*
+      '@types/node': '16'
+      jsx-slack: ^5.3.0
+      tsx: ^3.12.0
+      zod: ^3.20.2
+    dependencies:
+      '@trigger.dev/sdk': link:../../packages/trigger-sdk
+      '@trigger.dev/slackv2': link:../../generated-integrations/slackv2
+      jsx-slack: 5.3.0
+      zod: 3.20.2
+    devDependencies:
+      '@trigger.dev/tsconfig': link:../../config-packages/tsconfig
+      '@types/node': 16.18.11
+      tsx: 3.12.3
+
   examples/shopify:
     specifiers:
       '@trigger.dev/sdk': workspace:*
@@ -721,6 +723,23 @@ importers:
       '@trigger.dev/tsconfig': link:../../config-packages/tsconfig
       '@types/node': 16.18.11
       tsx: 3.12.2
+
+  generated-integrations/slackv2:
+    specifiers:
+      '@trigger.dev/sdk': workspace:*
+      '@types/debug': ^4.1.7
+      '@types/node': '16'
+      debug: ^4.3.4
+      rimraf: ^3.0.2
+      tsup: ^6.5.0
+    dependencies:
+      debug: 4.3.4
+    devDependencies:
+      '@trigger.dev/sdk': link:../../packages/trigger-sdk
+      '@types/debug': 4.1.7
+      '@types/node': 16.18.11
+      rimraf: 3.0.2
+      tsup: 6.6.2
 
   integrations/github:
     specifiers:
@@ -16445,6 +16464,41 @@ packages:
       sucrase: 3.29.0
       tree-kill: 1.2.2
       typescript: 4.9.4
+    transitivePeerDependencies:
+      - supports-color
+      - ts-node
+    dev: true
+
+  /tsup/6.6.2:
+    resolution: {integrity: sha512-+yQ6SI4rVtp1+YpcYOePumJLEVQ896CDNRt9dJ2L/DeMnLf1+FTOCVw5eioLBH0xLdHgogO9NQ6vPNF5MfkSJw==}
+    engines: {node: '>=14'}
+    hasBin: true
+    peerDependencies:
+      '@swc/core': ^1
+      postcss: ^8.4.12
+      typescript: ^4.1.0
+    peerDependenciesMeta:
+      '@swc/core':
+        optional: true
+      postcss:
+        optional: true
+      typescript:
+        optional: true
+    dependencies:
+      bundle-require: 4.0.1_esbuild@0.17.8
+      cac: 6.7.14
+      chokidar: 3.5.3
+      debug: 4.3.4
+      esbuild: 0.17.8
+      execa: 5.1.1
+      globby: 11.1.0
+      joycon: 3.1.1
+      postcss-load-config: 3.1.4
+      resolve-from: 5.0.0
+      rollup: 3.10.0
+      source-map: 0.8.0-beta.0
+      sucrase: 3.29.0
+      tree-kill: 1.2.2
     transitivePeerDependencies:
       - supports-color
       - ts-node
