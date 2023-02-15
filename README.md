@@ -172,7 +172,7 @@ new Trigger({
 
 One of the most powerful features of Trigger.dev is the [runs page](https://docs.trigger.dev/viewing-runs). All of the steps in a workflow, including the initial event, can be viewed in detail. See the status / output of each step, the logs, rich previews, errors and much more.
 
-![Viewing runs](https://mintlify.s3-us-west-1.amazonaws.com/api-hero/images/run-succeeded.png)
+![Viewing runs](https://imagedelivery.net/3TbraffuDZ4aEf8KWOmI_w/7343f3b2-2342-493b-5007-78f60ba5b700/public)
 
 
 &nbsp;

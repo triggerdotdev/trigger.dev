@@ -1,8 +1,8 @@
 import { Header1 } from "./Headers";
 
-export function Title({ children }: { children: string }) {
+export function Title({ children }: { children: React.ReactNode }) {
   return (
-    <Header1 size="extra-large" className="text-slate-200 mb-6">
+    <Header1 size="extra-large" className="mb-6 text-slate-200">
       {children}
     </Header1>
   );

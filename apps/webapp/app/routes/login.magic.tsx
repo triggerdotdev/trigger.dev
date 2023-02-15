@@ -1,18 +1,21 @@
+import { InboxArrowDownIcon } from "@heroicons/react/24/outline";
+import { ArrowLeftIcon } from "@heroicons/react/24/solid";
 import type { ActionArgs, LoaderArgs, MetaFunction } from "@remix-run/node";
 import { redirect } from "@remix-run/node";
-import { Form, Link, useLoaderData, useTransition } from "@remix-run/react";
+import { Form, Link, useTransition } from "@remix-run/react";
+import { typedjson, useTypedLoaderData } from "remix-typedjson";
+import { z } from "zod";
+import { LoginPromoPanel } from "~/components/LoginPromoPanel";
+import { LogoSvg } from "~/components/Logo";
+import { PrimaryButton } from "~/components/primitives/Buttons";
+import { Input } from "~/components/primitives/Input";
+import { TemplatePresenter } from "~/presenters/templatePresenter.server";
+import { authenticator } from "~/services/auth.server";
+import { getCurrentTemplate } from "~/services/currentTemplate.server";
 import {
   commitSession,
   getUserSession,
 } from "~/services/sessionStorage.server";
-import { authenticator } from "~/services/auth.server";
-import { ArrowLeftIcon } from "@heroicons/react/24/solid";
-import { InboxArrowDownIcon } from "@heroicons/react/24/outline";
-import { z } from "zod";
-import { LoginPromoPanel } from "~/components/LoginPromoPanel";
-import { LogoSvg } from "~/components/Logo";
-import { Input } from "~/components/primitives/Input";
-import { PrimaryButton } from "~/components/primitives/Buttons";
 
 export async function loader({ request }: LoaderArgs) {
   await authenticator.isAuthenticated(request, {
@@ -21,7 +24,16 @@ export async function loader({ request }: LoaderArgs) {
 
   const session = await getUserSession(request);
 
-  return { magicLinkSent: session.has("triggerdotdev:magiclink") };
+  const templateId = await getCurrentTemplate(request);
+
+  const templateData = templateId
+    ? await new TemplatePresenter().data({ id: templateId })
+    : null;
+
+  return typedjson({
+    magicLinkSent: session.has("triggerdotdev:magiclink"),
+    template: templateData?.template,
+  });
 }
 
 export async function action({ request }: ActionArgs) {
@@ -59,12 +71,12 @@ export const meta: MetaFunction = () => {
 };
 
 export default function LoginMagicLinkPage() {
-  const { magicLinkSent } = useLoaderData<typeof loader>();
+  const { magicLinkSent, template } = useTypedLoaderData<typeof loader>();
   const transition = useTransition();
 
   return (
     <div className="flex h-screen w-screen justify-between overflow-y-scroll bg-slate-900">
-      <LoginPromoPanel />
+      <LoginPromoPanel template={template} />
       <div className="bg-gradient-background flex h-full w-full grow items-center justify-center p-4">
         <div className="flex min-h-[430px] w-full max-w-xl flex-col justify-between rounded-lg bg-slate-850 shadow-md">
           <Form className="flex h-full flex-grow flex-col" method="post">

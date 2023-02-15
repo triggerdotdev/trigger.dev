@@ -5,10 +5,11 @@ import {
   ScheduledEventPayloadSchema,
 } from "@trigger.dev/common-schemas";
 import { DeliverEmailSchema } from "emails";
-import type {
+import {
   CommandCatalog,
   CommandResponseCatalog,
   TriggerCatalog,
+  ZodEventPublisher,
 } from "internal-platform";
 import {
   commandCatalog,
@@ -55,6 +56,8 @@ import { omit } from "~/utils/objects";
 import { findWorkflowStepById } from "~/models/workflowRunStep.server";
 import { InitializeRunOnce } from "./runOnce/initializeRunOnce.server";
 import { CompleteRunOnce } from "./runOnce/completeRunOnce.server";
+import { prisma } from "~/db.server";
+import { GithubRepositoryCreated } from "./github/repositoryCreated.server";
 import { OrganizationCreatedEvent } from "./analyticsEvents/organizationCreated.server";
 import { WorkflowCreatedEvent } from "./analyticsEvents/workflowCreated.server";
 import { WorkflowRunCreatedEvent } from "./analyticsEvents/workflowRunCreated.server";
@@ -65,6 +68,7 @@ let commandResponsePublisher: ZodPublisher<CommandResponseCatalog>;
 let commandSubscriber: ZodSubscriber<CommandCatalog>;
 let taskQueue: ZodPubSub<typeof taskQueueCatalog>;
 let requestTaskQueue: ZodPubSub<typeof RequestCatalog>;
+let appEventPublisher: ZodEventPublisher;
 
 declare global {
   var __pulsar_client__: typeof pulsarClient;
@@ -73,6 +77,7 @@ declare global {
   var __command_response_publisher__: typeof commandResponsePublisher;
   var __task_queue__: typeof taskQueue;
   var __request_task_queue__: typeof requestTaskQueue;
+  var __app_event_publisher__: typeof appEventPublisher;
 }
 
 export async function init() {
@@ -135,11 +140,21 @@ export async function init() {
     requestTaskQueue = global.__request_task_queue__;
   }
 
+  if (env.NODE_ENV === "production") {
+    appEventPublisher = createAppEventPublisher();
+  } else {
+    if (!global.__app_event_publisher__) {
+      global.__app_event_publisher__ = createAppEventPublisher();
+    }
+    appEventPublisher = global.__app_event_publisher__;
+  }
+
   await commandResponsePublisher.initialize();
   await triggerPublisher.initialize();
   await taskQueue.initialize();
   await requestTaskQueue.initialize();
   await commandSubscriber.initialize();
+  await appEventPublisher.initialize();
 }
 
 function createClient() {
@@ -461,6 +476,14 @@ const taskQueueCatalog = {
   },
   RESOLVE_RUN_ONCE: {
     data: z.object({ stepId: z.string(), hasRun: z.boolean() }),
+    properties: z.object({}),
+  },
+  GITHUB_APP_INSTALLATION_DELETED: {
+    data: z.object({ id: z.number() }),
+    properties: z.object({}),
+  },
+  GITHUB_APP_REPOSITORY_CREATED: {
+    data: z.object({ id: z.number() }),
     properties: z.object({}),
   },
   ORGANIZATION_CREATED: {
@@ -797,6 +820,40 @@ function createTaskQueue() {
 
         return true;
       },
+      GITHUB_APP_INSTALLATION_DELETED: async (
+        id,
+        data,
+        properties,
+        attributes
+      ) => {
+        if (attributes.redeliveryCount >= 4) {
+          return true;
+        }
+
+        await prisma.gitHubAppAuthorization.deleteMany({
+          where: {
+            installationId: data.id,
+          },
+        });
+
+        return true;
+      },
+      GITHUB_APP_REPOSITORY_CREATED: async (
+        id,
+        data,
+        properties,
+        attributes
+      ) => {
+        if (attributes.redeliveryCount >= 4) {
+          return true;
+        }
+
+        const service = new GithubRepositoryCreated();
+
+        await service.call(data.id);
+
+        return true;
+      },
       ORGANIZATION_CREATED: async (id, data, properties, attributes) => {
         if (attributes.redeliveryCount >= 4) {
           return true;
@@ -810,8 +867,15 @@ function createTaskQueue() {
           return true;
         }
 
-        const service = new WorkflowCreatedEvent();
-        return service.call(data.id);
+        const service = new WorkflowCreated();
+
+        await service.call(data.id);
+
+        const analyticsService = new WorkflowCreatedEvent();
+
+        await analyticsService.call(data.id);
+
+        return true;
       },
       WORKFLOW_RUN_CREATED: async (id, data, properties, attributes) => {
         if (attributes.redeliveryCount >= 4) {
@@ -827,4 +891,53 @@ function createTaskQueue() {
   return taskQueue;
 }
 
-export { taskQueue, requestTaskQueue };
+function createAppEventPublisher() {
+  return new ZodEventPublisher({
+    client: pulsarClient,
+    config: {
+      topic: "webapp-events",
+      batchingEnabled: false,
+    },
+  });
+}
+
+export { taskQueue, requestTaskQueue, appEventPublisher };
+
+import { ZodEventSubscriber } from "internal-platform";
+import { EventEmitter } from "stream";
+import { WorkflowCreated } from "./workflows/events/workflowCreated.server";
+
+export async function createEventEmitter({
+  id,
+  filter,
+}: {
+  id: string;
+  filter: Record<string, string>;
+}) {
+  const eventEmitter = new EventEmitter();
+
+  const eventSubscriber = new ZodEventSubscriber({
+    client: pulsarClient,
+    config: {
+      subscription: `webapp-${id}`,
+      topic: "webapp-events",
+    },
+    handler: async (id, name, data, properties, attributes) => {
+      if (attributes.redeliveryCount >= 4) {
+        return true;
+      }
+
+      eventEmitter.emit(name, data);
+      return true;
+    },
+    filter,
+  });
+
+  await eventSubscriber.initialize();
+
+  eventEmitter.on("removeListener", async () => {
+    await eventSubscriber.close();
+  });
+
+  return eventEmitter;
+}
