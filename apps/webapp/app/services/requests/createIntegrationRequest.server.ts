@@ -55,17 +55,27 @@ export class CreateIntegrationRequest {
     }
 
     // Create the workflow run step
-    const idempotentStep = await createStepOnce(workflowRun.id, key, {
-      type: "INTEGRATION_REQUEST",
-      input: data.params,
-      context: {
-        service: data.service,
-        endpoint: data.endpoint,
-        version: data.version,
+    const idempotentStep = await createStepOnce(
+      workflowRun.id,
+      key,
+      {
+        service,
+        endpoint,
+        params,
+        version,
       },
-      status: "PENDING",
-      ts: timestamp,
-    });
+      {
+        type: "INTEGRATION_REQUEST",
+        input: data.params,
+        context: {
+          service: data.service,
+          endpoint: data.endpoint,
+          version: data.version,
+        },
+        status: "PENDING",
+        ts: timestamp,
+      }
+    );
 
     if (idempotentStep.status === "EXISTING") {
       return this.#handleExistingStep(idempotentStep.step);

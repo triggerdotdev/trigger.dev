@@ -482,6 +482,7 @@ model WorkflowRunStep {
   input   Json?
   output  Json?
   context Json
+  displayProperties Json?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

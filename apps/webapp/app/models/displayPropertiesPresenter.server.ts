@@ -1,7 +1,7 @@
 import type { DisplayProperties } from "@trigger.dev/integration-sdk";
+import { DisplayPropertiesSchema } from "@trigger.dev/integration-sdk";
 import type { PrismaClient } from "~/db.server";
 import { prisma } from "~/db.server";
-import { integrationsClient } from "~/services/integrationsClient.server";
 import { getVersion1Integrations } from "./integrations.server";
 
 export class DisplayPropertiesPresenter {
@@ -14,8 +14,18 @@ export class DisplayPropertiesPresenter {
   async requestProperties(
     service: string,
     name: string,
-    params: any
+    params: any,
+    displayProperties?: any
   ): Promise<DisplayProperties> {
+    //first check if there are display properties already
+    if (displayProperties) {
+      const parsed = DisplayPropertiesSchema.safeParse(displayProperties);
+      if (parsed.success) return parsed.data;
+      return {
+        title: "Unknown integration",
+      };
+    }
+
     //first check the v1 integrations
     const v1Integrations = getVersion1Integrations(true);
     const v1Integration = v1Integrations.find(
@@ -31,32 +41,10 @@ export class DisplayPropertiesPresenter {
       if (displayProperties) {
         return displayProperties;
       }
-
-      return {
-        title: "Unknown integration",
-      };
     }
 
-    //no v1 integration with requests found, try v2
-    try {
-      const displayProperties = await integrationsClient.displayProperties({
-        service,
-        name,
-        params,
-      });
-
-      if (!displayProperties) {
-        return {
-          title: "Unknown integration",
-        };
-      }
-
-      return displayProperties;
-    } catch (e) {
-      console.error(e);
-      return {
-        title: "Unknown integration",
-      };
-    }
+    return {
+      title: "Unknown integration",
+    };
   }
 }

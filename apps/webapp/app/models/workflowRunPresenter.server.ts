@@ -162,11 +162,11 @@ async function parseStep(
       invariant(service, `Service ${externalService.slug} not found`);
 
       const presenter = new DisplayPropertiesPresenter();
-
       const displayProperties = await presenter.requestProperties(
         service.service,
         original.integrationRequest.endpoint,
-        original.integrationRequest.params
+        original.integrationRequest.params,
+        original.displayProperties
       );
 
       const customComponent =

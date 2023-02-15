@@ -34,9 +34,5 @@ export async function getServiceMetadatas(
     ...v2IntegrationsMetadata.services,
   };
 
-  console.log("v1", v1IntegrationsMetadata);
-  console.log("v2", v2IntegrationsMetadata.services);
-  console.log("services", services);
-
   return services;
 }

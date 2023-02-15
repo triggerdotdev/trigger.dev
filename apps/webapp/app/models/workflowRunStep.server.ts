@@ -1,21 +1,29 @@
+import { DisplayProperties } from "@trigger.dev/integration-sdk";
 import { z } from "zod";
 import { Prisma } from "~/db.server";
 import { prisma } from "~/db.server";
+import { integrationsClient } from "~/services/integrationsClient.server";
 
 const UniqueConstraintErrorTargetSchema = z.object({
   target: z.array(z.string()),
 });
 
 export async function createStepOnce(
-  runId: string,
-  key: string,
+  config: {
+    runId: string;
+    key: string;
+    service: string;
+    endpoint: string;
+    params?: any;
+    version?: string;
+  },
   data: Omit<Prisma.WorkflowRunStepCreateInput, "run" | "idempotencyKey">
 ) {
   const existingStep = await prisma.workflowRunStep.findUnique({
     where: {
       runId_idempotencyKey: {
-        runId,
-        idempotencyKey: key,
+        runId: config.runId,
+        idempotencyKey: config.key,
       },
     },
   });
@@ -25,11 +33,21 @@ export async function createStepOnce(
   }
 
   try {
+    let displayProperties: DisplayProperties | undefined = undefined;
+    if (config.version === "2") {
+      displayProperties = await integrationsClient.displayProperties({
+        service: config.service,
+        name: config.endpoint,
+        params: config.params,
+      });
+    }
+
     const step = await prisma.workflowRunStep.create({
       data: {
         ...data,
-        idempotencyKey: key,
-        runId,
+        displayProperties,
+        idempotencyKey: config.key,
+        runId: config.runId,
       },
     });
 
