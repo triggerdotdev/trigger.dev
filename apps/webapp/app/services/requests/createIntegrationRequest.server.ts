@@ -145,6 +145,7 @@ export class CreateIntegrationRequest {
           runId: workflowRun.id,
           stepId: workflowRunStep.id,
           status: "PENDING",
+          version: data.version,
         },
       });
 
