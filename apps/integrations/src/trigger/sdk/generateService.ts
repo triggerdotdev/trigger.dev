@@ -145,7 +145,7 @@ export async function ${action.name}(
   const output = await run.performRequest(key, {
     version: "2",
     service: "${service.service}",
-    endpoint: "${action.path}",
+    endpoint: "${action.name}",
     params,
   });
 
