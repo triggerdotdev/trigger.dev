@@ -103,12 +103,15 @@ export const getRecord: EndpointSpec = {
           properties: {
             createdTime: {
               type: "string",
+              description: "When the record was created",
             },
             fields: {
               type: "object",
+              description: "All of the fields that are in this record",
               additionalProperties: true,
             },
             id: {
+              description: "The record id",
               type: "string",
             },
           },
