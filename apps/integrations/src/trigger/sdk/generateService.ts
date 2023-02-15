@@ -84,7 +84,7 @@ async function createFileAndReplaceVariables(
   service: Service
 ) {
   const originalText = await fs.readFile(
-    `src/trigger/sdk/templates/${filename}`,
+    `src/trigger/sdk/templates/${filename}.template`,
     { encoding: "utf-8" }
   );
 
