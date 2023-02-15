@@ -123,10 +123,10 @@ function OrganizationTemplateReady(loaderData: LoaderData) {
           <ConnectedToGithub />
           {githubConfigured}
           <div className="mt-4 mb-1 flex items-center gap-2">
-            <Spinner />
+            <Spinner className="min-w-[20px]" />
             <SubTitle className="mb-0">
-              {loaderData.organizationTemplate.template.title} template is ready
-              and waiting to deploy
+              Your ‘{loaderData.organizationTemplate.template.title}’ template
+              is ready and waiting to deploy
             </SubTitle>
           </div>
           <Panel className="max-w-4xl !p-4">
@@ -232,23 +232,13 @@ function DeploySection({
                       Run your workflow locally
                     </Header3>
                   </div>
-                  <div className="p-6">
-                    <div className="flex h-full w-full flex-col gap-y-1 rounded ">
-                      <div className="flex rounded bg-slate-900/75 p-4">
-                        <div
-                          className="prose prose-sm prose-invert"
-                          dangerouslySetInnerHTML={{
-                            __html: runLocalDocsHTML,
-                          }}
-                        />
-                      </div>
-                    </div>
-                    <PrimaryButton
-                      onClick={() => setIsOpen(false)}
-                      className="mt-6 w-full"
-                    >
-                      Close
-                    </PrimaryButton>
+                  <div className="flex rounded bg-slate-900/75 p-4">
+                    <div
+                      className="prose  prose-invert"
+                      dangerouslySetInnerHTML={{
+                        __html: runLocalDocsHTML,
+                      }}
+                    />
                   </div>
                 </div>
                 <button
@@ -399,8 +389,8 @@ function GitHubConfigured({
   repositoryName: string;
 }) {
   return (
-    <div className="mb-6">
-      <SubTitle className="mt-4 flex items-center">
+    <>
+      <SubTitle className="flex items-center">
         <StepNumber complete />
         GitHub repository created
       </SubTitle>
@@ -446,7 +436,7 @@ function GitHubConfigured({
           </div>
         </div>
       </Panel>
-    </div>
+    </>
   );
 }
 
