@@ -11,6 +11,7 @@ import { z } from "zod";
 import { Container } from "~/components/layout/Container";
 import { Panel } from "~/components/layout/Panel";
 import { PanelWarning } from "~/components/layout/PanelWarning";
+import { StepNumber } from "~/components/onboarding/StepNumber";
 import { PrimaryButton } from "~/components/primitives/Buttons";
 import { FormError } from "~/components/primitives/FormError";
 import { Input } from "~/components/primitives/Input";
@@ -120,12 +121,15 @@ export default function AddTemplatePage() {
         )}
 
         {template ? (
-          <SubTitle>
-            Configure GitHub for your{" "}
-            <span className="italic">{template.title}</span> workflow
+          <SubTitle className="flex items-center">
+            <StepNumber active stepNumber="2" />
+            Configure GitHub for your workflow: {template.title}
           </SubTitle>
         ) : (
-          <SubTitle>Configure GitHub for your new workflow</SubTitle>
+          <SubTitle className="flex items-center">
+            <StepNumber active stepNumber="2" />
+            Configure GitHub for your new workflow
+          </SubTitle>
         )}
         <Panel className="!p-4">
           <div className="mb-3 grid grid-cols-2 gap-4">
