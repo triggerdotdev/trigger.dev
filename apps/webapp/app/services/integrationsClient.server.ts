@@ -1,6 +1,7 @@
 import type { IntegrationRequest } from ".prisma/client";
 import type {
   AccessInfo,
+  DisplayProperties,
   PerformedRequestResponse,
   ServiceMetadata,
 } from "@trigger.dev/integration-sdk";
@@ -80,7 +81,7 @@ class IntegrationsClient {
     }
   }
 
-  async getServices(): Promise<{ services: Record<string, ServiceMetadata> }> {
+  async services(): Promise<{ services: Record<string, ServiceMetadata> }> {
     const response = await fetch(`${this.#baseUrl}/services`, {
       method: "GET",
       headers: {
@@ -88,6 +89,33 @@ class IntegrationsClient {
         Authorization: `Bearer ${this.#apiKey}`,
       },
     });
+
+    const json = await response.json();
+    return json;
+  }
+
+  async displayProperties({
+    service,
+    name,
+    params,
+  }: {
+    service: string;
+    name: string;
+    params: any;
+  }): Promise<DisplayProperties | undefined> {
+    const response = await fetch(
+      `${this.#baseUrl}/${service}/action/${name}/display`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${this.#apiKey}`,
+        },
+        body: JSON.stringify({
+          params,
+        }),
+      }
+    );
 
     const json = await response.json();
     return json;

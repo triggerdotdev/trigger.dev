@@ -18,6 +18,7 @@ import type { PrismaClient } from "~/db.server";
 import { prisma } from "~/db.server";
 import type { PrismaReturnType } from "~/utils";
 import { dateDifference } from "~/utils";
+import { DisplayPropertiesPresenter } from "./displayPropertiesPresenter.server";
 import { getServiceMetadatas } from "./integrations.server";
 import type { WorkflowRunStatus } from "./workflowRun.server";
 
@@ -160,21 +161,16 @@ async function parseStep(
       const service = services[externalService.slug];
       invariant(service, `Service ${externalService.slug} not found`);
 
-      let displayProperties: DisplayProperties;
+      const presenter = new DisplayPropertiesPresenter();
 
-      if (integration.requests) {
-        displayProperties = integration.requests.displayProperties(
-          original.integrationRequest.endpoint,
-          original.integrationRequest.params
-        );
-      } else {
-        displayProperties = {
-          title: "Unknown integration",
-        };
-      }
+      const displayProperties = await presenter.requestProperties(
+        service.service,
+        original.integrationRequest.endpoint,
+        original.integrationRequest.params
+      );
 
       const customComponent =
-        integration.metadata.service === "resend"
+        service.service === "resend"
           ? {
               component: "resend" as const,
               input: SendEmailBodySchema.parse(original.input),
