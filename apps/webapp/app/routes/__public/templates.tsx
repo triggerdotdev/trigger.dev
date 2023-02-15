@@ -8,7 +8,7 @@ export default function TemplatesLayout() {
       <h1 className="mb-6 text-center font-title text-5xl font-semibold text-slate-200">
         Placeholder logged out templates
       </h1>
-      <Header2 size="small" className="mb-4 text-slate-400">
+      <Header2 size="small" className="mt-4 mb-8 text-slate-400">
         Placeholder template sub-heading
       </Header2>
         <Outlet />
