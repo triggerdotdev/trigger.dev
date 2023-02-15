@@ -1,8 +1,10 @@
+import type { DisplayProperties } from "@trigger.dev/integration-sdk";
 import type { PrismaClient } from "~/db.server";
 import { prisma } from "~/db.server";
 import type { Organization } from "~/models/organization.server";
 import type { WorkflowRunStep } from "~/models/workflowRun.server";
 import { createStepOnce } from "~/models/workflowRunStep.server";
+import { integrationsClient } from "../integrationsClient.server";
 import { taskQueue } from "../messageBroker.server";
 
 export class CreateIntegrationRequest {
@@ -54,28 +56,28 @@ export class CreateIntegrationRequest {
       throw new Error("Invalid workflow run ID");
     }
 
+    let displayProperties: DisplayProperties | undefined = undefined;
+    if (data.version === "2") {
+      displayProperties = await integrationsClient.displayProperties({
+        service: data.service,
+        name: data.endpoint,
+        params: data.params,
+      });
+    }
+
     // Create the workflow run step
-    const idempotentStep = await createStepOnce(
-      workflowRun.id,
-      key,
-      {
-        service,
-        endpoint,
-        params,
-        version,
+    const idempotentStep = await createStepOnce(workflowRun.id, key, {
+      type: "INTEGRATION_REQUEST",
+      input: data.params,
+      context: {
+        service: data.service,
+        endpoint: data.endpoint,
+        version: data.version,
       },
-      {
-        type: "INTEGRATION_REQUEST",
-        input: data.params,
-        context: {
-          service: data.service,
-          endpoint: data.endpoint,
-          version: data.version,
-        },
-        status: "PENDING",
-        ts: timestamp,
-      }
-    );
+      status: "PENDING",
+      ts: timestamp,
+      displayProperties,
+    });
 
     if (idempotentStep.status === "EXISTING") {
       return this.#handleExistingStep(idempotentStep.step);
