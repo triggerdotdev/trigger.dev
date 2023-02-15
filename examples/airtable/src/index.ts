@@ -1,5 +1,6 @@
 import { customEvent, Trigger } from "@trigger.dev/sdk";
 import * as airtable from "@trigger.dev/airtable";
+import * as slack from "@trigger.dev/slack";
 import { z } from "zod";
 
 new Trigger({
@@ -17,6 +18,11 @@ new Trigger({
       baseId: "appBlf3KsalIQeMUo",
       tableIdOrName: "tblvXn2TOeVPC9c6m",
       recordId: "recHcnB1MbBr9Rd2P",
+    });
+
+    const posted = await slack.postMessage("post-message", {
+      channelName: "test-integrations",
+      text: `Airtable record: ${JSON.stringify(record.fields)}`,
     });
   },
 }).listen();

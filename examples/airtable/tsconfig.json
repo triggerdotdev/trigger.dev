@@ -23,7 +23,11 @@
       "@trigger.dev/airtable": [
         "../../generated-integrations/airtable/src/index"
       ],
-      "@trigger.dev/airtable/*": ["../../generated-integrations/airtable/src/*"]
+      "@trigger.dev/airtable/*": [
+        "../../generated-integrations/airtable/src/*"
+      ],
+      "@trigger.dev/slack": ["../../integrations/slack/src/index"],
+      "@trigger.dev/slack/*": ["../../integrations/slack/src/*"]
     }
   }
 }
