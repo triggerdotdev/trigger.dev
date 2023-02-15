@@ -89,9 +89,6 @@ function OrganizationTemplateByStatus(loaderData: LoaderData) {
   ) {
     return (
       <>
-        <div>
-          <TemplateCard template={loaderData.template} />
-        </div>
         <ConnectedToGithub accountName={loaderData.githubAccount.login} />
         <div className="mt-4 mb-2 flex max-w-4xl items-center gap-2">
           <Spinner />
@@ -376,7 +373,10 @@ function ConfiguringGithubState({
     </Panel>
   );
 }
-function ConnectedToGithub({ accountName }: { accountName: string }) {
+
+// Skeleton and completed states
+
+export function ConnectedToGithub({ accountName }: { accountName: string }) {
   return (
     <div className="mt-6">
       <SubTitle className="flex items-center">
@@ -397,7 +397,6 @@ function ConnectedToGithub({ accountName }: { accountName: string }) {
   );
 }
 
-// Skeleton states
 function GitHubConfigured({
   githubAccount,
   isPrivate,
