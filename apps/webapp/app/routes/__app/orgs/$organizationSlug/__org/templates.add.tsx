@@ -12,6 +12,7 @@ import { Container } from "~/components/layout/Container";
 import { Panel } from "~/components/layout/Panel";
 import { PanelWarning } from "~/components/layout/PanelWarning";
 import { PrimaryButton } from "~/components/primitives/Buttons";
+import { FormError } from "~/components/primitives/FormError";
 import { Input } from "~/components/primitives/Input";
 import { InputGroup } from "~/components/primitives/InputGroup";
 import { Label } from "~/components/primitives/Label";
@@ -52,8 +53,20 @@ export async function action({ params, request }: ActionArgs) {
 
   const service = new AddTemplateService();
 
+  const validation = service.validate(payload);
+
+  if (!validation.success) {
+    return typedjson(
+      {
+        type: "validationError" as const,
+        errors: validation.error.issues,
+      },
+      { status: 422 }
+    );
+  }
+
   const result = await service.call({
-    payload,
+    data: validation.data,
     organizationSlug,
     userId,
   });
@@ -61,8 +74,8 @@ export async function action({ params, request }: ActionArgs) {
   if (result.type === "error") {
     return typedjson(
       {
-        type: "error" as const,
-        errors: result.message,
+        type: "serviceError" as const,
+        message: result.message,
       },
       { status: 422 }
     );
@@ -89,15 +102,23 @@ export default function AddTemplatePage() {
         </div>
       )}
 
-      <Form method="post" className="max-w-4xl" reloadDocument>
+      <Form method="post" className="max-w-4xl">
         <Title>You're almost done</Title>
 
-        {actionData?.type === "error" && (
+        {actionData?.type === "serviceError" ? (
           <PanelWarning
-            message={actionData.errors}
+            message={actionData.message}
             className="mb-4"
           ></PanelWarning>
+        ) : actionData?.type === "validationError" ? (
+          <PanelWarning
+            message="There was a problem with your submission."
+            className="mb-4"
+          ></PanelWarning>
+        ) : (
+          <></>
         )}
+
         {template ? (
           <SubTitle>
             Configure GitHub for your{" "}
@@ -119,6 +140,13 @@ export default function AddTemplatePage() {
                   </option>
                 ))}
               </Select>
+
+              {actionData?.type === "validationError" && (
+                <FormError
+                  errors={actionData.errors}
+                  path={["appAuthorizationId"]}
+                />
+              )}
             </InputGroup>
 
             {template ? (
@@ -134,6 +162,10 @@ export default function AddTemplatePage() {
                     </option>
                   ))}
                 </Select>
+
+                {actionData?.type === "validationError" && (
+                  <FormError errors={actionData.errors} path={["templateId"]} />
+                )}
               </InputGroup>
             )}
           </div>
@@ -148,6 +180,10 @@ export default function AddTemplatePage() {
                 spellCheck={false}
                 className=""
               />
+
+              {actionData?.type === "validationError" && (
+                <FormError errors={actionData.errors} path={["name"]} />
+              )}
             </InputGroup>
             <div>
               <p className="mb-1 text-sm text-slate-500">

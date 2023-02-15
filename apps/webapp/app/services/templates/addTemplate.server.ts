@@ -1,11 +1,9 @@
 import { z } from "zod";
-import { generateErrorMessage } from "zod-error";
 import type { PrismaClient } from "~/db.server";
 import { prisma } from "~/db.server";
 import {
   AccountSchema,
   createRepositoryFromTemplate,
-  getOctokitRest,
 } from "../github/githubApp.server";
 
 const FormSchema = z.object({
@@ -22,26 +20,19 @@ export class AddTemplateService {
     this.#prismaClient = prismaClient;
   }
 
+  public validate(payload: unknown) {
+    return FormSchema.safeParse(payload);
+  }
+
   public async call({
     userId,
     organizationSlug,
-    payload,
+    data,
   }: {
     userId: string;
     organizationSlug: string;
-    payload: unknown;
+    data: z.infer<typeof FormSchema>;
   }) {
-    const parsedPayload = FormSchema.safeParse(payload);
-
-    if (!parsedPayload.success) {
-      return {
-        type: "error" as const,
-        message: generateErrorMessage(parsedPayload.error.issues),
-      };
-    }
-
-    const data = parsedPayload.data;
-
     const appAuthorization =
       await this.#prismaClient.gitHubAppAuthorization.findUnique({
         where: {
@@ -85,7 +76,7 @@ export class AddTemplateService {
       .split("/")
       .slice(1);
 
-    const githubRepository = await createRepositoryFromTemplate(
+    const createdGithubRepo = await createRepositoryFromTemplate(
       {
         template_owner: template_owner,
         template_repo: template_repo,
@@ -96,12 +87,14 @@ export class AddTemplateService {
       { installationId: appAuthorization.installationId }
     );
 
-    if (!githubRepository) {
+    if (createdGithubRepo.status === "error") {
       return {
         type: "error" as const,
-        message: "Failed to create repository",
+        message: createdGithubRepo.message,
       };
     }
+
+    const githubRepository = createdGithubRepo.data;
 
     const organizationTemplate =
       await this.#prismaClient.organizationTemplate.create({

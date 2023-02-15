@@ -64,6 +64,7 @@
     "@octokit/auth-unauthenticated": "^3.0.4",
     "@octokit/core": "^4.2.0",
     "@octokit/oauth-app": "^4.2.0",
+    "@octokit/request-error": "^3.0.3",
     "@octokit/rest": "^19.0.7",
     "@octokit/webhooks": "^10.4.0",
     "@prisma/client": "^4.3.0",

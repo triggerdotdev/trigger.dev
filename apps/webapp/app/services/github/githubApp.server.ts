@@ -8,6 +8,7 @@ import { Options } from "@octokit/oauth-app/dist-types/types";
 import type { Endpoints } from "@octokit/types";
 import { z } from "zod";
 import { taskQueue } from "../messageBroker.server";
+import { RequestError } from "@octokit/request-error";
 
 export const octokit = env.GITHUB_APP_PRIVATE_KEY
   ? new Octokit({
@@ -202,19 +203,32 @@ type CreateRepositoryFromTemplateEndpoint =
 export async function createRepositoryFromTemplate(
   parameters: CreateRepositoryFromTemplateEndpoint["parameters"],
   { installationId }: { installationId?: number }
-) {
+): Promise<
+  | {
+      status: "success";
+      data: CreateRepositoryFromTemplateEndpoint["response"]["data"];
+    }
+  | { status: "error"; message: string }
+> {
   if (typeof octokit === "undefined") {
-    return;
+    return { status: "error", message: "Octokit not initialized" };
   }
 
   const kit = installationId ? await getOctokit(installationId) : octokit;
+  try {
+    const response = await kit.request(
+      "POST /repos/{template_owner}/{template_repo}/generate",
+      parameters
+    );
 
-  const response = await kit.request(
-    "POST /repos/{template_owner}/{template_repo}/generate",
-    parameters
-  );
-
-  return response.data;
+    return { status: "success", data: response.data };
+  } catch (error) {
+    if (error instanceof RequestError) {
+      return { status: "error", message: error.message };
+    } else {
+      throw error;
+    }
+  }
 }
 
 export async function getOctokitRest(installationId: number) {
