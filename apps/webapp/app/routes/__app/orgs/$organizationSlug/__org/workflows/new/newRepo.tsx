@@ -29,7 +29,7 @@ export default function Step3NewRepo1() {
           <StepNumber active stepNumber="3" />
           Which template would you like to use?
         </SubTitle>
-        <TemplatesGrid templates={templates} />
+        <TemplatesGrid templates={templates} openInNewPage={false} />
       </div>
     </div>
   );

@@ -1,4 +1,5 @@
 import { XCircleIcon } from "@heroicons/react/24/solid";
+import { Link } from "@remix-run/react";
 import { Fragment, useState } from "react";
 import { TemplateListItem } from "~/presenters/templateListPresenter.server";
 import { ApiLogoIcon } from "../code/ApiLogoIcon";
@@ -9,8 +10,10 @@ import { TemplateOverview } from "./TemplateOverview";
 
 export function TemplatesGrid({
   templates,
+  openInNewPage,
 }: {
   templates: Array<TemplateListItem>;
+  openInNewPage: boolean;
 }) {
   const [openedTemplate, setOpenedTemplate] = useState<TemplateListItem | null>(
     null
@@ -38,11 +41,11 @@ export function TemplatesGrid({
       <div className="mt-8 grid w-full grid-cols-1 items-start justify-start gap-4 md:grid-cols-2 lg:grid-cols-3">
         {templates.map((template) => {
           return (
-            <button
-              key={template.title}
-              type="button"
-              onClick={(e) => setOpenedTemplate(template)}
-              className="group flex h-full w-full flex-col overflow-hidden rounded-md border border-slate-700 bg-slate-800 text-left text-sm text-slate-200 shadow-md transition hover:cursor-pointer hover:border-slate-500 hover:bg-slate-700/30 disabled:opacity-50"
+            <TemplateButtonOrLink
+              key={template.slug}
+              template={template}
+              openInNewPage={openInNewPage}
+              onClick={() => setOpenedTemplate(template)}
             >
               <div className="h-24 w-full bg-slate-600 transition group-hover:opacity-90">
                 <img
@@ -72,10 +75,44 @@ export function TemplatesGrid({
                   ))}
                 </div>
               </div>
-            </button>
+            </TemplateButtonOrLink>
           );
         })}
       </div>
     </>
   );
+}
+
+function TemplateButtonOrLink({
+  template,
+  openInNewPage,
+  onClick,
+  children,
+}: {
+  template: TemplateListItem;
+  openInNewPage: boolean;
+  onClick: (e: React.MouseEvent) => void;
+  children: React.ReactNode;
+}) {
+  const classNames =
+    "group flex h-full w-full flex-col overflow-hidden rounded-md border border-slate-700 bg-slate-800 text-left text-sm text-slate-200 shadow-md transition hover:cursor-pointer hover:border-slate-500 hover:bg-slate-700/30 disabled:opacity-50";
+
+  if (openInNewPage) {
+    return (
+      <Link to={template.slug} className={classNames}>
+        {children}
+      </Link>
+    );
+  } else {
+    return (
+      <button
+        key={template.title}
+        type="button"
+        onClick={onClick}
+        className="group flex h-full w-full flex-col overflow-hidden rounded-md border border-slate-700 bg-slate-800 text-left text-sm text-slate-200 shadow-md transition hover:cursor-pointer hover:border-slate-500 hover:bg-slate-700/30 disabled:opacity-50"
+      >
+        {children}
+      </button>
+    );
+  }
 }
