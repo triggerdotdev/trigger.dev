@@ -62,7 +62,9 @@
             "packages/internal-pulsar/src/**",
             "./pnpm-lock.yaml"
           ],
-          "dependsOn": ["p-db"],
+          "dependsOn": [
+            "p-db"
+          ],
           "envVariables": {
             "FROM_EMAIL": "hello@email.trigger.dev",
             "REPLY_TO_EMAIL": "hello@trigger.dev",
@@ -243,7 +245,9 @@
             "packages/internal-pulsar/src/**",
             "./pnpm-lock.yaml"
           ],
-          "dependsOn": ["s-db"],
+          "dependsOn": [
+            "s-db"
+          ],
           "envVariables": {
             "APP_ENV": "staging",
             "FROM_EMAIL": "hello@email.trigger.dev",
@@ -293,7 +297,21 @@
             },
             "TRIGGER_LOG_LEVEL": "debug",
             "PULSAR_ENABLED": "1",
-            "PULSAR_DEBUG": true
+            "PULSAR_DEBUG": true,
+            "GITHUB_APP_NAME": "trigger-dev-staging",
+            "GITHUB_APP_ID": "294080",
+            "GITHUB_APP_CLIENT_ID": {
+              "fromParameterStore": "/Staging/webapp/GITHUB_APP_CLIENT_ID"
+            },
+            "GITHUB_APP_CLIENT_SECRET": {
+              "fromParameterStore": "/Staging/webapp/GITHUB_APP_CLIENT_SECRET"
+            },
+            "GITHUB_APP_PRIVATE_KEY": {
+              "fromParameterStore": "/Staging/webapp/GITHUB_APP_PRIVATE_KEY"
+            },
+            "GITHUB_APP_WEBHOOK_SECRET": {
+              "fromParameterStore": "/Staging/webapp/GITHUB_APP_WEBHOOK_SECRET"
+            }
           }
         },
         {
