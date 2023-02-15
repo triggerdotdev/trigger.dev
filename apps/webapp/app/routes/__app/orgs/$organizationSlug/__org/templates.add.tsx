@@ -1,3 +1,4 @@
+import { FolderIcon } from "@heroicons/react/24/solid";
 import { Form } from "@remix-run/react";
 import { ActionArgs, LoaderArgs } from "@remix-run/server-runtime";
 import {
@@ -8,11 +9,12 @@ import {
 } from "remix-typedjson";
 import invariant from "tiny-invariant";
 import { z } from "zod";
+import { OctoKitty } from "~/components/GitHubLoginButton";
 import { Container } from "~/components/layout/Container";
 import { Panel } from "~/components/layout/Panel";
 import { PanelWarning } from "~/components/layout/PanelWarning";
 import { StepNumber } from "~/components/onboarding/StepNumber";
-import { PrimaryButton } from "~/components/primitives/Buttons";
+import { PrimaryButton, PrimaryLink } from "~/components/primitives/Buttons";
 import { FormError } from "~/components/primitives/FormError";
 import { Input } from "~/components/primitives/Input";
 import { InputGroup } from "~/components/primitives/InputGroup";
@@ -97,124 +99,165 @@ export default function AddTemplatePage() {
 
   return (
     <Container>
-      {template && (
-        <div>
-          <TemplateCard template={template} />
-        </div>
-      )}
+      <div className="grid grid-cols-[minmax(0,_1fr)_minmax(0,_1fr)_minmax(0,_1fr)_300px] gap-4">
+        <Form method="post" className="col-span-3 max-w-4xl">
+          <Title>You're almost done</Title>
 
-      <Form method="post" className="max-w-4xl">
-        <Title>You're almost done</Title>
+          {actionData?.type === "serviceError" ? (
+            <PanelWarning
+              message={actionData.message}
+              className="mb-4"
+            ></PanelWarning>
+          ) : actionData?.type === "validationError" ? (
+            <PanelWarning
+              message="There was a problem with your submission."
+              className="mb-4"
+            ></PanelWarning>
+          ) : (
+            <></>
+          )}
+          {/* Todo: Fix this state */}
+          <ConnectToGithub />
+          <ConfigureGithub />
 
-        {actionData?.type === "serviceError" ? (
-          <PanelWarning
-            message={actionData.message}
-            className="mb-4"
-          ></PanelWarning>
-        ) : actionData?.type === "validationError" ? (
-          <PanelWarning
-            message="There was a problem with your submission."
-            className="mb-4"
-          ></PanelWarning>
-        ) : (
-          <></>
-        )}
-
-        {template ? (
-          <SubTitle className="flex items-center">
-            <StepNumber active stepNumber="2" />
-            Configure GitHub for your workflow: {template.title}
-          </SubTitle>
-        ) : (
-          <SubTitle className="flex items-center">
-            <StepNumber active stepNumber="2" />
-            Configure GitHub for your new workflow
-          </SubTitle>
-        )}
-        <Panel className="!p-4">
-          <div className="mb-3 grid grid-cols-2 gap-4">
-            <InputGroup>
-              <Label htmlFor="appAuthorizationId">
-                Select a GitHub account
-              </Label>
-              <Select name="appAuthorizationId" required>
-                {appAuthorizations.map((appAuthorization) => (
-                  <option value={appAuthorization.id} key={appAuthorization.id}>
-                    {appAuthorization.account.login}
-                  </option>
-                ))}
-              </Select>
-
-              {actionData?.type === "validationError" && (
-                <FormError
-                  errors={actionData.errors}
-                  path={["appAuthorizationId"]}
-                />
-              )}
-            </InputGroup>
-
-            {template ? (
-              <input type="hidden" name="templateId" value={template.id} />
-            ) : (
+          {template ? (
+            <SubTitle className="flex items-center">
+              <StepNumber active stepNumber="2" />
+              Configure GitHub for your workflow: {template.title}
+            </SubTitle>
+          ) : (
+            <SubTitle className="flex items-center">
+              <StepNumber active stepNumber="2" />
+              Configure GitHub for your new workflow
+            </SubTitle>
+          )}
+          <Panel className="!p-4">
+            <div className="mb-3 grid grid-cols-2 gap-4">
               <InputGroup>
-                <Label htmlFor="templateId">Choose a template</Label>
-
-                <Select name="templateId" required>
-                  {templates.map((template) => (
-                    <option value={template.id} key={template.id}>
-                      {template.title}
+                <Label htmlFor="appAuthorizationId">
+                  Select a GitHub account
+                </Label>
+                <Select name="appAuthorizationId" required>
+                  {appAuthorizations.map((appAuthorization) => (
+                    <option
+                      value={appAuthorization.id}
+                      key={appAuthorization.id}
+                    >
+                      {appAuthorization.account.login}
                     </option>
                   ))}
                 </Select>
 
                 {actionData?.type === "validationError" && (
-                  <FormError errors={actionData.errors} path={["templateId"]} />
+                  <FormError
+                    errors={actionData.errors}
+                    path={["appAuthorizationId"]}
+                  />
                 )}
               </InputGroup>
-            )}
-          </div>
-          <div className="mb-4 grid grid-cols-2 gap-4">
-            <InputGroup>
-              <Label htmlFor="name">Choose a name</Label>
 
-              <Input
-                id="name"
-                name="name"
-                placeholder="Repository name"
-                spellCheck={false}
-                className=""
-              />
+              {template ? (
+                <input type="hidden" name="templateId" value={template.id} />
+              ) : (
+                <InputGroup>
+                  <Label htmlFor="templateId">Choose a template</Label>
 
-              {actionData?.type === "validationError" && (
-                <FormError errors={actionData.errors} path={["name"]} />
+                  <Select name="templateId" required>
+                    {templates.map((template) => (
+                      <option value={template.id} key={template.id}>
+                        {template.title}
+                      </option>
+                    ))}
+                  </Select>
+
+                  {actionData?.type === "validationError" && (
+                    <FormError
+                      errors={actionData.errors}
+                      path={["templateId"]}
+                    />
+                  )}
+                </InputGroup>
               )}
-            </InputGroup>
-            <div>
-              <p className="mb-1 text-sm text-slate-500">
-                Set the repo as private
-              </p>
-              <div className="flex w-full items-center rounded bg-black/20 px-3 py-2.5">
-                <Label
-                  htmlFor="private"
-                  className="flex cursor-pointer items-center gap-2 text-sm text-slate-300"
-                >
-                  <input
-                    type="checkbox"
-                    name="private"
-                    id="private"
-                    className="border-3 h-4 w-4 cursor-pointer rounded border-black bg-slate-200 transition hover:bg-slate-300 focus:outline-none"
-                  />
-                  Private repo
-                </Label>
+            </div>
+            <div className="mb-4 grid grid-cols-2 gap-4">
+              <InputGroup>
+                <Label htmlFor="name">Choose a name</Label>
+
+                <Input
+                  id="name"
+                  name="name"
+                  placeholder="Repository name"
+                  spellCheck={false}
+                  className=""
+                />
+
+                {actionData?.type === "validationError" && (
+                  <FormError errors={actionData.errors} path={["name"]} />
+                )}
+              </InputGroup>
+              <div>
+                <p className="mb-1 text-sm text-slate-500">
+                  Set the repo as private
+                </p>
+                <div className="flex w-full items-center rounded bg-black/20 px-3 py-2.5">
+                  <Label
+                    htmlFor="private"
+                    className="flex cursor-pointer items-center gap-2 text-sm text-slate-300"
+                  >
+                    <input
+                      type="checkbox"
+                      name="private"
+                      id="private"
+                      className="border-3 h-4 w-4 cursor-pointer rounded border-black bg-slate-200 transition hover:bg-slate-300 focus:outline-none"
+                    />
+                    Private repo
+                  </Label>
+                </div>
               </div>
             </div>
-          </div>
-          <div className="flex justify-end">
-            <PrimaryButton type="submit">Add Template</PrimaryButton>
-          </div>
-        </Panel>
-      </Form>
-      <DeployBlankState />
+            <div className="flex justify-end">
+              <PrimaryButton type="submit">Add Template</PrimaryButton>
+            </div>
+          </Panel>
+          <DeployBlankState />
+        </Form>
+        {template && <TemplateCard template={template} />}
+      </div>
     </Container>
+  );
+}
+
+function ConnectToGithub() {
+  return (
+    <>
+      <SubTitle className="flex items-center">
+        <StepNumber active stepNumber="1" />
+        Login with GitHub to get started
+      </SubTitle>
+      <Panel className="mb-6 flex h-56 items-center justify-center">
+        <PrimaryLink to="../apps/github">
+          <OctoKitty className="h-4 w-4" />
+          Continue with GitHub
+        </PrimaryLink>
+      </Panel>
+    </>
+  );
+}
+
+function ConfigureGithub() {
+  return (
+    <>
+      <div className="mt-6">
+        <SubTitle className="flex items-center">
+          <StepNumber stepNumber="2" />
+          Configure GitHub
+        </SubTitle>
+        <Panel className="flex h-56 w-full max-w-4xl items-center justify-center gap-6">
+          <OctoKitty className="h-10 w-10 text-slate-600" />
+          <div className="h-[1px] w-16 border border-dashed border-slate-600"></div>
+          <FolderIcon className="h-10 w-10 text-slate-600" />
+        </Panel>
+      </div>
+    </>
   );
 }
