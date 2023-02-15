@@ -230,8 +230,10 @@ function DeploySection({
                     <CloudIcon className="absolute top-2 -left-4 h-28 w-28 text-white/50" />
                     <HomeIcon className="absolute bottom-0 right-[calc(50%-2rem)] h-16 w-16 text-stone-900" />
                     <CloudIcon className="absolute top-4 right-6 h-16 w-16 text-white/50" />
-                    <div className="absolute bottom-0 h-2 w-full bg-green-700"></div>
-                    <Header3 className="mb-4">Run locally</Header3>
+                    <div className="absolute -bottom-[150px] h-40 w-[20rem] rounded-full bg-green-700"></div>
+                    <Header3 className="mb-6 font-semibold">
+                      Run your workflow locally
+                    </Header3>
                   </div>
                   <div className="p-6">
                     <div className="flex h-full w-full flex-col gap-y-1 rounded ">
@@ -378,7 +380,7 @@ function ConnectedToGithub({ accountName }: { accountName: string }) {
         <StepNumber />
         GitHub connected
       </SubTitle>
-      <Panel className="relative flex w-full max-w-4xl items-center gap-2 !p-4">
+      <Panel className="relative mb-6 flex w-full max-w-4xl items-center gap-2 !p-4">
         <OctoKitty className="h-5 w-5 opacity-40" />
         <a
           href={`https://github.com/${accountName}`}
