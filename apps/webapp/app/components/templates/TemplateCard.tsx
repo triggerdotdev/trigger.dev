@@ -5,24 +5,23 @@ import { Header1 } from "../primitives/text/Headers";
 
 export function TemplateCard({ template }: { template: TemplateListItem }) {
   return (
-    <button
+    <div
       key={template.title}
-      type="button"
-      className="group flex h-full w-full flex-col overflow-hidden rounded-md border border-slate-700 bg-slate-800 text-left text-sm text-slate-200 shadow-md transition hover:cursor-pointer hover:border-slate-500 hover:bg-slate-700/30 disabled:opacity-50"
+      className="sticky top-0 mt-[94px] flex h-fit w-full flex-col overflow-hidden rounded-md border border-slate-700/50 bg-slate-1000 text-slate-300 shadow-md"
     >
-      <div className="h-24 w-full bg-slate-600 transition group-hover:opacity-90">
+      <div className="h-36 w-full">
         <img
           src={template.imageUrl}
-          alt=""
+          alt="template image"
           className="h-full w-full object-cover"
         />
       </div>
-      <div className="flex flex-col p-4">
+      <div className="flex flex-col p-5">
         <div className="flex flex-col gap-y-2 ">
-          <Header1 size="small" className="font-semibold">
+          <Header1 size="extra-small" className="text-slate-300">
             {template.title}
           </Header1>
-          <Body size="small" className="text-slate-400">
+          <Body size="small" className="text-slate-500">
             {template.description}
           </Body>
         </div>
@@ -32,12 +31,12 @@ export function TemplateCard({ template }: { template: TemplateListItem }) {
               <ApiLogoIcon
                 integration={service}
                 size="regular"
-                className="mt-2 flex h-8 w-8 items-center justify-center rounded border-[1px] border-slate-700 bg-slate-900 transition group-hover:border-slate-600 group-hover:bg-slate-900/80"
+                className="mt-2 flex h-8 w-8 items-center justify-center rounded border-[1px] border-slate-700 bg-slate-900"
               />
             </div>
           ))}
         </div>
       </div>
-    </button>
+    </div>
   );
 }

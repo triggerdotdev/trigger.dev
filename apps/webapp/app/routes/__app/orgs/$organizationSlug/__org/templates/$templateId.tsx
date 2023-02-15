@@ -71,8 +71,13 @@ export default function TemplatePage() {
 
   return (
     <Container>
-      <Header1>You're almost done</Header1>
-      {organizationTemplateByStatus}
+      <div className="grid grid-cols-[minmax(0,_1fr)_minmax(0,_1fr)_minmax(0,_1fr)_300px] gap-4">
+        <div className="col-span-3">
+          <Header1>You're almost done</Header1>
+          {organizationTemplateByStatus}
+        </div>
+        <TemplateCard template={loaderData.template} />
+      </div>
     </Container>
   );
 }
@@ -120,9 +125,6 @@ function OrganizationTemplateReady(loaderData: LoaderData) {
     <>
       {loaderData.organizationTemplate.status === "READY_TO_DEPLOY" ? (
         <>
-          <div>
-            <TemplateCard template={loaderData.template} />
-          </div>
           <ConnectedToGithub accountName={loaderData.githubAccount.login} />
           {githubConfigured}
           <div className="mt-4 mb-1 flex items-center gap-2">
