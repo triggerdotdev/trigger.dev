@@ -301,7 +301,7 @@ function DeploySection({
         <Label className="mb-3 text-sm text-slate-500">
           View your new workflow:
         </Label>
-        <div className="relative mt-4 rounded-md bg-slate-850 p-4">
+        <div className="relative mt-1 rounded-lg bg-slate-850 p-4">
           <div className="absolute inset-2.5 z-0 h-[calc(100%-20px)] w-[calc(100%-20px)] animate-pulse rounded-md bg-gradient-to-r from-indigo-500 to-pink-500 blur-sm"></div>
           <WorkflowList
             className="relative z-50 !mb-0"
