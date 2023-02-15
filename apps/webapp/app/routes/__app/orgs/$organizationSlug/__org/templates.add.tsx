@@ -1,4 +1,4 @@
-import { Form } from "@remix-run/react";
+import { Form, useTransition } from "@remix-run/react";
 import { ActionArgs, LoaderArgs } from "@remix-run/server-runtime";
 import {
   redirect,
@@ -82,7 +82,7 @@ export default function AddTemplatePage() {
 
   return (
     <Container>
-      <Form method="post" reloadDocument className="max-w-4xl">
+      <Form method="post" className="max-w-4xl" reloadDocument>
         <Title>You're almost done</Title>
 
         {actionData?.type === "error" && (

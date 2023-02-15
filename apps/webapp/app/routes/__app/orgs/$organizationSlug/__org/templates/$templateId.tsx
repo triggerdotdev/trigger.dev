@@ -84,10 +84,14 @@ function OrganizationTemplateByStatus(loaderData: LoaderData) {
         <div className="mt-4 mb-2 flex max-w-4xl items-center gap-2">
           <Spinner />
           <SubTitle className="mb-0">
-            Setting up the template in your new repo…
+            Cloning the template repo into your GitHub account...
           </SubTitle>
         </div>
-        <ConfiguringGithubState />
+        <ConfiguringGithubState
+          githubAccount={loaderData.githubAccount.login}
+          isPrivate={loaderData.organizationTemplate.private}
+          repositoryName={loaderData.repositoryName}
+        />
         <DeployBlankState />
       </>
     );
@@ -97,11 +101,19 @@ function OrganizationTemplateByStatus(loaderData: LoaderData) {
 }
 
 function OrganizationTemplateReady(loaderData: LoaderData) {
+  const githubConfigured = (
+    <GitHubConfigured
+      githubAccount={loaderData.githubAccount.login}
+      isPrivate={loaderData.organizationTemplate.private}
+      repositoryName={loaderData.repositoryName}
+    />
+  );
+
   return (
     <>
       {loaderData.organizationTemplate.status === "READY_TO_DEPLOY" ? (
         <>
-          <GitHubConfigured />
+          {githubConfigured}
           <div className="mt-4 mb-1 flex items-center gap-2">
             <Spinner />
             <SubTitle className="mb-0">
@@ -118,7 +130,7 @@ function OrganizationTemplateReady(loaderData: LoaderData) {
         </>
       ) : (
         <>
-          <GitHubConfigured />
+          {githubConfigured}
           <div className="mt-4 mb-1 flex items-center gap-1">
             <CheckCircleIcon className="h-6 w-6 text-green-400" />
             <SubTitle className="mb-0">Template deployed</SubTitle>
@@ -283,28 +295,39 @@ function DeploySection({
   }
 }
 
-function ConfiguringGithubState() {
+function ConfiguringGithubState({
+  githubAccount,
+  isPrivate,
+  repositoryName,
+}: {
+  githubAccount: string;
+  isPrivate: boolean;
+  repositoryName: string;
+}) {
   return (
     <Panel className="pointer-events-none relative max-w-4xl overflow-hidden !p-4">
       <div className="absolute top-0 left-0 flex h-full w-full flex-col items-center justify-center gap-4 bg-slate-850/50">
         <ClockIcon className="h-10 w-10 animate-pulse text-indigo-500" />
-        <Body>This can take up to 1 minute</Body>
+        <Body>This can take up to 30 seconds</Body>
       </div>
       <div className="mb-3 grid grid-cols-2 gap-4">
         <InputGroup>
           <Label htmlFor="appAuthorizationId">Select a GitHub account</Label>
-          <Select name="appAuthorizationId" required></Select>
-        </InputGroup>
-        <InputGroup>
-          <Label htmlFor="templateId">Choose a template</Label>
-
-          <Select name="templateId" required></Select>
+          <Select name="appAuthorizationId" required>
+            <option>{githubAccount}</option>
+          </Select>
         </InputGroup>
       </div>
       <div className="mb-4 grid grid-cols-2 gap-4">
         <InputGroup>
           <Label htmlFor="name">Choose a name</Label>
-          <Input id="name" name="name" spellCheck={false} />
+          <Input
+            id="name"
+            name="name"
+            spellCheck={false}
+            value={repositoryName}
+            disabled
+          />
         </InputGroup>
         <div>
           <p className="mb-1 text-sm text-slate-500">Set the repo as private</p>
@@ -312,7 +335,17 @@ function ConfiguringGithubState() {
             <Label
               htmlFor="private"
               className="flex h-5 cursor-pointer items-center gap-2 text-sm text-slate-300"
-            ></Label>
+            >
+              <input
+                type="checkbox"
+                name="private"
+                id="private"
+                className="border-3 h-4 w-4 cursor-pointer rounded border-black bg-slate-200 transition hover:bg-slate-300 focus:outline-none"
+                checked={isPrivate}
+                disabled
+              />
+              Private repo
+            </Label>
           </div>
         </div>
       </div>
@@ -326,8 +359,15 @@ function ConfiguringGithubState() {
 }
 
 // Skeleton states
-
-function GitHubConfigured() {
+function GitHubConfigured({
+  githubAccount,
+  isPrivate,
+  repositoryName,
+}: {
+  githubAccount: string;
+  isPrivate: boolean;
+  repositoryName: string;
+}) {
   return (
     <div className="mb-6">
       <div className="mt-4 mb-1 flex items-center gap-1">
@@ -339,18 +379,21 @@ function GitHubConfigured() {
         <div className="mb-3 grid grid-cols-2 gap-4">
           <InputGroup>
             <Label htmlFor="appAuthorizationId">Select a GitHub account</Label>
-            <Select name="appAuthorizationId" required></Select>
-          </InputGroup>
-          <InputGroup>
-            <Label htmlFor="templateId">Choose a template</Label>
-
-            <Select name="templateId" required></Select>
+            <Select name="appAuthorizationId" required>
+              <option>{githubAccount}</option>
+            </Select>
           </InputGroup>
         </div>
         <div className="mb-4 grid grid-cols-2 gap-4">
           <InputGroup>
             <Label htmlFor="name">Choose a name</Label>
-            <Input id="name" name="name" spellCheck={false} />
+            <Input
+              id="name"
+              name="name"
+              spellCheck={false}
+              value={repositoryName}
+              disabled
+            />
           </InputGroup>
           <div>
             <p className="mb-1 text-sm text-slate-500">
@@ -360,7 +403,17 @@ function GitHubConfigured() {
               <Label
                 htmlFor="private"
                 className="flex h-5 cursor-pointer items-center gap-2 text-sm text-slate-300"
-              ></Label>
+              >
+                <input
+                  type="checkbox"
+                  name="private"
+                  id="private"
+                  className="border-3 h-4 w-4 cursor-pointer rounded border-black bg-slate-200 transition hover:bg-slate-300 focus:outline-none"
+                  checked={isPrivate}
+                  disabled
+                />
+                Private repo
+              </Label>
             </div>
           </div>
         </div>
