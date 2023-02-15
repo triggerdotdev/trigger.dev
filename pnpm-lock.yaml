@@ -482,6 +482,25 @@ importers:
   config-packages/tsconfig:
     specifiers: {}
 
+  examples/airtable:
+    specifiers:
+      '@trigger.dev/airtable': workspace:*
+      '@trigger.dev/sdk': workspace:*
+      '@trigger.dev/tsconfig': workspace:*
+      '@types/node': '16'
+      jsx-slack: ^5.3.0
+      tsx: ^3.12.0
+      zod: ^3.20.2
+    dependencies:
+      '@trigger.dev/airtable': link:../../generated-integrations/airtable
+      '@trigger.dev/sdk': link:../../packages/trigger-sdk
+      jsx-slack: 5.3.0
+      zod: 3.20.2
+    devDependencies:
+      '@trigger.dev/tsconfig': link:../../config-packages/tsconfig
+      '@types/node': 16.18.11
+      tsx: 3.12.3
+
   examples/fetch-playground:
     specifiers:
       '@trigger.dev/sdk': workspace:*
@@ -631,25 +650,6 @@ importers:
       '@types/node': 16.18.11
       tsx: 3.12.2
 
-  examples/send-to-slack-v2:
-    specifiers:
-      '@trigger.dev/sdk': workspace:*
-      '@trigger.dev/slackv2': workspace:*
-      '@trigger.dev/tsconfig': workspace:*
-      '@types/node': '16'
-      jsx-slack: ^5.3.0
-      tsx: ^3.12.0
-      zod: ^3.20.2
-    dependencies:
-      '@trigger.dev/sdk': link:../../packages/trigger-sdk
-      '@trigger.dev/slackv2': link:../../generated-integrations/slackv2
-      jsx-slack: 5.3.0
-      zod: 3.20.2
-    devDependencies:
-      '@trigger.dev/tsconfig': link:../../config-packages/tsconfig
-      '@types/node': 16.18.11
-      tsx: 3.12.3
-
   examples/shopify:
     specifiers:
       '@trigger.dev/sdk': workspace:*
@@ -723,6 +723,23 @@ importers:
       '@trigger.dev/tsconfig': link:../../config-packages/tsconfig
       '@types/node': 16.18.11
       tsx: 3.12.2
+
+  generated-integrations/airtable:
+    specifiers:
+      '@trigger.dev/sdk': workspace:*
+      '@types/debug': ^4.1.7
+      '@types/node': '16'
+      debug: ^4.3.4
+      rimraf: ^3.0.2
+      tsup: ^6.5.0
+    dependencies:
+      debug: 4.3.4
+    devDependencies:
+      '@trigger.dev/sdk': link:../../packages/trigger-sdk
+      '@types/debug': 4.1.7
+      '@types/node': 16.18.11
+      rimraf: 3.0.2
+      tsup: 6.6.2
 
   generated-integrations/slackv2:
     specifiers:
@@ -3821,7 +3838,7 @@ packages:
     resolution: {integrity: sha512-lhc/XLith28QdW0HpHZvZKkorWgmCNT7sVelMHDj3HFdTfdqkwEKvT+aXVQtNAmCC39VJhunDkWhONWB7335mg==}
     dependencies:
       '@esbuild-kit/core-utils': 3.0.0
-      get-tsconfig: 4.3.0
+      get-tsconfig: 4.4.0
 
   /@esbuild-kit/cjs-loader/2.4.2:
     resolution: {integrity: sha512-BDXFbYOJzT/NBEtp71cvsrGPwGAMGRB/349rwKuoxNSiKjPraNNnlK6MIIabViCjqZugu6j+xeMDlEkWdHHJSg==}
@@ -3840,7 +3857,7 @@ packages:
     resolution: {integrity: sha512-afmtLf6uqxD5IgwCzomtqCYIgz/sjHzCWZFvfS5+FzeYxOURPUo4QcHtqJxbxWOMOogKriZanN/1bJQE/ZL93A==}
     dependencies:
       '@esbuild-kit/core-utils': 3.0.0
-      get-tsconfig: 4.3.0
+      get-tsconfig: 4.4.0
 
   /@esbuild-kit/esm-loader/2.5.5:
     resolution: {integrity: sha512-Qwfvj/qoPbClxCRNuac1Du01r9gvNOT+pMYtJDapfB1eoGN1YlJ1BixLyL9WVENRx5RXgNLdfYdx/CuswlGhMw==}
@@ -10765,10 +10782,10 @@ packages:
 
   /get-tsconfig/4.3.0:
     resolution: {integrity: sha512-YCcF28IqSay3fqpIu5y3Krg/utCBHBeoflkZyHj/QcqI2nrLPC3ZegS9CmIo+hJb8K7aiGsuUl7PwWVjNG2HQQ==}
+    dev: true
 
   /get-tsconfig/4.4.0:
     resolution: {integrity: sha512-0Gdjo/9+FzsYhXCEFueo2aY1z1tpXrxWZzP7k8ul9qt1U5o8rYJwTJYmaeHdrVosYIVYkOy2iwCJ9FdpocJhPQ==}
-    dev: true
 
   /get-uri/3.0.2:
     resolution: {integrity: sha512-+5s0SJbGoyiJTZZ2JTpFPLMPSch72KEqGOTvQsBqg0RBWvwhWUSYZFAtz3TPW0GXJuLBJPts1E241iHg+VRfhg==}
