@@ -2,7 +2,7 @@ import { Popover, Transition } from "@headlessui/react";
 import { Link, NavLink } from "@remix-run/react";
 import { Fragment } from "react";
 import { Logo } from "../Logo";
-import { PrimaryLink, ToxicLink } from "../primitives/Buttons";
+import { PrimaryLink, ToxicA, ToxicLink } from "../primitives/Buttons";
 import { MobileNavIcon, MobileNavLink } from "../primitives/NavLink";
 
 function MobileNavigation() {
@@ -98,13 +98,12 @@ export function MarketingHeader() {
               </NavLink>
 
               <NavLink
-                to="https://docs.trigger.dev/examples/examples"
-                title="Examples"
-                aria-label="Examples"
-                target="_blank"
+                to="/templates"
+                title="Templates"
+                aria-label="Templates"
                 className="transform text-slate-200 hover:text-toxic-500"
               >
-                Examples
+                Templates
               </NavLink>
               <NavLink
                 to="http://trigger.dev/pricing"
@@ -139,7 +138,7 @@ export function MarketingHeader() {
               </svg>
             </a>
             <NavLink
-              to="https://app.trigger.dev"
+              to="/login"
               title="Login"
               aria-label="Login"
               className="hidden transform font-semibold text-slate-200 hover:text-toxic-500 md:flex"
@@ -147,10 +146,7 @@ export function MarketingHeader() {
               Login
             </NavLink>
 
-            <ToxicLink
-              className="font-lg whitespace-nowrap "
-              to="https://app.trigger.dev"
-            >
+            <ToxicLink className="font-lg whitespace-nowrap " to="/login">
               <span className="hidden sm:block">Sign up</span>
               <span className="block sm:hidden">Sign up</span>
             </ToxicLink>
