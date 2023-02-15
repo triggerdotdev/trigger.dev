@@ -257,7 +257,7 @@ export class PerformIntegrationRequest {
         });
       }
       case "2": {
-        integrationsClient.performRequest({
+        return integrationsClient.performRequest({
           service,
           accessInfo,
           integrationRequest,
