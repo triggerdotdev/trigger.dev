@@ -7,6 +7,7 @@ type ServiceMetadata = {
   name: string;
   service: string;
   version: string;
+  icon: string;
   live: boolean;
   authentication: IntegrationAuthentication;
 };
@@ -15,7 +16,10 @@ export async function handleServices(req: Request, res: Response) {
   const servicesMetadata: Record<string, ServiceMetadata> = {};
   Object.entries(catalog.services).forEach(([key, service]) => {
     const metadata = omitExtraInfo(service);
-    servicesMetadata[key] = metadata;
+    servicesMetadata[key] = {
+      ...metadata,
+      icon: `/integrations/${metadata.service}.png`,
+    };
   });
 
   res.send(
