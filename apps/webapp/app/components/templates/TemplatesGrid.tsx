@@ -38,7 +38,7 @@ export function TemplatesGrid({
           </button>
         </StyledDialog.Panel>
       </StyledDialog.Dialog>
-      <div className="mt-8 grid w-full grid-cols-1 items-start justify-start gap-4 md:grid-cols-2 lg:grid-cols-3">
+      <div className="grid w-full grid-cols-1 items-start justify-start gap-4 md:grid-cols-2 lg:grid-cols-3">
         {templates.map((template) => {
           return (
             <TemplateButtonOrLink
