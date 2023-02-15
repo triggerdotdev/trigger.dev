@@ -5,13 +5,38 @@ import {
   WrenchScrewdriverIcon,
 } from "@heroicons/react/24/outline";
 import { TemplateListItem } from "~/presenters/templateListPresenter.server";
-import { TemplateCard } from "./templates/TemplateCard";
+import { Panel } from "./layout/Panel";
+import { Body } from "./primitives/text/Body";
+import { Header2, Header3 } from "./primitives/text/Headers";
 
 export function LoginPromoPanel({ template }: { template?: TemplateListItem }) {
   return (
     <div className="hidden h-full max-w-[30vw] flex-col justify-center border-r border-black/20 bg-slate-950 p-12 lg:flex">
       {template ? (
-        <TemplateCard template={template} />
+        <div className="flex max-w-md flex-col">
+          <Header2
+            size="extra-large"
+            className="mb-5 bg-gradient-to-r from-indigo-400 to-pink-500 bg-clip-text font-semibold text-transparent"
+          >
+            Login to continue setting up your template
+          </Header2>
+          <Panel className="border border-slate-800 bg-slate-800/40 !p-6">
+            <div className="h-fit w-full overflow-hidden rounded object-cover">
+              <img src={template.imageUrl} />
+            </div>
+            <div className="mt-5 flex flex-col gap-2 border-t border-slate-600/50 pt-4">
+              <Header3
+                size="extra-small"
+                className="font-semibold text-slate-400"
+              >
+                {template.title}
+              </Header3>
+              <Body size="small" className="text-slate-400">
+                {template.description}
+              </Body>
+            </div>
+          </Panel>
+        </div>
       ) : (
         <ul>
           <li className="flex gap-2 text-white">
