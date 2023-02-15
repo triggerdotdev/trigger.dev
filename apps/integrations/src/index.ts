@@ -1,6 +1,6 @@
-import { handleAction } from "api/v1/action";
-import { handleActionDisplay } from "api/v1/action/display";
-import { handleServices } from "api/v1/services";
+import { handleAction } from "api/v2/action";
+import { handleActionDisplay } from "api/v2/action/display";
+import { handleServices } from "api/v2/services";
 import dotenv from "dotenv";
 import express, { Express, NextFunction, Request, Response } from "express";
 dotenv.config();
@@ -41,9 +41,9 @@ app.use(checkAuthentication);
 app.get("/", (req: Request, res: Response) => {
   res.send("Trigger.dev integrations service");
 });
-app.get("/api/v1/services", handleServices);
-app.post("/api/v1/:service/action/:action/display", handleActionDisplay);
-app.post("/api/v1/:service/action/:action", handleAction);
+app.get("/api/v2/services", handleServices);
+app.post("/api/v2/:service/action/:action/display", handleActionDisplay);
+app.post("/api/v2/:service/action/:action", handleAction);
 
 app.listen(port, () => {
   console.log(`⚡️[server]: Server is running at http://localhost:${port}`);

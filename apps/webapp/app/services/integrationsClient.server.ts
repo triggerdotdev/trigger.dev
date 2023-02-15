@@ -10,7 +10,7 @@ class IntegrationsClient {
   #baseUrl: string;
   #apiKey: string;
   constructor(apiOrigin: string, apiKey: string) {
-    this.#baseUrl = `${apiOrigin}/api/v1`;
+    this.#baseUrl = `${apiOrigin}/api/v2`;
     this.#apiKey = apiKey;
   }
 
