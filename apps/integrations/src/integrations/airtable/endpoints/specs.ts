@@ -106,18 +106,7 @@ export const getRecord: EndpointSpec = {
             },
             fields: {
               type: "object",
-              properties: {
-                Address: {
-                  type: "string",
-                },
-                Name: {
-                  type: "string",
-                },
-                Visited: {
-                  type: "boolean",
-                },
-              },
-              required: ["Address", "Name", "Visited"],
+              additionalProperties: true,
             },
             id: {
               type: "string",
