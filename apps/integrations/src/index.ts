@@ -10,8 +10,8 @@ dotenv.config();
 const app: Express = express();
 const port = process.env.PORT ?? 3006;
 
-app.use(morgan("combined"));
 app.use(express.json());
+app.use(morgan("combined"));
 
 const checkAuthentication = function (
   req: Request,
