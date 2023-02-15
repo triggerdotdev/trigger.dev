@@ -219,12 +219,14 @@ export default function Step3ExistingRepo1() {
             </div>
             <Panel className="px-4 py-4">
               <InstallPackages packages={exampleProjects[0].requiredPackages} />
-              <PrimaryButton
-                className="mt-2"
-                onClick={() => dispatch({ type: "packages-installed" })}
-              >
-                Continue
-              </PrimaryButton>
+              <div className="flex w-full justify-end">
+                <PrimaryButton
+                  className="mt-2"
+                  onClick={() => dispatch({ type: "packages-installed" })}
+                >
+                  Continue
+                </PrimaryButton>
+              </div>
             </Panel>
           </>
         ) : state.step === "copy-example-code" ? (
@@ -249,12 +251,14 @@ export default function Step3ExistingRepo1() {
                 code={state.selectedProject.code(environment.apiKey)}
                 align="top"
               />
-              <PrimaryButton
-                className="mt-2"
-                onClick={() => dispatch({ type: "code-copied" })}
-              >
-                Continue
-              </PrimaryButton>
+              <div className="flex w-full justify-end">
+                <PrimaryButton
+                  className="mt-2"
+                  onClick={() => dispatch({ type: "code-copied" })}
+                >
+                  Continue
+                </PrimaryButton>
+              </div>
             </Panel>
           </>
         ) : state.step === "import-code" ? (
