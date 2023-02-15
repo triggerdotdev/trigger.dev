@@ -123,7 +123,7 @@ export default function AddTemplatePage() {
               <ConfigureGithub />
             </>
           ) : (
-            <ConnectedToGithub />
+            <ConnectedToGithub templateId={template?.id} />
           )}
 
           {template ? (

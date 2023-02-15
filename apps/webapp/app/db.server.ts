@@ -42,10 +42,10 @@ function getClient() {
       },
     },
     log: [
-      {
-        emit: "event",
-        level: "query",
-      },
+      // {
+      //   emit: "event",
+      //   level: "query",
+      // },
       {
         emit: "stdout",
         level: "error",
@@ -61,11 +61,11 @@ function getClient() {
     ],
   });
 
-  client.$on("query", (e) => {
-    console.log("Query: " + e.query);
-    console.log("Params: " + e.params);
-    console.log("Duration: " + e.duration + "ms");
-  });
+  // client.$on("query", (e) => {
+  //   console.log("Query: " + e.query);
+  //   console.log("Params: " + e.params);
+  //   console.log("Duration: " + e.duration + "ms");
+  // });
 
   // connect eagerly
   client.$connect();

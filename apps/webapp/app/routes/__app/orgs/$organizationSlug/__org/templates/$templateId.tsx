@@ -3,7 +3,6 @@ import {
   ClockIcon,
 } from "@heroicons/react/24/outline";
 import {
-  CheckCircleIcon,
   CloudIcon,
   FolderIcon,
   HomeIcon,
@@ -19,11 +18,10 @@ import {
 } from "remix-typedjson";
 import { useEventSource } from "remix-utils";
 import { CopyTextButton } from "~/components/CopyTextButton";
-import { OctoKitty } from "~/components/GitHubLoginButton";
 import { Container } from "~/components/layout/Container";
 import { Panel } from "~/components/layout/Panel";
 import { StepNumber } from "~/components/onboarding/StepNumber";
-import { PrimaryButton } from "~/components/primitives/Buttons";
+import { PrimaryButton, TertiaryLink } from "~/components/primitives/Buttons";
 import { StyledDialog } from "~/components/primitives/Dialog";
 import { Input } from "~/components/primitives/Input";
 import { InputGroup } from "~/components/primitives/InputGroup";
@@ -375,12 +373,17 @@ function ConfiguringGithubState({
 }
 
 // Skeleton and completed states
-export function ConnectedToGithub() {
+export function ConnectedToGithub({ templateId }: { templateId?: string }) {
   return (
     <div className="mt-6">
       <SubTitle className="flex items-center">
         <StepNumber complete />
         GitHub connected 🔌
+        {templateId && (
+          <TertiaryLink to={`../apps/github?templateId=${templateId}`}>
+            add another connection
+          </TertiaryLink>
+        )}
       </SubTitle>
     </div>
   );
