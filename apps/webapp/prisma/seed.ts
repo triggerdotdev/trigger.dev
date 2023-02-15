@@ -20,8 +20,7 @@ async function seed() {
       "https://imagedelivery.net/3TbraffuDZ4aEf8KWOmI_w/10a0661d-dda6-4a70-d1b5-8576ad63bd00/public",
     title: "A blank starter project with a simple Custom Event trigger",
     shortTitle: "Basic Starter",
-    description:
-      "A blank starter project with a simple Custom Event trigger. This is a great place to start if you're new to Trigger.",
+    description: "This is a great place to start if you're new to Trigger.",
     priority: 0,
     services: [],
     workflowIds: ["basic-starter"],
