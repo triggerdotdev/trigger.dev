@@ -375,16 +375,16 @@ function ConfiguringGithubState({
 // Skeleton and completed states
 export function ConnectedToGithub({ templateId }: { templateId?: string }) {
   return (
-    <div className="mt-6">
+    <div className="mt-6 flex items-center justify-between">
       <SubTitle className="flex items-center">
         <StepNumber complete />
-        GitHub connected 🔌
-        {templateId && (
-          <TertiaryLink to={`../apps/github?templateId=${templateId}`}>
-            add another connection
-          </TertiaryLink>
-        )}
+        GitHub connected
       </SubTitle>
+      {templateId && (
+        <TertiaryLink to={`../apps/github?templateId=${templateId}`}>
+          Add another connection
+        </TertiaryLink>
+      )}
     </div>
   );
 }
@@ -402,7 +402,7 @@ function GitHubConfigured({
     <div className="mb-6">
       <SubTitle className="mt-4 flex items-center">
         <StepNumber complete />
-        GitHub repository created 🚀
+        GitHub repository created
       </SubTitle>
       <Panel className="pointer-events-none relative max-w-4xl overflow-hidden !p-4">
         <div className="absolute top-0 left-0 flex h-full w-full flex-col items-center justify-center gap-4 bg-slate-850/40"></div>

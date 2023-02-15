@@ -184,13 +184,9 @@ export default function AddTemplatePage() {
                   )}
                 </InputGroup>
               )}
-            </div>
-            <div className="mb-4 grid grid-cols-2 gap-4">
-              <InputGroup>
-                <Label htmlFor="name">
-                  Choose a repository name (required)
-                </Label>
 
+              <InputGroup>
+                <Label htmlFor="name">Enter a repository name (required)</Label>
                 <Input
                   id="name"
                   name="name"
@@ -220,7 +216,7 @@ export default function AddTemplatePage() {
                       type="checkbox"
                       name="private"
                       id="private"
-                      className="border-3 h-4 w-4 cursor-pointer rounded border-black bg-slate-200 transition hover:bg-slate-300 focus:outline-none"
+                      className="border-3 h-4 w-4 cursor-pointer rounded border-black bg-slate-500 transition hover:bg-slate-300 focus:outline-none"
                     />
                     Private repo
                   </Label>
@@ -228,7 +224,9 @@ export default function AddTemplatePage() {
               </div>
             </div>
             <div className="flex justify-end">
-              <PrimaryButton type="submit">Add Template</PrimaryButton>
+              <PrimaryButton type="submit">
+                Create Repo & Template
+              </PrimaryButton>
             </div>
           </Panel>
           <DeployBlankState />
