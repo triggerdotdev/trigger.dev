@@ -11,16 +11,16 @@ export function TemplateOverview({ template }: { template: TemplateListItem }) {
 
   return (
     <div className="rounded-lg bg-slate-800 px-4 pb-4 text-left">
-      <div className="z-90 sticky top-0 h-[200px] w-full border border-t-[20px] border-slate-800 transition group-hover:opacity-90">
-        <img
-          src={imageUrl}
-          alt=""
-          className="h-full w-full rounded object-cover"
-        />
-      </div>{" "}
-      <div className="sticky top-[200px] h-[20px] w-full bg-gradient-to-b from-slate-800"></div>
+      <div className="sticky top-0 h-4 w-full bg-gradient-to-b from-slate-800"></div>
       <div className="flex flex-row">
         <div className="flex h-full w-full flex-col gap-y-1 rounded ">
+          <div className="z-90 h-[140px] w-full border  border-slate-800 transition group-hover:opacity-90">
+            <img
+              src={imageUrl}
+              alt=""
+              className="h-full w-full rounded object-cover"
+            />
+          </div>{" "}
           <div className="flex rounded bg-slate-900/75 p-4">
             <div
               className="prose prose-sm prose-invert"
@@ -30,7 +30,7 @@ export function TemplateOverview({ template }: { template: TemplateListItem }) {
             />
           </div>
         </div>
-        <div className="sticky top-[220px] ml-4 flex h-max w-[240px] min-w-[240px] flex-col rounded-r">
+        <div className="sticky top-4 ml-4 flex h-max w-[240px] min-w-[240px] flex-col rounded-r">
           <div className="flex flex-col gap-y-3 ">
             <PrimaryLink
               className="flex min-w-full"
@@ -63,6 +63,7 @@ export function TemplateOverview({ template }: { template: TemplateListItem }) {
             </TertiaryA>
           </div>
         </div>
+        <div className="sticky bottom-0 h-4 w-full bg-gradient-to-t from-slate-800"></div>
       </div>
     </div>
   );
