@@ -1,7 +1,7 @@
 import { TemplateListItem } from "~/presenters/templateListPresenter.server";
 import { ApiLogoIcon } from "../code/ApiLogoIcon";
 import { OctoKitty } from "../GitHubLoginButton";
-import { TertiaryA, ToxicA } from "../primitives/Buttons";
+import { PrimaryLink, TertiaryA, ToxicA } from "../primitives/Buttons";
 import { Body } from "../primitives/text/Body";
 import { Header2 } from "../primitives/text/Headers";
 
@@ -32,9 +32,10 @@ export function TemplateOverview({ template }: { template: TemplateListItem }) {
         </div>
         <div className="sticky top-4 ml-4 flex h-max w-[240px] min-w-[240px] flex-col rounded-r">
           <div className="flex flex-col gap-y-3 ">
-            <ToxicA
-              className="group flex h-12 min-w-full"
-              href={`../../templates/add?templateId=${id}`}
+            <PrimaryLink
+              size="large"
+              className="flex min-w-full"
+              to={`../../templates/add?templateId=${id}`}
             >
               <span> Use this template </span>
               <span
@@ -43,8 +44,8 @@ export function TemplateOverview({ template }: { template: TemplateListItem }) {
               >
                 &rarr;
               </span>
-            </ToxicA>
-            <Header2 size="regular" className="font-semibold mt-4">
+            </PrimaryLink>
+            <Header2 size="regular" className="mt-4 font-semibold">
               {title}
             </Header2>
             <Body>{description}</Body>
