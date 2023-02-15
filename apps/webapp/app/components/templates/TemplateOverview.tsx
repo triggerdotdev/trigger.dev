@@ -30,8 +30,14 @@ export function TemplateOverview({ template }: { template: TemplateListItem }) {
             />
           </div>
         </div>
-        <div className="sticky top-[220px] ml-2 flex h-max w-[240px] min-w-[240px] flex-col rounded-r  px-4">
+        <div className="sticky top-[220px] ml-4 flex h-max w-[240px] min-w-[240px] flex-col rounded-r">
           <div className="flex flex-col gap-y-3 ">
+            <PrimaryLink
+              className="flex min-w-full"
+              to={`../../templates/add?templateId=${id}`}
+            >
+              Use this template
+            </PrimaryLink>
             <Header2 size="regular" className="font-semibold">
               {title}
             </Header2>
@@ -55,13 +61,6 @@ export function TemplateOverview({ template }: { template: TemplateListItem }) {
                 {repositoryUrl.replace("https://github.com/triggerdotdev", "")}
               </Body>
             </TertiaryA>
-
-            <PrimaryLink
-              className="mt-2 w-full"
-              to={`../../templates/add?templateId=${id}`}
-            >
-              Use this template
-            </PrimaryLink>
           </div>
         </div>
       </div>
