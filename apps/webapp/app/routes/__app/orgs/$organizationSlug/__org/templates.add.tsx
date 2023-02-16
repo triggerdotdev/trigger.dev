@@ -1,5 +1,5 @@
 import { FolderIcon } from "@heroicons/react/24/solid";
-import { Form } from "@remix-run/react";
+import { Form, useTransition } from "@remix-run/react";
 import { ActionArgs, LoaderArgs } from "@remix-run/server-runtime";
 import {
   redirect,
@@ -89,6 +89,14 @@ export default function AddTemplatePage() {
     useTypedLoaderData<typeof loader>();
 
   const actionData = useTypedActionData<typeof action>();
+  const transition = useTransition();
+
+  console.log("transition data", transition);
+
+  const isSubmittingOrLoading =
+    (transition.state === "submitting" &&
+      transition.type === "actionSubmission") ||
+    (transition.state === "loading" && transition.type === "actionRedirect");
 
   return (
     <Container>
@@ -96,12 +104,13 @@ export default function AddTemplatePage() {
         <Form method="post" className="col-span-2 max-w-4xl">
           <Title>You're almost done</Title>
 
-          {actionData?.type === "serviceError" ? (
+          {!isSubmittingOrLoading && actionData?.type === "serviceError" ? (
             <PanelWarning
               message={actionData.message}
               className="mb-4"
             ></PanelWarning>
-          ) : actionData?.type === "validationError" ? (
+          ) : !isSubmittingOrLoading &&
+            actionData?.type === "validationError" ? (
             <PanelWarning
               message="There was a problem with your submission."
               className="mb-4"
@@ -128,7 +137,11 @@ export default function AddTemplatePage() {
                     <Label htmlFor="appAuthorizationId">
                       Select a GitHub account
                     </Label>
-                    <Select name="appAuthorizationId" required>
+                    <Select
+                      disabled={isSubmittingOrLoading}
+                      name="appAuthorizationId"
+                      required
+                    >
                       {appAuthorizations.map((appAuthorization) => (
                         <option
                           value={appAuthorization.id}
@@ -139,12 +152,13 @@ export default function AddTemplatePage() {
                       ))}
                     </Select>
 
-                    {actionData?.type === "validationError" && (
-                      <FormError
-                        errors={actionData.errors}
-                        path={["appAuthorizationId"]}
-                      />
-                    )}
+                    {!isSubmittingOrLoading &&
+                      actionData?.type === "validationError" && (
+                        <FormError
+                          errors={actionData.errors}
+                          path={["appAuthorizationId"]}
+                        />
+                      )}
                   </InputGroup>
 
                   {template ? (
@@ -157,7 +171,11 @@ export default function AddTemplatePage() {
                     <InputGroup>
                       <Label htmlFor="templateId">Choose a template</Label>
 
-                      <Select name="templateId" required>
+                      <Select
+                        disabled={isSubmittingOrLoading}
+                        name="templateId"
+                        required
+                      >
                         {templates.map((template) => (
                           <option value={template.id} key={template.id}>
                             {template.title}
@@ -165,12 +183,13 @@ export default function AddTemplatePage() {
                         ))}
                       </Select>
 
-                      {actionData?.type === "validationError" && (
-                        <FormError
-                          errors={actionData.errors}
-                          path={["templateId"]}
-                        />
-                      )}
+                      {!isSubmittingOrLoading &&
+                        actionData?.type === "validationError" && (
+                          <FormError
+                            errors={actionData.errors}
+                            path={["templateId"]}
+                          />
+                        )}
                     </InputGroup>
                   )}
 
@@ -188,11 +207,13 @@ export default function AddTemplatePage() {
                       }`}
                       spellCheck={false}
                       className=""
+                      disabled={isSubmittingOrLoading}
                     />
 
-                    {actionData?.type === "validationError" && (
-                      <FormError errors={actionData.errors} path={["name"]} />
-                    )}
+                    {!isSubmittingOrLoading &&
+                      actionData?.type === "validationError" && (
+                        <FormError errors={actionData.errors} path={["name"]} />
+                      )}
                   </InputGroup>
                   <div>
                     <p className="mb-1 text-sm text-slate-500">
@@ -208,6 +229,7 @@ export default function AddTemplatePage() {
                           name="private"
                           id="private"
                           className="border-3 h-4 w-4 cursor-pointer rounded border-black bg-slate-500 transition hover:bg-slate-300 focus:outline-none"
+                          disabled={isSubmittingOrLoading}
                         />
                         Private repo
                       </Label>
@@ -215,7 +237,11 @@ export default function AddTemplatePage() {
                   </div>
                 </div>
                 <div className="flex justify-end">
-                  <PrimaryButton type="submit">Create Repo</PrimaryButton>
+                  {isSubmittingOrLoading ? (
+                    <PrimaryButton disabled>Creating repo...</PrimaryButton>
+                  ) : (
+                    <PrimaryButton type="submit">Create Repo</PrimaryButton>
+                  )}
                 </div>
               </Panel>
             </>
