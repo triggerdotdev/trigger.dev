@@ -87,15 +87,15 @@ export function MarketingHeader() {
               <Logo className="h-full" />
             </Link>
             <div className="hidden gap-x-4 font-semibold md:flex md:gap-x-4 lg:gap-x-10">
-              <NavLink
-                to="https://docs.trigger.dev/"
+              <a
+                href="https://docs.trigger.dev/"
                 title="Docs"
                 aria-label="Docs"
                 target="_blank"
                 className="transform text-slate-200 hover:text-toxic-500"
               >
                 Docs
-              </NavLink>
+              </a>
 
               <NavLink
                 to="/templates"
@@ -105,14 +105,14 @@ export function MarketingHeader() {
               >
                 Templates
               </NavLink>
-              <NavLink
-                to="http://trigger.dev/pricing"
+              <a
+                href="https://trigger.dev/pricing"
                 title="Pricing"
                 aria-label="Pricing"
                 className="transform text-slate-200 hover:text-toxic-500"
               >
                 Pricing
-              </NavLink>
+              </a>
             </div>
           </div>
           <div className="flex items-center justify-center gap-x-4 md:gap-x-4 lg:gap-x-6">
@@ -147,8 +147,7 @@ export function MarketingHeader() {
             </NavLink>
 
             <ToxicLink className="font-lg whitespace-nowrap " to="/login">
-              <span className="hidden sm:block">Sign up</span>
-              <span className="block sm:hidden">Sign up</span>
+              Sign up
             </ToxicLink>
 
             <div className="-mr-1 md:hidden">
