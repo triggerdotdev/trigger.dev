@@ -50,9 +50,9 @@ export default function Legal() {
         </ul>
 
         <div className="flex w-full items-center justify-center">
-          <div className="prose max-w-none p-8">
+          <code className="prose max-w-none p-8">
             <Outlet />
-          </div>
+          </code>
         </div>
       </div>
     </div>

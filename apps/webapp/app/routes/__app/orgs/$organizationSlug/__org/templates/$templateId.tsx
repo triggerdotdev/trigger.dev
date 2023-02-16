@@ -237,8 +237,8 @@ function DeploySection({
                     </Header3>
                   </div>
                   <div className="flex rounded bg-slate-900/75 p-4">
-                    <div
-                      className="prose  prose-invert"
+                    <code
+                      className="prose prose-invert [&>pre]:bg-[rgb(17,23,41)]"
                       dangerouslySetInnerHTML={{
                         __html: runLocalDocsHTML,
                       }}
