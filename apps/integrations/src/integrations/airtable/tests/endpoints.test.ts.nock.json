@@ -1,0 +1,49 @@
+[
+  {
+    "scope": "https://api.airtable.com:443",
+    "method": "GET",
+    "path": "/v0/appBlf3KsalIQeMUo/tblvXn2TOeVPC9c6m/recHcnB1MbBr9Rd2P",
+    "body": "",
+    "status": 200,
+    "response": [
+      "1f8b08000000000000ffad945b6fab3810c7bf4ac5d3395229b6b985bc054202141a487323ab55c4c50127dc0a268454f9ee4b7a8eb6fbbec7f28347f31b6bfe33637f322466c64c8d23232a54e8846aad2c63e432cf4c54e380e27845723c1008209e059005fc0aa23110c722ff0200d80fe091e02c6e98f127a3e75556f6f8c1cf0242d327b5a514d75d59d37400ddb42c1ebe1f10f13f9f045162e5910206878183b8494bca8cfffafc955040294fc2ae5fecd6b66f437131501d89876bc68a089e991493241d78190c465b6743484a69d58c39ee22be04a4a64198e1b6c17554161417f4252a73ee0239287e6d4996448947e0b1b83e9977ed0c915dbf335dbbe10b9c6fae1d97e63ec94745b365e5f7d1e8a8dbd53c0bc16d078372b67196ea0814d7cb4494fb95ee9fb5b3b3dcc1933359c9e0d48628a1ebf50abe6f4e15adcfba216c6848b41bb14e2b561d09f6f47815a47978637dbb57f211776805a7ff4852dbb6bad70626afbe1c7df86d03332d346a7c6bac0bab9211af9ae557c5335c045f7d497f978eaddabaca308b9e7ec09f2f55910c58436e0302158864f4ccd0be7a04903c4830f70ba0699b874540b2afee357990658fc3ffade75a5837359bceb29936877cd96d66836c8f83878341a9aaf9809688be1202ded03b80d2fea0696f66b7386fe38ba7b9a04e413d29aca3c95fbc8b1ff2bd619e5681ca5b39d03ad1c8f5b20c8e4777af991b49eab8856e58dd269ef4a817e79739319d2a928afd68bd9a0afd6ad301f9bcdf26a6b422e5f71009caf70cf1d2fd99c9823ac17f427c3a997a5dfe2e2775b03f27307a5b8aca902535abec2d39c5a9269aa9cbb7d039d953c9da1a8daa08fad4730cfde0fb8dbb4373959c4efa2d5ba8329dbdcee6d7922ee6b92f387b1495707f99b5f0bcd84e7c4d9c7a5ca924f26cefabb176657715c80e3cf1960e26cbd81289b0a319c18aa784c65ad3bfc54b8af8ad5e8468907f6cff4ceb33de8c269d88c573e56dd2b8d899a69875dcf4585a7a002bd6670f797b4bae4ba01f44e7268c54abcef5932ad966d72b5bdf41af59c307a4ed4de3121c3f1c6bebe9b61b919deb82eb5e25012ad0a45d4467394a38efd6edd4285f7e44ba931a0e42a5d80288df81eb1fd2097f96ec356ce7fa542ebd6ff53c00fff9401ed6fd7efffbf9dfcfebe9f743d106b57510d1b266eef77f005715657b28050000"
+    ],
+    "rawHeaders": [
+      "Date",
+      "Thu, 16 Feb 2023 12:45:11 GMT",
+      "Content-Type",
+      "application/json; charset=utf-8",
+      "Content-Length",
+      "872",
+      "Connection",
+      "close",
+      "Set-Cookie",
+      "AWSALB=Di/oKKF5EalJxjrhD7lGgKFa0GZMWYdcOa1GAlz1nPF2NIEarVxhET/mtPgNXGBKWoDPg8AJZnsZdhAZx9cb0LpNJ5QKq3BB2IkQFgCgIPmHwaezDZgkcq3fpBeC; Expires=Thu, 23 Feb 2023 12:45:11 GMT; Path=/",
+      "Set-Cookie",
+      "AWSALBCORS=Di/oKKF5EalJxjrhD7lGgKFa0GZMWYdcOa1GAlz1nPF2NIEarVxhET/mtPgNXGBKWoDPg8AJZnsZdhAZx9cb0LpNJ5QKq3BB2IkQFgCgIPmHwaezDZgkcq3fpBeC; Expires=Thu, 23 Feb 2023 12:45:11 GMT; Path=/; SameSite=None; Secure",
+      "Server",
+      "Tengine",
+      "Set-Cookie",
+      "brw=brwpX3qZZHo7ZANfe; path=/; expires=Fri, 16 Feb 2024 12:45:11 GMT; domain=.airtable.com; samesite=none; secure",
+      "Strict-Transport-Security",
+      "max-age=31536000; includeSubDomains; preload",
+      "access-control-allow-origin",
+      "*",
+      "access-control-allow-methods",
+      "DELETE,GET,OPTIONS,PATCH,POST,PUT",
+      "access-control-allow-headers",
+      "authorization,content-length,content-type,user-agent,x-airtable-application-id,x-airtable-user-agent,x-api-version,x-requested-with",
+      "X-Frame-Options",
+      "DENY",
+      "X-Content-Type-Options",
+      "nosniff",
+      "Vary",
+      "Accept-Encoding",
+      "content-encoding",
+      "gzip",
+      "airtable-uncompressed-content-length",
+      "1320"
+    ],
+    "responseIsBinary": false
+  }
+]

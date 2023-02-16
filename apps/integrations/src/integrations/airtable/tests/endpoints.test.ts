@@ -15,8 +15,6 @@ describe("airtable.endpoints", async () => {
   test("getRecord", async () => {
     const accessToken = authToken();
 
-    console.log("accessToken", accessToken);
-
     const data = await endpoints.getRecord.request({
       parameters: {
         baseId: "appBlf3KsalIQeMUo",
@@ -30,8 +28,6 @@ describe("airtable.endpoints", async () => {
         scopes: ["data.records:read"],
       },
     });
-
-    console.log("data", data);
 
     expect(data.status).toEqual(200);
     expect(data.body).not.toBeNull();
