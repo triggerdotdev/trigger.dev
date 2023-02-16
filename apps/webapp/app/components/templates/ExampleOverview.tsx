@@ -131,8 +131,7 @@ export function FromScratchOverview({
                       <CodeBlock
                         code={openProject.code(environment.apiKey)}
                         align="top"
-                        language="tsx"
-                        className="flex w-[650px] overflow-scroll"
+                        className="flex w-[650px]"
                       />
                     </div>
 
