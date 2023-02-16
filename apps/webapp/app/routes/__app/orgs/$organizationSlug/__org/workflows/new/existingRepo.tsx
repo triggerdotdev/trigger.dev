@@ -184,9 +184,7 @@ export default function Step3ExistingRepo1() {
                 Choose an example
               </SubTitle>
               <Panel className="px-4 py-4">
-                <SubTitle>
-                  Browse examples to use as a starting point. (Opens in a modal)
-                </SubTitle>
+                <SubTitle>Browse examples to use as a starting point.</SubTitle>
                 <div className="grid grid-cols-4 gap-2">
                   <ExampleOverview
                     onSelectedProject={(project) =>
@@ -218,7 +216,9 @@ export default function Step3ExistingRepo1() {
               </SubTitle>
             </div>
             <Panel className="px-4 py-4">
-              <InstallPackages packages={exampleProjects[0].requiredPackages} />
+              <InstallPackages
+                packages={state.selectedProject.requiredPackages}
+              />
               <div className="flex w-full justify-end">
                 <PrimaryButton
                   className="mt-2"
