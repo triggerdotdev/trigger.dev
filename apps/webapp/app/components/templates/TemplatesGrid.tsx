@@ -47,7 +47,7 @@ export function TemplatesGrid({
               openInNewPage={openInNewPage}
               onClick={() => setOpenedTemplate(template)}
             >
-              <div className="h-max w-full bg-slate-600 transition group-hover:opacity-90">
+              <div className="h-36 w-full bg-slate-600 transition group-hover:opacity-90">
                 <img
                   src={template.imageUrl}
                   alt=""
