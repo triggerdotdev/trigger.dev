@@ -51,7 +51,7 @@ export function TemplatesGrid({
                 <img
                   src={template.imageUrl}
                   alt=""
-                  className="h-full w-full object-cover"
+                  className="h-36 w-full object-cover"
                 />
               </div>
               <div className="flex h-full flex-col place-content-between p-4">
