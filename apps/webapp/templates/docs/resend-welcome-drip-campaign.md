@@ -65,3 +65,29 @@ After hitting "Save" the Run will pickup where it left off and make the request 
 ## 📺 Go Live
 
 After you are happy with your campaign and deploy it live to Render.com (or some other hosting service), you can send custom events that Trigger your workflow using the [sendEvent](https://docs.trigger.dev/reference/send-event) function from the `@trigger.dev/sdk`, or simply by making requests to our [`events`](https://docs.trigger.dev/api-reference/events/sendEvent) API endpoint.
+
+Here is an example of sending the custom event to trigger the workflow contained in this repo using `fetch`:
+
+```ts
+const eventId = ulid();
+const event = {
+  name: "new.user",
+  payload: {
+    id: "user_1234",
+    email: "eric@trigger.dev",
+    name: "Eric",
+  },
+};
+
+const response = await fetch("https://app.trigger.dev/api/v1/events", {
+  method: "POST",
+  headers: {
+    "Content-Type": "application/json",
+    Authorization: `Bearer ${process.env.TRIGGER_API_KEY}`,
+  },
+  body: JSON.stringify({
+    id: eventId,
+    event,
+  }),
+});
+```
