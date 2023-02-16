@@ -32,10 +32,10 @@ class BehaviouralAnalytics {
         },
       });
       if (isNewUser) {
-        this.client.capture({
-          distinctId: user.id,
+        this.#capture({
+          userId: user.id,
           event: "user created",
-          properties: {
+          eventProperties: {
             email: user.email,
             name: user.name,
             authenticationMethod: user.authenticationMethod,
