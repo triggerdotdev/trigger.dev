@@ -895,7 +895,7 @@ function createAppEventPublisher() {
   return new ZodEventPublisher({
     client: pulsarClient,
     config: {
-      topic: "webapp-events",
+      topic: Topics.appEventQueue,
       batchingEnabled: false,
     },
   });
@@ -920,7 +920,7 @@ export async function createEventEmitter({
     client: pulsarClient,
     config: {
       subscription: `webapp-${id}`,
-      topic: "webapp-events",
+      topic: Topics.appEventQueue,
     },
     handler: async (id, name, data, properties, attributes) => {
       if (attributes.redeliveryCount >= 4) {
