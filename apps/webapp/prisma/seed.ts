@@ -25,7 +25,7 @@ async function seed() {
   const basicStarter = {
     repositoryUrl: "https://github.com/triggerdotdev/basic-starter",
     imageUrl:
-      "https://imagedelivery.net/3TbraffuDZ4aEf8KWOmI_w/10a0661d-dda6-4a70-d1b5-8576ad63bd00/public",
+      "https://imagedelivery.net/3TbraffuDZ4aEf8KWOmI_w/51a2a621-577a-4648-a087-bc5381259a00/public",
     title: "A blank starter project with a simple Custom Event trigger",
     shortTitle: "Basic Starter",
     description: "This is a great place to start if you're new to Trigger.",
@@ -39,7 +39,7 @@ async function seed() {
   const githubStarsToSlack = {
     repositoryUrl: "https://github.com/triggerdotdev/github-stars-to-slack",
     imageUrl:
-      "https://imagedelivery.net/3TbraffuDZ4aEf8KWOmI_w/10a0661d-dda6-4a70-d1b5-8576ad63bd00/public",
+      "https://imagedelivery.net/3TbraffuDZ4aEf8KWOmI_w/5b3964be-9a7b-4a7e-1837-b283e501b900/public",
     title: "Slack notifications when a GitHub repo is starred",
     shortTitle: "GitHub stars to Slack",
     description:
@@ -55,7 +55,7 @@ async function seed() {
     repositoryUrl:
       "https://github.com/triggerdotdev/resend-welcome-drip-campaign",
     imageUrl:
-      "https://imagedelivery.net/3TbraffuDZ4aEf8KWOmI_w/10a0661d-dda6-4a70-d1b5-8576ad63bd00/public",
+      "https://imagedelivery.net/3TbraffuDZ4aEf8KWOmI_w/2f7f14fb-8d3f-42a0-cd8e-58595603df00/public",
     title: "Send a Welcome Drip Campaign to new users",
     shortTitle: "Resend.com drip campaign",
     description:
