@@ -54,7 +54,7 @@ export function TemplatesGrid({
                   className="h-full w-full object-cover"
                 />
               </div>
-              <div className="flex flex-col p-4">
+              <div className="flex flex-col p-4 h-full place-content-between">
                 <div className="flex flex-col gap-y-2 ">
                   <Header1 size="small" className="font-semibold">
                     {template.title}
@@ -63,7 +63,7 @@ export function TemplatesGrid({
                     {template.description}
                   </Body>
                 </div>
-                <div className="flex flex-row gap-x-1">
+                <div className="flex flex-row gap-x-1 mt-2">
                   {template.services.map((service) => (
                     <div key={service.slug} className="">
                       <ApiLogoIcon
