@@ -22,8 +22,6 @@ export async function saveToNock(fileName: string, suite: Suite | File) {
   nock.recorder.clear();
 
   if (!succeeded) {
-    console.log("Removing nock file", nockFile);
-    await fs.rm(nockFile, { force: true });
     return;
   }
 
