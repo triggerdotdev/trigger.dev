@@ -1,14 +1,22 @@
 import { PrismaClient } from ".prisma/client";
 import { readFile } from "fs/promises";
+import path from "node:path";
 
 const prisma = new PrismaClient();
 
 async function readTemplateDocsFile(slug: string) {
-  console.log(`📖 Reading template docs file for ${slug}...`);
+  const currentWorkingDir = process.cwd();
 
-  const path = `../../templates/docs/${slug}.md`;
+  const resolvedPath = path.resolve(
+    currentWorkingDir,
+    `./templates/docs/${slug}.md`
+  );
 
-  return readFile(path, "utf8");
+  console.log(
+    `📖 Reading template docs file for ${slug} at ${resolvedPath} being in ${currentWorkingDir}`
+  );
+
+  return readFile(resolvedPath, "utf8");
 }
 
 async function seed() {
