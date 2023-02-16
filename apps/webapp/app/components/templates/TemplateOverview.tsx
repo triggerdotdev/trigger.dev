@@ -21,7 +21,7 @@ export function TemplateOverview({ template }: { template: TemplateListItem }) {
           </div>
           <div className="flex rounded bg-slate-900/75 p-4">
             <div
-              className="prose prose-sm prose-invert"
+              className="prose prose-sm prose-invert flex flex-col min-w-full"
               dangerouslySetInnerHTML={{
                 __html: docsHTML,
               }}
