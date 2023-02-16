@@ -11,6 +11,7 @@ import type { UseDataFunctionReturn } from "remix-typedjson";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { useEventSource } from "remix-utils";
 import { CopyTextButton } from "~/components/CopyTextButton";
+import { OctoKitty } from "~/components/GitHubLoginButton";
 import { Container } from "~/components/layout/Container";
 import { Panel } from "~/components/layout/Panel";
 import { PanelInfo } from "~/components/layout/PanelInfo";
@@ -136,6 +137,7 @@ function OrganizationTemplateReady(loaderData: LoaderData) {
               target="_blank"
               href={loaderData.organizationTemplate.repositoryUrl}
             >
+              <OctoKitty className="mr-0.5 h-4 w-4" />
               {loaderData.organizationTemplate.repositoryUrl.replace(
                 "https://github.com/",
                 ""
@@ -161,15 +163,14 @@ function OrganizationTemplateReady(loaderData: LoaderData) {
               target="_blank"
               href={loaderData.organizationTemplate.repositoryUrl}
             >
+              <OctoKitty className="mr-0.5 h-4 w-4" />
               {loaderData.organizationTemplate.repositoryUrl.replace(
                 "https://github.com/",
                 ""
               )}
             </TertiaryA>
           </div>
-          <Panel className="max-w-4xl">
-            <DeploySection {...loaderData} />
-          </Panel>
+          <DeploySection {...loaderData} />
         </>
       )}
     </>
@@ -239,7 +240,9 @@ function DeploySection({
         </StyledDialog.Dialog>
         <div className="grid grid-cols-[minmax(0,_1fr)_4rem_minmax(0,_1fr)]">
           <div className="">
-            <SubTitle className="flex items-center">Deploy locally</SubTitle>
+            <SubTitle className="mb-3 flex items-center">
+              Deploy locally
+            </SubTitle>
             <Label className="text-sm text-slate-500">
               Development API key
             </Label>
@@ -267,13 +270,13 @@ function DeploySection({
             <div className="h-full border-l border-slate-700"></div>
           </div>
           <div>
-            <SubTitle className="flex items-center">
+            <SubTitle className="mb-3 flex items-center">
               Deploy to
               <a
                 href="https://render.com"
                 target="_blank"
                 rel="noreferrer"
-                className="ml-1.5 underline transition hover:text-white"
+                className="ml-1.5 underline decoration-slate-500 underline-offset-2 transition hover:text-white"
               >
                 Render
               </a>
