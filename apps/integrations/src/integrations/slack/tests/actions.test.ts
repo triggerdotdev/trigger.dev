@@ -1,46 +1,16 @@
-import {
-  describe,
-  beforeEach,
-  afterEach,
-  expect,
-  test,
-  beforeAll,
-  afterAll,
-} from "vitest";
-import nock from "nock";
+import { describe, expect, test, beforeAll, afterAll } from "vitest";
 import { chatPostMessage, conversationsList } from "../actions/actions";
-import fs from "fs/promises";
-import path from "path";
+import { saveToNock, setupNock } from "testing/nock";
 
 const authToken = () => process.env.SLACK_TOKEN ?? "";
 
-const scriptName = path.basename(__filename);
-const nockFile = `${__dirname}/nock/${scriptName}.json`;
-
 describe("slack-example.actions", async () => {
   beforeAll(async () => {
-    nock.cleanAll();
-    try {
-      nock.load(nockFile);
-    } catch (e) {
-      nock.recorder.clear();
-      nock.recorder.rec({ output_objects: true, dont_print: true });
-    }
+    setupNock(__filename);
   });
 
   afterAll(async (suite) => {
-    if (suite.result?.errors?.length ?? 0 === 0) {
-      const nockCalls = nock.recorder.play();
-      nock.recorder.clear();
-
-      if (nockCalls.length > 0) {
-        await fs.mkdir(path.dirname(nockFile), { recursive: true });
-        await fs.writeFile(nockFile, JSON.stringify(nockCalls, null, 2), {
-          encoding: "utf-8",
-        });
-        console.log("Saved successful test result to nock", nockFile);
-      }
-    }
+    await saveToNock(__filename, suite);
   });
 
   test("/conversations.list success", async () => {

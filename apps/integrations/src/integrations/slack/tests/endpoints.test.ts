@@ -1,25 +1,33 @@
-import { expect, test } from "vitest";
+import { describe, beforeAll, afterAll, expect, test } from "vitest";
 import endpoints from "../endpoints/endpoints";
+import { saveToNock, setupNock } from "testing/nock";
 const authToken = () => process.env.SLACK_TOKEN ?? "";
 
-test("missing credentials", async () => {
-  try {
-    await endpoints.chatPostMessage.request({
-      body: {
-        channel: "C04GWUTDC3W",
-        text: "This the Trigger.dev integrations test",
-      },
-    });
-  } catch (e: any) {
-    expect(e.type).toEqual("missing_credentials");
-  }
-});
+describe("slack-example.endpoints", async () => {
+  beforeAll(async () => {
+    setupNock(__filename);
+  });
 
-test("/chat.postMessage success", async () => {
-  const accessToken = authToken();
-  expect(accessToken).not.toEqual("");
+  afterAll(async (suite) => {
+    await saveToNock(__filename, suite);
+  });
 
-  try {
+  test("missing credentials", async () => {
+    try {
+      await endpoints.chatPostMessage.request({
+        body: {
+          channel: "C04GWUTDC3W",
+          text: "This the Trigger.dev integrations test",
+        },
+      });
+    } catch (e: any) {
+      expect(e.type).toEqual("missing_credentials");
+    }
+  });
+
+  test("/chat.postMessage success", async () => {
+    const accessToken = authToken();
+
     const data = await endpoints.chatPostMessage.request({
       body: {
         channel: "C04GWUTDC3W",
@@ -40,16 +48,11 @@ test("/chat.postMessage success", async () => {
     expect(data.body.message.text).toEqual(
       "This the Trigger.dev integrations test"
     );
-  } catch (e: any) {
-    console.error(JSON.stringify(e.errors, null, 2));
-    expect(e).toEqual(null);
-  }
-});
+  });
 
-test("/chat.postMessage bad channel", async () => {
-  const accessToken = authToken();
-  expect(accessToken).not.toEqual("");
-  try {
+  test("/chat.postMessage bad channel", async () => {
+    const accessToken = authToken();
+
     const data = await endpoints.chatPostMessage.request({
       body: {
         channel: "C00AAAAAAAA",
@@ -67,20 +70,14 @@ test("/chat.postMessage bad channel", async () => {
     expect(data.status).toEqual(200);
     expect(data.body.ok).toEqual(false);
     expect(data.body.error).toEqual("channel_not_found");
-  } catch (e: any) {
-    console.error(JSON.stringify(e, null, 2));
-    expect(e).toEqual(null);
-  }
-});
+  });
 
-test("/conversations.list success", async () => {
-  const accessToken = authToken();
-  expect(accessToken).not.toEqual("");
+  test("/conversations.list success", async () => {
+    const accessToken = authToken();
 
-  try {
     const data = await endpoints.conversationsList.request({
       parameters: {
-        limit: 3,
+        limit: 1,
       },
       credentials: {
         type: "oauth2",
@@ -93,8 +90,5 @@ test("/conversations.list success", async () => {
     expect(data.success).toEqual(true);
     expect(data.status).toEqual(200);
     expect(data.body.ok).toEqual(true);
-  } catch (e: any) {
-    console.error(JSON.stringify(e.errors, null, 2));
-    expect(e).toEqual(null);
-  }
+  });
 });
