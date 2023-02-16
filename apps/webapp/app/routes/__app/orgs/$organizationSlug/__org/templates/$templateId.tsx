@@ -1,28 +1,25 @@
 import {
-  ArrowTopRightOnSquareIcon,
-  ClockIcon,
-} from "@heroicons/react/24/outline";
-import {
   CloudIcon,
   FolderIcon,
   HomeIcon,
   XCircleIcon,
 } from "@heroicons/react/24/solid";
 import { useRevalidator } from "@remix-run/react";
-import { LoaderArgs } from "@remix-run/server-runtime";
+import type { LoaderArgs } from "@remix-run/server-runtime";
 import { Fragment, useEffect, useState } from "react";
-import {
-  typedjson,
-  UseDataFunctionReturn,
-  useTypedLoaderData,
-} from "remix-typedjson";
+import type { UseDataFunctionReturn } from "remix-typedjson";
+import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { useEventSource } from "remix-utils";
 import { CopyTextButton } from "~/components/CopyTextButton";
 import { Container } from "~/components/layout/Container";
 import { Panel } from "~/components/layout/Panel";
 import { PanelInfo } from "~/components/layout/PanelInfo";
 import { StepNumber } from "~/components/onboarding/StepNumber";
-import { PrimaryButton, TertiaryLink } from "~/components/primitives/Buttons";
+import {
+  PrimaryButton,
+  TertiaryA,
+  TertiaryLink,
+} from "~/components/primitives/Buttons";
 import { StyledDialog } from "~/components/primitives/Dialog";
 import { Input } from "~/components/primitives/Input";
 import { InputGroup } from "~/components/primitives/InputGroup";
@@ -128,17 +125,24 @@ function OrganizationTemplateReady(loaderData: LoaderData) {
         <>
           <ConnectedToGithub />
           {githubConfigured}
-          <div className="mt-4 mb-1 flex items-center">
-            <StepNumber active stepNumber="3" />
-            <SubTitle className="mb-0">
-              Your ‘{loaderData.organizationTemplate.template.title}’ template
-              is ready
-            </SubTitle>
+          <div className="mt-4 mb-2 flex max-w-4xl items-center justify-between">
+            <div className="flex items-center">
+              <StepNumber active stepNumber="3" />
+              <SubTitle className="mb-0">
+                Your template is ready to deploy
+              </SubTitle>
+            </div>
+            <TertiaryA
+              target="_blank"
+              href={loaderData.organizationTemplate.repositoryUrl}
+            >
+              {loaderData.organizationTemplate.repositoryUrl.replace(
+                "https://github.com/",
+                ""
+              )}
+            </TertiaryA>
           </div>
           <Panel className="max-w-4xl !p-4">
-            <TemplateHeader
-              organizationTemplate={loaderData.organizationTemplate}
-            />
             <DeploySection {...loaderData} />
           </Panel>
         </>
@@ -146,54 +150,28 @@ function OrganizationTemplateReady(loaderData: LoaderData) {
         <>
           <ConnectedToGithub />
           {githubConfigured}
-          <div className="mt-2 flex items-center gap-1">
-            <SubTitle className="flex items-center">
-              <StepNumber complete />
-              Template deployed
-            </SubTitle>
+          <div className="mt-4 mb-2 flex max-w-4xl items-center justify-between">
+            <div className="flex items-center">
+              <StepNumber active stepNumber="3" />
+              <SubTitle className="mb-0">
+                Your template has been deployed!
+              </SubTitle>
+            </div>
+            <TertiaryA
+              target="_blank"
+              href={loaderData.organizationTemplate.repositoryUrl}
+            >
+              {loaderData.organizationTemplate.repositoryUrl.replace(
+                "https://github.com/",
+                ""
+              )}
+            </TertiaryA>
           </div>
           <Panel className="max-w-4xl">
-            <TemplateHeader
-              organizationTemplate={loaderData.organizationTemplate}
-            />
             <DeploySection {...loaderData} />
           </Panel>
         </>
       )}
-    </>
-  );
-}
-
-function TemplateHeader({
-  organizationTemplate,
-}: {
-  organizationTemplate: LoaderData["organizationTemplate"];
-}) {
-  return (
-    <>
-      <div className="grid grid-cols-4 gap-4">
-        <div className="col-span-3">
-          <Label className="text-sm text-slate-500">Repo URL</Label>
-          <div className="flex items-center justify-between rounded bg-black/20 py-2 pl-3 pr-2">
-            <span className="select-all text-slate-300">
-              {organizationTemplate.repositoryUrl}
-            </span>
-            <a
-              href={organizationTemplate.repositoryUrl}
-              target="_blank"
-              className="group"
-            >
-              <ArrowTopRightOnSquareIcon className="h-[18px] w-[18px] text-slate-300 transition group-hover:text-white" />
-            </a>
-          </div>
-        </div>
-        <div>
-          <Label className="text-sm text-slate-500">Type</Label>
-          <div className="flex items-center rounded bg-black/20 py-2 px-3 text-slate-500">
-            {organizationTemplate.private ? "Private repo" : "Public repo"}
-          </div>
-        </div>
-      </div>
     </>
   );
 }
@@ -257,46 +235,69 @@ function DeploySection({
             </div>
           </div>
         </StyledDialog.Dialog>
-        <div className="mt-2">
-          <Label className="text-sm text-slate-500">API key</Label>
-          <div className="flex items-center justify-between rounded bg-black/20 py-2.5 px-3 text-slate-300">
-            <span className="select-all text-slate-300">{apiKey}</span>
-            <CopyTextButton variant="text" value={apiKey} />
+        <div className="grid grid-cols-[minmax(0,_1fr)_4rem_minmax(0,_1fr)]">
+          <div className="">
+            <SubTitle className="flex items-center">Deploy locally</SubTitle>
+            <Label className="text-sm text-slate-500">
+              Development API key
+            </Label>
+            <div className="flex items-center justify-between rounded bg-black/20 py-2.5 px-3 text-slate-300">
+              <span className="select-all text-slate-300">{apiKey}</span>
+              <CopyTextButton variant="text" value={apiKey} />
+            </div>
+            <div className="mt-4 flex w-full justify-end">
+              <PrimaryButton onClick={(e) => setIsOpen(true)}>
+                <HomeIcon className="h-5 w-5 text-slate-200" />
+                Run locally
+              </PrimaryButton>
+            </div>
           </div>
-        </div>
-        <div className="flex w-full items-end justify-between">
-          <Body className="flex items-center gap-2 text-slate-500">
-            <Spinner />
-            Waiting to deploy
-          </Body>
-          <div className="mt-6 flex items-center justify-end gap-3">
-            <PrimaryButton onClick={(e) => setIsOpen(true)}>
-              <HomeIcon className="h-5 w-5 text-slate-200" />
-              Run locally
-            </PrimaryButton>
+          <div className="flex flex-col items-center justify-center gap-2">
+            <div className="h-full border-l border-slate-700"></div>
             <Body size="small" className="uppercase text-slate-500">
               or
             </Body>
-            <a
-              href={`https://render.com/deploy?repo=${organizationTemplate.repositoryUrl}`}
-              target="_blank"
-              className="transition hover:opacity-80"
-            >
-              <img
-                src="https://render.com/images/deploy-to-render-button.svg"
-                alt="Deploy to Render"
-                className="h-[36px]"
-              />
-            </a>
+            <div className="h-full border-l border-slate-700"></div>
+          </div>
+          <div>
+            <SubTitle className="flex items-center">
+              Deploy to
+              <a
+                href="https://render.com"
+                target="_blank"
+                rel="noreferrer"
+                className="ml-1.5 underline transition hover:text-white"
+              >
+                Render
+              </a>
+            </SubTitle>
+            <Label className="text-sm text-slate-500">Live API key</Label>
+            <div className="flex items-center justify-between rounded bg-black/20 py-2.5 px-3 text-slate-300">
+              <span className="select-all text-slate-300">{apiKey}</span>
+              <CopyTextButton variant="text" value={apiKey} />
+            </div>
+            <div className="mt-4 flex w-full items-center justify-end">
+              <a
+                href={`https://render.com/deploy?repo=${organizationTemplate.repositoryUrl}`}
+                target="_blank"
+                rel="noreferrer"
+                className="transition hover:opacity-80"
+              >
+                <img
+                  src="https://render.com/images/deploy-to-render-button.svg"
+                  alt="Deploy to Render"
+                  className="h-[36px]"
+                />
+              </a>
+            </div>
           </div>
         </div>
       </>
     );
   } else {
     return (
-      <div className="mt-4 max-w-4xl">
-        <SubTitle>View your new workflow</SubTitle>
-        <div className="relative mt-1 rounded-lg bg-slate-850 p-4">
+      <div className="max-w-4xl">
+        <div className="relative rounded-lg bg-slate-850 p-4">
           <div className="absolute inset-2.5 z-0 h-[calc(100%-20px)] w-[calc(100%-20px)] animate-pulse rounded-md bg-gradient-to-r from-indigo-500 to-pink-500 blur-sm"></div>
           <WorkflowList
             className="relative z-50 !mb-0"
