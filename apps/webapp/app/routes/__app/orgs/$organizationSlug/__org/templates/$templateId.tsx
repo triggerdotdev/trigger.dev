@@ -235,7 +235,7 @@ function DeploySection({
                     <CloudIcon className="absolute top-4 right-6 h-16 w-16 text-white/50" />
                     <div className="absolute -bottom-[150px] h-40 w-[20rem] rounded-full bg-green-700"></div>
                     <Header3 className="mb-6 font-semibold">
-                      Run your workflow locally
+                      Run your repository locally
                     </Header3>
                   </div>
                   <div className="flex rounded bg-slate-900/75 p-4">

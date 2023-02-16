@@ -39,6 +39,17 @@ export class WorkflowCreated {
       }
     );
 
+    const firstOrgTemplate = orgTemplates[0];
+
+    if (firstOrgTemplate) {
+      await this.#prismaClient.workflow.update({
+        where: { id: workflow.id },
+        data: {
+          organizationTemplateId: firstOrgTemplate.id,
+        },
+      });
+    }
+
     for (const orgTemplate of orgTemplates) {
       await this.#prismaClient.organizationTemplate.update({
         where: { id: orgTemplate.id },

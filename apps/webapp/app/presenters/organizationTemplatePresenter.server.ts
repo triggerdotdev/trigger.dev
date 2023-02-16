@@ -70,6 +70,8 @@ export class OrganizationTemplatePresenter {
       runLocalDocsHTML: renderLocalDocsHTML(
         organizationTemplate.repositoryUrl,
         organizationTemplate.template.repositoryUrl,
+        organizationTemplate.name,
+        organizationTemplate.template.slug,
         runtimeEnvironment.apiKey,
         organizationTemplate.template.runLocalDocs
       ),
@@ -82,14 +84,28 @@ export class OrganizationTemplatePresenter {
 function renderLocalDocsHTML(
   finalRepoUrl: string,
   templateRepoUrl: string,
+  finalRepoName: string,
+  templateRepoName: string,
   apiKey: string,
   localDocs: string
 ) {
-  const localDocsWithFinalRepoUrl = localDocs
-    .replace(templateRepoUrl, finalRepoUrl)
-    .replace("<APIKEY>", apiKey)
-    .replace("<API_KEY>", apiKey)
-    .replace("<your api key>", apiKey);
+  // Replace all instances (not just the first) of the templateRepoUrl with the finalRepoUrl
+  const finalRepoUrlRegex = new RegExp(templateRepoUrl, "g");
+  let finalDocs = localDocs.replace(finalRepoUrlRegex, finalRepoUrl);
 
-  return renderMarkdown(localDocsWithFinalRepoUrl);
+  // Replace all instances (not just the first) of the templateRepoName with the finalRepoName
+  const finalRepoNameRegex = new RegExp(`cd ${templateRepoName}`, "g");
+  finalDocs = finalDocs.replace(finalRepoNameRegex, `cd ${finalRepoName}`);
+
+  // Replace all instances of <API_KEY> or <APIKEY> or <your api key> with the apiKey
+  const apiRegex = new RegExp("<API_KEY>", "g");
+  finalDocs = finalDocs.replace(apiRegex, apiKey);
+
+  const apiRegex2 = new RegExp("<APIKEY>", "g");
+  finalDocs = finalDocs.replace(apiRegex2, apiKey);
+
+  const apiRegex3 = new RegExp("<your api key>", "g");
+  finalDocs = finalDocs.replace(apiRegex3, apiKey);
+
+  return renderMarkdown(finalDocs);
 }
