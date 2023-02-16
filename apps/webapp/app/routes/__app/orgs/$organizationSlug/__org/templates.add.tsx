@@ -245,9 +245,10 @@ function ConnectToGithub({ templateId }: { templateId?: string }) {
       </SubTitle>
       <Panel className="mb-6 flex h-56 items-center justify-center">
         <PrimaryLink
+          size="large"
           to={`../apps/github${templateId ? `?templateId=${templateId}` : ``}`}
         >
-          <OctoKitty className="h-4 w-4" />
+          <OctoKitty className="mr-1 h-5 w-5" />
           Continue with GitHub
         </PrimaryLink>
       </Panel>
