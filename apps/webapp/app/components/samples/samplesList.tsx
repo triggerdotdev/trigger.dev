@@ -38,8 +38,7 @@ export const allExamples: ExampleProject[] = [
     title: "When you receive a GitHub star, post that user's details to Slack",
     description:
       "This workflow is triggered when a GitHub user adds a star to a repository. The user's details will then be posted in a specific Slack channel.",
-    requiredPackages:
-      "@trigger.dev/sdk @trigger.dev/github @trigger.dev/slack zod",
+    requiredPackages: "@trigger.dev/sdk @trigger.dev/github @trigger.dev/slack",
     code: githubStars,
     type: "example",
   },
@@ -83,19 +82,18 @@ export const allExamples: ExampleProject[] = [
     title: "When a GitHub issue is created or modified, post it to Slack",
     description:
       "This workflow is triggered when a new issue is created or modified in GitHub. The issue will then be posted in a specific Slack channel.",
-    requiredPackages:
-      "@trigger.dev/sdk @trigger.dev/github @trigger.dev/slack zod",
+    requiredPackages: "@trigger.dev/sdk @trigger.dev/github @trigger.dev/slack",
     code: githubIssues,
     type: "example",
   },
 
   {
     icon: <ChatBubbleOvalLeftEllipsisIcon className="h-8 w-8 text-green-400" />,
-    name: "WhatsApp → Slack",
+    name: "WhatsApp → WhatsApp",
     title: "Listen for WhatsApp messages and automatically reply",
     description:
       "This workflow is triggered when a WhatsApp message has been received. When received, a pre-determined reply is sent.",
-    requiredPackages: "@trigger.dev/sdk @trigger.dev/whatsapp zod",
+    requiredPackages: "@trigger.dev/sdk @trigger.dev/whatsapp",
     code: whatsappListenForMessageAndReply,
     packagesCopy: "WhatsApp",
     type: "example",
@@ -125,7 +123,7 @@ export const allExamples: ExampleProject[] = [
   },
   {
     name: "Scheduled (recurring)",
-    requiredPackages: "@trigger.dev/sdk zod",
+    requiredPackages: "@trigger.dev/sdk",
     code: scheduled,
     docsLink: "https://docs.trigger.dev/triggers/scheduled",
     description:
@@ -134,7 +132,7 @@ export const allExamples: ExampleProject[] = [
   },
   {
     name: "Scheduled (CRON)",
-    requiredPackages: "@trigger.dev/sdk zod",
+    requiredPackages: "@trigger.dev/sdk",
     code: scheduledCron,
     docsLink: "https://docs.trigger.dev/triggers/scheduled",
     description:
