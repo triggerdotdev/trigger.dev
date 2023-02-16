@@ -1,26 +1,21 @@
-import { describe, beforeEach, expect, test } from "vitest";
+import { saveToNock, setupNock } from "testing/nock";
+import { describe, beforeAll, afterAll, expect, test } from "vitest";
 import endpoints from "../endpoints/endpoints";
-import nock from "nock";
 const authToken = () => process.env.AIRTABLE_TOKEN ?? "";
 
 describe("airtable.endpoints", async () => {
-  beforeEach(async () => {
-    nock.cleanAll();
+  beforeAll(async () => {
+    setupNock(__filename);
+  });
+
+  afterAll(async (suite) => {
+    await saveToNock(__filename, suite);
   });
 
   test("getRecord", async () => {
-    nock("https://api.airtable.com")
-      .get("/v0/appBlf3KsalIQeMUo/tblvXn2TOeVPC9c6m/recHcnB1MbBr9Rd2P")
-      .reply(200, {
-        id: "recHcnB1MbBr9Rd2P",
-        fields: {
-          Name: "John",
-          Age: 30,
-        },
-        createdTime: "2021-06-22T10:02:01.000Z",
-      });
-
     const accessToken = authToken();
+
+    console.log("accessToken", accessToken);
 
     const data = await endpoints.getRecord.request({
       parameters: {
@@ -35,6 +30,8 @@ describe("airtable.endpoints", async () => {
         scopes: ["data.records:read"],
       },
     });
+
+    console.log("data", data);
 
     expect(data.status).toEqual(200);
     expect(data.body).not.toBeNull();
