@@ -5,9 +5,9 @@ import {
   SunIcon,
   XCircleIcon,
 } from "@heroicons/react/24/outline";
-import { Link } from "@remix-run/react";
+import { Form, Link, useFetcher } from "@remix-run/react";
 import classNames from "classnames";
-import { Fragment, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import { Panel } from "~/components/layout/Panel";
 import { onboarding } from "~/components/onboarding/classNames";
 import { StepNumber } from "~/components/onboarding/StepNumber";
@@ -16,13 +16,23 @@ import { StyledDialog } from "~/components/primitives/Dialog";
 import { Body } from "~/components/primitives/text/Body";
 import { Header3 } from "~/components/primitives/text/Headers";
 import { SubTitle } from "~/components/primitives/text/SubTitle";
+import { useUser } from "~/hooks/useUser";
 
 export default function NewWorkflowStep1Page() {
   return <Step1 />;
 }
 
 function Step1() {
+  const user = useUser();
+  const fetcher = useFetcher();
   let [isOpen, setIsOpen] = useState(false);
+
+  useEffect(() => {
+    if (fetcher.state === "submitting") {
+      setIsOpen(false);
+    }
+  }, [fetcher.state, setIsOpen]);
+
   return (
     <>
       <StyledDialog.Dialog
@@ -44,14 +54,28 @@ function Step1() {
                 </div>
                 <div className="p-6">
                   <Body size="small" className="text-center text-slate-400">
-                    We're working hard to bring you a cloud hosted service.
+                    We're preparing to launch a cloud hosting service for your
+                    Trigger.dev workflows that make it as easy to deploy your
+                    workflows as git push.
                   </Body>
-                  <PrimaryButton
-                    onClick={() => setIsOpen(false)}
-                    className="mt-2 w-full"
+                  <fetcher.Form
+                    action="/resources/cloud-waitlist"
+                    method="post"
                   >
-                    Got it
-                  </PrimaryButton>
+                    {user.isOnCloudWaitlist ? (
+                      <PrimaryButton
+                        type="submit"
+                        className="mt-2 w-full"
+                        disabled
+                      >
+                        Already on the waitlist 👍
+                      </PrimaryButton>
+                    ) : (
+                      <PrimaryButton type="submit" className="mt-2 w-full">
+                        Notify me when it's ready
+                      </PrimaryButton>
+                    )}
+                  </fetcher.Form>
                 </div>
               </div>
               <button

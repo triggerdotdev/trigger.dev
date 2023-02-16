@@ -23,7 +23,8 @@ model User {
   name        String?
   avatarUrl   String?
 
-  admin Boolean @default(false)
+  admin             Boolean @default(false)
+  isOnCloudWaitlist Boolean @default(false)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
