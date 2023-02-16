@@ -1,4 +1,5 @@
-import { TemplateListItem } from "~/presenters/templateListPresenter.server";
+import classNames from "classnames";
+import type { TemplateListItem } from "~/presenters/templateListPresenter.server";
 import { ApiLogoIcon } from "../code/ApiLogoIcon";
 import { OctoKitty } from "../GitHubLoginButton";
 import { TertiaryA, ToxicLink } from "../primitives/Buttons";
@@ -6,30 +7,41 @@ import { Body } from "../primitives/text/Body";
 import { Header2 } from "../primitives/text/Headers";
 
 export function TemplateOverview({ template }: { template: TemplateListItem }) {
-  const { docsHTML, title, description, repositoryUrl, imageUrl, id } =
+  const { docsHTML, imageUrl } =
     template;
 
   return (
-    <div className="flex w-full rounded-lg bg-slate-800 px-4 py-4 text-left">
-        <div className="flex h-full w-full flex-col gap-y-4 rounded ">
-          <div className="z-90 h-fit w-full border  border-slate-800 transition group-hover:opacity-90">
-            <img
-              src={imageUrl}
-              alt=""
-              className="h-full w-full rounded object-cover"
-            />
-          </div>
-          <div className="flex rounded bg-slate-900/75 p-4">
-            <div
-              className="prose prose-sm prose-invert flex flex-col min-w-full"
-              dangerouslySetInnerHTML={{
-                __html: docsHTML,
-              }}
-            />
-          </div>
+    <div className="grid w-full grid-cols-1 md:grid-cols-[minmax(0,_1fr)_18rem] rounded-lg bg-slate-800 px-4 py-4 text-left">
+      <div className="flex h-full w-full flex-col gap-y-4 rounded ">
+        <div className="z-90 h-fit w-full border  border-slate-800 transition group-hover:opacity-90">
+          <img
+            src={imageUrl}
+            alt=""
+            className="h-full w-full rounded object-cover"
+          />
         </div>
-        <div className="sticky top-4 ml-4 flex h-max w-[240px] min-w-[240px] flex-col rounded-r">
-          <div className="flex flex-col gap-y-3 ">
+        <TemplateDetails template={template} className="md:hidden" />
+        <div className="flex rounded bg-slate-900/75 p-4">
+          <div
+            className="prose prose-sm prose-invert min-w-full"
+            dangerouslySetInnerHTML={{
+              __html: docsHTML,
+            }}
+          />
+        </div>
+      </div>
+      <div className="sticky top-4 flex h-max flex-col rounded-r md:ml-4 ">
+        <TemplateDetails template={template} className="hidden md:flex" />
+      </div>
+    </div>
+  );
+}
+
+function TemplateDetails({ className, template }: { className?: string, template: TemplateListItem }) {
+  const { title, description, repositoryUrl, id } =
+    template;
+    return(
+       <div className={classNames(className, "flex flex-col gap-y-3 ")}>
             <ToxicLink
               size="large"
               className="group flex min-w-full h-12"
@@ -54,7 +66,7 @@ export function TemplateOverview({ template }: { template: TemplateListItem }) {
                   <ApiLogoIcon
                     integration={service}
                     size="regular"
-                    className="flex h-8 w-8 items-center justify-center rounded border-[1px] border-slate-700 bg-slate-900 transition group-hover:border-slate-600 group-hover:bg-slate-900/80"
+                    className="flex h-8 w-8 items-center justify-center rounded border-[1px] border-slate-700 bg-slate-900 transition group-hover:border-slate-600 group-hover:bg-slate-900/80 mb-2"
                   />
                 </div>
               ))}
@@ -66,8 +78,6 @@ export function TemplateOverview({ template }: { template: TemplateListItem }) {
                 {repositoryUrl.replace("https://github.com/triggerdotdev", "")}
               </Body>
             </TertiaryA>
-          </div>
-        </div>
-      </div>
-  );
+           </div> 
+    )
 }
