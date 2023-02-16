@@ -251,6 +251,7 @@ export default function Step3ExistingRepo1() {
                 code={state.selectedProject.code(environment.apiKey)}
                 language="tsx"
                 align="top"
+                maxHeight="600px"
               />
               <div className="flex w-full justify-end">
                 <PrimaryButton
