@@ -116,7 +116,21 @@
               "fromParameterStore": "/Prod/webapp/INTERNAL_TRIGGER_API_KEY"
             },
             "PULSAR_ENABLED": "1",
-            "PULSAR_DEBUG": true
+            "PULSAR_DEBUG": true,
+            "GITHUB_APP_NAME": "trigger-dev-app",
+            "GITHUB_APP_ID": "294349",
+            "GITHUB_APP_CLIENT_ID": {
+              "fromParameterStore": "/Prod/webapp/GITHUB_APP_CLIENT_ID"
+            },
+            "GITHUB_APP_CLIENT_SECRET": {
+              "fromParameterStore": "/Prod/webapp/GITHUB_APP_CLIENT_SECRET"
+            },
+            "GITHUB_APP_PRIVATE_KEY": {
+              "fromParameterStore": "/Prod/webapp/GITHUB_APP_PRIVATE_KEY"
+            },
+            "GITHUB_APP_WEBHOOK_SECRET": {
+              "fromParameterStore": "/Prod/webapp/GITHUB_APP_WEBHOOK_SECRET"
+            }
           }
         },
         {
