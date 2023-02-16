@@ -2,6 +2,7 @@ import { Webhooks, EmitterWebhookEvent } from "@octokit/webhooks";
 import { Octokit } from "@octokit/rest";
 import { createAppAuth } from "@octokit/auth-app";
 import { OAuthApp } from "@octokit/oauth-app";
+import { createOAuthUserAuth } from "@octokit/auth-oauth-user";
 import { createUnauthenticatedAuth } from "@octokit/auth-unauthenticated";
 import { env } from "~/env.server";
 import { Options } from "@octokit/oauth-app/dist-types/types";
@@ -100,7 +101,7 @@ function createWebhooks() {
           id: payload.repository.id,
         },
         {},
-        { deliverAfter: 1000 * 10 }
+        { deliverAfter: 1000 * 15 }
       );
     }
   );
@@ -231,10 +232,93 @@ export async function createRepositoryFromTemplate(
   }
 }
 
+type CreateOrgRepositoryEndpoint = Endpoints["POST /orgs/{org}/repos"];
+
+export async function createOrgRepository(
+  parameters: CreateOrgRepositoryEndpoint["parameters"],
+  { token, refreshToken }: { token: string; refreshToken: string }
+): Promise<
+  | {
+      status: "success";
+      data: CreateOrgRepositoryEndpoint["response"]["data"];
+    }
+  | { status: "error"; message: string }
+> {
+  if (typeof octokit === "undefined") {
+    return { status: "error", message: "Octokit not initialized" };
+  }
+
+  const kit = await getOauthOctokit(token, refreshToken);
+
+  try {
+    const response = await kit.request("POST /orgs/{org}/repos", parameters);
+
+    return { status: "success", data: response.data };
+  } catch (error) {
+    if (error instanceof RequestError) {
+      return { status: "error", message: error.message };
+    } else {
+      throw error;
+    }
+  }
+}
+
+type CreateUserRepositoryEndpoint = Endpoints["POST /user/repos"];
+
+export async function createUserRepository(
+  parameters: CreateUserRepositoryEndpoint["parameters"],
+  { token, refreshToken }: { token: string; refreshToken: string }
+): Promise<
+  | {
+      status: "success";
+      data: CreateUserRepositoryEndpoint["response"]["data"];
+    }
+  | { status: "error"; message: string }
+> {
+  if (typeof octokit === "undefined") {
+    return { status: "error", message: "Octokit not initialized" };
+  }
+
+  const kit = await getOauthOctokit(token, refreshToken);
+  try {
+    const response = await kit.request("POST /user/repos", parameters);
+
+    return { status: "success", data: response.data };
+  } catch (error) {
+    if (error instanceof RequestError) {
+      return { status: "error", message: error.message };
+    } else {
+      throw error;
+    }
+  }
+}
+
 export async function getOctokitRest(installationId: number) {
   const installationKit = await getOctokit(installationId);
 
   return installationKit.rest;
+}
+
+export async function getOauthOctokitRest(token: string, refreshToken: string) {
+  const oauthKit = await getOauthOctokit(token, refreshToken);
+
+  return oauthKit.rest;
+}
+
+async function getOauthOctokit(
+  token: string,
+  refreshToken?: string
+): Promise<Octokit> {
+  return new Octokit({
+    authStrategy: createOAuthUserAuth,
+    auth: {
+      clientId: env.GITHUB_APP_CLIENT_ID,
+      clientSecret: env.GITHUB_APP_CLIENT_SECRET,
+      clientType: "oauth-app",
+      token,
+      refreshToken,
+    },
+  });
 }
 
 async function getOctokit(installationId: number): Promise<Octokit> {

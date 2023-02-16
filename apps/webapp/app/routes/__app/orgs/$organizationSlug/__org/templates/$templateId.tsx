@@ -99,7 +99,9 @@ function OrganizationTemplateByStatus(loaderData: LoaderData) {
           </SubTitle>
         </div>
         <ConfiguringGithubState
-          githubAccount={loaderData.githubAccount.login}
+          githubAccount={
+            loaderData.organizationTemplate.authorization.accountName
+          }
           isPrivate={loaderData.organizationTemplate.private}
           repositoryName={loaderData.repositoryName}
         />
@@ -114,7 +116,7 @@ function OrganizationTemplateByStatus(loaderData: LoaderData) {
 function OrganizationTemplateReady(loaderData: LoaderData) {
   const githubConfigured = (
     <GitHubConfigured
-      githubAccount={loaderData.githubAccount.login}
+      githubAccount={loaderData.organizationTemplate.authorization.accountName}
       isPrivate={loaderData.organizationTemplate.private}
       repositoryName={loaderData.repositoryName}
     />

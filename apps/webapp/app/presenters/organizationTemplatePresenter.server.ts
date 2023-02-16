@@ -2,7 +2,6 @@ import type { PrismaClient } from "~/db.server";
 import { prisma } from "~/db.server";
 import { getIntegrationMetadataByService } from "~/models/integrations.server";
 import { getRuntimeEnvironment } from "~/models/runtimeEnvironment.server";
-import { AccountSchema } from "~/services/github/githubApp.server";
 import { renderMarkdown } from "~/services/renderMarkdown.server";
 import { TemplateListItem } from "./templateListPresenter.server";
 import { WorkflowsPresenter } from "./workflowsPresenter.server";
@@ -51,10 +50,6 @@ export class OrganizationTemplatePresenter {
       runtimeEnvironment.id
     );
 
-    const githubAccount = AccountSchema.parse(
-      organizationTemplate.authorization.account
-    );
-
     const repositoryName =
       organizationTemplate.repositoryUrl.split("/").pop() ??
       "missing repository name";
@@ -78,7 +73,6 @@ export class OrganizationTemplatePresenter {
         runtimeEnvironment.apiKey,
         organizationTemplate.template.runLocalDocs
       ),
-      githubAccount,
       repositoryName,
     };
   }

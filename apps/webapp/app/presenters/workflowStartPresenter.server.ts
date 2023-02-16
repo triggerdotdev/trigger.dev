@@ -1,8 +1,6 @@
-import { z } from "zod";
 import type { PrismaClient } from "~/db.server";
 import { prisma } from "~/db.server";
 import { getIntegrationMetadataByService } from "~/models/integrations.server";
-import { AccountSchema } from "~/services/github/githubApp.server";
 import { renderMarkdown } from "~/services/renderMarkdown.server";
 import { TemplateListItem } from "./templateListPresenter.server";
 
@@ -34,23 +32,12 @@ export class WorkflowStartPresenter {
         },
         select: {
           id: true,
-          account: true,
+          accountName: true,
           installationId: true,
           permissions: true,
           repositorySelection: true,
         },
       });
-
-    const authorizationsWithAccounts = appAuthorizations.map(
-      (appAuthorization) => {
-        const account = AccountSchema.parse(appAuthorization.account);
-
-        return {
-          ...appAuthorization,
-          account,
-        };
-      }
-    );
 
     const template = await this.#getTemplate(templateId);
 
@@ -61,7 +48,7 @@ export class WorkflowStartPresenter {
     });
 
     return {
-      appAuthorizations: authorizationsWithAccounts,
+      appAuthorizations,
       templates,
       template,
     };

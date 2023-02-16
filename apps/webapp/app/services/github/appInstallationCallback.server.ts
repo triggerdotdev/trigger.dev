@@ -41,7 +41,7 @@ export class AppInstallationCallback {
       installation_id: Number(installation_id),
     });
 
-    if (!installation) {
+    if (!installation || !installation.account || !installation.account.login) {
       return;
     }
 
@@ -68,13 +68,16 @@ export class AppInstallationCallback {
           // @ts-ignore
           refreshTokenExpiresAt: new Date(authentication.refreshTokenExpiresAt),
           installationId: installation.id,
-          account: installation.account ?? {},
+          account: installation.account,
+          accountName: installation.account.login,
           permissions: installation.permissions,
           repositorySelection: installation.repository_selection,
           accessTokensUrl: installation.access_tokens_url,
           repositoriesUrl: installation.repositories_url,
           htmlUrl: installation.html_url,
           events: installation.events,
+          accountType:
+            installation.account?.type === "User" ? "USER" : "ORGANIZATION",
         },
         include: {
           organization: {

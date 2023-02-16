@@ -1,9 +1,11 @@
+import type { GitHubAppAuthorization } from ".prisma/client";
 import { z } from "zod";
 import type { PrismaClient } from "~/db.server";
 import { prisma } from "~/db.server";
 import {
   AccountSchema,
-  createRepositoryFromTemplate,
+  createOrgRepository,
+  createUserRepository,
 } from "../github/githubApp.server";
 
 const FormSchema = z.object({
@@ -69,22 +71,9 @@ export class AddTemplateService {
       };
     }
 
-    const repositoryUrl = new URL(template.repositoryUrl);
-
-    // Get the owner and repo from the url, e.g. https://github.com/triggerdotdev/basic-starter -> triggerdotdev is the owner and basic-starter is the repo
-    const [template_owner, template_repo] = repositoryUrl.pathname
-      .split("/")
-      .slice(1);
-
-    const createdGithubRepo = await createRepositoryFromTemplate(
-      {
-        template_owner: template_owner,
-        template_repo: template_repo,
-        owner: account.data.login,
-        name: data.name,
-        private: data.private === "on",
-      },
-      { installationId: appAuthorization.installationId }
+    const createdGithubRepo = await this.#createGitHubRepository(
+      appAuthorization,
+      data
     );
 
     if (createdGithubRepo.status === "error") {
@@ -127,5 +116,37 @@ export class AddTemplateService {
       type: "success" as const,
       template: organizationTemplate,
     };
+  }
+
+  async #createGitHubRepository(
+    authorization: GitHubAppAuthorization,
+    data: z.infer<typeof FormSchema>
+  ) {
+    if (authorization.accountType === "USER") {
+      return createUserRepository(
+        {
+          name: data.name,
+          private: data.private === "on",
+          auto_init: true,
+        },
+        {
+          token: authorization.token,
+          refreshToken: authorization.refreshToken,
+        }
+      );
+    } else {
+      return createOrgRepository(
+        {
+          org: authorization.accountName,
+          name: data.name,
+          private: data.private === "on",
+          auto_init: true,
+        },
+        {
+          token: authorization.token,
+          refreshToken: authorization.refreshToken,
+        }
+      );
+    }
   }
 }

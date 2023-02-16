@@ -1,7 +1,11 @@
 import type { PrismaClient } from "~/db.server";
 import { prisma } from "~/db.server";
-import { getOctokitRest } from "~/services/github/githubApp.server";
+import { getOauthOctokitRest } from "~/services/github/githubApp.server";
 import { appEventPublisher } from "../messageBroker.server";
+import fs from "node:fs/promises";
+import tar from "tar";
+import path from "node:path";
+import os from "node:os";
 
 export class GithubRepositoryCreated {
   #prismaClient: PrismaClient;
@@ -26,38 +30,134 @@ export class GithubRepositoryCreated {
       return;
     }
 
-    const octokit = await getOctokitRest(
-      organizationTemplate.authorization.installationId
+    const octokit = await getOauthOctokitRest(
+      organizationTemplate.authorization.token,
+      organizationTemplate.authorization.refreshToken
     );
 
-    const repositoryUrl = new URL(organizationTemplate.repositoryUrl);
+    const sourceRepositoryUrl = new URL(
+      organizationTemplate.template.repositoryUrl
+    );
+    const targetRepositoryUrl = new URL(organizationTemplate.repositoryUrl);
 
     // Get the owner and repo from the url, e.g. https://github.com/triggerdotdev/basic-starter -> triggerdotdev is the owner and basic-starter is the repo
-    const [owner, repo] = repositoryUrl.pathname.split("/").slice(1);
+    const [targetOwner, targetRepo] = targetRepositoryUrl.pathname
+      .split("/")
+      .slice(1);
 
-    // Update the readme with the new repository url, by replacing the template url with the new repository url
-    const readme = await octokit.repos.getReadme({
-      owner,
-      repo,
+    const [sourceOwner, sourceRepo] = sourceRepositoryUrl.pathname
+      .split("/")
+      .slice(1);
+
+    // Get the latest commit hash to main
+    const sourceBranchMain = await octokit.repos.getBranch({
+      owner: sourceOwner,
+      repo: sourceRepo,
+      branch: "main",
     });
 
-    // readme.data.content is base64 encoded, so we need to decode it first
-    const decodedContent = Buffer.from(readme.data.content, "base64").toString(
-      "utf-8"
+    if (!sourceBranchMain.data) {
+      return;
+    }
+
+    const sourceArchiveLink = await octokit.repos.downloadTarballArchive({
+      owner: sourceOwner,
+      repo: sourceRepo,
+      ref: "main",
+    });
+
+    // Download the source repository as a tarball
+    const sourceArchive = await fetch(sourceArchiveLink.url);
+
+    // Extract the tarball
+    const sourceArchiveBuffer = await sourceArchive.arrayBuffer();
+
+    // Create temporary directory and write the tarball to it
+    const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "trigger-"));
+
+    const tarballPath = `${tempDir}/source.tar.gz`;
+
+    await fs.writeFile(tarballPath, Buffer.from(sourceArchiveBuffer));
+
+    const destinationPath = await fs.mkdtemp(
+      path.join(os.tmpdir(), "triggerd-")
     );
 
-    const readmeContent = decodedContent.replace(
-      organizationTemplate.template.repositoryUrl,
-      organizationTemplate.repositoryUrl
+    // Extract the files
+    await tar.extract({
+      file: tarballPath,
+      cwd: destinationPath,
+    });
+
+    // The root of the extracted tarball is destinationPath/sourceOwner-sourceRepo-<first 7 characters of the commit hash>
+    const destinationRepoPath = path.join(
+      destinationPath,
+      `${sourceOwner}-${sourceRepo}-${sourceBranchMain.data.commit.sha.slice(
+        0,
+        7
+      )}`
     );
 
-    await octokit.repos.createOrUpdateFileContents({
-      owner,
-      repo,
-      path: "README.md",
-      message: "Update README.md",
-      content: Buffer.from(readmeContent).toString("base64"),
-      sha: readme.data.sha,
+    // Read the files from the extracted tarball
+    const entries = await readDirectoryRecursively(destinationRepoPath);
+
+    const commitFiles = entries.map((entry) => {
+      const relativePath = path.relative(destinationRepoPath, entry.filePath);
+
+      if (relativePath === "README.md") {
+        // Replace all occurrences of the template repository url with the new repository url
+        const readmeContent = entry.fileContents.replace(
+          new RegExp(organizationTemplate.template.repositoryUrl, "g"),
+          organizationTemplate.repositoryUrl
+        );
+
+        return {
+          path: relativePath,
+          content: readmeContent,
+          mode: "100644" as const,
+          type: "commit" as const,
+        };
+      }
+
+      return {
+        path: path.relative(destinationRepoPath, entry.filePath),
+        content: entry.fileContents,
+        mode: "100644" as const,
+        type: "commit" as const,
+      };
+    });
+
+    // Get the latest commit hash to main
+    const targetBranchMain = await octokit.repos.getBranch({
+      owner: targetOwner,
+      repo: targetRepo,
+      branch: "main",
+    });
+
+    // Create a tree with the files
+    const tree = await octokit.git.createTree({
+      owner: targetOwner,
+      repo: targetRepo,
+      tree: commitFiles,
+      base_tree: targetBranchMain.data.commit.sha,
+    });
+
+    // Create the commit
+    const commit = await octokit.git.createCommit({
+      owner: targetOwner,
+      repo: targetRepo,
+      message: "Initial commit",
+      tree: tree.data.sha,
+      parents: [],
+    });
+
+    // Update the ref to point to the new commit
+    await octokit.git.updateRef({
+      owner: targetOwner,
+      repo: targetRepo,
+      ref: "heads/main",
+      sha: commit.data.sha,
+      force: true,
     });
 
     await this.#prismaClient.organizationTemplate.update({
@@ -80,4 +180,34 @@ export class GithubRepositoryCreated {
       }
     );
   }
+}
+
+async function readDirectoryRecursively(
+  directoryPath: string
+): Promise<{ filePath: string; fileContents: string }[]> {
+  const result: { filePath: string; fileContents: string }[] = [];
+
+  // Read the contents of the directory
+  const files = await fs.readdir(directoryPath, {
+    withFileTypes: true,
+  });
+
+  // Iterate over the files and subdirectories in the directory
+  for (const file of files) {
+    const filePath = path.join(directoryPath, file.name);
+
+    // If the item is a file, read its contents and add to the result array
+    if (file.isFile()) {
+      const fileContents = await fs.readFile(filePath, "utf8");
+      result.push({ filePath, fileContents });
+    }
+
+    // If the item is a directory, recursively read its contents and add to the result array
+    if (file.isDirectory()) {
+      const directoryContents = await readDirectoryRecursively(filePath);
+      result.push(...directoryContents);
+    }
+  }
+
+  return result;
 }

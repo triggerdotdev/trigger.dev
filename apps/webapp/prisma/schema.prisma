@@ -577,6 +577,9 @@ model GitHubAppAuthorization {
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   organizationId String
 
+  accountType GitHubAccountType @default(USER)
+  accountName String
+
   installationId      Int      @unique
   account             Json
   permissions         Json
@@ -591,6 +594,11 @@ model GitHubAppAuthorization {
   refreshToken          String
   refreshTokenExpiresAt DateTime
   organizationTemplates OrganizationTemplate[]
+}
+
+enum GitHubAccountType {
+  USER
+  ORGANIZATION
 }
 
 model Template {

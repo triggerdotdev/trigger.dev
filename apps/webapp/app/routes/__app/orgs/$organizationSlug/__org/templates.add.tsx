@@ -134,7 +134,7 @@ export default function AddTemplatePage() {
                           value={appAuthorization.id}
                           key={appAuthorization.id}
                         >
-                          {appAuthorization.account.login}
+                          {appAuthorization.accountName}
                         </option>
                       ))}
                     </Select>
