@@ -14,7 +14,7 @@ import { Body } from "../primitives/text/Body";
 import { Header2 } from "../primitives/text/Headers";
 
 const buttonStyles =
-  "relative flex flex-col cursor-pointer items-center justify-start hover:bg-slate-700 px-4 shadow gap-4 rounded bg-slate-700/50 py-8 border border-slate-700 transition";
+  "relative flex flex-col cursor-pointer items-center justify-start hover:bg-slate-700 px-1 shadow gap-4 rounded bg-slate-700/50 py-8 border border-slate-700 transition";
 
 export function ExampleOverview({
   onSelectedProject,
