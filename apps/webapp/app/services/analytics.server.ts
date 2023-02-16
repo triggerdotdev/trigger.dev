@@ -31,6 +31,19 @@ class BehaviouralAnalytics {
           isNewUser,
         },
       });
+      if (isNewUser) {
+        this.client.capture({
+          distinctId: user.id,
+          event: "user created",
+          properties: {
+            email: user.email,
+            name: user.name,
+            authenticationMethod: user.authenticationMethod,
+            admin: user.admin,
+            createdAt: user.createdAt,
+          },
+        });
+      }
     },
   };
 
