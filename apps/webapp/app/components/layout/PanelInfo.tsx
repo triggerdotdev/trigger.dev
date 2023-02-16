@@ -11,13 +11,13 @@ export function PanelInfo({
   className,
   message,
 }: {
-  children: React.ReactNode;
+  children?: React.ReactNode;
   className?: string;
   message?: string;
 }) {
   return (
     <div
-      className={`flex w-full justify-between gap-4 rounded-md border border-slate-600 bg-slate-400/10 py-3 pl-3 pr-3 shadow-md ${className}`}
+      className={`flex w-full justify-between gap-4 rounded-md border border-slate-600 bg-slate-400/10 py-3 pl-3 pr-4 shadow-md backdrop-blur-sm ${className}`}
     >
       <div className="flex items-center justify-start gap-2.5">
         <InformationCircleIcon className="h-6 w-6 min-w-[24px] text-blue-500" />
