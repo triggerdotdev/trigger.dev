@@ -75,7 +75,7 @@ export function AddApiKeyButton({
                 Instructions
               </Body>
             </div>
-            <code
+            <div
               className="prose prose-sm prose-invert"
               dangerouslySetInnerHTML={{
                 __html: marked(authentication.documentation),

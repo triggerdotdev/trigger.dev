@@ -21,7 +21,7 @@ export function TemplateOverview({ template }: { template: TemplateListItem }) {
         </div>
         <TemplateDetails template={template} className="md:hidden" />
         <div className="flex rounded bg-slate-900/75 p-4">
-          <code
+          <div
             className="prose prose-sm prose-invert min-w-full [&>pre]:bg-[rgb(17,23,41)]"
             dangerouslySetInnerHTML={{
               __html: docsHTML,
