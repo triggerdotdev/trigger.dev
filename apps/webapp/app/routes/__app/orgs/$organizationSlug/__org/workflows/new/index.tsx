@@ -1,11 +1,11 @@
+import CheckIcon from "@heroicons/react/20/solid/CheckIcon";
 import {
   CloudIcon,
   HomeIcon,
   RocketLaunchIcon,
-  SunIcon,
-  XCircleIcon,
 } from "@heroicons/react/24/outline";
-import { Form, Link, useFetcher } from "@remix-run/react";
+import XCircleIcon from "@heroicons/react/24/solid/XCircleIcon";
+import { Link, useFetcher } from "@remix-run/react";
 import classNames from "classnames";
 import { Fragment, useEffect, useState } from "react";
 import { Panel } from "~/components/layout/Panel";
@@ -43,44 +43,48 @@ function Step1() {
       >
         <div className="fixed inset-0 overflow-y-auto">
           <div className="flex min-h-full items-center justify-center p-4">
-            <StyledDialog.Panel className="mx-auto flex max-w-3xl items-start gap-2 overflow-hidden">
+            <StyledDialog.Panel className="mx-auto flex max-w-xl items-start gap-2 overflow-hidden">
               <div className="flex h-full w-full flex-col overflow-hidden rounded-md bg-slate-800 text-left">
                 <div className="relative flex flex-col items-center justify-between gap-5 overflow-hidden border-b border-slate-850/80 bg-blue-400 px-4 py-12">
-                  <CloudIcon className="absolute top-2 -left-4 h-28 w-28 animate-pulse text-white" />
-                  <CloudIcon className="absolute top-16 right-16 h-16 w-16 animate-pulse text-white" />
-                  <SunIcon className="absolute -top-12 -right-12 h-32 w-32 text-yellow-400" />
+                  <CloudIcon className="absolute top-2 -left-4 h-28 w-28 animate-pulse text-white/70" />
+                  <CloudIcon className="absolute top-16 right-16 h-16 w-16 animate-pulse text-white/70" />
                   <RocketLaunchIcon className="h-20 w-20 animate-[float_3s_ease-in-out_infinite] text-slate-800" />
-                  <Header3>Cloud hosting coming soon…</Header3>
+                  <Header3 className="font-semibold">
+                    Cloud hosting coming soon…
+                  </Header3>
                 </div>
                 <div className="p-6">
-                  <Body size="small" className="text-center text-slate-400">
+                  <Body className="mb-4 text-slate-400">
                     We're preparing to launch a cloud hosting service for your
-                    Trigger.dev workflows that make it as easy to deploy your
-                    workflows as git push.
+                    Trigger.dev workflows that will make it as easy to deploy
+                    your workflows as a git push.
                   </Body>
-                  <fetcher.Form
-                    action="/resources/cloud-waitlist"
-                    method="post"
-                  >
-                    {user.isOnCloudWaitlist ? (
-                      <PrimaryButton
-                        type="submit"
-                        className="mt-2 w-full"
-                        disabled
-                      >
-                        Already on the waitlist 👍
-                      </PrimaryButton>
-                    ) : (
-                      <PrimaryButton type="submit" className="mt-2 w-full">
-                        Notify me when it's ready
-                      </PrimaryButton>
-                    )}
-                  </fetcher.Form>
+                  <div className="flex w-full justify-end">
+                    <fetcher.Form
+                      action="/resources/cloud-waitlist"
+                      method="post"
+                    >
+                      {user.isOnCloudWaitlist ? (
+                        <PrimaryButton
+                          type="submit"
+                          className="mt-2 w-full"
+                          disabled
+                        >
+                          <CheckIcon className="-m-1 h-4 w-4 text-green-500" />
+                          Already on the waitlist
+                        </PrimaryButton>
+                      ) : (
+                        <PrimaryButton type="submit" className="mt-2 w-full">
+                          Notify me when it's ready
+                        </PrimaryButton>
+                      )}
+                    </fetcher.Form>
+                  </div>
                 </div>
               </div>
               <button
                 onClick={() => setIsOpen(false)}
-                className="sticky top-0 text-slate-600 transition hover:text-slate-500"
+                className="sticky top-0 text-slate-300 transition hover:text-slate-200"
               >
                 <XCircleIcon className="h-10 w-10" />
               </button>
