@@ -143,7 +143,7 @@ export function FromScratchOverview({
                           onSelectedProject(openProject);
                         }}
                       >
-                        <span> Use this template </span>
+                        <span> Use this example </span>
                         <span
                           className="ml-1 transition group-hover:translate-x-0.5"
                           aria-hidden="true"
