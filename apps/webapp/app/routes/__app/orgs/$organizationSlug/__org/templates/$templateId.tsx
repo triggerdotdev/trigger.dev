@@ -74,7 +74,10 @@ export default function TemplatePage() {
           <Header1>You're almost done</Header1>
           {organizationTemplateByStatus}
         </div>
-        <TemplateCard template={loaderData.template} />
+        <TemplateCard
+          template={loaderData.template}
+          className="sticky top-0 mt-12 justify-self-start"
+        />
       </div>
     </Container>
   );
@@ -122,11 +125,11 @@ function OrganizationTemplateReady(loaderData: LoaderData) {
         <>
           <ConnectedToGithub />
           {githubConfigured}
-          <div className="mt-4 mb-1 flex items-center gap-2">
-            <Spinner className="min-w-[20px]" />
+          <div className="mt-4 mb-1 flex items-center">
+            <StepNumber active stepNumber="3" />
             <SubTitle className="mb-0">
               Your ‘{loaderData.organizationTemplate.template.title}’ template
-              is ready and waiting to deploy
+              is ready
             </SubTitle>
           </div>
           <Panel className="max-w-4xl !p-4">
@@ -169,7 +172,7 @@ function TemplateHeader({
         <div className="col-span-3">
           <Label className="text-sm text-slate-500">Repo URL</Label>
           <div className="flex items-center justify-between rounded bg-black/20 py-2 pl-3 pr-2">
-            <span className="select-all">
+            <span className="select-all text-slate-300">
               {organizationTemplate.repositoryUrl}
             </span>
             <a
@@ -254,29 +257,35 @@ function DeploySection({
         <div className="mt-2">
           <Label className="text-sm text-slate-500">API key</Label>
           <div className="flex items-center justify-between rounded bg-black/20 py-2.5 px-3 text-slate-300">
-            <span className="select-all">{apiKey}</span>
+            <span className="select-all text-slate-300">{apiKey}</span>
             <CopyTextButton variant="text" value={apiKey} />
           </div>
         </div>
-        <div className="mt-6 flex items-center justify-end gap-3">
-          <PrimaryButton onClick={(e) => setIsOpen(true)}>
-            <HomeIcon className="h-5 w-5 text-slate-200" />
-            Run locally
-          </PrimaryButton>
-          <Body size="small" className="uppercase text-slate-500">
-            or
+        <div className="flex w-full items-end justify-between">
+          <Body className="flex items-center gap-2 text-slate-500">
+            <Spinner />
+            Waiting to deploy
           </Body>
-          <a
-            href={`https://render.com/deploy?repo=${organizationTemplate.repositoryUrl}`}
-            target="_blank"
-            className="transition hover:opacity-80"
-          >
-            <img
-              src="https://render.com/images/deploy-to-render-button.svg"
-              alt="Deploy to Render"
-              className="h-[36px]"
-            />
-          </a>
+          <div className="mt-6 flex items-center justify-end gap-3">
+            <PrimaryButton onClick={(e) => setIsOpen(true)}>
+              <HomeIcon className="h-5 w-5 text-slate-200" />
+              Run locally
+            </PrimaryButton>
+            <Body size="small" className="uppercase text-slate-500">
+              or
+            </Body>
+            <a
+              href={`https://render.com/deploy?repo=${organizationTemplate.repositoryUrl}`}
+              target="_blank"
+              className="transition hover:opacity-80"
+            >
+              <img
+                src="https://render.com/images/deploy-to-render-button.svg"
+                alt="Deploy to Render"
+                className="h-[36px]"
+              />
+            </a>
+          </div>
         </div>
       </>
     );
@@ -310,9 +319,11 @@ function ConfiguringGithubState({
 }) {
   return (
     <Panel className="pointer-events-none relative max-w-4xl overflow-hidden !p-4">
-      <div className="absolute top-0 left-0 flex h-full w-full flex-col items-center justify-center gap-4 bg-slate-850/50">
-        <ClockIcon className="h-10 w-10 animate-pulse text-indigo-500" />
-        <Body>This can take up to 30 seconds</Body>
+      <div className="absolute top-0 left-0 flex h-full w-full items-center justify-center gap-2 rounded bg-slate-800 bg-slate-850/50 p-2">
+        <Body>
+          <ClockIcon className="h-6 w-6" />
+          This can take up to 30 seconds
+        </Body>
       </div>
       <div className="mb-3 grid grid-cols-2 gap-4">
         <InputGroup>
@@ -365,7 +376,7 @@ function ConfiguringGithubState({
 // Skeleton and completed states
 export function ConnectedToGithub({ templateId }: { templateId?: string }) {
   return (
-    <div className="mt-6 flex items-center justify-between">
+    <div className="mt-6 flex max-w-4xl items-center justify-between">
       <SubTitle className="flex items-center">
         <StepNumber complete />
         GitHub connected
