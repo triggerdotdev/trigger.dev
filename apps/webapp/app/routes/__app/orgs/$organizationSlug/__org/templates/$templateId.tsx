@@ -20,6 +20,7 @@ import { useEventSource } from "remix-utils";
 import { CopyTextButton } from "~/components/CopyTextButton";
 import { Container } from "~/components/layout/Container";
 import { Panel } from "~/components/layout/Panel";
+import { PanelInfo } from "~/components/layout/PanelInfo";
 import { StepNumber } from "~/components/onboarding/StepNumber";
 import { PrimaryButton, TertiaryLink } from "~/components/primitives/Buttons";
 import { StyledDialog } from "~/components/primitives/Dialog";
@@ -91,7 +92,7 @@ function OrganizationTemplateByStatus(loaderData: LoaderData) {
     return (
       <>
         <ConnectedToGithub />
-        <div className="mt-4 mb-2 flex max-w-4xl items-center gap-2">
+        <div className="mb-2 ml-1 flex max-w-4xl items-center gap-4">
           <Spinner />
           <SubTitle className="mb-0">
             Cloning the template repo into your GitHub account...
@@ -319,11 +320,8 @@ function ConfiguringGithubState({
 }) {
   return (
     <Panel className="pointer-events-none relative max-w-4xl overflow-hidden !p-4">
-      <div className="absolute top-0 left-0 flex h-full w-full items-center justify-center gap-2 rounded bg-slate-800 bg-slate-850/50 p-2">
-        <Body>
-          <ClockIcon className="h-6 w-6" />
-          This can take up to 30 seconds
-        </Body>
+      <div className="absolute top-0 left-0 flex h-full w-full items-center justify-center bg-slate-850/70">
+        <PanelInfo message="This can take up to 30 seconds" className="w-max" />
       </div>
       <div className="mb-3 grid grid-cols-2 gap-4">
         <InputGroup>
