@@ -22,6 +22,11 @@ export class OrganizationTemplatePresenter {
         include: {
           template: true,
           authorization: true,
+          organization: {
+            include: {
+              environments: true,
+            },
+          },
         },
       });
 
@@ -62,10 +67,19 @@ export class OrganizationTemplatePresenter {
       docsHTML: renderMarkdown(organizationTemplate.template.markdownDocs),
     };
 
+    const developmentApiKey =
+      organizationTemplate.organization.environments.find(
+        (e) => e.slug === "development"
+      )?.apiKey;
+    const liveApiKey = organizationTemplate.organization.environments.find(
+      (e) => e.slug === "live"
+    )?.apiKey;
+
     return {
       template,
       organizationTemplate,
-      apiKey: runtimeEnvironment.apiKey,
+      developmentApiKey,
+      liveApiKey,
       workflows,
       runLocalDocsHTML: renderLocalDocsHTML(
         organizationTemplate.repositoryUrl,

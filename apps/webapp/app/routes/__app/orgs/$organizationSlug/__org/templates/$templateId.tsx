@@ -178,12 +178,14 @@ function OrganizationTemplateReady(loaderData: LoaderData) {
 
 function DeploySection({
   organizationTemplate,
-  apiKey,
+  developmentApiKey,
+  liveApiKey,
   workflows,
   runLocalDocsHTML,
 }: {
   organizationTemplate: LoaderData["organizationTemplate"];
-  apiKey: string;
+  developmentApiKey?: string;
+  liveApiKey?: string;
   workflows: LoaderData["workflows"];
   runLocalDocsHTML: LoaderData["runLocalDocsHTML"];
 }) {
@@ -242,8 +244,13 @@ function DeploySection({
               Development API key
             </Label>
             <div className="flex items-center justify-between rounded bg-black/20 py-2.5 px-3 text-slate-300">
-              <span className="select-all text-slate-300">{apiKey}</span>
-              <CopyTextButton variant="text" value={apiKey} />
+              <span className="select-all text-slate-300">
+                {developmentApiKey ?? "missing api key"}
+              </span>
+              <CopyTextButton
+                variant="text"
+                value={developmentApiKey ?? "missing api key"}
+              />
             </div>
             <div className="mt-4 flex w-full justify-end">
               <PrimaryButton onClick={(e) => setIsOpen(true)}>
@@ -273,8 +280,13 @@ function DeploySection({
             </SubTitle>
             <Label className="text-sm text-slate-500">Live API key</Label>
             <div className="flex items-center justify-between rounded bg-black/20 py-2.5 px-3 text-slate-300">
-              <span className="select-all text-slate-300">{apiKey}</span>
-              <CopyTextButton variant="text" value={apiKey} />
+              <span className="select-all text-slate-300">
+                {liveApiKey ?? "missing api key"}
+              </span>
+              <CopyTextButton
+                variant="text"
+                value={liveApiKey ?? "missing api key"}
+              />
             </div>
             <div className="mt-4 flex w-full items-center justify-end">
               <a
