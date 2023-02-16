@@ -7,7 +7,6 @@ import {
   useTypedActionData,
   useTypedLoaderData,
 } from "remix-typedjson";
-import invariant from "tiny-invariant";
 import { z } from "zod";
 import { OctoKitty } from "~/components/GitHubLoginButton";
 import { Container } from "~/components/layout/Container";
@@ -23,8 +22,6 @@ import { Select } from "~/components/primitives/Select";
 import { SubTitle } from "~/components/primitives/text/SubTitle";
 import { Title } from "~/components/primitives/text/Title";
 import { TemplateCard } from "~/components/templates/TemplateCard";
-import { useCurrentEnvironment } from "~/hooks/useEnvironments";
-import { useCurrentOrganization } from "~/hooks/useOrganizations";
 import { WorkflowStartPresenter } from "~/presenters/workflowStartPresenter.server";
 import { requireUserId } from "~/services/session.server";
 import { AddTemplateService } from "~/services/templates/addTemplate.server";
@@ -90,10 +87,6 @@ export async function action({ params, request }: ActionArgs) {
 export default function AddTemplatePage() {
   const { appAuthorizations, templates, template } =
     useTypedLoaderData<typeof loader>();
-  const environment = useCurrentEnvironment();
-  const currentOrganization = useCurrentOrganization();
-  invariant(currentOrganization, "Organization must be defined");
-  invariant(environment, "Environment must be defined");
 
   const actionData = useTypedActionData<typeof action>();
 
@@ -119,116 +112,115 @@ export default function AddTemplatePage() {
 
           {appAuthorizations.length === 0 ? (
             <>
-              <ConnectToGithub />
+              <ConnectToGithub templateId={template?.id} />
               <ConfigureGithub />
             </>
           ) : (
-            <ConnectedToGithub templateId={template?.id} />
-          )}
+            <>
+              <ConnectedToGithub templateId={template?.id} />
+              <SubTitle className="flex items-center">
+                <StepNumber active stepNumber="2" />
+                Where should we create the new repository?
+              </SubTitle>
+              <Panel className="!p-4">
+                <div className="mb-3 grid grid-cols-2 gap-4">
+                  <InputGroup>
+                    <Label htmlFor="appAuthorizationId">
+                      Select a GitHub account
+                    </Label>
+                    <Select name="appAuthorizationId" required>
+                      {appAuthorizations.map((appAuthorization) => (
+                        <option
+                          value={appAuthorization.id}
+                          key={appAuthorization.id}
+                        >
+                          {appAuthorization.account.login}
+                        </option>
+                      ))}
+                    </Select>
 
-          {template ? (
-            <SubTitle className="flex items-center">
-              <StepNumber active stepNumber="2" />
-              Where should we create the new repository?
-            </SubTitle>
-          ) : (
-            <SubTitle className="flex items-center">
-              <StepNumber active stepNumber="2" />
-              Where should we create the new repository?
-            </SubTitle>
-          )}
-          <Panel className="!p-4">
-            <div className="mb-3 grid grid-cols-2 gap-4">
-              <InputGroup>
-                <Label htmlFor="appAuthorizationId">
-                  Select a GitHub account
-                </Label>
-                <Select name="appAuthorizationId" required>
-                  {appAuthorizations.map((appAuthorization) => (
-                    <option
-                      value={appAuthorization.id}
-                      key={appAuthorization.id}
-                    >
-                      {appAuthorization.account.login}
-                    </option>
-                  ))}
-                </Select>
+                    {actionData?.type === "validationError" && (
+                      <FormError
+                        errors={actionData.errors}
+                        path={["appAuthorizationId"]}
+                      />
+                    )}
+                  </InputGroup>
 
-                {actionData?.type === "validationError" && (
-                  <FormError
-                    errors={actionData.errors}
-                    path={["appAuthorizationId"]}
-                  />
-                )}
-              </InputGroup>
-
-              {template ? (
-                <input type="hidden" name="templateId" value={template.id} />
-              ) : (
-                <InputGroup>
-                  <Label htmlFor="templateId">Choose a template</Label>
-
-                  <Select name="templateId" required>
-                    {templates.map((template) => (
-                      <option value={template.id} key={template.id}>
-                        {template.title}
-                      </option>
-                    ))}
-                  </Select>
-
-                  {actionData?.type === "validationError" && (
-                    <FormError
-                      errors={actionData.errors}
-                      path={["templateId"]}
-                    />
-                  )}
-                </InputGroup>
-              )}
-
-              <InputGroup>
-                <Label htmlFor="name">Enter a repository name (required)</Label>
-                <Input
-                  id="name"
-                  name="name"
-                  placeholder={`e.g. ${
-                    template
-                      ? `trigger.dev-${template.slug}`
-                      : `my-trigger.dev-workflows`
-                  }`}
-                  spellCheck={false}
-                  className=""
-                />
-
-                {actionData?.type === "validationError" && (
-                  <FormError errors={actionData.errors} path={["name"]} />
-                )}
-              </InputGroup>
-              <div>
-                <p className="mb-1 text-sm text-slate-500">
-                  Set the repo as private
-                </p>
-                <div className="flex w-full items-center rounded bg-black/20 px-3 py-2.5">
-                  <Label
-                    htmlFor="private"
-                    className="flex cursor-pointer items-center gap-2 text-sm text-slate-300"
-                  >
+                  {template ? (
                     <input
-                      type="checkbox"
-                      name="private"
-                      id="private"
-                      className="border-3 h-4 w-4 cursor-pointer rounded border-black bg-slate-500 transition hover:bg-slate-300 focus:outline-none"
+                      type="hidden"
+                      name="templateId"
+                      value={template.id}
                     />
-                    Private repo
-                  </Label>
+                  ) : (
+                    <InputGroup>
+                      <Label htmlFor="templateId">Choose a template</Label>
+
+                      <Select name="templateId" required>
+                        {templates.map((template) => (
+                          <option value={template.id} key={template.id}>
+                            {template.title}
+                          </option>
+                        ))}
+                      </Select>
+
+                      {actionData?.type === "validationError" && (
+                        <FormError
+                          errors={actionData.errors}
+                          path={["templateId"]}
+                        />
+                      )}
+                    </InputGroup>
+                  )}
+
+                  <InputGroup>
+                    <Label htmlFor="name">
+                      Enter a repository name (required)
+                    </Label>
+                    <Input
+                      id="name"
+                      name="name"
+                      placeholder={`e.g. ${
+                        template
+                          ? `trigger.dev-${template.slug}`
+                          : `my-trigger.dev-workflows`
+                      }`}
+                      spellCheck={false}
+                      className=""
+                    />
+
+                    {actionData?.type === "validationError" && (
+                      <FormError errors={actionData.errors} path={["name"]} />
+                    )}
+                  </InputGroup>
+                  <div>
+                    <p className="mb-1 text-sm text-slate-500">
+                      Set the repo as private
+                    </p>
+                    <div className="flex w-full items-center rounded bg-black/20 px-3 py-2.5">
+                      <Label
+                        htmlFor="private"
+                        className="flex cursor-pointer items-center gap-2 text-sm text-slate-300"
+                      >
+                        <input
+                          type="checkbox"
+                          name="private"
+                          id="private"
+                          className="border-3 h-4 w-4 cursor-pointer rounded border-black bg-slate-500 transition hover:bg-slate-300 focus:outline-none"
+                        />
+                        Private repo
+                      </Label>
+                    </div>
+                  </div>
                 </div>
-              </div>
-            </div>
-            <div className="flex justify-end">
-              <PrimaryButton type="submit">
-                Create Repo & Template
-              </PrimaryButton>
-            </div>
-          </Panel>
+                <div className="flex justify-end">
+                  <PrimaryButton type="submit">Create Repo</PrimaryButton>
+                </div>
+              </Panel>
+            </>
+          )}
+
           <DeployBlankState />
         </Form>
         {template && <TemplateCard template={template} />}
@@ -237,7 +229,7 @@ export default function AddTemplatePage() {
   );
 }
 
-function ConnectToGithub() {
+function ConnectToGithub({ templateId }: { templateId?: string }) {
   return (
     <>
       <SubTitle className="flex items-center">
@@ -245,7 +237,9 @@ function ConnectToGithub() {
         Login with GitHub to get started
       </SubTitle>
       <Panel className="mb-6 flex h-56 items-center justify-center">
-        <PrimaryLink to="../apps/github">
+        <PrimaryLink
+          to={`../apps/github${templateId ? `?templateId=${templateId}` : ``}`}
+        >
           <OctoKitty className="h-4 w-4" />
           Continue with GitHub
         </PrimaryLink>
@@ -260,7 +254,7 @@ function ConfigureGithub() {
       <div className="mt-6">
         <SubTitle className="flex items-center">
           <StepNumber stepNumber="2" />
-          Configure GitHub
+          Create your GitHub repository from a template
         </SubTitle>
         <Panel className="flex h-56 w-full max-w-4xl items-center justify-center gap-6">
           <OctoKitty className="h-10 w-10 text-slate-600" />

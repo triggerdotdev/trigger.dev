@@ -370,11 +370,11 @@ export function ConnectedToGithub({ templateId }: { templateId?: string }) {
         <StepNumber complete />
         GitHub connected
       </SubTitle>
-      {templateId && (
-        <TertiaryLink to={`../apps/github?templateId=${templateId}`}>
-          Add another connection
-        </TertiaryLink>
-      )}
+      <TertiaryLink
+        to={`../apps/github${templateId ? `?templateId=${templateId}` : ""}`}
+      >
+        Add another connection
+      </TertiaryLink>
     </div>
   );
 }
