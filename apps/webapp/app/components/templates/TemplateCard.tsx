@@ -16,7 +16,7 @@ export function TemplateCard({
       key={template.title}
       className={classNames(
         className,
-        "sticky top-0 mt-[60px] flex h-fit w-full flex-col overflow-hidden rounded-md border border-slate-700/50 bg-slate-1000 text-slate-300 shadow-md"
+        "flex h-fit w-full flex-col overflow-hidden rounded-md border border-slate-700/50 bg-slate-1000 text-slate-300 shadow-md"
       )}
     >
       <div className="h-36 w-full">
