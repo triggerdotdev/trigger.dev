@@ -86,7 +86,7 @@ export class OrganizationTemplatePresenter {
         organizationTemplate.template.repositoryUrl,
         organizationTemplate.name,
         organizationTemplate.template.slug,
-        runtimeEnvironment.apiKey,
+        developmentApiKey ?? runtimeEnvironment.apiKey,
         organizationTemplate.template.runLocalDocs
       ),
       repositoryName,
