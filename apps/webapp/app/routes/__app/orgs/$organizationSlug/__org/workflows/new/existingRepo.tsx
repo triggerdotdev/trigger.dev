@@ -283,7 +283,12 @@ export default function Step3ExistingRepo1() {
                   <span className="rounded-md bg-[#0F172A] px-2">
                     src/triggers.ts
                   </span>
-                  ), then you'll need to import it to make sure it runs:
+                  ), then you'll need to import it into into a file that is
+                  being run on your server (e.g.
+                  <span className="rounded-md bg-[#0F172A] px-2">
+                    src/index.ts
+                  </span>
+                  ). You can do that like this:
                 </Body>
                 <CodeBlock code={`import "./triggers";`} align="top" />
                 <PrimaryButton
