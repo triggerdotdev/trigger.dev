@@ -50,7 +50,7 @@ export const allExamples: ExampleProject[] = [
     description:
       "This workflow is triggered when a new user signs up. A welcome email is sent straight away and an alert is sent to a specific Slack channel. 1 day later it checks if the user has completed the onboarding, if they have, they get a ‘tips’ email, otherwise they get a re-engagement email.",
     requiredPackages:
-      "@trigger.dev/sdk @trigger.dev/resend @trigger.dev/slack zod",
+      "@trigger.dev/sdk @trigger.dev/resend @trigger.dev/slack zod @react-email/html @react-email/preview @react-email/section @react-email/text",
     code: resendEmailDripCampaign,
     type: "example",
   },
