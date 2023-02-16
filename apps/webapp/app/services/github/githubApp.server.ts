@@ -92,24 +92,27 @@ function createWebhooks() {
       });
     }
   );
+
   global.__github_webhooks__.on(
-    "repository.created",
+    "installation_repositories.added",
     async ({ octokit, payload }) => {
-      await taskQueue.publish(
-        "GITHUB_APP_REPOSITORY_CREATED",
-        {
-          id: payload.repository.id,
-        },
-        {},
-        { deliverAfter: 1000 * 15 }
-      );
+      for (const addedRepo of payload.repositories_added) {
+        await taskQueue.publish(
+          "GITHUB_APP_REPOSITORY_CREATED",
+          {
+            id: addedRepo.id,
+          },
+          {},
+          { deliverAfter: 1000 * 15 }
+        );
+      }
     }
   );
 
   global.__github_webhooks__.onAny(({ id, name, payload }) => {
     console.log(
       `[github-webhook] ${name} event received: ${id}`,
-      JSON.stringify(payload, null, 2)
+      JSON.stringify(payload)
     );
   });
 
