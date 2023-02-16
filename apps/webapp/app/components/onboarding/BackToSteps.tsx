@@ -17,13 +17,13 @@ export function BackToStep1() {
   );
 }
 
-export function BackToStep2() {
+export function BackToStep2({ text }: { text: string }) {
   return (
     <>
       <SubTitle className="flex items-center">
         <StepNumber complete />
         <Link to="../step2" className="transition hover:text-slate-300">
-          I'll start with a template
+          {text}
         </Link>
       </SubTitle>
       <TertiaryLink to="../step2">Change answer</TertiaryLink>

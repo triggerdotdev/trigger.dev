@@ -22,7 +22,7 @@ export default function Step3NewRepo1() {
         <BackToStep1 />
       </div>
       <div className="flex items-center justify-between">
-        <BackToStep2 />
+        <BackToStep2 text="I'll start with a template" />
       </div>
       <div className="mb-6">
         <SubTitle className="flex items-center">

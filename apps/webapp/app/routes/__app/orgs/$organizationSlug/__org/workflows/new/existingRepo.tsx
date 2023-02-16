@@ -174,7 +174,7 @@ export default function Step3ExistingRepo1() {
           <BackToStep1 />
         </div>
         <div className="flex items-center justify-between">
-          <BackToStep2 />
+          <BackToStep2 text="I'll use an existing repo" />
         </div>
         {state.step === "choose-example" ? (
           <>
@@ -249,6 +249,7 @@ export default function Step3ExistingRepo1() {
               </Body>
               <CodeBlock
                 code={state.selectedProject.code(environment.apiKey)}
+                language="tsx"
                 align="top"
               />
               <div className="flex w-full justify-end">
