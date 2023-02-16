@@ -12,7 +12,7 @@ Then create a `.env` file with your development Trigger.dev API Key and GITHUB_R
 
 ```
 TRIGGER_API_KEY=<your api key>
-GITHUB_REPOSITORY<your github repository> # e.g. triggerdotdev/trigger.dev
+GITHUB_REPOSITORY=<your github repository> # e.g. triggerdotdev/trigger.dev
 ```
 
 And finally you are ready to run the process:
