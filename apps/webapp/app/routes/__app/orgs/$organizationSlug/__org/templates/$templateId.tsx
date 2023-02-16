@@ -69,14 +69,14 @@ export default function TemplatePage() {
 
   return (
     <Container>
-      <div className="grid grid-cols-[minmax(0,_1fr)_minmax(0,_1fr)_minmax(0,_1fr)_300px] gap-4">
-        <div className="col-span-3">
+      <div className="grid grid-cols-3 gap-8">
+        <div className="col-span-2">
           <Header1>You're almost done</Header1>
           {organizationTemplateByStatus}
         </div>
         <TemplateCard
           template={loaderData.template}
-          className="sticky top-0 mt-12 justify-self-start"
+          className="sticky top-0 mt-12 max-w-[300px] justify-self-start"
         />
       </div>
     </Container>
