@@ -56,10 +56,10 @@ async function seed() {
       "https://github.com/triggerdotdev/resend-welcome-drip-campaign",
     imageUrl:
       "https://imagedelivery.net/3TbraffuDZ4aEf8KWOmI_w/2f7f14fb-8d3f-42a0-cd8e-58595603df00/public",
-    title: "Send a Welcome Drip Campaign to new users",
+    title: "Send a welcome drip campaign to new users",
     shortTitle: "Resend.com drip campaign",
     description:
-      "When a new user is created, send them a Welcome Drip Campaign from Resend.com and react.email",
+      "When a new user is created, send them a welcome drip campaign from Resend.com and react.email",
     priority: 2,
     services: ["resend"],
     workflowIds: ["resend-welcome-drip-campaign"],
