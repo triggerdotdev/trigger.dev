@@ -47,14 +47,14 @@ export function TemplatesGrid({
               openInNewPage={openInNewPage}
               onClick={() => setOpenedTemplate(template)}
             >
-              <div className="h-24 w-full bg-slate-600 transition group-hover:opacity-90">
+              <div className="h-max w-full bg-slate-600 transition group-hover:opacity-90">
                 <img
                   src={template.imageUrl}
                   alt=""
                   className="h-full w-full object-cover"
                 />
               </div>
-              <div className="flex flex-col p-4 h-full place-content-between">
+              <div className="flex h-full flex-col place-content-between p-4">
                 <div className="flex flex-col gap-y-2 ">
                   <Header1 size="small" className="font-semibold">
                     {template.title}
@@ -63,7 +63,7 @@ export function TemplatesGrid({
                     {template.description}
                   </Body>
                 </div>
-                <div className="flex flex-row gap-x-1 mt-2">
+                <div className="mt-2 flex flex-row gap-x-1">
                   {template.services.map((service) => (
                     <div key={service.slug} className="">
                       <ApiLogoIcon
