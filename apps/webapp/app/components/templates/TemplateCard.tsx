@@ -1,13 +1,23 @@
+import classNames from "classnames";
 import { TemplateListItem } from "~/presenters/templateListPresenter.server";
 import { ApiLogoIcon } from "../code/ApiLogoIcon";
 import { Body } from "../primitives/text/Body";
 import { Header1 } from "../primitives/text/Headers";
 
-export function TemplateCard({ template }: { template: TemplateListItem }) {
+export function TemplateCard({
+  template,
+  className,
+}: {
+  template: TemplateListItem;
+  className?: string;
+}) {
   return (
     <div
       key={template.title}
-      className="sticky top-0 mt-[60px] flex h-fit w-full flex-col overflow-hidden rounded-md border border-slate-700/50 bg-slate-1000 text-slate-300 shadow-md"
+      className={classNames(
+        className,
+        "sticky top-0 mt-[60px] flex h-fit w-full flex-col overflow-hidden rounded-md border border-slate-700/50 bg-slate-1000 text-slate-300 shadow-md"
+      )}
     >
       <div className="h-36 w-full">
         <img

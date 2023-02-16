@@ -92,8 +92,8 @@ export default function AddTemplatePage() {
 
   return (
     <Container>
-      <div className="grid grid-cols-[minmax(0,_1fr)_minmax(0,_1fr)_minmax(0,_1fr)_300px] gap-4">
-        <Form method="post" className="col-span-3 max-w-4xl">
+      <div className="grid w-full grid-cols-3 gap-8">
+        <Form method="post" className="col-span-2 max-w-4xl">
           <Title>You're almost done</Title>
 
           {actionData?.type === "serviceError" ? (
@@ -223,7 +223,14 @@ export default function AddTemplatePage() {
 
           <DeployBlankState />
         </Form>
-        {template && <TemplateCard template={template} />}
+        <div className="w-full">
+          {template && (
+            <TemplateCard
+              template={template}
+              className="sticky top-0 mt-[60px] w-[300px] justify-self-start"
+            />
+          )}
+        </div>
       </div>
     </Container>
   );
