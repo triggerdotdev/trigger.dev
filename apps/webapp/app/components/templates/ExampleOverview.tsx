@@ -40,6 +40,7 @@ export function ExampleOverview({
             <div className="grid grid-cols-[minmax(0,_1fr)_20rem] gap-4 rounded-md bg-slate-800 p-4">
               <CodeBlock
                 code={openProject.code(environment.apiKey)}
+                language="tsx"
                 align="top"
               />
               <div className="sticky top-4 flex flex-col gap-y-4">
@@ -50,7 +51,7 @@ export function ExampleOverview({
                     onSelectedProject(openProject);
                   }}
                 >
-                  <span>Use this template</span>
+                  <span>Use this example</span>
                   <span
                     className="ml-1 transition group-hover:translate-x-0.5"
                     aria-hidden="true"
@@ -130,6 +131,7 @@ export function FromScratchOverview({
                       <CodeBlock
                         code={openProject.code(environment.apiKey)}
                         align="top"
+                        language="tsx"
                         className="flex w-[650px] overflow-scroll"
                       />
                     </div>
