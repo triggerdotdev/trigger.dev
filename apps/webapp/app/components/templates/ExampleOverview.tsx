@@ -1,8 +1,9 @@
+import { ArrowRightIcon } from "@heroicons/react/20/solid";
 import { XCircleIcon } from "@heroicons/react/24/solid";
 import React, { Fragment, useState } from "react";
 import invariant from "tiny-invariant";
+import type { ExampleProject } from "~/components/samples/samplesList";
 import {
-  ExampleProject,
   exampleProjects,
   fromScratchProjects,
 } from "~/components/samples/samplesList";
@@ -52,12 +53,7 @@ export function ExampleOverview({
                   }}
                 >
                   <span>Use this example</span>
-                  <span
-                    className="ml-1 transition group-hover:translate-x-0.5"
-                    aria-hidden="true"
-                  >
-                    &rarr;
-                  </span>
+                  <ArrowRightIcon className="ml-1 h-5 w-5 transition group-hover:translate-x-0.5" />
                 </ToxicA>
                 <div className="flex flex-col items-start justify-start gap-y-4 rounded bg-slate-700/30 px-4 py-4">
                   {openProject.icon}
@@ -143,13 +139,8 @@ export function FromScratchOverview({
                           onSelectedProject(openProject);
                         }}
                       >
-                        <span> Use this example </span>
-                        <span
-                          className="ml-1 transition group-hover:translate-x-0.5"
-                          aria-hidden="true"
-                        >
-                          &rarr;
-                        </span>
+                        <span>Use this example</span>
+                        <ArrowRightIcon className="ml-1 h-5 w-5 transition group-hover:translate-x-0.5" />
                       </ToxicA>
 
                       <Header2 size="regular" className="font-semibold">
