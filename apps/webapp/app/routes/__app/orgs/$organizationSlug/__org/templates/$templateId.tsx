@@ -319,8 +319,8 @@ function DeploySection({
   } else {
     return (
       <div className="max-w-4xl">
-        <div className="relative rounded-lg bg-slate-850 p-4">
-          <div className="absolute inset-2.5 z-0 h-[calc(100%-20px)] w-[calc(100%-20px)] animate-pulse rounded-md bg-gradient-to-r from-indigo-500 to-pink-500 blur-sm"></div>
+        <div className="relative rounded-lg bg-slate-850">
+          <div className="absolute -top-1 right-1 -left-1 bottom-1 z-0 h-[calc(100%+8px)] w-[calc(100%+8px)] animate-pulse rounded-md bg-gradient-to-r from-indigo-500 to-pink-500 blur-sm"></div>
           <WorkflowList
             className="relative z-50 !mb-0"
             workflows={workflows}
