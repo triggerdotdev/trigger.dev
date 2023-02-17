@@ -4,6 +4,7 @@ import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import invariant from "tiny-invariant";
 import CodeBlock from "~/components/code/CodeBlock";
 import { CopyTextButton } from "~/components/CopyTextButton";
+import { OctoKitty } from "~/components/GitHubLoginButton";
 import { WorkflowConnections } from "~/components/integrations/WorkflowConnections";
 import { Panel } from "~/components/layout/Panel";
 import { PanelHeader } from "~/components/layout/PanelHeader";
@@ -101,12 +102,27 @@ export default function Page() {
     <>
       <div className="flex items-baseline justify-between">
         <Title>Overview</Title>
-        <Body className="text-slate-400">
-          <span className="mr-1.5 text-xs tracking-wide text-slate-500">
-            ID
-          </span>
-          {workflow.slug}
-        </Body>
+        <div className="flex items-center gap-4">
+          {workflow.organizationTemplate && (
+            <a
+              href={workflow.organizationTemplate.repositoryUrl}
+              className="flex items-center gap-1 text-sm text-slate-400"
+              target="_blank"
+            >
+              <OctoKitty className="mr-0.5 h-4 w-4" />
+              {workflow.organizationTemplate.repositoryUrl.replace(
+                "https://github.com/",
+                ""
+              )}
+            </a>
+          )}
+          <Body size="small" className="text-slate-400">
+            <span className="mr-1.5 text-xs tracking-wide text-slate-500">
+              ID
+            </span>
+            {workflow.slug}
+          </Body>
+        </div>
       </div>
       {workflow.status === "CREATED" && (
         <>
