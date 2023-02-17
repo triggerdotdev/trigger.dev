@@ -62,11 +62,9 @@
             "packages/internal-pulsar/src/**",
             "./pnpm-lock.yaml"
           ],
-          "dependsOn": [
-            "p-db"
-          ],
+          "dependsOn": ["p-db"],
           "envVariables": {
-            "FROM_EMAIL": "hello@email.trigger.dev",
+            "FROM_EMAIL": "Trigger.dev <hello@email.trigger.dev>",
             "REPLY_TO_EMAIL": "hello@trigger.dev",
             "RESEND_API_KEY": {
               "fromParameterStore": "/Prod/webapp/RESEND_API_KEY"
@@ -259,12 +257,10 @@
             "packages/internal-pulsar/src/**",
             "./pnpm-lock.yaml"
           ],
-          "dependsOn": [
-            "s-db"
-          ],
+          "dependsOn": ["s-db"],
           "envVariables": {
             "APP_ENV": "staging",
-            "FROM_EMAIL": "hello@email.trigger.dev",
+            "FROM_EMAIL": "Trigger.dev <hello@email.trigger.dev>",
             "REPLY_TO_EMAIL": "hello@trigger.dev",
             "RESEND_API_KEY": {
               "fromParameterStore": "/Staging/webapp/RESEND_API_KEY"
