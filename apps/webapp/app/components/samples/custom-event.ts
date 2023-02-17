@@ -3,6 +3,7 @@ export function customEvent(apiKey: string) {
 import { z } from "zod";
 
 new Trigger({
+  //todo: ensure this id is only used for this workflow
   id: "user-created-notify-slack",
   name: "User Created - Notify Slack",
   // For security, we recommend moving this api key to your .env / secrets file. 

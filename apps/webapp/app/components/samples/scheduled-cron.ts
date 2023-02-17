@@ -2,6 +2,7 @@ export function scheduledCron(apiKey: string) {
   return `import { Trigger, scheduleEvent } from "@trigger.dev/sdk";
 
 new Trigger({
+  //todo: ensure this id is only used for this workflow
   id: "cron-scheduled-workflow",
   name: "Cron Scheduled Workflow",
   // For security, we recommend moving this api key to your .env / secrets file. 

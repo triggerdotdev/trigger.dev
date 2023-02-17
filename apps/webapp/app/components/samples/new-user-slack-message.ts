@@ -4,6 +4,7 @@ import { postMessage } from "@trigger.dev/slack";
 import { z } from "zod";
 
 new Trigger({
+  //todo: ensure this id is only used for this workflow
   id: "new-user",
   name: "New user slack message",
   // For security, we recommend moving this api key to your .env / secrets file. 

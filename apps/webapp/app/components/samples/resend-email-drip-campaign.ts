@@ -9,6 +9,7 @@ import { Text } from "@react-email/text";
 import { z } from "zod";
 
 new Trigger({
+  //todo: ensure this id is only used for this workflow
   id: "welcome-email-campaign",
   name: "Welcome email drip campaign",
   // For security, we recommend moving this api key to your .env / secrets file. 

@@ -4,6 +4,7 @@ import * as github from "@trigger.dev/github";
 import * as slack from "@trigger.dev/slack";
 
 new Trigger({
+  //todo: ensure this id is only used for this workflow
   id: "new-github-star-to-slack",
   name: "New GitHub Star: triggerdotdev/trigger.dev",
   // For security, we recommend moving this api key to your .env / secrets file. 

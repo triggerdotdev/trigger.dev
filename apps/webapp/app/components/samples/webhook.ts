@@ -3,6 +3,7 @@ export function webhook(apiKey: string) {
 import { z } from "zod";
 
 new Trigger({
+  //todo: ensure this id is only used for this workflow
   id: "caldotcom-to-slack",
   name: "Cal.com To Slack",
   // For security, we recommend moving this api key to your .env / secrets file. 
