@@ -142,9 +142,7 @@ function OrganizationTemplateReady(loaderData: LoaderData) {
               )}
             </TertiaryA>
           </div>
-          <Panel className="max-w-4xl !p-4">
-            <DeploySection {...loaderData} />
-          </Panel>
+          <DeploySection {...loaderData} />
         </>
       ) : (
         <>
@@ -234,72 +232,87 @@ function DeploySection({
             </div>
           </div>
         </StyledDialog.Dialog>
-        <div className="grid grid-cols-[minmax(0,_1fr)_4rem_minmax(0,_1fr)]">
-          <div className="">
-            <SubTitle className="mb-3 flex items-center">Run locally</SubTitle>
-            <Label className="text-sm text-slate-500">
-              Development API key
-            </Label>
-            <div className="flex items-center justify-between rounded bg-black/20 py-2.5 px-3 text-slate-300">
-              <span className="select-all text-slate-300">
-                {developmentApiKey ?? "missing api key"}
-              </span>
-              <CopyTextButton
-                variant="text"
-                value={developmentApiKey ?? "missing api key"}
-              />
-            </div>
-            <div className="mt-4 flex w-full justify-end">
-              <PrimaryButton onClick={(e) => setIsOpen(true)}>
-                <HomeIcon className="h-5 w-5 text-slate-200" />
+        <Panel className="max-w-4xl !p-4">
+          <div className="grid grid-cols-[minmax(0,_1fr)_4rem_minmax(0,_1fr)]">
+            <div className="">
+              <SubTitle className="mb-3 flex items-center">
                 Run locally
-              </PrimaryButton>
-            </div>
-          </div>
-          <div className="flex flex-col items-center justify-center gap-2">
-            <div className="h-full border-l border-slate-700"></div>
-            <Body size="small" className="uppercase text-slate-500">
-              or
-            </Body>
-            <div className="h-full border-l border-slate-700"></div>
-          </div>
-          <div>
-            <SubTitle className="mb-3 flex items-center">
-              Deploy to
-              <a
-                href="https://render.com"
-                target="_blank"
-                rel="noreferrer"
-                className="ml-1.5 underline decoration-slate-500 underline-offset-2 transition hover:text-white"
-              >
-                Render
-              </a>
-            </SubTitle>
-            <Label className="text-sm text-slate-500">Live API key</Label>
-            <div className="flex items-center justify-between rounded bg-black/20 py-2.5 px-3 text-slate-300">
-              <span className="select-all text-slate-300">
-                {liveApiKey ?? "missing api key"}
-              </span>
-              <CopyTextButton
-                variant="text"
-                value={liveApiKey ?? "missing api key"}
-              />
-            </div>
-            <div className="mt-4 flex w-full items-center justify-end">
-              <a
-                href={`https://render.com/deploy?repo=${organizationTemplate.repositoryUrl}`}
-                target="_blank"
-                rel="noreferrer"
-                className="transition hover:opacity-80"
-              >
-                <img
-                  src="https://render.com/images/deploy-to-render-button.svg"
-                  alt="Deploy to Render"
-                  className="h-[36px]"
+              </SubTitle>
+              <Label className="text-sm text-slate-500">
+                Development API key
+              </Label>
+              <div className="flex items-center justify-between rounded bg-black/20 py-2.5 px-3 text-slate-300">
+                <span className="select-all truncate text-slate-300">
+                  {developmentApiKey ?? "missing api key"}
+                </span>
+                <CopyTextButton
+                  variant="text"
+                  value={developmentApiKey ?? "missing api key"}
                 />
-              </a>
+              </div>
+              <div className="mt-4 flex w-full justify-end">
+                <PrimaryButton onClick={(e) => setIsOpen(true)}>
+                  <HomeIcon className="h-5 w-5 text-slate-200" />
+                  Run locally
+                </PrimaryButton>
+              </div>
+            </div>
+            <div className="flex flex-col items-center justify-center gap-2">
+              <div className="h-full border-l border-slate-700"></div>
+              <Body size="small" className="uppercase text-slate-500">
+                or
+              </Body>
+              <div className="h-full border-l border-slate-700"></div>
+            </div>
+            <div>
+              <SubTitle className="mb-3 flex items-center">
+                Deploy to
+                <a
+                  href="https://render.com"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="ml-1.5 underline decoration-slate-500 underline-offset-2 transition hover:text-white"
+                >
+                  Render
+                </a>
+              </SubTitle>
+              <Label className="text-sm text-slate-500">Live API key</Label>
+              <div className="flex items-center justify-between overflow-hidden rounded bg-black/20 py-2.5 px-3 text-slate-300">
+                <span className="select-all truncate text-slate-300">
+                  {liveApiKey ?? "Missing api key"}
+                </span>
+                <CopyTextButton
+                  variant="text"
+                  value={liveApiKey ?? "Missing api key"}
+                />
+              </div>
+              <div className="mt-4 flex w-full items-center justify-end">
+                <a
+                  href={`https://render.com/deploy?repo=${organizationTemplate.repositoryUrl}`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="transition hover:opacity-80"
+                >
+                  <img
+                    src="https://render.com/images/deploy-to-render-button.svg"
+                    alt="Deploy to Render"
+                    className="h-[36px]"
+                  />
+                </a>
+              </div>
             </div>
           </div>
+        </Panel>
+        <div className="mt-3 flex w-full max-w-4xl items-center justify-between px-4">
+          <div className="flex items-center gap-2">
+            <Spinner />
+            <Body size="small" className="text-slate-500">
+              Waiting for your workflow to connect…
+            </Body>
+          </div>
+          <TertiaryA href="mailto:help@trigger.dev" className="text-xs">
+            Having issues?
+          </TertiaryA>
         </div>
       </>
     );
