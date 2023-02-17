@@ -277,24 +277,29 @@ export default function Step3ExistingRepo1() {
               </SubTitle>
               <Panel className="px-4 py-4">
                 <Body size="regular" className="mb-2 text-slate-400">
-                  If you've put the code in a standalone file (e.g.
-                  <span className="rounded-md bg-[#0F172A] px-2">
-                    src/triggers.ts
-                  </span>
-                  ), then you'll need to import it into into a file that is
-                  being run on your server (e.g.
-                  <span className="rounded-md bg-[#0F172A] px-2">
-                    src/index.ts
-                  </span>
-                  ). You can do that like this:
+                  If you've put the code in a standalone file then you'll need
+                  to import it into a file that is being run on your server
+                  (e.g.
+                  <InlineCode>src/index.ts</InlineCode>
+                  ).
                 </Body>
-                <CodeBlock code={`import "./triggers";`} align="top" />
-                <PrimaryButton
-                  className="mt-2"
-                  onClick={() => dispatch({ type: "code-imported" })}
-                >
-                  Continue
-                </PrimaryButton>
+                <Body size="regular" className="text-slate-400">
+                  You can do that by importing your workflow file into a file
+                  being run by your server, like this:
+                </Body>
+                <CodeBlock
+                  showCopyButton={false}
+                  code={`import "./path/to/your/workflow/file";`}
+                  align="top"
+                />
+                <div className="flex w-full justify-end">
+                  <PrimaryButton
+                    className="mt-2"
+                    onClick={() => dispatch({ type: "code-imported" })}
+                  >
+                    Continue
+                  </PrimaryButton>
+                </div>
               </Panel>
             </>
           </>
