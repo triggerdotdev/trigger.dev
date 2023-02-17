@@ -1,6 +1,6 @@
 import { ArrowLeftIcon } from "@heroicons/react/24/outline";
 import { Link } from "@remix-run/react";
-import { LoaderArgs } from "@remix-run/server-runtime";
+import type { LoaderArgs } from "@remix-run/server-runtime";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import invariant from "tiny-invariant";
 import { TemplateOverview } from "~/components/templates/TemplateOverview";
@@ -23,15 +23,15 @@ export default function TemplateSlugPage() {
   }
 
   return (
-    <div className="mx-auto max-w-7xl">
+    <div className="mx-auto max-w-[1188px]">
       <Link
         to="/templates"
-        className="mb-4 flex w-max items-center justify-start gap-2 text-sm text-slate-500 transition hover:text-slate-300"
+        className="mb-4 -ml-1 flex w-max items-center justify-start gap-2 text-sm text-slate-500 transition hover:text-slate-300"
       >
-        <ArrowLeftIcon className="h-3 w-3 " />
+        <ArrowLeftIcon className="h-3 w-3" />
         Choose a different Template
       </Link>
-      <TemplateOverview template={template} />
+      <TemplateOverview template={template} className="-ml-4" />
     </div>
   );
 }
