@@ -1,4 +1,4 @@
-import type { Session } from "@remix-run/node";
+import { json, Session } from "@remix-run/node";
 import { redirect } from "remix-typedjson";
 import { createCookieSessionStorage } from "@remix-run/node";
 import { env } from "~/env.server";
@@ -24,6 +24,24 @@ export function setSuccessMessage(session: Session, message: string) {
 
 export function setErrorMessage(session: Session, message: string) {
   session.flash("toastMessage", { message, type: "error" } as ToastMessage);
+}
+
+export async function jsonWithSuccessMessage(
+  data: any,
+  request: Request,
+  message: string
+) {
+  const session = await getSession(request.headers.get("cookie"));
+
+  setSuccessMessage(session, message);
+
+  return json(data, {
+    headers: {
+      "Set-Cookie": await commitSession(session, {
+        expires: new Date(Date.now() + ONE_YEAR),
+      }),
+    },
+  });
 }
 
 export async function redirectWithSuccessMessage(

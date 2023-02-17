@@ -5,77 +5,57 @@ import { Preview } from "@react-email/preview";
 import { Section } from "@react-email/section";
 import { Text } from "@react-email/text";
 import * as React from "react";
-import { main, paragraph, anchor, bullets } from "./components/styles";
 import { Footer } from "./components/Footer";
+import {
+  anchor,
+  bullets,
+  footerItalic,
+  main,
+  paragraph,
+} from "./components/styles";
 
 export default function Email({ name }: { name?: string }) {
   return (
     <Html>
       <Head />
-      <Preview>You're now ready to create complex workflows in code!</Preview>
+      <Preview>Power up your workflows</Preview>
       <Section style={main}>
         <Text style={paragraph}>Hey {name ?? "there"},</Text>
+        <Text style={paragraph}>I’m Matt, CEO of Trigger.dev.</Text>
         <Text style={paragraph}>
-          I’m Matt, CEO of{" "}
-          <Link style={anchor} href="https://app.trigger.dev/">
-            Trigger.dev
-          </Link>
-          .
+          Our goal is to give developers like you the ability to effortlessly
+          create powerful workflows in code.
         </Text>
         <Text style={paragraph}>
-          Our goal is to give developers like you the ability to easily create
-          much more powerful workflows, directly from your codebase. Creating
-          complex workflows should be the same as creating any other important
-          part of your product, which is why we created Trigger.dev.
+          We recommend{" "}
+          <Link style={anchor} href="https://app.trigger.dev/templates">
+            getting started with one of our templates
+          </Link>{" "}
+          to get familiar with how Trigger.dev works, and then moving on to
+          create your own workflows.
         </Text>
 
         <Text style={paragraph}>
-          If you’re ready - you can{" "}
-          <Link style={anchor} href="https://app.trigger.dev/">
-            create a new workflow.
-          </Link>{" "}
-        </Text>
-
-        <Text style={paragraph}>Otherwise, please feel free to check out:</Text>
-
-        <Text style={bullets}>
-          • Our{" "}
-          <Link style={anchor} href="https://docs.trigger.dev/getting-started">
-            quickstart guide
-          </Link>{" "}
-          to get you up and running in minutes
-        </Text>
-        {/* 
-        <Text style={bullets}>
-          • Browse our pre-built{" "}
-          <Link style={anchor} href="">
-            workflow templates
-          </Link>{" "}
-          if you want some inspiration.
-        </Text> */}
-
-        <Text style={bullets}>
-          • Explore our{" "}
-          <Link style={anchor} href="https://docs.trigger.dev/">
-            docs
-          </Link>{" "}
-          for a full overview of the product and it’s features{" "}
-        </Text>
-
-        <Text style={bullets}>
-          •{" "}
+          Feel free to reply to me if you have any questions. You can also{" "}
           <Link style={anchor} href="https://cal.com/team/triggerdotdev/call">
-            Schedule a call with us
+            schedule a call
           </Link>{" "}
-          about a workflow idea you have.
+          , or join our{" "}
+          <Link style={anchor} href="https://discord.gg/JtBAxBr2m3">
+            Discord server
+          </Link>{" "}
+          to connect with the community and our team.
         </Text>
 
-        <Text style={paragraph}>
-          Feel free to drop me a message if you have any further questions!
-        </Text>
+        <Text style={paragraph}>We hope you enjoy using Trigger.dev!</Text>
+
         <Text style={bullets}>Best,</Text>
         <Text style={bullets}>Matt</Text>
         <Text style={paragraph}>CEO, Trigger.dev</Text>
+        <Text style={footerItalic}>
+          If you don’t want me to contact you again, please just let me know and
+          I’ll update your preferences.
+        </Text>
         <Footer />
       </Section>
     </Html>

@@ -5,6 +5,10 @@ import { Outlet } from "@remix-run/react";
 import { getOrganizationFromSlug } from "~/models/organization.server";
 import { typedjson } from "remix-typedjson";
 import { getRuntimeEnvironmentFromRequest } from "~/models/runtimeEnvironment.server";
+import {
+  commitCurrentOrgSession,
+  setCurrentOrg,
+} from "~/services/currentOrganization.server";
 import { analytics } from "~/services/analytics.server";
 
 export const loader = async ({ request, params }: LoaderArgs) => {
@@ -34,13 +38,22 @@ export const loader = async ({ request, params }: LoaderArgs) => {
     throw new Response("Not Found", { status: 404 });
   }
 
+  const session = await setCurrentOrg(organization.slug, request);
+
   analytics.environment.identify({ environment: currentEnvironment });
 
-  return typedjson({
-    organization,
-    currentEnvironment,
-    currentEnvironmentSlug,
-  });
+  return typedjson(
+    {
+      organization,
+      currentEnvironment,
+      currentEnvironmentSlug,
+    },
+    {
+      headers: {
+        "Set-Cookie": await commitCurrentOrgSession(session),
+      },
+    }
+  );
 };
 
 export default function Organization() {

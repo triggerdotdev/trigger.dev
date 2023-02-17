@@ -8,7 +8,7 @@ type DialogProps = Parameters<typeof HeadlessDialog>[0] & {
 function Dialog({ onClose, children, ...props }: DialogProps) {
   return (
     <Transition {...props}>
-      <HeadlessDialog as="div" className="relative z-40" onClose={onClose}>
+      <HeadlessDialog as="div" className="relative z-50" onClose={onClose}>
         <Transition.Child
           as={Fragment}
           enter="ease-out duration-300"
@@ -18,7 +18,7 @@ function Dialog({ onClose, children, ...props }: DialogProps) {
           leaveFrom="opacity-100"
           leaveTo="opacity-0"
         >
-          <div className="fixed inset-0 bg-black/50" />
+          <div className="fixed inset-0 bg-black/70" />
         </Transition.Child>
 
         <div className="fixed inset-0 overflow-y-auto">
@@ -44,7 +44,7 @@ function Dialog({ onClose, children, ...props }: DialogProps) {
 type PanelProps = Parameters<typeof HeadlessDialog.Panel>[0];
 const Panel = forwardRef((props: PanelProps, ref) => (
   <HeadlessDialog.Panel
-    className="w-full max-w-xl transform overflow-hidden rounded-md shadow-md bg-slate-800 text-slate-200 p-10 text-left align-middle transition-all"
+    className="w-full max-w-xl transform overflow-hidden rounded-md bg-slate-800 p-10 text-left align-middle text-slate-200 shadow-md transition-all"
     {...props}
     ref={ref}
   />

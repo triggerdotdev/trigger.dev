@@ -1,29 +1,33 @@
 import { EnvelopeIcon } from "@heroicons/react/24/solid";
-import type { LoaderFunction, MetaFunction } from "@remix-run/node";
-import { json, redirect } from "@remix-run/node";
-import { Form, Link, useLoaderData } from "@remix-run/react";
+import type { LoaderArgs, MetaFunction } from "@remix-run/node";
+import { Form, Link } from "@remix-run/react";
+import { redirect, typedjson, useTypedLoaderData } from "remix-typedjson";
 import { GitHubLoginButton } from "~/components/GitHubLoginButton";
 import { LoginPromoPanel } from "~/components/LoginPromoPanel";
 import { LogoSvg } from "~/components/Logo";
+import { TemplatePresenter } from "~/presenters/templatePresenter.server";
+import { getCurrentTemplate } from "~/services/currentTemplate.server";
 import { commitSession, setRedirectTo } from "~/services/redirectTo.server";
 import { getUserId } from "~/services/session.server";
 
-type LoaderData = {
-  redirectTo?: string;
-};
-
-export const loader: LoaderFunction = async ({ request }) => {
+export async function loader({ request }: LoaderArgs) {
   const userId = await getUserId(request);
   if (userId) return redirect("/");
 
   const url = new URL(request.url);
   const redirectTo = url.searchParams.get("redirectTo");
 
+  const templateId = await getCurrentTemplate(request);
+
+  const templateData = templateId
+    ? await new TemplatePresenter().data({ id: templateId })
+    : null;
+
   if (redirectTo) {
     const session = await setRedirectTo(request, redirectTo);
 
-    return json<LoaderData>(
-      { redirectTo },
+    return typedjson(
+      { redirectTo, template: templateData?.template },
       {
         headers: {
           "Set-Cookie": await commitSession(session),
@@ -31,9 +35,9 @@ export const loader: LoaderFunction = async ({ request }) => {
       }
     );
   } else {
-    return json({});
+    return typedjson({ template: templateData?.template, redirectTo: null });
   }
-};
+}
 
 export const meta: MetaFunction = () => {
   return {
@@ -42,10 +46,11 @@ export const meta: MetaFunction = () => {
 };
 
 export default function LoginPage() {
-  const data = useLoaderData<LoaderData>();
+  const data = useTypedLoaderData<typeof loader>();
+
   return (
     <div className="flex h-screen w-screen justify-between overflow-y-scroll bg-slate-900">
-      <LoginPromoPanel />
+      <LoginPromoPanel template={data.template} />
       <div className="flex h-full w-full grow items-center justify-center p-4">
         <div className="flex min-h-[430px] w-full max-w-xl flex-col justify-between rounded-lg bg-slate-850 shadow-md">
           <Form

@@ -24,6 +24,14 @@ export function AppLayout({
   );
 }
 
+export function PublicAppLayout({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="grid h-full w-full grid-rows-[5rem_auto_2rem]">
+      {children}
+    </div>
+  );
+}
+
 export function AppBody({
   children,
   className = "bg-slate-850",

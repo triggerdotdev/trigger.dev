@@ -1,14 +1,15 @@
 export function whatsappListenForMessageAndReply(apiKey: string) {
-return `import { Trigger } from "@trigger.dev/sdk";
+  return `import { Trigger } from "@trigger.dev/sdk";
 import { events, sendReaction, sendText } from "@trigger.dev/whatsapp";
 
 new Trigger({
+  //todo: ensure this id is only used for this workflow
   id: "whatsapp-webhook",
   name: "Listen for WhatsApp messages and reply",
   // For security, we recommend moving this api key to your .env / secrets file. 
   // Our env variable is called TRIGGER_API_KEY
   apiKey: "${apiKey}",
-  //this listens for all WhatsApp messages sent to your WhatsApp Business account
+  //todo you need put in your WhatsApp Business account ID
   on: events.messageEvent({
     accountId: "<your_account_id>",
   }),
@@ -36,4 +37,3 @@ new Trigger({
   },
 }).listen();`;
 }
-

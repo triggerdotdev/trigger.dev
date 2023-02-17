@@ -4,6 +4,7 @@ import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import invariant from "tiny-invariant";
 import CodeBlock from "~/components/code/CodeBlock";
 import { CopyTextButton } from "~/components/CopyTextButton";
+import { OctoKitty } from "~/components/GitHubLoginButton";
 import { WorkflowConnections } from "~/components/integrations/WorkflowConnections";
 import { Panel } from "~/components/layout/Panel";
 import { PanelHeader } from "~/components/layout/PanelHeader";
@@ -16,6 +17,7 @@ import {
 } from "~/components/primitives/Buttons";
 import { Input } from "~/components/primitives/Input";
 import { Body } from "~/components/primitives/text/Body";
+import { Header2 } from "~/components/primitives/text/Headers";
 import { SubTitle } from "~/components/primitives/text/SubTitle";
 import { Title } from "~/components/primitives/text/Title";
 import { RunsTable } from "~/components/runs/RunsTable";
@@ -26,6 +28,7 @@ import { useConnectionSlots } from "~/hooks/useConnectionSlots";
 import { useCurrentEnvironment } from "~/hooks/useEnvironments";
 import { useCurrentOrganization } from "~/hooks/useOrganizations";
 import { useCurrentWorkflow } from "~/hooks/useWorkflows";
+import type { RuntimeEnvironment } from "~/models/runtimeEnvironment.server";
 import { getRuntimeEnvironmentFromRequest } from "~/models/runtimeEnvironment.server";
 import { WorkflowRunListPresenter } from "~/models/workflowRunListPresenter.server";
 import { requireUserId } from "~/services/session.server";
@@ -77,16 +80,49 @@ export default function Page() {
   const apiConnectionCount =
     connectionSlots.services.length + (connectionSlots.source ? 1 : 0);
 
+  //if the workflow isn't connected in this environment, show a warning and help message
+  if (!eventRule) {
+    return (
+      <>
+        <Title>Overview</Title>
+        <PanelWarning
+          className="mb-6"
+          message={`This workflow hasn't been connected in the ${environment.slug} environment yet.`}
+        ></PanelWarning>
+        {environment.slug === "development" ? (
+          <ConnectToDevelopmentInstructions environment={environment} />
+        ) : (
+          <ConnectToLiveInstructions environment={environment} />
+        )}
+      </>
+    );
+  }
+
   return (
     <>
       <div className="flex items-baseline justify-between">
         <Title>Overview</Title>
-        <Body className="text-slate-400">
-          <span className="mr-1.5 text-xs tracking-wide text-slate-500">
-            ID
-          </span>
-          {workflow.slug}
-        </Body>
+        <div className="flex items-center gap-4">
+          {workflow.organizationTemplate && (
+            <a
+              href={workflow.organizationTemplate.repositoryUrl}
+              className="flex items-center gap-1 text-sm text-slate-400"
+              target="_blank"
+            >
+              <OctoKitty className="mr-0.5 h-4 w-4" />
+              {workflow.organizationTemplate.repositoryUrl.replace(
+                "https://github.com/",
+                ""
+              )}
+            </a>
+          )}
+          <Body size="small" className="text-slate-400">
+            <span className="mr-1.5 text-xs tracking-wide text-slate-500">
+              ID
+            </span>
+            {workflow.slug}
+          </Body>
+        </div>
       </div>
       {workflow.status === "CREATED" && (
         <>
@@ -241,6 +277,78 @@ export default function Page() {
           </Panel> */}
         </>
       )}
+    </>
+  );
+}
+
+function ConnectToLiveInstructions({
+  environment,
+}: {
+  environment: RuntimeEnvironment;
+}) {
+  return (
+    <>
+      <Header2>Deploying your workflow to Live</Header2>
+      <div className="mt-4 flex flex-col gap-2">
+        <Body>
+          Deploying your code to a server is different for each hosting
+          provider. We have a quick start guide for{" "}
+          <a
+            href="https://docs.trigger.dev/quickstarts/render"
+            className="underline"
+          >
+            how to do this with Render
+          </a>
+          , but you can use any hosting provider.
+        </Body>
+
+        <Body>
+          When you fill in the environment variables for your server(s) use the
+          following settings:
+        </Body>
+        <div className="flex w-full items-stretch justify-items-stretch gap-2">
+          <div className="flex-grow">
+            <Body className="font-bold">Key</Body>
+            <CodeBlock
+              code="TRIGGER_API_KEY"
+              showLineNumbers={false}
+              align="top"
+            />
+          </div>
+          <div className="flex-grow">
+            <Body className="font-bold">Value</Body>
+            <CodeBlock
+              code={environment.apiKey}
+              showLineNumbers={false}
+              align="top"
+            />
+          </div>
+        </div>
+      </div>
+    </>
+  );
+}
+
+function ConnectToDevelopmentInstructions({
+  environment,
+}: {
+  environment: RuntimeEnvironment;
+}) {
+  return (
+    <>
+      <Header2>Running your workflow locally</Header2>
+      <div className="mt-4 flex flex-col gap-2">
+        <Body>
+          Follow our{" "}
+          <a
+            href="https://docs.trigger.dev/getting-started"
+            className="underline"
+          >
+            quick start guide
+          </a>{" "}
+          for running your workflow locally.
+        </Body>
+      </div>
     </>
   );
 }

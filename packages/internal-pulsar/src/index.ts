@@ -8,4 +8,5 @@ export const Topics = {
   runCommandResponses: `persistent://${TENANT}/${WORKFLOWS_NAMESPACE}/run-command-responses`,
   integrationWorker: `persistent://${TENANT}/${QUEUES_NAMESPACE}/integration-requests`,
   appTaskWorker: `persistent://${TENANT}/${QUEUES_NAMESPACE}/background-tasks`,
+  appEventQueue: `persistent://${TENANT}/${QUEUES_NAMESPACE}/webapp-events`,
 };

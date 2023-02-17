@@ -11,7 +11,7 @@ const variantStyle = {
     "bg-black/10 text-slate-900 rounded px-2 py-1 transition hover:bg-blue-50 active:bg-blue-200 active:text-slate-600 focus-visible:outline-white",
   lightTransparent:
     "bg-white/10 text-white-900 rounded px-2 py-1 transition hover:bg-blue-50 active:bg-blue-200 active:text-slate-600 focus-visible:outline-white",
-  text: "text-sm text-slate-300 transition hover:text-slate-400",
+  text: "text-sm text-slate-400 transition hover:text-slate-300",
 };
 
 export type CopyTextButtonProps = {
