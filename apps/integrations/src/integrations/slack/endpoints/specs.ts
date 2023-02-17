@@ -1,5 +1,5 @@
 import { EndpointSpec, EndpointSpecResponse } from "core/endpoint/types";
-import { schemaFromOpenApiSpecV2 } from "core/schemas/schemaBuilder";
+import { schemaFromOpenApiSpecV2 } from "core/schemas/openApi";
 import { spec } from "./schemas/spec";
 
 const errorResponse: EndpointSpecResponse = {
