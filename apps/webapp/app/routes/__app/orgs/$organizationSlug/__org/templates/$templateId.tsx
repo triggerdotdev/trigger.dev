@@ -129,9 +129,7 @@ function OrganizationTemplateReady(loaderData: LoaderData) {
           <div className="mt-4 mb-2 flex max-w-4xl items-center justify-between">
             <div className="flex items-center">
               <StepNumber active stepNumber="3" />
-              <SubTitle className="mb-0">
-                Your template is ready to deploy
-              </SubTitle>
+              <SubTitle className="mb-0">Your template is ready</SubTitle>
             </div>
             <TertiaryA
               target="_blank"
@@ -155,9 +153,7 @@ function OrganizationTemplateReady(loaderData: LoaderData) {
           <div className="mt-4 mb-2 flex max-w-4xl items-center justify-between">
             <div className="flex items-center">
               <StepNumber active stepNumber="3" />
-              <SubTitle className="mb-0">
-                Your template has been deployed!
-              </SubTitle>
+              <SubTitle className="mb-0">Your workflow has connected!</SubTitle>
             </div>
             <TertiaryA
               target="_blank"
@@ -240,9 +236,7 @@ function DeploySection({
         </StyledDialog.Dialog>
         <div className="grid grid-cols-[minmax(0,_1fr)_4rem_minmax(0,_1fr)]">
           <div className="">
-            <SubTitle className="mb-3 flex items-center">
-              Deploy locally
-            </SubTitle>
+            <SubTitle className="mb-3 flex items-center">Run locally</SubTitle>
             <Label className="text-sm text-slate-500">
               Development API key
             </Label>
@@ -470,7 +464,7 @@ export function DeployBlankState() {
     <div className="mt-6">
       <SubTitle className="flex items-center">
         <StepNumber stepNumber="3" />
-        Deploy
+        Run your workflow
       </SubTitle>
       <Panel className="flex h-56 w-full max-w-4xl items-center justify-center gap-6">
         <FolderIcon className="h-10 w-10 text-slate-600" />
