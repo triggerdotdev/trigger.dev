@@ -10,11 +10,13 @@ new Trigger({
   // Our env variable is called TRIGGER_API_KEY
   apiKey: "${apiKey}",
   on: github.events.issueEvent({
+    //todo set your repo here
     repo: "my-github-org/my-github-repo",
   }),
-
   run: async (event, ctx) => {
+    //we post a Slack message
     const response = await slack.postMessage("send-to-slack", {
+      //todo set your Slack channel name here
       channelName: "my-slack-channel-name",
       text: \`A new issue has been created or modified. \${event.action}\`,
     });
