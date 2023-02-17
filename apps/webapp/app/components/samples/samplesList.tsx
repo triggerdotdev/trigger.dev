@@ -1,17 +1,14 @@
 import {
   StarIcon,
-  EnvelopeIcon,
   ShoppingCartIcon,
   ChatBubbleOvalLeftEllipsisIcon,
   UserIcon,
   DocumentTextIcon,
-  CubeTransparentIcon,
 } from "@heroicons/react/24/outline";
 import { customEvent } from "./custom-event";
 import { githubIssues } from "./github-issues";
 import { githubStars } from "./github-stars";
 import { newUserSlackMessage } from "./new-user-slack-message";
-import { resendEmailDripCampaign } from "./resend-email-drip-campaign";
 import { shopifyCreateNewProducts } from "./shopify-create-new-product";
 import { webhook } from "./webhook";
 import { scheduled } from "./scheduled";
@@ -40,18 +37,6 @@ export const allExamples: ExampleProject[] = [
       "This workflow is triggered when a GitHub user adds a star to a repository. The user's details will then be posted in a specific Slack channel.",
     requiredPackages: "@trigger.dev/sdk @trigger.dev/github @trigger.dev/slack",
     code: githubStars,
-    type: "example",
-  },
-  {
-    icon: <EnvelopeIcon className="h-8 w-8 text-blue-400" />,
-    name: "New user → email",
-    title:
-      "When a new user signs up, post a message to Slack and send them a series of emails",
-    description:
-      "This workflow is triggered when a new user signs up. A welcome email is sent straight away and an alert is sent to a specific Slack channel. 1 day later it checks if the user has completed the onboarding, if they have, they get a ‘tips’ email, otherwise they get a re-engagement email.",
-    requiredPackages:
-      "@trigger.dev/sdk @trigger.dev/resend @trigger.dev/slack zod @react-email/html @react-email/preview @react-email/section @react-email/text",
-    code: resendEmailDripCampaign,
     type: "example",
   },
   {
