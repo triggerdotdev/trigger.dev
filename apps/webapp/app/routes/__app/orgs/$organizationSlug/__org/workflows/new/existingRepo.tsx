@@ -1,10 +1,9 @@
-import {
-  CheckCircleIcon,
-  ExclamationTriangleIcon,
-} from "@heroicons/react/24/outline";
+import { ExclamationTriangleIcon } from "@heroicons/react/24/outline";
+import { CheckCircleIcon } from "@heroicons/react/24/solid";
 import type { ActionArgs, LoaderArgs } from "@remix-run/server-runtime";
 import classNames from "classnames";
-import { Dispatch, Reducer, useReducer } from "react";
+import type { Dispatch, Reducer } from "react";
+import { useReducer } from "react";
 import { typedjson, useTypedFetcher } from "remix-typedjson";
 import invariant from "tiny-invariant";
 import CodeBlock from "~/components/code/CodeBlock";
@@ -22,10 +21,7 @@ import {
 import { Spinner } from "~/components/primitives/Spinner";
 import { Body } from "~/components/primitives/text/Body";
 import { SubTitle } from "~/components/primitives/text/SubTitle";
-import {
-  ExampleProject,
-  exampleProjects,
-} from "~/components/samples/samplesList";
+import type { ExampleProject } from "~/components/samples/samplesList";
 import {
   ExampleOverview,
   FromScratchOverview,
@@ -480,10 +476,9 @@ function CheckForWorkflows() {
         <div>
           <div className="flex items-center justify-between rounded bg-slate-850 p-3 pl-5">
             <div className="flex items-center gap-2">
-              <CheckCircleIcon className="h-5 w-5 text-green-400" />
-              <Body size="regular" className="font-semibold text-slate-300">
-                Great, "{fetchWorkflowCount.data.newWorkflow?.title}" is
-                connected!
+              <CheckCircleIcon className="h-6 w-6 text-green-400" />
+              <Body size="regular" className="text-slate-300">
+                "{fetchWorkflowCount.data.newWorkflow?.title}" has connected!
               </Body>
             </div>
             <PrimaryLink
