@@ -10,11 +10,19 @@ new Trigger({
   apiKey: "${apiKey}",
   on: customEvent({
     name: "user.created",
+    //todo define the schema for the events you want to receive
+    //this example accepts JSON like this: { id: "123", admin: false }
+    //you can use z.any() to accept any data, but you won't get payload validation or type inference in run()
     schema: z.object({ id: z.string(), admin: z.boolean() }),
+    //todo define or remove the filter
+    //filters are optional, but can be used to filter out events
+    //this example stops the run function firing when data.admin === true
     filter: {
       admin: [false],
     },
   }),
-  run: async (event, ctx) => {},
+  run: async (event, ctx) => {
+    //insert your code here
+  },
 }).listen();`;
 }

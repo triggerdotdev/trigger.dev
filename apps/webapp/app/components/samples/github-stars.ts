@@ -10,10 +10,13 @@ new Trigger({
   // Our env variable is called TRIGGER_API_KEY
   apiKey: "${apiKey}",
   on: github.events.newStarEvent({
+    //todo set your repo here
     repo: "triggerdotdev/trigger.dev",
   }),
   run: async (event) => {
+    //we post a Slack message
     await slack.postMessage("github-stars", {
+      //todo set your Slack channel name here
       channelName: "github-stars",
       text: \`New GitHub star from \n<\${event.sender.html_url}|\${event.sender.login}>\`,
     });

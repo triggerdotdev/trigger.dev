@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import Prism from "prismjs";
 import "prismjs/components/prism-typescript";
+import "prismjs/components/prism-jsx";
+import "prismjs/components/prism-tsx";
 import "prismjs/components/prism-json";
 import "prismjs/components/prism-bash";
 import "prismjs/plugins/line-numbers/prism-line-numbers";
@@ -12,7 +14,7 @@ Prism.manual = true;
 
 type CodeBlockProps = {
   code: string;
-  language?: "typescript" | "json" | "bash";
+  language?: "typescript" | "json" | "bash" | "tsx";
   showCopyButton?: boolean;
   align?: "top" | "center";
   maxHeight?: string;
@@ -53,10 +55,7 @@ export default function CodeBlock({
         className={classNames(showLineNumbers && `line-numbers`)}
         ref={codeRef}
       >
-        <code
-          className={`language-${language}`}
-          dangerouslySetInnerHTML={{ __html: code }}
-        ></code>
+        <code className={`language-${language}`}>{code}</code>
       </pre>
       {showCopyButton === true && (
         <CopyTextButton

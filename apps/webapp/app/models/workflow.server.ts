@@ -55,6 +55,11 @@ export function getWorkflowFromSlugs({
           environmentId: true,
         },
       },
+      organizationTemplate: {
+        select: {
+          repositoryUrl: true,
+        },
+      },
     },
     where: {
       slug: workflowSlug,

@@ -22,7 +22,7 @@ new Trigger({
 
     //send a message to the #new-users Slack channel with user details
     const response = await postMessage("send-to-slack", {
-      channel: "new-users",
+      channelName: "new-users",
       text: \`New user: \${event.name} (\${event.email}) signed up. \${
         event.paidPlan ? "They are paying" : "They are on the free plan"
       }.\`,

@@ -23,6 +23,7 @@ import { Body } from "../primitives/text/Body";
 import { Header1 } from "../primitives/text/Headers";
 import invariant from "tiny-invariant";
 import { CopyText } from "../CopyText";
+import { useCurrentEnvironment } from "~/hooks/useEnvironments";
 
 export function SideMenuContainer({ children }: { children: React.ReactNode }) {
   return <div className="grid h-full grid-cols-[300px_2fr]">{children}</div>;
@@ -81,27 +82,46 @@ export function OrganizationsSideMenu() {
 export function WorkflowsSideMenu() {
   const currentWorkflow = useCurrentWorkflow();
   const organization = useCurrentOrganization();
+  const environment = useCurrentEnvironment();
 
-  if (currentWorkflow === undefined || organization === undefined) {
+  if (
+    currentWorkflow === undefined ||
+    organization === undefined ||
+    environment === undefined
+  ) {
     return null;
   }
 
-  const items: SideMenuItem[] = [
+  const workflowEventRule = currentWorkflow.rules.find(
+    (rule) => rule.environmentId === environment.id
+  );
+
+  let items: SideMenuItem[] = [
     {
       name: "Overview",
       icon: <ArrowsRightLeftIcon className={iconStyle} />,
       to: ``,
     },
-    {
-      name: "Test",
-      icon: <BeakerIcon className={iconStyle} />,
-      to: `test`,
-    },
-    {
-      name: "Runs",
-      icon: <ForwardIcon className={iconStyle} />,
-      to: `runs`,
-    },
+  ];
+
+  if (workflowEventRule) {
+    items = [
+      ...items,
+      {
+        name: "Test",
+        icon: <BeakerIcon className={iconStyle} />,
+        to: `test`,
+      },
+      {
+        name: "Runs",
+        icon: <ForwardIcon className={iconStyle} />,
+        to: `runs`,
+      },
+    ];
+  }
+
+  items = [
+    ...items,
     {
       name: "Connected APIs",
       icon: <Squares2X2Icon className={iconStyle} />,

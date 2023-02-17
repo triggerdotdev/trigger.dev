@@ -13,3 +13,5 @@ export { commandCatalog, commandResponseCatalog, triggerCatalog };
 export * from "./zodPublisher";
 export * from "./zodSubscriber";
 export * from "./zodPubSub";
+export * from "./zodEventSubscriber";
+export * from "./zodEventPublisher";

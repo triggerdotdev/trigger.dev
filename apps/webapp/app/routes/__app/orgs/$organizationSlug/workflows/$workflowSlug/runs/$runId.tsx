@@ -783,7 +783,7 @@ function IntegrationRequestStep({
             <div className="mb-2 mt-3 flex gap-2 ">
               <ExclamationTriangleIcon className="h-5 w-5 text-rose-500" />
               <Body size="small" className="text-rose-500">
-                Failed with error:
+                {request.service.integration.name} responded with error:
               </Body>
             </div>
             <CodeBlock

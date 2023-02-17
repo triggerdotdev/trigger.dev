@@ -17,6 +17,7 @@ module.exports = {
       colors: {
         brandblue: colors.blue[500],
         brandred: colors.red[500],
+       
       },
     },
   },

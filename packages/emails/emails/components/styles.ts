@@ -85,6 +85,15 @@ export const footer = {
   lineHeight: "16px",
 };
 
+export const footerItalic = {
+  color: "#8898aa",
+  fontStyle: "italic",
+  fontFamily:
+    '-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Ubuntu,sans-serif',
+  fontSize: "12px",
+  lineHeight: "16px",
+};
+
 export const footerAnchor = {
   color: "#2754C5",
   fontFamily:
