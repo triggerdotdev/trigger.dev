@@ -184,7 +184,7 @@ export default function Step3ExistingRepo1() {
                 Choose an example
               </SubTitle>
               <Panel className="px-4 py-4">
-                <SubTitle>Browse examples to use as a starting point.</SubTitle>
+                <SubTitle>Browse examples to use as a starting point</SubTitle>
                 <div className="grid grid-cols-4 gap-2">
                   <ExampleOverview
                     onSelectedProject={(project) =>
