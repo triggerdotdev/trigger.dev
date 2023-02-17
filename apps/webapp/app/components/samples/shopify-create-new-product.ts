@@ -9,6 +9,9 @@ new Trigger({
   // For security, we recommend moving this api key to your .env / secrets file. 
   // Our env variable is called TRIGGER_API_KEY
   apiKey: "${apiKey}",
+  //todo define the schema for the events you want to receive
+  //this example accepts an empty JSON object: {}
+  //you can use z.any() to accept any JSON, but you won't get nice types in the run function
   on: customEvent({
     name: "shopify.products",
     schema: z.object({}),
