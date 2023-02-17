@@ -6,9 +6,12 @@ import fs from "node:fs/promises";
 import tar from "tar";
 import path from "node:path";
 import os from "node:os";
+import { RefreshAppAuthorizationService } from "./refreshAppAuthorization.server";
 
 export class GithubRepositoryCreated {
   #prismaClient: PrismaClient;
+  #refreshAppAuthorizationService: RefreshAppAuthorizationService =
+    new RefreshAppAuthorizationService();
 
   constructor(prismaClient: PrismaClient = prisma) {
     this.#prismaClient = prismaClient;
@@ -30,10 +33,17 @@ export class GithubRepositoryCreated {
       return;
     }
 
-    const octokit = await getOauthOctokitRest(
-      organizationTemplate.authorization.token,
-      organizationTemplate.authorization.refreshToken
+    const appAuthorization = await this.#refreshAppAuthorizationService.call(
+      organizationTemplate.authorization
     );
+
+    const octokit = await getOauthOctokitRest({
+      token: appAuthorization.token,
+      refreshToken: appAuthorization.refreshToken,
+      expiresAt: appAuthorization.tokenExpiresAt.toISOString(),
+      refreshTokenExpiresAt:
+        appAuthorization.refreshTokenExpiresAt.toISOString(),
+    });
 
     const sourceRepositoryUrl = new URL(
       organizationTemplate.template.repositoryUrl
@@ -106,9 +116,12 @@ export class GithubRepositoryCreated {
 
       if (relativePath === "README.md") {
         // Replace all occurrences of the template repository url with the new repository url
-        const readmeContent = entry.fileContents.replace(
-          new RegExp(organizationTemplate.template.repositoryUrl, "g"),
-          organizationTemplate.repositoryUrl
+        const readmeContent = replaceReadmeContents(
+          organizationTemplate.repositoryUrl,
+          organizationTemplate.template.repositoryUrl,
+          organizationTemplate.name,
+          organizationTemplate.template.slug,
+          entry.fileContents
         );
 
         return {
@@ -210,4 +223,22 @@ async function readDirectoryRecursively(
   }
 
   return result;
+}
+
+function replaceReadmeContents(
+  finalRepoUrl: string,
+  templateRepoUrl: string,
+  finalRepoName: string,
+  templateRepoName: string,
+  readme: string
+) {
+  // Replace all instances (not just the first) of the templateRepoUrl with the finalRepoUrl
+  const finalRepoUrlRegex = new RegExp(templateRepoUrl, "g");
+  let finalDocs = readme.replace(finalRepoUrlRegex, finalRepoUrl);
+
+  // Replace all instances (not just the first) of the templateRepoName with the finalRepoName
+  const finalRepoNameRegex = new RegExp(`cd ${templateRepoName}`, "g");
+  finalDocs = finalDocs.replace(finalRepoNameRegex, `cd ${finalRepoName}`);
+
+  return finalDocs;
 }

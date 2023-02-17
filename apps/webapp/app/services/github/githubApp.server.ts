@@ -1,15 +1,14 @@
-import { Webhooks, EmitterWebhookEvent } from "@octokit/webhooks";
-import { Octokit } from "@octokit/rest";
 import { createAppAuth } from "@octokit/auth-app";
-import { OAuthApp } from "@octokit/oauth-app";
-import { createOAuthUserAuth } from "@octokit/auth-oauth-user";
 import { createUnauthenticatedAuth } from "@octokit/auth-unauthenticated";
-import { env } from "~/env.server";
+import { OAuthApp } from "@octokit/oauth-app";
 import { Options } from "@octokit/oauth-app/dist-types/types";
-import type { Endpoints } from "@octokit/types";
-import { z } from "zod";
-import { taskQueue } from "../messageBroker.server";
 import { RequestError } from "@octokit/request-error";
+import { Octokit } from "@octokit/rest";
+import type { Endpoints } from "@octokit/types";
+import { EmitterWebhookEvent, Webhooks } from "@octokit/webhooks";
+import { z } from "zod";
+import { env } from "~/env.server";
+import { taskQueue } from "../messageBroker.server";
 
 export const octokit = env.GITHUB_APP_PRIVATE_KEY
   ? new Octokit({
@@ -59,6 +58,7 @@ function createOauthApp() {
     clientId: env.GITHUB_APP_CLIENT_ID,
     clientSecret: env.GITHUB_APP_CLIENT_SECRET,
     clientType: "github-app",
+    Octokit: Octokit,
   });
 
   global.__github_oauth_app__.on("token", async (event) => {});
@@ -239,7 +239,7 @@ type CreateOrgRepositoryEndpoint = Endpoints["POST /orgs/{org}/repos"];
 
 export async function createOrgRepository(
   parameters: CreateOrgRepositoryEndpoint["parameters"],
-  { token, refreshToken }: { token: string; refreshToken: string }
+  options: ExistingGitHubAppExpiringTokenOptions
 ): Promise<
   | {
       status: "success";
@@ -251,7 +251,7 @@ export async function createOrgRepository(
     return { status: "error", message: "Octokit not initialized" };
   }
 
-  const kit = await getOauthOctokit(token, refreshToken);
+  const kit = await getOauthOctokit(options);
 
   try {
     const response = await kit.request("POST /orgs/{org}/repos", parameters);
@@ -270,7 +270,7 @@ type CreateUserRepositoryEndpoint = Endpoints["POST /user/repos"];
 
 export async function createUserRepository(
   parameters: CreateUserRepositoryEndpoint["parameters"],
-  { token, refreshToken }: { token: string; refreshToken: string }
+  options: ExistingGitHubAppExpiringTokenOptions
 ): Promise<
   | {
       status: "success";
@@ -282,7 +282,7 @@ export async function createUserRepository(
     return { status: "error", message: "Octokit not initialized" };
   }
 
-  const kit = await getOauthOctokit(token, refreshToken);
+  const kit = await getOauthOctokit(options);
   try {
     const response = await kit.request("POST /user/repos", parameters);
 
@@ -302,26 +302,31 @@ export async function getOctokitRest(installationId: number) {
   return installationKit.rest;
 }
 
-export async function getOauthOctokitRest(token: string, refreshToken: string) {
-  const oauthKit = await getOauthOctokit(token, refreshToken);
+export async function getOauthOctokitRest(
+  options: ExistingGitHubAppExpiringTokenOptions
+) {
+  const oauthKit = await getOauthOctokit(options);
 
   return oauthKit.rest;
 }
 
+export type ExistingGitHubAppExpiringTokenOptions = {
+  token: string;
+  refreshToken: string;
+  expiresAt: string;
+  refreshTokenExpiresAt: string;
+};
+
+// WARNING: If tokens are refreshed using this method, the new tokens will not be stored in the db and stuff will break!
 async function getOauthOctokit(
-  token: string,
-  refreshToken?: string
+  options: ExistingGitHubAppExpiringTokenOptions
 ): Promise<Octokit> {
-  return new Octokit({
-    authStrategy: createOAuthUserAuth,
-    auth: {
-      clientId: env.GITHUB_APP_CLIENT_ID,
-      clientSecret: env.GITHUB_APP_CLIENT_SECRET,
-      clientType: "oauth-app",
-      token,
-      refreshToken,
-    },
-  });
+  const userOctokit = global.__github_oauth_app__!.getUserOctokit(
+    // @ts-ignore
+    options
+  ) as Promise<Octokit>;
+
+  return userOctokit;
 }
 
 async function getOctokit(installationId: number): Promise<Octokit> {

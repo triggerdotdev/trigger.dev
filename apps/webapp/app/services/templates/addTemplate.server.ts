@@ -7,6 +7,7 @@ import {
   createOrgRepository,
   createUserRepository,
 } from "../github/githubApp.server";
+import { RefreshAppAuthorizationService } from "../github/refreshAppAuthorization.server";
 
 const FormSchema = z.object({
   name: z.string().min(3).max(100),
@@ -17,6 +18,8 @@ const FormSchema = z.object({
 
 export class AddTemplateService {
   #prismaClient: PrismaClient;
+  #refreshAppAuthorizationService: RefreshAppAuthorizationService =
+    new RefreshAppAuthorizationService();
 
   constructor(prismaClient: PrismaClient = prisma) {
     this.#prismaClient = prismaClient;
@@ -49,6 +52,9 @@ export class AddTemplateService {
       };
     }
 
+    const refreshedAppAuthorization =
+      await this.#refreshAppAuthorizationService.call(appAuthorization);
+
     const template = await this.#prismaClient.template.findUnique({
       where: {
         id: data.templateId,
@@ -62,7 +68,7 @@ export class AddTemplateService {
       };
     }
 
-    const account = AccountSchema.safeParse(appAuthorization.account);
+    const account = AccountSchema.safeParse(refreshedAppAuthorization.account);
 
     if (!account.success) {
       return {
@@ -72,7 +78,7 @@ export class AddTemplateService {
     }
 
     const createdGithubRepo = await this.#createGitHubRepository(
-      appAuthorization,
+      refreshedAppAuthorization,
       data
     );
 
@@ -132,6 +138,9 @@ export class AddTemplateService {
         {
           token: authorization.token,
           refreshToken: authorization.refreshToken,
+          expiresAt: authorization.tokenExpiresAt.toISOString(),
+          refreshTokenExpiresAt:
+            authorization.refreshTokenExpiresAt.toISOString(),
         }
       );
     } else {
@@ -145,6 +154,9 @@ export class AddTemplateService {
         {
           token: authorization.token,
           refreshToken: authorization.refreshToken,
+          expiresAt: authorization.tokenExpiresAt.toISOString(),
+          refreshTokenExpiresAt:
+            authorization.refreshTokenExpiresAt.toISOString(),
         }
       );
     }
