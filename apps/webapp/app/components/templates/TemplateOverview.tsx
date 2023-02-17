@@ -1,3 +1,4 @@
+import { ArrowRightIcon } from "@heroicons/react/20/solid";
 import classNames from "classnames";
 import type { TemplateListItem } from "~/presenters/templateListPresenter.server";
 import { ApiLogoIcon } from "../code/ApiLogoIcon";
@@ -45,19 +46,14 @@ function TemplateDetails({
 }) {
   const { title, description, repositoryUrl, id } = template;
   return (
-    <div className={classNames(className, "flex flex-col gap-y-3 ")}>
+    <div className={classNames(className, "flex flex-col gap-y-3")}>
       <ToxicLink
         size="large"
         className="group flex h-12 min-w-full"
         to={`../../templates/add?templateId=${id}`}
       >
         <span> Use this template </span>
-        <span
-          className="ml-1 transition group-hover:translate-x-0.5"
-          aria-hidden="true"
-        >
-          &rarr;
-        </span>
+        <ArrowRightIcon className="ml-1 h-5 w-5 transition group-hover:translate-x-0.5" />
       </ToxicLink>
       <Header2 size="regular" className="mt-4 font-semibold">
         {title}

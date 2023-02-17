@@ -3,7 +3,7 @@ import { Container } from "~/components/layout/Container";
 
 export default function TemplatesLayout() {
   return (
-    <Container className="mx-auto mt-4 flex w-full max-w-6xl flex-col lg:mt-6">
+    <Container>
       <Outlet />
     </Container>
   );

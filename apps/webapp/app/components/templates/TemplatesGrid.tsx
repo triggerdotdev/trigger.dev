@@ -1,7 +1,7 @@
 import { XCircleIcon } from "@heroicons/react/24/solid";
 import { Link } from "@remix-run/react";
 import { Fragment, useState } from "react";
-import { TemplateListItem } from "~/presenters/templateListPresenter.server";
+import type { TemplateListItem } from "~/presenters/templateListPresenter.server";
 import { ApiLogoIcon } from "../code/ApiLogoIcon";
 import { StyledDialog } from "../primitives/Dialog";
 import { Body } from "../primitives/text/Body";
@@ -95,7 +95,7 @@ function TemplateButtonOrLink({
   children: React.ReactNode;
 }) {
   const classNames =
-    "group flex h-full w-full flex-col overflow-hidden rounded-md border border-slate-700 bg-slate-800 text-left text-sm text-slate-200 shadow-md transition hover:cursor-pointer hover:border-slate-500 hover:bg-slate-700/30 disabled:opacity-50";
+    "group flex w-full flex-col self-stretch overflow-hidden rounded-md border border-slate-700 bg-slate-800 text-left text-slate-200 shadow-md transition hover:cursor-pointer hover:border-slate-500 hover:bg-slate-700/30 disabled:opacity-50";
 
   if (openInNewPage) {
     return (
@@ -109,7 +109,7 @@ function TemplateButtonOrLink({
         key={template.title}
         type="button"
         onClick={onClick}
-        className="group flex h-full w-full flex-col overflow-hidden rounded-md border border-slate-700 bg-slate-800 text-left text-sm text-slate-200 shadow-md transition hover:cursor-pointer hover:border-slate-500 hover:bg-slate-700/30 disabled:opacity-50"
+        className="group flex w-full flex-col self-stretch overflow-hidden rounded-md border border-slate-700 bg-slate-800 text-left text-slate-200 shadow-md transition hover:cursor-pointer hover:border-slate-500 hover:bg-slate-700/30 disabled:opacity-50"
       >
         {children}
       </button>

@@ -23,7 +23,7 @@ export default function TemplateSlugPage() {
   }
 
   return (
-    <>
+    <div className="mx-auto max-w-7xl">
       <Link
         to="/templates"
         className="mb-4 flex w-max items-center justify-start gap-2 text-sm text-slate-500 transition hover:text-slate-300"
@@ -32,6 +32,6 @@ export default function TemplateSlugPage() {
         Choose a different Template
       </Link>
       <TemplateOverview template={template} />
-    </>
+    </div>
   );
 }
