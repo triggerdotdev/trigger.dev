@@ -91,8 +91,6 @@ export default function AddTemplatePage() {
   const actionData = useTypedActionData<typeof action>();
   const transition = useTransition();
 
-  console.log("transition data", transition);
-
   const isSubmittingOrLoading =
     (transition.state === "submitting" &&
       transition.type === "actionSubmission") ||
