@@ -55,12 +55,7 @@ export function ExampleOverview({
                   <span>Use this example</span>
                   <ArrowRightIcon className="ml-1 h-5 w-5 transition group-hover:translate-x-0.5" />
                 </ToxicA>
-                <div className="flex flex-col items-start justify-start gap-y-4 rounded bg-slate-700/30 px-4 py-4">
-                  {openProject.icon}
-                  <Header2 size="regular" className="font-semibold">
-                    {openProject.name}
-                  </Header2>
-                </div>
+                {openProject.icon}
                 <Header2
                   size="regular"
                   className="text-left font-semibold text-slate-300"
