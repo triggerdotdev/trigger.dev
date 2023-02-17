@@ -492,6 +492,7 @@ importers:
     specifiers:
       '@trigger.dev/airtable': workspace:*
       '@trigger.dev/sdk': workspace:*
+      '@trigger.dev/slack': workspace:*
       '@trigger.dev/tsconfig': workspace:*
       '@types/node': '16'
       jsx-slack: ^5.3.0
@@ -500,6 +501,7 @@ importers:
     dependencies:
       '@trigger.dev/airtable': link:../../generated-integrations/airtable
       '@trigger.dev/sdk': link:../../packages/trigger-sdk
+      '@trigger.dev/slack': link:../../integrations/slack
       jsx-slack: 5.3.0
       zod: 3.20.2
     devDependencies:
