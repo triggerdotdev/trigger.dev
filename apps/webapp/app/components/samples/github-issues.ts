@@ -4,8 +4,9 @@ import * as github from "@trigger.dev/github";
 import * as slack from "@trigger.dev/slack";
 
 new Trigger({
+  //todo: ensure this id is only used for this workflow
   id: "github-issues-to-slack",
-  name: "Posts to Slack when GitHub Issue created or modified",
+  name: "Posts to Slack when a GitHub Issue created or modified",
   // For security, we recommend moving this api key to your .env / secrets file. 
   // Our env variable is called TRIGGER_API_KEY
   apiKey: "${apiKey}",

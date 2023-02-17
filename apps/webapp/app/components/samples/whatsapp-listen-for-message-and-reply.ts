@@ -3,6 +3,7 @@ export function whatsappListenForMessageAndReply(apiKey: string) {
 import { events, sendReaction, sendText } from "@trigger.dev/whatsapp";
 
 new Trigger({
+  //todo: ensure this id is only used for this workflow
   id: "whatsapp-webhook",
   name: "Listen for WhatsApp messages and reply",
   // For security, we recommend moving this api key to your .env / secrets file. 

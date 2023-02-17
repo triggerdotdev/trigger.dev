@@ -4,6 +4,7 @@ import { z } from "zod";
 import * as shopify from "@trigger.dev/shopify";
 
 new Trigger({
+  //todo: ensure this id is only used for this workflow
   id: "shopify-products",
   name: "Shopify products",
   // For security, we recommend moving this api key to your .env / secrets file. 
