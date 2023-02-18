@@ -158,4 +158,33 @@ describe("airtable.endpoints", async () => {
     expect(data.body).not.toBeNull();
     stopNock(nockDone);
   });
+
+  test("updateRecord", async () => {
+    const accessToken = authToken();
+
+    const nockDone = await startNock("airtable.updateRecord");
+    const data = await endpoints.updateRecord.request({
+      parameters: {
+        baseId: "appBlf3KsalIQeMUo",
+        tableIdOrName: "tblvXn2TOeVPC9c6m",
+        recordId: "recHcnB1MbBr9Rd2P",
+      },
+      body: {
+        fields: {
+          Employee: "John Doe II",
+        },
+      },
+      credentials: {
+        type: "oauth2",
+        name: "oauth",
+        accessToken,
+        scopes: ["data.records:write"],
+      },
+    });
+
+    expect(data.status).toEqual(200);
+    expect(data.success).toEqual(true);
+    expect(data.body).not.toBeNull();
+    stopNock(nockDone);
+  });
 });

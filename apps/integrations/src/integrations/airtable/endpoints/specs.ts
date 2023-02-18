@@ -213,7 +213,7 @@ export const updateRecords: EndpointSpec = {
     },
     externalDocs: {
       description: "API method documentation",
-      url: "https://airtable.com/developers/web/api/get-record",
+      url: "https://airtable.com/developers/web/api/update-multiple-records",
     },
     tags: ["records"],
   },
@@ -312,6 +312,68 @@ export const updateRecords: EndpointSpec = {
             },
           }),
         ]),
+      },
+    ],
+    default: [errorResponse],
+  },
+};
+
+export const updateRecord: EndpointSpec = {
+  path: "/{baseId}/{tableIdOrName}/{recordId}",
+  method: "PATCH",
+  metadata: {
+    name: "updateRecord",
+    description: `Updates a single record.`,
+    displayProperties: {
+      title:
+        "Update record ${parameters.recordId} for table ${parameters.tableIdOrName}",
+    },
+    externalDocs: {
+      description: "API method documentation",
+      url: "https://airtable.com/developers/web/api/update-record",
+    },
+    tags: ["records"],
+  },
+  security: {
+    oauth: ["data.records:write"],
+  },
+  parameters: [BaseIdParam, TableIdOrNameParam, RecordIdParam],
+  request: {
+    headers: {
+      "Content-Type": "application/json; charset=utf-8",
+    },
+    body: {
+      schema: makeObjectSchema("Update record body", {
+        optionalProperties: {
+          typecast: makeBooleanSchema(
+            "If set to true, Airtable will try to convert string values into the appropriate cell value. This conversion is only performed on a best-effort basis. To ensure your data's integrity, this should only be used when necessary. Defaults to false when unset."
+          ),
+        },
+        requiredProperties: {
+          fields: makeObjectSchema("Fields", {
+            additionalProperties: FieldSchema,
+          }),
+        },
+      }),
+    },
+  },
+  responses: {
+    200: [
+      {
+        success: true,
+        name: "Success",
+        description: "Typical success response",
+        schema: makeObjectSchema("Update record success body", {
+          requiredProperties: {
+            id: makeStringSchema("Record ID"),
+            createdTime: makeStringSchema(
+              `A date timestamp in the ISO format, eg:"2018-01-01T00:00:00.000Z"`
+            ),
+            fields: makeObjectSchema("Fields", {
+              additionalProperties: FieldSchema,
+            }),
+          },
+        }),
       },
     ],
     default: [errorResponse],

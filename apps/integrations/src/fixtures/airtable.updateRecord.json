@@ -1,0 +1,83 @@
+[
+    {
+        "scope": "https://api.airtable.com:443",
+        "method": "PATCH",
+        "path": "/v0/appBlf3KsalIQeMUo/tblvXn2TOeVPC9c6m/recHcnB1MbBr9Rd2P",
+        "body": {
+            "fields": {
+                "Employee": "John Doe II"
+            }
+        },
+        "status": 200,
+        "response": {
+            "id": "recHcnB1MbBr9Rd2P",
+            "createdTime": "2023-01-03T12:05:53.000Z",
+            "fields": {
+                "Employee": "John Doe II",
+                "Phone": "(123) 456-7890",
+                "Headshot": [
+                    {
+                        "id": "att3ibwyOXULYL15O",
+                        "width": 950,
+                        "height": 700,
+                        "url": "https://v5.airtableusercontent.com/v1/15/15/1676750400000/0Hy62Ommo3C1BR3r_TsIMw/xGdMUGBUycsvzqjCPHlIuKyvUCM_Y6InDa7Bz15pCaGtWXyue5BlHYak_kFJYmgVXbgvWAXkaigRk7xdcUHiZU66F33CrAUP36ihAFT3-eU/-_khPf6Rh8P9uLt3Oc55HupkyS000nORrpvZpY1bKwI",
+                        "filename": "headshot-purple-2 (1).png",
+                        "size": 191272,
+                        "type": "image/png",
+                        "thumbnails": {
+                            "small": {
+                                "url": "https://v5.airtableusercontent.com/v1/15/15/1676750400000/MlmaPKrIg1yOj_qipSwKhg/fVQ5W7QtoxoAszvbIHT2dksddzWQi2ETkCewMXRSY2NIiX6wD1LWuC6d4VICHwRCz_6sKW4vhwZ1vkScFYpcgQ/Iy8lz5HcTKpTrG8gBq4fQJRyPAdnfYrwn3u05_lovmc",
+                                "width": 49,
+                                "height": 36
+                            },
+                            "large": {
+                                "url": "https://v5.airtableusercontent.com/v1/15/15/1676750400000/BBIfL5Oqc8BAHkugmNUkXA/JygSzSF9lLJi1U1dP1xCpH1QTSJwxb2FRvJssEdxZubfzVIa9iofsOn5HKsIFLuPl2K3yYCvaxAD3ZsHa7WCig/Rpbg9vWTPa6-oxoPUO4gqkOBFHzadVBHEZhjJoIu6Y8",
+                                "width": 695,
+                                "height": 512
+                            },
+                            "full": {
+                                "url": "https://v5.airtableusercontent.com/v1/15/15/1676750400000/xlrKts_ACw09qLqsAW16EQ/qrDMlQpI1cVdPCe0uw6ZJw9FeZCcwenmFzZ317qbsO0q8ZY2DY5k-bpPFYBaS4KkqztczIOqdnCBIYiuJ3_wqA/4LU_0QW7hp8Rw828Z_ov3GNcZa86pywziLdQy364XXE",
+                                "width": 3000,
+                                "height": 3000
+                            }
+                        }
+                    }
+                ],
+                "Employee type": "Contractor"
+            }
+        },
+        "rawHeaders": [
+            "Date",
+            "Sat, 18 Feb 2023 16:56:09 GMT",
+            "Content-Type",
+            "868",
+            "Connection",
+            "close",
+            "Set-Cookie",
+            "AWSALB=2CpHsb1CL3MMw3hBwb9rVw+mR1QJ7rNbVnCS1fkDNEEi3FM0b4jSEGQ0FhjkIkdkQfLhOMrCXK95XbgEImuhWJuv4FKNdOIk6hNaJawWjFq6kh/mOMlFi7HU8r8h; Expires=Sat, 25 Feb 2023 16:56:09 GMT; Path=/",
+            "Set-Cookie",
+            "AWSALBCORS=2CpHsb1CL3MMw3hBwb9rVw+mR1QJ7rNbVnCS1fkDNEEi3FM0b4jSEGQ0FhjkIkdkQfLhOMrCXK95XbgEImuhWJuv4FKNdOIk6hNaJawWjFq6kh/mOMlFi7HU8r8h; Expires=Sat, 25 Feb 2023 16:56:09 GMT; Path=/; SameSite=None; Secure",
+            "Server",
+            "Tengine",
+            "Set-Cookie",
+            "brw=brwP6XoEdwHyGdxxZ; path=/; expires=Sun, 18 Feb 2024 16:56:09 GMT; domain=.airtable.com; samesite=none; secure",
+            "Strict-Transport-Security",
+            "max-age=31536000; includeSubDomains; preload",
+            "access-control-allow-origin",
+            "*",
+            "access-control-allow-methods",
+            "DELETE,GET,OPTIONS,PATCH,POST,PUT",
+            "access-control-allow-headers",
+            "authorization,content-length,content-type,user-agent,x-airtable-application-id,x-airtable-user-agent,x-api-version,x-requested-with",
+            "X-Frame-Options",
+            "DENY",
+            "X-Content-Type-Options",
+            "nosniff",
+            "Vary",
+            "Accept-Encoding",
+            "airtable-uncompressed-content-length",
+            "1314"
+        ],
+        "responseIsBinary": false
+    }
+]
