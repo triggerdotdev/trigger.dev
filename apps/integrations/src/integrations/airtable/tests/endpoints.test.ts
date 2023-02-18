@@ -187,4 +187,69 @@ describe("airtable.endpoints", async () => {
     expect(data.body).not.toBeNull();
     stopNock(nockDone);
   });
+
+  test("createRecords", async () => {
+    const accessToken = authToken();
+
+    const nockDone = await startNock("airtable.createRecords");
+    const data = await endpoints.createRecords.request({
+      parameters: {
+        baseId: "appBlf3KsalIQeMUo",
+        tableIdOrName: "tblvXn2TOeVPC9c6m",
+      },
+      body: {
+        records: [
+          {
+            fields: {
+              Employee: "Employee #1",
+            },
+          },
+          {
+            fields: {
+              Employee: "Employee #2",
+            },
+          },
+        ],
+      },
+      credentials: {
+        type: "oauth2",
+        name: "oauth",
+        accessToken,
+        scopes: ["data.records:write"],
+      },
+    });
+
+    expect(data.status).toEqual(200);
+    expect(data.success).toEqual(true);
+    expect(data.body).not.toBeNull();
+    stopNock(nockDone);
+  });
+
+  test("createRecord", async () => {
+    const accessToken = authToken();
+
+    const nockDone = await startNock("airtable.createRecord");
+    const data = await endpoints.createRecords.request({
+      parameters: {
+        baseId: "appBlf3KsalIQeMUo",
+        tableIdOrName: "tblvXn2TOeVPC9c6m",
+      },
+      body: {
+        fields: {
+          Employee: "Employee single create",
+        },
+      },
+      credentials: {
+        type: "oauth2",
+        name: "oauth",
+        accessToken,
+        scopes: ["data.records:write"],
+      },
+    });
+
+    expect(data.status).toEqual(200);
+    expect(data.success).toEqual(true);
+    expect(data.body).not.toBeNull();
+    stopNock(nockDone);
+  });
 });

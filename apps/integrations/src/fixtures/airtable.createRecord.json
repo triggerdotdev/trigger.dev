@@ -1,0 +1,53 @@
+[
+    {
+        "scope": "https://api.airtable.com:443",
+        "method": "POST",
+        "path": "/v0/appBlf3KsalIQeMUo/tblvXn2TOeVPC9c6m",
+        "body": {
+            "fields": {
+                "Employee": "Employee single create"
+            }
+        },
+        "status": 200,
+        "response": {
+            "id": "recY9ZLK96wNBblmo",
+            "createdTime": "2023-02-18T17:05:53.000Z",
+            "fields": {
+                "Employee": "Employee single create"
+            }
+        },
+        "rawHeaders": [
+            "Date",
+            "Sat, 18 Feb 2023 17:05:53 GMT",
+            "Content-Type",
+            "120",
+            "Connection",
+            "close",
+            "Set-Cookie",
+            "AWSALB=uxQV2kzjELpFGUscnluykIVz7XOSrD1HxCYqoKdrnnPDt2Djy+EBfTKTDx4p0fAh1qD5c3/jRM2bCy9rhptozXyMsWOCDL7v2H3E6VRso6pGZm+kmcdzFjjoIO36; Expires=Sat, 25 Feb 2023 17:05:53 GMT; Path=/",
+            "Set-Cookie",
+            "AWSALBCORS=uxQV2kzjELpFGUscnluykIVz7XOSrD1HxCYqoKdrnnPDt2Djy+EBfTKTDx4p0fAh1qD5c3/jRM2bCy9rhptozXyMsWOCDL7v2H3E6VRso6pGZm+kmcdzFjjoIO36; Expires=Sat, 25 Feb 2023 17:05:53 GMT; Path=/; SameSite=None; Secure",
+            "Server",
+            "Tengine",
+            "Set-Cookie",
+            "brw=brwL5hqTq5iBqCg9Q; path=/; expires=Sun, 18 Feb 2024 17:05:53 GMT; domain=.airtable.com; samesite=none; secure",
+            "Strict-Transport-Security",
+            "max-age=31536000; includeSubDomains; preload",
+            "access-control-allow-origin",
+            "*",
+            "access-control-allow-methods",
+            "DELETE,GET,OPTIONS,PATCH,POST,PUT",
+            "access-control-allow-headers",
+            "authorization,content-length,content-type,user-agent,x-airtable-application-id,x-airtable-user-agent,x-api-version,x-requested-with",
+            "X-Frame-Options",
+            "DENY",
+            "X-Content-Type-Options",
+            "nosniff",
+            "Vary",
+            "Accept-Encoding",
+            "airtable-uncompressed-content-length",
+            "114"
+        ],
+        "responseIsBinary": false
+    }
+]

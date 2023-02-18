@@ -379,3 +379,92 @@ export const updateRecord: EndpointSpec = {
     default: [errorResponse],
   },
 };
+
+export const createRecords: EndpointSpec = {
+  path: "/{baseId}/{tableIdOrName}",
+  method: "POST",
+  metadata: {
+    name: "createRecords",
+    description: `Create up to 10 records`,
+    displayProperties: {
+      title: "Create records for table ${parameters.tableIdOrName}",
+    },
+    externalDocs: {
+      description: "API method documentation",
+      url: "https://airtable.com/developers/web/api/create-records",
+    },
+    tags: ["records"],
+  },
+  security: {
+    oauth: ["data.records:write"],
+  },
+  parameters: [BaseIdParam, TableIdOrNameParam],
+  request: {
+    headers: {
+      "Content-Type": "application/json; charset=utf-8",
+    },
+    body: {
+      schema: makeObjectSchema("Create records body", {
+        optionalProperties: {
+          typecast: makeBooleanSchema(
+            "If set to true, Airtable will try to convert string values into the appropriate cell value. This conversion is only performed on a best-effort basis. To ensure your data's integrity, this should only be used when necessary. Defaults to false when unset."
+          ),
+          fields: makeObjectSchema("Fields", {
+            additionalProperties: FieldSchema,
+          }),
+          records: makeArraySchema(
+            "Records to update/upsert",
+            makeObjectSchema("Record", {
+              requiredProperties: {
+                fields: makeObjectSchema("Fields", {
+                  additionalProperties: FieldSchema,
+                }),
+              },
+            })
+          ),
+        },
+      }),
+    },
+  },
+  responses: {
+    200: [
+      {
+        success: true,
+        name: "Success",
+        description: "Typical success response",
+        schema: makeAnyOf("Create records success body", [
+          makeObjectSchema("Multiple records created response", {
+            requiredProperties: {
+              records: makeArraySchema(
+                "Records",
+                makeObjectSchema("Record", {
+                  requiredProperties: {
+                    id: makeStringSchema("Record ID"),
+                    createdTime: makeStringSchema(
+                      `A date timestamp in the ISO format, eg:"2018-01-01T00:00:00.000Z"`
+                    ),
+                    fields: makeObjectSchema("Fields", {
+                      additionalProperties: FieldSchema,
+                    }),
+                  },
+                })
+              ),
+            },
+          }),
+          makeObjectSchema("Single record created response", {
+            requiredProperties: {
+              id: makeStringSchema("Record ID"),
+              createdTime: makeStringSchema(
+                `A date timestamp in the ISO format, eg:"2018-01-01T00:00:00.000Z"`
+              ),
+              fields: makeObjectSchema("Fields", {
+                additionalProperties: FieldSchema,
+              }),
+            },
+          }),
+        ]),
+      },
+    ],
+    default: [errorResponse],
+  },
+};
