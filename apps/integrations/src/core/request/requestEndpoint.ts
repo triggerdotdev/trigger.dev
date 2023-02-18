@@ -72,9 +72,18 @@ export async function requestEndpoint(
         case "path":
           path = path.replace(`{${name}}`, element as string);
           break;
-        case "query":
+        case "query": {
+          if (parameter.schema?.type === "array") {
+            const array = element as Array<string>;
+            for (const item of array) {
+              path = `${path}${path.includes("?") ? "&" : "?"}${name}=${item}`;
+            }
+            break;
+          }
+
           path = `${path}${path.includes("?") ? "&" : "?"}${name}=${element}`;
           break;
+        }
         case "header":
           headers = {
             ...headers,

@@ -1,0 +1,97 @@
+[
+    {
+        "scope": "https://api.airtable.com:443",
+        "method": "POST",
+        "path": "/v0/appBlf3KsalIQeMUo/tblvXn2TOeVPC9c6m",
+        "body": {
+            "fields": {
+                "Employee": "Delete now #3"
+            }
+        },
+        "status": 200,
+        "response": {
+            "id": "recyubpGhZWle9GOS",
+            "createdTime": "2023-02-18T17:25:39.000Z",
+            "fields": {
+                "Employee": "Delete now #3"
+            }
+        },
+        "rawHeaders": [
+            "Date",
+            "Sat, 18 Feb 2023 17:25:38 GMT",
+            "Content-Type",
+            "121",
+            "Connection",
+            "close",
+            "Set-Cookie",
+            "AWSALB=jt7yHA1t0HaG6Wp2xE4aJWZdQ59coYaZrRwqp8gwZmizt1A1N1H+xEqqycwyHEJtuK/6Rvc5FGcWdsJZQD2kbg5MSS0aropskjuOcOWICRp4+IHNWdYH5Osmcfre; Expires=Sat, 25 Feb 2023 17:25:38 GMT; Path=/",
+            "Set-Cookie",
+            "AWSALBCORS=jt7yHA1t0HaG6Wp2xE4aJWZdQ59coYaZrRwqp8gwZmizt1A1N1H+xEqqycwyHEJtuK/6Rvc5FGcWdsJZQD2kbg5MSS0aropskjuOcOWICRp4+IHNWdYH5Osmcfre; Expires=Sat, 25 Feb 2023 17:25:38 GMT; Path=/; SameSite=None; Secure",
+            "Server",
+            "Tengine",
+            "Set-Cookie",
+            "brw=brwoFcsjVo3nFDHPT; path=/; expires=Sun, 18 Feb 2024 17:25:38 GMT; domain=.airtable.com; samesite=none; secure",
+            "Strict-Transport-Security",
+            "max-age=31536000; includeSubDomains; preload",
+            "access-control-allow-origin",
+            "*",
+            "access-control-allow-methods",
+            "DELETE,GET,OPTIONS,PATCH,POST,PUT",
+            "access-control-allow-headers",
+            "authorization,content-length,content-type,user-agent,x-airtable-application-id,x-airtable-user-agent,x-api-version,x-requested-with",
+            "X-Frame-Options",
+            "DENY",
+            "X-Content-Type-Options",
+            "nosniff",
+            "Vary",
+            "Accept-Encoding",
+            "airtable-uncompressed-content-length",
+            "105"
+        ],
+        "responseIsBinary": false
+    },
+    {
+        "scope": "https://api.airtable.com:443",
+        "method": "DELETE",
+        "path": "/v0/appBlf3KsalIQeMUo/tblvXn2TOeVPC9c6m/recyubpGhZWle9GOS",
+        "body": "",
+        "status": 200,
+        "response": {
+            "deleted": true,
+            "id": "recyubpGhZWle9GOS"
+        },
+        "rawHeaders": [
+            "Date",
+            "Sat, 18 Feb 2023 17:25:39 GMT",
+            "Content-Type",
+            "59",
+            "Connection",
+            "close",
+            "Set-Cookie",
+            "AWSALB=SjG+vAIOeCRwgx9Zhi7bVWiFG0acnh1G6+u2nL+ZUfo+4ON1RPjGdhX41SiaekKoYBmW2oCbSynCYAXKGnQjJYaOmPFAeIkml0VZuXSCv1Jm8P2PsXR+DoKIvZTk; Expires=Sat, 25 Feb 2023 17:25:39 GMT; Path=/",
+            "Set-Cookie",
+            "AWSALBCORS=SjG+vAIOeCRwgx9Zhi7bVWiFG0acnh1G6+u2nL+ZUfo+4ON1RPjGdhX41SiaekKoYBmW2oCbSynCYAXKGnQjJYaOmPFAeIkml0VZuXSCv1Jm8P2PsXR+DoKIvZTk; Expires=Sat, 25 Feb 2023 17:25:39 GMT; Path=/; SameSite=None; Secure",
+            "Server",
+            "Tengine",
+            "Set-Cookie",
+            "brw=brwUynCRjs24wfp6Z; path=/; expires=Sun, 18 Feb 2024 17:25:39 GMT; domain=.airtable.com; samesite=none; secure",
+            "Strict-Transport-Security",
+            "max-age=31536000; includeSubDomains; preload",
+            "access-control-allow-origin",
+            "*",
+            "access-control-allow-methods",
+            "DELETE,GET,OPTIONS,PATCH,POST,PUT",
+            "access-control-allow-headers",
+            "authorization,content-length,content-type,user-agent,x-airtable-application-id,x-airtable-user-agent,x-api-version,x-requested-with",
+            "X-Frame-Options",
+            "DENY",
+            "X-Content-Type-Options",
+            "nosniff",
+            "Vary",
+            "Accept-Encoding",
+            "airtable-uncompressed-content-length",
+            "41"
+        ],
+        "responseIsBinary": false
+    }
+]

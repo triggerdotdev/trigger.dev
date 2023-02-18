@@ -31,13 +31,15 @@ export function makeNumberSchema(
 export function makeBooleanSchema(
   title?: string,
   options?: {
-    defaultValue: boolean;
+    defaultValue?: boolean;
+    enum?: boolean;
   }
 ): JSONSchema {
   return {
     type: "boolean",
     title,
     default: options?.defaultValue,
+    enum: [options?.enum],
   };
 }
 

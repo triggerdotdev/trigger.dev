@@ -252,4 +252,105 @@ describe("airtable.endpoints", async () => {
     expect(data.body).not.toBeNull();
     stopNock(nockDone);
   });
+
+  test("deleteRecords", async () => {
+    const accessToken = authToken();
+
+    const nockDone = await startNock("airtable.deleteRecords");
+    const data = await endpoints.createRecords.request({
+      parameters: {
+        baseId: "appBlf3KsalIQeMUo",
+        tableIdOrName: "tblvXn2TOeVPC9c6m",
+      },
+      body: {
+        records: [
+          {
+            fields: {
+              Employee: "Delete now #1",
+            },
+          },
+          {
+            fields: {
+              Employee: "Delete now #2",
+            },
+          },
+        ],
+      },
+      credentials: {
+        type: "oauth2",
+        name: "oauth",
+        accessToken,
+        scopes: ["data.records:write"],
+      },
+    });
+
+    expect(data.status).toEqual(200);
+    expect(data.success).toEqual(true);
+    expect(data.body).not.toBeNull();
+
+    const deletedData = await endpoints.deleteRecords.request({
+      parameters: {
+        baseId: "appBlf3KsalIQeMUo",
+        tableIdOrName: "tblvXn2TOeVPC9c6m",
+        records: data.body.records.map((record: any) => record.id),
+      },
+      credentials: {
+        type: "oauth2",
+        name: "oauth",
+        accessToken,
+        scopes: ["data.records:write"],
+      },
+    });
+
+    expect(deletedData.status).toEqual(200);
+    expect(deletedData.success).toEqual(true);
+    expect(deletedData.body).not.toBeNull();
+    stopNock(nockDone);
+  });
+
+  test("deleteRecord", async () => {
+    const accessToken = authToken();
+
+    const nockDone = await startNock("airtable.deleteRecord");
+    const data = await endpoints.createRecords.request({
+      parameters: {
+        baseId: "appBlf3KsalIQeMUo",
+        tableIdOrName: "tblvXn2TOeVPC9c6m",
+      },
+      body: {
+        fields: {
+          Employee: "Delete now #3",
+        },
+      },
+      credentials: {
+        type: "oauth2",
+        name: "oauth",
+        accessToken,
+        scopes: ["data.records:write"],
+      },
+    });
+
+    expect(data.status).toEqual(200);
+    expect(data.success).toEqual(true);
+    expect(data.body).not.toBeNull();
+
+    const deletedData = await endpoints.deleteRecord.request({
+      parameters: {
+        baseId: "appBlf3KsalIQeMUo",
+        tableIdOrName: "tblvXn2TOeVPC9c6m",
+        recordId: data.body.id,
+      },
+      credentials: {
+        type: "oauth2",
+        name: "oauth",
+        accessToken,
+        scopes: ["data.records:write"],
+      },
+    });
+
+    expect(deletedData.status).toEqual(200);
+    expect(deletedData.success).toEqual(true);
+    expect(deletedData.body).not.toBeNull();
+    stopNock(nockDone);
+  });
 });

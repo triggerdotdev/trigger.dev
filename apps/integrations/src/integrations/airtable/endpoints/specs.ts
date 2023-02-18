@@ -468,3 +468,112 @@ export const createRecords: EndpointSpec = {
     default: [errorResponse],
   },
 };
+
+export const deleteRecords: EndpointSpec = {
+  path: "/{baseId}/{tableIdOrName}",
+  method: "DELETE",
+  metadata: {
+    name: "deleteRecords",
+    description: `Delete more than one records with the given record IDs. Note you can't delete a single record with this.`,
+    displayProperties: {
+      title: "Delete records for table ${parameters.tableIdOrName}",
+    },
+    externalDocs: {
+      description: "API method documentation",
+      url: "https://airtable.com/developers/web/api/delete-multiple-records",
+    },
+    tags: ["records"],
+  },
+  security: {
+    oauth: ["data.records:write"],
+  },
+  parameters: [
+    BaseIdParam,
+    TableIdOrNameParam,
+    {
+      name: "records",
+      in: "query",
+      description: "An array of record IDs to delete",
+      schema: makeArraySchema(
+        "Records to delete",
+        makeStringSchema("Record ID")
+      ),
+      required: true,
+    },
+  ],
+  request: {
+    headers: {
+      "Content-Type": "application/json; charset=utf-8",
+    },
+  },
+  responses: {
+    200: [
+      {
+        success: true,
+        name: "Success",
+        description: "Typical success response",
+        schema: makeObjectSchema("Delete records response", {
+          requiredProperties: {
+            records: makeArraySchema(
+              "Records",
+              makeObjectSchema("Deleted record", {
+                requiredProperties: {
+                  id: makeStringSchema("Record ID"),
+                  deleted: makeBooleanSchema("Whether the record was deleted", {
+                    enum: true,
+                  }),
+                },
+              })
+            ),
+          },
+        }),
+      },
+    ],
+    default: [errorResponse],
+  },
+};
+
+export const deleteRecord: EndpointSpec = {
+  path: "/{baseId}/{tableIdOrName}/{recordId}",
+  method: "DELETE",
+  metadata: {
+    name: "deleteRecord",
+    description: `Delete a single record.`,
+    displayProperties: {
+      title:
+        "Delete record ${parameters.recordId} for table ${parameters.tableIdOrName}",
+    },
+    externalDocs: {
+      description: "API method documentation",
+      url: "https://airtable.com/developers/web/api/delete-record",
+    },
+    tags: ["records"],
+  },
+  security: {
+    oauth: ["data.records:write"],
+  },
+  parameters: [BaseIdParam, TableIdOrNameParam, RecordIdParam],
+  request: {
+    headers: {
+      "Content-Type": "application/json; charset=utf-8",
+    },
+  },
+  responses: {
+    200: [
+      {
+        success: true,
+        name: "Success",
+        description: "Typical success response",
+        schema: makeObjectSchema("Delete records response", {
+          requiredProperties: {
+            id: makeStringSchema("Record ID"),
+            deleted: makeBooleanSchema("Whether the record was deleted", {
+              enum: true,
+            }),
+          },
+        }),
+      },
+    ],
+    default: [errorResponse],
+  },
+};
