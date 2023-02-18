@@ -29,7 +29,7 @@ export interface EndpointSpec {
   >;
 }
 
-interface EndpointSpecParameter {
+export interface EndpointSpecParameter {
   name: string;
   description: string;
   in: "query" | "path" | "header";

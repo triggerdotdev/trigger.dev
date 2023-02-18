@@ -3,13 +3,15 @@ import { JSONSchema } from "./types";
 export function makeStringSchema(
   title?: string,
   options?: {
-    defaultValue: string;
+    defaultValue?: string;
+    enum?: string[];
   }
 ): JSONSchema {
   return {
     type: "string",
     title,
     default: options?.defaultValue,
+    enum: options?.enum,
   };
 }
 

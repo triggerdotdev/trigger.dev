@@ -12,6 +12,28 @@ describe("airtable.endpoints", async () => {
     await saveToNock(__filename, suite);
   });
 
+  test("listRecords simple", async () => {
+    const accessToken = authToken();
+
+    const data = await endpoints.listRecords.request({
+      parameters: {
+        baseId: "appBlf3KsalIQeMUo",
+        tableIdOrName: "tblvXn2TOeVPC9c6m",
+      },
+      body: {},
+      credentials: {
+        type: "oauth2",
+        name: "oauth",
+        accessToken,
+        scopes: ["data.records:read"],
+      },
+    });
+
+    expect(data.status).toEqual(200);
+    expect(data.success).toEqual(true);
+    expect(data.body).not.toBeNull();
+  });
+
   test("getRecord", async () => {
     const accessToken = authToken();
 
