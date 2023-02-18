@@ -1,40 +1,53 @@
 import nock from "nock";
-import { Suite, File } from "vitest";
-import fs from "fs/promises";
 import path from "path";
+import zlib from "zlib";
 
-export function setupNock(fileName: string) {
-  const nockFile = getFileName(fileName);
-  nock.cleanAll();
-  try {
-    nock.load(nockFile);
-  } catch (e) {
-    nock.recorder.clear();
-    nock.recorder.rec({ output_objects: true, dont_print: true });
+nock.back.fixtures = path.join(__dirname, "..", "fixtures");
+nock.back.setMode("record");
+
+const makeCompressedResponsesReadable = (scope: any) => {
+  if (scope.rawHeaders.indexOf("gzip") > -1) {
+    const gzipIndex = scope.rawHeaders.indexOf("gzip");
+    scope.rawHeaders.splice(gzipIndex - 1, 2);
+
+    const contentLengthIndex = scope.rawHeaders.indexOf("Content-Length");
+    scope.rawHeaders.splice(contentLengthIndex - 1, 2);
+
+    const fullResponseBody =
+      scope.response &&
+      scope.response.reduce &&
+      scope.response.reduce(
+        (previous: any, current: any) => previous + current
+      );
+
+    try {
+      // eslint-disable-next-line no-param-reassign
+      scope.response = JSON.parse(
+        zlib.gunzipSync(Buffer.from(fullResponseBody, "hex")).toString("utf8")
+      );
+    } catch (e) {
+      // eslint-disable-next-line no-param-reassign
+      scope.response = "";
+    }
   }
+  return scope;
+};
+
+const defaultOptions = {
+  afterRecord: (outputs: any) => outputs.map(makeCompressedResponsesReadable),
+};
+
+export async function startNock(name: string, update = false) {
+  if (update) {
+    nock.back.setMode("update");
+  } else {
+    nock.back.setMode("record");
+  }
+  const { nockDone } = await nock.back(`${name}.json`, defaultOptions);
+  return nockDone;
 }
 
-export async function saveToNock(fileName: string, suite: Suite | File) {
-  const nockFile = getFileName(fileName);
-  const succeeded = suite.tasks?.every((t) => t.result?.state !== "fail");
-
-  const nockCalls = nock.recorder.play();
-  nock.recorder.clear();
-
-  if (!succeeded) {
-    return;
-  }
-
-  if (nockCalls.length > 0) {
-    await fs.mkdir(path.dirname(nockFile), { recursive: true });
-    await fs.writeFile(nockFile, JSON.stringify(nockCalls, null, 2), {
-      encoding: "utf-8",
-    });
-    console.log("Saved successful test result to nock", nockFile);
-  }
+export async function stopNock(nockDone: () => void) {
+  nockDone();
+  nock.back.setMode("wild");
 }
-
-function getFileName(fileName: string) {
-  return `${fileName}.nock.json`;
-}
-//
