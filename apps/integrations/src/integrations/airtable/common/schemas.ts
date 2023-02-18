@@ -1,4 +1,7 @@
 import {
+  makeArraySchema,
+  makeBooleanSchema,
+  makeNumberSchema,
   makeObjectSchema,
   makeStringSchema,
   makeUnion,
@@ -34,19 +37,12 @@ export const AttachmentSchema = makeObjectSchema("An Attachment", {
   },
 });
 
-export const FieldSchema: JSONSchema = {
-  title: "Field",
-  type: "object",
-  oneOf: [
-    {
-      type: "string",
-    },
-    {
-      type: "number",
-    },
-    {
-      type: "boolean",
-    },
-    CollaboratorSchema,
-  ],
-};
+export const FieldSchema = makeUnion("A Field", [
+  makeStringSchema(),
+  makeNumberSchema(),
+  makeBooleanSchema(),
+  CollaboratorSchema,
+  makeArraySchema("Collaborators", CollaboratorSchema),
+  makeArraySchema("Values", makeStringSchema()),
+  makeArraySchema("Attachments", AttachmentSchema),
+]);

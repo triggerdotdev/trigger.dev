@@ -1,7 +1,7 @@
 import { JSONSchema } from "./types";
 
 export function makeStringSchema(
-  title: string,
+  title?: string,
   options?: {
     defaultValue: string;
   }
@@ -14,7 +14,7 @@ export function makeStringSchema(
 }
 
 export function makeNumberSchema(
-  title: string,
+  title?: string,
   options?: {
     defaultValue: number;
   }
@@ -27,7 +27,7 @@ export function makeNumberSchema(
 }
 
 export function makeBooleanSchema(
-  title: string,
+  title?: string,
   options?: {
     defaultValue: boolean;
   }
@@ -69,16 +69,9 @@ export function makeObjectSchema(
   };
 }
 
-export function makeUnion(
-  title: string,
-  options: {
-    schemas: JSONSchema[];
-    defaultValue?: any;
-  }
-): JSONSchema {
+export function makeUnion(title: string, schemas: JSONSchema[]): JSONSchema {
   return {
     title,
-    oneOf: options.schemas,
-    default: options.defaultValue,
+    oneOf: schemas,
   };
 }
