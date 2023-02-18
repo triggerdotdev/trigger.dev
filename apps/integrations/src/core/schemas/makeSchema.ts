@@ -55,13 +55,30 @@ export function makeObjectSchema(
     additionalProperties?: boolean | JSONSchema;
   }
 ): JSONSchema {
+  let properties: Record<string, JSONSchema> | undefined = undefined;
+
+  if (options.optionalProperties || options.requiredProperties) {
+    properties = {};
+  }
+
+  if (options.optionalProperties) {
+    properties = {
+      ...properties,
+      ...options.optionalProperties,
+    };
+  }
+
+  if (options.requiredProperties) {
+    properties = {
+      ...properties,
+      ...options.requiredProperties,
+    };
+  }
+
   return {
     type: "object",
     title,
-    properties: {
-      ...options.optionalProperties,
-      ...options.requiredProperties,
-    },
+    properties,
     required: options.requiredProperties
       ? Object.keys(options.requiredProperties)
       : undefined,
@@ -69,9 +86,16 @@ export function makeObjectSchema(
   };
 }
 
-export function makeUnion(title: string, schemas: JSONSchema[]): JSONSchema {
+export function makeOneOf(title: string, schemas: JSONSchema[]): JSONSchema {
   return {
     title,
     oneOf: schemas,
+  };
+}
+
+export function makeAnyOf(title: string, schemas: JSONSchema[]): JSONSchema {
+  return {
+    title,
+    anyOf: schemas,
   };
 }

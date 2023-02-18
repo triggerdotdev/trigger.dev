@@ -1,4 +1,6 @@
 import { EndpointSpec, EndpointSpecResponse } from "core/endpoint/types";
+import { makeObjectSchema, makeStringSchema } from "core/schemas/makeSchema";
+import { FieldSchema } from "../common/schemas";
 
 const errorResponse: EndpointSpecResponse = {
   success: false,
@@ -183,27 +185,15 @@ export const getRecord: EndpointSpec = {
         success: true,
         name: "Success",
         description: "Typical success response",
-        schema: {
-          $schema: "http://json-schema.org/draft-07/schema#",
-          title: "Generated schema for Root",
-          type: "object",
-          properties: {
-            createdTime: {
-              type: "string",
-              description: "When the record was created",
-            },
-            fields: {
-              type: "object",
-              description: "All of the fields that are in this record",
-              additionalProperties: true,
-            },
-            id: {
-              description: "The record id",
-              type: "string",
-            },
+        schema: makeObjectSchema("Successful response", {
+          requiredProperties: {
+            createdTime: makeStringSchema("When the record was created"),
+            fields: makeObjectSchema("Fields", {
+              additionalProperties: FieldSchema,
+            }),
+            id: makeStringSchema("The record id"),
           },
-          required: ["createdTime", "fields", "id"],
-        },
+        }),
       },
     ],
     default: [errorResponse],
