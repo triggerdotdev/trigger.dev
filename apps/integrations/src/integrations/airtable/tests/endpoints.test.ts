@@ -85,4 +85,77 @@ describe("airtable.endpoints", async () => {
     expect(data.body).not.toBeNull();
     stopNock(nockDone);
   });
+
+  test("updateRecords", async () => {
+    const accessToken = authToken();
+
+    const nockDone = await startNock("airtable.updateRecords");
+    const data = await endpoints.updateRecords.request({
+      parameters: {
+        baseId: "appBlf3KsalIQeMUo",
+        tableIdOrName: "tblvXn2TOeVPC9c6m",
+      },
+      body: {
+        records: [
+          {
+            id: "recHcnB1MbBr9Rd2P",
+            fields: {
+              Employee: "John Doe",
+            },
+          },
+        ],
+      },
+      credentials: {
+        type: "oauth2",
+        name: "oauth",
+        accessToken,
+        scopes: ["data.records:write"],
+      },
+    });
+
+    expect(data.status).toEqual(200);
+    expect(data.success).toEqual(true);
+    expect(data.body).not.toBeNull();
+    stopNock(nockDone);
+  });
+
+  test("upsertRecords", async () => {
+    const accessToken = authToken();
+
+    const nockDone = await startNock("airtable.upsertRecords");
+    const data = await endpoints.updateRecords.request({
+      parameters: {
+        baseId: "appBlf3KsalIQeMUo",
+        tableIdOrName: "tblvXn2TOeVPC9c6m",
+      },
+      body: {
+        performUpsert: {
+          fieldsToMergeOn: ["Employee"],
+        },
+        records: [
+          {
+            fields: {
+              Employee: "John Doe",
+            },
+          },
+          {
+            fields: {
+              Employee: "Jane Doe",
+            },
+          },
+        ],
+      },
+      credentials: {
+        type: "oauth2",
+        name: "oauth",
+        accessToken,
+        scopes: ["data.records:write"],
+      },
+    });
+
+    expect(data.status).toEqual(200);
+    expect(data.success).toEqual(true);
+    expect(data.body).not.toBeNull();
+    stopNock(nockDone);
+  });
 });

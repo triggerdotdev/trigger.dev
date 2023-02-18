@@ -1,8 +1,11 @@
 import { EndpointSpec, EndpointSpecResponse } from "core/endpoint/types";
 import {
+  makeAnyOf,
   makeArraySchema,
+  makeBooleanSchema,
   makeNumberSchema,
   makeObjectSchema,
+  makeOneOf,
   makeStringSchema,
 } from "core/schemas/makeSchema";
 import {
@@ -62,7 +65,7 @@ export const listRecords: EndpointSpec = {
     },
     externalDocs: {
       description: "API method documentation",
-      url: "https://airtable.com/developers/web/api/get-record",
+      url: "https://airtable.com/developers/web/api/list-records",
     },
     tags: ["records"],
   },
@@ -193,6 +196,122 @@ export const getRecord: EndpointSpec = {
             id: makeStringSchema("The record id"),
           },
         }),
+      },
+    ],
+    default: [errorResponse],
+  },
+};
+
+export const updateRecords: EndpointSpec = {
+  path: "/{baseId}/{tableIdOrName}",
+  method: "PATCH",
+  metadata: {
+    name: "updateRecords",
+    description: `Updates up to 10 records, or upserts them when performUpsert is set.`,
+    displayProperties: {
+      title: "Update records for table ${parameters.tableIdOrName}",
+    },
+    externalDocs: {
+      description: "API method documentation",
+      url: "https://airtable.com/developers/web/api/get-record",
+    },
+    tags: ["records"],
+  },
+  security: {
+    oauth: ["data.records:write"],
+  },
+  parameters: [BaseIdParam, TableIdOrNameParam],
+  request: {
+    headers: {
+      "Content-Type": "application/json; charset=utf-8",
+    },
+    body: {
+      schema: makeObjectSchema("Update records body", {
+        optionalProperties: {
+          performUpsert: makeObjectSchema("Perform upsert", {
+            requiredProperties: {
+              fieldsToMergeOn: makeArraySchema(
+                "Fields to merge on",
+                makeStringSchema("Field name")
+              ),
+            },
+          }),
+          typecast: makeBooleanSchema(
+            "If set to true, Airtable will try to convert string values into the appropriate cell value. This conversion is only performed on a best-effort basis. To ensure your data's integrity, this should only be used when necessary. Defaults to false when unset."
+          ),
+        },
+        requiredProperties: {
+          records: makeArraySchema(
+            "Records to update/upsert",
+            makeObjectSchema("Record", {
+              requiredProperties: {
+                fields: makeObjectSchema("Fields", {
+                  additionalProperties: FieldSchema,
+                }),
+              },
+              optionalProperties: {
+                id: makeStringSchema(
+                  "Record ID. Required when performUpsert is not set."
+                ),
+              },
+            })
+          ),
+        },
+      }),
+    },
+  },
+  responses: {
+    200: [
+      {
+        success: true,
+        name: "Success",
+        description: "Typical success response",
+        schema: makeAnyOf("Update/upsert records success body", [
+          makeObjectSchema("Update response", {
+            requiredProperties: {
+              records: makeArraySchema(
+                "Records",
+                makeObjectSchema("Record", {
+                  requiredProperties: {
+                    id: makeStringSchema("Record ID"),
+                    createdTime: makeStringSchema(
+                      `A date timestamp in the ISO format, eg:"2018-01-01T00:00:00.000Z"`
+                    ),
+                    fields: makeObjectSchema("Fields", {
+                      additionalProperties: FieldSchema,
+                    }),
+                  },
+                })
+              ),
+            },
+          }),
+          makeObjectSchema("Upsert response", {
+            requiredProperties: {
+              createdRecords: makeArraySchema(
+                "Created records",
+                makeStringSchema("Record ID")
+              ),
+              updatedRecords: makeArraySchema(
+                "Updated records",
+                makeStringSchema("Record ID")
+              ),
+              records: makeArraySchema(
+                "Records",
+                makeObjectSchema("Record", {
+                  requiredProperties: {
+                    id: makeStringSchema("Record ID"),
+                    createdTime: makeStringSchema(
+                      `A date timestamp in the ISO format, eg:"2018-01-01T00:00:00.000Z"`
+                    ),
+                    fields: makeObjectSchema("Fields", {
+                      additionalProperties: FieldSchema,
+                    }),
+                  },
+                })
+              ),
+            },
+          }),
+        ]),
       },
     ],
     default: [errorResponse],
