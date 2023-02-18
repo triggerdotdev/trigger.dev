@@ -28,37 +28,39 @@ describe("airtable.endpoints", async () => {
     stopNock(nockDone);
   });
 
-  // test("listRecords advanced", async () => {
-  //   const accessToken = authToken();
+  test("listRecords advanced", async () => {
+    const accessToken = authToken();
 
-  //   const nockDone = await startNock("airtable.listRecords.advanced", true);
-  //   const data = await endpoints.listRecords.request({
-  //     parameters: {
-  //       baseId: "appBlf3KsalIQeMUo",
-  //       tableIdOrName: "tblvXn2TOeVPC9c6m",
-  //     },
-  //     body: {
-  //       timeZone: "America/Los_Angeles",
-  //       userLocale: "en",
-  //       pageSize: 1,
-  //       maxRecords: 1,
-  //       offset: "itrHrzqGgjB3mwKgX/rec3cPi3z4s6oe9SD",
-  //     },
-  //     credentials: {
-  //       type: "oauth2",
-  //       name: "oauth",
-  //       accessToken,
-  //       scopes: ["data.records:read"],
-  //     },
-  //   });
+    const nockDone = await startNock("airtable.listRecords.advanced");
+    const data = await endpoints.listRecords.request({
+      parameters: {
+        baseId: "appBlf3KsalIQeMUo",
+        tableIdOrName: "tblvXn2TOeVPC9c6m",
+      },
+      body: {
+        timeZone: "America/Los_Angeles",
+        userLocale: "en",
+        sort: [
+          {
+            field: "Employee",
+            direction: "asc",
+          },
+        ],
+        fields: ["Employee"],
+      },
+      credentials: {
+        type: "oauth2",
+        name: "oauth",
+        accessToken,
+        scopes: ["data.records:read"],
+      },
+    });
 
-  //   // console.log(JSON.stringify(data, null, 2));
-
-  //   expect(data.status).toEqual(200);
-  //   expect(data.success).toEqual(true);
-  //   expect(data.body).not.toBeNull();
-  //   stopNock(nockDone);
-  // });
+    expect(data.status).toEqual(200);
+    expect(data.success).toEqual(true);
+    expect(data.body).not.toBeNull();
+    stopNock(nockDone);
+  });
 
   test("getRecord", async () => {
     const accessToken = authToken();

@@ -96,10 +96,14 @@ export const listRecords: EndpointSpec = {
           sort: makeArraySchema(
             "Sort",
             makeObjectSchema("Sort field", {
-              requiredProperties: makeStringSchema("Field name"),
-              optionalProperties: makeStringSchema("Direction", {
-                enum: ["asc", "desc"],
-              }),
+              requiredProperties: {
+                field: makeStringSchema("Field name"),
+              },
+              optionalProperties: {
+                direction: makeStringSchema("Direction", {
+                  enum: ["asc", "desc"],
+                }),
+              },
             })
           ),
           filterByFormula: makeStringSchema(
