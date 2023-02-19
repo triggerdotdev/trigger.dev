@@ -154,9 +154,12 @@ export async function ${action.name}(
       `;
   }
 
+  const allTypes = Object.values(typeDefinitions).join("\n\n");
+  const deduplicatedTypes = removeDuplicateTypes(allTypes);
+
   const typesFile = project.createSourceFile(
     `${basePath}/src/types.ts`,
-    Object.values(typeDefinitions).join("\n\n"),
+    deduplicatedTypes,
     {
       overwrite: true,
     }
@@ -173,4 +176,17 @@ export async function ${action.name}(
     }
   );
   functionsFile.formatText();
+}
+
+function removeDuplicateTypes(original: string): string {
+  //get all strings that are type = definitions"
+  const regex =
+    /((\/\*\*\s)(\s?\*\s?[a-zA-Z0-9\s]*)(\*\/)\s)?export type ([a-zA-Z0-9]+) = ([a-zA-Z0-9-[_\]/{}| "()]+)\n/gm;
+  const matches = original.matchAll(regex);
+  //loop through the matches and add them to a set
+  for (const match of matches) {
+    console.log("match", match[0]);
+  }
+
+  return original;
 }
