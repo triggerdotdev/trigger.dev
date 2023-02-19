@@ -7,12 +7,23 @@ export function makeStringSchema(
     enum?: string[];
   }
 ): JSONSchema {
-  return {
+  const schema: JSONSchema = {
     type: "string",
-    title,
-    default: options?.defaultValue,
-    enum: options?.enum,
   };
+
+  if (title) {
+    schema.title = title;
+  }
+
+  if (options?.defaultValue) {
+    schema.default = options.defaultValue;
+  }
+
+  if (options?.enum) {
+    schema.enum = options.enum;
+  }
+
+  return schema;
 }
 
 export function makeNumberSchema(
@@ -21,11 +32,19 @@ export function makeNumberSchema(
     defaultValue: number;
   }
 ): JSONSchema {
-  return {
+  const schema: JSONSchema = {
     type: "number",
-    title,
-    default: options?.defaultValue,
   };
+
+  if (title) {
+    schema.title = title;
+  }
+
+  if (options?.defaultValue) {
+    schema.default = options.defaultValue;
+  }
+
+  return schema;
 }
 
 export function makeBooleanSchema(
@@ -35,12 +54,23 @@ export function makeBooleanSchema(
     enum?: boolean;
   }
 ): JSONSchema {
-  return {
+  const schema: JSONSchema = {
     type: "boolean",
-    title,
-    default: options?.defaultValue,
-    enum: [options?.enum],
   };
+
+  if (title) {
+    schema.title = title;
+  }
+
+  if (options?.defaultValue) {
+    schema.default = options.defaultValue;
+  }
+
+  if (options?.enum) {
+    schema.enum = [options.enum];
+  }
+
+  return schema;
 }
 
 export function makeArraySchema(title: string, items: JSONSchema): JSONSchema {
