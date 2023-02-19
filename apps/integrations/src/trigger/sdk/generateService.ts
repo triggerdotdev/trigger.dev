@@ -237,9 +237,7 @@ async function generateDocs(
 title: ${f.title}
 sidebarTitle: ${f.title}
 description: ${f.description}
----
-
-${f.description}`;
+---`;
 
     //Base params
     markdown += `
@@ -303,36 +301,58 @@ function generateParamFieldFromSchema(
 ): string {
   if (typeof schema === "boolean") return "";
   const { description } = schema;
-  let output = `<ParamField path="${key}" type="${schema.type}" required={${required}}>\n`;
-  if (description) {
-    output += `   ${description}\n`;
+
+  if (schema.oneOf) {
+    const anyOfTypes = schema.oneOf.map((v) => {
+      if (typeof v === "boolean") return "";
+      return v.type?.toString();
+    });
+    const set = new Set(anyOfTypes);
+    const uniqueTypes: string[] = Array.from(set).filter(Boolean) as string[];
+    const output = `<ParamField path="${key}" type="${uniqueTypes.join(
+      " | "
+    )}" required={${required}} />`;
+    return output;
   }
 
-  if (schema.type === "object") {
+  let output = `<ParamField path="${key}" type="${schema.type}" required={${required}}>\n`;
+  if (description || schema.title) {
+    output += `   ${
+      description ? description : TitleCaseWithSpaces(schema.title)
+    }\n`;
+  }
+
+  if (
+    schema.type === "object" &&
+    (schema.properties || schema.additionalProperties)
+  ) {
+    output += `<Expandable title="properties">`;
     if (schema.properties) {
-      output += Object.entries(schema.properties)
-        .map(
-          ([k, v]) =>
-            ` ${generateParamFieldFromSchema(
-              k,
-              schema.required?.find((r) => r === k) != undefined ?? false,
-              v
-            )}`
-        )
-        .join("\n");
+      output +=
+        " " +
+        Object.entries(schema.properties)
+          .map(
+            ([k, v]) =>
+              ` ${generateParamFieldFromSchema(
+                k,
+                schema.required?.find((r) => r === k) != undefined ?? false,
+                v
+              )}`
+          )
+          .join("\n");
     }
     if (schema.additionalProperties) {
-      output += Object.entries(schema.additionalProperties)
-        .map(
-          ([k, v]) =>
-            ` ${generateParamFieldFromSchema(
-              k,
-              schema.required?.find((r) => r === k) != undefined ?? false,
-              v
-            )}`
-        )
-        .join("\n");
+      if (typeof schema.additionalProperties !== "boolean") {
+        output +=
+          " " +
+          generateParamFieldFromSchema(
+            `{${schema.title ?? "K"}}`,
+            false,
+            schema.additionalProperties
+          );
+      }
     }
+    output += `</Expandable>`;
   }
 
   output += `</ParamField>`;
