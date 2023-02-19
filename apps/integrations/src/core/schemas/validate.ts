@@ -2,11 +2,26 @@ import { JSONSchema } from "./types";
 
 export async function validate(data: any, schema?: JSONSchema) {
   try {
-    if (!schema) {
+    if (schema === undefined) {
       return {
         success: true as const,
       };
     }
+
+    if (data === undefined) {
+      return {
+        success: false as const,
+        errors: [
+          {
+            keyword: "undefined",
+            keywordLocation: "undefined",
+            instanceLocation: "undefined",
+            error: "data is undefined",
+          },
+        ],
+      };
+    }
+
     const Validator = await getValidator();
     const validator = new Validator(schema);
     const result = validator.validate(data);
