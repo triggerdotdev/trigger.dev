@@ -5,6 +5,8 @@ import path from "path";
 import { generateInputOutputSchemas } from "generators/combineSchemas";
 import { getTypesFromSchema } from "generators/generateTypes";
 import rimraf from "rimraf";
+import { makeAnyOf } from "core/schemas/makeSchema";
+import { JSONSchema } from "core/schemas/types";
 
 const appDir = process.cwd();
 
@@ -110,7 +112,7 @@ async function generateFunctionsAndTypes(
 ) {
   const { actions } = service;
 
-  const typeDefinitions: Record<string, string> = {};
+  const typeSchemas: JSONSchema[] = [];
   const functions: Record<string, string> = {};
   //loop through actions
   for (const key in actions) {
@@ -120,22 +122,22 @@ async function generateFunctionsAndTypes(
     const name = toFriendlyTypeName(action.name);
     const schemas = generateInputOutputSchemas(action.spec, name);
 
-    //generate types for input and output
-    const inputTypeName = `${name}Input`;
-    const inputType = await getTypesFromSchema(schemas.input, inputTypeName);
-    typeDefinitions[inputTypeName] = inputType;
-    const outputTypeName = `${name}Output`;
-    const outputType = await getTypesFromSchema(schemas.output, outputTypeName);
-    typeDefinitions[outputTypeName] = outputType;
+    //add schemas to the array
+    schemas.input && typeSchemas.push(schemas.input);
+    typeSchemas.push(schemas.output);
 
     functions[action.name] = `
 ${action.description ? `/** ${action.description} */` : ""}
 export async function ${action.name}(
   /** This key should be unique inside your workflow */
   key: string,
-  /** The params for this call */
-  params: ${inputTypeName}
-): Promise<${outputTypeName}> {
+  ${
+    schemas.input
+      ? `/** The params for this call */
+  params: ${schemas.input.title}`
+      : ""
+  }
+): Promise<${schemas.output.title}> {
   const run = getTriggerRun();
 
   if (!run) {
@@ -154,12 +156,19 @@ export async function ${action.name}(
       `;
   }
 
-  const allTypes = Object.values(typeDefinitions).join("\n\n");
-  const deduplicatedTypes = removeDuplicateTypes(allTypes);
+  const combinedSchema: JSONSchema = makeAnyOf(
+    `${toFriendlyTypeName(service.service)}Types}`,
+    typeSchemas
+  );
+
+  const allTypes = await getTypesFromSchema(
+    combinedSchema,
+    `${service.service}Types`
+  );
 
   const typesFile = project.createSourceFile(
     `${basePath}/src/types.ts`,
-    deduplicatedTypes,
+    allTypes,
     {
       overwrite: true,
     }
@@ -169,31 +178,13 @@ export async function ${action.name}(
   const functionsFile = project.createSourceFile(
     `${basePath}/src/index.ts`,
     `import { getTriggerRun } from "@trigger.dev/sdk";
-      import { ${Object.keys(typeDefinitions).join(", ")} } from "./types";
+      import { ${typeSchemas
+        .map((t) => t && t.title)
+        .join(", ")} } from "./types";
       ${Object.values(functions).join("")}`,
     {
       overwrite: true,
     }
   );
   functionsFile.formatText();
-}
-
-function removeDuplicateTypes(original: string): string {
-  //get all strings that are type = definitions"
-  const regex =
-    /((\/\*\*\s)(\s?\*\s?[a-zA-Z0-9\s]*)(\*\/)\s)?export type ([a-zA-Z0-9]+) = ([a-zA-Z0-9-[_\]/{}| "()]+)\n/gm;
-  const matches = original.matchAll(regex);
-  //loop through the matches and add them to a set
-  let deduplicated = original;
-  const types = new Set<string>();
-  for (const match of matches) {
-    //add to set
-    types.add(match[0]);
-    //remove from original
-    deduplicated = deduplicated.replace(match[0], "");
-  }
-
-  //add the types back to the original
-  deduplicated = [...types].join("\n") + deduplicated;
-  return deduplicated;
 }
