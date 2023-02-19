@@ -48,7 +48,7 @@ export interface EndpointSpecResponse {
   success: boolean;
   name: string;
   description?: string;
-  schema: JSONSchema;
+  schema?: JSONSchema;
 }
 
 export interface EndpointSpecMetadata {
