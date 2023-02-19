@@ -2,7 +2,11 @@ import { JSONSchema } from "core/schemas/types";
 import { Service } from "core/service/types";
 import { Project } from "ts-morph";
 import { FunctionData } from "./types";
-import { fileNameFromTitleCase, TitleCaseWithSpaces } from "./utilities";
+import {
+  fileNameFromTitleCase,
+  TitleCaseWithSpaces,
+  toFriendlyTypeName,
+} from "./utilities";
 
 type DocsSchemaObject = {
   path: string;
@@ -11,6 +15,7 @@ type DocsSchemaObject = {
   default?: string;
   description?: string;
   children?: DocsSchemaObject[];
+  childrenCollectionName?: string;
 };
 
 export async function generateDocs(
@@ -20,13 +25,14 @@ export async function generateDocs(
   functionsData: Record<string, FunctionData>
 ) {
   const promises = Object.values(functionsData).map(async (f) => {
-    project.createSourceFile(
-      `${basePath}/docs/${fileNameFromTitleCase(f.friendlyName)}.fdata.json`,
-      JSON.stringify(f, null, 2),
-      {
-        overwrite: true,
-      }
-    );
+    //for debugging you can generate save the FunctionData JSON
+    // project.createSourceFile(
+    //   `${basePath}/docs/${fileNameFromTitleCase(f.friendlyName)}.fdata.json`,
+    //   JSON.stringify(f, null, 2),
+    //   {
+    //     overwrite: true,
+    //   }
+    // );
 
     //metadata and intro
     let markdown = generatePageMetadata(f.title, f.description);
@@ -46,15 +52,16 @@ export async function generateDocs(
       const inputDocsObject = generateDocSchema("params", true, f.input);
 
       if (inputDocsObject) {
-        project.createSourceFile(
-          `${basePath}/docs/${fileNameFromTitleCase(
-            f.friendlyName
-          )}.docobj.json`,
-          JSON.stringify(inputDocsObject, null, 2),
-          {
-            overwrite: true,
-          }
-        );
+        //for debugging you can save the DocObject JSON
+        // project.createSourceFile(
+        //   `${basePath}/docs/${fileNameFromTitleCase(
+        //     f.friendlyName
+        //   )}.docobj.json`,
+        //   JSON.stringify(inputDocsObject, null, 2),
+        //   {
+        //     overwrite: true,
+        //   }
+        // );
 
         const inputMarkdown = generateMarkdownFromDocSchema(
           "ParamField",
@@ -82,14 +89,6 @@ export async function generateDocs(
       }
     );
 
-    project.createSourceFile(
-      `${basePath}/docs/${fileNameFromTitleCase(f.friendlyName)}.json`,
-      JSON.stringify(f.input, null, 2),
-      {
-        overwrite: true,
-      }
-    );
-
     return Promise.resolve();
   });
 
@@ -112,7 +111,7 @@ function generateDocSchema(
 ): DocsSchemaObject | undefined {
   if (typeof schema === "boolean") return;
 
-  const description = createDescription(schema);
+  let description = createDescription(schema);
 
   if (schema.oneOf) {
     const oneOfTypes = schema.oneOf
@@ -121,11 +120,29 @@ function generateDocSchema(
         return v.type?.toString() ?? "";
       })
       .filter(Boolean);
+    const children: DocsSchemaObject[] = [];
+
+    children.push(
+      ...schema.oneOf.flatMap((v) => {
+        const doc = generateDocSchema(
+          toFriendlyTypeName(v.title ?? "Value"),
+          false,
+          v
+        );
+        return doc ? [doc] : [];
+      })
+    );
+
+    description +=
+      "\n\n*Please note that this object is one of the following possible types*";
+
     return {
       path: key,
       required,
       types: new Set(oneOfTypes),
       description,
+      children,
+      childrenCollectionName: `possible types for ${key}`,
     };
   }
 
@@ -136,11 +153,30 @@ function generateDocSchema(
         return v.type?.toString() ?? "";
       })
       .filter(Boolean);
+
+    const children: DocsSchemaObject[] = [];
+
+    children.push(
+      ...schema.anyOf.flatMap((v) => {
+        const doc = generateDocSchema(
+          toFriendlyTypeName(v.title ?? "Value"),
+          false,
+          v
+        );
+        return doc ? [doc] : [];
+      })
+    );
+
+    description +=
+      "\n\n*Please note that this object is one of the following possible types*";
+
     return {
       path: key,
       required,
       types: new Set(anyOfTypes),
       description,
+      children,
+      childrenCollectionName: `possible types for ${key}`,
     };
   }
 
@@ -184,6 +220,7 @@ function generateDocSchema(
       children: children.sort(
         (a, b) => Number(b.required) - Number(a.required)
       ),
+      childrenCollectionName: "properties",
     };
   }
 
@@ -196,6 +233,7 @@ function generateDocSchema(
         types: new Set(["array"]),
         description,
         children: [doc],
+        childrenCollectionName: "items",
       };
     }
   }
@@ -225,7 +263,9 @@ function generateMarkdownFromDocSchema(
     markdown += `   ${docSchema.description}\n`;
   }
   if (docSchema.children) {
-    markdown += `<Expandable title="properties">`;
+    markdown += `<Expandable title="${
+      docSchema.childrenCollectionName ?? "properties"
+    }">`;
     docSchema.children.forEach((child) => {
       markdown += generateMarkdownFromDocSchema(fieldType, child);
     });
