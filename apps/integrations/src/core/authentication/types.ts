@@ -20,6 +20,7 @@ type APIKeyAuthentication = {
   type: "api_key";
   placement: AuthenticationPlacement;
   documentation: string;
+  scopes: Record<string, string>;
   additionalFields?: {
     key: string;
     fieldType: "text";
