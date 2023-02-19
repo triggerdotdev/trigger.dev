@@ -35,7 +35,14 @@ export async function generateService(service: Service) {
   try {
     project.createDirectory(absolutePath);
     await generateTemplatedFiles(project, absolutePath, service);
-    await generateFunctionsAndTypes(project, absolutePath, service);
+    const functionsData = await generateFunctionData(service);
+    await createFunctionsAndTypesFiles(
+      project,
+      absolutePath,
+      service,
+      functionsData
+    );
+    await generateDocs(project, absolutePath, service, functionsData);
     await project.save();
   } catch (e) {
     console.error(e);
@@ -107,6 +114,7 @@ async function createFileAndReplaceVariables(
 }
 
 type FunctionData = {
+  title: string;
   name: string;
   friendlyName: string;
   description: string;
@@ -123,6 +131,7 @@ async function generateFunctionData(service: Service) {
     const action = actions[key];
 
     //generate schemas for input and output
+    const title = TitleCaseWithSpaces(action.name);
     const name = action.name;
     const friendlyName = toFriendlyTypeName(name);
     const schemas = generateInputOutputSchemas(action.spec, friendlyName);
@@ -157,6 +166,7 @@ export async function ${action.name}(
       `;
 
     const functionData: FunctionData = {
+      title,
       name,
       friendlyName,
       description: action.description,
@@ -170,12 +180,12 @@ export async function ${action.name}(
   return functions;
 }
 
-async function generateFunctionsAndTypes(
+async function createFunctionsAndTypesFiles(
   project: Project,
   basePath: string,
-  service: Service
+  service: Service,
+  functionsData: Record<string, FunctionData>
 ) {
-  const functionsData = await generateFunctionData(service);
   const typeSchemas = Object.values(functionsData)
     .flatMap((f) => [f.input, f.output])
     .filter(Boolean) as JSONSchema[];
@@ -215,6 +225,48 @@ async function generateFunctionsAndTypes(
   functionsFile.formatText();
 }
 
-async function generateDocs() {
+async function generateDocs(
+  project: Project,
+  basePath: string,
+  service: Service,
+  functionsData: Record<string, FunctionData>
+) {
+  const promises = Object.values(functionsData).map(async (f) => {
+    const markdown = `---
+title: ${f.title}
+sidebarTitle: ${f.title}
+description: ${f.description}
+---
+
+${f.description}`;
+
+    project.createSourceFile(
+      `${basePath}/docs/${fileNameFromTitleCase(f.friendlyName)}.mdx`,
+      markdown,
+      {
+        overwrite: true,
+      }
+    );
+
+    return Promise.resolve();
+  });
+
+  await Promise.all(promises);
   return;
+}
+
+function fileNameFromTitleCase(str: string) {
+  return str
+    .replace(/([a-z])([A-Z])/g, "$1-$2")
+    .replace(/[\s-]+/g, "-")
+    .toLowerCase();
+}
+
+function TitleCaseWithSpaces(str: string) {
+  return str
+    .replace(/([a-z])([A-Z])/g, "$1 $2")
+    .replace(/[\s-]+/g, " ")
+    .replace(/^./, function (str: string) {
+      return str.toUpperCase();
+    });
 }
