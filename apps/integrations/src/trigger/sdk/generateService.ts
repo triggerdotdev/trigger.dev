@@ -7,7 +7,9 @@ import { getTypesFromSchema } from "generators/generateTypes";
 import rimraf from "rimraf";
 import { makeAnyOf } from "core/schemas/makeSchema";
 import { JSONSchema } from "core/schemas/types";
-import { Action } from "core/action/types";
+import { FunctionData } from "./types";
+import { generateDocs } from "./generateDocs";
+import { TitleCaseWithSpaces, toFriendlyTypeName } from "./utilities";
 
 const appDir = process.cwd();
 
@@ -47,17 +49,6 @@ export async function generateService(service: Service) {
   } catch (e) {
     console.error(e);
   }
-}
-
-function toFriendlyTypeName(original: string) {
-  //convert the input string to TitleCase, strip out any non alpha characters and strip out spaces
-  return original
-    .replace(/([A-Z])/g, " $1")
-    .replace(/^./, function (str: string) {
-      return str.toUpperCase();
-    })
-    .replace(/[^a-zA-Z]/g, "")
-    .replace(/\s/g, "");
 }
 
 async function generateTemplatedFiles(
@@ -112,16 +103,6 @@ async function createFileAndReplaceVariables(
   file.formatText();
   return;
 }
-
-type FunctionData = {
-  title: string;
-  name: string;
-  friendlyName: string;
-  description: string;
-  input: JSONSchema | undefined;
-  output: JSONSchema;
-  functionCode: string;
-};
 
 async function generateFunctionData(service: Service) {
   const { actions } = service;
@@ -223,138 +204,4 @@ async function createFunctionsAndTypesFiles(
     }
   );
   functionsFile.formatText();
-}
-
-async function generateDocs(
-  project: Project,
-  basePath: string,
-  service: Service,
-  functionsData: Record<string, FunctionData>
-) {
-  const promises = Object.values(functionsData).map(async (f) => {
-    //metadata and intro
-    let markdown = `---
-title: ${f.title}
-sidebarTitle: ${f.title}
-description: ${f.description}
----`;
-
-    //Base params
-    markdown += `
-    
-## Params
-    
-<ParamField path="key" type="string" required={true}>
-  A unique string. Please see the [Keys and Resumability](/guides/resumability)
-  doc for more info.
-</ParamField>`;
-
-    //Input schema
-    if (f.input) {
-      markdown += "\n\n";
-      markdown += generateParamFieldFromSchema("params", true, f.input);
-    }
-
-    project.createSourceFile(
-      `${basePath}/docs/${fileNameFromTitleCase(f.friendlyName)}.mdx`,
-      markdown,
-      {
-        overwrite: true,
-      }
-    );
-
-    project.createSourceFile(
-      `${basePath}/docs/${fileNameFromTitleCase(f.friendlyName)}.json`,
-      JSON.stringify(f.input, null, 2),
-      {
-        overwrite: true,
-      }
-    );
-
-    return Promise.resolve();
-  });
-
-  await Promise.all(promises);
-  return;
-}
-
-function fileNameFromTitleCase(str: string) {
-  return str
-    .replace(/([a-z])([A-Z])/g, "$1-$2")
-    .replace(/[\s-]+/g, "-")
-    .toLowerCase();
-}
-
-function TitleCaseWithSpaces(str: string) {
-  return str
-    .replace(/([a-z])([A-Z])/g, "$1 $2")
-    .replace(/[\s-]+/g, " ")
-    .replace(/^./, function (str: string) {
-      return str.toUpperCase();
-    });
-}
-
-function generateParamFieldFromSchema(
-  key: string,
-  required: boolean,
-  schema: JSONSchema | boolean
-): string {
-  if (typeof schema === "boolean") return "";
-  const { description } = schema;
-
-  if (schema.oneOf) {
-    const anyOfTypes = schema.oneOf.map((v) => {
-      if (typeof v === "boolean") return "";
-      return v.type?.toString();
-    });
-    const set = new Set(anyOfTypes);
-    const uniqueTypes: string[] = Array.from(set).filter(Boolean) as string[];
-    const output = `<ParamField path="${key}" type="${uniqueTypes.join(
-      " | "
-    )}" required={${required}} />`;
-    return output;
-  }
-
-  let output = `<ParamField path="${key}" type="${schema.type}" required={${required}}>\n`;
-  if (description || schema.title) {
-    output += `   ${
-      description ? description : TitleCaseWithSpaces(schema.title)
-    }\n`;
-  }
-
-  if (
-    schema.type === "object" &&
-    (schema.properties || schema.additionalProperties)
-  ) {
-    output += `<Expandable title="properties">`;
-    if (schema.properties) {
-      output +=
-        " " +
-        Object.entries(schema.properties)
-          .map(
-            ([k, v]) =>
-              ` ${generateParamFieldFromSchema(
-                k,
-                schema.required?.find((r) => r === k) != undefined ?? false,
-                v
-              )}`
-          )
-          .join("\n");
-    }
-    if (schema.additionalProperties) {
-      if (typeof schema.additionalProperties !== "boolean") {
-        output +=
-          " " +
-          generateParamFieldFromSchema(
-            `{${schema.title ?? "K"}}`,
-            false,
-            schema.additionalProperties
-          );
-      }
-    }
-    output += `</Expandable>`;
-  }
-
-  output += `</ParamField>`;
-  return output;
 }
