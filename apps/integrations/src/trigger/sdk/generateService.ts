@@ -7,6 +7,7 @@ import { getTypesFromSchema } from "generators/generateTypes";
 import rimraf from "rimraf";
 import { makeAnyOf } from "core/schemas/makeSchema";
 import { JSONSchema } from "core/schemas/types";
+import { Action } from "core/action/types";
 
 const appDir = process.cwd();
 
@@ -105,28 +106,28 @@ async function createFileAndReplaceVariables(
   return;
 }
 
-async function generateFunctionsAndTypes(
-  project: Project,
-  basePath: string,
-  service: Service
-) {
-  const { actions } = service;
+type FunctionData = {
+  name: string;
+  friendlyName: string;
+  description: string;
+  input: JSONSchema | undefined;
+  output: JSONSchema;
+  functionCode: string;
+};
 
-  const typeSchemas: JSONSchema[] = [];
-  const functions: Record<string, string> = {};
+async function generateFunctionData(service: Service) {
+  const { actions } = service;
+  const functions: Record<string, FunctionData> = {};
   //loop through actions
   for (const key in actions) {
     const action = actions[key];
 
     //generate schemas for input and output
-    const name = toFriendlyTypeName(action.name);
-    const schemas = generateInputOutputSchemas(action.spec, name);
+    const name = action.name;
+    const friendlyName = toFriendlyTypeName(name);
+    const schemas = generateInputOutputSchemas(action.spec, friendlyName);
 
-    //add schemas to the array
-    schemas.input && typeSchemas.push(schemas.input);
-    typeSchemas.push(schemas.output);
-
-    functions[action.name] = `
+    const functionCode = `
 ${action.description ? `/** ${action.description} */` : ""}
 export async function ${action.name}(
   /** This key should be unique inside your workflow */
@@ -154,7 +155,30 @@ export async function ${action.name}(
   return output;
 }
       `;
+
+    const functionData: FunctionData = {
+      name,
+      friendlyName,
+      description: action.description,
+      input: schemas.input,
+      output: schemas.output,
+      functionCode,
+    };
+    functions[name] = functionData;
   }
+
+  return functions;
+}
+
+async function generateFunctionsAndTypes(
+  project: Project,
+  basePath: string,
+  service: Service
+) {
+  const functionsData = await generateFunctionData(service);
+  const typeSchemas = Object.values(functionsData)
+    .flatMap((f) => [f.input, f.output])
+    .filter(Boolean) as JSONSchema[];
 
   const combinedSchema: JSONSchema = makeAnyOf(
     `${toFriendlyTypeName(service.service)}Types}`,
@@ -181,10 +205,16 @@ export async function ${action.name}(
       import { ${typeSchemas
         .map((t) => t && t.title)
         .join(", ")} } from "./types";
-      ${Object.values(functions).join("")}`,
+      ${Object.values(functionsData)
+        .map((f) => f.functionCode)
+        .join("")}`,
     {
       overwrite: true,
     }
   );
   functionsFile.formatText();
+}
+
+async function generateDocs() {
+  return;
 }
