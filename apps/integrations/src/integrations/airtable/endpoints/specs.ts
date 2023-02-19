@@ -5,7 +5,6 @@ import {
   makeBooleanSchema,
   makeNumberSchema,
   makeObjectSchema,
-  makeOneOf,
   makeStringSchema,
 } from "core/schemas/makeSchema";
 import {
@@ -82,18 +81,23 @@ export const listRecords: EndpointSpec = {
         optionalProperties: {
           timeZone: TimeZoneSchema,
           userLocal: makeStringSchema(
+            "userLocal",
             "The user locale that should be used to format dates when using string as the cellFormat. This parameter is required when using string as the cellFormat."
           ),
           pageSize: makeNumberSchema(
+            "pageSize",
             "The number of records returned in each request. Must be less than or equal to 100. Default is 100."
           ),
           maxRecords: makeNumberSchema(
+            "maxRecords",
             "The maximum total number of records that will be returned in your requests. If this value is larger than pageSize (which is 100 by default), you may have to load multiple pages to reach this total."
           ),
           offset: makeStringSchema(
+            "offset",
             "To fetch the next page of records, include offset from the previous request in the next request's parameters."
           ),
           view: makeStringSchema(
+            "view",
             "The name or ID of a view in the table. If set, only the records in that view will be returned. The records will be sorted according to the order of the view unless the sort parameter is included, which overrides that order. Fields hidden in this view will be returned in the results. To only return a subset of fields, use the fields parameter."
           ),
           sort: makeArraySchema(
@@ -103,13 +107,14 @@ export const listRecords: EndpointSpec = {
                 field: makeStringSchema("Field name"),
               },
               optionalProperties: {
-                direction: makeStringSchema("Direction", {
+                direction: makeStringSchema("Direction", "Direction", {
                   enum: ["asc", "desc"],
                 }),
               },
             })
           ),
           filterByFormula: makeStringSchema(
+            "filterByFormula",
             `A formula used to filter records. The formula will be evaluated for each record, and if the result is not 0, false, "", NaN, [], or #Error! the record will be included in the response. If combined with the view parameter, only records in that view which satisfy the formula will be returned. For example, to only include records where the column named "Category" equals "Programming", pass in: filterByFormula={Category}="Programming"`
           ),
           fields: makeArraySchema(
@@ -129,6 +134,7 @@ export const listRecords: EndpointSpec = {
         schema: makeObjectSchema("List records success body", {
           optionalProperties: {
             offset: makeStringSchema(
+              "offset",
               "To fetch the next page of records, include offset from the previous request in the next request's parameters."
             ),
           },
@@ -139,6 +145,7 @@ export const listRecords: EndpointSpec = {
                 requiredProperties: {
                   id: makeStringSchema("Record ID"),
                   createdTime: makeStringSchema(
+                    "createdTime",
                     `A date timestamp in the ISO format, eg:"2018-01-01T00:00:00.000Z"`
                   ),
                   fields: makeObjectSchema("Fields", {
@@ -189,11 +196,14 @@ export const getRecord: EndpointSpec = {
         description: "Typical success response",
         schema: makeObjectSchema("Successful response", {
           requiredProperties: {
-            createdTime: makeStringSchema("When the record was created"),
+            createdTime: makeStringSchema(
+              "createdTime",
+              "When the record was created"
+            ),
             fields: makeObjectSchema("Fields", {
               additionalProperties: FieldSchema,
             }),
-            id: makeStringSchema("The record id"),
+            id: makeStringSchema("id", "The record id"),
           },
         }),
       },
@@ -237,6 +247,7 @@ export const updateRecords: EndpointSpec = {
             },
           }),
           typecast: makeBooleanSchema(
+            "typecast",
             "If set to true, Airtable will try to convert string values into the appropriate cell value. This conversion is only performed on a best-effort basis. To ensure your data's integrity, this should only be used when necessary. Defaults to false when unset."
           ),
         },
@@ -251,6 +262,7 @@ export const updateRecords: EndpointSpec = {
               },
               optionalProperties: {
                 id: makeStringSchema(
+                  "id",
                   "Record ID. Required when performUpsert is not set."
                 ),
               },
@@ -275,6 +287,7 @@ export const updateRecords: EndpointSpec = {
                   requiredProperties: {
                     id: makeStringSchema("Record ID"),
                     createdTime: makeStringSchema(
+                      "createdTime",
                       `A date timestamp in the ISO format, eg:"2018-01-01T00:00:00.000Z"`
                     ),
                     fields: makeObjectSchema("Fields", {
@@ -301,6 +314,7 @@ export const updateRecords: EndpointSpec = {
                   requiredProperties: {
                     id: makeStringSchema("Record ID"),
                     createdTime: makeStringSchema(
+                      "createdTime",
                       `A date timestamp in the ISO format, eg:"2018-01-01T00:00:00.000Z"`
                     ),
                     fields: makeObjectSchema("Fields", {
@@ -346,6 +360,7 @@ export const updateRecord: EndpointSpec = {
       schema: makeObjectSchema("Update record body", {
         optionalProperties: {
           typecast: makeBooleanSchema(
+            "typecast",
             "If set to true, Airtable will try to convert string values into the appropriate cell value. This conversion is only performed on a best-effort basis. To ensure your data's integrity, this should only be used when necessary. Defaults to false when unset."
           ),
         },
@@ -367,6 +382,7 @@ export const updateRecord: EndpointSpec = {
           requiredProperties: {
             id: makeStringSchema("Record ID"),
             createdTime: makeStringSchema(
+              "createdTime",
               `A date timestamp in the ISO format, eg:"2018-01-01T00:00:00.000Z"`
             ),
             fields: makeObjectSchema("Fields", {
@@ -407,6 +423,7 @@ export const createRecords: EndpointSpec = {
       schema: makeObjectSchema("Create records body", {
         optionalProperties: {
           typecast: makeBooleanSchema(
+            "typecast",
             "If set to true, Airtable will try to convert string values into the appropriate cell value. This conversion is only performed on a best-effort basis. To ensure your data's integrity, this should only be used when necessary. Defaults to false when unset."
           ),
           fields: makeObjectSchema("Fields", {
@@ -441,6 +458,7 @@ export const createRecords: EndpointSpec = {
                   requiredProperties: {
                     id: makeStringSchema("Record ID"),
                     createdTime: makeStringSchema(
+                      "createdTime",
                       `A date timestamp in the ISO format, eg:"2018-01-01T00:00:00.000Z"`
                     ),
                     fields: makeObjectSchema("Fields", {
@@ -455,6 +473,7 @@ export const createRecords: EndpointSpec = {
             requiredProperties: {
               id: makeStringSchema("Record ID"),
               createdTime: makeStringSchema(
+                "createdTime",
                 `A date timestamp in the ISO format, eg:"2018-01-01T00:00:00.000Z"`
               ),
               fields: makeObjectSchema("Fields", {
@@ -519,9 +538,13 @@ export const deleteRecords: EndpointSpec = {
               makeObjectSchema("Deleted record", {
                 requiredProperties: {
                   id: makeStringSchema("Record ID"),
-                  deleted: makeBooleanSchema("Whether the record was deleted", {
-                    enum: true,
-                  }),
+                  deleted: makeBooleanSchema(
+                    "deleted",
+                    "Whether the record was deleted",
+                    {
+                      enum: true,
+                    }
+                  ),
                 },
               })
             ),
@@ -567,9 +590,13 @@ export const deleteRecord: EndpointSpec = {
         schema: makeObjectSchema("Delete records response", {
           requiredProperties: {
             id: makeStringSchema("Record ID"),
-            deleted: makeBooleanSchema("Whether the record was deleted", {
-              enum: true,
-            }),
+            deleted: makeBooleanSchema(
+              "deleted",
+              "Whether the record was deleted",
+              {
+                enum: true,
+              }
+            ),
           },
         }),
       },

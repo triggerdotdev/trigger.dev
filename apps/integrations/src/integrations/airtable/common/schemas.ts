@@ -50,13 +50,13 @@ export const AttachmentSchema = makeObjectSchema("An Attachment", {
   additionalProperties: true,
 });
 
-export const FieldSchema = makeOneOf("A Field", [
-  makeStringSchema(),
-  makeNumberSchema(),
-  makeBooleanSchema(),
+export const FieldSchema = makeOneOf("FieldValue", [
+  makeStringSchema("StringValue"),
+  makeNumberSchema("NumberValue"),
+  makeBooleanSchema("BooleanValue"),
   CollaboratorSchema,
   makeArraySchema("Collaborators", CollaboratorSchema),
-  makeArraySchema("Values", makeStringSchema()),
+  makeArraySchema("StringValues", makeStringSchema("StringValue")),
   makeArraySchema("Attachments", AttachmentSchema),
 ]);
 
@@ -91,7 +91,8 @@ export const RecordIdParam: EndpointSpecParameter = {
 };
 
 export const TimeZoneSchema: JSONSchema = {
-  title:
+  title: "Timezone",
+  description:
     "The time zone that should be used to format dates when using string as the cellFormat. This parameter is required when using string as the cellFormat",
   type: "string",
   enum: [

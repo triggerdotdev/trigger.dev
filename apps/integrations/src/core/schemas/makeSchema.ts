@@ -1,7 +1,8 @@
 import { JSONSchema } from "./types";
 
 export function makeStringSchema(
-  title?: string,
+  title: string,
+  description?: string,
   options?: {
     defaultValue?: string;
     enum?: string[];
@@ -9,10 +10,11 @@ export function makeStringSchema(
 ): JSONSchema {
   const schema: JSONSchema = {
     type: "string",
+    title,
   };
 
-  if (title) {
-    schema.title = title;
+  if (description) {
+    schema.description = description;
   }
 
   if (options?.defaultValue) {
@@ -27,17 +29,19 @@ export function makeStringSchema(
 }
 
 export function makeNumberSchema(
-  title?: string,
+  title: string,
+  description?: string,
   options?: {
     defaultValue: number;
   }
 ): JSONSchema {
   const schema: JSONSchema = {
     type: "number",
+    title,
   };
 
-  if (title) {
-    schema.title = title;
+  if (description) {
+    schema.description = description;
   }
 
   if (options?.defaultValue) {
@@ -48,18 +52,20 @@ export function makeNumberSchema(
 }
 
 export function makeBooleanSchema(
-  title?: string,
+  title: string,
+  description?: string,
   options?: {
     defaultValue?: boolean;
     enum?: boolean;
   }
 ): JSONSchema {
   const schema: JSONSchema = {
+    title,
     type: "boolean",
   };
 
-  if (title) {
-    schema.title = title;
+  if (description) {
+    schema.description = description;
   }
 
   if (options?.defaultValue) {
