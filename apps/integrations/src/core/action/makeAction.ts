@@ -57,3 +57,18 @@ export const makeSimpleAction = (endpoint: Endpoint) => {
     action,
   });
 };
+
+export const makeSimpleActions = <
+  TEndpoints extends Record<string, Endpoint>,
+  K extends keyof TEndpoints
+>(
+  endpoints: TEndpoints
+): Record<K, Action> => {
+  const actions: any = {};
+
+  Object.entries(endpoints).forEach(([name, endpoint]) => {
+    actions[name as K] = makeSimpleAction(endpoint);
+  });
+
+  return actions;
+};

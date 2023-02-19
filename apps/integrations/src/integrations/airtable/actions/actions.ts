@@ -1,5 +1,5 @@
-import { makeSimpleAction } from "core/action/makeAction";
-import { Action } from "core/action/types";
+import { makeSimpleActions } from "core/action/makeAction";
 import endpoints from "../endpoints/endpoints";
 
-export const getRecord: Action = makeSimpleAction(endpoints.getRecord);
+const actions = makeSimpleActions(endpoints);
+export default actions;

@@ -1,12 +1,11 @@
-import { EndpointSpec, EndpointSpecParameter } from "core/endpoint/types";
+import { EndpointSpecParameter } from "core/endpoint/types";
 import {
   makeArraySchema,
   makeBooleanSchema,
   makeNumberSchema,
   makeObjectSchema,
-  makeStringSchema,
   makeOneOf,
-  makeAnyOf,
+  makeStringSchema,
 } from "core/schemas/makeSchema";
 import { JSONSchema } from "core/schemas/types";
 

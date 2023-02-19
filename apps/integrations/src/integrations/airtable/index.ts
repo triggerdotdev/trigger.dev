@@ -1,6 +1,6 @@
 import { Service } from "core/service/types";
 import { authentication } from "./authentication";
-import * as actions from "./actions/actions";
+import actions from "./actions/actions";
 
 export const airtable: Service = {
   name: "Airtable",
