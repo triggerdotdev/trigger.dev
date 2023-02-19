@@ -1,0 +1,34 @@
+---
+title: Conversations List
+sidebarTitle: Conversations List
+description: Lists all channels in a Slack team.
+---
+    
+## Params
+    
+<ParamField path="key" type="string" required={true}>
+  A unique string. Please see the [Keys and Resumability](/guides/resumability)
+  doc for more info.
+</ParamField><ParamField path="params" type="object" required={true}>
+   Conversations List Input
+<Expandable title="properties"><ParamField path="exclude_archived" type="boolean" required={false}>
+   Set to `true` to exclude archived channels from the list
+</ParamField><ParamField path="types" type="string" required={false}>
+   Mix and match channel types by providing a comma-separated list of any combination of `public_channel`, `private_channel`, `mpim`, `im`
+</ParamField><ParamField path="limit" type="number" required={false}>
+   The maximum number of items to return. Fewer than the requested number of items may be returned, even if the end of the list hasn't been reached. Must be an integer no larger than 1000.
+</ParamField><ParamField path="cursor" type="string" required={false}>
+   Paginate through collections of data by setting the `cursor` parameter to a `next_cursor` attribute returned by a previous request's `response_metadata`. Default value fetches the first "page" of the collection. See [pagination](/docs/pagination) for more detail.
+</ParamField></Expandable></ParamField>
+
+## Response
+
+<ResponseField path="response" type="object" required={true}>
+   Schema for successful response from conversations.list method
+<Expandable title="properties"><ResponseField path="channels" type="array" required={true}>
+<Expandable title="items"><ResponseField path="channels[n]" type="undefined" required={true}>
+</ResponseField></Expandable></ResponseField><ResponseField path="ok" type="boolean" required={true}>
+   Default success response
+</ResponseField><ResponseField path="response_metadata" type="object" required={false}>
+<Expandable title="properties"><ResponseField path="next_cursor" type="string" required={true}>
+</ResponseField></Expandable></ResponseField></Expandable></ResponseField>

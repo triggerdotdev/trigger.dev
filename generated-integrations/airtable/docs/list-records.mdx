@@ -1,0 +1,142 @@
+---
+title: List Records
+sidebarTitle: List Records
+description: List records in a table. Note that table names and table ids can be used interchangeably. We recommend using table IDs so you don't need to modify your API request when your table name changes.
+
+      The server returns one page of records at a time. Each page will contain pageSize records, which is 100 by default. If there are more records, the response will contain an offset. To fetch the next page of records, include offset in the next request's parameters. Pagination will stop when you've reached the end of your table. If the maxRecords parameter is passed, pagination will stop once you've reached this maximum.
+
+      Returned records do not include any fields with "empty" values, e.g. "", [], or false.
+---
+    
+## Params
+    
+<ParamField path="key" type="string" required={true}>
+  A unique string. Please see the [Keys and Resumability](/guides/resumability)
+  doc for more info.
+</ParamField><ParamField path="params" type="object" required={true}>
+   List Records Input
+<Expandable title="properties"><ParamField path="baseId" type="string" required={true}>
+   The ID of the base
+</ParamField><ParamField path="tableIdOrName" type="string" required={true}>
+   The name or id of the table
+</ParamField><ParamField path="timeZone" type="string" required={false}>
+   The time zone that should be used to format dates when using string as the cellFormat. This parameter is required when using string as the cellFormat
+</ParamField><ParamField path="userLocal" type="string" required={false}>
+   The user locale that should be used to format dates when using string as the cellFormat. This parameter is required when using string as the cellFormat.
+</ParamField><ParamField path="pageSize" type="number" required={false}>
+   The number of records returned in each request. Must be less than or equal to 100. Default is 100.
+</ParamField><ParamField path="maxRecords" type="number" required={false}>
+   The maximum total number of records that will be returned in your requests. If this value is larger than pageSize (which is 100 by default), you may have to load multiple pages to reach this total.
+</ParamField><ParamField path="offset" type="string" required={false}>
+   To fetch the next page of records, include offset from the previous request in the next request's parameters.
+</ParamField><ParamField path="view" type="string" required={false}>
+   The name or ID of a view in the table. If set, only the records in that view will be returned. The records will be sorted according to the order of the view unless the sort parameter is included, which overrides that order. Fields hidden in this view will be returned in the results. To only return a subset of fields, use the fields parameter.
+</ParamField><ParamField path="sort" type="array" required={false}>
+   Sort
+<Expandable title="items"><ParamField path="sort[n]" type="object" required={false}>
+   Sort field
+<Expandable title="properties"><ParamField path="field" type="string" required={true}>
+   Field name
+</ParamField><ParamField path="direction" type="string" required={false}>
+   Direction
+</ParamField></Expandable></ParamField></Expandable></ParamField><ParamField path="filterByFormula" type="string" required={false}>
+   A formula used to filter records. The formula will be evaluated for each record, and if the result is not 0, false, "", NaN, [], or #Error! the record will be included in the response. If combined with the view parameter, only records in that view which satisfy the formula will be returned. For example, to only include records where the column named "Category" equals "Programming", pass in: filterByFormula={Category}="Programming"
+</ParamField><ParamField path="fields" type="array" required={false}>
+   Only data for fields whose names or IDs are in this list will be included in the result. If you don't need every field, you can use this parameter to reduce the amount of data transferred.
+<Expandable title="items"><ParamField path="fields[n]" type="string" required={false}>
+   Field name
+</ParamField></Expandable></ParamField></Expandable></ParamField>
+
+## Response
+
+<ResponseField path="response" type="object" required={true}>
+   List Records Output
+<Expandable title="properties"><ResponseField path="records" type="array" required={true}>
+   Records
+<Expandable title="items"><ResponseField path="records[n]" type="object" required={true}>
+   Record
+<Expandable title="properties"><ResponseField path="id" type="string" required={true}>
+   Record ID
+</ResponseField><ResponseField path="createdTime" type="string" required={true}>
+   A date timestamp in the ISO format, eg:"2018-01-01T00:00:00.000Z"
+</ResponseField><ResponseField path="fields" type="object" required={true}>
+   Fields
+<Expandable title="properties"><ResponseField path="fields[key]" type="string | number | boolean | object | array" required={false}>
+   Field Value
+
+*Please note that this object is one of the following possible types*
+<Expandable title="possible types for fields[key]"><ResponseField path="StringValue" type="string" required={false}>
+   String Value
+</ResponseField><ResponseField path="NumberValue" type="number" required={false}>
+   Number Value
+</ResponseField><ResponseField path="BooleanValue" type="boolean" required={false}>
+   Boolean Value
+</ResponseField><ResponseField path="ACollaborator" type="object" required={false}>
+   A Collaborator
+<Expandable title="properties"><ResponseField path="id" type="string" required={true}>
+   Collaborator ID
+</ResponseField><ResponseField path="email" type="string" required={true}>
+   Collaborator Email
+</ResponseField><ResponseField path="name" type="string" required={true}>
+   Collaborator Name
+</ResponseField></Expandable></ResponseField><ResponseField path="Collaborators" type="array" required={false}>
+   Collaborators
+<Expandable title="items"><ResponseField path="Collaborators[n]" type="object" required={false}>
+   A Collaborator
+<Expandable title="properties"><ResponseField path="id" type="string" required={true}>
+   Collaborator ID
+</ResponseField><ResponseField path="email" type="string" required={true}>
+   Collaborator Email
+</ResponseField><ResponseField path="name" type="string" required={true}>
+   Collaborator Name
+</ResponseField></Expandable></ResponseField></Expandable></ResponseField><ResponseField path="StringValues" type="array" required={false}>
+   String Values
+<Expandable title="items"><ResponseField path="StringValues[n]" type="string" required={false}>
+   String Value
+</ResponseField></Expandable></ResponseField><ResponseField path="Attachments" type="array" required={false}>
+   Attachments
+<Expandable title="items"><ResponseField path="Attachments[n]" type="object" required={false}>
+   An Attachment
+<Expandable title="properties"><ResponseField path="id" type="string" required={true}>
+   Attachment ID
+</ResponseField><ResponseField path="url" type="string" required={true}>
+   Attachment URL
+</ResponseField><ResponseField path="filename" type="string" required={true}>
+   Attachment Filename
+</ResponseField><ResponseField path="size" type="number" required={true}>
+   Attachment Size
+</ResponseField><ResponseField path="type" type="string" required={true}>
+   Attachment Type
+</ResponseField><ResponseField path="height" type="number" required={false}>
+   Attachment Height
+</ResponseField><ResponseField path="width" type="number" required={false}>
+   Attachment Width
+</ResponseField><ResponseField path="thumbnails" type="object" required={false}>
+   Thumbnails
+<Expandable title="properties"><ResponseField path="small" type="object" required={true}>
+   A Thumbnail
+<Expandable title="properties"><ResponseField path="url" type="string" required={true}>
+   Thumbnail URL
+</ResponseField><ResponseField path="width" type="number" required={true}>
+   Thumbnail Width
+</ResponseField><ResponseField path="height" type="number" required={true}>
+   Thumbnail Height
+</ResponseField></Expandable></ResponseField><ResponseField path="large" type="object" required={true}>
+   A Thumbnail
+<Expandable title="properties"><ResponseField path="url" type="string" required={true}>
+   Thumbnail URL
+</ResponseField><ResponseField path="width" type="number" required={true}>
+   Thumbnail Width
+</ResponseField><ResponseField path="height" type="number" required={true}>
+   Thumbnail Height
+</ResponseField></Expandable></ResponseField><ResponseField path="full" type="object" required={true}>
+   A Thumbnail
+<Expandable title="properties"><ResponseField path="url" type="string" required={true}>
+   Thumbnail URL
+</ResponseField><ResponseField path="width" type="number" required={true}>
+   Thumbnail Width
+</ResponseField><ResponseField path="height" type="number" required={true}>
+   Thumbnail Height
+</ResponseField></Expandable></ResponseField></Expandable></ResponseField></Expandable></ResponseField></Expandable></ResponseField></Expandable></ResponseField></Expandable></ResponseField></Expandable></ResponseField></Expandable></ResponseField><ResponseField path="offset" type="string" required={false}>
+   To fetch the next page of records, include offset from the previous request in the next request's parameters.
+</ResponseField></Expandable></ResponseField>

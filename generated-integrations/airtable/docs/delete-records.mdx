@@ -1,0 +1,36 @@
+---
+title: Delete Records
+sidebarTitle: Delete Records
+description: Delete more than one records with the given record IDs. Note you can't delete a single record with this.
+---
+    
+## Params
+    
+<ParamField path="key" type="string" required={true}>
+  A unique string. Please see the [Keys and Resumability](/guides/resumability)
+  doc for more info.
+</ParamField><ParamField path="params" type="object" required={true}>
+   Delete Records Input
+<Expandable title="properties"><ParamField path="baseId" type="string" required={true}>
+   The ID of the base
+</ParamField><ParamField path="tableIdOrName" type="string" required={true}>
+   The name or id of the table
+</ParamField><ParamField path="records" type="array" required={true}>
+   An array of record IDs to delete
+<Expandable title="items"><ParamField path="records[n]" type="string" required={true}>
+   Record ID
+</ParamField></Expandable></ParamField></Expandable></ParamField>
+
+## Response
+
+<ResponseField path="response" type="object" required={true}>
+   Delete Records Output
+<Expandable title="properties"><ResponseField path="records" type="array" required={true}>
+   Records
+<Expandable title="items"><ResponseField path="records[n]" type="object" required={true}>
+   Deleted record
+<Expandable title="properties"><ResponseField path="id" type="string" required={true}>
+   Record ID
+</ResponseField><ResponseField path="deleted" type="boolean" required={true}>
+   Whether the record was deleted
+</ResponseField></Expandable></ResponseField></Expandable></ResponseField></Expandable></ResponseField>
