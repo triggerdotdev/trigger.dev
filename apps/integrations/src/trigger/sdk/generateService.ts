@@ -184,9 +184,16 @@ function removeDuplicateTypes(original: string): string {
     /((\/\*\*\s)(\s?\*\s?[a-zA-Z0-9\s]*)(\*\/)\s)?export type ([a-zA-Z0-9]+) = ([a-zA-Z0-9-[_\]/{}| "()]+)\n/gm;
   const matches = original.matchAll(regex);
   //loop through the matches and add them to a set
+  let deduplicated = original;
+  const types = new Set<string>();
   for (const match of matches) {
-    console.log("match", match[0]);
+    //add to set
+    types.add(match[0]);
+    //remove from original
+    deduplicated = deduplicated.replace(match[0], "");
   }
 
-  return original;
+  //add the types back to the original
+  deduplicated = [...types].join("\n") + deduplicated;
+  return deduplicated;
 }
