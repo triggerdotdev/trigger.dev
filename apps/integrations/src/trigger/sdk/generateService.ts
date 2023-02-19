@@ -232,7 +232,8 @@ async function generateDocs(
   functionsData: Record<string, FunctionData>
 ) {
   const promises = Object.values(functionsData).map(async (f) => {
-    const markdown = `---
+    //metadata and intro
+    let markdown = `---
 title: ${f.title}
 sidebarTitle: ${f.title}
 description: ${f.description}
@@ -240,9 +241,33 @@ description: ${f.description}
 
 ${f.description}`;
 
+    //Base params
+    markdown += `
+    
+## Params
+    
+<ParamField path="key" type="string" required={true}>
+  A unique string. Please see the [Keys and Resumability](/guides/resumability)
+  doc for more info.
+</ParamField>`;
+
+    //Input schema
+    if (f.input) {
+      markdown += "\n\n";
+      markdown += generateParamFieldFromSchema("params", true, f.input);
+    }
+
     project.createSourceFile(
       `${basePath}/docs/${fileNameFromTitleCase(f.friendlyName)}.mdx`,
       markdown,
+      {
+        overwrite: true,
+      }
+    );
+
+    project.createSourceFile(
+      `${basePath}/docs/${fileNameFromTitleCase(f.friendlyName)}.json`,
+      JSON.stringify(f.input, null, 2),
       {
         overwrite: true,
       }
@@ -269,4 +294,47 @@ function TitleCaseWithSpaces(str: string) {
     .replace(/^./, function (str: string) {
       return str.toUpperCase();
     });
+}
+
+function generateParamFieldFromSchema(
+  key: string,
+  required: boolean,
+  schema: JSONSchema | boolean
+): string {
+  if (typeof schema === "boolean") return "";
+  const { description } = schema;
+  let output = `<ParamField path="${key}" type="${schema.type}" required={${required}}>\n`;
+  if (description) {
+    output += `   ${description}\n`;
+  }
+
+  if (schema.type === "object") {
+    if (schema.properties) {
+      output += Object.entries(schema.properties)
+        .map(
+          ([k, v]) =>
+            ` ${generateParamFieldFromSchema(
+              k,
+              schema.required?.find((r) => r === k) != undefined ?? false,
+              v
+            )}`
+        )
+        .join("\n");
+    }
+    if (schema.additionalProperties) {
+      output += Object.entries(schema.additionalProperties)
+        .map(
+          ([k, v]) =>
+            ` ${generateParamFieldFromSchema(
+              k,
+              schema.required?.find((r) => r === k) != undefined ?? false,
+              v
+            )}`
+        )
+        .join("\n");
+    }
+  }
+
+  output += `</ParamField>`;
+  return output;
 }
