@@ -45,7 +45,16 @@ export function applyCredentials(
     case "api_key": {
       const authConfig = authentication[credentials.name];
       if (authConfig.placement.in === "header") {
-        fetch.headers[authConfig.placement.key] = credentials.api_key;
+        let value = "";
+        switch (authConfig.placement.type) {
+          case "basic":
+            value = `Basic ${credentials.api_key}`;
+            break;
+          case "bearer":
+            value = `Bearer ${credentials.api_key}`;
+            break;
+        }
+        fetch.headers[authConfig.placement.key] = value;
       }
       return fetch;
     }
