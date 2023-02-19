@@ -17,10 +17,10 @@ test("simple schema type generation", async () => {
     const data = await generateTypesFromSchema(schema, "Input");
     expect(data).toMatchInlineSnapshot(`
       "export interface Input {
-        /**
-         * ID of conversation to join
-         */
-        channel: string;
+      /**
+       * ID of conversation to join
+       */
+      channel: string
       }
       "
     `);
@@ -93,22 +93,22 @@ test("advanced schema type generation", async () => {
     const data = await generateTypesFromSchema(schema, "Input");
     expect(data).toMatchInlineSnapshot(`
       "export interface Input {
-        channel: string;
-        message: {
-          attachments?: {
-            fallback: string;
-            id: number;
-            text: string;
-          }[];
-          bot_id: string;
-          subtype?: string;
-          text: string;
-          ts: string;
-          type: string;
-          user?: string;
-        };
-        ok: boolean;
-        ts: string;
+      channel: string
+      message: {
+      attachments?: {
+      fallback: string
+      id: number
+      text: string
+      }[]
+      bot_id: string
+      subtype?: string
+      text: string
+      ts: string
+      type: string
+      user?: string
+      }
+      ok: boolean
+      ts: string
       }
       "
     `);
