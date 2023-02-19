@@ -20,6 +20,14 @@ export async function generateDocs(
   functionsData: Record<string, FunctionData>
 ) {
   const promises = Object.values(functionsData).map(async (f) => {
+    project.createSourceFile(
+      `${basePath}/docs/${fileNameFromTitleCase(f.friendlyName)}.fdata.json`,
+      JSON.stringify(f, null, 2),
+      {
+        overwrite: true,
+      }
+    );
+
     //metadata and intro
     let markdown = generatePageMetadata(f.title, f.description);
 
@@ -35,22 +43,35 @@ export async function generateDocs(
 
     //Input schema
     if (f.input) {
-      const docObject = generateDocSchema("params", true, f.input);
+      const inputDocsObject = generateDocSchema("params", true, f.input);
 
-      if (docObject) {
+      if (inputDocsObject) {
         project.createSourceFile(
           `${basePath}/docs/${fileNameFromTitleCase(
             f.friendlyName
           )}.docobj.json`,
-          JSON.stringify(docObject, null, 2),
+          JSON.stringify(inputDocsObject, null, 2),
           {
             overwrite: true,
           }
         );
 
-        const inputMarkdown = generateMarkdownFromDocSchema(docObject);
+        const inputMarkdown = generateMarkdownFromDocSchema(
+          "ParamField",
+          inputDocsObject
+        );
         markdown += inputMarkdown;
       }
+    }
+
+    const outputDocsObject = generateDocSchema("response", true, f.output);
+    if (outputDocsObject) {
+      const outputMarkdown = generateMarkdownFromDocSchema(
+        "ResponseField",
+        outputDocsObject
+      );
+      markdown += "\n\n## Response\n\n";
+      markdown += outputMarkdown;
     }
 
     project.createSourceFile(
@@ -94,7 +115,22 @@ function generateDocSchema(
   const description = createDescription(schema);
 
   if (schema.oneOf) {
-    const anyOfTypes = schema.oneOf
+    const oneOfTypes = schema.oneOf
+      .map((v) => {
+        if (typeof v === "boolean") return "";
+        return v.type?.toString() ?? "";
+      })
+      .filter(Boolean);
+    return {
+      path: key,
+      required,
+      types: new Set(oneOfTypes),
+      description,
+    };
+  }
+
+  if (schema.anyOf) {
+    const anyOfTypes = schema.anyOf
       .map((v) => {
         if (typeof v === "boolean") return "";
         return v.type?.toString() ?? "";
@@ -178,8 +214,11 @@ function createDescription(schema: JSONSchema): string | undefined {
     : TitleCaseWithSpaces(schema.title);
 }
 
-function generateMarkdownFromDocSchema(docSchema: DocsSchemaObject): string {
-  let markdown = `<ParamField path="${docSchema.path}" type="${Array.from(
+function generateMarkdownFromDocSchema(
+  fieldType: "ParamField" | "ResponseField",
+  docSchema: DocsSchemaObject
+): string {
+  let markdown = `<${fieldType} path="${docSchema.path}" type="${Array.from(
     docSchema.types
   ).join(" | ")}" required={${docSchema.required}}>\n`;
   if (docSchema.description) {
@@ -188,10 +227,10 @@ function generateMarkdownFromDocSchema(docSchema: DocsSchemaObject): string {
   if (docSchema.children) {
     markdown += `<Expandable title="properties">`;
     docSchema.children.forEach((child) => {
-      markdown += generateMarkdownFromDocSchema(child);
+      markdown += generateMarkdownFromDocSchema(fieldType, child);
     });
     markdown += `</Expandable>`;
   }
-  markdown += `</ParamField>`;
+  markdown += `</${fieldType}>`;
   return markdown;
 }

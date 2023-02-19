@@ -6,6 +6,15 @@ export function fileNameFromTitleCase(str: string) {
 }
 
 export function TitleCaseWithSpaces(str: string) {
+  if (!str) {
+    return "";
+  }
+
+  if (!str.match(/([a-z])([A-Z])/g)) {
+    //capitalize the first letter
+    return str.charAt(0).toUpperCase() + str.slice(1);
+  }
+
   return str
     .replace(/([a-z])([A-Z])/g, "$1 $2")
     .replace(/[\s-]+/g, " ")
