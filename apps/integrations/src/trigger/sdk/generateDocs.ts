@@ -71,14 +71,16 @@ export async function generateDocs(
       }
     }
 
-    const outputDocsObject = generateDocSchema("response", true, f.output);
-    if (outputDocsObject) {
-      const outputMarkdown = generateMarkdownFromDocSchema(
-        "ResponseField",
-        outputDocsObject
-      );
-      markdown += "\n\n## Response\n\n";
-      markdown += outputMarkdown;
+    if (f.output) {
+      const outputDocsObject = generateDocSchema("response", true, f.output);
+      if (outputDocsObject) {
+        const outputMarkdown = generateMarkdownFromDocSchema(
+          "ResponseField",
+          outputDocsObject
+        );
+        markdown += "\n\n## Response\n\n";
+        markdown += outputMarkdown;
+      }
     }
 
     project.createSourceFile(

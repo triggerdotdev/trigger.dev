@@ -128,7 +128,7 @@ export async function ${action.name}(
   params: ${schemas.input.title}`
       : ""
   }
-): Promise<${schemas.output.title}> {
+): Promise<${schemas.output?.title ?? "void"}> {
   const run = getTriggerRun();
 
   if (!run) {

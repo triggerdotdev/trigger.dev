@@ -6,13 +6,13 @@ export function generateInputOutputSchemas(
   name: string
 ): {
   input: JSONSchema | undefined;
-  output: JSONSchema;
+  output: JSONSchema | undefined;
 } {
   const inputSchema = createInputSchema(spec.input);
   if (inputSchema) inputSchema.title = `${name}Input`;
 
   const outputSchema = createSuccessfulOutputSchema(spec.output);
-  outputSchema.title = `${name}Output`;
+  if (outputSchema) outputSchema.title = `${name}Output`;
 
   return {
     input: inputSchema,
@@ -56,7 +56,9 @@ export function createInputSchema(
 
 export function createSuccessfulOutputSchema(
   spec: Action["spec"]["output"]
-): JSONSchema {
+): JSONSchema | undefined {
+  if (spec === undefined) return undefined;
+
   //combine all "success" output schemas into a union
   const outputSuccessSchemas = Object.values(spec.responses).flatMap((s) =>
     s.flatMap((r) => (r.success ? r.schema : []))

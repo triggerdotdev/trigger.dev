@@ -1,10 +1,10 @@
 import { Catalog } from "core/catalog";
-import { slackv2 } from "./slack";
 import { airtable } from "./airtable";
+import { sendgrid } from "./sendgrid";
 
 export const catalog: Catalog = {
   services: {
-    slackv2,
     airtable,
+    sendgrid,
   },
 };
