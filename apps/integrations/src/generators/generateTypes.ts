@@ -4,6 +4,7 @@ export async function getTypesFromSchema(schema: any, name: string) {
   const ts = await compile(schema, name, {
     additionalProperties: false,
     bannerComment: "",
+    format: false,
   });
   return ts;
 }
