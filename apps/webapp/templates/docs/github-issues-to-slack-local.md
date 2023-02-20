@@ -26,16 +26,3 @@ You should see a message like the following:
 ```
 [trigger.dev]  ✨ Connected and listening for events [github-issues-to-slack]
 ```
-
-<!--
-## 🚀 Deploy
-
-We've made it really easy to deploy this repo to Render.com, if you don't already have a Node.js server to host your triggers.
-
-[Render.com](https://render.com) is a super-fast way to deploy webapps and servers (think of it like a modern Heroku)
-
-<a href="https://render.com/deploy?repo=https://github.com/triggerdotdev/github-issues-to-slack">
-  <img width="144px" src="https://render.com/images/deploy-to-render-button.svg" alt="Deploy to Render">
-</a>
-
-> **Note** Make sure you use your "live" trigger.dev API Key when deploying to a server -->
