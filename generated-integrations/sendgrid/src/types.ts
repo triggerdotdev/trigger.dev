@@ -1,4 +1,4 @@
-export type SendgridTypes = MailSendInput
+export type SendgridTypes = (MailSendInput | MarketingContactsInput | MarketingContactsOutput)
 export type ToEmailArray = {
   /**
    * The intended recipient's email address.
@@ -348,4 +348,72 @@ export interface ReplyToEmailObject {
    * A name or title associated with the `reply_to` email address.
    */
   name?: string
+}
+export interface MarketingContactsInput {
+  /**
+   * An array of List ID strings that this contact will be added to.
+   */
+  list_ids?: string[]
+  /**
+   * One or more contacts objects that you intend to upsert. The available fields for a contact, including the required `email` field are described below.
+   * 
+   * @minItems 1
+   * @maxItems 30000
+   */
+  contacts: [ContactRequest, ...(ContactRequest)[]]
+}
+export interface ContactRequest {
+  /**
+   * The first line of the address.
+   */
+  address_line_1?: string
+  /**
+   * An optional second line for the address.
+   */
+  address_line_2?: string
+  /**
+   * Additional emails associated with the contact.
+   * 
+   * @minItems 0
+   * @maxItems 5
+   */
+  alternate_emails?: [] | [string] | [string, string] | [string, string, string] | [string, string, string, string] | [string, string, string, string, string]
+  /**
+   * The contact's city.
+   */
+  city?: string
+  /**
+   * The contact's country. Can be a full name or an abbreviation.
+   */
+  country?: string
+  /**
+   * The contact's primary email. This is required to be a valid email.
+   */
+  email: string
+  /**
+   * The contact's personal name.
+   */
+  first_name?: string
+  /**
+   * The contact's family name.
+   */
+  last_name?: string
+  /**
+   * The contact's ZIP code or other postal code.
+   */
+  postal_code?: string
+  /**
+   * The contact's state, province, or region.
+   */
+  state_province_region?: string
+  custom_fields?: CustomFieldsById
+}
+export interface CustomFieldsById {
+  [k: string]: unknown
+}
+export interface MarketingContactsOutput {
+  /**
+   * Indicates that the contacts are queued for processing. Check the job status with the "Import Contacts Status" endpoint.
+   */
+  job_id?: string
 }
