@@ -108,6 +108,7 @@ export default function Page() {
               href={workflow.organizationTemplate.repositoryUrl}
               className="flex items-center gap-1 text-sm text-slate-400"
               target="_blank"
+              rel="noreferrer"
             >
               <OctoKitty className="mr-0.5 h-4 w-4" />
               {workflow.organizationTemplate.repositoryUrl.replace(
