@@ -11,13 +11,13 @@ description: Updates a single record.
   doc for more info.
 </ParamField><ParamField path="params" type="object" required={true}>
    Update Record Input
-<Expandable title="properties"><ParamField path="fields" type="object" required={true}>
+<Expandable title="properties" defaultOpen={true}><ParamField path="fields" type="object" required={true}>
    Fields
-<Expandable title="properties"><ParamField path="fields[key]" type="string | number | boolean | object | array" required={false}>
+<Expandable title="properties" defaultOpen={false}><ParamField path="fields[key]" type="string | number | boolean | object | array" required={false}>
    Field Value
 
 *Please note that this object is one of the following possible types*
-<Expandable title="possible types for fields[key]"><ParamField path="StringValue" type="string" required={false}>
+<Expandable title="possible types for fields[key]" defaultOpen={false}><ParamField path="StringValue" type="string" required={false}>
    String Value
 </ParamField><ParamField path="NumberValue" type="number" required={false}>
    Number Value
@@ -25,7 +25,7 @@ description: Updates a single record.
    Boolean Value
 </ParamField><ParamField path="ACollaborator" type="object" required={false}>
    A Collaborator
-<Expandable title="properties"><ParamField path="id" type="string" required={true}>
+<Expandable title="properties" defaultOpen={false}><ParamField path="id" type="string" required={true}>
    Collaborator ID
 </ParamField><ParamField path="email" type="string" required={true}>
    Collaborator Email
@@ -33,9 +33,9 @@ description: Updates a single record.
    Collaborator Name
 </ParamField></Expandable></ParamField><ParamField path="Collaborators" type="array" required={false}>
    Collaborators
-<Expandable title="items"><ParamField path="Collaborators[n]" type="object" required={false}>
+<Expandable title="items" defaultOpen={false}><ParamField path="Collaborators[n]" type="object" required={false}>
    A Collaborator
-<Expandable title="properties"><ParamField path="id" type="string" required={true}>
+<Expandable title="properties" defaultOpen={false}><ParamField path="id" type="string" required={true}>
    Collaborator ID
 </ParamField><ParamField path="email" type="string" required={true}>
    Collaborator Email
@@ -43,13 +43,13 @@ description: Updates a single record.
    Collaborator Name
 </ParamField></Expandable></ParamField></Expandable></ParamField><ParamField path="StringValues" type="array" required={false}>
    String Values
-<Expandable title="items"><ParamField path="StringValues[n]" type="string" required={false}>
+<Expandable title="items" defaultOpen={false}><ParamField path="StringValues[n]" type="string" required={false}>
    String Value
 </ParamField></Expandable></ParamField><ParamField path="Attachments" type="array" required={false}>
    Attachments
-<Expandable title="items"><ParamField path="Attachments[n]" type="object" required={false}>
+<Expandable title="items" defaultOpen={false}><ParamField path="Attachments[n]" type="object" required={false}>
    An Attachment
-<Expandable title="properties"><ParamField path="id" type="string" required={true}>
+<Expandable title="properties" defaultOpen={false}><ParamField path="id" type="string" required={true}>
    Attachment ID
 </ParamField><ParamField path="url" type="string" required={true}>
    Attachment URL
@@ -65,9 +65,9 @@ description: Updates a single record.
    Attachment Width
 </ParamField><ParamField path="thumbnails" type="object" required={false}>
    Thumbnails
-<Expandable title="properties"><ParamField path="small" type="object" required={true}>
+<Expandable title="properties" defaultOpen={false}><ParamField path="small" type="object" required={true}>
    A Thumbnail
-<Expandable title="properties"><ParamField path="url" type="string" required={true}>
+<Expandable title="properties" defaultOpen={false}><ParamField path="url" type="string" required={true}>
    Thumbnail URL
 </ParamField><ParamField path="width" type="number" required={true}>
    Thumbnail Width
@@ -75,7 +75,7 @@ description: Updates a single record.
    Thumbnail Height
 </ParamField></Expandable></ParamField><ParamField path="large" type="object" required={true}>
    A Thumbnail
-<Expandable title="properties"><ParamField path="url" type="string" required={true}>
+<Expandable title="properties" defaultOpen={false}><ParamField path="url" type="string" required={true}>
    Thumbnail URL
 </ParamField><ParamField path="width" type="number" required={true}>
    Thumbnail Width
@@ -83,7 +83,7 @@ description: Updates a single record.
    Thumbnail Height
 </ParamField></Expandable></ParamField><ParamField path="full" type="object" required={true}>
    A Thumbnail
-<Expandable title="properties"><ParamField path="url" type="string" required={true}>
+<Expandable title="properties" defaultOpen={false}><ParamField path="url" type="string" required={true}>
    Thumbnail URL
 </ParamField><ParamField path="width" type="number" required={true}>
    Thumbnail Width
@@ -103,17 +103,17 @@ description: Updates a single record.
 
 <ResponseField path="response" type="object" required={true}>
    Update Record Output
-<Expandable title="properties"><ResponseField path="id" type="string" required={true}>
+<Expandable title="properties" defaultOpen={false}><ResponseField path="id" type="string" required={true}>
    Record ID
 </ResponseField><ResponseField path="createdTime" type="string" required={true}>
    A date timestamp in the ISO format, eg:"2018-01-01T00:00:00.000Z"
 </ResponseField><ResponseField path="fields" type="object" required={true}>
    Fields
-<Expandable title="properties"><ResponseField path="fields[key]" type="string | number | boolean | object | array" required={false}>
+<Expandable title="properties" defaultOpen={false}><ResponseField path="fields[key]" type="string | number | boolean | object | array" required={false}>
    Field Value
 
 *Please note that this object is one of the following possible types*
-<Expandable title="possible types for fields[key]"><ResponseField path="StringValue" type="string" required={false}>
+<Expandable title="possible types for fields[key]" defaultOpen={false}><ResponseField path="StringValue" type="string" required={false}>
    String Value
 </ResponseField><ResponseField path="NumberValue" type="number" required={false}>
    Number Value
@@ -121,7 +121,7 @@ description: Updates a single record.
    Boolean Value
 </ResponseField><ResponseField path="ACollaborator" type="object" required={false}>
    A Collaborator
-<Expandable title="properties"><ResponseField path="id" type="string" required={true}>
+<Expandable title="properties" defaultOpen={false}><ResponseField path="id" type="string" required={true}>
    Collaborator ID
 </ResponseField><ResponseField path="email" type="string" required={true}>
    Collaborator Email
@@ -129,9 +129,9 @@ description: Updates a single record.
    Collaborator Name
 </ResponseField></Expandable></ResponseField><ResponseField path="Collaborators" type="array" required={false}>
    Collaborators
-<Expandable title="items"><ResponseField path="Collaborators[n]" type="object" required={false}>
+<Expandable title="items" defaultOpen={false}><ResponseField path="Collaborators[n]" type="object" required={false}>
    A Collaborator
-<Expandable title="properties"><ResponseField path="id" type="string" required={true}>
+<Expandable title="properties" defaultOpen={false}><ResponseField path="id" type="string" required={true}>
    Collaborator ID
 </ResponseField><ResponseField path="email" type="string" required={true}>
    Collaborator Email
@@ -139,13 +139,13 @@ description: Updates a single record.
    Collaborator Name
 </ResponseField></Expandable></ResponseField></Expandable></ResponseField><ResponseField path="StringValues" type="array" required={false}>
    String Values
-<Expandable title="items"><ResponseField path="StringValues[n]" type="string" required={false}>
+<Expandable title="items" defaultOpen={false}><ResponseField path="StringValues[n]" type="string" required={false}>
    String Value
 </ResponseField></Expandable></ResponseField><ResponseField path="Attachments" type="array" required={false}>
    Attachments
-<Expandable title="items"><ResponseField path="Attachments[n]" type="object" required={false}>
+<Expandable title="items" defaultOpen={false}><ResponseField path="Attachments[n]" type="object" required={false}>
    An Attachment
-<Expandable title="properties"><ResponseField path="id" type="string" required={true}>
+<Expandable title="properties" defaultOpen={false}><ResponseField path="id" type="string" required={true}>
    Attachment ID
 </ResponseField><ResponseField path="url" type="string" required={true}>
    Attachment URL
@@ -161,9 +161,9 @@ description: Updates a single record.
    Attachment Width
 </ResponseField><ResponseField path="thumbnails" type="object" required={false}>
    Thumbnails
-<Expandable title="properties"><ResponseField path="small" type="object" required={true}>
+<Expandable title="properties" defaultOpen={false}><ResponseField path="small" type="object" required={true}>
    A Thumbnail
-<Expandable title="properties"><ResponseField path="url" type="string" required={true}>
+<Expandable title="properties" defaultOpen={false}><ResponseField path="url" type="string" required={true}>
    Thumbnail URL
 </ResponseField><ResponseField path="width" type="number" required={true}>
    Thumbnail Width
@@ -171,7 +171,7 @@ description: Updates a single record.
    Thumbnail Height
 </ResponseField></Expandable></ResponseField><ResponseField path="large" type="object" required={true}>
    A Thumbnail
-<Expandable title="properties"><ResponseField path="url" type="string" required={true}>
+<Expandable title="properties" defaultOpen={false}><ResponseField path="url" type="string" required={true}>
    Thumbnail URL
 </ResponseField><ResponseField path="width" type="number" required={true}>
    Thumbnail Width
@@ -179,7 +179,7 @@ description: Updates a single record.
    Thumbnail Height
 </ResponseField></Expandable></ResponseField><ResponseField path="full" type="object" required={true}>
    A Thumbnail
-<Expandable title="properties"><ResponseField path="url" type="string" required={true}>
+<Expandable title="properties" defaultOpen={false}><ResponseField path="url" type="string" required={true}>
    Thumbnail URL
 </ResponseField><ResponseField path="width" type="number" required={true}>
    Thumbnail Width

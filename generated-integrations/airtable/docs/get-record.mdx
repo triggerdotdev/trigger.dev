@@ -11,7 +11,7 @@ description: Retrieve a single record. Any "empty" fields (e.g. "", [], or false
   doc for more info.
 </ParamField><ParamField path="params" type="object" required={true}>
    Get Record Input
-<Expandable title="properties"><ParamField path="baseId" type="string" required={true}>
+<Expandable title="properties" defaultOpen={true}><ParamField path="baseId" type="string" required={true}>
    The ID of the base
 </ParamField><ParamField path="tableIdOrName" type="string" required={true}>
    The name or id of the table
@@ -23,15 +23,15 @@ description: Retrieve a single record. Any "empty" fields (e.g. "", [], or false
 
 <ResponseField path="response" type="object" required={true}>
    Get Record Output
-<Expandable title="properties"><ResponseField path="createdTime" type="string" required={true}>
+<Expandable title="properties" defaultOpen={false}><ResponseField path="createdTime" type="string" required={true}>
    When the record was created
 </ResponseField><ResponseField path="fields" type="object" required={true}>
    Fields
-<Expandable title="properties"><ResponseField path="fields[key]" type="string | number | boolean | object | array" required={false}>
+<Expandable title="properties" defaultOpen={false}><ResponseField path="fields[key]" type="string | number | boolean | object | array" required={false}>
    Field Value
 
 *Please note that this object is one of the following possible types*
-<Expandable title="possible types for fields[key]"><ResponseField path="StringValue" type="string" required={false}>
+<Expandable title="possible types for fields[key]" defaultOpen={false}><ResponseField path="StringValue" type="string" required={false}>
    String Value
 </ResponseField><ResponseField path="NumberValue" type="number" required={false}>
    Number Value
@@ -39,7 +39,7 @@ description: Retrieve a single record. Any "empty" fields (e.g. "", [], or false
    Boolean Value
 </ResponseField><ResponseField path="ACollaborator" type="object" required={false}>
    A Collaborator
-<Expandable title="properties"><ResponseField path="id" type="string" required={true}>
+<Expandable title="properties" defaultOpen={false}><ResponseField path="id" type="string" required={true}>
    Collaborator ID
 </ResponseField><ResponseField path="email" type="string" required={true}>
    Collaborator Email
@@ -47,9 +47,9 @@ description: Retrieve a single record. Any "empty" fields (e.g. "", [], or false
    Collaborator Name
 </ResponseField></Expandable></ResponseField><ResponseField path="Collaborators" type="array" required={false}>
    Collaborators
-<Expandable title="items"><ResponseField path="Collaborators[n]" type="object" required={false}>
+<Expandable title="items" defaultOpen={false}><ResponseField path="Collaborators[n]" type="object" required={false}>
    A Collaborator
-<Expandable title="properties"><ResponseField path="id" type="string" required={true}>
+<Expandable title="properties" defaultOpen={false}><ResponseField path="id" type="string" required={true}>
    Collaborator ID
 </ResponseField><ResponseField path="email" type="string" required={true}>
    Collaborator Email
@@ -57,13 +57,13 @@ description: Retrieve a single record. Any "empty" fields (e.g. "", [], or false
    Collaborator Name
 </ResponseField></Expandable></ResponseField></Expandable></ResponseField><ResponseField path="StringValues" type="array" required={false}>
    String Values
-<Expandable title="items"><ResponseField path="StringValues[n]" type="string" required={false}>
+<Expandable title="items" defaultOpen={false}><ResponseField path="StringValues[n]" type="string" required={false}>
    String Value
 </ResponseField></Expandable></ResponseField><ResponseField path="Attachments" type="array" required={false}>
    Attachments
-<Expandable title="items"><ResponseField path="Attachments[n]" type="object" required={false}>
+<Expandable title="items" defaultOpen={false}><ResponseField path="Attachments[n]" type="object" required={false}>
    An Attachment
-<Expandable title="properties"><ResponseField path="id" type="string" required={true}>
+<Expandable title="properties" defaultOpen={false}><ResponseField path="id" type="string" required={true}>
    Attachment ID
 </ResponseField><ResponseField path="url" type="string" required={true}>
    Attachment URL
@@ -79,9 +79,9 @@ description: Retrieve a single record. Any "empty" fields (e.g. "", [], or false
    Attachment Width
 </ResponseField><ResponseField path="thumbnails" type="object" required={false}>
    Thumbnails
-<Expandable title="properties"><ResponseField path="small" type="object" required={true}>
+<Expandable title="properties" defaultOpen={false}><ResponseField path="small" type="object" required={true}>
    A Thumbnail
-<Expandable title="properties"><ResponseField path="url" type="string" required={true}>
+<Expandable title="properties" defaultOpen={false}><ResponseField path="url" type="string" required={true}>
    Thumbnail URL
 </ResponseField><ResponseField path="width" type="number" required={true}>
    Thumbnail Width
@@ -89,7 +89,7 @@ description: Retrieve a single record. Any "empty" fields (e.g. "", [], or false
    Thumbnail Height
 </ResponseField></Expandable></ResponseField><ResponseField path="large" type="object" required={true}>
    A Thumbnail
-<Expandable title="properties"><ResponseField path="url" type="string" required={true}>
+<Expandable title="properties" defaultOpen={false}><ResponseField path="url" type="string" required={true}>
    Thumbnail URL
 </ResponseField><ResponseField path="width" type="number" required={true}>
    Thumbnail Width
@@ -97,7 +97,7 @@ description: Retrieve a single record. Any "empty" fields (e.g. "", [], or false
    Thumbnail Height
 </ResponseField></Expandable></ResponseField><ResponseField path="full" type="object" required={true}>
    A Thumbnail
-<Expandable title="properties"><ResponseField path="url" type="string" required={true}>
+<Expandable title="properties" defaultOpen={false}><ResponseField path="url" type="string" required={true}>
    Thumbnail URL
 </ResponseField><ResponseField path="width" type="number" required={true}>
    Thumbnail Width

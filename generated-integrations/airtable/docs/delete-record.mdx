@@ -11,7 +11,7 @@ description: Delete a single record.
   doc for more info.
 </ParamField><ParamField path="params" type="object" required={true}>
    Delete Record Input
-<Expandable title="properties"><ParamField path="baseId" type="string" required={true}>
+<Expandable title="properties" defaultOpen={true}><ParamField path="baseId" type="string" required={true}>
    The ID of the base
 </ParamField><ParamField path="tableIdOrName" type="string" required={true}>
    The name or id of the table
@@ -23,7 +23,7 @@ description: Delete a single record.
 
 <ResponseField path="response" type="object" required={true}>
    Delete Record Output
-<Expandable title="properties"><ResponseField path="id" type="string" required={true}>
+<Expandable title="properties" defaultOpen={false}><ResponseField path="id" type="string" required={true}>
    Record ID
 </ResponseField><ResponseField path="deleted" type="boolean" required={true}>
    Whether the record was deleted

@@ -11,13 +11,13 @@ description: Delete more than one records with the given record IDs. Note you ca
   doc for more info.
 </ParamField><ParamField path="params" type="object" required={true}>
    Delete Records Input
-<Expandable title="properties"><ParamField path="baseId" type="string" required={true}>
+<Expandable title="properties" defaultOpen={true}><ParamField path="baseId" type="string" required={true}>
    The ID of the base
 </ParamField><ParamField path="tableIdOrName" type="string" required={true}>
    The name or id of the table
 </ParamField><ParamField path="records" type="array" required={true}>
    An array of record IDs to delete
-<Expandable title="items"><ParamField path="records[n]" type="string" required={true}>
+<Expandable title="items" defaultOpen={false}><ParamField path="records[n]" type="string" required={true}>
    Record ID
 </ParamField></Expandable></ParamField></Expandable></ParamField>
 
@@ -25,11 +25,11 @@ description: Delete more than one records with the given record IDs. Note you ca
 
 <ResponseField path="response" type="object" required={true}>
    Delete Records Output
-<Expandable title="properties"><ResponseField path="records" type="array" required={true}>
+<Expandable title="properties" defaultOpen={false}><ResponseField path="records" type="array" required={true}>
    Records
-<Expandable title="items"><ResponseField path="records[n]" type="object" required={true}>
+<Expandable title="items" defaultOpen={false}><ResponseField path="records[n]" type="object" required={true}>
    Deleted record
-<Expandable title="properties"><ResponseField path="id" type="string" required={true}>
+<Expandable title="properties" defaultOpen={false}><ResponseField path="id" type="string" required={true}>
    Record ID
 </ResponseField><ResponseField path="deleted" type="boolean" required={true}>
    Whether the record was deleted
