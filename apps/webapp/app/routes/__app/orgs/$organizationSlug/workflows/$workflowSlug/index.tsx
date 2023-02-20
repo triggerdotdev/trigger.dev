@@ -1,5 +1,10 @@
-import { InformationCircleIcon } from "@heroicons/react/24/outline";
+import { Disclosure } from "@headlessui/react";
+import {
+  ChevronDownIcon,
+  InformationCircleIcon,
+} from "@heroicons/react/24/outline";
 import type { LoaderArgs } from "@remix-run/server-runtime";
+import classNames from "classnames";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import invariant from "tiny-invariant";
 import CodeBlock from "~/components/code/CodeBlock";
@@ -106,7 +111,7 @@ export default function Page() {
           {workflow.organizationTemplate && (
             <a
               href={workflow.organizationTemplate.repositoryUrl}
-              className="flex items-center gap-1 text-sm text-slate-400"
+              className="flex items-center gap-1 text-sm text-slate-400 transition hover:text-slate-200"
               target="_blank"
               rel="noreferrer"
             >
@@ -218,7 +223,7 @@ export default function Page() {
               Test workflow
             </SecondaryLink>
           </div>
-          <Panel className="mb-6">
+          <Panel className="rounded-b-none">
             <PanelHeader
               icon={
                 <div className="mr-1 h-6 w-6">
@@ -234,6 +239,31 @@ export default function Page() {
             />
             <TriggerBody trigger={eventRule.trigger} />
           </Panel>
+          <div className="mb-6 divide-y divide-slate-800 overflow-hidden rounded-b-md bg-slate-800/50">
+            <Disclosure>
+              {({ open }) => (
+                <>
+                  <Disclosure.Button className="flex w-full items-center justify-between overflow-hidden bg-slate-800/70 py-4 px-5 transition hover:bg-slate-800/50">
+                    Connect to GitHub so your workflow can be triggered
+                    <div className="flex items-center gap-2">
+                      <Body size="small" className="text-slate-400">
+                        {open ? "Close" : "Open"}
+                      </Body>
+                      <ChevronDownIcon
+                        className={classNames(
+                          open ? "rotate-180 transform" : "",
+                          "h-5 w-5 text-slate-400 transition"
+                        )}
+                      />
+                    </div>
+                  </Disclosure.Button>
+                  <Disclosure.Panel className="p-4">
+                    <WorkflowConnections />
+                  </Disclosure.Panel>
+                </>
+              )}
+            </Disclosure>
+          </div>
         </>
       )}
       {apiConnectionCount > 0 && <WorkflowConnections />}
