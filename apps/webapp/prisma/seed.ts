@@ -36,6 +36,21 @@ async function seed() {
     runLocalDocs: await readTemplateDocsFile("basic-starter-local"),
   };
 
+  const scheduledHealthcheck = {
+    repositoryUrl: "https://github.com/triggerdotdev/scheduled-healthcheck",
+    imageUrl:
+      "https://imagedelivery.net/3TbraffuDZ4aEf8KWOmI_w/706ad84b-cf6d-4b57-2e57-f76183a62d00/public",
+    title: "Run a scheduled healthcheck on your website every 5 minutes",
+    shortTitle: "Scheduled Healthcheck",
+    description:
+      "This will run every 5 minutes and send a Slack message if a website url returns a non-200 response.",
+    priority: 1,
+    services: ["slack"],
+    workflowIds: ["scheduled-healthcheck"],
+    markdownDocs: await readTemplateDocsFile("scheduled-healthcheck"),
+    runLocalDocs: await readTemplateDocsFile("scheduled-healthcheck-local"),
+  };
+
   const githubStarsToSlack = {
     repositoryUrl: "https://github.com/triggerdotdev/github-stars-to-slack",
     imageUrl:
@@ -43,7 +58,7 @@ async function seed() {
     title: "Slack notifications when a GitHub repo is starred",
     shortTitle: "GitHub stars to Slack",
     description:
-      "When a GitHub repo is starred, post information about the user to Slack",
+      "When a GitHub repo is starred, post information about the user to Slack.",
     priority: 1,
     services: ["github", "slack"],
     workflowIds: ["github-stars-to-slack"],
@@ -51,15 +66,30 @@ async function seed() {
     runLocalDocs: await readTemplateDocsFile("github-stars-to-slack-local"),
   };
 
+  const githubIssuesToSlack = {
+    repositoryUrl: "https://github.com/triggerdotdev/github-issues-to-slack",
+    imageUrl:
+      "https://imagedelivery.net/3TbraffuDZ4aEf8KWOmI_w/1e3b4c17-70ce-484e-4ffe-2147fc873b00/public",
+    title: "Post to Slack when a GitHub issue is created or modified",
+    shortTitle: "GitHub issues to Slack",
+    description:
+      "When a GitHub issue is created or modified, post a message and link to the issue in a specific Slack channel.",
+    priority: 1,
+    services: ["github", "slack"],
+    workflowIds: ["github-issues-to-slack"],
+    markdownDocs: await readTemplateDocsFile("github-issues-to-slack"),
+    runLocalDocs: await readTemplateDocsFile("github-issues-to-slack-local"),
+  };
+
   const resendWelcomeDripCampaign = {
     repositoryUrl:
       "https://github.com/triggerdotdev/resend-welcome-drip-campaign",
     imageUrl:
-      "https://imagedelivery.net/3TbraffuDZ4aEf8KWOmI_w/2f7f14fb-8d3f-42a0-cd8e-58595603df00/public",
+      "https://imagedelivery.net/3TbraffuDZ4aEf8KWOmI_w/cce3b770-b6f9-40ef-baf3-f01c20686700/public",
     title: "Send a welcome drip campaign to new users",
     shortTitle: "Resend.com drip campaign",
     description:
-      "When a new user is created, send them a welcome drip campaign from Resend.com and react.email",
+      "When a new user is created, send them a welcome drip campaign from Resend.com and react.email.",
     priority: 2,
     services: ["resend"],
     workflowIds: ["resend-welcome-drip-campaign"],
@@ -79,11 +109,29 @@ async function seed() {
   });
 
   await prisma.template.upsert({
+    where: { slug: "scheduled-healthcheck" },
+    update: scheduledHealthcheck,
+    create: {
+      slug: "scheduled-healthcheck",
+      ...scheduledHealthcheck,
+    },
+  });
+
+  await prisma.template.upsert({
     where: { slug: "github-stars-to-slack" },
     update: githubStarsToSlack,
     create: {
       slug: "github-stars-to-slack",
       ...githubStarsToSlack,
+    },
+  });
+
+  await prisma.template.upsert({
+    where: { slug: "github-issues-to-slack" },
+    update: githubIssuesToSlack,
+    create: {
+      slug: "github-issues-to-slack",
+      ...githubIssuesToSlack,
     },
   });
 

@@ -1,6 +1,6 @@
 import { FolderIcon } from "@heroicons/react/24/solid";
 import { Form, useTransition } from "@remix-run/react";
-import { ActionArgs, LoaderArgs } from "@remix-run/server-runtime";
+import type { ActionArgs, LoaderArgs } from "@remix-run/server-runtime";
 import {
   redirect,
   typedjson,
@@ -19,6 +19,7 @@ import { Input } from "~/components/primitives/Input";
 import { InputGroup } from "~/components/primitives/InputGroup";
 import { Label } from "~/components/primitives/Label";
 import { Select } from "~/components/primitives/Select";
+import { Body } from "~/components/primitives/text/Body";
 import { SubTitle } from "~/components/primitives/text/SubTitle";
 import { Title } from "~/components/primitives/text/Title";
 import { TemplateCard } from "~/components/templates/TemplateCard";
@@ -215,23 +216,23 @@ export default function AddTemplatePage() {
                   </InputGroup>
                   <div>
                     <p className="mb-1 text-sm text-slate-500">
-                      Set the repo as private
+                      Set the repo as public
                     </p>
-                    <div className="flex w-full items-center rounded bg-black/20 px-3 py-2.5">
-                      <Label
-                        htmlFor="private"
-                        className="flex cursor-pointer items-center gap-2 text-sm text-slate-300"
-                      >
+                    <Label
+                      htmlFor="publicRepo"
+                      className="flex cursor-pointer items-center gap-2 text-sm text-slate-300"
+                    >
+                      <div className="flex w-full items-center gap-2 rounded bg-black/20 px-3 py-2.5">
                         <input
                           type="checkbox"
-                          name="private"
-                          id="private"
+                          name="publicRepo"
+                          id="publicRepo"
                           className="border-3 h-4 w-4 cursor-pointer rounded border-black bg-slate-500 transition hover:bg-slate-300 focus:outline-none"
                           disabled={isSubmittingOrLoading}
                         />
-                        Private repo
-                      </Label>
-                    </div>
+                        Public repo
+                      </div>
+                    </Label>
                   </div>
                 </div>
                 <div className="flex justify-end">
@@ -265,16 +266,27 @@ function ConnectToGithub({ templateId }: { templateId?: string }) {
     <>
       <SubTitle className="flex items-center">
         <StepNumber active stepNumber="1" />
-        Login with GitHub to get started
+        Grant GitHub repo access to get started
       </SubTitle>
-      <Panel className="mb-6 flex h-56 items-center justify-center">
+      <Panel className="mb-6 flex h-56 flex-col items-center justify-center gap-4">
         <PrimaryLink
           size="large"
           to={`../apps/github${templateId ? `?templateId=${templateId}` : ``}`}
         >
           <OctoKitty className="mr-1 h-5 w-5" />
-          Continue with GitHub
+          Grant access
         </PrimaryLink>
+        <Body size="extra-small" className="flex items-center text-slate-400">
+          To create a new repository from a template, we need GitHub access.{" "}
+          <a
+            href="https://docs.trigger.dev/faq#why-do-we-ask-for-github-access"
+            target="_blank"
+            rel="noreferrer"
+            className="ml-1 underline decoration-slate-500 underline-offset-2 transition hover:cursor-pointer hover:text-slate-300"
+          >
+            Learn more.
+          </a>
+        </Body>
       </Panel>
     </>
   );

@@ -38,17 +38,28 @@ function Step2() {
               >
                 Easy (2 mins)
               </div>
-              <CubeTransparentIcon className="h-10 w-10 text-indigo-400" />
-              <Header3>I want to create a new repo</Header3>
+              <CubeTransparentIcon className="h-10 w-10  text-indigo-400" />
+              <Header3 className="text-center">
+                I'll create a new repo using a template
+              </Header3>
               <Body size="small" className="text-center text-slate-400">
-                We'll setup a new GitHub repository and install your template.
+                Choose a pre-made template and we'll set up a new GitHub repo
+                for you.
               </Body>
             </Link>
             <Link to="../existingRepo" className={onboarding.buttonStyles}>
               <CubeIcon className="h-10 w-10 text-orange-400" />
-              <Header3>I want to use an existing repo</Header3>
-              <Body size="small" className="text-slate-400">
-                I want my workflow to be alongside my existing code.
+              <Header3 className="text-center">
+                I'll add this workflow to my existing repo
+              </Header3>
+              <Body size="small" className="text-center text-slate-400">
+                <span>
+                  I want this workflow to live alongside my existing code.{" "}
+                </span>
+                <br />
+                <span className="italic">
+                  NB: requires a long running Node.js server.
+                </span>
               </Body>
             </Link>
           </div>

@@ -3,8 +3,8 @@
 First, in your terminal of choice, clone the repo and install dependencies:
 
 ```sh
-git clone https://github.com/triggerdotdev/github-stars-to-slack.git
-cd github-stars-to-slack
+git clone https://github.com/triggerdotdev/github-issues-to-slack.git
+cd github-issues-to-slack
 npm install
 ```
 
@@ -24,9 +24,5 @@ npm run dev
 You should see a message like the following:
 
 ```
-[trigger.dev]  ✨ Connected and listening for events [github-stars-to-slack]
+[trigger.dev]  ✨ Connected and listening for events [github-issues-to-slack]
 ```
-
-## 🧪 Test it
-
-The [README](https://github.com/triggerdotdev/github-stars-to-slack) has more details on how to test this template.

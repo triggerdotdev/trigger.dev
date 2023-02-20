@@ -3,8 +3,8 @@
 First, in your terminal of choice, clone the repo and install dependencies:
 
 ```sh
-git clone https://github.com/triggerdotdev/basic-starter.git
-cd basic-starter
+git clone https://github.com/triggerdotdev/scheduled-healthcheck.git
+cd scheduled-healthcheck
 npm install
 ```
 
@@ -23,9 +23,9 @@ npm run dev
 You should see a message output in your terminal like the following:
 
 ```
-[trigger.dev]  ✨ Connected and listening for events [basic-starter]
+[trigger.dev]  ✨ Connected and listening for events [scheduled-healthcheck]
 ```
 
 ## 🧪 Test it
 
-The [Basic Starter README](https://github.com/triggerdotdev/basic-starter) has more details on how to test this template.
+Visit the [README](https://github.com/triggerdotdev/scheduled-healthcheck) has more details on how to test this template.
