@@ -209,7 +209,7 @@ export default function Page() {
           </TertiaryLink>
         </PanelInfo>
       )}
-      {apiConnectionCount > 0 && <WorkflowConnections />}
+
       {eventRule && (
         <>
           <div className="flex items-end justify-between">
@@ -236,6 +236,7 @@ export default function Page() {
           </Panel>
         </>
       )}
+      {apiConnectionCount > 0 && <WorkflowConnections />}
 
       {total > 0 ? (
         <>
