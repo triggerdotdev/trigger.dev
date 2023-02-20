@@ -5,22 +5,25 @@ import {
   ScheduledEventPayloadSchema,
 } from "@trigger.dev/common-schemas";
 import { DeliverEmailSchema } from "emails";
-import {
+import type {
   CommandCatalog,
   CommandResponseCatalog,
   TriggerCatalog,
-  ZodEventPublisher,
 } from "internal-platform";
 import {
   commandCatalog,
   commandResponseCatalog,
   triggerCatalog,
+  ZodEventPublisher,
+  ZodEventSubscriber,
   ZodPublisher,
   ZodPubSub,
   ZodSubscriber,
 } from "internal-platform";
 import { Topics } from "internal-pulsar";
+import { EventEmitter } from "stream";
 import { z } from "zod";
+import { prisma } from "~/db.server";
 import { env } from "~/env.server";
 import { findFetchRequestById } from "~/models/fetchRequest.server";
 import { findIntegrationRequestById } from "~/models/integrationRequest.server";
@@ -32,6 +35,11 @@ import {
   startWorkflowRun,
   triggerEventInRun,
 } from "~/models/workflowRun.server";
+import { findWorkflowStepById } from "~/models/workflowRunStep.server";
+import { omit } from "~/utils/objects";
+import { OrganizationCreatedEvent } from "./analyticsEvents/organizationCreated.server";
+import { WorkflowCreatedEvent } from "./analyticsEvents/workflowCreated.server";
+import { WorkflowRunCreatedEvent } from "./analyticsEvents/workflowRunCreated.server";
 import { InitiateDelay } from "./delays/initiateDelay.server";
 import { ResolveDelay } from "./delays/resolveDelay.server";
 import { sendEmail } from "./email.server";
@@ -42,25 +50,20 @@ import { RegisterExternalSource } from "./externalSources/registerExternalSource
 import { CreateFetchRequest } from "./fetches/createFetchRequest.server";
 import { PerformFetchRequest } from "./fetches/performFetchRequest.server";
 import { StartFetchRequest } from "./fetches/startFetchRequest.server";
+import { GithubRepositoryCreated } from "./github/repositoryCreated.server";
 import type { PulsarClient } from "./pulsarClient.server";
 import { createPulsarClient } from "./pulsarClient.server";
 import { CreateIntegrationRequest } from "./requests/createIntegrationRequest.server";
 import { PerformIntegrationRequest } from "./requests/performIntegrationRequest.server";
 import { StartIntegrationRequest } from "./requests/startIntegrationRequest.server";
 import { WaitForConnection } from "./requests/waitForConnection.server";
+import { CompleteRunOnce } from "./runOnce/completeRunOnce.server";
+import { InitializeRunOnce } from "./runOnce/initializeRunOnce.server";
 import { WorkflowRunDisconnected } from "./runs/runDisconnected.server";
 import { WorkflowRunTriggerTimeout } from "./runs/runTriggerTimeout.server";
 import { DeliverScheduledEvent } from "./scheduler/deliverScheduledEvent.server";
 import { RegisterSchedulerSource } from "./scheduler/registerSchedulerSource.server";
-import { omit } from "~/utils/objects";
-import { findWorkflowStepById } from "~/models/workflowRunStep.server";
-import { InitializeRunOnce } from "./runOnce/initializeRunOnce.server";
-import { CompleteRunOnce } from "./runOnce/completeRunOnce.server";
-import { prisma } from "~/db.server";
-import { GithubRepositoryCreated } from "./github/repositoryCreated.server";
-import { OrganizationCreatedEvent } from "./analyticsEvents/organizationCreated.server";
-import { WorkflowCreatedEvent } from "./analyticsEvents/workflowCreated.server";
-import { WorkflowRunCreatedEvent } from "./analyticsEvents/workflowRunCreated.server";
+import { WorkflowCreated } from "./workflows/events/workflowCreated.server";
 
 let pulsarClient: PulsarClient;
 let triggerPublisher: ZodPublisher<TriggerCatalog>;
@@ -498,6 +501,10 @@ const taskQueueCatalog = {
     data: z.object({ id: z.string() }),
     properties: z.object({}),
   },
+  WORKFLOW_RUN_STARTED: {
+    data: z.object({ id: z.string() }),
+    properties: z.object({}),
+  },
 };
 
 function createTaskQueue() {
@@ -878,6 +885,9 @@ function createTaskQueue() {
         return true;
       },
       WORKFLOW_RUN_CREATED: async (id, data, properties, attributes) => {
+        return true;
+      },
+      WORKFLOW_RUN_STARTED: async (id, data, properties, attributes) => {
         if (attributes.redeliveryCount >= 4) {
           return true;
         }
@@ -902,10 +912,6 @@ function createAppEventPublisher() {
 }
 
 export { taskQueue, requestTaskQueue, appEventPublisher };
-
-import { ZodEventSubscriber } from "internal-platform";
-import { EventEmitter } from "stream";
-import { WorkflowCreated } from "./workflows/events/workflowCreated.server";
 
 export async function createEventEmitter({
   id,

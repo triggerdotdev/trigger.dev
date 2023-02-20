@@ -11,6 +11,7 @@ import type {
 import type { z } from "zod";
 import { prisma } from "~/db.server";
 import { IngestCustomEvent } from "~/services/events/ingestCustomEvent.server";
+import { taskQueue } from "~/services/messageBroker.server";
 import { createStepOnce } from "./workflowRunStep.server";
 
 export type { WorkflowRun, WorkflowRunStep, WorkflowRunStatus };
@@ -57,6 +58,10 @@ export async function startWorkflowRun(id: string, apiKey: string) {
       },
     });
   }
+
+  await taskQueue.publish("WORKFLOW_RUN_STARTED", {
+    id: workflowRun.id,
+  });
 }
 
 export async function failWorkflowRun(
