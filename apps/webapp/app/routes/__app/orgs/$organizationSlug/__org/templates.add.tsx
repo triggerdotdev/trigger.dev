@@ -274,12 +274,12 @@ function ConnectToGithub({ templateId }: { templateId?: string }) {
           to={`../apps/github${templateId ? `?templateId=${templateId}` : ``}`}
         >
           <OctoKitty className="mr-1 h-5 w-5" />
-          Grant access to fork template
+          Grant access
         </PrimaryLink>
         <Body size="extra-small" className="flex items-center text-slate-400">
           To create a new repository from a template, we need GitHub access.{" "}
           <a
-            href="#"
+            href="https://docs.trigger.dev/faq#why-do-we-ask-for-github-access"
             target="_blank"
             rel="noreferrer"
             className="ml-1 underline decoration-slate-500 underline-offset-2 transition hover:cursor-pointer hover:text-slate-300"
