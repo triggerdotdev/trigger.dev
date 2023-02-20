@@ -68,10 +68,11 @@ export PULSAR_CPP_DIR=/opt/homebrew/Cellar/libpulsar/3.1.0
 
    If you are proxying the webapp according to step 2 then in `webapp/.env`, set the `APP_ORIGIN` to the `NGROK_SUBDOMAIN` provided to the `./scripts/proxy-webapp.sh` command, e.g. `APP_ORIGIN=https://dan-trigger-dev.eu.ngrok.io`
 
-4. Start postgresql, pulsar, and pizzly server
+4. Start postgresql, redis, pizzly server, followed by pulsar standalone
 
    ```bash
-   pnpm run docker:db
+   pnpm run docker:services
+   pnpm run docker:pulsar
    ```
 
    > **Note:** The npm script will complete while Docker sets up the container in the background. Ensure that Docker has finished and your container is running before proceeding.
@@ -173,7 +174,8 @@ pnpm install
 1. Ensure the docker containers are running
 
 ```bash
-pnpm run docker:db
+pnpm run docker:services
+pnpm run docker:pulsar
 ```
 
 2. Run the webapp
