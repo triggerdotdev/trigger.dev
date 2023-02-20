@@ -19,6 +19,7 @@ import { Input } from "~/components/primitives/Input";
 import { InputGroup } from "~/components/primitives/InputGroup";
 import { Label } from "~/components/primitives/Label";
 import { Select } from "~/components/primitives/Select";
+import { Body } from "~/components/primitives/text/Body";
 import { SubTitle } from "~/components/primitives/text/SubTitle";
 import { Title } from "~/components/primitives/text/Title";
 import { TemplateCard } from "~/components/templates/TemplateCard";
@@ -265,16 +266,27 @@ function ConnectToGithub({ templateId }: { templateId?: string }) {
     <>
       <SubTitle className="flex items-center">
         <StepNumber active stepNumber="1" />
-        Login with GitHub to get started
+        Grant GitHub repo access to get started
       </SubTitle>
-      <Panel className="mb-6 flex h-56 items-center justify-center">
+      <Panel className="mb-6 flex h-56 flex-col items-center justify-center gap-4">
         <PrimaryLink
           size="large"
           to={`../apps/github${templateId ? `?templateId=${templateId}` : ``}`}
         >
           <OctoKitty className="mr-1 h-5 w-5" />
-          Continue with GitHub
+          Grant access to fork template
         </PrimaryLink>
+        <Body size="extra-small" className="flex items-center text-slate-400">
+          To create a new repository from a template, we need GitHub access.{" "}
+          <a
+            href="#"
+            target="_blank"
+            rel="noreferrer"
+            className="ml-1 underline decoration-slate-500 underline-offset-2 transition hover:cursor-pointer hover:text-slate-300"
+          >
+            Learn more.
+          </a>
+        </Body>
       </Panel>
     </>
   );
