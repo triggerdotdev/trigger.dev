@@ -1,7 +1,7 @@
 import { EndpointSpec } from "core/endpoint/types";
-import { JSONSchema } from "core/schemas/types";
 import {
   CCBCCEmailObjectSchema,
+  ContactRequestSchema,
   ErrorSchema,
   fromEmailObjectSchema,
   ReplyToEmailObjectSchema,
@@ -43,7 +43,7 @@ export const mailSend: EndpointSpec = {
   },
   request: {
     headers: {
-      "Content-Type": "application/json; charset=utf-8",
+      "Content-Type": "application/json",
       Accept: "application/json",
     },
     body: {
@@ -461,6 +461,78 @@ export const mailSend: EndpointSpec = {
         name: "Success",
         description: "Successful response",
         schema: undefined,
+      },
+    ],
+    default: defaultResponses,
+  },
+};
+
+export const marketingContacts: EndpointSpec = {
+  path: "/marketing/contacts",
+  method: "PUT",
+  metadata: {
+    name: "marketingContacts",
+    description:
+      "Add or update (up to 30k) contacts. Contacts are queued and aren't created immediately.",
+    displayProperties: {
+      title: "Add/update contacts",
+    },
+    externalDocs: {
+      description: "API method documentation",
+      url: "https://docs.sendgrid.com/api-reference/contacts/add-or-update-a-contact",
+    },
+    tags: ["contacts"],
+  },
+  security: {
+    api_key: [],
+  },
+  request: {
+    headers: {
+      "Content-Type": "application/json",
+      Accept: "application/json",
+    },
+    body: {
+      schema: {
+        type: "object",
+        properties: {
+          list_ids: {
+            type: "array",
+            description:
+              "An array of List ID strings that this contact will be added to.",
+            items: {
+              type: "string",
+              format: "uuid",
+            },
+          },
+          contacts: {
+            type: "array",
+            description:
+              "One or more contacts objects that you intend to upsert. The available fields for a contact, including the required `email` field are described below.",
+            minItems: 1,
+            maxItems: 30000,
+            items: ContactRequestSchema,
+          },
+        },
+        required: ["contacts"],
+      },
+    },
+  },
+  responses: {
+    "20x": [
+      {
+        success: true,
+        name: "Success",
+        description: "Successful response",
+        schema: {
+          type: "object",
+          properties: {
+            job_id: {
+              type: "string",
+              description:
+                'Indicates that the contacts are queued for processing. Check the job status with the "Import Contacts Status" endpoint.',
+            },
+          },
+        },
       },
     ],
     default: defaultResponses,
