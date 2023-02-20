@@ -23,6 +23,7 @@ const metadata: ServiceMetadata = {
     2. Go to the API Keys page
     3. Generate a new API key
     4. Paste it into the field below`,
+      scopes: {},
     },
   },
 };

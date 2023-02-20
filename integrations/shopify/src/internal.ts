@@ -29,6 +29,7 @@ const metadata: ServiceMetadata = {
         },
       ],
       documentation: `1. Follow [this guide](https://help.shopify.com/en/manual/apps/custom-apps) to enable Custom apps`,
+      scopes: {},
     },
   },
 };
