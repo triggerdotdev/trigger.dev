@@ -3,8 +3,8 @@ import { TriggerMetadataSchema } from "@trigger.dev/common-schemas";
 import { JSONSchemaFaker } from "json-schema-faker";
 import type { PrismaClient } from "~/db.server";
 import { prisma } from "~/db.server";
-import { WebhookExamplesPresenter } from "~/models/webhookExamplePresenter.server";
 import type { EventRule } from "~/models/workflow.server";
+import { WebhookExamplesPresenter } from "./webhookExamplePresenter.server";
 
 export class WorkflowTestPresenter {
   #prismaClient: PrismaClient;

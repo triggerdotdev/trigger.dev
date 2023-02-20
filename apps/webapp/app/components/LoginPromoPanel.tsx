@@ -6,7 +6,7 @@ import {
   WrenchScrewdriverIcon,
 } from "@heroicons/react/24/outline";
 import { Link } from "@remix-run/react";
-import type { TemplateListItem } from "~/models/templateListPresenter.server";
+import type { TemplateListItem } from "~/presenters/templateListPresenter.server";
 import { ApiLogoIcon } from "./code/ApiLogoIcon";
 import { Panel } from "./layout/Panel";
 import { Body } from "./primitives/text/Body";

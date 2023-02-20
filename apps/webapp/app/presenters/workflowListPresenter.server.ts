@@ -1,8 +1,8 @@
 import invariant from "tiny-invariant";
 import type { PrismaClient } from "~/db.server";
 import { prisma } from "~/db.server";
-import { getRuntimeEnvironment } from "./runtimeEnvironment.server";
-import { WorkflowsPresenter } from "./workflowsPresenter.server";
+import { getRuntimeEnvironment } from "~/models/runtimeEnvironment.server";
+import { WorkflowsPresenter } from "../presenters/workflowsPresenter.server";
 
 export type WorkflowListItem = Awaited<
   ReturnType<WorkflowListPresenter["data"]>

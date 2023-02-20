@@ -5,7 +5,7 @@ import { onboarding } from "~/components/onboarding/classNames";
 import { StepNumber } from "~/components/onboarding/StepNumber";
 import { SubTitle } from "~/components/primitives/text/SubTitle";
 import { TemplatesGrid } from "~/components/templates/TemplatesGrid";
-import { TemplateListPresenter } from "~/models/templateListPresenter.server";
+import { TemplateListPresenter } from "~/presenters/templateListPresenter.server";
 
 export const loader = async () => {
   const presenter = new TemplateListPresenter();

@@ -5,7 +5,7 @@ import { redirect, typedjson, useTypedLoaderData } from "remix-typedjson";
 import { GitHubLoginButton } from "~/components/GitHubLoginButton";
 import { LoginPromoPanel } from "~/components/LoginPromoPanel";
 import { LogoSvg } from "~/components/Logo";
-import { TemplatePresenter } from "~/models/templatePresenter.server";
+import { TemplatePresenter } from "~/presenters/templatePresenter.server";
 import { getCurrentTemplate } from "~/services/currentTemplate.server";
 import { commitSession, setRedirectTo } from "~/services/redirectTo.server";
 import { getUserId } from "~/services/session.server";

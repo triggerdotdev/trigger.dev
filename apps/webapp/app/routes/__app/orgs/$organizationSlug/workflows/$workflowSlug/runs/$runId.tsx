@@ -45,7 +45,7 @@ import { triggerLabel } from "~/components/triggers/triggerLabel";
 import { useCurrentOrganization } from "~/hooks/useOrganizations";
 import { useCurrentWorkflow } from "~/hooks/useWorkflows";
 import type { WorkflowRunStatus } from "~/models/workflowRun.server";
-import { WorkflowRunPresenter } from "~/models/workflowRunPresenter.server";
+import { WorkflowRunPresenter } from "~/presenters/workflowRunPresenter.server";
 import { requireUserId } from "~/services/session.server";
 import { dateDifference, formatDateTime } from "~/utils";
 import { calculateDurationInMs } from "~/utils/delays";

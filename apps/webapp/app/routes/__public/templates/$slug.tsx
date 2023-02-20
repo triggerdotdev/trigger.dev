@@ -4,7 +4,7 @@ import type { LoaderArgs } from "@remix-run/server-runtime";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import invariant from "tiny-invariant";
 import { TemplateOverview } from "~/components/templates/TemplateOverview";
-import { TemplatePresenter } from "~/models/templatePresenter.server";
+import { TemplatePresenter } from "~/presenters/templatePresenter.server";
 
 export async function loader({ params }: LoaderArgs) {
   const { slug } = params;

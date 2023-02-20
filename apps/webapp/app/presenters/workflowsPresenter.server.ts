@@ -11,7 +11,7 @@ import { triggerLabel } from "~/components/triggers/triggerLabel";
 import type { PrismaClient, Prisma } from "~/db.server";
 import { prisma } from "~/db.server";
 import type { ExternalSource, Workflow } from "../models/workflow.server";
-import { getServiceMetadatas } from "./integrations.server";
+import { getServiceMetadatas } from "../models/integrations.server";
 
 export type WorkflowListItem = Awaited<
   ReturnType<WorkflowsPresenter["data"]>

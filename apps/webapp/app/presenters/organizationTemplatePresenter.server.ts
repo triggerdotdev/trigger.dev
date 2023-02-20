@@ -2,9 +2,9 @@ import type { PrismaClient } from "~/db.server";
 import { prisma } from "~/db.server";
 import { getRuntimeEnvironment } from "~/models/runtimeEnvironment.server";
 import { renderMarkdown } from "~/services/renderMarkdown.server";
-import { getServiceMetadatas } from "./integrations.server";
 import type { TemplateListItem } from "./templateListPresenter.server";
-import { WorkflowsPresenter } from "./workflowsPresenter.server";
+import { WorkflowsPresenter } from "../presenters/workflowsPresenter.server";
+import { getServiceMetadatas } from "~/models/integrations.server";
 
 export class OrganizationTemplatePresenter {
   #prismaClient: PrismaClient;

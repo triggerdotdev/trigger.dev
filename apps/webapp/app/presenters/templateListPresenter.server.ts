@@ -2,8 +2,8 @@ import type { Template } from ".prisma/client";
 import type { ServiceMetadata } from "@trigger.dev/integration-sdk";
 import type { PrismaClient } from "~/db.server";
 import { prisma } from "~/db.server";
+import { getServiceMetadatas } from "~/models/integrations.server";
 import { renderMarkdown } from "~/services/renderMarkdown.server";
-import { getServiceMetadatas } from "./integrations.server";
 
 export type TemplateListItem = Omit<Template, "services"> & {
   services: Array<ServiceMetadata>;

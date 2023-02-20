@@ -5,13 +5,13 @@ import {
 import { Link } from "@remix-run/react";
 import { Body } from "~/components/primitives/text/Body";
 import classNames from "classnames";
-import type { WorkflowListItem } from "~/models/workflowListPresenter.server";
 import { formatDateTime } from "~/utils";
 import { ApiLogoIcon } from "../code/ApiLogoIcon";
 import { List } from "../layout/List";
 import { Header2, Header3 } from "../primitives/text/Headers";
 import { runStatusLabel } from "../runs/runStatus";
 import { TriggerTypeIcon } from "../triggers/TriggerIcons";
+import type { WorkflowListItem } from "~/presenters/workflowsPresenter.server";
 
 export function WorkflowList({
   workflows,

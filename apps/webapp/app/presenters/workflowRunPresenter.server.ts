@@ -8,19 +8,16 @@ import {
   TriggerMetadataSchema,
   WaitSchema,
 } from "@trigger.dev/common-schemas";
-import type {
-  DisplayProperties,
-  ServiceMetadata,
-} from "@trigger.dev/integration-sdk";
+import type { ServiceMetadata } from "@trigger.dev/integration-sdk";
 import { SendEmailBodySchema } from "@trigger.dev/resend/schemas";
 import invariant from "tiny-invariant";
 import type { PrismaClient } from "~/db.server";
 import { prisma } from "~/db.server";
+import { getServiceMetadatas } from "~/models/integrations.server";
+import type { WorkflowRunStatus } from "~/models/workflowRun.server";
 import type { PrismaReturnType } from "~/utils";
 import { dateDifference } from "~/utils";
 import { DisplayPropertiesPresenter } from "./displayPropertiesPresenter.server";
-import { getServiceMetadatas } from "./integrations.server";
-import type { WorkflowRunStatus } from "./workflowRun.server";
 
 export class WorkflowRunPresenter {
   #prismaClient: PrismaClient;

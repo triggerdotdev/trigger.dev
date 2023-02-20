@@ -33,8 +33,8 @@ import { SubTitle } from "~/components/primitives/text/SubTitle";
 import { TemplateCard } from "~/components/templates/TemplateCard";
 import { WorkflowList } from "~/components/workflows/workflowList";
 import { useCurrentOrganization } from "~/hooks/useOrganizations";
-import { OrganizationTemplatePresenter } from "~/models/organizationTemplatePresenter.server";
 import { getRuntimeEnvironmentFromRequest } from "~/models/runtimeEnvironment.server";
+import { OrganizationTemplatePresenter } from "~/presenters/organizationTemplatePresenter.server";
 
 export async function loader({ params, request }: LoaderArgs) {
   const currentEnv = await getRuntimeEnvironmentFromRequest(request);

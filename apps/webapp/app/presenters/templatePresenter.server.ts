@@ -1,7 +1,7 @@
 import type { PrismaClient } from "~/db.server";
 import { prisma } from "~/db.server";
+import { getServiceMetadatas } from "~/models/integrations.server";
 import { renderMarkdown } from "~/services/renderMarkdown.server";
-import { getServiceMetadatas } from "./integrations.server";
 import type { TemplateListItem } from "./templateListPresenter.server";
 
 export class TemplatePresenter {

@@ -1,6 +1,6 @@
 import type { PrismaClient } from "~/db.server";
 import { prisma } from "~/db.server";
-import { getVersion1Integrations } from "./integrations.server";
+import { getVersion1Integrations } from "~/models/integrations.server";
 
 export class WebhookExamplesPresenter {
   #prismaClient: PrismaClient;

@@ -1,7 +1,7 @@
 import { ArrowRightIcon } from "@heroicons/react/20/solid";
 import classNames from "classnames";
 import { Fragment } from "react";
-import type { TemplateListItem } from "~/models/templateListPresenter.server";
+import type { TemplateListItem } from "~/presenters/templateListPresenter.server";
 import { ApiLogoIcon } from "../code/ApiLogoIcon";
 import { OctoKitty } from "../GitHubLoginButton";
 import { TertiaryA, ToxicLink } from "../primitives/Buttons";

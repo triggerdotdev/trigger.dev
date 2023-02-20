@@ -1,7 +1,7 @@
 import { XCircleIcon } from "@heroicons/react/24/solid";
 import { Link } from "@remix-run/react";
 import { Fragment, useState } from "react";
-import type { TemplateListItem } from "~/models/templateListPresenter.server";
+import type { TemplateListItem } from "~/presenters/templateListPresenter.server";
 import { ApiLogoIcon } from "../code/ApiLogoIcon";
 import { StyledDialog } from "../primitives/Dialog";
 import { Body } from "../primitives/text/Body";
