@@ -1,9 +1,9 @@
 import type { PrismaClient } from "~/db.server";
 import { prisma } from "~/db.server";
-import { getIntegrationMetadataByService } from "~/models/integrations.server";
 import { getRuntimeEnvironment } from "~/models/runtimeEnvironment.server";
 import { renderMarkdown } from "~/services/renderMarkdown.server";
-import { TemplateListItem } from "./templateListPresenter.server";
+import { getServiceMetadatas } from "./integrations.server";
+import type { TemplateListItem } from "./templateListPresenter.server";
 import { WorkflowsPresenter } from "./workflowsPresenter.server";
 
 export class OrganizationTemplatePresenter {
@@ -59,10 +59,12 @@ export class OrganizationTemplatePresenter {
       organizationTemplate.repositoryUrl.split("/").pop() ??
       "missing repository name";
 
+    const serviceMetadatas = await getServiceMetadatas(true);
+
     const template: TemplateListItem = {
       ...organizationTemplate.template,
       services: organizationTemplate.template.services.map(
-        getIntegrationMetadataByService
+        (s) => serviceMetadatas[s]
       ),
       docsHTML: renderMarkdown(organizationTemplate.template.markdownDocs),
     };

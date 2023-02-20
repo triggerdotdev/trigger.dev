@@ -9,7 +9,6 @@ export function getVersion1Integrations(showAdminOnly: boolean) {
   return getInternalIntegrations(showAdminOnly);
 }
 
-//todo get metadata from the new integrations service and merge it with the old one
 export async function getServiceMetadatas(
   showAdminOnly: boolean
 ): Promise<Record<string, ServiceMetadata>> {

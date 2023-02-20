@@ -1,8 +1,8 @@
 import type { PrismaClient } from "~/db.server";
 import { prisma } from "~/db.server";
-import { getIntegrationMetadataByService } from "~/models/integrations.server";
 import { renderMarkdown } from "~/services/renderMarkdown.server";
-import { TemplateListItem } from "./templateListPresenter.server";
+import { getServiceMetadatas } from "./integrations.server";
+import type { TemplateListItem } from "./templateListPresenter.server";
 
 export class TemplatePresenter {
   #prismaClient: PrismaClient;
@@ -34,10 +34,12 @@ export class TemplatePresenter {
       return { template: undefined };
     }
 
+    const serviceMetadatas = await getServiceMetadatas(true);
+
     const templateWithServiceMetadata = {
       ...template,
       docsHTML: renderMarkdown(template.markdownDocs),
-      services: template.services.map(getIntegrationMetadataByService),
+      services: template.services.map((s) => serviceMetadatas[s]),
     };
 
     return { template: templateWithServiceMetadata };
