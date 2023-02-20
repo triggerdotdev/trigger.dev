@@ -9,7 +9,7 @@ import { LoginPromoPanel } from "~/components/LoginPromoPanel";
 import { LogoSvg } from "~/components/Logo";
 import { PrimaryButton } from "~/components/primitives/Buttons";
 import { Input } from "~/components/primitives/Input";
-import { TemplatePresenter } from "~/presenters/templatePresenter.server";
+import { TemplatePresenter } from "~/models/templatePresenter.server";
 import { authenticator } from "~/services/auth.server";
 import { getCurrentTemplate } from "~/services/currentTemplate.server";
 import {

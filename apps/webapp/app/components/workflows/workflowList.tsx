@@ -5,7 +5,7 @@ import {
 import { Link } from "@remix-run/react";
 import { Body } from "~/components/primitives/text/Body";
 import classNames from "classnames";
-import { WorkflowListItem } from "~/models/workflowListPresenter.server";
+import type { WorkflowListItem } from "~/models/workflowListPresenter.server";
 import { formatDateTime } from "~/utils";
 import { ApiLogoIcon } from "../code/ApiLogoIcon";
 import { List } from "../layout/List";
@@ -109,7 +109,7 @@ export function WorkflowList({
                         return (
                           <ApiLogoIcon
                             size="regular"
-                            key={service.slug}
+                            key={service.service}
                             integration={service}
                           />
                         );

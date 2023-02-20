@@ -1,7 +1,7 @@
 import { ArrowRightIcon } from "@heroicons/react/20/solid";
 import classNames from "classnames";
 import { Fragment } from "react";
-import type { TemplateListItem } from "~/presenters/templateListPresenter.server";
+import type { TemplateListItem } from "~/models/templateListPresenter.server";
 import { ApiLogoIcon } from "../code/ApiLogoIcon";
 import { OctoKitty } from "../GitHubLoginButton";
 import { TertiaryA, ToxicLink } from "../primitives/Buttons";
@@ -76,7 +76,7 @@ function TemplateDetails({
           </div>
           <div className="mb-4 flex gap-x-1">
             {template.services.map((service) => (
-              <Fragment key={service.slug}>
+              <Fragment key={service.service}>
                 <ApiLogoIcon
                   integration={service}
                   size="regular"

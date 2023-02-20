@@ -37,7 +37,7 @@ export function LoginPromoPanel({ template }: { template?: TemplateListItem }) {
               <div className="mt-3 flex items-center gap-2">
                 {template.services.map((service) => (
                   <ApiLogoIcon
-                    key={service.slug}
+                    key={service.service}
                     integration={service}
                     size="small"
                     className="border border-slate-700/50"

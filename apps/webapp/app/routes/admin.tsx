@@ -8,9 +8,6 @@ import { Fragment, useState } from "react";
 import { redirect, typedjson, useTypedLoaderData } from "remix-typedjson";
 import type { User } from "~/models/user.server";
 import { getUser, requireUserId } from "~/services/session.server";
-import { UserCircleIcon } from "@heroicons/react/24/solid";
-import classNames from "classnames";
-import type { User } from "~/models/user.server";
 
 const navigation = [{ name: "Home", href: "/admin", icon: HomeIcon }];
 
