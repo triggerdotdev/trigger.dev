@@ -1,6 +1,6 @@
 import { FolderIcon } from "@heroicons/react/24/solid";
 import { Form, useTransition } from "@remix-run/react";
-import { ActionArgs, LoaderArgs } from "@remix-run/server-runtime";
+import type { ActionArgs, LoaderArgs } from "@remix-run/server-runtime";
 import {
   redirect,
   typedjson,
@@ -216,23 +216,23 @@ export default function AddTemplatePage() {
                   </InputGroup>
                   <div>
                     <p className="mb-1 text-sm text-slate-500">
-                      Set the repo as private
+                      Set the repo as public
                     </p>
-                    <div className="flex w-full items-center rounded bg-black/20 px-3 py-2.5">
-                      <Label
-                        htmlFor="private"
-                        className="flex cursor-pointer items-center gap-2 text-sm text-slate-300"
-                      >
+                    <Label
+                      htmlFor="publicRepo"
+                      className="flex cursor-pointer items-center gap-2 text-sm text-slate-300"
+                    >
+                      <div className="flex w-full items-center gap-2 rounded bg-black/20 px-3 py-2.5">
                         <input
                           type="checkbox"
-                          name="private"
-                          id="private"
+                          name="publicRepo"
+                          id="publicRepo"
                           className="border-3 h-4 w-4 cursor-pointer rounded border-black bg-slate-500 transition hover:bg-slate-300 focus:outline-none"
                           disabled={isSubmittingOrLoading}
                         />
-                        Private repo
-                      </Label>
-                    </div>
+                        Public repo
+                      </div>
+                    </Label>
                   </div>
                 </div>
                 <div className="flex justify-end">
