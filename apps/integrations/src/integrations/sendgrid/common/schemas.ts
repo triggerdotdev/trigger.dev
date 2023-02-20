@@ -177,7 +177,14 @@ export const ContactRequestSchema: JSONSchema = {
       maxLength: 50,
     },
     custom_fields: {
-      $ref: "#/components/schemas/custom-fields-by-id",
+      title: "custom-fields-by-id",
+      type: "object",
+      additionalProperties: true,
+      example: {
+        w1: "2002-10-02T15:00:00Z",
+        w33: 9.5,
+        e2: "Coffee is a beverage that puts one to sleep when not drank.",
+      },
     },
   },
   required: ["email"],
