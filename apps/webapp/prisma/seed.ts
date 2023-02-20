@@ -36,6 +36,21 @@ async function seed() {
     runLocalDocs: await readTemplateDocsFile("basic-starter-local"),
   };
 
+  const scheduledHealthcheck = {
+    repositoryUrl: "https://github.com/triggerdotdev/scheduled-healthcheck",
+    imageUrl:
+      "https://imagedelivery.net/3TbraffuDZ4aEf8KWOmI_w/706ad84b-cf6d-4b57-2e57-f76183a62d00/public",
+    title: "Run a scheduled healthcheck on your website every 5 minutes",
+    shortTitle: "Scheduled Healthcheck",
+    description:
+      "This will run every 5 minutes and send a Slack message if a website url returns a non-200 response.",
+    priority: 1,
+    services: ["slack"],
+    workflowIds: ["scheduled-healthcheck"],
+    markdownDocs: await readTemplateDocsFile("scheduled-healthcheck"),
+    runLocalDocs: await readTemplateDocsFile("scheduled-healthcheck-local"),
+  };
+
   const githubStarsToSlack = {
     repositoryUrl: "https://github.com/triggerdotdev/github-stars-to-slack",
     imageUrl:
@@ -75,6 +90,15 @@ async function seed() {
     create: {
       slug: "basic-starter",
       ...basicStarter,
+    },
+  });
+
+  await prisma.template.upsert({
+    where: { slug: "scheduled-healthcheck" },
+    update: scheduledHealthcheck,
+    create: {
+      slug: "scheduled-healthcheck",
+      ...scheduledHealthcheck,
     },
   });
 
