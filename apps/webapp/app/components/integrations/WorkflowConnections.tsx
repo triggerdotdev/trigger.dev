@@ -1,3 +1,4 @@
+import classNames from "classnames";
 import invariant from "tiny-invariant";
 import { useConnectionSlots } from "~/hooks/useConnectionSlots";
 import { useCurrentOrganization } from "~/hooks/useOrganizations";
@@ -37,12 +38,19 @@ export function WorkflowConnections() {
       </SubTitle>
       <List>
         {connectionSlots.source && (
-          <li className="flex gap-4 w-full px-4 py-4">
+          <li
+            className={classNames(
+              connectionSlots.source.connection === null
+                ? "!border !border-rose-600 bg-rose-500/10"
+                : "",
+              "flex w-full items-center gap-4 px-4 py-4"
+            )}
+          >
             <ApiLogoIcon
               integration={connectionSlots.source.integration}
               size="regular"
             />
-            <div className="flex items-center justify-between gap-1 w-full">
+            <div className="flex w-full items-center justify-between gap-1">
               <Body>{connectionSlots.source.integration.name}</Body>
               <ConnectionSelector
                 type="source"
@@ -60,10 +68,15 @@ export function WorkflowConnections() {
         {connectionSlots.services.map((slot) => (
           <li
             key={slot.id}
-            className="flex gap-4 items-center w-full px-4 py-4"
+            className={classNames(
+              slot.connection === null
+                ? "!border !border-rose-600 bg-rose-500/10"
+                : "",
+              "flex w-full items-center gap-4 px-4 py-4"
+            )}
           >
             <ApiLogoIcon integration={slot.integration} size="regular" />
-            <div className="flex items-center justify-between w-full">
+            <div className="flex w-full items-center justify-between">
               <Header3 size="small" className="truncate text-slate-300">
                 {slot.integration?.name}
               </Header3>
