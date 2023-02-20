@@ -58,12 +58,27 @@ async function seed() {
     title: "Slack notifications when a GitHub repo is starred",
     shortTitle: "GitHub stars to Slack",
     description:
-      "When a GitHub repo is starred, post information about the user to Slack",
+      "When a GitHub repo is starred, post information about the user to Slack.",
     priority: 1,
     services: ["github", "slack"],
     workflowIds: ["github-stars-to-slack"],
     markdownDocs: await readTemplateDocsFile("github-stars-to-slack"),
     runLocalDocs: await readTemplateDocsFile("github-stars-to-slack-local"),
+  };
+
+  const githubIssuesToSlack = {
+    repositoryUrl: "https://github.com/triggerdotdev/github-issues-to-slack",
+    imageUrl:
+      "https://imagedelivery.net/3TbraffuDZ4aEf8KWOmI_w/1e3b4c17-70ce-484e-4ffe-2147fc873b00/public",
+    title: "Post to Slack when a GitHub issue is created or modified",
+    shortTitle: "GitHub issues to Slack",
+    description:
+      "When a GitHub issue is created or modified, post a message and link to the issue in a specific Slack channel.",
+    priority: 1,
+    services: ["github", "slack"],
+    workflowIds: ["github-issues-to-slack"],
+    markdownDocs: await readTemplateDocsFile("github-issues-to-slack"),
+    runLocalDocs: await readTemplateDocsFile("github-issues-to-slack-local"),
   };
 
   const resendWelcomeDripCampaign = {
@@ -74,7 +89,7 @@ async function seed() {
     title: "Send a welcome drip campaign to new users",
     shortTitle: "Resend.com drip campaign",
     description:
-      "When a new user is created, send them a welcome drip campaign from Resend.com and react.email",
+      "When a new user is created, send them a welcome drip campaign from Resend.com and react.email.",
     priority: 2,
     services: ["resend"],
     workflowIds: ["resend-welcome-drip-campaign"],
@@ -108,6 +123,15 @@ async function seed() {
     create: {
       slug: "github-stars-to-slack",
       ...githubStarsToSlack,
+    },
+  });
+
+  await prisma.template.upsert({
+    where: { slug: "github-issues-to-slack" },
+    update: githubIssuesToSlack,
+    create: {
+      slug: "github-issues-to-slack",
+      ...githubIssuesToSlack,
     },
   });
 
