@@ -135,7 +135,7 @@ export default function Page() {
               {workflow.externalSourceConfig.data.success ? (
                 <div className="flex flex-col">
                   <Body className="mb-4">
-                    Use these details to register your webhook – this usually
+                    Use these details to register your webhook. This usually
                     involves logging in to the developer section of the service.
                   </Body>
                   <div className="flex flex-col gap-2">
@@ -213,7 +213,7 @@ export default function Page() {
       {eventRule && (
         <>
           <div className="flex items-end justify-between">
-            <SubTitle>Workflow type</SubTitle>
+            <SubTitle>Your workflow</SubTitle>
             <SecondaryLink to="test" className="mb-2">
               Test workflow
             </SecondaryLink>
@@ -263,19 +263,6 @@ export default function Page() {
           >
             <PrimaryLink to="test">Test your workflow</PrimaryLink>
           </PanelWarning>
-          {/* <Panel className="flex flex-col items-start gap-2 p-6">
-            <div className="flex items-center gap-2">
-              <ExclamationTriangleIcon className="h-6 w-6 text-amber-400" />
-              <Header3>This workflow hasn't been run yet</Header3>
-            </div>
-            <div className="flex flex-col">
-              <Body className="mt-1 mb-2 text-slate-300">
-                If you want to quickly test the workflow, you can use the test
-                feature.
-              </Body>
-              <PrimaryLink to="test">Test your workflow</PrimaryLink>
-            </div>
-          </Panel> */}
         </>
       )}
     </>
