@@ -16,6 +16,7 @@ type DocsSchemaObject = {
   description?: string;
   children?: DocsSchemaObject[];
   childrenCollectionName?: string;
+  childrenExpanded?: boolean;
 };
 
 export async function generateDocs(
@@ -49,7 +50,7 @@ export async function generateDocs(
 
     //Input schema
     if (f.input) {
-      const inputDocsObject = generateDocSchema("params", true, f.input);
+      const inputDocsObject = generateDocSchema("params", true, f.input, true);
 
       if (inputDocsObject) {
         //for debugging you can save the DocObject JSON
@@ -109,7 +110,8 @@ description: ${sanitizeText(description)}
 function generateDocSchema(
   key: string,
   required: boolean,
-  schema: JSONSchema | boolean
+  schema: JSONSchema | boolean,
+  expanded: boolean = false
 ): DocsSchemaObject | undefined {
   if (typeof schema === "boolean") return;
 
@@ -145,6 +147,7 @@ function generateDocSchema(
       description,
       children,
       childrenCollectionName: `possible types for ${key}`,
+      childrenExpanded: expanded,
     };
   }
 
@@ -179,6 +182,7 @@ function generateDocSchema(
       description,
       children,
       childrenCollectionName: `possible types for ${key}`,
+      childrenExpanded: expanded,
     };
   }
 
@@ -223,6 +227,7 @@ function generateDocSchema(
         (a, b) => Number(b.required) - Number(a.required)
       ),
       childrenCollectionName: "properties",
+      childrenExpanded: expanded,
     };
   }
 
@@ -236,6 +241,7 @@ function generateDocSchema(
         description,
         children: [doc],
         childrenCollectionName: "items",
+        childrenExpanded: expanded,
       };
     }
   }
@@ -275,7 +281,7 @@ function generateMarkdownFromDocSchema(
   if (docSchema.children) {
     markdown += `<Expandable title="${
       docSchema.childrenCollectionName ?? "properties"
-    }">`;
+    }" defaultOpen={${docSchema.childrenExpanded ?? false}}>`;
     docSchema.children.forEach((child) => {
       markdown += generateMarkdownFromDocSchema(fieldType, child);
     });
