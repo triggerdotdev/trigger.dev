@@ -102,7 +102,7 @@ function generatePageMetadata(title: string, description: string) {
   return `---
 title: ${title}
 sidebarTitle: ${title}
-description: ${description}
+description: ${sanitizeText(description)}
 ---`;
 }
 
@@ -249,9 +249,17 @@ function generateDocSchema(
 }
 
 function createDescription(schema: JSONSchema): string | undefined {
-  return schema.description
+  const description = schema.description
     ? schema.description
     : TitleCaseWithSpaces(schema.title);
+
+  if (!description) return;
+  return sanitizeText(description);
+}
+
+//encode angle brackets for displaying in HTML
+function sanitizeText(original: string): string {
+  return original.replace(/</gm, "&lt;").replace(/>/gm, "&gt;");
 }
 
 function generateMarkdownFromDocSchema(
