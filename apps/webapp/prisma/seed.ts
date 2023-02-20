@@ -70,7 +70,7 @@ async function seed() {
     repositoryUrl:
       "https://github.com/triggerdotdev/resend-welcome-drip-campaign",
     imageUrl:
-      "https://imagedelivery.net/3TbraffuDZ4aEf8KWOmI_w/2f7f14fb-8d3f-42a0-cd8e-58595603df00/public",
+      "https://imagedelivery.net/3TbraffuDZ4aEf8KWOmI_w/cce3b770-b6f9-40ef-baf3-f01c20686700/public",
     title: "Send a welcome drip campaign to new users",
     shortTitle: "Resend.com drip campaign",
     description:
