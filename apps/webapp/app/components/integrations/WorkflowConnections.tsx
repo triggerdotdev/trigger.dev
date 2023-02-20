@@ -43,7 +43,7 @@ export function WorkflowConnections() {
               connectionSlots.source.connection === null
                 ? "!border !border-rose-600 bg-rose-500/10"
                 : "",
-              "flex w-full items-center gap-4 px-4 py-4"
+              "flex w-full items-center gap-4 px-4 py-4 first:rounded-t-md last:rounded-b-md"
             )}
           >
             <ApiLogoIcon
@@ -72,7 +72,7 @@ export function WorkflowConnections() {
               slot.connection === null
                 ? "!border !border-rose-600 bg-rose-500/10"
                 : "",
-              "flex w-full items-center gap-4 px-4 py-4"
+              "flex w-full items-center gap-4 px-4 py-4 first:rounded-t-md last:rounded-b-md"
             )}
           >
             <ApiLogoIcon integration={slot.integration} size="regular" />
