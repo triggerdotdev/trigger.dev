@@ -23,12 +23,14 @@ model User {
   name        String?
   avatarUrl   String?
 
-  admin Boolean @default(false)
+  admin             Boolean @default(false)
+  isOnCloudWaitlist Boolean @default(false)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  organizations Organization[]
+  organizations           Organization[]
+  gitHubAppAuthorizations GitHubAppAuthorization[]
 }
 
 enum AuthenticationMethod {
@@ -44,15 +46,17 @@ model Organization {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  users            User[]
-  workflows        Workflow[]
-  environments     RuntimeEnvironment[]
-  apiConnections   APIConnection[]
-  events           TriggerEvent[]
-  externalSources  ExternalSource[]
-  eventRules       EventRule[]
-  schedulerSources SchedulerSource[]
-  internalSources  InternalSource[]
+  users                   User[]
+  workflows               Workflow[]
+  environments            RuntimeEnvironment[]
+  apiConnections          APIConnection[]
+  events                  TriggerEvent[]
+  externalSources         ExternalSource[]
+  eventRules              EventRule[]
+  schedulerSources        SchedulerSource[]
+  internalSources         InternalSource[]
+  gitHubAppAuthorizations GitHubAppAuthorization[]
+  templates               OrganizationTemplate[]
 }
 
 model APIConnection {
@@ -148,6 +152,9 @@ model Workflow {
   isArchived Boolean   @default(false)
 
   triggerTtlInSeconds Int @default(3600)
+
+  organizationTemplate   OrganizationTemplate? @relation(fields: [organizationTemplateId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  organizationTemplateId String?
 
   @@unique([organizationId, slug])
 }
@@ -557,4 +564,98 @@ model FetchResponse {
   context Json
 
   createdAt DateTime @default(now())
+}
+
+model GitHubAppAuthorizationAttempt {
+  id             String  @id @default(cuid())
+  userId         String
+  organizationId String
+  templateId     String?
+}
+
+model GitHubAppAuthorization {
+  id String @id @default(cuid())
+
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  userId String
+
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  organizationId String
+
+  accountType GitHubAccountType @default(USER)
+  accountName String
+
+  installationId      Int      @unique
+  account             Json
+  permissions         Json
+  repositorySelection String
+  accessTokensUrl     String
+  repositoriesUrl     String
+  htmlUrl             String
+  events              String[]
+
+  token                 String
+  tokenExpiresAt        DateTime
+  refreshToken          String
+  refreshTokenExpiresAt DateTime
+  organizationTemplates OrganizationTemplate[]
+}
+
+enum GitHubAccountType {
+  USER
+  ORGANIZATION
+}
+
+model Template {
+  id            String @id @default(cuid())
+  slug          String @unique
+  title         String
+  shortTitle    String
+  description   String
+  imageUrl      String
+  repositoryUrl String
+  markdownDocs  String @default("Documentation\n\nThis template does not have any documentation yet.")
+  runLocalDocs  String @default("Documentation\n\nThis template does not have any documentation yet.")
+
+  priority Int @default(0)
+
+  services    String[]
+  workflowIds String[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  organizationTemplates OrganizationTemplate[]
+}
+
+model OrganizationTemplate {
+  id             String       @id @default(cuid())
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  organizationId String
+  template       Template     @relation(fields: [templateId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  templateId     String
+
+  authorization   GitHubAppAuthorization @relation(fields: [authorizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  authorizationId String
+
+  name          String
+  repositoryId  Int     @unique
+  repositoryUrl String
+  private       Boolean
+
+  status OrganizationTemplateStatus @default(PENDING)
+
+  repositoryData Json
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  workflows Workflow[]
+}
+
+enum OrganizationTemplateStatus {
+  PENDING
+  CREATED
+  READY_TO_DEPLOY
+  DEPLOYED
 }

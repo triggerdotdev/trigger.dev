@@ -49,6 +49,12 @@ const EnvironmentSchema = z.object({
   PULSAR_AUDIENCE: z.string().optional(),
   PULSAR_DEBUG: z.string().optional(),
   INTERNAL_TRIGGER_API_KEY: z.string().optional(),
+  GITHUB_APP_NAME: z.string().optional(),
+  GITHUB_APP_ID: z.string().optional(),
+  GITHUB_APP_CLIENT_ID: z.string().optional(),
+  GITHUB_APP_CLIENT_SECRET: z.string().optional(),
+  GITHUB_APP_PRIVATE_KEY: z.string().optional(),
+  GITHUB_APP_WEBHOOK_SECRET: z.string().optional(),
   INTEGRATIONS_API_KEY: z.string(),
   INTEGRATIONS_API_ORIGIN: z.string(),
 });

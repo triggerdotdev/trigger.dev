@@ -1,13 +1,15 @@
 export function resendEmailDripCampaign(apiKey: string) {
-return `import { customEvent, Trigger, sendEvent } from "@trigger.dev/sdk";
+  return `import { customEvent, Trigger } from "@trigger.dev/sdk";
 import * as resend from "@trigger.dev/resend";
 import * as slack from "@trigger.dev/slack";
-import React from "react";
+import { Html } from "@react-email/html";
+import { Preview } from "@react-email/preview";
+import { Section } from "@react-email/section";
+import { Text } from "@react-email/text";
 import { z } from "zod";
-import { getUser } from "../db";
-import { InactiveEmail, TipsEmail, WelcomeEmail } from "./email-templates";
 
 new Trigger({
+  //todo: ensure this id is only used for this workflow
   id: "welcome-email-campaign",
   name: "Welcome email drip campaign",
   // For security, we recommend moving this api key to your .env / secrets file. 
@@ -63,6 +65,55 @@ new Trigger({
       });
     }
   },
-}).listen();`;
+}).listen();
+
+function WelcomeEmail({ name }: { name?: string }) {
+  return (
+    <Html>
+      <Preview>This is the text that appears in the inbox list</Preview>
+      <Section>
+        <Text>Hey {name ?? "there"},</Text>
+        <Text>Your message goes here.</Text>
+      </Section>
+    </Html>
+  );
 }
 
+function TipsEmail({ name }: { name: string }) {
+  return (
+    <Html>
+      <Preview>This is the text that appears in the inbox list</Preview>
+      <Section>
+        <Text>Hi {name ?? "there"},</Text>
+        <Text>
+          Tips content goes here
+        </Text>
+      </Section>
+    </Html>
+  );
+}
+
+function InactiveEmail({ name }: { name: string }) {
+  return (
+    <Html>
+      <Preview>This is the text that appears in the inbox list</Preview>
+      <Section>
+        <Text>Hi {name ?? "there"},</Text>
+        <Text>
+          Re-engagement content goes here
+        </Text>
+      </Section>
+    </Html>
+  );
+}
+
+//This file is a mock database, in your real app you would access your real database from inside these functions
+async function getUser(userId: string, hasOnboarded = false) {
+  return {
+    id: userId,
+    name: "Matt Aitken",
+    email: "matt@trigger.dev",
+    hasOnboarded,
+  };
+}`;
+}

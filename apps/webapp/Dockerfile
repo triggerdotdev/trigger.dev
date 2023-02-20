@@ -42,6 +42,7 @@ ENV NODE_ENV production
 RUN pnpm run generate
 RUN pnpm run build --filter=webapp...
 RUN pnpx prisma migrate deploy --schema apps/webapp/prisma/schema.prisma
+RUN pnpm run db:seed --filter=webapp
 
 # Runner
 FROM node:16-bullseye AS runner

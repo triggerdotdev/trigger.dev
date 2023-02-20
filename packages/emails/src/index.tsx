@@ -76,7 +76,7 @@ export class EmailClient {
     switch (data.email) {
       case "welcome":
         return {
-          subject: "🤝 Welcome to Trigger.dev!",
+          subject: "✨ Welcome to Trigger.dev!",
           component: <WelcomeEmail name={data.name} />,
         };
       case "magic_link":

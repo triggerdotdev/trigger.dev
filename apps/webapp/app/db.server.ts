@@ -32,7 +32,7 @@ function getClient() {
   urlWithoutCredentials.password = "";
 
   console.log(
-    `1. 🔌 setting up prisma client to ${urlWithoutCredentials.toString()}`
+    `🔌 setting up prisma client to ${urlWithoutCredentials.toString()}`
   );
 
   const client = new PrismaClient({
@@ -41,15 +41,36 @@ function getClient() {
         url: DATABASE_URL,
       },
     },
-    log: ["warn", "error"],
+    log: [
+      // {
+      //   emit: "event",
+      //   level: "query",
+      // },
+      {
+        emit: "stdout",
+        level: "error",
+      },
+      {
+        emit: "stdout",
+        level: "info",
+      },
+      {
+        emit: "stdout",
+        level: "warn",
+      },
+    ],
   });
 
-  console.log(`2.0 🔌 prisma client connecting`);
+  // client.$on("query", (e) => {
+  //   console.log("Query: " + e.query);
+  //   console.log("Params: " + e.params);
+  //   console.log("Duration: " + e.duration + "ms");
+  // });
 
   // connect eagerly
   client.$connect();
 
-  console.log(`3.0 🔌 prisma client connected`);
+  console.log(`🔌 prisma client connected`);
 
   return client;
 }

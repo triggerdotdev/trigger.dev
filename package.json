@@ -20,7 +20,7 @@
     "db:seed": "turbo run db:seed --no-cache",
     "db:migrate:force": "turbo run db:migrate:force --no-cache",
     "dev": "turbo run dev --parallel",
-    "idev": "turbo run idev --parallel",
+    "i-dev": "infisical run -- turbo run dev --parallel",
     "format": "prettier --write \"**/*.{ts,tsx,md}\"",
     "generate": "turbo run generate",
     "lint": "turbo run lint",

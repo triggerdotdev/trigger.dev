@@ -1,5 +1,11 @@
 # @trigger.dev/sdk
 
+## 0.2.14
+
+### Patch Changes
+
+- 179afbb: Automatically pickup on the TRIGGER_WSS_URL for the wss endpoint
+
 ## 0.2.13
 
 ### Patch Changes
