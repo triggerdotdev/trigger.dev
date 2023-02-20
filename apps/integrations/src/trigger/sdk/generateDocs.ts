@@ -111,7 +111,7 @@ function generateDocSchema(
   key: string,
   required: boolean,
   schema: JSONSchema | boolean,
-  expanded: boolean = false
+  expanded = false
 ): DocsSchemaObject | undefined {
   if (typeof schema === "boolean") return;
 
