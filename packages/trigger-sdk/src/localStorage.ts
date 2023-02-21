@@ -3,10 +3,11 @@ import { z } from "zod";
 import { TriggerCustomEvent, TriggerFetch } from "./types";
 
 type PerformRequestOptions<TSchema extends z.ZodTypeAny> = {
+  version?: string;
   service: string;
   params: unknown;
   endpoint: string;
-  response: {
+  response?: {
     schema: TSchema;
   };
 };

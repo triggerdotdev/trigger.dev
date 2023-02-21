@@ -60,7 +60,7 @@ export default function TemplatePage() {
     if (events !== null) {
       revalidator.revalidate();
     }
-  }, [events]);
+  }, [events, revalidator]);
 
   const organizationTemplateByStatus = (
     <OrganizationTemplateByStatus {...loaderData} />

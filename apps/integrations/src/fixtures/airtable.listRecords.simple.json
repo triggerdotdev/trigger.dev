@@ -1,0 +1,218 @@
+[
+    {
+        "scope": "https://api.airtable.com:443",
+        "method": "POST",
+        "path": "/v0/appBlf3KsalIQeMUo/tblvXn2TOeVPC9c6m/listRecords",
+        "body": {},
+        "status": 200,
+        "response": {
+            "records": [
+                {
+                    "id": "rec3cPi3z4s6oe9SD",
+                    "createdTime": "2023-01-22T23:51:21.000Z",
+                    "fields": {
+                        "Employee": "Jimmy dean",
+                        "Phone": "7778",
+                        "Employee type": "Employee",
+                        "Manager": {
+                            "id": "usrpWV6yqSVvzVO0j",
+                            "email": "matt@trigger.dev",
+                            "name": "Matt Aitken"
+                        }
+                    }
+                },
+                {
+                    "id": "recElL0yiCgIEVcyc",
+                    "createdTime": "2023-01-03T12:05:53.000Z",
+                    "fields": {
+                        "Employee": "Quinn Nguyen",
+                        "Phone": "(123) 456-7890",
+                        "Headshot": [
+                            {
+                                "id": "attx14Pa1lP0DMgRw",
+                                "width": 950,
+                                "height": 700,
+                                "url": "https://v5.airtableusercontent.com/v1/15/15/1676743200000/5gbGs-cRWoOC46FxBWQZKw/ph_QI1srGvvZArxOz207bnKOs-xlIXF8ZqMlk5ssMr-jbiMuFfXOjmjadjOACGFRyQ9nE59Dpy7540UU_6bpgsQ_tMKtCFaaf2a4ieIPEEU/ptI5mq4oczxmmrz-RRWb3MSegywNfAwWf--9mL5IT34",
+                                "filename": "headshot-pink-1.png",
+                                "size": 215411,
+                                "type": "image/png",
+                                "thumbnails": {
+                                    "small": {
+                                        "url": "https://v5.airtableusercontent.com/v1/15/15/1676743200000/3bEGb1n_oJxadHpHMcDg_w/1Mga_f3JNzLtWq_an_E7I98CxejzOpiALmDJHRdI0XcBbVwIv-vzj96mY-XeAL0W32Q_WCQPu4TqWzisnlqLYg/7pJLZzaspSp1339lIgp1o1Nb1durOAoIx-IflDRI8gY",
+                                        "width": 49,
+                                        "height": 36
+                                    },
+                                    "large": {
+                                        "url": "https://v5.airtableusercontent.com/v1/15/15/1676743200000/7Xr67It2dJ296uYyumST1g/HH8QTjlaP0frLwscoJy3vJLvOdKwz1zHL_ll8zMtfFkm1uFB9-nRkA09YeSojhemScYjpvIB7OoxJTh3lqU-jQ/8jtF2js5F47hndbxts2_ZIFZaxkuq3G0BxbomG1wRDA",
+                                        "width": 695,
+                                        "height": 512
+                                    },
+                                    "full": {
+                                        "url": "https://v5.airtableusercontent.com/v1/15/15/1676743200000/O1xGv0NoeaGTVYYDxpZnuQ/IBXER_7M4O9QqAmv_9pF2evdf5_9YzeVmdzk3Rsi2gFaK6ueREni-Kaw6Xg8VORqFpHNtUQ7JrV_5Ya4zhSuXg/VAGl2IqW98-D0E1RgBretLYJCmNCDqledVmdTrUOEIU",
+                                        "width": 3000,
+                                        "height": 3000
+                                    }
+                                }
+                            }
+                        ],
+                        "Employee type": "Employee"
+                    }
+                },
+                {
+                    "id": "recFeH8y7qLNR6CxB",
+                    "createdTime": "2023-01-22T23:15:09.000Z",
+                    "fields": {
+                        "Employee": "Employee 7",
+                        "Phone": "342567",
+                        "Employee type": "Contractor",
+                        "Manager": {
+                            "id": "usrpWV6yqSVvzVO0j",
+                            "email": "matt@trigger.dev",
+                            "name": "Matt Aitken"
+                        }
+                    }
+                },
+                {
+                    "id": "recGPicQa5yIo9dBY",
+                    "createdTime": "2023-01-22T19:22:05.000Z",
+                    "fields": {
+                        "Employee": "Matt Aitken",
+                        "Phone": "12345678",
+                        "Employee type": "Employee",
+                        "Manager": {
+                            "id": "usrpWV6yqSVvzVO0j",
+                            "email": "matt@trigger.dev",
+                            "name": "Matt Aitken"
+                        }
+                    }
+                },
+                {
+                    "id": "recHcnB1MbBr9Rd2P",
+                    "createdTime": "2023-01-03T12:05:53.000Z",
+                    "fields": {
+                        "Employee": "Faith Butterworth",
+                        "Phone": "(123) 456-7890",
+                        "Headshot": [
+                            {
+                                "id": "att3ibwyOXULYL15O",
+                                "width": 950,
+                                "height": 700,
+                                "url": "https://v5.airtableusercontent.com/v1/15/15/1676743200000/xV5UysTMWXnI9p8E8KMTlA/Ov21BA--8-n8JC_sH7-sx_Iub_aXA1PGiVAohUAhE5SuEtqSMGhN39pRHI3tmu3LqEh8iDz8pTZ_TdWHVV8riCTBPEm8NvvD3o6BtJTRXcE/LJjYfS0Wh_KMcmkgL-82HOLXyhhDHnMsFvrqL1OCtXQ",
+                                "filename": "headshot-purple-2 (1).png",
+                                "size": 191272,
+                                "type": "image/png",
+                                "thumbnails": {
+                                    "small": {
+                                        "url": "https://v5.airtableusercontent.com/v1/15/15/1676743200000/L9WFjSk92HlOH9RDdrP7MA/7AgbUc3M9KuDz5plvUFL5dsRwt55PiqcnPvoDIawWfk0w_N4GDZPTPDiiqxFOsUMNOk4CB1RuBZFFLNEfu0bRA/RYcp3x_oGgLtvOi7CtUplGM_rmU-EdbBQ5zdcr7L-Yo",
+                                        "width": 49,
+                                        "height": 36
+                                    },
+                                    "large": {
+                                        "url": "https://v5.airtableusercontent.com/v1/15/15/1676743200000/Zl-Thn_JCnnb_-j9CpJ0lg/9hIAzhles7CH7n0EgRzrg-_qVCz1G6oHXX8M7A70KVUBy3Ttnc1NwoSKLMj7JxmYkqc8hYCRU4qRA_S22sS1cw/BhQLDmDmMAUd4sUaxVfTbHnxPGJD9q0_NPB3l7rYz4o",
+                                        "width": 695,
+                                        "height": 512
+                                    },
+                                    "full": {
+                                        "url": "https://v5.airtableusercontent.com/v1/15/15/1676743200000/4E18KjffN_36eSJ65hCEFg/1_ts6X0NwupOAEyHnehE_hy5ROdSOt1jODcXv5Cny3Wn4O5r3Ewl3vgsg3Lebkwv40iJo7tbtblZEdtZMecpJA/GBgtTGmld0ZH7_4FygTqipHkEpQVn4dt3CmGBnOo6Wc",
+                                        "width": 3000,
+                                        "height": 3000
+                                    }
+                                }
+                            }
+                        ],
+                        "Employee type": "Contractor"
+                    }
+                },
+                {
+                    "id": "recRo4MuSqRcb33pp",
+                    "createdTime": "2023-01-23T00:48:36.000Z",
+                    "fields": {
+                        "Employee": "Employee 9",
+                        "Phone": "12345678",
+                        "Employee type": "Employee",
+                        "Manager": {
+                            "id": "usrpWV6yqSVvzVO0j",
+                            "email": "matt@trigger.dev",
+                            "name": "Matt Aitken"
+                        }
+                    }
+                },
+                {
+                    "id": "recWhRejYoDn5CNsB",
+                    "createdTime": "2023-01-23T07:46:46.000Z",
+                    "fields": {}
+                },
+                {
+                    "id": "recbKWDa9URtGWIGG",
+                    "createdTime": "2023-01-03T12:05:53.000Z",
+                    "fields": {
+                        "Employee": "Harley Holbrook",
+                        "Phone": "(123) 456-7890",
+                        "Headshot": [
+                            {
+                                "id": "attIMHgGEnN0YutyM",
+                                "width": 950,
+                                "height": 700,
+                                "url": "https://v5.airtableusercontent.com/v1/15/15/1676743200000/Fz00EH3JBLCN7V_swur5cg/p3tx8jWcy5175n6bvK9aCabwdIfMur6wDrly_X6A8cL6YnO5JBKK0YJW1EjrEzjCtkj0uJ0PAS4lbwD2hMsKlKUZjopUmDegHLnms_ucOxE/6HP7Qw3GHTGiAmHUM21jHC5fhLcyfTrlD9qrs35a9-I",
+                                "filename": "headshot-yellow-2.png",
+                                "size": 349926,
+                                "type": "image/png",
+                                "thumbnails": {
+                                    "small": {
+                                        "url": "https://v5.airtableusercontent.com/v1/15/15/1676743200000/Cyg5kaW38cKzs03TbM-X3g/8omtIQVimV1MrD9PPtj2SaAlOA3CxuCdqHWoVPxi6UELMV2w7EhFv9Ko3WexIF5bcQyd9-N4RLFGvd5__VgP6A/suCIwJkTLliZrHLwioXIUqnrkJ7gIOxtNrdQtkDrBjk",
+                                        "width": 49,
+                                        "height": 36
+                                    },
+                                    "large": {
+                                        "url": "https://v5.airtableusercontent.com/v1/15/15/1676743200000/g3EV5PxrbBETRQ9Qzn5WYg/rloz8wROtoNA6Ab9HEykJEmHtnmqUzxnnksoNJU7Y1NjeoV6dQQQZxLTjQBYJukBQfil4EXI8b_ejtARnkANhw/RwNwembhBCNpNJPThTWE_Fae3KtNvBQf-nDboeTP06c",
+                                        "width": 695,
+                                        "height": 512
+                                    },
+                                    "full": {
+                                        "url": "https://v5.airtableusercontent.com/v1/15/15/1676743200000/hFdCcDELa9Y1qNU8ynA-gA/rY9pKGsa3U-i95eAYUT9qPkXhakhXNpWaWBOKsKSSvmc0MFERzMvBTQ9X6hfBBOWdJNPm2ewSI5qaMk1OqdDYg/IVswNEnsz2QWGQtpfHLGHHaAZEWVam08gd7vSXPVMOI",
+                                        "width": 3000,
+                                        "height": 3000
+                                    }
+                                }
+                            }
+                        ],
+                        "Employee type": "On leave"
+                    }
+                }
+            ]
+        },
+        "rawHeaders": [
+            "Date",
+            "Sat, 18 Feb 2023 15:58:57 GMT",
+            "Content-Type",
+            "2247",
+            "Connection",
+            "close",
+            "Set-Cookie",
+            "AWSALB=eKX9sqNvujzmAJZfcbDUrm7NlI8Xe9niXH7mrVhWbrGQZxHi9a8M9cKLI067MCp0mv5UfHVCEeUvkQbnHW8lB/LQwpch1qdox/a0c+J5kcVIGXWLH8zOB6pv2t42; Expires=Sat, 25 Feb 2023 15:58:57 GMT; Path=/",
+            "Set-Cookie",
+            "AWSALBCORS=eKX9sqNvujzmAJZfcbDUrm7NlI8Xe9niXH7mrVhWbrGQZxHi9a8M9cKLI067MCp0mv5UfHVCEeUvkQbnHW8lB/LQwpch1qdox/a0c+J5kcVIGXWLH8zOB6pv2t42; Expires=Sat, 25 Feb 2023 15:58:57 GMT; Path=/; SameSite=None; Secure",
+            "Server",
+            "Tengine",
+            "Set-Cookie",
+            "brw=brwJiIPgBOUtNPjri; path=/; expires=Sun, 18 Feb 2024 15:58:57 GMT; domain=.airtable.com; samesite=none; secure",
+            "Strict-Transport-Security",
+            "max-age=31536000; includeSubDomains; preload",
+            "access-control-allow-origin",
+            "*",
+            "access-control-allow-methods",
+            "DELETE,GET,OPTIONS,PATCH,POST,PUT",
+            "access-control-allow-headers",
+            "authorization,content-length,content-type,user-agent,x-airtable-application-id,x-airtable-user-agent,x-api-version,x-requested-with",
+            "X-Frame-Options",
+            "DENY",
+            "X-Content-Type-Options",
+            "nosniff",
+            "Vary",
+            "Accept-Encoding",
+            "airtable-uncompressed-content-length",
+            "4968"
+        ],
+        "responseIsBinary": false
+    }
+]

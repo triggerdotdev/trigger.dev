@@ -10,7 +10,7 @@ import { Title } from "~/components/primitives/text/Title";
 import { WorkflowList } from "~/components/workflows/workflowList";
 import { useCurrentOrganization } from "~/hooks/useOrganizations";
 import { getRuntimeEnvironmentFromRequest } from "~/models/runtimeEnvironment.server";
-import { WorkflowListPresenter } from "~/models/workflowListPresenter.server";
+import { WorkflowListPresenter } from "~/presenters/workflowListPresenter.server";
 import { requireUserId } from "~/services/session.server";
 
 export const loader = async ({ request, params }: LoaderArgs) => {

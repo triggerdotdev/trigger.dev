@@ -46,7 +46,7 @@ import { useCurrentOrganization } from "~/hooks/useOrganizations";
 import { useCurrentWorkflow } from "~/hooks/useWorkflows";
 import type { RuntimeEnvironment } from "~/models/runtimeEnvironment.server";
 import { getRuntimeEnvironmentFromRequest } from "~/models/runtimeEnvironment.server";
-import { WorkflowRunListPresenter } from "~/models/workflowRunListPresenter.server";
+import { WorkflowRunListPresenter } from "~/presenters/workflowRunListPresenter.server";
 import { requireUserId } from "~/services/session.server";
 
 const pageSize = 10;

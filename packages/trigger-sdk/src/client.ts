@@ -561,11 +561,16 @@ export class TriggerClient<TSchema extends z.ZodTypeAny> {
                     service: options.service,
                     endpoint: options.endpoint,
                     params: options.params,
+                    version: options.version,
                   },
                   timestamp: String(highPrecisionTimestamp()),
                 });
 
                 const output = await result;
+
+                if (!options.response?.schema) {
+                  return output;
+                }
 
                 return options.response.schema.parse(output);
               },

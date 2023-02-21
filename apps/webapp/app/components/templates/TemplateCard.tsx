@@ -1,5 +1,5 @@
 import classNames from "classnames";
-import { TemplateListItem } from "~/presenters/templateListPresenter.server";
+import type { TemplateListItem } from "~/presenters/templateListPresenter.server";
 import { ApiLogoIcon } from "../code/ApiLogoIcon";
 import { Body } from "../primitives/text/Body";
 import { Header1 } from "../primitives/text/Headers";
@@ -22,7 +22,7 @@ export function TemplateCard({
       <div className="h-36 w-full">
         <img
           src={template.imageUrl}
-          alt="template image"
+          alt={template.shortTitle}
           className="h-full w-full object-cover"
         />
       </div>
@@ -37,7 +37,7 @@ export function TemplateCard({
         </div>
         <div className="flex flex-row gap-x-1">
           {template.services.map((service) => (
-            <div key={service.slug} className="">
+            <div key={service.service} className="">
               <ApiLogoIcon
                 integration={service}
                 size="regular"

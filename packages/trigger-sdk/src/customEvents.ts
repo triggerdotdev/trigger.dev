@@ -1,30 +1,30 @@
 import { triggerRunLocalStorage } from "./localStorage";
 import type { TriggerCustomEvent } from "./types";
 import fetch from "node-fetch";
-import { ulid } from "ulid";
 
 export function sendEvent(
-  id: string,
+  idOrKey: string,
   event: TriggerCustomEvent
 ): Promise<void> {
   const triggerRun = triggerRunLocalStorage.getStore();
 
   if (!triggerRun) {
     // Do it through the API
-    return sendEventFetch(event);
+    return sendEventFetch(idOrKey, event);
   }
 
-  return triggerRun.sendEvent(id, event);
+  return triggerRun.sendEvent(idOrKey, event);
 }
 
-async function sendEventFetch(event: TriggerCustomEvent): Promise<void> {
+async function sendEventFetch(
+  id: string,
+  event: TriggerCustomEvent
+): Promise<void> {
   if (!process.env.TRIGGER_API_KEY) {
     throw new Error(
       `There was a problem sending a custom event: the TRIGGER_API_KEY environment variable is not set`
     );
   }
-
-  const id = ulid();
 
   const baseUrl = process.env.TRIGGER_API_URL || "https://app.trigger.dev";
   const url = `${baseUrl}/api/v1/events`;

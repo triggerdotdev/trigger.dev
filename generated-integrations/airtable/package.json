@@ -1,0 +1,33 @@
+{
+  "name": "@trigger.dev/airtable",
+  "version": "0.1.22",
+  "description": "The official Airtable integration for Trigger.dev",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "publishConfig": {
+    "access": "public"
+  },
+  "files": [
+    "dist/index.js",
+    "dist/index.d.ts",
+    "dist/index.js.map"
+  ],
+  "devDependencies": {
+    "@trigger.dev/sdk": "workspace:*",
+    "@types/debug": "^4.1.7",
+    "@types/node": "16",
+    "rimraf": "^3.0.2",
+    "tsup": "^6.5.0"
+  },
+  "peerDependencies": {
+    "@trigger.dev/sdk": "workspace:*"
+  },
+  "scripts": {
+    "clean": "rimraf dist",
+    "build": "npm run clean && npm run build:tsup",
+    "build:tsup": "tsup"
+  },
+  "dependencies": {
+    "debug": "^4.3.4"
+  }
+}

@@ -12,7 +12,7 @@ import { RefreshAppAuthorizationService } from "../github/refreshAppAuthorizatio
 const FormSchema = z.object({
   name: z.string().min(3).max(100),
   templateId: z.string(),
-  private: z.literal("on").optional(),
+  publicRepo: z.literal("on").optional(),
   appAuthorizationId: z.string(),
 });
 
@@ -104,7 +104,7 @@ export class AddTemplateService {
               id: data.templateId,
             },
           },
-          private: data.private === "on",
+          private: data.publicRepo !== "on",
           organization: {
             connect: {
               slug: organizationSlug,
@@ -132,7 +132,7 @@ export class AddTemplateService {
       return createUserRepository(
         {
           name: data.name,
-          private: data.private === "on",
+          private: data.publicRepo !== "on",
           auto_init: true,
         },
         {
@@ -148,7 +148,7 @@ export class AddTemplateService {
         {
           org: authorization.accountName,
           name: data.name,
-          private: data.private === "on",
+          private: data.publicRepo !== "on",
           auto_init: true,
         },
         {
