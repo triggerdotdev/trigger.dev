@@ -794,23 +794,6 @@ importers:
       rimraf: 3.0.2
       tsup: 6.5.0
 
-  generated-integrations/slackv2:
-    specifiers:
-      '@trigger.dev/sdk': workspace:*
-      '@types/debug': ^4.1.7
-      '@types/node': '16'
-      debug: ^4.3.4
-      rimraf: ^3.0.2
-      tsup: ^6.5.0
-    dependencies:
-      debug: 4.3.4
-    devDependencies:
-      '@trigger.dev/sdk': link:../../packages/trigger-sdk
-      '@types/debug': 4.1.7
-      '@types/node': 16.18.11
-      rimraf: 3.0.2
-      tsup: 6.5.0
-
   integrations/github:
     specifiers:
       '@octokit/webhooks': ^10.4.0
