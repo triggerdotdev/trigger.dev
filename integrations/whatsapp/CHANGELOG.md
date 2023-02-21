@@ -1,5 +1,14 @@
 # @trigger.dev/whatsapp
 
+## 0.1.20
+
+### Patch Changes
+
+- 6b53aeb: New integrations service compatibility
+- Updated dependencies [6b53aeb]
+- Updated dependencies [9eeacee]
+  - @trigger.dev/sdk@0.2.15
+
 ## 0.1.20-next.0
 
 ### Patch Changes

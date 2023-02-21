@@ -1,5 +1,12 @@
 # @trigger.dev/sdk
 
+## 0.2.15
+
+### Patch Changes
+
+- 6b53aeb: New integrations service compatibility
+- 9eeacee: Fix: pass in the id from sendEvent through to the API call
+
 ## 0.2.15-next.0
 
 ### Patch Changes
