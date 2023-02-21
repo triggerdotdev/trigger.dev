@@ -39,7 +39,6 @@ importers:
     specifiers:
       '@cfworker/json-schema': ^1.12.5
       '@prisma/client': ^4.3.0
-      '@trigger.dev/sdk': ^0.2.13
       '@types/eslint': ^8.4.6
       '@types/express': ^4.17.13
       '@types/json-pointer': ^1.0.31
@@ -78,7 +77,6 @@ importers:
     dependencies:
       '@cfworker/json-schema': 1.12.5
       '@prisma/client': 4.8.1_prisma@4.8.1
-      '@trigger.dev/sdk': 0.2.14
       express: 4.18.2
       express-async-errors: 3.1.1_express@4.18.2
       json-pointer: 0.6.2
@@ -6216,26 +6214,6 @@ packages:
     resolution: {integrity: sha512-RbzJvlNzmRq5c3O09UipeuXno4tA1FE6ikOjxZK0tuxVv3412l64l5t1W5pj4+rJq9vpkm/kwiR07aZXnsKPxw==}
     engines: {node: '>= 6'}
     dev: true
-
-  /@trigger.dev/sdk/0.2.14:
-    resolution: {integrity: sha512-NGuOsJVdyIvKddfWCcAuwgpOXW5GHEH/5lvqoR1BSpeaj5HZ4KiNyl1ajUSkGXVpbk8Dn/27QoBVLMkGO07G4w==}
-    dependencies:
-      debug: 4.3.4
-      evt: 2.4.13
-      node-fetch: 2.6.7
-      slug: 6.1.0
-      ulid: 2.3.0
-      uuid: 9.0.0
-      ws: 8.12.0
-      zod: 3.20.2
-      zod-error: 1.1.0
-      zod-to-json-schema: 3.20.2_zod@3.20.2
-    transitivePeerDependencies:
-      - bufferutil
-      - encoding
-      - supports-color
-      - utf-8-validate
-    dev: false
 
   /@ts-morph/common/0.18.1:
     resolution: {integrity: sha512-RVE+zSRICWRsfrkAw5qCAK+4ZH9kwEFv5h0+/YeHTLieWP7F4wWq4JsKFuNWG+fYh/KF+8rAtgdj5zb2mm+DVA==}
