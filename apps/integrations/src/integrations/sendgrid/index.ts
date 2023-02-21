@@ -5,7 +5,7 @@ import actions from "./actions/actions";
 export const sendgrid: Service = {
   name: "SendGrid",
   service: "sendgrid",
-  version: "2.0.0",
+  version: "0.1.21",
   live: true,
   authentication,
   actions,
