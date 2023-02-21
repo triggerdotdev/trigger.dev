@@ -21,7 +21,7 @@ RUN npm install turbo@1.7.0 -g
 RUN corepack enable
 ENV NODE_ENV production
 COPY --from=pruner /app/out/full/apps/integrations/prisma/schema.prisma /app/apps/integrations/prisma/schema.prisma
-RUN pnpm install --prod --no-frozen-lockfile
+RUN pnpm install --prod --frozen-lockfile
 RUN pnpx prisma generate --schema /app/apps/integrations/prisma/schema.prisma
 
 FROM base AS builder
@@ -31,7 +31,7 @@ COPY turbo.json turbo.json
 RUN corepack enable
 COPY --from=pruner /app/out/full/ .
 ENV NODE_ENV development
-RUN pnpm install --ignore-scripts --no-frozen-lockfile
+RUN pnpm install --ignore-scripts --frozen-lockfile
 ENV NODE_ENV production
 RUN pnpm run generate
 RUN pnpm run build --filter=integrations...
