@@ -136,6 +136,7 @@ export async function requestEndpoint(
     headers: fetchConfig.headers,
     body: fetchConfig.body,
   };
+
   const fetch = await getFetch();
   const response = await fetch(fetchConfig.url, fetchObject);
   const json = await safeGetJson(response);
@@ -178,11 +179,11 @@ export async function requestEndpoint(
   };
 }
 
-async function getFetch() {
+export async function getFetch() {
   return (await import("node-fetch")).default;
 }
 
-async function safeGetJson(response: Response) {
+export async function safeGetJson(response: Response) {
   try {
     return await response.json();
   } catch (error) {

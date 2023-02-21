@@ -28,6 +28,19 @@ export function applyCredentials(
     throw error;
   }
 
+  return addCredentialsToConfig(fetch, { authentication, credentials });
+}
+
+export function addCredentialsToConfig(
+  fetch: FetchConfig,
+  {
+    authentication,
+    credentials,
+  }: {
+    authentication: IntegrationAuthentication;
+    credentials: AuthCredentials;
+  }
+) {
   // apply the credentials
   switch (credentials.type) {
     case "oauth2": {
