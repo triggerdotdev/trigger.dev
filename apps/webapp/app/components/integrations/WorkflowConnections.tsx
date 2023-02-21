@@ -1,3 +1,4 @@
+import { Link } from "@remix-run/react";
 import classNames from "classnames";
 import invariant from "tiny-invariant";
 import type { ConnectionSlot } from "~/hooks/useConnectionSlots";
@@ -50,6 +51,17 @@ export function WorkflowConnections({
             </div>
           </li>
         ))}
+        <li className="font-sm p-4 text-slate-400">
+          You will be able to authenticate APIs on demand when your workflow
+          runs. You can also{" "}
+          <Link
+            to="/integrations"
+            className="text-slate-400 underline decoration-green-500 underline-offset-4 transition hover:text-slate-100"
+          >
+            connect them now
+          </Link>
+          .
+        </li>
       </List>
     </div>
   );
