@@ -300,7 +300,16 @@ export default function Page() {
           )}
         </>
       )}
-      {apiConnectionCount > 0 && <WorkflowConnections className="mt-6" />}
+      {apiConnectionCount > 0 && (
+        <WorkflowConnections
+          connectionSlots={
+            connectionSlots.source?.connection
+              ? [connectionSlots.source, ...connectionSlots.services]
+              : connectionSlots.services
+          }
+          className="mt-6"
+        />
+      )}
 
       {total > 0 ? (
         <>

@@ -1,6 +1,15 @@
+import type { APIConnection } from ".prisma/client";
+import type { IntegrationMetadata } from "@trigger.dev/integration-sdk";
 import type { UseDataFunctionReturn } from "remix-typedjson/dist/remix";
 import type { loader } from "~/routes/__app/orgs/$organizationSlug/workflows/$workflowSlug";
 import { hydrateObject, useMatchesData } from "~/utils";
+
+export type ConnectionSlot = {
+  id: string;
+  connection: APIConnection | null;
+  integration: IntegrationMetadata;
+  possibleConnections: APIConnection[];
+};
 
 export function useConnectionSlots() {
   const routeMatch = useMatchesData(
