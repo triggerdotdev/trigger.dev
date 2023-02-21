@@ -11,7 +11,8 @@
     "test": "vitest",
     "lint": "eslint --no-error-on-unmatched-pattern src/**",
     "lint-fix": "eslint --no-error-on-unmatched-pattern --fix src/**",
-    "generate-integrations": "tsx src/trigger/sdk/generate.ts"
+    "generate-integrations": "tsx src/trigger/sdk/generate.ts",
+    "generate": "prisma generate"
   },
   "dependencies": {
     "@cfworker/json-schema": "^1.12.5",
