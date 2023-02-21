@@ -15,11 +15,20 @@ const appDir = process.cwd();
 
 export async function generateService(service: Service) {
   const basePath = `generated-integrations/${service.service}`;
-
-  //remove folder
   const absolutePath = path.join(appDir, "../..", basePath);
 
-  console.log(`Removing ${absolutePath}...`);
+  //read existing package.json if there is one
+  let originalPackageJson: string | undefined = undefined;
+  try {
+    originalPackageJson = await fs.readFile(`${absolutePath}/package.json`, {
+      encoding: "utf-8",
+    });
+  } catch (e) {
+    //do nothing
+  }
+
+  //remove folder
+  console.log(`Removing ${absolutePath}`);
   rimraf.sync(absolutePath);
 
   console.log(`Generating SDK for ${service.service}...`);
@@ -37,6 +46,19 @@ export async function generateService(service: Service) {
   try {
     project.createDirectory(absolutePath);
     await generateTemplatedFiles(project, absolutePath, service);
+    if (originalPackageJson) {
+      project.createSourceFile(
+        `${absolutePath}/package.json`,
+        originalPackageJson
+      );
+    } else {
+      await createFileAndReplaceVariables(
+        "package.json",
+        project,
+        absolutePath,
+        service
+      );
+    }
     const functionsData = await generateFunctionData(service);
     await createFunctionsAndTypesFiles(
       project,
@@ -56,12 +78,6 @@ async function generateTemplatedFiles(
   basePath: string,
   service: Service
 ) {
-  await createFileAndReplaceVariables(
-    "package.json",
-    project,
-    basePath,
-    service
-  );
   await createFileAndReplaceVariables(
     "tsconfig.json",
     project,
