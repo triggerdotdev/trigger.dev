@@ -321,7 +321,11 @@
             },
             "GITHUB_APP_WEBHOOK_SECRET": {
               "fromParameterStore": "/Staging/webapp/GITHUB_APP_WEBHOOK_SECRET"
-            }
+            },
+            "INTEGRATIONS_API_KEY": {
+              "fromParameterStore": "/Staging/integrations/API_TOKEN"
+            },
+            "INTEGRATIONS_API_ORIGIN": "https://integrations-staging.trigger.dev"
           }
         },
         {
@@ -361,6 +365,36 @@
             },
             "PLATFORM_API_URL": "https://app-staging.trigger.dev",
             "TRIGGER_LOG_LEVEL": "debug"
+          }
+        },
+        {
+          "id": "s-integrations",
+          "name": "Staging integrations",
+          "type": "fargate",
+          "buildType": "docker",
+          "dockerfilePath": "./apps/integrations/Dockerfile",
+          "dockerContext": ".",
+          "cpu": 1,
+          "memory": 2,
+          "minInstances": 1,
+          "maxInstances": 2,
+          "domain": "integrations-staging.trigger.dev",
+          "port": 3006,
+          "healthCheckPath": "/healthcheck",
+          "watchPaths": [
+            "apps/integrations/src/**",
+            "apps/integrations/tsconfig.json",
+            "apps/integrations/tsup.config.ts",
+            "apps/integrations/package.json",
+            "./pnpm-lock.yaml"
+          ],
+          "envVariables": {
+            "DATABASE_URL": {
+              "fromParameterStore": "/Staging/integrations/DATABASE_URL"
+            },
+            "API_TOKEN": {
+              "fromParameterStore": "/Staging/integrations/API_TOKEN"
+            }
           }
         },
         {
