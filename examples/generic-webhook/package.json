@@ -1,8 +1,8 @@
 {
   "private": true,
-  "name": "@examples/fetch-playground",
+  "name": "@examples/generic-webhook",
   "version": "0.0.1",
-  "description": "A fetch playground for testing Trigger.dev functionality",
+  "description": "A generic webhook playground",
   "dependencies": {
     "@trigger.dev/slack": "workspace:*",
     "@trigger.dev/sdk": "workspace:*",
