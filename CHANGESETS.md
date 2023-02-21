@@ -22,5 +22,8 @@ Based on the instructions [here](https://github.com/changesets/changesets/blob/m
 
 ## Pre-release instructions
 
-- Switch into pre-release mode by running `pnpm run changeset:next`.
-- Switch back into normal mode by running `pnpm run changeset:normal`.
+1. Add changesets as usual `pnpm run changeset:add`
+2. Switch to pre-release mode by running `pnpm run changeset:next`
+3. Create version `pnpm run changeset:version`
+4. Release `pnpm run changeset:release`
+5. Switch back to normal mode by running `pnpm run changeset:normal`
