@@ -18,6 +18,12 @@ const checkAuthentication = function (
   res: Response,
   next: NextFunction
 ) {
+  //if the path is /healthcheck, skip authentication
+  if (req.path === "/healthcheck") {
+    next();
+    return;
+  }
+
   const authHeader = req.headers.authorization;
   if (!authHeader) {
     res.status(401).send("Unauthorized");
