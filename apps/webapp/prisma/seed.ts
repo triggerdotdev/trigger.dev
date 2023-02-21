@@ -39,7 +39,7 @@ async function seed() {
   const scheduledHealthcheck = {
     repositoryUrl: "https://github.com/triggerdotdev/scheduled-healthcheck",
     imageUrl:
-      "https://imagedelivery.net/3TbraffuDZ4aEf8KWOmI_w/706ad84b-cf6d-4b57-2e57-f76183a62d00/public",
+      "https://imagedelivery.net/3TbraffuDZ4aEf8KWOmI_w/6dbe0780-1950-4645-6e64-f3eb65296900/public",
     title: "Run a scheduled healthcheck on your website every 5 minutes",
     shortTitle: "Scheduled Healthcheck",
     description:
