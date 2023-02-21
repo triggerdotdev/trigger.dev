@@ -1,62 +1,6 @@
 import * as slack from "@trigger.dev/slack";
-import { Trigger, customEvent, webhookEvent } from "@trigger.dev/sdk";
-
+import { Trigger, webhookEvent } from "@trigger.dev/sdk";
 import { z } from "zod";
-
-new Trigger({
-  id: "fetch-playground",
-  name: "Fetch Playground",
-  apiKey: "trigger_dev_zC25mKNn6c0q",
-  endpoint: "ws://localhost:8889/ws",
-  logLevel: "debug",
-  on: customEvent({
-    name: "playground.fetch",
-    schema: z.object({
-      url: z.string().default("http://localhost:8888"),
-      path: z.string().default("/"),
-      method: z
-        .enum(["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS", "HEAD"])
-        .default("GET"),
-      headers: z.record(z.string()).optional(),
-      body: z.any().optional(),
-      retry: z
-        .object({
-          enabled: z.boolean().default(true),
-          maxAttempts: z.number().default(3),
-          minTimeout: z.number().default(1000),
-          maxTimeout: z.number().default(60000),
-          factor: z.number().default(1.8),
-          statusCodes: z
-            .array(z.number())
-            .default([408, 429, 500, 502, 503, 504]),
-        })
-        .optional(),
-    }),
-  }),
-  run: async (event, ctx) => {
-    await ctx.logger.info("Received the playground.fetch event", {
-      event,
-      wallTime: new Date(),
-    });
-
-    if (ctx.isTest) {
-      await ctx.logger.warn("This is only a test");
-    }
-
-    const response = await ctx.fetch("do-fetch", `${event.url}${event.path}`, {
-      method: event.method,
-      responseSchema: z.any(),
-      headers: event.headers,
-      body: event.body ? JSON.stringify(event.body) : undefined,
-      retry: event.retry,
-    });
-
-    await ctx.logger.info("Received the fetch response", {
-      response,
-      wallTime: new Date(),
-    });
-  },
-}).listen();
 
 export const bookingPayloadSchema = z.object({
   triggerEvent: z.string(),
@@ -157,37 +101,6 @@ new Trigger({
       text: `New Booking: ${
         event.payload.title
       } at ${event.payload.startTime.toLocaleDateString()}`,
-    });
-  },
-}).listen();
-
-new Trigger({
-  id: "site-check",
-  name: "Site Check",
-  on: customEvent({
-    name: "site.check",
-    schema: z.object({ url: z.string().url() }),
-  }),
-  apiKey: "trigger_dev_zC25mKNn6c0q",
-  endpoint: "ws://localhost:8889/ws",
-  logLevel: "debug",
-  triggerTTL: 60,
-  run: async (event, context) => {
-    const response = await context.fetch("do-fetch", event.url, {
-      method: "GET",
-      retry: {
-        enabled: false,
-      },
-    });
-
-    if (response.ok) {
-      await context.logger.info(`${event.url} is up!`);
-      return;
-    }
-
-    await slack.postMessage("Site is down", {
-      channelName: "monitoring",
-      text: `${event.url} is down: ${response.status}`,
     });
   },
 }).listen();

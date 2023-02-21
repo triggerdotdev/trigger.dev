@@ -419,7 +419,7 @@ importers:
     devDependencies:
       eslint: 8.31.0
       eslint-config-prettier: 8.6.0_eslint@8.31.0
-      eslint-config-turbo: 0.0.7_eslint@8.31.0
+      eslint-config-turbo: 0.0.8_eslint@8.31.0
       eslint-plugin-react: 7.31.8_eslint@8.31.0
       typescript: 4.9.4
 
@@ -430,6 +430,23 @@ importers:
     specifiers: {}
 
   examples/fetch-playground:
+    specifiers:
+      '@trigger.dev/sdk': workspace:*
+      '@trigger.dev/slack': workspace:*
+      '@trigger.dev/tsconfig': workspace:*
+      '@types/node': '16'
+      tsx: ^3.12.0
+      zod: ^3.20.2
+    dependencies:
+      '@trigger.dev/sdk': link:../../packages/trigger-sdk
+      '@trigger.dev/slack': link:../../integrations/slack
+      zod: 3.20.2
+    devDependencies:
+      '@trigger.dev/tsconfig': link:../../config-packages/tsconfig
+      '@types/node': 16.18.11
+      tsx: 3.12.2
+
+  examples/generic-webhook:
     specifiers:
       '@trigger.dev/sdk': workspace:*
       '@trigger.dev/slack': workspace:*
@@ -687,7 +704,7 @@ importers:
       tsup: ^6.5.0
       zod: ^3.20.2
     dependencies:
-      '@react-email/render': 0.0.3
+      '@react-email/render': 0.0.3_react@18.2.0
       debug: 4.3.4
       zod: 3.20.2
     devDependencies:
@@ -4940,16 +4957,6 @@ packages:
       react-dom: 18.2.0_react@18.2.0
     dev: false
 
-  /@react-email/render/0.0.3:
-    resolution: {integrity: sha512-+4eOrLGdTCJjoJU3PunekErjo3PFnhSDFjVINBHrfJT+1wlVdhWfDo7hFdzXJx/JOOYqmnZTilU/umGLdRumKQ==}
-    engines: {node: '>=18.0.0'}
-    dependencies:
-      pretty: 2.0.0
-      react-dom: 18.2.0
-    transitivePeerDependencies:
-      - react
-    dev: false
-
   /@react-email/render/0.0.3_react@18.2.0:
     resolution: {integrity: sha512-+4eOrLGdTCJjoJU3PunekErjo3PFnhSDFjVINBHrfJT+1wlVdhWfDo7hFdzXJx/JOOYqmnZTilU/umGLdRumKQ==}
     engines: {node: '>=18.0.0'}
@@ -8720,13 +8727,13 @@ packages:
       eslint: 8.31.0
     dev: true
 
-  /eslint-config-turbo/0.0.7_eslint@8.31.0:
-    resolution: {integrity: sha512-WbrGlyfs94rOXrhombi1wjIAYGdV2iosgJRndOZtmDQeq5GLTzYmBUCJQZWtLBEBUPCj96RxZ2OL7Cn+xv/Azg==}
+  /eslint-config-turbo/0.0.8_eslint@8.31.0:
+    resolution: {integrity: sha512-ijj6uv0QX2kWahg3OYnTK1/q4MueXsqY2uE4MP9yeUA5CzVhL7GU+biKlv1BfMMqPltixHUcpZoW4yyNLCnMiw==}
     peerDependencies:
       eslint: '>6.6.0'
     dependencies:
       eslint: 8.31.0
-      eslint-plugin-turbo: 0.0.7_eslint@8.31.0
+      eslint-plugin-turbo: 0.0.8_eslint@8.31.0
     dev: true
 
   /eslint-import-resolver-node/0.3.6:
@@ -8992,8 +8999,8 @@ packages:
       - typescript
     dev: true
 
-  /eslint-plugin-turbo/0.0.7_eslint@8.31.0:
-    resolution: {integrity: sha512-iajOH8eD4jha3duztGVBD1BEmvNrQBaA/y3HFHf91vMDRYRwH7BpHSDFtxydDpk5ghlhRxG299SFxz7D6z4MBQ==}
+  /eslint-plugin-turbo/0.0.8_eslint@8.31.0:
+    resolution: {integrity: sha512-pExSCmjWw/KFKb3/0PVqxiWb30FbcwDEf6kKv3alvNBSVEzDHalyAGHc9klbLSG+nFmbkfNE3Ky/UHDryCqt8g==}
     peerDependencies:
       eslint: '>6.6.0'
     dependencies:
@@ -13523,15 +13530,6 @@ packages:
       react: 18.2.0
       react-list: 0.8.17_react@18.2.0
       shallow-equal: 1.2.1
-    dev: false
-
-  /react-dom/18.2.0:
-    resolution: {integrity: sha512-6IMTriUmvsjHUjNtEDudZfuDQUoWXVxKHhlEGSk81n4YFS+r/Kl99wXiwlVXtPBtJenozv2P+hxDsw9eA7Xo6g==}
-    peerDependencies:
-      react: ^18.2.0
-    dependencies:
-      loose-envify: 1.4.0
-      scheduler: 0.23.0
     dev: false
 
   /react-dom/18.2.0_react@18.2.0:
