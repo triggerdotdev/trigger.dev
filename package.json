@@ -4,7 +4,8 @@
   "workspaces": [
     "apps/*",
     "packages/*",
-    "integrations/*"
+    "integrations/*",
+    "generated-integrations/*"
   ],
   "version": "0.0.1",
   "prisma": {
