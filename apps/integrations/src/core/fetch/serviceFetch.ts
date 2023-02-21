@@ -4,11 +4,15 @@ import {
   IntegrationAuthentication,
 } from "core/authentication/types";
 import { HTTPMethod } from "core/endpoint/types";
-import { getFetch, safeGetJson } from "core/request/requestEndpoint";
-import { FetchConfig } from "core/request/types";
-import { type Response } from "node-fetch";
+import { FetchConfig, RequestResponse } from "core/request/types";
+import {
+  getFetch,
+  normalizeHeaders,
+  responseFromCaughtError,
+  safeGetJson,
+} from "./fetchUtilities";
 
-export type FetchOptions = {
+export type ServiceFetchOptions = {
   url: string;
   method: HTTPMethod;
   headers?: Record<string, string>;
@@ -24,7 +28,7 @@ export async function serviceFetch({
   body,
   credentials,
   authentication,
-}: FetchOptions) {
+}: ServiceFetchOptions): Promise<RequestResponse> {
   let fetchConfig: FetchConfig = {
     url,
     method,
@@ -39,33 +43,31 @@ export async function serviceFetch({
       type: "missing_credentials",
     };
   }
+
   fetchConfig = addCredentialsToConfig(fetchConfig, {
     authentication,
     credentials,
   });
 
+  const fetchObject = {
+    method: fetchConfig.method,
+    headers: fetchConfig.headers,
+    body: fetchConfig.body,
+  };
+
   try {
     const fetch = await getFetch();
-    const response = await fetch(url, {
-      method,
-      headers,
-      body,
-    });
+    const response = await fetch(url, fetchObject);
 
     const json = await safeGetJson(response);
 
     return {
       success: response.ok,
       status: response.status,
-      headers: response.headers,
+      headers: normalizeHeaders(response.headers),
       body: json,
     };
-  } catch (error) {
-    return {
-      success: false,
-      status: 400,
-      headers: {},
-      body: error,
-    };
+  } catch (error: any) {
+    return responseFromCaughtError(error);
   }
 }

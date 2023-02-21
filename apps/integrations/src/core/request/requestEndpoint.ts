@@ -1,8 +1,13 @@
 import { applyCredentials } from "core/authentication/credentials";
 import { EndpointSpec, EndpointSpecResponse } from "core/endpoint/types";
+import {
+  getFetch,
+  normalizeHeaders,
+  responseFromCaughtError,
+  safeGetJson,
+} from "core/fetch/fetchUtilities";
 import { JSONSchemaError } from "core/schemas/types";
 import { validate } from "core/schemas/validate";
-import { type Response } from "node-fetch";
 import {
   FetchConfig,
   RequestData,
@@ -137,68 +142,50 @@ export async function requestEndpoint(
     body: fetchConfig.body,
   };
 
-  const fetch = await getFetch();
-  const response = await fetch(fetchConfig.url, fetchObject);
-  const json = await safeGetJson(response);
+  try {
+    const fetch = await getFetch();
+    const response = await fetch(fetchConfig.url, fetchObject);
+    const json = await safeGetJson(response);
 
-  // validate the response against the specs
-  const responseSpecs = getResponseSpecsForStatusCode(
-    response.status,
-    responses
-  );
-  if (!responseSpecs) {
-    throw {
-      type: "no_response_spec",
-      status: response.status,
-    };
-  }
-
-  // start with the first spec and loop through them, if one succeeds then return that
-  const specErrors: Array<{ name: string; errors: JSONSchemaError[] }> = [];
-  for (const spec of responseSpecs) {
-    const responseValid = await validate(json, spec.schema);
-    if (responseValid.success) {
-      return {
-        success: spec.success,
+    // validate the response against the specs
+    const responseSpecs = getResponseSpecsForStatusCode(
+      response.status,
+      responses
+    );
+    if (!responseSpecs) {
+      throw {
+        type: "no_response_spec",
         status: response.status,
-        headers: normalizeHeaders(response.headers),
-        body: json,
       };
-    } else {
-      if (responseValid.errors != null) {
-        specErrors.push({ name: spec.name, errors: responseValid.errors });
+    }
+
+    // start with the first spec and loop through them, if one succeeds then return that
+    const specErrors: Array<{ name: string; errors: JSONSchemaError[] }> = [];
+    for (const spec of responseSpecs) {
+      const responseValid = await validate(json, spec.schema);
+      if (responseValid.success) {
+        return {
+          success: spec.success,
+          status: response.status,
+          headers: normalizeHeaders(response.headers),
+          body: json,
+        };
+      } else {
+        if (responseValid.errors != null) {
+          specErrors.push({ name: spec.name, errors: responseValid.errors });
+        }
       }
     }
+
+    throw {
+      type: "response_invalid",
+      status: response.status,
+      body: json,
+      errors: specErrors,
+    };
+  } catch (error: any) {
+    return responseFromCaughtError(error);
   }
-
-  throw {
-    type: "response_invalid",
-    status: response.status,
-    body: json,
-    errors: specErrors,
-  };
-}
-
-export async function getFetch() {
-  return (await import("node-fetch")).default;
-}
-
-export async function safeGetJson(response: Response) {
-  try {
-    return await response.json();
-  } catch (error) {
-    return undefined;
-  }
-}
-
-function normalizeHeaders(headers: Headers): Record<string, string> {
-  const normalizedHeaders: Record<string, string> = {};
-
-  headers.forEach((value, key) => {
-    normalizedHeaders[key.toLowerCase()] = value;
-  });
-
-  return normalizedHeaders;
 }
 
 /** Get the appropriate endpoint response object based on the status code. It supports wild cards like 20x and 2xx */
