@@ -38,7 +38,13 @@ export default function Page() {
         </PanelInfo>
       )}
       {connectionSlots.source || connectionSlots.services.length > 0 ? (
-        <WorkflowConnections />
+        <WorkflowConnections
+          connectionSlots={
+            connectionSlots.source
+              ? [connectionSlots.source, ...connectionSlots.services]
+              : connectionSlots.services
+          }
+        />
       ) : (
         <SubTitle>No API Integrations for this workflow</SubTitle>
       )}

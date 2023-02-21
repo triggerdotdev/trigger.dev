@@ -72,6 +72,29 @@ export class WorkflowRunListPresenter {
       },
     });
 
+    const totalRealRuns = await this.#prismaClient.workflowRun.count({
+      where: {
+        isTest: false,
+        workflow: {
+          slug: workflowSlug,
+          organization: {
+            slug: organizationSlug,
+            users: {
+              some: {
+                id: userId,
+              },
+            },
+          },
+        },
+        environment: {
+          slug: environmentSlug,
+        },
+        status: {
+          in: statuses,
+        },
+      },
+    });
+
     const runs = await this.#prismaClient.workflowRun.findMany({
       select: {
         id: true,
@@ -111,6 +134,7 @@ export class WorkflowRunListPresenter {
       page,
       pageCount: Math.ceil(total / pageSize),
       total,
+      totalRealRuns,
       filters: {
         statuses,
       },
