@@ -1,3 +1,4 @@
+import { EventRule } from ".prisma/client";
 import { Disclosure } from "@headlessui/react";
 import { BeakerIcon } from "@heroicons/react/20/solid";
 import {
@@ -8,7 +9,11 @@ import {
 } from "@heroicons/react/24/outline";
 import type { LoaderArgs } from "@remix-run/server-runtime";
 import classNames from "classnames";
-import { typedjson, useTypedLoaderData } from "remix-typedjson";
+import {
+  typedjson,
+  UseDataFunctionReturn,
+  useTypedLoaderData,
+} from "remix-typedjson";
 import invariant from "tiny-invariant";
 import { ApiLogoIcon } from "~/components/code/ApiLogoIcon";
 import CodeBlock from "~/components/code/CodeBlock";
@@ -389,10 +394,7 @@ export default function Page() {
                       </span>
                     </div>
                     <ol className="flex list-inside list-decimal flex-col gap-1.5 border-b border-slate-800 pb-4 pl-2 text-slate-300">
-                      <li>
-                        Go to triggerdotdev/trigger.dev and create or modify a
-                        GitHub issue. This will trigger your workflow.
-                      </li>
+                      <li>{howToText(eventRule)}</li>
                       <li>Return here to view the new workflow run.</li>
                     </ol>
                     <SubTitle className="mt-4 mb-4 text-slate-200">
@@ -426,7 +428,7 @@ export default function Page() {
         />
       )}
 
-      {total > 0 ? (
+      {total > 0 && (
         <>
           <div className="flex items-end justify-between">
             <SubTitle>Last {pageSize} runs</SubTitle>
@@ -442,16 +444,6 @@ export default function Page() {
               basePath="runs"
             />
           </Panel>
-        </>
-      ) : (
-        <>
-          <SubTitle className="mt-6">Workflow runs</SubTitle>
-          <PanelWarning
-            message="This workflow hasn't been run yet. Test it to view runs here."
-            className="flex justify-between"
-          >
-            <PrimaryLink to="test">Test your workflow</PrimaryLink>
-          </PanelWarning>
         </>
       )}
     </>
@@ -528,4 +520,24 @@ function ConnectToDevelopmentInstructions({
       </div>
     </>
   );
+}
+
+type WorkflowEventRule = NonNullable<
+  ReturnType<typeof useCurrentWorkflow>
+>["rules"][number];
+
+function howToText(eventRule: WorkflowEventRule) {
+  if (!eventRule.trigger) {
+    return "This workflow hasn't been connected.";
+  }
+  switch (eventRule.trigger.type) {
+    case "WEBHOOK":
+      return "Run this workflow by triggering the webhook.";
+    case "SCHEDULE":
+      return "This workflow will run on the schedule you've defined.";
+    case "CUSTOM_EVENT":
+      return "This workflow will run when you manually trigger it.";
+    default:
+      return "This workflow hasn't been connected.";
+  }
 }
