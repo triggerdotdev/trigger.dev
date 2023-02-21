@@ -77,8 +77,18 @@ export async function handleAction(req: Request, res: Response) {
             scopes,
           };
           break;
+        case "api_key":
+          credentials = {
+            type: "api_key",
+            name,
+            api_key: parsedRequestBody.data.credentials.accessToken,
+            scopes,
+          };
+          break;
         default:
-          throw new Error(`Not implemented ${securityMethod.type}`);
+          throw new Error(
+            `Not implemented credentials for: ${JSON.stringify(securityMethod)}`
+          );
       }
     }
   }
