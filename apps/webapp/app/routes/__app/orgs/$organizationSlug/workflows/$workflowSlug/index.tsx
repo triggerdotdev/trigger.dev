@@ -1,5 +1,6 @@
 import { Disclosure } from "@headlessui/react";
 import {
+  ArrowsRightLeftIcon,
   ChevronDownIcon,
   InformationCircleIcon,
 } from "@heroicons/react/24/outline";
@@ -242,13 +243,13 @@ export default function Page() {
             />
             <TriggerBody trigger={eventRule.trigger} />
           </Panel>
-          {connectionSlots.source &&
-          connectionSlots.source.connection === null ? (
-            <div className="mb-6 divide-y divide-slate-800 rounded-b-md border border-red-500 bg-rose-500/20">
+          <div className="divide-y divide-slate-800 rounded-b-md">
+            {connectionSlots.source &&
+            connectionSlots.source.connection !== null ? (
               <Disclosure>
                 {({ open }) => (
-                  <>
-                    <Disclosure.Button className="flex w-full items-center justify-between bg-slate-800/70 py-4 px-4 transition last:rounded-b-md hover:bg-slate-800/50">
+                  <div className="border border-red-500 bg-rose-500/20">
+                    <Disclosure.Button className="flex w-full items-center justify-between bg-slate-800/70 py-4 px-4 transition hover:bg-slate-800/50">
                       <div className="flex items-center gap-2">
                         <PlugIcon className="h-6 w-6" fill="#CF364C" />
                         <Body>
@@ -274,7 +275,7 @@ export default function Page() {
                       {connectionSlots.source && (
                         <div
                           className={classNames(
-                            "flex w-full items-center gap-4 !border !border-slate-900 bg-slate-800 px-4 py-4 first:rounded-t-md last:rounded-b-md"
+                            "flex w-full items-center gap-4 rounded-md !border !border-slate-900 bg-slate-800 px-4 py-4"
                           )}
                         >
                           <ApiLogoIcon
@@ -300,13 +301,51 @@ export default function Page() {
                         </div>
                       )}
                     </Disclosure.Panel>
-                  </>
+                  </div>
                 )}
               </Disclosure>
-            </div>
-          ) : (
-            <></>
-          )}
+            ) : (
+              <></>
+            )}
+            <Disclosure>
+              {({ open }) => (
+                <div className="rounded-b-md bg-slate-700/80">
+                  <Disclosure.Button className="flex w-full items-center justify-between bg-slate-800/70 py-4 px-4 transition hover:bg-slate-800/50">
+                    <div className="flex items-center gap-2">
+                      <ArrowsRightLeftIcon className="h-6 w-6 text-green-500" />
+                      <Body>How to run your workflow</Body>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Body size="small" className="text-slate-400">
+                        {open ? "Close" : "Open"}
+                      </Body>
+                      <ChevronDownIcon
+                        className={classNames(
+                          open ? "rotate-180 transform" : "",
+                          "h-5 w-5 text-slate-400 transition"
+                        )}
+                      />
+                    </div>
+                  </Disclosure.Button>
+                  <Disclosure.Panel className="p-4">
+                    <div className="flex items-baseline gap-2">
+                      <SubTitle>Trigger your workflow from source</SubTitle>
+                      <span className="rounded bg-blue-600 px-2 pt-1.5 pb-1 text-xs uppercase tracking-wider text-blue-200">
+                        Recommended
+                      </span>
+                    </div>
+                    <ol className="list-inside list-decimal text-slate-200">
+                      <li>
+                        Go to triggerdotdev/trigger.dev and create or modify a
+                        GitHub issue. This will trigger your workflow.
+                      </li>
+                      <li>Return here to view the new workflow run.</li>
+                    </ol>
+                  </Disclosure.Panel>
+                </div>
+              )}
+            </Disclosure>
+          </div>
         </>
       )}
       {apiConnectionCount > 0 && (
