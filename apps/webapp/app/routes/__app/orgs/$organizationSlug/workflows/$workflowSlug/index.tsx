@@ -530,7 +530,7 @@ function howToText(eventRule: WorkflowEventRule) {
     case "SCHEDULE":
       return "This workflow will run on the schedule you've defined.";
     case "CUSTOM_EVENT":
-      return "This workflow will run when you manually trigger it.";
+      return "This workflow will run when you send a custom event.";
     default:
       return "This workflow hasn't been connected.";
   }
