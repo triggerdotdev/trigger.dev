@@ -1,7 +1,9 @@
 import { Disclosure } from "@headlessui/react";
+import { BeakerIcon } from "@heroicons/react/20/solid";
 import {
   ArrowsRightLeftIcon,
   ChevronDownIcon,
+  Cog6ToothIcon,
   InformationCircleIcon,
 } from "@heroicons/react/24/outline";
 import type { LoaderArgs } from "@remix-run/server-runtime";
@@ -134,79 +136,7 @@ export default function Page() {
           </Body>
         </div>
       </div>
-      {workflow.status === "CREATED" && (
-        <>
-          {eventRule &&
-          eventRule.trigger.type === "WEBHOOK" &&
-          workflow.externalSourceConfig?.type === "manual" ? (
-            <div className="mb-6 flex w-full justify-start gap-4 rounded-md border border-slate-600 bg-slate-400/10 py-3 pl-3 pr-3 pb-4 shadow-md">
-              <InformationCircleIcon className="h-6 w-6 min-w-[24px] text-blue-500" />
-              {workflow.externalSourceConfig.data.success ? (
-                <div className="flex flex-col">
-                  <Body className="mb-4">
-                    Use these details to register your webhook. This usually
-                    involves logging in to the developer section of the service.
-                  </Body>
-                  <div className="flex flex-col gap-2">
-                    <Body
-                      size="extra-small"
-                      className="uppercase tracking-wide text-slate-300"
-                    >
-                      URL
-                    </Body>
-                    <div className="mb-4 flex items-center gap-2">
-                      <Input
-                        value={workflow.externalSourceConfig.data.url}
-                        readOnly={true}
-                      />
-                      <CopyTextButton
-                        value={workflow.externalSourceConfig.data.url}
-                      ></CopyTextButton>
-                    </div>
-                  </div>
-                  {workflow.externalSourceConfig.data.secret && (
-                    <div className="flex flex-col gap-2">
-                      <Body
-                        size="extra-small"
-                        className="uppercase tracking-wide text-slate-300"
-                      >
-                        Secret
-                      </Body>
-                      <div className="flex items-center gap-2">
-                        <Input
-                          type="password"
-                          value={workflow.externalSourceConfig.data.secret}
-                          readOnly={true}
-                        />
-                        <CopyTextButton
-                          value={workflow.externalSourceConfig.data.secret}
-                        ></CopyTextButton>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              ) : (
-                <div className="flex w-full flex-col gap-2">
-                  <Body className="text-rose-500">
-                    Your custom webhook event is incorrectly formatted. See the
-                    error below
-                  </Body>
-                  <CodeBlock
-                    code={workflow.externalSourceConfig.data.error}
-                    className="w-full border border-rose-500"
-                    align="top"
-                  />
-                </div>
-              )}
-            </div>
-          ) : (
-            <PanelWarning
-              className="mb-6"
-              message="This workflow requires its APIs to be connected before it can run."
-            />
-          )}
-        </>
-      )}
+
       {workflow.status === "DISABLED" && (
         <PanelInfo
           message="This workflow is disabled. Runs cannot be triggered or tested while
@@ -251,7 +181,7 @@ export default function Page() {
                   <div className="border border-red-500 bg-rose-500/20">
                     <Disclosure.Button className="flex w-full items-center justify-between bg-slate-800/70 py-4 px-4 transition hover:bg-slate-800/50">
                       <div className="flex items-center gap-2">
-                        <PlugIcon className="h-6 w-6" fill="#CF364C" />
+                        <Cog6ToothIcon className="h-6 w-6 text-rose-500" />
                         <Body>
                           Connect to{" "}
                           {connectionSlots.source &&
@@ -309,6 +239,120 @@ export default function Page() {
             )}
             <Disclosure>
               {({ open }) => (
+                <div className="bg-slate-700/80">
+                  <Disclosure.Button className="flex w-full items-center justify-between bg-slate-800/70 py-4 px-4 transition hover:bg-slate-800/50">
+                    <div className="flex items-center gap-2">
+                      <Cog6ToothIcon className="h-6 w-6 text-green-500" />
+                      <Body>Register your webhook</Body>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Body size="small" className="text-slate-400">
+                        {open ? "Close" : "Open"}
+                      </Body>
+                      <ChevronDownIcon
+                        className={classNames(
+                          open ? "rotate-180 transform" : "",
+                          "h-5 w-5 text-slate-400 transition"
+                        )}
+                      />
+                    </div>
+                  </Disclosure.Button>
+                  <Disclosure.Panel className="p-6">
+                    {workflow.status === "CREATED" && (
+                      <>
+                        {eventRule &&
+                        eventRule.trigger.type === "WEBHOOK" &&
+                        workflow.externalSourceConfig?.type === "manual" ? (
+                          <div className="">
+                            {workflow.externalSourceConfig.data.success ? (
+                              <>
+                                <SubTitle className="mb-4 text-slate-200">
+                                  Use these details to register your webhook.
+                                  This usually involves logging in to the
+                                  developer section of the service.
+                                </SubTitle>
+                                <div className="grid grid-cols-2 gap-4">
+                                  <div className="flex flex-col gap-2">
+                                    <Body
+                                      size="extra-small"
+                                      className="uppercase tracking-wide text-slate-500"
+                                    >
+                                      URL
+                                    </Body>
+                                    <div className="flex items-center gap-2">
+                                      <Input
+                                        value={
+                                          workflow.externalSourceConfig.data.url
+                                        }
+                                        readOnly={true}
+                                        className="truncate"
+                                      />
+                                      <CopyTextButton
+                                        value={
+                                          workflow.externalSourceConfig.data.url
+                                        }
+                                      ></CopyTextButton>
+                                    </div>
+                                  </div>
+                                  {workflow.externalSourceConfig.data
+                                    .secret && (
+                                    <div className="flex flex-col gap-2">
+                                      <Body
+                                        size="extra-small"
+                                        className="uppercase tracking-wide text-slate-500"
+                                      >
+                                        Secret
+                                      </Body>
+                                      <div className="flex items-center gap-2">
+                                        <Input
+                                          type="password"
+                                          value={
+                                            workflow.externalSourceConfig.data
+                                              .secret
+                                          }
+                                          readOnly={true}
+                                        />
+                                        <CopyTextButton
+                                          value={
+                                            workflow.externalSourceConfig.data
+                                              .secret
+                                          }
+                                        ></CopyTextButton>
+                                      </div>
+                                    </div>
+                                  )}
+                                </div>
+                              </>
+                            ) : (
+                              <div className="flex w-full flex-col gap-2">
+                                <Body className="text-rose-500">
+                                  Your custom webhook event is incorrectly
+                                  formatted. See the error below
+                                </Body>
+                                <CodeBlock
+                                  code={
+                                    workflow.externalSourceConfig.data.error
+                                  }
+                                  className="w-full border border-rose-500"
+                                  align="top"
+                                />
+                              </div>
+                            )}
+                          </div>
+                        ) : (
+                          <PanelWarning
+                            className="mb-6"
+                            message="This workflow requires its APIs to be connected before it can run."
+                          />
+                        )}
+                      </>
+                    )}
+                  </Disclosure.Panel>
+                </div>
+              )}
+            </Disclosure>
+            <Disclosure>
+              {({ open }) => (
                 <div className="rounded-b-md bg-slate-700/80">
                   <Disclosure.Button className="flex w-full items-center justify-between bg-slate-800/70 py-4 px-4 transition hover:bg-slate-800/50">
                     <div className="flex items-center gap-2">
@@ -327,20 +371,35 @@ export default function Page() {
                       />
                     </div>
                   </Disclosure.Button>
-                  <Disclosure.Panel className="p-4">
-                    <div className="flex items-baseline gap-2">
-                      <SubTitle>Trigger your workflow from source</SubTitle>
-                      <span className="rounded bg-blue-600 px-2 pt-1.5 pb-1 text-xs uppercase tracking-wider text-blue-200">
+                  <Disclosure.Panel className="p-6">
+                    <div className="mb-2 flex items-baseline gap-2">
+                      <SubTitle className="text-slate-200">
+                        Trigger your workflow from the source
+                      </SubTitle>
+                      <span className="rounded-full bg-blue-700 px-3 pt-1.5 pb-1 text-xs uppercase tracking-wider text-blue-200">
                         Recommended
                       </span>
                     </div>
-                    <ol className="list-inside list-decimal text-slate-200">
+                    <ol className="flex list-inside list-decimal flex-col gap-1.5 border-b border-slate-800 pb-4 pl-2 text-slate-300">
                       <li>
                         Go to triggerdotdev/trigger.dev and create or modify a
                         GitHub issue. This will trigger your workflow.
                       </li>
                       <li>Return here to view the new workflow run.</li>
                     </ol>
+                    <SubTitle className="mt-4 mb-4 text-slate-200">
+                      Trigger your workflow from a test
+                    </SubTitle>
+                    <div className="flex items-center gap-4">
+                      <PrimaryLink to="test">
+                        <BeakerIcon className="-ml-1 h-4 w-4 text-slate-300" />
+                        Test your workflow
+                      </PrimaryLink>
+                      <Body size="small" className="text-slate-400">
+                        <span className="uppercase tracking-wide">Note: </span>
+                        This will run a test in your development environment
+                      </Body>
+                    </div>
                   </Disclosure.Panel>
                 </div>
               )}
