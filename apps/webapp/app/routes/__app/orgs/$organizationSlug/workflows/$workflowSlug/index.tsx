@@ -386,30 +386,24 @@ export default function Page() {
                   </Disclosure.Button>
                   <Disclosure.Panel className="p-6">
                     <div className="mb-2 flex items-baseline gap-2">
-                      <SubTitle className="text-slate-200">
+                      <SubTitle className="text-slate-300">
                         Trigger your workflow from the source
                       </SubTitle>
-                      <span className="rounded-full bg-blue-700 px-3 pt-1.5 pb-1 text-xs uppercase tracking-wider text-blue-200">
+                      <span className="rounded-full bg-blue-700 px-2 pt-1 pb-0.5 text-[0.6rem] font-medium uppercase tracking-wider text-blue-200">
                         Recommended
                       </span>
                     </div>
-                    <ol className="flex list-inside list-decimal flex-col gap-1.5 border-b border-slate-800 pb-4 pl-2 text-slate-300">
+                    <ol className="flex list-inside list-decimal flex-col gap-1.5 border-b border-slate-800 pb-4 pl-2 text-slate-400">
                       <li>{howToText(eventRule)}</li>
                       <li>Return here to view the new workflow run.</li>
                     </ol>
-                    <SubTitle className="mt-4 mb-4 text-slate-200">
+                    <SubTitle className="mt-4 mb-4 text-slate-300">
                       Trigger your workflow from a test
                     </SubTitle>
-                    <div className="flex items-center gap-4">
-                      <PrimaryLink to="test">
-                        <BeakerIcon className="-ml-1 h-4 w-4 text-slate-300" />
-                        Test your workflow
-                      </PrimaryLink>
-                      <Body size="small" className="text-slate-400">
-                        <span className="uppercase tracking-wide">Note: </span>
-                        This will run a test in your development environment
-                      </Body>
-                    </div>
+                    <PrimaryLink to="test">
+                      <BeakerIcon className="-ml-1 h-4 w-4 text-slate-300" />
+                      Test your workflow
+                    </PrimaryLink>
                   </Disclosure.Panel>
                 </div>
               )}
