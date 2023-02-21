@@ -257,7 +257,7 @@
             "packages/internal-pulsar/src/**",
             "./pnpm-lock.yaml"
           ],
-          "dependsOn": ["s-db"],
+          "dependsOn": ["s-db", "s-integrations"],
           "envVariables": {
             "APP_ENV": "staging",
             "FROM_EMAIL": "Trigger.dev <hello@email.trigger.dev>",
