@@ -385,7 +385,7 @@ export default function Page() {
                     </div>
                   </Disclosure.Button>
                   <Disclosure.Panel className="p-6">
-                    <div className="mb-2 flex items-baseline gap-2">
+                    <div className="mb-1 flex items-baseline gap-2">
                       <SubTitle className="text-slate-300">
                         Trigger your workflow from the source
                       </SubTitle>
@@ -397,13 +397,16 @@ export default function Page() {
                       <li>{howToText(eventRule)}</li>
                       <li>Return here to view the new workflow run.</li>
                     </ol>
-                    <SubTitle className="mt-4 mb-4 text-slate-300">
+                    <SubTitle className="mt-4 mb-3 text-slate-300">
                       Trigger your workflow from a test
                     </SubTitle>
-                    <PrimaryLink to="test">
+                    <SecondaryLink
+                      to="test"
+                      className="!bg-slate-800/50 ring-slate-800 hover:!bg-slate-800/30"
+                    >
                       <BeakerIcon className="-ml-1 h-4 w-4 text-slate-300" />
                       Test your workflow
-                    </PrimaryLink>
+                    </SecondaryLink>
                   </Disclosure.Panel>
                 </div>
               )}
@@ -424,7 +427,7 @@ export default function Page() {
 
       {total > 0 && (
         <>
-          <div className="flex items-end justify-between">
+          <div className="mt-6 flex items-end justify-between">
             <SubTitle>Last {pageSize} runs</SubTitle>
             <SecondaryLink to="runs" className="mb-2">
               View all
