@@ -62,7 +62,7 @@
             "packages/internal-pulsar/src/**",
             "./pnpm-lock.yaml"
           ],
-          "dependsOn": ["p-db"],
+          "dependsOn": ["p-db", "p-integrations"],
           "envVariables": {
             "FROM_EMAIL": "Trigger.dev <hello@email.trigger.dev>",
             "REPLY_TO_EMAIL": "hello@trigger.dev",
@@ -168,6 +168,36 @@
             },
             "PLATFORM_API_URL": "https://app.trigger.dev",
             "TRIGGER_LOG_LEVEL": "debug"
+          }
+        },
+        {
+          "id": "p-integrations",
+          "name": "Prod integrations",
+          "type": "fargate",
+          "buildType": "docker",
+          "dockerfilePath": "./apps/integrations/Dockerfile",
+          "dockerContext": ".",
+          "cpu": 1,
+          "memory": 2,
+          "minInstances": 1,
+          "maxInstances": 2,
+          "domain": "integrations.trigger.dev",
+          "port": 3006,
+          "healthCheckPath": "/healthcheck",
+          "watchPaths": [
+            "apps/integrations/src/**",
+            "apps/integrations/tsconfig.json",
+            "apps/integrations/tsup.config.ts",
+            "apps/integrations/package.json",
+            "./pnpm-lock.yaml"
+          ],
+          "envVariables": {
+            "DATABASE_URL": {
+              "fromParameterStore": "/Prod/integrations/DATABASE_URL"
+            },
+            "API_TOKEN": {
+              "fromParameterStore": "/Prod/integrations/API_TOKEN"
+            }
           }
         },
         {
