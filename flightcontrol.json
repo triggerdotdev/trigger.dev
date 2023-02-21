@@ -62,7 +62,7 @@
             "packages/internal-pulsar/src/**",
             "./pnpm-lock.yaml"
           ],
-          "dependsOn": ["p-db"],
+          "dependsOn": ["p-db", "p-integrations"],
           "envVariables": {
             "FROM_EMAIL": "Trigger.dev <hello@email.trigger.dev>",
             "REPLY_TO_EMAIL": "hello@trigger.dev",
@@ -128,7 +128,11 @@
             },
             "GITHUB_APP_WEBHOOK_SECRET": {
               "fromParameterStore": "/Prod/webapp/GITHUB_APP_WEBHOOK_SECRET"
-            }
+            },
+            "INTEGRATIONS_API_KEY": {
+              "fromParameterStore": "/Prod/integrations/API_TOKEN"
+            },
+            "INTEGRATIONS_API_ORIGIN": "https://integrations.trigger.dev"
           }
         },
         {
@@ -168,6 +172,36 @@
             },
             "PLATFORM_API_URL": "https://app.trigger.dev",
             "TRIGGER_LOG_LEVEL": "debug"
+          }
+        },
+        {
+          "id": "p-integrations",
+          "name": "Prod integrations",
+          "type": "fargate",
+          "buildType": "docker",
+          "dockerfilePath": "./apps/integrations/Dockerfile",
+          "dockerContext": ".",
+          "cpu": 2,
+          "memory": 4,
+          "minInstances": 2,
+          "maxInstances": 10,
+          "domain": "integrations.trigger.dev",
+          "port": 3006,
+          "healthCheckPath": "/healthcheck",
+          "watchPaths": [
+            "apps/integrations/src/**",
+            "apps/integrations/tsconfig.json",
+            "apps/integrations/tsup.config.ts",
+            "apps/integrations/package.json",
+            "./pnpm-lock.yaml"
+          ],
+          "envVariables": {
+            "DATABASE_URL": {
+              "fromParameterStore": "/Prod/integrations/DATABASE_URL"
+            },
+            "API_TOKEN": {
+              "fromParameterStore": "/Prod/integrations/API_TOKEN"
+            }
           }
         },
         {
@@ -257,7 +291,7 @@
             "packages/internal-pulsar/src/**",
             "./pnpm-lock.yaml"
           ],
-          "dependsOn": ["s-db"],
+          "dependsOn": ["s-db", "s-integrations"],
           "envVariables": {
             "APP_ENV": "staging",
             "FROM_EMAIL": "Trigger.dev <hello@email.trigger.dev>",
@@ -321,7 +355,11 @@
             },
             "GITHUB_APP_WEBHOOK_SECRET": {
               "fromParameterStore": "/Staging/webapp/GITHUB_APP_WEBHOOK_SECRET"
-            }
+            },
+            "INTEGRATIONS_API_KEY": {
+              "fromParameterStore": "/Staging/integrations/API_TOKEN"
+            },
+            "INTEGRATIONS_API_ORIGIN": "https://integrations-staging.trigger.dev"
           }
         },
         {
@@ -361,6 +399,36 @@
             },
             "PLATFORM_API_URL": "https://app-staging.trigger.dev",
             "TRIGGER_LOG_LEVEL": "debug"
+          }
+        },
+        {
+          "id": "s-integrations",
+          "name": "Staging integrations",
+          "type": "fargate",
+          "buildType": "docker",
+          "dockerfilePath": "./apps/integrations/Dockerfile",
+          "dockerContext": ".",
+          "cpu": 1,
+          "memory": 2,
+          "minInstances": 1,
+          "maxInstances": 2,
+          "domain": "integrations-staging.trigger.dev",
+          "port": 3006,
+          "healthCheckPath": "/healthcheck",
+          "watchPaths": [
+            "apps/integrations/src/**",
+            "apps/integrations/tsconfig.json",
+            "apps/integrations/tsup.config.ts",
+            "apps/integrations/package.json",
+            "./pnpm-lock.yaml"
+          ],
+          "envVariables": {
+            "DATABASE_URL": {
+              "fromParameterStore": "/Staging/integrations/DATABASE_URL"
+            },
+            "API_TOKEN": {
+              "fromParameterStore": "/Staging/integrations/API_TOKEN"
+            }
           }
         },
         {

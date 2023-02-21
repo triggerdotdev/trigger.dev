@@ -1,0 +1,59 @@
+[
+    {
+        "scope": "https://api.sendgrid.com:443",
+        "method": "PUT",
+        "path": "/v3/marketing/contacts",
+        "body": {
+            "contacts": [
+                {
+                    "email": "matt+1@mattaitken.com",
+                    "first_name": "Matt",
+                    "last_name": "Aitken"
+                }
+            ]
+        },
+        "status": 202,
+        "response": {
+            "job_id": "1befbf98-bfdc-4565-ba5a-c7e8b91f2678"
+        },
+        "rawHeaders": [
+            "Server",
+            "nginx",
+            "Date",
+            "Mon, 20 Feb 2023 15:21:43 GMT",
+            "Content-Type",
+            "application/json",
+            "Content-Length",
+            "50",
+            "Connection",
+            "close",
+            "x-amzn-requestid",
+            "6fcf9591-e37d-4fb9-b175-59d434ba45c6",
+            "access-control-allow-origin",
+            "*",
+            "access-control-allow-headers",
+            "AUTHORIZATION, Content-Type, On-behalf-of, x-sg-elas-acl, X-Recaptcha, X-Request-Source",
+            "x-amz-apigw-id",
+            "ApNxLHMAvHcFjkA=",
+            "access-control-allow-methods",
+            "PUT,OPTIONS,DELETE,OPTIONS",
+            "access-control-expose-headers",
+            "Link, Location",
+            "x-amzn-trace-id",
+            "Root=1-63f39007-0392a34047f268f366e7d4ce;Sampled=0",
+            "x-envoy-upstream-service-time",
+            "231",
+            "referrer-policy",
+            "strict-origin-when-cross-origin",
+            "x-content-type-options",
+            "nosniff",
+            "x-ratelimit-limit",
+            "200",
+            "x-ratelimit-remaining",
+            "197",
+            "x-ratelimit-reset",
+            "17"
+        ],
+        "responseIsBinary": false
+    }
+]

@@ -3,7 +3,7 @@ import { Link } from "@remix-run/react";
 import classNames from "classnames";
 import humanizeDuration from "humanize-duration";
 import type { ReactNode } from "react";
-import type { WorkflowRunListPresenter } from "~/models/workflowRunListPresenter.server";
+import type { WorkflowRunListPresenter } from "~/presenters/workflowRunListPresenter.server";
 import { dateDifference, formatDateTime } from "~/utils";
 import { PanelWarning } from "../layout/PanelWarning";
 import { Spinner } from "../primitives/Spinner";

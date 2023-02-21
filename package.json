@@ -4,7 +4,8 @@
   "workspaces": [
     "apps/*",
     "packages/*",
-    "integrations/*"
+    "integrations/*",
+    "generated-integrations/*"
   ],
   "version": "0.0.1",
   "prisma": {
@@ -45,7 +46,8 @@
     "changeset:next": "changeset pre enter next",
     "changeset:normal": "changeset pre exit",
     "sentry-upload": "turbo run sentry-upload",
-    "clean:sourcemaps": "turbo run clean:sourcemaps"
+    "clean:sourcemaps": "turbo run clean:sourcemaps",
+    "generate-integrations": "turbo run generate-integrations"
   },
   "devDependencies": {
     "@manypkg/cli": "^0.19.2",
@@ -57,7 +59,10 @@
     "prettier": "^2.5.1",
     "tailwindcss": "3.1.8",
     "tsx": "^3.7.1",
-    "turbo": "^1.5.5"
+    "turbo": "^1.5.5",
+    "vite": "^4.1.1",
+    "vite-tsconfig-paths": "^4.0.5",
+    "vitest": "^0.28.4"
   },
   "packageManager": "pnpm@7.13.5",
   "dependencies": {

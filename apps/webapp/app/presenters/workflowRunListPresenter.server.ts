@@ -1,11 +1,11 @@
 import { z } from "zod";
 import type { PrismaClient } from "~/db.server";
 import { prisma } from "~/db.server";
-import type { Organization } from "./organization.server";
-import type { RuntimeEnvironment } from "./runtimeEnvironment.server";
-import type { User } from "./user.server";
-import type { Workflow } from "./workflow.server";
-import { allStatuses } from "./workflowRunStatus";
+import type { Organization } from "../models/organization.server";
+import type { RuntimeEnvironment } from "../models/runtimeEnvironment.server";
+import type { User } from "../models/user.server";
+import type { Workflow } from "../models/workflow.server";
+import { allStatuses } from "../models/workflowRunStatus";
 
 const literals = allStatuses.map((s) => z.literal(s));
 const statusSchema = z.union([literals[0], literals[1], ...literals.splice(2)]);

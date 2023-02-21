@@ -22,7 +22,7 @@ import {
 import { useCurrentWorkflow } from "~/hooks/useWorkflows";
 import { getRuntimeEnvironmentFromRequest } from "~/models/runtimeEnvironment.server";
 import type { WorkflowRunStatus } from "~/models/workflowRun.server";
-import { WorkflowRunListPresenter } from "~/models/workflowRunListPresenter.server";
+import { WorkflowRunListPresenter } from "~/presenters/workflowRunListPresenter.server";
 import { allStatuses } from "~/models/workflowRunStatus";
 import { requireUserId } from "~/services/session.server";
 

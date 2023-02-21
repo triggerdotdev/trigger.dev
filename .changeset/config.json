@@ -7,5 +7,12 @@
   "access": "public",
   "baseBranch": "main",
   "updateInternalDependencies": "patch",
-  "ignore": ["wss", "webapp"]
+  "ignore": [
+    "wss",
+    "webapp",
+    "integrations",
+    "emails",
+    "internal-cli",
+    "integration-catalog"
+  ]
 }

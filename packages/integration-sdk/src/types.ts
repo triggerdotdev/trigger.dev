@@ -1,3 +1,5 @@
+import { z } from "zod";
+
 export type AccessInfo =
   | { type: "oauth2"; accessToken: string }
   | {
@@ -59,12 +61,18 @@ export type PerformRequestOptions = {
   metadata?: Record<string, string>;
 };
 
-export type DisplayProperties = {
-  title: string;
-  properties?: DisplayProperty[];
-};
+const DisplayPropertySchema = z.object({
+  key: z.string(),
+  value: z.union([z.string(), z.number(), z.boolean()]),
+});
 
-export type DisplayProperty = { key: string; value: string | number | boolean };
+export const DisplayPropertiesSchema = z.object({
+  title: z.string(),
+  properties: z.array(DisplayPropertySchema).optional(),
+});
+
+export type DisplayProperties = z.infer<typeof DisplayPropertiesSchema>;
+export type DisplayProperty = z.infer<typeof DisplayPropertySchema>;
 
 export type WebhookExample = {
   name: string;
@@ -109,29 +117,33 @@ export interface CacheService {
 }
 
 export type InternalIntegration = {
-  metadata: IntegrationMetadata;
+  metadata: ServiceMetadata;
   requests?: RequestIntegration;
   webhooks?: WebhookIntegration;
 };
 
-export type IntegrationMetadata = {
+export type ServiceMetadata = {
   name: string;
-  slug: string;
+  service: string;
   icon: string;
-  enabledFor: "all" | "admins" | "none";
-  authentication: OAuthAuthentication | APIKeyAuthentication;
+  live: boolean;
+  authentication: Record<string, OAuth2Authentication | APIKeyAuthentication>;
 };
 
-export type OAuthAuthentication = {
-  type: "oauth";
-  scopes: string[];
+export type OAuth2Authentication = {
+  type: "oauth2";
+  placement: AuthenticationPlacement;
+  authorizationUrl: string;
+  tokenUrl: string;
+  flow: "accessCode" | "implicit" | "password" | "application";
+  scopes: Record<string, string>;
 };
 
 export type APIKeyAuthentication = {
   type: "api_key";
-  header_name: string;
-  header_type: "access_token" | "bearer";
+  placement: AuthenticationPlacement;
   documentation: string;
+  scopes: Record<string, string>;
   additionalFields?: {
     key: string;
     fieldType: "text";
@@ -140,3 +152,11 @@ export type APIKeyAuthentication = {
     description: string;
   }[];
 };
+
+type AuthenticationPlacement = HeaderAuthentication;
+
+interface HeaderAuthentication {
+  in: "header";
+  type: "basic" | "bearer";
+  key: string;
+}

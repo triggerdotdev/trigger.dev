@@ -1,0 +1,79 @@
+[
+    {
+        "scope": "https://api.airtable.com:443",
+        "method": "GET",
+        "path": "/v0/appBlf3KsalIQeMUo/tblvXn2TOeVPC9c6m/recHcnB1MbBr9Rd2P",
+        "body": "",
+        "status": 200,
+        "response": {
+            "id": "recHcnB1MbBr9Rd2P",
+            "createdTime": "2023-01-03T12:05:53.000Z",
+            "fields": {
+                "Employee": "John Doe II",
+                "Phone": "(123) 456-7890",
+                "Headshot": [
+                    {
+                        "id": "att3ibwyOXULYL15O",
+                        "width": 950,
+                        "height": 700,
+                        "url": "https://v5.airtableusercontent.com/v1/15/15/1676995200000/D_htRl39BrNhGxsiGlNpcQ/tYWJWmeq3WBDaQCZIeDn-IAKEczimZduMBB30Xq48IYOla6DEq2h59YjRRAQZr4xH-YCc7n3cf4GAXlxPXYAYGfo2e0K230BdUzQXk43vrc/Y61oM8Pgbyu_5-jhuGhea9r2mpjjm5lxIGOJPP5BaO4",
+                        "filename": "headshot-purple-2 (1).png",
+                        "size": 191272,
+                        "type": "image/png",
+                        "thumbnails": {
+                            "small": {
+                                "url": "https://v5.airtableusercontent.com/v1/15/15/1676995200000/1Ev7NzTXpXw2FnaLtcYrzg/NZwW2F5QNr7qa_SXXlDx9vhjD_oxlwvSCboJj2T_S1WC0J0WWYYOWr6pfn_s_Z3aOU34l-v7ScjvQdL9vDtczQ/U0GygRlbr35RvoD2S-yyeJ3IWrbOqEjFe1D_-8KKpNY",
+                                "width": 49,
+                                "height": 36
+                            },
+                            "large": {
+                                "url": "https://v5.airtableusercontent.com/v1/15/15/1676995200000/lgoKQYxOC2eUe51PTO-_yg/dKv1Cx9ws40PNDnn2Y8bKlv4fbCfyGDshlFno1NOrEkceHJW-cCWG5E97cBs4B389t0Rf8SK3dMt8RkUOyueCg/3WxWv9_VvEua1zls82Z4Dca3yjWD9Cp2e6ldqrhzTKg",
+                                "width": 695,
+                                "height": 512
+                            },
+                            "full": {
+                                "url": "https://v5.airtableusercontent.com/v1/15/15/1676995200000/Rihc4R_4ndQBrAHA49_j7Q/3V3Js1Xsx4AxXmxVkurk09ZpYY0kmOJHJlhDqybO5Zws1tP1oZZC4mCaRRnMLpx3XLu41c5aALWuo7Jl7UC2yQ/1Kej1MQjyAGYqcSVqo4_1GHLMOoF9puGps0NxQCCHpQ",
+                                "width": 3000,
+                                "height": 3000
+                            }
+                        }
+                    }
+                ],
+                "Employee type": "Contractor"
+            }
+        },
+        "rawHeaders": [
+            "Date",
+            "Tue, 21 Feb 2023 12:47:49 GMT",
+            "Content-Type",
+            "867",
+            "Connection",
+            "close",
+            "Set-Cookie",
+            "AWSALB=P04kqBtI/0ytyUg9Fjvlqdj/79QEnNQZOJrk8expPLgAkwq3exJsTzPeYwbkOAkiuGDomuXqutUq6flBHmrEFz1du9r03QrsztyUe1mYaFVAoAPR4BacSk6CNE/8; Expires=Tue, 28 Feb 2023 12:47:49 GMT; Path=/",
+            "Set-Cookie",
+            "AWSALBCORS=P04kqBtI/0ytyUg9Fjvlqdj/79QEnNQZOJrk8expPLgAkwq3exJsTzPeYwbkOAkiuGDomuXqutUq6flBHmrEFz1du9r03QrsztyUe1mYaFVAoAPR4BacSk6CNE/8; Expires=Tue, 28 Feb 2023 12:47:49 GMT; Path=/; SameSite=None; Secure",
+            "Server",
+            "Tengine",
+            "Set-Cookie",
+            "brw=brwJ69m62Pda820BR; path=/; expires=Wed, 21 Feb 2024 12:47:49 GMT; domain=.airtable.com; samesite=none; secure",
+            "Strict-Transport-Security",
+            "max-age=31536000; includeSubDomains; preload",
+            "access-control-allow-origin",
+            "*",
+            "access-control-allow-methods",
+            "DELETE,GET,OPTIONS,PATCH,POST,PUT",
+            "access-control-allow-headers",
+            "authorization,content-length,content-type,user-agent,x-airtable-application-id,x-airtable-user-agent,x-api-version,x-requested-with",
+            "X-Frame-Options",
+            "DENY",
+            "X-Content-Type-Options",
+            "nosniff",
+            "Vary",
+            "Accept-Encoding",
+            "airtable-uncompressed-content-length",
+            "1314"
+        ],
+        "responseIsBinary": false
+    }
+]

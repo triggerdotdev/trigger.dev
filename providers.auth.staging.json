@@ -1,4 +1,7 @@
 {
+  "airtable": {
+    "client_id": "ae4a98b3-6efd-47ae-8a39-3c23c4a03035"
+  },
   "github": {
     "client_id": "ed98af6052927e8f2fcd"
   },

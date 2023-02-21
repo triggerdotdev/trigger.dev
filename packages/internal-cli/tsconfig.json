@@ -8,6 +8,8 @@
     "outDir": "lib",
     "moduleResolution": "node",
     "paths": {
+      "@trigger.dev/integration-sdk": ["../integration-sdk/src/index"],
+      "@trigger.dev/integration-sdk/*": ["../integration-sdk/src/*"],
       "integration-catalog": ["../integration-catalog/src/index"],
       "integration-catalog/*": ["../integration-catalog/src/*"],
       "@trigger.dev/github": ["../../integrations/github/src/index"],

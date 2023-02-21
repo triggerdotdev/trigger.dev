@@ -6,7 +6,7 @@ import {
   WrenchScrewdriverIcon,
 } from "@heroicons/react/24/outline";
 import { Link } from "@remix-run/react";
-import { TemplateListItem } from "~/presenters/templateListPresenter.server";
+import type { TemplateListItem } from "~/presenters/templateListPresenter.server";
 import { ApiLogoIcon } from "./code/ApiLogoIcon";
 import { Panel } from "./layout/Panel";
 import { Body } from "./primitives/text/Body";
@@ -25,7 +25,7 @@ export function LoginPromoPanel({ template }: { template?: TemplateListItem }) {
           </Header1>
           <Panel className="border border-slate-800 bg-slate-800/40 !p-6">
             <div className="h-fit w-full overflow-hidden rounded object-cover">
-              <img src={template.imageUrl} />
+              <img alt={template.shortTitle} src={template.imageUrl} />
             </div>
             <div className="mt-3 flex flex-col gap-2 pt-2">
               <Header3 size="extra-small" className=" text-slate-300">
@@ -37,7 +37,7 @@ export function LoginPromoPanel({ template }: { template?: TemplateListItem }) {
               <div className="mt-3 flex items-center gap-2">
                 {template.services.map((service) => (
                   <ApiLogoIcon
-                    key={service.slug}
+                    key={service.service}
                     integration={service}
                     size="small"
                     className="border border-slate-700/50"

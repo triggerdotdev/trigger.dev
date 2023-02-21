@@ -1,0 +1,73 @@
+[
+    {
+        "scope": "https://api.airtable.com:443",
+        "method": "POST",
+        "path": "/v0/appBlf3KsalIQeMUo/tblvXn2TOeVPC9c6m",
+        "body": {
+            "records": [
+                {
+                    "fields": {
+                        "Employee": "Employee #1"
+                    }
+                },
+                {
+                    "fields": {
+                        "Employee": "Employee #2"
+                    }
+                }
+            ]
+        },
+        "status": 200,
+        "response": {
+            "records": [
+                {
+                    "id": "recGy1FsSzQnQ1Q5G",
+                    "createdTime": "2023-02-18T17:05:09.000Z",
+                    "fields": {
+                        "Employee": "Employee #1"
+                    }
+                },
+                {
+                    "id": "recfrk4NonMC37k3q",
+                    "createdTime": "2023-02-18T17:05:09.000Z",
+                    "fields": {
+                        "Employee": "Employee #2"
+                    }
+                }
+            ]
+        },
+        "rawHeaders": [
+            "Date",
+            "Sat, 18 Feb 2023 17:05:09 GMT",
+            "Content-Type",
+            "145",
+            "Connection",
+            "close",
+            "Set-Cookie",
+            "AWSALB=S3w+xLzGuJ4YZa7uQpSGEZYmk2IXTVlsJ9yVl+E2aUbEW5BtGoPl4lNa9pwXEpNvI29HEMTQgpuOXAnvfTFKzm+ot6y2DAQJwqa1nDNgQVRZ2z6lNn602nx0ebhI; Expires=Sat, 25 Feb 2023 17:05:08 GMT; Path=/",
+            "Set-Cookie",
+            "AWSALBCORS=S3w+xLzGuJ4YZa7uQpSGEZYmk2IXTVlsJ9yVl+E2aUbEW5BtGoPl4lNa9pwXEpNvI29HEMTQgpuOXAnvfTFKzm+ot6y2DAQJwqa1nDNgQVRZ2z6lNn602nx0ebhI; Expires=Sat, 25 Feb 2023 17:05:08 GMT; Path=/; SameSite=None; Secure",
+            "Server",
+            "Tengine",
+            "Set-Cookie",
+            "brw=brw7GK0C3hS9Fnih9; path=/; expires=Sun, 18 Feb 2024 17:05:08 GMT; domain=.airtable.com; samesite=none; secure",
+            "Strict-Transport-Security",
+            "max-age=31536000; includeSubDomains; preload",
+            "access-control-allow-origin",
+            "*",
+            "access-control-allow-methods",
+            "DELETE,GET,OPTIONS,PATCH,POST,PUT",
+            "access-control-allow-headers",
+            "authorization,content-length,content-type,user-agent,x-airtable-application-id,x-airtable-user-agent,x-api-version,x-requested-with",
+            "X-Frame-Options",
+            "DENY",
+            "X-Content-Type-Options",
+            "nosniff",
+            "Vary",
+            "Accept-Encoding",
+            "airtable-uncompressed-content-length",
+            "221"
+        ],
+        "responseIsBinary": false
+    }
+]

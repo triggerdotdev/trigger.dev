@@ -7,6 +7,7 @@
     "@aws-sdk/client-secrets-manager": "^3.238.0",
     "@aws-sdk/credential-providers": "^3.238.0",
     "@trigger.dev/tsconfig": "workspace:*",
+    "@trigger.dev/integration-sdk": "workspace:*",
     "@types/node": "16",
     "@types/node-fetch": "2.6",
     "commander": "^9.4.1",

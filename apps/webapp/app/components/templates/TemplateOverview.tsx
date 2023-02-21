@@ -76,7 +76,7 @@ function TemplateDetails({
           </div>
           <div className="mb-4 flex gap-x-1">
             {template.services.map((service) => (
-              <Fragment key={service.slug}>
+              <Fragment key={service.service}>
                 <ApiLogoIcon
                   integration={service}
                   size="regular"

@@ -3,7 +3,6 @@ import type { Authenticator } from "remix-auth";
 import type { AuthUser } from "./authUser";
 import { findOrCreateUser } from "~/models/user.server";
 import { env } from "~/env.server";
-import { createFirstOrganization } from "~/models/organization.server";
 import { sendMagicLinkEmail } from "~/services/email.server";
 import { postAuthentication } from "./postAuth.server";
 

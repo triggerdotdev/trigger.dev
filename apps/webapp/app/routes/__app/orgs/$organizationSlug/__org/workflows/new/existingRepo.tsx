@@ -27,7 +27,7 @@ import {
   FromScratchOverview,
 } from "~/components/templates/ExampleOverview";
 import { useCurrentEnvironment } from "~/hooks/useEnvironments";
-import { getIntegrationMetadatas } from "~/models/integrations.server";
+import { getServiceMetadatas } from "~/models/integrations.server";
 import { getWorkflowsCreatedSinceDate } from "~/models/organization.server";
 import {
   commitOnboardingSession,
@@ -37,8 +37,7 @@ import {
 import { requireUserId } from "~/services/session.server";
 
 export const loader = async ({ request, params }: LoaderArgs) => {
-  const providers = getIntegrationMetadatas(false);
-
+  const providers = await getServiceMetadatas(true);
   const onboardingSession = await setWorkflowDate(new Date(), request);
 
   return typedjson(

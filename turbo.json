@@ -82,6 +82,10 @@
     },
     "clean:sourcemaps": {
       "cache": false
+    },
+    "generate-integrations": {
+      "cache": false,
+      "outputs": ["generated-integrations/**"]
     }
   },
   "globalDependencies": [".env"],
