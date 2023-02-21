@@ -9,6 +9,10 @@ import {
   GetSecretValueCommand,
 } from "@aws-sdk/client-secrets-manager";
 import fetch from "node-fetch";
+import {
+  InternalIntegration,
+  ServiceMetadata,
+} from "@trigger.dev/integration-sdk";
 
 const providersSchema = z.record(
   z.string(),
@@ -29,6 +33,11 @@ program
   .option("-p, --pizzlyhost <pizzly_host>", "Pizzly host")
   .option("-s, --pizzlysecretkey <pizzly_secret_key>", "Pizzly secret key")
   .option("-a, --awsprofile <aws_profile>", "AWS profile name")
+  .option("-i, --integrationorigin <integration_origin>", "Integration origin")
+  .option(
+    "-ia, --integrationapikey <integration_api_key>",
+    "Integration API key"
+  )
   .action(
     async (
       integration_file_path: string,
@@ -36,6 +45,8 @@ program
         pizzlyhost?: string;
         pizzlysecretkey?: string;
         awsprofile?: string;
+        integrationorigin?: string;
+        integrationapikey?: string;
       }
     ) => {
       if (!integration_file_path) {
@@ -65,7 +76,19 @@ program
       }
       const authProviders = result.data;
       const pizzly_host = options.pizzlyhost ?? "http://localhost:3004";
-      const providers = getIntegrations(true);
+
+      //todo get all integrations, including from the new service
+      if (!options.integrationorigin) {
+        options.integrationorigin = "https://localhost:3006";
+      }
+      if (!options.integrationapikey) {
+        console.error("Missing integration API key");
+        return;
+      }
+      const providers = await getServiceMetadatas({
+        integrationsOrigin: options.integrationorigin,
+        integrationsApiKey: options.integrationapikey,
+      });
 
       console.log(`Using pizzly host: ${pizzly_host}`);
 
@@ -84,15 +107,23 @@ program
             return Promise.resolve();
           }
 
-          const provider = providers.find((p) => p.metadata.slug === service);
+          const provider = providers[service];
           if (!provider) {
             console.log(`No provider found for ${service}`);
             console.log("Skipping…");
             return Promise.resolve();
           }
-          if (provider.metadata.authentication.type !== "oauth") {
+
+          //1st authentication obj
+          const providerAuthentication = Object.values(
+            provider.authentication
+          )[0];
+          if (
+            providerAuthentication === undefined ||
+            providerAuthentication.type !== "oauth2"
+          ) {
             console.log(
-              `The provider ${service} is the wrong type ${provider?.metadata.authentication.type}. Must be oauth`
+              `The provider ${service} is the wrong type ${providerAuthentication.type}. Must be oauth2`
             );
             console.log("Skipping…");
             return Promise.resolve();
@@ -126,32 +157,28 @@ program
               options.pizzlysecretkey
             );
 
+            const scopes = Object.keys(providerAuthentication.scopes);
+
             if (hasExistingConfig) {
               const response = await updateConfig(
                 pizzly_host,
                 service,
                 environmentClientId,
                 client_secret,
-                provider.metadata.authentication.scopes,
+                scopes,
                 options.pizzlysecretkey
               );
-              console.log(
-                `Updated config for ${service} with scopes`,
-                provider.metadata.authentication.scopes
-              );
+              console.log(`Updated config for ${service} with scopes`, scopes);
             } else {
               const response = await createConfig(
                 pizzly_host,
                 service,
                 environmentClientId,
                 client_secret,
-                provider.metadata.authentication.scopes,
+                scopes,
                 options.pizzlysecretkey
               );
-              console.log(
-                `Created config for ${service} with scopes`,
-                provider.metadata.authentication.scopes
-              );
+              console.log(`Created config for ${service} with scopes`, scopes);
             }
           } catch (error) {
             // For a list of exceptions thrown, see
@@ -233,6 +260,54 @@ function headers(secretKey?: string) {
     )}`;
   }
   return headers;
+}
+
+export async function getServiceMetadatas({
+  integrationsOrigin,
+  integrationsApiKey,
+}: {
+  integrationsOrigin: string;
+  integrationsApiKey: string;
+}): Promise<Record<string, ServiceMetadata>> {
+  let services: Record<string, ServiceMetadata> = {};
+  //get the old integrations, and turn them into an object
+  const v1IntegrationsMetadata = getIntegrations(true).map((i) => i.metadata);
+  const v1IntegrationsMetadataObject = v1IntegrationsMetadata.reduce(
+    (acc, curr) => {
+      acc[curr.service] = curr;
+      return acc;
+    },
+    {} as Record<string, InternalIntegration["metadata"]>
+  );
+
+  try {
+    const url = `${integrationsOrigin}/api/v2/services`;
+    console.log("url", url);
+    //get the new integrations, and turn them into an object
+    const response = await fetch(url, {
+      method: "GET",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${integrationsApiKey}`,
+      },
+    });
+
+    console.log("response", response.status);
+
+    const v2IntegrationsMetadata = (await response.json()) as {
+      services: Record<string, ServiceMetadata>;
+    };
+
+    services = {
+      ...v1IntegrationsMetadataObject,
+      ...v2IntegrationsMetadata.services,
+    };
+
+    return services;
+  } catch (err) {
+    console.log("Error getting services", err);
+    return services;
+  }
 }
 
 program.parseAsync(process.argv);

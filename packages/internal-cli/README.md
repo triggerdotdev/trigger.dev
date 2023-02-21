@@ -42,7 +42,7 @@ pnpm run cli <path_to_your_provider_json_file>
 }
 ```
 
-# Options
+# Required
 
 ## Pizzly host
 
@@ -55,6 +55,18 @@ Pass the base url for Pizzly, defaults to `http://localhost:3004`.
 `-s` or `--pizzlysecretkey`
 
 Pass the secret key for Pizzly, defaults to undefined which will work locally in the default configuration. In production you will want to set a Pizzly secret key, see their docs for details.
+
+## Integrations service
+
+`-i` or `--integrationorigin`
+
+Pass the origin of the integrations service, e.g. `https://integrations.trigger.dev`. Defaults to `http://localhost:3006`.
+
+`-ia` or `--integrationapikey`
+
+Pass the API key for integrations.
+
+# Options
 
 ## AWS profile
 
