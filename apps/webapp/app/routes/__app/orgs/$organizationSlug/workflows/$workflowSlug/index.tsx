@@ -22,6 +22,7 @@ import {
   SecondaryLink,
   TertiaryLink,
 } from "~/components/primitives/Buttons";
+import { PlugIcon } from "~/components/primitives/IconPlug";
 import { Input } from "~/components/primitives/Input";
 import { Body } from "~/components/primitives/text/Body";
 import { Header2 } from "~/components/primitives/text/Headers";
@@ -243,12 +244,20 @@ export default function Page() {
           </Panel>
           {connectionSlots.source &&
           connectionSlots.source.connection === null ? (
-            <div className="mb-6 divide-y divide-slate-800 overflow-hidden rounded-b-md border border-red-500 bg-rose-500/20">
+            <div className="mb-6 divide-y divide-slate-800 rounded-b-md border border-red-500 bg-rose-500/20">
               <Disclosure>
                 {({ open }) => (
                   <>
-                    <Disclosure.Button className="flex w-full items-center justify-between overflow-hidden bg-slate-800/70 py-4 px-5 transition hover:bg-slate-800/50">
-                      Connect to GitHub so your workflow can be triggered
+                    <Disclosure.Button className="flex w-full items-center justify-between bg-slate-800/70 py-4 px-4 transition last:rounded-b-md hover:bg-slate-800/50">
+                      <div className="flex items-center gap-2">
+                        <PlugIcon className="h-6 w-6" fill="#CF364C" />
+                        <Body>
+                          Connect to{" "}
+                          {connectionSlots.source &&
+                            connectionSlots.source.integration.name}{" "}
+                          so your workflow can be triggered
+                        </Body>
+                      </div>
                       <div className="flex items-center gap-2">
                         <Body size="small" className="text-slate-400">
                           {open ? "Close" : "Open"}
@@ -265,7 +274,7 @@ export default function Page() {
                       {connectionSlots.source && (
                         <div
                           className={classNames(
-                            "flex w-full items-center gap-4 !border !border-rose-600 bg-slate-800 px-4 py-4 first:rounded-t-md last:rounded-b-md"
+                            "flex w-full items-center gap-4 !border !border-slate-900 bg-slate-800 px-4 py-4 first:rounded-t-md last:rounded-b-md"
                           )}
                         >
                           <ApiLogoIcon
