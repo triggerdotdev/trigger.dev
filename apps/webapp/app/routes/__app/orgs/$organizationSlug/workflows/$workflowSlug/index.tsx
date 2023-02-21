@@ -7,9 +7,11 @@ import type { LoaderArgs } from "@remix-run/server-runtime";
 import classNames from "classnames";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import invariant from "tiny-invariant";
+import { ApiLogoIcon } from "~/components/code/ApiLogoIcon";
 import CodeBlock from "~/components/code/CodeBlock";
 import { CopyTextButton } from "~/components/CopyTextButton";
 import { OctoKitty } from "~/components/GitHubLoginButton";
+import { ConnectionSelector } from "~/components/integrations/ConnectionSelector";
 import { WorkflowConnections } from "~/components/integrations/WorkflowConnections";
 import { Panel } from "~/components/layout/Panel";
 import { PanelHeader } from "~/components/layout/PanelHeader";
@@ -239,34 +241,66 @@ export default function Page() {
             />
             <TriggerBody trigger={eventRule.trigger} />
           </Panel>
-          <div className="mb-6 divide-y divide-slate-800 overflow-hidden rounded-b-md bg-slate-800/50">
-            <Disclosure>
-              {({ open }) => (
-                <>
-                  <Disclosure.Button className="flex w-full items-center justify-between overflow-hidden bg-slate-800/70 py-4 px-5 transition hover:bg-slate-800/50">
-                    Connect to GitHub so your workflow can be triggered
-                    <div className="flex items-center gap-2">
-                      <Body size="small" className="text-slate-400">
-                        {open ? "Close" : "Open"}
-                      </Body>
-                      <ChevronDownIcon
-                        className={classNames(
-                          open ? "rotate-180 transform" : "",
-                          "h-5 w-5 text-slate-400 transition"
-                        )}
-                      />
-                    </div>
-                  </Disclosure.Button>
-                  <Disclosure.Panel className="p-4">
-                    <WorkflowConnections />
-                  </Disclosure.Panel>
-                </>
-              )}
-            </Disclosure>
-          </div>
+          {connectionSlots.source &&
+          connectionSlots.source.connection === null ? (
+            <div className="mb-6 divide-y divide-slate-800 overflow-hidden rounded-b-md border border-red-500 bg-rose-500/20">
+              <Disclosure>
+                {({ open }) => (
+                  <>
+                    <Disclosure.Button className="flex w-full items-center justify-between overflow-hidden bg-slate-800/70 py-4 px-5 transition hover:bg-slate-800/50">
+                      Connect to GitHub so your workflow can be triggered
+                      <div className="flex items-center gap-2">
+                        <Body size="small" className="text-slate-400">
+                          {open ? "Close" : "Open"}
+                        </Body>
+                        <ChevronDownIcon
+                          className={classNames(
+                            open ? "rotate-180 transform" : "",
+                            "h-5 w-5 text-slate-400 transition"
+                          )}
+                        />
+                      </div>
+                    </Disclosure.Button>
+                    <Disclosure.Panel className="p-4">
+                      {connectionSlots.source && (
+                        <div
+                          className={classNames(
+                            "flex w-full items-center gap-4 !border !border-rose-600 bg-slate-800 px-4 py-4 first:rounded-t-md last:rounded-b-md"
+                          )}
+                        >
+                          <ApiLogoIcon
+                            integration={connectionSlots.source.integration}
+                            size="regular"
+                          />
+                          <div className="flex w-full items-center justify-between gap-1">
+                            <Body>
+                              {connectionSlots.source.integration.name}
+                            </Body>
+                            <ConnectionSelector
+                              type="source"
+                              sourceServiceId={connectionSlots.source.id}
+                              organizationId={organization.id}
+                              integration={connectionSlots.source.integration}
+                              connections={
+                                connectionSlots.source.possibleConnections
+                              }
+                              className="mr-1"
+                              popoverAlign="right"
+                            />
+                          </div>
+                        </div>
+                      )}
+                    </Disclosure.Panel>
+                  </>
+                )}
+              </Disclosure>
+            </div>
+          ) : (
+            <></>
+          )}
         </>
       )}
-      {apiConnectionCount > 0 && <WorkflowConnections />}
+      {apiConnectionCount > 0 && <WorkflowConnections className="mt-6" />}
 
       {total > 0 ? (
         <>
