@@ -5,7 +5,7 @@ export type FunctionData = {
   name: string;
   friendlyName: string;
   description: string;
-  input: JSONSchema | undefined;
-  output: JSONSchema;
+  input?: JSONSchema;
+  output?: JSONSchema;
   functionCode: string;
 };
