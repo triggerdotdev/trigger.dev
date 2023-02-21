@@ -330,7 +330,7 @@ export default function Page() {
         </>
       ) : (
         <>
-          <SubTitle>Workflow runs</SubTitle>
+          <SubTitle className="mt-6">Workflow runs</SubTitle>
           <PanelWarning
             message="This workflow hasn't been run yet. Test it to view runs here."
             className="flex justify-between"
