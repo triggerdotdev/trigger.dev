@@ -1,6 +1,6 @@
 {
   "name": "@trigger.dev/sendgrid",
-  "version": "0.1.21",
+  "version": "0.1.22-next.0",
   "description": "The official SendGrid integration for Trigger.dev",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",

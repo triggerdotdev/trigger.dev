@@ -1,0 +1,28 @@
+{
+  "mode": "pre",
+  "tag": "next",
+  "initialVersions": {
+    "integrations": "1.0.0",
+    "webapp": "1.0.0",
+    "wss": "1.0.0",
+    "@trigger.dev/airtable": "0.1.21",
+    "@trigger.dev/sendgrid": "0.1.21",
+    "@trigger.dev/github": "0.1.21",
+    "@trigger.dev/resend": "0.1.21",
+    "@trigger.dev/shopify": "0.1.21",
+    "@trigger.dev/slack": "0.1.21",
+    "@trigger.dev/whatsapp": "0.1.19",
+    "@trigger.dev/common-schemas": "0.1.1",
+    "emails": "1.0.0",
+    "integration-catalog": "0.1.16",
+    "@trigger.dev/integration-sdk": "0.1.17",
+    "internal-bridge": "0.0.1",
+    "internal-cli": "0.0.1",
+    "internal-platform": "0.0.3",
+    "internal-pulsar": "0.0.1",
+    "@trigger.dev/sdk": "0.2.14"
+  },
+  "changesets": [
+    "nine-carrots-battle"
+  ]
+}
