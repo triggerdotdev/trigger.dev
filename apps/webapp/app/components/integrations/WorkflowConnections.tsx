@@ -51,12 +51,12 @@ export function WorkflowConnections({
             </div>
           </li>
         ))}
-        <li className="font-sm p-4 text-slate-400">
+        <li className="font-sm p-4 pl-5 text-slate-500">
           You will be able to authenticate APIs on demand when your workflow
           runs. You can also{" "}
           <Link
             to="../integrations"
-            className="text-slate-400 underline decoration-slate-500 underline-offset-4 transition hover:text-slate-100"
+            className="text-slate-500 underline decoration-slate-500 underline-offset-4 transition hover:text-slate-400"
           >
             connect them now
           </Link>
