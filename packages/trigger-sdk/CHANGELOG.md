@@ -1,5 +1,11 @@
 # @trigger.dev/sdk
 
+## 0.3.0-next.0
+
+### Minor Changes
+
+- 5df5e30: New integrations service with an updated @trigger.dev/sdk that is backwards compatible
+
 ## 0.2.14
 
 ### Patch Changes

@@ -1,6 +1,6 @@
 {
   "name": "@trigger.dev/airtable",
-  "version": "0.1.21",
+  "version": "1.0.0-next.0",
   "description": "The official Airtable integration for Trigger.dev",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
