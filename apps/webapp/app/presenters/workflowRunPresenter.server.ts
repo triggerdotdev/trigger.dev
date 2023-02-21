@@ -8,18 +8,16 @@ import {
   TriggerMetadataSchema,
   WaitSchema,
 } from "@trigger.dev/common-schemas";
-import type {
-  DisplayProperties,
-  InternalIntegration,
-} from "@trigger.dev/integration-sdk";
+import type { ServiceMetadata } from "@trigger.dev/integration-sdk";
 import { SendEmailBodySchema } from "@trigger.dev/resend/schemas";
 import invariant from "tiny-invariant";
 import type { PrismaClient } from "~/db.server";
 import { prisma } from "~/db.server";
+import { getServiceMetadatas } from "~/models/integrations.server";
+import type { WorkflowRunStatus } from "~/models/workflowRun.server";
 import type { PrismaReturnType } from "~/utils";
 import { dateDifference } from "~/utils";
-import { getIntegrationMetadata, getIntegrations } from "./integrations.server";
-import type { WorkflowRunStatus } from "./workflowRun.server";
+import { DisplayPropertiesPresenter } from "./displayPropertiesPresenter.server";
 
 export class WorkflowRunPresenter {
   #prismaClient: PrismaClient;
@@ -35,9 +33,9 @@ export class WorkflowRunPresenter {
       throw new Error(`Workflow run with id ${id} not found`);
     }
 
-    const integrations = getIntegrations(true);
+    const serviceMetadatas = await getServiceMetadatas(true);
     const steps = await Promise.all(
-      workflowRun.tasks.map((step) => parseStep(step, integrations))
+      workflowRun.tasks.map((step) => parseStep(step, serviceMetadatas))
     );
 
     let trigger = {
@@ -60,14 +58,13 @@ export class WorkflowRunPresenter {
         dateDifference(workflowRun.startedAt, workflowRun.finishedAt),
       trigger: {
         ...trigger,
-        integration: getIntegrationMetadata(integrations, trigger.service),
+        integration: serviceMetadatas[trigger.service],
       },
       steps,
       error: workflowRun.error
         ? await ErrorSchema.parseAsync(workflowRun.error)
         : undefined,
       timedOutReason: workflowRun.timedOutReason,
-      integrations: integrations.map((i) => i.metadata),
     };
   }
 }
@@ -80,7 +77,7 @@ async function parseStep(
   original: NonNullable<
     PrismaReturnType<typeof getWorkflowRun>
   >["tasks"][number],
-  integrations: InternalIntegration[]
+  services: Record<string, ServiceMetadata>
 ) {
   const base = {
     id: original.id,
@@ -158,26 +155,19 @@ async function parseStep(
         `Integration request is missing from run step ${original.id}}`
       );
       const externalService = original.integrationRequest.externalService;
-      const integration = integrations.find(
-        (i) => i.metadata.slug === externalService.slug
+      const service = services[externalService.slug];
+      invariant(service, `Service ${externalService.slug} not found`);
+
+      const presenter = new DisplayPropertiesPresenter();
+      const displayProperties = await presenter.requestProperties(
+        service.service,
+        original.integrationRequest.endpoint,
+        original.integrationRequest.params,
+        original.displayProperties
       );
-      invariant(integration, `Integration ${externalService.slug} not found`);
-
-      let displayProperties: DisplayProperties;
-
-      if (integration.requests) {
-        displayProperties = integration.requests.displayProperties(
-          original.integrationRequest.endpoint,
-          original.integrationRequest.params
-        );
-      } else {
-        displayProperties = {
-          title: "Unknown integration",
-        };
-      }
 
       const customComponent =
-        integration.metadata.slug === "resend"
+        service.service === "resend"
           ? {
               component: "resend" as const,
               input: SendEmailBodySchema.parse(original.input),
@@ -198,7 +188,7 @@ async function parseStep(
           type: externalService.type,
           status: externalService.status,
           connection: externalService.connection,
-          integration: integration.metadata,
+          integration: service,
         },
         retryCount: original.integrationRequest.retryCount,
         customComponent,

@@ -1,7 +1,7 @@
 import { InformationCircleIcon } from "@heroicons/react/24/outline";
 import type {
   APIKeyAuthentication,
-  IntegrationMetadata,
+  ServiceMetadata,
 } from "@trigger.dev/integration-sdk";
 import { marked } from "marked";
 import { Fragment, useEffect, useState } from "react";
@@ -26,7 +26,7 @@ export function AddApiKeyButton({
   className,
   children,
 }: {
-  integration: IntegrationMetadata;
+  integration: ServiceMetadata;
   authentication: APIKeyAuthentication;
   organizationId: string;
   sourceId?: string;
@@ -86,7 +86,7 @@ export function AddApiKeyButton({
           <fetcher.Form method="post" action="/resources/connection?index">
             <input type="hidden" name="type" value="api_key" />
             <input type="hidden" name="organizationId" value={organizationId} />
-            <input type="hidden" name="service" value={integration.slug} />
+            <input type="hidden" name="service" value={integration.service} />
             {sourceId && (
               <input type="hidden" name="sourceId" value={sourceId} />
             )}

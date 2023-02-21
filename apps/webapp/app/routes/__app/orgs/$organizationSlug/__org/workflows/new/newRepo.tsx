@@ -9,7 +9,6 @@ import { TemplateListPresenter } from "~/presenters/templateListPresenter.server
 
 export const loader = async () => {
   const presenter = new TemplateListPresenter();
-
   return typedjson(await presenter.data());
 };
 

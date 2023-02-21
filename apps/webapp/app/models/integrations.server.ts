@@ -1,33 +1,37 @@
-import type { InternalIntegration } from "@trigger.dev/integration-sdk";
+import type {
+  InternalIntegration,
+  ServiceMetadata,
+} from "@trigger.dev/integration-sdk";
 import { getIntegrations as getInternalIntegrations } from "integration-catalog";
-import invariant from "tiny-invariant";
+import { integrationsClient } from "~/services/integrationsClient.server";
 
-export function getIntegrations(showAdminOnly: boolean) {
+export function getVersion1Integrations(showAdminOnly: boolean) {
   return getInternalIntegrations(showAdminOnly);
 }
 
-export function getIntegrationMetadatas(showAdminOnly: boolean) {
-  return getInternalIntegrations(showAdminOnly).map((i) => i.metadata);
-}
+export async function getServiceMetadatas(
+  showAdminOnly: boolean
+): Promise<Record<string, ServiceMetadata>> {
+  let services: Record<string, ServiceMetadata> = {};
+  //get the old integrations, and turn them into an object
+  const v1IntegrationsMetadata = getInternalIntegrations(showAdminOnly).map(
+    (i) => i.metadata
+  );
+  const v1IntegrationsMetadataObject = v1IntegrationsMetadata.reduce(
+    (acc, curr) => {
+      acc[curr.service] = curr;
+      return acc;
+    },
+    {} as Record<string, InternalIntegration["metadata"]>
+  );
 
-export function getIntegration(name: string) {
-  return getIntegrations(true).find((i) => i.metadata.slug === name);
-}
+  //get the new integrations, and turn them into an object
+  const v2IntegrationsMetadata = await integrationsClient.services();
 
-export function getIntegrationMetadata(
-  integrations: Array<InternalIntegration>,
-  name: string
-) {
-  const integration = integrations.find((i) => i.metadata.slug === name);
-  return integration ? integration.metadata : undefined;
-}
+  services = {
+    ...v1IntegrationsMetadataObject,
+    ...v2IntegrationsMetadata.services,
+  };
 
-export function getIntegrationMetadataByService(service: string) {
-  const integrations = getIntegrationMetadatas(true);
-
-  const metadata = integrations.find((i) => i.slug.includes(service));
-
-  invariant(metadata, `Integration not found for service ${service}`);
-
-  return metadata;
+  return services;
 }

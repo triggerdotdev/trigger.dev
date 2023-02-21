@@ -1,0 +1,52 @@
+---
+title: Marketing Contacts
+sidebarTitle: Marketing Contacts
+description: Add or update (up to 30k) contacts. Contacts are queued and aren't created immediately.
+---
+    
+## Params
+    
+<ParamField path="key" type="string" required={true}>
+  A unique string. Please see the [Keys and Resumability](/guides/resumability)
+  doc for more info.
+</ParamField><ParamField path="params" type="object" required={true}>
+   Marketing Contacts Input
+<Expandable title="properties" defaultOpen={true}><ParamField path="contacts" type="array" required={true}>
+   One or more contacts objects that you intend to upsert. The available fields for a contact, including the required `email` field are described below.
+<Expandable title="items" defaultOpen={false}><ParamField path="contacts[n]" type="object" required={true}>
+   Contact-request
+<Expandable title="properties" defaultOpen={false}><ParamField path="email" type="string" required={true}>
+   The contact's primary email. This is required to be a valid email.
+</ParamField><ParamField path="address_line_1" type="string" required={false}>
+   The first line of the address.
+</ParamField><ParamField path="address_line_2" type="string" required={false}>
+   An optional second line for the address.
+</ParamField><ParamField path="alternate_emails" type="array" required={false}>
+   Additional emails associated with the contact.
+<Expandable title="items" defaultOpen={false}><ParamField path="alternate_emails[n]" type="string" required={false}>
+</ParamField></Expandable></ParamField><ParamField path="city" type="string" required={false}>
+   The contact's city.
+</ParamField><ParamField path="country" type="string" required={false}>
+   The contact's country. Can be a full name or an abbreviation.
+</ParamField><ParamField path="first_name" type="string" required={false}>
+   The contact's personal name.
+</ParamField><ParamField path="last_name" type="string" required={false}>
+   The contact's family name.
+</ParamField><ParamField path="postal_code" type="string" required={false}>
+   The contact's ZIP code or other postal code.
+</ParamField><ParamField path="state_province_region" type="string" required={false}>
+   The contact's state, province, or region.
+</ParamField><ParamField path="custom_fields" type="object" required={false}>
+   Custom-fields-by-id
+<Expandable title="properties" defaultOpen={false}></Expandable></ParamField></Expandable></ParamField></Expandable></ParamField><ParamField path="list_ids" type="array" required={false}>
+   An array of List ID strings that this contact will be added to.
+<Expandable title="items" defaultOpen={false}><ParamField path="list_ids[n]" type="string" required={false}>
+</ParamField></Expandable></ParamField></Expandable></ParamField>
+
+## Response
+
+<ResponseField path="response" type="object" required={true}>
+   Marketing Contacts Output
+<Expandable title="properties" defaultOpen={false}><ResponseField path="job_id" type="string" required={false}>
+   Indicates that the contacts are queued for processing. Check the job status with the "Import Contacts Status" endpoint.
+</ResponseField></Expandable></ResponseField>

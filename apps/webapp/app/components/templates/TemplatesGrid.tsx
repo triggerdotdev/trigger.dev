@@ -65,7 +65,7 @@ export function TemplatesGrid({
                 </div>
                 <div className="mt-2 flex flex-row gap-x-1">
                   {template.services.map((service) => (
-                    <div key={service.slug} className="">
+                    <div key={service.service} className="">
                       <ApiLogoIcon
                         integration={service}
                         size="regular"

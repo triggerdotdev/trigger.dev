@@ -1,7 +1,7 @@
 import { Popover, Transition } from "@headlessui/react";
 import { CheckIcon, ChevronUpDownIcon } from "@heroicons/react/24/outline";
 import { useFetcher } from "@remix-run/react";
-import type { IntegrationMetadata } from "@trigger.dev/integration-sdk";
+import type { ServiceMetadata } from "@trigger.dev/integration-sdk";
 import classNames from "classnames";
 import { Fragment } from "react";
 import type { APIConnection } from "~/models/apiConnection.server";
@@ -11,7 +11,7 @@ type Props = {
   type: "source" | "service";
   sourceServiceId: string;
   organizationId: string;
-  integration: IntegrationMetadata;
+  integration: ServiceMetadata;
   connections: Pick<APIConnection, "id" | "title">[];
   selectedConnectionId?: string;
   className?: string;
@@ -55,9 +55,9 @@ export function ConnectionSelector({
             <Popover.Button
               className={`
           ${open ? "" : ""}
-          inline-flex justify-between items-center rounded text-slate-300 bg-slate-700 shadow pl-4 pr-3 py-2 gap-2 text-sm hover:bg-slate-600/80 transition focus:outline-none`}
+          inline-flex items-center justify-between gap-2 rounded bg-slate-700 py-2 pl-4 pr-3 text-sm text-slate-300 shadow transition hover:bg-slate-600/80 focus:outline-none`}
             >
-              <span className="transition text-sm text-slate-200">
+              <span className="text-sm text-slate-200 transition">
                 {selectedConnection ? (
                   <span>{selectedConnection.title}</span>
                 ) : (
@@ -68,7 +68,7 @@ export function ConnectionSelector({
               </span>
               <ChevronUpDownIcon
                 className={`${open ? "" : ""}
-            ml-1 h-5 w-5 transition duration-150 ease-in-out text-slate-400`}
+            ml-1 h-5 w-5 text-slate-400 transition duration-150 ease-in-out`}
                 aria-hidden="true"
               />
             </Popover.Button>
@@ -87,7 +87,7 @@ export function ConnectionSelector({
                 )}`}
               >
                 <div className="overflow-hidden rounded-lg shadow-lg ring-1 ring-black ring-opacity-5">
-                  <div className="flex flex-col items-stretch gap-y-1 py-1 px-1 bg-slate-700">
+                  <div className="flex flex-col items-stretch gap-y-1 bg-slate-700 py-1 px-1">
                     {connections.map((connection) => {
                       return (
                         <fetcher.Form
@@ -105,7 +105,7 @@ export function ConnectionSelector({
 
                           <Popover.Button
                             className={classNames(
-                              "flex items-center w-full justify-between gap-1.5 py-2 px-3 text-white rounded hover:bg-slate-800 transition",
+                              "flex w-full items-center justify-between gap-1.5 rounded py-2 px-3 text-white transition hover:bg-slate-800",
                               connection.id === selectedConnectionId &&
                                 "!bg-slate-800"
                             )}

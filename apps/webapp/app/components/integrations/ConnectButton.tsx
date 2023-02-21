@@ -1,4 +1,4 @@
-import type { IntegrationMetadata } from "@trigger.dev/integration-sdk";
+import type { ServiceMetadata } from "@trigger.dev/integration-sdk";
 import { AddApiKeyButton } from "./AddApiKeyButton";
 import { ConnectOAuthButton } from "./ConnectOAuthButton";
 import { IntegrationIcon } from "./IntegrationIcon";
@@ -13,15 +13,16 @@ export function ConnectButton({
   children,
   className,
 }: {
-  integration: IntegrationMetadata;
+  integration: ServiceMetadata;
   organizationId: string;
   sourceId?: string;
   serviceId?: string;
   children: (status: Status) => React.ReactNode;
   className?: string;
 }) {
-  switch (integration.authentication.type) {
-    case "oauth":
+  const authentication = Object.values(integration.authentication)[0];
+  switch (authentication.type) {
+    case "oauth2":
       return (
         <ConnectOAuthButton
           integration={integration}
@@ -36,7 +37,7 @@ export function ConnectButton({
       return (
         <AddApiKeyButton
           integration={integration}
-          authentication={integration.authentication}
+          authentication={authentication}
           organizationId={organizationId}
           sourceId={sourceId}
           serviceId={serviceId}
@@ -55,7 +56,7 @@ export function BasicConnectButton({
   sourceId,
   serviceId,
 }: {
-  integration: IntegrationMetadata;
+  integration: ServiceMetadata;
   organizationId: string;
   sourceId?: string;
   serviceId?: string;

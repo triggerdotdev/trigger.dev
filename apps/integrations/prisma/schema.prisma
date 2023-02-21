@@ -1,0 +1,22 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider        = "prisma-client-js"
+  output          = "../node_modules/.prisma/client"
+  binaryTargets   = ["native", "debian-openssl-1.1.x"]
+  previewFeatures = ["orderByNulls"]
+}
+
+model Cache {
+  id    String @id @default(cuid())
+  namespace String
+  key String
+  value String
+  expiresAt DateTime?
+  createdAt DateTime @default(now())
+
+  @@unique([namespace, key])
+}

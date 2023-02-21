@@ -1,19 +1,29 @@
 import type {
-  IntegrationMetadata,
+  ServiceMetadata,
   InternalIntegration,
 } from "@trigger.dev/integration-sdk";
 import { GitHubWebhookIntegration } from "./internal/webhooks";
 
 const webhooks = new GitHubWebhookIntegration();
 
-const metadata: IntegrationMetadata = {
+const metadata: ServiceMetadata = {
   name: "GitHub",
-  slug: "github",
+  service: "github",
   icon: "/integrations/github.png",
-  enabledFor: "all",
+  live: true,
   authentication: {
-    type: "oauth",
-    scopes: ["repo"],
+    oauth: {
+      type: "oauth2",
+      placement: {
+        in: "header",
+        type: "bearer",
+        key: "Authorization",
+      },
+      authorizationUrl: "https://github.com/login/oauth/authorize",
+      tokenUrl: "https://github.com/login/oauth/access_token",
+      flow: "accessCode",
+      scopes: { repo: "repo" },
+    },
   },
 };
 

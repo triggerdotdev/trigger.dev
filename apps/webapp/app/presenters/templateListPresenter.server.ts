@@ -1,12 +1,12 @@
-import { Template } from ".prisma/client";
-import type { IntegrationMetadata } from "@trigger.dev/integration-sdk";
+import type { Template } from ".prisma/client";
+import type { ServiceMetadata } from "@trigger.dev/integration-sdk";
 import type { PrismaClient } from "~/db.server";
 import { prisma } from "~/db.server";
-import { getIntegrationMetadataByService } from "~/models/integrations.server";
+import { getServiceMetadatas } from "~/models/integrations.server";
 import { renderMarkdown } from "~/services/renderMarkdown.server";
 
 export type TemplateListItem = Omit<Template, "services"> & {
-  services: Array<IntegrationMetadata>;
+  services: Array<ServiceMetadata>;
   docsHTML: string;
 };
 
@@ -22,8 +22,10 @@ export class TemplateListPresenter {
       orderBy: { priority: "asc" },
     });
 
+    const serviceMetadatas = await getServiceMetadatas(true);
+
     const templatesWithServiceMetadata = templates.map((template) => {
-      const services = template.services.map(getIntegrationMetadataByService);
+      const services = template.services.map((s) => serviceMetadatas[s]);
 
       return {
         ...template,

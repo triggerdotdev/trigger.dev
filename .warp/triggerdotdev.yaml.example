@@ -31,8 +31,17 @@ windows:
           panes:
             - cwd: /Users/eric/code/triggerdotdev/trigger.dev
               commands:
-                - exec: pnpm run dev --filter webapp
+                - exec: pnpm run build --filter webapp
+                - exec: pnpm run idev --filter webapp
             - cwd: /Users/eric/code/triggerdotdev/trigger.dev/apps/webapp
+      - title: integrations
+        layout:
+          split_direction: vertical
+          panes:
+            - cwd: /Users/eric/code/triggerdotdev/trigger.dev
+              commands:
+                - exec: pnpm run dev --filter integrations
+            - cwd: /Users/eric/code/triggerdotdev/trigger.dev/apps/integrations
       - title: ngrok
         layout:
           split_direction: horizontal

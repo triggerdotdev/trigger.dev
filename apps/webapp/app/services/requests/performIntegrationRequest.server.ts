@@ -7,9 +7,10 @@ import type {
 import type { PrismaClient } from "~/db.server";
 import { prisma } from "~/db.server";
 import type { IntegrationRequest } from "~/models/integrationRequest.server";
+import { getVersion1Integrations } from "~/models/integrations.server";
 import { getAccessInfo } from "../accessInfo.server";
 import { RedisCacheService } from "../cacheService.server";
-import { getIntegrations } from "~/models/integrations.server";
+import { integrationsClient } from "../integrationsClient.server";
 
 type CallResponse =
   | {
@@ -65,7 +66,8 @@ export class PerformIntegrationRequest {
       accessInfo,
       integrationRequest,
       cache,
-      integrationRequest.externalService.workflowId
+      integrationRequest.externalService.workflowId,
+      integrationRequest.externalService.connection.id
     );
 
     if (performedRequest.ok) {
@@ -224,31 +226,50 @@ export class PerformIntegrationRequest {
     accessInfo: AccessInfo,
     integrationRequest: IntegrationRequest,
     cache: CacheService,
-    workflowId: string
+    workflowId: string,
+    connectionId: string
   ): Promise<PerformedRequestResponse> {
-    const integrationInfo = getIntegrations(true).find(
-      (i) => i.metadata.slug === service
-    );
+    switch (integrationRequest.version) {
+      case "1": {
+        const integrationInfo = getVersion1Integrations(true).find(
+          (i) => i.metadata.service === service
+        );
 
-    if (!integrationInfo) {
-      throw new Error(`Unknown service: ${service}`);
+        if (!integrationInfo) {
+          throw new Error(`Unknown service: ${service}`);
+        }
+
+        const { requests } = integrationInfo;
+
+        if (!requests) {
+          throw new Error(`Service ${service} does not support requests`);
+        }
+
+        return requests.perform({
+          accessInfo,
+          endpoint: integrationRequest.endpoint,
+          params: integrationRequest.params,
+          cache,
+          metadata: {
+            requestId: integrationRequest.id,
+            workflowId: workflowId,
+          },
+        });
+      }
+      case "2": {
+        return integrationsClient.performRequest({
+          service,
+          accessInfo,
+          integrationRequest,
+          workflowId,
+          connectionId,
+        });
+      }
+      default: {
+        throw new Error(
+          `Unknown integration request version: ${integrationRequest.version}`
+        );
+      }
     }
-
-    const { requests } = integrationInfo;
-
-    if (!requests) {
-      throw new Error(`Service ${service} does not support requests`);
-    }
-
-    return requests.perform({
-      accessInfo,
-      endpoint: integrationRequest.endpoint,
-      params: integrationRequest.params,
-      cache,
-      metadata: {
-        requestId: integrationRequest.id,
-        workflowId: workflowId,
-      },
-    });
   }
 }
