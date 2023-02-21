@@ -55,8 +55,8 @@ export function WorkflowConnections({
           You will be able to authenticate APIs on demand when your workflow
           runs. You can also{" "}
           <Link
-            to="/integrations"
-            className="text-slate-400 underline decoration-green-500 underline-offset-4 transition hover:text-slate-100"
+            to="integrations"
+            className="text-slate-400 underline decoration-slate-500 underline-offset-4 transition hover:text-slate-100"
           >
             connect them now
           </Link>
