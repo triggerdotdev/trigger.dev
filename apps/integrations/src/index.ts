@@ -44,6 +44,9 @@ app.use(checkAuthentication);
 app.get("/", (req: Request, res: Response) => {
   res.send("Trigger.dev integrations service");
 });
+app.get("/healthcheck", (req: Request, res: Response) => {
+  res.send("OK");
+});
 app.get("/api/v2/services", handleServices);
 app.post("/api/v2/:service/action/:action/display", handleActionDisplay);
 app.post("/api/v2/:service/action/:action", handleAction);
