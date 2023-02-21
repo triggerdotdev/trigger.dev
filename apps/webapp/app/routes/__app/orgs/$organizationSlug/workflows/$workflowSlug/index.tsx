@@ -73,7 +73,8 @@ export const loader = async ({ request, params }: LoaderArgs) => {
 };
 
 export default function Page() {
-  const { runs, total, hasFilters } = useTypedLoaderData<typeof loader>();
+  const { runs, total, totalRealRuns, hasFilters } =
+    useTypedLoaderData<typeof loader>();
 
   const organization = useCurrentOrganization();
   invariant(organization, "Organization not found");
@@ -358,7 +359,7 @@ export default function Page() {
                   )}
                 </Disclosure>
               )}
-            <Disclosure defaultOpen={true}>
+            <Disclosure defaultOpen={totalRealRuns === 0}>
               {({ open }) => (
                 <div className="rounded-b-md bg-slate-700/80">
                   <Disclosure.Button className="flex w-full items-center justify-between bg-slate-800/70 py-4 px-4 transition hover:bg-slate-800/50">
