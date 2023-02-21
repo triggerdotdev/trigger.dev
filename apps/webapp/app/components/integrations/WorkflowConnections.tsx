@@ -9,7 +9,7 @@ import { Header3 } from "../primitives/text/Headers";
 import { SubTitle } from "../primitives/text/SubTitle";
 import { ConnectionSelector } from "./ConnectionSelector";
 
-export function WorkflowConnections() {
+export function WorkflowConnections({ className }: { className?: string }) {
   const organization = useCurrentOrganization();
   invariant(organization, "Organization not found");
   const connectionSlots = useConnectionSlots();
@@ -23,7 +23,7 @@ export function WorkflowConnections() {
   const unconnectedApisCountCopy = `, ${unconnectedApisCount} to connect`;
 
   return (
-    <>
+    <div className={classNames(className)}>
       <SubTitle>
         <>
           {connectedApisCount} API
@@ -94,6 +94,6 @@ export function WorkflowConnections() {
           </li>
         ))}
       </List>
-    </>
+    </div>
   );
 }
