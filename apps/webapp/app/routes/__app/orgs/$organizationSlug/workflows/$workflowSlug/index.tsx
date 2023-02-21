@@ -389,7 +389,7 @@ export default function Page() {
                       <SubTitle className="text-slate-300">
                         Trigger your workflow from the source
                       </SubTitle>
-                      <span className="rounded-full bg-blue-700 px-2 pt-1 pb-0.5 text-[0.6rem] font-medium uppercase tracking-wider text-blue-200">
+                      <span className="relative -top-0.5 rounded-full bg-blue-700 px-2 pt-1 pb-0.5 text-[0.6rem] font-medium uppercase tracking-wider text-blue-200">
                         Recommended
                       </span>
                     </div>
