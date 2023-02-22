@@ -4,7 +4,6 @@ import { handleServices } from "api/v2/services";
 import dotenv from "dotenv";
 import express, { Express, NextFunction, Request, Response } from "express";
 import morgan from "morgan";
-
 dotenv.config();
 
 const app: Express = express();

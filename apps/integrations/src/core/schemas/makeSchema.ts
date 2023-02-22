@@ -1,4 +1,4 @@
-import { JSONSchema } from "./types";
+import { JSONSchema, JSONSchemaInstanceType } from "./types";
 
 export function makeStringSchema(
   title: string,
@@ -137,5 +137,28 @@ export function makeAnyOf(title: string, schemas: JSONSchema[]): JSONSchema {
   return {
     title,
     anyOf: schemas,
+  };
+}
+
+export function makeNullable(schema: JSONSchema): JSONSchema {
+  let combinedTypes: JSONSchemaInstanceType[] = [];
+  if (!schema.type) {
+    throw new Error("Schema must have a type");
+  }
+
+  switch (typeof schema.type) {
+    case "string":
+      combinedTypes = [schema.type, "null"];
+      break;
+    case "object":
+      combinedTypes = [...schema.type, "null"];
+      break;
+    default:
+      throw new Error(`Invalid schema type: ${typeof schema.type}`);
+  }
+
+  return {
+    ...schema,
+    type: combinedTypes,
   };
 }
