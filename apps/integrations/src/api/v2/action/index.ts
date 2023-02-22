@@ -3,8 +3,8 @@ import { AuthCredentials } from "core/authentication/types";
 import { Service } from "core/service/types";
 import { validateInputs } from "core/validation/inputs";
 import { Request, Response } from "express";
-import { catalog } from "integrations/catalog";
 import { z } from "zod";
+import { error, ReturnResponse } from "../requestUtilities";
 import { createParametersBody } from "./createParametersBody";
 import { getServiceAction } from "./validation";
 
@@ -17,17 +17,6 @@ const requestBodySchema = z.object({
     connectionId: z.string(),
   }),
 });
-
-type ReturnResponse = {
-  response: NormalizedResponse;
-  isRetryable: boolean;
-  ok: boolean;
-};
-
-type NormalizedResponse = {
-  output: NonNullable<any>;
-  context: any;
-};
 
 export async function handleAction(req: Request, res: Response) {
   const serviceActionResult = getServiceAction(req.params);
@@ -156,23 +145,4 @@ export async function handleAction(req: Request, res: Response) {
 
 function isRetryable(service: Service, status: number): boolean {
   return service.retryableStatusCodes.includes(status);
-}
-
-function error(
-  status: number,
-  isRetryable: boolean,
-  error: Record<string, any>
-): ReturnResponse {
-  const response: ReturnResponse = {
-    ok: false,
-    isRetryable,
-    response: {
-      output: error,
-      context: {
-        statusCode: status,
-        headers: {},
-      },
-    },
-  };
-  return response;
 }
