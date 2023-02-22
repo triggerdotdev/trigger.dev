@@ -32,7 +32,7 @@ windows:
             - cwd: /Users/eric/code/triggerdotdev/trigger.dev
               commands:
                 - exec: pnpm run build --filter webapp
-                - exec: pnpm run idev --filter webapp
+                - exec: pnpm run i-dev --filter webapp
             - cwd: /Users/eric/code/triggerdotdev/trigger.dev/apps/webapp
       - title: integrations
         layout:
