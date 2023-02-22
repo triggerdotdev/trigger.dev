@@ -7,12 +7,14 @@
   "scripts": {
     "build": "tsup",
     "start": "node dist/index.js",
-    "dev": "concurrently \"tsup --watch\" \"nodemon -q dist/index.js\"",
+    "dev": "concurrently \"tsup --watch\" \"nodemon -r dotenv/config -q dist/index.js\"",
     "test": "vitest",
     "lint": "eslint --no-error-on-unmatched-pattern src/**",
     "lint-fix": "eslint --no-error-on-unmatched-pattern --fix src/**",
     "generate-integrations": "tsx src/trigger/sdk/generate.ts",
-    "generate": "prisma generate"
+    "generate": "prisma generate",
+    "db:migrate:deploy": "prisma migrate deploy",
+    "db:migrate:dev": "prisma migrate dev"
   },
   "dependencies": {
     "@cfworker/json-schema": "^1.12.5",

@@ -1,69 +1,40 @@
+import { Link } from "@remix-run/react";
+import classNames from "classnames";
 import invariant from "tiny-invariant";
-import { useConnectionSlots } from "~/hooks/useConnectionSlots";
+import type { ConnectionSlot } from "~/hooks/useConnectionSlots";
 import { useCurrentOrganization } from "~/hooks/useOrganizations";
 import { ApiLogoIcon } from "../code/ApiLogoIcon";
 import { List } from "../layout/List";
-import { Body } from "../primitives/text/Body";
 import { Header3 } from "../primitives/text/Headers";
 import { SubTitle } from "../primitives/text/SubTitle";
 import { ConnectionSelector } from "./ConnectionSelector";
 
-export function WorkflowConnections() {
+export function WorkflowConnections({
+  className,
+  connectionSlots,
+}: {
+  className?: string;
+  connectionSlots: ConnectionSlot[];
+}) {
   const organization = useCurrentOrganization();
   invariant(organization, "Organization not found");
-  const connectionSlots = useConnectionSlots();
-  invariant(connectionSlots, "Connection slots not found");
-  const allApisCount =
-    connectionSlots.services.length + (connectionSlots.source ? 1 : 0);
-  const connectedApisCount =
-    connectionSlots.services.filter((c) => c.connection).length +
-    (connectionSlots.source?.connection ? 1 : 0);
-  const unconnectedApisCount = allApisCount - connectedApisCount ? 1 : 0;
-  const unconnectedApisCountCopy = `, ${unconnectedApisCount} to connect`;
 
   return (
-    <>
-      <SubTitle>
-        <>
-          {connectedApisCount} API
-          {connectedApisCount > 1
-            ? "s"
-            : connectedApisCount === 0
-            ? "s"
-            : ""}{" "}
-          connected
-          {unconnectedApisCount === 0 ? "" : unconnectedApisCountCopy}
-        </>
-      </SubTitle>
+    <div className={classNames(className)}>
+      <SubTitle>API Connections</SubTitle>
       <List>
-        {connectionSlots.source && (
-          <li className="flex gap-4 w-full px-4 py-4">
-            <ApiLogoIcon
-              integration={connectionSlots.source.integration}
-              size="regular"
-            />
-            <div className="flex items-center justify-between gap-1 w-full">
-              <Body>{connectionSlots.source.integration.name}</Body>
-              <ConnectionSelector
-                type="source"
-                sourceServiceId={connectionSlots.source.id}
-                organizationId={organization.id}
-                integration={connectionSlots.source.integration}
-                connections={connectionSlots.source.possibleConnections}
-                selectedConnectionId={connectionSlots.source.connection?.id}
-                className="mr-1"
-                popoverAlign="right"
-              />
-            </div>
-          </li>
-        )}
-        {connectionSlots.services.map((slot) => (
+        {connectionSlots.map((slot) => (
           <li
             key={slot.id}
-            className="flex gap-4 items-center w-full px-4 py-4"
+            className={classNames(
+              slot.connection === null
+                ? "!border !border-rose-600 bg-rose-500/10"
+                : "",
+              "flex w-full items-center gap-4 px-4 py-4 first:rounded-t-md last:rounded-b-md"
+            )}
           >
             <ApiLogoIcon integration={slot.integration} size="regular" />
-            <div className="flex items-center justify-between w-full">
+            <div className="flex w-full items-center justify-between">
               <Header3 size="small" className="truncate text-slate-300">
                 {slot.integration?.name}
               </Header3>
@@ -80,7 +51,18 @@ export function WorkflowConnections() {
             </div>
           </li>
         ))}
+        <li className="font-sm p-4 pl-5 text-slate-500">
+          You will be able to authenticate APIs on demand when your workflow
+          runs. You can also{" "}
+          <Link
+            to={`/orgs/${organization.slug}/integrations`}
+            className="text-slate-500 underline decoration-slate-500 underline-offset-4 transition hover:text-slate-400"
+          >
+            connect them now
+          </Link>
+          .
+        </li>
       </List>
-    </>
+    </div>
   );
 }
