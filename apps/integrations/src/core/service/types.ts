@@ -5,6 +5,7 @@ export type Service = {
   name: string;
   service: string;
   version: string;
+  baseUrl: string;
   live: boolean;
   authentication: IntegrationAuthentication;
   actions: Record<string, Action>;

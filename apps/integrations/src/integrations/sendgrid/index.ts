@@ -6,6 +6,7 @@ export const sendgrid: Service = {
   name: "SendGrid",
   service: "sendgrid",
   version: "0.1.21",
+  baseUrl: "https://api.sendgrid.com",
   live: true,
   authentication,
   actions,
