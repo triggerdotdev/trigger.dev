@@ -8,7 +8,11 @@ import {
   makeStringSchema,
 } from "core/schemas/makeSchema";
 import { optional } from "zod";
-import { UserSchema, VersionHeaderParam } from "../common/schemas";
+import {
+  UserSchema,
+  VersionHeaderParam,
+  YourBotSchema,
+} from "../common/schemas";
 
 const errorResponse: EndpointSpecResponse = {
   success: false,
@@ -138,6 +142,39 @@ export const listUsers: EndpointSpec = {
             }),
           },
         }),
+      },
+    ],
+    default: [errorResponse],
+  },
+};
+
+export const getBotInfo: EndpointSpec = {
+  path: "/users/me",
+  method: "GET",
+  metadata: {
+    name: "getBotInfo",
+    description: `Get's the bots info`,
+    displayProperties: {
+      title: "Get the bot's info",
+    },
+    externalDocs: {
+      description: "API method documentation",
+      url: "https://developers.notion.com/reference/get-users",
+    },
+    tags: ["users"],
+  },
+  security: {
+    api_key: [],
+  },
+  parameters: [VersionHeaderParam],
+  request: {},
+  responses: {
+    200: [
+      {
+        success: true,
+        name: "Success",
+        description: "Typical success response",
+        schema: YourBotSchema,
       },
     ],
     default: [errorResponse],

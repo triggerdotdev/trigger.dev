@@ -90,3 +90,45 @@ export const UserSchema = makeOneOf("User", [
     },
   }),
 ]);
+
+export const YourBotSchema = makeObjectSchema("Bot", {
+  requiredProperties: {
+    object: makeStringSchema("Object type", "This is always user", {
+      enum: ["user"],
+    }),
+    id: makeStringSchema("User ID", "Unique identifier for this bot"),
+    type: makeStringSchema("User type", "Always bot", {
+      enum: ["bot"],
+    }),
+    bot: makeObjectSchema("Bot", {
+      optionalProperties: {
+        owner: makeObjectSchema("Owner", {
+          requiredProperties: {
+            type: makeStringSchema(
+              "Owner type",
+              "The owner's type, either user or workspace",
+              {
+                enum: ["user", "workspace"],
+              }
+            ),
+          },
+          optionalProperties: {
+            workspace: makeNullable(
+              makeBooleanSchema("Workspace", "Is this a workspace?")
+            ),
+            user: UserSchema,
+          },
+        }),
+        workspace_name: makeNullable(
+          makeStringSchema("Workspace name", "The name of the workspace")
+        ),
+      },
+    }),
+  },
+  optionalProperties: {
+    name: makeStringSchema("The user's full name", "The user's full name"),
+    avatar_url: makeNullable(
+      makeStringSchema("Avatar URL", "The user's avatar URL")
+    ),
+  },
+});
