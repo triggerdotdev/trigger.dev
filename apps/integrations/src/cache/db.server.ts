@@ -1,7 +1,5 @@
 import { PrismaClient, Prisma } from ".prisma/client";
 import invariant from "tiny-invariant";
-import dotenv from "dotenv";
-dotenv.config();
 
 export { Prisma };
 
