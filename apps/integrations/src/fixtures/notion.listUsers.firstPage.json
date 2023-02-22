@@ -1,0 +1,171 @@
+[
+    {
+        "scope": "https://api.notion.com:443",
+        "method": "GET",
+        "path": "/v1/users",
+        "body": "",
+        "status": 200,
+        "response": {
+            "object": "list",
+            "results": [
+                {
+                    "object": "user",
+                    "id": "5d00d6b7-00c0-4676-bd15-57bd6419a45e",
+                    "name": "Dan Patel",
+                    "avatar_url": "https://lh3.googleusercontent.com/a-/AOh14Gj5mI3edeuVqIdTVEkXAEeJ3lPPfugrqxtCGmZC=s100",
+                    "type": "person",
+                    "person": {
+                        "email": "dan@apihero.run"
+                    }
+                },
+                {
+                    "object": "user",
+                    "id": "3146e8d2-2e34-400b-a53e-4718bf0b7301",
+                    "name": "Eric Allam",
+                    "avatar_url": "https://lh3.googleusercontent.com/a-/AOh14GjtBGkh3WpIpk2NMLos-ZBF_eny70NNZgV82Ndc=s100",
+                    "type": "person",
+                    "person": {
+                        "email": "eric@apihero.run"
+                    }
+                },
+                {
+                    "object": "user",
+                    "id": "cc18a80a-973f-42c4-8fed-a055f8ae31f4",
+                    "name": "Matt Aitken",
+                    "avatar_url": "https://s3-us-west-2.amazonaws.com/public.notion-static.com/0ccadce7-a4aa-4a69-92e6-2ac708593613/matt-wedding.jpg",
+                    "type": "person",
+                    "person": {
+                        "email": "matt@apihero.run"
+                    }
+                },
+                {
+                    "object": "user",
+                    "id": "6060b4ec-b31f-42d6-9752-7b1b7a699210",
+                    "name": "James",
+                    "avatar_url": "https://s3-us-west-2.amazonaws.com/public.notion-static.com/ae901b13-a451-4077-807d-b9e297eb6243/Wellspace_cropped.jpg",
+                    "type": "person",
+                    "person": {
+                        "email": "james@apihero.run"
+                    }
+                },
+                {
+                    "object": "user",
+                    "id": "ca5ba471-9b13-462f-8987-a468e52b493c",
+                    "name": "Zapier Integration",
+                    "avatar_url": null,
+                    "type": "bot",
+                    "bot": {}
+                },
+                {
+                    "object": "user",
+                    "id": "e30c657a-7653-4a88-a88a-4a49aae4eca6",
+                    "name": "JSON Hero",
+                    "avatar_url": null,
+                    "type": "bot",
+                    "bot": {}
+                },
+                {
+                    "object": "user",
+                    "id": "4766a47e-0ca6-4b56-b3c1-d2ab1b3537de",
+                    "name": "Zapier",
+                    "avatar_url": "https://s3-us-west-2.amazonaws.com/public.notion-static.com/768f27da-5cdf-425c-b52a-cc4a3454c725/zapier-logomark-brand-512.png",
+                    "type": "bot",
+                    "bot": {}
+                },
+                {
+                    "object": "user",
+                    "id": "d40d7bf8-dd07-4a9c-b36c-878a616a51dd",
+                    "name": "Zapier",
+                    "avatar_url": "https://s3-us-west-2.amazonaws.com/public.notion-static.com/c8ba7d4b-5bfb-4381-ba50-6a05b956b3ca/logo_black.png",
+                    "type": "bot",
+                    "bot": {}
+                },
+                {
+                    "object": "user",
+                    "id": "cd07de92-38c3-4eed-a5db-b77fe3d442a6",
+                    "name": "Pipedream",
+                    "avatar_url": "https://s3-us-west-2.amazonaws.com/public.notion-static.com/67274412-a787-4700-af77-da8c671c77d4/favicon-512x512.jpg",
+                    "type": "bot",
+                    "bot": {}
+                },
+                {
+                    "object": "user",
+                    "id": "53ed9d25-6b8d-4ac5-8a15-57bd3d0a9399",
+                    "name": "Typeform",
+                    "avatar_url": "https://s3-us-west-2.amazonaws.com/public.notion-static.com/e44af2a4-0727-45c3-8f29-fa1af7d29fb5/Typeform_square_logo_white.jpg",
+                    "type": "bot",
+                    "bot": {}
+                },
+                {
+                    "object": "user",
+                    "id": "9cf2d004-6fd2-4749-b861-f1761e1a7a8d",
+                    "name": "Trigger.dev (localhost)",
+                    "avatar_url": "https://s3-us-west-2.amazonaws.com/public.notion-static.com/b374368f-9f41-460a-bf8e-5e19f8fb0e07/td-square-logo_512.png",
+                    "type": "bot",
+                    "bot": {}
+                },
+                {
+                    "object": "user",
+                    "id": "64cc3339-74fa-433e-b49a-0763f30a41ff",
+                    "name": "Trigger API key",
+                    "avatar_url": null,
+                    "type": "bot",
+                    "bot": {
+                        "owner": {
+                            "type": "workspace",
+                            "workspace": true
+                        },
+                        "workspace_name": "Trigger.dev"
+                    }
+                }
+            ],
+            "next_cursor": null,
+            "has_more": false,
+            "type": "user",
+            "user": {}
+        },
+        "rawHeaders": [
+            "Date",
+            "Wed, 22 Feb 2023 14:57:49 GMT",
+            "Content-Type",
+            "application/json; charset=utf-8",
+            "Transfer-Encoding",
+            "chunked",
+            "Connection",
+            "close",
+            "Set-Cookie",
+            "notion_browser_id=7309cb08-2f5c-4ef9-bec6-d6a1c18f19bd; Domain=www.notion.so; Path=/; Expires=Thu, 22 Feb 2024 14:57:47 GMT; Secure",
+            "Content-Security-Policy",
+            "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://gist.github.com https://apis.google.com https://www.google.com https://www.gstatic.com https://cdn.amplitude.com https://api.amplitude.com http://dev-embed.notion.co http://embed.notion.co https://widget.intercom.io https://js.intercomcdn.com https://static.zdassets.com https://api.smooch.io\t https://logs-01.loggly.com https://http-inputs-notion.splunkcloud.com https://cdn.segment.com https://analytics.pgncs.notion.so https://o324374.ingest.sentry.io https://checkout.stripe.com https://js.stripe.com https://embed.typeform.com https://admin.typeform.com https://public.profitwell.com https://static.profitwell.com js.sentry-cdn.com https://js.chilipiper.com https://platform.twitter.com https://cdn.syndication.twimg.com https://accounts.google.com https://www.googletagmanager.com https://www.googleadservices.com https://googleads.g.doubleclick.net https://api-v2.mutinyhq.io https://client-registry.mutinycdn.com https://client.mutinycdn.com https://user-data.mutinycdn.com https://cdn.metadata.io https://platformapi.metadata.io https://d2hrivdxn8ekm8.cloudfront.net https://d1lu3pmaz2ilpx.cloudfront.net https://dvqigh9b7wa32.cloudfront.net https://d330aiyvva2oww.cloudfront.net https://cdn.transcend.io https://cdn01.boxcdn.net https://cdn.sprig.com assets.customer.io code.gist.build;connect-src 'self' data: blob: https://msgstore.www.notion.so wss://msgstore.www.notion.so ws://localhost:* ws://127.0.0.1:* https://notion-emojis.s3-us-west-2.amazonaws.com https://s3-us-west-2.amazonaws.com https://s3.us-west-2.amazonaws.com https://notion-production-snapshots-2.s3.us-west-2.amazonaws.com https://cdn.amplitude.com https://api.amplitude.com https://www.notion.so https://api.embed.ly http://dev-embed.notion.co http://embed.notion.co https://js.intercomcdn.com https://api-iam.intercom.io https://uploads.intercomcdn.com wss://nexus-websocket-a.intercom.io https://ekr.zdassets.com https://ekr.zendesk.com\t https://makenotion.zendesk.com\t https://api.smooch.io\t wss://api.smooch.io\t https://logs-01.loggly.com https://http-inputs-notion.splunkcloud.com https://cdn.segment.com https://api.segment.io https://analytics.pgncs.notion.so https://api.pgncs.notion.so https://o324374.ingest.sentry.io https://checkout.stripe.com https://js.stripe.com https://cdn.contentful.com https://preview.contentful.com https://images.ctfassets.net https://www2.profitwell.com https://tracking.chilipiper.com https://api.chilipiper.com https://api.unsplash.com https://boards-api.greenhouse.io https://accounts.google.com https://oauth2.googleapis.com https://www.googletagmanager.com https://analytics.google.com https://www.googleadservices.com https://googleads.g.doubleclick.net https://region1.google-analytics.com https://region1.analytics.google.com https://www.google-analytics.com https://api-v2.mutinyhq.io https://client-registry.mutinycdn.com https://client.mutinycdn.com https://user-data.mutinycdn.com https://cdn.metadata.io https://platformapi.metadata.io https://d2hrivdxn8ekm8.cloudfront.net https://d1lu3pmaz2ilpx.cloudfront.net https://dvqigh9b7wa32.cloudfront.net https://d330aiyvva2oww.cloudfront.net https://cdn.transcend.io https://telemetry.transcend.io https://api.statuspage.io https://pgncd.notion.so https://api.statsig.com https://statsigapi.net https://exp.notion.so https://file.notion.so notion://file.notion.so https://api.box.com https://*.mux.com https://api.sprig.com https://storage.googleapis.com https://cdn.sprig.com https://cdn.userleap.com track.customer.io *.api.gist.build *.cloud.gist.build;font-src 'self' data: https://cdnjs.cloudflare.com https://js.intercomcdn.com https://cdn01.boxcdn.net;img-src 'self' data: blob: https: https://platform.twitter.com https://syndication.twitter.com https://pbs.twimg.com https://ton.twimg.com https://region1.google-analytics.com https://region1.analytics.google.com https://file.notion.so notion://file.notion.so https://*.mux.com track.customer.io;style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://github.githubassets.com https://js.chilipiper.com https://platform.twitter.com https://ton.twimg.com https://accounts.google.com https://cdn.transcend.io https://cdn01.boxcdn.net code.gist.build;media-src blob: https: http: https://file.notion.so notion://file.notion.so https://*.mux.com;worker-src blob:;frame-src https: http: https://accounts.google.com renderer.gist.build code.gist.build",
+            "X-DNS-Prefetch-Control",
+            "off",
+            "X-Frame-Options",
+            "SAMEORIGIN",
+            "Strict-Transport-Security",
+            "max-age=5184000; includeSubDomains",
+            "X-Download-Options",
+            "noopen",
+            "X-Content-Type-Options",
+            "nosniff",
+            "X-Permitted-Cross-Domain-Policies",
+            "none",
+            "Referrer-Policy",
+            "strict-origin-when-cross-origin",
+            "X-XSS-Protection",
+            "0",
+            "ETag",
+            "W/\"abe-TfFdkevbAZ1MUThTFbpOSF0PDbs\"",
+            "Vary",
+            "Accept-Encoding",
+            "CF-Cache-Status",
+            "DYNAMIC",
+            "Set-Cookie",
+            "notion_check_cookie_consent=true; Domain=www.notion.so; Path=/; Expires=Thu, 23 Feb 2023 14:57:47 GMT; Secure",
+            "Set-Cookie",
+            "__cf_bm=uVlPprM3Q8KmTpZqkE3BrdV_l0kr22rIsUD8E2D3x_s-1677077869-0-AS+Frqt+gRXLoTo6PB51cAUjat65PBNZ8rz0BkzhCTOtKlwPABaJY95MvDf7iHeT3RwbQG+5oCtxl9edSOTh1mg=; path=/; expires=Wed, 22-Feb-23 15:27:49 GMT; domain=.notion.com; HttpOnly; Secure; SameSite=None",
+            "Server",
+            "cloudflare"
+        ],
+        "responseIsBinary": false
+    }
+]

@@ -1,12 +1,14 @@
 import { EndpointSpec, EndpointSpecResponse } from "core/endpoint/types";
 import {
+  makeArraySchema,
   makeBooleanSchema,
   makeNullable,
   makeObjectSchema,
   makeOneOf,
   makeStringSchema,
 } from "core/schemas/makeSchema";
-import { VersionHeaderParam } from "../common/schemas";
+import { optional } from "zod";
+import { UserSchema, VersionHeaderParam } from "../common/schemas";
 
 const errorResponse: EndpointSpecResponse = {
   success: false,
@@ -20,20 +22,18 @@ export const getUser: EndpointSpec = {
   method: "GET",
   metadata: {
     name: "getUser",
-    description: `List records in a table. Note that table names and table ids can be used interchangeably. We recommend using table IDs so you don't need to modify your API request when your table name changes.\n
-      The server returns one page of records at a time. Each page will contain pageSize records, which is 100 by default. If there are more records, the response will contain an offset. To fetch the next page of records, include offset in the next request's parameters. Pagination will stop when you've reached the end of your table. If the maxRecords parameter is passed, pagination will stop once you've reached this maximum.\n
-      Returned records do not include any fields with "empty" values, e.g. "", [], or false.`,
+    description: `Get a user's information`,
     displayProperties: {
-      title: "List records from table ${parameters.tableIdOrName}",
+      title: "Get user info for user id ${parameters.userId}",
     },
     externalDocs: {
       description: "API method documentation",
-      url: "https://airtable.com/developers/web/api/list-records",
+      url: "https://developers.notion.com/reference/get-user",
     },
     tags: ["users"],
   },
   security: {
-    oauth: [],
+    api_key: [],
   },
   parameters: [
     {
@@ -54,93 +54,90 @@ export const getUser: EndpointSpec = {
         success: true,
         name: "Success",
         description: "Typical success response",
-        schema: makeOneOf("User", [
-          makeObjectSchema("Person", {
-            requiredProperties: {
-              object: makeStringSchema("Object type", "This is always user", {
-                enum: ["user"],
-              }),
-              id: makeStringSchema(
-                "User ID",
-                "Unique identifier for this user"
-              ),
-              type: makeStringSchema(
-                "User type",
-                "The user's type, either person or bot",
-                {
-                  enum: ["person"],
-                }
-              ),
-              person: makeObjectSchema("Person", {
-                requiredProperties: {
-                  email: makeStringSchema("Email", "The user's email address"),
-                },
-              }),
-            },
-            optionalProperties: {
-              name: makeStringSchema(
-                "The user's full name",
-                "The user's full name"
-              ),
-              avatar_url: makeNullable(
-                makeStringSchema("Avatar URL", "The user's avatar URL")
-              ),
-            },
-          }),
-          makeObjectSchema("Bot", {
-            requiredProperties: {
-              object: makeStringSchema("Object type", "This is always user", {
-                enum: ["user"],
-              }),
-              id: makeStringSchema(
-                "User ID",
-                "Unique identifier for this user"
-              ),
-              type: makeStringSchema(
-                "User type",
-                "The user's type, either person or bot",
-                {
-                  enum: ["bot"],
-                }
-              ),
-              bot: makeObjectSchema("Bot", {
-                requiredProperties: {
-                  owner: makeObjectSchema("Owner", {
-                    requiredProperties: {
-                      type: makeStringSchema(
-                        "Owner type",
-                        "The owner's type, either user or workspace",
-                        {
-                          enum: ["user", "workspace"],
-                        }
-                      ),
-                    },
-                    optionalProperties: {
-                      workspace: makeNullable(
-                        makeBooleanSchema("Workspace", "Is this a workspace?")
-                      ),
-                    },
-                  }),
-                  workspace_name: makeNullable(
-                    makeStringSchema(
-                      "Workspace name",
-                      "The name of the workspace"
-                    )
-                  ),
-                },
-              }),
-            },
-            optionalProperties: {
-              name: makeStringSchema(
-                "The user's full name",
-                "The user's full name"
-              ),
-              avatar_url: makeNullable(
-                makeStringSchema("Avatar URL", "The user's avatar URL")
-              ),
-            },
-          }),
-        ]),
+        schema: UserSchema,
+      },
+    ],
+    default: [errorResponse],
+  },
+};
+
+export const listUsers: EndpointSpec = {
+  path: "/users",
+  method: "GET",
+  metadata: {
+    name: "listUsers",
+    description: `Returns a paginated list of Users for the workspace. The response may contain fewer than page_size of results.`,
+    displayProperties: {
+      title: "List users",
+    },
+    externalDocs: {
+      description: "API method documentation",
+      url: "https://developers.notion.com/reference/get-users",
+    },
+    tags: ["users"],
+  },
+  security: {
+    api_key: [],
+  },
+  parameters: [
+    VersionHeaderParam,
+    {
+      name: "start_cursor",
+      in: "query",
+      description:
+        "The cursor to start from. If not provided, the default is to start from the beginning of the list.",
+      schema: {
+        type: "string",
+      },
+      required: false,
+    },
+    {
+      name: "page_size",
+      in: "query",
+      description: "The number of results to return. The maximum is 100.",
+      schema: {
+        type: "integer",
+      },
+      required: false,
+    },
+  ],
+  request: {},
+  responses: {
+    200: [
+      {
+        success: true,
+        name: "Success",
+        description: "Typical success response",
+        schema: makeObjectSchema("ListUsersResponse", {
+          requiredProperties: {
+            results: makeArraySchema("Users", UserSchema),
+            has_more: makeBooleanSchema(
+              "Has more",
+              "Whether there are more results"
+            ),
+          },
+          optionalProperties: {
+            next_cursor: makeNullable(
+              makeStringSchema(
+                "Next cursor",
+                "Use this to get the next page of results"
+              )
+            ),
+            type: makeStringSchema("Type", "The type of items in the results", {
+              enum: [
+                "user",
+                "block",
+                "page",
+                "database",
+                "property_item",
+                "page_or_database",
+              ],
+            }),
+            object: makeStringSchema("Object", "The object type, always list", {
+              enum: ["list"],
+            }),
+          },
+        }),
       },
     ],
     default: [errorResponse],
