@@ -12,7 +12,9 @@
     "lint": "eslint --no-error-on-unmatched-pattern src/**",
     "lint-fix": "eslint --no-error-on-unmatched-pattern --fix src/**",
     "generate-integrations": "tsx src/trigger/sdk/generate.ts",
-    "generate": "prisma generate"
+    "generate": "prisma generate",
+    "db:migrate:deploy": "prisma migrate deploy",
+    "db:migrate:dev": "prisma migrate dev"
   },
   "dependencies": {
     "@cfworker/json-schema": "^1.12.5",
