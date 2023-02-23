@@ -62,9 +62,7 @@
             "packages/internal-pulsar/src/**",
             "./pnpm-lock.yaml"
           ],
-          "dependsOn": [
-            "p-db"
-          ],
+          "dependsOn": ["p-db"],
           "envVariables": {
             "FROM_EMAIL": "Trigger.dev <hello@email.trigger.dev>",
             "REPLY_TO_EMAIL": "hello@trigger.dev",
@@ -254,7 +252,8 @@
         "DOCKER_USERNAME": "maverickdotdev",
         "DOCKER_PASSWORD": {
           "fromParameterStore": "/Docker/Password"
-        }
+        },
+        "OTEL_EXPORTER_OTLP_ENDPOINT": "http://otel-collector:4317"
       },
       "services": [
         {
@@ -293,9 +292,7 @@
             "packages/internal-pulsar/src/**",
             "./pnpm-lock.yaml"
           ],
-          "dependsOn": [
-            "s-db"
-          ],
+          "dependsOn": ["s-db"],
           "envVariables": {
             "APP_ENV": "staging",
             "FROM_EMAIL": "Trigger.dev <hello@email.trigger.dev>",

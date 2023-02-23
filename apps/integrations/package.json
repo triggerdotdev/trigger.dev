@@ -6,7 +6,7 @@
   "main": "./dist/index.js",
   "scripts": {
     "build": "tsup",
-    "start": "node dist/index.js",
+    "start": "node -r @traceloop/instrument-opentelemetry dist/index.js",
     "dev": "concurrently \"tsup --watch\" \"nodemon -r dotenv/config -q dist/index.js\"",
     "test": "vitest",
     "lint": "eslint --no-error-on-unmatched-pattern src/**",
@@ -19,6 +19,7 @@
   "dependencies": {
     "@cfworker/json-schema": "^1.12.5",
     "@prisma/client": "^4.3.0",
+    "@traceloop/instrument-opentelemetry": "^0.4.1",
     "express": "^4.18.1",
     "express-async-errors": "^3.1.1",
     "json-pointer": "^0.6.2",

@@ -9,11 +9,12 @@
     "build": "npm run clean && npm run build:tsup",
     "build:tsup": "tsup",
     "dev": "tsx --require ./node_modules/dotenv/config src/index.ts",
-    "start": "node dist/index.js"
+    "start": "node -r @traceloop/instrument-opentelemetry dist/index.js"
   },
   "keywords": [],
   "author": "",
   "dependencies": {
+    "@traceloop/instrument-opentelemetry": "^0.4.1",
     "evt": "^2.4.13",
     "uuid": "^9.0.0",
     "ws": "^8.11.0",
