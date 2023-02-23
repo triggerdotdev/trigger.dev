@@ -12,7 +12,7 @@ import {
   UserSchema,
   VersionHeaderParam,
   YourBotSchema,
-} from "./schemas/common";
+} from "./schemas/primitives";
 
 const errorResponse: EndpointSpecResponse = {
   success: false,
