@@ -45,18 +45,18 @@ program
 
           //loop through each definition and change $refs to point to the Schema instead
           Object.entries(schema.definitions).forEach(([name, definition]) => {
-            const schemaName = `${name}Schema`;
+            const schemaName = schemaFriendlyName(name);
             let text = `export const ${schemaName}: JSONSchema = ${JSON.stringify(
               definition,
               null,
               2
             )};\n\n`;
 
-            //look for { $ref: "#/definitions/{name}" } and replace with name
+            //look for { $ref: "#/definitions/MyTypeName" } and replace with MyTypeNameSchema
             text = text.replace(
-              /\{\s*"\$ref":\s*"#\/definitions\/([a-zA-Z0-9]+)"\s*\}/g,
+              /\{\s*"\$ref":\s*"#\/definitions\/([a-zA-Z0-9%()-|]+)"\s*\}/g,
               (match: string, name: string) => {
-                return `${name}Schema`;
+                return schemaFriendlyName(name);
               }
             );
             typescriptFileText += text;
@@ -87,5 +87,25 @@ program
       }
     }
   );
+
+function schemaFriendlyName(name: string) {
+  //look for Record<string, whatever> and replace with RecordStringWhatever
+  name = decodeURIComponent(name);
+  console.log("name", name);
+  //replace any funky characters
+  name = name.replace(
+    /Record<string,\s*([a-zA-Z%()-|]+)>/g,
+    (match: string, n: string) => {
+      return `${n.replace(/[-()%|]/g, "")}Record`;
+    }
+  );
+
+  return `${capitalizeFirstLetter(name)}Schema`;
+}
+
+//Capitalize the first letter of a string
+function capitalizeFirstLetter(string: string) {
+  return string.charAt(0).toUpperCase() + string.slice(1);
+}
 
 program.parseAsync(process.argv);
