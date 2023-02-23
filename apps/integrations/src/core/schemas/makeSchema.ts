@@ -5,6 +5,7 @@ export function makeStringSchema(
   description?: string,
   options?: {
     defaultValue?: string;
+    const?: string;
     enum?: string[];
   }
 ): JSONSchema {
@@ -23,6 +24,10 @@ export function makeStringSchema(
 
   if (options?.enum) {
     schema.enum = options.enum;
+  }
+
+  if (options?.const) {
+    schema.const = options.const;
   }
 
   return schema;
