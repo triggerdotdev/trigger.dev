@@ -93,6 +93,14 @@ export class WorkflowTestPresenter {
     }
 
     if (workflow.jsonSchema) {
+      // If jsonSchema is just { "$schema": "http://json-schema.org/draft-07/schema#" }, then return an empty object
+      if (
+        Object.keys(workflow.jsonSchema).length === 1 &&
+        // @ts-ignore
+        workflow.jsonSchema["$schema"]
+      ) {
+        return {};
+      }
       // @ts-ignore
       return JSONSchemaFaker.generate(workflow.jsonSchema);
     }

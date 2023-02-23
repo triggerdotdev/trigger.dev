@@ -60,7 +60,8 @@ export default function TemplatePage() {
     if (events !== null) {
       revalidator.revalidate();
     }
-  }, [events, revalidator]);
+    // WARNING Don't put the revalidator in the useEffect deps array or bad things will happen
+  }, [events]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const organizationTemplateByStatus = (
     <OrganizationTemplateByStatus {...loaderData} />
