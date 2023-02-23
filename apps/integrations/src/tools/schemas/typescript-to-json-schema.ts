@@ -91,7 +91,6 @@ program
 function schemaFriendlyName(name: string) {
   //look for Record<string, whatever> and replace with RecordStringWhatever
   name = decodeURIComponent(name);
-  console.log("name", name);
   //replace any funky characters
   name = name.replace(
     /Record<string,\s*([a-zA-Z%()-|]+)>/g,
