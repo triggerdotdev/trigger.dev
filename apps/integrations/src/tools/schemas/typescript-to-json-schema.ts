@@ -45,13 +45,21 @@ program
 
           //loop through each definition and change $refs to point to the Schema instead
           Object.entries(schema.definitions).forEach(([name, definition]) => {
-            replaceRefsWithSchemaRefs(definition);
-
-            typescriptFileText += `export const ${name}: JSONSchema = ${JSON.stringify(
+            const schemaName = `${name}Schema`;
+            let text = `export const ${schemaName}: JSONSchema = ${JSON.stringify(
               definition,
               null,
               2
             )};\n\n`;
+
+            //look for { $ref: "#/definitions/{name}" } and replace with name
+            text = text.replace(
+              /\{\s*"\$ref":\s*"#\/definitions\/([a-zA-Z0-9]+)"\s*\}/g,
+              (match: string, name: string) => {
+                return `${name}Schema`;
+              }
+            );
+            typescriptFileText += text;
           });
 
           //get original file path minus the extension
@@ -79,22 +87,5 @@ program
       }
     }
   );
-
-function replaceRefsWithSchemaRefs(definition: JSONSchema7Definition) {
-  const findRefs = (obj: any) => {
-    Object.entries(obj).forEach(([key, value]) => {
-      if (key === "$ref") {
-        //the name is the last part of the $ref
-        const referencedName = decodeURIComponent(
-          (value as string).replace("#/definitions/", "")
-        );
-        obj[key] = referencedName;
-      } else if (typeof value === "object") {
-        findRefs(value);
-      }
-    });
-  };
-  findRefs(definition);
-}
 
 program.parseAsync(process.argv);
