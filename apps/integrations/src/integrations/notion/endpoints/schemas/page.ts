@@ -10,6 +10,13 @@ import {
   makeOneOf,
   makeStringSchema,
 } from "core/schemas/makeSchema";
+import {
+  PartialUserObjectResponse,
+  PersonUserObjectResponse,
+  UserObjectResponse,
+} from "./person";
+import { DateResponse, FormulaPropertyResponse } from "./formula";
+import { RichTextItemResponse } from "./richText";
 
 export const PageParentSchema = makeOneOf("Page parent", [
   makeObjectSchema("Database", {
@@ -250,48 +257,6 @@ const FilesSchema = makeObjectSchema("Page property files", {
   },
 });
 
-// export type PartialUserObjectResponse = { id: IdRequest; object: "user" }
-// export type UserObjectResponse =
-//   | PersonUserObjectResponse
-//   | BotUserObjectResponse;
-
-//   export type PersonUserObjectResponse = {
-//     type: "person"
-//     person: { email?: string }
-//     name: string | null
-//     avatar_url: string | null
-//     id: IdRequest
-//     object: "user"
-//   }
-
-//   export type BotUserObjectResponse = {
-//     type: "bot"
-//     bot:
-//       | EmptyObject
-//       | {
-//           owner:
-//             | {
-//                 type: "user"
-//                 user:
-//                   | {
-//                       type: "person"
-//                       person: { email: string }
-//                       name: string | null
-//                       avatar_url: string | null
-//                       id: IdRequest
-//                       object: "user"
-//                     }
-//                   | PartialUserObjectResponse
-//               }
-//             | { type: "workspace"; workspace: true }
-//           workspace_name: string | null
-//         }
-//     name: string | null
-//     avatar_url: string | null
-//     id: IdRequest
-//     object: "user"
-//   }
-
 // | {
 //     type: "created_by"
 //     created_by: PartialUserObjectResponse | UserObjectResponse
@@ -301,26 +266,272 @@ const CreatedBySchema = makeObjectSchema("Page property created by", {
   requiredProperties: {
     type: makePropertyTypeSchema("created_by"),
     id: IDSchema,
-    created_by: makeNullable(UserObjectResponseSchema),
+    created_by: makeOneOf("Created by", [
+      PartialUserObjectResponse,
+      PersonUserObjectResponse,
+    ]),
   },
 });
 
 // | { type: "created_time"; created_time: string; id: string }
+const CreatedTimeSchema = makeObjectSchema("Page property created time", {
+  requiredProperties: {
+    type: makePropertyTypeSchema("created_time"),
+    id: IDSchema,
+    created_time: makeStringSchema("Created time", "The created time"),
+  },
+});
+
 // | {
 //     type: "last_edited_by"
 //     last_edited_by: PartialUserObjectResponse | UserObjectResponse
 //     id: string
 //   }
+const LastEditedBySchema = makeObjectSchema("Page property last edited by", {
+  requiredProperties: {
+    type: makePropertyTypeSchema("last_edited_by"),
+    id: IDSchema,
+    last_edited_by: makeOneOf("Last edited by", [
+      PartialUserObjectResponse,
+      PersonUserObjectResponse,
+    ]),
+  },
+});
+
 // | { type: "last_edited_time"; last_edited_time: string; id: string }
+const LastEditedTimeSchema = makeObjectSchema(
+  "Page property last edited time",
+  {
+    requiredProperties: {
+      type: makePropertyTypeSchema("last_edited_time"),
+      id: IDSchema,
+      last_edited_time: makeStringSchema(
+        "Last edited time",
+        "The last edited time"
+      ),
+    },
+  }
+);
+
 // | { type: "formula"; formula: FormulaPropertyResponse; id: string }
+const FormulaSchema = makeObjectSchema("Page property formula", {
+  requiredProperties: {
+    type: makePropertyTypeSchema("formula"),
+    id: IDSchema,
+    formula: FormulaPropertyResponse,
+  },
+});
+
 // | { type: "title"; title: Array<RichTextItemResponse>; id: string }
+const TitleSchema = makeObjectSchema("Page property title", {
+  requiredProperties: {
+    type: makePropertyTypeSchema("title"),
+    id: IDSchema,
+    title: makeArraySchema("Title", RichTextItemResponse),
+  },
+});
+
 // | { type: "rich_text"; rich_text: Array<RichTextItemResponse>; id: string }
+const RichTextSchema = makeObjectSchema("Page property rich text", {
+  requiredProperties: {
+    type: makePropertyTypeSchema("rich_text"),
+    id: IDSchema,
+    rich_text: makeArraySchema("Rich text", RichTextItemResponse),
+  },
+});
+
 // | {
 //     type: "people"
 //     people: Array<PartialUserObjectResponse | UserObjectResponse>
 //     id: string
 //   }
+const PeopleSchema = makeObjectSchema("Page property people", {
+  requiredProperties: {
+    type: makePropertyTypeSchema("people"),
+    id: IDSchema,
+    people: makeArraySchema("People", [
+      PartialUserObjectResponse,
+      UserObjectResponse,
+    ]),
+  },
+});
+
 // | { type: "relation"; relation: Array<{ id: string }>; id: string }
+const RelationSchema = makeObjectSchema("Page property relation", {
+  requiredProperties: {
+    type: makePropertyTypeSchema("relation"),
+    id: IDSchema,
+    relation: makeArraySchema(
+      "Relation",
+      makeObjectSchema("Relation", {
+        requiredProperties: {
+          id: makeStringSchema("ID", "The ID of the relation"),
+        },
+      })
+    ),
+  },
+});
+
+// type RollupFunction =
+//   | "count"
+//   | "count_values"
+//   | "empty"
+//   | "not_empty"
+//   | "unique"
+//   | "show_unique"
+//   | "percent_empty"
+//   | "percent_not_empty"
+//   | "sum"
+//   | "average"
+//   | "median"
+//   | "min"
+//   | "max"
+//   | "range"
+//   | "earliest_date"
+//   | "latest_date"
+//   | "date_range"
+//   | "checked"
+//   | "unchecked"
+//   | "percent_checked"
+//   | "percent_unchecked"
+//   | "count_per_group"
+//   | "percent_per_group"
+//   | "show_original"
+const RollupFunction = makeStringSchema(
+  "Rollup function",
+  "The function of the rollup",
+  {
+    enum: [
+      "count",
+      "count_values",
+      "empty",
+      "not_empty",
+      "unique",
+      "show_unique",
+      "percent_empty",
+      "percent_not_empty",
+      "sum",
+      "average",
+      "median",
+      "min",
+      "max",
+      "range",
+      "earliest_date",
+      "latest_date",
+      "date_range",
+      "checked",
+      "unchecked",
+      "percent_checked",
+      "percent_unchecked",
+      "count_per_group",
+      "percent_per_group",
+      "show_original",
+    ],
+  }
+);
+
+// { type: "number"; number: number | null; function: RollupFunction }
+const RollupNumberSchema = makeObjectSchema("Rollup number", {
+  requiredProperties: {
+    type: makeStringSchema("Type", "The type of the rollup", {
+      const: "number",
+    }),
+    number: makeNullable(
+      makeNumberSchema("Number", "The number of the rollup")
+    ),
+    function: RollupFunction,
+  },
+});
+
+//{
+//   type: "date"
+//   date: DateResponse | null
+//   function: RollupFunction
+// }
+const RollupDateSchema = makeObjectSchema("Rollup date", {
+  requiredProperties: {
+    type: makeStringSchema("Type", "The type of the rollup", {
+      const: "date",
+    }),
+    date: makeNullable(DateResponse),
+    function: RollupFunction,
+  },
+});
+
+// {
+//   type: "array"
+//   array: Array<
+//     | { type: "title"; title: Array<RichTextItemResponse> }
+//     | { type: "rich_text"; rich_text: Array<RichTextItemResponse> }
+//     | {
+//         type: "people"
+//         people: Array<
+//           PartialUserObjectResponse | UserObjectResponse
+//         >
+//       }
+//     | { type: "relation"; relation: Array<{ id: string }> }
+//   >
+//   function: RollupFunction
+// }
+const RollupArraySchema = makeObjectSchema("Rollup array", {
+  requiredProperties: {
+    type: makeStringSchema("Type", "The type of the rollup", {
+      const: "array",
+    }),
+    function: RollupFunction,
+    array: makeArraySchema(
+      "Array",
+      makeOneOf("Array item", [
+        makeObjectSchema("Array item title", {
+          requiredProperties: {
+            type: makeStringSchema("Type", "The type of the array item", {
+              const: "title",
+            }),
+            title: makeArraySchema("Title", RichTextItemResponse),
+          },
+        }),
+        makeObjectSchema("Array item rich text", {
+          requiredProperties: {
+            type: makeStringSchema("Type", "The type of the array item", {
+              const: "rich_text",
+            }),
+            rich_text: makeArraySchema("Rich text", RichTextItemResponse),
+          },
+        }),
+        makeObjectSchema("Array item people", {
+          requiredProperties: {
+            type: makeStringSchema("Type", "The type of the array item", {
+              const: "people",
+            }),
+            people: makeArraySchema(
+              "People",
+              makeOneOf("People", [
+                PartialUserObjectResponse,
+                UserObjectResponse,
+              ])
+            ),
+          },
+        }),
+        makeObjectSchema("Array item relation", {
+          requiredProperties: {
+            type: makeStringSchema("Type", "The type of the array item", {
+              const: "relation",
+            }),
+            relation: makeArraySchema(
+              "Relation",
+              makeObjectSchema("Relation", {
+                requiredProperties: {
+                  id: makeStringSchema("ID", "The ID of the relation"),
+                },
+              })
+            ),
+          },
+        }),
+      ])
+    ),
+  },
+});
+
 // | {
 //     type: "rollup"
 //     rollup:
@@ -347,6 +558,19 @@ const CreatedBySchema = makeObjectSchema("Page property created by", {
 //         }
 //     id: string
 //   }
+export const RollupSchema = makeObjectSchema("Page property rollup", {
+  requiredProperties: {
+    type: makePropertyTypeSchema("rollup"),
+    id: IDSchema,
+    rollup: makeOneOf("Rollup", [
+      RollupNumberSchema,
+      RollupDateSchema,
+      RollupArraySchema,
+    ]),
+  },
+});
+
+//todo
 export const PagePropertySchema: JSONSchema = makeOneOf("PageProperty", []);
 
 export const PageSchema: JSONSchema = {

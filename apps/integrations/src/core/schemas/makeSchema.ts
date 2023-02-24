@@ -62,6 +62,7 @@ export function makeBooleanSchema(
   options?: {
     defaultValue?: boolean;
     enum?: boolean;
+    const?: boolean;
   }
 ): JSONSchema {
   const schema: JSONSchema = {
@@ -79,6 +80,10 @@ export function makeBooleanSchema(
 
   if (options?.enum) {
     schema.enum = [options.enum];
+  }
+
+  if (options?.const) {
+    schema.const = options.const;
   }
 
   return schema;

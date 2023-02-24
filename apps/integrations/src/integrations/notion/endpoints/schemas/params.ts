@@ -1,5 +1,4 @@
 import { EndpointSpecParameter } from "core/endpoint/types";
-import { makeStringSchema } from "core/schemas/makeSchema";
 
 export const VersionHeaderParam: EndpointSpecParameter = {
   name: "Notion-Version",
@@ -11,5 +10,3 @@ export const VersionHeaderParam: EndpointSpecParameter = {
   },
   required: true,
 };
-
-export const IdRequest = makeStringSchema("IdRequest", "IdRequest");
