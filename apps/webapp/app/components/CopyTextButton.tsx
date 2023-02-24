@@ -16,6 +16,7 @@ const variantStyle = {
 
 export type CopyTextButtonProps = {
   value: string;
+  text?: string;
   className?: string;
   variant?: "slate" | "blue" | "darkTransparent" | "lightTransparent" | "text";
 };
@@ -23,6 +24,7 @@ export type CopyTextButtonProps = {
 export function CopyTextButton({
   value,
   className,
+  text,
   variant = "blue",
 }: CopyTextButtonProps) {
   const [copied, setCopied] = useState(false);
@@ -58,7 +60,7 @@ export function CopyTextButton({
   );
 }
 
-export function CopyTextPanel({ value, className }: CopyTextButtonProps) {
+export function CopyTextPanel({ value, text, className }: CopyTextButtonProps) {
   const [copied, setCopied] = useState(false);
   const onCopied = useCallback(() => {
     setCopied(true);
@@ -70,12 +72,12 @@ export function CopyTextPanel({ value, className }: CopyTextButtonProps) {
     <CopyText className={`${className}`} value={value} onCopied={onCopied}>
       {copied ? (
         <div className={copyTextPanelStyles}>
-          <span className="truncate font-mono text-sm">{value}</span>
+          <span className="truncate font-mono text-sm">{text ?? value}</span>
           <CheckIcon className="h-5 w-5 min-w-[1.25rem] text-green-500" />
         </div>
       ) : (
         <div className={copyTextPanelStyles}>
-          <span className="truncate font-mono text-sm">{value}</span>
+          <span className="truncate font-mono text-sm">{text ?? value}</span>
           <ClipboardIcon className="h-5 w-5 min-w-[1.25rem]" />
         </div>
       )}

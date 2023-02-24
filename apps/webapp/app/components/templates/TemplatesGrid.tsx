@@ -11,9 +11,11 @@ import { TemplateOverview } from "./TemplateOverview";
 export function TemplatesGrid({
   templates,
   openInNewPage,
+  commandFlags,
 }: {
   templates: Array<TemplateListItem>;
   openInNewPage: boolean;
+  commandFlags?: string;
 }) {
   const [openedTemplate, setOpenedTemplate] = useState<TemplateListItem | null>(
     null
@@ -64,7 +66,10 @@ export function TemplatesGrid({
                   </Body>
                 </div>
                 <CopyTextPanel
-                  value={`npm create trigger ${template.slug}`}
+                  value={`npm create trigger@latest ${template.slug}${
+                    commandFlags ? ` ${commandFlags}` : ``
+                  }`}
+                  text={`npm create trigger ${template.slug}`}
                   className="mt-5"
                 />
               </div>

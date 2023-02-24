@@ -48,3 +48,17 @@ export function useCurrentEnvironment(): RuntimeEnvironment | undefined {
   );
   return currentEnvironment;
 }
+
+export function useDevEnvironment(): RuntimeEnvironment | undefined {
+  const routeMatch = useMatchesData("routes/__app/orgs/$organizationSlug");
+
+  if (
+    !routeMatch ||
+    !isRuntimeEnvironments(routeMatch.data.organization.environments)
+  ) {
+    return undefined;
+  }
+  return routeMatch.data.organization.environments.find(
+    (environment: any) => environment.slug === "development"
+  );
+}
