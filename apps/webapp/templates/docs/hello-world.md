@@ -1,4 +1,4 @@
-Currently this repo only has a single [customEvent](https://docs.trigger.dev/triggers/custom-events) trigger:
+Currently this template only has a single [customEvent](https://docs.trigger.dev/triggers/custom-events) trigger:
 
 ```ts
 import { Trigger, customEvent } from "@trigger.dev/sdk";
