@@ -1,10 +1,9 @@
-import { ArrowRightIcon } from "@heroicons/react/20/solid";
 import classNames from "classnames";
 import { Fragment } from "react";
 import type { TemplateListItem } from "~/presenters/templateListPresenter.server";
 import { ApiLogoIcon } from "../code/ApiLogoIcon";
-import { OctoKitty } from "../GitHubLoginButton";
-import { TertiaryA, ToxicLink } from "../primitives/Buttons";
+import { CopyTextPanel } from "../CopyTextButton";
+import { SecondaryA } from "../primitives/Buttons";
 import { Body } from "../primitives/text/Body";
 import { Header1 } from "../primitives/text/Headers";
 
@@ -92,26 +91,38 @@ function TemplateDetails({
       <div className="mb-2 flex items-center">
         <Body
           size="extra-small"
-          className="uppercase tracking-wide text-slate-500"
+          className="whitespace-nowrap uppercase tracking-wide text-slate-500"
         >
-          Repo
+          Help and guides
         </Body>
         <div className="ml-2 h-px w-full bg-slate-800" />
       </div>
-      <TertiaryA href={repositoryUrl} target="_blank" className="mb-8">
-        <OctoKitty className="h-4 w-4" />
-        <Body size="small" className="truncate font-mono">
-          {repositoryUrl.replace("https://github.com/triggerdotdev", "")}
+      <div className="mb-6 grid grid-cols-2 gap-2">
+        <SecondaryA
+          href={repositoryUrl}
+          target="_blank"
+          className="!max-w-full"
+        >
+          View Repo
+        </SecondaryA>
+        <SecondaryA
+          href="https://docs.trigger.dev"
+          target="_blank"
+          className="!max-w-full"
+        >
+          View Docs
+        </SecondaryA>
+      </div>
+      <div className="mb-2 flex items-center">
+        <Body
+          size="extra-small"
+          className="whitespace-nowrap uppercase tracking-wide text-slate-500"
+        >
+          Run this command to get started
         </Body>
-      </TertiaryA>
-      <ToxicLink
-        size="large"
-        className="group flex h-12 min-w-full"
-        to={`../../templates/add?templateId=${id}`}
-      >
-        <span> Use this template </span>
-        <ArrowRightIcon className="ml-1 h-5 w-5 transition group-hover:translate-x-0.5" />
-      </ToxicLink>
+        <div className="ml-2 h-px w-full bg-slate-800" />
+      </div>
+      <CopyTextPanel value={`npm create trigger@latest ${template.slug}`} />
     </div>
   );
 }
