@@ -55,7 +55,7 @@ export function WorkflowConnections({
           You will be able to authenticate APIs on demand when your workflow
           runs. You can also{" "}
           <Link
-            to="../integrations"
+            to={`/orgs/${organization.slug}/integrations`}
             className="text-slate-500 underline decoration-slate-500 underline-offset-4 transition hover:text-slate-400"
           >
             connect them now

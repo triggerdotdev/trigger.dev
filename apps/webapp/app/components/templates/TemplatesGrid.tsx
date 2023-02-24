@@ -2,7 +2,7 @@ import { XCircleIcon } from "@heroicons/react/24/solid";
 import { Link } from "@remix-run/react";
 import { Fragment, useState } from "react";
 import type { TemplateListItem } from "~/presenters/templateListPresenter.server";
-import { ApiLogoIcon } from "../code/ApiLogoIcon";
+import { CopyTextPanel } from "../CopyTextButton";
 import { StyledDialog } from "../primitives/Dialog";
 import { Body } from "../primitives/text/Body";
 import { Header1 } from "../primitives/text/Headers";
@@ -47,15 +47,15 @@ export function TemplatesGrid({
               openInNewPage={openInNewPage}
               onClick={() => setOpenedTemplate(template)}
             >
-              <div className="h-32 w-full bg-slate-600 transition group-hover:opacity-90">
+              <div className="w-full bg-slate-600 transition group-hover:opacity-90">
                 <img
                   src={template.imageUrl}
-                  alt=""
+                  alt={template.title}
                   className="h-32 w-full object-cover"
                 />
               </div>
-              <div className="flex h-full flex-col place-content-between p-4">
-                <div className="flex flex-col gap-y-2 ">
+              <div className="flex h-full w-full flex-col justify-between p-5">
+                <div className="flex flex-col gap-y-2">
                   <Header1 size="small" className="font-semibold">
                     {template.title}
                   </Header1>
@@ -63,17 +63,10 @@ export function TemplatesGrid({
                     {template.description}
                   </Body>
                 </div>
-                <div className="mt-2 flex flex-row gap-x-1">
-                  {template.services.map((service) => (
-                    <div key={service.service} className="">
-                      <ApiLogoIcon
-                        integration={service}
-                        size="regular"
-                        className="mt-2 flex h-8 w-8 items-center justify-center rounded border-[1px] border-slate-700 bg-slate-900 transition group-hover:border-slate-600 group-hover:bg-slate-900/80"
-                      />
-                    </div>
-                  ))}
-                </div>
+                <CopyTextPanel
+                  value={`npm create trigger@latest ${template.slug}`}
+                  className="mt-5"
+                />
               </div>
             </TemplateButtonOrLink>
           );

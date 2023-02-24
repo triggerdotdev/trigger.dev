@@ -22,22 +22,25 @@ export type TriggerEvent<TSchema extends z.ZodTypeAny> = {
 
 export type TriggerCustomEventOptions<TSchema extends z.ZodTypeAny> = {
   name: string;
-  schema: TSchema;
+  schema?: TSchema;
   filter?: EventFilter;
 };
 
 export function customEvent<TSchema extends z.ZodTypeAny>(
   options: TriggerCustomEventOptions<TSchema>
 ): TriggerEvent<TSchema> {
+  const schema = options.schema ?? z.any();
+
   return {
     metadata: {
       type: "CUSTOM_EVENT",
       service: "trigger",
       name: options.name,
       filter: { event: [options.name], payload: options.filter ?? {} },
-      schema: zodToJsonSchema(options.schema) as CustomEventTrigger["schema"],
+      schema: zodToJsonSchema(schema) as CustomEventTrigger["schema"],
     },
-    schema: options.schema,
+    // @ts-ignore
+    schema,
   };
 }
 
@@ -58,7 +61,7 @@ export function scheduleEvent(
 }
 
 export type TriggerWebhookEventOptions<TSchema extends z.ZodTypeAny> = {
-  schema: TSchema;
+  schema?: TSchema;
   service: string;
   eventName: string;
   filter?: EventFilter;
@@ -71,6 +74,8 @@ export type TriggerWebhookEventOptions<TSchema extends z.ZodTypeAny> = {
 export function webhookEvent<TSchema extends z.ZodTypeAny>(
   options: TriggerWebhookEventOptions<TSchema>
 ): TriggerEvent<TSchema> {
+  const schema = options.schema ?? z.any();
+
   return {
     metadata: {
       type: "WEBHOOK",
@@ -86,8 +91,9 @@ export function webhookEvent<TSchema extends z.ZodTypeAny>(
         event: options.eventName,
       },
       manualRegistration: true,
-      schema: zodToJsonSchema(options.schema) as WebhookEventTrigger["schema"],
+      schema: zodToJsonSchema(schema) as WebhookEventTrigger["schema"],
     },
+    // @ts-ignore
     schema: options.schema,
   };
 }

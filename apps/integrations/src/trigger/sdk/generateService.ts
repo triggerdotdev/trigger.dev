@@ -27,6 +27,16 @@ export async function generateService(service: Service) {
     //do nothing
   }
 
+  //read existing CHANGELOG.md if there is one
+  let originalChangelog: string | undefined = undefined;
+  try {
+    originalChangelog = await fs.readFile(`${absolutePath}/CHANGELOG.md`, {
+      encoding: "utf-8",
+    });
+  } catch (e) {
+    //do nothing
+  }
+
   //remove folder
   console.log(`Removing ${absolutePath}`);
   rimraf.sync(absolutePath);
@@ -59,6 +69,14 @@ export async function generateService(service: Service) {
         service
       );
     }
+
+    if (originalChangelog) {
+      project.createSourceFile(
+        `${absolutePath}/CHANGELOG.md`,
+        originalChangelog
+      );
+    }
+
     const functionsData = await generateFunctionData(service);
     await createFunctionsAndTypesFiles(
       project,

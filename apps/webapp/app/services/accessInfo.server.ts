@@ -1,7 +1,7 @@
 import type { APIConnection } from ".prisma/client";
 import type { AccessInfo } from "@trigger.dev/integration-sdk";
 import { apiKeyConfigSchema } from "~/models/apiConnection.server";
-import { pizzly } from "./pizzly.server";
+import { nango } from "./pizzly.server";
 
 export async function getAccessInfo(
   connection: APIConnection
@@ -9,7 +9,7 @@ export async function getAccessInfo(
   switch (connection.authenticationMethod) {
     case "OAUTH": {
       try {
-        const accessToken = await pizzly.accessToken(
+        const accessToken = await nango.getToken(
           connection.apiIdentifier,
           connection.id
         );
