@@ -230,9 +230,14 @@ const promptApiKey = async (): Promise<string | undefined> => {
     message: "Enter your development API key (optional)",
     default: undefined,
     validate: (input) => {
-      // Make sure they enter something like trigger_development_********
-      if (input && !input.startsWith("trigger_development_")) {
-        return "Please enter a valid API key (e.g. trigger_development_********) or leave blank to skip";
+      // Make sure they enter something like trigger_development_******** or trigger_dev_********
+      if (input) {
+        if (
+          !input.startsWith("trigger_development_") ||
+          !input.startsWith("trigger_dev_")
+        ) {
+          return "Please enter a valid development API key or leave blank to skip";
+        }
       }
 
       return true;
@@ -241,7 +246,9 @@ const promptApiKey = async (): Promise<string | undefined> => {
 
   if (apiKey) {
     logger.success(
-      `Fantastic! We'll save the API key (trigger_development_********) in the .env file.`
+      `Fantastic! We'll save the API key (${obfuscateApiKey(
+        apiKey
+      )}) in the .env file.`
     );
   }
 
@@ -292,4 +299,13 @@ const promptInstall = async (): Promise<boolean> => {
   }
 
   return install;
+};
+
+export const obfuscateApiKey = (apiKey: string) => {
+  const [prefix, slug, secretPart] = apiKey.split("_") as [
+    string,
+    string,
+    string
+  ];
+  return `${prefix}_${slug}_${"*".repeat(secretPart.length)}`;
 };

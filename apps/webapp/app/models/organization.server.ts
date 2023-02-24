@@ -4,6 +4,7 @@ import slug from "slug";
 import { customAlphabet } from "nanoid";
 import { generateTwoRandomWords } from "~/utils/randomWords";
 import { taskQueue } from "~/services/messageBroker.server";
+import { DEV_ENVIRONMENT, LIVE_ENVIRONMENT } from "~/consts";
 
 export type { Organization } from ".prisma/client";
 
@@ -67,6 +68,11 @@ export function getOrganizations({ userId }: { userId: User["id"] }) {
   return prisma.organization.findMany({
     where: { users: { some: { id: userId } } },
     orderBy: { createdAt: "desc" },
+    include: {
+      environments: {
+        orderBy: { slug: "asc" },
+      },
+    },
   });
 }
 
@@ -144,8 +150,8 @@ export async function createOrganization({
 
   if (organization) {
     // Create the dev and prod environments
-    await createEnvironment(organization, "development");
-    await createEnvironment(organization, "live");
+    await createEnvironment(organization, DEV_ENVIRONMENT);
+    await createEnvironment(organization, LIVE_ENVIRONMENT);
 
     await taskQueue.publish("ORGANIZATION_CREATED", {
       id: organization.id,

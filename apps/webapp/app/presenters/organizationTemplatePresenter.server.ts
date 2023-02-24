@@ -5,6 +5,7 @@ import { renderMarkdown } from "~/services/renderMarkdown.server";
 import type { TemplateListItem } from "./templateListPresenter.server";
 import { WorkflowsPresenter } from "../presenters/workflowsPresenter.server";
 import { getServiceMetadatas } from "~/models/integrations.server";
+import { DEV_ENVIRONMENT, LIVE_ENVIRONMENT } from "~/consts";
 
 export class OrganizationTemplatePresenter {
   #prismaClient: PrismaClient;
@@ -71,10 +72,10 @@ export class OrganizationTemplatePresenter {
 
     const developmentApiKey =
       organizationTemplate.organization.environments.find(
-        (e) => e.slug === "development"
+        (e) => e.slug === DEV_ENVIRONMENT
       )?.apiKey;
     const liveApiKey = organizationTemplate.organization.environments.find(
-      (e) => e.slug === "live"
+      (e) => e.slug === LIVE_ENVIRONMENT
     )?.apiKey;
 
     return {

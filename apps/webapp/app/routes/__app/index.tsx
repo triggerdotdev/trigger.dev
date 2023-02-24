@@ -8,8 +8,9 @@ import classNames from "classnames";
 import { CopyTextPanel } from "~/components/CopyTextButton";
 import { Body } from "~/components/primitives/text/Body";
 import { Header4 } from "~/components/primitives/text/Headers";
+import type { MatchedOrganization } from "~/hooks/useOrganizations";
 import { useOrganizations } from "~/hooks/useOrganizations";
-import type { Organization } from "~/models/organization.server";
+import { environmentShortName, obfuscateApiKey } from "~/utils";
 
 export default function AppLayout() {
   const organizations = useOrganizations();
@@ -51,7 +52,7 @@ export default function AppLayout() {
 function OrganizationGrid({
   organizations,
 }: {
-  organizations: Organization[];
+  organizations: MatchedOrganization[];
 }) {
   return (
     <>
@@ -68,7 +69,7 @@ function OrganizationGrid({
 function OrganizationGridItem({
   organization,
 }: {
-  organization: Organization;
+  organization: MatchedOrganization;
 }) {
   return (
     <li key={organization.id} className="h-full w-full">
@@ -89,32 +90,25 @@ function OrganizationGridItem({
         )}
         <Header4 className="mb-6">{organization.title}</Header4>
         <div className="flex w-full flex-col gap-1">
-          <div className="flex w-full items-center gap-0.5">
-            <Body
-              size="extra-small"
-              className="-rotate-90 uppercase tracking-wider text-slate-500"
+          {organization.environments.map((environment) => (
+            <div
+              key={environment.id}
+              className="flex w-full items-center gap-0.5"
             >
-              Dev
-            </Body>
-            <CopyTextPanel
-              value="trigger_development_lwlXEjyhSNF4"
-              variant="slate"
-              className="w-[calc(100%-1.8rem)] min-w-[calc(100%-1.8rem)] text-slate-400"
-            />
-          </div>
-          <div className="flex w-full items-center">
-            <Body
-              size="extra-small"
-              className="-rotate-90 uppercase tracking-wider text-slate-500"
-            >
-              Live
-            </Body>
-            <CopyTextPanel
-              value="trigger_development_lwlXEjyhSNF4"
-              variant="slate"
-              className="w-[calc(100%-1.8rem)] min-w-[calc(100%-1.8rem)] text-slate-400"
-            />
-          </div>
+              <Body
+                size="extra-small"
+                className="-rotate-90 uppercase tracking-wider text-slate-500"
+              >
+                {environmentShortName(environment.slug)}
+              </Body>
+              <CopyTextPanel
+                value={environment.apiKey}
+                text={obfuscateApiKey(environment.apiKey)}
+                variant="slate"
+                className="w-[calc(100%-1.8rem)] min-w-[calc(100%-1.8rem)] text-slate-400"
+              />
+            </div>
+          ))}
         </div>
       </Link>
     </li>

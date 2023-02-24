@@ -24,6 +24,7 @@ import { Header1 } from "../primitives/text/Headers";
 import invariant from "tiny-invariant";
 import { CopyText } from "../CopyText";
 import { useCurrentEnvironment } from "~/hooks/useEnvironments";
+import { obfuscateApiKey } from "~/utils";
 
 export function SideMenuContainer({ children }: { children: React.ReactNode }) {
   return <div className="grid h-full grid-cols-[300px_2fr]">{children}</div>;
@@ -213,10 +214,6 @@ function SideMenu({
                       >
                         {environment.slug} api key
                       </Body>
-                      {/* <CopyTextButton
-                        variant="text"
-                        value={environment.apiKey}
-                      /> */}
                     </div>
                     <div className="relative select-all overflow-hidden rounded-sm border border-slate-800 p-1 pl-2 text-sm text-slate-400">
                       <span className="pointer-events-none absolute right-7 top-0 block h-6 w-20 bg-gradient-to-r from-transparent to-slate-950"></span>
@@ -226,7 +223,7 @@ function SideMenu({
                       >
                         <ClipboardDocumentCheckIcon className="h-5 w-5 group-active:text-green-500" />
                       </CopyText>
-                      {environment.apiKey}
+                      {obfuscateApiKey(environment.apiKey)}
                     </div>
                   </li>
                 );

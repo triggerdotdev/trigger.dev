@@ -41,6 +41,7 @@ import { RunsTable } from "~/components/runs/RunsTable";
 import { TriggerBody } from "~/components/triggers/Trigger";
 import { TriggerTypeIcon } from "~/components/triggers/TriggerIcons";
 import { triggerLabel } from "~/components/triggers/triggerLabel";
+import { DEV_ENVIRONMENT } from "~/consts";
 import { useConnectionSlots } from "~/hooks/useConnectionSlots";
 import { useCurrentEnvironment } from "~/hooks/useEnvironments";
 import { useCurrentOrganization } from "~/hooks/useOrganizations";
@@ -107,7 +108,7 @@ export default function Page() {
           className="mb-6"
           message={`This workflow hasn't been connected in the ${environment.slug} environment yet.`}
         ></PanelWarning>
-        {environment.slug === "development" ? (
+        {environment.slug === DEV_ENVIRONMENT ? (
           <ConnectToDevelopmentInstructions environment={environment} />
         ) : (
           <ConnectToLiveInstructions environment={environment} />
