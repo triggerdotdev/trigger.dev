@@ -1,5 +1,11 @@
 # @trigger.dev/sdk
 
+## 0.2.16-next.1
+
+### Patch Changes
+
+- 0932ae7d: Log out when a run first starts as well
+
 ## 0.2.16-next.0
 
 ### Patch Changes
