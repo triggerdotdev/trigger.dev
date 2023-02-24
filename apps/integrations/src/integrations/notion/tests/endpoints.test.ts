@@ -73,31 +73,28 @@ describe("notion.endpoints", async () => {
     stopNock(nockDone);
   });
 
-  //todo when we have a page id
-  // test("getPage", async () => {
-  //   const accessToken = authToken();
+  test("getPage", async () => {
+    const accessToken = authToken();
 
-  //   // const nockDone = await startNock("notion.getPage");
-  //   const data = await endpoints.getPage.request({
-  //     parameters: {
-  //       "Notion-Version": notionVersion,
-  //       page_id: "9257302b-0758-480e-bef1-10889636f107",
-  //     },
-  //     credentials: {
-  //       type: "api_key",
-  //       name: "api_key",
-  //       api_key: accessToken,
-  //       scopes: [""],
-  //     },
-  //   });
+    const nockDone = await startNock("notion.getPage");
+    const data = await endpoints.getPage.request({
+      parameters: {
+        "Notion-Version": notionVersion,
+        page_id: "b4609033-b45a-4fc6-8d15-f06920495ab1",
+      },
+      credentials: {
+        type: "oauth2",
+        name: "oauth",
+        accessToken,
+        scopes: [""],
+      },
+    });
 
-  //   console.log(JSON.stringify(data, null, 2));
-
-  //   expect(data.status).toEqual(200);
-  //   expect(data.success).toEqual(true);
-  //   expect(data.body).not.toBeNull();
-  //   // stopNock(nockDone);
-  // });
+    expect(data.status).toEqual(200);
+    expect(data.success).toEqual(true);
+    expect(data.body).not.toBeNull();
+    stopNock(nockDone);
+  });
 
   test("search (only pages)", async () => {
     const accessToken = authToken();

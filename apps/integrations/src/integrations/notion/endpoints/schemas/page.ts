@@ -2,6 +2,7 @@ import { JSONSchema } from "core/schemas/types";
 import { TimeZoneSchema } from "./timezone";
 import { EmojiRequest } from "./emojis";
 import {
+  makeAnyOf,
   makeArraySchema,
   makeBooleanSchema,
   makeNull,
@@ -807,7 +808,7 @@ export const PageObjectResponse = makeObjectSchema("Page object", {
   optionalProperties: {},
 });
 
-export const GetPageResponse = makeOneOf("Get page response", [
+export const GetPageResponse = makeAnyOf("Get page response", [
   PageObjectResponse,
   PartialPageObjectResponse,
 ]);
