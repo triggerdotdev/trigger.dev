@@ -27,7 +27,7 @@ export const getUser: EndpointSpec = {
     tags: ["users"],
   },
   security: {
-    api_key: [],
+    oauth: [],
   },
   parameters: [
     {
@@ -71,7 +71,7 @@ export const listUsers: EndpointSpec = {
     tags: ["users"],
   },
   security: {
-    api_key: [],
+    oauth: [],
   },
   parameters: [
     VersionHeaderParam,
@@ -125,7 +125,7 @@ export const getBotInfo: EndpointSpec = {
     tags: ["users"],
   },
   security: {
-    api_key: [],
+    oauth: [],
   },
   parameters: [VersionHeaderParam],
   request: {},
@@ -158,7 +158,7 @@ export const getPage: EndpointSpec = {
     tags: ["pages"],
   },
   security: {
-    api_key: [],
+    oauth: [],
   },
   parameters: [
     {
@@ -215,7 +215,7 @@ export const search: EndpointSpec = {
     tags: ["search"],
   },
   security: {
-    api_key: [],
+    oauth: [],
   },
   parameters: [VersionHeaderParam],
   request: {

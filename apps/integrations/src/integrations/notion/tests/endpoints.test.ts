@@ -16,9 +16,9 @@ describe("notion.endpoints", async () => {
         "Notion-Version": notionVersion,
       },
       credentials: {
-        type: "api_key",
-        name: "api_key",
-        api_key: accessToken,
+        type: "oauth2",
+        name: "oauth",
+        accessToken,
         scopes: [""],
       },
     });
@@ -38,9 +38,9 @@ describe("notion.endpoints", async () => {
         "Notion-Version": notionVersion,
       },
       credentials: {
-        type: "api_key",
-        name: "api_key",
-        api_key: accessToken,
+        type: "oauth2",
+        name: "oauth",
+        accessToken,
         scopes: [""],
       },
     });
@@ -60,9 +60,9 @@ describe("notion.endpoints", async () => {
         "Notion-Version": notionVersion,
       },
       credentials: {
-        type: "api_key",
-        name: "api_key",
-        api_key: accessToken,
+        type: "oauth2",
+        name: "oauth",
+        accessToken,
         scopes: [""],
       },
     });
@@ -101,7 +101,6 @@ describe("notion.endpoints", async () => {
 
   test("search", async () => {
     const accessToken = authToken();
-    console.log("accessToken", accessToken);
 
     // const nockDone = await startNock("notion.search");
     const data = await endpoints.search.request({
@@ -112,14 +111,14 @@ describe("notion.endpoints", async () => {
         // query: "product",
       },
       credentials: {
-        type: "api_key",
-        name: "api_key",
-        api_key: accessToken,
+        type: "oauth2",
+        name: "oauth",
+        accessToken,
         scopes: [""],
       },
     });
 
-    console.log(JSON.stringify(data, null, 2));
+    // console.log(JSON.stringify(data, null, 2));
 
     expect(data.status).toEqual(200);
     expect(data.success).toEqual(true);
