@@ -11,7 +11,7 @@ export const loader = async () => {
 export default function NewWorkflowStep1Page() {
   const { templates } = useTypedLoaderData<typeof loader>();
   return (
-    <div className="max-w-xl">
+    <div className="max-w-5xl">
       <SubTitle>
         Install one of these Templates directly into your codebase
       </SubTitle>
