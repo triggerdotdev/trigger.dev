@@ -12,7 +12,11 @@ export const VersionHeaderParam: EndpointSpecParameter = {
   required: true,
 };
 
+// type IdRequest = string | string
 export const IdRequest = makeStringSchema("IdRequest", "IdRequest");
 
 // type EmptyObject = Record<string, never>
 export const EmptyObject = makeObjectSchema("EmptyObject", {});
+
+// type StringRequest = string
+export const StringRequest = makeStringSchema("StringRequest", "StringRequest");

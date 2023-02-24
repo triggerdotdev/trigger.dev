@@ -18,7 +18,36 @@ import {
 } from "./person";
 import { DateResponse, FormulaPropertyResponse } from "./formula";
 import { RichTextItemResponse, TextRequest } from "./richText";
-import { EmptyObject } from "./common";
+
+//{ type: "page_id"; page_id: string }
+export const ParentPageIdSchema = makeObjectSchema("Page", {
+  requiredProperties: {
+    type: makeStringSchema("Type", "The type of the parent", {
+      const: "page_id",
+    }),
+    page_id: makeStringSchema("Page ID", "Unique identifier for this page"),
+  },
+});
+
+//{ type: "workspace"; workspace: true }
+export const ParentWorkspaceSchema = makeObjectSchema("Workspace", {
+  requiredProperties: {
+    type: makeStringSchema("Type", "The type of the parent", {
+      const: "workspace",
+    }),
+    workspace: makeBooleanSchema("Workspace", "Is this a workspace?"),
+  },
+});
+
+//{ type: "block_id"; block_id: string }
+export const ParentBlockSchema = makeObjectSchema("Block", {
+  requiredProperties: {
+    type: makeStringSchema("Type", "The type of the parent", {
+      const: "block_id",
+    }),
+    block_id: makeStringSchema("Block ID", "Unique identifier for this block"),
+  },
+});
 
 export const PageParentSchema = makeOneOf("Page parent", [
   makeObjectSchema("Database", {
@@ -32,33 +61,9 @@ export const PageParentSchema = makeOneOf("Page parent", [
       ),
     },
   }),
-  makeObjectSchema("Page", {
-    requiredProperties: {
-      type: makeStringSchema("Type", "The type of the parent", {
-        const: "page_id",
-      }),
-      page_id: makeStringSchema("Page ID", "Unique identifier for this page"),
-    },
-  }),
-  makeObjectSchema("Block", {
-    requiredProperties: {
-      type: makeStringSchema("Type", "The type of the parent", {
-        const: "block_id",
-      }),
-      block_id: makeStringSchema(
-        "Block ID",
-        "Unique identifier for this block"
-      ),
-    },
-  }),
-  makeObjectSchema("Workspace", {
-    requiredProperties: {
-      type: makeStringSchema("Type", "The type of the parent", {
-        const: "workspace",
-      }),
-      workspace: makeBooleanSchema("Workspace", "Is this a workspace?"),
-    },
-  }),
+  ParentPageIdSchema,
+  ParentBlockSchema,
+  ParentWorkspaceSchema,
 ]);
 
 const IDSchema = makeStringSchema("ID", "Unique identifier for this property");
@@ -87,7 +92,7 @@ const URLSchema = makeObjectSchema("Page property URL", {
   },
 });
 
-const SelectColorSchema = makeStringSchema(
+export const SelectColor = makeStringSchema(
   "Select color option",
   "The color a Select can be",
   {
@@ -106,23 +111,28 @@ const SelectColorSchema = makeStringSchema(
   }
 );
 
-const SelectPropertyResponseSchema = makeObjectSchema(
+// type SelectPropertyResponse = {
+//   id: StringRequest
+//   name: StringRequest
+//   color: SelectColor
+// }
+export const SelectPropertyResponse = makeObjectSchema(
   "Select property response",
   {
     requiredProperties: {
       id: IDSchema,
       name: makeStringSchema("Name", "The name of the select"),
-      color: SelectColorSchema,
+      color: SelectColor,
     },
   }
 );
 
 // | { type: "select"; select: SelectPropertyResponse | null; id: string }
-const SelectSchema = makeObjectSchema("Page property select", {
+export const SelectSchema = makeObjectSchema("Page property select", {
   requiredProperties: {
     type: makePropertyTypeSchema("select"),
     id: IDSchema,
-    select: makeNullable(SelectPropertyResponseSchema),
+    select: makeNullable(SelectPropertyResponse),
   },
 });
 
@@ -137,7 +147,7 @@ const MultiSelectSchema = makeObjectSchema("Page property multi select", {
     id: IDSchema,
     multi_select: makeArraySchema(
       "Multi select options",
-      SelectPropertyResponseSchema
+      SelectPropertyResponse
     ),
   },
 });
@@ -147,7 +157,7 @@ const StatusSchema = makeObjectSchema("Page property status", {
   requiredProperties: {
     type: makePropertyTypeSchema("status"),
     id: IDSchema,
-    status: makeNullable(SelectPropertyResponseSchema),
+    status: makeNullable(SelectPropertyResponse),
   },
 });
 
@@ -399,7 +409,7 @@ const RelationSchema = makeObjectSchema("Page property relation", {
 //   | "count_per_group"
 //   | "percent_per_group"
 //   | "show_original"
-const RollupFunction = makeStringSchema(
+export const RollupFunction = makeStringSchema(
   "Rollup function",
   "The function of the rollup",
   {

@@ -136,6 +136,17 @@ export function makeObjectSchema(
   };
 }
 
+export function makeRecordSchema(
+  title: string,
+  schema: JSONSchema
+): JSONSchema {
+  return {
+    type: "object",
+    title,
+    additionalProperties: schema,
+  };
+}
+
 export function makeNull(): JSONSchema {
   return {
     type: "null",

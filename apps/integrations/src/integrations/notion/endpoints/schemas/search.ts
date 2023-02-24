@@ -9,6 +9,10 @@ import {
   makeStringSchema,
 } from "core/schemas/makeSchema";
 import { EmptyObject } from "./common";
+import {
+  DatabaseObjectResponse,
+  PartialDatabaseObjectResponse,
+} from "./database";
 import { PageObjectResponse, PartialPageObjectResponse } from "./page";
 
 // type SearchBodyParameters = {
@@ -80,8 +84,8 @@ export const SearchResponse = makeObjectSchema("SearchResponse", {
       makeAnyOf("Result", [
         PageObjectResponse,
         PartialPageObjectResponse,
-        //todo PartialDatabaseObjectResponse,
-        //todo DatabaseObjectResponse,
+        PartialDatabaseObjectResponse,
+        DatabaseObjectResponse,
       ])
     ),
   },
