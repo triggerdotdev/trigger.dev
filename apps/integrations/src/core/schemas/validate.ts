@@ -1,6 +1,13 @@
 import { JSONSchema, JSONSchemaError } from "./types";
 import nodeObjectHash from "node-object-hash";
 import Ajv from "ajv";
+import { performance, PerformanceObserver } from "perf_hooks";
+
+//setup performance tracking
+const perfObserver = new PerformanceObserver((items) => {
+  return;
+});
+perfObserver.observe({ entryTypes: ["measure"], buffered: true });
 
 const ajv = new Ajv({
   strict: false,
@@ -41,9 +48,32 @@ export async function validate(
       };
     }
 
+    performance.mark("get-validator-start");
     const validator = getValidator(schema);
+    performance.mark("get-validator-end");
 
+    performance.mark("validate-start");
     const result = validator(data);
+    performance.mark("validate-end");
+
+    const getValidatorPerformance = performance.measure(
+      "get-validator",
+      "get-validator-start",
+      "get-validator-end"
+    );
+    const validatePerformance = performance.measure(
+      "validate",
+      "validate-start",
+      "validate-end"
+    );
+
+    if (process.env.SHOW_PERFORMANCE_TESTS === "true") {
+      console.log("validate benchmarks:", {
+        getValidator: getValidatorPerformance.duration,
+        validate: validatePerformance.duration,
+      });
+    }
+
     if (!result) {
       return {
         success: false as const,
