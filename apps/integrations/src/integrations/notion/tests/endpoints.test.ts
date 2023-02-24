@@ -1,8 +1,6 @@
 import { startNock, stopNock } from "testing/nock";
 import { describe, expect, test } from "vitest";
 import endpoints from "../endpoints/endpoints";
-import { promises as fs } from "fs";
-import { SearchResponse } from "../endpoints/schemas/search";
 const authToken = () => process.env.NOTION_API_KEY ?? "";
 
 const notionVersion = "2022-06-28";
@@ -104,8 +102,7 @@ describe("notion.endpoints", async () => {
   test("search (only pages)", async () => {
     const accessToken = authToken();
 
-    // const nockDone = await startNock("notion.search.pages");
-
+    const nockDone = await startNock("notion.search.pages");
     const data = await endpoints.search.request({
       parameters: {
         "Notion-Version": notionVersion,
@@ -126,20 +123,9 @@ describe("notion.endpoints", async () => {
       },
     });
 
-    await fs.writeFile(
-      `${__dirname}/search-schema.json`,
-      JSON.stringify(SearchResponse, null, 2)
-    );
-
-    await fs.writeFile(
-      `${__dirname}/search.json`,
-      JSON.stringify(data, null, 2)
-    );
-
     expect(data.status).toEqual(200);
     expect(data.success).toEqual(true);
     expect(data.body).not.toBeNull();
-
-    // stopNock(nockDone);
+    stopNock(nockDone);
   });
 });
