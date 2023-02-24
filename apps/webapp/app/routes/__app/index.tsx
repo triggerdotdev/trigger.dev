@@ -1,12 +1,13 @@
 import {
-  BookmarkIcon,
   BuildingOffice2Icon,
   PlusIcon,
   UserIcon,
 } from "@heroicons/react/24/outline";
 import { Link } from "@remix-run/react";
 import classNames from "classnames";
+import { CopyTextPanel } from "~/components/CopyTextButton";
 import { Body } from "~/components/primitives/text/Body";
+import { Header4 } from "~/components/primitives/text/Headers";
 import { useOrganizations } from "~/hooks/useOrganizations";
 import type { Organization } from "~/models/organization.server";
 
@@ -15,8 +16,13 @@ export default function AppLayout() {
 
   return (
     <>
-      <div className="m-20 flex items-center justify-center">
-        <ul className="max-w-8xl grid grid-cols-2 gap-2  md:grid-cols-3 lg:grid-cols-4">
+      <div className="flex h-80 w-full items-center justify-center bg-slate-900/50">
+        <h1 className="relative bottom-6 text-4xl text-slate-400">
+          Your Organizations
+        </h1>
+      </div>
+      <div className="flex items-center justify-center">
+        <ul className="-mt-20 grid max-w-7xl grid-cols-2 gap-2 lg:grid-cols-3">
           {organizations ? (
             <OrganizationGrid organizations={organizations} />
           ) : (
@@ -28,7 +34,7 @@ export default function AppLayout() {
             <Link
               to="orgs/new"
               className={classNames(
-                "border-2 border-slate-800 text-center hover:border-transparent hover:bg-slate-800/50 hover:shadow-md",
+                "h-full border-2 border-slate-800 hover:border-transparent hover:bg-slate-800 hover:shadow-md",
                 boxClasses
               )}
             >
@@ -59,9 +65,6 @@ function OrganizationGrid({
   );
 }
 
-const boxClasses =
-  "flex flex-col gap-4 items-center justify-center min-h-40 rounded-lg px-6 py-6 min-h-[15rem] transition";
-
 function OrganizationGridItem({
   organization,
 }: {
@@ -72,7 +75,7 @@ function OrganizationGridItem({
       <Link
         to={`orgs/${organization.slug}`}
         className={classNames(
-          "bg-slate-800 text-center shadow-md hover:bg-slate-800/50",
+          "bg-slate-800 hover:bg-[rgb(33,43,59)]",
           boxClasses
         )}
       >
@@ -84,8 +87,39 @@ function OrganizationGridItem({
             aria-hidden="true"
           />
         )}
-        {organization.title}
+        <Header4 className="mb-6">{organization.title}</Header4>
+        <div className="flex w-full flex-col gap-1">
+          <div className="flex w-full items-center gap-0.5">
+            <Body
+              size="extra-small"
+              className="-rotate-90 uppercase tracking-wider text-slate-500"
+            >
+              Dev
+            </Body>
+            <CopyTextPanel
+              value="trigger_development_lwlXEjyhSNF4"
+              variant="slate"
+              className="w-[calc(100%-1.8rem)] min-w-[calc(100%-1.8rem)] text-slate-400"
+            />
+          </div>
+          <div className="flex w-full items-center">
+            <Body
+              size="extra-small"
+              className="-rotate-90 uppercase tracking-wider text-slate-500"
+            >
+              Live
+            </Body>
+            <CopyTextPanel
+              value="trigger_development_lwlXEjyhSNF4"
+              variant="slate"
+              className="w-[calc(100%-1.8rem)] min-w-[calc(100%-1.8rem)] text-slate-400"
+            />
+          </div>
+        </div>
       </Link>
     </li>
   );
 }
+
+const boxClasses =
+  "flex flex-col gap-4 w-80 text-center shadow-md items-center justify-center rounded-lg pl-2 pr-4 pb-4 pt-12 min-h-full transition";
