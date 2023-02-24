@@ -14,6 +14,7 @@ import {
   RequestResponse,
   RequestSpec,
 } from "./types";
+import * as Sentry from "@sentry/node";
 
 export async function requestEndpoint(
   { baseUrl, endpointSpec, authentication }: RequestSpec,
@@ -174,6 +175,28 @@ export async function requestEndpoint(
         if (responseValid.errors != null) {
           specErrors.push({ name: spec.name, errors: responseValid.errors });
         }
+      }
+    }
+
+    if (process.env.NODE_ENV === "production") {
+      //if it's a 2xx response, even if it fails validation we'll return it as a success
+      if (response.status >= 200 && response.status < 300) {
+        //we want to report this to Sentry though so we can improve the schemas
+        Sentry.captureException({
+          type: "response_invalid",
+          baseUrl: baseUrl,
+          spec: endpointSpec,
+          status: response.status,
+          body: json,
+          errors: specErrors,
+        });
+
+        return {
+          success: true,
+          status: response.status,
+          headers: normalizeHeaders(response.headers),
+          body: json,
+        };
       }
     }
 
