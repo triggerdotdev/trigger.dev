@@ -1,4 +1,9 @@
-import { BookmarkIcon, PlusIcon } from "@heroicons/react/24/outline";
+import {
+  BookmarkIcon,
+  BuildingOffice2Icon,
+  PlusIcon,
+  UserIcon,
+} from "@heroicons/react/24/outline";
 import { Link } from "@remix-run/react";
 import classNames from "classnames";
 import { Body } from "~/components/primitives/text/Body";
@@ -10,8 +15,8 @@ export default function AppLayout() {
 
   return (
     <>
-      <div className="flex items-center justify-center m-20">
-        <ul className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4  max-w-8xl gap-2">
+      <div className="m-20 flex items-center justify-center">
+        <ul className="max-w-8xl grid grid-cols-2 gap-2  md:grid-cols-3 lg:grid-cols-4">
           {organizations ? (
             <OrganizationGrid organizations={organizations} />
           ) : (
@@ -63,16 +68,23 @@ function OrganizationGridItem({
   organization: Organization;
 }) {
   return (
-    <li key={organization.id} className="w-full h-full">
+    <li key={organization.id} className="h-full w-full">
       <Link
         to={`orgs/${organization.slug}`}
         className={classNames(
-          "bg-slate-800 shadow-md text-center hover:bg-slate-800/50",
+          "bg-slate-800 text-center shadow-md hover:bg-slate-800/50",
           boxClasses
         )}
       >
-        <BookmarkIcon className="h-10 w-10" />
-        {organization.title}{" "}
+        {organization.title === "Personal Workspace" ? (
+          <UserIcon className="h-10 w-10 text-slate-300" aria-hidden="true" />
+        ) : (
+          <BuildingOffice2Icon
+            className="h-10 w-10 text-blue-500"
+            aria-hidden="true"
+          />
+        )}
+        {organization.title}
       </Link>
     </li>
   );
