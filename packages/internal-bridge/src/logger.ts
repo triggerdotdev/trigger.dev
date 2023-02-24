@@ -38,6 +38,12 @@ export class Logger {
     console.log(`${this.#formatName()} `, ...[...args, ...this.#formatTags()]);
   }
 
+  logClean(...args: any[]) {
+    if (this.#level < 1) return;
+
+    console.log(`${this.#formatName()} `, ...args);
+  }
+
   error(...args: any[]) {
     if (this.#level < 2) return;
 

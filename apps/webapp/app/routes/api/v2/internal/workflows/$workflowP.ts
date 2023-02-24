@@ -1,10 +1,11 @@
 import type { ActionArgs } from "@remix-run/server-runtime";
 import { json } from "@remix-run/server-runtime";
 import { z } from "zod";
+import { env } from "~/env.server";
 import { authenticateApiRequest } from "~/services/apiAuth.server";
 import { RegisterWorkflow } from "~/services/workflows/registerWorkflow.server";
 
-// PUT /api/v1/internal/workflows/:workflowP
+// PUT /api/v2/internal/workflows/:workflowP
 export async function action({ request, params }: ActionArgs) {
   // first make sure this is a PUT request
   if (request.method.toUpperCase() !== "PUT") {
@@ -38,9 +39,28 @@ export async function action({ request, params }: ActionArgs) {
       return json({ error: result.errors }, { status: 400 });
     }
     case "isArchived": {
-      return json({ id: result.data.id });
+      return json({ error: "Workflow is archived" }, { status: 400 });
     }
-    case "success":
-      return json({ id: result.data.workflow.id });
+    case "success": {
+      const { workflow, environment, organization, isNew } = result.data;
+
+      const data = {
+        workflow: {
+          id: workflow.id,
+          slug: workflow.slug,
+        },
+        environment: {
+          id: environment.id,
+          slug: environment.slug,
+        },
+        organization: {
+          id: organization.id,
+          slug: organization.slug,
+        },
+        url: `${env.APP_ORIGIN}/orgs/${organization.slug}/workflows/${workflow.slug}`,
+      };
+
+      return json(data, { status: isNew ? 201 : 200 });
+    }
   }
 }
