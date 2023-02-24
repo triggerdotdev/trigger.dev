@@ -62,13 +62,13 @@ export function TemplatesGrid({
                 />
               </div>
               <div className="flex h-full w-full flex-col justify-between p-5">
-                <div className="flex flex-col gap-y-2">
-                  <Header1 size="small" className="font-normal leading-6">
+                <div className="flex flex-col gap-y-3">
+                  <Header1 size="regular" className="text-slate-300">
                     {template.title}
                   </Header1>
-                  <Body size="small" className="text-slate-400">
+                  {/* <Body size="small" className="text-slate-400">
                     {template.description}
-                  </Body>
+                  </Body> */}
                 </div>
                 <CopyTextPanel
                   value={`npm create trigger@latest ${template.slug}${
