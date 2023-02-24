@@ -1,0 +1,68 @@
+{
+  "name": "create-trigger",
+  "version": "0.1.0",
+  "description": "The Trigger.dev CLI to easily create and manage a Trigger.dev project",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/triggerdotdev/trigger.dev.git",
+    "directory": "packages/create-trigger"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "keywords": [
+    "typescript",
+    "trigger.dev",
+    "workflows",
+    "orchestration",
+    "events",
+    "webhooks",
+    "integrations",
+    "apis"
+  ],
+  "files": [
+    "dist"
+  ],
+  "type": "module",
+  "exports": "./dist/index.js",
+  "bin": {
+    "create-trigger": "./dist/index.js"
+  },
+  "devDependencies": {
+    "@types/fs-extra": "^11.0.1",
+    "@types/gradient-string": "^1.1.2",
+    "@types/inquirer": "^9.0.3",
+    "@types/node": "16",
+    "@types/node-fetch": "^2.6.2",
+    "rimraf": "^3.0.2",
+    "tsup": "^6.5.0",
+    "type-fest": "^3.6.0",
+    "typescript": "^4.9.5"
+  },
+  "scripts": {
+    "typecheck": "tsc",
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "clean": "rimraf dist",
+    "start": "node dist/index.js"
+  },
+  "dependencies": {
+    "@types/degit": "^2.8.3",
+    "chalk": "^5.2.0",
+    "commander": "^9.4.1",
+    "degit": "^2.8.4",
+    "execa": "^7.0.0",
+    "fs-extra": "^11.1.0",
+    "gradient-string": "^2.0.2",
+    "inquirer": "^9.1.4",
+    "node-fetch": "^3.3.0",
+    "ora": "^6.1.2",
+    "terminal-link": "^3.0.0"
+  },
+  "engines": {
+    "node": ">=16"
+  }
+}
