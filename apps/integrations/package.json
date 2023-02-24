@@ -21,6 +21,7 @@
     "@cfworker/json-schema": "^1.12.5",
     "@prisma/client": "^4.3.0",
     "@sentry/node": "^7.38.0",
+    "ajv": "^8.12.0",
     "express": "^4.18.1",
     "express-async-errors": "^3.1.1",
     "json-pointer": "^0.6.2",
@@ -29,6 +30,7 @@
     "loglevel": "^1.8.1",
     "morgan": "^1.10.0",
     "node-fetch": "^3.3.0",
+    "node-object-hash": "^2.3.10",
     "zod": "^3.20.2"
   },
   "devDependencies": {

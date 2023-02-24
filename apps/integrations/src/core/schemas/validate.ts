@@ -1,4 +1,11 @@
-import { JSONSchema } from "./types";
+import { JSONSchema, JSONSchemaError } from "./types";
+import nodeObjectHash from "node-object-hash";
+import Ajv from "ajv";
+
+const ajv = new Ajv({
+  strict: false,
+  logger: false,
+});
 
 type SuccessResult = {
   success: true;
@@ -6,12 +13,7 @@ type SuccessResult = {
 
 type FailureResult = {
   success: false;
-  errors: {
-    keyword: string;
-    keywordLocation: string;
-    instanceLocation: string;
-    error: any;
-  }[];
+  errors: JSONSchemaError[];
 };
 
 export async function validate(
@@ -31,21 +33,21 @@ export async function validate(
         errors: [
           {
             keyword: "undefined",
-            keywordLocation: "undefined",
-            instanceLocation: "undefined",
-            error: "data is undefined",
+            instancePath: "undefined",
+            schemaPath: "undefined",
+            params: {},
           },
         ],
       };
     }
 
-    const Validator = await getValidator();
-    const validator = new Validator(schema);
-    const result = validator.validate(data);
-    if (!result.valid) {
+    const validator = getValidator(schema);
+
+    const result = validator(data);
+    if (!result) {
       return {
         success: false as const,
-        errors: result.errors,
+        errors: validator.errors ?? [],
       };
     }
 
@@ -59,16 +61,32 @@ export async function validate(
       errors: [
         {
           keyword: "undefined",
-          keywordLocation: "undefined",
-          instanceLocation: "undefined",
-          error: e.toString(),
+          instancePath: "undefined",
+          schemaPath: "undefined",
+          params: {},
+          message: e.toString(),
         },
       ],
     };
   }
 }
 
-async function getValidator() {
-  const tool = await import("@cfworker/json-schema");
-  return tool.Validator;
+//we are going to has the schemas and use that as the key to find the cached validator
+const hasher = nodeObjectHash({ sort: false });
+
+function getValidator(schema: JSONSchema) {
+  const hash = hasher.hash(schema);
+
+  // get the validator from the cache, if it doesn't exist, add it to the cache
+  let validator = ajv.getSchema(hash);
+  if (validator === undefined) {
+    ajv.addSchema(schema, hash);
+    validator = ajv.getSchema(hash);
+  }
+
+  if (validator === undefined) {
+    throw new Error("Could not get validator");
+  }
+
+  return validator;
 }

@@ -1,5 +1,6 @@
-import { Schema, OutputUnit, InstanceType } from "@cfworker/json-schema";
+import { Schema, InstanceType } from "@cfworker/json-schema";
+import { ErrorObject } from "ajv";
 
 export type JSONSchema = Schema;
 export type JSONSchemaInstanceType = InstanceType;
-export type JSONSchemaError = OutputUnit;
+export type JSONSchemaError = ErrorObject;
