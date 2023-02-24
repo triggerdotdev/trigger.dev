@@ -88,7 +88,7 @@ function TemplateButtonOrLink({
   children: React.ReactNode;
 }) {
   const classNames =
-    "group flex w-full flex-col self-stretch overflow-hidden rounded-md border border-slate-700 bg-slate-800 text-left text-slate-200 shadow-md transition hover:cursor-pointer hover:border-slate-500 hover:bg-slate-700/30 disabled:opacity-50";
+    "group flex w-full flex-col self-stretch overflow-hidden rounded-md border border-slate-700 bg-slate-800 text-left text-slate-200 shadow-md transition hover:cursor-pointer hover:border-slate-600 hover:bg-slate-700/50 disabled:opacity-50";
 
   if (openInNewPage) {
     return (

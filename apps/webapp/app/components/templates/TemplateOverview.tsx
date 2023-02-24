@@ -73,7 +73,7 @@ function TemplateDetails({
             </Body>
             <div className="ml-2 h-px w-full bg-slate-800" />
           </div>
-          <div className="mb-4 flex gap-x-1">
+          <div className="mb-6 flex gap-x-1">
             {template.services.map((service) => (
               <Fragment key={service.service}>
                 <ApiLogoIcon
@@ -97,7 +97,7 @@ function TemplateDetails({
         </Body>
         <div className="ml-2 h-px w-full bg-slate-800" />
       </div>
-      <div className="mb-6 grid grid-cols-2 gap-2">
+      <div className="mb-8 grid grid-cols-2 gap-2">
         <SecondaryA
           href={repositoryUrl}
           target="_blank"
@@ -118,7 +118,7 @@ function TemplateDetails({
           size="extra-small"
           className="whitespace-nowrap uppercase tracking-wide text-slate-500"
         >
-          Run this command to get started
+          Get started
         </Body>
         <div className="ml-2 h-px w-full bg-slate-800" />
       </div>
