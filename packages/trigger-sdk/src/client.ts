@@ -626,6 +626,19 @@ export class TriggerClient<TSchema extends z.ZodTypeAny> {
             () => {
               this.#logger.debug("Running trigger...");
 
+              if (
+                typeof data.meta.attempt === "number" &&
+                data.meta.attempt === 0
+              ) {
+                this.#logger.log(
+                  `Run ${data.id} started 👉 ${terminalLink(
+                    "View on dashboard",
+                    `${this.#registerResponse!.url}/runs/${data.id}`,
+                    { fallback: (text, url) => `${text}: (${url})` }
+                  )}`
+                );
+              }
+
               serverRPC
                 .send("START_WORKFLOW_RUN", {
                   runId: data.id,

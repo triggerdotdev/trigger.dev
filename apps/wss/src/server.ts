@@ -468,6 +468,10 @@ export class TriggerServer {
                   typeof properties["x-is-test"] === "string"
                     ? properties["x-is-test"] === "true"
                     : false,
+                attempt:
+                  typeof properties["x-attempt"] === "string"
+                    ? Number(properties["x-attempt"])
+                    : 0,
               },
             });
 
