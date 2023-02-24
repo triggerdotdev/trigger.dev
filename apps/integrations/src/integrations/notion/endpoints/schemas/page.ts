@@ -61,19 +61,6 @@ function makePropertyTypeSchema(constant: string): JSONSchema {
 }
 
 // | { type: "number"; number: number | null; id: string }
-// | { type: "url"; url: string | null; id: string }
-// | { type: "select"; select: SelectPropertyResponse | null; id: string }
-// | {
-//     type: "multi_select"
-//     multi_select: Array<SelectPropertyResponse>
-//     id: string
-//   }
-// | { type: "status"; status: SelectPropertyResponse | null; id: string }
-// | { type: "date"; date: DateResponse | null; id: string }
-// | { type: "email"; email: string | null; id: string }
-// | { type: "phone_number"; phone_number: string | null; id: string }
-// | { type: "checkbox"; checkbox: boolean; id: string }
-
 const NumberSchema = makeObjectSchema("Page property number", {
   requiredProperties: {
     type: makePropertyTypeSchema("number"),
@@ -82,6 +69,7 @@ const NumberSchema = makeObjectSchema("Page property number", {
   },
 });
 
+// | { type: "url"; url: string | null; id: string }
 const UrlSchema = makeObjectSchema("Page property URL", {
   requiredProperties: {
     type: makePropertyTypeSchema("url"),
@@ -120,6 +108,7 @@ const SelectPropertyResponseSchema = makeObjectSchema(
   }
 );
 
+// | { type: "select"; select: SelectPropertyResponse | null; id: string }
 const SelectSchema = makeObjectSchema("Page property select", {
   requiredProperties: {
     type: makePropertyTypeSchema("select"),
@@ -128,6 +117,11 @@ const SelectSchema = makeObjectSchema("Page property select", {
   },
 });
 
+// | {
+//     type: "multi_select"
+//     multi_select: Array<SelectPropertyResponse>
+//     id: string
+//   }
 const MultiSelectSchema = makeObjectSchema("Page property multi select", {
   requiredProperties: {
     type: makePropertyTypeSchema("multi_select"),
@@ -139,6 +133,7 @@ const MultiSelectSchema = makeObjectSchema("Page property multi select", {
   },
 });
 
+// | { type: "status"; status: SelectPropertyResponse | null; id: string }
 const StatusSchema = makeObjectSchema("Page property status", {
   requiredProperties: {
     type: makePropertyTypeSchema("status"),
@@ -155,6 +150,7 @@ const DateResponseSchema = makeObjectSchema("Date response", {
   },
 });
 
+// | { type: "date"; date: DateResponse | null; id: string }
 const DateSchema = makeObjectSchema("Page property date", {
   requiredProperties: {
     type: makePropertyTypeSchema("date"),
@@ -163,6 +159,7 @@ const DateSchema = makeObjectSchema("Page property date", {
   },
 });
 
+// | { type: "email"; email: string | null; id: string }
 const EmailSchema = makeObjectSchema("Page property email", {
   requiredProperties: {
     type: makePropertyTypeSchema("email"),
@@ -171,6 +168,7 @@ const EmailSchema = makeObjectSchema("Page property email", {
   },
 });
 
+// | { type: "phone_number"; phone_number: string | null; id: string }
 const PhoneNumberSchema = makeObjectSchema("Page property phone number", {
   requiredProperties: {
     type: makePropertyTypeSchema("phone_number"),
@@ -181,6 +179,7 @@ const PhoneNumberSchema = makeObjectSchema("Page property phone number", {
   },
 });
 
+// | { type: "checkbox"; checkbox: boolean; id: string }
 const CheckboxSchema = makeObjectSchema("Page property checkbox", {
   requiredProperties: {
     type: makePropertyTypeSchema("checkbox"),
@@ -205,7 +204,6 @@ const CheckboxSchema = makeObjectSchema("Page property checkbox", {
 //     >
 //     id: string
 //   }
-
 const FilesSchema = makeObjectSchema("Page property files", {
   requiredProperties: {
     type: makePropertyTypeSchema("files"),
@@ -252,19 +250,61 @@ const FilesSchema = makeObjectSchema("Page property files", {
   },
 });
 
-const CreatedBySchema = makeObjectSchema("Page property created by", {
-  requiredProperties: {
-    type: makePropertyTypeSchema("created_by"),
-    id: IDSchema,
-    // created_by: makeNullable(UserObjectResponseSchema),
-  },
-});
+// export type PartialUserObjectResponse = { id: IdRequest; object: "user" }
+// export type UserObjectResponse =
+//   | PersonUserObjectResponse
+//   | BotUserObjectResponse;
+
+//   export type PersonUserObjectResponse = {
+//     type: "person"
+//     person: { email?: string }
+//     name: string | null
+//     avatar_url: string | null
+//     id: IdRequest
+//     object: "user"
+//   }
+
+//   export type BotUserObjectResponse = {
+//     type: "bot"
+//     bot:
+//       | EmptyObject
+//       | {
+//           owner:
+//             | {
+//                 type: "user"
+//                 user:
+//                   | {
+//                       type: "person"
+//                       person: { email: string }
+//                       name: string | null
+//                       avatar_url: string | null
+//                       id: IdRequest
+//                       object: "user"
+//                     }
+//                   | PartialUserObjectResponse
+//               }
+//             | { type: "workspace"; workspace: true }
+//           workspace_name: string | null
+//         }
+//     name: string | null
+//     avatar_url: string | null
+//     id: IdRequest
+//     object: "user"
+//   }
 
 // | {
 //     type: "created_by"
 //     created_by: PartialUserObjectResponse | UserObjectResponse
 //     id: string
 //   }
+const CreatedBySchema = makeObjectSchema("Page property created by", {
+  requiredProperties: {
+    type: makePropertyTypeSchema("created_by"),
+    id: IDSchema,
+    created_by: makeNullable(UserObjectResponseSchema),
+  },
+});
+
 // | { type: "created_time"; created_time: string; id: string }
 // | {
 //     type: "last_edited_by"
