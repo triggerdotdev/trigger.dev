@@ -2,6 +2,7 @@ import { EndpointSpec, EndpointSpecResponse } from "core/endpoint/types";
 import { GetPageResponse } from "./schemas/page";
 import { VersionHeaderParam } from "./schemas/params";
 import { ListUsersResponse, UserObjectResponse } from "./schemas/person";
+import { SearchBodyParameters, SearchResponse } from "./schemas/search";
 
 const errorResponse: EndpointSpecResponse = {
   success: false,
@@ -192,6 +193,43 @@ export const getPage: EndpointSpec = {
         name: "Success",
         description: "Typical success response",
         schema: GetPageResponse,
+      },
+    ],
+    default: [errorResponse],
+  },
+};
+
+export const search: EndpointSpec = {
+  path: "/search",
+  method: "POST",
+  metadata: {
+    name: "search",
+    description: `Searches all original pages, databases, and child pages/databases that are shared with the integration. It will not return linked databases, since these duplicate their source databases.`,
+    displayProperties: {
+      title: "Search for ${body.query}",
+    },
+    externalDocs: {
+      description: "API method documentation",
+      url: "https://developers.notion.com/reference/post-search",
+    },
+    tags: ["search"],
+  },
+  security: {
+    api_key: [],
+  },
+  parameters: [VersionHeaderParam],
+  request: {
+    body: {
+      schema: SearchBodyParameters,
+    },
+  },
+  responses: {
+    200: [
+      {
+        success: true,
+        name: "Success",
+        description: "Typical success response",
+        schema: SearchResponse,
       },
     ],
     default: [errorResponse],

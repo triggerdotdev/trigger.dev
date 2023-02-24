@@ -72,4 +72,58 @@ describe("notion.endpoints", async () => {
     expect(data.body).not.toBeNull();
     stopNock(nockDone);
   });
+
+  //todo when we have a page id
+  // test("getPage", async () => {
+  //   const accessToken = authToken();
+
+  //   // const nockDone = await startNock("notion.getPage");
+  //   const data = await endpoints.getPage.request({
+  //     parameters: {
+  //       "Notion-Version": notionVersion,
+  //       page_id: "9257302b-0758-480e-bef1-10889636f107",
+  //     },
+  //     credentials: {
+  //       type: "api_key",
+  //       name: "api_key",
+  //       api_key: accessToken,
+  //       scopes: [""],
+  //     },
+  //   });
+
+  //   console.log(JSON.stringify(data, null, 2));
+
+  //   expect(data.status).toEqual(200);
+  //   expect(data.success).toEqual(true);
+  //   expect(data.body).not.toBeNull();
+  //   // stopNock(nockDone);
+  // });
+
+  test("search", async () => {
+    const accessToken = authToken();
+    console.log("accessToken", accessToken);
+
+    // const nockDone = await startNock("notion.search");
+    const data = await endpoints.search.request({
+      parameters: {
+        "Notion-Version": notionVersion,
+      },
+      body: {
+        // query: "product",
+      },
+      credentials: {
+        type: "api_key",
+        name: "api_key",
+        api_key: accessToken,
+        scopes: [""],
+      },
+    });
+
+    console.log(JSON.stringify(data, null, 2));
+
+    expect(data.status).toEqual(200);
+    expect(data.success).toEqual(true);
+    expect(data.body).not.toBeNull();
+    // stopNock(nockDone);
+  });
 });
