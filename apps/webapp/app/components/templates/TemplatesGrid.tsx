@@ -56,7 +56,7 @@ export function TemplatesGrid({
               </div>
               <div className="flex h-full w-full flex-col justify-between p-5">
                 <div className="flex flex-col gap-y-2">
-                  <Header1 size="small" className="font-semibold">
+                  <Header1 size="small" className="font-normal leading-6">
                     {template.title}
                   </Header1>
                   <Body size="small" className="text-slate-400">
@@ -64,7 +64,7 @@ export function TemplatesGrid({
                   </Body>
                 </div>
                 <CopyTextPanel
-                  value={`npm create trigger@latest ${template.slug}`}
+                  value={`npm create trigger ${template.slug}`}
                   className="mt-5"
                 />
               </div>
@@ -102,7 +102,7 @@ function TemplateButtonOrLink({
         key={template.title}
         type="button"
         onClick={onClick}
-        className="group flex w-full flex-col self-stretch overflow-hidden rounded-md border border-slate-700 bg-slate-800 text-left text-slate-200 shadow-md transition hover:cursor-pointer hover:border-slate-500 hover:bg-slate-700/30 disabled:opacity-50"
+        className={classNames}
       >
         {children}
       </button>
