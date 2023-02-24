@@ -39,6 +39,7 @@ importers:
     specifiers:
       '@cfworker/json-schema': ^1.12.5
       '@prisma/client': ^4.3.0
+      '@sentry/node': ^7.38.0
       '@types/eslint': ^8.4.6
       '@types/express': ^4.17.13
       '@types/json-pointer': ^1.0.31
@@ -79,6 +80,7 @@ importers:
     dependencies:
       '@cfworker/json-schema': 1.12.5
       '@prisma/client': 4.8.1_prisma@4.8.1
+      '@sentry/node': 7.38.0
       express: 4.18.2
       express-async-errors: 3.1.1_express@4.18.2
       json-pointer: 0.6.2
@@ -5836,6 +5838,15 @@ packages:
       tslib: 1.14.1
     dev: false
 
+  /@sentry/core/7.38.0:
+    resolution: {integrity: sha512-+hXh/SO3Ie6WC2b+wi01xLhyVREdkRXS5QBmCiv3z2ks2HvYXp7PoKSXJvNKiwCP+pBD+enOnM1YEzM2yEy5yw==}
+    engines: {node: '>=8'}
+    dependencies:
+      '@sentry/types': 7.38.0
+      '@sentry/utils': 7.38.0
+      tslib: 1.14.1
+    dev: false
+
   /@sentry/integrations/7.37.2:
     resolution: {integrity: sha512-kqfXo2hRLo3y0vM9ZcjbrB3grOYfPuKpSHN8MZVx3MHTbAUkjHVwjPf5dfi5a0nMvMYAjg2v/Olt8OGayBgjmg==}
     engines: {node: '>=8'}
@@ -5853,6 +5864,21 @@ packages:
       '@sentry/core': 7.37.2
       '@sentry/types': 7.37.2
       '@sentry/utils': 7.37.2
+      cookie: 0.4.2
+      https-proxy-agent: 5.0.1
+      lru_map: 0.3.3
+      tslib: 1.14.1
+    transitivePeerDependencies:
+      - supports-color
+    dev: false
+
+  /@sentry/node/7.38.0:
+    resolution: {integrity: sha512-jNIN6NZvgzn/oms8RQzffjX8Z0LQDTN6N28nnhzqGCvnfmS1QtTt0FlU+pTuFXZNNSjfGy4XMXMYvLlbvhm2bg==}
+    engines: {node: '>=8'}
+    dependencies:
+      '@sentry/core': 7.38.0
+      '@sentry/types': 7.38.0
+      '@sentry/utils': 7.38.0
       cookie: 0.4.2
       https-proxy-agent: 5.0.1
       lru_map: 0.3.3
@@ -5932,11 +5958,24 @@ packages:
     engines: {node: '>=8'}
     dev: false
 
+  /@sentry/types/7.38.0:
+    resolution: {integrity: sha512-NKOALR6pNUMzUrsk2m+dkPrO8uGNvNh1LD0BCPswKNjC2qHo1h1mDGCgBmF9+EWyii8ZoACTIsxvsda+MBf97Q==}
+    engines: {node: '>=8'}
+    dev: false
+
   /@sentry/utils/7.37.2:
     resolution: {integrity: sha512-5irN1nN/mtdOoWwsJiwBK0gPgNMkciUubEMbCaaXqJaGyGz8+yfDvXj7L+xGYiU57z+7+QkkSKxKEZ/IcBpjVQ==}
     engines: {node: '>=8'}
     dependencies:
       '@sentry/types': 7.37.2
+      tslib: 1.14.1
+    dev: false
+
+  /@sentry/utils/7.38.0:
+    resolution: {integrity: sha512-MgbI3YmYuyyhUtvcXkgGBqjOW+nuLLNGUdWCK+C4kObf8VbLt3dSE/7SEMT6TSHLYQmxs2BxFgx5Agn97m68kQ==}
+    engines: {node: '>=8'}
+    dependencies:
+      '@sentry/types': 7.38.0
       tslib: 1.14.1
     dev: false
 

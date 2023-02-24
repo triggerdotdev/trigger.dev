@@ -1,6 +1,7 @@
 import { handleAction } from "api/v2/action";
 import { handleActionDisplay } from "api/v2/action/display";
 import { handleServices } from "api/v2/services";
+import * as Sentry from "@sentry/node";
 import dotenv from "dotenv";
 import express, { Express, NextFunction, Request, Response } from "express";
 import morgan from "morgan";
@@ -8,6 +9,12 @@ dotenv.config();
 
 const app: Express = express();
 const port = process.env.PORT ?? 3006;
+
+// The request handler must be the first middleware on the app
+Sentry.init({
+  dsn: "https://bf96820b08004fa4b2e1506f2ac74a14@o4504419574087680.ingest.sentry.io/4504419607052288",
+});
+app.use(Sentry.Handlers.requestHandler());
 
 app.use(express.json());
 app.use(morgan("combined"));
@@ -55,6 +62,21 @@ app.get("/healthcheck", (req: Request, res: Response) => {
 app.get("/api/v2/services", handleServices);
 app.post("/api/v2/:service/action/:action/display", handleActionDisplay);
 app.post("/api/v2/:service/action/:action", handleAction);
+
+app.get("/debug-sentry", function mainHandler(req, res) {
+  throw new Error("My first Sentry error!");
+});
+
+// The error handler must be before any other error middleware and after all controllers
+app.use(Sentry.Handlers.errorHandler());
+
+// Optional fallthrough error handler
+app.use(function onError(err: any, req: any, res: any, next: any) {
+  // The error id is attached to `res.sentry` to be returned
+  // and optionally displayed to the user for support.
+  res.statusCode = 500;
+  res.end(res.sentry + "\n");
+});
 
 app.listen(port, () => {
   console.log(`⚡️[server]: Server is running at http://localhost:${port}`);
