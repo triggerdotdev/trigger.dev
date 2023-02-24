@@ -10,9 +10,11 @@ import { Header1 } from "../primitives/text/Headers";
 export function TemplateOverview({
   template,
   className,
+  commandFlags,
 }: {
   template: TemplateListItem;
   className?: string;
+  commandFlags?: string;
 }) {
   const { docsHTML, imageUrl } = template;
 
@@ -24,7 +26,11 @@ export function TemplateOverview({
       )}
     >
       <div className="sticky top-4 flex h-max flex-col rounded-r">
-        <TemplateDetails template={template} className="hidden md:flex" />
+        <TemplateDetails
+          template={template}
+          commandFlags={commandFlags}
+          className="hidden md:flex"
+        />
       </div>
       <div className="flex h-full w-full flex-col rounded">
         <div className="z-90 h-fit w-full transition group-hover:opacity-90">
@@ -51,9 +57,11 @@ export function TemplateOverview({
 function TemplateDetails({
   className,
   template,
+  commandFlags,
 }: {
   className?: string;
   template: TemplateListItem;
+  commandFlags?: string;
 }) {
   const { title, description, repositoryUrl, id } = template;
   return (
@@ -122,7 +130,11 @@ function TemplateDetails({
         </Body>
         <div className="ml-2 h-px w-full bg-slate-800" />
       </div>
-      <CopyTextPanel value={`npm create trigger@latest ${template.slug}`} />
+      <CopyTextPanel
+        value={`npm create trigger@latest ${template.slug} ${
+          commandFlags ? ` ${commandFlags}` : ""
+        }`}
+      />
     </div>
   );
 }

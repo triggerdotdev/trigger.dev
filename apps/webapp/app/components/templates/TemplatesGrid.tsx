@@ -31,7 +31,12 @@ export function TemplatesGrid({
         as={Fragment}
       >
         <StyledDialog.Panel className="relative mx-auto flex max-h-[80vh] max-w-5xl items-start gap-2 overflow-hidden overflow-y-auto rounded-md">
-          {openedTemplate && <TemplateOverview template={openedTemplate} />}
+          {openedTemplate && (
+            <TemplateOverview
+              template={openedTemplate}
+              commandFlags={commandFlags}
+            />
+          )}
           <button
             onClick={() => setOpenedTemplate(null)}
             className="sticky top-0 text-slate-600 transition hover:text-slate-500"
