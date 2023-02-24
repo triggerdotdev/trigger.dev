@@ -1,5 +1,12 @@
 # @trigger.dev/sdk
 
+## 0.2.16-next.0
+
+### Patch Changes
+
+- ee20f921: Make the schema an optional param for customEvent and webhookEvent
+- 51f9bc9d: Added handly links to the dashboard in log feedback
+
 ## 0.2.15
 
 ### Patch Changes
