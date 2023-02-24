@@ -1,4 +1,5 @@
 import {
+  makeAnyOf,
   makeArraySchema,
   makeBooleanSchema,
   makeNullable,
@@ -76,7 +77,7 @@ export const SearchResponse = makeObjectSchema("SearchResponse", {
     has_more: makeBooleanSchema("Has more", "Whether there are more results"),
     results: makeArraySchema(
       "Results",
-      makeOneOf("Result", [
+      makeAnyOf("Result", [
         PageObjectResponse,
         PartialPageObjectResponse,
         //todo PartialDatabaseObjectResponse,

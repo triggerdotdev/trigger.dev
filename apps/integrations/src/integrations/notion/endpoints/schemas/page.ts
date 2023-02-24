@@ -18,6 +18,7 @@ import {
 } from "./person";
 import { DateResponse, FormulaPropertyResponse } from "./formula";
 import { RichTextItemResponse, TextRequest } from "./richText";
+import { EmptyObject } from "./common";
 
 export const PageParentSchema = makeOneOf("Page parent", [
   makeObjectSchema("Database", {

@@ -38,6 +38,6 @@ export function responseFromCaughtError(error: any): RequestResponse {
     success: false,
     status: 400,
     headers: {},
-    body: { error: JSON.stringify(error) },
+    body: { error },
   };
 }

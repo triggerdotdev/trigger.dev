@@ -1,6 +1,23 @@
 import { JSONSchema } from "./types";
 
-export async function validate(data: any, schema?: JSONSchema) {
+type SuccessResult = {
+  success: true;
+};
+
+type FailureResult = {
+  success: false;
+  errors: {
+    keyword: string;
+    keywordLocation: string;
+    instanceLocation: string;
+    error: any;
+  }[];
+};
+
+export async function validate(
+  data: any,
+  schema?: JSONSchema
+): Promise<SuccessResult | FailureResult> {
   try {
     if (schema === undefined) {
       return {
