@@ -32,7 +32,7 @@ async function seed() {
       "This is a great place to start if you want to build your own workflow from scratch.",
     priority: 0,
     services: [],
-    workflowIds: ["blank-starter"],
+    workflowIds: [],
     markdownDocs: await readTemplateDocsFile("blank-starter"),
   };
 
