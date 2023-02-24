@@ -20,6 +20,7 @@ export class TemplateListPresenter {
   async data(): Promise<{ templates: Array<TemplateListItem> }> {
     const templates = await this.#prismaClient.template.findMany({
       orderBy: { priority: "asc" },
+      where: { isLive: true },
     });
 
     const serviceMetadatas = await getServiceMetadatas(true);
