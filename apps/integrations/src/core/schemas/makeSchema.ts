@@ -136,6 +136,12 @@ export function makeObjectSchema(
   };
 }
 
+export function makeNull(): JSONSchema {
+  return {
+    type: "null",
+  };
+}
+
 export function makeOneOf(title: string, schemas: JSONSchema[]): JSONSchema {
   return {
     title,
@@ -151,11 +157,22 @@ export function makeAnyOf(title: string, schemas: JSONSchema[]): JSONSchema {
 }
 
 export function makeNullable(schema: JSONSchema): JSONSchema {
-  let combinedTypes: JSONSchemaInstanceType[] = [];
+  //if there's no existing type then we need to create an anyOf with null
   if (!schema.type) {
-    throw new Error("Schema must have a type");
+    return {
+      title: schema.title,
+      description: schema.description,
+      anyOf: [
+        {
+          type: "null",
+        },
+        schema,
+      ],
+    };
   }
 
+  //if there is a type then we can add the "null" type to it
+  let combinedTypes: JSONSchemaInstanceType[] = [];
   switch (typeof schema.type) {
     case "string":
       combinedTypes = [schema.type, "null"];

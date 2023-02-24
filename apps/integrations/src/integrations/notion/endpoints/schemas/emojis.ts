@@ -1,6 +1,6 @@
 import { JSONSchema } from "core/schemas/types";
 
-export const EmojisSchema: JSONSchema = {
+export const EmojiRequest: JSONSchema = {
   //doesn't seem worth the performance cost to validate these, so commented out for future possible use
   // enum: [
   //   "😀",

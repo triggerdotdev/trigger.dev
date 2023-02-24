@@ -4,8 +4,10 @@ import {
   makeStringSchema,
   makeBooleanSchema,
   makeNullable,
+  makeArraySchema,
 } from "core/schemas/makeSchema";
 import { JSONSchema } from "core/schemas/types";
+import { EmptyObject } from "./common";
 
 const UserObjectTypeSchema = makeStringSchema(
   "Object type",
@@ -212,3 +214,28 @@ export const UserObjectResponse = makeOneOf("User", [
   PersonUserObjectResponse,
   BotUserObjectResponse,
 ]);
+
+// export type ListUsersResponse = {
+//   type: "user"
+//   user: EmptyObject
+//   object: "list"
+//   next_cursor: string | null
+//   has_more: boolean
+//   results: Array<UserObjectResponse>
+// }
+export const ListUsersResponse = makeObjectSchema("ListUsers", {
+  requiredProperties: {
+    type: makeStringSchema("Type", "Always user", {
+      const: "user",
+    }),
+    user: EmptyObject,
+    object: makeStringSchema("Object type", "This is always list", {
+      const: "list",
+    }),
+    next_cursor: makeNullable(
+      makeStringSchema("Next cursor", "The next cursor")
+    ),
+    has_more: makeBooleanSchema("Has more", "Does this have more?"),
+    results: makeArraySchema("Results", UserObjectResponse),
+  },
+});

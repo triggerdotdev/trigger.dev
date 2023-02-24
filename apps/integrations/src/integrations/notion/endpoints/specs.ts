@@ -1,18 +1,7 @@
 import { EndpointSpec, EndpointSpecResponse } from "core/endpoint/types";
-import {
-  makeArraySchema,
-  makeBooleanSchema,
-  makeNullable,
-  makeObjectSchema,
-  makeOneOf,
-  makeStringSchema,
-} from "core/schemas/makeSchema";
-import { optional } from "zod";
-import {
-  UserSchema,
-  VersionHeaderParam,
-  YourBotSchema,
-} from "./schemas/params";
+import { GetPageResponse } from "./schemas/page";
+import { VersionHeaderParam } from "./schemas/params";
+import { ListUsersResponse, UserObjectResponse } from "./schemas/person";
 
 const errorResponse: EndpointSpecResponse = {
   success: false,
@@ -58,7 +47,7 @@ export const getUser: EndpointSpec = {
         success: true,
         name: "Success",
         description: "Typical success response",
-        schema: UserSchema,
+        schema: UserObjectResponse,
       },
     ],
     default: [errorResponse],
@@ -112,36 +101,7 @@ export const listUsers: EndpointSpec = {
         success: true,
         name: "Success",
         description: "Typical success response",
-        schema: makeObjectSchema("ListUsersResponse", {
-          requiredProperties: {
-            results: makeArraySchema("Users", UserSchema),
-            has_more: makeBooleanSchema(
-              "Has more",
-              "Whether there are more results"
-            ),
-          },
-          optionalProperties: {
-            next_cursor: makeNullable(
-              makeStringSchema(
-                "Next cursor",
-                "Use this to get the next page of results"
-              )
-            ),
-            type: makeStringSchema("Type", "The type of items in the results", {
-              enum: [
-                "user",
-                "block",
-                "page",
-                "database",
-                "property_item",
-                "page_or_database",
-              ],
-            }),
-            object: makeStringSchema("Object", "The object type, always list", {
-              enum: ["list"],
-            }),
-          },
-        }),
+        schema: ListUsersResponse,
       },
     ],
     default: [errorResponse],
@@ -174,7 +134,7 @@ export const getBotInfo: EndpointSpec = {
         success: true,
         name: "Success",
         description: "Typical success response",
-        schema: YourBotSchema,
+        schema: UserObjectResponse,
       },
     ],
     default: [errorResponse],
@@ -231,7 +191,7 @@ export const getPage: EndpointSpec = {
         success: true,
         name: "Success",
         description: "Typical success response",
-        schema: UserSchema,
+        schema: GetPageResponse,
       },
     ],
     default: [errorResponse],

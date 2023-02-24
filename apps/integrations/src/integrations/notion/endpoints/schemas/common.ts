@@ -1,5 +1,5 @@
 import { EndpointSpecParameter } from "core/endpoint/types";
-import { makeStringSchema } from "core/schemas/makeSchema";
+import { makeStringSchema, makeObjectSchema } from "core/schemas/makeSchema";
 
 export const VersionHeaderParam: EndpointSpecParameter = {
   name: "Notion-Version",
@@ -13,3 +13,6 @@ export const VersionHeaderParam: EndpointSpecParameter = {
 };
 
 export const IdRequest = makeStringSchema("IdRequest", "IdRequest");
+
+// type EmptyObject = Record<string, never>
+export const EmptyObject = makeObjectSchema("EmptyObject", {});

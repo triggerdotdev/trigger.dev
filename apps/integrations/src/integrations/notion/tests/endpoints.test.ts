@@ -12,7 +12,7 @@ describe("notion.endpoints", async () => {
     const nockDone = await startNock("notion.getUser");
     const data = await endpoints.getUser.request({
       parameters: {
-        userId: "cc18a80a-973f-42c4-8fed-a055f8ae31f4",
+        user_id: "cc18a80a-973f-42c4-8fed-a055f8ae31f4",
         "Notion-Version": notionVersion,
       },
       credentials: {
