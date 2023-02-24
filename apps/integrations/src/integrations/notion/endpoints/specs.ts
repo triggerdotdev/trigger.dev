@@ -22,13 +22,13 @@ const errorResponse: EndpointSpecResponse = {
 };
 
 export const getUser: EndpointSpec = {
-  path: "/users/{userId}",
+  path: "/users/{user_id}",
   method: "GET",
   metadata: {
     name: "getUser",
     description: `Get a user's information`,
     displayProperties: {
-      title: "Get user info for user id ${parameters.userId}",
+      title: "Get user info for user id ${parameters.user_id}",
     },
     externalDocs: {
       description: "API method documentation",
@@ -41,7 +41,7 @@ export const getUser: EndpointSpec = {
   },
   parameters: [
     {
-      name: "userId",
+      name: "user_id",
       in: "path",
       description: "ID of the user you would like info about",
       schema: {
@@ -175,6 +175,63 @@ export const getBotInfo: EndpointSpec = {
         name: "Success",
         description: "Typical success response",
         schema: YourBotSchema,
+      },
+    ],
+    default: [errorResponse],
+  },
+};
+
+export const getPage: EndpointSpec = {
+  path: "/pages/{page_id}",
+  method: "GET",
+  metadata: {
+    name: "getPage",
+    description: `Retrieves a Page object using the ID specified.`,
+    displayProperties: {
+      title: "Get the page info for page id ${parameters.page_id}",
+    },
+    externalDocs: {
+      description: "API method documentation",
+      url: "https://developers.notion.com/reference/retrieve-a-page",
+    },
+    tags: ["pages"],
+  },
+  security: {
+    api_key: [],
+  },
+  parameters: [
+    {
+      name: "page_id",
+      in: "path",
+      description: "ID of the page you would like info about",
+      schema: {
+        type: "string",
+      },
+      required: true,
+    },
+    VersionHeaderParam,
+    {
+      name: "filter_properties",
+      in: "query",
+      description: "The properties to filter by",
+      schema: {
+        type: "array",
+        items: {
+          description: "The property to filter by",
+          type: "string",
+        },
+      },
+      required: false,
+    },
+  ],
+  request: {},
+  responses: {
+    200: [
+      {
+        success: true,
+        name: "Success",
+        description: "Typical success response",
+        schema: UserSchema,
       },
     ],
     default: [errorResponse],
