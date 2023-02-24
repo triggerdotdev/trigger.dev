@@ -25,7 +25,7 @@ async function seed() {
   const blankStarter = {
     repositoryUrl: "https://github.com/triggerdotdev/blank-starter",
     imageUrl:
-      "https://imagedelivery.net/3TbraffuDZ4aEf8KWOmI_w/51a2a621-577a-4648-a087-bc5381259a00/public",
+      "https://imagedelivery.net/3TbraffuDZ4aEf8KWOmI_w/3812f076-38a2-4456-b809-2fc61dd77800/public",
     title: "A blank starter ready to run your own workflow",
     shortTitle: "Blank Starter",
     description:
@@ -39,7 +39,7 @@ async function seed() {
   const helloWorld = {
     repositoryUrl: "https://github.com/triggerdotdev/hello-world",
     imageUrl:
-      "https://imagedelivery.net/3TbraffuDZ4aEf8KWOmI_w/51a2a621-577a-4648-a087-bc5381259a00/public",
+      "https://imagedelivery.net/3TbraffuDZ4aEf8KWOmI_w/634cfd11-e499-48ca-aaf5-b2404642f600/public",
     title: "A Hello World with a simple custom event trigger",
     shortTitle: "Hello World",
     description:
