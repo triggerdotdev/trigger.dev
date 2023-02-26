@@ -130,6 +130,10 @@ function TemplateDetails({
         </Body>
         <div className="ml-2 h-px w-full bg-slate-800" />
       </div>
+      <Body className="mb-4 text-slate-400">
+        Run this command in your CLI to install the Trigger.dev package and any
+        other packages needed for this template.
+      </Body>
       <CopyTextPanel
         value={`npm create trigger@latest ${template.slug} ${
           commandFlags ? ` ${commandFlags}` : ""
