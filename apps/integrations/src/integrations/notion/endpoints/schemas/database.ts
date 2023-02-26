@@ -1,261 +1,228 @@
 import { JSONSchema } from "core/schemas/types";
+import { DatabasePropertyConfigResponse } from "./databasePropertyConfigs";
+import { EmojiRequest } from "./emoji";
+import { PartialUserObjectResponse } from "./person";
+import { TextRequest } from "./requests";
+import { RichTextItemResponse } from "./responses";
 
 export const DatabasePropertyConfigResponseRecord: JSONSchema = {
-  "type": "object",
-  "additionalProperties": DatabasePropertyConfigResponse
+  type: "object",
+  additionalProperties: DatabasePropertyConfigResponse,
 };
 
 export const PartialDatabaseObjectResponse: JSONSchema = {
-  "type": "object",
-  "properties": {
-    "object": {
-      "type": "string",
-      "const": "database"
+  type: "object",
+  properties: {
+    object: {
+      type: "string",
+      const: "database",
     },
-    "id": {
-      "type": "string"
+    id: {
+      type: "string",
     },
-    "properties": DatabasePropertyConfigResponseRecord
+    properties: DatabasePropertyConfigResponseRecord,
   },
-  "required": [
-    "object",
-    "id",
-    "properties"
-  ],
-  "additionalProperties": false
+  required: ["object", "id", "properties"],
+  additionalProperties: false,
 };
 
 export const DatabaseObjectResponse: JSONSchema = {
-  "type": "object",
-  "properties": {
-    "title": {
-      "type": "array",
-      "items": RichTextItemResponse
+  type: "object",
+  properties: {
+    title: {
+      type: "array",
+      items: RichTextItemResponse,
     },
-    "description": {
-      "type": "array",
-      "items": RichTextItemResponse
+    description: {
+      type: "array",
+      items: RichTextItemResponse,
     },
-    "icon": {
-      "anyOf": [
+    icon: {
+      anyOf: [
         {
-          "type": "object",
-          "properties": {
-            "type": {
-              "type": "string",
-              "const": "emoji"
+          type: "object",
+          properties: {
+            type: {
+              type: "string",
+              const: "emoji",
             },
-            "emoji": EmojiRequest
+            emoji: EmojiRequest,
           },
-          "required": [
-            "type",
-            "emoji"
-          ],
-          "additionalProperties": false
+          required: ["type", "emoji"],
+          additionalProperties: false,
         },
         {
-          "type": "null"
+          type: "null",
         },
         {
-          "type": "object",
-          "properties": {
-            "type": {
-              "type": "string",
-              "const": "external"
+          type: "object",
+          properties: {
+            type: {
+              type: "string",
+              const: "external",
             },
-            "external": {
-              "type": "object",
-              "properties": {
-                "url": TextRequest
+            external: {
+              type: "object",
+              properties: {
+                url: TextRequest,
               },
-              "required": [
-                "url"
-              ],
-              "additionalProperties": false
-            }
+              required: ["url"],
+              additionalProperties: false,
+            },
           },
-          "required": [
-            "type",
-            "external"
-          ],
-          "additionalProperties": false
+          required: ["type", "external"],
+          additionalProperties: false,
         },
         {
-          "type": "object",
-          "properties": {
-            "type": {
-              "type": "string",
-              "const": "file"
+          type: "object",
+          properties: {
+            type: {
+              type: "string",
+              const: "file",
             },
-            "file": {
-              "type": "object",
-              "properties": {
-                "url": {
-                  "type": "string"
+            file: {
+              type: "object",
+              properties: {
+                url: {
+                  type: "string",
                 },
-                "expiry_time": {
-                  "type": "string"
-                }
-              },
-              "required": [
-                "url",
-                "expiry_time"
-              ],
-              "additionalProperties": false
-            }
-          },
-          "required": [
-            "type",
-            "file"
-          ],
-          "additionalProperties": false
-        }
-      ]
-    },
-    "cover": {
-      "anyOf": [
-        {
-          "type": "object",
-          "properties": {
-            "type": {
-              "type": "string",
-              "const": "external"
-            },
-            "external": {
-              "type": "object",
-              "properties": {
-                "url": TextRequest
-              },
-              "required": [
-                "url"
-              ],
-              "additionalProperties": false
-            }
-          },
-          "required": [
-            "type",
-            "external"
-          ],
-          "additionalProperties": false
-        },
-        {
-          "type": "null"
-        },
-        {
-          "type": "object",
-          "properties": {
-            "type": {
-              "type": "string",
-              "const": "file"
-            },
-            "file": {
-              "type": "object",
-              "properties": {
-                "url": {
-                  "type": "string"
+                expiry_time: {
+                  type: "string",
                 },
-                "expiry_time": {
-                  "type": "string"
-                }
               },
-              "required": [
-                "url",
-                "expiry_time"
-              ],
-              "additionalProperties": false
-            }
-          },
-          "required": [
-            "type",
-            "file"
-          ],
-          "additionalProperties": false
-        }
-      ]
-    },
-    "properties": DatabasePropertyConfigResponseRecord,
-    "parent": {
-      "anyOf": [
-        {
-          "type": "object",
-          "properties": {
-            "type": {
-              "type": "string",
-              "const": "page_id"
+              required: ["url", "expiry_time"],
+              additionalProperties: false,
             },
-            "page_id": {
-              "type": "string"
-            }
           },
-          "required": [
-            "type",
-            "page_id"
-          ],
-          "additionalProperties": false
+          required: ["type", "file"],
+          additionalProperties: false,
+        },
+      ],
+    },
+    cover: {
+      anyOf: [
+        {
+          type: "object",
+          properties: {
+            type: {
+              type: "string",
+              const: "external",
+            },
+            external: {
+              type: "object",
+              properties: {
+                url: TextRequest,
+              },
+              required: ["url"],
+              additionalProperties: false,
+            },
+          },
+          required: ["type", "external"],
+          additionalProperties: false,
         },
         {
-          "type": "object",
-          "properties": {
-            "type": {
-              "type": "string",
-              "const": "workspace"
-            },
-            "workspace": {
-              "type": "boolean",
-              "const": true
-            }
-          },
-          "required": [
-            "type",
-            "workspace"
-          ],
-          "additionalProperties": false
+          type: "null",
         },
         {
-          "type": "object",
-          "properties": {
-            "type": {
-              "type": "string",
-              "const": "block_id"
+          type: "object",
+          properties: {
+            type: {
+              type: "string",
+              const: "file",
             },
-            "block_id": {
-              "type": "string"
-            }
+            file: {
+              type: "object",
+              properties: {
+                url: {
+                  type: "string",
+                },
+                expiry_time: {
+                  type: "string",
+                },
+              },
+              required: ["url", "expiry_time"],
+              additionalProperties: false,
+            },
           },
-          "required": [
-            "type",
-            "block_id"
-          ],
-          "additionalProperties": false
-        }
-      ]
+          required: ["type", "file"],
+          additionalProperties: false,
+        },
+      ],
     },
-    "created_by": PartialUserObjectResponse,
-    "last_edited_by": PartialUserObjectResponse,
-    "is_inline": {
-      "type": "boolean"
+    properties: DatabasePropertyConfigResponseRecord,
+    parent: {
+      anyOf: [
+        {
+          type: "object",
+          properties: {
+            type: {
+              type: "string",
+              const: "page_id",
+            },
+            page_id: {
+              type: "string",
+            },
+          },
+          required: ["type", "page_id"],
+          additionalProperties: false,
+        },
+        {
+          type: "object",
+          properties: {
+            type: {
+              type: "string",
+              const: "workspace",
+            },
+            workspace: {
+              type: "boolean",
+              const: true,
+            },
+          },
+          required: ["type", "workspace"],
+          additionalProperties: false,
+        },
+        {
+          type: "object",
+          properties: {
+            type: {
+              type: "string",
+              const: "block_id",
+            },
+            block_id: {
+              type: "string",
+            },
+          },
+          required: ["type", "block_id"],
+          additionalProperties: false,
+        },
+      ],
     },
-    "object": {
-      "type": "string",
-      "const": "database"
+    created_by: PartialUserObjectResponse,
+    last_edited_by: PartialUserObjectResponse,
+    is_inline: {
+      type: "boolean",
     },
-    "id": {
-      "type": "string"
+    object: {
+      type: "string",
+      const: "database",
     },
-    "created_time": {
-      "type": "string"
+    id: {
+      type: "string",
     },
-    "last_edited_time": {
-      "type": "string"
+    created_time: {
+      type: "string",
     },
-    "archived": {
-      "type": "boolean"
+    last_edited_time: {
+      type: "string",
     },
-    "url": {
-      "type": "string"
-    }
+    archived: {
+      type: "boolean",
+    },
+    url: {
+      type: "string",
+    },
   },
-  "required": [
+  required: [
     "title",
     "description",
     "icon",
@@ -270,7 +237,7 @@ export const DatabaseObjectResponse: JSONSchema = {
     "created_time",
     "last_edited_time",
     "archived",
-    "url"
+    "url",
   ],
-  "additionalProperties": false
+  additionalProperties: false,
 };

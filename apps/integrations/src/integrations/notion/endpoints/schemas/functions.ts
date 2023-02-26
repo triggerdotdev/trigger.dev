@@ -1,8 +1,8 @@
 import { JSONSchema } from "core/schemas/types";
 
 export const RollupFunction: JSONSchema = {
-  "type": "string",
-  "enum": [
+  type: "string",
+  enum: [
     "count",
     "count_values",
     "empty",
@@ -26,6 +26,6 @@ export const RollupFunction: JSONSchema = {
     "percent_unchecked",
     "count_per_group",
     "percent_per_group",
-    "show_original"
-  ]
+    "show_original",
+  ],
 };

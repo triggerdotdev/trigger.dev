@@ -1,940 +1,771 @@
 import { JSONSchema } from "core/schemas/types";
+import { StringRequest } from "./common";
+import { EmojiRequest } from "./emoji";
+import { RollupFunction } from "./functions";
+import { PartialUserObjectResponse, UserObjectResponse } from "./person";
+import { TextRequest } from "./requests";
+import {
+  DateResponse,
+  FormulaPropertyResponse,
+  RichTextItemResponse,
+  SelectPropertyResponse,
+} from "./responses";
 
 export const PageObjectResponseProperties: JSONSchema = {
-  "type": "object",
-  "additionalProperties": {
-    "anyOf": [
+  type: "object",
+  additionalProperties: {
+    anyOf: [
       {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "number"
+        type: "object",
+        properties: {
+          type: {
+            type: "string",
+            const: "number",
           },
-          "number": {
-            "type": [
-              "number",
-              "null"
-            ]
+          number: {
+            type: ["number", "null"],
           },
-          "id": {
-            "type": "string"
-          }
+          id: {
+            type: "string",
+          },
         },
-        "required": [
-          "type",
-          "number",
-          "id"
-        ],
-        "additionalProperties": false
+        required: ["type", "number", "id"],
+        additionalProperties: false,
       },
       {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "url"
+        type: "object",
+        properties: {
+          type: {
+            type: "string",
+            const: "url",
           },
-          "url": {
-            "type": [
-              "string",
-              "null"
-            ]
+          url: {
+            type: ["string", "null"],
           },
-          "id": {
-            "type": "string"
-          }
+          id: {
+            type: "string",
+          },
         },
-        "required": [
-          "type",
-          "url",
-          "id"
-        ],
-        "additionalProperties": false
+        required: ["type", "url", "id"],
+        additionalProperties: false,
       },
       {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "select"
+        type: "object",
+        properties: {
+          type: {
+            type: "string",
+            const: "select",
           },
-          "select": {
-            "anyOf": [
+          select: {
+            anyOf: [
               SelectPropertyResponse,
               {
-                "type": "null"
-              }
-            ]
+                type: "null",
+              },
+            ],
           },
-          "id": {
-            "type": "string"
-          }
+          id: {
+            type: "string",
+          },
         },
-        "required": [
-          "type",
-          "select",
-          "id"
-        ],
-        "additionalProperties": false
+        required: ["type", "select", "id"],
+        additionalProperties: false,
       },
       {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "multi_select"
+        type: "object",
+        properties: {
+          type: {
+            type: "string",
+            const: "multi_select",
           },
-          "multi_select": {
-            "type": "array",
-            "items": SelectPropertyResponse
+          multi_select: {
+            type: "array",
+            items: SelectPropertyResponse,
           },
-          "id": {
-            "type": "string"
-          }
+          id: {
+            type: "string",
+          },
         },
-        "required": [
-          "type",
-          "multi_select",
-          "id"
-        ],
-        "additionalProperties": false
+        required: ["type", "multi_select", "id"],
+        additionalProperties: false,
       },
       {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "status"
+        type: "object",
+        properties: {
+          type: {
+            type: "string",
+            const: "status",
           },
-          "status": {
-            "anyOf": [
+          status: {
+            anyOf: [
               SelectPropertyResponse,
               {
-                "type": "null"
-              }
-            ]
+                type: "null",
+              },
+            ],
           },
-          "id": {
-            "type": "string"
-          }
+          id: {
+            type: "string",
+          },
         },
-        "required": [
-          "type",
-          "status",
-          "id"
-        ],
-        "additionalProperties": false
+        required: ["type", "status", "id"],
+        additionalProperties: false,
       },
       {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "date"
+        type: "object",
+        properties: {
+          type: {
+            type: "string",
+            const: "date",
           },
-          "date": {
-            "anyOf": [
+          date: {
+            anyOf: [
               DateResponse,
               {
-                "type": "null"
-              }
-            ]
+                type: "null",
+              },
+            ],
           },
-          "id": {
-            "type": "string"
-          }
+          id: {
+            type: "string",
+          },
         },
-        "required": [
-          "type",
-          "date",
-          "id"
-        ],
-        "additionalProperties": false
+        required: ["type", "date", "id"],
+        additionalProperties: false,
       },
       {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "email"
+        type: "object",
+        properties: {
+          type: {
+            type: "string",
+            const: "email",
           },
-          "email": {
-            "type": [
-              "string",
-              "null"
-            ]
+          email: {
+            type: ["string", "null"],
           },
-          "id": {
-            "type": "string"
-          }
+          id: {
+            type: "string",
+          },
         },
-        "required": [
-          "type",
-          "email",
-          "id"
-        ],
-        "additionalProperties": false
+        required: ["type", "email", "id"],
+        additionalProperties: false,
       },
       {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "phone_number"
+        type: "object",
+        properties: {
+          type: {
+            type: "string",
+            const: "phone_number",
           },
-          "phone_number": {
-            "type": [
-              "string",
-              "null"
-            ]
+          phone_number: {
+            type: ["string", "null"],
           },
-          "id": {
-            "type": "string"
-          }
+          id: {
+            type: "string",
+          },
         },
-        "required": [
-          "type",
-          "phone_number",
-          "id"
-        ],
-        "additionalProperties": false
+        required: ["type", "phone_number", "id"],
+        additionalProperties: false,
       },
       {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "checkbox"
+        type: "object",
+        properties: {
+          type: {
+            type: "string",
+            const: "checkbox",
           },
-          "checkbox": {
-            "type": "boolean"
+          checkbox: {
+            type: "boolean",
           },
-          "id": {
-            "type": "string"
-          }
+          id: {
+            type: "string",
+          },
         },
-        "required": [
-          "type",
-          "checkbox",
-          "id"
-        ],
-        "additionalProperties": false
+        required: ["type", "checkbox", "id"],
+        additionalProperties: false,
       },
       {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "files"
+        type: "object",
+        properties: {
+          type: {
+            type: "string",
+            const: "files",
           },
-          "files": {
-            "type": "array",
-            "items": {
-              "anyOf": [
+          files: {
+            type: "array",
+            items: {
+              anyOf: [
                 {
-                  "type": "object",
-                  "properties": {
-                    "file": {
-                      "type": "object",
-                      "properties": {
-                        "url": {
-                          "type": "string"
+                  type: "object",
+                  properties: {
+                    file: {
+                      type: "object",
+                      properties: {
+                        url: {
+                          type: "string",
                         },
-                        "expiry_time": {
-                          "type": "string"
-                        }
+                        expiry_time: {
+                          type: "string",
+                        },
                       },
-                      "required": [
-                        "url",
-                        "expiry_time"
-                      ],
-                      "additionalProperties": false
+                      required: ["url", "expiry_time"],
+                      additionalProperties: false,
                     },
-                    "name": StringRequest,
-                    "type": {
-                      "type": "string",
-                      "const": "file"
-                    }
+                    name: StringRequest,
+                    type: {
+                      type: "string",
+                      const: "file",
+                    },
                   },
-                  "required": [
-                    "file",
-                    "name"
-                  ],
-                  "additionalProperties": false
+                  required: ["file", "name"],
+                  additionalProperties: false,
                 },
                 {
-                  "type": "object",
-                  "properties": {
-                    "external": {
-                      "type": "object",
-                      "properties": {
-                        "url": TextRequest
+                  type: "object",
+                  properties: {
+                    external: {
+                      type: "object",
+                      properties: {
+                        url: TextRequest,
                       },
-                      "required": [
-                        "url"
-                      ],
-                      "additionalProperties": false
+                      required: ["url"],
+                      additionalProperties: false,
                     },
-                    "name": StringRequest,
-                    "type": {
-                      "type": "string",
-                      "const": "external"
-                    }
+                    name: StringRequest,
+                    type: {
+                      type: "string",
+                      const: "external",
+                    },
                   },
-                  "required": [
-                    "external",
-                    "name"
-                  ],
-                  "additionalProperties": false
-                }
-              ]
-            }
-          },
-          "id": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "type",
-          "files",
-          "id"
-        ],
-        "additionalProperties": false
-      },
-      {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "created_by"
-          },
-          "created_by": {
-            "anyOf": [
-              PartialUserObjectResponse,
-              UserObjectResponse
-            ]
-          },
-          "id": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "type",
-          "created_by",
-          "id"
-        ],
-        "additionalProperties": false
-      },
-      {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "created_time"
-          },
-          "created_time": {
-            "type": "string"
-          },
-          "id": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "type",
-          "created_time",
-          "id"
-        ],
-        "additionalProperties": false
-      },
-      {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "last_edited_by"
-          },
-          "last_edited_by": {
-            "anyOf": [
-              PartialUserObjectResponse,
-              UserObjectResponse
-            ]
-          },
-          "id": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "type",
-          "last_edited_by",
-          "id"
-        ],
-        "additionalProperties": false
-      },
-      {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "last_edited_time"
-          },
-          "last_edited_time": {
-            "type": "string"
-          },
-          "id": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "type",
-          "last_edited_time",
-          "id"
-        ],
-        "additionalProperties": false
-      },
-      {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "formula"
-          },
-          "formula": FormulaPropertyResponse,
-          "id": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "type",
-          "formula",
-          "id"
-        ],
-        "additionalProperties": false
-      },
-      {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "title"
-          },
-          "title": {
-            "type": "array",
-            "items": RichTextItemResponse
-          },
-          "id": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "type",
-          "title",
-          "id"
-        ],
-        "additionalProperties": false
-      },
-      {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "rich_text"
-          },
-          "rich_text": {
-            "type": "array",
-            "items": RichTextItemResponse
-          },
-          "id": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "type",
-          "rich_text",
-          "id"
-        ],
-        "additionalProperties": false
-      },
-      {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "people"
-          },
-          "people": {
-            "type": "array",
-            "items": {
-              "anyOf": [
-                PartialUserObjectResponse,
-                UserObjectResponse
-              ]
-            }
-          },
-          "id": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "type",
-          "people",
-          "id"
-        ],
-        "additionalProperties": false
-      },
-      {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "relation"
-          },
-          "relation": {
-            "type": "array",
-            "items": {
-              "type": "object",
-              "properties": {
-                "id": {
-                  "type": "string"
-                }
-              },
-              "required": [
-                "id"
-              ],
-              "additionalProperties": false
-            }
-          },
-          "id": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "type",
-          "relation",
-          "id"
-        ],
-        "additionalProperties": false
-      },
-      {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "rollup"
-          },
-          "rollup": {
-            "anyOf": [
-              {
-                "type": "object",
-                "properties": {
-                  "type": {
-                    "type": "string",
-                    "const": "number"
-                  },
-                  "number": {
-                    "type": [
-                      "number",
-                      "null"
-                    ]
-                  },
-                  "function": RollupFunction
+                  required: ["external", "name"],
+                  additionalProperties: false,
                 },
-                "required": [
-                  "type",
-                  "number",
-                  "function"
-                ],
-                "additionalProperties": false
+              ],
+            },
+          },
+          id: {
+            type: "string",
+          },
+        },
+        required: ["type", "files", "id"],
+        additionalProperties: false,
+      },
+      {
+        type: "object",
+        properties: {
+          type: {
+            type: "string",
+            const: "created_by",
+          },
+          created_by: {
+            anyOf: [PartialUserObjectResponse, UserObjectResponse],
+          },
+          id: {
+            type: "string",
+          },
+        },
+        required: ["type", "created_by", "id"],
+        additionalProperties: false,
+      },
+      {
+        type: "object",
+        properties: {
+          type: {
+            type: "string",
+            const: "created_time",
+          },
+          created_time: {
+            type: "string",
+          },
+          id: {
+            type: "string",
+          },
+        },
+        required: ["type", "created_time", "id"],
+        additionalProperties: false,
+      },
+      {
+        type: "object",
+        properties: {
+          type: {
+            type: "string",
+            const: "last_edited_by",
+          },
+          last_edited_by: {
+            anyOf: [PartialUserObjectResponse, UserObjectResponse],
+          },
+          id: {
+            type: "string",
+          },
+        },
+        required: ["type", "last_edited_by", "id"],
+        additionalProperties: false,
+      },
+      {
+        type: "object",
+        properties: {
+          type: {
+            type: "string",
+            const: "last_edited_time",
+          },
+          last_edited_time: {
+            type: "string",
+          },
+          id: {
+            type: "string",
+          },
+        },
+        required: ["type", "last_edited_time", "id"],
+        additionalProperties: false,
+      },
+      {
+        type: "object",
+        properties: {
+          type: {
+            type: "string",
+            const: "formula",
+          },
+          formula: FormulaPropertyResponse,
+          id: {
+            type: "string",
+          },
+        },
+        required: ["type", "formula", "id"],
+        additionalProperties: false,
+      },
+      {
+        type: "object",
+        properties: {
+          type: {
+            type: "string",
+            const: "title",
+          },
+          title: {
+            type: "array",
+            items: RichTextItemResponse,
+          },
+          id: {
+            type: "string",
+          },
+        },
+        required: ["type", "title", "id"],
+        additionalProperties: false,
+      },
+      {
+        type: "object",
+        properties: {
+          type: {
+            type: "string",
+            const: "rich_text",
+          },
+          rich_text: {
+            type: "array",
+            items: RichTextItemResponse,
+          },
+          id: {
+            type: "string",
+          },
+        },
+        required: ["type", "rich_text", "id"],
+        additionalProperties: false,
+      },
+      {
+        type: "object",
+        properties: {
+          type: {
+            type: "string",
+            const: "people",
+          },
+          people: {
+            type: "array",
+            items: {
+              anyOf: [PartialUserObjectResponse, UserObjectResponse],
+            },
+          },
+          id: {
+            type: "string",
+          },
+        },
+        required: ["type", "people", "id"],
+        additionalProperties: false,
+      },
+      {
+        type: "object",
+        properties: {
+          type: {
+            type: "string",
+            const: "relation",
+          },
+          relation: {
+            type: "array",
+            items: {
+              type: "object",
+              properties: {
+                id: {
+                  type: "string",
+                },
+              },
+              required: ["id"],
+              additionalProperties: false,
+            },
+          },
+          id: {
+            type: "string",
+          },
+        },
+        required: ["type", "relation", "id"],
+        additionalProperties: false,
+      },
+      {
+        type: "object",
+        properties: {
+          type: {
+            type: "string",
+            const: "rollup",
+          },
+          rollup: {
+            anyOf: [
+              {
+                type: "object",
+                properties: {
+                  type: {
+                    type: "string",
+                    const: "number",
+                  },
+                  number: {
+                    type: ["number", "null"],
+                  },
+                  function: RollupFunction,
+                },
+                required: ["type", "number", "function"],
+                additionalProperties: false,
               },
               {
-                "type": "object",
-                "properties": {
-                  "type": {
-                    "type": "string",
-                    "const": "date"
+                type: "object",
+                properties: {
+                  type: {
+                    type: "string",
+                    const: "date",
                   },
-                  "date": {
-                    "anyOf": [
+                  date: {
+                    anyOf: [
                       DateResponse,
                       {
-                        "type": "null"
-                      }
-                    ]
+                        type: "null",
+                      },
+                    ],
                   },
-                  "function": RollupFunction
+                  function: RollupFunction,
                 },
-                "required": [
-                  "type",
-                  "date",
-                  "function"
-                ],
-                "additionalProperties": false
+                required: ["type", "date", "function"],
+                additionalProperties: false,
               },
               {
-                "type": "object",
-                "properties": {
-                  "type": {
-                    "type": "string",
-                    "const": "array"
+                type: "object",
+                properties: {
+                  type: {
+                    type: "string",
+                    const: "array",
                   },
-                  "array": {
-                    "type": "array",
-                    "items": {
-                      "anyOf": [
+                  array: {
+                    type: "array",
+                    items: {
+                      anyOf: [
                         {
-                          "type": "object",
-                          "properties": {
-                            "type": {
-                              "type": "string",
-                              "const": "title"
+                          type: "object",
+                          properties: {
+                            type: {
+                              type: "string",
+                              const: "title",
                             },
-                            "title": {
-                              "type": "array",
-                              "items": RichTextItemResponse
-                            }
+                            title: {
+                              type: "array",
+                              items: RichTextItemResponse,
+                            },
                           },
-                          "required": [
-                            "type",
-                            "title"
-                          ],
-                          "additionalProperties": false
+                          required: ["type", "title"],
+                          additionalProperties: false,
                         },
                         {
-                          "type": "object",
-                          "properties": {
-                            "type": {
-                              "type": "string",
-                              "const": "rich_text"
+                          type: "object",
+                          properties: {
+                            type: {
+                              type: "string",
+                              const: "rich_text",
                             },
-                            "rich_text": {
-                              "type": "array",
-                              "items": RichTextItemResponse
-                            }
+                            rich_text: {
+                              type: "array",
+                              items: RichTextItemResponse,
+                            },
                           },
-                          "required": [
-                            "type",
-                            "rich_text"
-                          ],
-                          "additionalProperties": false
+                          required: ["type", "rich_text"],
+                          additionalProperties: false,
                         },
                         {
-                          "type": "object",
-                          "properties": {
-                            "type": {
-                              "type": "string",
-                              "const": "people"
+                          type: "object",
+                          properties: {
+                            type: {
+                              type: "string",
+                              const: "people",
                             },
-                            "people": {
-                              "type": "array",
-                              "items": {
-                                "anyOf": [
+                            people: {
+                              type: "array",
+                              items: {
+                                anyOf: [
                                   PartialUserObjectResponse,
-                                  UserObjectResponse
-                                ]
-                              }
-                            }
+                                  UserObjectResponse,
+                                ],
+                              },
+                            },
                           },
-                          "required": [
-                            "type",
-                            "people"
-                          ],
-                          "additionalProperties": false
+                          required: ["type", "people"],
+                          additionalProperties: false,
                         },
                         {
-                          "type": "object",
-                          "properties": {
-                            "type": {
-                              "type": "string",
-                              "const": "relation"
+                          type: "object",
+                          properties: {
+                            type: {
+                              type: "string",
+                              const: "relation",
                             },
-                            "relation": {
-                              "type": "array",
-                              "items": {
-                                "type": "object",
-                                "properties": {
-                                  "id": {
-                                    "type": "string"
-                                  }
+                            relation: {
+                              type: "array",
+                              items: {
+                                type: "object",
+                                properties: {
+                                  id: {
+                                    type: "string",
+                                  },
                                 },
-                                "required": [
-                                  "id"
-                                ],
-                                "additionalProperties": false
-                              }
-                            }
+                                required: ["id"],
+                                additionalProperties: false,
+                              },
+                            },
                           },
-                          "required": [
-                            "type",
-                            "relation"
-                          ],
-                          "additionalProperties": false
-                        }
-                      ]
-                    }
+                          required: ["type", "relation"],
+                          additionalProperties: false,
+                        },
+                      ],
+                    },
                   },
-                  "function": RollupFunction
+                  function: RollupFunction,
                 },
-                "required": [
-                  "type",
-                  "array",
-                  "function"
-                ],
-                "additionalProperties": false
-              }
-            ]
+                required: ["type", "array", "function"],
+                additionalProperties: false,
+              },
+            ],
           },
-          "id": {
-            "type": "string"
-          }
+          id: {
+            type: "string",
+          },
         },
-        "required": [
-          "type",
-          "rollup",
-          "id"
-        ],
-        "additionalProperties": false
-      }
-    ]
-  }
+        required: ["type", "rollup", "id"],
+        additionalProperties: false,
+      },
+    ],
+  },
 };
 
 export const PageObjectResponse: JSONSchema = {
-  "type": "object",
-  "properties": {
-    "parent": {
-      "anyOf": [
+  type: "object",
+  properties: {
+    parent: {
+      anyOf: [
         {
-          "type": "object",
-          "properties": {
-            "type": {
-              "type": "string",
-              "const": "database_id"
+          type: "object",
+          properties: {
+            type: {
+              type: "string",
+              const: "database_id",
             },
-            "database_id": {
-              "type": "string"
-            }
+            database_id: {
+              type: "string",
+            },
           },
-          "required": [
-            "type",
-            "database_id"
-          ],
-          "additionalProperties": false
+          required: ["type", "database_id"],
+          additionalProperties: false,
         },
         {
-          "type": "object",
-          "properties": {
-            "type": {
-              "type": "string",
-              "const": "page_id"
+          type: "object",
+          properties: {
+            type: {
+              type: "string",
+              const: "page_id",
             },
-            "page_id": {
-              "type": "string"
-            }
+            page_id: {
+              type: "string",
+            },
           },
-          "required": [
-            "type",
-            "page_id"
-          ],
-          "additionalProperties": false
+          required: ["type", "page_id"],
+          additionalProperties: false,
         },
         {
-          "type": "object",
-          "properties": {
-            "type": {
-              "type": "string",
-              "const": "block_id"
+          type: "object",
+          properties: {
+            type: {
+              type: "string",
+              const: "block_id",
             },
-            "block_id": {
-              "type": "string"
-            }
+            block_id: {
+              type: "string",
+            },
           },
-          "required": [
-            "type",
-            "block_id"
-          ],
-          "additionalProperties": false
+          required: ["type", "block_id"],
+          additionalProperties: false,
         },
         {
-          "type": "object",
-          "properties": {
-            "type": {
-              "type": "string",
-              "const": "workspace"
+          type: "object",
+          properties: {
+            type: {
+              type: "string",
+              const: "workspace",
             },
-            "workspace": {
-              "type": "boolean",
-              "const": true
-            }
+            workspace: {
+              type: "boolean",
+              const: true,
+            },
           },
-          "required": [
-            "type",
-            "workspace"
-          ],
-          "additionalProperties": false
-        }
-      ]
+          required: ["type", "workspace"],
+          additionalProperties: false,
+        },
+      ],
     },
-    "properties": PageObjectResponseProperties,
-    "icon": {
-      "anyOf": [
+    properties: PageObjectResponseProperties,
+    icon: {
+      anyOf: [
         {
-          "type": "object",
-          "properties": {
-            "type": {
-              "type": "string",
-              "const": "emoji"
+          type: "object",
+          properties: {
+            type: {
+              type: "string",
+              const: "emoji",
             },
-            "emoji": EmojiRequest
+            emoji: EmojiRequest,
           },
-          "required": [
-            "type",
-            "emoji"
-          ],
-          "additionalProperties": false
+          required: ["type", "emoji"],
+          additionalProperties: false,
         },
         {
-          "type": "null"
+          type: "null",
         },
         {
-          "type": "object",
-          "properties": {
-            "type": {
-              "type": "string",
-              "const": "external"
+          type: "object",
+          properties: {
+            type: {
+              type: "string",
+              const: "external",
             },
-            "external": {
-              "type": "object",
-              "properties": {
-                "url": TextRequest
+            external: {
+              type: "object",
+              properties: {
+                url: TextRequest,
               },
-              "required": [
-                "url"
-              ],
-              "additionalProperties": false
-            }
+              required: ["url"],
+              additionalProperties: false,
+            },
           },
-          "required": [
-            "type",
-            "external"
-          ],
-          "additionalProperties": false
+          required: ["type", "external"],
+          additionalProperties: false,
         },
         {
-          "type": "object",
-          "properties": {
-            "type": {
-              "type": "string",
-              "const": "file"
+          type: "object",
+          properties: {
+            type: {
+              type: "string",
+              const: "file",
             },
-            "file": {
-              "type": "object",
-              "properties": {
-                "url": {
-                  "type": "string"
+            file: {
+              type: "object",
+              properties: {
+                url: {
+                  type: "string",
                 },
-                "expiry_time": {
-                  "type": "string"
-                }
-              },
-              "required": [
-                "url",
-                "expiry_time"
-              ],
-              "additionalProperties": false
-            }
-          },
-          "required": [
-            "type",
-            "file"
-          ],
-          "additionalProperties": false
-        }
-      ]
-    },
-    "cover": {
-      "anyOf": [
-        {
-          "type": "object",
-          "properties": {
-            "type": {
-              "type": "string",
-              "const": "external"
-            },
-            "external": {
-              "type": "object",
-              "properties": {
-                "url": TextRequest
-              },
-              "required": [
-                "url"
-              ],
-              "additionalProperties": false
-            }
-          },
-          "required": [
-            "type",
-            "external"
-          ],
-          "additionalProperties": false
-        },
-        {
-          "type": "null"
-        },
-        {
-          "type": "object",
-          "properties": {
-            "type": {
-              "type": "string",
-              "const": "file"
-            },
-            "file": {
-              "type": "object",
-              "properties": {
-                "url": {
-                  "type": "string"
+                expiry_time: {
+                  type: "string",
                 },
-                "expiry_time": {
-                  "type": "string"
-                }
               },
-              "required": [
-                "url",
-                "expiry_time"
-              ],
-              "additionalProperties": false
-            }
+              required: ["url", "expiry_time"],
+              additionalProperties: false,
+            },
           },
-          "required": [
-            "type",
-            "file"
-          ],
-          "additionalProperties": false
-        }
-      ]
+          required: ["type", "file"],
+          additionalProperties: false,
+        },
+      ],
     },
-    "created_by": PartialUserObjectResponse,
-    "last_edited_by": PartialUserObjectResponse,
-    "object": {
-      "type": "string",
-      "const": "page"
+    cover: {
+      anyOf: [
+        {
+          type: "object",
+          properties: {
+            type: {
+              type: "string",
+              const: "external",
+            },
+            external: {
+              type: "object",
+              properties: {
+                url: TextRequest,
+              },
+              required: ["url"],
+              additionalProperties: false,
+            },
+          },
+          required: ["type", "external"],
+          additionalProperties: false,
+        },
+        {
+          type: "null",
+        },
+        {
+          type: "object",
+          properties: {
+            type: {
+              type: "string",
+              const: "file",
+            },
+            file: {
+              type: "object",
+              properties: {
+                url: {
+                  type: "string",
+                },
+                expiry_time: {
+                  type: "string",
+                },
+              },
+              required: ["url", "expiry_time"],
+              additionalProperties: false,
+            },
+          },
+          required: ["type", "file"],
+          additionalProperties: false,
+        },
+      ],
     },
-    "id": {
-      "type": "string"
+    created_by: PartialUserObjectResponse,
+    last_edited_by: PartialUserObjectResponse,
+    object: {
+      type: "string",
+      const: "page",
     },
-    "created_time": {
-      "type": "string"
+    id: {
+      type: "string",
     },
-    "last_edited_time": {
-      "type": "string"
+    created_time: {
+      type: "string",
     },
-    "archived": {
-      "type": "boolean"
+    last_edited_time: {
+      type: "string",
     },
-    "url": {
-      "type": "string"
-    }
+    archived: {
+      type: "boolean",
+    },
+    url: {
+      type: "string",
+    },
   },
-  "required": [
+  required: [
     "parent",
     "properties",
     "icon",
@@ -946,27 +777,22 @@ export const PageObjectResponse: JSONSchema = {
     "created_time",
     "last_edited_time",
     "archived",
-    "url"
+    "url",
   ],
-  "additionalProperties": false
+  additionalProperties: false,
 };
 
-
-
 export const PartialPageObjectResponse: JSONSchema = {
-  "type": "object",
-  "properties": {
-    "object": {
-      "type": "string",
-      "const": "page"
+  type: "object",
+  properties: {
+    object: {
+      type: "string",
+      const: "page",
     },
-    "id": {
-      "type": "string"
-    }
+    id: {
+      type: "string",
+    },
   },
-  "required": [
-    "object",
-    "id"
-  ],
-  "additionalProperties": false
+  required: ["object", "id"],
+  additionalProperties: false,
 };

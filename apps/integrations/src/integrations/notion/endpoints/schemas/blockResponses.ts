@@ -1,141 +1,128 @@
 import { JSONSchema } from "core/schemas/types";
+import { ApiColor, IdRequest, EmptyObject } from "./common";
+import { EmojiRequest } from "./emoji";
+import { PartialUserObjectResponse } from "./person";
+import { TextRequest } from "./requests";
+import { RichTextItemResponse } from "./responses";
 
 export const PartialBlockObjectResponse: JSONSchema = {
-  "type": "object",
-  "properties": {
-    "object": {
-      "type": "string",
-      "const": "block"
+  type: "object",
+  properties: {
+    object: {
+      type: "string",
+      const: "block",
     },
-    "id": {
-      "type": "string"
-    }
+    id: {
+      type: "string",
+    },
   },
-  "required": [
-    "object",
-    "id"
-  ],
-  "additionalProperties": false
+  required: ["object", "id"],
+  additionalProperties: false,
 };
 
 export const ParagraphBlockObjectResponse: JSONSchema = {
-  "type": "object",
-  "properties": {
-    "type": {
-      "type": "string",
-      "const": "paragraph"
+  type: "object",
+  properties: {
+    type: {
+      type: "string",
+      const: "paragraph",
     },
-    "paragraph": {
-      "type": "object",
-      "properties": {
-        "rich_text": {
-          "type": "array",
-          "items": RichTextItemResponse
+    paragraph: {
+      type: "object",
+      properties: {
+        rich_text: {
+          type: "array",
+          items: RichTextItemResponse,
         },
-        "color": ApiColor
+        color: ApiColor,
       },
-      "required": [
-        "rich_text",
-        "color"
+      required: ["rich_text", "color"],
+      additionalProperties: false,
+    },
+    parent: {
+      anyOf: [
+        {
+          type: "object",
+          properties: {
+            type: {
+              type: "string",
+              const: "database_id",
+            },
+            database_id: {
+              type: "string",
+            },
+          },
+          required: ["type", "database_id"],
+          additionalProperties: false,
+        },
+        {
+          type: "object",
+          properties: {
+            type: {
+              type: "string",
+              const: "page_id",
+            },
+            page_id: {
+              type: "string",
+            },
+          },
+          required: ["type", "page_id"],
+          additionalProperties: false,
+        },
+        {
+          type: "object",
+          properties: {
+            type: {
+              type: "string",
+              const: "block_id",
+            },
+            block_id: {
+              type: "string",
+            },
+          },
+          required: ["type", "block_id"],
+          additionalProperties: false,
+        },
+        {
+          type: "object",
+          properties: {
+            type: {
+              type: "string",
+              const: "workspace",
+            },
+            workspace: {
+              type: "boolean",
+              const: true,
+            },
+          },
+          required: ["type", "workspace"],
+          additionalProperties: false,
+        },
       ],
-      "additionalProperties": false
     },
-    "parent": {
-      "anyOf": [
-        {
-          "type": "object",
-          "properties": {
-            "type": {
-              "type": "string",
-              "const": "database_id"
-            },
-            "database_id": {
-              "type": "string"
-            }
-          },
-          "required": [
-            "type",
-            "database_id"
-          ],
-          "additionalProperties": false
-        },
-        {
-          "type": "object",
-          "properties": {
-            "type": {
-              "type": "string",
-              "const": "page_id"
-            },
-            "page_id": {
-              "type": "string"
-            }
-          },
-          "required": [
-            "type",
-            "page_id"
-          ],
-          "additionalProperties": false
-        },
-        {
-          "type": "object",
-          "properties": {
-            "type": {
-              "type": "string",
-              "const": "block_id"
-            },
-            "block_id": {
-              "type": "string"
-            }
-          },
-          "required": [
-            "type",
-            "block_id"
-          ],
-          "additionalProperties": false
-        },
-        {
-          "type": "object",
-          "properties": {
-            "type": {
-              "type": "string",
-              "const": "workspace"
-            },
-            "workspace": {
-              "type": "boolean",
-              "const": true
-            }
-          },
-          "required": [
-            "type",
-            "workspace"
-          ],
-          "additionalProperties": false
-        }
-      ]
+    object: {
+      type: "string",
+      const: "block",
     },
-    "object": {
-      "type": "string",
-      "const": "block"
+    id: {
+      type: "string",
     },
-    "id": {
-      "type": "string"
+    created_time: {
+      type: "string",
     },
-    "created_time": {
-      "type": "string"
+    created_by: PartialUserObjectResponse,
+    last_edited_time: {
+      type: "string",
     },
-    "created_by": PartialUserObjectResponse,
-    "last_edited_time": {
-      "type": "string"
+    last_edited_by: PartialUserObjectResponse,
+    has_children: {
+      type: "boolean",
     },
-    "last_edited_by": PartialUserObjectResponse,
-    "has_children": {
-      "type": "boolean"
+    archived: {
+      type: "boolean",
     },
-    "archived": {
-      "type": "boolean"
-    }
   },
-  "required": [
+  required: [
     "type",
     "paragraph",
     "parent",
@@ -146,129 +133,114 @@ export const ParagraphBlockObjectResponse: JSONSchema = {
     "last_edited_time",
     "last_edited_by",
     "has_children",
-    "archived"
+    "archived",
   ],
-  "additionalProperties": false
+  additionalProperties: false,
 };
 
 export const Heading1BlockObjectResponse: JSONSchema = {
-  "type": "object",
-  "properties": {
-    "type": {
-      "type": "string",
-      "const": "heading_1"
+  type: "object",
+  properties: {
+    type: {
+      type: "string",
+      const: "heading_1",
     },
-    "heading_1": {
-      "type": "object",
-      "properties": {
-        "rich_text": {
-          "type": "array",
-          "items": RichTextItemResponse
+    heading_1: {
+      type: "object",
+      properties: {
+        rich_text: {
+          type: "array",
+          items: RichTextItemResponse,
         },
-        "color": ApiColor
+        color: ApiColor,
       },
-      "required": [
-        "rich_text",
-        "color"
+      required: ["rich_text", "color"],
+      additionalProperties: false,
+    },
+    parent: {
+      anyOf: [
+        {
+          type: "object",
+          properties: {
+            type: {
+              type: "string",
+              const: "database_id",
+            },
+            database_id: {
+              type: "string",
+            },
+          },
+          required: ["type", "database_id"],
+          additionalProperties: false,
+        },
+        {
+          type: "object",
+          properties: {
+            type: {
+              type: "string",
+              const: "page_id",
+            },
+            page_id: {
+              type: "string",
+            },
+          },
+          required: ["type", "page_id"],
+          additionalProperties: false,
+        },
+        {
+          type: "object",
+          properties: {
+            type: {
+              type: "string",
+              const: "block_id",
+            },
+            block_id: {
+              type: "string",
+            },
+          },
+          required: ["type", "block_id"],
+          additionalProperties: false,
+        },
+        {
+          type: "object",
+          properties: {
+            type: {
+              type: "string",
+              const: "workspace",
+            },
+            workspace: {
+              type: "boolean",
+              const: true,
+            },
+          },
+          required: ["type", "workspace"],
+          additionalProperties: false,
+        },
       ],
-      "additionalProperties": false
     },
-    "parent": {
-      "anyOf": [
-        {
-          "type": "object",
-          "properties": {
-            "type": {
-              "type": "string",
-              "const": "database_id"
-            },
-            "database_id": {
-              "type": "string"
-            }
-          },
-          "required": [
-            "type",
-            "database_id"
-          ],
-          "additionalProperties": false
-        },
-        {
-          "type": "object",
-          "properties": {
-            "type": {
-              "type": "string",
-              "const": "page_id"
-            },
-            "page_id": {
-              "type": "string"
-            }
-          },
-          "required": [
-            "type",
-            "page_id"
-          ],
-          "additionalProperties": false
-        },
-        {
-          "type": "object",
-          "properties": {
-            "type": {
-              "type": "string",
-              "const": "block_id"
-            },
-            "block_id": {
-              "type": "string"
-            }
-          },
-          "required": [
-            "type",
-            "block_id"
-          ],
-          "additionalProperties": false
-        },
-        {
-          "type": "object",
-          "properties": {
-            "type": {
-              "type": "string",
-              "const": "workspace"
-            },
-            "workspace": {
-              "type": "boolean",
-              "const": true
-            }
-          },
-          "required": [
-            "type",
-            "workspace"
-          ],
-          "additionalProperties": false
-        }
-      ]
+    object: {
+      type: "string",
+      const: "block",
     },
-    "object": {
-      "type": "string",
-      "const": "block"
+    id: {
+      type: "string",
     },
-    "id": {
-      "type": "string"
+    created_time: {
+      type: "string",
     },
-    "created_time": {
-      "type": "string"
+    created_by: PartialUserObjectResponse,
+    last_edited_time: {
+      type: "string",
     },
-    "created_by": PartialUserObjectResponse,
-    "last_edited_time": {
-      "type": "string"
+    last_edited_by: PartialUserObjectResponse,
+    has_children: {
+      type: "boolean",
     },
-    "last_edited_by": PartialUserObjectResponse,
-    "has_children": {
-      "type": "boolean"
+    archived: {
+      type: "boolean",
     },
-    "archived": {
-      "type": "boolean"
-    }
   },
-  "required": [
+  required: [
     "type",
     "heading_1",
     "parent",
@@ -279,129 +251,114 @@ export const Heading1BlockObjectResponse: JSONSchema = {
     "last_edited_time",
     "last_edited_by",
     "has_children",
-    "archived"
+    "archived",
   ],
-  "additionalProperties": false
+  additionalProperties: false,
 };
 
 export const Heading2BlockObjectResponse: JSONSchema = {
-  "type": "object",
-  "properties": {
-    "type": {
-      "type": "string",
-      "const": "heading_2"
+  type: "object",
+  properties: {
+    type: {
+      type: "string",
+      const: "heading_2",
     },
-    "heading_2": {
-      "type": "object",
-      "properties": {
-        "rich_text": {
-          "type": "array",
-          "items": RichTextItemResponse
+    heading_2: {
+      type: "object",
+      properties: {
+        rich_text: {
+          type: "array",
+          items: RichTextItemResponse,
         },
-        "color": ApiColor
+        color: ApiColor,
       },
-      "required": [
-        "rich_text",
-        "color"
+      required: ["rich_text", "color"],
+      additionalProperties: false,
+    },
+    parent: {
+      anyOf: [
+        {
+          type: "object",
+          properties: {
+            type: {
+              type: "string",
+              const: "database_id",
+            },
+            database_id: {
+              type: "string",
+            },
+          },
+          required: ["type", "database_id"],
+          additionalProperties: false,
+        },
+        {
+          type: "object",
+          properties: {
+            type: {
+              type: "string",
+              const: "page_id",
+            },
+            page_id: {
+              type: "string",
+            },
+          },
+          required: ["type", "page_id"],
+          additionalProperties: false,
+        },
+        {
+          type: "object",
+          properties: {
+            type: {
+              type: "string",
+              const: "block_id",
+            },
+            block_id: {
+              type: "string",
+            },
+          },
+          required: ["type", "block_id"],
+          additionalProperties: false,
+        },
+        {
+          type: "object",
+          properties: {
+            type: {
+              type: "string",
+              const: "workspace",
+            },
+            workspace: {
+              type: "boolean",
+              const: true,
+            },
+          },
+          required: ["type", "workspace"],
+          additionalProperties: false,
+        },
       ],
-      "additionalProperties": false
     },
-    "parent": {
-      "anyOf": [
-        {
-          "type": "object",
-          "properties": {
-            "type": {
-              "type": "string",
-              "const": "database_id"
-            },
-            "database_id": {
-              "type": "string"
-            }
-          },
-          "required": [
-            "type",
-            "database_id"
-          ],
-          "additionalProperties": false
-        },
-        {
-          "type": "object",
-          "properties": {
-            "type": {
-              "type": "string",
-              "const": "page_id"
-            },
-            "page_id": {
-              "type": "string"
-            }
-          },
-          "required": [
-            "type",
-            "page_id"
-          ],
-          "additionalProperties": false
-        },
-        {
-          "type": "object",
-          "properties": {
-            "type": {
-              "type": "string",
-              "const": "block_id"
-            },
-            "block_id": {
-              "type": "string"
-            }
-          },
-          "required": [
-            "type",
-            "block_id"
-          ],
-          "additionalProperties": false
-        },
-        {
-          "type": "object",
-          "properties": {
-            "type": {
-              "type": "string",
-              "const": "workspace"
-            },
-            "workspace": {
-              "type": "boolean",
-              "const": true
-            }
-          },
-          "required": [
-            "type",
-            "workspace"
-          ],
-          "additionalProperties": false
-        }
-      ]
+    object: {
+      type: "string",
+      const: "block",
     },
-    "object": {
-      "type": "string",
-      "const": "block"
+    id: {
+      type: "string",
     },
-    "id": {
-      "type": "string"
+    created_time: {
+      type: "string",
     },
-    "created_time": {
-      "type": "string"
+    created_by: PartialUserObjectResponse,
+    last_edited_time: {
+      type: "string",
     },
-    "created_by": PartialUserObjectResponse,
-    "last_edited_time": {
-      "type": "string"
+    last_edited_by: PartialUserObjectResponse,
+    has_children: {
+      type: "boolean",
     },
-    "last_edited_by": PartialUserObjectResponse,
-    "has_children": {
-      "type": "boolean"
+    archived: {
+      type: "boolean",
     },
-    "archived": {
-      "type": "boolean"
-    }
   },
-  "required": [
+  required: [
     "type",
     "heading_2",
     "parent",
@@ -412,129 +369,114 @@ export const Heading2BlockObjectResponse: JSONSchema = {
     "last_edited_time",
     "last_edited_by",
     "has_children",
-    "archived"
+    "archived",
   ],
-  "additionalProperties": false
+  additionalProperties: false,
 };
 
 export const Heading3BlockObjectResponse: JSONSchema = {
-  "type": "object",
-  "properties": {
-    "type": {
-      "type": "string",
-      "const": "heading_3"
+  type: "object",
+  properties: {
+    type: {
+      type: "string",
+      const: "heading_3",
     },
-    "heading_3": {
-      "type": "object",
-      "properties": {
-        "rich_text": {
-          "type": "array",
-          "items": RichTextItemResponse
+    heading_3: {
+      type: "object",
+      properties: {
+        rich_text: {
+          type: "array",
+          items: RichTextItemResponse,
         },
-        "color": ApiColor
+        color: ApiColor,
       },
-      "required": [
-        "rich_text",
-        "color"
+      required: ["rich_text", "color"],
+      additionalProperties: false,
+    },
+    parent: {
+      anyOf: [
+        {
+          type: "object",
+          properties: {
+            type: {
+              type: "string",
+              const: "database_id",
+            },
+            database_id: {
+              type: "string",
+            },
+          },
+          required: ["type", "database_id"],
+          additionalProperties: false,
+        },
+        {
+          type: "object",
+          properties: {
+            type: {
+              type: "string",
+              const: "page_id",
+            },
+            page_id: {
+              type: "string",
+            },
+          },
+          required: ["type", "page_id"],
+          additionalProperties: false,
+        },
+        {
+          type: "object",
+          properties: {
+            type: {
+              type: "string",
+              const: "block_id",
+            },
+            block_id: {
+              type: "string",
+            },
+          },
+          required: ["type", "block_id"],
+          additionalProperties: false,
+        },
+        {
+          type: "object",
+          properties: {
+            type: {
+              type: "string",
+              const: "workspace",
+            },
+            workspace: {
+              type: "boolean",
+              const: true,
+            },
+          },
+          required: ["type", "workspace"],
+          additionalProperties: false,
+        },
       ],
-      "additionalProperties": false
     },
-    "parent": {
-      "anyOf": [
-        {
-          "type": "object",
-          "properties": {
-            "type": {
-              "type": "string",
-              "const": "database_id"
-            },
-            "database_id": {
-              "type": "string"
-            }
-          },
-          "required": [
-            "type",
-            "database_id"
-          ],
-          "additionalProperties": false
-        },
-        {
-          "type": "object",
-          "properties": {
-            "type": {
-              "type": "string",
-              "const": "page_id"
-            },
-            "page_id": {
-              "type": "string"
-            }
-          },
-          "required": [
-            "type",
-            "page_id"
-          ],
-          "additionalProperties": false
-        },
-        {
-          "type": "object",
-          "properties": {
-            "type": {
-              "type": "string",
-              "const": "block_id"
-            },
-            "block_id": {
-              "type": "string"
-            }
-          },
-          "required": [
-            "type",
-            "block_id"
-          ],
-          "additionalProperties": false
-        },
-        {
-          "type": "object",
-          "properties": {
-            "type": {
-              "type": "string",
-              "const": "workspace"
-            },
-            "workspace": {
-              "type": "boolean",
-              "const": true
-            }
-          },
-          "required": [
-            "type",
-            "workspace"
-          ],
-          "additionalProperties": false
-        }
-      ]
+    object: {
+      type: "string",
+      const: "block",
     },
-    "object": {
-      "type": "string",
-      "const": "block"
+    id: {
+      type: "string",
     },
-    "id": {
-      "type": "string"
+    created_time: {
+      type: "string",
     },
-    "created_time": {
-      "type": "string"
+    created_by: PartialUserObjectResponse,
+    last_edited_time: {
+      type: "string",
     },
-    "created_by": PartialUserObjectResponse,
-    "last_edited_time": {
-      "type": "string"
+    last_edited_by: PartialUserObjectResponse,
+    has_children: {
+      type: "boolean",
     },
-    "last_edited_by": PartialUserObjectResponse,
-    "has_children": {
-      "type": "boolean"
+    archived: {
+      type: "boolean",
     },
-    "archived": {
-      "type": "boolean"
-    }
   },
-  "required": [
+  required: [
     "type",
     "heading_3",
     "parent",
@@ -545,129 +487,114 @@ export const Heading3BlockObjectResponse: JSONSchema = {
     "last_edited_time",
     "last_edited_by",
     "has_children",
-    "archived"
+    "archived",
   ],
-  "additionalProperties": false
+  additionalProperties: false,
 };
 
 export const BulletedListItemBlockObjectResponse: JSONSchema = {
-  "type": "object",
-  "properties": {
-    "type": {
-      "type": "string",
-      "const": "bulleted_list_item"
+  type: "object",
+  properties: {
+    type: {
+      type: "string",
+      const: "bulleted_list_item",
     },
-    "bulleted_list_item": {
-      "type": "object",
-      "properties": {
-        "rich_text": {
-          "type": "array",
-          "items": RichTextItemResponse
+    bulleted_list_item: {
+      type: "object",
+      properties: {
+        rich_text: {
+          type: "array",
+          items: RichTextItemResponse,
         },
-        "color": ApiColor
+        color: ApiColor,
       },
-      "required": [
-        "rich_text",
-        "color"
+      required: ["rich_text", "color"],
+      additionalProperties: false,
+    },
+    parent: {
+      anyOf: [
+        {
+          type: "object",
+          properties: {
+            type: {
+              type: "string",
+              const: "database_id",
+            },
+            database_id: {
+              type: "string",
+            },
+          },
+          required: ["type", "database_id"],
+          additionalProperties: false,
+        },
+        {
+          type: "object",
+          properties: {
+            type: {
+              type: "string",
+              const: "page_id",
+            },
+            page_id: {
+              type: "string",
+            },
+          },
+          required: ["type", "page_id"],
+          additionalProperties: false,
+        },
+        {
+          type: "object",
+          properties: {
+            type: {
+              type: "string",
+              const: "block_id",
+            },
+            block_id: {
+              type: "string",
+            },
+          },
+          required: ["type", "block_id"],
+          additionalProperties: false,
+        },
+        {
+          type: "object",
+          properties: {
+            type: {
+              type: "string",
+              const: "workspace",
+            },
+            workspace: {
+              type: "boolean",
+              const: true,
+            },
+          },
+          required: ["type", "workspace"],
+          additionalProperties: false,
+        },
       ],
-      "additionalProperties": false
     },
-    "parent": {
-      "anyOf": [
-        {
-          "type": "object",
-          "properties": {
-            "type": {
-              "type": "string",
-              "const": "database_id"
-            },
-            "database_id": {
-              "type": "string"
-            }
-          },
-          "required": [
-            "type",
-            "database_id"
-          ],
-          "additionalProperties": false
-        },
-        {
-          "type": "object",
-          "properties": {
-            "type": {
-              "type": "string",
-              "const": "page_id"
-            },
-            "page_id": {
-              "type": "string"
-            }
-          },
-          "required": [
-            "type",
-            "page_id"
-          ],
-          "additionalProperties": false
-        },
-        {
-          "type": "object",
-          "properties": {
-            "type": {
-              "type": "string",
-              "const": "block_id"
-            },
-            "block_id": {
-              "type": "string"
-            }
-          },
-          "required": [
-            "type",
-            "block_id"
-          ],
-          "additionalProperties": false
-        },
-        {
-          "type": "object",
-          "properties": {
-            "type": {
-              "type": "string",
-              "const": "workspace"
-            },
-            "workspace": {
-              "type": "boolean",
-              "const": true
-            }
-          },
-          "required": [
-            "type",
-            "workspace"
-          ],
-          "additionalProperties": false
-        }
-      ]
+    object: {
+      type: "string",
+      const: "block",
     },
-    "object": {
-      "type": "string",
-      "const": "block"
+    id: {
+      type: "string",
     },
-    "id": {
-      "type": "string"
+    created_time: {
+      type: "string",
     },
-    "created_time": {
-      "type": "string"
+    created_by: PartialUserObjectResponse,
+    last_edited_time: {
+      type: "string",
     },
-    "created_by": PartialUserObjectResponse,
-    "last_edited_time": {
-      "type": "string"
+    last_edited_by: PartialUserObjectResponse,
+    has_children: {
+      type: "boolean",
     },
-    "last_edited_by": PartialUserObjectResponse,
-    "has_children": {
-      "type": "boolean"
+    archived: {
+      type: "boolean",
     },
-    "archived": {
-      "type": "boolean"
-    }
   },
-  "required": [
+  required: [
     "type",
     "bulleted_list_item",
     "parent",
@@ -678,129 +605,114 @@ export const BulletedListItemBlockObjectResponse: JSONSchema = {
     "last_edited_time",
     "last_edited_by",
     "has_children",
-    "archived"
+    "archived",
   ],
-  "additionalProperties": false
+  additionalProperties: false,
 };
 
 export const NumberedListItemBlockObjectResponse: JSONSchema = {
-  "type": "object",
-  "properties": {
-    "type": {
-      "type": "string",
-      "const": "numbered_list_item"
+  type: "object",
+  properties: {
+    type: {
+      type: "string",
+      const: "numbered_list_item",
     },
-    "numbered_list_item": {
-      "type": "object",
-      "properties": {
-        "rich_text": {
-          "type": "array",
-          "items": RichTextItemResponse
+    numbered_list_item: {
+      type: "object",
+      properties: {
+        rich_text: {
+          type: "array",
+          items: RichTextItemResponse,
         },
-        "color": ApiColor
+        color: ApiColor,
       },
-      "required": [
-        "rich_text",
-        "color"
+      required: ["rich_text", "color"],
+      additionalProperties: false,
+    },
+    parent: {
+      anyOf: [
+        {
+          type: "object",
+          properties: {
+            type: {
+              type: "string",
+              const: "database_id",
+            },
+            database_id: {
+              type: "string",
+            },
+          },
+          required: ["type", "database_id"],
+          additionalProperties: false,
+        },
+        {
+          type: "object",
+          properties: {
+            type: {
+              type: "string",
+              const: "page_id",
+            },
+            page_id: {
+              type: "string",
+            },
+          },
+          required: ["type", "page_id"],
+          additionalProperties: false,
+        },
+        {
+          type: "object",
+          properties: {
+            type: {
+              type: "string",
+              const: "block_id",
+            },
+            block_id: {
+              type: "string",
+            },
+          },
+          required: ["type", "block_id"],
+          additionalProperties: false,
+        },
+        {
+          type: "object",
+          properties: {
+            type: {
+              type: "string",
+              const: "workspace",
+            },
+            workspace: {
+              type: "boolean",
+              const: true,
+            },
+          },
+          required: ["type", "workspace"],
+          additionalProperties: false,
+        },
       ],
-      "additionalProperties": false
     },
-    "parent": {
-      "anyOf": [
-        {
-          "type": "object",
-          "properties": {
-            "type": {
-              "type": "string",
-              "const": "database_id"
-            },
-            "database_id": {
-              "type": "string"
-            }
-          },
-          "required": [
-            "type",
-            "database_id"
-          ],
-          "additionalProperties": false
-        },
-        {
-          "type": "object",
-          "properties": {
-            "type": {
-              "type": "string",
-              "const": "page_id"
-            },
-            "page_id": {
-              "type": "string"
-            }
-          },
-          "required": [
-            "type",
-            "page_id"
-          ],
-          "additionalProperties": false
-        },
-        {
-          "type": "object",
-          "properties": {
-            "type": {
-              "type": "string",
-              "const": "block_id"
-            },
-            "block_id": {
-              "type": "string"
-            }
-          },
-          "required": [
-            "type",
-            "block_id"
-          ],
-          "additionalProperties": false
-        },
-        {
-          "type": "object",
-          "properties": {
-            "type": {
-              "type": "string",
-              "const": "workspace"
-            },
-            "workspace": {
-              "type": "boolean",
-              "const": true
-            }
-          },
-          "required": [
-            "type",
-            "workspace"
-          ],
-          "additionalProperties": false
-        }
-      ]
+    object: {
+      type: "string",
+      const: "block",
     },
-    "object": {
-      "type": "string",
-      "const": "block"
+    id: {
+      type: "string",
     },
-    "id": {
-      "type": "string"
+    created_time: {
+      type: "string",
     },
-    "created_time": {
-      "type": "string"
+    created_by: PartialUserObjectResponse,
+    last_edited_time: {
+      type: "string",
     },
-    "created_by": PartialUserObjectResponse,
-    "last_edited_time": {
-      "type": "string"
+    last_edited_by: PartialUserObjectResponse,
+    has_children: {
+      type: "boolean",
     },
-    "last_edited_by": PartialUserObjectResponse,
-    "has_children": {
-      "type": "boolean"
+    archived: {
+      type: "boolean",
     },
-    "archived": {
-      "type": "boolean"
-    }
   },
-  "required": [
+  required: [
     "type",
     "numbered_list_item",
     "parent",
@@ -811,129 +723,114 @@ export const NumberedListItemBlockObjectResponse: JSONSchema = {
     "last_edited_time",
     "last_edited_by",
     "has_children",
-    "archived"
+    "archived",
   ],
-  "additionalProperties": false
+  additionalProperties: false,
 };
 
 export const QuoteBlockObjectResponse: JSONSchema = {
-  "type": "object",
-  "properties": {
-    "type": {
-      "type": "string",
-      "const": "quote"
+  type: "object",
+  properties: {
+    type: {
+      type: "string",
+      const: "quote",
     },
-    "quote": {
-      "type": "object",
-      "properties": {
-        "rich_text": {
-          "type": "array",
-          "items": RichTextItemResponse
+    quote: {
+      type: "object",
+      properties: {
+        rich_text: {
+          type: "array",
+          items: RichTextItemResponse,
         },
-        "color": ApiColor
+        color: ApiColor,
       },
-      "required": [
-        "rich_text",
-        "color"
+      required: ["rich_text", "color"],
+      additionalProperties: false,
+    },
+    parent: {
+      anyOf: [
+        {
+          type: "object",
+          properties: {
+            type: {
+              type: "string",
+              const: "database_id",
+            },
+            database_id: {
+              type: "string",
+            },
+          },
+          required: ["type", "database_id"],
+          additionalProperties: false,
+        },
+        {
+          type: "object",
+          properties: {
+            type: {
+              type: "string",
+              const: "page_id",
+            },
+            page_id: {
+              type: "string",
+            },
+          },
+          required: ["type", "page_id"],
+          additionalProperties: false,
+        },
+        {
+          type: "object",
+          properties: {
+            type: {
+              type: "string",
+              const: "block_id",
+            },
+            block_id: {
+              type: "string",
+            },
+          },
+          required: ["type", "block_id"],
+          additionalProperties: false,
+        },
+        {
+          type: "object",
+          properties: {
+            type: {
+              type: "string",
+              const: "workspace",
+            },
+            workspace: {
+              type: "boolean",
+              const: true,
+            },
+          },
+          required: ["type", "workspace"],
+          additionalProperties: false,
+        },
       ],
-      "additionalProperties": false
     },
-    "parent": {
-      "anyOf": [
-        {
-          "type": "object",
-          "properties": {
-            "type": {
-              "type": "string",
-              "const": "database_id"
-            },
-            "database_id": {
-              "type": "string"
-            }
-          },
-          "required": [
-            "type",
-            "database_id"
-          ],
-          "additionalProperties": false
-        },
-        {
-          "type": "object",
-          "properties": {
-            "type": {
-              "type": "string",
-              "const": "page_id"
-            },
-            "page_id": {
-              "type": "string"
-            }
-          },
-          "required": [
-            "type",
-            "page_id"
-          ],
-          "additionalProperties": false
-        },
-        {
-          "type": "object",
-          "properties": {
-            "type": {
-              "type": "string",
-              "const": "block_id"
-            },
-            "block_id": {
-              "type": "string"
-            }
-          },
-          "required": [
-            "type",
-            "block_id"
-          ],
-          "additionalProperties": false
-        },
-        {
-          "type": "object",
-          "properties": {
-            "type": {
-              "type": "string",
-              "const": "workspace"
-            },
-            "workspace": {
-              "type": "boolean",
-              "const": true
-            }
-          },
-          "required": [
-            "type",
-            "workspace"
-          ],
-          "additionalProperties": false
-        }
-      ]
+    object: {
+      type: "string",
+      const: "block",
     },
-    "object": {
-      "type": "string",
-      "const": "block"
+    id: {
+      type: "string",
     },
-    "id": {
-      "type": "string"
+    created_time: {
+      type: "string",
     },
-    "created_time": {
-      "type": "string"
+    created_by: PartialUserObjectResponse,
+    last_edited_time: {
+      type: "string",
     },
-    "created_by": PartialUserObjectResponse,
-    "last_edited_time": {
-      "type": "string"
+    last_edited_by: PartialUserObjectResponse,
+    has_children: {
+      type: "boolean",
     },
-    "last_edited_by": PartialUserObjectResponse,
-    "has_children": {
-      "type": "boolean"
+    archived: {
+      type: "boolean",
     },
-    "archived": {
-      "type": "boolean"
-    }
   },
-  "required": [
+  required: [
     "type",
     "quote",
     "parent",
@@ -944,133 +841,117 @@ export const QuoteBlockObjectResponse: JSONSchema = {
     "last_edited_time",
     "last_edited_by",
     "has_children",
-    "archived"
+    "archived",
   ],
-  "additionalProperties": false
+  additionalProperties: false,
 };
 
 export const ToDoBlockObjectResponse: JSONSchema = {
-  "type": "object",
-  "properties": {
-    "type": {
-      "type": "string",
-      "const": "to_do"
+  type: "object",
+  properties: {
+    type: {
+      type: "string",
+      const: "to_do",
     },
-    "to_do": {
-      "type": "object",
-      "properties": {
-        "rich_text": {
-          "type": "array",
-          "items": RichTextItemResponse
+    to_do: {
+      type: "object",
+      properties: {
+        rich_text: {
+          type: "array",
+          items: RichTextItemResponse,
         },
-        "color": ApiColor,
-        "checked": {
-          "type": "boolean"
-        }
+        color: ApiColor,
+        checked: {
+          type: "boolean",
+        },
       },
-      "required": [
-        "rich_text",
-        "color",
-        "checked"
+      required: ["rich_text", "color", "checked"],
+      additionalProperties: false,
+    },
+    parent: {
+      anyOf: [
+        {
+          type: "object",
+          properties: {
+            type: {
+              type: "string",
+              const: "database_id",
+            },
+            database_id: {
+              type: "string",
+            },
+          },
+          required: ["type", "database_id"],
+          additionalProperties: false,
+        },
+        {
+          type: "object",
+          properties: {
+            type: {
+              type: "string",
+              const: "page_id",
+            },
+            page_id: {
+              type: "string",
+            },
+          },
+          required: ["type", "page_id"],
+          additionalProperties: false,
+        },
+        {
+          type: "object",
+          properties: {
+            type: {
+              type: "string",
+              const: "block_id",
+            },
+            block_id: {
+              type: "string",
+            },
+          },
+          required: ["type", "block_id"],
+          additionalProperties: false,
+        },
+        {
+          type: "object",
+          properties: {
+            type: {
+              type: "string",
+              const: "workspace",
+            },
+            workspace: {
+              type: "boolean",
+              const: true,
+            },
+          },
+          required: ["type", "workspace"],
+          additionalProperties: false,
+        },
       ],
-      "additionalProperties": false
     },
-    "parent": {
-      "anyOf": [
-        {
-          "type": "object",
-          "properties": {
-            "type": {
-              "type": "string",
-              "const": "database_id"
-            },
-            "database_id": {
-              "type": "string"
-            }
-          },
-          "required": [
-            "type",
-            "database_id"
-          ],
-          "additionalProperties": false
-        },
-        {
-          "type": "object",
-          "properties": {
-            "type": {
-              "type": "string",
-              "const": "page_id"
-            },
-            "page_id": {
-              "type": "string"
-            }
-          },
-          "required": [
-            "type",
-            "page_id"
-          ],
-          "additionalProperties": false
-        },
-        {
-          "type": "object",
-          "properties": {
-            "type": {
-              "type": "string",
-              "const": "block_id"
-            },
-            "block_id": {
-              "type": "string"
-            }
-          },
-          "required": [
-            "type",
-            "block_id"
-          ],
-          "additionalProperties": false
-        },
-        {
-          "type": "object",
-          "properties": {
-            "type": {
-              "type": "string",
-              "const": "workspace"
-            },
-            "workspace": {
-              "type": "boolean",
-              "const": true
-            }
-          },
-          "required": [
-            "type",
-            "workspace"
-          ],
-          "additionalProperties": false
-        }
-      ]
+    object: {
+      type: "string",
+      const: "block",
     },
-    "object": {
-      "type": "string",
-      "const": "block"
+    id: {
+      type: "string",
     },
-    "id": {
-      "type": "string"
+    created_time: {
+      type: "string",
     },
-    "created_time": {
-      "type": "string"
+    created_by: PartialUserObjectResponse,
+    last_edited_time: {
+      type: "string",
     },
-    "created_by": PartialUserObjectResponse,
-    "last_edited_time": {
-      "type": "string"
+    last_edited_by: PartialUserObjectResponse,
+    has_children: {
+      type: "boolean",
     },
-    "last_edited_by": PartialUserObjectResponse,
-    "has_children": {
-      "type": "boolean"
+    archived: {
+      type: "boolean",
     },
-    "archived": {
-      "type": "boolean"
-    }
   },
-  "required": [
+  required: [
     "type",
     "to_do",
     "parent",
@@ -1081,129 +962,114 @@ export const ToDoBlockObjectResponse: JSONSchema = {
     "last_edited_time",
     "last_edited_by",
     "has_children",
-    "archived"
+    "archived",
   ],
-  "additionalProperties": false
+  additionalProperties: false,
 };
 
 export const ToggleBlockObjectResponse: JSONSchema = {
-  "type": "object",
-  "properties": {
-    "type": {
-      "type": "string",
-      "const": "toggle"
+  type: "object",
+  properties: {
+    type: {
+      type: "string",
+      const: "toggle",
     },
-    "toggle": {
-      "type": "object",
-      "properties": {
-        "rich_text": {
-          "type": "array",
-          "items": RichTextItemResponse
+    toggle: {
+      type: "object",
+      properties: {
+        rich_text: {
+          type: "array",
+          items: RichTextItemResponse,
         },
-        "color": ApiColor
+        color: ApiColor,
       },
-      "required": [
-        "rich_text",
-        "color"
+      required: ["rich_text", "color"],
+      additionalProperties: false,
+    },
+    parent: {
+      anyOf: [
+        {
+          type: "object",
+          properties: {
+            type: {
+              type: "string",
+              const: "database_id",
+            },
+            database_id: {
+              type: "string",
+            },
+          },
+          required: ["type", "database_id"],
+          additionalProperties: false,
+        },
+        {
+          type: "object",
+          properties: {
+            type: {
+              type: "string",
+              const: "page_id",
+            },
+            page_id: {
+              type: "string",
+            },
+          },
+          required: ["type", "page_id"],
+          additionalProperties: false,
+        },
+        {
+          type: "object",
+          properties: {
+            type: {
+              type: "string",
+              const: "block_id",
+            },
+            block_id: {
+              type: "string",
+            },
+          },
+          required: ["type", "block_id"],
+          additionalProperties: false,
+        },
+        {
+          type: "object",
+          properties: {
+            type: {
+              type: "string",
+              const: "workspace",
+            },
+            workspace: {
+              type: "boolean",
+              const: true,
+            },
+          },
+          required: ["type", "workspace"],
+          additionalProperties: false,
+        },
       ],
-      "additionalProperties": false
     },
-    "parent": {
-      "anyOf": [
-        {
-          "type": "object",
-          "properties": {
-            "type": {
-              "type": "string",
-              "const": "database_id"
-            },
-            "database_id": {
-              "type": "string"
-            }
-          },
-          "required": [
-            "type",
-            "database_id"
-          ],
-          "additionalProperties": false
-        },
-        {
-          "type": "object",
-          "properties": {
-            "type": {
-              "type": "string",
-              "const": "page_id"
-            },
-            "page_id": {
-              "type": "string"
-            }
-          },
-          "required": [
-            "type",
-            "page_id"
-          ],
-          "additionalProperties": false
-        },
-        {
-          "type": "object",
-          "properties": {
-            "type": {
-              "type": "string",
-              "const": "block_id"
-            },
-            "block_id": {
-              "type": "string"
-            }
-          },
-          "required": [
-            "type",
-            "block_id"
-          ],
-          "additionalProperties": false
-        },
-        {
-          "type": "object",
-          "properties": {
-            "type": {
-              "type": "string",
-              "const": "workspace"
-            },
-            "workspace": {
-              "type": "boolean",
-              "const": true
-            }
-          },
-          "required": [
-            "type",
-            "workspace"
-          ],
-          "additionalProperties": false
-        }
-      ]
+    object: {
+      type: "string",
+      const: "block",
     },
-    "object": {
-      "type": "string",
-      "const": "block"
+    id: {
+      type: "string",
     },
-    "id": {
-      "type": "string"
+    created_time: {
+      type: "string",
     },
-    "created_time": {
-      "type": "string"
+    created_by: PartialUserObjectResponse,
+    last_edited_time: {
+      type: "string",
     },
-    "created_by": PartialUserObjectResponse,
-    "last_edited_time": {
-      "type": "string"
+    last_edited_by: PartialUserObjectResponse,
+    has_children: {
+      type: "boolean",
     },
-    "last_edited_by": PartialUserObjectResponse,
-    "has_children": {
-      "type": "boolean"
+    archived: {
+      type: "boolean",
     },
-    "archived": {
-      "type": "boolean"
-    }
   },
-  "required": [
+  required: [
     "type",
     "toggle",
     "parent",
@@ -1214,127 +1080,113 @@ export const ToggleBlockObjectResponse: JSONSchema = {
     "last_edited_time",
     "last_edited_by",
     "has_children",
-    "archived"
+    "archived",
   ],
-  "additionalProperties": false
+  additionalProperties: false,
 };
 
 export const TemplateBlockObjectResponse: JSONSchema = {
-  "type": "object",
-  "properties": {
-    "type": {
-      "type": "string",
-      "const": "template"
+  type: "object",
+  properties: {
+    type: {
+      type: "string",
+      const: "template",
     },
-    "template": {
-      "type": "object",
-      "properties": {
-        "rich_text": {
-          "type": "array",
-          "items": RichTextItemResponse
-        }
+    template: {
+      type: "object",
+      properties: {
+        rich_text: {
+          type: "array",
+          items: RichTextItemResponse,
+        },
       },
-      "required": [
-        "rich_text"
+      required: ["rich_text"],
+      additionalProperties: false,
+    },
+    parent: {
+      anyOf: [
+        {
+          type: "object",
+          properties: {
+            type: {
+              type: "string",
+              const: "database_id",
+            },
+            database_id: {
+              type: "string",
+            },
+          },
+          required: ["type", "database_id"],
+          additionalProperties: false,
+        },
+        {
+          type: "object",
+          properties: {
+            type: {
+              type: "string",
+              const: "page_id",
+            },
+            page_id: {
+              type: "string",
+            },
+          },
+          required: ["type", "page_id"],
+          additionalProperties: false,
+        },
+        {
+          type: "object",
+          properties: {
+            type: {
+              type: "string",
+              const: "block_id",
+            },
+            block_id: {
+              type: "string",
+            },
+          },
+          required: ["type", "block_id"],
+          additionalProperties: false,
+        },
+        {
+          type: "object",
+          properties: {
+            type: {
+              type: "string",
+              const: "workspace",
+            },
+            workspace: {
+              type: "boolean",
+              const: true,
+            },
+          },
+          required: ["type", "workspace"],
+          additionalProperties: false,
+        },
       ],
-      "additionalProperties": false
     },
-    "parent": {
-      "anyOf": [
-        {
-          "type": "object",
-          "properties": {
-            "type": {
-              "type": "string",
-              "const": "database_id"
-            },
-            "database_id": {
-              "type": "string"
-            }
-          },
-          "required": [
-            "type",
-            "database_id"
-          ],
-          "additionalProperties": false
-        },
-        {
-          "type": "object",
-          "properties": {
-            "type": {
-              "type": "string",
-              "const": "page_id"
-            },
-            "page_id": {
-              "type": "string"
-            }
-          },
-          "required": [
-            "type",
-            "page_id"
-          ],
-          "additionalProperties": false
-        },
-        {
-          "type": "object",
-          "properties": {
-            "type": {
-              "type": "string",
-              "const": "block_id"
-            },
-            "block_id": {
-              "type": "string"
-            }
-          },
-          "required": [
-            "type",
-            "block_id"
-          ],
-          "additionalProperties": false
-        },
-        {
-          "type": "object",
-          "properties": {
-            "type": {
-              "type": "string",
-              "const": "workspace"
-            },
-            "workspace": {
-              "type": "boolean",
-              "const": true
-            }
-          },
-          "required": [
-            "type",
-            "workspace"
-          ],
-          "additionalProperties": false
-        }
-      ]
+    object: {
+      type: "string",
+      const: "block",
     },
-    "object": {
-      "type": "string",
-      "const": "block"
+    id: {
+      type: "string",
     },
-    "id": {
-      "type": "string"
+    created_time: {
+      type: "string",
     },
-    "created_time": {
-      "type": "string"
+    created_by: PartialUserObjectResponse,
+    last_edited_time: {
+      type: "string",
     },
-    "created_by": PartialUserObjectResponse,
-    "last_edited_time": {
-      "type": "string"
+    last_edited_by: PartialUserObjectResponse,
+    has_children: {
+      type: "boolean",
     },
-    "last_edited_by": PartialUserObjectResponse,
-    "has_children": {
-      "type": "boolean"
+    archived: {
+      type: "boolean",
     },
-    "archived": {
-      "type": "boolean"
-    }
   },
-  "required": [
+  required: [
     "type",
     "template",
     "parent",
@@ -1345,145 +1197,128 @@ export const TemplateBlockObjectResponse: JSONSchema = {
     "last_edited_time",
     "last_edited_by",
     "has_children",
-    "archived"
+    "archived",
   ],
-  "additionalProperties": false
+  additionalProperties: false,
 };
 
 export const SyncedBlockBlockObjectResponse: JSONSchema = {
-  "type": "object",
-  "properties": {
-    "type": {
-      "type": "string",
-      "const": "synced_block"
+  type: "object",
+  properties: {
+    type: {
+      type: "string",
+      const: "synced_block",
     },
-    "synced_block": {
-      "type": "object",
-      "properties": {
-        "synced_from": {
-          "anyOf": [
+    synced_block: {
+      type: "object",
+      properties: {
+        synced_from: {
+          anyOf: [
             {
-              "type": "object",
-              "properties": {
-                "type": {
-                  "type": "string",
-                  "const": "block_id"
+              type: "object",
+              properties: {
+                type: {
+                  type: "string",
+                  const: "block_id",
                 },
-                "block_id": IdRequest
+                block_id: IdRequest,
               },
-              "required": [
-                "type",
-                "block_id"
-              ],
-              "additionalProperties": false
+              required: ["type", "block_id"],
+              additionalProperties: false,
             },
             {
-              "type": "null"
-            }
-          ]
-        }
+              type: "null",
+            },
+          ],
+        },
       },
-      "required": [
-        "synced_from"
+      required: ["synced_from"],
+      additionalProperties: false,
+    },
+    parent: {
+      anyOf: [
+        {
+          type: "object",
+          properties: {
+            type: {
+              type: "string",
+              const: "database_id",
+            },
+            database_id: {
+              type: "string",
+            },
+          },
+          required: ["type", "database_id"],
+          additionalProperties: false,
+        },
+        {
+          type: "object",
+          properties: {
+            type: {
+              type: "string",
+              const: "page_id",
+            },
+            page_id: {
+              type: "string",
+            },
+          },
+          required: ["type", "page_id"],
+          additionalProperties: false,
+        },
+        {
+          type: "object",
+          properties: {
+            type: {
+              type: "string",
+              const: "block_id",
+            },
+            block_id: {
+              type: "string",
+            },
+          },
+          required: ["type", "block_id"],
+          additionalProperties: false,
+        },
+        {
+          type: "object",
+          properties: {
+            type: {
+              type: "string",
+              const: "workspace",
+            },
+            workspace: {
+              type: "boolean",
+              const: true,
+            },
+          },
+          required: ["type", "workspace"],
+          additionalProperties: false,
+        },
       ],
-      "additionalProperties": false
     },
-    "parent": {
-      "anyOf": [
-        {
-          "type": "object",
-          "properties": {
-            "type": {
-              "type": "string",
-              "const": "database_id"
-            },
-            "database_id": {
-              "type": "string"
-            }
-          },
-          "required": [
-            "type",
-            "database_id"
-          ],
-          "additionalProperties": false
-        },
-        {
-          "type": "object",
-          "properties": {
-            "type": {
-              "type": "string",
-              "const": "page_id"
-            },
-            "page_id": {
-              "type": "string"
-            }
-          },
-          "required": [
-            "type",
-            "page_id"
-          ],
-          "additionalProperties": false
-        },
-        {
-          "type": "object",
-          "properties": {
-            "type": {
-              "type": "string",
-              "const": "block_id"
-            },
-            "block_id": {
-              "type": "string"
-            }
-          },
-          "required": [
-            "type",
-            "block_id"
-          ],
-          "additionalProperties": false
-        },
-        {
-          "type": "object",
-          "properties": {
-            "type": {
-              "type": "string",
-              "const": "workspace"
-            },
-            "workspace": {
-              "type": "boolean",
-              "const": true
-            }
-          },
-          "required": [
-            "type",
-            "workspace"
-          ],
-          "additionalProperties": false
-        }
-      ]
+    object: {
+      type: "string",
+      const: "block",
     },
-    "object": {
-      "type": "string",
-      "const": "block"
+    id: {
+      type: "string",
     },
-    "id": {
-      "type": "string"
+    created_time: {
+      type: "string",
     },
-    "created_time": {
-      "type": "string"
+    created_by: PartialUserObjectResponse,
+    last_edited_time: {
+      type: "string",
     },
-    "created_by": PartialUserObjectResponse,
-    "last_edited_time": {
-      "type": "string"
+    last_edited_by: PartialUserObjectResponse,
+    has_children: {
+      type: "boolean",
     },
-    "last_edited_by": PartialUserObjectResponse,
-    "has_children": {
-      "type": "boolean"
+    archived: {
+      type: "boolean",
     },
-    "archived": {
-      "type": "boolean"
-    }
   },
-  "required": [
+  required: [
     "type",
     "synced_block",
     "parent",
@@ -1494,126 +1329,112 @@ export const SyncedBlockBlockObjectResponse: JSONSchema = {
     "last_edited_time",
     "last_edited_by",
     "has_children",
-    "archived"
+    "archived",
   ],
-  "additionalProperties": false
+  additionalProperties: false,
 };
 
 export const ChildPageBlockObjectResponse: JSONSchema = {
-  "type": "object",
-  "properties": {
-    "type": {
-      "type": "string",
-      "const": "child_page"
+  type: "object",
+  properties: {
+    type: {
+      type: "string",
+      const: "child_page",
     },
-    "child_page": {
-      "type": "object",
-      "properties": {
-        "title": {
-          "type": "string"
-        }
+    child_page: {
+      type: "object",
+      properties: {
+        title: {
+          type: "string",
+        },
       },
-      "required": [
-        "title"
+      required: ["title"],
+      additionalProperties: false,
+    },
+    parent: {
+      anyOf: [
+        {
+          type: "object",
+          properties: {
+            type: {
+              type: "string",
+              const: "database_id",
+            },
+            database_id: {
+              type: "string",
+            },
+          },
+          required: ["type", "database_id"],
+          additionalProperties: false,
+        },
+        {
+          type: "object",
+          properties: {
+            type: {
+              type: "string",
+              const: "page_id",
+            },
+            page_id: {
+              type: "string",
+            },
+          },
+          required: ["type", "page_id"],
+          additionalProperties: false,
+        },
+        {
+          type: "object",
+          properties: {
+            type: {
+              type: "string",
+              const: "block_id",
+            },
+            block_id: {
+              type: "string",
+            },
+          },
+          required: ["type", "block_id"],
+          additionalProperties: false,
+        },
+        {
+          type: "object",
+          properties: {
+            type: {
+              type: "string",
+              const: "workspace",
+            },
+            workspace: {
+              type: "boolean",
+              const: true,
+            },
+          },
+          required: ["type", "workspace"],
+          additionalProperties: false,
+        },
       ],
-      "additionalProperties": false
     },
-    "parent": {
-      "anyOf": [
-        {
-          "type": "object",
-          "properties": {
-            "type": {
-              "type": "string",
-              "const": "database_id"
-            },
-            "database_id": {
-              "type": "string"
-            }
-          },
-          "required": [
-            "type",
-            "database_id"
-          ],
-          "additionalProperties": false
-        },
-        {
-          "type": "object",
-          "properties": {
-            "type": {
-              "type": "string",
-              "const": "page_id"
-            },
-            "page_id": {
-              "type": "string"
-            }
-          },
-          "required": [
-            "type",
-            "page_id"
-          ],
-          "additionalProperties": false
-        },
-        {
-          "type": "object",
-          "properties": {
-            "type": {
-              "type": "string",
-              "const": "block_id"
-            },
-            "block_id": {
-              "type": "string"
-            }
-          },
-          "required": [
-            "type",
-            "block_id"
-          ],
-          "additionalProperties": false
-        },
-        {
-          "type": "object",
-          "properties": {
-            "type": {
-              "type": "string",
-              "const": "workspace"
-            },
-            "workspace": {
-              "type": "boolean",
-              "const": true
-            }
-          },
-          "required": [
-            "type",
-            "workspace"
-          ],
-          "additionalProperties": false
-        }
-      ]
+    object: {
+      type: "string",
+      const: "block",
     },
-    "object": {
-      "type": "string",
-      "const": "block"
+    id: {
+      type: "string",
     },
-    "id": {
-      "type": "string"
+    created_time: {
+      type: "string",
     },
-    "created_time": {
-      "type": "string"
+    created_by: PartialUserObjectResponse,
+    last_edited_time: {
+      type: "string",
     },
-    "created_by": PartialUserObjectResponse,
-    "last_edited_time": {
-      "type": "string"
+    last_edited_by: PartialUserObjectResponse,
+    has_children: {
+      type: "boolean",
     },
-    "last_edited_by": PartialUserObjectResponse,
-    "has_children": {
-      "type": "boolean"
+    archived: {
+      type: "boolean",
     },
-    "archived": {
-      "type": "boolean"
-    }
   },
-  "required": [
+  required: [
     "type",
     "child_page",
     "parent",
@@ -1624,126 +1445,112 @@ export const ChildPageBlockObjectResponse: JSONSchema = {
     "last_edited_time",
     "last_edited_by",
     "has_children",
-    "archived"
+    "archived",
   ],
-  "additionalProperties": false
+  additionalProperties: false,
 };
 
 export const ChildDatabaseBlockObjectResponse: JSONSchema = {
-  "type": "object",
-  "properties": {
-    "type": {
-      "type": "string",
-      "const": "child_database"
+  type: "object",
+  properties: {
+    type: {
+      type: "string",
+      const: "child_database",
     },
-    "child_database": {
-      "type": "object",
-      "properties": {
-        "title": {
-          "type": "string"
-        }
+    child_database: {
+      type: "object",
+      properties: {
+        title: {
+          type: "string",
+        },
       },
-      "required": [
-        "title"
+      required: ["title"],
+      additionalProperties: false,
+    },
+    parent: {
+      anyOf: [
+        {
+          type: "object",
+          properties: {
+            type: {
+              type: "string",
+              const: "database_id",
+            },
+            database_id: {
+              type: "string",
+            },
+          },
+          required: ["type", "database_id"],
+          additionalProperties: false,
+        },
+        {
+          type: "object",
+          properties: {
+            type: {
+              type: "string",
+              const: "page_id",
+            },
+            page_id: {
+              type: "string",
+            },
+          },
+          required: ["type", "page_id"],
+          additionalProperties: false,
+        },
+        {
+          type: "object",
+          properties: {
+            type: {
+              type: "string",
+              const: "block_id",
+            },
+            block_id: {
+              type: "string",
+            },
+          },
+          required: ["type", "block_id"],
+          additionalProperties: false,
+        },
+        {
+          type: "object",
+          properties: {
+            type: {
+              type: "string",
+              const: "workspace",
+            },
+            workspace: {
+              type: "boolean",
+              const: true,
+            },
+          },
+          required: ["type", "workspace"],
+          additionalProperties: false,
+        },
       ],
-      "additionalProperties": false
     },
-    "parent": {
-      "anyOf": [
-        {
-          "type": "object",
-          "properties": {
-            "type": {
-              "type": "string",
-              "const": "database_id"
-            },
-            "database_id": {
-              "type": "string"
-            }
-          },
-          "required": [
-            "type",
-            "database_id"
-          ],
-          "additionalProperties": false
-        },
-        {
-          "type": "object",
-          "properties": {
-            "type": {
-              "type": "string",
-              "const": "page_id"
-            },
-            "page_id": {
-              "type": "string"
-            }
-          },
-          "required": [
-            "type",
-            "page_id"
-          ],
-          "additionalProperties": false
-        },
-        {
-          "type": "object",
-          "properties": {
-            "type": {
-              "type": "string",
-              "const": "block_id"
-            },
-            "block_id": {
-              "type": "string"
-            }
-          },
-          "required": [
-            "type",
-            "block_id"
-          ],
-          "additionalProperties": false
-        },
-        {
-          "type": "object",
-          "properties": {
-            "type": {
-              "type": "string",
-              "const": "workspace"
-            },
-            "workspace": {
-              "type": "boolean",
-              "const": true
-            }
-          },
-          "required": [
-            "type",
-            "workspace"
-          ],
-          "additionalProperties": false
-        }
-      ]
+    object: {
+      type: "string",
+      const: "block",
     },
-    "object": {
-      "type": "string",
-      "const": "block"
+    id: {
+      type: "string",
     },
-    "id": {
-      "type": "string"
+    created_time: {
+      type: "string",
     },
-    "created_time": {
-      "type": "string"
+    created_by: PartialUserObjectResponse,
+    last_edited_time: {
+      type: "string",
     },
-    "created_by": PartialUserObjectResponse,
-    "last_edited_time": {
-      "type": "string"
+    last_edited_by: PartialUserObjectResponse,
+    has_children: {
+      type: "boolean",
     },
-    "last_edited_by": PartialUserObjectResponse,
-    "has_children": {
-      "type": "boolean"
+    archived: {
+      type: "boolean",
     },
-    "archived": {
-      "type": "boolean"
-    }
   },
-  "required": [
+  required: [
     "type",
     "child_database",
     "parent",
@@ -1754,126 +1561,112 @@ export const ChildDatabaseBlockObjectResponse: JSONSchema = {
     "last_edited_time",
     "last_edited_by",
     "has_children",
-    "archived"
+    "archived",
   ],
-  "additionalProperties": false
+  additionalProperties: false,
 };
 
 export const EquationBlockObjectResponse: JSONSchema = {
-  "type": "object",
-  "properties": {
-    "type": {
-      "type": "string",
-      "const": "equation"
+  type: "object",
+  properties: {
+    type: {
+      type: "string",
+      const: "equation",
     },
-    "equation": {
-      "type": "object",
-      "properties": {
-        "expression": {
-          "type": "string"
-        }
+    equation: {
+      type: "object",
+      properties: {
+        expression: {
+          type: "string",
+        },
       },
-      "required": [
-        "expression"
+      required: ["expression"],
+      additionalProperties: false,
+    },
+    parent: {
+      anyOf: [
+        {
+          type: "object",
+          properties: {
+            type: {
+              type: "string",
+              const: "database_id",
+            },
+            database_id: {
+              type: "string",
+            },
+          },
+          required: ["type", "database_id"],
+          additionalProperties: false,
+        },
+        {
+          type: "object",
+          properties: {
+            type: {
+              type: "string",
+              const: "page_id",
+            },
+            page_id: {
+              type: "string",
+            },
+          },
+          required: ["type", "page_id"],
+          additionalProperties: false,
+        },
+        {
+          type: "object",
+          properties: {
+            type: {
+              type: "string",
+              const: "block_id",
+            },
+            block_id: {
+              type: "string",
+            },
+          },
+          required: ["type", "block_id"],
+          additionalProperties: false,
+        },
+        {
+          type: "object",
+          properties: {
+            type: {
+              type: "string",
+              const: "workspace",
+            },
+            workspace: {
+              type: "boolean",
+              const: true,
+            },
+          },
+          required: ["type", "workspace"],
+          additionalProperties: false,
+        },
       ],
-      "additionalProperties": false
     },
-    "parent": {
-      "anyOf": [
-        {
-          "type": "object",
-          "properties": {
-            "type": {
-              "type": "string",
-              "const": "database_id"
-            },
-            "database_id": {
-              "type": "string"
-            }
-          },
-          "required": [
-            "type",
-            "database_id"
-          ],
-          "additionalProperties": false
-        },
-        {
-          "type": "object",
-          "properties": {
-            "type": {
-              "type": "string",
-              "const": "page_id"
-            },
-            "page_id": {
-              "type": "string"
-            }
-          },
-          "required": [
-            "type",
-            "page_id"
-          ],
-          "additionalProperties": false
-        },
-        {
-          "type": "object",
-          "properties": {
-            "type": {
-              "type": "string",
-              "const": "block_id"
-            },
-            "block_id": {
-              "type": "string"
-            }
-          },
-          "required": [
-            "type",
-            "block_id"
-          ],
-          "additionalProperties": false
-        },
-        {
-          "type": "object",
-          "properties": {
-            "type": {
-              "type": "string",
-              "const": "workspace"
-            },
-            "workspace": {
-              "type": "boolean",
-              "const": true
-            }
-          },
-          "required": [
-            "type",
-            "workspace"
-          ],
-          "additionalProperties": false
-        }
-      ]
+    object: {
+      type: "string",
+      const: "block",
     },
-    "object": {
-      "type": "string",
-      "const": "block"
+    id: {
+      type: "string",
     },
-    "id": {
-      "type": "string"
+    created_time: {
+      type: "string",
     },
-    "created_time": {
-      "type": "string"
+    created_by: PartialUserObjectResponse,
+    last_edited_time: {
+      type: "string",
     },
-    "created_by": PartialUserObjectResponse,
-    "last_edited_time": {
-      "type": "string"
+    last_edited_by: PartialUserObjectResponse,
+    has_children: {
+      type: "boolean",
     },
-    "last_edited_by": PartialUserObjectResponse,
-    "has_children": {
-      "type": "boolean"
+    archived: {
+      type: "boolean",
     },
-    "archived": {
-      "type": "boolean"
-    }
   },
-  "required": [
+  required: [
     "type",
     "equation",
     "parent",
@@ -1884,14 +1677,14 @@ export const EquationBlockObjectResponse: JSONSchema = {
     "last_edited_time",
     "last_edited_by",
     "has_children",
-    "archived"
+    "archived",
   ],
-  "additionalProperties": false
+  additionalProperties: false,
 };
 
 export const LanguageRequest: JSONSchema = {
-  "type": "string",
-  "enum": [
+  type: "string",
+  enum: [
     "abap",
     "agda",
     "arduino",
@@ -1976,133 +1769,117 @@ export const LanguageRequest: JSONSchema = {
     "webassembly",
     "xml",
     "yaml",
-    "java/c/c++/c#"
-  ]
+    "java/c/c++/c#",
+  ],
 };
 
 export const CodeBlockObjectResponse: JSONSchema = {
-  "type": "object",
-  "properties": {
-    "type": {
-      "type": "string",
-      "const": "code"
+  type: "object",
+  properties: {
+    type: {
+      type: "string",
+      const: "code",
     },
-    "code": {
-      "type": "object",
-      "properties": {
-        "rich_text": {
-          "type": "array",
-          "items": RichTextItemResponse
+    code: {
+      type: "object",
+      properties: {
+        rich_text: {
+          type: "array",
+          items: RichTextItemResponse,
         },
-        "caption": {
-          "type": "array",
-          "items": RichTextItemResponse
+        caption: {
+          type: "array",
+          items: RichTextItemResponse,
         },
-        "language": LanguageRequest
+        language: LanguageRequest,
       },
-      "required": [
-        "rich_text",
-        "caption",
-        "language"
+      required: ["rich_text", "caption", "language"],
+      additionalProperties: false,
+    },
+    parent: {
+      anyOf: [
+        {
+          type: "object",
+          properties: {
+            type: {
+              type: "string",
+              const: "database_id",
+            },
+            database_id: {
+              type: "string",
+            },
+          },
+          required: ["type", "database_id"],
+          additionalProperties: false,
+        },
+        {
+          type: "object",
+          properties: {
+            type: {
+              type: "string",
+              const: "page_id",
+            },
+            page_id: {
+              type: "string",
+            },
+          },
+          required: ["type", "page_id"],
+          additionalProperties: false,
+        },
+        {
+          type: "object",
+          properties: {
+            type: {
+              type: "string",
+              const: "block_id",
+            },
+            block_id: {
+              type: "string",
+            },
+          },
+          required: ["type", "block_id"],
+          additionalProperties: false,
+        },
+        {
+          type: "object",
+          properties: {
+            type: {
+              type: "string",
+              const: "workspace",
+            },
+            workspace: {
+              type: "boolean",
+              const: true,
+            },
+          },
+          required: ["type", "workspace"],
+          additionalProperties: false,
+        },
       ],
-      "additionalProperties": false
     },
-    "parent": {
-      "anyOf": [
-        {
-          "type": "object",
-          "properties": {
-            "type": {
-              "type": "string",
-              "const": "database_id"
-            },
-            "database_id": {
-              "type": "string"
-            }
-          },
-          "required": [
-            "type",
-            "database_id"
-          ],
-          "additionalProperties": false
-        },
-        {
-          "type": "object",
-          "properties": {
-            "type": {
-              "type": "string",
-              "const": "page_id"
-            },
-            "page_id": {
-              "type": "string"
-            }
-          },
-          "required": [
-            "type",
-            "page_id"
-          ],
-          "additionalProperties": false
-        },
-        {
-          "type": "object",
-          "properties": {
-            "type": {
-              "type": "string",
-              "const": "block_id"
-            },
-            "block_id": {
-              "type": "string"
-            }
-          },
-          "required": [
-            "type",
-            "block_id"
-          ],
-          "additionalProperties": false
-        },
-        {
-          "type": "object",
-          "properties": {
-            "type": {
-              "type": "string",
-              "const": "workspace"
-            },
-            "workspace": {
-              "type": "boolean",
-              "const": true
-            }
-          },
-          "required": [
-            "type",
-            "workspace"
-          ],
-          "additionalProperties": false
-        }
-      ]
+    object: {
+      type: "string",
+      const: "block",
     },
-    "object": {
-      "type": "string",
-      "const": "block"
+    id: {
+      type: "string",
     },
-    "id": {
-      "type": "string"
+    created_time: {
+      type: "string",
     },
-    "created_time": {
-      "type": "string"
+    created_by: PartialUserObjectResponse,
+    last_edited_time: {
+      type: "string",
     },
-    "created_by": PartialUserObjectResponse,
-    "last_edited_time": {
-      "type": "string"
+    last_edited_by: PartialUserObjectResponse,
+    has_children: {
+      type: "boolean",
     },
-    "last_edited_by": PartialUserObjectResponse,
-    "has_children": {
-      "type": "boolean"
+    archived: {
+      type: "boolean",
     },
-    "archived": {
-      "type": "boolean"
-    }
   },
-  "required": [
+  required: [
     "type",
     "code",
     "parent",
@@ -2113,206 +1890,176 @@ export const CodeBlockObjectResponse: JSONSchema = {
     "last_edited_time",
     "last_edited_by",
     "has_children",
-    "archived"
+    "archived",
   ],
-  "additionalProperties": false
+  additionalProperties: false,
 };
 
 export const CalloutBlockObjectResponse: JSONSchema = {
-  "type": "object",
-  "properties": {
-    "type": {
-      "type": "string",
-      "const": "callout"
+  type: "object",
+  properties: {
+    type: {
+      type: "string",
+      const: "callout",
     },
-    "callout": {
-      "type": "object",
-      "properties": {
-        "rich_text": {
-          "type": "array",
-          "items": RichTextItemResponse
+    callout: {
+      type: "object",
+      properties: {
+        rich_text: {
+          type: "array",
+          items: RichTextItemResponse,
         },
-        "color": ApiColor,
-        "icon": {
-          "anyOf": [
+        color: ApiColor,
+        icon: {
+          anyOf: [
             {
-              "type": "object",
-              "properties": {
-                "type": {
-                  "type": "string",
-                  "const": "emoji"
+              type: "object",
+              properties: {
+                type: {
+                  type: "string",
+                  const: "emoji",
                 },
-                "emoji": EmojiRequest
+                emoji: EmojiRequest,
               },
-              "required": [
-                "type",
-                "emoji"
-              ],
-              "additionalProperties": false
+              required: ["type", "emoji"],
+              additionalProperties: false,
             },
             {
-              "type": "null"
+              type: "null",
             },
             {
-              "type": "object",
-              "properties": {
-                "type": {
-                  "type": "string",
-                  "const": "external"
+              type: "object",
+              properties: {
+                type: {
+                  type: "string",
+                  const: "external",
                 },
-                "external": {
-                  "type": "object",
-                  "properties": {
-                    "url": TextRequest
+                external: {
+                  type: "object",
+                  properties: {
+                    url: TextRequest,
                   },
-                  "required": [
-                    "url"
-                  ],
-                  "additionalProperties": false
-                }
+                  required: ["url"],
+                  additionalProperties: false,
+                },
               },
-              "required": [
-                "type",
-                "external"
-              ],
-              "additionalProperties": false
+              required: ["type", "external"],
+              additionalProperties: false,
             },
             {
-              "type": "object",
-              "properties": {
-                "type": {
-                  "type": "string",
-                  "const": "file"
+              type: "object",
+              properties: {
+                type: {
+                  type: "string",
+                  const: "file",
                 },
-                "file": {
-                  "type": "object",
-                  "properties": {
-                    "url": {
-                      "type": "string"
+                file: {
+                  type: "object",
+                  properties: {
+                    url: {
+                      type: "string",
                     },
-                    "expiry_time": {
-                      "type": "string"
-                    }
+                    expiry_time: {
+                      type: "string",
+                    },
                   },
-                  "required": [
-                    "url",
-                    "expiry_time"
-                  ],
-                  "additionalProperties": false
-                }
+                  required: ["url", "expiry_time"],
+                  additionalProperties: false,
+                },
               },
-              "required": [
-                "type",
-                "file"
-              ],
-              "additionalProperties": false
-            }
-          ]
-        }
+              required: ["type", "file"],
+              additionalProperties: false,
+            },
+          ],
+        },
       },
-      "required": [
-        "rich_text",
-        "color",
-        "icon"
+      required: ["rich_text", "color", "icon"],
+      additionalProperties: false,
+    },
+    parent: {
+      anyOf: [
+        {
+          type: "object",
+          properties: {
+            type: {
+              type: "string",
+              const: "database_id",
+            },
+            database_id: {
+              type: "string",
+            },
+          },
+          required: ["type", "database_id"],
+          additionalProperties: false,
+        },
+        {
+          type: "object",
+          properties: {
+            type: {
+              type: "string",
+              const: "page_id",
+            },
+            page_id: {
+              type: "string",
+            },
+          },
+          required: ["type", "page_id"],
+          additionalProperties: false,
+        },
+        {
+          type: "object",
+          properties: {
+            type: {
+              type: "string",
+              const: "block_id",
+            },
+            block_id: {
+              type: "string",
+            },
+          },
+          required: ["type", "block_id"],
+          additionalProperties: false,
+        },
+        {
+          type: "object",
+          properties: {
+            type: {
+              type: "string",
+              const: "workspace",
+            },
+            workspace: {
+              type: "boolean",
+              const: true,
+            },
+          },
+          required: ["type", "workspace"],
+          additionalProperties: false,
+        },
       ],
-      "additionalProperties": false
     },
-    "parent": {
-      "anyOf": [
-        {
-          "type": "object",
-          "properties": {
-            "type": {
-              "type": "string",
-              "const": "database_id"
-            },
-            "database_id": {
-              "type": "string"
-            }
-          },
-          "required": [
-            "type",
-            "database_id"
-          ],
-          "additionalProperties": false
-        },
-        {
-          "type": "object",
-          "properties": {
-            "type": {
-              "type": "string",
-              "const": "page_id"
-            },
-            "page_id": {
-              "type": "string"
-            }
-          },
-          "required": [
-            "type",
-            "page_id"
-          ],
-          "additionalProperties": false
-        },
-        {
-          "type": "object",
-          "properties": {
-            "type": {
-              "type": "string",
-              "const": "block_id"
-            },
-            "block_id": {
-              "type": "string"
-            }
-          },
-          "required": [
-            "type",
-            "block_id"
-          ],
-          "additionalProperties": false
-        },
-        {
-          "type": "object",
-          "properties": {
-            "type": {
-              "type": "string",
-              "const": "workspace"
-            },
-            "workspace": {
-              "type": "boolean",
-              "const": true
-            }
-          },
-          "required": [
-            "type",
-            "workspace"
-          ],
-          "additionalProperties": false
-        }
-      ]
+    object: {
+      type: "string",
+      const: "block",
     },
-    "object": {
-      "type": "string",
-      "const": "block"
+    id: {
+      type: "string",
     },
-    "id": {
-      "type": "string"
+    created_time: {
+      type: "string",
     },
-    "created_time": {
-      "type": "string"
+    created_by: PartialUserObjectResponse,
+    last_edited_time: {
+      type: "string",
     },
-    "created_by": PartialUserObjectResponse,
-    "last_edited_time": {
-      "type": "string"
+    last_edited_by: PartialUserObjectResponse,
+    has_children: {
+      type: "boolean",
     },
-    "last_edited_by": PartialUserObjectResponse,
-    "has_children": {
-      "type": "boolean"
+    archived: {
+      type: "boolean",
     },
-    "archived": {
-      "type": "boolean"
-    }
   },
-  "required": [
+  required: [
     "type",
     "callout",
     "parent",
@@ -2323,115 +2070,103 @@ export const CalloutBlockObjectResponse: JSONSchema = {
     "last_edited_time",
     "last_edited_by",
     "has_children",
-    "archived"
+    "archived",
   ],
-  "additionalProperties": false
+  additionalProperties: false,
 };
 
 export const DividerBlockObjectResponse: JSONSchema = {
-  "type": "object",
-  "properties": {
-    "type": {
-      "type": "string",
-      "const": "divider"
+  type: "object",
+  properties: {
+    type: {
+      type: "string",
+      const: "divider",
     },
-    "divider": EmptyObject,
-    "parent": {
-      "anyOf": [
+    divider: EmptyObject,
+    parent: {
+      anyOf: [
         {
-          "type": "object",
-          "properties": {
-            "type": {
-              "type": "string",
-              "const": "database_id"
+          type: "object",
+          properties: {
+            type: {
+              type: "string",
+              const: "database_id",
             },
-            "database_id": {
-              "type": "string"
-            }
+            database_id: {
+              type: "string",
+            },
           },
-          "required": [
-            "type",
-            "database_id"
-          ],
-          "additionalProperties": false
+          required: ["type", "database_id"],
+          additionalProperties: false,
         },
         {
-          "type": "object",
-          "properties": {
-            "type": {
-              "type": "string",
-              "const": "page_id"
+          type: "object",
+          properties: {
+            type: {
+              type: "string",
+              const: "page_id",
             },
-            "page_id": {
-              "type": "string"
-            }
+            page_id: {
+              type: "string",
+            },
           },
-          "required": [
-            "type",
-            "page_id"
-          ],
-          "additionalProperties": false
+          required: ["type", "page_id"],
+          additionalProperties: false,
         },
         {
-          "type": "object",
-          "properties": {
-            "type": {
-              "type": "string",
-              "const": "block_id"
+          type: "object",
+          properties: {
+            type: {
+              type: "string",
+              const: "block_id",
             },
-            "block_id": {
-              "type": "string"
-            }
+            block_id: {
+              type: "string",
+            },
           },
-          "required": [
-            "type",
-            "block_id"
-          ],
-          "additionalProperties": false
+          required: ["type", "block_id"],
+          additionalProperties: false,
         },
         {
-          "type": "object",
-          "properties": {
-            "type": {
-              "type": "string",
-              "const": "workspace"
+          type: "object",
+          properties: {
+            type: {
+              type: "string",
+              const: "workspace",
             },
-            "workspace": {
-              "type": "boolean",
-              "const": true
-            }
+            workspace: {
+              type: "boolean",
+              const: true,
+            },
           },
-          "required": [
-            "type",
-            "workspace"
-          ],
-          "additionalProperties": false
-        }
-      ]
+          required: ["type", "workspace"],
+          additionalProperties: false,
+        },
+      ],
     },
-    "object": {
-      "type": "string",
-      "const": "block"
+    object: {
+      type: "string",
+      const: "block",
     },
-    "id": {
-      "type": "string"
+    id: {
+      type: "string",
     },
-    "created_time": {
-      "type": "string"
+    created_time: {
+      type: "string",
     },
-    "created_by": PartialUserObjectResponse,
-    "last_edited_time": {
-      "type": "string"
+    created_by: PartialUserObjectResponse,
+    last_edited_time: {
+      type: "string",
     },
-    "last_edited_by": PartialUserObjectResponse,
-    "has_children": {
-      "type": "boolean"
+    last_edited_by: PartialUserObjectResponse,
+    has_children: {
+      type: "boolean",
     },
-    "archived": {
-      "type": "boolean"
-    }
+    archived: {
+      type: "boolean",
+    },
   },
-  "required": [
+  required: [
     "type",
     "divider",
     "parent",
@@ -2442,115 +2177,103 @@ export const DividerBlockObjectResponse: JSONSchema = {
     "last_edited_time",
     "last_edited_by",
     "has_children",
-    "archived"
+    "archived",
   ],
-  "additionalProperties": false
+  additionalProperties: false,
 };
 
 export const BreadcrumbBlockObjectResponse: JSONSchema = {
-  "type": "object",
-  "properties": {
-    "type": {
-      "type": "string",
-      "const": "breadcrumb"
+  type: "object",
+  properties: {
+    type: {
+      type: "string",
+      const: "breadcrumb",
     },
-    "breadcrumb": EmptyObject,
-    "parent": {
-      "anyOf": [
+    breadcrumb: EmptyObject,
+    parent: {
+      anyOf: [
         {
-          "type": "object",
-          "properties": {
-            "type": {
-              "type": "string",
-              "const": "database_id"
+          type: "object",
+          properties: {
+            type: {
+              type: "string",
+              const: "database_id",
             },
-            "database_id": {
-              "type": "string"
-            }
+            database_id: {
+              type: "string",
+            },
           },
-          "required": [
-            "type",
-            "database_id"
-          ],
-          "additionalProperties": false
+          required: ["type", "database_id"],
+          additionalProperties: false,
         },
         {
-          "type": "object",
-          "properties": {
-            "type": {
-              "type": "string",
-              "const": "page_id"
+          type: "object",
+          properties: {
+            type: {
+              type: "string",
+              const: "page_id",
             },
-            "page_id": {
-              "type": "string"
-            }
+            page_id: {
+              type: "string",
+            },
           },
-          "required": [
-            "type",
-            "page_id"
-          ],
-          "additionalProperties": false
+          required: ["type", "page_id"],
+          additionalProperties: false,
         },
         {
-          "type": "object",
-          "properties": {
-            "type": {
-              "type": "string",
-              "const": "block_id"
+          type: "object",
+          properties: {
+            type: {
+              type: "string",
+              const: "block_id",
             },
-            "block_id": {
-              "type": "string"
-            }
+            block_id: {
+              type: "string",
+            },
           },
-          "required": [
-            "type",
-            "block_id"
-          ],
-          "additionalProperties": false
+          required: ["type", "block_id"],
+          additionalProperties: false,
         },
         {
-          "type": "object",
-          "properties": {
-            "type": {
-              "type": "string",
-              "const": "workspace"
+          type: "object",
+          properties: {
+            type: {
+              type: "string",
+              const: "workspace",
             },
-            "workspace": {
-              "type": "boolean",
-              "const": true
-            }
+            workspace: {
+              type: "boolean",
+              const: true,
+            },
           },
-          "required": [
-            "type",
-            "workspace"
-          ],
-          "additionalProperties": false
-        }
-      ]
+          required: ["type", "workspace"],
+          additionalProperties: false,
+        },
+      ],
     },
-    "object": {
-      "type": "string",
-      "const": "block"
+    object: {
+      type: "string",
+      const: "block",
     },
-    "id": {
-      "type": "string"
+    id: {
+      type: "string",
     },
-    "created_time": {
-      "type": "string"
+    created_time: {
+      type: "string",
     },
-    "created_by": PartialUserObjectResponse,
-    "last_edited_time": {
-      "type": "string"
+    created_by: PartialUserObjectResponse,
+    last_edited_time: {
+      type: "string",
     },
-    "last_edited_by": PartialUserObjectResponse,
-    "has_children": {
-      "type": "boolean"
+    last_edited_by: PartialUserObjectResponse,
+    has_children: {
+      type: "boolean",
     },
-    "archived": {
-      "type": "boolean"
-    }
+    archived: {
+      type: "boolean",
+    },
   },
-  "required": [
+  required: [
     "type",
     "breadcrumb",
     "parent",
@@ -2561,124 +2284,110 @@ export const BreadcrumbBlockObjectResponse: JSONSchema = {
     "last_edited_time",
     "last_edited_by",
     "has_children",
-    "archived"
+    "archived",
   ],
-  "additionalProperties": false
+  additionalProperties: false,
 };
 
 export const TableOfContentsBlockObjectResponse: JSONSchema = {
-  "type": "object",
-  "properties": {
-    "type": {
-      "type": "string",
-      "const": "table_of_contents"
+  type: "object",
+  properties: {
+    type: {
+      type: "string",
+      const: "table_of_contents",
     },
-    "table_of_contents": {
-      "type": "object",
-      "properties": {
-        "color": ApiColor
+    table_of_contents: {
+      type: "object",
+      properties: {
+        color: ApiColor,
       },
-      "required": [
-        "color"
+      required: ["color"],
+      additionalProperties: false,
+    },
+    parent: {
+      anyOf: [
+        {
+          type: "object",
+          properties: {
+            type: {
+              type: "string",
+              const: "database_id",
+            },
+            database_id: {
+              type: "string",
+            },
+          },
+          required: ["type", "database_id"],
+          additionalProperties: false,
+        },
+        {
+          type: "object",
+          properties: {
+            type: {
+              type: "string",
+              const: "page_id",
+            },
+            page_id: {
+              type: "string",
+            },
+          },
+          required: ["type", "page_id"],
+          additionalProperties: false,
+        },
+        {
+          type: "object",
+          properties: {
+            type: {
+              type: "string",
+              const: "block_id",
+            },
+            block_id: {
+              type: "string",
+            },
+          },
+          required: ["type", "block_id"],
+          additionalProperties: false,
+        },
+        {
+          type: "object",
+          properties: {
+            type: {
+              type: "string",
+              const: "workspace",
+            },
+            workspace: {
+              type: "boolean",
+              const: true,
+            },
+          },
+          required: ["type", "workspace"],
+          additionalProperties: false,
+        },
       ],
-      "additionalProperties": false
     },
-    "parent": {
-      "anyOf": [
-        {
-          "type": "object",
-          "properties": {
-            "type": {
-              "type": "string",
-              "const": "database_id"
-            },
-            "database_id": {
-              "type": "string"
-            }
-          },
-          "required": [
-            "type",
-            "database_id"
-          ],
-          "additionalProperties": false
-        },
-        {
-          "type": "object",
-          "properties": {
-            "type": {
-              "type": "string",
-              "const": "page_id"
-            },
-            "page_id": {
-              "type": "string"
-            }
-          },
-          "required": [
-            "type",
-            "page_id"
-          ],
-          "additionalProperties": false
-        },
-        {
-          "type": "object",
-          "properties": {
-            "type": {
-              "type": "string",
-              "const": "block_id"
-            },
-            "block_id": {
-              "type": "string"
-            }
-          },
-          "required": [
-            "type",
-            "block_id"
-          ],
-          "additionalProperties": false
-        },
-        {
-          "type": "object",
-          "properties": {
-            "type": {
-              "type": "string",
-              "const": "workspace"
-            },
-            "workspace": {
-              "type": "boolean",
-              "const": true
-            }
-          },
-          "required": [
-            "type",
-            "workspace"
-          ],
-          "additionalProperties": false
-        }
-      ]
+    object: {
+      type: "string",
+      const: "block",
     },
-    "object": {
-      "type": "string",
-      "const": "block"
+    id: {
+      type: "string",
     },
-    "id": {
-      "type": "string"
+    created_time: {
+      type: "string",
     },
-    "created_time": {
-      "type": "string"
+    created_by: PartialUserObjectResponse,
+    last_edited_time: {
+      type: "string",
     },
-    "created_by": PartialUserObjectResponse,
-    "last_edited_time": {
-      "type": "string"
+    last_edited_by: PartialUserObjectResponse,
+    has_children: {
+      type: "boolean",
     },
-    "last_edited_by": PartialUserObjectResponse,
-    "has_children": {
-      "type": "boolean"
+    archived: {
+      type: "boolean",
     },
-    "archived": {
-      "type": "boolean"
-    }
   },
-  "required": [
+  required: [
     "type",
     "table_of_contents",
     "parent",
@@ -2689,115 +2398,103 @@ export const TableOfContentsBlockObjectResponse: JSONSchema = {
     "last_edited_time",
     "last_edited_by",
     "has_children",
-    "archived"
+    "archived",
   ],
-  "additionalProperties": false
+  additionalProperties: false,
 };
 
 export const ColumnListBlockObjectResponse: JSONSchema = {
-  "type": "object",
-  "properties": {
-    "type": {
-      "type": "string",
-      "const": "column_list"
+  type: "object",
+  properties: {
+    type: {
+      type: "string",
+      const: "column_list",
     },
-    "column_list": EmptyObject,
-    "parent": {
-      "anyOf": [
+    column_list: EmptyObject,
+    parent: {
+      anyOf: [
         {
-          "type": "object",
-          "properties": {
-            "type": {
-              "type": "string",
-              "const": "database_id"
+          type: "object",
+          properties: {
+            type: {
+              type: "string",
+              const: "database_id",
             },
-            "database_id": {
-              "type": "string"
-            }
+            database_id: {
+              type: "string",
+            },
           },
-          "required": [
-            "type",
-            "database_id"
-          ],
-          "additionalProperties": false
+          required: ["type", "database_id"],
+          additionalProperties: false,
         },
         {
-          "type": "object",
-          "properties": {
-            "type": {
-              "type": "string",
-              "const": "page_id"
+          type: "object",
+          properties: {
+            type: {
+              type: "string",
+              const: "page_id",
             },
-            "page_id": {
-              "type": "string"
-            }
+            page_id: {
+              type: "string",
+            },
           },
-          "required": [
-            "type",
-            "page_id"
-          ],
-          "additionalProperties": false
+          required: ["type", "page_id"],
+          additionalProperties: false,
         },
         {
-          "type": "object",
-          "properties": {
-            "type": {
-              "type": "string",
-              "const": "block_id"
+          type: "object",
+          properties: {
+            type: {
+              type: "string",
+              const: "block_id",
             },
-            "block_id": {
-              "type": "string"
-            }
+            block_id: {
+              type: "string",
+            },
           },
-          "required": [
-            "type",
-            "block_id"
-          ],
-          "additionalProperties": false
+          required: ["type", "block_id"],
+          additionalProperties: false,
         },
         {
-          "type": "object",
-          "properties": {
-            "type": {
-              "type": "string",
-              "const": "workspace"
+          type: "object",
+          properties: {
+            type: {
+              type: "string",
+              const: "workspace",
             },
-            "workspace": {
-              "type": "boolean",
-              "const": true
-            }
+            workspace: {
+              type: "boolean",
+              const: true,
+            },
           },
-          "required": [
-            "type",
-            "workspace"
-          ],
-          "additionalProperties": false
-        }
-      ]
+          required: ["type", "workspace"],
+          additionalProperties: false,
+        },
+      ],
     },
-    "object": {
-      "type": "string",
-      "const": "block"
+    object: {
+      type: "string",
+      const: "block",
     },
-    "id": {
-      "type": "string"
+    id: {
+      type: "string",
     },
-    "created_time": {
-      "type": "string"
+    created_time: {
+      type: "string",
     },
-    "created_by": PartialUserObjectResponse,
-    "last_edited_time": {
-      "type": "string"
+    created_by: PartialUserObjectResponse,
+    last_edited_time: {
+      type: "string",
     },
-    "last_edited_by": PartialUserObjectResponse,
-    "has_children": {
-      "type": "boolean"
+    last_edited_by: PartialUserObjectResponse,
+    has_children: {
+      type: "boolean",
     },
-    "archived": {
-      "type": "boolean"
-    }
+    archived: {
+      type: "boolean",
+    },
   },
-  "required": [
+  required: [
     "type",
     "column_list",
     "parent",
@@ -2808,115 +2505,103 @@ export const ColumnListBlockObjectResponse: JSONSchema = {
     "last_edited_time",
     "last_edited_by",
     "has_children",
-    "archived"
+    "archived",
   ],
-  "additionalProperties": false
+  additionalProperties: false,
 };
 
 export const ColumnBlockObjectResponse: JSONSchema = {
-  "type": "object",
-  "properties": {
-    "type": {
-      "type": "string",
-      "const": "column"
+  type: "object",
+  properties: {
+    type: {
+      type: "string",
+      const: "column",
     },
-    "column": EmptyObject,
-    "parent": {
-      "anyOf": [
+    column: EmptyObject,
+    parent: {
+      anyOf: [
         {
-          "type": "object",
-          "properties": {
-            "type": {
-              "type": "string",
-              "const": "database_id"
+          type: "object",
+          properties: {
+            type: {
+              type: "string",
+              const: "database_id",
             },
-            "database_id": {
-              "type": "string"
-            }
+            database_id: {
+              type: "string",
+            },
           },
-          "required": [
-            "type",
-            "database_id"
-          ],
-          "additionalProperties": false
+          required: ["type", "database_id"],
+          additionalProperties: false,
         },
         {
-          "type": "object",
-          "properties": {
-            "type": {
-              "type": "string",
-              "const": "page_id"
+          type: "object",
+          properties: {
+            type: {
+              type: "string",
+              const: "page_id",
             },
-            "page_id": {
-              "type": "string"
-            }
+            page_id: {
+              type: "string",
+            },
           },
-          "required": [
-            "type",
-            "page_id"
-          ],
-          "additionalProperties": false
+          required: ["type", "page_id"],
+          additionalProperties: false,
         },
         {
-          "type": "object",
-          "properties": {
-            "type": {
-              "type": "string",
-              "const": "block_id"
+          type: "object",
+          properties: {
+            type: {
+              type: "string",
+              const: "block_id",
             },
-            "block_id": {
-              "type": "string"
-            }
+            block_id: {
+              type: "string",
+            },
           },
-          "required": [
-            "type",
-            "block_id"
-          ],
-          "additionalProperties": false
+          required: ["type", "block_id"],
+          additionalProperties: false,
         },
         {
-          "type": "object",
-          "properties": {
-            "type": {
-              "type": "string",
-              "const": "workspace"
+          type: "object",
+          properties: {
+            type: {
+              type: "string",
+              const: "workspace",
             },
-            "workspace": {
-              "type": "boolean",
-              "const": true
-            }
+            workspace: {
+              type: "boolean",
+              const: true,
+            },
           },
-          "required": [
-            "type",
-            "workspace"
-          ],
-          "additionalProperties": false
-        }
-      ]
+          required: ["type", "workspace"],
+          additionalProperties: false,
+        },
+      ],
     },
-    "object": {
-      "type": "string",
-      "const": "block"
+    object: {
+      type: "string",
+      const: "block",
     },
-    "id": {
-      "type": "string"
+    id: {
+      type: "string",
     },
-    "created_time": {
-      "type": "string"
+    created_time: {
+      type: "string",
     },
-    "created_by": PartialUserObjectResponse,
-    "last_edited_time": {
-      "type": "string"
+    created_by: PartialUserObjectResponse,
+    last_edited_time: {
+      type: "string",
     },
-    "last_edited_by": PartialUserObjectResponse,
-    "has_children": {
-      "type": "boolean"
+    last_edited_by: PartialUserObjectResponse,
+    has_children: {
+      type: "boolean",
     },
-    "archived": {
-      "type": "boolean"
-    }
+    archived: {
+      type: "boolean",
+    },
   },
-  "required": [
+  required: [
     "type",
     "column",
     "parent",
@@ -2927,163 +2612,142 @@ export const ColumnBlockObjectResponse: JSONSchema = {
     "last_edited_time",
     "last_edited_by",
     "has_children",
-    "archived"
+    "archived",
   ],
-  "additionalProperties": false
+  additionalProperties: false,
 };
 
 export const LinkToPageBlockObjectResponse: JSONSchema = {
-  "type": "object",
-  "properties": {
-    "type": {
-      "type": "string",
-      "const": "link_to_page"
+  type: "object",
+  properties: {
+    type: {
+      type: "string",
+      const: "link_to_page",
     },
-    "link_to_page": {
-      "anyOf": [
+    link_to_page: {
+      anyOf: [
         {
-          "type": "object",
-          "properties": {
-            "type": {
-              "type": "string",
-              "const": "page_id"
+          type: "object",
+          properties: {
+            type: {
+              type: "string",
+              const: "page_id",
             },
-            "page_id": IdRequest
+            page_id: IdRequest,
           },
-          "required": [
-            "type",
-            "page_id"
-          ],
-          "additionalProperties": false
+          required: ["type", "page_id"],
+          additionalProperties: false,
         },
         {
-          "type": "object",
-          "properties": {
-            "type": {
-              "type": "string",
-              "const": "database_id"
+          type: "object",
+          properties: {
+            type: {
+              type: "string",
+              const: "database_id",
             },
-            "database_id": IdRequest
+            database_id: IdRequest,
           },
-          "required": [
-            "type",
-            "database_id"
-          ],
-          "additionalProperties": false
+          required: ["type", "database_id"],
+          additionalProperties: false,
         },
         {
-          "type": "object",
-          "properties": {
-            "type": {
-              "type": "string",
-              "const": "comment_id"
+          type: "object",
+          properties: {
+            type: {
+              type: "string",
+              const: "comment_id",
             },
-            "comment_id": IdRequest
+            comment_id: IdRequest,
           },
-          "required": [
-            "type",
-            "comment_id"
-          ],
-          "additionalProperties": false
-        }
-      ]
+          required: ["type", "comment_id"],
+          additionalProperties: false,
+        },
+      ],
     },
-    "parent": {
-      "anyOf": [
+    parent: {
+      anyOf: [
         {
-          "type": "object",
-          "properties": {
-            "type": {
-              "type": "string",
-              "const": "database_id"
+          type: "object",
+          properties: {
+            type: {
+              type: "string",
+              const: "database_id",
             },
-            "database_id": {
-              "type": "string"
-            }
+            database_id: {
+              type: "string",
+            },
           },
-          "required": [
-            "type",
-            "database_id"
-          ],
-          "additionalProperties": false
+          required: ["type", "database_id"],
+          additionalProperties: false,
         },
         {
-          "type": "object",
-          "properties": {
-            "type": {
-              "type": "string",
-              "const": "page_id"
+          type: "object",
+          properties: {
+            type: {
+              type: "string",
+              const: "page_id",
             },
-            "page_id": {
-              "type": "string"
-            }
+            page_id: {
+              type: "string",
+            },
           },
-          "required": [
-            "type",
-            "page_id"
-          ],
-          "additionalProperties": false
+          required: ["type", "page_id"],
+          additionalProperties: false,
         },
         {
-          "type": "object",
-          "properties": {
-            "type": {
-              "type": "string",
-              "const": "block_id"
+          type: "object",
+          properties: {
+            type: {
+              type: "string",
+              const: "block_id",
             },
-            "block_id": {
-              "type": "string"
-            }
+            block_id: {
+              type: "string",
+            },
           },
-          "required": [
-            "type",
-            "block_id"
-          ],
-          "additionalProperties": false
+          required: ["type", "block_id"],
+          additionalProperties: false,
         },
         {
-          "type": "object",
-          "properties": {
-            "type": {
-              "type": "string",
-              "const": "workspace"
+          type: "object",
+          properties: {
+            type: {
+              type: "string",
+              const: "workspace",
             },
-            "workspace": {
-              "type": "boolean",
-              "const": true
-            }
+            workspace: {
+              type: "boolean",
+              const: true,
+            },
           },
-          "required": [
-            "type",
-            "workspace"
-          ],
-          "additionalProperties": false
-        }
-      ]
+          required: ["type", "workspace"],
+          additionalProperties: false,
+        },
+      ],
     },
-    "object": {
-      "type": "string",
-      "const": "block"
+    object: {
+      type: "string",
+      const: "block",
     },
-    "id": {
-      "type": "string"
+    id: {
+      type: "string",
     },
-    "created_time": {
-      "type": "string"
+    created_time: {
+      type: "string",
     },
-    "created_by": PartialUserObjectResponse,
-    "last_edited_time": {
-      "type": "string"
+    created_by: PartialUserObjectResponse,
+    last_edited_time: {
+      type: "string",
     },
-    "last_edited_by": PartialUserObjectResponse,
-    "has_children": {
-      "type": "boolean"
+    last_edited_by: PartialUserObjectResponse,
+    has_children: {
+      type: "boolean",
     },
-    "archived": {
-      "type": "boolean"
-    }
+    archived: {
+      type: "boolean",
+    },
   },
-  "required": [
+  required: [
     "type",
     "link_to_page",
     "parent",
@@ -3094,134 +2758,118 @@ export const LinkToPageBlockObjectResponse: JSONSchema = {
     "last_edited_time",
     "last_edited_by",
     "has_children",
-    "archived"
+    "archived",
   ],
-  "additionalProperties": false
+  additionalProperties: false,
 };
 
 export const TableBlockObjectResponse: JSONSchema = {
-  "type": "object",
-  "properties": {
-    "type": {
-      "type": "string",
-      "const": "table"
+  type: "object",
+  properties: {
+    type: {
+      type: "string",
+      const: "table",
     },
-    "table": {
-      "type": "object",
-      "properties": {
-        "has_column_header": {
-          "type": "boolean"
+    table: {
+      type: "object",
+      properties: {
+        has_column_header: {
+          type: "boolean",
         },
-        "has_row_header": {
-          "type": "boolean"
+        has_row_header: {
+          type: "boolean",
         },
-        "table_width": {
-          "type": "number"
-        }
+        table_width: {
+          type: "number",
+        },
       },
-      "required": [
-        "has_column_header",
-        "has_row_header",
-        "table_width"
+      required: ["has_column_header", "has_row_header", "table_width"],
+      additionalProperties: false,
+    },
+    parent: {
+      anyOf: [
+        {
+          type: "object",
+          properties: {
+            type: {
+              type: "string",
+              const: "database_id",
+            },
+            database_id: {
+              type: "string",
+            },
+          },
+          required: ["type", "database_id"],
+          additionalProperties: false,
+        },
+        {
+          type: "object",
+          properties: {
+            type: {
+              type: "string",
+              const: "page_id",
+            },
+            page_id: {
+              type: "string",
+            },
+          },
+          required: ["type", "page_id"],
+          additionalProperties: false,
+        },
+        {
+          type: "object",
+          properties: {
+            type: {
+              type: "string",
+              const: "block_id",
+            },
+            block_id: {
+              type: "string",
+            },
+          },
+          required: ["type", "block_id"],
+          additionalProperties: false,
+        },
+        {
+          type: "object",
+          properties: {
+            type: {
+              type: "string",
+              const: "workspace",
+            },
+            workspace: {
+              type: "boolean",
+              const: true,
+            },
+          },
+          required: ["type", "workspace"],
+          additionalProperties: false,
+        },
       ],
-      "additionalProperties": false
     },
-    "parent": {
-      "anyOf": [
-        {
-          "type": "object",
-          "properties": {
-            "type": {
-              "type": "string",
-              "const": "database_id"
-            },
-            "database_id": {
-              "type": "string"
-            }
-          },
-          "required": [
-            "type",
-            "database_id"
-          ],
-          "additionalProperties": false
-        },
-        {
-          "type": "object",
-          "properties": {
-            "type": {
-              "type": "string",
-              "const": "page_id"
-            },
-            "page_id": {
-              "type": "string"
-            }
-          },
-          "required": [
-            "type",
-            "page_id"
-          ],
-          "additionalProperties": false
-        },
-        {
-          "type": "object",
-          "properties": {
-            "type": {
-              "type": "string",
-              "const": "block_id"
-            },
-            "block_id": {
-              "type": "string"
-            }
-          },
-          "required": [
-            "type",
-            "block_id"
-          ],
-          "additionalProperties": false
-        },
-        {
-          "type": "object",
-          "properties": {
-            "type": {
-              "type": "string",
-              "const": "workspace"
-            },
-            "workspace": {
-              "type": "boolean",
-              "const": true
-            }
-          },
-          "required": [
-            "type",
-            "workspace"
-          ],
-          "additionalProperties": false
-        }
-      ]
+    object: {
+      type: "string",
+      const: "block",
     },
-    "object": {
-      "type": "string",
-      "const": "block"
+    id: {
+      type: "string",
     },
-    "id": {
-      "type": "string"
+    created_time: {
+      type: "string",
     },
-    "created_time": {
-      "type": "string"
+    created_by: PartialUserObjectResponse,
+    last_edited_time: {
+      type: "string",
     },
-    "created_by": PartialUserObjectResponse,
-    "last_edited_time": {
-      "type": "string"
+    last_edited_by: PartialUserObjectResponse,
+    has_children: {
+      type: "boolean",
     },
-    "last_edited_by": PartialUserObjectResponse,
-    "has_children": {
-      "type": "boolean"
+    archived: {
+      type: "boolean",
     },
-    "archived": {
-      "type": "boolean"
-    }
   },
-  "required": [
+  required: [
     "type",
     "table",
     "parent",
@@ -3232,130 +2880,116 @@ export const TableBlockObjectResponse: JSONSchema = {
     "last_edited_time",
     "last_edited_by",
     "has_children",
-    "archived"
+    "archived",
   ],
-  "additionalProperties": false
+  additionalProperties: false,
 };
 
 export const TableRowBlockObjectResponse: JSONSchema = {
-  "type": "object",
-  "properties": {
-    "type": {
-      "type": "string",
-      "const": "table_row"
+  type: "object",
+  properties: {
+    type: {
+      type: "string",
+      const: "table_row",
     },
-    "table_row": {
-      "type": "object",
-      "properties": {
-        "cells": {
-          "type": "array",
-          "items": {
-            "type": "array",
-            "items": RichTextItemResponse
-          }
-        }
+    table_row: {
+      type: "object",
+      properties: {
+        cells: {
+          type: "array",
+          items: {
+            type: "array",
+            items: RichTextItemResponse,
+          },
+        },
       },
-      "required": [
-        "cells"
+      required: ["cells"],
+      additionalProperties: false,
+    },
+    parent: {
+      anyOf: [
+        {
+          type: "object",
+          properties: {
+            type: {
+              type: "string",
+              const: "database_id",
+            },
+            database_id: {
+              type: "string",
+            },
+          },
+          required: ["type", "database_id"],
+          additionalProperties: false,
+        },
+        {
+          type: "object",
+          properties: {
+            type: {
+              type: "string",
+              const: "page_id",
+            },
+            page_id: {
+              type: "string",
+            },
+          },
+          required: ["type", "page_id"],
+          additionalProperties: false,
+        },
+        {
+          type: "object",
+          properties: {
+            type: {
+              type: "string",
+              const: "block_id",
+            },
+            block_id: {
+              type: "string",
+            },
+          },
+          required: ["type", "block_id"],
+          additionalProperties: false,
+        },
+        {
+          type: "object",
+          properties: {
+            type: {
+              type: "string",
+              const: "workspace",
+            },
+            workspace: {
+              type: "boolean",
+              const: true,
+            },
+          },
+          required: ["type", "workspace"],
+          additionalProperties: false,
+        },
       ],
-      "additionalProperties": false
     },
-    "parent": {
-      "anyOf": [
-        {
-          "type": "object",
-          "properties": {
-            "type": {
-              "type": "string",
-              "const": "database_id"
-            },
-            "database_id": {
-              "type": "string"
-            }
-          },
-          "required": [
-            "type",
-            "database_id"
-          ],
-          "additionalProperties": false
-        },
-        {
-          "type": "object",
-          "properties": {
-            "type": {
-              "type": "string",
-              "const": "page_id"
-            },
-            "page_id": {
-              "type": "string"
-            }
-          },
-          "required": [
-            "type",
-            "page_id"
-          ],
-          "additionalProperties": false
-        },
-        {
-          "type": "object",
-          "properties": {
-            "type": {
-              "type": "string",
-              "const": "block_id"
-            },
-            "block_id": {
-              "type": "string"
-            }
-          },
-          "required": [
-            "type",
-            "block_id"
-          ],
-          "additionalProperties": false
-        },
-        {
-          "type": "object",
-          "properties": {
-            "type": {
-              "type": "string",
-              "const": "workspace"
-            },
-            "workspace": {
-              "type": "boolean",
-              "const": true
-            }
-          },
-          "required": [
-            "type",
-            "workspace"
-          ],
-          "additionalProperties": false
-        }
-      ]
+    object: {
+      type: "string",
+      const: "block",
     },
-    "object": {
-      "type": "string",
-      "const": "block"
+    id: {
+      type: "string",
     },
-    "id": {
-      "type": "string"
+    created_time: {
+      type: "string",
     },
-    "created_time": {
-      "type": "string"
+    created_by: PartialUserObjectResponse,
+    last_edited_time: {
+      type: "string",
     },
-    "created_by": PartialUserObjectResponse,
-    "last_edited_time": {
-      "type": "string"
+    last_edited_by: PartialUserObjectResponse,
+    has_children: {
+      type: "boolean",
     },
-    "last_edited_by": PartialUserObjectResponse,
-    "has_children": {
-      "type": "boolean"
+    archived: {
+      type: "boolean",
     },
-    "archived": {
-      "type": "boolean"
-    }
   },
-  "required": [
+  required: [
     "type",
     "table_row",
     "parent",
@@ -3366,131 +3000,116 @@ export const TableRowBlockObjectResponse: JSONSchema = {
     "last_edited_time",
     "last_edited_by",
     "has_children",
-    "archived"
+    "archived",
   ],
-  "additionalProperties": false
+  additionalProperties: false,
 };
 
 export const EmbedBlockObjectResponse: JSONSchema = {
-  "type": "object",
-  "properties": {
-    "type": {
-      "type": "string",
-      "const": "embed"
+  type: "object",
+  properties: {
+    type: {
+      type: "string",
+      const: "embed",
     },
-    "embed": {
-      "type": "object",
-      "properties": {
-        "url": {
-          "type": "string"
+    embed: {
+      type: "object",
+      properties: {
+        url: {
+          type: "string",
         },
-        "caption": {
-          "type": "array",
-          "items": RichTextItemResponse
-        }
+        caption: {
+          type: "array",
+          items: RichTextItemResponse,
+        },
       },
-      "required": [
-        "url",
-        "caption"
+      required: ["url", "caption"],
+      additionalProperties: false,
+    },
+    parent: {
+      anyOf: [
+        {
+          type: "object",
+          properties: {
+            type: {
+              type: "string",
+              const: "database_id",
+            },
+            database_id: {
+              type: "string",
+            },
+          },
+          required: ["type", "database_id"],
+          additionalProperties: false,
+        },
+        {
+          type: "object",
+          properties: {
+            type: {
+              type: "string",
+              const: "page_id",
+            },
+            page_id: {
+              type: "string",
+            },
+          },
+          required: ["type", "page_id"],
+          additionalProperties: false,
+        },
+        {
+          type: "object",
+          properties: {
+            type: {
+              type: "string",
+              const: "block_id",
+            },
+            block_id: {
+              type: "string",
+            },
+          },
+          required: ["type", "block_id"],
+          additionalProperties: false,
+        },
+        {
+          type: "object",
+          properties: {
+            type: {
+              type: "string",
+              const: "workspace",
+            },
+            workspace: {
+              type: "boolean",
+              const: true,
+            },
+          },
+          required: ["type", "workspace"],
+          additionalProperties: false,
+        },
       ],
-      "additionalProperties": false
     },
-    "parent": {
-      "anyOf": [
-        {
-          "type": "object",
-          "properties": {
-            "type": {
-              "type": "string",
-              "const": "database_id"
-            },
-            "database_id": {
-              "type": "string"
-            }
-          },
-          "required": [
-            "type",
-            "database_id"
-          ],
-          "additionalProperties": false
-        },
-        {
-          "type": "object",
-          "properties": {
-            "type": {
-              "type": "string",
-              "const": "page_id"
-            },
-            "page_id": {
-              "type": "string"
-            }
-          },
-          "required": [
-            "type",
-            "page_id"
-          ],
-          "additionalProperties": false
-        },
-        {
-          "type": "object",
-          "properties": {
-            "type": {
-              "type": "string",
-              "const": "block_id"
-            },
-            "block_id": {
-              "type": "string"
-            }
-          },
-          "required": [
-            "type",
-            "block_id"
-          ],
-          "additionalProperties": false
-        },
-        {
-          "type": "object",
-          "properties": {
-            "type": {
-              "type": "string",
-              "const": "workspace"
-            },
-            "workspace": {
-              "type": "boolean",
-              "const": true
-            }
-          },
-          "required": [
-            "type",
-            "workspace"
-          ],
-          "additionalProperties": false
-        }
-      ]
+    object: {
+      type: "string",
+      const: "block",
     },
-    "object": {
-      "type": "string",
-      "const": "block"
+    id: {
+      type: "string",
     },
-    "id": {
-      "type": "string"
+    created_time: {
+      type: "string",
     },
-    "created_time": {
-      "type": "string"
+    created_by: PartialUserObjectResponse,
+    last_edited_time: {
+      type: "string",
     },
-    "created_by": PartialUserObjectResponse,
-    "last_edited_time": {
-      "type": "string"
+    last_edited_by: PartialUserObjectResponse,
+    has_children: {
+      type: "boolean",
     },
-    "last_edited_by": PartialUserObjectResponse,
-    "has_children": {
-      "type": "boolean"
+    archived: {
+      type: "boolean",
     },
-    "archived": {
-      "type": "boolean"
-    }
   },
-  "required": [
+  required: [
     "type",
     "embed",
     "parent",
@@ -3501,131 +3120,116 @@ export const EmbedBlockObjectResponse: JSONSchema = {
     "last_edited_time",
     "last_edited_by",
     "has_children",
-    "archived"
+    "archived",
   ],
-  "additionalProperties": false
+  additionalProperties: false,
 };
 
 export const BookmarkBlockObjectResponse: JSONSchema = {
-  "type": "object",
-  "properties": {
-    "type": {
-      "type": "string",
-      "const": "bookmark"
+  type: "object",
+  properties: {
+    type: {
+      type: "string",
+      const: "bookmark",
     },
-    "bookmark": {
-      "type": "object",
-      "properties": {
-        "url": {
-          "type": "string"
+    bookmark: {
+      type: "object",
+      properties: {
+        url: {
+          type: "string",
         },
-        "caption": {
-          "type": "array",
-          "items": RichTextItemResponse
-        }
+        caption: {
+          type: "array",
+          items: RichTextItemResponse,
+        },
       },
-      "required": [
-        "url",
-        "caption"
+      required: ["url", "caption"],
+      additionalProperties: false,
+    },
+    parent: {
+      anyOf: [
+        {
+          type: "object",
+          properties: {
+            type: {
+              type: "string",
+              const: "database_id",
+            },
+            database_id: {
+              type: "string",
+            },
+          },
+          required: ["type", "database_id"],
+          additionalProperties: false,
+        },
+        {
+          type: "object",
+          properties: {
+            type: {
+              type: "string",
+              const: "page_id",
+            },
+            page_id: {
+              type: "string",
+            },
+          },
+          required: ["type", "page_id"],
+          additionalProperties: false,
+        },
+        {
+          type: "object",
+          properties: {
+            type: {
+              type: "string",
+              const: "block_id",
+            },
+            block_id: {
+              type: "string",
+            },
+          },
+          required: ["type", "block_id"],
+          additionalProperties: false,
+        },
+        {
+          type: "object",
+          properties: {
+            type: {
+              type: "string",
+              const: "workspace",
+            },
+            workspace: {
+              type: "boolean",
+              const: true,
+            },
+          },
+          required: ["type", "workspace"],
+          additionalProperties: false,
+        },
       ],
-      "additionalProperties": false
     },
-    "parent": {
-      "anyOf": [
-        {
-          "type": "object",
-          "properties": {
-            "type": {
-              "type": "string",
-              "const": "database_id"
-            },
-            "database_id": {
-              "type": "string"
-            }
-          },
-          "required": [
-            "type",
-            "database_id"
-          ],
-          "additionalProperties": false
-        },
-        {
-          "type": "object",
-          "properties": {
-            "type": {
-              "type": "string",
-              "const": "page_id"
-            },
-            "page_id": {
-              "type": "string"
-            }
-          },
-          "required": [
-            "type",
-            "page_id"
-          ],
-          "additionalProperties": false
-        },
-        {
-          "type": "object",
-          "properties": {
-            "type": {
-              "type": "string",
-              "const": "block_id"
-            },
-            "block_id": {
-              "type": "string"
-            }
-          },
-          "required": [
-            "type",
-            "block_id"
-          ],
-          "additionalProperties": false
-        },
-        {
-          "type": "object",
-          "properties": {
-            "type": {
-              "type": "string",
-              "const": "workspace"
-            },
-            "workspace": {
-              "type": "boolean",
-              "const": true
-            }
-          },
-          "required": [
-            "type",
-            "workspace"
-          ],
-          "additionalProperties": false
-        }
-      ]
+    object: {
+      type: "string",
+      const: "block",
     },
-    "object": {
-      "type": "string",
-      "const": "block"
+    id: {
+      type: "string",
     },
-    "id": {
-      "type": "string"
+    created_time: {
+      type: "string",
     },
-    "created_time": {
-      "type": "string"
+    created_by: PartialUserObjectResponse,
+    last_edited_time: {
+      type: "string",
     },
-    "created_by": PartialUserObjectResponse,
-    "last_edited_time": {
-      "type": "string"
+    last_edited_by: PartialUserObjectResponse,
+    has_children: {
+      type: "boolean",
     },
-    "last_edited_by": PartialUserObjectResponse,
-    "has_children": {
-      "type": "boolean"
+    archived: {
+      type: "boolean",
     },
-    "archived": {
-      "type": "boolean"
-    }
   },
-  "required": [
+  required: [
     "type",
     "bookmark",
     "parent",
@@ -3636,182 +3240,157 @@ export const BookmarkBlockObjectResponse: JSONSchema = {
     "last_edited_time",
     "last_edited_by",
     "has_children",
-    "archived"
+    "archived",
   ],
-  "additionalProperties": false
+  additionalProperties: false,
 };
 
 export const ImageBlockObjectResponse: JSONSchema = {
-  "type": "object",
-  "properties": {
-    "type": {
-      "type": "string",
-      "const": "image"
+  type: "object",
+  properties: {
+    type: {
+      type: "string",
+      const: "image",
     },
-    "image": {
-      "anyOf": [
+    image: {
+      anyOf: [
         {
-          "type": "object",
-          "properties": {
-            "type": {
-              "type": "string",
-              "const": "external"
+          type: "object",
+          properties: {
+            type: {
+              type: "string",
+              const: "external",
             },
-            "external": {
-              "type": "object",
-              "properties": {
-                "url": TextRequest
+            external: {
+              type: "object",
+              properties: {
+                url: TextRequest,
               },
-              "required": [
-                "url"
-              ],
-              "additionalProperties": false
+              required: ["url"],
+              additionalProperties: false,
             },
-            "caption": {
-              "type": "array",
-              "items": RichTextItemResponse
-            }
+            caption: {
+              type: "array",
+              items: RichTextItemResponse,
+            },
           },
-          "required": [
-            "type",
-            "external",
-            "caption"
-          ],
-          "additionalProperties": false
+          required: ["type", "external", "caption"],
+          additionalProperties: false,
         },
         {
-          "type": "object",
-          "properties": {
-            "type": {
-              "type": "string",
-              "const": "file"
+          type: "object",
+          properties: {
+            type: {
+              type: "string",
+              const: "file",
             },
-            "file": {
-              "type": "object",
-              "properties": {
-                "url": {
-                  "type": "string"
+            file: {
+              type: "object",
+              properties: {
+                url: {
+                  type: "string",
                 },
-                "expiry_time": {
-                  "type": "string"
-                }
+                expiry_time: {
+                  type: "string",
+                },
               },
-              "required": [
-                "url",
-                "expiry_time"
-              ],
-              "additionalProperties": false
+              required: ["url", "expiry_time"],
+              additionalProperties: false,
             },
-            "caption": {
-              "type": "array",
-              "items": RichTextItemResponse
-            }
+            caption: {
+              type: "array",
+              items: RichTextItemResponse,
+            },
           },
-          "required": [
-            "type",
-            "file",
-            "caption"
-          ],
-          "additionalProperties": false
-        }
-      ]
+          required: ["type", "file", "caption"],
+          additionalProperties: false,
+        },
+      ],
     },
-    "parent": {
-      "anyOf": [
+    parent: {
+      anyOf: [
         {
-          "type": "object",
-          "properties": {
-            "type": {
-              "type": "string",
-              "const": "database_id"
+          type: "object",
+          properties: {
+            type: {
+              type: "string",
+              const: "database_id",
             },
-            "database_id": {
-              "type": "string"
-            }
+            database_id: {
+              type: "string",
+            },
           },
-          "required": [
-            "type",
-            "database_id"
-          ],
-          "additionalProperties": false
+          required: ["type", "database_id"],
+          additionalProperties: false,
         },
         {
-          "type": "object",
-          "properties": {
-            "type": {
-              "type": "string",
-              "const": "page_id"
+          type: "object",
+          properties: {
+            type: {
+              type: "string",
+              const: "page_id",
             },
-            "page_id": {
-              "type": "string"
-            }
+            page_id: {
+              type: "string",
+            },
           },
-          "required": [
-            "type",
-            "page_id"
-          ],
-          "additionalProperties": false
+          required: ["type", "page_id"],
+          additionalProperties: false,
         },
         {
-          "type": "object",
-          "properties": {
-            "type": {
-              "type": "string",
-              "const": "block_id"
+          type: "object",
+          properties: {
+            type: {
+              type: "string",
+              const: "block_id",
             },
-            "block_id": {
-              "type": "string"
-            }
+            block_id: {
+              type: "string",
+            },
           },
-          "required": [
-            "type",
-            "block_id"
-          ],
-          "additionalProperties": false
+          required: ["type", "block_id"],
+          additionalProperties: false,
         },
         {
-          "type": "object",
-          "properties": {
-            "type": {
-              "type": "string",
-              "const": "workspace"
+          type: "object",
+          properties: {
+            type: {
+              type: "string",
+              const: "workspace",
             },
-            "workspace": {
-              "type": "boolean",
-              "const": true
-            }
+            workspace: {
+              type: "boolean",
+              const: true,
+            },
           },
-          "required": [
-            "type",
-            "workspace"
-          ],
-          "additionalProperties": false
-        }
-      ]
+          required: ["type", "workspace"],
+          additionalProperties: false,
+        },
+      ],
     },
-    "object": {
-      "type": "string",
-      "const": "block"
+    object: {
+      type: "string",
+      const: "block",
     },
-    "id": {
-      "type": "string"
+    id: {
+      type: "string",
     },
-    "created_time": {
-      "type": "string"
+    created_time: {
+      type: "string",
     },
-    "created_by": PartialUserObjectResponse,
-    "last_edited_time": {
-      "type": "string"
+    created_by: PartialUserObjectResponse,
+    last_edited_time: {
+      type: "string",
     },
-    "last_edited_by": PartialUserObjectResponse,
-    "has_children": {
-      "type": "boolean"
+    last_edited_by: PartialUserObjectResponse,
+    has_children: {
+      type: "boolean",
     },
-    "archived": {
-      "type": "boolean"
-    }
+    archived: {
+      type: "boolean",
+    },
   },
-  "required": [
+  required: [
     "type",
     "image",
     "parent",
@@ -3822,182 +3401,157 @@ export const ImageBlockObjectResponse: JSONSchema = {
     "last_edited_time",
     "last_edited_by",
     "has_children",
-    "archived"
+    "archived",
   ],
-  "additionalProperties": false
+  additionalProperties: false,
 };
 
 export const VideoBlockObjectResponse: JSONSchema = {
-  "type": "object",
-  "properties": {
-    "type": {
-      "type": "string",
-      "const": "video"
+  type: "object",
+  properties: {
+    type: {
+      type: "string",
+      const: "video",
     },
-    "video": {
-      "anyOf": [
+    video: {
+      anyOf: [
         {
-          "type": "object",
-          "properties": {
-            "type": {
-              "type": "string",
-              "const": "external"
+          type: "object",
+          properties: {
+            type: {
+              type: "string",
+              const: "external",
             },
-            "external": {
-              "type": "object",
-              "properties": {
-                "url": TextRequest
+            external: {
+              type: "object",
+              properties: {
+                url: TextRequest,
               },
-              "required": [
-                "url"
-              ],
-              "additionalProperties": false
+              required: ["url"],
+              additionalProperties: false,
             },
-            "caption": {
-              "type": "array",
-              "items": RichTextItemResponse
-            }
+            caption: {
+              type: "array",
+              items: RichTextItemResponse,
+            },
           },
-          "required": [
-            "type",
-            "external",
-            "caption"
-          ],
-          "additionalProperties": false
+          required: ["type", "external", "caption"],
+          additionalProperties: false,
         },
         {
-          "type": "object",
-          "properties": {
-            "type": {
-              "type": "string",
-              "const": "file"
+          type: "object",
+          properties: {
+            type: {
+              type: "string",
+              const: "file",
             },
-            "file": {
-              "type": "object",
-              "properties": {
-                "url": {
-                  "type": "string"
+            file: {
+              type: "object",
+              properties: {
+                url: {
+                  type: "string",
                 },
-                "expiry_time": {
-                  "type": "string"
-                }
+                expiry_time: {
+                  type: "string",
+                },
               },
-              "required": [
-                "url",
-                "expiry_time"
-              ],
-              "additionalProperties": false
+              required: ["url", "expiry_time"],
+              additionalProperties: false,
             },
-            "caption": {
-              "type": "array",
-              "items": RichTextItemResponse
-            }
+            caption: {
+              type: "array",
+              items: RichTextItemResponse,
+            },
           },
-          "required": [
-            "type",
-            "file",
-            "caption"
-          ],
-          "additionalProperties": false
-        }
-      ]
+          required: ["type", "file", "caption"],
+          additionalProperties: false,
+        },
+      ],
     },
-    "parent": {
-      "anyOf": [
+    parent: {
+      anyOf: [
         {
-          "type": "object",
-          "properties": {
-            "type": {
-              "type": "string",
-              "const": "database_id"
+          type: "object",
+          properties: {
+            type: {
+              type: "string",
+              const: "database_id",
             },
-            "database_id": {
-              "type": "string"
-            }
+            database_id: {
+              type: "string",
+            },
           },
-          "required": [
-            "type",
-            "database_id"
-          ],
-          "additionalProperties": false
+          required: ["type", "database_id"],
+          additionalProperties: false,
         },
         {
-          "type": "object",
-          "properties": {
-            "type": {
-              "type": "string",
-              "const": "page_id"
+          type: "object",
+          properties: {
+            type: {
+              type: "string",
+              const: "page_id",
             },
-            "page_id": {
-              "type": "string"
-            }
+            page_id: {
+              type: "string",
+            },
           },
-          "required": [
-            "type",
-            "page_id"
-          ],
-          "additionalProperties": false
+          required: ["type", "page_id"],
+          additionalProperties: false,
         },
         {
-          "type": "object",
-          "properties": {
-            "type": {
-              "type": "string",
-              "const": "block_id"
+          type: "object",
+          properties: {
+            type: {
+              type: "string",
+              const: "block_id",
             },
-            "block_id": {
-              "type": "string"
-            }
+            block_id: {
+              type: "string",
+            },
           },
-          "required": [
-            "type",
-            "block_id"
-          ],
-          "additionalProperties": false
+          required: ["type", "block_id"],
+          additionalProperties: false,
         },
         {
-          "type": "object",
-          "properties": {
-            "type": {
-              "type": "string",
-              "const": "workspace"
+          type: "object",
+          properties: {
+            type: {
+              type: "string",
+              const: "workspace",
             },
-            "workspace": {
-              "type": "boolean",
-              "const": true
-            }
+            workspace: {
+              type: "boolean",
+              const: true,
+            },
           },
-          "required": [
-            "type",
-            "workspace"
-          ],
-          "additionalProperties": false
-        }
-      ]
+          required: ["type", "workspace"],
+          additionalProperties: false,
+        },
+      ],
     },
-    "object": {
-      "type": "string",
-      "const": "block"
+    object: {
+      type: "string",
+      const: "block",
     },
-    "id": {
-      "type": "string"
+    id: {
+      type: "string",
     },
-    "created_time": {
-      "type": "string"
+    created_time: {
+      type: "string",
     },
-    "created_by": PartialUserObjectResponse,
-    "last_edited_time": {
-      "type": "string"
+    created_by: PartialUserObjectResponse,
+    last_edited_time: {
+      type: "string",
     },
-    "last_edited_by": PartialUserObjectResponse,
-    "has_children": {
-      "type": "boolean"
+    last_edited_by: PartialUserObjectResponse,
+    has_children: {
+      type: "boolean",
     },
-    "archived": {
-      "type": "boolean"
-    }
+    archived: {
+      type: "boolean",
+    },
   },
-  "required": [
+  required: [
     "type",
     "video",
     "parent",
@@ -4008,182 +3562,157 @@ export const VideoBlockObjectResponse: JSONSchema = {
     "last_edited_time",
     "last_edited_by",
     "has_children",
-    "archived"
+    "archived",
   ],
-  "additionalProperties": false
+  additionalProperties: false,
 };
 
 export const PdfBlockObjectResponse: JSONSchema = {
-  "type": "object",
-  "properties": {
-    "type": {
-      "type": "string",
-      "const": "pdf"
+  type: "object",
+  properties: {
+    type: {
+      type: "string",
+      const: "pdf",
     },
-    "pdf": {
-      "anyOf": [
+    pdf: {
+      anyOf: [
         {
-          "type": "object",
-          "properties": {
-            "type": {
-              "type": "string",
-              "const": "external"
+          type: "object",
+          properties: {
+            type: {
+              type: "string",
+              const: "external",
             },
-            "external": {
-              "type": "object",
-              "properties": {
-                "url": TextRequest
+            external: {
+              type: "object",
+              properties: {
+                url: TextRequest,
               },
-              "required": [
-                "url"
-              ],
-              "additionalProperties": false
+              required: ["url"],
+              additionalProperties: false,
             },
-            "caption": {
-              "type": "array",
-              "items": RichTextItemResponse
-            }
+            caption: {
+              type: "array",
+              items: RichTextItemResponse,
+            },
           },
-          "required": [
-            "type",
-            "external",
-            "caption"
-          ],
-          "additionalProperties": false
+          required: ["type", "external", "caption"],
+          additionalProperties: false,
         },
         {
-          "type": "object",
-          "properties": {
-            "type": {
-              "type": "string",
-              "const": "file"
+          type: "object",
+          properties: {
+            type: {
+              type: "string",
+              const: "file",
             },
-            "file": {
-              "type": "object",
-              "properties": {
-                "url": {
-                  "type": "string"
+            file: {
+              type: "object",
+              properties: {
+                url: {
+                  type: "string",
                 },
-                "expiry_time": {
-                  "type": "string"
-                }
+                expiry_time: {
+                  type: "string",
+                },
               },
-              "required": [
-                "url",
-                "expiry_time"
-              ],
-              "additionalProperties": false
+              required: ["url", "expiry_time"],
+              additionalProperties: false,
             },
-            "caption": {
-              "type": "array",
-              "items": RichTextItemResponse
-            }
+            caption: {
+              type: "array",
+              items: RichTextItemResponse,
+            },
           },
-          "required": [
-            "type",
-            "file",
-            "caption"
-          ],
-          "additionalProperties": false
-        }
-      ]
+          required: ["type", "file", "caption"],
+          additionalProperties: false,
+        },
+      ],
     },
-    "parent": {
-      "anyOf": [
+    parent: {
+      anyOf: [
         {
-          "type": "object",
-          "properties": {
-            "type": {
-              "type": "string",
-              "const": "database_id"
+          type: "object",
+          properties: {
+            type: {
+              type: "string",
+              const: "database_id",
             },
-            "database_id": {
-              "type": "string"
-            }
+            database_id: {
+              type: "string",
+            },
           },
-          "required": [
-            "type",
-            "database_id"
-          ],
-          "additionalProperties": false
+          required: ["type", "database_id"],
+          additionalProperties: false,
         },
         {
-          "type": "object",
-          "properties": {
-            "type": {
-              "type": "string",
-              "const": "page_id"
+          type: "object",
+          properties: {
+            type: {
+              type: "string",
+              const: "page_id",
             },
-            "page_id": {
-              "type": "string"
-            }
+            page_id: {
+              type: "string",
+            },
           },
-          "required": [
-            "type",
-            "page_id"
-          ],
-          "additionalProperties": false
+          required: ["type", "page_id"],
+          additionalProperties: false,
         },
         {
-          "type": "object",
-          "properties": {
-            "type": {
-              "type": "string",
-              "const": "block_id"
+          type: "object",
+          properties: {
+            type: {
+              type: "string",
+              const: "block_id",
             },
-            "block_id": {
-              "type": "string"
-            }
+            block_id: {
+              type: "string",
+            },
           },
-          "required": [
-            "type",
-            "block_id"
-          ],
-          "additionalProperties": false
+          required: ["type", "block_id"],
+          additionalProperties: false,
         },
         {
-          "type": "object",
-          "properties": {
-            "type": {
-              "type": "string",
-              "const": "workspace"
+          type: "object",
+          properties: {
+            type: {
+              type: "string",
+              const: "workspace",
             },
-            "workspace": {
-              "type": "boolean",
-              "const": true
-            }
+            workspace: {
+              type: "boolean",
+              const: true,
+            },
           },
-          "required": [
-            "type",
-            "workspace"
-          ],
-          "additionalProperties": false
-        }
-      ]
+          required: ["type", "workspace"],
+          additionalProperties: false,
+        },
+      ],
     },
-    "object": {
-      "type": "string",
-      "const": "block"
+    object: {
+      type: "string",
+      const: "block",
     },
-    "id": {
-      "type": "string"
+    id: {
+      type: "string",
     },
-    "created_time": {
-      "type": "string"
+    created_time: {
+      type: "string",
     },
-    "created_by": PartialUserObjectResponse,
-    "last_edited_time": {
-      "type": "string"
+    created_by: PartialUserObjectResponse,
+    last_edited_time: {
+      type: "string",
     },
-    "last_edited_by": PartialUserObjectResponse,
-    "has_children": {
-      "type": "boolean"
+    last_edited_by: PartialUserObjectResponse,
+    has_children: {
+      type: "boolean",
     },
-    "archived": {
-      "type": "boolean"
-    }
+    archived: {
+      type: "boolean",
+    },
   },
-  "required": [
+  required: [
     "type",
     "pdf",
     "parent",
@@ -4194,182 +3723,157 @@ export const PdfBlockObjectResponse: JSONSchema = {
     "last_edited_time",
     "last_edited_by",
     "has_children",
-    "archived"
+    "archived",
   ],
-  "additionalProperties": false
+  additionalProperties: false,
 };
 
 export const FileBlockObjectResponse: JSONSchema = {
-  "type": "object",
-  "properties": {
-    "type": {
-      "type": "string",
-      "const": "file"
+  type: "object",
+  properties: {
+    type: {
+      type: "string",
+      const: "file",
     },
-    "file": {
-      "anyOf": [
+    file: {
+      anyOf: [
         {
-          "type": "object",
-          "properties": {
-            "type": {
-              "type": "string",
-              "const": "external"
+          type: "object",
+          properties: {
+            type: {
+              type: "string",
+              const: "external",
             },
-            "external": {
-              "type": "object",
-              "properties": {
-                "url": TextRequest
+            external: {
+              type: "object",
+              properties: {
+                url: TextRequest,
               },
-              "required": [
-                "url"
-              ],
-              "additionalProperties": false
+              required: ["url"],
+              additionalProperties: false,
             },
-            "caption": {
-              "type": "array",
-              "items": RichTextItemResponse
-            }
+            caption: {
+              type: "array",
+              items: RichTextItemResponse,
+            },
           },
-          "required": [
-            "type",
-            "external",
-            "caption"
-          ],
-          "additionalProperties": false
+          required: ["type", "external", "caption"],
+          additionalProperties: false,
         },
         {
-          "type": "object",
-          "properties": {
-            "type": {
-              "type": "string",
-              "const": "file"
+          type: "object",
+          properties: {
+            type: {
+              type: "string",
+              const: "file",
             },
-            "file": {
-              "type": "object",
-              "properties": {
-                "url": {
-                  "type": "string"
+            file: {
+              type: "object",
+              properties: {
+                url: {
+                  type: "string",
                 },
-                "expiry_time": {
-                  "type": "string"
-                }
+                expiry_time: {
+                  type: "string",
+                },
               },
-              "required": [
-                "url",
-                "expiry_time"
-              ],
-              "additionalProperties": false
+              required: ["url", "expiry_time"],
+              additionalProperties: false,
             },
-            "caption": {
-              "type": "array",
-              "items": RichTextItemResponse
-            }
+            caption: {
+              type: "array",
+              items: RichTextItemResponse,
+            },
           },
-          "required": [
-            "type",
-            "file",
-            "caption"
-          ],
-          "additionalProperties": false
-        }
-      ]
+          required: ["type", "file", "caption"],
+          additionalProperties: false,
+        },
+      ],
     },
-    "parent": {
-      "anyOf": [
+    parent: {
+      anyOf: [
         {
-          "type": "object",
-          "properties": {
-            "type": {
-              "type": "string",
-              "const": "database_id"
+          type: "object",
+          properties: {
+            type: {
+              type: "string",
+              const: "database_id",
             },
-            "database_id": {
-              "type": "string"
-            }
+            database_id: {
+              type: "string",
+            },
           },
-          "required": [
-            "type",
-            "database_id"
-          ],
-          "additionalProperties": false
+          required: ["type", "database_id"],
+          additionalProperties: false,
         },
         {
-          "type": "object",
-          "properties": {
-            "type": {
-              "type": "string",
-              "const": "page_id"
+          type: "object",
+          properties: {
+            type: {
+              type: "string",
+              const: "page_id",
             },
-            "page_id": {
-              "type": "string"
-            }
+            page_id: {
+              type: "string",
+            },
           },
-          "required": [
-            "type",
-            "page_id"
-          ],
-          "additionalProperties": false
+          required: ["type", "page_id"],
+          additionalProperties: false,
         },
         {
-          "type": "object",
-          "properties": {
-            "type": {
-              "type": "string",
-              "const": "block_id"
+          type: "object",
+          properties: {
+            type: {
+              type: "string",
+              const: "block_id",
             },
-            "block_id": {
-              "type": "string"
-            }
+            block_id: {
+              type: "string",
+            },
           },
-          "required": [
-            "type",
-            "block_id"
-          ],
-          "additionalProperties": false
+          required: ["type", "block_id"],
+          additionalProperties: false,
         },
         {
-          "type": "object",
-          "properties": {
-            "type": {
-              "type": "string",
-              "const": "workspace"
+          type: "object",
+          properties: {
+            type: {
+              type: "string",
+              const: "workspace",
             },
-            "workspace": {
-              "type": "boolean",
-              "const": true
-            }
+            workspace: {
+              type: "boolean",
+              const: true,
+            },
           },
-          "required": [
-            "type",
-            "workspace"
-          ],
-          "additionalProperties": false
-        }
-      ]
+          required: ["type", "workspace"],
+          additionalProperties: false,
+        },
+      ],
     },
-    "object": {
-      "type": "string",
-      "const": "block"
+    object: {
+      type: "string",
+      const: "block",
     },
-    "id": {
-      "type": "string"
+    id: {
+      type: "string",
     },
-    "created_time": {
-      "type": "string"
+    created_time: {
+      type: "string",
     },
-    "created_by": PartialUserObjectResponse,
-    "last_edited_time": {
-      "type": "string"
+    created_by: PartialUserObjectResponse,
+    last_edited_time: {
+      type: "string",
     },
-    "last_edited_by": PartialUserObjectResponse,
-    "has_children": {
-      "type": "boolean"
+    last_edited_by: PartialUserObjectResponse,
+    has_children: {
+      type: "boolean",
     },
-    "archived": {
-      "type": "boolean"
-    }
+    archived: {
+      type: "boolean",
+    },
   },
-  "required": [
+  required: [
     "type",
     "file",
     "parent",
@@ -4380,182 +3884,157 @@ export const FileBlockObjectResponse: JSONSchema = {
     "last_edited_time",
     "last_edited_by",
     "has_children",
-    "archived"
+    "archived",
   ],
-  "additionalProperties": false
+  additionalProperties: false,
 };
 
 export const AudioBlockObjectResponse: JSONSchema = {
-  "type": "object",
-  "properties": {
-    "type": {
-      "type": "string",
-      "const": "audio"
+  type: "object",
+  properties: {
+    type: {
+      type: "string",
+      const: "audio",
     },
-    "audio": {
-      "anyOf": [
+    audio: {
+      anyOf: [
         {
-          "type": "object",
-          "properties": {
-            "type": {
-              "type": "string",
-              "const": "external"
+          type: "object",
+          properties: {
+            type: {
+              type: "string",
+              const: "external",
             },
-            "external": {
-              "type": "object",
-              "properties": {
-                "url": TextRequest
+            external: {
+              type: "object",
+              properties: {
+                url: TextRequest,
               },
-              "required": [
-                "url"
-              ],
-              "additionalProperties": false
+              required: ["url"],
+              additionalProperties: false,
             },
-            "caption": {
-              "type": "array",
-              "items": RichTextItemResponse
-            }
+            caption: {
+              type: "array",
+              items: RichTextItemResponse,
+            },
           },
-          "required": [
-            "type",
-            "external",
-            "caption"
-          ],
-          "additionalProperties": false
+          required: ["type", "external", "caption"],
+          additionalProperties: false,
         },
         {
-          "type": "object",
-          "properties": {
-            "type": {
-              "type": "string",
-              "const": "file"
+          type: "object",
+          properties: {
+            type: {
+              type: "string",
+              const: "file",
             },
-            "file": {
-              "type": "object",
-              "properties": {
-                "url": {
-                  "type": "string"
+            file: {
+              type: "object",
+              properties: {
+                url: {
+                  type: "string",
                 },
-                "expiry_time": {
-                  "type": "string"
-                }
+                expiry_time: {
+                  type: "string",
+                },
               },
-              "required": [
-                "url",
-                "expiry_time"
-              ],
-              "additionalProperties": false
+              required: ["url", "expiry_time"],
+              additionalProperties: false,
             },
-            "caption": {
-              "type": "array",
-              "items": RichTextItemResponse
-            }
+            caption: {
+              type: "array",
+              items: RichTextItemResponse,
+            },
           },
-          "required": [
-            "type",
-            "file",
-            "caption"
-          ],
-          "additionalProperties": false
-        }
-      ]
+          required: ["type", "file", "caption"],
+          additionalProperties: false,
+        },
+      ],
     },
-    "parent": {
-      "anyOf": [
+    parent: {
+      anyOf: [
         {
-          "type": "object",
-          "properties": {
-            "type": {
-              "type": "string",
-              "const": "database_id"
+          type: "object",
+          properties: {
+            type: {
+              type: "string",
+              const: "database_id",
             },
-            "database_id": {
-              "type": "string"
-            }
+            database_id: {
+              type: "string",
+            },
           },
-          "required": [
-            "type",
-            "database_id"
-          ],
-          "additionalProperties": false
+          required: ["type", "database_id"],
+          additionalProperties: false,
         },
         {
-          "type": "object",
-          "properties": {
-            "type": {
-              "type": "string",
-              "const": "page_id"
+          type: "object",
+          properties: {
+            type: {
+              type: "string",
+              const: "page_id",
             },
-            "page_id": {
-              "type": "string"
-            }
+            page_id: {
+              type: "string",
+            },
           },
-          "required": [
-            "type",
-            "page_id"
-          ],
-          "additionalProperties": false
+          required: ["type", "page_id"],
+          additionalProperties: false,
         },
         {
-          "type": "object",
-          "properties": {
-            "type": {
-              "type": "string",
-              "const": "block_id"
+          type: "object",
+          properties: {
+            type: {
+              type: "string",
+              const: "block_id",
             },
-            "block_id": {
-              "type": "string"
-            }
+            block_id: {
+              type: "string",
+            },
           },
-          "required": [
-            "type",
-            "block_id"
-          ],
-          "additionalProperties": false
+          required: ["type", "block_id"],
+          additionalProperties: false,
         },
         {
-          "type": "object",
-          "properties": {
-            "type": {
-              "type": "string",
-              "const": "workspace"
+          type: "object",
+          properties: {
+            type: {
+              type: "string",
+              const: "workspace",
             },
-            "workspace": {
-              "type": "boolean",
-              "const": true
-            }
+            workspace: {
+              type: "boolean",
+              const: true,
+            },
           },
-          "required": [
-            "type",
-            "workspace"
-          ],
-          "additionalProperties": false
-        }
-      ]
+          required: ["type", "workspace"],
+          additionalProperties: false,
+        },
+      ],
     },
-    "object": {
-      "type": "string",
-      "const": "block"
+    object: {
+      type: "string",
+      const: "block",
     },
-    "id": {
-      "type": "string"
+    id: {
+      type: "string",
     },
-    "created_time": {
-      "type": "string"
+    created_time: {
+      type: "string",
     },
-    "created_by": PartialUserObjectResponse,
-    "last_edited_time": {
-      "type": "string"
+    created_by: PartialUserObjectResponse,
+    last_edited_time: {
+      type: "string",
     },
-    "last_edited_by": PartialUserObjectResponse,
-    "has_children": {
-      "type": "boolean"
+    last_edited_by: PartialUserObjectResponse,
+    has_children: {
+      type: "boolean",
     },
-    "archived": {
-      "type": "boolean"
-    }
+    archived: {
+      type: "boolean",
+    },
   },
-  "required": [
+  required: [
     "type",
     "audio",
     "parent",
@@ -4566,124 +4045,110 @@ export const AudioBlockObjectResponse: JSONSchema = {
     "last_edited_time",
     "last_edited_by",
     "has_children",
-    "archived"
+    "archived",
   ],
-  "additionalProperties": false
+  additionalProperties: false,
 };
 
 export const LinkPreviewBlockObjectResponse: JSONSchema = {
-  "type": "object",
-  "properties": {
-    "type": {
-      "type": "string",
-      "const": "link_preview"
+  type: "object",
+  properties: {
+    type: {
+      type: "string",
+      const: "link_preview",
     },
-    "link_preview": {
-      "type": "object",
-      "properties": {
-        "url": TextRequest
+    link_preview: {
+      type: "object",
+      properties: {
+        url: TextRequest,
       },
-      "required": [
-        "url"
+      required: ["url"],
+      additionalProperties: false,
+    },
+    parent: {
+      anyOf: [
+        {
+          type: "object",
+          properties: {
+            type: {
+              type: "string",
+              const: "database_id",
+            },
+            database_id: {
+              type: "string",
+            },
+          },
+          required: ["type", "database_id"],
+          additionalProperties: false,
+        },
+        {
+          type: "object",
+          properties: {
+            type: {
+              type: "string",
+              const: "page_id",
+            },
+            page_id: {
+              type: "string",
+            },
+          },
+          required: ["type", "page_id"],
+          additionalProperties: false,
+        },
+        {
+          type: "object",
+          properties: {
+            type: {
+              type: "string",
+              const: "block_id",
+            },
+            block_id: {
+              type: "string",
+            },
+          },
+          required: ["type", "block_id"],
+          additionalProperties: false,
+        },
+        {
+          type: "object",
+          properties: {
+            type: {
+              type: "string",
+              const: "workspace",
+            },
+            workspace: {
+              type: "boolean",
+              const: true,
+            },
+          },
+          required: ["type", "workspace"],
+          additionalProperties: false,
+        },
       ],
-      "additionalProperties": false
     },
-    "parent": {
-      "anyOf": [
-        {
-          "type": "object",
-          "properties": {
-            "type": {
-              "type": "string",
-              "const": "database_id"
-            },
-            "database_id": {
-              "type": "string"
-            }
-          },
-          "required": [
-            "type",
-            "database_id"
-          ],
-          "additionalProperties": false
-        },
-        {
-          "type": "object",
-          "properties": {
-            "type": {
-              "type": "string",
-              "const": "page_id"
-            },
-            "page_id": {
-              "type": "string"
-            }
-          },
-          "required": [
-            "type",
-            "page_id"
-          ],
-          "additionalProperties": false
-        },
-        {
-          "type": "object",
-          "properties": {
-            "type": {
-              "type": "string",
-              "const": "block_id"
-            },
-            "block_id": {
-              "type": "string"
-            }
-          },
-          "required": [
-            "type",
-            "block_id"
-          ],
-          "additionalProperties": false
-        },
-        {
-          "type": "object",
-          "properties": {
-            "type": {
-              "type": "string",
-              "const": "workspace"
-            },
-            "workspace": {
-              "type": "boolean",
-              "const": true
-            }
-          },
-          "required": [
-            "type",
-            "workspace"
-          ],
-          "additionalProperties": false
-        }
-      ]
+    object: {
+      type: "string",
+      const: "block",
     },
-    "object": {
-      "type": "string",
-      "const": "block"
+    id: {
+      type: "string",
     },
-    "id": {
-      "type": "string"
+    created_time: {
+      type: "string",
     },
-    "created_time": {
-      "type": "string"
+    created_by: PartialUserObjectResponse,
+    last_edited_time: {
+      type: "string",
     },
-    "created_by": PartialUserObjectResponse,
-    "last_edited_time": {
-      "type": "string"
+    last_edited_by: PartialUserObjectResponse,
+    has_children: {
+      type: "boolean",
     },
-    "last_edited_by": PartialUserObjectResponse,
-    "has_children": {
-      "type": "boolean"
+    archived: {
+      type: "boolean",
     },
-    "archived": {
-      "type": "boolean"
-    }
   },
-  "required": [
+  required: [
     "type",
     "link_preview",
     "parent",
@@ -4694,115 +4159,103 @@ export const LinkPreviewBlockObjectResponse: JSONSchema = {
     "last_edited_time",
     "last_edited_by",
     "has_children",
-    "archived"
+    "archived",
   ],
-  "additionalProperties": false
+  additionalProperties: false,
 };
 
 export const UnsupportedBlockObjectResponse: JSONSchema = {
-  "type": "object",
-  "properties": {
-    "type": {
-      "type": "string",
-      "const": "unsupported"
+  type: "object",
+  properties: {
+    type: {
+      type: "string",
+      const: "unsupported",
     },
-    "unsupported": EmptyObject,
-    "parent": {
-      "anyOf": [
+    unsupported: EmptyObject,
+    parent: {
+      anyOf: [
         {
-          "type": "object",
-          "properties": {
-            "type": {
-              "type": "string",
-              "const": "database_id"
+          type: "object",
+          properties: {
+            type: {
+              type: "string",
+              const: "database_id",
             },
-            "database_id": {
-              "type": "string"
-            }
+            database_id: {
+              type: "string",
+            },
           },
-          "required": [
-            "type",
-            "database_id"
-          ],
-          "additionalProperties": false
+          required: ["type", "database_id"],
+          additionalProperties: false,
         },
         {
-          "type": "object",
-          "properties": {
-            "type": {
-              "type": "string",
-              "const": "page_id"
+          type: "object",
+          properties: {
+            type: {
+              type: "string",
+              const: "page_id",
             },
-            "page_id": {
-              "type": "string"
-            }
+            page_id: {
+              type: "string",
+            },
           },
-          "required": [
-            "type",
-            "page_id"
-          ],
-          "additionalProperties": false
+          required: ["type", "page_id"],
+          additionalProperties: false,
         },
         {
-          "type": "object",
-          "properties": {
-            "type": {
-              "type": "string",
-              "const": "block_id"
+          type: "object",
+          properties: {
+            type: {
+              type: "string",
+              const: "block_id",
             },
-            "block_id": {
-              "type": "string"
-            }
+            block_id: {
+              type: "string",
+            },
           },
-          "required": [
-            "type",
-            "block_id"
-          ],
-          "additionalProperties": false
+          required: ["type", "block_id"],
+          additionalProperties: false,
         },
         {
-          "type": "object",
-          "properties": {
-            "type": {
-              "type": "string",
-              "const": "workspace"
+          type: "object",
+          properties: {
+            type: {
+              type: "string",
+              const: "workspace",
             },
-            "workspace": {
-              "type": "boolean",
-              "const": true
-            }
+            workspace: {
+              type: "boolean",
+              const: true,
+            },
           },
-          "required": [
-            "type",
-            "workspace"
-          ],
-          "additionalProperties": false
-        }
-      ]
+          required: ["type", "workspace"],
+          additionalProperties: false,
+        },
+      ],
     },
-    "object": {
-      "type": "string",
-      "const": "block"
+    object: {
+      type: "string",
+      const: "block",
     },
-    "id": {
-      "type": "string"
+    id: {
+      type: "string",
     },
-    "created_time": {
-      "type": "string"
+    created_time: {
+      type: "string",
     },
-    "created_by": PartialUserObjectResponse,
-    "last_edited_time": {
-      "type": "string"
+    created_by: PartialUserObjectResponse,
+    last_edited_time: {
+      type: "string",
     },
-    "last_edited_by": PartialUserObjectResponse,
-    "has_children": {
-      "type": "boolean"
+    last_edited_by: PartialUserObjectResponse,
+    has_children: {
+      type: "boolean",
     },
-    "archived": {
-      "type": "boolean"
-    }
+    archived: {
+      type: "boolean",
+    },
   },
-  "required": [
+  required: [
     "type",
     "unsupported",
     "parent",
@@ -4813,13 +4266,13 @@ export const UnsupportedBlockObjectResponse: JSONSchema = {
     "last_edited_time",
     "last_edited_by",
     "has_children",
-    "archived"
+    "archived",
   ],
-  "additionalProperties": false
+  additionalProperties: false,
 };
 
 export const BlockObjectResponse: JSONSchema = {
-  "anyOf": [
+  anyOf: [
     ParagraphBlockObjectResponse,
     Heading1BlockObjectResponse,
     Heading2BlockObjectResponse,
@@ -4852,6 +4305,6 @@ export const BlockObjectResponse: JSONSchema = {
     FileBlockObjectResponse,
     AudioBlockObjectResponse,
     LinkPreviewBlockObjectResponse,
-    UnsupportedBlockObjectResponse
-  ]
+    UnsupportedBlockObjectResponse,
+  ],
 };

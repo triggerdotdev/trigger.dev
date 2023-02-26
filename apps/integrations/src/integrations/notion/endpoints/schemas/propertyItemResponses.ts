@@ -1,748 +1,601 @@
 import { JSONSchema } from "core/schemas/types";
+import { EmptyObject, IdRequest, StringRequest } from "./common";
+import { RollupFunction } from "./functions";
+import { PartialUserObjectResponse, UserObjectResponse } from "./person";
+import { TextRequest } from "./requests";
+import {
+  DateResponse,
+  FormulaPropertyResponse,
+  RichTextItemResponse,
+  SelectPropertyResponse,
+} from "./responses";
 
 export const NumberPropertyItemObjectResponse: JSONSchema = {
-  "type": "object",
-  "properties": {
-    "type": {
-      "type": "string",
-      "const": "number"
+  type: "object",
+  properties: {
+    type: {
+      type: "string",
+      const: "number",
     },
-    "number": {
-      "type": [
-        "number",
-        "null"
-      ]
+    number: {
+      type: ["number", "null"],
     },
-    "object": {
-      "type": "string",
-      "const": "property_item"
+    object: {
+      type: "string",
+      const: "property_item",
     },
-    "id": {
-      "type": "string"
-    }
+    id: {
+      type: "string",
+    },
   },
-  "required": [
-    "type",
-    "number",
-    "object",
-    "id"
-  ],
-  "additionalProperties": false
+  required: ["type", "number", "object", "id"],
+  additionalProperties: false,
 };
 
 export const UrlPropertyItemObjectResponse: JSONSchema = {
-  "type": "object",
-  "properties": {
-    "type": {
-      "type": "string",
-      "const": "url"
+  type: "object",
+  properties: {
+    type: {
+      type: "string",
+      const: "url",
     },
-    "url": {
-      "type": [
-        "string",
-        "null"
-      ]
+    url: {
+      type: ["string", "null"],
     },
-    "object": {
-      "type": "string",
-      "const": "property_item"
+    object: {
+      type: "string",
+      const: "property_item",
     },
-    "id": {
-      "type": "string"
-    }
+    id: {
+      type: "string",
+    },
   },
-  "required": [
-    "type",
-    "url",
-    "object",
-    "id"
-  ],
-  "additionalProperties": false
+  required: ["type", "url", "object", "id"],
+  additionalProperties: false,
 };
 
 export const SelectPropertyItemObjectResponse: JSONSchema = {
-  "type": "object",
-  "properties": {
-    "type": {
-      "type": "string",
-      "const": "select"
+  type: "object",
+  properties: {
+    type: {
+      type: "string",
+      const: "select",
     },
-    "select": {
-      "anyOf": [
+    select: {
+      anyOf: [
         SelectPropertyResponse,
         {
-          "type": "null"
-        }
-      ]
+          type: "null",
+        },
+      ],
     },
-    "object": {
-      "type": "string",
-      "const": "property_item"
+    object: {
+      type: "string",
+      const: "property_item",
     },
-    "id": {
-      "type": "string"
-    }
+    id: {
+      type: "string",
+    },
   },
-  "required": [
-    "type",
-    "select",
-    "object",
-    "id"
-  ],
-  "additionalProperties": false
+  required: ["type", "select", "object", "id"],
+  additionalProperties: false,
 };
 
 export const MultiSelectPropertyItemObjectResponse: JSONSchema = {
-  "type": "object",
-  "properties": {
-    "type": {
-      "type": "string",
-      "const": "multi_select"
+  type: "object",
+  properties: {
+    type: {
+      type: "string",
+      const: "multi_select",
     },
-    "multi_select": {
-      "type": "array",
-      "items": SelectPropertyResponse
+    multi_select: {
+      type: "array",
+      items: SelectPropertyResponse,
     },
-    "object": {
-      "type": "string",
-      "const": "property_item"
+    object: {
+      type: "string",
+      const: "property_item",
     },
-    "id": {
-      "type": "string"
-    }
+    id: {
+      type: "string",
+    },
   },
-  "required": [
-    "type",
-    "multi_select",
-    "object",
-    "id"
-  ],
-  "additionalProperties": false
+  required: ["type", "multi_select", "object", "id"],
+  additionalProperties: false,
 };
 
 export const StatusPropertyItemObjectResponse: JSONSchema = {
-  "type": "object",
-  "properties": {
-    "type": {
-      "type": "string",
-      "const": "status"
+  type: "object",
+  properties: {
+    type: {
+      type: "string",
+      const: "status",
     },
-    "status": {
-      "anyOf": [
+    status: {
+      anyOf: [
         SelectPropertyResponse,
         {
-          "type": "null"
-        }
-      ]
+          type: "null",
+        },
+      ],
     },
-    "object": {
-      "type": "string",
-      "const": "property_item"
+    object: {
+      type: "string",
+      const: "property_item",
     },
-    "id": {
-      "type": "string"
-    }
+    id: {
+      type: "string",
+    },
   },
-  "required": [
-    "type",
-    "status",
-    "object",
-    "id"
-  ],
-  "additionalProperties": false
+  required: ["type", "status", "object", "id"],
+  additionalProperties: false,
 };
 
 export const DatePropertyItemObjectResponse: JSONSchema = {
-  "type": "object",
-  "properties": {
-    "type": {
-      "type": "string",
-      "const": "date"
+  type: "object",
+  properties: {
+    type: {
+      type: "string",
+      const: "date",
     },
-    "date": {
-      "anyOf": [
+    date: {
+      anyOf: [
         DateResponse,
         {
-          "type": "null"
-        }
-      ]
+          type: "null",
+        },
+      ],
     },
-    "object": {
-      "type": "string",
-      "const": "property_item"
+    object: {
+      type: "string",
+      const: "property_item",
     },
-    "id": {
-      "type": "string"
-    }
+    id: {
+      type: "string",
+    },
   },
-  "required": [
-    "type",
-    "date",
-    "object",
-    "id"
-  ],
-  "additionalProperties": false
+  required: ["type", "date", "object", "id"],
+  additionalProperties: false,
 };
 
 export const EmailPropertyItemObjectResponse: JSONSchema = {
-  "type": "object",
-  "properties": {
-    "type": {
-      "type": "string",
-      "const": "email"
+  type: "object",
+  properties: {
+    type: {
+      type: "string",
+      const: "email",
     },
-    "email": {
-      "type": [
-        "string",
-        "null"
-      ]
+    email: {
+      type: ["string", "null"],
     },
-    "object": {
-      "type": "string",
-      "const": "property_item"
+    object: {
+      type: "string",
+      const: "property_item",
     },
-    "id": {
-      "type": "string"
-    }
+    id: {
+      type: "string",
+    },
   },
-  "required": [
-    "type",
-    "email",
-    "object",
-    "id"
-  ],
-  "additionalProperties": false
+  required: ["type", "email", "object", "id"],
+  additionalProperties: false,
 };
 
 export const PhoneNumberPropertyItemObjectResponse: JSONSchema = {
-  "type": "object",
-  "properties": {
-    "type": {
-      "type": "string",
-      "const": "phone_number"
+  type: "object",
+  properties: {
+    type: {
+      type: "string",
+      const: "phone_number",
     },
-    "phone_number": {
-      "type": [
-        "string",
-        "null"
-      ]
+    phone_number: {
+      type: ["string", "null"],
     },
-    "object": {
-      "type": "string",
-      "const": "property_item"
+    object: {
+      type: "string",
+      const: "property_item",
     },
-    "id": {
-      "type": "string"
-    }
+    id: {
+      type: "string",
+    },
   },
-  "required": [
-    "type",
-    "phone_number",
-    "object",
-    "id"
-  ],
-  "additionalProperties": false
+  required: ["type", "phone_number", "object", "id"],
+  additionalProperties: false,
 };
 
 export const CheckboxPropertyItemObjectResponse: JSONSchema = {
-  "type": "object",
-  "properties": {
-    "type": {
-      "type": "string",
-      "const": "checkbox"
+  type: "object",
+  properties: {
+    type: {
+      type: "string",
+      const: "checkbox",
     },
-    "checkbox": {
-      "type": "boolean"
+    checkbox: {
+      type: "boolean",
     },
-    "object": {
-      "type": "string",
-      "const": "property_item"
+    object: {
+      type: "string",
+      const: "property_item",
     },
-    "id": {
-      "type": "string"
-    }
+    id: {
+      type: "string",
+    },
   },
-  "required": [
-    "type",
-    "checkbox",
-    "object",
-    "id"
-  ],
-  "additionalProperties": false
+  required: ["type", "checkbox", "object", "id"],
+  additionalProperties: false,
 };
 
 export const FilesPropertyItemObjectResponse: JSONSchema = {
-  "type": "object",
-  "properties": {
-    "type": {
-      "type": "string",
-      "const": "files"
+  type: "object",
+  properties: {
+    type: {
+      type: "string",
+      const: "files",
     },
-    "files": {
-      "type": "array",
-      "items": {
-        "anyOf": [
+    files: {
+      type: "array",
+      items: {
+        anyOf: [
           {
-            "type": "object",
-            "properties": {
-              "file": {
-                "type": "object",
-                "properties": {
-                  "url": {
-                    "type": "string"
+            type: "object",
+            properties: {
+              file: {
+                type: "object",
+                properties: {
+                  url: {
+                    type: "string",
                   },
-                  "expiry_time": {
-                    "type": "string"
-                  }
+                  expiry_time: {
+                    type: "string",
+                  },
                 },
-                "required": [
-                  "url",
-                  "expiry_time"
-                ],
-                "additionalProperties": false
+                required: ["url", "expiry_time"],
+                additionalProperties: false,
               },
-              "name": StringRequest,
-              "type": {
-                "type": "string",
-                "const": "file"
-              }
+              name: StringRequest,
+              type: {
+                type: "string",
+                const: "file",
+              },
             },
-            "required": [
-              "file",
-              "name"
-            ],
-            "additionalProperties": false
+            required: ["file", "name"],
+            additionalProperties: false,
           },
           {
-            "type": "object",
-            "properties": {
-              "external": {
-                "type": "object",
-                "properties": {
-                  "url": TextRequest
+            type: "object",
+            properties: {
+              external: {
+                type: "object",
+                properties: {
+                  url: TextRequest,
                 },
-                "required": [
-                  "url"
-                ],
-                "additionalProperties": false
+                required: ["url"],
+                additionalProperties: false,
               },
-              "name": StringRequest,
-              "type": {
-                "type": "string",
-                "const": "external"
-              }
+              name: StringRequest,
+              type: {
+                type: "string",
+                const: "external",
+              },
             },
-            "required": [
-              "external",
-              "name"
-            ],
-            "additionalProperties": false
-          }
-        ]
-      }
+            required: ["external", "name"],
+            additionalProperties: false,
+          },
+        ],
+      },
     },
-    "object": {
-      "type": "string",
-      "const": "property_item"
+    object: {
+      type: "string",
+      const: "property_item",
     },
-    "id": {
-      "type": "string"
-    }
+    id: {
+      type: "string",
+    },
   },
-  "required": [
-    "type",
-    "files",
-    "object",
-    "id"
-  ],
-  "additionalProperties": false
+  required: ["type", "files", "object", "id"],
+  additionalProperties: false,
 };
 
 export const CreatedByPropertyItemObjectResponse: JSONSchema = {
-  "type": "object",
-  "properties": {
-    "type": {
-      "type": "string",
-      "const": "created_by"
+  type: "object",
+  properties: {
+    type: {
+      type: "string",
+      const: "created_by",
     },
-    "created_by": {
-      "anyOf": [
-        PartialUserObjectResponse,
-        UserObjectResponse
-      ]
+    created_by: {
+      anyOf: [PartialUserObjectResponse, UserObjectResponse],
     },
-    "object": {
-      "type": "string",
-      "const": "property_item"
+    object: {
+      type: "string",
+      const: "property_item",
     },
-    "id": {
-      "type": "string"
-    }
+    id: {
+      type: "string",
+    },
   },
-  "required": [
-    "type",
-    "created_by",
-    "object",
-    "id"
-  ],
-  "additionalProperties": false
+  required: ["type", "created_by", "object", "id"],
+  additionalProperties: false,
 };
 
 export const CreatedTimePropertyItemObjectResponse: JSONSchema = {
-  "type": "object",
-  "properties": {
-    "type": {
-      "type": "string",
-      "const": "created_time"
+  type: "object",
+  properties: {
+    type: {
+      type: "string",
+      const: "created_time",
     },
-    "created_time": {
-      "type": "string"
+    created_time: {
+      type: "string",
     },
-    "object": {
-      "type": "string",
-      "const": "property_item"
+    object: {
+      type: "string",
+      const: "property_item",
     },
-    "id": {
-      "type": "string"
-    }
+    id: {
+      type: "string",
+    },
   },
-  "required": [
-    "type",
-    "created_time",
-    "object",
-    "id"
-  ],
-  "additionalProperties": false
+  required: ["type", "created_time", "object", "id"],
+  additionalProperties: false,
 };
 
 export const LastEditedByPropertyItemObjectResponse: JSONSchema = {
-  "type": "object",
-  "properties": {
-    "type": {
-      "type": "string",
-      "const": "last_edited_by"
+  type: "object",
+  properties: {
+    type: {
+      type: "string",
+      const: "last_edited_by",
     },
-    "last_edited_by": {
-      "anyOf": [
-        PartialUserObjectResponse,
-        UserObjectResponse
-      ]
+    last_edited_by: {
+      anyOf: [PartialUserObjectResponse, UserObjectResponse],
     },
-    "object": {
-      "type": "string",
-      "const": "property_item"
+    object: {
+      type: "string",
+      const: "property_item",
     },
-    "id": {
-      "type": "string"
-    }
+    id: {
+      type: "string",
+    },
   },
-  "required": [
-    "type",
-    "last_edited_by",
-    "object",
-    "id"
-  ],
-  "additionalProperties": false
+  required: ["type", "last_edited_by", "object", "id"],
+  additionalProperties: false,
 };
 
 export const LastEditedTimePropertyItemObjectResponse: JSONSchema = {
-  "type": "object",
-  "properties": {
-    "type": {
-      "type": "string",
-      "const": "last_edited_time"
+  type: "object",
+  properties: {
+    type: {
+      type: "string",
+      const: "last_edited_time",
     },
-    "last_edited_time": {
-      "type": "string"
+    last_edited_time: {
+      type: "string",
     },
-    "object": {
-      "type": "string",
-      "const": "property_item"
+    object: {
+      type: "string",
+      const: "property_item",
     },
-    "id": {
-      "type": "string"
-    }
+    id: {
+      type: "string",
+    },
   },
-  "required": [
-    "type",
-    "last_edited_time",
-    "object",
-    "id"
-  ],
-  "additionalProperties": false
+  required: ["type", "last_edited_time", "object", "id"],
+  additionalProperties: false,
 };
 
 export const FormulaPropertyItemObjectResponse: JSONSchema = {
-  "type": "object",
-  "properties": {
-    "type": {
-      "type": "string",
-      "const": "formula"
+  type: "object",
+  properties: {
+    type: {
+      type: "string",
+      const: "formula",
     },
-    "formula": FormulaPropertyResponse,
-    "object": {
-      "type": "string",
-      "const": "property_item"
+    formula: FormulaPropertyResponse,
+    object: {
+      type: "string",
+      const: "property_item",
     },
-    "id": {
-      "type": "string"
-    }
+    id: {
+      type: "string",
+    },
   },
-  "required": [
-    "type",
-    "formula",
-    "object",
-    "id"
-  ],
-  "additionalProperties": false
+  required: ["type", "formula", "object", "id"],
+  additionalProperties: false,
 };
 
 export const TitlePropertyItemObjectResponse: JSONSchema = {
-  "type": "object",
-  "properties": {
-    "type": {
-      "type": "string",
-      "const": "title"
+  type: "object",
+  properties: {
+    type: {
+      type: "string",
+      const: "title",
     },
-    "title": RichTextItemResponse,
-    "object": {
-      "type": "string",
-      "const": "property_item"
+    title: RichTextItemResponse,
+    object: {
+      type: "string",
+      const: "property_item",
     },
-    "id": {
-      "type": "string"
-    }
+    id: {
+      type: "string",
+    },
   },
-  "required": [
-    "type",
-    "title",
-    "object",
-    "id"
-  ],
-  "additionalProperties": false
+  required: ["type", "title", "object", "id"],
+  additionalProperties: false,
 };
 
 export const RichTextPropertyItemObjectResponse: JSONSchema = {
-  "type": "object",
-  "properties": {
-    "type": {
-      "type": "string",
-      "const": "rich_text"
+  type: "object",
+  properties: {
+    type: {
+      type: "string",
+      const: "rich_text",
     },
-    "rich_text": RichTextItemResponse,
-    "object": {
-      "type": "string",
-      "const": "property_item"
+    rich_text: RichTextItemResponse,
+    object: {
+      type: "string",
+      const: "property_item",
     },
-    "id": {
-      "type": "string"
-    }
+    id: {
+      type: "string",
+    },
   },
-  "required": [
-    "type",
-    "rich_text",
-    "object",
-    "id"
-  ],
-  "additionalProperties": false
+  required: ["type", "rich_text", "object", "id"],
+  additionalProperties: false,
 };
 
 export const PeoplePropertyItemObjectResponse: JSONSchema = {
-  "type": "object",
-  "properties": {
-    "type": {
-      "type": "string",
-      "const": "people"
+  type: "object",
+  properties: {
+    type: {
+      type: "string",
+      const: "people",
     },
-    "people": {
-      "anyOf": [
-        PartialUserObjectResponse,
-        UserObjectResponse
-      ]
+    people: {
+      anyOf: [PartialUserObjectResponse, UserObjectResponse],
     },
-    "object": {
-      "type": "string",
-      "const": "property_item"
+    object: {
+      type: "string",
+      const: "property_item",
     },
-    "id": {
-      "type": "string"
-    }
+    id: {
+      type: "string",
+    },
   },
-  "required": [
-    "type",
-    "people",
-    "object",
-    "id"
-  ],
-  "additionalProperties": false
+  required: ["type", "people", "object", "id"],
+  additionalProperties: false,
 };
 
 export const RelationPropertyItemObjectResponse: JSONSchema = {
-  "type": "object",
-  "properties": {
-    "type": {
-      "type": "string",
-      "const": "relation"
+  type: "object",
+  properties: {
+    type: {
+      type: "string",
+      const: "relation",
     },
-    "relation": {
-      "type": "object",
-      "properties": {
-        "id": {
-          "type": "string"
-        }
+    relation: {
+      type: "object",
+      properties: {
+        id: {
+          type: "string",
+        },
       },
-      "required": [
-        "id"
-      ],
-      "additionalProperties": false
+      required: ["id"],
+      additionalProperties: false,
     },
-    "object": {
-      "type": "string",
-      "const": "property_item"
+    object: {
+      type: "string",
+      const: "property_item",
     },
-    "id": {
-      "type": "string"
-    }
+    id: {
+      type: "string",
+    },
   },
-  "required": [
-    "type",
-    "relation",
-    "object",
-    "id"
-  ],
-  "additionalProperties": false
+  required: ["type", "relation", "object", "id"],
+  additionalProperties: false,
 };
 
 export const RollupPropertyItemObjectResponse: JSONSchema = {
-  "type": "object",
-  "properties": {
-    "type": {
-      "type": "string",
-      "const": "rollup"
+  type: "object",
+  properties: {
+    type: {
+      type: "string",
+      const: "rollup",
     },
-    "rollup": {
-      "anyOf": [
+    rollup: {
+      anyOf: [
         {
-          "type": "object",
-          "properties": {
-            "type": {
-              "type": "string",
-              "const": "number"
+          type: "object",
+          properties: {
+            type: {
+              type: "string",
+              const: "number",
             },
-            "number": {
-              "type": [
-                "number",
-                "null"
-              ]
+            number: {
+              type: ["number", "null"],
             },
-            "function": RollupFunction
+            function: RollupFunction,
           },
-          "required": [
-            "type",
-            "number",
-            "function"
-          ],
-          "additionalProperties": false
+          required: ["type", "number", "function"],
+          additionalProperties: false,
         },
         {
-          "type": "object",
-          "properties": {
-            "type": {
-              "type": "string",
-              "const": "date"
+          type: "object",
+          properties: {
+            type: {
+              type: "string",
+              const: "date",
             },
-            "date": {
-              "anyOf": [
+            date: {
+              anyOf: [
                 DateResponse,
                 {
-                  "type": "null"
-                }
-              ]
+                  type: "null",
+                },
+              ],
             },
-            "function": RollupFunction
+            function: RollupFunction,
           },
-          "required": [
-            "type",
-            "date",
-            "function"
-          ],
-          "additionalProperties": false
+          required: ["type", "date", "function"],
+          additionalProperties: false,
         },
         {
-          "type": "object",
-          "properties": {
-            "type": {
-              "type": "string",
-              "const": "array"
+          type: "object",
+          properties: {
+            type: {
+              type: "string",
+              const: "array",
             },
-            "array": {
-              "type": "array",
-              "items": EmptyObject
+            array: {
+              type: "array",
+              items: EmptyObject,
             },
-            "function": RollupFunction
+            function: RollupFunction,
           },
-          "required": [
-            "type",
-            "array",
-            "function"
-          ],
-          "additionalProperties": false
+          required: ["type", "array", "function"],
+          additionalProperties: false,
         },
         {
-          "type": "object",
-          "properties": {
-            "type": {
-              "type": "string",
-              "const": "unsupported"
+          type: "object",
+          properties: {
+            type: {
+              type: "string",
+              const: "unsupported",
             },
-            "unsupported": EmptyObject,
-            "function": RollupFunction
+            unsupported: EmptyObject,
+            function: RollupFunction,
           },
-          "required": [
-            "type",
-            "unsupported",
-            "function"
-          ],
-          "additionalProperties": false
+          required: ["type", "unsupported", "function"],
+          additionalProperties: false,
         },
         {
-          "type": "object",
-          "properties": {
-            "type": {
-              "type": "string",
-              "const": "incomplete"
+          type: "object",
+          properties: {
+            type: {
+              type: "string",
+              const: "incomplete",
             },
-            "incomplete": EmptyObject,
-            "function": RollupFunction
+            incomplete: EmptyObject,
+            function: RollupFunction,
           },
-          "required": [
-            "type",
-            "incomplete",
-            "function"
-          ],
-          "additionalProperties": false
-        }
-      ]
+          required: ["type", "incomplete", "function"],
+          additionalProperties: false,
+        },
+      ],
     },
-    "object": {
-      "type": "string",
-      "const": "property_item"
+    object: {
+      type: "string",
+      const: "property_item",
     },
-    "id": {
-      "type": "string"
-    }
+    id: {
+      type: "string",
+    },
   },
-  "required": [
-    "type",
-    "rollup",
-    "object",
-    "id"
-  ],
-  "additionalProperties": false
+  required: ["type", "rollup", "object", "id"],
+  additionalProperties: false,
 };
 
 export const PropertyItemObjectResponse: JSONSchema = {
-  "anyOf": [
+  anyOf: [
     NumberPropertyItemObjectResponse,
     UrlPropertyItemObjectResponse,
     SelectPropertyItemObjectResponse,
@@ -762,70 +615,64 @@ export const PropertyItemObjectResponse: JSONSchema = {
     RichTextPropertyItemObjectResponse,
     PeoplePropertyItemObjectResponse,
     RelationPropertyItemObjectResponse,
-    RollupPropertyItemObjectResponse
-  ]
+    RollupPropertyItemObjectResponse,
+  ],
 };
 
 export const CommentObjectResponse: JSONSchema = {
-  "type": "object",
-  "properties": {
-    "object": {
-      "type": "string",
-      "const": "comment"
+  type: "object",
+  properties: {
+    object: {
+      type: "string",
+      const: "comment",
     },
-    "id": {
-      "type": "string"
+    id: {
+      type: "string",
     },
-    "parent": {
-      "anyOf": [
+    parent: {
+      anyOf: [
         {
-          "type": "object",
-          "properties": {
-            "type": {
-              "type": "string",
-              "const": "page_id"
+          type: "object",
+          properties: {
+            type: {
+              type: "string",
+              const: "page_id",
             },
-            "page_id": IdRequest
+            page_id: IdRequest,
           },
-          "required": [
-            "type",
-            "page_id"
-          ],
-          "additionalProperties": false
+          required: ["type", "page_id"],
+          additionalProperties: false,
         },
         {
-          "type": "object",
-          "properties": {
-            "type": {
-              "type": "string",
-              "const": "block_id"
+          type: "object",
+          properties: {
+            type: {
+              type: "string",
+              const: "block_id",
             },
-            "block_id": IdRequest
+            block_id: IdRequest,
           },
-          "required": [
-            "type",
-            "block_id"
-          ],
-          "additionalProperties": false
-        }
-      ]
+          required: ["type", "block_id"],
+          additionalProperties: false,
+        },
+      ],
     },
-    "discussion_id": {
-      "type": "string"
+    discussion_id: {
+      type: "string",
     },
-    "rich_text": {
-      "type": "array",
-      "items": RichTextItemResponse
+    rich_text: {
+      type: "array",
+      items: RichTextItemResponse,
     },
-    "created_by": PartialUserObjectResponse,
-    "created_time": {
-      "type": "string"
+    created_by: PartialUserObjectResponse,
+    created_time: {
+      type: "string",
     },
-    "last_edited_time": {
-      "type": "string"
-    }
+    last_edited_time: {
+      type: "string",
+    },
   },
-  "required": [
+  required: [
     "object",
     "id",
     "parent",
@@ -833,300 +680,232 @@ export const CommentObjectResponse: JSONSchema = {
     "rich_text",
     "created_by",
     "created_time",
-    "last_edited_time"
+    "last_edited_time",
   ],
-  "additionalProperties": false
+  additionalProperties: false,
 };
 
 export const PartialCommentObjectResponse: JSONSchema = {
-  "type": "object",
-  "properties": {
-    "object": {
-      "type": "string",
-      "const": "comment"
+  type: "object",
+  properties: {
+    object: {
+      type: "string",
+      const: "comment",
     },
-    "id": {
-      "type": "string"
-    }
+    id: {
+      type: "string",
+    },
   },
-  "required": [
-    "object",
-    "id"
-  ],
-  "additionalProperties": false
+  required: ["object", "id"],
+  additionalProperties: false,
 };
 
 export const PropertyItemPropertyItemListResponse: JSONSchema = {
-  "type": "object",
-  "properties": {
-    "type": {
-      "type": "string",
-      "const": "property_item"
+  type: "object",
+  properties: {
+    type: {
+      type: "string",
+      const: "property_item",
     },
-    "property_item": {
-      "anyOf": [
+    property_item: {
+      anyOf: [
         {
-          "type": "object",
-          "properties": {
-            "type": {
-              "type": "string",
-              "const": "title"
+          type: "object",
+          properties: {
+            type: {
+              type: "string",
+              const: "title",
             },
-            "title": EmptyObject,
-            "next_url": {
-              "type": [
-                "string",
-                "null"
-              ]
+            title: EmptyObject,
+            next_url: {
+              type: ["string", "null"],
             },
-            "id": {
-              "type": "string"
-            }
+            id: {
+              type: "string",
+            },
           },
-          "required": [
-            "type",
-            "title",
-            "next_url",
-            "id"
-          ],
-          "additionalProperties": false
+          required: ["type", "title", "next_url", "id"],
+          additionalProperties: false,
         },
         {
-          "type": "object",
-          "properties": {
-            "type": {
-              "type": "string",
-              "const": "rich_text"
+          type: "object",
+          properties: {
+            type: {
+              type: "string",
+              const: "rich_text",
             },
-            "rich_text": EmptyObject,
-            "next_url": {
-              "type": [
-                "string",
-                "null"
-              ]
+            rich_text: EmptyObject,
+            next_url: {
+              type: ["string", "null"],
             },
-            "id": {
-              "type": "string"
-            }
+            id: {
+              type: "string",
+            },
           },
-          "required": [
-            "type",
-            "rich_text",
-            "next_url",
-            "id"
-          ],
-          "additionalProperties": false
+          required: ["type", "rich_text", "next_url", "id"],
+          additionalProperties: false,
         },
         {
-          "type": "object",
-          "properties": {
-            "type": {
-              "type": "string",
-              "const": "people"
+          type: "object",
+          properties: {
+            type: {
+              type: "string",
+              const: "people",
             },
-            "people": EmptyObject,
-            "next_url": {
-              "type": [
-                "string",
-                "null"
-              ]
+            people: EmptyObject,
+            next_url: {
+              type: ["string", "null"],
             },
-            "id": {
-              "type": "string"
-            }
+            id: {
+              type: "string",
+            },
           },
-          "required": [
-            "type",
-            "people",
-            "next_url",
-            "id"
-          ],
-          "additionalProperties": false
+          required: ["type", "people", "next_url", "id"],
+          additionalProperties: false,
         },
         {
-          "type": "object",
-          "properties": {
-            "type": {
-              "type": "string",
-              "const": "relation"
+          type: "object",
+          properties: {
+            type: {
+              type: "string",
+              const: "relation",
             },
-            "relation": EmptyObject,
-            "next_url": {
-              "type": [
-                "string",
-                "null"
-              ]
+            relation: EmptyObject,
+            next_url: {
+              type: ["string", "null"],
             },
-            "id": {
-              "type": "string"
-            }
+            id: {
+              type: "string",
+            },
           },
-          "required": [
-            "type",
-            "relation",
-            "next_url",
-            "id"
-          ],
-          "additionalProperties": false
+          required: ["type", "relation", "next_url", "id"],
+          additionalProperties: false,
         },
         {
-          "type": "object",
-          "properties": {
-            "type": {
-              "type": "string",
-              "const": "rollup"
+          type: "object",
+          properties: {
+            type: {
+              type: "string",
+              const: "rollup",
             },
-            "rollup": {
-              "anyOf": [
+            rollup: {
+              anyOf: [
                 {
-                  "type": "object",
-                  "properties": {
-                    "type": {
-                      "type": "string",
-                      "const": "number"
+                  type: "object",
+                  properties: {
+                    type: {
+                      type: "string",
+                      const: "number",
                     },
-                    "number": {
-                      "type": [
-                        "number",
-                        "null"
-                      ]
+                    number: {
+                      type: ["number", "null"],
                     },
-                    "function": RollupFunction
+                    function: RollupFunction,
                   },
-                  "required": [
-                    "type",
-                    "number",
-                    "function"
-                  ],
-                  "additionalProperties": false
+                  required: ["type", "number", "function"],
+                  additionalProperties: false,
                 },
                 {
-                  "type": "object",
-                  "properties": {
-                    "type": {
-                      "type": "string",
-                      "const": "date"
+                  type: "object",
+                  properties: {
+                    type: {
+                      type: "string",
+                      const: "date",
                     },
-                    "date": {
-                      "anyOf": [
+                    date: {
+                      anyOf: [
                         DateResponse,
                         {
-                          "type": "null"
-                        }
-                      ]
+                          type: "null",
+                        },
+                      ],
                     },
-                    "function": RollupFunction
+                    function: RollupFunction,
                   },
-                  "required": [
-                    "type",
-                    "date",
-                    "function"
-                  ],
-                  "additionalProperties": false
+                  required: ["type", "date", "function"],
+                  additionalProperties: false,
                 },
                 {
-                  "type": "object",
-                  "properties": {
-                    "type": {
-                      "type": "string",
-                      "const": "array"
+                  type: "object",
+                  properties: {
+                    type: {
+                      type: "string",
+                      const: "array",
                     },
-                    "array": {
-                      "type": "array",
-                      "items": EmptyObject
+                    array: {
+                      type: "array",
+                      items: EmptyObject,
                     },
-                    "function": RollupFunction
+                    function: RollupFunction,
                   },
-                  "required": [
-                    "type",
-                    "array",
-                    "function"
-                  ],
-                  "additionalProperties": false
+                  required: ["type", "array", "function"],
+                  additionalProperties: false,
                 },
                 {
-                  "type": "object",
-                  "properties": {
-                    "type": {
-                      "type": "string",
-                      "const": "unsupported"
+                  type: "object",
+                  properties: {
+                    type: {
+                      type: "string",
+                      const: "unsupported",
                     },
-                    "unsupported": EmptyObject,
-                    "function": RollupFunction
+                    unsupported: EmptyObject,
+                    function: RollupFunction,
                   },
-                  "required": [
-                    "type",
-                    "unsupported",
-                    "function"
-                  ],
-                  "additionalProperties": false
+                  required: ["type", "unsupported", "function"],
+                  additionalProperties: false,
                 },
                 {
-                  "type": "object",
-                  "properties": {
-                    "type": {
-                      "type": "string",
-                      "const": "incomplete"
+                  type: "object",
+                  properties: {
+                    type: {
+                      type: "string",
+                      const: "incomplete",
                     },
-                    "incomplete": EmptyObject,
-                    "function": RollupFunction
+                    incomplete: EmptyObject,
+                    function: RollupFunction,
                   },
-                  "required": [
-                    "type",
-                    "incomplete",
-                    "function"
-                  ],
-                  "additionalProperties": false
-                }
-              ]
+                  required: ["type", "incomplete", "function"],
+                  additionalProperties: false,
+                },
+              ],
             },
-            "next_url": {
-              "type": [
-                "string",
-                "null"
-              ]
+            next_url: {
+              type: ["string", "null"],
             },
-            "id": {
-              "type": "string"
-            }
+            id: {
+              type: "string",
+            },
           },
-          "required": [
-            "type",
-            "rollup",
-            "next_url",
-            "id"
-          ],
-          "additionalProperties": false
-        }
-      ]
+          required: ["type", "rollup", "next_url", "id"],
+          additionalProperties: false,
+        },
+      ],
     },
-    "object": {
-      "type": "string",
-      "const": "list"
+    object: {
+      type: "string",
+      const: "list",
     },
-    "next_cursor": {
-      "type": [
-        "string",
-        "null"
-      ]
+    next_cursor: {
+      type: ["string", "null"],
     },
-    "has_more": {
-      "type": "boolean"
+    has_more: {
+      type: "boolean",
     },
-    "results": {
-      "type": "array",
-      "items": PropertyItemObjectResponse
-    }
+    results: {
+      type: "array",
+      items: PropertyItemObjectResponse,
+    },
   },
-  "required": [
+  required: [
     "type",
     "property_item",
     "object",
     "next_cursor",
     "has_more",
-    "results"
+    "results",
   ],
-  "additionalProperties": false
+  additionalProperties: false,
 };
 
-export const PropertyItemListResponse: JSONSchema = PropertyItemPropertyItemListResponse;
+export const PropertyItemListResponse: JSONSchema =
+  PropertyItemPropertyItemListResponse;

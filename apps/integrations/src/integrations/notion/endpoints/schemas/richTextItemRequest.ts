@@ -1,64 +1,64 @@
 import { JSONSchema } from "core/schemas/types";
+import { EmptyObject, IdRequest } from "./common";
+import { DateRequest } from "./dateRequest";
+import { PartialUserObjectResponse } from "./person";
+import { TextRequest } from "./requests";
 
 export const RichTextItemRequest: JSONSchema = {
-  "anyOf": [
+  anyOf: [
     {
-      "type": "object",
-      "properties": {
-        "text": {
-          "type": "object",
-          "properties": {
-            "content": {
-              "type": "string"
+      type: "object",
+      properties: {
+        text: {
+          type: "object",
+          properties: {
+            content: {
+              type: "string",
             },
-            "link": {
-              "anyOf": [
+            link: {
+              anyOf: [
                 {
-                  "type": "object",
-                  "properties": {
-                    "url": TextRequest
+                  type: "object",
+                  properties: {
+                    url: TextRequest,
                   },
-                  "required": [
-                    "url"
-                  ],
-                  "additionalProperties": false
+                  required: ["url"],
+                  additionalProperties: false,
                 },
                 {
-                  "type": "null"
-                }
-              ]
-            }
+                  type: "null",
+                },
+              ],
+            },
           },
-          "required": [
-            "content"
-          ],
-          "additionalProperties": false
+          required: ["content"],
+          additionalProperties: false,
         },
-        "type": {
-          "type": "string",
-          "const": "text"
+        type: {
+          type: "string",
+          const: "text",
         },
-        "annotations": {
-          "type": "object",
-          "properties": {
-            "bold": {
-              "type": "boolean"
+        annotations: {
+          type: "object",
+          properties: {
+            bold: {
+              type: "boolean",
             },
-            "italic": {
-              "type": "boolean"
+            italic: {
+              type: "boolean",
             },
-            "strikethrough": {
-              "type": "boolean"
+            strikethrough: {
+              type: "boolean",
             },
-            "underline": {
-              "type": "boolean"
+            underline: {
+              type: "boolean",
             },
-            "code": {
-              "type": "boolean"
+            code: {
+              type: "boolean",
             },
-            "color": {
-              "type": "string",
-              "enum": [
+            color: {
+              type: "string",
+              enum: [
                 "default",
                 "gray",
                 "brown",
@@ -77,301 +77,247 @@ export const RichTextItemRequest: JSONSchema = {
                 "blue_background",
                 "purple_background",
                 "pink_background",
-                "red_background"
-              ]
-            }
+                "red_background",
+              ],
+            },
           },
-          "additionalProperties": false
-        }
+          additionalProperties: false,
+        },
       },
-      "required": [
-        "text"
-      ],
-      "additionalProperties": false
+      required: ["text"],
+      additionalProperties: false,
     },
     {
-      "type": "object",
-      "properties": {
-        "mention": {
-          "anyOf": [
+      type: "object",
+      properties: {
+        mention: {
+          anyOf: [
             {
-              "type": "object",
-              "properties": {
-                "user": {
-                  "anyOf": [
+              type: "object",
+              properties: {
+                user: {
+                  anyOf: [
                     {
-                      "type": "object",
-                      "properties": {
-                        "id": IdRequest
+                      type: "object",
+                      properties: {
+                        id: IdRequest,
                       },
-                      "required": [
-                        "id"
-                      ],
-                      "additionalProperties": false
+                      required: ["id"],
+                      additionalProperties: false,
                     },
                     {
-                      "type": "object",
-                      "properties": {
-                        "person": {
-                          "type": "object",
-                          "properties": {
-                            "email": {
-                              "type": "string"
-                            }
+                      type: "object",
+                      properties: {
+                        person: {
+                          type: "object",
+                          properties: {
+                            email: {
+                              type: "string",
+                            },
                           },
-                          "additionalProperties": false
+                          additionalProperties: false,
                         },
-                        "id": IdRequest,
-                        "type": {
-                          "type": "string",
-                          "const": "person"
+                        id: IdRequest,
+                        type: {
+                          type: "string",
+                          const: "person",
                         },
-                        "name": {
-                          "type": [
-                            "string",
-                            "null"
-                          ]
+                        name: {
+                          type: ["string", "null"],
                         },
-                        "avatar_url": {
-                          "type": [
-                            "string",
-                            "null"
-                          ]
+                        avatar_url: {
+                          type: ["string", "null"],
                         },
-                        "object": {
-                          "type": "string",
-                          "const": "user"
-                        }
+                        object: {
+                          type: "string",
+                          const: "user",
+                        },
                       },
-                      "required": [
-                        "person",
-                        "id"
-                      ],
-                      "additionalProperties": false
+                      required: ["person", "id"],
+                      additionalProperties: false,
                     },
                     {
-                      "type": "object",
-                      "properties": {
-                        "bot": {
-                          "anyOf": [
+                      type: "object",
+                      properties: {
+                        bot: {
+                          anyOf: [
                             EmptyObject,
                             {
-                              "type": "object",
-                              "properties": {
-                                "owner": {
-                                  "anyOf": [
+                              type: "object",
+                              properties: {
+                                owner: {
+                                  anyOf: [
                                     {
-                                      "type": "object",
-                                      "properties": {
-                                        "type": {
-                                          "type": "string",
-                                          "const": "user"
+                                      type: "object",
+                                      properties: {
+                                        type: {
+                                          type: "string",
+                                          const: "user",
                                         },
-                                        "user": {
-                                          "anyOf": [
+                                        user: {
+                                          anyOf: [
                                             {
-                                              "type": "object",
-                                              "properties": {
-                                                "type": {
-                                                  "type": "string",
-                                                  "const": "person"
+                                              type: "object",
+                                              properties: {
+                                                type: {
+                                                  type: "string",
+                                                  const: "person",
                                                 },
-                                                "person": {
-                                                  "type": "object",
-                                                  "properties": {
-                                                    "email": {
-                                                      "type": "string"
-                                                    }
+                                                person: {
+                                                  type: "object",
+                                                  properties: {
+                                                    email: {
+                                                      type: "string",
+                                                    },
                                                   },
-                                                  "required": [
-                                                    "email"
-                                                  ],
-                                                  "additionalProperties": false
+                                                  required: ["email"],
+                                                  additionalProperties: false,
                                                 },
-                                                "name": {
-                                                  "type": [
-                                                    "string",
-                                                    "null"
-                                                  ]
+                                                name: {
+                                                  type: ["string", "null"],
                                                 },
-                                                "avatar_url": {
-                                                  "type": [
-                                                    "string",
-                                                    "null"
-                                                  ]
+                                                avatar_url: {
+                                                  type: ["string", "null"],
                                                 },
-                                                "id": IdRequest,
-                                                "object": {
-                                                  "type": "string",
-                                                  "const": "user"
-                                                }
+                                                id: IdRequest,
+                                                object: {
+                                                  type: "string",
+                                                  const: "user",
+                                                },
                                               },
-                                              "required": [
+                                              required: [
                                                 "type",
                                                 "person",
                                                 "name",
                                                 "avatar_url",
                                                 "id",
-                                                "object"
+                                                "object",
                                               ],
-                                              "additionalProperties": false
+                                              additionalProperties: false,
                                             },
-                                            PartialUserObjectResponse
-                                          ]
-                                        }
+                                            PartialUserObjectResponse,
+                                          ],
+                                        },
                                       },
-                                      "required": [
-                                        "type",
-                                        "user"
-                                      ],
-                                      "additionalProperties": false
+                                      required: ["type", "user"],
+                                      additionalProperties: false,
                                     },
                                     {
-                                      "type": "object",
-                                      "properties": {
-                                        "type": {
-                                          "type": "string",
-                                          "const": "workspace"
+                                      type: "object",
+                                      properties: {
+                                        type: {
+                                          type: "string",
+                                          const: "workspace",
                                         },
-                                        "workspace": {
-                                          "type": "boolean",
-                                          "const": true
-                                        }
+                                        workspace: {
+                                          type: "boolean",
+                                          const: true,
+                                        },
                                       },
-                                      "required": [
-                                        "type",
-                                        "workspace"
-                                      ],
-                                      "additionalProperties": false
-                                    }
-                                  ]
+                                      required: ["type", "workspace"],
+                                      additionalProperties: false,
+                                    },
+                                  ],
                                 },
-                                "workspace_name": {
-                                  "type": [
-                                    "string",
-                                    "null"
-                                  ]
-                                }
+                                workspace_name: {
+                                  type: ["string", "null"],
+                                },
                               },
-                              "required": [
-                                "owner",
-                                "workspace_name"
-                              ],
-                              "additionalProperties": false
-                            }
-                          ]
+                              required: ["owner", "workspace_name"],
+                              additionalProperties: false,
+                            },
+                          ],
                         },
-                        "id": IdRequest,
-                        "type": {
-                          "type": "string",
-                          "const": "bot"
+                        id: IdRequest,
+                        type: {
+                          type: "string",
+                          const: "bot",
                         },
-                        "name": {
-                          "type": [
-                            "string",
-                            "null"
-                          ]
+                        name: {
+                          type: ["string", "null"],
                         },
-                        "avatar_url": {
-                          "type": [
-                            "string",
-                            "null"
-                          ]
+                        avatar_url: {
+                          type: ["string", "null"],
                         },
-                        "object": {
-                          "type": "string",
-                          "const": "user"
-                        }
+                        object: {
+                          type: "string",
+                          const: "user",
+                        },
                       },
-                      "required": [
-                        "bot",
-                        "id"
-                      ],
-                      "additionalProperties": false
-                    }
-                  ]
-                }
-              },
-              "required": [
-                "user"
-              ],
-              "additionalProperties": false
-            },
-            {
-              "type": "object",
-              "properties": {
-                "date": DateRequest
-              },
-              "required": [
-                "date"
-              ],
-              "additionalProperties": false
-            },
-            {
-              "type": "object",
-              "properties": {
-                "page": {
-                  "type": "object",
-                  "properties": {
-                    "id": IdRequest
-                  },
-                  "required": [
-                    "id"
+                      required: ["bot", "id"],
+                      additionalProperties: false,
+                    },
                   ],
-                  "additionalProperties": false
-                }
+                },
               },
-              "required": [
-                "page"
-              ],
-              "additionalProperties": false
+              required: ["user"],
+              additionalProperties: false,
             },
             {
-              "type": "object",
-              "properties": {
-                "database": {
-                  "type": "object",
-                  "properties": {
-                    "id": IdRequest
-                  },
-                  "required": [
-                    "id"
-                  ],
-                  "additionalProperties": false
-                }
+              type: "object",
+              properties: {
+                date: DateRequest,
               },
-              "required": [
-                "database"
-              ],
-              "additionalProperties": false
-            }
-          ]
+              required: ["date"],
+              additionalProperties: false,
+            },
+            {
+              type: "object",
+              properties: {
+                page: {
+                  type: "object",
+                  properties: {
+                    id: IdRequest,
+                  },
+                  required: ["id"],
+                  additionalProperties: false,
+                },
+              },
+              required: ["page"],
+              additionalProperties: false,
+            },
+            {
+              type: "object",
+              properties: {
+                database: {
+                  type: "object",
+                  properties: {
+                    id: IdRequest,
+                  },
+                  required: ["id"],
+                  additionalProperties: false,
+                },
+              },
+              required: ["database"],
+              additionalProperties: false,
+            },
+          ],
         },
-        "type": {
-          "type": "string",
-          "const": "mention"
+        type: {
+          type: "string",
+          const: "mention",
         },
-        "annotations": {
-          "type": "object",
-          "properties": {
-            "bold": {
-              "type": "boolean"
+        annotations: {
+          type: "object",
+          properties: {
+            bold: {
+              type: "boolean",
             },
-            "italic": {
-              "type": "boolean"
+            italic: {
+              type: "boolean",
             },
-            "strikethrough": {
-              "type": "boolean"
+            strikethrough: {
+              type: "boolean",
             },
-            "underline": {
-              "type": "boolean"
+            underline: {
+              type: "boolean",
             },
-            "code": {
-              "type": "boolean"
+            code: {
+              type: "boolean",
             },
-            "color": {
-              "type": "string",
-              "enum": [
+            color: {
+              type: "string",
+              enum: [
                 "default",
                 "gray",
                 "brown",
@@ -390,56 +336,52 @@ export const RichTextItemRequest: JSONSchema = {
                 "blue_background",
                 "purple_background",
                 "pink_background",
-                "red_background"
-              ]
-            }
+                "red_background",
+              ],
+            },
           },
-          "additionalProperties": false
-        }
+          additionalProperties: false,
+        },
       },
-      "required": [
-        "mention"
-      ],
-      "additionalProperties": false
+      required: ["mention"],
+      additionalProperties: false,
     },
     {
-      "type": "object",
-      "properties": {
-        "equation": {
-          "type": "object",
-          "properties": {
-            "expression": TextRequest
+      type: "object",
+      properties: {
+        equation: {
+          type: "object",
+          properties: {
+            expression: TextRequest,
           },
-          "required": [
-            "expression"
-          ],
-          "additionalProperties": false
+          required: ["expression"],
+          additionalProperties: false,
         },
-        "type": {
-          "type": "string",
-          "const": "equation"
+        type: {
+          type: "string",
+          const: "equation",
         },
-        "annotations": {
-          "type": "object",
-          "properties": {
-            "bold": {
-              "type": "boolean"
+        annotations: {
+          type: "object",
+          properties: {
+            bold: {
+              type: "boolean",
             },
-            "italic": {
-              "type": "boolean"
+            italic: {
+              type: "boolean",
             },
-            "strikethrough": {
-              "type": "boolean"
+            strikethrough: {
+              type: "boolean",
             },
-            "underline": {
-              "type": "boolean"
+            underline: {
+              type: "boolean",
             },
-            "code": {
-              "type": "boolean"
+            code: {
+              type: "boolean",
             },
-            "color": {
-              "type": "string",
-              "enum": [
+            color: {
+              type: "string",
+              enum: [
                 "default",
                 "gray",
                 "brown",
@@ -458,17 +400,15 @@ export const RichTextItemRequest: JSONSchema = {
                 "blue_background",
                 "purple_background",
                 "pink_background",
-                "red_background"
-              ]
-            }
+                "red_background",
+              ],
+            },
           },
-          "additionalProperties": false
-        }
+          additionalProperties: false,
+        },
       },
-      "required": [
-        "equation"
-      ],
-      "additionalProperties": false
-    }
-  ]
+      required: ["equation"],
+      additionalProperties: false,
+    },
+  ],
 };

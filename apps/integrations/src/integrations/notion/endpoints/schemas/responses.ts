@@ -1,165 +1,137 @@
 import { JSONSchema } from "core/schemas/types";
+import { IdRequest, SelectColor, StringRequest } from "./common";
+import { PartialUserObjectResponse, UserObjectResponse } from "./person";
+import { TextRequest } from "./requests";
+import { TimeZoneRequest } from "./timezone";
 
 export const SelectPropertyResponse: JSONSchema = {
-  "type": "object",
-  "properties": {
-    "id": StringRequest,
-    "name": StringRequest,
-    "color": SelectColor
+  type: "object",
+  properties: {
+    id: StringRequest,
+    name: StringRequest,
+    color: SelectColor,
   },
-  "required": [
-    "id",
-    "name",
-    "color"
-  ],
-  "additionalProperties": false
+  required: ["id", "name", "color"],
+  additionalProperties: false,
 };
 
 export const DateResponse: JSONSchema = {
-  "type": "object",
-  "properties": {
-    "start": {
-      "type": "string"
+  type: "object",
+  properties: {
+    start: {
+      type: "string",
     },
-    "end": {
-      "type": [
-        "string",
-        "null"
-      ]
+    end: {
+      type: ["string", "null"],
     },
-    "time_zone": {
-      "anyOf": [
+    time_zone: {
+      anyOf: [
         TimeZoneRequest,
         {
-          "type": "null"
-        }
-      ]
-    }
+          type: "null",
+        },
+      ],
+    },
   },
-  "required": [
-    "start",
-    "end",
-    "time_zone"
-  ],
-  "additionalProperties": false
+  required: ["start", "end", "time_zone"],
+  additionalProperties: false,
 };
 
 export const StringFormulaPropertyResponse: JSONSchema = {
-  "type": "object",
-  "properties": {
-    "type": {
-      "type": "string",
-      "const": "string"
+  type: "object",
+  properties: {
+    type: {
+      type: "string",
+      const: "string",
     },
-    "string": {
-      "type": [
-        "string",
-        "null"
-      ]
-    }
+    string: {
+      type: ["string", "null"],
+    },
   },
-  "required": [
-    "type",
-    "string"
-  ],
-  "additionalProperties": false
+  required: ["type", "string"],
+  additionalProperties: false,
 };
 
 export const DateFormulaPropertyResponse: JSONSchema = {
-  "type": "object",
-  "properties": {
-    "type": {
-      "type": "string",
-      "const": "date"
+  type: "object",
+  properties: {
+    type: {
+      type: "string",
+      const: "date",
     },
-    "date": {
-      "anyOf": [
+    date: {
+      anyOf: [
         DateResponse,
         {
-          "type": "null"
-        }
-      ]
-    }
+          type: "null",
+        },
+      ],
+    },
   },
-  "required": [
-    "type",
-    "date"
-  ],
-  "additionalProperties": false
+  required: ["type", "date"],
+  additionalProperties: false,
 };
 
 export const NumberFormulaPropertyResponse: JSONSchema = {
-  "type": "object",
-  "properties": {
-    "type": {
-      "type": "string",
-      "const": "number"
+  type: "object",
+  properties: {
+    type: {
+      type: "string",
+      const: "number",
     },
-    "number": {
-      "type": [
-        "number",
-        "null"
-      ]
-    }
+    number: {
+      type: ["number", "null"],
+    },
   },
-  "required": [
-    "type",
-    "number"
-  ],
-  "additionalProperties": false
+  required: ["type", "number"],
+  additionalProperties: false,
 };
 
 export const BooleanFormulaPropertyResponse: JSONSchema = {
-  "type": "object",
-  "properties": {
-    "type": {
-      "type": "string",
-      "const": "boolean"
+  type: "object",
+  properties: {
+    type: {
+      type: "string",
+      const: "boolean",
     },
-    "boolean": {
-      "type": [
-        "boolean",
-        "null"
-      ]
-    }
+    boolean: {
+      type: ["boolean", "null"],
+    },
   },
-  "required": [
-    "type",
-    "boolean"
-  ],
-  "additionalProperties": false
+  required: ["type", "boolean"],
+  additionalProperties: false,
 };
 
 export const FormulaPropertyResponse: JSONSchema = {
-  "anyOf": [
+  anyOf: [
     StringFormulaPropertyResponse,
     DateFormulaPropertyResponse,
     NumberFormulaPropertyResponse,
-    BooleanFormulaPropertyResponse
-  ]
+    BooleanFormulaPropertyResponse,
+  ],
 };
 
 export const AnnotationResponse: JSONSchema = {
-  "type": "object",
-  "properties": {
-    "bold": {
-      "type": "boolean"
+  type: "object",
+  properties: {
+    bold: {
+      type: "boolean",
     },
-    "italic": {
-      "type": "boolean"
+    italic: {
+      type: "boolean",
     },
-    "strikethrough": {
-      "type": "boolean"
+    strikethrough: {
+      type: "boolean",
     },
-    "underline": {
-      "type": "boolean"
+    underline: {
+      type: "boolean",
     },
-    "code": {
-      "type": "boolean"
+    code: {
+      type: "boolean",
     },
-    "color": {
-      "type": "string",
-      "enum": [
+    color: {
+      type: "string",
+      enum: [
         "default",
         "gray",
         "brown",
@@ -178,325 +150,248 @@ export const AnnotationResponse: JSONSchema = {
         "blue_background",
         "purple_background",
         "pink_background",
-        "red_background"
-      ]
-    }
+        "red_background",
+      ],
+    },
   },
-  "required": [
-    "bold",
-    "italic",
-    "strikethrough",
-    "underline",
-    "code",
-    "color"
-  ],
-  "additionalProperties": false
+  required: ["bold", "italic", "strikethrough", "underline", "code", "color"],
+  additionalProperties: false,
 };
 
 export const TextRichTextItemResponse: JSONSchema = {
-  "type": "object",
-  "properties": {
-    "type": {
-      "type": "string",
-      "const": "text"
+  type: "object",
+  properties: {
+    type: {
+      type: "string",
+      const: "text",
     },
-    "text": {
-      "type": "object",
-      "properties": {
-        "content": {
-          "type": "string"
+    text: {
+      type: "object",
+      properties: {
+        content: {
+          type: "string",
         },
-        "link": {
-          "anyOf": [
+        link: {
+          anyOf: [
             {
-              "type": "object",
-              "properties": {
-                "url": TextRequest
+              type: "object",
+              properties: {
+                url: TextRequest,
               },
-              "required": [
-                "url"
-              ],
-              "additionalProperties": false
+              required: ["url"],
+              additionalProperties: false,
             },
             {
-              "type": "null"
-            }
-          ]
-        }
+              type: "null",
+            },
+          ],
+        },
       },
-      "required": [
-        "content",
-        "link"
-      ],
-      "additionalProperties": false
+      required: ["content", "link"],
+      additionalProperties: false,
     },
-    "annotations": AnnotationResponse,
-    "plain_text": {
-      "type": "string"
+    annotations: AnnotationResponse,
+    plain_text: {
+      type: "string",
     },
-    "href": {
-      "type": [
-        "string",
-        "null"
-      ]
-    }
+    href: {
+      type: ["string", "null"],
+    },
   },
-  "required": [
-    "type",
-    "text",
-    "annotations",
-    "plain_text",
-    "href"
-  ],
-  "additionalProperties": false
+  required: ["type", "text", "annotations", "plain_text", "href"],
+  additionalProperties: false,
 };
 
 export const LinkPreviewMentionResponse: JSONSchema = {
-  "type": "object",
-  "properties": {
-    "url": TextRequest
+  type: "object",
+  properties: {
+    url: TextRequest,
   },
-  "required": [
-    "url"
-  ],
-  "additionalProperties": false
+  required: ["url"],
+  additionalProperties: false,
 };
 
 export const TemplateMentionDateTemplateMentionResponse: JSONSchema = {
-  "type": "object",
-  "properties": {
-    "type": {
-      "type": "string",
-      "const": "template_mention_date"
+  type: "object",
+  properties: {
+    type: {
+      type: "string",
+      const: "template_mention_date",
     },
-    "template_mention_date": {
-      "type": "string",
-      "enum": [
-        "today",
-        "now"
-      ]
-    }
+    template_mention_date: {
+      type: "string",
+      enum: ["today", "now"],
+    },
   },
-  "required": [
-    "type",
-    "template_mention_date"
-  ],
-  "additionalProperties": false
+  required: ["type", "template_mention_date"],
+  additionalProperties: false,
 };
 
 export const TemplateMentionUserTemplateMentionResponse: JSONSchema = {
-  "type": "object",
-  "properties": {
-    "type": {
-      "type": "string",
-      "const": "template_mention_user"
+  type: "object",
+  properties: {
+    type: {
+      type: "string",
+      const: "template_mention_user",
     },
-    "template_mention_user": {
-      "type": "string",
-      "const": "me"
-    }
+    template_mention_user: {
+      type: "string",
+      const: "me",
+    },
   },
-  "required": [
-    "type",
-    "template_mention_user"
-  ],
-  "additionalProperties": false
+  required: ["type", "template_mention_user"],
+  additionalProperties: false,
 };
 
 export const TemplateMentionResponse: JSONSchema = {
-  "anyOf": [
+  anyOf: [
     TemplateMentionDateTemplateMentionResponse,
-    TemplateMentionUserTemplateMentionResponse
-  ]
+    TemplateMentionUserTemplateMentionResponse,
+  ],
 };
 
 export const MentionRichTextItemResponse: JSONSchema = {
-  "type": "object",
-  "properties": {
-    "type": {
-      "type": "string",
-      "const": "mention"
+  type: "object",
+  properties: {
+    type: {
+      type: "string",
+      const: "mention",
     },
-    "mention": {
-      "anyOf": [
+    mention: {
+      anyOf: [
         {
-          "type": "object",
-          "properties": {
-            "type": {
-              "type": "string",
-              "const": "user"
+          type: "object",
+          properties: {
+            type: {
+              type: "string",
+              const: "user",
             },
-            "user": {
-              "anyOf": [
-                PartialUserObjectResponse,
-                UserObjectResponse
-              ]
-            }
+            user: {
+              anyOf: [PartialUserObjectResponse, UserObjectResponse],
+            },
           },
-          "required": [
-            "type",
-            "user"
-          ],
-          "additionalProperties": false
+          required: ["type", "user"],
+          additionalProperties: false,
         },
         {
-          "type": "object",
-          "properties": {
-            "type": {
-              "type": "string",
-              "const": "date"
+          type: "object",
+          properties: {
+            type: {
+              type: "string",
+              const: "date",
             },
-            "date": DateResponse
+            date: DateResponse,
           },
-          "required": [
-            "type",
-            "date"
-          ],
-          "additionalProperties": false
+          required: ["type", "date"],
+          additionalProperties: false,
         },
         {
-          "type": "object",
-          "properties": {
-            "type": {
-              "type": "string",
-              "const": "link_preview"
+          type: "object",
+          properties: {
+            type: {
+              type: "string",
+              const: "link_preview",
             },
-            "link_preview": LinkPreviewMentionResponse
+            link_preview: LinkPreviewMentionResponse,
           },
-          "required": [
-            "type",
-            "link_preview"
-          ],
-          "additionalProperties": false
+          required: ["type", "link_preview"],
+          additionalProperties: false,
         },
         {
-          "type": "object",
-          "properties": {
-            "type": {
-              "type": "string",
-              "const": "template_mention"
+          type: "object",
+          properties: {
+            type: {
+              type: "string",
+              const: "template_mention",
             },
-            "template_mention": TemplateMentionResponse
+            template_mention: TemplateMentionResponse,
           },
-          "required": [
-            "type",
-            "template_mention"
-          ],
-          "additionalProperties": false
+          required: ["type", "template_mention"],
+          additionalProperties: false,
         },
         {
-          "type": "object",
-          "properties": {
-            "type": {
-              "type": "string",
-              "const": "page"
+          type: "object",
+          properties: {
+            type: {
+              type: "string",
+              const: "page",
             },
-            "page": {
-              "type": "object",
-              "properties": {
-                "id": IdRequest
+            page: {
+              type: "object",
+              properties: {
+                id: IdRequest,
               },
-              "required": [
-                "id"
-              ],
-              "additionalProperties": false
-            }
+              required: ["id"],
+              additionalProperties: false,
+            },
           },
-          "required": [
-            "type",
-            "page"
-          ],
-          "additionalProperties": false
+          required: ["type", "page"],
+          additionalProperties: false,
         },
         {
-          "type": "object",
-          "properties": {
-            "type": {
-              "type": "string",
-              "const": "database"
+          type: "object",
+          properties: {
+            type: {
+              type: "string",
+              const: "database",
             },
-            "database": {
-              "type": "object",
-              "properties": {
-                "id": IdRequest
+            database: {
+              type: "object",
+              properties: {
+                id: IdRequest,
               },
-              "required": [
-                "id"
-              ],
-              "additionalProperties": false
-            }
+              required: ["id"],
+              additionalProperties: false,
+            },
           },
-          "required": [
-            "type",
-            "database"
-          ],
-          "additionalProperties": false
-        }
-      ]
+          required: ["type", "database"],
+          additionalProperties: false,
+        },
+      ],
     },
-    "annotations": AnnotationResponse,
-    "plain_text": {
-      "type": "string"
+    annotations: AnnotationResponse,
+    plain_text: {
+      type: "string",
     },
-    "href": {
-      "type": [
-        "string",
-        "null"
-      ]
-    }
+    href: {
+      type: ["string", "null"],
+    },
   },
-  "required": [
-    "type",
-    "mention",
-    "annotations",
-    "plain_text",
-    "href"
-  ],
-  "additionalProperties": false
+  required: ["type", "mention", "annotations", "plain_text", "href"],
+  additionalProperties: false,
 };
 
 export const EquationRichTextItemResponse: JSONSchema = {
-  "type": "object",
-  "properties": {
-    "type": {
-      "type": "string",
-      "const": "equation"
+  type: "object",
+  properties: {
+    type: {
+      type: "string",
+      const: "equation",
     },
-    "equation": {
-      "type": "object",
-      "properties": {
-        "expression": TextRequest
+    equation: {
+      type: "object",
+      properties: {
+        expression: TextRequest,
       },
-      "required": [
-        "expression"
-      ],
-      "additionalProperties": false
+      required: ["expression"],
+      additionalProperties: false,
     },
-    "annotations": AnnotationResponse,
-    "plain_text": {
-      "type": "string"
+    annotations: AnnotationResponse,
+    plain_text: {
+      type: "string",
     },
-    "href": {
-      "type": [
-        "string",
-        "null"
-      ]
-    }
+    href: {
+      type: ["string", "null"],
+    },
   },
-  "required": [
-    "type",
-    "equation",
-    "annotations",
-    "plain_text",
-    "href"
-  ],
-  "additionalProperties": false
+  required: ["type", "equation", "annotations", "plain_text", "href"],
+  additionalProperties: false,
 };
 
 export const RichTextItemResponse: JSONSchema = {
-  "anyOf": [
+  anyOf: [
     TextRichTextItemResponse,
     MentionRichTextItemResponse,
-    EquationRichTextItemResponse
-  ]
+    EquationRichTextItemResponse,
+  ],
 };

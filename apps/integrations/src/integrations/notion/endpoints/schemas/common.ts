@@ -1,27 +1,25 @@
 import { JSONSchema } from "core/schemas/types";
 
 export const IdRequest: JSONSchema = {
-  "type": [
-    "string"
-  ]
+  type: ["string"],
 };
 
 export const NeverRecord: JSONSchema = {
-  "type": "object",
-  "additionalProperties": {
-    "not": {}
-  }
+  type: "object",
+  additionalProperties: {
+    not: {},
+  },
 };
 
 export const EmptyObject: JSONSchema = NeverRecord;
 
 export const StringRequest: JSONSchema = {
-  "type": "string"
+  type: "string",
 };
 
 export const SelectColor: JSONSchema = {
-  "type": "string",
-  "enum": [
+  type: "string",
+  enum: [
     "default",
     "gray",
     "brown",
@@ -31,13 +29,13 @@ export const SelectColor: JSONSchema = {
     "blue",
     "purple",
     "pink",
-    "red"
-  ]
+    "red",
+  ],
 };
 
 export const ApiColor: JSONSchema = {
-  "type": "string",
-  "enum": [
+  type: "string",
+  enum: [
     "default",
     "gray",
     "brown",
@@ -56,6 +54,6 @@ export const ApiColor: JSONSchema = {
     "blue_background",
     "purple_background",
     "pink_background",
-    "red_background"
-  ]
+    "red_background",
+  ],
 };

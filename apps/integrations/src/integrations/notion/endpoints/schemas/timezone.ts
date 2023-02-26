@@ -1,8 +1,8 @@
 import { JSONSchema } from "core/schemas/types";
 
 export const TimeZoneRequest: JSONSchema = {
-  "type": "string",
-  "enum": [
+  type: "string",
+  enum: [
     "Africa/Abidjan",
     "Africa/Accra",
     "Africa/Addis_Ababa",
@@ -595,6 +595,6 @@ export const TimeZoneRequest: JSONSchema = {
     "Universal",
     "W-SU",
     "WET",
-    "Zulu"
-  ]
+    "Zulu",
+  ],
 };

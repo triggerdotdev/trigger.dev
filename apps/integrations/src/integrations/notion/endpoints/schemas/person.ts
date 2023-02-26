@@ -1,219 +1,163 @@
 import { JSONSchema } from "core/schemas/types";
+import { EmptyObject, IdRequest } from "./common";
 
 export const PersonUserObjectResponse: JSONSchema = {
-  "type": "object",
-  "properties": {
-    "type": {
-      "type": "string",
-      "const": "person"
+  type: "object",
+  properties: {
+    type: {
+      type: "string",
+      const: "person",
     },
-    "person": {
-      "type": "object",
-      "properties": {
-        "email": {
-          "type": "string"
-        }
+    person: {
+      type: "object",
+      properties: {
+        email: {
+          type: "string",
+        },
       },
-      "additionalProperties": false
+      additionalProperties: false,
     },
-    "name": {
-      "type": [
-        "string",
-        "null"
-      ]
+    name: {
+      type: ["string", "null"],
     },
-    "avatar_url": {
-      "type": [
-        "string",
-        "null"
-      ]
+    avatar_url: {
+      type: ["string", "null"],
     },
-    "id": IdRequest,
-    "object": {
-      "type": "string",
-      "const": "user"
-    }
+    id: IdRequest,
+    object: {
+      type: "string",
+      const: "user",
+    },
   },
-  "required": [
-    "type",
-    "person",
-    "name",
-    "avatar_url",
-    "id",
-    "object"
-  ],
-  "additionalProperties": false
+  required: ["type", "person", "name", "avatar_url", "id", "object"],
+  additionalProperties: false,
 };
 
 export const PartialUserObjectResponse: JSONSchema = {
-  "type": "object",
-  "properties": {
-    "id": IdRequest,
-    "object": {
-      "type": "string",
-      "const": "user"
-    }
+  type: "object",
+  properties: {
+    id: IdRequest,
+    object: {
+      type: "string",
+      const: "user",
+    },
   },
-  "required": [
-    "id",
-    "object"
-  ],
-  "additionalProperties": false
+  required: ["id", "object"],
+  additionalProperties: false,
 };
 
 export const BotUserObjectResponse: JSONSchema = {
-  "type": "object",
-  "properties": {
-    "type": {
-      "type": "string",
-      "const": "bot"
+  type: "object",
+  properties: {
+    type: {
+      type: "string",
+      const: "bot",
     },
-    "bot": {
-      "anyOf": [
+    bot: {
+      anyOf: [
         EmptyObject,
         {
-          "type": "object",
-          "properties": {
-            "owner": {
-              "anyOf": [
+          type: "object",
+          properties: {
+            owner: {
+              anyOf: [
                 {
-                  "type": "object",
-                  "properties": {
-                    "type": {
-                      "type": "string",
-                      "const": "user"
+                  type: "object",
+                  properties: {
+                    type: {
+                      type: "string",
+                      const: "user",
                     },
-                    "user": {
-                      "anyOf": [
+                    user: {
+                      anyOf: [
                         {
-                          "type": "object",
-                          "properties": {
-                            "type": {
-                              "type": "string",
-                              "const": "person"
+                          type: "object",
+                          properties: {
+                            type: {
+                              type: "string",
+                              const: "person",
                             },
-                            "person": {
-                              "type": "object",
-                              "properties": {
-                                "email": {
-                                  "type": "string"
-                                }
+                            person: {
+                              type: "object",
+                              properties: {
+                                email: {
+                                  type: "string",
+                                },
                               },
-                              "required": [
-                                "email"
-                              ],
-                              "additionalProperties": false
+                              required: ["email"],
+                              additionalProperties: false,
                             },
-                            "name": {
-                              "type": [
-                                "string",
-                                "null"
-                              ]
+                            name: {
+                              type: ["string", "null"],
                             },
-                            "avatar_url": {
-                              "type": [
-                                "string",
-                                "null"
-                              ]
+                            avatar_url: {
+                              type: ["string", "null"],
                             },
-                            "id": IdRequest,
-                            "object": {
-                              "type": "string",
-                              "const": "user"
-                            }
+                            id: IdRequest,
+                            object: {
+                              type: "string",
+                              const: "user",
+                            },
                           },
-                          "required": [
+                          required: [
                             "type",
                             "person",
                             "name",
                             "avatar_url",
                             "id",
-                            "object"
+                            "object",
                           ],
-                          "additionalProperties": false
+                          additionalProperties: false,
                         },
-                        PartialUserObjectResponse
-                      ]
-                    }
+                        PartialUserObjectResponse,
+                      ],
+                    },
                   },
-                  "required": [
-                    "type",
-                    "user"
-                  ],
-                  "additionalProperties": false
+                  required: ["type", "user"],
+                  additionalProperties: false,
                 },
                 {
-                  "type": "object",
-                  "properties": {
-                    "type": {
-                      "type": "string",
-                      "const": "workspace"
+                  type: "object",
+                  properties: {
+                    type: {
+                      type: "string",
+                      const: "workspace",
                     },
-                    "workspace": {
-                      "type": "boolean",
-                      "const": true
-                    }
+                    workspace: {
+                      type: "boolean",
+                      const: true,
+                    },
                   },
-                  "required": [
-                    "type",
-                    "workspace"
-                  ],
-                  "additionalProperties": false
-                }
-              ]
+                  required: ["type", "workspace"],
+                  additionalProperties: false,
+                },
+              ],
             },
-            "workspace_name": {
-              "type": [
-                "string",
-                "null"
-              ]
-            }
+            workspace_name: {
+              type: ["string", "null"],
+            },
           },
-          "required": [
-            "owner",
-            "workspace_name"
-          ],
-          "additionalProperties": false
-        }
-      ]
+          required: ["owner", "workspace_name"],
+          additionalProperties: false,
+        },
+      ],
     },
-    "name": {
-      "type": [
-        "string",
-        "null"
-      ]
+    name: {
+      type: ["string", "null"],
     },
-    "avatar_url": {
-      "type": [
-        "string",
-        "null"
-      ]
+    avatar_url: {
+      type: ["string", "null"],
     },
-    "id": IdRequest,
-    "object": {
-      "type": "string",
-      "const": "user"
-    }
+    id: IdRequest,
+    object: {
+      type: "string",
+      const: "user",
+    },
   },
-  "required": [
-    "type",
-    "bot",
-    "name",
-    "avatar_url",
-    "id",
-    "object"
-  ],
-  "additionalProperties": false
+  required: ["type", "bot", "name", "avatar_url", "id", "object"],
+  additionalProperties: false,
 };
 
 export const UserObjectResponse: JSONSchema = {
-  "anyOf": [
-    PersonUserObjectResponse,
-    BotUserObjectResponse
-  ]
+  anyOf: [PersonUserObjectResponse, BotUserObjectResponse],
 };
-
-
-
-
-

@@ -1,6 +1,8 @@
+import { JSONSchema } from "core/schemas/types";
+
 //Turned off the enum for this, as it's not worth the cost
 export const EmojiRequest: JSONSchema = {
-  "type": "string",
+  type: "string",
   // "enum": [
   //   "😀",
   //   "😃",
