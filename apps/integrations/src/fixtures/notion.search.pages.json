@@ -678,6 +678,1880 @@
                     },
                     "url": "https://www.notion.so/fe2fe4c604e54ee3bfdfe58a9b2d2cb4",
                     "archived": false
+                },
+                {
+                    "object": "page",
+                    "id": "1da6967f-8cd0-4a56-8537-93aec4c01019",
+                    "created_time": "2023-02-24T19:07:00.000Z",
+                    "last_edited_time": "2023-02-24T19:07:00.000Z",
+                    "created_by": {
+                        "object": "user",
+                        "id": "cc18a80a-973f-42c4-8fed-a055f8ae31f4"
+                    },
+                    "last_edited_by": {
+                        "object": "user",
+                        "id": "cc18a80a-973f-42c4-8fed-a055f8ae31f4"
+                    },
+                    "cover": {
+                        "type": "external",
+                        "external": {
+                            "url": "https://www.notion.so/images/page-cover/gradients_4.png"
+                        }
+                    },
+                    "icon": {
+                        "type": "emoji",
+                        "emoji": "🎬"
+                    },
+                    "parent": {
+                        "type": "block_id",
+                        "block_id": "e1f420b7-fa0a-4c24-bbe7-b491d14a5981"
+                    },
+                    "archived": false,
+                    "properties": {
+                        "title": {
+                            "id": "title",
+                            "type": "title",
+                            "title": [
+                                {
+                                    "type": "text",
+                                    "text": {
+                                        "content": "Movie List",
+                                        "link": null
+                                    },
+                                    "annotations": {
+                                        "bold": false,
+                                        "italic": false,
+                                        "strikethrough": false,
+                                        "underline": false,
+                                        "code": false,
+                                        "color": "default"
+                                    },
+                                    "plain_text": "Movie List",
+                                    "href": null
+                                }
+                            ]
+                        }
+                    },
+                    "url": "https://www.notion.so/Movie-List-1da6967f8cd04a56853793aec4c01019"
+                },
+                {
+                    "object": "database",
+                    "id": "57e9743c-8711-4f6d-9ea6-62c1f4a1af12",
+                    "cover": {
+                        "type": "external",
+                        "external": {
+                            "url": "https://www.notion.so/images/page-cover/woodcuts_5.jpg"
+                        }
+                    },
+                    "icon": {
+                        "type": "emoji",
+                        "emoji": "✈️"
+                    },
+                    "created_time": "2023-02-24T19:07:00.000Z",
+                    "created_by": {
+                        "object": "user",
+                        "id": "cc18a80a-973f-42c4-8fed-a055f8ae31f4"
+                    },
+                    "last_edited_by": {
+                        "object": "user",
+                        "id": "cc18a80a-973f-42c4-8fed-a055f8ae31f4"
+                    },
+                    "last_edited_time": "2023-02-24T19:07:00.000Z",
+                    "title": [
+                        {
+                            "type": "text",
+                            "text": {
+                                "content": "Travel Plans",
+                                "link": null
+                            },
+                            "annotations": {
+                                "bold": false,
+                                "italic": false,
+                                "strikethrough": false,
+                                "underline": false,
+                                "code": false,
+                                "color": "default"
+                            },
+                            "plain_text": "Travel Plans",
+                            "href": null
+                        }
+                    ],
+                    "description": [],
+                    "is_inline": false,
+                    "properties": {
+                        "Places": {
+                            "id": "6BZi",
+                            "name": "Places",
+                            "type": "rich_text",
+                            "rich_text": {}
+                        },
+                        "People": {
+                            "id": "G'5H",
+                            "name": "People",
+                            "type": "rich_text",
+                            "rich_text": {}
+                        },
+                        "Date": {
+                            "id": "VXfM",
+                            "name": "Date",
+                            "type": "date",
+                            "date": {}
+                        },
+                        "Status": {
+                            "id": "uX%600",
+                            "name": "Status",
+                            "type": "select",
+                            "select": {
+                                "options": [
+                                    {
+                                        "id": "276d859a-ff2d-4883-afee-f3247b8c6b45",
+                                        "name": "Idea",
+                                        "color": "purple"
+                                    },
+                                    {
+                                        "id": "866a1a6b-b7d3-427f-989f-410c68177502",
+                                        "name": "Planning",
+                                        "color": "blue"
+                                    },
+                                    {
+                                        "id": "fbe50537-d4b7-4a60-bbc6-927ab51287f3",
+                                        "name": "Booked",
+                                        "color": "red"
+                                    }
+                                ]
+                            }
+                        },
+                        "Name": {
+                            "id": "title",
+                            "name": "Name",
+                            "type": "title",
+                            "title": {}
+                        }
+                    },
+                    "parent": {
+                        "type": "block_id",
+                        "block_id": "24dcdcc3-ed82-4226-9660-10c1b33c373a"
+                    },
+                    "url": "https://www.notion.so/57e9743c87114f6d9ea662c1f4a1af12",
+                    "archived": false
+                },
+                {
+                    "object": "database",
+                    "id": "6d49c169-88b3-4808-af0b-702baf636093",
+                    "cover": {
+                        "type": "external",
+                        "external": {
+                            "url": "https://www.notion.so/images/page-cover/gradients_11.jpg"
+                        }
+                    },
+                    "icon": {
+                        "type": "emoji",
+                        "emoji": "🍗"
+                    },
+                    "created_time": "2023-02-24T19:07:00.000Z",
+                    "created_by": {
+                        "object": "user",
+                        "id": "cc18a80a-973f-42c4-8fed-a055f8ae31f4"
+                    },
+                    "last_edited_by": {
+                        "object": "user",
+                        "id": "cc18a80a-973f-42c4-8fed-a055f8ae31f4"
+                    },
+                    "last_edited_time": "2023-02-24T19:07:00.000Z",
+                    "title": [
+                        {
+                            "type": "text",
+                            "text": {
+                                "content": "Recipes",
+                                "link": null
+                            },
+                            "annotations": {
+                                "bold": false,
+                                "italic": false,
+                                "strikethrough": false,
+                                "underline": false,
+                                "code": false,
+                                "color": "default"
+                            },
+                            "plain_text": "Recipes",
+                            "href": null
+                        }
+                    ],
+                    "description": [],
+                    "is_inline": false,
+                    "properties": {
+                        "Link": {
+                            "id": "xe1%3F",
+                            "name": "Link",
+                            "type": "url",
+                            "url": {}
+                        },
+                        "Tags": {
+                            "id": "ymgk",
+                            "name": "Tags",
+                            "type": "multi_select",
+                            "multi_select": {
+                                "options": [
+                                    {
+                                        "id": "e3a41d0c-2918-4bda-855f-065369d0b4ef",
+                                        "name": "Dessert",
+                                        "color": "purple"
+                                    },
+                                    {
+                                        "id": "5ab76036-6042-40e2-ad35-7b24206b311f",
+                                        "name": "Dinner",
+                                        "color": "orange"
+                                    },
+                                    {
+                                        "id": "e84a3694-11fd-4fc0-b4d3-0a98865d7456",
+                                        "name": "Easy",
+                                        "color": "yellow"
+                                    }
+                                ]
+                            }
+                        },
+                        "Name": {
+                            "id": "title",
+                            "name": "Name",
+                            "type": "title",
+                            "title": {}
+                        }
+                    },
+                    "parent": {
+                        "type": "block_id",
+                        "block_id": "e1f420b7-fa0a-4c24-bbe7-b491d14a5981"
+                    },
+                    "url": "https://www.notion.so/6d49c16988b34808af0b702baf636093",
+                    "archived": false
+                },
+                {
+                    "object": "page",
+                    "id": "b4055c5f-64f2-42c3-8d5e-38a3f983b494",
+                    "created_time": "2023-02-24T19:07:00.000Z",
+                    "last_edited_time": "2023-02-24T19:07:00.000Z",
+                    "created_by": {
+                        "object": "user",
+                        "id": "cc18a80a-973f-42c4-8fed-a055f8ae31f4"
+                    },
+                    "last_edited_by": {
+                        "object": "user",
+                        "id": "cc18a80a-973f-42c4-8fed-a055f8ae31f4"
+                    },
+                    "cover": {
+                        "type": "external",
+                        "external": {
+                            "url": "https://www.notion.so/images/page-cover/solid_beige.png"
+                        }
+                    },
+                    "icon": {
+                        "type": "emoji",
+                        "emoji": "🌅"
+                    },
+                    "parent": {
+                        "type": "block_id",
+                        "block_id": "24dcdcc3-ed82-4226-9660-10c1b33c373a"
+                    },
+                    "archived": false,
+                    "properties": {
+                        "title": {
+                            "id": "title",
+                            "type": "title",
+                            "title": [
+                                {
+                                    "type": "text",
+                                    "text": {
+                                        "content": "Yearly Goals",
+                                        "link": null
+                                    },
+                                    "annotations": {
+                                        "bold": false,
+                                        "italic": false,
+                                        "strikethrough": false,
+                                        "underline": false,
+                                        "code": false,
+                                        "color": "default"
+                                    },
+                                    "plain_text": "Yearly Goals",
+                                    "href": null
+                                }
+                            ]
+                        }
+                    },
+                    "url": "https://www.notion.so/Yearly-Goals-b4055c5f64f242c38d5e38a3f983b494"
+                },
+                {
+                    "object": "page",
+                    "id": "09b0be23-f79f-48e4-a24e-be483decd15b",
+                    "created_time": "2023-02-24T19:07:00.000Z",
+                    "last_edited_time": "2023-02-24T19:07:00.000Z",
+                    "created_by": {
+                        "object": "user",
+                        "id": "cc18a80a-973f-42c4-8fed-a055f8ae31f4"
+                    },
+                    "last_edited_by": {
+                        "object": "user",
+                        "id": "cc18a80a-973f-42c4-8fed-a055f8ae31f4"
+                    },
+                    "cover": null,
+                    "icon": {
+                        "type": "emoji",
+                        "emoji": "🎂"
+                    },
+                    "parent": {
+                        "type": "database_id",
+                        "database_id": "0fadc732-4472-418c-83dc-04454332cb52"
+                    },
+                    "archived": false,
+                    "properties": {
+                        "Tags": {
+                            "id": "!'(w",
+                            "type": "multi_select",
+                            "multi_select": [
+                                {
+                                    "id": "7973659c-e670-44c5-95bd-ee8bea4410fe",
+                                    "name": "Planning",
+                                    "color": "orange"
+                                }
+                            ]
+                        },
+                        "Created": {
+                            "id": "%7D%25j%7B",
+                            "type": "created_time",
+                            "created_time": "2023-02-24T19:07:00.000Z"
+                        },
+                        "Name": {
+                            "id": "title",
+                            "type": "title",
+                            "title": [
+                                {
+                                    "type": "text",
+                                    "text": {
+                                        "content": "28th Birthday",
+                                        "link": null
+                                    },
+                                    "annotations": {
+                                        "bold": false,
+                                        "italic": false,
+                                        "strikethrough": false,
+                                        "underline": false,
+                                        "code": false,
+                                        "color": "default"
+                                    },
+                                    "plain_text": "28th Birthday",
+                                    "href": null
+                                }
+                            ]
+                        }
+                    },
+                    "url": "https://www.notion.so/28th-Birthday-09b0be23f79f48e4a24ebe483decd15b"
+                },
+                {
+                    "object": "page",
+                    "id": "1e26b51f-de7a-4f4f-a491-4217636b232e",
+                    "created_time": "2023-02-24T19:07:00.000Z",
+                    "last_edited_time": "2023-02-24T19:07:00.000Z",
+                    "created_by": {
+                        "object": "user",
+                        "id": "cc18a80a-973f-42c4-8fed-a055f8ae31f4"
+                    },
+                    "last_edited_by": {
+                        "object": "user",
+                        "id": "cc18a80a-973f-42c4-8fed-a055f8ae31f4"
+                    },
+                    "cover": null,
+                    "icon": {
+                        "type": "emoji",
+                        "emoji": "🥥"
+                    },
+                    "parent": {
+                        "type": "database_id",
+                        "database_id": "0fadc732-4472-418c-83dc-04454332cb52"
+                    },
+                    "archived": false,
+                    "properties": {
+                        "Tags": {
+                            "id": "!'(w",
+                            "type": "multi_select",
+                            "multi_select": [
+                                {
+                                    "id": "00a58cba-c800-40cd-a8f1-6e42527b0a29",
+                                    "name": "Special Event",
+                                    "color": "yellow"
+                                }
+                            ]
+                        },
+                        "Created": {
+                            "id": "%7D%25j%7B",
+                            "type": "created_time",
+                            "created_time": "2023-02-24T19:07:00.000Z"
+                        },
+                        "Name": {
+                            "id": "title",
+                            "type": "title",
+                            "title": [
+                                {
+                                    "type": "text",
+                                    "text": {
+                                        "content": "Hawaii Vacation",
+                                        "link": null
+                                    },
+                                    "annotations": {
+                                        "bold": false,
+                                        "italic": false,
+                                        "strikethrough": false,
+                                        "underline": false,
+                                        "code": false,
+                                        "color": "default"
+                                    },
+                                    "plain_text": "Hawaii Vacation",
+                                    "href": null
+                                }
+                            ]
+                        }
+                    },
+                    "url": "https://www.notion.so/Hawaii-Vacation-1e26b51fde7a4f4fa4914217636b232e"
+                },
+                {
+                    "object": "page",
+                    "id": "1e9e7ed8-6a3c-4192-8f1b-b20f0d44357e",
+                    "created_time": "2023-02-24T19:07:00.000Z",
+                    "last_edited_time": "2023-02-24T19:07:00.000Z",
+                    "created_by": {
+                        "object": "user",
+                        "id": "cc18a80a-973f-42c4-8fed-a055f8ae31f4"
+                    },
+                    "last_edited_by": {
+                        "object": "user",
+                        "id": "cc18a80a-973f-42c4-8fed-a055f8ae31f4"
+                    },
+                    "cover": null,
+                    "icon": null,
+                    "parent": {
+                        "type": "database_id",
+                        "database_id": "0fadc732-4472-418c-83dc-04454332cb52"
+                    },
+                    "archived": false,
+                    "properties": {
+                        "Tags": {
+                            "id": "!'(w",
+                            "type": "multi_select",
+                            "multi_select": [
+                                {
+                                    "id": "4322f3ac-635f-4d2f-808f-22d639bc393b",
+                                    "name": "Daily",
+                                    "color": "purple"
+                                }
+                            ]
+                        },
+                        "Created": {
+                            "id": "%7D%25j%7B",
+                            "type": "created_time",
+                            "created_time": "2023-02-24T19:07:00.000Z"
+                        },
+                        "Name": {
+                            "id": "title",
+                            "type": "title",
+                            "title": [
+                                {
+                                    "type": "text",
+                                    "text": {
+                                        "content": "Daily entry",
+                                        "link": null
+                                    },
+                                    "annotations": {
+                                        "bold": false,
+                                        "italic": false,
+                                        "strikethrough": false,
+                                        "underline": false,
+                                        "code": false,
+                                        "color": "default"
+                                    },
+                                    "plain_text": "Daily entry",
+                                    "href": null
+                                }
+                            ]
+                        }
+                    },
+                    "url": "https://www.notion.so/Daily-entry-1e9e7ed86a3c41928f1bb20f0d44357e"
+                },
+                {
+                    "object": "page",
+                    "id": "2726fedf-6d01-461a-990e-5238be7b7741",
+                    "created_time": "2023-02-24T19:07:00.000Z",
+                    "last_edited_time": "2023-02-24T19:07:00.000Z",
+                    "created_by": {
+                        "object": "user",
+                        "id": "cc18a80a-973f-42c4-8fed-a055f8ae31f4"
+                    },
+                    "last_edited_by": {
+                        "object": "user",
+                        "id": "cc18a80a-973f-42c4-8fed-a055f8ae31f4"
+                    },
+                    "cover": null,
+                    "icon": {
+                        "type": "emoji",
+                        "emoji": "📋"
+                    },
+                    "parent": {
+                        "type": "database_id",
+                        "database_id": "0fadc732-4472-418c-83dc-04454332cb52"
+                    },
+                    "archived": false,
+                    "properties": {
+                        "Tags": {
+                            "id": "!'(w",
+                            "type": "multi_select",
+                            "multi_select": [
+                                {
+                                    "id": "f4cf83a1-4b72-494e-bbc7-4a3c5cbaca4e",
+                                    "name": "Work",
+                                    "color": "blue"
+                                }
+                            ]
+                        },
+                        "Created": {
+                            "id": "%7D%25j%7B",
+                            "type": "created_time",
+                            "created_time": "2023-02-24T19:07:00.000Z"
+                        },
+                        "Name": {
+                            "id": "title",
+                            "type": "title",
+                            "title": [
+                                {
+                                    "type": "text",
+                                    "text": {
+                                        "content": "Job Search - September",
+                                        "link": null
+                                    },
+                                    "annotations": {
+                                        "bold": false,
+                                        "italic": false,
+                                        "strikethrough": false,
+                                        "underline": false,
+                                        "code": false,
+                                        "color": "default"
+                                    },
+                                    "plain_text": "Job Search - September",
+                                    "href": null
+                                }
+                            ]
+                        }
+                    },
+                    "url": "https://www.notion.so/Job-Search-September-2726fedf6d01461a990e5238be7b7741"
+                },
+                {
+                    "object": "page",
+                    "id": "527fa387-5b64-4eb9-a60e-5382a2fc483b",
+                    "created_time": "2023-02-24T19:07:00.000Z",
+                    "last_edited_time": "2023-02-24T19:07:00.000Z",
+                    "created_by": {
+                        "object": "user",
+                        "id": "cc18a80a-973f-42c4-8fed-a055f8ae31f4"
+                    },
+                    "last_edited_by": {
+                        "object": "user",
+                        "id": "cc18a80a-973f-42c4-8fed-a055f8ae31f4"
+                    },
+                    "cover": null,
+                    "icon": {
+                        "type": "emoji",
+                        "emoji": "✨"
+                    },
+                    "parent": {
+                        "type": "database_id",
+                        "database_id": "0fadc732-4472-418c-83dc-04454332cb52"
+                    },
+                    "archived": false,
+                    "properties": {
+                        "Tags": {
+                            "id": "!'(w",
+                            "type": "multi_select",
+                            "multi_select": [
+                                {
+                                    "id": "4322f3ac-635f-4d2f-808f-22d639bc393b",
+                                    "name": "Daily",
+                                    "color": "purple"
+                                }
+                            ]
+                        },
+                        "Created": {
+                            "id": "%7D%25j%7B",
+                            "type": "created_time",
+                            "created_time": "2023-02-24T19:07:00.000Z"
+                        },
+                        "Name": {
+                            "id": "title",
+                            "type": "title",
+                            "title": [
+                                {
+                                    "type": "text",
+                                    "text": {
+                                        "content": "So much to be grateful for",
+                                        "link": null
+                                    },
+                                    "annotations": {
+                                        "bold": false,
+                                        "italic": false,
+                                        "strikethrough": false,
+                                        "underline": false,
+                                        "code": false,
+                                        "color": "default"
+                                    },
+                                    "plain_text": "So much to be grateful for",
+                                    "href": null
+                                }
+                            ]
+                        }
+                    },
+                    "url": "https://www.notion.so/So-much-to-be-grateful-for-527fa3875b644eb9a60e5382a2fc483b"
+                },
+                {
+                    "object": "page",
+                    "id": "5c2a75da-1b9c-4cbb-9f2d-fc258c2ee77e",
+                    "created_time": "2023-02-24T19:07:00.000Z",
+                    "last_edited_time": "2023-02-24T19:07:00.000Z",
+                    "created_by": {
+                        "object": "user",
+                        "id": "cc18a80a-973f-42c4-8fed-a055f8ae31f4"
+                    },
+                    "last_edited_by": {
+                        "object": "user",
+                        "id": "cc18a80a-973f-42c4-8fed-a055f8ae31f4"
+                    },
+                    "cover": null,
+                    "icon": {
+                        "type": "emoji",
+                        "emoji": "🌻"
+                    },
+                    "parent": {
+                        "type": "database_id",
+                        "database_id": "0fadc732-4472-418c-83dc-04454332cb52"
+                    },
+                    "archived": false,
+                    "properties": {
+                        "Tags": {
+                            "id": "!'(w",
+                            "type": "multi_select",
+                            "multi_select": [
+                                {
+                                    "id": "4322f3ac-635f-4d2f-808f-22d639bc393b",
+                                    "name": "Daily",
+                                    "color": "purple"
+                                }
+                            ]
+                        },
+                        "Created": {
+                            "id": "%7D%25j%7B",
+                            "type": "created_time",
+                            "created_time": "2023-02-24T19:07:00.000Z"
+                        },
+                        "Name": {
+                            "id": "title",
+                            "type": "title",
+                            "title": [
+                                {
+                                    "type": "text",
+                                    "text": {
+                                        "content": "Just another day",
+                                        "link": null
+                                    },
+                                    "annotations": {
+                                        "bold": false,
+                                        "italic": false,
+                                        "strikethrough": false,
+                                        "underline": false,
+                                        "code": false,
+                                        "color": "default"
+                                    },
+                                    "plain_text": "Just another day",
+                                    "href": null
+                                }
+                            ]
+                        }
+                    },
+                    "url": "https://www.notion.so/Just-another-day-5c2a75da1b9c4cbb9f2dfc258c2ee77e"
+                },
+                {
+                    "object": "page",
+                    "id": "a6d6cce8-97f2-42b1-9ca9-13496014741a",
+                    "created_time": "2023-02-24T19:07:00.000Z",
+                    "last_edited_time": "2023-02-24T19:07:00.000Z",
+                    "created_by": {
+                        "object": "user",
+                        "id": "cc18a80a-973f-42c4-8fed-a055f8ae31f4"
+                    },
+                    "last_edited_by": {
+                        "object": "user",
+                        "id": "cc18a80a-973f-42c4-8fed-a055f8ae31f4"
+                    },
+                    "cover": null,
+                    "icon": {
+                        "type": "emoji",
+                        "emoji": "🍸"
+                    },
+                    "parent": {
+                        "type": "database_id",
+                        "database_id": "0fadc732-4472-418c-83dc-04454332cb52"
+                    },
+                    "archived": false,
+                    "properties": {
+                        "Tags": {
+                            "id": "!'(w",
+                            "type": "multi_select",
+                            "multi_select": [
+                                {
+                                    "id": "b28c7f82-f6e4-4a72-a790-78585e7ead7e",
+                                    "name": "Personal",
+                                    "color": "red"
+                                }
+                            ]
+                        },
+                        "Created": {
+                            "id": "%7D%25j%7B",
+                            "type": "created_time",
+                            "created_time": "2023-02-24T19:07:00.000Z"
+                        },
+                        "Name": {
+                            "id": "title",
+                            "type": "title",
+                            "title": [
+                                {
+                                    "type": "text",
+                                    "text": {
+                                        "content": "Date with Stewart",
+                                        "link": null
+                                    },
+                                    "annotations": {
+                                        "bold": false,
+                                        "italic": false,
+                                        "strikethrough": false,
+                                        "underline": false,
+                                        "code": false,
+                                        "color": "default"
+                                    },
+                                    "plain_text": "Date with Stewart",
+                                    "href": null
+                                }
+                            ]
+                        }
+                    },
+                    "url": "https://www.notion.so/Date-with-Stewart-a6d6cce897f242b19ca913496014741a"
+                },
+                {
+                    "object": "page",
+                    "id": "b02c0fe9-758e-4d4b-925e-4b5463459b8b",
+                    "created_time": "2023-02-24T19:07:00.000Z",
+                    "last_edited_time": "2023-02-24T19:07:00.000Z",
+                    "created_by": {
+                        "object": "user",
+                        "id": "cc18a80a-973f-42c4-8fed-a055f8ae31f4"
+                    },
+                    "last_edited_by": {
+                        "object": "user",
+                        "id": "cc18a80a-973f-42c4-8fed-a055f8ae31f4"
+                    },
+                    "cover": null,
+                    "icon": {
+                        "type": "emoji",
+                        "emoji": "💭"
+                    },
+                    "parent": {
+                        "type": "database_id",
+                        "database_id": "0fadc732-4472-418c-83dc-04454332cb52"
+                    },
+                    "archived": false,
+                    "properties": {
+                        "Tags": {
+                            "id": "!'(w",
+                            "type": "multi_select",
+                            "multi_select": [
+                                {
+                                    "id": "4322f3ac-635f-4d2f-808f-22d639bc393b",
+                                    "name": "Daily",
+                                    "color": "purple"
+                                }
+                            ]
+                        },
+                        "Created": {
+                            "id": "%7D%25j%7B",
+                            "type": "created_time",
+                            "created_time": "2023-02-24T19:07:00.000Z"
+                        },
+                        "Name": {
+                            "id": "title",
+                            "type": "title",
+                            "title": [
+                                {
+                                    "type": "text",
+                                    "text": {
+                                        "content": "Daily reflection",
+                                        "link": null
+                                    },
+                                    "annotations": {
+                                        "bold": false,
+                                        "italic": false,
+                                        "strikethrough": false,
+                                        "underline": false,
+                                        "code": false,
+                                        "color": "default"
+                                    },
+                                    "plain_text": "Daily reflection",
+                                    "href": null
+                                }
+                            ]
+                        }
+                    },
+                    "url": "https://www.notion.so/Daily-reflection-b02c0fe9758e4d4b925e4b5463459b8b"
+                },
+                {
+                    "object": "page",
+                    "id": "1da149a5-517d-4539-a4e0-80638ce6833b",
+                    "created_time": "2023-02-24T19:07:00.000Z",
+                    "last_edited_time": "2023-02-24T19:07:00.000Z",
+                    "created_by": {
+                        "object": "user",
+                        "id": "cc18a80a-973f-42c4-8fed-a055f8ae31f4"
+                    },
+                    "last_edited_by": {
+                        "object": "user",
+                        "id": "cc18a80a-973f-42c4-8fed-a055f8ae31f4"
+                    },
+                    "cover": null,
+                    "icon": {
+                        "type": "external",
+                        "external": {
+                            "url": "https://www.notion.so/icons/movie_gray.svg"
+                        }
+                    },
+                    "parent": {
+                        "type": "database_id",
+                        "database_id": "63875c55-bce0-4589-8011-51cdd4c78ec8"
+                    },
+                    "archived": false,
+                    "properties": {
+                        "Score": {
+                            "id": ")Y7%22",
+                            "type": "select",
+                            "select": null
+                        },
+                        "Type": {
+                            "id": "%2F7eo",
+                            "type": "select",
+                            "select": {
+                                "id": "4ac85597-5db1-4e0a-9c02-445575c38f76",
+                                "name": "TV Series",
+                                "color": "default"
+                            }
+                        },
+                        "Status": {
+                            "id": "UMCM",
+                            "type": "status",
+                            "status": {
+                                "id": "387caf66-e381-4bfa-bddc-ef3c33b1670e",
+                                "name": "Not started",
+                                "color": "red"
+                            }
+                        },
+                        "Link": {
+                            "id": "VVMi",
+                            "type": "url",
+                            "url": null
+                        },
+                        "Completed": {
+                            "id": "qGBj",
+                            "type": "date",
+                            "date": null
+                        },
+                        "Author": {
+                            "id": "qNw_",
+                            "type": "rich_text",
+                            "rich_text": []
+                        },
+                        "Name": {
+                            "id": "title",
+                            "type": "title",
+                            "title": [
+                                {
+                                    "type": "text",
+                                    "text": {
+                                        "content": "New TV series",
+                                        "link": null
+                                    },
+                                    "annotations": {
+                                        "bold": false,
+                                        "italic": false,
+                                        "strikethrough": false,
+                                        "underline": false,
+                                        "code": false,
+                                        "color": "default"
+                                    },
+                                    "plain_text": "New TV series",
+                                    "href": null
+                                }
+                            ]
+                        }
+                    },
+                    "url": "https://www.notion.so/New-TV-series-1da149a5517d4539a4e080638ce6833b"
+                },
+                {
+                    "object": "page",
+                    "id": "3aade2cf-5419-4079-ac88-449c89d5700f",
+                    "created_time": "2023-02-24T19:07:00.000Z",
+                    "last_edited_time": "2023-02-24T19:07:00.000Z",
+                    "created_by": {
+                        "object": "user",
+                        "id": "cc18a80a-973f-42c4-8fed-a055f8ae31f4"
+                    },
+                    "last_edited_by": {
+                        "object": "user",
+                        "id": "cc18a80a-973f-42c4-8fed-a055f8ae31f4"
+                    },
+                    "cover": null,
+                    "icon": {
+                        "type": "external",
+                        "external": {
+                            "url": "https://www.notion.so/icons/book-closed_gray.svg"
+                        }
+                    },
+                    "parent": {
+                        "type": "database_id",
+                        "database_id": "63875c55-bce0-4589-8011-51cdd4c78ec8"
+                    },
+                    "archived": false,
+                    "properties": {
+                        "Score": {
+                            "id": ")Y7%22",
+                            "type": "select",
+                            "select": null
+                        },
+                        "Type": {
+                            "id": "%2F7eo",
+                            "type": "select",
+                            "select": {
+                                "id": "42a0b2e8-c8da-4e5d-a2f2-5ccba15d1034",
+                                "name": "Book",
+                                "color": "default"
+                            }
+                        },
+                        "Status": {
+                            "id": "UMCM",
+                            "type": "status",
+                            "status": {
+                                "id": "387caf66-e381-4bfa-bddc-ef3c33b1670e",
+                                "name": "Not started",
+                                "color": "red"
+                            }
+                        },
+                        "Link": {
+                            "id": "VVMi",
+                            "type": "url",
+                            "url": null
+                        },
+                        "Completed": {
+                            "id": "qGBj",
+                            "type": "date",
+                            "date": null
+                        },
+                        "Author": {
+                            "id": "qNw_",
+                            "type": "rich_text",
+                            "rich_text": []
+                        },
+                        "Name": {
+                            "id": "title",
+                            "type": "title",
+                            "title": [
+                                {
+                                    "type": "text",
+                                    "text": {
+                                        "content": "New book",
+                                        "link": null
+                                    },
+                                    "annotations": {
+                                        "bold": false,
+                                        "italic": false,
+                                        "strikethrough": false,
+                                        "underline": false,
+                                        "code": false,
+                                        "color": "default"
+                                    },
+                                    "plain_text": "New book",
+                                    "href": null
+                                }
+                            ]
+                        }
+                    },
+                    "url": "https://www.notion.so/New-book-3aade2cf54194079ac88449c89d5700f"
+                },
+                {
+                    "object": "page",
+                    "id": "41d9d4f0-3773-4c1d-9140-6b109fdaca3d",
+                    "created_time": "2023-02-24T19:07:00.000Z",
+                    "last_edited_time": "2023-02-24T19:07:00.000Z",
+                    "created_by": {
+                        "object": "user",
+                        "id": "cc18a80a-973f-42c4-8fed-a055f8ae31f4"
+                    },
+                    "last_edited_by": {
+                        "object": "user",
+                        "id": "cc18a80a-973f-42c4-8fed-a055f8ae31f4"
+                    },
+                    "cover": null,
+                    "icon": {
+                        "type": "external",
+                        "external": {
+                            "url": "https://www.notion.so/icons/movie_gray.svg"
+                        }
+                    },
+                    "parent": {
+                        "type": "database_id",
+                        "database_id": "63875c55-bce0-4589-8011-51cdd4c78ec8"
+                    },
+                    "archived": false,
+                    "properties": {
+                        "Score": {
+                            "id": ")Y7%22",
+                            "type": "select",
+                            "select": {
+                                "id": "f8966551-1d96-4106-b0c5-7ca459029bab",
+                                "name": "TBD",
+                                "color": "default"
+                            }
+                        },
+                        "Type": {
+                            "id": "%2F7eo",
+                            "type": "select",
+                            "select": {
+                                "id": "4ac85597-5db1-4e0a-9c02-445575c38f76",
+                                "name": "TV Series",
+                                "color": "default"
+                            }
+                        },
+                        "Status": {
+                            "id": "UMCM",
+                            "type": "status",
+                            "status": {
+                                "id": "2bbcb9a8-1df1-47b6-a6af-2dafbf814871",
+                                "name": "In progress",
+                                "color": "blue"
+                            }
+                        },
+                        "Link": {
+                            "id": "VVMi",
+                            "type": "url",
+                            "url": "https://www.netflix.com/ca/title/80216752"
+                        },
+                        "Completed": {
+                            "id": "qGBj",
+                            "type": "date",
+                            "date": null
+                        },
+                        "Author": {
+                            "id": "qNw_",
+                            "type": "rich_text",
+                            "rich_text": [
+                                {
+                                    "type": "text",
+                                    "text": {
+                                        "content": "Ezra Klein & Joe Posner",
+                                        "link": null
+                                    },
+                                    "annotations": {
+                                        "bold": false,
+                                        "italic": false,
+                                        "strikethrough": false,
+                                        "underline": false,
+                                        "code": false,
+                                        "color": "default"
+                                    },
+                                    "plain_text": "Ezra Klein & Joe Posner",
+                                    "href": null
+                                }
+                            ]
+                        },
+                        "Name": {
+                            "id": "title",
+                            "type": "title",
+                            "title": [
+                                {
+                                    "type": "text",
+                                    "text": {
+                                        "content": "Netflix: explained",
+                                        "link": null
+                                    },
+                                    "annotations": {
+                                        "bold": false,
+                                        "italic": false,
+                                        "strikethrough": false,
+                                        "underline": false,
+                                        "code": false,
+                                        "color": "default"
+                                    },
+                                    "plain_text": "Netflix: explained",
+                                    "href": null
+                                }
+                            ]
+                        }
+                    },
+                    "url": "https://www.notion.so/Netflix-explained-41d9d4f037734c1d91406b109fdaca3d"
+                },
+                {
+                    "object": "page",
+                    "id": "4a7b0fe6-ee88-4703-b1b6-d156802f4b10",
+                    "created_time": "2023-02-24T19:07:00.000Z",
+                    "last_edited_time": "2023-02-24T19:07:00.000Z",
+                    "created_by": {
+                        "object": "user",
+                        "id": "cc18a80a-973f-42c4-8fed-a055f8ae31f4"
+                    },
+                    "last_edited_by": {
+                        "object": "user",
+                        "id": "cc18a80a-973f-42c4-8fed-a055f8ae31f4"
+                    },
+                    "cover": null,
+                    "icon": {
+                        "type": "external",
+                        "external": {
+                            "url": "https://www.notion.so/icons/book-closed_gray.svg"
+                        }
+                    },
+                    "parent": {
+                        "type": "database_id",
+                        "database_id": "63875c55-bce0-4589-8011-51cdd4c78ec8"
+                    },
+                    "archived": false,
+                    "properties": {
+                        "Score": {
+                            "id": ")Y7%22",
+                            "type": "select",
+                            "select": {
+                                "id": "b7307e35-c80a-4cb5-bb6b-6054523b394a",
+                                "name": "⭐️⭐️⭐️⭐️",
+                                "color": "default"
+                            }
+                        },
+                        "Type": {
+                            "id": "%2F7eo",
+                            "type": "select",
+                            "select": {
+                                "id": "42a0b2e8-c8da-4e5d-a2f2-5ccba15d1034",
+                                "name": "Book",
+                                "color": "default"
+                            }
+                        },
+                        "Status": {
+                            "id": "UMCM",
+                            "type": "status",
+                            "status": {
+                                "id": "aac65976-840a-47bd-8f97-782176d2d4f2",
+                                "name": "Done",
+                                "color": "green"
+                            }
+                        },
+                        "Link": {
+                            "id": "VVMi",
+                            "type": "url",
+                            "url": "https://www.ynharari.com/book/sapiens-2/"
+                        },
+                        "Completed": {
+                            "id": "qGBj",
+                            "type": "date",
+                            "date": {
+                                "start": "2022-11-01",
+                                "end": null,
+                                "time_zone": null
+                            }
+                        },
+                        "Author": {
+                            "id": "qNw_",
+                            "type": "rich_text",
+                            "rich_text": [
+                                {
+                                    "type": "text",
+                                    "text": {
+                                        "content": "Yuval Noah Harari",
+                                        "link": null
+                                    },
+                                    "annotations": {
+                                        "bold": false,
+                                        "italic": false,
+                                        "strikethrough": false,
+                                        "underline": false,
+                                        "code": false,
+                                        "color": "default"
+                                    },
+                                    "plain_text": "Yuval Noah Harari",
+                                    "href": null
+                                }
+                            ]
+                        },
+                        "Name": {
+                            "id": "title",
+                            "type": "title",
+                            "title": [
+                                {
+                                    "type": "text",
+                                    "text": {
+                                        "content": "Sapiens: A Brief History of Humankind",
+                                        "link": null
+                                    },
+                                    "annotations": {
+                                        "bold": true,
+                                        "italic": false,
+                                        "strikethrough": false,
+                                        "underline": false,
+                                        "code": false,
+                                        "color": "default"
+                                    },
+                                    "plain_text": "Sapiens: A Brief History of Humankind",
+                                    "href": null
+                                }
+                            ]
+                        }
+                    },
+                    "url": "https://www.notion.so/Sapiens-A-Brief-History-of-Humankind-4a7b0fe6ee884703b1b6d156802f4b10"
+                },
+                {
+                    "object": "page",
+                    "id": "8dcd4f7b-dcf0-44a6-ae76-63c685297d26",
+                    "created_time": "2023-02-24T19:07:00.000Z",
+                    "last_edited_time": "2023-02-24T19:07:00.000Z",
+                    "created_by": {
+                        "object": "user",
+                        "id": "cc18a80a-973f-42c4-8fed-a055f8ae31f4"
+                    },
+                    "last_edited_by": {
+                        "object": "user",
+                        "id": "cc18a80a-973f-42c4-8fed-a055f8ae31f4"
+                    },
+                    "cover": null,
+                    "icon": {
+                        "type": "external",
+                        "external": {
+                            "url": "https://www.notion.so/icons/book-closed_gray.svg"
+                        }
+                    },
+                    "parent": {
+                        "type": "database_id",
+                        "database_id": "63875c55-bce0-4589-8011-51cdd4c78ec8"
+                    },
+                    "archived": false,
+                    "properties": {
+                        "Score": {
+                            "id": ")Y7%22",
+                            "type": "select",
+                            "select": {
+                                "id": "5c944de7-3f4b-4567-b3a1-fa2c71c540b6",
+                                "name": "⭐️⭐️⭐️⭐️⭐️",
+                                "color": "default"
+                            }
+                        },
+                        "Type": {
+                            "id": "%2F7eo",
+                            "type": "select",
+                            "select": {
+                                "id": "42a0b2e8-c8da-4e5d-a2f2-5ccba15d1034",
+                                "name": "Book",
+                                "color": "default"
+                            }
+                        },
+                        "Status": {
+                            "id": "UMCM",
+                            "type": "status",
+                            "status": {
+                                "id": "aac65976-840a-47bd-8f97-782176d2d4f2",
+                                "name": "Done",
+                                "color": "green"
+                            }
+                        },
+                        "Link": {
+                            "id": "VVMi",
+                            "type": "url",
+                            "url": "https://www.goodreads.com/book/show/7144.Crime_and_Punishment"
+                        },
+                        "Completed": {
+                            "id": "qGBj",
+                            "type": "date",
+                            "date": {
+                                "start": "2022-11-28",
+                                "end": null,
+                                "time_zone": null
+                            }
+                        },
+                        "Author": {
+                            "id": "qNw_",
+                            "type": "rich_text",
+                            "rich_text": [
+                                {
+                                    "type": "text",
+                                    "text": {
+                                        "content": "Fyodor Dostoevsky",
+                                        "link": null
+                                    },
+                                    "annotations": {
+                                        "bold": false,
+                                        "italic": false,
+                                        "strikethrough": false,
+                                        "underline": false,
+                                        "code": false,
+                                        "color": "default"
+                                    },
+                                    "plain_text": "Fyodor Dostoevsky",
+                                    "href": null
+                                }
+                            ]
+                        },
+                        "Name": {
+                            "id": "title",
+                            "type": "title",
+                            "title": [
+                                {
+                                    "type": "text",
+                                    "text": {
+                                        "content": "Crime and Punishment",
+                                        "link": null
+                                    },
+                                    "annotations": {
+                                        "bold": false,
+                                        "italic": false,
+                                        "strikethrough": false,
+                                        "underline": false,
+                                        "code": false,
+                                        "color": "default"
+                                    },
+                                    "plain_text": "Crime and Punishment",
+                                    "href": null
+                                }
+                            ]
+                        }
+                    },
+                    "url": "https://www.notion.so/Crime-and-Punishment-8dcd4f7bdcf044a6ae7663c685297d26"
+                },
+                {
+                    "object": "page",
+                    "id": "97b07b50-25cc-43d7-aef4-6f1b1d29a463",
+                    "created_time": "2023-02-24T19:07:00.000Z",
+                    "last_edited_time": "2023-02-24T19:07:00.000Z",
+                    "created_by": {
+                        "object": "user",
+                        "id": "cc18a80a-973f-42c4-8fed-a055f8ae31f4"
+                    },
+                    "last_edited_by": {
+                        "object": "user",
+                        "id": "cc18a80a-973f-42c4-8fed-a055f8ae31f4"
+                    },
+                    "cover": null,
+                    "icon": {
+                        "type": "external",
+                        "external": {
+                            "url": "https://www.notion.so/icons/news_gray.svg"
+                        }
+                    },
+                    "parent": {
+                        "type": "database_id",
+                        "database_id": "63875c55-bce0-4589-8011-51cdd4c78ec8"
+                    },
+                    "archived": false,
+                    "properties": {
+                        "Score": {
+                            "id": ")Y7%22",
+                            "type": "select",
+                            "select": {
+                                "id": "f8966551-1d96-4106-b0c5-7ca459029bab",
+                                "name": "TBD",
+                                "color": "default"
+                            }
+                        },
+                        "Type": {
+                            "id": "%2F7eo",
+                            "type": "select",
+                            "select": {
+                                "id": "f96d0d0a-5564-4a20-ab15-5f040d49759e",
+                                "name": "Article",
+                                "color": "default"
+                            }
+                        },
+                        "Status": {
+                            "id": "UMCM",
+                            "type": "status",
+                            "status": {
+                                "id": "387caf66-e381-4bfa-bddc-ef3c33b1670e",
+                                "name": "Not started",
+                                "color": "red"
+                            }
+                        },
+                        "Link": {
+                            "id": "VVMi",
+                            "type": "url",
+                            "url": "https://www.nytimes.com/2018/10/21/opinion/who-will-teach-silicon-valley-to-be-ethical.html"
+                        },
+                        "Completed": {
+                            "id": "qGBj",
+                            "type": "date",
+                            "date": null
+                        },
+                        "Author": {
+                            "id": "qNw_",
+                            "type": "rich_text",
+                            "rich_text": [
+                                {
+                                    "type": "text",
+                                    "text": {
+                                        "content": "Kara Swisher",
+                                        "link": null
+                                    },
+                                    "annotations": {
+                                        "bold": false,
+                                        "italic": false,
+                                        "strikethrough": false,
+                                        "underline": false,
+                                        "code": false,
+                                        "color": "default"
+                                    },
+                                    "plain_text": "Kara Swisher",
+                                    "href": null
+                                }
+                            ]
+                        },
+                        "Name": {
+                            "id": "title",
+                            "type": "title",
+                            "title": [
+                                {
+                                    "type": "text",
+                                    "text": {
+                                        "content": "Who Will Teach Silicon Valley to Be Ethical? ",
+                                        "link": null
+                                    },
+                                    "annotations": {
+                                        "bold": false,
+                                        "italic": false,
+                                        "strikethrough": false,
+                                        "underline": false,
+                                        "code": false,
+                                        "color": "default"
+                                    },
+                                    "plain_text": "Who Will Teach Silicon Valley to Be Ethical? ",
+                                    "href": null
+                                }
+                            ]
+                        }
+                    },
+                    "url": "https://www.notion.so/Who-Will-Teach-Silicon-Valley-to-Be-Ethical-97b07b5025cc43d7aef46f1b1d29a463"
+                },
+                {
+                    "object": "page",
+                    "id": "aa4bf644-aded-42ab-b442-942950cc761b",
+                    "created_time": "2023-02-24T19:07:00.000Z",
+                    "last_edited_time": "2023-02-24T19:07:00.000Z",
+                    "created_by": {
+                        "object": "user",
+                        "id": "cc18a80a-973f-42c4-8fed-a055f8ae31f4"
+                    },
+                    "last_edited_by": {
+                        "object": "user",
+                        "id": "cc18a80a-973f-42c4-8fed-a055f8ae31f4"
+                    },
+                    "cover": null,
+                    "icon": {
+                        "type": "external",
+                        "external": {
+                            "url": "https://www.notion.so/icons/book-closed_gray.svg"
+                        }
+                    },
+                    "parent": {
+                        "type": "database_id",
+                        "database_id": "63875c55-bce0-4589-8011-51cdd4c78ec8"
+                    },
+                    "archived": false,
+                    "properties": {
+                        "Score": {
+                            "id": ")Y7%22",
+                            "type": "select",
+                            "select": {
+                                "id": "5c944de7-3f4b-4567-b3a1-fa2c71c540b6",
+                                "name": "⭐️⭐️⭐️⭐️⭐️",
+                                "color": "default"
+                            }
+                        },
+                        "Type": {
+                            "id": "%2F7eo",
+                            "type": "select",
+                            "select": {
+                                "id": "42a0b2e8-c8da-4e5d-a2f2-5ccba15d1034",
+                                "name": "Book",
+                                "color": "default"
+                            }
+                        },
+                        "Status": {
+                            "id": "UMCM",
+                            "type": "status",
+                            "status": {
+                                "id": "aac65976-840a-47bd-8f97-782176d2d4f2",
+                                "name": "Done",
+                                "color": "green"
+                            }
+                        },
+                        "Link": {
+                            "id": "VVMi",
+                            "type": "url",
+                            "url": "https://www.penguin.co.uk/books/431950/brave-new-world-by-aldous-huxley/9781784870140"
+                        },
+                        "Completed": {
+                            "id": "qGBj",
+                            "type": "date",
+                            "date": {
+                                "start": "2022-11-01",
+                                "end": null,
+                                "time_zone": null
+                            }
+                        },
+                        "Author": {
+                            "id": "qNw_",
+                            "type": "rich_text",
+                            "rich_text": [
+                                {
+                                    "type": "text",
+                                    "text": {
+                                        "content": "Aldous Huxley",
+                                        "link": null
+                                    },
+                                    "annotations": {
+                                        "bold": false,
+                                        "italic": false,
+                                        "strikethrough": false,
+                                        "underline": false,
+                                        "code": false,
+                                        "color": "default"
+                                    },
+                                    "plain_text": "Aldous Huxley",
+                                    "href": null
+                                }
+                            ]
+                        },
+                        "Name": {
+                            "id": "title",
+                            "type": "title",
+                            "title": [
+                                {
+                                    "type": "text",
+                                    "text": {
+                                        "content": "Brave New World",
+                                        "link": null
+                                    },
+                                    "annotations": {
+                                        "bold": false,
+                                        "italic": false,
+                                        "strikethrough": false,
+                                        "underline": false,
+                                        "code": false,
+                                        "color": "default"
+                                    },
+                                    "plain_text": "Brave New World",
+                                    "href": null
+                                }
+                            ]
+                        }
+                    },
+                    "url": "https://www.notion.so/Brave-New-World-aa4bf644aded42abb442942950cc761b"
+                },
+                {
+                    "object": "page",
+                    "id": "e65ee876-aa43-4473-a059-59d79d10fa1c",
+                    "created_time": "2023-02-24T19:07:00.000Z",
+                    "last_edited_time": "2023-02-24T19:07:00.000Z",
+                    "created_by": {
+                        "object": "user",
+                        "id": "cc18a80a-973f-42c4-8fed-a055f8ae31f4"
+                    },
+                    "last_edited_by": {
+                        "object": "user",
+                        "id": "cc18a80a-973f-42c4-8fed-a055f8ae31f4"
+                    },
+                    "cover": null,
+                    "icon": {
+                        "type": "external",
+                        "external": {
+                            "url": "https://www.notion.so/icons/news_gray.svg"
+                        }
+                    },
+                    "parent": {
+                        "type": "database_id",
+                        "database_id": "63875c55-bce0-4589-8011-51cdd4c78ec8"
+                    },
+                    "archived": false,
+                    "properties": {
+                        "Score": {
+                            "id": ")Y7%22",
+                            "type": "select",
+                            "select": null
+                        },
+                        "Type": {
+                            "id": "%2F7eo",
+                            "type": "select",
+                            "select": {
+                                "id": "f96d0d0a-5564-4a20-ab15-5f040d49759e",
+                                "name": "Article",
+                                "color": "default"
+                            }
+                        },
+                        "Status": {
+                            "id": "UMCM",
+                            "type": "status",
+                            "status": {
+                                "id": "387caf66-e381-4bfa-bddc-ef3c33b1670e",
+                                "name": "Not started",
+                                "color": "red"
+                            }
+                        },
+                        "Link": {
+                            "id": "VVMi",
+                            "type": "url",
+                            "url": null
+                        },
+                        "Completed": {
+                            "id": "qGBj",
+                            "type": "date",
+                            "date": null
+                        },
+                        "Author": {
+                            "id": "qNw_",
+                            "type": "rich_text",
+                            "rich_text": []
+                        },
+                        "Name": {
+                            "id": "title",
+                            "type": "title",
+                            "title": [
+                                {
+                                    "type": "text",
+                                    "text": {
+                                        "content": "New article",
+                                        "link": null
+                                    },
+                                    "annotations": {
+                                        "bold": false,
+                                        "italic": false,
+                                        "strikethrough": false,
+                                        "underline": false,
+                                        "code": false,
+                                        "color": "default"
+                                    },
+                                    "plain_text": "New article",
+                                    "href": null
+                                }
+                            ]
+                        }
+                    },
+                    "url": "https://www.notion.so/New-article-e65ee876aa434473a05959d79d10fa1c"
+                },
+                {
+                    "object": "page",
+                    "id": "42c25bc6-5aa0-4006-aa5f-793665099a1f",
+                    "created_time": "2023-02-24T19:07:00.000Z",
+                    "last_edited_time": "2023-02-24T19:07:00.000Z",
+                    "created_by": {
+                        "object": "user",
+                        "id": "cc18a80a-973f-42c4-8fed-a055f8ae31f4"
+                    },
+                    "last_edited_by": {
+                        "object": "user",
+                        "id": "cc18a80a-973f-42c4-8fed-a055f8ae31f4"
+                    },
+                    "cover": null,
+                    "icon": {
+                        "type": "emoji",
+                        "emoji": "🐶"
+                    },
+                    "parent": {
+                        "type": "database_id",
+                        "database_id": "fe2fe4c6-04e5-4ee3-bfdf-e58a9b2d2cb4"
+                    },
+                    "archived": false,
+                    "properties": {
+                        "Date Created": {
+                            "id": "'Y6%3C",
+                            "type": "created_time",
+                            "created_time": "2023-02-24T19:07:00.000Z"
+                        },
+                        "Status": {
+                            "id": "%5EOE%40",
+                            "type": "select",
+                            "select": {
+                                "id": "2",
+                                "name": "Doing",
+                                "color": "yellow"
+                            }
+                        },
+                        "Name": {
+                            "id": "title",
+                            "type": "title",
+                            "title": [
+                                {
+                                    "type": "text",
+                                    "text": {
+                                        "content": "Take Fig on a walk",
+                                        "link": null
+                                    },
+                                    "annotations": {
+                                        "bold": false,
+                                        "italic": false,
+                                        "strikethrough": false,
+                                        "underline": false,
+                                        "code": false,
+                                        "color": "default"
+                                    },
+                                    "plain_text": "Take Fig on a walk",
+                                    "href": null
+                                }
+                            ]
+                        }
+                    },
+                    "url": "https://www.notion.so/Take-Fig-on-a-walk-42c25bc65aa04006aa5f793665099a1f"
+                },
+                {
+                    "object": "page",
+                    "id": "adc0f953-4274-4ee8-82de-2bf157ddd27b",
+                    "created_time": "2023-02-24T19:07:00.000Z",
+                    "last_edited_time": "2023-02-24T19:07:00.000Z",
+                    "created_by": {
+                        "object": "user",
+                        "id": "cc18a80a-973f-42c4-8fed-a055f8ae31f4"
+                    },
+                    "last_edited_by": {
+                        "object": "user",
+                        "id": "cc18a80a-973f-42c4-8fed-a055f8ae31f4"
+                    },
+                    "cover": null,
+                    "icon": null,
+                    "parent": {
+                        "type": "database_id",
+                        "database_id": "fe2fe4c6-04e5-4ee3-bfdf-e58a9b2d2cb4"
+                    },
+                    "archived": false,
+                    "properties": {
+                        "Date Created": {
+                            "id": "'Y6%3C",
+                            "type": "created_time",
+                            "created_time": "2023-02-24T19:07:00.000Z"
+                        },
+                        "Status": {
+                            "id": "%5EOE%40",
+                            "type": "select",
+                            "select": null
+                        },
+                        "Name": {
+                            "id": "title",
+                            "type": "title",
+                            "title": []
+                        }
+                    },
+                    "url": "https://www.notion.so/adc0f95342744ee882de2bf157ddd27b"
+                },
+                {
+                    "object": "page",
+                    "id": "bbfa24e7-1589-4c53-ad46-fefe9325a440",
+                    "created_time": "2023-02-24T19:07:00.000Z",
+                    "last_edited_time": "2023-02-24T19:07:00.000Z",
+                    "created_by": {
+                        "object": "user",
+                        "id": "cc18a80a-973f-42c4-8fed-a055f8ae31f4"
+                    },
+                    "last_edited_by": {
+                        "object": "user",
+                        "id": "cc18a80a-973f-42c4-8fed-a055f8ae31f4"
+                    },
+                    "cover": null,
+                    "icon": null,
+                    "parent": {
+                        "type": "database_id",
+                        "database_id": "fe2fe4c6-04e5-4ee3-bfdf-e58a9b2d2cb4"
+                    },
+                    "archived": false,
+                    "properties": {
+                        "Date Created": {
+                            "id": "'Y6%3C",
+                            "type": "created_time",
+                            "created_time": "2023-02-24T19:07:00.000Z"
+                        },
+                        "Status": {
+                            "id": "%5EOE%40",
+                            "type": "select",
+                            "select": null
+                        },
+                        "Name": {
+                            "id": "title",
+                            "type": "title",
+                            "title": [
+                                {
+                                    "type": "text",
+                                    "text": {
+                                        "content": "New Task",
+                                        "link": null
+                                    },
+                                    "annotations": {
+                                        "bold": false,
+                                        "italic": false,
+                                        "strikethrough": false,
+                                        "underline": false,
+                                        "code": false,
+                                        "color": "default"
+                                    },
+                                    "plain_text": "New Task",
+                                    "href": null
+                                }
+                            ]
+                        }
+                    },
+                    "url": "https://www.notion.so/New-Task-bbfa24e715894c53ad46fefe9325a440"
+                },
+                {
+                    "object": "page",
+                    "id": "f9dd6c32-c6ee-49bd-8ae8-378d8cf0bcf6",
+                    "created_time": "2023-02-24T19:07:00.000Z",
+                    "last_edited_time": "2023-02-24T19:07:00.000Z",
+                    "created_by": {
+                        "object": "user",
+                        "id": "cc18a80a-973f-42c4-8fed-a055f8ae31f4"
+                    },
+                    "last_edited_by": {
+                        "object": "user",
+                        "id": "cc18a80a-973f-42c4-8fed-a055f8ae31f4"
+                    },
+                    "cover": null,
+                    "icon": null,
+                    "parent": {
+                        "type": "page_id",
+                        "page_id": "f936820e-d364-4463-a93a-73e2f09d9eab"
+                    },
+                    "archived": false,
+                    "properties": {
+                        "title": {
+                            "id": "title",
+                            "type": "title",
+                            "title": [
+                                {
+                                    "type": "text",
+                                    "text": {
+                                        "content": "Sub Page",
+                                        "link": null
+                                    },
+                                    "annotations": {
+                                        "bold": false,
+                                        "italic": false,
+                                        "strikethrough": false,
+                                        "underline": false,
+                                        "code": false,
+                                        "color": "default"
+                                    },
+                                    "plain_text": "Sub Page",
+                                    "href": null
+                                }
+                            ]
+                        }
+                    },
+                    "url": "https://www.notion.so/Sub-Page-f9dd6c32c6ee49bd8ae8378d8cf0bcf6"
                 }
             ],
             "next_cursor": null,
@@ -687,7 +2561,7 @@
         },
         "rawHeaders": [
             "Date",
-            "Fri, 24 Feb 2023 19:10:52 GMT",
+            "Sun, 26 Feb 2023 17:03:50 GMT",
             "Content-Type",
             "application/json; charset=utf-8",
             "Transfer-Encoding",
@@ -695,7 +2569,7 @@
             "Connection",
             "close",
             "Set-Cookie",
-            "notion_browser_id=94d53248-d7ef-46a1-a94a-a1f736f7d141; Domain=www.notion.so; Path=/; Expires=Sat, 24 Feb 2024 19:10:51 GMT; Secure",
+            "notion_browser_id=1d8e15d6-b7dd-4c9f-8354-637c60f681f6; Domain=www.notion.so; Path=/; Expires=Mon, 26 Feb 2024 17:03:49 GMT; Secure",
             "Content-Security-Policy",
             "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://gist.github.com https://apis.google.com https://www.google.com https://www.gstatic.com https://cdn.amplitude.com https://api.amplitude.com http://dev-embed.notion.co http://embed.notion.co https://widget.intercom.io https://js.intercomcdn.com https://static.zdassets.com https://api.smooch.io\t https://logs-01.loggly.com https://http-inputs-notion.splunkcloud.com https://cdn.segment.com https://analytics.pgncs.notion.so https://o324374.ingest.sentry.io https://checkout.stripe.com https://js.stripe.com https://embed.typeform.com https://admin.typeform.com https://public.profitwell.com https://static.profitwell.com js.sentry-cdn.com https://js.chilipiper.com https://platform.twitter.com https://cdn.syndication.twimg.com https://accounts.google.com https://www.googletagmanager.com https://www.googleadservices.com https://googleads.g.doubleclick.net https://api-v2.mutinyhq.io https://client-registry.mutinycdn.com https://client.mutinycdn.com https://user-data.mutinycdn.com https://cdn.metadata.io https://platformapi.metadata.io https://d2hrivdxn8ekm8.cloudfront.net https://d1lu3pmaz2ilpx.cloudfront.net https://dvqigh9b7wa32.cloudfront.net https://d330aiyvva2oww.cloudfront.net https://cdn.transcend.io https://cdn01.boxcdn.net https://cdn.sprig.com assets.customer.io code.gist.build;connect-src 'self' data: blob: https://msgstore.www.notion.so wss://msgstore.www.notion.so ws://localhost:* ws://127.0.0.1:* https://notion-emojis.s3-us-west-2.amazonaws.com https://s3-us-west-2.amazonaws.com https://s3.us-west-2.amazonaws.com https://notion-production-snapshots-2.s3.us-west-2.amazonaws.com https://cdn.amplitude.com https://api.amplitude.com https://www.notion.so https://api.embed.ly http://dev-embed.notion.co http://embed.notion.co https://js.intercomcdn.com https://api-iam.intercom.io https://uploads.intercomcdn.com wss://nexus-websocket-a.intercom.io https://ekr.zdassets.com https://ekr.zendesk.com\t https://makenotion.zendesk.com\t https://api.smooch.io\t wss://api.smooch.io\t https://logs-01.loggly.com https://http-inputs-notion.splunkcloud.com https://cdn.segment.com https://api.segment.io https://analytics.pgncs.notion.so https://api.pgncs.notion.so https://o324374.ingest.sentry.io https://checkout.stripe.com https://js.stripe.com https://cdn.contentful.com https://preview.contentful.com https://images.ctfassets.net https://www2.profitwell.com https://tracking.chilipiper.com https://api.chilipiper.com https://api.unsplash.com https://boards-api.greenhouse.io https://accounts.google.com https://oauth2.googleapis.com https://www.googletagmanager.com https://analytics.google.com https://www.googleadservices.com https://googleads.g.doubleclick.net https://region1.google-analytics.com https://region1.analytics.google.com https://www.google-analytics.com https://api-v2.mutinyhq.io https://client-registry.mutinycdn.com https://client.mutinycdn.com https://user-data.mutinycdn.com https://cdn.metadata.io https://platformapi.metadata.io https://d2hrivdxn8ekm8.cloudfront.net https://d1lu3pmaz2ilpx.cloudfront.net https://dvqigh9b7wa32.cloudfront.net https://d330aiyvva2oww.cloudfront.net https://cdn.transcend.io https://telemetry.transcend.io https://api.statuspage.io https://pgncd.notion.so https://api.statsig.com https://statsigapi.net https://exp.notion.so https://file.notion.so notion://file.notion.so https://api.box.com https://*.mux.com https://api.sprig.com https://storage.googleapis.com https://cdn.sprig.com https://cdn.userleap.com track.customer.io *.api.gist.build *.cloud.gist.build;font-src 'self' data: https://cdnjs.cloudflare.com https://js.intercomcdn.com https://cdn01.boxcdn.net;img-src 'self' data: blob: https: https://platform.twitter.com https://syndication.twitter.com https://pbs.twimg.com https://ton.twimg.com https://region1.google-analytics.com https://region1.analytics.google.com https://file.notion.so notion://file.notion.so https://*.mux.com track.customer.io;style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://github.githubassets.com https://js.chilipiper.com https://platform.twitter.com https://ton.twimg.com https://accounts.google.com https://cdn.transcend.io https://cdn01.boxcdn.net code.gist.build;media-src blob: https: http: https://file.notion.so notion://file.notion.so https://*.mux.com;worker-src blob:;frame-src https: http: https://accounts.google.com renderer.gist.build code.gist.build",
             "X-DNS-Prefetch-Control",
@@ -715,15 +2589,15 @@
             "X-XSS-Protection",
             "0",
             "ETag",
-            "W/\"2cb7-d/EozUxgt1KgIxjw2Wnt+jG6hl4\"",
+            "W/\"9f45-vEjJ8+ivTOTbxOUumEy7so3+Es0\"",
             "Vary",
             "Accept-Encoding",
             "CF-Cache-Status",
             "DYNAMIC",
             "Set-Cookie",
-            "notion_check_cookie_consent=true; Domain=www.notion.so; Path=/; Expires=Sat, 25 Feb 2023 19:10:51 GMT; Secure",
+            "notion_check_cookie_consent=true; Domain=www.notion.so; Path=/; Expires=Mon, 27 Feb 2023 17:03:49 GMT; Secure",
             "Set-Cookie",
-            "__cf_bm=ZX4dFasRh_QJ27SaHHOQdEiCL.Ny4tB5KreEtuSbyqw-1677265852-0-Acw8uBTUFpxdcnNtvqh1xDZ7AgedJqztRzhdvpwcisFW7eI3yQ1A78HbWmNa0lU6mQfsKjWJ4g6TkiKYHAHhFEc=; path=/; expires=Fri, 24-Feb-23 19:40:52 GMT; domain=.notion.com; HttpOnly; Secure; SameSite=None",
+            "__cf_bm=FBqRTT8Tn4PEYaYdH78.8oaodGfUzoV9.lM.cEjZ_GU-1677431030-0-AXbA1sbjLlmjBNNuxaPSYeEJ+7bivtLcACyMKVChiVfD/8orqLHZu3ak4XZ8DjDsJC1zn+NPo8kQRL1EVlNSgmM=; path=/; expires=Sun, 26-Feb-23 17:33:50 GMT; domain=.notion.com; HttpOnly; Secure; SameSite=None",
             "Server",
             "cloudflare"
         ],
