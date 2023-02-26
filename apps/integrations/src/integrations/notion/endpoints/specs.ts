@@ -1,8 +1,14 @@
 import { EndpointSpec, EndpointSpecResponse } from "core/endpoint/types";
-import { GetPageResponse } from "./schemas/page";
+import {
+  CreatePageParameters,
+  CreatePageResponse,
+} from "./schemas/endpoints/createPage";
+import { GetPageResponse } from "./schemas/endpoints/getPage";
+import { GetUserResponse } from "./schemas/endpoints/getUser";
+import { ListUsersResponse } from "./schemas/endpoints/listUsers";
+import { GetSelfResponse } from "./schemas/endpoints/me";
+import { SearchParameters, SearchResponse } from "./schemas/endpoints/search";
 import { VersionHeaderParam } from "./schemas/params";
-import { ListUsersResponse, UserObjectResponse } from "./schemas/person";
-import { SearchBodyParameters, SearchResponse } from "./schemas/search";
 
 const errorResponse: EndpointSpecResponse = {
   success: false,
@@ -48,7 +54,7 @@ export const getUser: EndpointSpec = {
         success: true,
         name: "Success",
         description: "Typical success response",
-        schema: UserObjectResponse,
+        schema: GetUserResponse,
       },
     ],
     default: [errorResponse],
@@ -135,7 +141,7 @@ export const getBotInfo: EndpointSpec = {
         success: true,
         name: "Success",
         description: "Typical success response",
-        schema: UserObjectResponse,
+        schema: GetSelfResponse,
       },
     ],
     default: [errorResponse],
@@ -258,7 +264,7 @@ export const search: EndpointSpec = {
   parameters: [VersionHeaderParam],
   request: {
     body: {
-      schema: SearchBodyParameters,
+      schema: SearchParameters,
     },
   },
   responses: {
