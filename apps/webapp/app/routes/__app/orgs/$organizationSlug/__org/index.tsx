@@ -47,7 +47,7 @@ export default function Page() {
       {workflows.length === 0 ? (
         <>
           <Title>Create your first workflow</Title>
-          <div className="max-w-5xl">
+          <div className="max-w-6xl">
             <WorkflowOnboarding
               templates={templates}
               apiKey={currentEnv.apiKey}

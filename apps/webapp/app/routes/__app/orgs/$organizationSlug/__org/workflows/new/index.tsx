@@ -22,15 +22,8 @@ export default function NewWorkflowStep1Page() {
     return <></>;
   }
   return (
-    <div className="max-w-5xl">
-      <>
-        <div className="max-w-5xl">
-          <WorkflowOnboarding
-            templates={templates}
-            apiKey={currentEnv.apiKey}
-          />
-        </div>
-      </>
+    <div className="max-w-6xl">
+      <WorkflowOnboarding templates={templates} apiKey={currentEnv.apiKey} />
     </div>
   );
 }
