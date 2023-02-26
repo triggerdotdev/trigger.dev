@@ -1,10 +1,10 @@
+import { XMarkIcon } from "@heroicons/react/24/outline";
 import { XCircleIcon } from "@heroicons/react/24/solid";
 import { Link } from "@remix-run/react";
 import { Fragment, useState } from "react";
 import type { TemplateListItem } from "~/presenters/templateListPresenter.server";
 import { CopyTextPanel } from "../CopyTextButton";
 import { StyledDialog } from "../primitives/Dialog";
-import { Body } from "../primitives/text/Body";
 import { Header1 } from "../primitives/text/Headers";
 import { TemplateOverview } from "./TemplateOverview";
 
@@ -30,7 +30,7 @@ export function TemplatesGrid({
         show={isOpen}
         as={Fragment}
       >
-        <StyledDialog.Panel className="relative mx-auto flex max-h-[80vh] max-w-5xl items-start gap-2 overflow-hidden overflow-y-auto rounded-md">
+        <StyledDialog.Panel className="relative mx-auto flex max-h-[80vh] max-w-6xl items-start gap-2 overflow-hidden overflow-y-auto rounded-md border border-slate-700">
           {openedTemplate && (
             <TemplateOverview
               template={openedTemplate}
@@ -39,9 +39,9 @@ export function TemplatesGrid({
           )}
           <button
             onClick={() => setOpenedTemplate(null)}
-            className="sticky top-0 text-slate-600 transition hover:text-slate-500"
+            className="group sticky top-2 -ml-[48px] rounded text-slate-400 transition hover:bg-slate-800/70 hover:text-slate-500"
           >
-            <XCircleIcon className="h-10 w-10" />
+            <XMarkIcon className="h-8 w-8 transition group-hover:text-slate-300" />
           </button>
         </StyledDialog.Panel>
       </StyledDialog.Dialog>
