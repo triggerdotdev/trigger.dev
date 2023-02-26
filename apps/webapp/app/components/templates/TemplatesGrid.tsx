@@ -1,6 +1,7 @@
 import { XMarkIcon } from "@heroicons/react/24/outline";
 import { XCircleIcon } from "@heroicons/react/24/solid";
 import { Link } from "@remix-run/react";
+import classNames from "classnames";
 import { Fragment, useState } from "react";
 import type { TemplateListItem } from "~/presenters/templateListPresenter.server";
 import { CopyTextPanel } from "../CopyTextButton";
@@ -45,7 +46,7 @@ export function TemplatesGrid({
           </button>
         </StyledDialog.Panel>
       </StyledDialog.Dialog>
-      <div className="grid w-full grid-cols-1 items-start justify-start gap-4 md:grid-cols-2 lg:grid-cols-3">
+      <div className="grid w-full grid-cols-1 items-start justify-start gap-5 md:grid-cols-2 lg:grid-cols-3">
         {templates.map((template) => {
           return (
             <TemplateButtonOrLink
@@ -53,29 +54,25 @@ export function TemplatesGrid({
               template={template}
               openInNewPage={openInNewPage}
               onClick={() => setOpenedTemplate(template)}
+              className="p-5"
             >
-              <div className="w-full bg-slate-600 transition group-hover:opacity-90">
+              <div className="w-full transition group-hover:opacity-90 group-hover:shadow-lg">
                 <img
                   src={template.imageUrl}
                   alt={template.title}
-                  className="h-32 w-full object-cover"
+                  className="h-32 w-full rounded-md object-cover"
                 />
               </div>
-              <div className="flex h-full w-full flex-col justify-between p-5">
-                <div className="flex flex-col gap-y-3">
-                  <Header1 size="regular" className="text-slate-300">
-                    {template.title}
-                  </Header1>
-                  {/* <Body size="small" className="text-slate-400">
-                    {template.description}
-                  </Body> */}
-                </div>
+              <div className="flex h-full w-full flex-col justify-between">
+                <Header1 size="regular" className="py-6 text-slate-100">
+                  {template.title}
+                </Header1>
                 <CopyTextPanel
                   value={`npm create trigger@latest ${template.slug}${
                     commandFlags ? ` ${commandFlags}` : ``
                   }`}
                   text={`npm create trigger ${template.slug}`}
-                  className="mt-5"
+                  className=""
                 />
               </div>
             </TemplateButtonOrLink>
@@ -91,18 +88,20 @@ function TemplateButtonOrLink({
   openInNewPage,
   onClick,
   children,
+  className,
 }: {
   template: TemplateListItem;
   openInNewPage: boolean;
   onClick: (e: React.MouseEvent) => void;
   children: React.ReactNode;
+  className?: string;
 }) {
-  const classNames =
-    "group flex w-full flex-col self-stretch overflow-hidden rounded-md border border-slate-700 bg-slate-800 text-left text-slate-200 shadow-md transition hover:cursor-pointer hover:border-slate-600 hover:bg-slate-700/50 disabled:opacity-50";
+  const cardStyles =
+    "group flex w-full flex-col self-stretch overflow-hidden rounded-md border border-slate-700/70 bg-slate-800 text-left text-slate-200 shadow-md transition hover:cursor-pointer hover:border-slate-600 hover:bg-slate-700/50 disabled:opacity-50";
 
   if (openInNewPage) {
     return (
-      <Link to={template.slug} className={classNames}>
+      <Link to={template.slug} className={classNames(cardStyles, className)}>
         {children}
       </Link>
     );
@@ -112,7 +111,7 @@ function TemplateButtonOrLink({
         key={template.title}
         type="button"
         onClick={onClick}
-        className={classNames}
+        className={cardStyles}
       >
         {children}
       </button>
