@@ -60,10 +60,10 @@ export function createSuccessfulOutputSchema(
   if (spec === undefined) return undefined;
 
   //combine all "success" output schemas into a union
-  const outputSuccessSchemas = spec.responses
-    .filter((s) => s.success)
-    .map((s) => s.schema)
-    .filter(Boolean) as JSONSchema[];
+  const outputSuccessSchemas = spec.responses.flatMap((r) =>
+    r.success ? r.schema : []
+  );
+
   return outputSuccessSchemas.length === 1
     ? outputSuccessSchemas[0]
     : createDiscriminatedUnionSchema(`Output`, outputSuccessSchemas);
