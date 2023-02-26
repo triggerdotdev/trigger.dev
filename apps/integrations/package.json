@@ -9,6 +9,7 @@
     "start": "node dist/index.js",
     "dev": "concurrently \"tsup --watch\" \"nodemon -r dotenv/config -q dist/index.js\"",
     "test": "vitest",
+    "typecheck": "tsc -b",
     "lint": "eslint --no-error-on-unmatched-pattern src/**",
     "lint-fix": "eslint --no-error-on-unmatched-pattern --fix src/**",
     "generate-integrations": "tsx src/trigger/sdk/generate.ts",
