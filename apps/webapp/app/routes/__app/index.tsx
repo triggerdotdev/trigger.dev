@@ -22,7 +22,7 @@ export default function AppLayout() {
         </h1>
       </div>
       <div className="flex items-center justify-center">
-        <ul className="-mt-20 grid max-w-7xl grid-cols-2 gap-2 lg:grid-cols-3">
+        <ul className="-mt-24 grid max-w-7xl grid-cols-2 gap-2 lg:grid-cols-3">
           {organizations ? (
             <OrganizationGrid organizations={organizations} />
           ) : (
@@ -110,4 +110,4 @@ function OrganizationGridItem({
 }
 
 const boxClasses =
-  "flex flex-col gap-4 w-80 text-center shadow-md items-center justify-center rounded-lg px-2 pb-2 pt-10 min-h-full transition";
+  "flex flex-col gap-4 w-80 text-center shadow-md items-center justify-center rounded-lg px-2 pb-2 pt-14 min-h-full transition";
