@@ -144,7 +144,13 @@ export function EnvironmentMenu() {
   );
 }
 
-export function EnvironmentIcon({ slug }: { slug: string }) {
+export function EnvironmentIcon({
+  slug,
+  className,
+}: {
+  slug: string;
+  className?: string;
+}) {
   let color = "bg-emerald-500";
   if (slug === "live") {
     color = "bg-orange-500";
@@ -153,7 +159,8 @@ export function EnvironmentIcon({ slug }: { slug: string }) {
     <span
       className={classNames(
         "block  h-[0.35rem] w-[0.35rem] rounded-full",
-        color
+        color,
+        className
       )}
     />
   );
