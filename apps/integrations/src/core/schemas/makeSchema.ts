@@ -200,3 +200,36 @@ export function makeNullable(schema: JSONSchema): JSONSchema {
     type: combinedTypes,
   };
 }
+
+export function makeAllPropertiesOptional(schema: JSONSchema): JSONSchema {
+  if (schema.type !== "object") {
+    throw new Error("Schema must be an object");
+  }
+
+  if (!schema.properties) {
+    throw new Error("Schema must have properties");
+  }
+
+  return {
+    ...schema,
+    required: [],
+  };
+}
+
+export function makePropertiesOptional(
+  schema: JSONSchema,
+  properties: string[]
+): JSONSchema {
+  if (schema.type !== "object") {
+    throw new Error("Schema must be an object");
+  }
+
+  if (!schema.properties) {
+    throw new Error("Schema must have properties");
+  }
+
+  return {
+    ...schema,
+    required: schema.required?.filter((p) => !properties.includes(p)),
+  };
+}
