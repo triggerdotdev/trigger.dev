@@ -109,7 +109,7 @@ export default function Integrations() {
             </div>
             <div className="flex flex-col items-center justify-center text-center leading-relaxed text-slate-400">
               <span className="px-2.5">Need an integration?</span>
-              <span className="px-6 text-base text-slate-200">
+              <span className="mb-4 px-6 text-base text-slate-200">
                 Let us know!
               </span>
             </div>
