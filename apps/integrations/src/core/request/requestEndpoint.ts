@@ -30,14 +30,6 @@ export async function requestEndpoint(
     };
   }
 
-  const requestValid = await validate(body, request.body?.schema);
-  if (!requestValid.success) {
-    throw {
-      type: "request_body_invalid",
-      errors: requestValid.errors,
-    };
-  }
-
   let headers: Record<string, string> = {};
 
   // validate and add the parameters
@@ -60,18 +52,6 @@ export async function requestEndpoint(
       }
 
       const element = parameters[name];
-      //validate the parameter against the schema
-      const valid = await validate(element, parameter.schema);
-      if (!valid.success) {
-        throw {
-          type: "parameter_invalid",
-          parameter: {
-            name,
-            value: element,
-          },
-          errors: valid.errors,
-        };
-      }
 
       //add the parameter
       switch (location) {
