@@ -226,6 +226,9 @@ export const createPage: EndpointSpec = {
   },
   parameters: [VersionHeaderParam],
   request: {
+    headers: {
+      "Content-Type": "application/json",
+    },
     body: {
       schema: CreatePageParameters,
     },
