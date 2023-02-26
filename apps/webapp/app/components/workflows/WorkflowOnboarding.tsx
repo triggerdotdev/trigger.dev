@@ -1,11 +1,10 @@
+import { InformationCircleIcon } from "@heroicons/react/20/solid";
 import {
   ArrowTopRightOnSquareIcon,
   XMarkIcon,
 } from "@heroicons/react/24/outline";
-import { InformationCircleIcon } from "@heroicons/react/20/solid";
 import { Fragment, useState } from "react";
 import type { TemplateListItem } from "~/presenters/templateListPresenter.server";
-import { obfuscateApiKey } from "~/utils";
 import { CopyTextPanel } from "../CopyTextButton";
 import { PrimaryA, TertiaryButton } from "../primitives/Buttons";
 import { StyledDialog } from "../primitives/Dialog";
@@ -73,10 +72,8 @@ export function WorkflowOnboarding({
                       running this command.
                     </Body>
                     <CopyTextPanel
-                      value={`npm create trigger@latest -k ${apiKey}`}
-                      text={`npm create trigger@latest -k ${obfuscateApiKey(
-                        apiKey
-                      )}`}
+                      value={`npm create trigger@latest --apiKey ${apiKey}`}
+                      text={`npm create trigger --apiKey ${apiKey}`}
                     />
                   </div>
                 </div>

@@ -1,3 +1,4 @@
+import { ArrowTopRightOnSquareIcon } from "@heroicons/react/24/outline";
 import classNames from "classnames";
 import { Fragment } from "react";
 import type { TemplateListItem } from "~/presenters/templateListPresenter.server";
@@ -112,6 +113,7 @@ function TemplateDetails({
           className="!max-w-full"
         >
           View Repo
+          <ArrowTopRightOnSquareIcon className="ml-1 h-4 w-4" />
         </SecondaryA>
         <SecondaryA
           href="https://docs.trigger.dev"
@@ -119,6 +121,7 @@ function TemplateDetails({
           className="!max-w-full"
         >
           View Docs
+          <ArrowTopRightOnSquareIcon className="ml-1 h-4 w-4" />
         </SecondaryA>
       </div>
       <div className="mb-2 flex items-center">
@@ -131,10 +134,11 @@ function TemplateDetails({
         <div className="ml-2 h-px w-full bg-slate-800" />
       </div>
       <Body className="mb-4 text-slate-400">
-        Run this command in your CLI to install the Trigger.dev package and any
-        other packages needed for this template.
+        Run this command in your terminal to create a new project using this
+        template.
       </Body>
       <CopyTextPanel
+        text={`npm create trigger ${template.slug}`}
         value={`npm create trigger@latest ${template.slug} ${
           commandFlags ? ` ${commandFlags}` : ""
         }`}

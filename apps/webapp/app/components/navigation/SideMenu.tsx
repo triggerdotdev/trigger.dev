@@ -1,33 +1,34 @@
+import { EyeIcon, EyeSlashIcon } from "@heroicons/react/20/solid";
 import {
-  SquaresPlusIcon,
   ArrowsRightLeftIcon,
-  UsersIcon,
-  ForwardIcon,
-  ChevronLeftIcon,
   ArrowTopRightOnSquareIcon,
-  PhoneArrowUpRightIcon,
-  EnvelopeIcon,
   BeakerIcon,
-  Squares2X2Icon,
+  ChevronLeftIcon,
   Cog6ToothIcon,
+  EnvelopeIcon,
+  ForwardIcon,
+  PhoneArrowUpRightIcon,
   PlusCircleIcon,
+  Squares2X2Icon,
+  SquaresPlusIcon,
+  UsersIcon,
 } from "@heroicons/react/24/outline";
+import { QuestionMarkCircleIcon } from "@heroicons/react/24/solid";
 import { Link, NavLink } from "@remix-run/react";
+import { useState } from "react";
+import invariant from "tiny-invariant";
+import { useCurrentEnvironment } from "~/hooks/useEnvironments";
 import {
   useCurrentOrganization,
   useOrganizations,
 } from "~/hooks/useOrganizations";
 import { useCurrentWorkflow } from "~/hooks/useWorkflows";
+import { EnvironmentIcon } from "~/routes/resources/environment";
+import { titleCase } from "~/utils";
+import { CopyTextPanel } from "../CopyTextButton";
+import { TertiaryA, TertiaryButton } from "../primitives/Buttons";
 import { Body } from "../primitives/text/Body";
 import { Header1 } from "../primitives/text/Headers";
-import invariant from "tiny-invariant";
-import { CopyText } from "../CopyText";
-import { useCurrentEnvironment } from "~/hooks/useEnvironments";
-import { obfuscateApiKey, titleCase } from "~/utils";
-import { CopyTextPanel } from "../CopyTextButton";
-import { EnvironmentIcon } from "~/routes/resources/environment";
-import { TertiaryButton } from "../primitives/Buttons";
-import { EyeIcon, EyeSlashIcon } from "@heroicons/react/20/solid";
 
 export function SideMenuContainer({ children }: { children: React.ReactNode }) {
   return <div className="grid h-full grid-cols-[300px_2fr]">{children}</div>;
@@ -164,6 +165,8 @@ function SideMenu({
   const organization = useCurrentOrganization();
   invariant(organization, "Organization must be defined");
 
+  const [isShowingKeys, setIsShowingKeys] = useState(false);
+
   return (
     <div className="flex min-h-0 flex-1 flex-col border-r border-slate-800 bg-slate-950">
       <div className="flex flex-1 flex-col overflow-y-auto pb-4">
@@ -205,18 +208,37 @@ function SideMenu({
           <div className="flex flex-col gap-6">
             <ul className="ml-3 mr-2 flex flex-col gap-2">
               <li className="flex w-full items-center justify-between">
-                <Body
-                  size="extra-small"
-                  className={`overflow-hidden text-slate-300 ${menuSmallTitleStyle}`}
-                >
-                  API keys
-                </Body>
-                <TertiaryButton className="group mr-1.5 transition before:text-xs before:text-slate-400 hover:before:content-['Show_keys']">
-                  <EyeIcon className="h-4 w-4 text-slate-500 transition group-hover:text-slate-400" />
-                </TertiaryButton>
-                {/* <TertiaryButton className="group mr-1.5 transition before:text-xs before:text-slate-400 hover:before:content-['Hide_keys']">
-                  <EyeSlashIcon className="h-4 w-4 text-slate-500 transition group-hover:text-slate-400" />
-                </TertiaryButton> */}
+                <div className="flex">
+                  <Body
+                    size="extra-small"
+                    className={`overflow-hidden text-slate-300 ${menuSmallTitleStyle}`}
+                  >
+                    API keys
+                  </Body>
+                  <TertiaryA
+                    href="https://docs.trigger.dev/guides/environments"
+                    target="_blank"
+                    className="group mr-1.5 transition before:text-xs before:text-slate-400"
+                  >
+                    <QuestionMarkCircleIcon className="h-4 w-4 text-slate-500 transition group-hover:text-slate-400" />
+                  </TertiaryA>
+                </div>
+
+                {!isShowingKeys ? (
+                  <TertiaryButton
+                    onClick={() => setIsShowingKeys(true)}
+                    className="group mr-1.5 transition before:text-xs before:text-slate-400 hover:before:content-['Show_keys']"
+                  >
+                    <EyeIcon className="h-4 w-4 text-slate-500 transition group-hover:text-slate-400" />
+                  </TertiaryButton>
+                ) : (
+                  <TertiaryButton
+                    onClick={() => setIsShowingKeys(false)}
+                    className="group mr-1.5 transition before:text-xs before:text-slate-400 hover:before:content-['Hide_keys']"
+                  >
+                    <EyeSlashIcon className="h-4 w-4 text-slate-500 transition group-hover:text-slate-400" />
+                  </TertiaryButton>
+                )}
               </li>
               {organization.environments.map((environment) => {
                 return (
@@ -231,7 +253,11 @@ function SideMenu({
                       />
                       <CopyTextPanel
                         value={environment.apiKey}
-                        text={`${titleCase(environment.slug)} API key`}
+                        text={
+                          isShowingKeys
+                            ? environment.apiKey
+                            : `${titleCase(environment.slug)}`
+                        }
                         variant="slate"
                         className="pl-6 text-slate-300 hover:text-slate-300"
                       />

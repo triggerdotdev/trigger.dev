@@ -10,6 +10,7 @@ import { Body } from "~/components/primitives/text/Body";
 import { Header4 } from "~/components/primitives/text/Headers";
 import type { MatchedOrganization } from "~/hooks/useOrganizations";
 import { useOrganizations } from "~/hooks/useOrganizations";
+import { environmentShortName } from "~/utils";
 
 export default function AppLayout() {
   const organizations = useOrganizations();
@@ -97,7 +98,7 @@ function OrganizationGridItem({
             <div key={environment.id} className="flex w-full items-center">
               <CopyTextPanel
                 value={environment.apiKey}
-                text="Dev API Key"
+                text={`${environmentShortName(environment.slug)} API Key`}
                 variant="slate"
                 className="w-full text-slate-500"
               />
