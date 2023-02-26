@@ -242,6 +242,22 @@ export const createPage: EndpointSpec = {
   ],
 };
 
+//todo update page
+
+//todo get block
+//todo update block
+//todo retrieve block children
+//todo append block children
+//todo delete block
+
+//todo get database
+//todo query database
+//todo create database
+//todo Update database
+
+//todo get comments
+//todo create comment
+
 export const search: EndpointSpec = {
   path: "/search",
   method: "POST",
