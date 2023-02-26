@@ -22,7 +22,7 @@ export function TemplateOverview({
     <div
       className={classNames(
         className,
-        "grid w-full grid-cols-1 gap-8 rounded-lg bg-slate-850 pl-8 text-left md:grid-cols-[20rem_minmax(0,_1fr)]"
+        "grid w-full grid-cols-1 gap-8 rounded-lg bg-slate-850 pl-8 text-left md:grid-cols-[24rem_minmax(0,_1fr)]"
       )}
     >
       <div className="sticky top-4 flex h-max flex-col rounded-r">
