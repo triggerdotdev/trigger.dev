@@ -3,7 +3,7 @@ import { LanguageRequest } from "./blockResponses";
 import { EmptyObject, ApiColor, IdRequest } from "./common";
 import { EmojiRequest } from "./emoji";
 import { TextRequest } from "./requests";
-import { RichTextItemRequest } from "./RichTextItemRequest";
+import { RichTextItemRequest } from "./richTextItemRequest";
 
 export const BlockObjectRequestWithoutChildren: JSONSchema = {
   anyOf: [
