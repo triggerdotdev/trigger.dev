@@ -1,53 +1,45 @@
 import { JSONSchema } from "core/schemas/types";
+import { EmptyObject } from "../common";
+import { UserObjectResponse } from "../person";
 
 export const ListUsersQueryParameters: JSONSchema = {
-  "type": "object",
-  "properties": {
-    "start_cursor": {
-      "type": "string"
+  type: "object",
+  properties: {
+    start_cursor: {
+      type: "string",
     },
-    "page_size": {
-      "type": "number"
-    }
+    page_size: {
+      type: "number",
+    },
   },
-  "additionalProperties": false
+  additionalProperties: false,
 };
 
 export const ListUsersParameters: JSONSchema = ListUsersQueryParameters;
 
 export const ListUsersResponse: JSONSchema = {
-  "type": "object",
-  "properties": {
-    "type": {
-      "type": "string",
-      "const": "user"
+  type: "object",
+  properties: {
+    type: {
+      type: "string",
+      const: "user",
     },
-    "user": EmptyObject,
-    "object": {
-      "type": "string",
-      "const": "list"
+    user: EmptyObject,
+    object: {
+      type: "string",
+      const: "list",
     },
-    "next_cursor": {
-      "type": [
-        "string",
-        "null"
-      ]
+    next_cursor: {
+      type: ["string", "null"],
     },
-    "has_more": {
-      "type": "boolean"
+    has_more: {
+      type: "boolean",
     },
-    "results": {
-      "type": "array",
-      "items": UserObjectResponse
-    }
+    results: {
+      type: "array",
+      items: UserObjectResponse,
+    },
   },
-  "required": [
-    "type",
-    "user",
-    "object",
-    "next_cursor",
-    "has_more",
-    "results"
-  ],
-  "additionalProperties": false
+  required: ["type", "user", "object", "next_cursor", "has_more", "results"],
+  additionalProperties: false,
 };

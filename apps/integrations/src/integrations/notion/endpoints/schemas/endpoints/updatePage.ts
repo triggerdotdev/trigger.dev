@@ -1,1182 +1,1003 @@
 import { JSONSchema } from "core/schemas/types";
+import { EmptyObject, IdRequest, SelectColor, StringRequest } from "../common";
+import { DateRequest } from "../dateRequest";
+import { EmojiRequest } from "../emoji";
+import { PageObjectResponse, PartialPageObjectResponse } from "../page";
+import { PartialUserObjectResponse } from "../person";
+import { TextRequest } from "../requests";
+import { RichTextItemRequest } from "../richTextItemRequest";
 
 export const UpdatePagePathParameters: JSONSchema = {
-  "type": "object",
-  "properties": {
-    "page_id": IdRequest
+  type: "object",
+  properties: {
+    page_id: IdRequest,
   },
-  "required": [
-    "page_id"
-  ],
-  "additionalProperties": false
+  required: ["page_id"],
+  additionalProperties: false,
 };
 
 export const UpdatePageBodyParametersProperties1: JSONSchema = {
-  "type": "object",
-  "additionalProperties": {
-    "anyOf": [
+  type: "object",
+  additionalProperties: {
+    anyOf: [
       {
-        "type": "object",
-        "properties": {
-          "title": {
-            "type": "array",
-            "items": RichTextItemRequest
+        type: "object",
+        properties: {
+          title: {
+            type: "array",
+            items: RichTextItemRequest,
           },
-          "type": {
-            "type": "string",
-            "const": "title"
-          }
+          type: {
+            type: "string",
+            const: "title",
+          },
         },
-        "required": [
-          "title"
-        ],
-        "additionalProperties": false
+        required: ["title"],
+        additionalProperties: false,
       },
       {
-        "type": "object",
-        "properties": {
-          "rich_text": {
-            "type": "array",
-            "items": RichTextItemRequest
+        type: "object",
+        properties: {
+          rich_text: {
+            type: "array",
+            items: RichTextItemRequest,
           },
-          "type": {
-            "type": "string",
-            "const": "rich_text"
-          }
+          type: {
+            type: "string",
+            const: "rich_text",
+          },
         },
-        "required": [
-          "rich_text"
-        ],
-        "additionalProperties": false
+        required: ["rich_text"],
+        additionalProperties: false,
       },
       {
-        "type": "object",
-        "properties": {
-          "number": {
-            "type": [
-              "number",
-              "null"
-            ]
+        type: "object",
+        properties: {
+          number: {
+            type: ["number", "null"],
           },
-          "type": {
-            "type": "string",
-            "const": "number"
-          }
+          type: {
+            type: "string",
+            const: "number",
+          },
         },
-        "required": [
-          "number"
-        ],
-        "additionalProperties": false
+        required: ["number"],
+        additionalProperties: false,
       },
       {
-        "type": "object",
-        "properties": {
-          "url": {
-            "anyOf": [
+        type: "object",
+        properties: {
+          url: {
+            anyOf: [
               TextRequest,
               {
-                "type": "null"
-              }
-            ]
+                type: "null",
+              },
+            ],
           },
-          "type": {
-            "type": "string",
-            "const": "url"
-          }
+          type: {
+            type: "string",
+            const: "url",
+          },
         },
-        "required": [
-          "url"
-        ],
-        "additionalProperties": false
+        required: ["url"],
+        additionalProperties: false,
       },
       {
-        "type": "object",
-        "properties": {
-          "select": {
-            "anyOf": [
+        type: "object",
+        properties: {
+          select: {
+            anyOf: [
               {
-                "type": "object",
-                "properties": {
-                  "id": StringRequest,
-                  "name": StringRequest,
-                  "color": SelectColor
+                type: "object",
+                properties: {
+                  id: StringRequest,
+                  name: StringRequest,
+                  color: SelectColor,
                 },
-                "required": [
-                  "id"
-                ],
-                "additionalProperties": false
+                required: ["id"],
+                additionalProperties: false,
               },
               {
-                "type": "null"
+                type: "null",
               },
               {
-                "type": "object",
-                "properties": {
-                  "name": StringRequest,
-                  "id": StringRequest,
-                  "color": SelectColor
+                type: "object",
+                properties: {
+                  name: StringRequest,
+                  id: StringRequest,
+                  color: SelectColor,
                 },
-                "required": [
-                  "name"
-                ],
-                "additionalProperties": false
-              }
-            ]
+                required: ["name"],
+                additionalProperties: false,
+              },
+            ],
           },
-          "type": {
-            "type": "string",
-            "const": "select"
-          }
+          type: {
+            type: "string",
+            const: "select",
+          },
         },
-        "required": [
-          "select"
-        ],
-        "additionalProperties": false
+        required: ["select"],
+        additionalProperties: false,
       },
       {
-        "type": "object",
-        "properties": {
-          "multi_select": {
-            "type": "array",
-            "items": {
-              "anyOf": [
+        type: "object",
+        properties: {
+          multi_select: {
+            type: "array",
+            items: {
+              anyOf: [
                 {
-                  "type": "object",
-                  "properties": {
-                    "id": StringRequest,
-                    "name": StringRequest,
-                    "color": SelectColor
+                  type: "object",
+                  properties: {
+                    id: StringRequest,
+                    name: StringRequest,
+                    color: SelectColor,
                   },
-                  "required": [
-                    "id"
-                  ],
-                  "additionalProperties": false
+                  required: ["id"],
+                  additionalProperties: false,
                 },
                 {
-                  "type": "object",
-                  "properties": {
-                    "name": StringRequest,
-                    "id": StringRequest,
-                    "color": SelectColor
+                  type: "object",
+                  properties: {
+                    name: StringRequest,
+                    id: StringRequest,
+                    color: SelectColor,
                   },
-                  "required": [
-                    "name"
-                  ],
-                  "additionalProperties": false
-                }
-              ]
-            }
+                  required: ["name"],
+                  additionalProperties: false,
+                },
+              ],
+            },
           },
-          "type": {
-            "type": "string",
-            "const": "multi_select"
-          }
+          type: {
+            type: "string",
+            const: "multi_select",
+          },
         },
-        "required": [
-          "multi_select"
-        ],
-        "additionalProperties": false
+        required: ["multi_select"],
+        additionalProperties: false,
       },
       {
-        "type": "object",
-        "properties": {
-          "people": {
-            "type": "array",
-            "items": {
-              "anyOf": [
+        type: "object",
+        properties: {
+          people: {
+            type: "array",
+            items: {
+              anyOf: [
                 {
-                  "type": "object",
-                  "properties": {
-                    "id": IdRequest
+                  type: "object",
+                  properties: {
+                    id: IdRequest,
                   },
-                  "required": [
-                    "id"
-                  ],
-                  "additionalProperties": false
+                  required: ["id"],
+                  additionalProperties: false,
                 },
                 {
-                  "type": "object",
-                  "properties": {
-                    "person": {
-                      "type": "object",
-                      "properties": {
-                        "email": {
-                          "type": "string"
-                        }
+                  type: "object",
+                  properties: {
+                    person: {
+                      type: "object",
+                      properties: {
+                        email: {
+                          type: "string",
+                        },
                       },
-                      "additionalProperties": false
+                      additionalProperties: false,
                     },
-                    "id": IdRequest,
-                    "type": {
-                      "type": "string",
-                      "const": "person"
+                    id: IdRequest,
+                    type: {
+                      type: "string",
+                      const: "person",
                     },
-                    "name": {
-                      "type": [
-                        "string",
-                        "null"
-                      ]
+                    name: {
+                      type: ["string", "null"],
                     },
-                    "avatar_url": {
-                      "type": [
-                        "string",
-                        "null"
-                      ]
+                    avatar_url: {
+                      type: ["string", "null"],
                     },
-                    "object": {
-                      "type": "string",
-                      "const": "user"
-                    }
+                    object: {
+                      type: "string",
+                      const: "user",
+                    },
                   },
-                  "required": [
-                    "person",
-                    "id"
-                  ],
-                  "additionalProperties": false
+                  required: ["person", "id"],
+                  additionalProperties: false,
                 },
                 {
-                  "type": "object",
-                  "properties": {
-                    "bot": {
-                      "anyOf": [
+                  type: "object",
+                  properties: {
+                    bot: {
+                      anyOf: [
                         EmptyObject,
                         {
-                          "type": "object",
-                          "properties": {
-                            "owner": {
-                              "anyOf": [
+                          type: "object",
+                          properties: {
+                            owner: {
+                              anyOf: [
                                 {
-                                  "type": "object",
-                                  "properties": {
-                                    "type": {
-                                      "type": "string",
-                                      "const": "user"
+                                  type: "object",
+                                  properties: {
+                                    type: {
+                                      type: "string",
+                                      const: "user",
                                     },
-                                    "user": {
-                                      "anyOf": [
+                                    user: {
+                                      anyOf: [
                                         {
-                                          "type": "object",
-                                          "properties": {
-                                            "type": {
-                                              "type": "string",
-                                              "const": "person"
+                                          type: "object",
+                                          properties: {
+                                            type: {
+                                              type: "string",
+                                              const: "person",
                                             },
-                                            "person": {
-                                              "type": "object",
-                                              "properties": {
-                                                "email": {
-                                                  "type": "string"
-                                                }
+                                            person: {
+                                              type: "object",
+                                              properties: {
+                                                email: {
+                                                  type: "string",
+                                                },
                                               },
-                                              "required": [
-                                                "email"
-                                              ],
-                                              "additionalProperties": false
+                                              required: ["email"],
+                                              additionalProperties: false,
                                             },
-                                            "name": {
-                                              "type": [
-                                                "string",
-                                                "null"
-                                              ]
+                                            name: {
+                                              type: ["string", "null"],
                                             },
-                                            "avatar_url": {
-                                              "type": [
-                                                "string",
-                                                "null"
-                                              ]
+                                            avatar_url: {
+                                              type: ["string", "null"],
                                             },
-                                            "id": IdRequest,
-                                            "object": {
-                                              "type": "string",
-                                              "const": "user"
-                                            }
+                                            id: IdRequest,
+                                            object: {
+                                              type: "string",
+                                              const: "user",
+                                            },
                                           },
-                                          "required": [
+                                          required: [
                                             "type",
                                             "person",
                                             "name",
                                             "avatar_url",
                                             "id",
-                                            "object"
+                                            "object",
                                           ],
-                                          "additionalProperties": false
+                                          additionalProperties: false,
                                         },
-                                        PartialUserObjectResponse
-                                      ]
-                                    }
+                                        PartialUserObjectResponse,
+                                      ],
+                                    },
                                   },
-                                  "required": [
-                                    "type",
-                                    "user"
-                                  ],
-                                  "additionalProperties": false
+                                  required: ["type", "user"],
+                                  additionalProperties: false,
                                 },
                                 {
-                                  "type": "object",
-                                  "properties": {
-                                    "type": {
-                                      "type": "string",
-                                      "const": "workspace"
+                                  type: "object",
+                                  properties: {
+                                    type: {
+                                      type: "string",
+                                      const: "workspace",
                                     },
-                                    "workspace": {
-                                      "type": "boolean",
-                                      "const": true
-                                    }
+                                    workspace: {
+                                      type: "boolean",
+                                      const: true,
+                                    },
                                   },
-                                  "required": [
-                                    "type",
-                                    "workspace"
-                                  ],
-                                  "additionalProperties": false
-                                }
-                              ]
+                                  required: ["type", "workspace"],
+                                  additionalProperties: false,
+                                },
+                              ],
                             },
-                            "workspace_name": {
-                              "type": [
-                                "string",
-                                "null"
-                              ]
-                            }
+                            workspace_name: {
+                              type: ["string", "null"],
+                            },
                           },
-                          "required": [
-                            "owner",
-                            "workspace_name"
-                          ],
-                          "additionalProperties": false
-                        }
-                      ]
+                          required: ["owner", "workspace_name"],
+                          additionalProperties: false,
+                        },
+                      ],
                     },
-                    "id": IdRequest,
-                    "type": {
-                      "type": "string",
-                      "const": "bot"
+                    id: IdRequest,
+                    type: {
+                      type: "string",
+                      const: "bot",
                     },
-                    "name": {
-                      "type": [
-                        "string",
-                        "null"
-                      ]
+                    name: {
+                      type: ["string", "null"],
                     },
-                    "avatar_url": {
-                      "type": [
-                        "string",
-                        "null"
-                      ]
+                    avatar_url: {
+                      type: ["string", "null"],
                     },
-                    "object": {
-                      "type": "string",
-                      "const": "user"
-                    }
+                    object: {
+                      type: "string",
+                      const: "user",
+                    },
                   },
-                  "required": [
-                    "bot",
-                    "id"
-                  ],
-                  "additionalProperties": false
-                }
-              ]
-            }
+                  required: ["bot", "id"],
+                  additionalProperties: false,
+                },
+              ],
+            },
           },
-          "type": {
-            "type": "string",
-            "const": "people"
-          }
+          type: {
+            type: "string",
+            const: "people",
+          },
         },
-        "required": [
-          "people"
-        ],
-        "additionalProperties": false
+        required: ["people"],
+        additionalProperties: false,
       },
       {
-        "type": "object",
-        "properties": {
-          "email": {
-            "anyOf": [
+        type: "object",
+        properties: {
+          email: {
+            anyOf: [
               StringRequest,
               {
-                "type": "null"
-              }
-            ]
+                type: "null",
+              },
+            ],
           },
-          "type": {
-            "type": "string",
-            "const": "email"
-          }
+          type: {
+            type: "string",
+            const: "email",
+          },
         },
-        "required": [
-          "email"
-        ],
-        "additionalProperties": false
+        required: ["email"],
+        additionalProperties: false,
       },
       {
-        "type": "object",
-        "properties": {
-          "phone_number": {
-            "anyOf": [
+        type: "object",
+        properties: {
+          phone_number: {
+            anyOf: [
               StringRequest,
               {
-                "type": "null"
-              }
-            ]
+                type: "null",
+              },
+            ],
           },
-          "type": {
-            "type": "string",
-            "const": "phone_number"
-          }
+          type: {
+            type: "string",
+            const: "phone_number",
+          },
         },
-        "required": [
-          "phone_number"
-        ],
-        "additionalProperties": false
+        required: ["phone_number"],
+        additionalProperties: false,
       },
       {
-        "type": "object",
-        "properties": {
-          "date": {
-            "anyOf": [
+        type: "object",
+        properties: {
+          date: {
+            anyOf: [
               DateRequest,
               {
-                "type": "null"
-              }
-            ]
-          },
-          "type": {
-            "type": "string",
-            "const": "date"
-          }
-        },
-        "required": [
-          "date"
-        ],
-        "additionalProperties": false
-      },
-      {
-        "type": "object",
-        "properties": {
-          "checkbox": {
-            "type": "boolean"
-          },
-          "type": {
-            "type": "string",
-            "const": "checkbox"
-          }
-        },
-        "required": [
-          "checkbox"
-        ],
-        "additionalProperties": false
-      },
-      {
-        "type": "object",
-        "properties": {
-          "relation": {
-            "type": "array",
-            "items": {
-              "type": "object",
-              "properties": {
-                "id": IdRequest
+                type: "null",
               },
-              "required": [
-                "id"
-              ],
-              "additionalProperties": false
-            }
+            ],
           },
-          "type": {
-            "type": "string",
-            "const": "relation"
-          }
+          type: {
+            type: "string",
+            const: "date",
+          },
         },
-        "required": [
-          "relation"
-        ],
-        "additionalProperties": false
+        required: ["date"],
+        additionalProperties: false,
       },
       {
-        "type": "object",
-        "properties": {
-          "files": {
-            "type": "array",
-            "items": {
-              "anyOf": [
+        type: "object",
+        properties: {
+          checkbox: {
+            type: "boolean",
+          },
+          type: {
+            type: "string",
+            const: "checkbox",
+          },
+        },
+        required: ["checkbox"],
+        additionalProperties: false,
+      },
+      {
+        type: "object",
+        properties: {
+          relation: {
+            type: "array",
+            items: {
+              type: "object",
+              properties: {
+                id: IdRequest,
+              },
+              required: ["id"],
+              additionalProperties: false,
+            },
+          },
+          type: {
+            type: "string",
+            const: "relation",
+          },
+        },
+        required: ["relation"],
+        additionalProperties: false,
+      },
+      {
+        type: "object",
+        properties: {
+          files: {
+            type: "array",
+            items: {
+              anyOf: [
                 {
-                  "type": "object",
-                  "properties": {
-                    "file": {
-                      "type": "object",
-                      "properties": {
-                        "url": {
-                          "type": "string"
+                  type: "object",
+                  properties: {
+                    file: {
+                      type: "object",
+                      properties: {
+                        url: {
+                          type: "string",
                         },
-                        "expiry_time": {
-                          "type": "string"
-                        }
+                        expiry_time: {
+                          type: "string",
+                        },
                       },
-                      "required": [
-                        "url"
-                      ],
-                      "additionalProperties": false
+                      required: ["url"],
+                      additionalProperties: false,
                     },
-                    "name": StringRequest,
-                    "type": {
-                      "type": "string",
-                      "const": "file"
-                    }
+                    name: StringRequest,
+                    type: {
+                      type: "string",
+                      const: "file",
+                    },
                   },
-                  "required": [
-                    "file",
-                    "name"
-                  ],
-                  "additionalProperties": false
+                  required: ["file", "name"],
+                  additionalProperties: false,
                 },
                 {
-                  "type": "object",
-                  "properties": {
-                    "external": {
-                      "type": "object",
-                      "properties": {
-                        "url": TextRequest
+                  type: "object",
+                  properties: {
+                    external: {
+                      type: "object",
+                      properties: {
+                        url: TextRequest,
                       },
-                      "required": [
-                        "url"
-                      ],
-                      "additionalProperties": false
+                      required: ["url"],
+                      additionalProperties: false,
                     },
-                    "name": StringRequest,
-                    "type": {
-                      "type": "string",
-                      "const": "external"
-                    }
+                    name: StringRequest,
+                    type: {
+                      type: "string",
+                      const: "external",
+                    },
                   },
-                  "required": [
-                    "external",
-                    "name"
-                  ],
-                  "additionalProperties": false
-                }
-              ]
-            }
+                  required: ["external", "name"],
+                  additionalProperties: false,
+                },
+              ],
+            },
           },
-          "type": {
-            "type": "string",
-            "const": "files"
-          }
+          type: {
+            type: "string",
+            const: "files",
+          },
         },
-        "required": [
-          "files"
-        ],
-        "additionalProperties": false
+        required: ["files"],
+        additionalProperties: false,
       },
       {
-        "type": "object",
-        "properties": {
-          "status": {
-            "anyOf": [
+        type: "object",
+        properties: {
+          status: {
+            anyOf: [
               {
-                "type": "object",
-                "properties": {
-                  "id": StringRequest,
-                  "name": StringRequest,
-                  "color": SelectColor
+                type: "object",
+                properties: {
+                  id: StringRequest,
+                  name: StringRequest,
+                  color: SelectColor,
                 },
-                "required": [
-                  "id"
-                ],
-                "additionalProperties": false
+                required: ["id"],
+                additionalProperties: false,
               },
               {
-                "type": "null"
+                type: "null",
               },
               {
-                "type": "object",
-                "properties": {
-                  "name": StringRequest,
-                  "id": StringRequest,
-                  "color": SelectColor
+                type: "object",
+                properties: {
+                  name: StringRequest,
+                  id: StringRequest,
+                  color: SelectColor,
                 },
-                "required": [
-                  "name"
-                ],
-                "additionalProperties": false
-              }
-            ]
+                required: ["name"],
+                additionalProperties: false,
+              },
+            ],
           },
-          "type": {
-            "type": "string",
-            "const": "status"
-          }
+          type: {
+            type: "string",
+            const: "status",
+          },
         },
-        "required": [
-          "status"
-        ],
-        "additionalProperties": false
-      }
-    ]
-  }
+        required: ["status"],
+        additionalProperties: false,
+      },
+    ],
+  },
 };
 
 export const UpdatePageBodyParametersProperties2: JSONSchema = {
-  "type": "object",
-  "additionalProperties": {
-    "anyOf": [
+  type: "object",
+  additionalProperties: {
+    anyOf: [
       {
-        "type": "array",
-        "items": RichTextItemRequest
+        type: "array",
+        items: RichTextItemRequest,
       },
       {
-        "type": "number"
+        type: "number",
       },
       {
-        "type": "null"
+        type: "null",
       },
       TextRequest,
       {
-        "type": "object",
-        "properties": {
-          "id": StringRequest,
-          "name": StringRequest,
-          "color": SelectColor
+        type: "object",
+        properties: {
+          id: StringRequest,
+          name: StringRequest,
+          color: SelectColor,
         },
-        "required": [
-          "id"
-        ],
-        "additionalProperties": false
+        required: ["id"],
+        additionalProperties: false,
       },
       {
-        "type": "object",
-        "properties": {
-          "name": StringRequest,
-          "id": StringRequest,
-          "color": SelectColor
+        type: "object",
+        properties: {
+          name: StringRequest,
+          id: StringRequest,
+          color: SelectColor,
         },
-        "required": [
-          "name"
-        ],
-        "additionalProperties": false
+        required: ["name"],
+        additionalProperties: false,
       },
       {
-        "type": "array",
-        "items": {
-          "anyOf": [
+        type: "array",
+        items: {
+          anyOf: [
             {
-              "type": "object",
-              "properties": {
-                "id": StringRequest,
-                "name": StringRequest,
-                "color": SelectColor
+              type: "object",
+              properties: {
+                id: StringRequest,
+                name: StringRequest,
+                color: SelectColor,
               },
-              "required": [
-                "id"
-              ],
-              "additionalProperties": false
+              required: ["id"],
+              additionalProperties: false,
             },
             {
-              "type": "object",
-              "properties": {
-                "name": StringRequest,
-                "id": StringRequest,
-                "color": SelectColor
+              type: "object",
+              properties: {
+                name: StringRequest,
+                id: StringRequest,
+                color: SelectColor,
               },
-              "required": [
-                "name"
-              ],
-              "additionalProperties": false
-            }
-          ]
-        }
+              required: ["name"],
+              additionalProperties: false,
+            },
+          ],
+        },
       },
       {
-        "type": "array",
-        "items": {
-          "anyOf": [
+        type: "array",
+        items: {
+          anyOf: [
             {
-              "type": "object",
-              "properties": {
-                "id": IdRequest
+              type: "object",
+              properties: {
+                id: IdRequest,
               },
-              "required": [
-                "id"
-              ],
-              "additionalProperties": false
+              required: ["id"],
+              additionalProperties: false,
             },
             {
-              "type": "object",
-              "properties": {
-                "person": {
-                  "type": "object",
-                  "properties": {
-                    "email": {
-                      "type": "string"
-                    }
+              type: "object",
+              properties: {
+                person: {
+                  type: "object",
+                  properties: {
+                    email: {
+                      type: "string",
+                    },
                   },
-                  "additionalProperties": false
+                  additionalProperties: false,
                 },
-                "id": IdRequest,
-                "type": {
-                  "type": "string",
-                  "const": "person"
+                id: IdRequest,
+                type: {
+                  type: "string",
+                  const: "person",
                 },
-                "name": {
-                  "type": [
-                    "string",
-                    "null"
-                  ]
+                name: {
+                  type: ["string", "null"],
                 },
-                "avatar_url": {
-                  "type": [
-                    "string",
-                    "null"
-                  ]
+                avatar_url: {
+                  type: ["string", "null"],
                 },
-                "object": {
-                  "type": "string",
-                  "const": "user"
-                }
+                object: {
+                  type: "string",
+                  const: "user",
+                },
               },
-              "required": [
-                "person",
-                "id"
-              ],
-              "additionalProperties": false
+              required: ["person", "id"],
+              additionalProperties: false,
             },
             {
-              "type": "object",
-              "properties": {
-                "bot": {
-                  "anyOf": [
+              type: "object",
+              properties: {
+                bot: {
+                  anyOf: [
                     EmptyObject,
                     {
-                      "type": "object",
-                      "properties": {
-                        "owner": {
-                          "anyOf": [
+                      type: "object",
+                      properties: {
+                        owner: {
+                          anyOf: [
                             {
-                              "type": "object",
-                              "properties": {
-                                "type": {
-                                  "type": "string",
-                                  "const": "user"
+                              type: "object",
+                              properties: {
+                                type: {
+                                  type: "string",
+                                  const: "user",
                                 },
-                                "user": {
-                                  "anyOf": [
+                                user: {
+                                  anyOf: [
                                     {
-                                      "type": "object",
-                                      "properties": {
-                                        "type": {
-                                          "type": "string",
-                                          "const": "person"
+                                      type: "object",
+                                      properties: {
+                                        type: {
+                                          type: "string",
+                                          const: "person",
                                         },
-                                        "person": {
-                                          "type": "object",
-                                          "properties": {
-                                            "email": {
-                                              "type": "string"
-                                            }
+                                        person: {
+                                          type: "object",
+                                          properties: {
+                                            email: {
+                                              type: "string",
+                                            },
                                           },
-                                          "required": [
-                                            "email"
-                                          ],
-                                          "additionalProperties": false
+                                          required: ["email"],
+                                          additionalProperties: false,
                                         },
-                                        "name": {
-                                          "type": [
-                                            "string",
-                                            "null"
-                                          ]
+                                        name: {
+                                          type: ["string", "null"],
                                         },
-                                        "avatar_url": {
-                                          "type": [
-                                            "string",
-                                            "null"
-                                          ]
+                                        avatar_url: {
+                                          type: ["string", "null"],
                                         },
-                                        "id": IdRequest,
-                                        "object": {
-                                          "type": "string",
-                                          "const": "user"
-                                        }
+                                        id: IdRequest,
+                                        object: {
+                                          type: "string",
+                                          const: "user",
+                                        },
                                       },
-                                      "required": [
+                                      required: [
                                         "type",
                                         "person",
                                         "name",
                                         "avatar_url",
                                         "id",
-                                        "object"
+                                        "object",
                                       ],
-                                      "additionalProperties": false
+                                      additionalProperties: false,
                                     },
-                                    PartialUserObjectResponse
-                                  ]
-                                }
+                                    PartialUserObjectResponse,
+                                  ],
+                                },
                               },
-                              "required": [
-                                "type",
-                                "user"
-                              ],
-                              "additionalProperties": false
+                              required: ["type", "user"],
+                              additionalProperties: false,
                             },
                             {
-                              "type": "object",
-                              "properties": {
-                                "type": {
-                                  "type": "string",
-                                  "const": "workspace"
+                              type: "object",
+                              properties: {
+                                type: {
+                                  type: "string",
+                                  const: "workspace",
                                 },
-                                "workspace": {
-                                  "type": "boolean",
-                                  "const": true
-                                }
+                                workspace: {
+                                  type: "boolean",
+                                  const: true,
+                                },
                               },
-                              "required": [
-                                "type",
-                                "workspace"
-                              ],
-                              "additionalProperties": false
-                            }
-                          ]
+                              required: ["type", "workspace"],
+                              additionalProperties: false,
+                            },
+                          ],
                         },
-                        "workspace_name": {
-                          "type": [
-                            "string",
-                            "null"
-                          ]
-                        }
+                        workspace_name: {
+                          type: ["string", "null"],
+                        },
                       },
-                      "required": [
-                        "owner",
-                        "workspace_name"
-                      ],
-                      "additionalProperties": false
-                    }
-                  ]
+                      required: ["owner", "workspace_name"],
+                      additionalProperties: false,
+                    },
+                  ],
                 },
-                "id": IdRequest,
-                "type": {
-                  "type": "string",
-                  "const": "bot"
+                id: IdRequest,
+                type: {
+                  type: "string",
+                  const: "bot",
                 },
-                "name": {
-                  "type": [
-                    "string",
-                    "null"
-                  ]
+                name: {
+                  type: ["string", "null"],
                 },
-                "avatar_url": {
-                  "type": [
-                    "string",
-                    "null"
-                  ]
+                avatar_url: {
+                  type: ["string", "null"],
                 },
-                "object": {
-                  "type": "string",
-                  "const": "user"
-                }
+                object: {
+                  type: "string",
+                  const: "user",
+                },
               },
-              "required": [
-                "bot",
-                "id"
-              ],
-              "additionalProperties": false
-            }
-          ]
-        }
+              required: ["bot", "id"],
+              additionalProperties: false,
+            },
+          ],
+        },
       },
       StringRequest,
       DateRequest,
       {
-        "type": "boolean"
+        type: "boolean",
       },
       {
-        "type": "array",
-        "items": {
-          "type": "object",
-          "properties": {
-            "id": IdRequest
+        type: "array",
+        items: {
+          type: "object",
+          properties: {
+            id: IdRequest,
           },
-          "required": [
-            "id"
-          ],
-          "additionalProperties": false
-        }
+          required: ["id"],
+          additionalProperties: false,
+        },
       },
       {
-        "type": "array",
-        "items": {
-          "anyOf": [
+        type: "array",
+        items: {
+          anyOf: [
             {
-              "type": "object",
-              "properties": {
-                "file": {
-                  "type": "object",
-                  "properties": {
-                    "url": {
-                      "type": "string"
+              type: "object",
+              properties: {
+                file: {
+                  type: "object",
+                  properties: {
+                    url: {
+                      type: "string",
                     },
-                    "expiry_time": {
-                      "type": "string"
-                    }
+                    expiry_time: {
+                      type: "string",
+                    },
                   },
-                  "required": [
-                    "url"
-                  ],
-                  "additionalProperties": false
+                  required: ["url"],
+                  additionalProperties: false,
                 },
-                "name": StringRequest,
-                "type": {
-                  "type": "string",
-                  "const": "file"
-                }
+                name: StringRequest,
+                type: {
+                  type: "string",
+                  const: "file",
+                },
               },
-              "required": [
-                "file",
-                "name"
-              ],
-              "additionalProperties": false
+              required: ["file", "name"],
+              additionalProperties: false,
             },
             {
-              "type": "object",
-              "properties": {
-                "external": {
-                  "type": "object",
-                  "properties": {
-                    "url": TextRequest
+              type: "object",
+              properties: {
+                external: {
+                  type: "object",
+                  properties: {
+                    url: TextRequest,
                   },
-                  "required": [
-                    "url"
-                  ],
-                  "additionalProperties": false
+                  required: ["url"],
+                  additionalProperties: false,
                 },
-                "name": StringRequest,
-                "type": {
-                  "type": "string",
-                  "const": "external"
-                }
+                name: StringRequest,
+                type: {
+                  type: "string",
+                  const: "external",
+                },
               },
-              "required": [
-                "external",
-                "name"
-              ],
-              "additionalProperties": false
-            }
-          ]
-        }
+              required: ["external", "name"],
+              additionalProperties: false,
+            },
+          ],
+        },
       },
       {
-        "type": "object",
-        "properties": {
-          "id": StringRequest,
-          "name": StringRequest,
-          "color": SelectColor
+        type: "object",
+        properties: {
+          id: StringRequest,
+          name: StringRequest,
+          color: SelectColor,
         },
-        "required": [
-          "id"
-        ],
-        "additionalProperties": false
+        required: ["id"],
+        additionalProperties: false,
       },
       {
-        "type": "object",
-        "properties": {
-          "name": StringRequest,
-          "id": StringRequest,
-          "color": SelectColor
+        type: "object",
+        properties: {
+          name: StringRequest,
+          id: StringRequest,
+          color: SelectColor,
         },
-        "required": [
-          "name"
-        ],
-        "additionalProperties": false
-      }
-    ]
-  }
+        required: ["name"],
+        additionalProperties: false,
+      },
+    ],
+  },
 };
 
 export const UpdatePageBodyParameters: JSONSchema = {
-  "type": "object",
-  "properties": {
-    "properties": {
-      "anyOf": [
+  type: "object",
+  properties: {
+    properties: {
+      anyOf: [
         UpdatePageBodyParametersProperties1,
-        UpdatePageBodyParametersProperties2
-      ]
+        UpdatePageBodyParametersProperties2,
+      ],
     },
-    "icon": {
-      "anyOf": [
+    icon: {
+      anyOf: [
         {
-          "type": "object",
-          "properties": {
-            "emoji": EmojiRequest,
-            "type": {
-              "type": "string",
-              "const": "emoji"
-            }
-          },
-          "required": [
-            "emoji"
-          ],
-          "additionalProperties": false
-        },
-        {
-          "type": "null"
-        },
-        {
-          "type": "object",
-          "properties": {
-            "external": {
-              "type": "object",
-              "properties": {
-                "url": TextRequest
-              },
-              "required": [
-                "url"
-              ],
-              "additionalProperties": false
+          type: "object",
+          properties: {
+            emoji: EmojiRequest,
+            type: {
+              type: "string",
+              const: "emoji",
             },
-            "type": {
-              "type": "string",
-              "const": "external"
-            }
           },
-          "required": [
-            "external"
-          ],
-          "additionalProperties": false
-        }
-      ]
-    },
-    "cover": {
-      "anyOf": [
-        {
-          "type": "object",
-          "properties": {
-            "external": {
-              "type": "object",
-              "properties": {
-                "url": TextRequest
-              },
-              "required": [
-                "url"
-              ],
-              "additionalProperties": false
-            },
-            "type": {
-              "type": "string",
-              "const": "external"
-            }
-          },
-          "required": [
-            "external"
-          ],
-          "additionalProperties": false
+          required: ["emoji"],
+          additionalProperties: false,
         },
         {
-          "type": "null"
-        }
-      ]
+          type: "null",
+        },
+        {
+          type: "object",
+          properties: {
+            external: {
+              type: "object",
+              properties: {
+                url: TextRequest,
+              },
+              required: ["url"],
+              additionalProperties: false,
+            },
+            type: {
+              type: "string",
+              const: "external",
+            },
+          },
+          required: ["external"],
+          additionalProperties: false,
+        },
+      ],
     },
-    "archived": {
-      "type": "boolean"
-    }
+    cover: {
+      anyOf: [
+        {
+          type: "object",
+          properties: {
+            external: {
+              type: "object",
+              properties: {
+                url: TextRequest,
+              },
+              required: ["url"],
+              additionalProperties: false,
+            },
+            type: {
+              type: "string",
+              const: "external",
+            },
+          },
+          required: ["external"],
+          additionalProperties: false,
+        },
+        {
+          type: "null",
+        },
+      ],
+    },
+    archived: {
+      type: "boolean",
+    },
   },
-  "additionalProperties": false
+  additionalProperties: false,
 };
 
 export const UpdatePageParameters: JSONSchema = {
-  "type": "object",
-  "additionalProperties": false,
-  "properties": {
-    "properties": {
-      "anyOf": [
-        UpdatePageBodyParametersProperties1
-        UpdatePageBodyParametersProperties2
-      ]
+  type: "object",
+  additionalProperties: false,
+  properties: {
+    properties: {
+      anyOf: [
+        UpdatePageBodyParametersProperties1,
+        UpdatePageBodyParametersProperties2,
+      ],
     },
-    "icon": {
-      "anyOf": [
+    icon: {
+      anyOf: [
         {
-          "type": "object",
-          "properties": {
-            "emoji": EmojiRequest,
-            "type": {
-              "type": "string",
-              "const": "emoji"
-            }
-          },
-          "required": [
-            "emoji"
-          ],
-          "additionalProperties": false
-        },
-        {
-          "type": "null"
-        },
-        {
-          "type": "object",
-          "properties": {
-            "external": {
-              "type": "object",
-              "properties": {
-                "url": TextRequest
-              },
-              "required": [
-                "url"
-              ],
-              "additionalProperties": false
+          type: "object",
+          properties: {
+            emoji: EmojiRequest,
+            type: {
+              type: "string",
+              const: "emoji",
             },
-            "type": {
-              "type": "string",
-              "const": "external"
-            }
           },
-          "required": [
-            "external"
-          ],
-          "additionalProperties": false
-        }
-      ]
-    },
-    "cover": {
-      "anyOf": [
-        {
-          "type": "object",
-          "properties": {
-            "external": {
-              "type": "object",
-              "properties": {
-                "url": TextRequest
-              },
-              "required": [
-                "url"
-              ],
-              "additionalProperties": false
-            },
-            "type": {
-              "type": "string",
-              "const": "external"
-            }
-          },
-          "required": [
-            "external"
-          ],
-          "additionalProperties": false
+          required: ["emoji"],
+          additionalProperties: false,
         },
         {
-          "type": "null"
-        }
-      ]
+          type: "null",
+        },
+        {
+          type: "object",
+          properties: {
+            external: {
+              type: "object",
+              properties: {
+                url: TextRequest,
+              },
+              required: ["url"],
+              additionalProperties: false,
+            },
+            type: {
+              type: "string",
+              const: "external",
+            },
+          },
+          required: ["external"],
+          additionalProperties: false,
+        },
+      ],
     },
-    "archived": {
-      "type": "boolean"
+    cover: {
+      anyOf: [
+        {
+          type: "object",
+          properties: {
+            external: {
+              type: "object",
+              properties: {
+                url: TextRequest,
+              },
+              required: ["url"],
+              additionalProperties: false,
+            },
+            type: {
+              type: "string",
+              const: "external",
+            },
+          },
+          required: ["external"],
+          additionalProperties: false,
+        },
+        {
+          type: "null",
+        },
+      ],
     },
-    "page_id": IdRequest
+    archived: {
+      type: "boolean",
+    },
+    page_id: IdRequest,
   },
-  "required": [
-    "page_id"
-  ]
+  required: ["page_id"],
 };
 
 export const UpdatePageResponse: JSONSchema = {
-  "anyOf": [
-    PageObjectResponse,
-    PartialPageObjectResponse
-  ]
+  anyOf: [PageObjectResponse, PartialPageObjectResponse],
 };

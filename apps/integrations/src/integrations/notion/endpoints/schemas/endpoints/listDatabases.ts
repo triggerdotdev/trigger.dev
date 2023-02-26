@@ -1,58 +1,57 @@
 import { JSONSchema } from "core/schemas/types";
+import { EmptyObject } from "../common";
+import {
+  DatabaseObjectResponse,
+  PartialDatabaseObjectResponse,
+} from "../database";
 
 export const ListDatabasesQueryParameters: JSONSchema = {
-  "type": "object",
-  "properties": {
-    "start_cursor": {
-      "type": "string"
+  type: "object",
+  properties: {
+    start_cursor: {
+      type: "string",
     },
-    "page_size": {
-      "type": "number"
-    }
+    page_size: {
+      type: "number",
+    },
   },
-  "additionalProperties": false
+  additionalProperties: false,
 };
 
 export const ListDatabasesParameters: JSONSchema = ListDatabasesQueryParameters;
 
 export const ListDatabasesResponse: JSONSchema = {
-  "type": "object",
-  "properties": {
-    "type": {
-      "type": "string",
-      "const": "database"
+  type: "object",
+  properties: {
+    type: {
+      type: "string",
+      const: "database",
     },
-    "database": EmptyObject,
-    "object": {
-      "type": "string",
-      "const": "list"
+    database: EmptyObject,
+    object: {
+      type: "string",
+      const: "list",
     },
-    "next_cursor": {
-      "type": [
-        "string",
-        "null"
-      ]
+    next_cursor: {
+      type: ["string", "null"],
     },
-    "has_more": {
-      "type": "boolean"
+    has_more: {
+      type: "boolean",
     },
-    "results": {
-      "type": "array",
-      "items": {
-        "anyOf": [
-          PartialDatabaseObjectResponse,
-          DatabaseObjectResponse
-        ]
-      }
-    }
+    results: {
+      type: "array",
+      items: {
+        anyOf: [PartialDatabaseObjectResponse, DatabaseObjectResponse],
+      },
+    },
   },
-  "required": [
+  required: [
     "type",
     "database",
     "object",
     "next_cursor",
     "has_more",
-    "results"
+    "results",
   ],
-  "additionalProperties": false
+  additionalProperties: false,
 };

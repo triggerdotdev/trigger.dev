@@ -1,49 +1,44 @@
 import { JSONSchema } from "core/schemas/types";
+import { IdRequest } from "../common";
+import { PageObjectResponse, PartialPageObjectResponse } from "../page";
 
 export const GetPagePathParameters: JSONSchema = {
-  "type": "object",
-  "properties": {
-    "page_id": IdRequest
+  type: "object",
+  properties: {
+    page_id: IdRequest,
   },
-  "required": [
-    "page_id"
-  ],
-  "additionalProperties": false
+  required: ["page_id"],
+  additionalProperties: false,
 };
 
 export const GetPageQueryParameters: JSONSchema = {
-  "type": "object",
-  "properties": {
-    "filter_properties": {
-      "type": "array",
-      "items": {
-        "type": "string"
-      }
-    }
+  type: "object",
+  properties: {
+    filter_properties: {
+      type: "array",
+      items: {
+        type: "string",
+      },
+    },
   },
-  "additionalProperties": false
+  additionalProperties: false,
 };
 
 export const GetPageParameters: JSONSchema = {
-  "type": "object",
-  "additionalProperties": false,
-  "properties": {
-    "filter_properties": {
-      "type": "array",
-      "items": {
-        "type": "string"
-      }
+  type: "object",
+  additionalProperties: false,
+  properties: {
+    filter_properties: {
+      type: "array",
+      items: {
+        type: "string",
+      },
     },
-    "page_id": IdRequest
+    page_id: IdRequest,
   },
-  "required": [
-    "page_id"
-  ]
+  required: ["page_id"],
 };
 
 export const GetPageResponse: JSONSchema = {
-  "anyOf": [
-    PageObjectResponse,
-    PartialPageObjectResponse
-  ]
+  anyOf: [PageObjectResponse, PartialPageObjectResponse],
 };
