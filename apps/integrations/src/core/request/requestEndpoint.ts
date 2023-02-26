@@ -1,5 +1,4 @@
 import { applyCredentials } from "core/authentication/credentials";
-import { EndpointSpec, EndpointSpecResponse } from "core/endpoint/types";
 import {
   getFetch,
   normalizeHeaders,
@@ -7,7 +6,6 @@ import {
   safeGetJson,
 } from "core/fetch/fetchUtilities";
 import { JSONSchemaError } from "core/schemas/types";
-import { validate } from "core/schemas/validate";
 import {
   FetchConfig,
   RequestData,
@@ -128,34 +126,27 @@ export async function requestEndpoint(
     const response = await fetch(fetchConfig.url, fetchObject);
     const json = await safeGetJson(response);
 
-    // validate the response against the specs
-    const responseSpecs = getResponseSpecsForStatusCode(
-      response.status,
-      responses
-    );
-    if (!responseSpecs) {
-      throw {
-        type: "no_response_spec",
-        status: response.status,
-      };
-    }
+    const normalizedHeaders = normalizeHeaders(response.headers);
 
-    // start with the first spec and loop through them, if one succeeds then return that
+    // start with the first response spec and loop through them, if one succeeds then return that
     const specErrors: Array<{ name: string; errors: JSONSchemaError[] }> = [];
-    for (const spec of responseSpecs) {
-      const responseValid = await validate(json, spec.schema);
-      if (responseValid.success) {
-        return {
-          success: spec.success,
-          status: response.status,
-          headers: normalizeHeaders(response.headers),
-          body: json,
-        };
-      } else {
-        if (responseValid.errors != null) {
-          specErrors.push({ name: spec.name, errors: responseValid.errors });
-        }
+    for (const spec of responses) {
+      const isMatch = spec.matches({
+        statusCode: response.status,
+        headers: normalizedHeaders,
+        body: json,
+      });
+
+      if (!isMatch) {
+        continue;
       }
+
+      return {
+        success: spec.success,
+        status: response.status,
+        headers: normalizedHeaders,
+        body: json,
+      };
     }
 
     if (process.env.NODE_ENV === "production") {
@@ -181,32 +172,11 @@ export async function requestEndpoint(
     }
 
     throw {
-      type: "response_invalid",
+      type: "no_response_spec",
       status: response.status,
       body: json,
-      errors: specErrors,
     };
   } catch (error: any) {
     return responseFromCaughtError(error);
   }
-}
-
-/** Get the appropriate endpoint response object based on the status code. It supports wild cards like 20x and 2xx */
-function getResponseSpecsForStatusCode(
-  statusCode: number,
-  endpointResponseSpecs: EndpointSpec["responses"]
-): EndpointSpecResponse[] {
-  let specs = endpointResponseSpecs[statusCode.toString()];
-  if (specs) return specs;
-
-  specs =
-    endpointResponseSpecs[
-      `${statusCode.toString().charAt(0)}${statusCode.toString().charAt(1)}x`
-    ];
-  if (specs) return specs;
-
-  specs = endpointResponseSpecs[`${statusCode.toString().charAt(0)}xx`];
-  if (specs) return specs;
-
-  return endpointResponseSpecs.default;
 }

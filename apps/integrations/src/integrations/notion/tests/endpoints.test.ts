@@ -99,7 +99,7 @@ describe("notion.endpoints", async () => {
   test("createPage (page parent)", async () => {
     const accessToken = authToken();
 
-    // const nockDone = await startNock("notion.createPage.pageParent");
+    const nockDone = await startNock("notion.createPage.pageParent");
     const data = await endpoints.createPage.request({
       parameters: {
         "Notion-Version": notionVersion,
@@ -133,7 +133,7 @@ describe("notion.endpoints", async () => {
     expect(data.status).toEqual(200);
     expect(data.success).toEqual(true);
     expect(data.body).not.toBeNull();
-    // stopNock(nockDone);
+    stopNock(nockDone);
   });
 
   test("search (only pages)", async () => {

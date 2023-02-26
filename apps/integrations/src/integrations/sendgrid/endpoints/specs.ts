@@ -1,4 +1,4 @@
-import { EndpointSpec } from "core/endpoint/types";
+import { EndpointSpec, EndpointSpecResponse } from "core/endpoint/types";
 import {
   CCBCCEmailObjectSchema,
   ContactRequestSchema,
@@ -8,14 +8,17 @@ import {
   ToEmailArraySchema,
 } from "../common/schemas";
 
-const defaultResponses = [
+const defaultResponses: EndpointSpecResponse[] = [
   {
+    matches: ({ statusCode, body }) =>
+      (statusCode < 200 || statusCode >= 300) && body != null,
     success: false,
     name: "Error",
     description: "error response",
     schema: ErrorSchema,
   },
   {
+    matches: ({ statusCode }) => statusCode < 200 || statusCode >= 300,
     success: false,
     name: "Error",
     description: "No body error response",
@@ -454,17 +457,16 @@ export const mailSend: EndpointSpec = {
       },
     },
   },
-  responses: {
-    "20x": [
-      {
-        success: true,
-        name: "Success",
-        description: "Successful response",
-        schema: undefined,
-      },
-    ],
-    default: defaultResponses,
-  },
+  responses: [
+    {
+      matches: ({ statusCode }) => statusCode >= 200 && statusCode < 300,
+      success: true,
+      name: "Success",
+      description: "Successful response",
+      schema: undefined,
+    },
+    ...defaultResponses,
+  ],
 };
 
 export const marketingContacts: EndpointSpec = {
@@ -517,24 +519,23 @@ export const marketingContacts: EndpointSpec = {
       },
     },
   },
-  responses: {
-    "20x": [
-      {
-        success: true,
-        name: "Success",
-        description: "Successful response",
-        schema: {
-          type: "object",
-          properties: {
-            job_id: {
-              type: "string",
-              description:
-                'Indicates that the contacts are queued for processing. Check the job status with the "Import Contacts Status" endpoint.',
-            },
+  responses: [
+    {
+      matches: ({ statusCode }) => statusCode >= 200 && statusCode < 300,
+      success: true,
+      name: "Success",
+      description: "Successful response",
+      schema: {
+        type: "object",
+        properties: {
+          job_id: {
+            type: "string",
+            description:
+              'Indicates that the contacts are queued for processing. Check the job status with the "Import Contacts Status" endpoint.',
           },
         },
       },
-    ],
-    default: defaultResponses,
-  },
+    },
+    ...defaultResponses,
+  ],
 };

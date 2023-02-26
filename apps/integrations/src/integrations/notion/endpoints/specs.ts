@@ -11,6 +11,7 @@ import { SearchParameters, SearchResponse } from "./schemas/endpoints/search";
 import { VersionHeaderParam } from "./schemas/params";
 
 const errorResponse: EndpointSpecResponse = {
+  matches: ({ statusCode }) => statusCode < 200 || statusCode >= 300,
   success: false,
   name: "Error",
   description: "Error response",
@@ -48,17 +49,16 @@ export const getUser: EndpointSpec = {
     VersionHeaderParam,
   ],
   request: {},
-  responses: {
-    200: [
-      {
-        success: true,
-        name: "Success",
-        description: "Typical success response",
-        schema: GetUserResponse,
-      },
-    ],
-    default: [errorResponse],
-  },
+  responses: [
+    {
+      matches: ({ statusCode }) => statusCode >= 200 && statusCode < 300,
+      success: true,
+      name: "Success",
+      description: "Typical success response",
+      schema: GetUserResponse,
+    },
+    errorResponse,
+  ],
 };
 
 export const listUsers: EndpointSpec = {
@@ -102,17 +102,16 @@ export const listUsers: EndpointSpec = {
     },
   ],
   request: {},
-  responses: {
-    200: [
-      {
-        success: true,
-        name: "Success",
-        description: "Typical success response",
-        schema: ListUsersResponse,
-      },
-    ],
-    default: [errorResponse],
-  },
+  responses: [
+    {
+      matches: ({ statusCode }) => statusCode >= 200 && statusCode < 300,
+      success: true,
+      name: "Success",
+      description: "Typical success response",
+      schema: ListUsersResponse,
+    },
+    errorResponse,
+  ],
 };
 
 export const getBotInfo: EndpointSpec = {
@@ -135,17 +134,16 @@ export const getBotInfo: EndpointSpec = {
   },
   parameters: [VersionHeaderParam],
   request: {},
-  responses: {
-    200: [
-      {
-        success: true,
-        name: "Success",
-        description: "Typical success response",
-        schema: GetSelfResponse,
-      },
-    ],
-    default: [errorResponse],
-  },
+  responses: [
+    {
+      matches: ({ statusCode }) => statusCode >= 200 && statusCode < 300,
+      success: true,
+      name: "Success",
+      description: "Typical success response",
+      schema: GetSelfResponse,
+    },
+    errorResponse,
+  ],
 };
 
 export const getPage: EndpointSpec = {
@@ -192,17 +190,16 @@ export const getPage: EndpointSpec = {
     },
   ],
   request: {},
-  responses: {
-    200: [
-      {
-        success: true,
-        name: "Success",
-        description: "Typical success response",
-        schema: GetPageResponse,
-      },
-    ],
-    default: [errorResponse],
-  },
+  responses: [
+    {
+      matches: ({ statusCode }) => statusCode >= 200 && statusCode < 300,
+      success: true,
+      name: "Success",
+      description: "Typical success response",
+      schema: GetPageResponse,
+    },
+    errorResponse,
+  ],
 };
 
 export const createPage: EndpointSpec = {
@@ -233,17 +230,16 @@ export const createPage: EndpointSpec = {
       schema: CreatePageParameters,
     },
   },
-  responses: {
-    200: [
-      {
-        success: true,
-        name: "Success",
-        description: "Typical success response",
-        schema: CreatePageResponse,
-      },
-    ],
-    default: [errorResponse],
-  },
+  responses: [
+    {
+      matches: ({ statusCode }) => statusCode >= 200 && statusCode < 300,
+      success: true,
+      name: "Success",
+      description: "Typical success response",
+      schema: CreatePageResponse,
+    },
+    errorResponse,
+  ],
 };
 
 export const search: EndpointSpec = {
@@ -270,15 +266,14 @@ export const search: EndpointSpec = {
       schema: SearchParameters,
     },
   },
-  responses: {
-    200: [
-      {
-        success: true,
-        name: "Success",
-        description: "Typical success response",
-        schema: SearchResponse,
-      },
-    ],
-    default: [errorResponse],
-  },
+  responses: [
+    {
+      matches: ({ statusCode }) => statusCode >= 200 && statusCode < 300,
+      success: true,
+      name: "Success",
+      description: "Typical success response",
+      schema: SearchResponse,
+    },
+    errorResponse,
+  ],
 };
