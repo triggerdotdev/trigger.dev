@@ -1,10 +1,9 @@
 import { Outlet } from "@remix-run/react";
-import { Container } from "~/components/layout/Container";
 
 export default function TemplatesLayout() {
   return (
-    <Container>
+    <div className="px-12 py-10">
       <Outlet />
-    </Container>
+    </div>
   );
 }
