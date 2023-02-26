@@ -10,7 +10,6 @@ import { Body } from "~/components/primitives/text/Body";
 import { Header4 } from "~/components/primitives/text/Headers";
 import type { MatchedOrganization } from "~/hooks/useOrganizations";
 import { useOrganizations } from "~/hooks/useOrganizations";
-import { environmentShortName, obfuscateApiKey } from "~/utils";
 
 export default function AppLayout() {
   const organizations = useOrganizations();
@@ -35,12 +34,14 @@ export default function AppLayout() {
             <Link
               to="orgs/new"
               className={classNames(
-                "h-full border-2 border-slate-800 hover:border-transparent hover:bg-slate-800 hover:shadow-md",
+                "h-full border border-slate-700 hover:border-transparent hover:bg-[rgb(38,51,71)] hover:shadow-md",
                 boxClasses
               )}
             >
               <PlusIcon className="h-10 w-10 text-green-500" />
-              New Organization
+              <Header4 size="small" className="mb-10">
+                New Organization
+              </Header4>
             </Link>
           </li>
         </ul>
@@ -76,7 +77,7 @@ function OrganizationGridItem({
       <Link
         to={`orgs/${organization.slug}`}
         className={classNames(
-          "bg-slate-800 hover:bg-[rgb(33,43,59)]",
+          "border border-slate-700 bg-slate-800 hover:bg-[rgb(38,51,71)]",
           boxClasses
         )}
       >
@@ -88,24 +89,17 @@ function OrganizationGridItem({
             aria-hidden="true"
           />
         )}
-        <Header4 className="mb-6">{organization.title}</Header4>
-        <div className="flex w-full flex-col gap-1">
+        <Header4 size="large" className="mb-10 text-slate-300">
+          {organization.title}
+        </Header4>
+        <div className="grid w-full grid-cols-2 gap-2">
           {organization.environments.map((environment) => (
-            <div
-              key={environment.id}
-              className="flex w-full items-center gap-0.5"
-            >
-              <Body
-                size="extra-small"
-                className="-rotate-90 uppercase tracking-wider text-slate-500"
-              >
-                {environmentShortName(environment.slug)}
-              </Body>
+            <div key={environment.id} className="flex w-full items-center">
               <CopyTextPanel
                 value={environment.apiKey}
-                text={obfuscateApiKey(environment.apiKey)}
+                text="Dev API Key"
                 variant="slate"
-                className="w-[calc(100%-1.8rem)] min-w-[calc(100%-1.8rem)] text-slate-400"
+                className="w-full text-slate-500"
               />
             </div>
           ))}
@@ -116,4 +110,4 @@ function OrganizationGridItem({
 }
 
 const boxClasses =
-  "flex flex-col gap-4 w-80 text-center shadow-md items-center justify-center rounded-lg pl-2 pr-4 pb-4 pt-12 min-h-full transition";
+  "flex flex-col gap-4 w-80 text-center shadow-md items-center justify-center rounded-lg px-2 pb-2 pt-10 min-h-full transition";

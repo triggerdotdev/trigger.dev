@@ -1,6 +1,7 @@
 import { CheckIcon, ClipboardIcon } from "@heroicons/react/24/outline";
 import classNames from "classnames";
 import { useCallback, useState } from "react";
+import { EnvironmentIcon } from "~/routes/resources/environment";
 import { CopyText } from "./CopyText";
 
 const variantStyle = {
@@ -64,8 +65,8 @@ const panelVariantStyle = {
   primary:
     "truncate bg-indigo-700/50 pl-3.5 pr-2 py-3 rounded border border-indigo-600 flex items-center justify-between gap-2 hover:cursor-pointer hover:bg-indigo-600/50 hover:border-indigo-600 transition",
   slate:
-    "flex w-full items-center justify-between gap-2 truncate rounded border border-slate-700 bg-transparent py-2 pl-2.5 pr-1 transition hover:cursor-pointer hover:border-slate-700/50 hover:bg-slate-700/50",
-  text: "text-sm text-slate-400 transition hover:text-slate-300",
+    "flex w-full items-center justify-between gap-2 truncate rounded border border-slate-700 bg-slate-700/50 py-2 pl-2.5 pr-1 transition hover:cursor-pointer hover:border-slate-700/50 hover:bg-slate-700",
+  text: "flex w-full items-center justify-between gap-2 truncate rounded bg-transparent py-2 pl-2.5 pr-1 transition hover:cursor-pointer hover:border-slate-700/50 hover:bg-slate-700/50",
 };
 
 export type CopyTextPanelProps = {
@@ -98,7 +99,7 @@ export function CopyTextPanel({
       ) : (
         <div className={classNames(className, panelVariantStyle[variant])}>
           <span className="truncate font-mono text-sm">{text ?? value}</span>
-          <ClipboardIcon className="h-5 w-5 min-w-[1.25rem]" />
+          <ClipboardIcon className="h-4 w-4 min-w-[1.25rem]" />
         </div>
       )}
     </CopyText>
