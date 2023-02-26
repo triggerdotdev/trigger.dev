@@ -37,6 +37,7 @@ importers:
 
   apps/integrations:
     specifiers:
+      '@apidevtools/json-schema-ref-parser': ^10.1.0
       '@cfworker/json-schema': ^1.12.5
       '@prisma/client': ^4.3.0
       '@sentry/node': ^7.38.0
@@ -95,6 +96,7 @@ importers:
       node-object-hash: 2.3.10
       zod: 3.20.2
     devDependencies:
+      '@apidevtools/json-schema-ref-parser': 10.1.0
       '@types/eslint': 8.4.10
       '@types/express': 4.17.15
       '@types/json-pointer': 1.0.31
@@ -1216,6 +1218,17 @@ packages:
       call-me-maybe: 1.0.2
       js-yaml: 4.1.0
     dev: false
+
+  /@apidevtools/json-schema-ref-parser/10.1.0:
+    resolution: {integrity: sha512-3e+viyMuXdrcK8v5pvP+SDoAQ77FH6OyRmuK48SZKmdHJRFm87RsSs8qm6kP39a/pOPURByJw+OXzQIqcfmKtA==}
+    engines: {node: '>= 16'}
+    dependencies:
+      '@jsdevtools/ono': 7.1.3
+      '@types/json-schema': 7.0.11
+      '@types/lodash.clonedeep': 4.5.7
+      js-yaml: 4.1.0
+      lodash.clonedeep: 4.5.0
+    dev: true
 
   /@aws-crypto/crc32/2.0.0:
     resolution: {integrity: sha512-TvE1r2CUueyXOuHdEigYjIZVesInd9KN+K/TFFNfkkxRThiNxO6i4ZqqAVMoEjAamZZ1AA8WXJkjCz7YShHPQA==}
@@ -4930,7 +4943,6 @@ packages:
 
   /@jsdevtools/ono/7.1.3:
     resolution: {integrity: sha512-4JQNk+3mVzK3xh2rqd6RB4J46qUR19azEHBneZyTZM+c456qOrbbM/5xcR8huNCCcbVt7+UmizG6GuUvPvKUYg==}
-    dev: false
 
   /@jsonhero/fetch-hero/0.2.2:
     resolution: {integrity: sha512-wO+JrqBfQDTtrGbxmAilJFaBLxdfVdeT7lsi+OaTqAv4taCU7aUzsGeDEtYvNF84xo/tCKi8F+YHiXM6k7er9Q==}
@@ -6527,6 +6539,12 @@ packages:
     resolution: {integrity: sha512-BQ5aZNSCpj7D6K2ksrRCTmKRLEpnPvWDiLPfoGyhZ++8YtiK9d/3DBKPJgry359X/P1PfruyYwvnvwFjuEiEIg==}
     dependencies:
       '@types/node': 18.14.0
+    dev: true
+
+  /@types/lodash.clonedeep/4.5.7:
+    resolution: {integrity: sha512-ccNqkPptFIXrpVqUECi60/DFxjNKsfoQxSQsgcBJCX/fuX1wgyQieojkcWH/KpE3xzLoWN/2k+ZeGqIN3paSvw==}
+    dependencies:
+      '@types/lodash': 4.14.191
     dev: true
 
   /@types/lodash/4.14.191:
@@ -12869,6 +12887,10 @@ packages:
 
   /lodash.castarray/4.4.0:
     resolution: {integrity: sha512-aVx8ztPv7/2ULbArGJ2Y42bG1mEQ5mGjpdvrbJcJFU3TbYybe+QlLS4pst9zV52ymy2in1KpFPiZnAOATxD4+Q==}
+    dev: true
+
+  /lodash.clonedeep/4.5.0:
+    resolution: {integrity: sha512-H5ZhCF25riFd9uB5UCkVKo61m3S/xZk1x4wA6yp/L3RFP6Z/eHH1ymQcGLo7J3GMPfm0V/7m1tryHuGVxpqEBQ==}
     dev: true
 
   /lodash.debounce/4.0.8:

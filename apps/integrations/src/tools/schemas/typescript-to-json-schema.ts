@@ -1,6 +1,7 @@
 import { Command } from "commander";
 import { promises as fs } from "node:fs";
 import * as tsj from "ts-json-schema-generator";
+import $RefParser from "@apidevtools/json-schema-ref-parser";
 type JSONSchema7Definition = NonNullable<tsj.Schema["definitions"]>[number];
 
 const program = new Command();
@@ -22,6 +23,12 @@ program
         mode?: "typescript" | "jsonschema";
       }
     ) => {
+      //get original file path minus the extension
+      const originalFilePathMinusExtension = original_file_path.replace(
+        ".ts",
+        ""
+      );
+
       try {
         const config: tsj.Config = {
           path: original_file_path,
@@ -34,6 +41,11 @@ program
         const schema = tsj.createGenerator(config).createSchema(config.type);
 
         if (options.mode === undefined || options.mode === "typescript") {
+          const $refs = await getRefs(schema);
+          const refsFileName = `${originalFilePathMinusExtension}_refs.ts`;
+          await fs.writeFile(refsFileName, JSON.stringify($refs));
+          console.log("Successfully created $Refs file", refsFileName);
+
           //output each definition as an exported const
           let typescriptFileText = `import { JSONSchema } from "core/schemas/types";\n\n`;
 
@@ -62,11 +74,6 @@ program
             typescriptFileText += text;
           });
 
-          //get original file path minus the extension
-          const originalFilePathMinusExtension = original_file_path.replace(
-            ".ts",
-            ""
-          );
           const tsFileName = `${originalFilePathMinusExtension}_schemas.ts`;
           await fs.writeFile(tsFileName, typescriptFileText);
           console.log("Successfully created JSON Schema file", tsFileName);
@@ -99,12 +106,17 @@ function schemaFriendlyName(name: string) {
     }
   );
 
-  return `${capitalizeFirstLetter(name)}Schema`;
+  return `${capitalizeFirstLetter(name)}`;
 }
 
 //Capitalize the first letter of a string
 function capitalizeFirstLetter(string: string) {
   return string.charAt(0).toUpperCase() + string.slice(1);
+}
+
+async function getRefs(schema: tsj.Schema) {
+  const $refs = await $RefParser.resolve(schema);
+  return $refs;
 }
 
 program.parseAsync(process.argv);
