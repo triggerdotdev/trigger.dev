@@ -1,14 +1,22 @@
 import {
+  makeAllPropertiesOptional,
   makeBooleanSchema,
   makeNullable,
   makeNumberSchema,
   makeObjectSchema,
   makeOneOf,
+  makePropertiesOptional,
   makeStringSchema,
 } from "core/schemas/makeSchema";
-import { IdRequest } from "./common";
+import { EmptyObject, IdRequest } from "./common";
 import { DateResponse } from "./formula";
-import { PartialUserObjectResponse, UserObjectResponse } from "./person";
+import {
+  PersonUserObjectResponse,
+  PartialUserObjectResponse,
+  UserObjectResponse,
+  BotUserObjectResponse,
+} from "./person";
+import { TimeZoneSchema } from "./timezone";
 
 // type TextRequest = string;
 export const TextRequest = makeStringSchema("TextRequest", "TextRequest");
@@ -134,6 +142,8 @@ export const AnnotationResponse = makeObjectSchema("AnnotationResponse", {
   },
 });
 
+export const AnnotationRequest = makeAllPropertiesOptional(AnnotationResponse);
+
 // export type MentionRichTextItemResponse = {
 //   type: "mention";
 //   mention:
@@ -222,6 +232,198 @@ export const MentionRichTextItemResponse = makeObjectSchema(
   }
 );
 
+// { id: IdRequest }
+const UserIdSchema = makeObjectSchema("User", {
+  requiredProperties: {
+    id: IdRequest,
+  },
+});
+
+// {
+//   person: { email?: string }
+//   id: IdRequest
+//   type?: "person"
+//   name?: string | null
+//   avatar_url?: string | null
+//   object?: "user"
+// }
+const UserPersonRequestSchema = makePropertiesOptional(
+  PersonUserObjectResponse,
+  ["type", "name", "avatar_url", "object"]
+);
+
+// {
+//   bot:
+//     | EmptyObject
+//     | {
+//         owner:
+//           | {
+//               type: "user"
+//               user:
+//                 | {
+//                     type: "person"
+//                     person: { email: string }
+//                     name: string | null
+//                     avatar_url: string | null
+//                     id: IdRequest
+//                     object: "user"
+//                   }
+//                 | PartialUserObjectResponse
+//             }
+//           | { type: "workspace"; workspace: true }
+//         workspace_name: string | null
+//       }
+//   id: IdRequest
+//   type?: "bot"
+//   name?: string | null
+//   avatar_url?: string | null
+//   object?: "user"
+// }
+const BotRequestSchema = makePropertiesOptional(BotUserObjectResponse, [
+  "type",
+  "name",
+  "avatar_url",
+  "object",
+]);
+
+// type DateRequest = {
+//   start: string
+//   end?: string | null
+//   time_zone?: TimeZoneRequest | null
+// }
+export const DateRequest = makeObjectSchema("DateRequest", {
+  requiredProperties: {
+    start: makeStringSchema("Start", "Start"),
+  },
+  optionalProperties: {
+    end: makeNullable(makeStringSchema("End", "End")),
+    time_zone: makeNullable(TimeZoneSchema),
+  },
+});
+
+// type MentionRichTextItemRequest = {
+//   mention:
+//     | {
+//         user:
+//           | { id: IdRequest }
+//           | {
+//               person: { email?: string }
+//               id: IdRequest
+//               type?: "person"
+//               name?: string | null
+//               avatar_url?: string | null
+//               object?: "user"
+//             }
+//           | {
+//               bot:
+//                 | EmptyObject
+//                 | {
+//                     owner:
+//                       | {
+//                           type: "user"
+//                           user:
+//                             | {
+//                                 type: "person"
+//                                 person: { email: string }
+//                                 name: string | null
+//                                 avatar_url: string | null
+//                                 id: IdRequest
+//                                 object: "user"
+//                               }
+//                             | PartialUserObjectResponse
+//                         }
+//                       | { type: "workspace"; workspace: true }
+//                     workspace_name: string | null
+//                   }
+//               id: IdRequest
+//               type?: "bot"
+//               name?: string | null
+//               avatar_url?: string | null
+//               object?: "user"
+//             }
+//       }
+//     | { date: DateRequest }
+//     | { page: { id: IdRequest } }
+//     | { database: { id: IdRequest } }
+//   type?: "mention"
+//   annotations?: {
+//     bold?: boolean
+//     italic?: boolean
+//     strikethrough?: boolean
+//     underline?: boolean
+//     code?: boolean
+//     color?:
+//       | "default"
+//       | "gray"
+//       | "brown"
+//       | "orange"
+//       | "yellow"
+//       | "green"
+//       | "blue"
+//       | "purple"
+//       | "pink"
+//       | "red"
+//       | "gray_background"
+//       | "brown_background"
+//       | "orange_background"
+//       | "yellow_background"
+//       | "green_background"
+//       | "blue_background"
+//       | "purple_background"
+//       | "pink_background"
+//       | "red_background"
+//   }
+// }
+export const MentionRichTextItemRequest = makeObjectSchema(
+  "MentionRichTextItemRequest",
+  {
+    requiredProperties: {
+      mention: makeOneOf("Mention", [
+        makeObjectSchema("UserMention", {
+          requiredProperties: {
+            user: makeOneOf("User", [UserIdSchema, UserPersonRequestSchema]),
+          },
+        }),
+        makeObjectSchema("BotMention", {
+          requiredProperties: {
+            bot: makeOneOf("Bot", [EmptyObject, BotRequestSchema]),
+            id: IdRequest,
+          },
+        }),
+        makeObjectSchema("DateMention", {
+          requiredProperties: {
+            date: DateRequest,
+          },
+        }),
+        makeObjectSchema("PageMention", {
+          requiredProperties: {
+            page: makeObjectSchema("Page", {
+              requiredProperties: {
+                id: IdRequest,
+              },
+            }),
+          },
+        }),
+        makeObjectSchema("DatabaseMention", {
+          requiredProperties: {
+            database: makeObjectSchema("Database", {
+              requiredProperties: {
+                id: IdRequest,
+              },
+            }),
+          },
+        }),
+      ]),
+    },
+    optionalProperties: {
+      type: makeStringSchema("Type", "Type", {
+        const: "mention",
+      }),
+      annotations: AnnotationRequest,
+    },
+  }
+);
+
 // export type EquationRichTextItemResponse = {
 //   type: "equation";
 //   equation: { expression: TextRequest };
@@ -248,6 +450,24 @@ export const EquationRichTextItemResponse = makeObjectSchema(
   }
 );
 
+export const EquationRichTextItemRequest = makePropertiesOptional(
+  EquationRichTextItemResponse,
+  ["type", "annotations"]
+);
+
+const TextPropertySchema = makeObjectSchema("Text", {
+  requiredProperties: {
+    content: makeStringSchema("Content", "Content"),
+    link: makeNullable(
+      makeObjectSchema("Link", {
+        requiredProperties: {
+          url: TextRequest,
+        },
+      })
+    ),
+  },
+});
+
 // export type TextRichTextItemResponse = {
 //   type: "text";
 //   text: { content: string; link: { url: TextRequest } | null };
@@ -262,21 +482,25 @@ export const TextRichTextItemResponse = makeObjectSchema(
       type: makeStringSchema("Type", "Type", {
         const: "text",
       }),
-      text: makeObjectSchema("Text", {
-        requiredProperties: {
-          content: makeStringSchema("Content", "Content"),
-          link: makeNullable(
-            makeObjectSchema("Link", {
-              requiredProperties: {
-                url: TextRequest,
-              },
-            })
-          ),
-        },
-      }),
+      text: TextPropertySchema,
       annotations: AnnotationResponse,
       plain_text: makeStringSchema("PlainText", "PlainText"),
       href: makeNullable(makeStringSchema("Href", "Href")),
+    },
+  }
+);
+
+export const TextRichTextItemRequest = makeObjectSchema(
+  "TextRichTextItemRequest",
+  {
+    requiredProperties: {
+      text: makePropertiesOptional(TextPropertySchema, ["link"]),
+      annotations: makeAllPropertiesOptional(AnnotationResponse),
+    },
+    optionalProperties: {
+      type: makeStringSchema("Type", "Type", {
+        const: "text",
+      }),
     },
   }
 );
@@ -285,8 +509,14 @@ export const TextRichTextItemResponse = makeObjectSchema(
 //   | TextRichTextItemResponse
 //   | MentionRichTextItemResponse
 //   | EquationRichTextItemResponse;
-export const RichTextItemResponse = makeOneOf("RichTextItem", [
+export const RichTextItemResponse = makeOneOf("RichTextItemResponse", [
   TextRichTextItemResponse,
   MentionRichTextItemResponse,
   EquationRichTextItemResponse,
+]);
+
+export const RichTextItemRequest = makeOneOf("RichTextItemRequest", [
+  TextRichTextItemRequest,
+  MentionRichTextItemRequest,
+  EquationRichTextItemRequest,
 ]);

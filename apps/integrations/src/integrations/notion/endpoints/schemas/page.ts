@@ -10,6 +10,8 @@ import {
   makeNumberSchema,
   makeObjectSchema,
   makeOneOf,
+  makePropertiesOptional,
+  makeRecordSchema,
   makeStringSchema,
 } from "core/schemas/makeSchema";
 import {
@@ -18,7 +20,11 @@ import {
   UserObjectResponse,
 } from "./person";
 import { DateResponse, FormulaPropertyResponse } from "./formula";
-import { RichTextItemResponse, TextRequest } from "./richText";
+import {
+  RichTextItemRequest,
+  RichTextItemResponse,
+  TextRequest,
+} from "./richText";
 
 //{ type: "page_id"; page_id: string }
 export const ParentPageIdSchema = makeObjectSchema("Page", {
@@ -774,6 +780,17 @@ export const IconSchema = makeOneOf("Icon", [
   makeNull(),
 ]);
 
+export const IconRequest = makeOneOf("Icon", [
+  makePropertiesOptional(IconEmojiSchema, ["type"]),
+  makePropertiesOptional(ExternalFileReferenceSchema, ["type"]),
+  makeNull(),
+]);
+
+export const CoverRequest = makeOneOf("Cover", [
+  makePropertiesOptional(ExternalFileReferenceSchema, ["type"]),
+  makeNull(),
+]);
+
 export const CoverSchema = makeOneOf("Cover", [
   ExternalFileReferenceSchema,
   FileRefenceSchema,
@@ -812,3 +829,178 @@ export const GetPageResponse = makeAnyOf("Get page response", [
   PageObjectResponse,
   PartialPageObjectResponse,
 ]);
+
+// {
+//   parent: { database_id: IdRequest; type?: "database_id" }
+//   properties:
+//     | CreateDatabaseProperties1
+//     | Record<
+//         string,
+//         | Array<RichTextItemRequest>
+//         | Array<RichTextItemRequest>
+//         | number
+//         | null
+//         | TextRequest
+//         | null
+//         | { id: StringRequest; name?: StringRequest; color?: SelectColor }
+//         | null
+//         | { name: StringRequest; id?: StringRequest; color?: SelectColor }
+//         | null
+//         | Array<
+//             | {
+//                 id: StringRequest
+//                 name?: StringRequest
+//                 color?: SelectColor
+//               }
+//             | {
+//                 name: StringRequest
+//                 id?: StringRequest
+//                 color?: SelectColor
+//               }
+//           >
+//         | Array<
+//             | { id: IdRequest }
+//             | {
+//                 person: { email?: string }
+//                 id: IdRequest
+//                 type?: "person"
+//                 name?: string | null
+//                 avatar_url?: string | null
+//                 object?: "user"
+//               }
+//             | {
+//                 bot:
+//                   | EmptyObject
+//                   | {
+//                       owner:
+//                         | {
+//                             type: "user"
+//                             user:
+//                               | {
+//                                   type: "person"
+//                                   person: { email: string }
+//                                   name: string | null
+//                                   avatar_url: string | null
+//                                   id: IdRequest
+//                                   object: "user"
+//                                 }
+//                               | PartialUserObjectResponse
+//                           }
+//                         | { type: "workspace"; workspace: true }
+//                       workspace_name: string | null
+//                     }
+//                 id: IdRequest
+//                 type?: "bot"
+//                 name?: string | null
+//                 avatar_url?: string | null
+//                 object?: "user"
+//               }
+//           >
+//         | StringRequest
+//         | null
+//         | StringRequest
+//         | null
+//         | DateRequest
+//         | null
+//         | boolean
+//         | Array<{ id: IdRequest }>
+//         | Array<
+//             | {
+//                 file: { url: string; expiry_time?: string }
+//                 name: StringRequest
+//                 type?: "file"
+//               }
+//             | {
+//                 external: { url: TextRequest }
+//                 name: StringRequest
+//                 type?: "external"
+//               }
+//           >
+//         | { id: StringRequest; name?: StringRequest; color?: SelectColor }
+//         | null
+//         | { name: StringRequest; id?: StringRequest; color?: SelectColor }
+//         | null
+//       >
+//   icon?:
+//     | { emoji: EmojiRequest; type?: "emoji" }
+//     | null
+//     | { external: { url: TextRequest }; type?: "external" }
+//     | null
+//   cover?: { external: { url: TextRequest }; type?: "external" } | null
+//   content?: Array<BlockObjectRequest>
+//   children?: Array<BlockObjectRequest>
+// }
+const CreateDatabaseSchema = makeObjectSchema("CreateDatabaseSchema", {
+  requiredProperties: {
+    parent: makeObjectSchema("Database", {
+      requiredProperties: {
+        database_id: makeStringSchema(
+          "Database ID",
+          "Unique identifier for this database"
+        ),
+      },
+      optionalProperties: {
+        type: makeStringSchema("Type", "The type of the parent", {
+          const: "database_id",
+        }),
+      },
+    }),
+  },
+});
+
+//   | {
+//       parent: { page_id: IdRequest; type?: "page_id" }
+//       properties: {
+//         title?:
+//           | { title: Array<RichTextItemRequest>; type?: "title" }
+//           | Array<RichTextItemRequest>
+//       }
+//       icon?:
+//         | { emoji: EmojiRequest; type?: "emoji" }
+//         | null
+//         | { external: { url: TextRequest }; type?: "external" }
+//         | null
+//       cover?: { external: { url: TextRequest }; type?: "external" } | null
+//       children?: Array<BlockObjectRequest>
+//     }
+const CreatePageSchema = makeObjectSchema("CreatePageSchema", {
+  requiredProperties: {
+    parent: makeObjectSchema("Page", {
+      requiredProperties: {
+        page_id: makeStringSchema("Page ID", "Unique identifier for this page"),
+      },
+      optionalProperties: {
+        type: makeStringSchema("Type", "The type of the parent", {
+          const: "page_id",
+        }),
+      },
+    }),
+    properties: makeObjectSchema("Properties", {
+      optionalProperties: {
+        title: makeOneOf("Title", [
+          makeObjectSchema("Title", {
+            requiredProperties: {
+              title: makeArraySchema("Title", {
+                items: RichTextItemRequest,
+              }),
+            },
+            optionalProperties: {
+              type: makeStringSchema("Type", "The type of the property", {
+                const: "title",
+              }),
+            },
+          }),
+          makeArraySchema("Title", {
+            items: RichTextItemRequest,
+          }),
+        ]),
+      },
+    }),
+    icon: IconRequest,
+    cover: CoverRequest,
+    children: makeArraySchema("BlockObjectRequest", BlockObjectRequest),
+  },
+});
+
+//todo
+// export const CreatePageParameters;

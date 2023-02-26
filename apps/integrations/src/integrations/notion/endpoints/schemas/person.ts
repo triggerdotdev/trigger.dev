@@ -125,7 +125,7 @@ const BotOwnerSchema = makeOneOf("Bot owner", [
 //     id: IdRequest
 //     object: "user"
 //   }
-export const BotSchema = makeObjectSchema("Bot", {
+export const BotUserObjectResponse = makeObjectSchema("Bot", {
   requiredProperties: {
     object: UserObjectTypeSchema,
     id: UserIdSchema,
@@ -178,7 +178,7 @@ export const YourBotSchema = makeObjectSchema("Bot", {
             workspace: makeNullable(
               makeBooleanSchema("Workspace", "Is this a workspace?")
             ),
-            user: makeOneOf("User", [PersonSchema(), BotSchema]),
+            user: makeOneOf("User", [PersonSchema(), BotUserObjectResponse]),
           },
         }),
         workspace_name: makeNullable(
@@ -209,7 +209,6 @@ export const PartialUserObjectResponse = makeObjectSchema("PartialUser", {
 //   | PersonUserObjectResponse
 //   | BotUserObjectResponse;
 export const PersonUserObjectResponse = PersonSchema(true);
-export const BotUserObjectResponse = BotSchema;
 export const UserObjectResponse = makeOneOf("User", [
   PersonUserObjectResponse,
   BotUserObjectResponse,

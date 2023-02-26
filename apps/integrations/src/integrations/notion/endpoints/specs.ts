@@ -199,6 +199,44 @@ export const getPage: EndpointSpec = {
   },
 };
 
+export const createPage: EndpointSpec = {
+  path: "/pages",
+  method: "POST",
+  metadata: {
+    name: "createPage",
+    description:
+      "Creates a new page that is a child of an existing page or database. If the parent is a page then `title` is the only valid property. If the parent is a database then the `properties` must match the parent database's properties.",
+    displayProperties: {
+      title: "Create a page",
+    },
+    externalDocs: {
+      description: "API method documentation",
+      url: "https://developers.notion.com/reference/post-page",
+    },
+    tags: ["pages"],
+  },
+  security: {
+    oauth: [],
+  },
+  parameters: [VersionHeaderParam],
+  request: {
+    body: {
+      schema: CreatePageParameters,
+    },
+  },
+  responses: {
+    200: [
+      {
+        success: true,
+        name: "Success",
+        description: "Typical success response",
+        schema: CreatePageResponse,
+      },
+    ],
+    default: [errorResponse],
+  },
+};
+
 export const search: EndpointSpec = {
   path: "/search",
   method: "POST",
