@@ -12,7 +12,7 @@ type ServiceMetadata = {
   authentication: IntegrationAuthentication;
 };
 
-export async function handleServices(req: Request, res: Response) {
+export async function handleServices(_req: Request, res: Response) {
   const servicesMetadata: Record<string, ServiceMetadata> = {};
   Object.entries(catalog.services).forEach(([key, service]) => {
     if (service.live === false) return;
@@ -30,7 +30,9 @@ export async function handleServices(req: Request, res: Response) {
   );
 }
 
-function omitExtraInfo(service: Service): ServiceMetadata {
+function omitExtraInfo(
+  service: Service
+): Omit<Service, "actions" | "retryableStatusCodes"> {
   const { actions, retryableStatusCodes, ...rest } = service;
   return rest;
 }
