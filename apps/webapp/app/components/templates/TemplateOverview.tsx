@@ -22,25 +22,25 @@ export function TemplateOverview({
     <div
       className={classNames(
         className,
-        "grid w-full grid-cols-1 gap-8 rounded-lg bg-slate-850 pl-8 text-left md:grid-cols-[24rem_minmax(0,_1fr)]"
+        "grid w-full grid-cols-1 gap-8 rounded-lg bg-slate-850 pl-8 text-left lg:grid-cols-[24rem_minmax(0,_1fr)]"
       )}
     >
-      <div className="sticky top-4 flex h-max flex-col rounded-r">
+      <div className="flex h-max flex-col rounded-r lg:sticky lg:top-4">
         <TemplateDetails
           template={template}
           commandFlags={commandFlags}
-          className="hidden md:flex"
+          className="hidden lg:flex"
         />
       </div>
       <div className="flex h-full w-full flex-col rounded">
-        <div className="z-90 h-fit w-full transition group-hover:opacity-90">
+        <div className="hidden h-fit w-full transition group-hover:opacity-90 lg:block">
           <img
             src={imageUrl}
-            alt=""
-            className="h-full w-full rounded-t object-cover"
+            alt="Template hero image"
+            className="h-full w-full rounded-t-md object-cover"
           />
         </div>
-        <TemplateDetails template={template} className="md:hidden" />
+        <TemplateDetails template={template} className="lg:hidden" />
         <div className="flex rounded-b bg-slate-900/75 p-8">
           <div
             className="prose prose-sm prose-invert min-w-full [&>pre]:bg-[rgb(17,23,41)]"
@@ -134,6 +134,7 @@ function TemplateDetails({
         value={`npm create trigger@latest ${template.slug} ${
           commandFlags ? ` ${commandFlags}` : ""
         }`}
+        className="mb-8"
       />
     </div>
   );
