@@ -117,6 +117,23 @@ function generateDocSchema(
 
   let description = createDescription(schema);
 
+  if (schema.allOf) {
+    const combinedSchema: JSONSchema = {
+      type: "object",
+      description,
+      properties: schema.allOf.reduce((acc, v) => {
+        if (typeof v === "boolean") return acc;
+        return { ...acc, ...v.properties };
+      }, {}),
+      required: schema.allOf.reduce((acc: string[], v) => {
+        if (typeof v === "boolean") return acc;
+        return [...acc, ...(v.required ?? [])];
+      }, []),
+    };
+
+    return generateDocSchema(key, required, combinedSchema, expanded);
+  }
+
   if (schema.oneOf) {
     const oneOfTypes = schema.oneOf
       .map((v) => {
