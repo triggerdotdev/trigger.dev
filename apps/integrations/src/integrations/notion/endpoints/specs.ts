@@ -30,6 +30,10 @@ import {
   UpdateBlockResponse,
 } from "./schemas/endpoints/updateBlock";
 import {
+  UpdateDatabaseBodyParameters,
+  UpdateDatabaseResponse,
+} from "./schemas/endpoints/updateDatabase";
+import {
   UpdatePageBodyParameters,
   UpdatePageResponse,
 } from "./schemas/endpoints/updatePage";
@@ -590,7 +594,44 @@ export const createDatabase: EndpointSpec = {
   ],
 };
 
-//todo Update database
+export const updateDatabase: EndpointSpec = {
+  path: "/databases/{database_id}",
+  method: "PATCH",
+  metadata: {
+    name: "updateDatabase",
+    description: `Update the title, description, or properties of a specified database. Sending a request with a properties body param changes the columns of a database. To update a row rather than a column, query the Update page endpoint. To add a new row to a database, call Create a page.`,
+    displayProperties: {
+      title: "Update database with id ${parameters.database_id}",
+    },
+    externalDocs: {
+      description: "API method documentation",
+      url: "https://developers.notion.com/reference/update-a-database",
+    },
+    tags: ["database"],
+  },
+  security: {
+    oauth: [],
+  },
+  parameters: [DatabaseIdParam, VersionHeaderParam],
+  request: {
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: {
+      schema: UpdateDatabaseBodyParameters,
+    },
+  },
+  responses: [
+    {
+      matches: ({ statusCode }) => statusCode >= 200 && statusCode < 300,
+      success: true,
+      name: "Success",
+      description: "Typical success response",
+      schema: UpdateDatabaseResponse,
+    },
+    errorResponse,
+  ],
+};
 
 //todo get comments
 //todo create comment

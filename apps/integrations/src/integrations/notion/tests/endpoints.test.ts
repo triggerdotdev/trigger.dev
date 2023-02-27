@@ -414,6 +414,70 @@ describe("notion.endpoints", async () => {
     stopNock(nockDone);
   });
 
+  test("updateDatabase", async () => {
+    const accessToken = authToken();
+
+    const nockDone = await startNock("notion.updateDatabase");
+    const data = await endpoints.updateDatabase.request({
+      parameters: {
+        "Notion-Version": notionVersion,
+        database_id: "8db50793-ac53-496b-bbff-a74be0fb78b4",
+      },
+      body: {
+        title: [
+          {
+            text: {
+              content: "Trigger.dev updated db title",
+            },
+          },
+        ],
+        description: [
+          {
+            text: {
+              content: "This is an updated description",
+            },
+          },
+        ],
+        properties: {
+          "+1": null,
+          Photo: {
+            url: {},
+          },
+          "Store availability": {
+            multi_select: {
+              options: [
+                {
+                  name: "Duc Loi Market",
+                },
+                {
+                  name: "Rainbow Grocery",
+                },
+                {
+                  name: "Gus'''s Community Market",
+                },
+                {
+                  name: "The Good Life Grocery",
+                  color: "orange",
+                },
+              ],
+            },
+          },
+        },
+      },
+      credentials: {
+        type: "oauth2",
+        name: "oauth",
+        accessToken,
+        scopes: [""],
+      },
+    });
+
+    expect(data.status).toEqual(200);
+    expect(data.success).toEqual(true);
+    expect(data.body).not.toBeNull();
+    stopNock(nockDone);
+  });
+
   test("search (only pages)", async () => {
     const accessToken = authToken();
 
