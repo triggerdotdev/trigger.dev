@@ -1,5 +1,16 @@
 # @trigger.dev/slack
 
+## 0.1.23
+
+### Patch Changes
+
+- Updated dependencies [ee20f921]
+- Updated dependencies [4f47d031]
+- Updated dependencies [87a3bbee]
+- Updated dependencies [51f9bc9d]
+- Updated dependencies [0932ae7d]
+  - @trigger.dev/sdk@0.2.16
+
 ## 0.1.23-next.3
 
 ### Patch Changes

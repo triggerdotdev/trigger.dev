@@ -1,5 +1,15 @@
 # @trigger.dev/sdk
 
+## 0.2.16
+
+### Patch Changes
+
+- ee20f921: Make the schema an optional param for customEvent and webhookEvent
+- 4f47d031: Give a better error message when the API key is invalid
+- 87a3bbee: Added a more helpful error message when missing an API key
+- 51f9bc9d: Added handly links to the dashboard in log feedback
+- 0932ae7d: Log out when a run first starts as well
+
 ## 0.2.16-next.3
 
 ### Patch Changes
