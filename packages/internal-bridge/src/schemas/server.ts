@@ -86,6 +86,44 @@ export const ServerRPCSchema = {
       ])
       .nullable(),
   },
+  INITIALIZE_HOST_V2: {
+    request: z.object({
+      apiKey: z.string(),
+      workflowId: z.string(),
+      workflowName: z.string(),
+      trigger: TriggerMetadataSchema,
+      packageVersion: z.string(),
+      packageName: z.string(),
+      triggerTTL: z.number().optional(),
+    }),
+    response: z
+      .discriminatedUnion("type", [
+        z.object({
+          type: z.literal("success"),
+          data: z.object({
+            workflow: z.object({
+              id: z.string(),
+              slug: z.string(),
+            }),
+            environment: z.object({
+              id: z.string(),
+              slug: z.string(),
+            }),
+            organization: z.object({
+              id: z.string(),
+              slug: z.string(),
+            }),
+            isNew: z.boolean(),
+            url: z.string(),
+          }),
+        }),
+        z.object({
+          type: z.literal("error"),
+          message: z.string(),
+        }),
+      ])
+      .nullable(),
+  },
   START_WORKFLOW_RUN: {
     request: z.object({
       runId: z.string(),

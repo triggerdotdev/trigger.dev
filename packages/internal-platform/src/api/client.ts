@@ -6,11 +6,13 @@ import { Logger } from "../logger";
 export class InternalApiClient {
   #apiKey: string;
   #baseUrl: string;
+  #v2BaseUrl: string;
   #logger: Logger;
 
   constructor(apiKey: string, baseUrl: string) {
     this.#apiKey = apiKey;
     this.#baseUrl = `${baseUrl}/api/v1/internal`;
+    this.#v2BaseUrl = `${baseUrl}/api/v2/internal`;
     this.#logger = new Logger("trigger.dev [internal-api]");
   }
 
@@ -18,6 +20,7 @@ export class InternalApiClient {
     const ResponseSchema = z.object({
       organizationId: z.string(),
       env: z.string(),
+      organizationSlug: z.string(),
     });
 
     const Response401Schema = z.object({
@@ -61,14 +64,26 @@ export class InternalApiClient {
 
   async registerWorkflow(workflow: WorkflowMetadata) {
     const responseSchema = z.object({
-      id: z.string(),
+      workflow: z.object({
+        id: z.string(),
+        slug: z.string(),
+      }),
+      environment: z.object({
+        id: z.string(),
+        slug: z.string(),
+      }),
+      organization: z.object({
+        id: z.string(),
+        slug: z.string(),
+      }),
+      url: z.string(),
     });
 
     const validationResponseSchema = z.object({
       error: z.string(),
     });
 
-    const response = await fetch(this.#apiUrl(`/workflows/${workflow.id}`), {
+    const response = await fetch(this.#v2ApiUrl(`/workflows/${workflow.id}`), {
       method: "PUT",
       headers: this.#headers({ "Content-Type": "application/json" }),
       body: JSON.stringify(workflow),
@@ -77,7 +92,9 @@ export class InternalApiClient {
     if (response.ok) {
       const rawBody = await response.json();
 
-      return responseSchema.parse(rawBody);
+      const body = responseSchema.parse(rawBody);
+
+      return { ...body, isNew: response.status === 201 };
     }
 
     if (response.status === 400) {
@@ -123,6 +140,7 @@ export class InternalApiClient {
   }
 
   #apiUrl = (path: string) => `${this.#baseUrl}${path}`;
+  #v2ApiUrl = (path: string) => `${this.#v2BaseUrl}${path}`;
   #headers = (additionalHeaders?: Record<string, string>) => ({
     Accept: "application/json",
     Authorization: `Bearer ${this.#apiKey}`,

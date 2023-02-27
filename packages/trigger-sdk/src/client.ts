@@ -15,6 +15,8 @@ import { ContextLogger } from "./logger";
 import { Trigger, TriggerOptions } from "./trigger";
 import { TriggerContext, TriggerFetch } from "./types";
 import { generateErrorMessage, ErrorMessageOptions } from "zod-error";
+import terminalLink from "terminal-link";
+import chalk from "chalk";
 
 const zodErrorMessageOptions: ErrorMessageOptions = {
   delimiter: {
@@ -38,6 +40,23 @@ export class TriggerClient<TSchema extends z.ZodTypeAny> {
   #retryIntervalMs: number = 3_000;
   #logger: Logger;
   #closedByUser = false;
+
+  #registerResponse?: {
+    workflow: {
+      id: string;
+      slug: string;
+    };
+    environment: {
+      id: string;
+      slug: string;
+    };
+    organization: {
+      id: string;
+      slug: string;
+    };
+    isNew: boolean;
+    url: string;
+  };
 
   #responseCompleteCallbacks = new Map<
     string,
@@ -100,7 +119,25 @@ export class TriggerClient<TSchema extends z.ZodTypeAny> {
       this.#initializeRPC();
       await this.#initializeHost();
 
-      this.#logger.log(`✨ Connected and listening for events`);
+      if (this.#registerResponse?.isNew) {
+        this.#logger.logClean(
+          `🎉 Successfully registered "${
+            this.#trigger.name
+          }" to trigger.dev 👉 ${terminalLink(
+            "View on dashboard",
+            this.#registerResponse.url,
+            { fallback: (text, url) => `${text}: (${url})` }
+          )}. Listening for events...`
+        );
+      } else {
+        this.#logger.log(
+          `✨ Connected and listening for events 👉 ${terminalLink(
+            "View on dashboard",
+            this.#registerResponse!.url,
+            { fallback: (text, url) => `${text}: (${url})` }
+          )}`
+        );
+      }
     } catch (error) {
       this.#logger.log(`🚩 Could not connect to trigger.dev`);
 
@@ -144,11 +181,11 @@ export class TriggerClient<TSchema extends z.ZodTypeAny> {
         return;
       }
 
-      this.#logger.error(`🚩 Could not connect to trigger.dev (code ${code})`);
-
-      if (reason) {
-        this.#logger.error("Reason:", reason);
-      }
+      this.#logger.error(
+        `${chalk.red("error")} Could not connect to trigger.dev${
+          reason ? `: ${reason}` : `(code ${code})`
+        }`
+      );
 
       // If #isConnected is already false, that means we are already trying to reconnect
       if (!this.#isConnected) return;
@@ -590,6 +627,19 @@ export class TriggerClient<TSchema extends z.ZodTypeAny> {
             () => {
               this.#logger.debug("Running trigger...");
 
+              if (
+                typeof data.meta.attempt === "number" &&
+                data.meta.attempt === 0
+              ) {
+                this.#logger.log(
+                  `Run ${data.id} started 👉 ${terminalLink(
+                    "View on dashboard",
+                    `${this.#registerResponse!.url}/runs/${data.id}`,
+                    { fallback: (text, url) => `${text}: (${url})` }
+                  )}`
+                );
+              }
+
               serverRPC
                 .send("START_WORKFLOW_RUN", {
                   runId: data.id,
@@ -599,7 +649,13 @@ export class TriggerClient<TSchema extends z.ZodTypeAny> {
                   return this.#trigger.options
                     .run(eventData, ctx)
                     .then((output) => {
-                      this.#logger.log(`Run ${data.id} complete 🏃`);
+                      this.#logger.log(
+                        `Run ${data.id} complete 👉 ${terminalLink(
+                          "View on dashboard",
+                          `${this.#registerResponse!.url}/runs/${data.id}`,
+                          { fallback: (text, url) => `${text}: (${url})` }
+                        )}`
+                      );
 
                       return serverRPC.send("COMPLETE_WORKFLOW_RUN", {
                         runId: data.id,
@@ -676,7 +732,7 @@ export class TriggerClient<TSchema extends z.ZodTypeAny> {
       throw new Error("Cannot initialize host without an RPC connection");
     }
 
-    const response = await this.#send("INITIALIZE_HOST", {
+    const response = await this.#send("INITIALIZE_HOST_V2", {
       apiKey: this.#apiKey,
       workflowId: this.#trigger.id,
       workflowName: this.#trigger.name,
@@ -686,9 +742,17 @@ export class TriggerClient<TSchema extends z.ZodTypeAny> {
       triggerTTL: this.#options.triggerTTL,
     });
 
+    console.log(response);
+
+    if (!response) {
+      throw new Error("Could not initialize workflow with server");
+    }
+
     if (response?.type === "error") {
       throw new Error(response.message);
     }
+
+    this.#registerResponse = response.data;
 
     this.#logger.debug("Successfully initialized workflow with server");
   }

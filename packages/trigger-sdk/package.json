@@ -1,6 +1,6 @@
 {
   "name": "@trigger.dev/sdk",
-  "version": "0.2.15",
+  "version": "0.2.17",
   "description": "trigger.dev Node.JS SDK",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -37,10 +37,13 @@
     "build:tsup": "tsup --dts-resolve"
   },
   "dependencies": {
+    "chalk": "^5.2.0",
     "debug": "^4.3.4",
     "evt": "^2.4.13",
+    "get-caller-file": "^2.0.5",
     "node-fetch": "2.6.x",
     "slug": "^6.0.0",
+    "terminal-link": "^3.0.0",
     "ulid": "^2.3.0",
     "uuid": "^9.0.0",
     "ws": "^8.11.0",

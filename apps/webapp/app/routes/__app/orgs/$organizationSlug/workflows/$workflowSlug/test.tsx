@@ -9,9 +9,10 @@ import { PanelInfo } from "~/components/layout/PanelInfo";
 import { PanelWarning } from "~/components/layout/PanelWarning";
 import { PrimaryButton, TertiaryLink } from "~/components/primitives/Buttons";
 import { Select } from "~/components/primitives/Select";
+import { SubTitle } from "~/components/primitives/text/SubTitle";
 import { Title } from "~/components/primitives/text/Title";
 import { useCurrentOrganization } from "~/hooks/useOrganizations";
-import { useCurrentWorkflow } from "~/hooks/useWorkflows";
+import { CurrentWorkflow, useCurrentWorkflow } from "~/hooks/useWorkflows";
 import { getRuntimeEnvironmentFromRequest } from "~/models/runtimeEnvironment.server";
 import { WorkflowTestPresenter } from "~/presenters/testPresenter.server";
 import { requireUserId } from "~/services/session.server";
@@ -64,14 +65,17 @@ export default function Page() {
           </TertiaryLink>
         </PanelInfo>
       ) : (
-        <Panel className="mt-4">
-          <Tester
-            organizationSlug={organization.slug}
-            workflowSlug={workflow.slug}
-            eventNames={workflow.eventNames}
-            initialValue={JSON.stringify(payload, null, 2)}
-          />
-        </Panel>
+        <>
+          <SubTitle>{workflowType(workflow)}</SubTitle>
+          <Panel>
+            <Tester
+              organizationSlug={organization.slug}
+              workflowSlug={workflow.slug}
+              eventNames={workflow.eventNames}
+              initialValue={JSON.stringify(payload, null, 2)}
+            />
+          </Panel>
+        </>
       )}
     </>
   );
@@ -134,4 +138,17 @@ function Tester({
       <PrimaryButton onClick={submit}>Run test</PrimaryButton>
     </div>
   );
+}
+
+function workflowType(workflow: CurrentWorkflow) {
+  switch (workflow?.type) {
+    case "WEBHOOK":
+      return "This test will simulate receiving this JSON payload for this webhook.";
+    case "SCHEDULE":
+      return "This test will simulate receiving a scheduled trigger from this datetime string.";
+    case "CUSTOM_EVENT":
+      return "This test will simulate receiving this JSON payload for this custom event.";
+    default:
+      return "This workflow hasn't been connected.";
+  }
 }

@@ -1,6 +1,7 @@
-import { ClipboardIcon } from "@heroicons/react/24/outline";
+import { CheckIcon, ClipboardIcon } from "@heroicons/react/24/outline";
 import classNames from "classnames";
 import { useCallback, useState } from "react";
+import { EnvironmentIcon } from "~/routes/resources/environment";
 import { CopyText } from "./CopyText";
 
 const variantStyle = {
@@ -16,6 +17,7 @@ const variantStyle = {
 
 export type CopyTextButtonProps = {
   value: string;
+  text?: string;
   className?: string;
   variant?: "slate" | "blue" | "darkTransparent" | "lightTransparent" | "text";
 };
@@ -23,6 +25,7 @@ export type CopyTextButtonProps = {
 export function CopyTextButton({
   value,
   className,
+  text,
   variant = "blue",
 }: CopyTextButtonProps) {
   const [copied, setCopied] = useState(false);
@@ -52,6 +55,51 @@ export function CopyTextButton({
         >
           <ClipboardIcon className="mr-[2px] h-4 w-4" />
           <p className="font-sans">Copy</p>
+        </div>
+      )}
+    </CopyText>
+  );
+}
+
+const panelVariantStyle = {
+  primary:
+    "truncate text-indigo-300 bg-indigo-700/50 pl-3.5 pr-2 py-3 rounded border border-indigo-600 flex items-center justify-between gap-2 hover:cursor-pointer hover:bg-indigo-600/50 hover:border-indigo-600 transition",
+  slate:
+    "flex w-full items-center justify-between gap-2 truncate rounded bg-slate-850 py-2 pl-2.5 pr-1 transition hover:cursor-pointer hover:bg-slate-800 hover:text-slate-300",
+  text: "flex w-full items-center justify-between gap-2 truncate rounded bg-transparent py-2 pl-2.5 pr-1 transition hover:cursor-pointer hover:border-slate-700/50 hover:bg-slate-700/50",
+};
+
+export type CopyTextPanelProps = {
+  value: string;
+  text?: string;
+  className?: string;
+  variant?: "primary" | "slate" | "text";
+};
+
+export function CopyTextPanel({
+  value,
+  text,
+  className,
+  variant = "primary",
+}: CopyTextPanelProps) {
+  const [copied, setCopied] = useState(false);
+  const onCopied = useCallback(() => {
+    setCopied(true);
+    setTimeout(() => {
+      setCopied(false);
+    }, 1500);
+  }, [setCopied]);
+  return (
+    <CopyText value={value} onCopied={onCopied} className="w-full">
+      {copied ? (
+        <div className={classNames(className, panelVariantStyle[variant])}>
+          <span className="truncate font-mono text-sm">{text ?? value}</span>
+          <CheckIcon className="h-5 w-5 min-w-[1.25rem] text-green-500" />
+        </div>
+      ) : (
+        <div className={classNames(className, panelVariantStyle[variant])}>
+          <span className="truncate font-mono text-sm">{text ?? value}</span>
+          <ClipboardIcon className="h-4 w-4 min-w-[1.25rem]" />
         </div>
       )}
     </CopyText>

@@ -1,29 +1,37 @@
 import {
-  SquaresPlusIcon,
+  EyeIcon,
+  EyeSlashIcon,
+  InformationCircleIcon,
+} from "@heroicons/react/20/solid";
+import {
   ArrowsRightLeftIcon,
-  UsersIcon,
-  ForwardIcon,
-  ChevronLeftIcon,
   ArrowTopRightOnSquareIcon,
-  PhoneArrowUpRightIcon,
-  EnvelopeIcon,
   BeakerIcon,
-  ClipboardDocumentCheckIcon,
-  Squares2X2Icon,
+  ChevronLeftIcon,
   Cog6ToothIcon,
+  EnvelopeIcon,
+  ForwardIcon,
+  PhoneArrowUpRightIcon,
   PlusCircleIcon,
+  Squares2X2Icon,
+  SquaresPlusIcon,
+  UsersIcon,
 } from "@heroicons/react/24/outline";
 import { Link, NavLink } from "@remix-run/react";
+import { useState } from "react";
+import invariant from "tiny-invariant";
+import { useCurrentEnvironment } from "~/hooks/useEnvironments";
 import {
   useCurrentOrganization,
   useOrganizations,
 } from "~/hooks/useOrganizations";
 import { useCurrentWorkflow } from "~/hooks/useWorkflows";
+import { EnvironmentIcon } from "~/routes/resources/environment";
+import { titleCase } from "~/utils";
+import { CopyTextPanel } from "../CopyTextButton";
+import { TertiaryA, TertiaryButton } from "../primitives/Buttons";
 import { Body } from "../primitives/text/Body";
 import { Header1 } from "../primitives/text/Headers";
-import invariant from "tiny-invariant";
-import { CopyText } from "../CopyText";
-import { useCurrentEnvironment } from "~/hooks/useEnvironments";
 
 export function SideMenuContainer({ children }: { children: React.ReactNode }) {
   return <div className="grid h-full grid-cols-[300px_2fr]">{children}</div>;
@@ -160,6 +168,8 @@ function SideMenu({
   const organization = useCurrentOrganization();
   invariant(organization, "Organization must be defined");
 
+  const [isShowingKeys, setIsShowingKeys] = useState(false);
+
   return (
     <div className="flex min-h-0 flex-1 flex-col border-r border-slate-800 bg-slate-950">
       <div className="flex flex-1 flex-col overflow-y-auto pb-4">
@@ -199,34 +209,59 @@ function SideMenu({
             ))}
           </div>
           <div className="flex flex-col gap-6">
-            <ul className="ml-3 mr-2 flex flex-col gap-6">
+            <ul className="ml-3 mr-2 flex flex-col gap-2">
+              <li className="flex w-full items-center justify-between">
+                <TertiaryA
+                  href="https://docs.trigger.dev/guides/environments"
+                  target="_blank"
+                  className="group flex items-center gap-1 transition"
+                >
+                  <InformationCircleIcon className="h-4 w-4 text-slate-500 transition group-hover:text-slate-400" />
+                  <Body
+                    size="extra-small"
+                    className={`overflow-hidden text-slate-300 transition group-hover:text-slate-400 ${menuSmallTitleStyle}`}
+                  >
+                    API keys
+                  </Body>
+                </TertiaryA>
+
+                {!isShowingKeys ? (
+                  <TertiaryButton
+                    onClick={() => setIsShowingKeys(true)}
+                    className="group mr-1.5 transition before:text-xs before:text-slate-400 hover:before:content-['Show_keys']"
+                  >
+                    <EyeIcon className="h-4 w-4 text-slate-500 transition group-hover:text-slate-400" />
+                  </TertiaryButton>
+                ) : (
+                  <TertiaryButton
+                    onClick={() => setIsShowingKeys(false)}
+                    className="group mr-1.5 transition before:text-xs before:text-slate-400 hover:before:content-['Hide_keys']"
+                  >
+                    <EyeSlashIcon className="h-4 w-4 text-slate-500 transition group-hover:text-slate-400" />
+                  </TertiaryButton>
+                )}
+              </li>
               {organization.environments.map((environment) => {
                 return (
                   <li
                     key={environment.id}
-                    className="flex w-full flex-col justify-between gap-1.5"
+                    className="flex w-full flex-col justify-between"
                   >
-                    <div className="flex justify-between">
-                      <Body
-                        size="extra-small"
-                        className={`overflow-hidden text-slate-300 ${menuSmallTitleStyle}`}
-                      >
-                        {environment.slug} api key
-                      </Body>
-                      {/* <CopyTextButton
-                        variant="text"
+                    <div className="relative flex items-center">
+                      <EnvironmentIcon
+                        slug={environment.slug}
+                        className="absolute top-4 left-2"
+                      />
+                      <CopyTextPanel
                         value={environment.apiKey}
-                      /> */}
-                    </div>
-                    <div className="relative select-all overflow-hidden rounded-sm border border-slate-800 p-1 pl-2 text-sm text-slate-400">
-                      <span className="pointer-events-none absolute right-7 top-0 block h-6 w-20 bg-gradient-to-r from-transparent to-slate-950"></span>
-                      <CopyText
-                        value={environment.apiKey}
-                        className="group absolute right-0 top-0 flex h-full w-7 items-center justify-center rounded-sm border-l border-slate-800 bg-slate-950 transition hover:cursor-pointer hover:bg-slate-900 active:bg-green-900"
-                      >
-                        <ClipboardDocumentCheckIcon className="h-5 w-5 group-active:text-green-500" />
-                      </CopyText>
-                      {environment.apiKey}
+                        text={
+                          isShowingKeys
+                            ? environment.apiKey
+                            : `${titleCase(environment.slug)}`
+                        }
+                        variant="slate"
+                        className="pl-6 text-slate-300 hover:text-slate-300"
+                      />
                     </div>
                   </li>
                 );

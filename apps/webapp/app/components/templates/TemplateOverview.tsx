@@ -1,19 +1,21 @@
-import { ArrowRightIcon } from "@heroicons/react/20/solid";
+import { ArrowTopRightOnSquareIcon } from "@heroicons/react/24/outline";
 import classNames from "classnames";
 import { Fragment } from "react";
 import type { TemplateListItem } from "~/presenters/templateListPresenter.server";
 import { ApiLogoIcon } from "../code/ApiLogoIcon";
-import { OctoKitty } from "../GitHubLoginButton";
-import { TertiaryA, ToxicLink } from "../primitives/Buttons";
+import { CopyTextPanel } from "../CopyTextButton";
+import { SecondaryA } from "../primitives/Buttons";
 import { Body } from "../primitives/text/Body";
 import { Header1 } from "../primitives/text/Headers";
 
 export function TemplateOverview({
   template,
   className,
+  commandFlags,
 }: {
   template: TemplateListItem;
   className?: string;
+  commandFlags?: string;
 }) {
   const { docsHTML, imageUrl } = template;
 
@@ -21,21 +23,25 @@ export function TemplateOverview({
     <div
       className={classNames(
         className,
-        "grid w-full grid-cols-1 gap-8 rounded-lg bg-slate-850 pl-8 text-left md:grid-cols-[20rem_minmax(0,_1fr)]"
+        "grid w-full grid-cols-1 gap-8 rounded-lg bg-slate-850 pl-8 text-left lg:grid-cols-[24rem_minmax(0,_1fr)]"
       )}
     >
-      <div className="sticky top-4 flex h-max flex-col rounded-r">
-        <TemplateDetails template={template} className="hidden md:flex" />
+      <div className="flex h-max flex-col rounded-r lg:sticky lg:top-4">
+        <TemplateDetails
+          template={template}
+          commandFlags={commandFlags}
+          className="hidden lg:flex"
+        />
       </div>
       <div className="flex h-full w-full flex-col rounded">
-        <div className="z-90 h-fit w-full transition group-hover:opacity-90">
+        <div className="hidden h-fit w-full transition group-hover:opacity-90 lg:block">
           <img
             src={imageUrl}
-            alt=""
-            className="h-full w-full rounded-t object-cover"
+            alt="Template hero image"
+            className="h-full w-full rounded-t-md object-cover"
           />
         </div>
-        <TemplateDetails template={template} className="md:hidden" />
+        <TemplateDetails template={template} className="lg:hidden" />
         <div className="flex rounded-b bg-slate-900/75 p-8">
           <div
             className="prose prose-sm prose-invert min-w-full [&>pre]:bg-[rgb(17,23,41)]"
@@ -52,9 +58,11 @@ export function TemplateOverview({
 function TemplateDetails({
   className,
   template,
+  commandFlags,
 }: {
   className?: string;
   template: TemplateListItem;
+  commandFlags?: string;
 }) {
   const { title, description, repositoryUrl, id } = template;
   return (
@@ -74,7 +82,7 @@ function TemplateDetails({
             </Body>
             <div className="ml-2 h-px w-full bg-slate-800" />
           </div>
-          <div className="mb-4 flex gap-x-1">
+          <div className="mb-6 flex gap-x-1">
             {template.services.map((service) => (
               <Fragment key={service.service}>
                 <ApiLogoIcon
@@ -92,26 +100,50 @@ function TemplateDetails({
       <div className="mb-2 flex items-center">
         <Body
           size="extra-small"
-          className="uppercase tracking-wide text-slate-500"
+          className="whitespace-nowrap uppercase tracking-wide text-slate-500"
         >
-          Repo
+          Help and guides
         </Body>
         <div className="ml-2 h-px w-full bg-slate-800" />
       </div>
-      <TertiaryA href={repositoryUrl} target="_blank" className="mb-8">
-        <OctoKitty className="h-4 w-4" />
-        <Body size="small" className="truncate font-mono">
-          {repositoryUrl.replace("https://github.com/triggerdotdev", "")}
+      <div className="mb-8 grid grid-cols-2 gap-2">
+        <SecondaryA
+          href={repositoryUrl}
+          target="_blank"
+          className="!max-w-full"
+        >
+          View Repo
+          <ArrowTopRightOnSquareIcon className="ml-1 h-4 w-4" />
+        </SecondaryA>
+        <SecondaryA
+          href="https://docs.trigger.dev"
+          target="_blank"
+          className="!max-w-full"
+        >
+          View Docs
+          <ArrowTopRightOnSquareIcon className="ml-1 h-4 w-4" />
+        </SecondaryA>
+      </div>
+      <div className="mb-2 flex items-center">
+        <Body
+          size="extra-small"
+          className="whitespace-nowrap uppercase tracking-wide text-slate-500"
+        >
+          Get started
         </Body>
-      </TertiaryA>
-      <ToxicLink
-        size="large"
-        className="group flex h-12 min-w-full"
-        to={`../../templates/add?templateId=${id}`}
-      >
-        <span> Use this template </span>
-        <ArrowRightIcon className="ml-1 h-5 w-5 transition group-hover:translate-x-0.5" />
-      </ToxicLink>
+        <div className="ml-2 h-px w-full bg-slate-800" />
+      </div>
+      <Body className="mb-4 text-slate-400">
+        Run this command in your terminal to create a new project using this
+        template.
+      </Body>
+      <CopyTextPanel
+        text={`npm create trigger ${template.slug}`}
+        value={`npm create trigger@latest ${template.slug} ${
+          commandFlags ? ` ${commandFlags}` : ""
+        }`}
+        className="mb-8"
+      />
     </div>
   );
 }

@@ -1,6 +1,6 @@
 import type { RouteMatch } from "@remix-run/react";
 import { useMatches } from "@remix-run/react";
-import { useMemo } from "react";
+import { DEV_ENVIRONMENT } from "./consts";
 
 const DEFAULT_REDIRECT = "/";
 
@@ -33,18 +33,23 @@ export function safeRedirect(
  * @returns {JSON|undefined} The router data or undefined if not found
  */
 export function useMatchesData(
-  id: string,
+  id: string | string[],
   debug: boolean = false
 ): RouteMatch | undefined {
   const matchingRoutes = useMatches();
+
   if (debug) {
     console.log("matchingRoutes", matchingRoutes);
   }
 
-  const route = useMemo(
-    () => matchingRoutes.find((route) => route.id === id),
-    [matchingRoutes, id]
-  );
+  const paths = Array.isArray(id) ? id : [id];
+
+  // Get the first matching route
+  const route = paths.reduce((acc, path) => {
+    if (acc) return acc;
+    return matchingRoutes.find((route) => route.id === path);
+  }, undefined as RouteMatch | undefined);
+
   return route;
 }
 
@@ -124,3 +129,12 @@ export function titleCase(original: string): string {
 export function dateDifference(date1: Date, date2: Date) {
   return Math.abs(date1.getTime() - date2.getTime());
 }
+
+export const environmentShortName = (slug: string) =>
+  slug === DEV_ENVIRONMENT ? "Dev" : "Live";
+
+// Takes an api key (either trigger_live_xxxx or trigger_development_xxxx) and returns trigger_live_********
+export const obfuscateApiKey = (apiKey: string) => {
+  const [prefix, slug, secretPart] = apiKey.split("_");
+  return `${prefix}_${slug}_${"*".repeat(secretPart.length)}`;
+};

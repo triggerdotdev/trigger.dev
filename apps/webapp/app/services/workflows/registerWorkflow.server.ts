@@ -7,7 +7,7 @@ import { prisma } from "~/db.server";
 import type { Organization } from "~/models/organization.server";
 import type { RuntimeEnvironment } from "~/models/runtimeEnvironment.server";
 import type { Workflow } from "~/models/workflow.server";
-import { appEventPublisher, taskQueue } from "../messageBroker.server";
+import { taskQueue } from "../messageBroker.server";
 
 export class RegisterWorkflow {
   #prismaClient: PrismaClient;
@@ -31,7 +31,7 @@ export class RegisterWorkflow {
       };
     }
 
-    const workflow = await this.#upsertWorkflow(
+    const { workflow, isNew } = await this.#upsertWorkflow(
       slug,
       validation.data,
       organization
@@ -39,7 +39,7 @@ export class RegisterWorkflow {
 
     if (workflow.isArchived) {
       return {
-        status: "success" as const,
+        status: "isArchived" as const,
         data: { id: workflow.id },
       };
     }
@@ -73,7 +73,7 @@ export class RegisterWorkflow {
 
     return {
       status: "success" as const,
-      data: { id: workflow.id },
+      data: { workflow, environment, organization, isNew },
     };
   }
 
@@ -172,9 +172,11 @@ export class RegisterWorkflow {
       await taskQueue.publish("WORKFLOW_CREATED", {
         id: workflow.id,
       });
+
+      return { workflow, isNew: true };
     }
 
-    return workflow;
+    return { workflow, isNew: false };
   }
 
   async upsertSource(

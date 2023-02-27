@@ -41,6 +41,7 @@ import { RunsTable } from "~/components/runs/RunsTable";
 import { TriggerBody } from "~/components/triggers/Trigger";
 import { TriggerTypeIcon } from "~/components/triggers/TriggerIcons";
 import { triggerLabel } from "~/components/triggers/triggerLabel";
+import { DEV_ENVIRONMENT } from "~/consts";
 import { useConnectionSlots } from "~/hooks/useConnectionSlots";
 import { useCurrentEnvironment } from "~/hooks/useEnvironments";
 import { useCurrentOrganization } from "~/hooks/useOrganizations";
@@ -107,7 +108,7 @@ export default function Page() {
           className="mb-6"
           message={`This workflow hasn't been connected in the ${environment.slug} environment yet.`}
         ></PanelWarning>
-        {environment.slug === "development" ? (
+        {environment.slug === DEV_ENVIRONMENT ? (
           <ConnectToDevelopmentInstructions environment={environment} />
         ) : (
           <ConnectToLiveInstructions environment={environment} />
@@ -399,7 +400,7 @@ export default function Page() {
                   <Disclosure.Panel className="p-6">
                     <div className="mb-1 flex items-baseline gap-2">
                       <SubTitle className="text-slate-300">
-                        Trigger your workflow from the source
+                        Trigger your workflow for real
                       </SubTitle>
                       <span className="relative -top-0.5 rounded-full bg-blue-700 px-2 pt-1 pb-0.5 text-[0.6rem] font-medium uppercase tracking-wider text-blue-200">
                         Recommended

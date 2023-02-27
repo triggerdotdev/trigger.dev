@@ -791,6 +791,7 @@ function createTaskQueue() {
             "x-ttl": run.workflow.triggerTtlInSeconds,
             "x-is-test": run.isTest ? "true" : "false",
             "x-app-origin": env.APP_ORIGIN,
+            "x-attempt": String(run.attemptCount),
           },
           {
             eventTimestamp: run.event.timestamp.getTime(),
