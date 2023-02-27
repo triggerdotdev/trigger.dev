@@ -1,4 +1,8 @@
-import { EyeIcon, EyeSlashIcon } from "@heroicons/react/20/solid";
+import {
+  EyeIcon,
+  EyeSlashIcon,
+  InformationCircleIcon,
+} from "@heroicons/react/20/solid";
 import {
   ArrowsRightLeftIcon,
   ArrowTopRightOnSquareIcon,
@@ -13,7 +17,6 @@ import {
   SquaresPlusIcon,
   UsersIcon,
 } from "@heroicons/react/24/outline";
-import { QuestionMarkCircleIcon } from "@heroicons/react/24/solid";
 import { Link, NavLink } from "@remix-run/react";
 import { useState } from "react";
 import invariant from "tiny-invariant";
@@ -208,21 +211,19 @@ function SideMenu({
           <div className="flex flex-col gap-6">
             <ul className="ml-3 mr-2 flex flex-col gap-2">
               <li className="flex w-full items-center justify-between">
-                <div className="flex">
+                <TertiaryA
+                  href="https://docs.trigger.dev/guides/environments"
+                  target="_blank"
+                  className="group flex items-center gap-1 transition"
+                >
+                  <InformationCircleIcon className="h-4 w-4 text-slate-500 transition group-hover:text-slate-400" />
                   <Body
                     size="extra-small"
-                    className={`overflow-hidden text-slate-300 ${menuSmallTitleStyle}`}
+                    className={`overflow-hidden text-slate-300 transition group-hover:text-slate-400 ${menuSmallTitleStyle}`}
                   >
                     API keys
                   </Body>
-                  <TertiaryA
-                    href="https://docs.trigger.dev/guides/environments"
-                    target="_blank"
-                    className="group mr-1.5 transition before:text-xs before:text-slate-400"
-                  >
-                    <QuestionMarkCircleIcon className="h-4 w-4 text-slate-500 transition group-hover:text-slate-400" />
-                  </TertiaryA>
-                </div>
+                </TertiaryA>
 
                 {!isShowingKeys ? (
                   <TertiaryButton
