@@ -10,6 +10,7 @@ import { JSONSchema } from "core/schemas/types";
 import { FunctionData } from "./types";
 import { generateDocs } from "./generateDocs";
 import { TitleCaseWithSpaces, toFriendlyTypeName } from "./utilities";
+import { AutoReffer } from "core/schemas/autoReffer";
 
 const appDir = process.cwd();
 
@@ -210,8 +211,21 @@ async function createFunctionsAndTypesFiles(
     typeSchemas
   );
 
+  const reffer = new AutoReffer(combinedSchema);
+  const optimizedSchema = reffer.optimize();
+
+  await fs.mkdir(basePath, { recursive: true });
+  await fs.writeFile(
+    `${basePath}/schema.json`,
+    JSON.stringify(combinedSchema, null, 2)
+  );
+  await fs.writeFile(
+    `${basePath}/schema-optimized.json`,
+    JSON.stringify(optimizedSchema, null, 2)
+  );
+
   const allTypes = await getTypesFromSchema(
-    combinedSchema,
+    optimizedSchema,
     `${service.service}Types`
   );
 
