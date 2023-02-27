@@ -173,7 +173,7 @@ export async function ${action.name}(
     version: "2",
     service: "${service.service}",
     endpoint: "${action.name}",
-    params,
+    ${schemas.input ? "params," : "params: undefined,"}
   });
 
   return output;
