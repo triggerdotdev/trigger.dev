@@ -246,6 +246,46 @@ describe("notion.endpoints", async () => {
     stopNock(nockDone);
   });
 
+  test("appendBlockChildren", async () => {
+    const accessToken = authToken();
+
+    const nockDone = await startNock("notion.appendBlockChildren");
+    const data = await endpoints.appendBlockChildren.request({
+      parameters: {
+        block_id: "b4609033-b45a-4fc6-8d15-f06920495ab1",
+        "Notion-Version": notionVersion,
+      },
+      body: {
+        children: [
+          {
+            heading_1: {
+              rich_text: [
+                {
+                  type: "text",
+                  text: {
+                    content:
+                      "This new title is appended using appendBlockChildren()",
+                  },
+                },
+              ],
+            },
+          },
+        ],
+      },
+      credentials: {
+        type: "oauth2",
+        name: "oauth",
+        accessToken,
+        scopes: [""],
+      },
+    });
+
+    expect(data.status).toEqual(200);
+    expect(data.success).toEqual(true);
+    expect(data.body).not.toBeNull();
+    stopNock(nockDone);
+  });
+
   test("search (only pages)", async () => {
     const accessToken = authToken();
 

@@ -1,5 +1,9 @@
 import { EndpointSpec, EndpointSpecResponse } from "core/endpoint/types";
 import {
+  AppendBlockChildrenBodyParameters,
+  AppendBlockChildrenResponse,
+} from "./schemas/endpoints/appendBlockChildren";
+import {
   CreatePageParameters,
   CreatePageResponse,
 } from "./schemas/endpoints/createPage";
@@ -341,7 +345,6 @@ export const updateBlock: EndpointSpec = {
   ],
 };
 
-//todo retrieve block children
 export const getBlockChildren: EndpointSpec = {
   path: "/blocks/{block_id}/children",
   method: "GET",
@@ -378,7 +381,46 @@ export const getBlockChildren: EndpointSpec = {
     errorResponse,
   ],
 };
+
 //todo append block children
+export const appendBlockChildren: EndpointSpec = {
+  path: "/blocks/{block_id}/children",
+  method: "PATCH",
+  metadata: {
+    name: "appendBlockChildren",
+    description: `Creates and appends new children blocks to the parent block_id specified. Returns a paginated list of newly created first level children block objects.`,
+    displayProperties: {
+      title: "Append new blocks to parent block id ${parameters.block_id}",
+    },
+    externalDocs: {
+      description: "API method documentation",
+      url: "https://developers.notion.com/reference/patch-block-children",
+    },
+    tags: ["blocks"],
+  },
+  security: {
+    oauth: [],
+  },
+  parameters: [BlockIdParam, VersionHeaderParam],
+  request: {
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: {
+      schema: AppendBlockChildrenBodyParameters,
+    },
+  },
+  responses: [
+    {
+      matches: ({ statusCode }) => statusCode >= 200 && statusCode < 300,
+      success: true,
+      name: "Success",
+      description: "Typical success response",
+      schema: AppendBlockChildrenResponse,
+    },
+    errorResponse,
+  ],
+};
 //todo delete block
 
 //todo get database
