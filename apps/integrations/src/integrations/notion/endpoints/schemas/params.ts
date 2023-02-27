@@ -14,7 +14,17 @@ export const VersionHeaderParam: EndpointSpecParameter = {
 export const PageIdParam: EndpointSpecParameter = {
   name: "page_id",
   in: "path",
-  description: "ID of the page you would like info about",
+  description: "ID of the page",
+  schema: {
+    type: "string",
+  },
+  required: true,
+};
+
+export const BlockIdParam: EndpointSpecParameter = {
+  name: "block_id",
+  in: "path",
+  description: "ID of the block",
   schema: {
     type: "string",
   },

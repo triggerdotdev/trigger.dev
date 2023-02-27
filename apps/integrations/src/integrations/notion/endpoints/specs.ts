@@ -3,6 +3,7 @@ import {
   CreatePageParameters,
   CreatePageResponse,
 } from "./schemas/endpoints/createPage";
+import { GetBlockResponse } from "./schemas/endpoints/getBlock";
 import { GetPageResponse } from "./schemas/endpoints/getPage";
 import { GetUserResponse } from "./schemas/endpoints/getUser";
 import { ListUsersResponse } from "./schemas/endpoints/listUsers";
@@ -12,7 +13,11 @@ import {
   UpdatePageParameters,
   UpdatePageResponse,
 } from "./schemas/endpoints/updatePage";
-import { PageIdParam, VersionHeaderParam } from "./schemas/params";
+import {
+  BlockIdParam,
+  PageIdParam,
+  VersionHeaderParam,
+} from "./schemas/params";
 
 const errorResponse: EndpointSpecResponse = {
   matches: ({ statusCode }) => statusCode < 200 || statusCode >= 300,
@@ -238,7 +243,6 @@ export const createPage: EndpointSpec = {
   ],
 };
 
-//todo update page
 export const updatePage: EndpointSpec = {
   path: "/pages/{page_id}",
   method: "PATCH",
@@ -279,7 +283,37 @@ export const updatePage: EndpointSpec = {
   ],
 };
 
-//todo get block
+export const getBlock: EndpointSpec = {
+  path: "/blocks/{block_id}",
+  method: "GET",
+  metadata: {
+    name: "getBlock",
+    description: `Retrieves a Block object using the ID specified. If a block contains the key has_children: true, use the Retrieve block children endpoint to get the list of children`,
+    displayProperties: {
+      title: "Get block for block id ${parameters.block_id}",
+    },
+    externalDocs: {
+      description: "API method documentation",
+      url: "https://developers.notion.com/reference/retrieve-a-block",
+    },
+    tags: ["blocks"],
+  },
+  security: {
+    oauth: [],
+  },
+  parameters: [BlockIdParam, VersionHeaderParam],
+  request: {},
+  responses: [
+    {
+      matches: ({ statusCode }) => statusCode >= 200 && statusCode < 300,
+      success: true,
+      name: "Success",
+      description: "Typical success response",
+      schema: GetBlockResponse,
+    },
+    errorResponse,
+  ],
+};
 //todo update block
 //todo retrieve block children
 //todo append block children
