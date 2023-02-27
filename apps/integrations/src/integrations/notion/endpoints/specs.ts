@@ -4,6 +4,10 @@ import {
   AppendBlockChildrenResponse,
 } from "./schemas/endpoints/appendBlockChildren";
 import {
+  CreateCommentBodyParameters,
+  CreateCommentResponse,
+} from "./schemas/endpoints/createComment";
+import {
   CreateDatabaseBodyParameters,
   CreateDatabaseResponse,
 } from "./schemas/endpoints/createDatabase";
@@ -17,6 +21,7 @@ import { GetDatabaseResponse } from "./schemas/endpoints/getDatabase";
 import { GetPageResponse } from "./schemas/endpoints/getPage";
 import { GetUserResponse } from "./schemas/endpoints/getUser";
 import { ListBlockChildrenResponse } from "./schemas/endpoints/listBlockChildren";
+import { ListCommentsResponse } from "./schemas/endpoints/listComments";
 import { ListUsersResponse } from "./schemas/endpoints/listUsers";
 import { GetSelfResponse } from "./schemas/endpoints/me";
 import {
@@ -633,8 +638,89 @@ export const updateDatabase: EndpointSpec = {
   ],
 };
 
-//todo get comments
-//todo create comment
+export const getComments: EndpointSpec = {
+  path: "/comments",
+  method: "GET",
+  metadata: {
+    name: "getComments",
+    description: `Retrieves a list of un-resolved Comment objects from a page or block.`,
+    displayProperties: {
+      title: "Get comments for block id ${parameters.block_id}",
+    },
+    externalDocs: {
+      description: "API method documentation",
+      url: "https://developers.notion.com/reference/retrieve-a-comment",
+    },
+    tags: ["comments"],
+  },
+  security: {
+    oauth: [],
+  },
+  parameters: [
+    {
+      name: "block_id",
+      in: "query",
+      description: "ID of the block",
+      schema: {
+        type: "string",
+      },
+      required: true,
+    },
+    StartCursorParam,
+    PageSizeParam,
+    VersionHeaderParam,
+  ],
+  request: {},
+  responses: [
+    {
+      matches: ({ statusCode }) => statusCode >= 200 && statusCode < 300,
+      success: true,
+      name: "Success",
+      description: "Typical success response",
+      schema: ListCommentsResponse,
+    },
+    errorResponse,
+  ],
+};
+
+export const createComment: EndpointSpec = {
+  path: "/comments",
+  method: "POST",
+  metadata: {
+    name: "createComment",
+    description: `Creates a comment in a page or existing discussion thread. There are two locations you can add a new comment to:\n1. A page\n2.An existing discussion thread\n If the intention is to add a new comment to a page, a parent object must be provided in the body params. Alternatively, if a new comment is being added to an existing discussion thread, the discussion_id string must be provided in the body params. Exactly one of these parameters must be provided.`,
+    displayProperties: {
+      title: "Create comment",
+    },
+    externalDocs: {
+      description: "API method documentation",
+      url: "https://developers.notion.com/reference/create-a-comment",
+    },
+    tags: ["comments"],
+  },
+  security: {
+    oauth: [],
+  },
+  parameters: [VersionHeaderParam],
+  request: {
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: {
+      schema: CreateCommentBodyParameters,
+    },
+  },
+  responses: [
+    {
+      matches: ({ statusCode }) => statusCode >= 200 && statusCode < 300,
+      success: true,
+      name: "Success",
+      description: "Typical success response",
+      schema: CreateCommentResponse,
+    },
+    errorResponse,
+  ],
+};
 
 export const search: EndpointSpec = {
   path: "/search",

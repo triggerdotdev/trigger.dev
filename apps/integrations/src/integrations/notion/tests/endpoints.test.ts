@@ -478,6 +478,64 @@ describe("notion.endpoints", async () => {
     stopNock(nockDone);
   });
 
+  test("getComments", async () => {
+    const accessToken = authToken();
+
+    const nockDone = await startNock("notion.getComments");
+    const data = await endpoints.getComments.request({
+      parameters: {
+        block_id: "b4609033-b45a-4fc6-8d15-f06920495ab1",
+        "Notion-Version": notionVersion,
+      },
+      credentials: {
+        type: "oauth2",
+        name: "oauth",
+        accessToken,
+        scopes: [""],
+      },
+    });
+
+    expect(data.status).toEqual(200);
+    expect(data.success).toEqual(true);
+    expect(data.body).not.toBeNull();
+    stopNock(nockDone);
+  });
+
+  test("createComment", async () => {
+    const accessToken = authToken();
+
+    const nockDone = await startNock("notion.createComment");
+    const data = await endpoints.createComment.request({
+      parameters: {
+        "Notion-Version": notionVersion,
+      },
+      body: {
+        parent: {
+          type: "page_id",
+          page_id: "b4609033-b45a-4fc6-8d15-f06920495ab1",
+        },
+        rich_text: [
+          {
+            text: {
+              content: "Hello world",
+            },
+          },
+        ],
+      },
+      credentials: {
+        type: "oauth2",
+        name: "oauth",
+        accessToken,
+        scopes: [""],
+      },
+    });
+
+    expect(data.status).toEqual(200);
+    expect(data.success).toEqual(true);
+    expect(data.body).not.toBeNull();
+    stopNock(nockDone);
+  });
+
   test("search (only pages)", async () => {
     const accessToken = authToken();
 
