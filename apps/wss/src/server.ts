@@ -350,7 +350,10 @@ export class TriggerServer {
         }
       );
 
-      this.#socket.close(4001, "Client not authenticated");
+      this.#socket.close(
+        4001,
+        "Could not authenticate to the server because the API key is invalid"
+      );
     }
   }
 

@@ -16,6 +16,7 @@ import { Trigger, TriggerOptions } from "./trigger";
 import { TriggerContext, TriggerFetch } from "./types";
 import { generateErrorMessage, ErrorMessageOptions } from "zod-error";
 import terminalLink from "terminal-link";
+import chalk from "chalk";
 
 const zodErrorMessageOptions: ErrorMessageOptions = {
   delimiter: {
@@ -180,11 +181,11 @@ export class TriggerClient<TSchema extends z.ZodTypeAny> {
         return;
       }
 
-      this.#logger.error(`🚩 Could not connect to trigger.dev (code ${code})`);
-
-      if (reason) {
-        this.#logger.error("Reason:", reason);
-      }
+      this.#logger.error(
+        `${chalk.red("error")} Could not connect to trigger.dev${
+          reason ? `: ${reason}` : `(code ${code})`
+        }`
+      );
 
       // If #isConnected is already false, that means we are already trying to reconnect
       if (!this.#isConnected) return;
@@ -740,6 +741,8 @@ export class TriggerClient<TSchema extends z.ZodTypeAny> {
       packageName: pkg.name,
       triggerTTL: this.#options.triggerTTL,
     });
+
+    console.log(response);
 
     if (!response) {
       throw new Error("Could not initialize workflow with server");

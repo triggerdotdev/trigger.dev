@@ -2,8 +2,8 @@
 
 const logLevels = [
   "disabled",
-  "log",
   "error",
+  "log",
   "warn",
   "info",
   "debug",
