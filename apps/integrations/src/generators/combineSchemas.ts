@@ -33,10 +33,6 @@ export function createInputSchema(
     allOf: [],
   };
 
-  if (spec.body) {
-    inputSchema.allOf?.push(spec.body);
-  }
-
   if (spec.parameters && spec.parameters.length > 0) {
     const paramsSchema: JSONSchema = {
       type: "object",
@@ -54,6 +50,10 @@ export function createInputSchema(
     };
 
     inputSchema.allOf?.push(paramsSchema);
+  }
+
+  if (spec.body) {
+    inputSchema.allOf?.push(spec.body);
   }
 
   return inputSchema;
