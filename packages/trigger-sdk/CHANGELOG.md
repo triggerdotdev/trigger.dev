@@ -1,5 +1,11 @@
 # @trigger.dev/sdk
 
+## 0.2.16-next.3
+
+### Patch Changes
+
+- Give a better error message when the API key is invalid
+
 ## 0.2.16-next.2
 
 ### Patch Changes

@@ -1,5 +1,12 @@
 # @trigger.dev/resend
 
+## 0.1.23-next.3
+
+### Patch Changes
+
+- Updated dependencies
+  - @trigger.dev/sdk@0.2.16-next.3
+
 ## 0.1.23-next.2
 
 ### Patch Changes

@@ -1,6 +1,6 @@
 {
   "name": "@trigger.dev/github",
-  "version": "0.1.23-next.2",
+  "version": "0.1.23-next.3",
   "description": "The official GitHub integration for Trigger.dev",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",

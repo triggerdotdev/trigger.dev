@@ -1,6 +1,6 @@
 {
   "name": "@trigger.dev/whatsapp",
-  "version": "0.1.21-next.2",
+  "version": "0.1.21-next.3",
   "description": "The official WhatsApp Business integration for Trigger.dev",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
