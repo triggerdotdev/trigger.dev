@@ -94,6 +94,6 @@ export function webhookEvent<TSchema extends z.ZodTypeAny>(
       schema: zodToJsonSchema(schema) as WebhookEventTrigger["schema"],
     },
     // @ts-ignore
-    schema: options.schema,
+    schema,
   };
 }
