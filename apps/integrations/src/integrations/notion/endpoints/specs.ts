@@ -8,7 +8,11 @@ import { GetUserResponse } from "./schemas/endpoints/getUser";
 import { ListUsersResponse } from "./schemas/endpoints/listUsers";
 import { GetSelfResponse } from "./schemas/endpoints/me";
 import { SearchParameters, SearchResponse } from "./schemas/endpoints/search";
-import { VersionHeaderParam } from "./schemas/params";
+import {
+  UpdatePageParameters,
+  UpdatePageResponse,
+} from "./schemas/endpoints/updatePage";
+import { PageIdParam, VersionHeaderParam } from "./schemas/params";
 
 const errorResponse: EndpointSpecResponse = {
   matches: ({ statusCode }) => statusCode < 200 || statusCode >= 300,
@@ -165,15 +169,7 @@ export const getPage: EndpointSpec = {
     oauth: [],
   },
   parameters: [
-    {
-      name: "page_id",
-      in: "path",
-      description: "ID of the page you would like info about",
-      schema: {
-        type: "string",
-      },
-      required: true,
-    },
+    PageIdParam,
     VersionHeaderParam,
     {
       name: "filter_properties",
@@ -243,6 +239,45 @@ export const createPage: EndpointSpec = {
 };
 
 //todo update page
+export const updatePage: EndpointSpec = {
+  path: "/pages/{page_id}",
+  method: "PATCH",
+  metadata: {
+    name: "updatePage",
+    description:
+      "Update a page icon, cover or archived status. You can update a database page's properties but the properties must match the parent database schema.",
+    displayProperties: {
+      title: "Update page ${parameters.page_id}",
+    },
+    externalDocs: {
+      description: "API method documentation",
+      url: "https://developers.notion.com/reference/patch-page",
+    },
+    tags: ["pages"],
+  },
+  security: {
+    oauth: [],
+  },
+  parameters: [PageIdParam, VersionHeaderParam],
+  request: {
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: {
+      schema: UpdatePageParameters,
+    },
+  },
+  responses: [
+    {
+      matches: ({ statusCode }) => statusCode >= 200 && statusCode < 300,
+      success: true,
+      name: "Success",
+      description: "Typical success response",
+      schema: UpdatePageResponse,
+    },
+    errorResponse,
+  ],
+};
 
 //todo get block
 //todo update block

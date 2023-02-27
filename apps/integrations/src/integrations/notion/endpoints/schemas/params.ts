@@ -10,3 +10,13 @@ export const VersionHeaderParam: EndpointSpecParameter = {
   },
   required: true,
 };
+
+export const PageIdParam: EndpointSpecParameter = {
+  name: "page_id",
+  in: "path",
+  description: "ID of the page you would like info about",
+  schema: {
+    type: "string",
+  },
+  required: true,
+};
