@@ -1187,8 +1187,10 @@ importers:
       '@types/slug': ^5.0.3
       '@types/uuid': ^9.0.0
       '@types/ws': ^8.5.3
+      chalk: ^5.2.0
       debug: ^4.3.4
       evt: ^2.4.13
+      get-caller-file: ^2.0.5
       internal-bridge: workspace:*
       node-fetch: 2.6.x
       rimraf: ^3.0.2
@@ -1203,8 +1205,10 @@ importers:
       zod-error: ^1.1.0
       zod-to-json-schema: ^3.20.2
     dependencies:
+      chalk: 5.2.0
       debug: 4.3.4
       evt: 2.4.13
+      get-caller-file: 2.0.5
       node-fetch: 2.6.7
       slug: 6.1.0
       terminal-link: 3.0.0

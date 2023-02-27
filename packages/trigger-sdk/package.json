@@ -37,8 +37,10 @@
     "build:tsup": "tsup --dts-resolve"
   },
   "dependencies": {
+    "chalk": "^5.2.0",
     "debug": "^4.3.4",
     "evt": "^2.4.13",
+    "get-caller-file": "^2.0.5",
     "node-fetch": "2.6.x",
     "slug": "^6.0.0",
     "terminal-link": "^3.0.0",

@@ -1,9 +1,11 @@
 import { TriggerClient } from "../client";
 import { LogLevel } from "internal-bridge";
 import { TriggerEvent } from "../events";
+import chalk from "chalk";
 
 import type { TriggerContext } from "../types";
 import { z } from "zod";
+import terminalLink from "terminal-link";
 
 export type TriggerOptions<TSchema extends z.ZodTypeAny> = {
   id: string;
@@ -31,6 +33,23 @@ export class Trigger<TSchema extends z.ZodTypeAny> {
   }
 
   async listen() {
+    if (this.#isMissingApiKey) {
+      console.log(
+        `${chalk.red("Trigger.dev error")}: ${chalk.bold(
+          this.id
+        )} is missing an API key, please set the TRIGGER_API_KEY environment variable or pass the apiKey option to the Trigger constructor. ${terminalLink(
+          "Get your API key here",
+          "https://app.trigger.dev",
+          {
+            fallback(text, url) {
+              return `${text} 👉 ${url}`;
+            },
+          }
+        )}`
+      );
+      return;
+    }
+
     if (!this.#client) {
       this.#client = new TriggerClient(this, this.options);
     }
@@ -52,5 +71,9 @@ export class Trigger<TSchema extends z.ZodTypeAny> {
 
   get on() {
     return this.options.on;
+  }
+
+  get #isMissingApiKey() {
+    return !this.options.apiKey && !process.env.TRIGGER_API_KEY;
   }
 }
