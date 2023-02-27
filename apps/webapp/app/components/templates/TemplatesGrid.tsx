@@ -67,10 +67,10 @@ export function TemplatesGrid({
                   {template.title}
                 </Header1>
                 <CopyTextPanel
-                  value={`npm create trigger@latest ${template.slug}${
+                  value={`npx create-trigger@latest ${template.slug}${
                     commandFlags ? ` ${commandFlags}` : ``
                   }`}
-                  text={`npm create trigger ${template.slug}`}
+                  text={`npx create-trigger ${template.slug}`}
                   className=""
                 />
               </div>

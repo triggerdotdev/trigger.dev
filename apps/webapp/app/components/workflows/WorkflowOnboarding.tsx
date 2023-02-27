@@ -72,8 +72,8 @@ export function WorkflowOnboarding({
                       running this command.
                     </Body>
                     <CopyTextPanel
-                      value={`npm create trigger@latest --apiKey ${apiKey}`}
-                      text={`npm create trigger --apiKey ${apiKey}`}
+                      value={`npx create-trigger@latest --apiKey ${apiKey}`}
+                      text={`npx create-trigger --apiKey ${apiKey}`}
                     />
                   </div>
                 </div>
