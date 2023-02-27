@@ -113,6 +113,20 @@ async function seed() {
     ),
   };
 
+  const supabaseToDiscord = {
+    repositoryUrl: "https://github.com/triggerdotdev/supabase-to-discord",
+    imageUrl:
+      "https://imagedelivery.net/3TbraffuDZ4aEf8KWOmI_w/cce3b770-b6f9-40ef-baf3-f01c20686700/public",
+    title: "Send a message to Discord from a Supabase webhook",
+    shortTitle: "Supabase to Discord",
+    description:
+      "Send a message to a Discord channel when a new row is inserted into a Supabase table.",
+    priority: 42,
+    services: [],
+    workflowIds: ["supabase-to-discord"],
+    markdownDocs: await readTemplateDocsFile("supabase-to-discord"),
+  };
+
   await prisma.template.updateMany({
     where: {
       slug: "basic-starter",
@@ -173,6 +187,15 @@ async function seed() {
     create: {
       slug: "resend-welcome-drip-campaign",
       ...resendWelcomeDripCampaign,
+    },
+  });
+
+  await prisma.template.upsert({
+    where: { slug: "supabase-to-discord" },
+    update: supabaseToDiscord,
+    create: {
+      slug: "supabase-to-discord",
+      ...supabaseToDiscord,
     },
   });
 }
