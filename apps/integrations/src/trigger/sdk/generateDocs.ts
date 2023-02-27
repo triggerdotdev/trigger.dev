@@ -118,20 +118,20 @@ function generateDocSchema(
   let description = createDescription(schema);
 
   if (schema.allOf) {
-    const combinedSchema: JSONSchema = {
-      type: "object",
-      description,
-      properties: schema.allOf.reduce((acc, v) => {
-        if (typeof v === "boolean") return acc;
-        return { ...acc, ...v.properties };
-      }, {}),
-      required: schema.allOf.reduce((acc: string[], v) => {
-        if (typeof v === "boolean") return acc;
-        return [...acc, ...(v.required ?? [])];
-      }, []),
-    };
+    const docSchemas = schema.allOf.flatMap((s) => {
+      const genSchema = generateDocSchema(key, required, s, expanded);
+      return genSchema ? [genSchema] : [];
+    });
 
-    return generateDocSchema(key, required, combinedSchema, expanded);
+    return {
+      path: key,
+      required,
+      types: new Set(docSchemas.flatMap((s) => Array.from(s.types))),
+      description,
+      children: docSchemas.flatMap((s) => s.children ?? []),
+      childrenCollectionName: "properties",
+      childrenExpanded: expanded,
+    };
   }
 
   if (schema.oneOf) {
