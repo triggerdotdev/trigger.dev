@@ -69,7 +69,7 @@ async function seed() {
     repositoryUrl: "https://github.com/triggerdotdev/github-stars-to-slack",
     imageUrl:
       "https://imagedelivery.net/3TbraffuDZ4aEf8KWOmI_w/5b3964be-9a7b-4a7e-1837-b283e501b900/public",
-    title: "Slack notifications when a GitHub repo is starred",
+    title: "Post to Slack every time a GitHub repo is starred",
     shortTitle: "GitHub stars to Slack",
     description:
       "When a GitHub repo is starred, post information about the user to Slack.",
@@ -100,7 +100,7 @@ async function seed() {
       "https://github.com/triggerdotdev/resend-welcome-drip-campaign",
     imageUrl:
       "https://imagedelivery.net/3TbraffuDZ4aEf8KWOmI_w/cce3b770-b6f9-40ef-baf3-f01c20686700/public",
-    title: "Send a welcome drip campaign to new users",
+    title: "Send an email drip campaign when a new user signs up",
     shortTitle: "Resend.com drip campaign",
     description:
       "When a new user is created, send them a welcome drip campaign from Resend.com and react.email.",
