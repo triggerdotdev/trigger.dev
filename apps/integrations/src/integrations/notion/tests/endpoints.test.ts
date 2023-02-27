@@ -332,6 +332,30 @@ describe("notion.endpoints", async () => {
     stopNock(nockDone);
   });
 
+  test("queryDatabase", async () => {
+    const accessToken = authToken();
+
+    const nockDone = await startNock("notion.queryDatabase");
+    const data = await endpoints.queryDatabase.request({
+      parameters: {
+        database_id: "0fadc732-4472-418c-83dc-04454332cb52",
+        "Notion-Version": notionVersion,
+      },
+      body: {},
+      credentials: {
+        type: "oauth2",
+        name: "oauth",
+        accessToken,
+        scopes: [""],
+      },
+    });
+
+    expect(data.status).toEqual(200);
+    expect(data.success).toEqual(true);
+    expect(data.body).not.toBeNull();
+    stopNock(nockDone);
+  });
+
   test("search (only pages)", async () => {
     const accessToken = authToken();
 

@@ -15,6 +15,11 @@ import { GetUserResponse } from "./schemas/endpoints/getUser";
 import { ListBlockChildrenResponse } from "./schemas/endpoints/listBlockChildren";
 import { ListUsersResponse } from "./schemas/endpoints/listUsers";
 import { GetSelfResponse } from "./schemas/endpoints/me";
+import {
+  QueryDatabaseBodyParameters,
+  QueryDatabaseQueryParameters,
+  QueryDatabaseResponse,
+} from "./schemas/endpoints/queryDatabase";
 import { SearchParameters, SearchResponse } from "./schemas/endpoints/search";
 import {
   UpdateBlockBodyParameters,
@@ -488,7 +493,60 @@ export const getDatabase: EndpointSpec = {
   ],
 };
 
-//todo query database
+export const queryDatabase: EndpointSpec = {
+  path: "/databases/{database_id}/query",
+  method: "POST",
+  metadata: {
+    name: "queryDatabase",
+    description: `Gets a list of Pages contained in the database, filtered and ordered according to the filter conditions and sort criteria provided in the request. The response may contain fewer than page_size of results.`,
+    displayProperties: {
+      title: "Query database with id ${parameters.database_id}",
+    },
+    externalDocs: {
+      description: "API method documentation",
+      url: "https://developers.notion.com/reference/post-database-query",
+    },
+    tags: ["database"],
+  },
+  security: {
+    oauth: [],
+  },
+  parameters: [
+    DatabaseIdParam,
+    VersionHeaderParam,
+    {
+      name: "filter_properties",
+      in: "query",
+      description:
+        "The list of database properties you want to receive back in the responses – you need to provide ids",
+      schema: {
+        type: "array",
+        items: {
+          type: "string",
+        },
+      },
+    },
+  ],
+  request: {
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: {
+      schema: QueryDatabaseBodyParameters,
+    },
+  },
+  responses: [
+    {
+      matches: ({ statusCode }) => statusCode >= 200 && statusCode < 300,
+      success: true,
+      name: "Success",
+      description: "Typical success response",
+      schema: QueryDatabaseResponse,
+    },
+    errorResponse,
+  ],
+};
+
 //todo create database
 //todo Update database
 
