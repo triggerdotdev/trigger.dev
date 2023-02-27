@@ -742,8 +742,6 @@ export class TriggerClient<TSchema extends z.ZodTypeAny> {
       triggerTTL: this.#options.triggerTTL,
     });
 
-    console.log(response);
-
     if (!response) {
       throw new Error("Could not initialize workflow with server");
     }
