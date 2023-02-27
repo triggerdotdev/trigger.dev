@@ -23,20 +23,24 @@ export function generateInputOutputSchemas(
 export function createInputSchema(
   spec: Action["spec"]["input"]
 ): JSONSchema | undefined {
-  let inputSchema: JSONSchema | undefined = spec.body;
+  if (
+    (spec.parameters === undefined || spec.parameters.length === 0) &&
+    spec.body === undefined
+  )
+    return undefined;
+
+  const inputSchema: JSONSchema = {
+    allOf: [],
+  };
+
+  if (spec.body) {
+    inputSchema.allOf?.push(spec.body);
+  }
 
   if (spec.parameters && spec.parameters.length > 0) {
-    if (!inputSchema) {
-      inputSchema = {
-        type: "object",
-        properties: {},
-      };
-    }
-
-    inputSchema = {
+    const paramsSchema: JSONSchema = {
       type: "object",
       properties: {
-        ...inputSchema.properties,
         ...Object.fromEntries(
           spec.parameters.map((p) => [
             p.name,
@@ -45,10 +49,11 @@ export function createInputSchema(
         ),
       },
       required: [
-        ...(inputSchema.required ?? []),
         ...spec.parameters.filter((p) => p.required).map((p) => p.name),
       ],
     };
+
+    inputSchema.allOf?.push(paramsSchema);
   }
 
   return inputSchema;
