@@ -286,6 +286,29 @@ describe("notion.endpoints", async () => {
     stopNock(nockDone);
   });
 
+  test("deleteBlock", async () => {
+    const accessToken = authToken();
+
+    const nockDone = await startNock("notion.deleteBlock");
+    const data = await endpoints.deleteBlock.request({
+      parameters: {
+        block_id: "4c946f30-ebc2-4eed-bfbc-094226ae9659",
+        "Notion-Version": notionVersion,
+      },
+      credentials: {
+        type: "oauth2",
+        name: "oauth",
+        accessToken,
+        scopes: [""],
+      },
+    });
+
+    expect(data.status).toEqual(200);
+    expect(data.success).toEqual(true);
+    expect(data.body).not.toBeNull();
+    stopNock(nockDone);
+  });
+
   test("search (only pages)", async () => {
     const accessToken = authToken();
 

@@ -7,6 +7,7 @@ import {
   CreatePageParameters,
   CreatePageResponse,
 } from "./schemas/endpoints/createPage";
+import { DeleteBlockResponse } from "./schemas/endpoints/deleteBlock";
 import { GetBlockResponse } from "./schemas/endpoints/getBlock";
 import { GetPageResponse } from "./schemas/endpoints/getPage";
 import { GetUserResponse } from "./schemas/endpoints/getUser";
@@ -382,7 +383,6 @@ export const getBlockChildren: EndpointSpec = {
   ],
 };
 
-//todo append block children
 export const appendBlockChildren: EndpointSpec = {
   path: "/blocks/{block_id}/children",
   method: "PATCH",
@@ -421,7 +421,39 @@ export const appendBlockChildren: EndpointSpec = {
     errorResponse,
   ],
 };
+
 //todo delete block
+export const deleteBlock: EndpointSpec = {
+  path: "/blocks/{block_id}",
+  method: "DELETE",
+  metadata: {
+    name: "deleteBlock",
+    description: `Sets a Block object, including page blocks, to archived: true using the ID specified. Note: in the Notion UI application, this moves the block to the "Trash" where it can still be accessed and restored.\n\nTo restore the block with the API, use the Update a block or Update page respectively.`,
+    displayProperties: {
+      title: "Delete block with block id ${parameters.block_id}",
+    },
+    externalDocs: {
+      description: "API method documentation",
+      url: "https://developers.notion.com/reference/delete-a-block",
+    },
+    tags: ["blocks"],
+  },
+  security: {
+    oauth: [],
+  },
+  parameters: [BlockIdParam, VersionHeaderParam],
+  request: {},
+  responses: [
+    {
+      matches: ({ statusCode }) => statusCode >= 200 && statusCode < 300,
+      success: true,
+      name: "Success",
+      description: "Typical success response",
+      schema: DeleteBlockResponse,
+    },
+    errorResponse,
+  ],
+};
 
 //todo get database
 //todo query database
