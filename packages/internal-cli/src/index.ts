@@ -160,7 +160,7 @@ program
             const scopes = Object.keys(providerAuthentication.scopes);
 
             if (hasExistingConfig) {
-              const response = await updateConfig(
+              const succeeded = await updateConfig(
                 pizzly_host,
                 service,
                 environmentClientId,
@@ -168,9 +168,13 @@ program
                 scopes,
                 options.pizzlysecretkey
               );
+              if (!succeeded) {
+                console.error(`Failed to update config for ${service}`);
+                return;
+              }
               console.log(`Updated config for ${service} with scopes`, scopes);
             } else {
-              const response = await createConfig(
+              const succeeded = await createConfig(
                 pizzly_host,
                 service,
                 environmentClientId,
@@ -178,9 +182,14 @@ program
                 scopes,
                 options.pizzlysecretkey
               );
+              if (!succeeded) {
+                console.error(`Failed to create config for ${service}`);
+                return;
+              }
               console.log(`Created config for ${service} with scopes`, scopes);
             }
           } catch (error) {
+            console.error(error);
             // For a list of exceptions thrown, see
             // https://docs.aws.amazon.com/secretsmanager/latest/apireference/API_GetSecretValue.html
             throw error;
@@ -222,9 +231,10 @@ async function updateConfig(
       provider: slug,
       oauth_client_id: client_id,
       oauth_client_secret: client_secret,
-      oauth_scopes: scopes.join(","),
+      oauth_scopes: scopes.length === 0 ? "" : scopes.join(","),
     }),
   });
+
   return response.ok;
 }
 
@@ -244,7 +254,7 @@ async function createConfig(
       provider: slug,
       oauth_client_id: client_id,
       oauth_client_secret: client_secret,
-      oauth_scopes: scopes.join(","),
+      oauth_scopes: scopes.length === 0 ? "" : scopes.join(","),
     }),
   });
   return response.ok;

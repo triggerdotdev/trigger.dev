@@ -3,6 +3,7 @@ import { schemaFromOpenApiSpecV2 } from "core/schemas/openApi";
 import { spec } from "./schemas/spec";
 
 const errorResponse: EndpointSpecResponse = {
+  matches: ({ statusCode, body }) => statusCode !== 200 || !body.ok,
   success: false,
   name: "Error",
   description: "200 error response",
@@ -126,95 +127,73 @@ export const chatPostMessage: EndpointSpec = {
       },
     },
   },
-  responses: {
-    200: [
-      {
-        success: true,
-        name: "Success",
-        description: "Typical success response",
-        schema: {
-          type: "object",
-          properties: {
-            channel: {
-              description: "Channel ID where the message was posted",
-              type: "string",
-            },
-            message: {
-              type: "object",
-              properties: {
-                attachments: {
-                  type: "array",
-                  items: {
-                    type: "object",
-                    properties: {
-                      fallback: {
-                        type: "string",
-                      },
-                      id: {
-                        type: "number",
-                      },
-                      text: {
-                        type: "string",
-                      },
+  responses: [
+    {
+      matches: ({ statusCode, body }) => statusCode === 200 && body.ok,
+      success: true,
+      name: "Success",
+      description: "Typical success response",
+      schema: {
+        type: "object",
+        properties: {
+          channel: {
+            description: "Channel ID where the message was posted",
+            type: "string",
+          },
+          message: {
+            type: "object",
+            properties: {
+              attachments: {
+                type: "array",
+                items: {
+                  type: "object",
+                  properties: {
+                    fallback: {
+                      type: "string",
                     },
-                    required: ["fallback", "id", "text"],
+                    id: {
+                      type: "number",
+                    },
+                    text: {
+                      type: "string",
+                    },
                   },
-                },
-                bot_id: {
-                  type: "string",
-                },
-                subtype: {
-                  type: "string",
-                },
-                text: {
-                  type: "string",
-                },
-                ts: {
-                  type: "string",
-                },
-                type: {
-                  type: "string",
-                },
-                user: {
-                  type: "string",
+                  required: ["fallback", "id", "text"],
                 },
               },
-              required: ["bot_id", "text", "ts", "type"],
+              bot_id: {
+                type: "string",
+              },
+              subtype: {
+                type: "string",
+              },
+              text: {
+                type: "string",
+              },
+              ts: {
+                type: "string",
+              },
+              type: {
+                type: "string",
+              },
+              user: {
+                type: "string",
+              },
             },
-            ok: {
-              type: "boolean",
-            },
-            ts: {
-              type: "string",
-            },
+            required: ["bot_id", "text", "ts", "type"],
           },
-          required: ["channel", "message", "ok", "ts"],
-        },
-      },
-      errorResponse,
-    ],
-    default: [
-      {
-        success: false,
-        name: "Error",
-        description:
-          "Typical error response if too many attachments are included",
-        schema: {
-          description: "Schema for error response chat.postMessage method",
-          type: "object",
-          properties: {
-            error: {
-              type: "string",
-            },
-            ok: {
-              type: "boolean",
-            },
+          ok: {
+            type: "boolean",
           },
-          required: ["error", "ok"],
+          ts: {
+            type: "string",
+          },
         },
+        required: ["channel", "message", "ok", "ts"],
       },
-    ],
-  },
+    },
+    errorResponse,
+  ],
 };
 
 export const conversationsList: EndpointSpec = {
@@ -273,29 +252,27 @@ export const conversationsList: EndpointSpec = {
     },
   ],
   request: {},
-  responses: {
-    200: [
-      {
-        success: true,
-        name: "Success",
-        schema: schemaFromOpenApiSpecV2(
-          spec,
-          "/paths//conversations.list/get/responses/200/schema"
-        ),
-      },
-      errorResponse,
-    ],
-    default: [
-      {
-        success: false,
-        name: "Error",
-        schema: schemaFromOpenApiSpecV2(
-          spec,
-          "/paths//conversations.list/get/responses/default/schema"
-        ),
-      },
-    ],
-  },
+  responses: [
+    {
+      matches: ({ statusCode, body }) => statusCode === 200 && body.ok,
+      success: true,
+      name: "Success",
+      schema: schemaFromOpenApiSpecV2(
+        spec,
+        "/paths//conversations.list/get/responses/200/schema"
+      ),
+    },
+    errorResponse,
+    {
+      matches: () => true,
+      success: false,
+      name: "Error",
+      schema: schemaFromOpenApiSpecV2(
+        spec,
+        "/paths//conversations.list/get/responses/default/schema"
+      ),
+    },
+  ],
 };
 
 export const conversationsJoin: EndpointSpec = {
@@ -333,27 +310,25 @@ export const conversationsJoin: EndpointSpec = {
       },
     },
   },
-  responses: {
-    200: [
-      {
-        success: true,
-        name: "Success",
-        schema: schemaFromOpenApiSpecV2(
-          spec,
-          "/paths//conversations.join/post/responses/200/schema"
-        ),
-      },
-      errorResponse,
-    ],
-    default: [
-      {
-        success: false,
-        name: "Error",
-        schema: schemaFromOpenApiSpecV2(
-          spec,
-          "/paths//conversations.join/post/responses/default/schema"
-        ),
-      },
-    ],
-  },
+  responses: [
+    {
+      matches: ({ statusCode, body }) => statusCode === 200 && body.ok,
+      success: true,
+      name: "Success",
+      schema: schemaFromOpenApiSpecV2(
+        spec,
+        "/paths//conversations.join/post/responses/200/schema"
+      ),
+    },
+    errorResponse,
+    {
+      matches: () => true,
+      success: false,
+      name: "Error",
+      schema: schemaFromOpenApiSpecV2(
+        spec,
+        "/paths//conversations.join/post/responses/default/schema"
+      ),
+    },
+  ],
 };

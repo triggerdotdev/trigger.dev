@@ -4,13 +4,13 @@ import { generateService } from "./generateService";
 export async function generate() {
   console.log("Generating SDKs...");
 
-  const allSdks = Object.values(catalog.services).map((service) => {
-    return generateService(service);
-  });
+  const services = Object.values(catalog.services);
+  for (let index = 0; index < services.length; index++) {
+    const service = services[index];
+    await generateService(service);
+  }
 
-  await Promise.all(allSdks);
-
-  console.log(`Generated ${allSdks.length} SDKs`);
+  console.log(`Generated ${services.length} SDKs`);
 }
 
 generate();

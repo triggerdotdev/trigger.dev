@@ -1,0 +1,211 @@
+[
+    {
+        "scope": "https://api.notion.com:443",
+        "method": "PATCH",
+        "path": "/v1/databases/8db50793-ac53-496b-bbff-a74be0fb78b4",
+        "body": {
+            "title": [
+                {
+                    "text": {
+                        "content": "Trigger.dev updated db title"
+                    }
+                }
+            ],
+            "description": [
+                {
+                    "text": {
+                        "content": "This is an updated description"
+                    }
+                }
+            ],
+            "properties": {
+                "+1": null,
+                "Photo": {
+                    "url": {}
+                },
+                "Store availability": {
+                    "multi_select": {
+                        "options": [
+                            {
+                                "name": "Duc Loi Market"
+                            },
+                            {
+                                "name": "Rainbow Grocery"
+                            },
+                            {
+                                "name": "Gus'''s Community Market"
+                            },
+                            {
+                                "name": "The Good Life Grocery",
+                                "color": "orange"
+                            }
+                        ]
+                    }
+                }
+            }
+        },
+        "status": 200,
+        "response": {
+            "object": "database",
+            "id": "8db50793-ac53-496b-bbff-a74be0fb78b4",
+            "cover": null,
+            "icon": {
+                "type": "emoji",
+                "emoji": "📝"
+            },
+            "created_time": "2023-02-27T12:03:00.000Z",
+            "created_by": {
+                "object": "user",
+                "id": "bcd4bb6e-7cb4-4e04-8609-10744a579644"
+            },
+            "last_edited_by": {
+                "object": "user",
+                "id": "bcd4bb6e-7cb4-4e04-8609-10744a579644"
+            },
+            "last_edited_time": "2023-02-27T12:48:00.000Z",
+            "title": [
+                {
+                    "type": "text",
+                    "text": {
+                        "content": "Trigger.dev updated db title",
+                        "link": null
+                    },
+                    "annotations": {
+                        "bold": false,
+                        "italic": false,
+                        "strikethrough": false,
+                        "underline": false,
+                        "code": false,
+                        "color": "default"
+                    },
+                    "plain_text": "Trigger.dev updated db title",
+                    "href": null
+                }
+            ],
+            "description": [
+                {
+                    "type": "text",
+                    "text": {
+                        "content": "This is an updated description",
+                        "link": null
+                    },
+                    "annotations": {
+                        "bold": false,
+                        "italic": false,
+                        "strikethrough": false,
+                        "underline": false,
+                        "code": false,
+                        "color": "default"
+                    },
+                    "plain_text": "This is an updated description",
+                    "href": null
+                }
+            ],
+            "is_inline": false,
+            "properties": {
+                "Photo": {
+                    "id": "JvIM",
+                    "name": "Photo",
+                    "type": "url",
+                    "url": {}
+                },
+                "Store availability": {
+                    "id": "_TEG",
+                    "name": "Store availability",
+                    "type": "multi_select",
+                    "multi_select": {
+                        "options": [
+                            {
+                                "id": "b38859ad-7eb8-445a-8445-00344ea4c0b3",
+                                "name": "Duc Loi Market",
+                                "color": "default"
+                            },
+                            {
+                                "id": "fa7f8bd8-a8be-4804-9f53-868369e861ea",
+                                "name": "Rainbow Grocery",
+                                "color": "default"
+                            },
+                            {
+                                "id": "4b1eec41-5a4a-41e2-9a76-6d7482de838b",
+                                "name": "Gus'''s Community Market",
+                                "color": "default"
+                            },
+                            {
+                                "id": "029b153e-bce3-4e95-9788-80968a605248",
+                                "name": "The Good Life Grocery",
+                                "color": "orange"
+                            }
+                        ]
+                    }
+                },
+                "Description": {
+                    "id": "al%3E%3F",
+                    "name": "Description",
+                    "type": "rich_text",
+                    "rich_text": {}
+                },
+                "In stock": {
+                    "id": "q%60gF",
+                    "name": "In stock",
+                    "type": "checkbox",
+                    "checkbox": {}
+                },
+                "Name": {
+                    "id": "title",
+                    "name": "Name",
+                    "type": "title",
+                    "title": {}
+                }
+            },
+            "parent": {
+                "type": "page_id",
+                "page_id": "b4609033-b45a-4fc6-8d15-f06920495ab1"
+            },
+            "url": "https://www.notion.so/8db50793ac53496bbbffa74be0fb78b4",
+            "archived": false
+        },
+        "rawHeaders": [
+            "Date",
+            "Mon, 27 Feb 2023 12:48:06 GMT",
+            "Content-Type",
+            "application/json; charset=utf-8",
+            "Transfer-Encoding",
+            "chunked",
+            "Connection",
+            "close",
+            "Set-Cookie",
+            "notion_browser_id=f5110365-ef1e-4adc-9d18-2c2ab2334011; Domain=www.notion.so; Path=/; Expires=Tue, 27 Feb 2024 12:48:05 GMT; Secure",
+            "Content-Security-Policy",
+            "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://gist.github.com https://apis.google.com https://www.google.com https://www.gstatic.com https://cdn.amplitude.com https://api.amplitude.com http://dev-embed.notion.co http://embed.notion.co https://widget.intercom.io https://js.intercomcdn.com https://static.zdassets.com https://api.smooch.io\t https://logs-01.loggly.com https://http-inputs-notion.splunkcloud.com https://cdn.segment.com https://analytics.pgncs.notion.so https://o324374.ingest.sentry.io https://checkout.stripe.com https://js.stripe.com https://embed.typeform.com https://admin.typeform.com https://public.profitwell.com https://static.profitwell.com js.sentry-cdn.com https://js.chilipiper.com https://platform.twitter.com https://cdn.syndication.twimg.com https://accounts.google.com https://www.googletagmanager.com https://www.googleadservices.com https://googleads.g.doubleclick.net https://api-v2.mutinyhq.io https://client-registry.mutinycdn.com https://client.mutinycdn.com https://user-data.mutinycdn.com https://cdn.metadata.io https://platformapi.metadata.io https://d2hrivdxn8ekm8.cloudfront.net https://d1lu3pmaz2ilpx.cloudfront.net https://dvqigh9b7wa32.cloudfront.net https://d330aiyvva2oww.cloudfront.net https://cdn.transcend.io https://cdn01.boxcdn.net https://cdn.sprig.com assets.customer.io code.gist.build;connect-src 'self' data: blob: https://msgstore.www.notion.so wss://msgstore.www.notion.so ws://localhost:* ws://127.0.0.1:* https://notion-emojis.s3-us-west-2.amazonaws.com https://s3-us-west-2.amazonaws.com https://s3.us-west-2.amazonaws.com https://notion-production-snapshots-2.s3.us-west-2.amazonaws.com https://cdn.amplitude.com https://api.amplitude.com https://www.notion.so https://api.embed.ly http://dev-embed.notion.co http://embed.notion.co https://js.intercomcdn.com https://api-iam.intercom.io https://uploads.intercomcdn.com wss://nexus-websocket-a.intercom.io https://ekr.zdassets.com https://ekr.zendesk.com\t https://makenotion.zendesk.com\t https://api.smooch.io\t wss://api.smooch.io\t https://logs-01.loggly.com https://http-inputs-notion.splunkcloud.com https://cdn.segment.com https://api.segment.io https://analytics.pgncs.notion.so https://api.pgncs.notion.so https://o324374.ingest.sentry.io https://checkout.stripe.com https://js.stripe.com https://cdn.contentful.com https://preview.contentful.com https://images.ctfassets.net https://www2.profitwell.com https://tracking.chilipiper.com https://api.chilipiper.com https://api.unsplash.com https://boards-api.greenhouse.io https://accounts.google.com https://oauth2.googleapis.com https://www.googletagmanager.com https://analytics.google.com https://www.googleadservices.com https://googleads.g.doubleclick.net https://region1.google-analytics.com https://region1.analytics.google.com https://www.google-analytics.com https://api-v2.mutinyhq.io https://client-registry.mutinycdn.com https://client.mutinycdn.com https://user-data.mutinycdn.com https://cdn.metadata.io https://platformapi.metadata.io https://d2hrivdxn8ekm8.cloudfront.net https://d1lu3pmaz2ilpx.cloudfront.net https://dvqigh9b7wa32.cloudfront.net https://d330aiyvva2oww.cloudfront.net https://cdn.transcend.io https://telemetry.transcend.io https://api.statuspage.io https://pgncd.notion.so https://api.statsig.com https://statsigapi.net https://exp.notion.so https://file.notion.so notion://file.notion.so https://api.box.com https://*.mux.com https://api.sprig.com https://storage.googleapis.com https://cdn.sprig.com https://cdn.userleap.com track.customer.io *.api.gist.build *.cloud.gist.build;font-src 'self' data: https://cdnjs.cloudflare.com https://js.intercomcdn.com https://cdn01.boxcdn.net;img-src 'self' data: blob: https: https://platform.twitter.com https://syndication.twitter.com https://pbs.twimg.com https://ton.twimg.com https://region1.google-analytics.com https://region1.analytics.google.com https://file.notion.so notion://file.notion.so https://*.mux.com track.customer.io;style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://github.githubassets.com https://js.chilipiper.com https://platform.twitter.com https://ton.twimg.com https://accounts.google.com https://cdn.transcend.io https://cdn01.boxcdn.net code.gist.build;media-src blob: https: http: https://file.notion.so notion://file.notion.so https://*.mux.com;worker-src blob:;frame-src https: http: https://accounts.google.com renderer.gist.build code.gist.build",
+            "X-DNS-Prefetch-Control",
+            "off",
+            "X-Frame-Options",
+            "SAMEORIGIN",
+            "Strict-Transport-Security",
+            "max-age=5184000; includeSubDomains",
+            "X-Download-Options",
+            "noopen",
+            "X-Content-Type-Options",
+            "nosniff",
+            "X-Permitted-Cross-Domain-Policies",
+            "none",
+            "Referrer-Policy",
+            "strict-origin-when-cross-origin",
+            "X-XSS-Protection",
+            "0",
+            "ETag",
+            "W/\"735-KLx0Xyzef9XBSHzwld9artJGnuE\"",
+            "Vary",
+            "Accept-Encoding",
+            "CF-Cache-Status",
+            "DYNAMIC",
+            "Set-Cookie",
+            "notion_check_cookie_consent=true; Domain=www.notion.so; Path=/; Expires=Tue, 28 Feb 2023 12:48:05 GMT; Secure",
+            "Set-Cookie",
+            "__cf_bm=5Tc3lAQfIEVKIRFQmBPDpdDZg3Kb2Mc_nvEy5Bldkgk-1677502086-0-AXzYbrme7DAsjAZ8yjzmsEbiebZCkG9g/bYh4S81cKtKgkmsi2/btarTp3YkgikTIxy0ULUxVUWdQoY2uanFusk=; path=/; expires=Mon, 27-Feb-23 13:18:06 GMT; domain=.notion.com; HttpOnly; Secure; SameSite=None",
+            "Server",
+            "cloudflare"
+        ],
+        "responseIsBinary": false
+    }
+]

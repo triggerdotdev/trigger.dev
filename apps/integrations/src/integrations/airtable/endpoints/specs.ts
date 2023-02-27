@@ -16,6 +16,7 @@ import {
 } from "../common/schemas";
 
 const errorResponse: EndpointSpecResponse = {
+  matches: ({ statusCode }) => statusCode < 200 || statusCode >= 300,
   success: false,
   name: "Error",
   description: "Error response",
@@ -125,41 +126,40 @@ export const listRecords: EndpointSpec = {
       }),
     },
   },
-  responses: {
-    200: [
-      {
-        success: true,
-        name: "Success",
-        description: "Typical success response",
-        schema: makeObjectSchema("List records success body", {
-          optionalProperties: {
-            offset: makeStringSchema(
-              "offset",
-              "To fetch the next page of records, include offset from the previous request in the next request's parameters."
-            ),
-          },
-          requiredProperties: {
-            records: makeArraySchema(
-              "Records",
-              makeObjectSchema("Record", {
-                requiredProperties: {
-                  id: makeStringSchema("Record ID"),
-                  createdTime: makeStringSchema(
-                    "createdTime",
-                    `A date timestamp in the ISO format, eg:"2018-01-01T00:00:00.000Z"`
-                  ),
-                  fields: makeObjectSchema("Fields", {
-                    additionalProperties: FieldSchema,
-                  }),
-                },
-              })
-            ),
-          },
-        }),
-      },
-    ],
-    default: [errorResponse],
-  },
+  responses: [
+    {
+      matches: ({ statusCode }) => statusCode === 200,
+      success: true,
+      name: "Success",
+      description: "Typical success response",
+      schema: makeObjectSchema("List records success body", {
+        optionalProperties: {
+          offset: makeStringSchema(
+            "offset",
+            "To fetch the next page of records, include offset from the previous request in the next request's parameters."
+          ),
+        },
+        requiredProperties: {
+          records: makeArraySchema(
+            "Records",
+            makeObjectSchema("Record", {
+              requiredProperties: {
+                id: makeStringSchema("Record ID"),
+                createdTime: makeStringSchema(
+                  "createdTime",
+                  `A date timestamp in the ISO format, eg:"2018-01-01T00:00:00.000Z"`
+                ),
+                fields: makeObjectSchema("Fields", {
+                  additionalProperties: FieldSchema,
+                }),
+              },
+            })
+          ),
+        },
+      }),
+    },
+    errorResponse,
+  ],
 };
 
 export const getRecord: EndpointSpec = {
@@ -188,28 +188,27 @@ export const getRecord: EndpointSpec = {
       "Content-Type": "application/json; charset=utf-8",
     },
   },
-  responses: {
-    200: [
-      {
-        success: true,
-        name: "Success",
-        description: "Typical success response",
-        schema: makeObjectSchema("Successful response", {
-          requiredProperties: {
-            createdTime: makeStringSchema(
-              "createdTime",
-              "When the record was created"
-            ),
-            fields: makeObjectSchema("Fields", {
-              additionalProperties: FieldSchema,
-            }),
-            id: makeStringSchema("id", "The record id"),
-          },
-        }),
-      },
-    ],
-    default: [errorResponse],
-  },
+  responses: [
+    {
+      matches: ({ statusCode }) => statusCode === 200,
+      success: true,
+      name: "Success",
+      description: "Typical success response",
+      schema: makeObjectSchema("Successful response", {
+        requiredProperties: {
+          createdTime: makeStringSchema(
+            "createdTime",
+            "When the record was created"
+          ),
+          fields: makeObjectSchema("Fields", {
+            additionalProperties: FieldSchema,
+          }),
+          id: makeStringSchema("id", "The record id"),
+        },
+      }),
+    },
+    errorResponse,
+  ],
 };
 
 export const updateRecords: EndpointSpec = {
@@ -272,64 +271,63 @@ export const updateRecords: EndpointSpec = {
       }),
     },
   },
-  responses: {
-    200: [
-      {
-        success: true,
-        name: "Success",
-        description: "Typical success response",
-        schema: makeAnyOf("Update/upsert records success body", [
-          makeObjectSchema("Update response", {
-            requiredProperties: {
-              records: makeArraySchema(
-                "Records",
-                makeObjectSchema("Record", {
-                  requiredProperties: {
-                    id: makeStringSchema("Record ID"),
-                    createdTime: makeStringSchema(
-                      "createdTime",
-                      `A date timestamp in the ISO format, eg:"2018-01-01T00:00:00.000Z"`
-                    ),
-                    fields: makeObjectSchema("Fields", {
-                      additionalProperties: FieldSchema,
-                    }),
-                  },
-                })
-              ),
-            },
-          }),
-          makeObjectSchema("Upsert response", {
-            requiredProperties: {
-              createdRecords: makeArraySchema(
-                "Created records",
-                makeStringSchema("Record ID")
-              ),
-              updatedRecords: makeArraySchema(
-                "Updated records",
-                makeStringSchema("Record ID")
-              ),
-              records: makeArraySchema(
-                "Records",
-                makeObjectSchema("Record", {
-                  requiredProperties: {
-                    id: makeStringSchema("Record ID"),
-                    createdTime: makeStringSchema(
-                      "createdTime",
-                      `A date timestamp in the ISO format, eg:"2018-01-01T00:00:00.000Z"`
-                    ),
-                    fields: makeObjectSchema("Fields", {
-                      additionalProperties: FieldSchema,
-                    }),
-                  },
-                })
-              ),
-            },
-          }),
-        ]),
-      },
-    ],
-    default: [errorResponse],
-  },
+  responses: [
+    {
+      matches: ({ statusCode }) => statusCode === 200,
+      success: true,
+      name: "Success",
+      description: "Typical success response",
+      schema: makeAnyOf("Update/upsert records success body", [
+        makeObjectSchema("Update response", {
+          requiredProperties: {
+            records: makeArraySchema(
+              "Records",
+              makeObjectSchema("Record", {
+                requiredProperties: {
+                  id: makeStringSchema("Record ID"),
+                  createdTime: makeStringSchema(
+                    "createdTime",
+                    `A date timestamp in the ISO format, eg:"2018-01-01T00:00:00.000Z"`
+                  ),
+                  fields: makeObjectSchema("Fields", {
+                    additionalProperties: FieldSchema,
+                  }),
+                },
+              })
+            ),
+          },
+        }),
+        makeObjectSchema("Upsert response", {
+          requiredProperties: {
+            createdRecords: makeArraySchema(
+              "Created records",
+              makeStringSchema("Record ID")
+            ),
+            updatedRecords: makeArraySchema(
+              "Updated records",
+              makeStringSchema("Record ID")
+            ),
+            records: makeArraySchema(
+              "Records",
+              makeObjectSchema("Record", {
+                requiredProperties: {
+                  id: makeStringSchema("Record ID"),
+                  createdTime: makeStringSchema(
+                    "createdTime",
+                    `A date timestamp in the ISO format, eg:"2018-01-01T00:00:00.000Z"`
+                  ),
+                  fields: makeObjectSchema("Fields", {
+                    additionalProperties: FieldSchema,
+                  }),
+                },
+              })
+            ),
+          },
+        }),
+      ]),
+    },
+    errorResponse,
+  ],
 };
 
 export const updateRecord: EndpointSpec = {
@@ -372,28 +370,27 @@ export const updateRecord: EndpointSpec = {
       }),
     },
   },
-  responses: {
-    200: [
-      {
-        success: true,
-        name: "Success",
-        description: "Typical success response",
-        schema: makeObjectSchema("Update record success body", {
-          requiredProperties: {
-            id: makeStringSchema("Record ID"),
-            createdTime: makeStringSchema(
-              "createdTime",
-              `A date timestamp in the ISO format, eg:"2018-01-01T00:00:00.000Z"`
-            ),
-            fields: makeObjectSchema("Fields", {
-              additionalProperties: FieldSchema,
-            }),
-          },
-        }),
-      },
-    ],
-    default: [errorResponse],
-  },
+  responses: [
+    {
+      matches: ({ statusCode }) => statusCode === 200,
+      success: true,
+      name: "Success",
+      description: "Typical success response",
+      schema: makeObjectSchema("Update record success body", {
+        requiredProperties: {
+          id: makeStringSchema("Record ID"),
+          createdTime: makeStringSchema(
+            "createdTime",
+            `A date timestamp in the ISO format, eg:"2018-01-01T00:00:00.000Z"`
+          ),
+          fields: makeObjectSchema("Fields", {
+            additionalProperties: FieldSchema,
+          }),
+        },
+      }),
+    },
+    errorResponse,
+  ],
 };
 
 export const createRecords: EndpointSpec = {
@@ -443,49 +440,48 @@ export const createRecords: EndpointSpec = {
       }),
     },
   },
-  responses: {
-    200: [
-      {
-        success: true,
-        name: "Success",
-        description: "Typical success response",
-        schema: makeAnyOf("Create records success body", [
-          makeObjectSchema("Multiple records created response", {
-            requiredProperties: {
-              records: makeArraySchema(
-                "Records",
-                makeObjectSchema("Record", {
-                  requiredProperties: {
-                    id: makeStringSchema("Record ID"),
-                    createdTime: makeStringSchema(
-                      "createdTime",
-                      `A date timestamp in the ISO format, eg:"2018-01-01T00:00:00.000Z"`
-                    ),
-                    fields: makeObjectSchema("Fields", {
-                      additionalProperties: FieldSchema,
-                    }),
-                  },
-                })
-              ),
-            },
-          }),
-          makeObjectSchema("Single record created response", {
-            requiredProperties: {
-              id: makeStringSchema("Record ID"),
-              createdTime: makeStringSchema(
-                "createdTime",
-                `A date timestamp in the ISO format, eg:"2018-01-01T00:00:00.000Z"`
-              ),
-              fields: makeObjectSchema("Fields", {
-                additionalProperties: FieldSchema,
-              }),
-            },
-          }),
-        ]),
-      },
-    ],
-    default: [errorResponse],
-  },
+  responses: [
+    {
+      matches: ({ statusCode }) => statusCode === 200,
+      success: true,
+      name: "Success",
+      description: "Typical success response",
+      schema: makeAnyOf("Create records success body", [
+        makeObjectSchema("Multiple records created response", {
+          requiredProperties: {
+            records: makeArraySchema(
+              "Records",
+              makeObjectSchema("Record", {
+                requiredProperties: {
+                  id: makeStringSchema("Record ID"),
+                  createdTime: makeStringSchema(
+                    "createdTime",
+                    `A date timestamp in the ISO format, eg:"2018-01-01T00:00:00.000Z"`
+                  ),
+                  fields: makeObjectSchema("Fields", {
+                    additionalProperties: FieldSchema,
+                  }),
+                },
+              })
+            ),
+          },
+        }),
+        makeObjectSchema("Single record created response", {
+          requiredProperties: {
+            id: makeStringSchema("Record ID"),
+            createdTime: makeStringSchema(
+              "createdTime",
+              `A date timestamp in the ISO format, eg:"2018-01-01T00:00:00.000Z"`
+            ),
+            fields: makeObjectSchema("Fields", {
+              additionalProperties: FieldSchema,
+            }),
+          },
+        }),
+      ]),
+    },
+    errorResponse,
+  ],
 };
 
 export const deleteRecords: EndpointSpec = {
@@ -525,35 +521,34 @@ export const deleteRecords: EndpointSpec = {
       "Content-Type": "application/json; charset=utf-8",
     },
   },
-  responses: {
-    200: [
-      {
-        success: true,
-        name: "Success",
-        description: "Typical success response",
-        schema: makeObjectSchema("Delete records response", {
-          requiredProperties: {
-            records: makeArraySchema(
-              "Records",
-              makeObjectSchema("Deleted record", {
-                requiredProperties: {
-                  id: makeStringSchema("Record ID"),
-                  deleted: makeBooleanSchema(
-                    "deleted",
-                    "Whether the record was deleted",
-                    {
-                      enum: true,
-                    }
-                  ),
-                },
-              })
-            ),
-          },
-        }),
-      },
-    ],
-    default: [errorResponse],
-  },
+  responses: [
+    {
+      matches: ({ statusCode }) => statusCode === 200,
+      success: true,
+      name: "Success",
+      description: "Typical success response",
+      schema: makeObjectSchema("Delete records response", {
+        requiredProperties: {
+          records: makeArraySchema(
+            "Records",
+            makeObjectSchema("Deleted record", {
+              requiredProperties: {
+                id: makeStringSchema("Record ID"),
+                deleted: makeBooleanSchema(
+                  "deleted",
+                  "Whether the record was deleted",
+                  {
+                    enum: true,
+                  }
+                ),
+              },
+            })
+          ),
+        },
+      }),
+    },
+    errorResponse,
+  ],
 };
 
 export const deleteRecord: EndpointSpec = {
@@ -581,26 +576,25 @@ export const deleteRecord: EndpointSpec = {
       "Content-Type": "application/json; charset=utf-8",
     },
   },
-  responses: {
-    200: [
-      {
-        success: true,
-        name: "Success",
-        description: "Typical success response",
-        schema: makeObjectSchema("Delete records response", {
-          requiredProperties: {
-            id: makeStringSchema("Record ID"),
-            deleted: makeBooleanSchema(
-              "deleted",
-              "Whether the record was deleted",
-              {
-                enum: true,
-              }
-            ),
-          },
-        }),
-      },
-    ],
-    default: [errorResponse],
-  },
+  responses: [
+    {
+      matches: ({ statusCode }) => statusCode === 200,
+      success: true,
+      name: "Success",
+      description: "Typical success response",
+      schema: makeObjectSchema("Delete records response", {
+        requiredProperties: {
+          id: makeStringSchema("Record ID"),
+          deleted: makeBooleanSchema(
+            "deleted",
+            "Whether the record was deleted",
+            {
+              enum: true,
+            }
+          ),
+        },
+      }),
+    },
+    errorResponse,
+  ],
 };

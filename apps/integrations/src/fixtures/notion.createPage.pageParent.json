@@ -1,0 +1,116 @@
+[
+    {
+        "scope": "https://api.notion.com:443",
+        "method": "POST",
+        "path": "/v1/pages",
+        "body": {
+            "parent": {
+                "type": "page_id",
+                "page_id": "b4609033-b45a-4fc6-8d15-f06920495ab1"
+            },
+            "properties": {
+                "title": {
+                    "title": [
+                        {
+                            "type": "text",
+                            "text": {
+                                "content": "Test page"
+                            }
+                        }
+                    ]
+                }
+            }
+        },
+        "status": 200,
+        "response": {
+            "object": "page",
+            "id": "8bd3c664-d6ef-46af-9910-e22686eb997e",
+            "created_time": "2023-02-26T17:38:00.000Z",
+            "last_edited_time": "2023-02-26T17:38:00.000Z",
+            "created_by": {
+                "object": "user",
+                "id": "bcd4bb6e-7cb4-4e04-8609-10744a579644"
+            },
+            "last_edited_by": {
+                "object": "user",
+                "id": "bcd4bb6e-7cb4-4e04-8609-10744a579644"
+            },
+            "cover": null,
+            "icon": null,
+            "parent": {
+                "type": "page_id",
+                "page_id": "b4609033-b45a-4fc6-8d15-f06920495ab1"
+            },
+            "archived": false,
+            "properties": {
+                "title": {
+                    "id": "title",
+                    "type": "title",
+                    "title": [
+                        {
+                            "type": "text",
+                            "text": {
+                                "content": "Test page",
+                                "link": null
+                            },
+                            "annotations": {
+                                "bold": false,
+                                "italic": false,
+                                "strikethrough": false,
+                                "underline": false,
+                                "code": false,
+                                "color": "default"
+                            },
+                            "plain_text": "Test page",
+                            "href": null
+                        }
+                    ]
+                }
+            },
+            "url": "https://www.notion.so/Test-page-8bd3c664d6ef46af9910e22686eb997e"
+        },
+        "rawHeaders": [
+            "Date",
+            "Sun, 26 Feb 2023 17:38:03 GMT",
+            "Content-Type",
+            "application/json; charset=utf-8",
+            "Transfer-Encoding",
+            "chunked",
+            "Connection",
+            "close",
+            "Set-Cookie",
+            "notion_browser_id=0584f959-2ff5-46b1-9d5d-832c26040396; Domain=www.notion.so; Path=/; Expires=Mon, 26 Feb 2024 17:38:02 GMT; Secure",
+            "Content-Security-Policy",
+            "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://gist.github.com https://apis.google.com https://www.google.com https://www.gstatic.com https://cdn.amplitude.com https://api.amplitude.com http://dev-embed.notion.co http://embed.notion.co https://widget.intercom.io https://js.intercomcdn.com https://static.zdassets.com https://api.smooch.io\t https://logs-01.loggly.com https://http-inputs-notion.splunkcloud.com https://cdn.segment.com https://analytics.pgncs.notion.so https://o324374.ingest.sentry.io https://checkout.stripe.com https://js.stripe.com https://embed.typeform.com https://admin.typeform.com https://public.profitwell.com https://static.profitwell.com js.sentry-cdn.com https://js.chilipiper.com https://platform.twitter.com https://cdn.syndication.twimg.com https://accounts.google.com https://www.googletagmanager.com https://www.googleadservices.com https://googleads.g.doubleclick.net https://api-v2.mutinyhq.io https://client-registry.mutinycdn.com https://client.mutinycdn.com https://user-data.mutinycdn.com https://cdn.metadata.io https://platformapi.metadata.io https://d2hrivdxn8ekm8.cloudfront.net https://d1lu3pmaz2ilpx.cloudfront.net https://dvqigh9b7wa32.cloudfront.net https://d330aiyvva2oww.cloudfront.net https://cdn.transcend.io https://cdn01.boxcdn.net https://cdn.sprig.com assets.customer.io code.gist.build;connect-src 'self' data: blob: https://msgstore.www.notion.so wss://msgstore.www.notion.so ws://localhost:* ws://127.0.0.1:* https://notion-emojis.s3-us-west-2.amazonaws.com https://s3-us-west-2.amazonaws.com https://s3.us-west-2.amazonaws.com https://notion-production-snapshots-2.s3.us-west-2.amazonaws.com https://cdn.amplitude.com https://api.amplitude.com https://www.notion.so https://api.embed.ly http://dev-embed.notion.co http://embed.notion.co https://js.intercomcdn.com https://api-iam.intercom.io https://uploads.intercomcdn.com wss://nexus-websocket-a.intercom.io https://ekr.zdassets.com https://ekr.zendesk.com\t https://makenotion.zendesk.com\t https://api.smooch.io\t wss://api.smooch.io\t https://logs-01.loggly.com https://http-inputs-notion.splunkcloud.com https://cdn.segment.com https://api.segment.io https://analytics.pgncs.notion.so https://api.pgncs.notion.so https://o324374.ingest.sentry.io https://checkout.stripe.com https://js.stripe.com https://cdn.contentful.com https://preview.contentful.com https://images.ctfassets.net https://www2.profitwell.com https://tracking.chilipiper.com https://api.chilipiper.com https://api.unsplash.com https://boards-api.greenhouse.io https://accounts.google.com https://oauth2.googleapis.com https://www.googletagmanager.com https://analytics.google.com https://www.googleadservices.com https://googleads.g.doubleclick.net https://region1.google-analytics.com https://region1.analytics.google.com https://www.google-analytics.com https://api-v2.mutinyhq.io https://client-registry.mutinycdn.com https://client.mutinycdn.com https://user-data.mutinycdn.com https://cdn.metadata.io https://platformapi.metadata.io https://d2hrivdxn8ekm8.cloudfront.net https://d1lu3pmaz2ilpx.cloudfront.net https://dvqigh9b7wa32.cloudfront.net https://d330aiyvva2oww.cloudfront.net https://cdn.transcend.io https://telemetry.transcend.io https://api.statuspage.io https://pgncd.notion.so https://api.statsig.com https://statsigapi.net https://exp.notion.so https://file.notion.so notion://file.notion.so https://api.box.com https://*.mux.com https://api.sprig.com https://storage.googleapis.com https://cdn.sprig.com https://cdn.userleap.com track.customer.io *.api.gist.build *.cloud.gist.build;font-src 'self' data: https://cdnjs.cloudflare.com https://js.intercomcdn.com https://cdn01.boxcdn.net;img-src 'self' data: blob: https: https://platform.twitter.com https://syndication.twitter.com https://pbs.twimg.com https://ton.twimg.com https://region1.google-analytics.com https://region1.analytics.google.com https://file.notion.so notion://file.notion.so https://*.mux.com track.customer.io;style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://github.githubassets.com https://js.chilipiper.com https://platform.twitter.com https://ton.twimg.com https://accounts.google.com https://cdn.transcend.io https://cdn01.boxcdn.net code.gist.build;media-src blob: https: http: https://file.notion.so notion://file.notion.so https://*.mux.com;worker-src blob:;frame-src https: http: https://accounts.google.com renderer.gist.build code.gist.build",
+            "X-DNS-Prefetch-Control",
+            "off",
+            "X-Frame-Options",
+            "SAMEORIGIN",
+            "Strict-Transport-Security",
+            "max-age=5184000; includeSubDomains",
+            "X-Download-Options",
+            "noopen",
+            "X-Content-Type-Options",
+            "nosniff",
+            "X-Permitted-Cross-Domain-Policies",
+            "none",
+            "Referrer-Policy",
+            "strict-origin-when-cross-origin",
+            "X-XSS-Protection",
+            "0",
+            "ETag",
+            "W/\"301-5q45Nq2W9keK4up4HOm5qUpzNKo\"",
+            "Vary",
+            "Accept-Encoding",
+            "CF-Cache-Status",
+            "DYNAMIC",
+            "Set-Cookie",
+            "notion_check_cookie_consent=true; Domain=www.notion.so; Path=/; Expires=Mon, 27 Feb 2023 17:38:02 GMT; Secure",
+            "Set-Cookie",
+            "__cf_bm=MeS4vVeV5Sms1RFoqYUoJ.onoMrGFyS6M_b0rfN7aho-1677433083-0-AQTR+b9TQ5LWf2yEhTnFj4QFuWs/C0ySl36mDO9bwhQ2rnsR1I8wrFgFls6yg4BJuorZQBnYtmIw00LnCvDHTfA=; path=/; expires=Sun, 26-Feb-23 18:08:03 GMT; domain=.notion.com; HttpOnly; Secure; SameSite=None",
+            "Server",
+            "cloudflare"
+        ],
+        "responseIsBinary": false
+    }
+]

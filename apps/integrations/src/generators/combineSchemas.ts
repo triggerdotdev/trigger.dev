@@ -23,32 +23,49 @@ export function generateInputOutputSchemas(
 export function createInputSchema(
   spec: Action["spec"]["input"]
 ): JSONSchema | undefined {
-  let inputSchema: JSONSchema | undefined = spec.body;
+  if (
+    (spec.parameters === undefined || spec.parameters.length === 0) &&
+    spec.body === undefined
+  )
+    return undefined;
 
-  if (spec.parameters && spec.parameters.length > 0) {
-    if (!inputSchema) {
-      inputSchema = {
-        type: "object",
-        properties: {},
-      };
+  const inputSchema: JSONSchema = {
+    type: "object",
+    properties: {},
+    required: [],
+  };
+
+  let bodySchema = spec.body;
+
+  if (bodySchema) {
+    if (bodySchema.allOf) {
+      bodySchema = combineSchemas(bodySchema.allOf);
     }
 
-    inputSchema = {
-      type: "object",
-      properties: {
-        ...inputSchema.properties,
-        ...Object.fromEntries(
-          spec.parameters.map((p) => [
-            p.name,
-            { ...p.schema, description: p.description },
-          ])
-        ),
-      },
-      required: [
+    inputSchema.properties = {
+      ...inputSchema.properties,
+      ...bodySchema.properties,
+    };
+    inputSchema.required = [
+      ...(inputSchema.required ?? []),
+      ...(bodySchema.required ?? []),
+    ];
+  }
+
+  if (spec.parameters && spec.parameters.length > 0) {
+    (inputSchema.properties = {
+      ...inputSchema.properties,
+      ...Object.fromEntries(
+        spec.parameters.map((p) => [
+          p.name,
+          { ...p.schema, description: p.description },
+        ])
+      ),
+    }),
+      (inputSchema.required = [
         ...(inputSchema.required ?? []),
         ...spec.parameters.filter((p) => p.required).map((p) => p.name),
-      ],
-    };
+      ]);
   }
 
   return inputSchema;
@@ -60,9 +77,10 @@ export function createSuccessfulOutputSchema(
   if (spec === undefined) return undefined;
 
   //combine all "success" output schemas into a union
-  const outputSuccessSchemas = Object.values(spec.responses).flatMap((s) =>
-    s.flatMap((r) => (r.success ? r.schema : []))
+  const outputSuccessSchemas = spec.responses.flatMap((r) =>
+    r.success ? r.schema : []
   );
+
   return outputSuccessSchemas.length === 1
     ? outputSuccessSchemas[0]
     : createDiscriminatedUnionSchema(`Output`, outputSuccessSchemas);
@@ -75,5 +93,16 @@ function createDiscriminatedUnionSchema(
   return {
     $id: name,
     oneOf: schemas,
+  };
+}
+
+function combineSchemas(schemas: JSONSchema[]): JSONSchema {
+  return {
+    type: "object",
+    properties: schemas.reduce((acc, v) => ({ ...acc, ...v.properties }), {}),
+    required: schemas.reduce(
+      (acc: string[], v) => [...acc, ...(v.required ?? [])],
+      []
+    ),
   };
 }
