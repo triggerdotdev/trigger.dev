@@ -1,5 +1,12 @@
 # @trigger.dev/whatsapp
 
+## 0.1.22
+
+### Patch Changes
+
+- Updated dependencies [3a2cf0dd]
+  - @trigger.dev/sdk@0.2.17
+
 ## 0.1.21
 
 ### Patch Changes

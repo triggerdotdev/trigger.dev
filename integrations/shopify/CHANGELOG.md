@@ -1,5 +1,12 @@
 # @trigger.dev/shopify
 
+## 0.1.24
+
+### Patch Changes
+
+- Updated dependencies [3a2cf0dd]
+  - @trigger.dev/sdk@0.2.17
+
 ## 0.1.23
 
 ### Patch Changes

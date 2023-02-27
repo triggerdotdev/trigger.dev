@@ -1,5 +1,11 @@
 # @trigger.dev/sdk
 
+## 0.2.17
+
+### Patch Changes
+
+- 3a2cf0dd: Fixed the missing error message when logging invalid API key and improved the error message
+
 ## 0.2.16
 
 ### Patch Changes
