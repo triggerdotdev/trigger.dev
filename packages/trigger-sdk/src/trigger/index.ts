@@ -33,7 +33,27 @@ export class Trigger<TSchema extends z.ZodTypeAny> {
   }
 
   async listen() {
-    if (this.#isMissingApiKey) {
+    const apiKey = this.#getApiKey();
+
+    if (apiKey.status === "invalid") {
+      console.log(
+        `${chalk.red("Trigger.dev error")}: ${chalk.bold(
+          this.id
+        )} is has an invalid API key ("${chalk.italic(
+          apiKey.apiKey
+        )}"), please set the TRIGGER_API_KEY environment variable or pass the apiKey option to a valid value. ${terminalLink(
+          "Get your API key here",
+          "https://app.trigger.dev",
+          {
+            fallback(text, url) {
+              return `${text} 👉 ${url}`;
+            },
+          }
+        )}`
+      );
+
+      return;
+    } else if (apiKey.status === "missing") {
       console.log(
         `${chalk.red("Trigger.dev error")}: ${chalk.bold(
           this.id
@@ -47,6 +67,7 @@ export class Trigger<TSchema extends z.ZodTypeAny> {
           }
         )}`
       );
+
       return;
     }
 
@@ -73,7 +94,20 @@ export class Trigger<TSchema extends z.ZodTypeAny> {
     return this.options.on;
   }
 
-  get #isMissingApiKey() {
-    return !this.options.apiKey && !process.env.TRIGGER_API_KEY;
+  #getApiKey() {
+    const apiKey = this.options.apiKey ?? process.env.TRIGGER_API_KEY;
+
+    if (!apiKey) {
+      return { status: "missing" as const };
+    }
+
+    // Validate the api_key format (should be trigger_{env}_XXXXX)
+    const isValid = apiKey.match(/^trigger_[a-z]+_[a-zA-Z0-9]+$/);
+
+    if (!isValid) {
+      return { status: "invalid" as const, apiKey };
+    }
+
+    return { status: "valid" as const, apiKey };
   }
 }
