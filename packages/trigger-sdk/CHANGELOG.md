@@ -1,5 +1,11 @@
 # @trigger.dev/sdk
 
+## 0.2.16-next.2
+
+### Patch Changes
+
+- 87a3bbee: Added a more helpful error message when missing an API key
+
 ## 0.2.16-next.1
 
 ### Patch Changes
