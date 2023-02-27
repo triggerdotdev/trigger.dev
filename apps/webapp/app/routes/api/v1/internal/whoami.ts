@@ -14,5 +14,6 @@ export async function loader({ request }: LoaderArgs) {
   return json({
     organizationId: authenticatedEnv.organizationId,
     env: authenticatedEnv.slug,
+    organizationSlug: authenticatedEnv.organization.slug,
   });
 }

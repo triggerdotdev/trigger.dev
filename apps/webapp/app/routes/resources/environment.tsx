@@ -78,7 +78,7 @@ export function EnvironmentMenu() {
               <Popover.Button
                 className={`
                 ${open ? "" : ""}
-                inline-flex justify-between gap-2 items-center rounded text-white bg-transparent pl-3.5 pr-2 py-2 text-sm hover:bg-slate-800 focus:outline-none`}
+                inline-flex items-center justify-between gap-2 rounded bg-transparent py-2 pl-3.5 pr-2 text-sm text-white hover:bg-slate-800 focus:outline-none`}
               >
                 <EnvironmentIcon slug={currentEnvironment.slug} />
                 <span className="transition">
@@ -90,7 +90,7 @@ export function EnvironmentMenu() {
                 </span>
                 <ChevronUpDownIcon
                   className={`${open ? "" : ""}
-                  ml-1 h-5 w-5 transition duration-150 ease-in-out text-slate-500`}
+                  ml-1 h-5 w-5 text-slate-500 transition duration-150 ease-in-out`}
                   aria-hidden="true"
                 />
               </Popover.Button>
@@ -105,7 +105,7 @@ export function EnvironmentMenu() {
               >
                 <Popover.Panel className="absolute left-0 z-30 mt-3 w-screen min-w-max max-w-xs translate-x-0 transform px-4 sm:px-0">
                   <div className="overflow-hidden rounded-lg shadow-lg ring-1 ring-black ring-opacity-5">
-                    <div className="relative grid gap-y-1 py-1 bg-slate-700 grid-cols-1">
+                    <div className="relative grid grid-cols-1 gap-y-1 bg-slate-700 py-1">
                       {environments.map((environment) => {
                         return (
                           <Popover.Button
@@ -115,7 +115,7 @@ export function EnvironmentMenu() {
                             name="environment"
                             value={environment.slug}
                             className={classNames(
-                              "flex items-center justify-between gap-1.5 mx-1 px-3 py-2 text-white rounded hover:bg-slate-800 transition",
+                              "mx-1 flex items-center justify-between gap-1.5 rounded px-3 py-2 text-white transition hover:bg-slate-800",
                               environment.slug === currentEnvironment?.slug &&
                                 "!bg-slate-800"
                             )}
@@ -144,7 +144,13 @@ export function EnvironmentMenu() {
   );
 }
 
-function EnvironmentIcon({ slug }: { slug: string }) {
+export function EnvironmentIcon({
+  slug,
+  className,
+}: {
+  slug: string;
+  className?: string;
+}) {
   let color = "bg-emerald-500";
   if (slug === "live") {
     color = "bg-orange-500";
@@ -152,8 +158,9 @@ function EnvironmentIcon({ slug }: { slug: string }) {
   return (
     <span
       className={classNames(
-        "rounded-full  block w-[0.35rem] h-[0.35rem]",
-        color
+        "block  h-[0.35rem] w-[0.35rem] rounded-full",
+        color,
+        className
       )}
     />
   );

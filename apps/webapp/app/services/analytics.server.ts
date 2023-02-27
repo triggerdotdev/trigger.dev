@@ -223,6 +223,30 @@ class BehaviouralAnalytics {
     },
   };
 
+  telemetry = {
+    capture: ({
+      userId,
+      event,
+      properties,
+      organizationId,
+      environmentId,
+    }: {
+      userId: string;
+      event: string;
+      properties: Record<string | number, any>;
+      organizationId?: string;
+      environmentId?: string;
+    }) => {
+      this.#capture({
+        userId,
+        event,
+        eventProperties: properties,
+        organizationId,
+        environmentId,
+      });
+    },
+  };
+
   #capture(event: CaptureEvent) {
     if (this.client === undefined) return;
     let groups: Record<string, string> = {};

@@ -283,10 +283,23 @@ export class TriggerServer {
         },
         INITIALIZE_HOST: async (data) => {
           // Initialize workflow
-          const success = await this.#initializeWorkflow(data);
+          const response = await this.#initializeWorkflow(data);
 
-          if (success) {
+          if (response) {
             return { type: "success" as const };
+          } else {
+            return {
+              type: "error" as const,
+              message: "Failed to connect to the Pulsar cluster",
+            };
+          }
+        },
+        INITIALIZE_HOST_V2: async (data) => {
+          // Initialize workflow
+          const response = await this.#initializeWorkflow(data);
+
+          if (response) {
+            return { type: "success" as const, data: response };
           } else {
             return {
               type: "error" as const,
@@ -337,12 +350,15 @@ export class TriggerServer {
         }
       );
 
-      this.#socket.close(4001, "Client not authenticated");
+      this.#socket.close(
+        4001,
+        "Could not authenticate to the server because the API key is invalid"
+      );
     }
   }
 
   async #initializeWorkflow(
-    data: z.infer<(typeof ServerRPCSchema)["INITIALIZE_HOST"]["request"]>
+    data: z.infer<(typeof ServerRPCSchema)["INITIALIZE_HOST_V2"]["request"]>
   ) {
     if (this.#isInitialized) {
       throw new Error(
@@ -373,7 +389,7 @@ export class TriggerServer {
         triggerTTL: data.triggerTTL,
       });
 
-      this.#workflowId = response.id;
+      this.#workflowId = response.workflow.id;
 
       this.#logger.debug("Initializing trigger subscriber...");
 
@@ -455,6 +471,10 @@ export class TriggerServer {
                   typeof properties["x-is-test"] === "string"
                     ? properties["x-is-test"] === "true"
                     : false,
+                attempt:
+                  typeof properties["x-attempt"] === "string"
+                    ? Number(properties["x-attempt"])
+                    : 0,
               },
             });
 
@@ -487,7 +507,7 @@ export class TriggerServer {
 
       this.#isInitialized = true;
 
-      return true;
+      return response;
     } catch (error) {
       if (error instanceof ZodError) {
         this.#logger.error(

@@ -15,10 +15,10 @@ export default function TemplateList() {
   return (
     <div className="mx-auto mt-4 flex max-w-6xl flex-col lg:mt-6">
       <h1 className="mb-6 text-center font-title text-5xl font-semibold text-slate-200">
-        Choose your Template
+        Choose a template
       </h1>
-      <Header2 size="small" className="mb-8 text-center text-slate-400">
-        Quickly get started with your workflow by using a pre-built example.
+      <Header2 size="small" className="mb-16 text-center text-slate-400">
+        Quickly get started with your workflow by using a pre-built template.
       </Header2>
       <TemplatesGrid templates={templates} openInNewPage={true} />
     </div>

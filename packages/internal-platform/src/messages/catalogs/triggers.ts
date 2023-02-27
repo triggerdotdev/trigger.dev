@@ -9,6 +9,7 @@ const Catalog = {
       "x-ttl": z.coerce.number().optional(),
       "x-is-test": z.string().default("false"),
       "x-app-origin": z.string().default("https://app.trigger.dev"),
+      "x-attempt": z.string().optional(),
     }),
   },
 };

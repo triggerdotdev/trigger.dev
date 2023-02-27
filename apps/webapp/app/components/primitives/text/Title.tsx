@@ -1,8 +1,15 @@
+import classNames from "classnames";
 import { Header1 } from "./Headers";
 
-export function Title({ children }: { children: React.ReactNode }) {
+export function Title({
+  children,
+  className,
+}: {
+  children: React.ReactNode;
+  className?: string;
+}) {
   return (
-    <Header1 size="extra-large" className="mb-6 text-slate-200">
+    <Header1 size="extra-large" className={classNames("mb-6 text-slate-200")}>
       {children}
     </Header1>
   );

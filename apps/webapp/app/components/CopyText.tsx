@@ -13,12 +13,17 @@ export function CopyText({
   className,
   onCopied,
 }: CopyTextProps) {
-  const onClick = useCallback(() => {
-    navigator.clipboard.writeText(value);
-    if (onCopied) {
-      onCopied();
-    }
-  }, [value, onCopied]);
+  const onClick = useCallback(
+    (event: React.MouseEvent<HTMLDivElement>) => {
+      event.preventDefault();
+      event.stopPropagation();
+      navigator.clipboard.writeText(value);
+      if (onCopied) {
+        onCopied();
+      }
+    },
+    [value, onCopied]
+  );
 
   return (
     <div onClick={onClick} className={`${className}`}>

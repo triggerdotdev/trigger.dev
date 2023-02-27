@@ -3,11 +3,12 @@ import type { loader as appLoader } from "~/routes/__app";
 import type { loader as orgLoader } from "~/routes/__app/orgs/$organizationSlug";
 import { hydrateObject, useMatchesData } from "~/utils";
 
+export type MatchedOrganization = UseDataFunctionReturn<
+  typeof appLoader
+>["organizations"][number];
+
 export function useOrganizations() {
-  return (
-    getOrganizationsFromMatchesData("routes/__app") ??
-    getOrganizationsFromMatchesData("routes/__public")
-  );
+  return useOrganizationsFromMatchesData(["routes/__app", "routes/__public"]);
 }
 
 export function useCurrentOrganization() {
@@ -34,8 +35,8 @@ export function useIsNewOrganizationPage(): boolean {
   return !!routeMatch;
 }
 
-function getOrganizationsFromMatchesData(path: string) {
-  const routeMatch = useMatchesData(path);
+function useOrganizationsFromMatchesData(paths: string[]) {
+  const routeMatch = useMatchesData(paths);
 
   if (!routeMatch || !routeMatch.data.organizations) {
     return undefined;

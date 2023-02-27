@@ -1,5 +1,10 @@
 import { Popover, Transition } from "@headlessui/react";
-import { BookmarkIcon, ChevronUpDownIcon } from "@heroicons/react/24/outline";
+import {
+  BookmarkIcon,
+  BuildingOffice2Icon,
+  ChevronUpDownIcon,
+  UserIcon,
+} from "@heroicons/react/24/outline";
 import { CheckIcon, PlusIcon } from "@heroicons/react/24/solid";
 import { Link } from "@remix-run/react";
 import classNames from "classnames";
@@ -33,10 +38,10 @@ export function OrganizationMenu() {
               <Popover.Button
                 className={`
                 ${open ? "" : "text-opacity-90"}
-                inline-flex justify-between items-center rounded text-white bg-transparent pl-2.5 pr-2 py-2 text-sm hover:bg-slate-800 focus:outline-none`}
+                inline-flex items-center justify-between rounded bg-transparent py-2 pl-2.5 pr-2 text-sm text-white hover:bg-slate-800 focus:outline-none`}
               >
-                <BookmarkIcon
-                  className={`h-5 w-5 mr-2 ${dimmedClassNames}`}
+                <BuildingOffice2Icon
+                  className={`mr-2 h-5 w-5 ${dimmedClassNames}`}
                   aria-hidden="true"
                 />
                 <span className="transition">
@@ -67,9 +72,9 @@ export function OrganizationMenu() {
                 leaveFrom="opacity-100 translate-y-0"
                 leaveTo="opacity-0 translate-y-1"
               >
-                <Popover.Panel className="absolute left-0 z-30 mt-3 w-screen min-w-max max-w-xs max-h-[70vh] translate-x-0 transform px-4 sm:px-0">
+                <Popover.Panel className="absolute left-0 z-30 mt-3 max-h-[70vh] w-screen min-w-max max-w-xs translate-x-0 transform px-4 sm:px-0">
                   <div className="overflow-hidden rounded-lg ring-1 ring-black ring-opacity-5">
-                    <div className="relative grid gap-y-1 py-1 bg-slate-700 grid-cols-1">
+                    <div className="relative grid grid-cols-1 gap-y-1 bg-slate-700 py-1">
                       {organizations.map((organization) => {
                         return (
                           <Popover.Button
@@ -77,16 +82,23 @@ export function OrganizationMenu() {
                             as={Link}
                             to={`/orgs/${organization.slug}`}
                             className={classNames(
-                              "flex items-center justify-between gap-1.5 mx-1 px-3 py-2 text-white rounded hover:bg-slate-800 transition",
+                              "mx-1 flex items-center justify-between gap-1.5 rounded px-3 py-2 text-white transition hover:bg-slate-800",
                               organization.slug === currentOrganization?.slug &&
                                 "!bg-slate-800"
                             )}
                           >
                             <div className="flex items-center gap-2">
-                              <BookmarkIcon
-                                className="h-5 w-5 z-100"
-                                aria-hidden="true"
-                              />
+                              {organization.title === "Personal Workspace" ? (
+                                <UserIcon
+                                  className="z-100 h-5 w-5 text-slate-400"
+                                  aria-hidden="true"
+                                />
+                              ) : (
+                                <BuildingOffice2Icon
+                                  className="z-100 h-5 w-5 text-slate-400"
+                                  aria-hidden="true"
+                                />
+                              )}
                               <span className="block truncate">
                                 {organization.title}
                               </span>
@@ -99,7 +111,7 @@ export function OrganizationMenu() {
                         );
                       })}
                       <Popover.Button as={Link} to={`/orgs/new`}>
-                        <div className="flex items-center gap-2 mx-1 pl-2.5 py-2 rounded hover:bg-slate-800 transition">
+                        <div className="mx-1 flex items-center gap-2 rounded py-2 pl-2.5 transition hover:bg-slate-800">
                           <PlusIcon
                             className="h-5 w-5 text-green-500"
                             aria-hidden="true"

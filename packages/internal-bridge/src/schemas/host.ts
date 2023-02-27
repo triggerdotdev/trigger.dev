@@ -20,6 +20,7 @@ export const HostRPCSchema = {
         apiKey: z.string(),
         isTest: z.boolean().default(false),
         appOrigin: z.string(),
+        attempt: z.number().optional(),
       }),
     }),
     response: z.boolean(),

@@ -1,17 +1,29 @@
-import { BookmarkIcon, PlusIcon } from "@heroicons/react/24/outline";
+import {
+  BuildingOffice2Icon,
+  PlusIcon,
+  UserIcon,
+} from "@heroicons/react/24/outline";
 import { Link } from "@remix-run/react";
 import classNames from "classnames";
+import { CopyTextPanel } from "~/components/CopyTextButton";
 import { Body } from "~/components/primitives/text/Body";
+import { Header4 } from "~/components/primitives/text/Headers";
+import type { MatchedOrganization } from "~/hooks/useOrganizations";
 import { useOrganizations } from "~/hooks/useOrganizations";
-import type { Organization } from "~/models/organization.server";
+import { environmentShortName } from "~/utils";
 
 export default function AppLayout() {
   const organizations = useOrganizations();
 
   return (
     <>
-      <div className="flex items-center justify-center m-20">
-        <ul className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4  max-w-8xl gap-2">
+      <div className="flex h-80 w-full items-center justify-center bg-slate-900/50">
+        <h1 className="relative bottom-6 text-4xl text-slate-400">
+          Your Organizations
+        </h1>
+      </div>
+      <div className="flex items-center justify-center">
+        <ul className="-mt-24 grid max-w-7xl grid-cols-2 gap-2 lg:grid-cols-3">
           {organizations ? (
             <OrganizationGrid organizations={organizations} />
           ) : (
@@ -23,12 +35,14 @@ export default function AppLayout() {
             <Link
               to="orgs/new"
               className={classNames(
-                "border-2 border-slate-800 text-center hover:border-transparent hover:bg-slate-800/50 hover:shadow-md",
+                "h-full border border-slate-700 hover:border-transparent hover:bg-[rgb(38,51,71)] hover:shadow-md",
                 boxClasses
               )}
             >
               <PlusIcon className="h-10 w-10 text-green-500" />
-              New Organization
+              <Header4 size="small" className="mb-10">
+                New Organization
+              </Header4>
             </Link>
           </li>
         </ul>
@@ -40,7 +54,7 @@ export default function AppLayout() {
 function OrganizationGrid({
   organizations,
 }: {
-  organizations: Organization[];
+  organizations: MatchedOrganization[];
 }) {
   return (
     <>
@@ -54,26 +68,47 @@ function OrganizationGrid({
   );
 }
 
-const boxClasses =
-  "flex flex-col gap-4 items-center justify-center min-h-40 rounded-lg px-6 py-6 min-h-[15rem] transition";
-
 function OrganizationGridItem({
   organization,
 }: {
-  organization: Organization;
+  organization: MatchedOrganization;
 }) {
   return (
-    <li key={organization.id} className="w-full h-full">
+    <li key={organization.id} className="h-full w-full">
       <Link
         to={`orgs/${organization.slug}`}
         className={classNames(
-          "bg-slate-800 shadow-md text-center hover:bg-slate-800/50",
+          "border border-slate-700 bg-slate-800 hover:bg-[rgb(38,51,71)]",
           boxClasses
         )}
       >
-        <BookmarkIcon className="h-10 w-10" />
-        {organization.title}{" "}
+        {organization.title === "Personal Workspace" ? (
+          <UserIcon className="h-10 w-10 text-slate-300" aria-hidden="true" />
+        ) : (
+          <BuildingOffice2Icon
+            className="h-10 w-10 text-blue-500"
+            aria-hidden="true"
+          />
+        )}
+        <Header4 size="large" className="mb-10 text-slate-300">
+          {organization.title}
+        </Header4>
+        <div className="grid w-full grid-cols-2 gap-2">
+          {organization.environments.map((environment) => (
+            <div key={environment.id} className="flex w-full items-center">
+              <CopyTextPanel
+                value={environment.apiKey}
+                text={`${environmentShortName(environment.slug)} API Key`}
+                variant="slate"
+                className="w-full text-slate-500"
+              />
+            </div>
+          ))}
+        </div>
       </Link>
     </li>
   );
 }
+
+const boxClasses =
+  "flex flex-col gap-4 w-80 text-center shadow-md items-center justify-center rounded-lg px-2 pb-2 pt-14 min-h-full transition";

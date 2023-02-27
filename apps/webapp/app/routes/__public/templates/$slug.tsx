@@ -26,7 +26,7 @@ export default function TemplateSlugPage() {
     <div className="mx-auto max-w-[1188px]">
       <Link
         to="/templates"
-        className="mb-4 -ml-1 flex w-max items-center justify-start gap-2 text-sm text-slate-500 transition hover:text-slate-300"
+        className="mb-4 ml-4 flex w-max items-center justify-start gap-2 text-sm text-slate-500 transition hover:text-slate-300 lg:-ml-1"
       >
         <ArrowLeftIcon className="h-3 w-3" />
         Choose a different Template

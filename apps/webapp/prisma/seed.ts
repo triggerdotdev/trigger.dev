@@ -22,18 +22,32 @@ async function readTemplateDocsFile(slug: string) {
 async function seed() {
   console.log(`Database has been seeded. 🌱`);
 
-  const basicStarter = {
-    repositoryUrl: "https://github.com/triggerdotdev/basic-starter",
+  const blankStarter = {
+    repositoryUrl: "https://github.com/triggerdotdev/blank-starter",
     imageUrl:
-      "https://imagedelivery.net/3TbraffuDZ4aEf8KWOmI_w/51a2a621-577a-4648-a087-bc5381259a00/public",
-    title: "A blank starter project with a simple Custom Event trigger",
-    shortTitle: "Basic Starter",
-    description: "This is a great place to start if you're new to Trigger.",
+      "https://imagedelivery.net/3TbraffuDZ4aEf8KWOmI_w/3812f076-38a2-4456-b809-2fc61dd77800/public",
+    title: "A blank starter ready to run your own workflow",
+    shortTitle: "Blank Starter",
+    description:
+      "This is a great place to start if you want to build your own workflow from scratch.",
     priority: 0,
     services: [],
-    workflowIds: ["basic-starter"],
-    markdownDocs: await readTemplateDocsFile("basic-starter"),
-    runLocalDocs: await readTemplateDocsFile("basic-starter-local"),
+    workflowIds: [],
+    markdownDocs: await readTemplateDocsFile("blank-starter"),
+  };
+
+  const helloWorld = {
+    repositoryUrl: "https://github.com/triggerdotdev/hello-world",
+    imageUrl:
+      "https://imagedelivery.net/3TbraffuDZ4aEf8KWOmI_w/634cfd11-e499-48ca-aaf5-b2404642f600/public",
+    title: "A Hello World with a simple custom event trigger",
+    shortTitle: "Hello World",
+    description:
+      "This is a great place to start if you're new to Trigger.dev and want to learn how to build a simple workflow.",
+    priority: 10,
+    services: [],
+    workflowIds: ["hello-world"],
+    markdownDocs: await readTemplateDocsFile("hello-world"),
   };
 
   const scheduledHealthcheck = {
@@ -44,7 +58,7 @@ async function seed() {
     shortTitle: "Scheduled Healthcheck",
     description:
       "This will run every 5 minutes and send a Slack message if a website url returns a non-200 response.",
-    priority: 1,
+    priority: 20,
     services: ["slack"],
     workflowIds: ["scheduled-healthcheck"],
     markdownDocs: await readTemplateDocsFile("scheduled-healthcheck"),
@@ -55,11 +69,11 @@ async function seed() {
     repositoryUrl: "https://github.com/triggerdotdev/github-stars-to-slack",
     imageUrl:
       "https://imagedelivery.net/3TbraffuDZ4aEf8KWOmI_w/5b3964be-9a7b-4a7e-1837-b283e501b900/public",
-    title: "Slack notifications when a GitHub repo is starred",
+    title: "Post to Slack every time a GitHub repo is starred",
     shortTitle: "GitHub stars to Slack",
     description:
       "When a GitHub repo is starred, post information about the user to Slack.",
-    priority: 1,
+    priority: 30,
     services: ["github", "slack"],
     workflowIds: ["github-stars-to-slack"],
     markdownDocs: await readTemplateDocsFile("github-stars-to-slack"),
@@ -74,7 +88,7 @@ async function seed() {
     shortTitle: "GitHub issues to Slack",
     description:
       "When a GitHub issue is created or modified, post a message and link to the issue in a specific Slack channel.",
-    priority: 1,
+    priority: 40,
     services: ["github", "slack"],
     workflowIds: ["github-issues-to-slack"],
     markdownDocs: await readTemplateDocsFile("github-issues-to-slack"),
@@ -86,11 +100,11 @@ async function seed() {
       "https://github.com/triggerdotdev/resend-welcome-drip-campaign",
     imageUrl:
       "https://imagedelivery.net/3TbraffuDZ4aEf8KWOmI_w/cce3b770-b6f9-40ef-baf3-f01c20686700/public",
-    title: "Send a welcome drip campaign to new users",
+    title: "Send an email drip campaign when a new user signs up",
     shortTitle: "Resend.com drip campaign",
     description:
       "When a new user is created, send them a welcome drip campaign from Resend.com and react.email.",
-    priority: 2,
+    priority: 50,
     services: ["resend"],
     workflowIds: ["resend-welcome-drip-campaign"],
     markdownDocs: await readTemplateDocsFile("resend-welcome-drip-campaign"),
@@ -99,12 +113,30 @@ async function seed() {
     ),
   };
 
-  await prisma.template.upsert({
-    where: { slug: "basic-starter" },
-    update: basicStarter,
-    create: {
+  await prisma.template.updateMany({
+    where: {
       slug: "basic-starter",
-      ...basicStarter,
+    },
+    data: {
+      isLive: false,
+    },
+  });
+
+  await prisma.template.upsert({
+    where: { slug: "blank-starter" },
+    update: blankStarter,
+    create: {
+      slug: "blank-starter",
+      ...blankStarter,
+    },
+  });
+
+  await prisma.template.upsert({
+    where: { slug: "hello-world" },
+    update: helloWorld,
+    create: {
+      slug: "hello-world",
+      ...helloWorld,
     },
   });
 

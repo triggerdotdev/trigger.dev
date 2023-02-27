@@ -37,8 +37,10 @@ export async function action({ request, params }: ActionArgs) {
     case "validationError": {
       return json({ error: result.errors }, { status: 400 });
     }
-
+    case "isArchived": {
+      return json({ id: result.data.id });
+    }
     case "success":
-      return json(result.data);
+      return json({ id: result.data.workflow.id });
   }
 }

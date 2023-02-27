@@ -35,7 +35,7 @@ export function TemplateCard({
             {template.description}
           </Body>
         </div>
-        <div className="flex flex-row gap-x-1">
+        <div className="flex gap-x-1">
           {template.services.map((service) => (
             <div key={service.service} className="">
               <ApiLogoIcon

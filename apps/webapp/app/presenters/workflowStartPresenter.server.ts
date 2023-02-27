@@ -45,6 +45,7 @@ export class WorkflowStartPresenter {
       orderBy: {
         priority: "asc",
       },
+      where: { isLive: true },
     });
 
     return {

@@ -3,11 +3,11 @@ import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import invariant from "tiny-invariant";
 import { CreateNewWorkflow } from "~/components/CreateNewWorkflow";
 import { Container } from "~/components/layout/Container";
-import { PanelInfo } from "~/components/layout/PanelInfo";
-import { PrimaryLink } from "~/components/primitives/Buttons";
 import { SubTitle } from "~/components/primitives/text/SubTitle";
 import { Title } from "~/components/primitives/text/Title";
 import { WorkflowList } from "~/components/workflows/workflowList";
+import { WorkflowOnboarding } from "~/components/workflows/WorkflowOnboarding";
+import { useDevEnvironment } from "~/hooks/useEnvironments";
 import { useCurrentOrganization } from "~/hooks/useOrganizations";
 import { getRuntimeEnvironmentFromRequest } from "~/models/runtimeEnvironment.server";
 import { WorkflowListPresenter } from "~/presenters/workflowListPresenter.server";
@@ -22,8 +22,7 @@ export const loader = async ({ request, params }: LoaderArgs) => {
   const presenter = new WorkflowListPresenter();
 
   try {
-    const workflows = await presenter.data(params.organizationSlug, currentEnv);
-    return typedjson({ workflows });
+    return typedjson(await presenter.data(params.organizationSlug, currentEnv));
   } catch (error: any) {
     console.error(error);
     throw new Response("Error ", { status: 400 });
@@ -31,30 +30,33 @@ export const loader = async ({ request, params }: LoaderArgs) => {
 };
 
 export default function Page() {
-  const { workflows } = useTypedLoaderData<typeof loader>();
+  const { workflows, templates } = useTypedLoaderData<typeof loader>();
   const currentOrganization = useCurrentOrganization();
+  const currentEnv = useDevEnvironment();
+
   if (currentOrganization === undefined) {
+    return <></>;
+  }
+
+  if (currentEnv === undefined) {
     return <></>;
   }
 
   return (
     <Container>
-      <Title>Workflows</Title>
       {workflows.length === 0 ? (
         <>
-          <SubTitle>0 workflows</SubTitle>
-          <PanelInfo
-            message="You don't have any workflows yet. They will appear here once
-              connected."
-            className="mb-4 max-w-4xl p-4 pr-6"
-          >
-            <PrimaryLink to={`/orgs/${currentOrganization.slug}/workflows/new`}>
-              Create first workflow
-            </PrimaryLink>
-          </PanelInfo>
+          <Title>Create your first workflow</Title>
+          <div className="max-w-6xl">
+            <WorkflowOnboarding
+              templates={templates}
+              apiKey={currentEnv.apiKey}
+            />
+          </div>
         </>
       ) : (
         <>
+          <Title>Workflows</Title>
           <SubTitle>
             {workflows.length} active workflow{workflows.length > 1 ? "s" : ""}
           </SubTitle>
