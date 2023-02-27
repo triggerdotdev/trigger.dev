@@ -9,7 +9,7 @@
     "build:remix": "remix build",
     "build:server": "esbuild --platform=node --format=cjs ./server.ts --outdir=build",
     "dev": "run-p dev:*",
-    "dev:server": "cross-env NODE_ENV=development node --inspect --require ./node_modules/dotenv/config --require ./mocks ./build/server.js",
+    "dev:server": "cross-env NODE_ENV=development node --inspect --require ./node_modules/dotenv/config --require ./mocks --require @traceloop/instrument-opentelemetry ./build/server.js",
     "dev:build": "cross-env NODE_ENV=development npm run build:server -- --watch",
     "dev:remix": "cross-env NODE_ENV=development remix watch",
     "dev:css": "cross-env NODE_ENV=development npm run generate:css -- --watch",
