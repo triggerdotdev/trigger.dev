@@ -4,6 +4,10 @@ import {
   AppendBlockChildrenResponse,
 } from "./schemas/endpoints/appendBlockChildren";
 import {
+  CreateDatabaseBodyParameters,
+  CreateDatabaseResponse,
+} from "./schemas/endpoints/createDatabase";
+import {
   CreatePageParameters,
   CreatePageResponse,
 } from "./schemas/endpoints/createPage";
@@ -547,7 +551,45 @@ export const queryDatabase: EndpointSpec = {
   ],
 };
 
-//todo create database
+export const createDatabase: EndpointSpec = {
+  path: "/databases",
+  method: "POST",
+  metadata: {
+    name: "createDatabase",
+    description: `Creates a database as a subpage in the specified parent page, with the specified properties schema.`,
+    displayProperties: {
+      title: "Create database",
+    },
+    externalDocs: {
+      description: "API method documentation",
+      url: "https://developers.notion.com/reference/create-a-database",
+    },
+    tags: ["database"],
+  },
+  security: {
+    oauth: [],
+  },
+  parameters: [VersionHeaderParam],
+  request: {
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: {
+      schema: CreateDatabaseBodyParameters,
+    },
+  },
+  responses: [
+    {
+      matches: ({ statusCode }) => statusCode >= 200 && statusCode < 300,
+      success: true,
+      name: "Success",
+      description: "Typical success response",
+      schema: CreateDatabaseResponse,
+    },
+    errorResponse,
+  ],
+};
+
 //todo Update database
 
 //todo get comments

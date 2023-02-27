@@ -356,6 +356,64 @@ describe("notion.endpoints", async () => {
     stopNock(nockDone);
   });
 
+  test("createDatabase", async () => {
+    const accessToken = authToken();
+
+    const nockDone = await startNock("notion.createDatabase");
+    const data = await endpoints.createDatabase.request({
+      parameters: {
+        "Notion-Version": notionVersion,
+      },
+      body: {
+        parent: {
+          type: "page_id",
+          page_id: "b4609033-b45a-4fc6-8d15-f06920495ab1",
+        },
+        icon: {
+          type: "emoji",
+          emoji: "📝",
+        },
+        title: [
+          {
+            type: "text",
+            text: {
+              content: "Trigger.dev created db",
+              link: null,
+            },
+          },
+        ],
+        properties: {
+          Name: {
+            title: {},
+          },
+          Description: {
+            rich_text: {},
+          },
+          "In stock": {
+            checkbox: {},
+          },
+          "+1": {
+            people: {},
+          },
+          Photo: {
+            files: {},
+          },
+        },
+      },
+      credentials: {
+        type: "oauth2",
+        name: "oauth",
+        accessToken,
+        scopes: [""],
+      },
+    });
+
+    expect(data.status).toEqual(200);
+    expect(data.success).toEqual(true);
+    expect(data.body).not.toBeNull();
+    stopNock(nockDone);
+  });
+
   test("search (only pages)", async () => {
     const accessToken = authToken();
 
