@@ -30,30 +30,42 @@ export function createInputSchema(
     return undefined;
 
   const inputSchema: JSONSchema = {
-    allOf: [],
+    type: "object",
+    properties: {},
+    required: [],
   };
 
-  if (spec.body) {
-    inputSchema.allOf?.push(spec.body);
+  let bodySchema = spec.body;
+
+  if (bodySchema) {
+    if (bodySchema.allOf) {
+      bodySchema = combineSchemas(bodySchema.allOf);
+    }
+
+    inputSchema.properties = {
+      ...inputSchema.properties,
+      ...bodySchema.properties,
+    };
+    inputSchema.required = [
+      ...(inputSchema.required ?? []),
+      ...(bodySchema.required ?? []),
+    ];
   }
 
   if (spec.parameters && spec.parameters.length > 0) {
-    const paramsSchema: JSONSchema = {
-      type: "object",
-      properties: {
-        ...Object.fromEntries(
-          spec.parameters.map((p) => [
-            p.name,
-            { ...p.schema, description: p.description },
-          ])
-        ),
-      },
-      required: [
+    (inputSchema.properties = {
+      ...inputSchema.properties,
+      ...Object.fromEntries(
+        spec.parameters.map((p) => [
+          p.name,
+          { ...p.schema, description: p.description },
+        ])
+      ),
+    }),
+      (inputSchema.required = [
+        ...(inputSchema.required ?? []),
         ...spec.parameters.filter((p) => p.required).map((p) => p.name),
-      ],
-    };
-
-    inputSchema.allOf?.push(paramsSchema);
+      ]);
   }
 
   return inputSchema;
@@ -81,5 +93,16 @@ function createDiscriminatedUnionSchema(
   return {
     $id: name,
     oneOf: schemas,
+  };
+}
+
+function combineSchemas(schemas: JSONSchema[]): JSONSchema {
+  return {
+    type: "object",
+    properties: schemas.reduce((acc, v) => ({ ...acc, ...v.properties }), {}),
+    required: schemas.reduce(
+      (acc: string[], v) => [...acc, ...(v.required ?? [])],
+      []
+    ),
   };
 }
