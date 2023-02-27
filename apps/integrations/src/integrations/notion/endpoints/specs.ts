@@ -6,16 +6,23 @@ import {
 import { GetBlockResponse } from "./schemas/endpoints/getBlock";
 import { GetPageResponse } from "./schemas/endpoints/getPage";
 import { GetUserResponse } from "./schemas/endpoints/getUser";
+import { ListBlockChildrenResponse } from "./schemas/endpoints/listBlockChildren";
 import { ListUsersResponse } from "./schemas/endpoints/listUsers";
 import { GetSelfResponse } from "./schemas/endpoints/me";
 import { SearchParameters, SearchResponse } from "./schemas/endpoints/search";
 import {
-  UpdatePageParameters,
+  UpdateBlockBodyParameters,
+  UpdateBlockResponse,
+} from "./schemas/endpoints/updateBlock";
+import {
+  UpdatePageBodyParameters,
   UpdatePageResponse,
 } from "./schemas/endpoints/updatePage";
 import {
   BlockIdParam,
   PageIdParam,
+  PageSizeParam,
+  StartCursorParam,
   VersionHeaderParam,
 } from "./schemas/params";
 
@@ -88,28 +95,7 @@ export const listUsers: EndpointSpec = {
   security: {
     oauth: [],
   },
-  parameters: [
-    VersionHeaderParam,
-    {
-      name: "start_cursor",
-      in: "query",
-      description:
-        "The cursor to start from. If not provided, the default is to start from the beginning of the list.",
-      schema: {
-        type: "string",
-      },
-      required: false,
-    },
-    {
-      name: "page_size",
-      in: "query",
-      description: "The number of results to return. The maximum is 100.",
-      schema: {
-        type: "integer",
-      },
-      required: false,
-    },
-  ],
+  parameters: [VersionHeaderParam, StartCursorParam, PageSizeParam],
   request: {},
   responses: [
     {
@@ -268,7 +254,7 @@ export const updatePage: EndpointSpec = {
       "Content-Type": "application/json",
     },
     body: {
-      schema: UpdatePageParameters,
+      schema: UpdatePageBodyParameters,
     },
   },
   responses: [
@@ -314,8 +300,84 @@ export const getBlock: EndpointSpec = {
     errorResponse,
   ],
 };
-//todo update block
+
+export const updateBlock: EndpointSpec = {
+  path: "/blocks/{block_id}",
+  method: "PATCH",
+  metadata: {
+    name: "updateBlock",
+    description:
+      "Update a block Updates the content for the specified block_id based on the block type. Supported fields based on the block object type.",
+    displayProperties: {
+      title: "Update block ${parameters.block_id}",
+    },
+    externalDocs: {
+      description: "API method documentation",
+      url: "https://developers.notion.com/reference/update-a-block",
+    },
+    tags: ["blocks"],
+  },
+  security: {
+    oauth: [],
+  },
+  parameters: [BlockIdParam, VersionHeaderParam],
+  request: {
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: {
+      schema: UpdateBlockBodyParameters,
+    },
+  },
+  responses: [
+    {
+      matches: ({ statusCode }) => statusCode >= 200 && statusCode < 300,
+      success: true,
+      name: "Success",
+      description: "Typical success response",
+      schema: UpdateBlockResponse,
+    },
+    errorResponse,
+  ],
+};
+
 //todo retrieve block children
+export const getBlockChildren: EndpointSpec = {
+  path: "/blocks/{block_id}/children",
+  method: "GET",
+  metadata: {
+    name: "getBlockChildren",
+    description: `Returns a paginated array of child block objects contained in the block using the ID specified. In order to receive a complete representation of a block, you may need to recursively retrieve the block children of child blocks.`,
+    displayProperties: {
+      title: "Get block children for block id ${parameters.block_id}",
+    },
+    externalDocs: {
+      description: "API method documentation",
+      url: "https://developers.notion.com/reference/get-block-children",
+    },
+    tags: ["blocks"],
+  },
+  security: {
+    oauth: [],
+  },
+  parameters: [
+    BlockIdParam,
+    VersionHeaderParam,
+    StartCursorParam,
+    PageSizeParam,
+  ],
+  request: {},
+  responses: [
+    {
+      matches: ({ statusCode }) => statusCode >= 200 && statusCode < 300,
+      success: true,
+      name: "Success",
+      description: "Typical success response",
+      schema: ListBlockChildrenResponse,
+    },
+    errorResponse,
+  ],
+};
 //todo append block children
 //todo delete block
 

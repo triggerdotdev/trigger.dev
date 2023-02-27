@@ -187,6 +187,65 @@ describe("notion.endpoints", async () => {
     stopNock(nockDone);
   });
 
+  test("getBlockChildren", async () => {
+    const accessToken = authToken();
+
+    const nockDone = await startNock("notion.getBlockChildren");
+    const data = await endpoints.getBlockChildren.request({
+      parameters: {
+        block_id: "b4609033-b45a-4fc6-8d15-f06920495ab1",
+        "Notion-Version": notionVersion,
+      },
+      credentials: {
+        type: "oauth2",
+        name: "oauth",
+        accessToken,
+        scopes: [""],
+      },
+    });
+
+    expect(data.status).toEqual(200);
+    expect(data.success).toEqual(true);
+    expect(data.body).not.toBeNull();
+    stopNock(nockDone);
+  });
+
+  test("updateBlock", async () => {
+    const accessToken = authToken();
+
+    const nockDone = await startNock("notion.updateBlock");
+    const data = await endpoints.updateBlock.request({
+      parameters: {
+        block_id: "2675c67d-392a-4b86-86f6-93de22c797bd",
+        "Notion-Version": notionVersion,
+      },
+      body: {
+        paragraph: {
+          rich_text: [
+            {
+              type: "text",
+              text: {
+                content:
+                  "This update comes from the Trigger.dev Notion integration test suite. 🎉",
+              },
+            },
+          ],
+        },
+      },
+      credentials: {
+        type: "oauth2",
+        name: "oauth",
+        accessToken,
+        scopes: [""],
+      },
+    });
+
+    expect(data.status).toEqual(200);
+    expect(data.success).toEqual(true);
+    expect(data.body).not.toBeNull();
+    stopNock(nockDone);
+  });
+
   test("search (only pages)", async () => {
     const accessToken = authToken();
 

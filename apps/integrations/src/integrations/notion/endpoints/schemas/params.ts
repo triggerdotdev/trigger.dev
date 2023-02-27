@@ -11,6 +11,28 @@ export const VersionHeaderParam: EndpointSpecParameter = {
   required: true,
 };
 
+export const StartCursorParam: EndpointSpecParameter = {
+  name: "start_cursor",
+  in: "query",
+  description:
+    "The cursor to start from. If not provided, the default is to start from the beginning of the list.",
+  schema: {
+    type: "string",
+  },
+  required: false,
+};
+
+//todo page_size
+export const PageSizeParam: EndpointSpecParameter = {
+  name: "page_size",
+  in: "query",
+  description: "The number of results to return. The maximum is 100.",
+  schema: {
+    type: "integer",
+  },
+  required: false,
+};
+
 export const PageIdParam: EndpointSpecParameter = {
   name: "page_id",
   in: "path",
