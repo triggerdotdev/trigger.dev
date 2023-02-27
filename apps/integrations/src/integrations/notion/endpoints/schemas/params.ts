@@ -22,7 +22,6 @@ export const StartCursorParam: EndpointSpecParameter = {
   required: false,
 };
 
-//todo page_size
 export const PageSizeParam: EndpointSpecParameter = {
   name: "page_size",
   in: "query",
@@ -47,6 +46,16 @@ export const BlockIdParam: EndpointSpecParameter = {
   name: "block_id",
   in: "path",
   description: "ID of the block",
+  schema: {
+    type: "string",
+  },
+  required: true,
+};
+
+export const DatabaseIdParam: EndpointSpecParameter = {
+  name: "database_id",
+  in: "path",
+  description: "ID of the database",
   schema: {
     type: "string",
   },

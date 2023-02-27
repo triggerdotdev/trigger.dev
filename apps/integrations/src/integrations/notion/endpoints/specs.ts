@@ -9,6 +9,7 @@ import {
 } from "./schemas/endpoints/createPage";
 import { DeleteBlockResponse } from "./schemas/endpoints/deleteBlock";
 import { GetBlockResponse } from "./schemas/endpoints/getBlock";
+import { GetDatabaseResponse } from "./schemas/endpoints/getDatabase";
 import { GetPageResponse } from "./schemas/endpoints/getPage";
 import { GetUserResponse } from "./schemas/endpoints/getUser";
 import { ListBlockChildrenResponse } from "./schemas/endpoints/listBlockChildren";
@@ -25,6 +26,7 @@ import {
 } from "./schemas/endpoints/updatePage";
 import {
   BlockIdParam,
+  DatabaseIdParam,
   PageIdParam,
   PageSizeParam,
   StartCursorParam,
@@ -422,7 +424,6 @@ export const appendBlockChildren: EndpointSpec = {
   ],
 };
 
-//todo delete block
 export const deleteBlock: EndpointSpec = {
   path: "/blocks/{block_id}",
   method: "DELETE",
@@ -455,7 +456,38 @@ export const deleteBlock: EndpointSpec = {
   ],
 };
 
-//todo get database
+export const getDatabase: EndpointSpec = {
+  path: "/databases/{database_id}",
+  method: "GET",
+  metadata: {
+    name: "getDatabase",
+    description: `Retrieves a Database object using the ID specified.\n\nNote that this won't get "Linked databases" (they have a ↗ next to the database title) – you need the source database id.`,
+    displayProperties: {
+      title: "Get database with id ${parameters.database_id}",
+    },
+    externalDocs: {
+      description: "API method documentation",
+      url: "https://developers.notion.com/reference/retrieve-a-database",
+    },
+    tags: ["database"],
+  },
+  security: {
+    oauth: [],
+  },
+  parameters: [DatabaseIdParam, VersionHeaderParam],
+  request: {},
+  responses: [
+    {
+      matches: ({ statusCode }) => statusCode >= 200 && statusCode < 300,
+      success: true,
+      name: "Success",
+      description: "Typical success response",
+      schema: GetDatabaseResponse,
+    },
+    errorResponse,
+  ],
+};
+
 //todo query database
 //todo create database
 //todo Update database
