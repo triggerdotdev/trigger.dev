@@ -138,8 +138,8 @@ function TemplateDetails({
         template.
       </Body>
       <CopyTextPanel
-        text={`npm create trigger ${template.slug}`}
-        value={`npm create trigger@latest ${template.slug} ${
+        text={`npx create-trigger ${template.slug}`}
+        value={`npx create-trigger@latest ${template.slug} ${
           commandFlags ? ` ${commandFlags}` : ""
         }`}
         className="mb-8"

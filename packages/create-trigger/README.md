@@ -11,7 +11,7 @@ To scaffold out a new project using `create-trigger`, run any of the following t
 ### npm
 
 ```sh
-npm create trigger@latest
+npx create-trigger@latest
 ```
 
 ### yarn
@@ -29,7 +29,7 @@ pnpm create trigger@latest
 You can also specify the [template](https://app.trigger.com/templates) you want to use by passing an argument to the command, like so:
 
 ```sh
-npm create trigger@latest github-stars-to-slack
+npx create-trigger@latest github-stars-to-slack
 ```
 
 ## Advanced Usage
