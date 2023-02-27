@@ -12,6 +12,7 @@ describe("autoReffer", async () => {
           const: "person",
         },
         person: {
+          title: "Person",
           type: "object",
           properties: {
             email: {
@@ -21,6 +22,7 @@ describe("autoReffer", async () => {
           additionalProperties: false,
         },
         parent: {
+          title: "Person",
           type: "object",
           properties: {
             email: {
@@ -44,13 +46,14 @@ describe("autoReffer", async () => {
       {
         "additionalProperties": false,
         "definitions": {
-          "parent": {
+          "Person": {
             "additionalProperties": false,
             "properties": {
               "email": {
                 "type": "string",
               },
             },
+            "title": "Person",
             "type": "object",
           },
         },
@@ -59,10 +62,10 @@ describe("autoReffer", async () => {
             "type": "string",
           },
           "parent": {
-            "$ref": "#/definitions/parent",
+            "$ref": "#/definitions/Person",
           },
           "person": {
-            "$ref": "#/definitions/parent",
+            "$ref": "#/definitions/Person",
           },
           "type": {
             "const": "person",

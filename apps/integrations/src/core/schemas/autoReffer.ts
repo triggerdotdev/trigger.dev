@@ -15,7 +15,6 @@ export class AutoReffer {
 
   optimize() {
     this.#walk(this.#schema, []);
-    console.log(this.#schemaPointers);
     const optimizedSchema = this.#addRefs();
     return optimizedSchema;
   }
@@ -80,24 +79,45 @@ export class AutoReffer {
     for (const [hash, pointers] of this.#schemaPointers) {
       if (pointers.length <= 1) continue;
       //create the ref
-      const originalObject = pointer.get(newSchema, pointers[0]);
-      const name = this.#inventName(pointers);
-      const ref = `#/definitions/${name}`;
-      newSchema.definitions[name] = originalObject;
+      try {
+        const originalObject = pointer.get(newSchema, pointers[0]);
+        const name = this.#inventName(pointers, newSchema);
+        const ref = `#/definitions/${name}`;
+        newSchema.definitions[name] = originalObject;
 
-      //loop through the pointers and add the ref
-      for (const ptr of pointers) {
-        pointer.set(newSchema, ptr, { $ref: ref });
+        //loop through the pointers and add the ref
+        for (const ptr of pointers) {
+          pointer.set(newSchema, ptr, { $ref: ref });
+        }
+      } catch (e) {
+        // console.log(e);
       }
     }
 
     return newSchema;
   }
 
-  #inventName(pointers: JSONPointer[]): string {
+  #inventName(pointers: JSONPointer[], schema: JSONSchema): string {
+    const candidates: string[] = [];
+    for (const ptr of pointers) {
+      try {
+        const object = pointer.get(schema, ptr);
+        if (object.title) {
+          candidates.push(object.title);
+        }
+      } catch (e) {
+        //
+      }
+    }
+
+    if (candidates.length > 0) {
+      const mostCommon = mode(candidates);
+      if (mostCommon) return toTitleCase(mostCommon);
+    }
+
     const lastSegments = pointers.map((pointer) => pointer[pointer.length - 1]);
     const mostCommon = mode(lastSegments);
-    return mostCommon ?? lastSegments[0];
+    return toTitleCase(mostCommon ?? lastSegments[0]);
   }
 }
 
@@ -108,4 +128,12 @@ function mode(arr: string[]) {
         arr.filter((v) => v === a).length - arr.filter((v) => v === b).length
     )
     .pop();
+}
+
+//remove spaces and convert to TitleCase, deal with single words
+function toTitleCase(str: string) {
+  return str
+    .split(" ")
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join("");
 }
