@@ -1,16 +1,36 @@
+import { Command } from "commander";
 import { catalog } from "integrations/catalog";
 import { generateService } from "./generateService";
 
-export async function generate() {
-  console.log("Generating SDKs...");
+const program = new Command();
 
-  const services = Object.values(catalog.services);
-  for (let index = 0; index < services.length; index++) {
-    const service = services[index];
-    await generateService(service);
-  }
+program
+  .command("generate")
+  .description("Generate API SDK(s)")
+  .option(
+    "-in, --integrations <integrations>",
+    "Comma-separated list of integrations"
+  )
+  .action(async (options: { integrations?: string }) => {
+    let integrationNames: string[] = [];
+    if (options.integrations) {
+      integrationNames = options.integrations.split(",").map((i) => i.trim());
+    } else {
+      integrationNames = Object.values(catalog.services).map((s) => s.service);
+    }
 
-  console.log(`Generated ${services.length} SDKs`);
-}
+    console.log(`Generating SDKs... ${integrationNames.join(", ")}`);
 
-generate();
+    for (let index = 0; index < integrationNames.length; index++) {
+      const integrationName = integrationNames[index];
+      const service = catalog.services[integrationName];
+      if (!service) {
+        throw new Error(`Could not find integration ${integrationName}`);
+      }
+      await generateService(service);
+    }
+
+    console.log(`Generated ${integrationNames.length} SDKs`);
+  });
+
+program.parseAsync(process.argv);

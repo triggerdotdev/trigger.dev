@@ -12,7 +12,7 @@
     "typecheck": "tsc -b",
     "lint": "eslint --no-error-on-unmatched-pattern src/**",
     "lint-fix": "eslint --no-error-on-unmatched-pattern --fix src/**",
-    "generate-integrations": "NODE_OPTIONS=--max-old-space-size=16384 tsx src/trigger/sdk/generate.ts",
+    "generate-integrations": "NODE_OPTIONS=--max-old-space-size=16384 tsx src/trigger/sdk/generate.ts generate",
     "generate": "prisma generate",
     "convert": "tsx src/tools/schemas/typescript-to-json-schema.ts convert",
     "db:migrate:deploy": "prisma migrate deploy",
