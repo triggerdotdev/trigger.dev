@@ -45,7 +45,7 @@ export function TemplatesGrid({
           </button>
         </StyledDialog.Panel>
       </StyledDialog.Dialog>
-      <div className="grid w-full grid-cols-1 items-start justify-start gap-5 md:grid-cols-2 lg:grid-cols-3">
+      <div className="grid w-full grid-cols-1 items-start justify-start gap-5 lg:grid-cols-2 xl:grid-cols-3">
         {templates.map((template) => {
           return (
             <TemplateButtonOrLink
@@ -59,7 +59,7 @@ export function TemplatesGrid({
                 <img
                   src={template.imageUrl}
                   alt={template.title}
-                  className="h-32 w-full rounded-md object-cover"
+                  className="h-full w-full rounded-md object-cover"
                 />
               </div>
               <div className="flex h-full w-full flex-col justify-between">
