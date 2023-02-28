@@ -11,23 +11,38 @@ describe("autoReffer", async () => {
           type: "string",
           const: "person",
         },
-        timezone: {
-          type: "string",
-          enum: [
-            "Africa/Abidjan",
-            "Africa/Accra",
-            "Africa/Addis_Ababa",
-            "Africa/Algiers",
-            "Africa/Asmara",
-            "Africa/Asmera",
-          ]
-        },
         person: {
           title: "Person",
           type: "object",
           properties: {
             email: {
               type: "string",
+            },
+            timezone: {
+              type: "string",
+              enum: [
+                "Africa/Abidjan",
+                "Africa/Accra",
+                "Africa/Addis_Ababa",
+                "Africa/Algiers",
+                "Africa/Asmara",
+                "Africa/Asmera",
+              ],
+            },
+            props: {
+              anyOf: [
+                {
+                  type: "object",
+                  properties: {
+                    first: {
+                      type: "string",
+                    },
+                    last: {
+                      type: "string",
+                    },
+                  },
+                },
+              ],
             },
           },
           additionalProperties: false,
@@ -38,6 +53,32 @@ describe("autoReffer", async () => {
           properties: {
             email: {
               type: "string",
+            },
+            timezone: {
+              type: "string",
+              enum: [
+                "Africa/Abidjan",
+                "Africa/Accra",
+                "Africa/Addis_Ababa",
+                "Africa/Algiers",
+                "Africa/Asmara",
+                "Africa/Asmera",
+              ],
+            },
+            props: {
+              anyOf: [
+                {
+                  type: "object",
+                  properties: {
+                    first: {
+                      type: "string",
+                    },
+                    last: {
+                      type: "string",
+                    },
+                  },
+                },
+              ],
             },
           },
           additionalProperties: false,
@@ -54,7 +95,7 @@ describe("autoReffer", async () => {
             "Africa/Algiers",
             "Africa/Asmara",
             "Africa/Asmera",
-          ]
+          ],
         },
       },
       required: ["type", "person", "id"],
@@ -74,11 +115,32 @@ describe("autoReffer", async () => {
               "email": {
                 "type": "string",
               },
+              "props": {
+                "anyOf": [
+                  {
+                    "$ref": "#/definitions/Props",
+                  },
+                ],
+              },
+              "timezone": {
+                "$ref": "#/definitions/Timezone",
+              },
             },
             "title": "Person",
             "type": "object",
           },
-          "Tz": {
+          "Props": {
+            "properties": {
+              "first": {
+                "type": "string",
+              },
+              "last": {
+                "type": "string",
+              },
+            },
+            "type": "object",
+          },
+          "Timezone": {
             "enum": [
               "Africa/Abidjan",
               "Africa/Accra",
@@ -100,15 +162,12 @@ describe("autoReffer", async () => {
           "person": {
             "$ref": "#/definitions/Person",
           },
-          "timezone": {
-            "$ref": "#/definitions/Tz",
-          },
           "type": {
             "const": "person",
             "type": "string",
           },
           "tz": {
-            "$ref": "#/definitions/Tz",
+            "$ref": "#/definitions/Timezone",
           },
         },
         "required": [

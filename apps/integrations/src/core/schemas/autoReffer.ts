@@ -81,29 +81,53 @@ export class AutoReffer {
     if (!newSchema.definitions) {
       newSchema.definitions = {};
     }
-    //loop through the schemaPaths
-    for (const [hash, pointers] of this.#schemaPointers) {
-      if (pointers.length < this.#options.refIfMoreThan) continue;
-      //create the ref
-      try {
-        const originalObject = pointer.get(newSchema, pointers[0]);
-        const name = this.#inventName(pointers, newSchema);
-        const ref = `#/definitions/${name}`;
-        newSchema.definitions[name] = originalObject;
 
-        //loop through the pointers and add the ref
-        for (const ptr of pointers) {
-          pointer.set(newSchema, ptr, { $ref: ref });
-        }
+    //turn the map into an array of [hash, pointers]
+    const schemaPaths = Array.from(this.#schemaPointers.entries());
+
+    //filter out the ones that are not used more than the threshold
+    const filteredSchemaPaths = schemaPaths.filter(
+      ([hash, pointers]) => pointers.length >= this.#options.refIfMoreThan
+    );
+
+    //now flatten it to an array of pointers with name
+    let names = new Set<string>();
+    const pointers = filteredSchemaPaths.flatMap(([hash, pointers]) => {
+      //the name must be unique
+      const name = this.#inventName(pointers, newSchema, names);
+      return pointers.map((p) => ({
+        pointer: p,
+        name: name,
+      }));
+    });
+
+    //now we want to sort them by their path, so we start out with the deepest ones in the tree
+    const sortedPointers = pointers.sort((a, b) => {
+      return b.pointer.join("/").localeCompare(a.pointer.join("/"));
+    });
+
+    for (let index = 0; index < sortedPointers.length; index++) {
+      const element = sortedPointers[index];
+      try {
+        const originalObject = pointer.get(newSchema, element.pointer);
+        const ref = `#/definitions/${element.name}`;
+        newSchema.definitions[element.name] = originalObject;
+
+        //set the ref
+        pointer.set(newSchema, element.pointer, { $ref: ref });
       } catch (e) {
-        // console.log(e);
+        //
       }
     }
 
     return newSchema;
   }
 
-  #inventName(pointers: JSONPointer[], schema: JSONSchema): string {
+  #inventName(
+    pointers: JSONPointer[],
+    schema: JSONSchema,
+    names: Set<string>
+  ): string {
     const candidates: string[] = [];
     for (const ptr of pointers) {
       try {
@@ -118,12 +142,42 @@ export class AutoReffer {
 
     if (candidates.length > 0) {
       const mostCommon = mode(candidates);
-      if (mostCommon) return toTitleCase(mostCommon);
+      if (mostCommon) {
+        const name = toTitleCase(mostCommon);
+        if (!names.has(name)) {
+          names.add(name);
+          return name;
+        }
+
+        //if the name is already taken, we need to add a number to it
+        let i = 1;
+        while (names.has(`${name}${i}`)) {
+          i++;
+        }
+        names.add(`${name}${i}`);
+        return `${name}${i}`;
+      }
     }
 
-    const lastSegments = pointers.map((pointer) => pointer[pointer.length - 1]);
-    const mostCommon = mode(lastSegments);
-    return toTitleCase(mostCommon ?? lastSegments[0]);
+    //failing finding a title we can look at the path and try create a name from that
+    const namesFromPointer = pointers.map((ptr) =>
+      findAppropriateNameFromPointer(ptr)
+    );
+
+    const mostCommon = mode(namesFromPointer);
+    const name = toTitleCase(mostCommon ?? namesFromPointer[0]);
+    if (!names.has(name)) {
+      names.add(name);
+      return name;
+    }
+
+    //if the name is already taken, we need to add a number to it
+    let i = 1;
+    while (names.has(`${name}${i}`)) {
+      i++;
+    }
+    names.add(`${name}${i}`);
+    return `${name}${i}`;
   }
 }
 
@@ -142,4 +196,27 @@ function toTitleCase(str: string) {
     .split(" ")
     .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
     .join("");
+}
+
+function nameIsJustNumbers(name: string | undefined) {
+  if (!name) return false;
+  return /^\d+$/.test(name);
+}
+
+function findAppropriateNameFromPointer(pointer: JSONPointer): string {
+  //start with the last segment and loop backwards
+  for (let i = pointer.length - 1; i >= 0; i--) {
+    const name = pointer[i];
+
+    if (name === "anyOf" || name === "oneOf" || name === "allOf") {
+      continue;
+    }
+
+    //check if the segment is a number, if so we need to look at the previous segment
+    if (!nameIsJustNumbers(name)) {
+      return name;
+    }
+  }
+
+  return "Item";
 }
