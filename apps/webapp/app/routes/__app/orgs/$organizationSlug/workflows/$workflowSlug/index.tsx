@@ -431,8 +431,17 @@ export default function Page() {
         <WorkflowConnections
           connectionSlots={
             connectionSlots.source?.connection
-              ? [connectionSlots.source, ...connectionSlots.services]
-              : connectionSlots.services
+              ? [
+                  { ...connectionSlots.source, type: "source" as const },
+                  ...connectionSlots.services.map((service) => ({
+                    ...service,
+                    type: "service" as const,
+                  })),
+                ]
+              : connectionSlots.services.map((service) => ({
+                  ...service,
+                  type: "service" as const,
+                }))
           }
           className="mt-6"
         />

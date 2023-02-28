@@ -14,7 +14,7 @@ export function WorkflowConnections({
   connectionSlots,
 }: {
   className?: string;
-  connectionSlots: ConnectionSlot[];
+  connectionSlots: (ConnectionSlot & { type: "source" | "service" })[];
 }) {
   const organization = useCurrentOrganization();
   invariant(organization, "Organization not found");
@@ -39,7 +39,7 @@ export function WorkflowConnections({
                 {slot.integration?.name}
               </Header3>
               <ConnectionSelector
-                type="service"
+                type={slot.type}
                 sourceServiceId={slot.id}
                 organizationId={organization.id}
                 integration={slot.integration}
