@@ -11,6 +11,17 @@ describe("autoReffer", async () => {
           type: "string",
           const: "person",
         },
+        timezone: {
+          type: "string",
+          enum: [
+            "Africa/Abidjan",
+            "Africa/Accra",
+            "Africa/Addis_Ababa",
+            "Africa/Algiers",
+            "Africa/Asmara",
+            "Africa/Asmera",
+          ]
+        },
         person: {
           title: "Person",
           type: "object",
@@ -34,6 +45,17 @@ describe("autoReffer", async () => {
         id: {
           type: "string",
         },
+        tz: {
+          type: "string",
+          enum: [
+            "Africa/Abidjan",
+            "Africa/Accra",
+            "Africa/Addis_Ababa",
+            "Africa/Algiers",
+            "Africa/Asmara",
+            "Africa/Asmera",
+          ]
+        },
       },
       required: ["type", "person", "id"],
       additionalProperties: false,
@@ -56,6 +78,17 @@ describe("autoReffer", async () => {
             "title": "Person",
             "type": "object",
           },
+          "Tz": {
+            "enum": [
+              "Africa/Abidjan",
+              "Africa/Accra",
+              "Africa/Addis_Ababa",
+              "Africa/Algiers",
+              "Africa/Asmara",
+              "Africa/Asmera",
+            ],
+            "type": "string",
+          },
         },
         "properties": {
           "id": {
@@ -67,9 +100,15 @@ describe("autoReffer", async () => {
           "person": {
             "$ref": "#/definitions/Person",
           },
+          "timezone": {
+            "$ref": "#/definitions/Tz",
+          },
           "type": {
             "const": "person",
             "type": "string",
+          },
+          "tz": {
+            "$ref": "#/definitions/Tz",
           },
         },
         "required": [

@@ -5,12 +5,18 @@ import pointer from "json-pointer";
 type JSONPointer = string[];
 const hasher = nodeObjectHash({ sort: true });
 
+type Options = {
+  refIfMoreThan: number;
+};
+
 export class AutoReffer {
   #schemaPointers = new Map<string, JSONPointer[]>();
   #schema: JSONSchema;
+  #options: Options;
 
-  constructor(schema: JSONSchema) {
+  constructor(schema: JSONSchema, options: Options = { refIfMoreThan: 2 }) {
     this.#schema = schema;
+    this.#options = options;
   }
 
   optimize() {
@@ -20,7 +26,7 @@ export class AutoReffer {
   }
 
   #walk(schema: JSONSchema, pointer: JSONPointer) {
-    if (schema.type === "object") {
+    if (schema.type === "object" || (schema.type === "string" && schema.enum)) {
       const hash = hasher.hash(schema);
       const existingPath = this.#schemaPointers.get(hash);
       if (existingPath) {
@@ -77,7 +83,7 @@ export class AutoReffer {
     }
     //loop through the schemaPaths
     for (const [hash, pointers] of this.#schemaPointers) {
-      if (pointers.length <= 1) continue;
+      if (pointers.length < this.#options.refIfMoreThan) continue;
       //create the ref
       try {
         const originalObject = pointer.get(newSchema, pointers[0]);

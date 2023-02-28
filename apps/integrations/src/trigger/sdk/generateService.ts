@@ -211,14 +211,16 @@ async function createFunctionsAndTypesFiles(
     typeSchemas
   );
 
-  const reffer = new AutoReffer(combinedSchema);
+  const reffer = new AutoReffer(combinedSchema, {
+    refIfMoreThan: 4,
+  });
   const optimizedSchema = reffer.optimize();
 
   await fs.mkdir(basePath, { recursive: true });
-  await fs.writeFile(
-    `${basePath}/schema.json`,
-    JSON.stringify(combinedSchema, null, 2)
-  );
+  // await fs.writeFile(
+  //   `${basePath}/schema.json`,
+  //   JSON.stringify(combinedSchema, null, 2)
+  // );
   await fs.writeFile(
     `${basePath}/schema-optimized.json`,
     JSON.stringify(optimizedSchema, null, 2)
