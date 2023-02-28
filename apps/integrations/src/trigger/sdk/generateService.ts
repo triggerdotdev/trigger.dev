@@ -216,15 +216,12 @@ async function createFunctionsAndTypesFiles(
   });
   const optimizedSchema = reffer.optimize();
 
-  await fs.mkdir(basePath, { recursive: true });
+  //uncomment to write intermediate optimized schema to disk
+  // await fs.mkdir(basePath, { recursive: true });
   // await fs.writeFile(
-  //   `${basePath}/schema.json`,
-  //   JSON.stringify(combinedSchema, null, 2)
+  //   `${basePath}/schema-optimized.json`,
+  //   JSON.stringify(optimizedSchema, null, 2)
   // );
-  await fs.writeFile(
-    `${basePath}/schema-optimized.json`,
-    JSON.stringify(optimizedSchema, null, 2)
-  );
 
   let allTypes = await getTypesFromSchema(
     optimizedSchema,
