@@ -25,6 +25,7 @@ export CPLUS_INCLUDE_PATH="$CPLUS_INCLUDE_PATH:$(brew --prefix)/include"
 export LIBRARY_PATH="$LIBRARY_PATH:$(brew --prefix)/lib"
 export PULSAR_CPP_DIR=/opt/homebrew/Cellar/libpulsar/3.1.0
 ```
+Replace `3.1.0` with the correct version of Pulsar that's installed.
 
 9. Run `pnpm install` in the same terminal window.
 
@@ -68,9 +69,15 @@ export PULSAR_CPP_DIR=/opt/homebrew/Cellar/libpulsar/3.1.0
 
    If you are proxying the webapp according to step 2 then in `webapp/.env`, set the `APP_ORIGIN` to the `NGROK_SUBDOMAIN` provided to the `./scripts/proxy-webapp.sh` command, e.g. `APP_ORIGIN=https://dan-trigger-dev.eu.ngrok.io`
 
-4. Start postgresql, redis, pizzly server, followed by pulsar standalone
+   Copy the `.env.example` in `app/integrations` and replace the `API_TOKEN` value with the same string that you set for `INTEGRATIONS_API_KEY` in the webapp .env.
+   ```sh
+   cp ./apps/integrations/.env.example ./apps/integrations/.env
+   ```
+
+4. Start postgresql, redis, pizzly server, followed by pulsar standalone.
 
    ```bash
+   docker network create app_network
    pnpm run docker:services
    pnpm run docker:pulsar
    ```

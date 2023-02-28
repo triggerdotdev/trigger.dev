@@ -84,7 +84,7 @@ async function main() {
 
     const keyPart = apiKey.split(" ")[1];
 
-    console.log("Initialization the TriggerServer now...");
+    console.log("Initializing the TriggerServer now...");
 
     const triggerServer = new TriggerServer(ws, keyPart, commandPublisher);
 
