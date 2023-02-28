@@ -83,7 +83,7 @@ async function seed() {
   const githubIssuesToSlack = {
     repositoryUrl: "https://github.com/triggerdotdev/github-issues-to-slack",
     imageUrl:
-      "https://imagedelivery.net/3TbraffuDZ4aEf8KWOmI_w/13f7360d-90f4-4cde-1675-3d338c82b500/public",
+      "https://imagedelivery.net/3TbraffuDZ4aEf8KWOmI_w/726c0203-467d-40f2-58aa-55b3e10a9900/public",
     title: "Post to Slack when a GitHub issue is created or modified",
     shortTitle: "GitHub issues to Slack",
     description:
@@ -93,6 +93,21 @@ async function seed() {
     workflowIds: ["github-issues-to-slack"],
     markdownDocs: await readTemplateDocsFile("github-issues-to-slack"),
     runLocalDocs: await readTemplateDocsFile("github-issues-to-slack-local"),
+  };
+
+  const githubIssuesToNotion = {
+    repositoryUrl: "https://github.com/triggerdotdev/github-issues-to-notion",
+    imageUrl:
+      "https://imagedelivery.net/3TbraffuDZ4aEf8KWOmI_w/05bfa3fc-d0a5-4d09-aab9-6fa24e7c5c00/public",
+    title: "Sync a new GitHub issue to a Notion database",
+    shortTitle: "Sync GitHub issues to Notion",
+    description:
+      "When a GitHub issue is created, sync it to your Notion database, with any properties you want.",
+    priority: 23,
+    services: ["github", "notion"],
+    workflowIds: ["github-issues-to-notion"],
+    markdownDocs: await readTemplateDocsFile("github-issues-to-notion"),
+    runLocalDocs: await readTemplateDocsFile("github-issues-to-notion-local"),
   };
 
   const resendWelcomeDripCampaign = {
@@ -192,6 +207,15 @@ async function seed() {
     create: {
       slug: "github-issues-to-slack",
       ...githubIssuesToSlack,
+    },
+  });
+
+  await prisma.template.upsert({
+    where: { slug: "github-issues-to-notion" },
+    update: githubIssuesToNotion,
+    create: {
+      slug: "github-issues-to-notion",
+      ...githubIssuesToNotion,
     },
   });
 
