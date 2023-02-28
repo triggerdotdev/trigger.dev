@@ -116,7 +116,7 @@ async function seed() {
   const supabaseToDiscord = {
     repositoryUrl: "https://github.com/triggerdotdev/supabase-to-discord",
     imageUrl:
-      "https://imagedelivery.net/3TbraffuDZ4aEf8KWOmI_w/cce3b770-b6f9-40ef-baf3-f01c20686700/public",
+      "https://imagedelivery.net/3TbraffuDZ4aEf8KWOmI_w/0d95eb90-cd8a-4342-cf22-bd1c81e56700/public",
     title: "Send a message to Discord from a Supabase webhook",
     shortTitle: "Supabase to Discord",
     description:
