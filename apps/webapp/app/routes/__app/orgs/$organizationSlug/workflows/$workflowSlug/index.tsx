@@ -27,9 +27,7 @@ import { PanelHeader } from "~/components/layout/PanelHeader";
 import { PanelInfo } from "~/components/layout/PanelInfo";
 import { PanelWarning } from "~/components/layout/PanelWarning";
 import {
-  PrimaryButton,
   PrimaryLink,
-  SecondaryButton,
   SecondaryLink,
   TertiaryLink,
 } from "~/components/primitives/Buttons";
@@ -189,7 +187,7 @@ export default function Page() {
               <Disclosure defaultOpen={true}>
                 {({ open }) => (
                   <div className="border border-red-500 bg-rose-500/20">
-                    <Disclosure.Button className="flex w-full items-center justify-between bg-slate-700/30 py-4 px-4 transition hover:bg-slate-700/40">
+                    <Disclosure.Button className="flex w-full items-center justify-between bg-slate-800/70 py-4 px-4 transition hover:bg-slate-800/50">
                       <div className="flex items-center gap-2">
                         <Cog6ToothIcon className="h-6 w-6 text-rose-500" />
                         <Body>
@@ -252,8 +250,8 @@ export default function Page() {
               workflow.externalSourceConfig?.type === "manual" && (
                 <Disclosure defaultOpen={true}>
                   {({ open }) => (
-                    <div className="bg-slate-800/80">
-                      <Disclosure.Button className="flex w-full items-center justify-between bg-slate-700/30 py-4 px-4 transition hover:bg-slate-700/40">
+                    <div className="bg-slate-700/80">
+                      <Disclosure.Button className="flex w-full items-center justify-between bg-slate-800/70 py-4 px-4 transition hover:bg-slate-800/50">
                         <div className="flex items-center gap-2">
                           <Cog6ToothIcon className="h-6 w-6 text-green-500" />
                           {workflow.status === "CREATED" ? (
@@ -319,7 +317,7 @@ export default function Page() {
                                             workflow.externalSourceConfig.data
                                               .url
                                           }
-                                        />
+                                        ></CopyTextButton>
                                       </div>
                                     </div>
                                     {workflow.externalSourceConfig.data
@@ -340,19 +338,12 @@ export default function Page() {
                                             }
                                             readOnly={true}
                                           />
-                                          {/* <CopyTextButton
+                                          <CopyTextButton
                                             value={
                                               workflow.externalSourceConfig.data
                                                 .secret
                                             }
-                                          />
-                                          <SecondaryButton>
-                                            Edit
-                                          </SecondaryButton> */}
-                                          <PrimaryButton>Save</PrimaryButton>
-                                          <SecondaryButton>
-                                            Cancel
-                                          </SecondaryButton>
+                                          ></CopyTextButton>
                                         </div>
                                       </div>
                                     )}
@@ -388,8 +379,8 @@ export default function Page() {
               )}
             <Disclosure defaultOpen={totalRealRuns === 0}>
               {({ open }) => (
-                <div className="rounded-b-md bg-slate-800/80">
-                  <Disclosure.Button className="flex w-full items-center justify-between bg-slate-700/30 py-4 px-4 transition hover:bg-slate-700/40">
+                <div className="rounded-b-md bg-slate-700/80">
+                  <Disclosure.Button className="flex w-full items-center justify-between bg-slate-800/70 py-4 px-4 transition hover:bg-slate-800/50">
                     <div className="flex items-center gap-2">
                       <ArrowsRightLeftIcon className="h-6 w-6 text-green-500" />
                       <Body>How to run your workflow</Body>
@@ -415,14 +406,17 @@ export default function Page() {
                         Recommended
                       </span>
                     </div>
-                    <ol className="flex list-inside list-decimal flex-col gap-1.5 border-b border-slate-850 pb-4 pl-2 text-slate-400">
+                    <ol className="flex list-inside list-decimal flex-col gap-1.5 border-b border-slate-800 pb-4 pl-2 text-slate-400">
                       <li>{howToText(eventRule)}</li>
                       <li>Return here to view the new workflow run.</li>
                     </ol>
                     <SubTitle className="mt-4 mb-3 text-slate-300">
                       Trigger your workflow from a test
                     </SubTitle>
-                    <SecondaryLink to="test">
+                    <SecondaryLink
+                      to="test"
+                      className="!bg-slate-800/50 ring-slate-800 hover:!bg-slate-800/30"
+                    >
                       <BeakerIcon className="-ml-1 h-4 w-4 text-slate-300" />
                       Test your workflow
                     </SecondaryLink>
