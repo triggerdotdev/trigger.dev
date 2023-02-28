@@ -25,7 +25,7 @@ async function seed() {
   const blankStarter = {
     repositoryUrl: "https://github.com/triggerdotdev/blank-starter",
     imageUrl:
-      "https://imagedelivery.net/3TbraffuDZ4aEf8KWOmI_w/3812f076-38a2-4456-b809-2fc61dd77800/public",
+      "https://imagedelivery.net/3TbraffuDZ4aEf8KWOmI_w/b40a7f29-b06c-4e66-cd7f-5f7dbf1cc200/public",
     title: "A blank starter ready to run your own workflow",
     shortTitle: "Blank Starter",
     description:
@@ -39,7 +39,7 @@ async function seed() {
   const helloWorld = {
     repositoryUrl: "https://github.com/triggerdotdev/hello-world",
     imageUrl:
-      "https://imagedelivery.net/3TbraffuDZ4aEf8KWOmI_w/634cfd11-e499-48ca-aaf5-b2404642f600/public",
+      "https://imagedelivery.net/3TbraffuDZ4aEf8KWOmI_w/3fe24571-7260-4abe-46e7-785a39859d00/public",
     title: "A Hello World with a simple custom event trigger",
     shortTitle: "Hello World",
     description:
@@ -53,7 +53,7 @@ async function seed() {
   const scheduledHealthcheck = {
     repositoryUrl: "https://github.com/triggerdotdev/scheduled-healthcheck",
     imageUrl:
-      "https://imagedelivery.net/3TbraffuDZ4aEf8KWOmI_w/6dbe0780-1950-4645-6e64-f3eb65296900/public",
+      "https://imagedelivery.net/3TbraffuDZ4aEf8KWOmI_w/507fc0d0-056e-4ff0-7cb0-72b7ea44c600/public",
     title: "Run a scheduled healthcheck on your website every 5 minutes",
     shortTitle: "Scheduled Healthcheck",
     description:
@@ -68,7 +68,7 @@ async function seed() {
   const githubStarsToSlack = {
     repositoryUrl: "https://github.com/triggerdotdev/github-stars-to-slack",
     imageUrl:
-      "https://imagedelivery.net/3TbraffuDZ4aEf8KWOmI_w/5b3964be-9a7b-4a7e-1837-b283e501b900/public",
+      "https://imagedelivery.net/3TbraffuDZ4aEf8KWOmI_w/0ec1b94e-2941-4336-d443-7c80c3673900/public",
     title: "Post to Slack every time a GitHub repo is starred",
     shortTitle: "GitHub stars to Slack",
     description:
@@ -83,7 +83,7 @@ async function seed() {
   const githubIssuesToSlack = {
     repositoryUrl: "https://github.com/triggerdotdev/github-issues-to-slack",
     imageUrl:
-      "https://imagedelivery.net/3TbraffuDZ4aEf8KWOmI_w/1e3b4c17-70ce-484e-4ffe-2147fc873b00/public",
+      "https://imagedelivery.net/3TbraffuDZ4aEf8KWOmI_w/13f7360d-90f4-4cde-1675-3d338c82b500/public",
     title: "Post to Slack when a GitHub issue is created or modified",
     shortTitle: "GitHub issues to Slack",
     description:
@@ -99,7 +99,7 @@ async function seed() {
     repositoryUrl:
       "https://github.com/triggerdotdev/resend-welcome-drip-campaign",
     imageUrl:
-      "https://imagedelivery.net/3TbraffuDZ4aEf8KWOmI_w/cce3b770-b6f9-40ef-baf3-f01c20686700/public",
+      "https://imagedelivery.net/3TbraffuDZ4aEf8KWOmI_w/286c6a9a-0420-48a5-be55-29c5bbf80300/public",
     title: "Send an email drip campaign when a new user signs up",
     shortTitle: "Resend.com drip campaign",
     description:
@@ -116,7 +116,7 @@ async function seed() {
   const supabaseToDiscord = {
     repositoryUrl: "https://github.com/triggerdotdev/supabase-to-discord",
     imageUrl:
-      "https://imagedelivery.net/3TbraffuDZ4aEf8KWOmI_w/0d95eb90-cd8a-4342-cf22-bd1c81e56700/public",
+      "https://imagedelivery.net/3TbraffuDZ4aEf8KWOmI_w/26c93ad0-4207-4c9e-2ae2-35a9ff8e8300/public",
     title: "Send a message to Discord from a Supabase webhook",
     shortTitle: "Supabase to Discord",
     description:
@@ -130,7 +130,7 @@ async function seed() {
   const supabaseToLoops = {
     repositoryUrl: "https://github.com/triggerdotdev/supabase-to-loops",
     imageUrl:
-      "https://imagedelivery.net/3TbraffuDZ4aEf8KWOmI_w/93e0ebb9-ee0b-422a-ca76-14f8610b3700/public",
+      "https://imagedelivery.net/3TbraffuDZ4aEf8KWOmI_w/08cf39d8-f473-43d0-1de6-4668b60ae300/public",
     title: "Create a Loops.so contact from a Supabase webhook",
     shortTitle: "Supabase to Loops.so",
     description:
