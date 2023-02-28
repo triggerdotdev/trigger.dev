@@ -1,13 +1,13 @@
 import { getTriggerRun } from "@trigger.dev/sdk";
-import { AppendBlockChildrenInput, AppendBlockChildrenOutput, CreateCommentInput, CreateCommentOutput, CreateDatabaseInput, CreateDatabaseOutput, CreatePageInput, CreatePageOutput, DeleteBlockInput, DeleteBlockOutput, GetBlockInput, GetBlockOutput, GetBlockChildrenInput, GetBlockChildrenOutput, GetBotInfoInput, GetBotInfoOutput, GetCommentsInput, GetCommentsOutput, GetDatabaseInput, GetDatabaseOutput, GetPageInput, GetPageOutput, GetUserInput, GetUserOutput, ListUsersInput, ListUsersOutput, QueryDatabaseInput, QueryDatabaseOutput, SearchInput, SearchOutput, UpdateBlockInput, UpdateBlockOutput, UpdateDatabaseInput, UpdateDatabaseOutput, UpdatePageInput, UpdatePageOutput } from "./types";
+import { AppendBlockChildrenInput, AppendBlockChildrenOutput, CreateCommentInput, CreateCommentOutput, CreateDatabaseInput, CreateDatabaseOutput, CreatePageInput, CreatePageOutput, DeleteBlockInput, DeleteBlockOutput, GetBlockInput, GetBlockOutput, GetBlockChildrenInput, GetBlockChildrenOutput, GetBotInfoOutput, GetCommentsInput, GetCommentsOutput, GetDatabaseInput, GetDatabaseOutput, GetPageInput, GetPageOutput, GetUserInput, GetUserOutput, ListUsersInput, ListUsersOutput, QueryDatabaseInput, QueryDatabaseOutput, SearchInput, SearchOutput, UpdateBlockInput, UpdateBlockOutput, UpdateDatabaseInput, UpdateDatabaseOutput, UpdatePageInput, UpdatePageOutput, Prettify } from "./types";
 
 /** Creates and appends new children blocks to the parent block_id specified. Returns a paginated list of newly created first level children block objects. */
 export async function appendBlockChildren(
   /** This key should be unique inside your workflow */
   key: string,
   /** The params for this call */
-  params: AppendBlockChildrenInput
-): Promise<AppendBlockChildrenOutput> {
+  params: Prettify<AppendBlockChildrenInput>
+): Promise<Prettify<AppendBlockChildrenOutput>> {
   const run = getTriggerRun();
 
   if (!run) {
@@ -32,8 +32,8 @@ export async function createComment(
   /** This key should be unique inside your workflow */
   key: string,
   /** The params for this call */
-  params: CreateCommentInput
-): Promise<CreateCommentOutput> {
+  params: Prettify<CreateCommentInput>
+): Promise<Prettify<CreateCommentOutput>> {
   const run = getTriggerRun();
 
   if (!run) {
@@ -55,8 +55,8 @@ export async function createDatabase(
   /** This key should be unique inside your workflow */
   key: string,
   /** The params for this call */
-  params: CreateDatabaseInput
-): Promise<CreateDatabaseOutput> {
+  params: Prettify<CreateDatabaseInput>
+): Promise<Prettify<CreateDatabaseOutput>> {
   const run = getTriggerRun();
 
   if (!run) {
@@ -78,8 +78,8 @@ export async function createPage(
   /** This key should be unique inside your workflow */
   key: string,
   /** The params for this call */
-  params: CreatePageInput
-): Promise<CreatePageOutput> {
+  params: Prettify<CreatePageInput>
+): Promise<Prettify<CreatePageOutput>> {
   const run = getTriggerRun();
 
   if (!run) {
@@ -103,8 +103,8 @@ export async function deleteBlock(
   /** This key should be unique inside your workflow */
   key: string,
   /** The params for this call */
-  params: DeleteBlockInput
-): Promise<DeleteBlockOutput> {
+  params: Prettify<DeleteBlockInput>
+): Promise<Prettify<DeleteBlockOutput>> {
   const run = getTriggerRun();
 
   if (!run) {
@@ -126,8 +126,8 @@ export async function getBlock(
   /** This key should be unique inside your workflow */
   key: string,
   /** The params for this call */
-  params: GetBlockInput
-): Promise<GetBlockOutput> {
+  params: Prettify<GetBlockInput>
+): Promise<Prettify<GetBlockOutput>> {
   const run = getTriggerRun();
 
   if (!run) {
@@ -149,8 +149,8 @@ export async function getBlockChildren(
   /** This key should be unique inside your workflow */
   key: string,
   /** The params for this call */
-  params: GetBlockChildrenInput
-): Promise<GetBlockChildrenOutput> {
+  params: Prettify<GetBlockChildrenInput>
+): Promise<Prettify<GetBlockChildrenOutput>> {
   const run = getTriggerRun();
 
   if (!run) {
@@ -171,9 +171,8 @@ export async function getBlockChildren(
 export async function getBotInfo(
   /** This key should be unique inside your workflow */
   key: string,
-  /** The params for this call */
-  params: GetBotInfoInput
-): Promise<GetBotInfoOutput> {
+
+): Promise<Prettify<GetBotInfoOutput>> {
   const run = getTriggerRun();
 
   if (!run) {
@@ -184,7 +183,7 @@ export async function getBotInfo(
     version: "2",
     service: "notion",
     endpoint: "getBotInfo",
-    params,
+    params: undefined,
   });
 
   return output;
@@ -195,8 +194,8 @@ export async function getComments(
   /** This key should be unique inside your workflow */
   key: string,
   /** The params for this call */
-  params: GetCommentsInput
-): Promise<GetCommentsOutput> {
+  params: Prettify<GetCommentsInput>
+): Promise<Prettify<GetCommentsOutput>> {
   const run = getTriggerRun();
 
   if (!run) {
@@ -220,8 +219,8 @@ export async function getDatabase(
   /** This key should be unique inside your workflow */
   key: string,
   /** The params for this call */
-  params: GetDatabaseInput
-): Promise<GetDatabaseOutput> {
+  params: Prettify<GetDatabaseInput>
+): Promise<Prettify<GetDatabaseOutput>> {
   const run = getTriggerRun();
 
   if (!run) {
@@ -243,8 +242,8 @@ export async function getPage(
   /** This key should be unique inside your workflow */
   key: string,
   /** The params for this call */
-  params: GetPageInput
-): Promise<GetPageOutput> {
+  params: Prettify<GetPageInput>
+): Promise<Prettify<GetPageOutput>> {
   const run = getTriggerRun();
 
   if (!run) {
@@ -266,8 +265,8 @@ export async function getUser(
   /** This key should be unique inside your workflow */
   key: string,
   /** The params for this call */
-  params: GetUserInput
-): Promise<GetUserOutput> {
+  params: Prettify<GetUserInput>
+): Promise<Prettify<GetUserOutput>> {
   const run = getTriggerRun();
 
   if (!run) {
@@ -289,8 +288,8 @@ export async function listUsers(
   /** This key should be unique inside your workflow */
   key: string,
   /** The params for this call */
-  params: ListUsersInput
-): Promise<ListUsersOutput> {
+  params: Prettify<ListUsersInput>
+): Promise<Prettify<ListUsersOutput>> {
   const run = getTriggerRun();
 
   if (!run) {
@@ -312,8 +311,8 @@ export async function queryDatabase(
   /** This key should be unique inside your workflow */
   key: string,
   /** The params for this call */
-  params: QueryDatabaseInput
-): Promise<QueryDatabaseOutput> {
+  params: Prettify<QueryDatabaseInput>
+): Promise<Prettify<QueryDatabaseOutput>> {
   const run = getTriggerRun();
 
   if (!run) {
@@ -335,8 +334,8 @@ export async function search(
   /** This key should be unique inside your workflow */
   key: string,
   /** The params for this call */
-  params: SearchInput
-): Promise<SearchOutput> {
+  params: Prettify<SearchInput>
+): Promise<Prettify<SearchOutput>> {
   const run = getTriggerRun();
 
   if (!run) {
@@ -358,8 +357,8 @@ export async function updateBlock(
   /** This key should be unique inside your workflow */
   key: string,
   /** The params for this call */
-  params: UpdateBlockInput
-): Promise<UpdateBlockOutput> {
+  params: Prettify<UpdateBlockInput>
+): Promise<Prettify<UpdateBlockOutput>> {
   const run = getTriggerRun();
 
   if (!run) {
@@ -381,8 +380,8 @@ export async function updateDatabase(
   /** This key should be unique inside your workflow */
   key: string,
   /** The params for this call */
-  params: UpdateDatabaseInput
-): Promise<UpdateDatabaseOutput> {
+  params: Prettify<UpdateDatabaseInput>
+): Promise<Prettify<UpdateDatabaseOutput>> {
   const run = getTriggerRun();
 
   if (!run) {
@@ -404,8 +403,8 @@ export async function updatePage(
   /** This key should be unique inside your workflow */
   key: string,
   /** The params for this call */
-  params: UpdatePageInput
-): Promise<UpdatePageOutput> {
+  params: Prettify<UpdatePageInput>
+): Promise<Prettify<UpdatePageOutput>> {
   const run = getTriggerRun();
 
   if (!run) {
