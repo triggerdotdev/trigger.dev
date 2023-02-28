@@ -160,10 +160,10 @@ export async function ${action.name}(
   ${
     schemas.input
       ? `/** The params for this call */
-  params: ${schemas.input.title}`
+  params: Prettify<${schemas.input.title}>`
       : ""
   }
-): Promise<${schemas.output?.title ?? "void"}> {
+): Promise<Prettify<${schemas.output?.title ?? "void"}>> {
   const run = getTriggerRun();
 
   if (!run) {
@@ -226,10 +226,14 @@ async function createFunctionsAndTypesFiles(
     JSON.stringify(optimizedSchema, null, 2)
   );
 
-  const allTypes = await getTypesFromSchema(
+  let allTypes = await getTypesFromSchema(
     optimizedSchema,
     `${service.service}Types`
   );
+
+  allTypes += `\nexport type Prettify<T> = {
+  [K in keyof T]: T[K];
+} & {};`;
 
   const typesFile = project.createSourceFile(
     `${basePath}/src/types.ts`,
@@ -245,7 +249,7 @@ async function createFunctionsAndTypesFiles(
     `import { getTriggerRun } from "@trigger.dev/sdk";
       import { ${typeSchemas
         .map((t) => t && t.title)
-        .join(", ")} } from "./types";
+        .join(", ")}, Prettify } from "./types";
       ${Object.values(functionsData)
         .map((f) => f.functionCode)
         .join("")}`,
