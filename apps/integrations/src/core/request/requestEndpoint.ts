@@ -1,5 +1,4 @@
 import { applyCredentials } from "core/authentication/credentials";
-import { EndpointSpec, EndpointSpecResponse } from "core/endpoint/types";
 import {
   getFetch,
   normalizeHeaders,
@@ -7,13 +6,13 @@ import {
   safeGetJson,
 } from "core/fetch/fetchUtilities";
 import { JSONSchemaError } from "core/schemas/types";
-import { validate } from "core/schemas/validate";
 import {
   FetchConfig,
   RequestData,
   RequestResponse,
   RequestSpec,
 } from "./types";
+import * as Sentry from "@sentry/node";
 
 export async function requestEndpoint(
   { baseUrl, endpointSpec, authentication }: RequestSpec,
@@ -26,14 +25,6 @@ export async function requestEndpoint(
   if (body == null && request.body?.schema != null) {
     throw {
       type: "missing_body",
-    };
-  }
-
-  const requestValid = await validate(body, request.body?.schema);
-  if (!requestValid.success) {
-    throw {
-      type: "request_body_invalid",
-      errors: requestValid.errors,
     };
   }
 
@@ -59,18 +50,6 @@ export async function requestEndpoint(
       }
 
       const element = parameters[name];
-      //validate the parameter against the schema
-      const valid = await validate(element, parameter.schema);
-      if (!valid.success) {
-        throw {
-          type: "parameter_invalid",
-          parameter: {
-            name,
-            value: element,
-          },
-          errors: valid.errors,
-        };
-      }
 
       //add the parameter
       switch (location) {
@@ -147,63 +126,57 @@ export async function requestEndpoint(
     const response = await fetch(fetchConfig.url, fetchObject);
     const json = await safeGetJson(response);
 
-    // validate the response against the specs
-    const responseSpecs = getResponseSpecsForStatusCode(
-      response.status,
-      responses
-    );
-    if (!responseSpecs) {
-      throw {
-        type: "no_response_spec",
+    const normalizedHeaders = normalizeHeaders(response.headers);
+
+    // start with the first response spec and loop through them, if one succeeds then return that
+    const specErrors: Array<{ name: string; errors: JSONSchemaError[] }> = [];
+    for (const spec of responses) {
+      const isMatch = spec.matches({
+        statusCode: response.status,
+        headers: normalizedHeaders,
+        body: json,
+      });
+
+      if (!isMatch) {
+        continue;
+      }
+
+      return {
+        success: spec.success,
         status: response.status,
+        headers: normalizedHeaders,
+        body: json,
       };
     }
 
-    // start with the first spec and loop through them, if one succeeds then return that
-    const specErrors: Array<{ name: string; errors: JSONSchemaError[] }> = [];
-    for (const spec of responseSpecs) {
-      const responseValid = await validate(json, spec.schema);
-      if (responseValid.success) {
+    if (process.env.NODE_ENV === "production") {
+      //if it's a 2xx response, even if it fails validation we'll return it as a success
+      if (response.status >= 200 && response.status < 300) {
+        //we want to report this to Sentry though so we can improve the schemas
+        Sentry.captureException({
+          type: "response_invalid",
+          baseUrl: baseUrl,
+          spec: endpointSpec,
+          status: response.status,
+          body: json,
+          errors: specErrors,
+        });
+
         return {
-          success: spec.success,
+          success: true,
           status: response.status,
           headers: normalizeHeaders(response.headers),
           body: json,
         };
-      } else {
-        if (responseValid.errors != null) {
-          specErrors.push({ name: spec.name, errors: responseValid.errors });
-        }
       }
     }
 
     throw {
-      type: "response_invalid",
+      type: "no_response_spec",
       status: response.status,
       body: json,
-      errors: specErrors,
     };
   } catch (error: any) {
     return responseFromCaughtError(error);
   }
-}
-
-/** Get the appropriate endpoint response object based on the status code. It supports wild cards like 20x and 2xx */
-function getResponseSpecsForStatusCode(
-  statusCode: number,
-  endpointResponseSpecs: EndpointSpec["responses"]
-): EndpointSpecResponse[] {
-  let specs = endpointResponseSpecs[statusCode.toString()];
-  if (specs) return specs;
-
-  specs =
-    endpointResponseSpecs[
-      `${statusCode.toString().charAt(0)}${statusCode.toString().charAt(1)}x`
-    ];
-  if (specs) return specs;
-
-  specs = endpointResponseSpecs[`${statusCode.toString().charAt(0)}xx`];
-  if (specs) return specs;
-
-  return endpointResponseSpecs.default;
 }

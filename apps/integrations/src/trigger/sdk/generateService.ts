@@ -10,6 +10,7 @@ import { JSONSchema } from "core/schemas/types";
 import { FunctionData } from "./types";
 import { generateDocs } from "./generateDocs";
 import { TitleCaseWithSpaces, toFriendlyTypeName } from "./utilities";
+import { AutoReffer } from "core/schemas/autoReffer";
 
 const appDir = process.cwd();
 
@@ -159,10 +160,10 @@ export async function ${action.name}(
   ${
     schemas.input
       ? `/** The params for this call */
-  params: ${schemas.input.title}`
+  params: Prettify<${schemas.input.title}>`
       : ""
   }
-): Promise<${schemas.output?.title ?? "void"}> {
+): Promise<Prettify<${schemas.output?.title ?? "void"}>> {
   const run = getTriggerRun();
 
   if (!run) {
@@ -173,7 +174,7 @@ export async function ${action.name}(
     version: "2",
     service: "${service.service}",
     endpoint: "${action.name}",
-    params,
+    ${schemas.input ? "params," : "params: undefined,"}
   });
 
   return output;
@@ -210,10 +211,26 @@ async function createFunctionsAndTypesFiles(
     typeSchemas
   );
 
-  const allTypes = await getTypesFromSchema(
-    combinedSchema,
+  const reffer = new AutoReffer(combinedSchema, {
+    refIfMoreThan: 4,
+  });
+  const optimizedSchema = reffer.optimize();
+
+  //uncomment to write intermediate optimized schema to disk
+  // await fs.mkdir(basePath, { recursive: true });
+  // await fs.writeFile(
+  //   `${basePath}/schema-optimized.json`,
+  //   JSON.stringify(optimizedSchema, null, 2)
+  // );
+
+  let allTypes = await getTypesFromSchema(
+    optimizedSchema,
     `${service.service}Types`
   );
+
+  allTypes += `\nexport type Prettify<T> = {
+  [K in keyof T]: T[K];
+} & {};`;
 
   const typesFile = project.createSourceFile(
     `${basePath}/src/types.ts`,
@@ -229,7 +246,7 @@ async function createFunctionsAndTypesFiles(
     `import { getTriggerRun } from "@trigger.dev/sdk";
       import { ${typeSchemas
         .map((t) => t && t.title)
-        .join(", ")} } from "./types";
+        .join(", ")}, Prettify } from "./types";
       ${Object.values(functionsData)
         .map((f) => f.functionCode)
         .join("")}`,

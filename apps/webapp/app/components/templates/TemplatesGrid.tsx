@@ -100,7 +100,12 @@ function TemplateButtonOrLink({
 
   if (openInNewPage) {
     return (
-      <Link to={template.slug} className={classNames(cardStyles, className)}>
+      <Link
+        to={template.slug}
+        prefetch="intent"
+        reloadDocument
+        className={classNames(cardStyles, className)}
+      >
         {children}
       </Link>
     );

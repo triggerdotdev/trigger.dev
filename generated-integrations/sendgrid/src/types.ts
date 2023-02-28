@@ -1,16 +1,5 @@
 export type SendgridTypes = (MailSendInput | MarketingContactsInput | MarketingContactsOutput)
-export type ToEmailArray = {
-  /**
-   * The intended recipient's email address.
-   */
-  email: string
-  /**
-   * The intended recipient's name.
-   */
-  name?: string
-}[]
-
-export interface MailSendInput {
+export type MailSendInput = {
   /**
    * An array of messages and their metadata. Each object within personalizations can be thought of as an envelope - it defines who should receive an individual message and how that message should be handled. See our [Personalizations documentation](https://sendgrid.com/docs/for-developers/sending-email/personalizations/) for examples.
    * 
@@ -30,7 +19,7 @@ export interface MailSendInput {
      * 
      * @maxItems 1000
      */
-    bcc?: CCBCCEmailObject[]
+    bcc?: CCBCCEmailObject1[]
     /**
      * The subject of your email. See character length requirements according to [RFC 2822](http://stackoverflow.com/questions/1592291/what-is-the-email-subject-length-limit#answer-1592310).
      */
@@ -64,7 +53,7 @@ export interface MailSendInput {
      */
     send_at?: number
   }[]
-  from: FromEmailObject
+  from: FromEmailObject1
   reply_to?: ReplyToEmailObject
   /**
    * An array of recipients who will receive replies and/or bounces. Each object in this array must contain the recipient's email address. Each object in the array may optionally contain the recipient's name. You can either choose to use “reply_to” field or “reply_to_list” but not both.
@@ -319,6 +308,30 @@ export interface MailSendInput {
     }
   }
 }
+export type ToEmailArray = {
+  /**
+   * The intended recipient's email address.
+   */
+  email: string
+  /**
+   * The intended recipient's name.
+   */
+  name?: string
+}[]
+export type MarketingContactsInput = {
+  /**
+   * An array of List ID strings that this contact will be added to.
+   */
+  list_ids?: string[]
+  /**
+   * One or more contacts objects that you intend to upsert. The available fields for a contact, including the required `email` field are described below.
+   * 
+   * @minItems 1
+   * @maxItems 30000
+   */
+  contacts: [ContactRequest, ...(ContactRequest)[]]
+}
+
 export interface FromEmailObject {
   /**
    * The 'From' email address used to deliver the message. This address should be a verified sender in your Twilio SendGrid account.
@@ -339,6 +352,26 @@ export interface CCBCCEmailObject {
    */
   name?: string
 }
+export interface CCBCCEmailObject1 {
+  /**
+   * The intended recipient's email address.
+   */
+  email: string
+  /**
+   * The intended recipient's name.
+   */
+  name?: string
+}
+export interface FromEmailObject1 {
+  /**
+   * The 'From' email address used to deliver the message. This address should be a verified sender in your Twilio SendGrid account.
+   */
+  email: string
+  /**
+   * A name or title associated with the sending email address.
+   */
+  name?: string
+}
 export interface ReplyToEmailObject {
   /**
    * The email address where any replies or bounces will be returned.
@@ -348,19 +381,6 @@ export interface ReplyToEmailObject {
    * A name or title associated with the `reply_to` email address.
    */
   name?: string
-}
-export interface MarketingContactsInput {
-  /**
-   * An array of List ID strings that this contact will be added to.
-   */
-  list_ids?: string[]
-  /**
-   * One or more contacts objects that you intend to upsert. The available fields for a contact, including the required `email` field are described below.
-   * 
-   * @minItems 1
-   * @maxItems 30000
-   */
-  contacts: [ContactRequest, ...(ContactRequest)[]]
 }
 export interface ContactRequest {
   /**
@@ -417,3 +437,7 @@ export interface MarketingContactsOutput {
    */
   job_id?: string
 }
+
+export type Prettify<T> = {
+  [K in keyof T]: T[K];
+} & {};

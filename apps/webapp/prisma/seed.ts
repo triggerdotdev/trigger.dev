@@ -113,6 +113,34 @@ async function seed() {
     ),
   };
 
+  const supabaseToDiscord = {
+    repositoryUrl: "https://github.com/triggerdotdev/supabase-to-discord",
+    imageUrl:
+      "https://imagedelivery.net/3TbraffuDZ4aEf8KWOmI_w/0d95eb90-cd8a-4342-cf22-bd1c81e56700/public",
+    title: "Send a message to Discord from a Supabase webhook",
+    shortTitle: "Supabase to Discord",
+    description:
+      "Send a message to a Discord channel when a new row is inserted into a Supabase table.",
+    priority: 42,
+    services: [],
+    workflowIds: ["supabase-to-discord"],
+    markdownDocs: await readTemplateDocsFile("supabase-to-discord"),
+  };
+
+  const supabaseToLoops = {
+    repositoryUrl: "https://github.com/triggerdotdev/supabase-to-loops",
+    imageUrl:
+      "https://imagedelivery.net/3TbraffuDZ4aEf8KWOmI_w/93e0ebb9-ee0b-422a-ca76-14f8610b3700/public",
+    title: "Create a Loops.so contact from a Supabase webhook",
+    shortTitle: "Supabase to Loops.so",
+    description:
+      "Create a contact in Loops.so when a new user row is inserted into a Supabase table, using Supabase webhooks.",
+    priority: 41,
+    services: [],
+    workflowIds: ["supabase-to-loops"],
+    markdownDocs: await readTemplateDocsFile("supabase-to-loops"),
+  };
+
   await prisma.template.updateMany({
     where: {
       slug: "basic-starter",
@@ -173,6 +201,24 @@ async function seed() {
     create: {
       slug: "resend-welcome-drip-campaign",
       ...resendWelcomeDripCampaign,
+    },
+  });
+
+  await prisma.template.upsert({
+    where: { slug: "supabase-to-discord" },
+    update: supabaseToDiscord,
+    create: {
+      slug: "supabase-to-discord",
+      ...supabaseToDiscord,
+    },
+  });
+
+  await prisma.template.upsert({
+    where: { slug: "supabase-to-loops" },
+    update: supabaseToLoops,
+    create: {
+      slug: "supabase-to-loops",
+      ...supabaseToLoops,
     },
   });
 }

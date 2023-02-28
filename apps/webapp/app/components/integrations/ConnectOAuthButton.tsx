@@ -1,4 +1,4 @@
-import Pizzly from "@nangohq/pizzly-frontend";
+import Nango from "@nangohq/frontend";
 import { useFetcher } from "@remix-run/react";
 import type { ServiceMetadata } from "@trigger.dev/integration-sdk";
 import { useCallback, useEffect } from "react";
@@ -71,7 +71,7 @@ export function useCreateConnection(sourceId?: string, serviceId?: string) {
       serviceId?: string;
     }) => {
       try {
-        const pizzly = new Pizzly(pizzlyHost);
+        const pizzly = new Nango({ host: pizzlyHost });
         await pizzly.auth(service, connectionId);
 
         let completeData: UpdateRequest = {
@@ -98,7 +98,11 @@ export function useCreateConnection(sourceId?: string, serviceId?: string) {
         });
       } catch (error: any) {
         console.error(
-          `There was an error in the OAuth flow for integration "${error.providerConfigKey}" and connection-id "${error.connectionId}": ${error.error.type} - ${error.error.message}`,
+          `There was an error in the OAuth flow for integration "${
+            error.providerConfigKey
+          }" and connection-id "${error.connectionId}": ${JSON.stringify(
+            error
+          )}`,
           error
         );
       }

@@ -2,6 +2,9 @@
   "airtable": {
     "client_id": "2a5f5334-41e2-44c7-bc24-1887ce9644bf"
   },
+  "notion": {
+    "client_id": "7ca4afcd-f7ba-4240-bcfc-bc64f2644348"
+  },
   "github": {
     "client_id": "98922f3fbb27485bae70"
   },

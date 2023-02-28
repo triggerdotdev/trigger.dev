@@ -9,6 +9,7 @@ To add a changeset, use `pnpm run changeset:add` and follow the instructions [he
 - `@trigger.dev/sdk`
 - `@trigger.dev/integration-sdk`
 - `@trigger.dev/github`
+- `@trigger.dev/notion`
 - `@trigger.dev/slack`
 - `@trigger.dev/shopify`
 - `@trigger.dev/resend`

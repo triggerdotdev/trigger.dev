@@ -1,0 +1,72 @@
+---
+title: Get User
+sidebarTitle: Get User
+description: Get a user's information
+---
+    
+## Params
+    
+<ParamField path="key" type="string" required={true}>
+  A unique string. Please see the [Keys and Resumability](/guides/resumability)
+  doc for more info.
+</ParamField><ParamField path="params" type="object" required={true}>
+   Get User Input
+<Expandable title="properties" defaultOpen={true}><ParamField path="user_id" type="string" required={true}>
+   ID of the user you would like info about
+</ParamField><ParamField path="Notion-Version" type="string" required={true}>
+   The Notion API is versioned. Our API versions are named for the date the version is released, for example, 2022-06-28
+</ParamField></Expandable></ParamField>
+
+## Response
+
+<ResponseField path="response" type="object" required={true}>
+   Get User Output
+
+*Please note that this object is one of the following possible types*
+<Expandable title="possible types for response" defaultOpen={false}><ResponseField path="Value" type="object" required={false}>
+<Expandable title="properties" defaultOpen={false}><ResponseField path="type" type="string" required={true}>
+</ResponseField><ResponseField path="person" type="object" required={true}>
+<Expandable title="properties" defaultOpen={false}><ResponseField path="email" type="string" required={false}>
+</ResponseField></Expandable></ResponseField><ResponseField path="name" type="string,null" required={true}>
+</ResponseField><ResponseField path="avatar_url" type="string,null" required={true}>
+</ResponseField><ResponseField path="id" type="string" required={true}>
+</ResponseField><ResponseField path="object" type="string" required={true}>
+</ResponseField></Expandable></ResponseField><ResponseField path="Value" type="object" required={false}>
+<Expandable title="properties" defaultOpen={false}><ResponseField path="type" type="string" required={true}>
+</ResponseField><ResponseField path="bot" type="object" required={true}>
+   undefined
+
+*Please note that this object is one of the following possible types*
+<Expandable title="possible types for bot" defaultOpen={false}><ResponseField path="Value" type="object" required={false}>
+<Expandable title="properties" defaultOpen={false}><ResponseField path="Value[key]" type="undefined" required={false}>
+</ResponseField></Expandable></ResponseField><ResponseField path="Value" type="object" required={false}>
+<Expandable title="properties" defaultOpen={false}><ResponseField path="owner" type="object" required={true}>
+   undefined
+
+*Please note that this object is one of the following possible types*
+<Expandable title="possible types for owner" defaultOpen={false}><ResponseField path="Value" type="object" required={false}>
+<Expandable title="properties" defaultOpen={false}><ResponseField path="type" type="string" required={true}>
+</ResponseField><ResponseField path="user" type="object" required={true}>
+   undefined
+
+*Please note that this object is one of the following possible types*
+<Expandable title="possible types for user" defaultOpen={false}><ResponseField path="Value" type="object" required={false}>
+<Expandable title="properties" defaultOpen={false}><ResponseField path="type" type="string" required={true}>
+</ResponseField><ResponseField path="person" type="object" required={true}>
+<Expandable title="properties" defaultOpen={false}><ResponseField path="email" type="string" required={true}>
+</ResponseField></Expandable></ResponseField><ResponseField path="name" type="string,null" required={true}>
+</ResponseField><ResponseField path="avatar_url" type="string,null" required={true}>
+</ResponseField><ResponseField path="id" type="string" required={true}>
+</ResponseField><ResponseField path="object" type="string" required={true}>
+</ResponseField></Expandable></ResponseField><ResponseField path="Value" type="object" required={false}>
+<Expandable title="properties" defaultOpen={false}><ResponseField path="id" type="string" required={true}>
+</ResponseField><ResponseField path="object" type="string" required={true}>
+</ResponseField></Expandable></ResponseField></Expandable></ResponseField></Expandable></ResponseField><ResponseField path="Value" type="object" required={false}>
+<Expandable title="properties" defaultOpen={false}><ResponseField path="type" type="string" required={true}>
+</ResponseField><ResponseField path="workspace" type="boolean" required={true}>
+</ResponseField></Expandable></ResponseField></Expandable></ResponseField><ResponseField path="workspace_name" type="string,null" required={true}>
+</ResponseField></Expandable></ResponseField></Expandable></ResponseField><ResponseField path="name" type="string,null" required={true}>
+</ResponseField><ResponseField path="avatar_url" type="string,null" required={true}>
+</ResponseField><ResponseField path="id" type="string" required={true}>
+</ResponseField><ResponseField path="object" type="string" required={true}>
+</ResponseField></Expandable></ResponseField></Expandable></ResponseField>
