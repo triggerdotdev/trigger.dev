@@ -1,13 +1,13 @@
 import { getTriggerRun } from "@trigger.dev/sdk";
-import { CreateRecordsInput, CreateRecordsOutput, DeleteRecordInput, DeleteRecordOutput, DeleteRecordsInput, DeleteRecordsOutput, GetRecordInput, GetRecordOutput, ListRecordsInput, ListRecordsOutput, UpdateRecordInput, UpdateRecordOutput, UpdateRecordsInput, UpdateRecordsOutput } from "./types";
+import { CreateRecordsInput, CreateRecordsOutput, DeleteRecordInput, DeleteRecordOutput, DeleteRecordsInput, DeleteRecordsOutput, GetRecordInput, GetRecordOutput, ListRecordsInput, ListRecordsOutput, UpdateRecordInput, UpdateRecordOutput, UpdateRecordsInput, UpdateRecordsOutput, Prettify } from "./types";
 
 /** Create up to 10 records */
 export async function createRecords(
   /** This key should be unique inside your workflow */
   key: string,
   /** The params for this call */
-  params: CreateRecordsInput
-): Promise<CreateRecordsOutput> {
+  params: Prettify<CreateRecordsInput>
+): Promise<Prettify<CreateRecordsOutput>> {
   const run = getTriggerRun();
 
   if (!run) {
@@ -29,8 +29,8 @@ export async function deleteRecord(
   /** This key should be unique inside your workflow */
   key: string,
   /** The params for this call */
-  params: DeleteRecordInput
-): Promise<DeleteRecordOutput> {
+  params: Prettify<DeleteRecordInput>
+): Promise<Prettify<DeleteRecordOutput>> {
   const run = getTriggerRun();
 
   if (!run) {
@@ -52,8 +52,8 @@ export async function deleteRecords(
   /** This key should be unique inside your workflow */
   key: string,
   /** The params for this call */
-  params: DeleteRecordsInput
-): Promise<DeleteRecordsOutput> {
+  params: Prettify<DeleteRecordsInput>
+): Promise<Prettify<DeleteRecordsOutput>> {
   const run = getTriggerRun();
 
   if (!run) {
@@ -75,8 +75,8 @@ export async function getRecord(
   /** This key should be unique inside your workflow */
   key: string,
   /** The params for this call */
-  params: GetRecordInput
-): Promise<GetRecordOutput> {
+  params: Prettify<GetRecordInput>
+): Promise<Prettify<GetRecordOutput>> {
   const run = getTriggerRun();
 
   if (!run) {
@@ -102,8 +102,8 @@ export async function listRecords(
   /** This key should be unique inside your workflow */
   key: string,
   /** The params for this call */
-  params: ListRecordsInput
-): Promise<ListRecordsOutput> {
+  params: Prettify<ListRecordsInput>
+): Promise<Prettify<ListRecordsOutput>> {
   const run = getTriggerRun();
 
   if (!run) {
@@ -125,8 +125,8 @@ export async function updateRecord(
   /** This key should be unique inside your workflow */
   key: string,
   /** The params for this call */
-  params: UpdateRecordInput
-): Promise<UpdateRecordOutput> {
+  params: Prettify<UpdateRecordInput>
+): Promise<Prettify<UpdateRecordOutput>> {
   const run = getTriggerRun();
 
   if (!run) {
@@ -148,8 +148,8 @@ export async function updateRecords(
   /** This key should be unique inside your workflow */
   key: string,
   /** The params for this call */
-  params: UpdateRecordsInput
-): Promise<UpdateRecordsOutput> {
+  params: Prettify<UpdateRecordsInput>
+): Promise<Prettify<UpdateRecordsOutput>> {
   const run = getTriggerRun();
 
   if (!run) {
