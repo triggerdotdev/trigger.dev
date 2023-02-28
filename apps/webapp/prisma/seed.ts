@@ -130,7 +130,7 @@ async function seed() {
   const supabaseToLoops = {
     repositoryUrl: "https://github.com/triggerdotdev/supabase-to-loops",
     imageUrl:
-      "https://imagedelivery.net/3TbraffuDZ4aEf8KWOmI_w/cce3b770-b6f9-40ef-baf3-f01c20686700/public",
+      "https://imagedelivery.net/3TbraffuDZ4aEf8KWOmI_w/93e0ebb9-ee0b-422a-ca76-14f8610b3700/public",
     title: "Create a Loops.so contact from a Supabase webhook",
     shortTitle: "Supabase to Loops.so",
     description:
