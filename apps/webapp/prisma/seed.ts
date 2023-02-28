@@ -127,6 +127,20 @@ async function seed() {
     markdownDocs: await readTemplateDocsFile("supabase-to-discord"),
   };
 
+  const supabaseToLoops = {
+    repositoryUrl: "https://github.com/triggerdotdev/supabase-to-loops",
+    imageUrl:
+      "https://imagedelivery.net/3TbraffuDZ4aEf8KWOmI_w/cce3b770-b6f9-40ef-baf3-f01c20686700/public",
+    title: "Create a Loops.so contact from a Supabase webhook",
+    shortTitle: "Supabase to Loops.so",
+    description:
+      "Create a contact in Loops.so when a new user row is inserted into a Supabase table, using Supabase webhooks.",
+    priority: 41,
+    services: [],
+    workflowIds: ["supabase-to-loops"],
+    markdownDocs: await readTemplateDocsFile("supabase-to-loops"),
+  };
+
   await prisma.template.updateMany({
     where: {
       slug: "basic-starter",
@@ -196,6 +210,15 @@ async function seed() {
     create: {
       slug: "supabase-to-discord",
       ...supabaseToDiscord,
+    },
+  });
+
+  await prisma.template.upsert({
+    where: { slug: "supabase-to-loops" },
+    update: supabaseToLoops,
+    create: {
+      slug: "supabase-to-loops",
+      ...supabaseToLoops,
     },
   });
 }
