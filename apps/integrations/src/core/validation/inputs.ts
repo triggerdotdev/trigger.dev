@@ -50,18 +50,6 @@ export async function validateInputs(
     };
   }
 
-  //validate the request body against the schema
-  const requestValid = await validate(body, inputSpec.body);
-  if (!requestValid.success) {
-    return {
-      success: false,
-      error: {
-        type: "request_body_invalid",
-        errors: requestValid.errors,
-      },
-    };
-  }
-
   //validate the parameters
   if (inputSpec.parameters != null) {
     for (const parameter of inputSpec.parameters) {
