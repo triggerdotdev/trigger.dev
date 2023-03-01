@@ -21,11 +21,11 @@
 8. Run this in the terminal:
 
 ```sh
+export PULSAR_VERSION=3.1.0 # or whichever version is installed
 export CPLUS_INCLUDE_PATH="$CPLUS_INCLUDE_PATH:$(brew --prefix)/include"
 export LIBRARY_PATH="$LIBRARY_PATH:$(brew --prefix)/lib"
-export PULSAR_CPP_DIR=/opt/homebrew/Cellar/libpulsar/3.1.0
+export PULSAR_CPP_DIR=/opt/homebrew/Cellar/libpulsar/{$PULSAR_VERSION}
 ```
-Replace `3.1.0` with the correct version of Pulsar that's installed.
 
 9. Run `pnpm install` in the same terminal window.
 
@@ -49,7 +49,7 @@ Replace `3.1.0` with the correct version of Pulsar that's installed.
    ./scripts/proxy-webapp.sh dan-trigger-dev
    ```
 
-3. Environment variables. You will need to create copies of the `.env.example` files in `app/webapp`
+3. Environment variables. You will need to create copies of the `.env.example` files in `apps/webapp`
 
    ```sh
    cp ./apps/webapp/.env.example ./apps/webapp/.env
@@ -109,6 +109,7 @@ pnpm run dev --filter=webapp
 ```
 
 ## Attaching an API integration using Pizzly
+If you're using ngrok, specify the ngrok endpoint as the PIZZLY_HOSTPORT
 
 ```bash
 PIZZLY_HOSTPORT=http://localhost:3004 npx pizzly config:create github github <client-id> <client-secret> "repo,user"
@@ -197,7 +198,13 @@ pnpm run dev --filter=webapp
 pnpm run dev --filter=wss
 ```
 
-4. Build all the @trigger.dev/\* packages
+4. Run the integrations server
+
+```bash
+pnpm run dev --filter=integrations
+```
+
+5. Build all the @trigger.dev/\* packages
 
 ```bash
 pnpm run dev --filter="@trigger.dev/*"
