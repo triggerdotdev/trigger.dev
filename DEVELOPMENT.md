@@ -73,7 +73,7 @@ export PULSAR_CPP_DIR=/opt/homebrew/Cellar/libpulsar/{$PULSAR_VERSION}
    ```sh
    cp ./apps/integrations/.env.example ./apps/integrations/.env
    ```
-
+      
 4. Start postgresql, redis, pizzly server, followed by pulsar standalone.
 
    ```bash
