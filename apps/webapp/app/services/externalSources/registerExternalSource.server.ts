@@ -21,6 +21,7 @@ export class RegisterExternalSource {
     const externalSource = await this.#findExternalSource(idOrExternalSource);
 
     if (!externalSource) {
+      //todo throw an error here that Sentry can see
       return true;
     }
 
