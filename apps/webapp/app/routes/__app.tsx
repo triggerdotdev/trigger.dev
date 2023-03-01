@@ -5,6 +5,7 @@ import { AppBody, AppLayout } from "~/components/layout/AppLayout";
 import { Footer } from "~/components/layout/Footer";
 import { Header } from "~/components/layout/Header";
 import { NoMobileOverlay } from "~/components/NoMobileOverlay";
+import { ProductHuntBanner } from "~/components/ProductHuntBanner";
 import { getOrganizations } from "~/models/organization.server";
 import {
   clearCurrentTemplate,
@@ -46,6 +47,7 @@ export default function App() {
   return (
     <AppLayout impersonationId={impersonationId}>
       <NoMobileOverlay />
+      <ProductHuntBanner />
       <Header />
       <AppBody>
         <Outlet />

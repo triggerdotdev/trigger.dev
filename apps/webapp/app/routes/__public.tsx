@@ -9,6 +9,7 @@ import {
 import { Footer } from "~/components/layout/Footer";
 import { Header } from "~/components/layout/Header";
 import { MarketingHeader } from "~/components/layout/MarketingHeader";
+import { ProductHuntBanner } from "~/components/ProductHuntBanner";
 import { getOrganizations } from "~/models/organization.server";
 import { getImpersonationId } from "~/services/impersonation.server";
 import { getUserId } from "~/services/session.server";
@@ -41,6 +42,7 @@ export default function Public() {
 
   return (
     <LayoutComponent>
+      <ProductHuntBanner />
       {loaderData.userId ? <Header /> : <MarketingHeader />}
       <AppBody>
         <Outlet />
