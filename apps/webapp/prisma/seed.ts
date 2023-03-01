@@ -25,7 +25,7 @@ async function seed() {
   const blankStarter = {
     repositoryUrl: "https://github.com/triggerdotdev/blank-starter",
     imageUrl:
-      "https://imagedelivery.net/3TbraffuDZ4aEf8KWOmI_w/b40a7f29-b06c-4e66-cd7f-5f7dbf1cc200/public",
+      "https://imagedelivery.net/3TbraffuDZ4aEf8KWOmI_w/db8c4256-8ec7-44bf-14f7-55334acc5e00/public",
     title: "A blank starter ready to run your own workflow",
     shortTitle: "Blank Starter",
     description:
@@ -36,11 +36,25 @@ async function seed() {
     markdownDocs: await readTemplateDocsFile("blank-starter"),
   };
 
+  const cronBasic = {
+    repositoryUrl: "https://github.com/triggerdotdev/cron-basic",
+    imageUrl:
+      "https://imagedelivery.net/3TbraffuDZ4aEf8KWOmI_w/7cb7e740-0a1a-453a-3f07-4a85f3ec9200/public",
+    title: "A basic CRON job workflow template",
+    shortTitle: "CRON basic",
+    description:
+      "This template contains a simple CRON job workflow that runs every weekday at 9:00 AM UTC.",
+    priority: 0,
+    services: [],
+    workflowIds: [],
+    markdownDocs: await readTemplateDocsFile("cron-basic"),
+  };
+
   const helloWorld = {
     repositoryUrl: "https://github.com/triggerdotdev/hello-world",
     imageUrl:
-      "https://imagedelivery.net/3TbraffuDZ4aEf8KWOmI_w/3fe24571-7260-4abe-46e7-785a39859d00/public",
-    title: "A Hello World with a simple custom event trigger",
+      "https://imagedelivery.net/3TbraffuDZ4aEf8KWOmI_w/54ee6eed-4095-4bb2-4ea8-8adbcffa9a00/public",
+    title: "'Hello World' with a simple custom event trigger",
     shortTitle: "Hello World",
     description:
       "This is a great place to start if you're new to Trigger.dev and want to learn how to build a simple workflow.",
@@ -171,6 +185,15 @@ async function seed() {
     create: {
       slug: "blank-starter",
       ...blankStarter,
+    },
+  });
+
+  await prisma.template.upsert({
+    where: { slug: "cron-basic" },
+    update: cronBasic,
+    create: {
+      slug: "cron-basic",
+      ...cronBasic,
     },
   });
 
