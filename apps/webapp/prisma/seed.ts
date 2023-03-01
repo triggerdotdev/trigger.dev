@@ -36,20 +36,6 @@ async function seed() {
     markdownDocs: await readTemplateDocsFile("blank-starter"),
   };
 
-  const cronBasic = {
-    repositoryUrl: "https://github.com/triggerdotdev/cron-basic",
-    imageUrl:
-      "https://imagedelivery.net/3TbraffuDZ4aEf8KWOmI_w/7cb7e740-0a1a-453a-3f07-4a85f3ec9200/public",
-    title: "A basic CRON job workflow template",
-    shortTitle: "CRON basic",
-    description:
-      "This template contains a simple CRON job workflow that runs every weekday at 9:00 AM UTC.",
-    priority: 0,
-    services: [],
-    workflowIds: [],
-    markdownDocs: await readTemplateDocsFile("cron-basic"),
-  };
-
   const helloWorld = {
     repositoryUrl: "https://github.com/triggerdotdev/hello-world",
     imageUrl:
@@ -62,6 +48,20 @@ async function seed() {
     services: [],
     workflowIds: ["hello-world"],
     markdownDocs: await readTemplateDocsFile("hello-world"),
+  };
+
+  const cronBasic = {
+    repositoryUrl: "https://github.com/triggerdotdev/cron-basic",
+    imageUrl:
+      "https://imagedelivery.net/3TbraffuDZ4aEf8KWOmI_w/7cb7e740-0a1a-453a-3f07-4a85f3ec9200/public",
+    title: "A basic CRON job workflow template",
+    shortTitle: "CRON basic",
+    description:
+      "This template contains a simple CRON job workflow that runs every weekday at 9:00 AM UTC.",
+    priority: 15,
+    services: [],
+    workflowIds: [],
+    markdownDocs: await readTemplateDocsFile("cron-basic"),
   };
 
   const scheduledHealthcheck = {
@@ -129,7 +129,7 @@ async function seed() {
       "https://github.com/triggerdotdev/resend-welcome-drip-campaign",
     imageUrl:
       "https://imagedelivery.net/3TbraffuDZ4aEf8KWOmI_w/286c6a9a-0420-48a5-be55-29c5bbf80300/public",
-    title: "Send an email drip campaign when a new user signs up",
+    title: "A Resend email drip campaign when a new user signs up",
     shortTitle: "Resend.com drip campaign",
     description:
       "When a new user is created, send them a welcome drip campaign from Resend.com and react.email.",
@@ -140,6 +140,21 @@ async function seed() {
     runLocalDocs: await readTemplateDocsFile(
       "resend-welcome-drip-campaign-local"
     ),
+  };
+
+  const sendgridWelcomeDripCampaign = {
+    repositoryUrl:
+      "https://github.com/triggerdotdev/sendgrid-welcome-drip-campaign",
+    imageUrl:
+      "https://imagedelivery.net/3TbraffuDZ4aEf8KWOmI_w/515e4c54-c5ec-47e6-07a1-85254599fb00/public",
+    title: "A SendGrid email drip campaign when a new user signs up",
+    shortTitle: "SendGrid drip campaign",
+    description:
+      "When a new user is created, send them a welcome drip campaign from SendGrid.",
+    priority: 51,
+    services: ["sendgrid"],
+    workflowIds: ["sendgrid-welcome-drip-campaign"],
+    markdownDocs: await readTemplateDocsFile("sendgrid-welcome-drip-campaign"),
   };
 
   const supabaseToDiscord = {
@@ -248,6 +263,15 @@ async function seed() {
     create: {
       slug: "resend-welcome-drip-campaign",
       ...resendWelcomeDripCampaign,
+    },
+  });
+
+  await prisma.template.upsert({
+    where: { slug: "sendgrid-welcome-drip-campaign" },
+    update: sendgridWelcomeDripCampaign,
+    create: {
+      slug: "sendgrid-welcome-drip-campaign",
+      ...sendgridWelcomeDripCampaign,
     },
   });
 
