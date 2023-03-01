@@ -32,6 +32,7 @@ import { CopyTextPanel } from "../CopyTextButton";
 import { TertiaryA, TertiaryButton } from "../primitives/Buttons";
 import { Body } from "../primitives/text/Body";
 import { Header1 } from "../primitives/text/Headers";
+import { Tooltip } from "../primitives/Tooltip";
 
 export function SideMenuContainer({ children }: { children: React.ReactNode }) {
   return <div className="grid h-full grid-cols-[300px_2fr]">{children}</div>;
@@ -243,27 +244,33 @@ function SideMenu({
               </li>
               {organization.environments.map((environment) => {
                 return (
-                  <li
+                  <Tooltip
                     key={environment.id}
-                    className="flex w-full flex-col justify-between"
+                    text={
+                      environment.slug === "live"
+                        ? "Use in live / production"
+                        : "Use in dev / local"
+                    }
                   >
-                    <div className="relative flex items-center">
-                      <EnvironmentIcon
-                        slug={environment.slug}
-                        className="absolute top-4 left-2"
-                      />
-                      <CopyTextPanel
-                        value={environment.apiKey}
-                        text={
-                          isShowingKeys
-                            ? environment.apiKey
-                            : `${titleCase(environment.slug)}`
-                        }
-                        variant="slate"
-                        className="pl-6 text-slate-300 hover:text-slate-300"
-                      />
-                    </div>
-                  </li>
+                    <li className="flex w-full flex-col justify-between">
+                      <div className="relative flex items-center">
+                        <EnvironmentIcon
+                          slug={environment.slug}
+                          className="absolute top-4 left-2"
+                        />
+                        <CopyTextPanel
+                          value={environment.apiKey}
+                          text={
+                            isShowingKeys
+                              ? environment.apiKey
+                              : `${titleCase(environment.slug)}`
+                          }
+                          variant="slate"
+                          className="pl-6 text-slate-300 hover:text-slate-300"
+                        />
+                      </div>
+                    </li>
+                  </Tooltip>
                 );
               })}
             </ul>

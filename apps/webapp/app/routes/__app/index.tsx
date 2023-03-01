@@ -8,6 +8,7 @@ import classNames from "classnames";
 import { CopyTextPanel } from "~/components/CopyTextButton";
 import { Body } from "~/components/primitives/text/Body";
 import { Header4 } from "~/components/primitives/text/Headers";
+import { Tooltip } from "~/components/primitives/Tooltip";
 import type { MatchedOrganization } from "~/hooks/useOrganizations";
 import { useOrganizations } from "~/hooks/useOrganizations";
 import { environmentShortName } from "~/utils";
@@ -93,15 +94,27 @@ function OrganizationGridItem({
         <Header4 size="large" className="mb-10 text-slate-300">
           {organization.title}
         </Header4>
+
         <div className="grid w-full grid-cols-2 gap-2">
           {organization.environments.map((environment) => (
             <div key={environment.id} className="flex w-full items-center">
-              <CopyTextPanel
-                value={environment.apiKey}
-                text={`${environmentShortName(environment.slug)} API Key`}
-                variant="slate"
-                className="w-full text-slate-500"
-              />
+              <div className="w-full">
+                <Tooltip
+                  key={environment.id}
+                  text={
+                    environment.slug === "live"
+                      ? "Use in live / production"
+                      : "Use in dev / local"
+                  }
+                >
+                  <CopyTextPanel
+                    value={environment.apiKey}
+                    text={`${environmentShortName(environment.slug)} API Key`}
+                    variant="slate"
+                    className=" text-slate-500"
+                  />
+                </Tooltip>
+              </div>
             </div>
           ))}
         </div>
