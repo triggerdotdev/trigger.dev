@@ -19,6 +19,7 @@ import terminalLink from "terminal-link";
 import chalk from "chalk";
 import getRepoInfo from "git-repo-info";
 import gitRemoteOriginUrl from "git-remote-origin-url";
+import { readFile } from "node:fs/promises";
 
 const zodErrorMessageOptions: ErrorMessageOptions = {
   delimiter: {
@@ -739,7 +740,7 @@ export class TriggerClient<TSchema extends z.ZodTypeAny> {
       ? await getRemoteUrl(repoInfo.commonGitDir)
       : undefined;
 
-    const packageMetadata = getTriggerPackageEnvVars(process.env);
+    const packageMetadata = await getTriggerPackageEnvVars(process.env);
 
     const response = await this.#send("INITIALIZE_HOST_V2", {
       apiKey: this.#apiKey,
@@ -822,11 +823,27 @@ function highPrecisionTimestamp() {
 }
 
 // Gets the environment variables prefixed with npm_package_triggerdotdev_ and returns them as an object
-function getTriggerPackageEnvVars(
+// Alternatively, if there is a npm_package_json env var set, we can try and read the file and parse it
+async function getTriggerPackageEnvVars(
   env: NodeJS.ProcessEnv
-): Record<string, string | number | boolean> {
+): Promise<Record<string, string | number | boolean>> {
   if (!env) {
     return {};
+  }
+
+  // Path to the package.json file
+  if (env.npm_package_json) {
+    try {
+      const packageJson = JSON.parse(
+        await readFile(env.npm_package_json, "utf8")
+      );
+
+      if (packageJson.triggerdotdev) {
+        return packageJson.triggerdotdev;
+      }
+    } catch (err) {
+      // Ignore
+    }
   }
 
   const envVars = Object.entries(env)
