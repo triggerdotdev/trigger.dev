@@ -28,7 +28,9 @@ test("create input schema when only a body schema", async () => {
     };
 
     const inputSchema = createInputSchema({ body: schema });
-    expect(inputSchema).toEqual(schema);
+    expect(inputSchema).toEqual({
+      allOf: [schema],
+    });
   } catch (e: any) {
     console.error(JSON.stringify(e.errors, null, 2));
     expect(e).toEqual(null);
@@ -74,29 +76,40 @@ test("combine input body and parameters into a schema", async () => {
     const inputSchema = createInputSchema({ body: bodySchema, parameters });
     expect(inputSchema).toMatchInlineSnapshot(`
       {
-        "properties": {
-          "as_user": {
-            "description": "Pass true to post the message as the authed user, instead of as a bot. Defaults to false. See [authorship](#authorship) below.",
-            "type": "string",
+        "allOf": [
+          {
+            "properties": {
+              "limit": {
+                "description": "The maximum number of items to return.",
+                "type": "integer",
+              },
+            },
+            "required": [
+              "limit",
+            ],
+            "type": "object",
           },
-          "attachments": {
-            "description": "A JSON-based array of structured attachments, presented as a URL-encoded string.",
-            "type": "string",
+          {
+            "properties": {
+              "as_user": {
+                "description": "Pass true to post the message as the authed user, instead of as a bot. Defaults to false. See [authorship](#authorship) below.",
+                "type": "string",
+              },
+              "attachments": {
+                "description": "A JSON-based array of structured attachments, presented as a URL-encoded string.",
+                "type": "string",
+              },
+              "channel": {
+                "description": "Channel, private group, or IM channel to send message to. Can be an encoded ID, or a name. See [below](#channels) for more details.",
+                "type": "string",
+              },
+            },
+            "required": [
+              "channel",
+            ],
+            "type": "object",
           },
-          "channel": {
-            "description": "Channel, private group, or IM channel to send message to. Can be an encoded ID, or a name. See [below](#channels) for more details.",
-            "type": "string",
-          },
-          "limit": {
-            "description": "The maximum number of items to return.",
-            "type": "integer",
-          },
-        },
-        "required": [
-          "channel",
-          "limit",
         ],
-        "type": "object",
       }
     `);
   } catch (e: any) {
