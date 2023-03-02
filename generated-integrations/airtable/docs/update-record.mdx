@@ -11,7 +11,13 @@ description: Updates a single record.
   doc for more info.
 </ParamField><ParamField path="params" type="object" required={true}>
    Update Record Input
-<Expandable title="properties" defaultOpen={true}><ParamField path="fields" type="object" required={true}>
+<Expandable title="properties" defaultOpen={true}><ParamField path="baseId" type="string" required={true}>
+   The ID of the base
+</ParamField><ParamField path="tableIdOrName" type="string" required={true}>
+   The name or id of the table
+</ParamField><ParamField path="recordId" type="string" required={true}>
+   The ID of the record
+</ParamField><ParamField path="fields" type="object" required={true}>
    Fields
 <Expandable title="properties" defaultOpen={false}><ParamField path="fields[key]" type="string | number | boolean | object | array" required={false}>
    Field Value
@@ -89,13 +95,7 @@ description: Updates a single record.
    Thumbnail Width
 </ParamField><ParamField path="height" type="number" required={true}>
    Thumbnail Height
-</ParamField></Expandable></ParamField></Expandable></ParamField></Expandable></ParamField></Expandable></ParamField></Expandable></ParamField></Expandable></ParamField><ParamField path="baseId" type="string" required={true}>
-   The ID of the base
-</ParamField><ParamField path="tableIdOrName" type="string" required={true}>
-   The name or id of the table
-</ParamField><ParamField path="recordId" type="string" required={true}>
-   The ID of the record
-</ParamField><ParamField path="typecast" type="boolean" required={false}>
+</ParamField></Expandable></ParamField></Expandable></ParamField></Expandable></ParamField></Expandable></ParamField></Expandable></ParamField></Expandable></ParamField><ParamField path="typecast" type="boolean" required={false}>
    If set to true, Airtable will try to convert string values into the appropriate cell value. This conversion is only performed on a best-effort basis. To ensure your data's integrity, this should only be used when necessary. Defaults to false when unset.
 </ParamField></Expandable></ParamField>
 

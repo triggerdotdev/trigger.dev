@@ -16,13 +16,12 @@ export function createParametersBody(
       parameters[p.name] = params[p.name];
     });
 
-    const bodyProperties = inputSpec.body?.properties;
-    if (bodyProperties) {
+    //everything left should go in the body
+    if (inputSpec.body) {
       body = {};
-      Object.keys(bodyProperties).forEach((name) => {
-        const value = params?.[name];
-        if (value !== undefined) {
-          body[name] = value;
+      Object.keys(params).forEach((name) => {
+        if (!inputSpec.parameters?.find((p) => p.name === name)) {
+          body[name] = params[name];
         }
       });
     }

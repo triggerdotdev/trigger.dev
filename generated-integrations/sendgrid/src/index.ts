@@ -1,13 +1,13 @@
 import { getTriggerRun } from "@trigger.dev/sdk";
-import { MailSendInput, MarketingContactsInput, MarketingContactsOutput } from "./types";
+import { MailSendInput, MarketingContactsInput, MarketingContactsOutput, Prettify } from "./types";
 
 /** Send email to one or more recipients with personalization */
 export async function mailSend(
   /** This key should be unique inside your workflow */
   key: string,
   /** The params for this call */
-  params: MailSendInput
-): Promise<void> {
+  params: Prettify<MailSendInput>
+): Promise<Prettify<void>> {
   const run = getTriggerRun();
 
   if (!run) {
@@ -29,8 +29,8 @@ export async function marketingContacts(
   /** This key should be unique inside your workflow */
   key: string,
   /** The params for this call */
-  params: MarketingContactsInput
-): Promise<MarketingContactsOutput> {
+  params: Prettify<MarketingContactsInput>
+): Promise<Prettify<MarketingContactsOutput>> {
   const run = getTriggerRun();
 
   if (!run) {

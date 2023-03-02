@@ -27,10 +27,7 @@ export interface EndpointSpec {
   parameters?: EndpointSpecParameter[];
   security?: Record<string, string[]>;
   request: EndpointSpecRequest;
-  responses: { default: EndpointSpecResponse[] } & Record<
-    string,
-    EndpointSpecResponse[]
-  >;
+  responses: EndpointSpecResponse[];
 }
 
 export interface EndpointSpecParameter {
@@ -49,6 +46,16 @@ interface EndpointSpecRequest {
 }
 
 export interface EndpointSpecResponse {
+  /** If you return true then this response is the relevant one */
+  matches: ({
+    statusCode,
+    headers,
+    body,
+  }: {
+    statusCode: number;
+    headers: Record<string, string>;
+    body: any;
+  }) => boolean;
   success: boolean;
   name: string;
   description?: string;

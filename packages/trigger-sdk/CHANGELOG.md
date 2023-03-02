@@ -1,5 +1,17 @@
 # @trigger.dev/sdk
 
+## 0.2.19
+
+### Patch Changes
+
+- b5724195: Fixed issue where default webhook schema wasn't being used which caused an error
+
+## 0.2.18
+
+### Patch Changes
+
+- c72120ea: Removed accidental log statement
+
 ## 0.2.17
 
 ### Patch Changes

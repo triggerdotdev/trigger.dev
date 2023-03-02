@@ -1,5 +1,19 @@
 # @trigger.dev/github
 
+## 0.1.26
+
+### Patch Changes
+
+- Updated dependencies [b5724195]
+  - @trigger.dev/sdk@0.2.19
+
+## 0.1.25
+
+### Patch Changes
+
+- Updated dependencies [c72120ea]
+  - @trigger.dev/sdk@0.2.18
+
 ## 0.1.24
 
 ### Patch Changes

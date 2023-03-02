@@ -2,7 +2,7 @@ import { CacheService } from "core/cache/types";
 import { Endpoint } from "core/endpoint/types";
 import { RequestData, RequestResponse } from "core/request/types";
 import { getDisplayProperties } from "./getDisplayProperties";
-import { Action, Metadata } from "./types";
+import { Action, InputSpec, Metadata, OutputSpec } from "./types";
 import { makeInputSpec, makeOutputSpec } from "./utilities";
 
 /** Create an action where you specify the spec and action */
@@ -37,23 +37,36 @@ export const makeAdvancedAction = ({
   };
 };
 
-/** Creates an action that calls an endpoint */
-export const makeSimpleAction = (endpoint: Endpoint) => {
+/** Creates an action where the spec and data is manipulated */
+export const makeSimpleAction = (
+  endpoint: Endpoint,
+  processSpec?: (specs: Action["spec"]) => Action["spec"],
+  preRequest?: (data: RequestData) => RequestData
+) => {
+  let specs = {
+    input: makeInputSpec(endpoint),
+    output: makeOutputSpec(endpoint),
+  };
+
+  if (processSpec) {
+    specs = processSpec(specs);
+  }
+
   const action = async (
     data: RequestData,
     cache?: CacheService,
     metadata?: Metadata
   ) => {
+    if (preRequest) {
+      data = preRequest(data);
+    }
     //a simple request doesn't use the cache or metadata
     return await endpoint.request(data);
   };
 
   return makeAdvancedAction({
     endpoint,
-    spec: {
-      input: makeInputSpec(endpoint),
-      output: makeOutputSpec(endpoint),
-    },
+    spec: specs,
     action,
   });
 };
@@ -62,12 +75,14 @@ export const makeSimpleActions = <
   TEndpoints extends Record<string, Endpoint>,
   K extends keyof TEndpoints
 >(
-  endpoints: TEndpoints
+  endpoints: TEndpoints,
+  processSpec?: (specs: Action["spec"]) => Action["spec"],
+  preRequest?: (data: RequestData) => RequestData
 ): Record<K, Action> => {
   const actions: any = {};
 
   Object.entries(endpoints).forEach(([name, endpoint]) => {
-    actions[name as K] = makeSimpleAction(endpoint);
+    actions[name as K] = makeSimpleAction(endpoint, processSpec, preRequest);
   });
 
   return actions;

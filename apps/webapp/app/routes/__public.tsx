@@ -1,5 +1,5 @@
 import { Outlet } from "@remix-run/react";
-import { LoaderArgs } from "@remix-run/server-runtime";
+import type { LoaderArgs } from "@remix-run/server-runtime";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import {
   AppBody,
@@ -9,7 +9,6 @@ import {
 import { Footer } from "~/components/layout/Footer";
 import { Header } from "~/components/layout/Header";
 import { MarketingHeader } from "~/components/layout/MarketingHeader";
-import { NoMobileOverlay } from "~/components/NoMobileOverlay";
 import { getOrganizations } from "~/models/organization.server";
 import { getImpersonationId } from "~/services/impersonation.server";
 import { getUserId } from "~/services/session.server";

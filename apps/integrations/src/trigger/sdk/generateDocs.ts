@@ -117,6 +117,23 @@ function generateDocSchema(
 
   let description = createDescription(schema);
 
+  if (schema.allOf) {
+    const docSchemas = schema.allOf.flatMap((s) => {
+      const genSchema = generateDocSchema(key, required, s, expanded);
+      return genSchema ? [genSchema] : [];
+    });
+
+    return {
+      path: key,
+      required,
+      types: new Set(docSchemas.flatMap((s) => Array.from(s.types))),
+      description,
+      children: docSchemas.flatMap((s) => s.children ?? []),
+      childrenCollectionName: "properties",
+      childrenExpanded: expanded,
+    };
+  }
+
   if (schema.oneOf) {
     const oneOfTypes = schema.oneOf
       .map((v) => {

@@ -25,7 +25,7 @@ async function seed() {
   const blankStarter = {
     repositoryUrl: "https://github.com/triggerdotdev/blank-starter",
     imageUrl:
-      "https://imagedelivery.net/3TbraffuDZ4aEf8KWOmI_w/3812f076-38a2-4456-b809-2fc61dd77800/public",
+      "https://imagedelivery.net/3TbraffuDZ4aEf8KWOmI_w/b40a7f29-b06c-4e66-cd7f-5f7dbf1cc200/public",
     title: "A blank starter ready to run your own workflow",
     shortTitle: "Blank Starter",
     description:
@@ -39,7 +39,7 @@ async function seed() {
   const helloWorld = {
     repositoryUrl: "https://github.com/triggerdotdev/hello-world",
     imageUrl:
-      "https://imagedelivery.net/3TbraffuDZ4aEf8KWOmI_w/634cfd11-e499-48ca-aaf5-b2404642f600/public",
+      "https://imagedelivery.net/3TbraffuDZ4aEf8KWOmI_w/3fe24571-7260-4abe-46e7-785a39859d00/public",
     title: "A Hello World with a simple custom event trigger",
     shortTitle: "Hello World",
     description:
@@ -53,7 +53,7 @@ async function seed() {
   const scheduledHealthcheck = {
     repositoryUrl: "https://github.com/triggerdotdev/scheduled-healthcheck",
     imageUrl:
-      "https://imagedelivery.net/3TbraffuDZ4aEf8KWOmI_w/6dbe0780-1950-4645-6e64-f3eb65296900/public",
+      "https://imagedelivery.net/3TbraffuDZ4aEf8KWOmI_w/507fc0d0-056e-4ff0-7cb0-72b7ea44c600/public",
     title: "Run a scheduled healthcheck on your website every 5 minutes",
     shortTitle: "Scheduled Healthcheck",
     description:
@@ -68,7 +68,7 @@ async function seed() {
   const githubStarsToSlack = {
     repositoryUrl: "https://github.com/triggerdotdev/github-stars-to-slack",
     imageUrl:
-      "https://imagedelivery.net/3TbraffuDZ4aEf8KWOmI_w/5b3964be-9a7b-4a7e-1837-b283e501b900/public",
+      "https://imagedelivery.net/3TbraffuDZ4aEf8KWOmI_w/0ec1b94e-2941-4336-d443-7c80c3673900/public",
     title: "Post to Slack every time a GitHub repo is starred",
     shortTitle: "GitHub stars to Slack",
     description:
@@ -83,7 +83,7 @@ async function seed() {
   const githubIssuesToSlack = {
     repositoryUrl: "https://github.com/triggerdotdev/github-issues-to-slack",
     imageUrl:
-      "https://imagedelivery.net/3TbraffuDZ4aEf8KWOmI_w/1e3b4c17-70ce-484e-4ffe-2147fc873b00/public",
+      "https://imagedelivery.net/3TbraffuDZ4aEf8KWOmI_w/726c0203-467d-40f2-58aa-55b3e10a9900/public",
     title: "Post to Slack when a GitHub issue is created or modified",
     shortTitle: "GitHub issues to Slack",
     description:
@@ -95,11 +95,26 @@ async function seed() {
     runLocalDocs: await readTemplateDocsFile("github-issues-to-slack-local"),
   };
 
+  const githubIssuesToNotion = {
+    repositoryUrl: "https://github.com/triggerdotdev/github-issues-to-notion",
+    imageUrl:
+      "https://imagedelivery.net/3TbraffuDZ4aEf8KWOmI_w/05bfa3fc-d0a5-4d09-aab9-6fa24e7c5c00/public",
+    title: "Sync a new GitHub issue to a Notion database",
+    shortTitle: "Sync GitHub issues to Notion",
+    description:
+      "When a GitHub issue is created, sync it to your Notion database, with any properties you want.",
+    priority: 23,
+    services: ["github", "notion"],
+    workflowIds: ["github-issues-to-notion"],
+    markdownDocs: await readTemplateDocsFile("github-issues-to-notion"),
+    runLocalDocs: await readTemplateDocsFile("github-issues-to-notion-local"),
+  };
+
   const resendWelcomeDripCampaign = {
     repositoryUrl:
       "https://github.com/triggerdotdev/resend-welcome-drip-campaign",
     imageUrl:
-      "https://imagedelivery.net/3TbraffuDZ4aEf8KWOmI_w/cce3b770-b6f9-40ef-baf3-f01c20686700/public",
+      "https://imagedelivery.net/3TbraffuDZ4aEf8KWOmI_w/286c6a9a-0420-48a5-be55-29c5bbf80300/public",
     title: "Send an email drip campaign when a new user signs up",
     shortTitle: "Resend.com drip campaign",
     description:
@@ -111,6 +126,34 @@ async function seed() {
     runLocalDocs: await readTemplateDocsFile(
       "resend-welcome-drip-campaign-local"
     ),
+  };
+
+  const supabaseToDiscord = {
+    repositoryUrl: "https://github.com/triggerdotdev/supabase-to-discord",
+    imageUrl:
+      "https://imagedelivery.net/3TbraffuDZ4aEf8KWOmI_w/26c93ad0-4207-4c9e-2ae2-35a9ff8e8300/public",
+    title: "Send a message to Discord from a Supabase webhook",
+    shortTitle: "Supabase to Discord",
+    description:
+      "Send a message to a Discord channel when a new row is inserted into a Supabase table.",
+    priority: 42,
+    services: [],
+    workflowIds: ["supabase-to-discord"],
+    markdownDocs: await readTemplateDocsFile("supabase-to-discord"),
+  };
+
+  const supabaseToLoops = {
+    repositoryUrl: "https://github.com/triggerdotdev/supabase-to-loops",
+    imageUrl:
+      "https://imagedelivery.net/3TbraffuDZ4aEf8KWOmI_w/08cf39d8-f473-43d0-1de6-4668b60ae300/public",
+    title: "Create a Loops.so contact from a Supabase webhook",
+    shortTitle: "Supabase to Loops.so",
+    description:
+      "Create a contact in Loops.so when a new user row is inserted into a Supabase table, using Supabase webhooks.",
+    priority: 41,
+    services: [],
+    workflowIds: ["supabase-to-loops"],
+    markdownDocs: await readTemplateDocsFile("supabase-to-loops"),
   };
 
   await prisma.template.updateMany({
@@ -168,11 +211,38 @@ async function seed() {
   });
 
   await prisma.template.upsert({
+    where: { slug: "github-issues-to-notion" },
+    update: githubIssuesToNotion,
+    create: {
+      slug: "github-issues-to-notion",
+      ...githubIssuesToNotion,
+    },
+  });
+
+  await prisma.template.upsert({
     where: { slug: "resend-welcome-drip-campaign" },
     update: resendWelcomeDripCampaign,
     create: {
       slug: "resend-welcome-drip-campaign",
       ...resendWelcomeDripCampaign,
+    },
+  });
+
+  await prisma.template.upsert({
+    where: { slug: "supabase-to-discord" },
+    update: supabaseToDiscord,
+    create: {
+      slug: "supabase-to-discord",
+      ...supabaseToDiscord,
+    },
+  });
+
+  await prisma.template.upsert({
+    where: { slug: "supabase-to-loops" },
+    update: supabaseToLoops,
+    create: {
+      slug: "supabase-to-loops",
+      ...supabaseToLoops,
     },
   });
 }

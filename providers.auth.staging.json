@@ -5,6 +5,9 @@
   "github": {
     "client_id": "ed98af6052927e8f2fcd"
   },
+  "notion": {
+    "client_id": "2580a6c1-a1f8-472d-b540-ce35e88173c4"
+  },
   "slack": {
     "client_id": "276370297397.4726928116804"
   }

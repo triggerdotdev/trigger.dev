@@ -1,4 +1,14 @@
 export type AirtableTypes = (CreateRecordsInput | CreateRecordsOutput | DeleteRecordInput | DeleteRecordOutput | DeleteRecordsInput | DeleteRecordsOutput | GetRecordInput | GetRecordOutput | ListRecordsInput | ListRecordsOutput | UpdateRecordInput | UpdateRecordOutput | UpdateRecordsInput | UpdateRecordsOutput)
+export type CreateRecordsInput = ({
+  /**
+   * The ID of the base
+   */
+  baseId: string
+  /**
+   * The name or id of the table
+   */
+  tableIdOrName: string
+} & CreateRecordsBody)
 /**
  * If set to true, Airtable will try to convert string values into the appropriate cell value. This conversion is only performed on a best-effort basis. To ensure your data's integrity, this should only be used when necessary. Defaults to false when unset.
  */
@@ -37,11 +47,36 @@ export type RecordID1 = string
  * A date timestamp in the ISO format, eg:"2018-01-01T00:00:00.000Z"
  */
 export type CreatedTime1 = string
+export type DeleteRecordInput = {
+  /**
+   * The ID of the base
+   */
+  baseId: string
+  /**
+   * The name or id of the table
+   */
+  tableIdOrName: string
+  /**
+   * The ID of the record
+   */
+  recordId: string
+}
 export type RecordID2 = string
 /**
  * Whether the record was deleted
  */
 export type Deleted = true
+export type DeleteRecordsInput = {
+  /**
+   * The ID of the base
+   */
+  baseId: string
+  /**
+   * The name or id of the table
+   */
+  tableIdOrName: string
+  records: RecordsToDelete
+}
 export type RecordID3 = string
 /**
  * An array of record IDs to delete
@@ -53,6 +88,20 @@ export type RecordID4 = string
  */
 export type Deleted1 = true
 export type Records1 = DeletedRecord[]
+export type GetRecordInput = {
+  /**
+   * The ID of the base
+   */
+  baseId: string
+  /**
+   * The name or id of the table
+   */
+  tableIdOrName: string
+  /**
+   * The ID of the record
+   */
+  recordId: string
+}
 /**
  * When the record was created
  */
@@ -61,6 +110,16 @@ export type CreatedTime2 = string
  * The record id
  */
 export type Id = string
+export type ListRecordsInput = ({
+  /**
+   * The ID of the base
+   */
+  baseId: string
+  /**
+   * The name or id of the table
+   */
+  tableIdOrName: string
+} & ListRecordsBody)
 /**
  * The time zone that should be used to format dates when using string as the cellFormat. This parameter is required when using string as the cellFormat
  */
@@ -101,21 +160,40 @@ export type OnlyDataForFieldsWhoseNamesOrIDsAreInThisListWillBeIncludedInTheResu
  * To fetch the next page of records, include offset from the previous request in the next request's parameters.
  */
 export type Offset1 = string
+export type Records2 = Record1[]
+export type UpdateRecordInput = ({
+  /**
+   * The ID of the base
+   */
+  baseId: string
+  /**
+   * The name or id of the table
+   */
+  tableIdOrName: string
+  /**
+   * The ID of the record
+   */
+  recordId: string
+} & UpdateRecordBody)
+/**
+ * If set to true, Airtable will try to convert string values into the appropriate cell value. This conversion is only performed on a best-effort basis. To ensure your data's integrity, this should only be used when necessary. Defaults to false when unset.
+ */
+export type Typecast1 = boolean
 export type RecordID5 = string
 /**
  * A date timestamp in the ISO format, eg:"2018-01-01T00:00:00.000Z"
  */
 export type CreatedTime3 = string
-export type Records2 = Record2[]
-/**
- * If set to true, Airtable will try to convert string values into the appropriate cell value. This conversion is only performed on a best-effort basis. To ensure your data's integrity, this should only be used when necessary. Defaults to false when unset.
- */
-export type Typecast1 = boolean
-export type RecordID6 = string
-/**
- * A date timestamp in the ISO format, eg:"2018-01-01T00:00:00.000Z"
- */
-export type CreatedTime4 = string
+export type UpdateRecordsInput = ({
+  /**
+   * The ID of the base
+   */
+  baseId: string
+  /**
+   * The name or id of the table
+   */
+  tableIdOrName: string
+} & UpdateRecordsBody)
 export type FieldName2 = string
 export type FieldsToMergeOn = FieldName2[]
 /**
@@ -126,37 +204,19 @@ export type Typecast2 = boolean
  * Record ID. Required when performUpsert is not set.
  */
 export type Id1 = string
-export type RecordsToUpdateUpsert1 = Record3[]
+export type RecordsToUpdateUpsert1 = Record2[]
 export type UpdateRecordsOutput = (UpdateResponse | UpsertResponse)
+export type Records3 = Record1[]
+export type RecordID6 = string
+export type CreatedRecords = RecordID6[]
 export type RecordID7 = string
-/**
- * A date timestamp in the ISO format, eg:"2018-01-01T00:00:00.000Z"
- */
-export type CreatedTime5 = string
-export type Records3 = Record4[]
-export type RecordID8 = string
-export type CreatedRecords = RecordID8[]
-export type RecordID9 = string
-export type UpdatedRecords = RecordID9[]
-export type RecordID10 = string
-/**
- * A date timestamp in the ISO format, eg:"2018-01-01T00:00:00.000Z"
- */
-export type CreatedTime6 = string
-export type Records4 = Record5[]
+export type UpdatedRecords = RecordID7[]
+export type Records4 = Record1[]
 
-export interface CreateRecordsInput {
+export interface CreateRecordsBody {
   typecast?: Typecast
   fields?: Fields
   records?: RecordsToUpdateUpsert
-  /**
-   * The ID of the base
-   */
-  baseId: string
-  /**
-   * The name or id of the table
-   */
-  tableIdOrName: string
 }
 export interface Fields {
   [k: string]: FieldValue
@@ -191,97 +251,38 @@ export interface AThumbnail {
   [k: string]: unknown
 }
 export interface Record {
-  fields: Fields1
-  [k: string]: unknown
-}
-export interface Fields1 {
-  [k: string]: FieldValue
+  fields: Fields
 }
 export interface MultipleRecordsCreatedResponse {
   records: Records
-  [k: string]: unknown
 }
 export interface Record1 {
   id: RecordID
   createdTime: CreatedTime
-  fields: Fields2
-  [k: string]: unknown
-}
-export interface Fields2 {
-  [k: string]: FieldValue
+  fields: Fields
 }
 export interface SingleRecordCreatedResponse {
   id: RecordID1
   createdTime: CreatedTime1
-  fields: Fields3
-  [k: string]: unknown
-}
-export interface Fields3 {
-  [k: string]: FieldValue
-}
-export interface DeleteRecordInput {
-  /**
-   * The ID of the base
-   */
-  baseId: string
-  /**
-   * The name or id of the table
-   */
-  tableIdOrName: string
-  /**
-   * The ID of the record
-   */
-  recordId: string
+  fields: Fields
 }
 export interface DeleteRecordOutput {
   id: RecordID2
   deleted: Deleted
-  [k: string]: unknown
-}
-export interface DeleteRecordsInput {
-  /**
-   * The ID of the base
-   */
-  baseId: string
-  /**
-   * The name or id of the table
-   */
-  tableIdOrName: string
-  records: RecordsToDelete
 }
 export interface DeleteRecordsOutput {
   records: Records1
-  [k: string]: unknown
 }
 export interface DeletedRecord {
   id: RecordID4
   deleted: Deleted1
-  [k: string]: unknown
-}
-export interface GetRecordInput {
-  /**
-   * The ID of the base
-   */
-  baseId: string
-  /**
-   * The name or id of the table
-   */
-  tableIdOrName: string
-  /**
-   * The ID of the record
-   */
-  recordId: string
 }
 export interface GetRecordOutput {
   createdTime: CreatedTime2
-  fields: Fields4
+  fields: Fields
   id: Id
-  [k: string]: unknown
 }
-export interface Fields4 {
-  [k: string]: FieldValue
-}
-export interface ListRecordsInput {
+export interface ListRecordsBody {
   timeZone?: Timezone
   userLocal?: UserLocal
   pageSize?: PageSize
@@ -291,112 +292,45 @@ export interface ListRecordsInput {
   sort?: Sort
   filterByFormula?: FilterByFormula
   fields?: OnlyDataForFieldsWhoseNamesOrIDsAreInThisListWillBeIncludedInTheResultIfYouDonTNeedEveryFieldYouCanUseThisParameterToReduceTheAmountOfDataTransferred
-  /**
-   * The ID of the base
-   */
-  baseId: string
-  /**
-   * The name or id of the table
-   */
-  tableIdOrName: string
 }
 export interface SortField {
   direction?: Direction
   field: FieldName
-  [k: string]: unknown
 }
 export interface ListRecordsOutput {
   offset?: Offset1
   records: Records2
-  [k: string]: unknown
 }
-export interface Record2 {
-  id: RecordID5
-  createdTime: CreatedTime3
-  fields: Fields5
-  [k: string]: unknown
-}
-export interface Fields5 {
-  [k: string]: FieldValue
-}
-export interface UpdateRecordInput {
+export interface UpdateRecordBody {
   typecast?: Typecast1
-  fields: Fields6
-  /**
-   * The ID of the base
-   */
-  baseId: string
-  /**
-   * The name or id of the table
-   */
-  tableIdOrName: string
-  /**
-   * The ID of the record
-   */
-  recordId: string
-}
-export interface Fields6 {
-  [k: string]: FieldValue
+  fields: Fields
 }
 export interface UpdateRecordOutput {
-  id: RecordID6
-  createdTime: CreatedTime4
-  fields: Fields7
-  [k: string]: unknown
+  id: RecordID5
+  createdTime: CreatedTime3
+  fields: Fields
 }
-export interface Fields7 {
-  [k: string]: FieldValue
-}
-export interface UpdateRecordsInput {
+export interface UpdateRecordsBody {
   performUpsert?: PerformUpsert
   typecast?: Typecast2
   records: RecordsToUpdateUpsert1
-  /**
-   * The ID of the base
-   */
-  baseId: string
-  /**
-   * The name or id of the table
-   */
-  tableIdOrName: string
 }
 export interface PerformUpsert {
   fieldsToMergeOn: FieldsToMergeOn
-  [k: string]: unknown
 }
-export interface Record3 {
+export interface Record2 {
   id?: Id1
-  fields: Fields8
-  [k: string]: unknown
-}
-export interface Fields8 {
-  [k: string]: FieldValue
+  fields: Fields
 }
 export interface UpdateResponse {
   records: Records3
-  [k: string]: unknown
-}
-export interface Record4 {
-  id: RecordID7
-  createdTime: CreatedTime5
-  fields: Fields9
-  [k: string]: unknown
-}
-export interface Fields9 {
-  [k: string]: FieldValue
 }
 export interface UpsertResponse {
   createdRecords: CreatedRecords
   updatedRecords: UpdatedRecords
   records: Records4
-  [k: string]: unknown
 }
-export interface Record5 {
-  id: RecordID10
-  createdTime: CreatedTime6
-  fields: Fields10
-  [k: string]: unknown
-}
-export interface Fields10 {
-  [k: string]: FieldValue
-}
+
+export type Prettify<T> = {
+  [K in keyof T]: T[K];
+} & {};
