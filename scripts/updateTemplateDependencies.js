@@ -75,7 +75,7 @@ async function updateTemplate(templateName) {
     );
 
     // Push to remote
-    await execAsync(`cd ${templateDir} && git push`);
+    await execAsync(`cd ${templateDir} && git push origin main`);
 
     console.log(`Updated dependencies for template '${templateName}'`);
   } else {
