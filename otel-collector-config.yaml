@@ -8,6 +8,10 @@ exporters:
     endpoint: jaeger:14250
     tls:
       insecure: true
+  otlphttp/traceloop:
+    traces_endpoint: https://api.traceloop.dev/v1/traces
+    headers:
+      Authorization: da233411-b8b1-49ae-a3ca-beaefe673d9e
 
 processors:
   batch:
@@ -24,3 +28,7 @@ service:
       receivers: [otlp]
       processors: [batch]
       exporters: [jaeger]
+    traces/traceloop:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [otlphttp/traceloop]
