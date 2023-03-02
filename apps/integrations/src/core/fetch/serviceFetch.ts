@@ -3,8 +3,7 @@ import {
   AuthCredentials,
   IntegrationAuthentication,
 } from "core/authentication/types";
-import { HTTPMethod } from "core/endpoint/types";
-import { FetchConfig, RequestResponse } from "core/request/types";
+import { FetchConfig, HTTPMethod, RequestResponse } from "core/request/types";
 import {
   getFetch,
   normalizeHeaders,

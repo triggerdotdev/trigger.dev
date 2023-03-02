@@ -1,24 +1,15 @@
-import { RequestData, RequestResponse, RequestSpec } from "core/request/types";
+import {
+  HTTPMethod,
+  RequestData,
+  RequestResponse,
+  RequestSpec,
+} from "core/request/types";
 import { JSONSchema } from "core/schemas/types";
-import { z } from "zod";
 
 export type Endpoint = {
   spec: RequestSpec;
   request: (data: RequestData) => Promise<RequestResponse>;
 };
-
-export const HTTPMethodSchema = z.union([
-  z.literal("GET"),
-  z.literal("POST"),
-  z.literal("PUT"),
-  z.literal("PATCH"),
-  z.literal("DELETE"),
-  z.literal("HEAD"),
-  z.literal("OPTIONS"),
-  z.literal("TRACE"),
-]);
-
-export type HTTPMethod = z.infer<typeof HTTPMethodSchema>;
 
 export interface EndpointSpec {
   path: string;

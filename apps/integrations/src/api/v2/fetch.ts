@@ -1,6 +1,6 @@
 import { AuthCredentials } from "core/authentication/types";
-import { HTTPMethodSchema } from "core/endpoint/types";
 import { serviceFetch } from "core/fetch/serviceFetch";
+import { HTTPMethodSchema } from "core/request/types";
 import { Request, Response } from "express";
 import { catalog } from "integrations/catalog";
 import { z } from "zod";

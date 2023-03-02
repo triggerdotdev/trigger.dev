@@ -1,6 +1,6 @@
 import { CacheService } from "core/cache/types";
-import { EndpointSpec, HTTPMethod } from "core/endpoint/types";
-import { RequestData, RequestResponse } from "core/request/types";
+import { EndpointSpec } from "core/endpoint/types";
+import { HTTPMethod, RequestData, RequestResponse } from "core/request/types";
 
 export type InputSpec = {
   security?: EndpointSpec["security"];
