@@ -131,7 +131,7 @@ const createEndpoint: EndpointSpec = {
   ],
 };
 
-export const webhook: WebhookSpec = {
+export const formResponse: WebhookSpec = {
   id: "form_response",
   metadata: {
     name: "Form response",

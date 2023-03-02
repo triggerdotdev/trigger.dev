@@ -23,13 +23,19 @@ export async function requestEndpoint(
   let path = endpointSpec.path;
 
   // check the request body is there if it's meant to be
-  if (body == null && request.body?.schema != null) {
+  const requiresBody = request.body?.schema != null;
+  if (body == null && requiresBody && request.body?.static === undefined) {
     throw {
       type: "missing_body",
     };
   }
 
   let headers: Record<string, string> = {};
+
+  //if the body doesn't exist but is required, create it
+  if (requiresBody && body == null) {
+    body = {};
+  }
 
   // validate and add the parameters
   if (endpointSpec.parameters != null) {
