@@ -1,5 +1,11 @@
 # @trigger.dev/notion
 
+## 0.1.26
+
+### Patch Changes
+
+- 93322569: Bumping notion to release the new version
+
 ## 0.1.25
 
 ### Patch Changes
