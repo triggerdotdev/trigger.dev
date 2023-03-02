@@ -808,7 +808,7 @@ importers:
 
   generated-integrations/notion:
     specifiers:
-      '@trigger.dev/sdk': workspace:*
+      '@trigger.dev/sdk': workspace:^0.2.19
       '@types/debug': ^4.1.7
       '@types/node': '16'
       debug: ^4.3.4
@@ -825,7 +825,7 @@ importers:
 
   generated-integrations/sendgrid:
     specifiers:
-      '@trigger.dev/sdk': workspace:*
+      '@trigger.dev/sdk': workspace:^0.2.19
       '@types/debug': ^4.1.7
       '@types/node': '16'
       debug: ^4.3.4
@@ -865,7 +865,7 @@ importers:
     specifiers:
       '@react-email/render': ^0.0.3
       '@trigger.dev/integration-sdk': workspace:*
-      '@trigger.dev/sdk': workspace:*
+      '@trigger.dev/sdk': workspace:^0.2.19
       '@trigger.dev/tsconfig': workspace:*
       '@types/debug': ^4.1.7
       '@types/node': '16'
@@ -893,7 +893,7 @@ importers:
       '@shopify/admin-graphql-api-utilities': ^2.0.1
       '@shopify/shopify-api': ^6.1.0
       '@trigger.dev/integration-sdk': workspace:*
-      '@trigger.dev/sdk': workspace:*
+      '@trigger.dev/sdk': workspace:^0.2.19
       '@trigger.dev/tsconfig': workspace:*
       '@types/debug': ^4.1.7
       '@types/node': '16'
@@ -926,7 +926,7 @@ importers:
   integrations/slack:
     specifiers:
       '@trigger.dev/integration-sdk': workspace:*
-      '@trigger.dev/sdk': workspace:*
+      '@trigger.dev/sdk': workspace:^0.2.19
       '@trigger.dev/tsconfig': workspace:*
       '@types/debug': ^4.1.7
       '@types/node': '16'
@@ -951,7 +951,7 @@ importers:
   integrations/whatsapp:
     specifiers:
       '@trigger.dev/integration-sdk': workspace:*
-      '@trigger.dev/sdk': workspace:*
+      '@trigger.dev/sdk': workspace:^0.2.19
       '@trigger.dev/tsconfig': workspace:*
       '@types/debug': ^4.1.7
       '@types/node': '16'

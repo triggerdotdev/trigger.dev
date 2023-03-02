@@ -14,7 +14,7 @@
   ],
   "devDependencies": {
     "@trigger.dev/integration-sdk": "workspace:*",
-    "@trigger.dev/sdk": "workspace:*",
+    "@trigger.dev/sdk": "workspace:^0.2.19",
     "@trigger.dev/tsconfig": "workspace:*",
     "@types/debug": "^4.1.7",
     "@types/node": "16",
@@ -23,7 +23,7 @@
     "tsup": "^6.5.0"
   },
   "peerDependencies": {
-    "@trigger.dev/sdk": "workspace:*"
+    "@trigger.dev/sdk": "workspace:^0.2.19"
   },
   "scripts": {
     "clean": "rimraf dist",
