@@ -1,3 +1,4 @@
+import { JSONPointer } from "core/common/pointer";
 import {
   HTTPMethod,
   RequestData,
@@ -42,13 +43,14 @@ type EndpointSpecParameterHeader = {
 
 type EndpointSpecParameterBody = {
   in: "body";
-  pointer: string;
+  pointer: JSONPointer;
 };
 
 interface EndpointSpecRequest {
   headers?: Record<string, string>;
   body?: {
     schema: JSONSchema;
+    static?: Record<JSONPointer, any>;
   };
 }
 
