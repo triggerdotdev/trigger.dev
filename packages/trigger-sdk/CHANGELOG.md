@@ -1,5 +1,11 @@
 # @trigger.dev/sdk
 
+## 0.2.21
+
+### Patch Changes
+
+- c5084209: Fix for metadata capture when using npm/yarn
+
 ## 0.2.20
 
 ### Patch Changes
