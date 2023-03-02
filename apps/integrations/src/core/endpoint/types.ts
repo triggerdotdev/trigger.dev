@@ -21,13 +21,29 @@ export interface EndpointSpec {
   responses: EndpointSpecResponse[];
 }
 
-export interface EndpointSpecParameter {
+export type EndpointSpecParameter = {
   name: string;
   description: string;
-  in: "query" | "path" | "header";
   required?: boolean;
   schema: JSONSchema;
-}
+} & (
+  | EndpointSpecParameterUrl
+  | EndpointSpecParameterHeader
+  | EndpointSpecParameterBody
+);
+
+type EndpointSpecParameterUrl = {
+  in: "query" | "path";
+};
+
+type EndpointSpecParameterHeader = {
+  in: "header";
+};
+
+type EndpointSpecParameterBody = {
+  in: "body";
+  pointer: string;
+};
 
 interface EndpointSpecRequest {
   headers?: Record<string, string>;
