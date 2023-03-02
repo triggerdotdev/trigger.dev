@@ -10,6 +10,7 @@ importers:
       '@tailwindcss/typography': ^0.5.8
       autoprefixer: ^10.4.12
       eslint-config-custom: workspace:*
+      node-fetch: 2.6.x
       postcss: ^8.4.17
       prettier: ^2.5.1
       tailwindcss: 3.1.8
@@ -20,6 +21,7 @@ importers:
       vitest: ^0.28.4
     dependencies:
       '@changesets/cli': 2.26.0
+      node-fetch: 2.6.7
     devDependencies:
       '@manypkg/cli': 0.19.2
       '@tailwindcss/forms': 0.5.3_tailwindcss@3.1.8
@@ -6276,7 +6278,7 @@ packages:
       tailwindcss: '>=3.0.0 || >= 3.0.0-alpha.1'
     dependencies:
       mini-svg-data-uri: 1.4.4
-      tailwindcss: 3.1.8_aesdjsunmf4wiehhujt67my7tu
+      tailwindcss: 3.1.8_postcss@8.4.21
     dev: true
 
   /@tailwindcss/typography/0.5.9_tailwindcss@3.1.8:
@@ -6288,7 +6290,7 @@ packages:
       lodash.isplainobject: 4.0.6
       lodash.merge: 4.6.2
       postcss-selector-parser: 6.0.10
-      tailwindcss: 3.1.8_aesdjsunmf4wiehhujt67my7tu
+      tailwindcss: 3.1.8_postcss@8.4.21
     dev: true
 
   /@tanstack/react-table/8.7.6_biqbaboplfbrettd7655fr4n2y:
