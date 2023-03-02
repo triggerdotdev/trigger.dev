@@ -387,6 +387,7 @@ export class TriggerServer {
           version: data.packageVersion,
         },
         triggerTTL: data.triggerTTL,
+        metadata: data.metadata ? JSON.stringify(data.metadata) : undefined,
       });
 
       this.#workflowId = response.workflow.id;

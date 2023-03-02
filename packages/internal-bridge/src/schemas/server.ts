@@ -4,6 +4,7 @@ import {
   FetchRequestSchema,
   InitializeRunOnceSchema,
   RetrySchema,
+  SerializableJsonSchema,
   TriggerMetadataSchema,
   WaitSchema,
 } from "@trigger.dev/common-schemas";
@@ -95,6 +96,7 @@ export const ServerRPCSchema = {
       packageVersion: z.string(),
       packageName: z.string(),
       triggerTTL: z.number().optional(),
+      metadata: SerializableJsonSchema.optional(),
     }),
     response: z
       .discriminatedUnion("type", [

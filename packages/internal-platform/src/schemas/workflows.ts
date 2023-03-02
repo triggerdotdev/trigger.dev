@@ -1,4 +1,7 @@
-import { TriggerMetadataSchema } from "@trigger.dev/common-schemas";
+import {
+  SerializableJsonSchema,
+  TriggerMetadataSchema,
+} from "@trigger.dev/common-schemas";
 import { z } from "zod";
 
 export const PackageMetadataSchema = z.object({
@@ -6,15 +9,16 @@ export const PackageMetadataSchema = z.object({
   version: z.string(),
 });
 
-export const WorkflowMetadataSchema = z.object({
+export const RegisteredWorkflowSchema = z.object({
   id: z.string(),
   name: z.string(),
   trigger: TriggerMetadataSchema,
   package: PackageMetadataSchema,
   triggerTTL: z.number().optional(),
+  metadata: z.string().optional(),
 });
 
-export type WorkflowMetadata = z.infer<typeof WorkflowMetadataSchema>;
+export type RegisteredWorkflow = z.infer<typeof RegisteredWorkflowSchema>;
 
 export const UpdateRunningWorkflowRunSchema = z.object({
   status: z.literal("RUNNING"),

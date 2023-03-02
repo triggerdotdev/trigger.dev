@@ -41,6 +41,8 @@
     "debug": "^4.3.4",
     "evt": "^2.4.13",
     "get-caller-file": "^2.0.5",
+    "git-remote-origin-url": "^4.0.0",
+    "git-repo-info": "^2.1.1",
     "node-fetch": "2.6.x",
     "slug": "^6.0.0",
     "terminal-link": "^3.0.0",
@@ -50,5 +52,8 @@
     "zod": "^3.20.2",
     "zod-error": "^1.1.0",
     "zod-to-json-schema": "^3.20.2"
+  },
+  "engines": {
+    "node": ">=14"
   }
 }

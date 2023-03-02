@@ -15,6 +15,7 @@ const SerializableSchema = z.union([
   z.boolean(),
   z.null(),
   z.date(),
+  z.undefined(),
 ]);
 type Serializable = z.infer<typeof SerializableSchema>;
 

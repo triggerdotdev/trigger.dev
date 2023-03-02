@@ -123,8 +123,8 @@ model Workflow {
   title String
 
   packageJson Json?
-
-  jsonSchema Json?
+  jsonSchema  Json?
+  metadata    Json?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

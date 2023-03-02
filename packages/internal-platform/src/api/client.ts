@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { UpdateWorkflowRun, WorkflowMetadata } from "../schemas";
+import { UpdateWorkflowRun, RegisteredWorkflow } from "../schemas";
 import fetch from "node-fetch";
 import { Logger } from "../logger";
 
@@ -62,7 +62,7 @@ export class InternalApiClient {
     );
   }
 
-  async registerWorkflow(workflow: WorkflowMetadata) {
+  async registerWorkflow(workflow: RegisteredWorkflow) {
     const responseSchema = z.object({
       workflow: z.object({
         id: z.string(),

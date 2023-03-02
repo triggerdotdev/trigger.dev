@@ -1,6 +1,6 @@
 import * as github from "@trigger.dev/github/internal";
-import type { WorkflowMetadata } from "internal-platform";
-import { WorkflowMetadataSchema } from "internal-platform";
+import type { RegisteredWorkflow } from "internal-platform";
+import { RegisteredWorkflowSchema } from "internal-platform";
 import crypto from "node:crypto";
 import type { PrismaClient } from "~/db.server";
 import { prisma } from "~/db.server";
@@ -22,7 +22,7 @@ export class RegisterWorkflow {
     organization: Organization,
     environment: RuntimeEnvironment
   ) {
-    const validation = WorkflowMetadataSchema.safeParse(payload);
+    const validation = RegisteredWorkflowSchema.safeParse(payload);
 
     if (!validation.success) {
       return {
@@ -79,7 +79,7 @@ export class RegisterWorkflow {
 
   async #upsertEventRule(
     workflow: Workflow,
-    payload: WorkflowMetadata,
+    payload: RegisteredWorkflow,
     organization: Organization,
     environment: RuntimeEnvironment
   ) {
@@ -107,7 +107,7 @@ export class RegisterWorkflow {
 
   async #upsertWorkflow(
     slug: string,
-    payload: WorkflowMetadata,
+    payload: RegisteredWorkflow,
     organization: Organization
   ) {
     const existingWorkflow = await this.#prismaClient.workflow.findUnique({
@@ -136,6 +136,7 @@ export class RegisterWorkflow {
         service: payload.trigger.service,
         eventNames: payload.trigger.name,
         triggerTtlInSeconds: payload.triggerTTL,
+        metadata: payload.metadata ? JSON.parse(payload.metadata) : undefined,
         jsonSchema:
           "schema" in payload.trigger
             ? payload.trigger.schema
@@ -180,7 +181,7 @@ export class RegisterWorkflow {
   }
 
   async upsertSource(
-    payload: WorkflowMetadata,
+    payload: RegisteredWorkflow,
     organization: Organization,
     workflow: Workflow,
     environment: RuntimeEnvironment
@@ -276,7 +277,7 @@ export class RegisterWorkflow {
   }
 
   async #upsertWebhookSource(
-    payload: WorkflowMetadata,
+    payload: RegisteredWorkflow,
     organization: Organization,
     workflow: Workflow
   ) {
@@ -358,7 +359,7 @@ export class RegisterWorkflow {
     }
   }
 
-  #keyForExternalSource(payload: WorkflowMetadata): string {
+  #keyForExternalSource(payload: RegisteredWorkflow): string {
     if (payload.trigger.type === "WEBHOOK") {
       switch (payload.trigger.service) {
         case "github": {

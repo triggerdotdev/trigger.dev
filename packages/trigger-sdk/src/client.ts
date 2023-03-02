@@ -17,6 +17,8 @@ import { TriggerContext, TriggerFetch } from "./types";
 import { generateErrorMessage, ErrorMessageOptions } from "zod-error";
 import terminalLink from "terminal-link";
 import chalk from "chalk";
+import getRepoInfo from "git-repo-info";
+import gitRemoteOriginUrl from "git-remote-origin-url";
 
 const zodErrorMessageOptions: ErrorMessageOptions = {
   delimiter: {
@@ -732,6 +734,13 @@ export class TriggerClient<TSchema extends z.ZodTypeAny> {
       throw new Error("Cannot initialize host without an RPC connection");
     }
 
+    const repoInfo = safeGetRepoInfo();
+    const remoteUrl = repoInfo
+      ? await getRemoteUrl(repoInfo.commonGitDir)
+      : undefined;
+
+    const packageMetadata = getTriggerPackageEnvVars(process.env);
+
     const response = await this.#send("INITIALIZE_HOST_V2", {
       apiKey: this.#apiKey,
       workflowId: this.#trigger.id,
@@ -740,6 +749,19 @@ export class TriggerClient<TSchema extends z.ZodTypeAny> {
       packageVersion: pkg.version,
       packageName: pkg.name,
       triggerTTL: this.#options.triggerTTL,
+      metadata: {
+        git: repoInfo
+          ? {
+              sha: repoInfo.sha,
+              branch: repoInfo.branch,
+              committer: repoInfo.committer,
+              committerDate: repoInfo.committerDate,
+              commitMessage: repoInfo.commitMessage,
+              origin: remoteUrl,
+            }
+          : undefined,
+        packageMetadata,
+      },
     });
 
     if (!response) {
@@ -797,4 +819,38 @@ function highPrecisionTimestamp() {
   const [seconds, nanoseconds] = process.hrtime();
 
   return seconds * 1e9 + nanoseconds;
+}
+
+// Gets the environment variables prefixed with npm_package_triggerdotdev_ and returns them as an object
+function getTriggerPackageEnvVars(
+  env: NodeJS.ProcessEnv
+): Record<string, string | number | boolean> {
+  if (!env) {
+    return {};
+  }
+
+  const envVars = Object.entries(env)
+    .filter(([key]) => key.startsWith("npm_package_triggerdotdev_"))
+    .map(([key, value]) => [
+      key.replace("npm_package_triggerdotdev_", ""),
+      value,
+    ]);
+
+  return Object.fromEntries(envVars);
+}
+
+async function getRemoteUrl(cwd: string) {
+  try {
+    return await gitRemoteOriginUrl({ cwd });
+  } catch (err) {
+    return;
+  }
+}
+
+function safeGetRepoInfo() {
+  try {
+    return getRepoInfo();
+  } catch (err) {
+    return;
+  }
 }
