@@ -1,5 +1,11 @@
 # @trigger.dev/sdk
 
+## 0.2.20
+
+### Patch Changes
+
+- 5ec71980: Send additional metadata about a workflow when initializing the host
+
 ## 0.2.19
 
 ### Patch Changes

@@ -1,5 +1,13 @@
 # @trigger.dev/shopify
 
+## 0.1.27
+
+### Patch Changes
+
+- 1789d9d2: Use the caret version spec for the SDK dependency in all our integrations
+- Updated dependencies [5ec71980]
+  - @trigger.dev/sdk@0.2.20
+
 ## 0.1.26
 
 ### Patch Changes

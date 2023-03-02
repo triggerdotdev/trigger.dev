@@ -1,5 +1,13 @@
 # @trigger.dev/github
 
+## 0.1.27
+
+### Patch Changes
+
+- 71d78805: Use a caret constraint for the SDK to prevent updating integration dependencies when the SDK bumps a minor version (github only)
+- Updated dependencies [5ec71980]
+  - @trigger.dev/sdk@0.2.20
+
 ## 0.1.26
 
 ### Patch Changes

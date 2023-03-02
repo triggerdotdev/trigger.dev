@@ -1,6 +1,6 @@
 {
   "name": "@trigger.dev/shopify",
-  "version": "0.1.26",
+  "version": "0.1.27",
   "description": "The official Shopify integration for Trigger.dev",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -14,7 +14,7 @@
   ],
   "devDependencies": {
     "@trigger.dev/integration-sdk": "workspace:*",
-    "@trigger.dev/sdk": "workspace:^0.2.19",
+    "@trigger.dev/sdk": "workspace:^0.2.20",
     "@trigger.dev/tsconfig": "workspace:*",
     "@types/debug": "^4.1.7",
     "@types/node": "16",
@@ -25,7 +25,7 @@
     "graphql": "^16.6.0"
   },
   "peerDependencies": {
-    "@trigger.dev/sdk": "workspace:^0.2.19"
+    "@trigger.dev/sdk": "workspace:^0.2.20"
   },
   "scripts": {
     "clean": "rimraf dist",
