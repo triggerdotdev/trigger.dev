@@ -4,11 +4,17 @@ import { formResponse } from "./specs";
 
 const baseUrl = "https://api.typeform.com";
 
-const webhook = makeWebhook({
-  baseUrl,
-  spec: formResponse,
-  authentication,
-});
+const webhook = makeWebhook(
+  {
+    baseUrl,
+    spec: formResponse,
+    authentication,
+  },
+  (result) => ({
+    ...result,
+    secret: "super-secret",
+  })
+);
 
 export default {
   formResponse: webhook,

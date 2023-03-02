@@ -1,0 +1,52 @@
+[
+    {
+        "scope": "https://api.typeform.com:443",
+        "method": "PUT",
+        "path": "/forms/NclFXN1d/webhooks/myTag",
+        "body": {
+            "secret": "123456",
+            "url": "https://example.com",
+            "enabled": true,
+            "verify_ssl": true
+        },
+        "status": 200,
+        "response": {
+            "id": "01GTH8BG8S4KK1XW38SNDN1SRV",
+            "form_id": "NclFXN1d",
+            "tag": "myTag",
+            "url": "https://example.com",
+            "enabled": true,
+            "verify_ssl": true,
+            "secret": "123456",
+            "created_at": "2023-03-02T13:32:00.154368Z",
+            "updated_at": "2023-03-02T15:08:01.697884Z"
+        },
+        "rawHeaders": [
+            "Date",
+            "Thu, 02 Mar 2023 15:08:01 GMT",
+            "Content-Type",
+            "application/json; charset=UTF-8",
+            "Content-Length",
+            "236",
+            "Connection",
+            "close",
+            "Set-Cookie",
+            "AWSALBTG=XZsaxHEp0o9b5mG9n0A3X/wO9cNOtnbHMjapJIb1hdKGJ8qN0ifzSuUQKngIMOP77n/x5dT/3Q7pq0zThx8UEAFbt3ViEgrPGAHfvrC1BgSfUZSTPgKF12cM8jkrY7TN9VYzbo2XYq6rO6fUdVmbmaODWu22sXeAXENcKFLf1Vxk; Expires=Thu, 09 Mar 2023 15:08:01 GMT; Path=/",
+            "Set-Cookie",
+            "AWSALBTGCORS=XZsaxHEp0o9b5mG9n0A3X/wO9cNOtnbHMjapJIb1hdKGJ8qN0ifzSuUQKngIMOP77n/x5dT/3Q7pq0zThx8UEAFbt3ViEgrPGAHfvrC1BgSfUZSTPgKF12cM8jkrY7TN9VYzbo2XYq6rO6fUdVmbmaODWu22sXeAXENcKFLf1Vxk; Expires=Thu, 09 Mar 2023 15:08:01 GMT; Path=/; SameSite=None; Secure",
+            "server",
+            "istio-envoy",
+            "x-envoy-upstream-service-time",
+            "14",
+            "access-control-allow-methods",
+            "GET, OPTIONS, POST, PUT, PATCH, DELETE",
+            "access-control-allow-headers",
+            "X-Typeform-Key, Content-Type, Authorization, Typeform-Version, typeform-app",
+            "access-control-expose-headers",
+            "Location, X-Request-Id",
+            "strict-transport-security",
+            "max-age=63072000; includeSubDomains"
+        ],
+        "responseIsBinary": false
+    }
+]

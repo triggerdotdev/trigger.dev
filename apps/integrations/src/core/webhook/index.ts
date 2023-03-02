@@ -9,17 +9,19 @@ import {
   WebhookSubscriptionResult,
 } from "./types";
 
-export const makeWebhook = ({
-  baseUrl,
-  spec,
-  authentication,
-}: {
-  baseUrl: string;
-  spec: WebhookSpec;
-  authentication: IntegrationAuthentication;
-}) => {
+export const makeWebhook = (
+  data: {
+    baseUrl: string;
+    spec: WebhookSpec;
+    authentication: IntegrationAuthentication;
+  },
+  postSubscribe?: (
+    result: WebhookSubscriptionResult
+  ) => WebhookSubscriptionResult
+) => {
   const subscribe = async (config: WebhookSubscriptionRequest) => {
-    return await subscribeToWebhook({
+    const { baseUrl, spec, authentication } = data;
+    const result = await subscribeToWebhook({
       baseUrl,
       authentication,
       webhook: spec,
@@ -29,10 +31,12 @@ export const makeWebhook = ({
       secret: config.secret,
       data: config.data,
     });
+    if (!postSubscribe) return result;
+    return postSubscribe(result);
   };
 
   return {
-    spec,
+    spec: data.spec,
     subscribe,
   };
 };
@@ -58,12 +62,7 @@ async function subscribeToWebhook({
 }): Promise<WebhookSubscriptionResult> {
   switch (webhook.subscribe.type) {
     case "manual":
-      return {
-        success: true,
-        callbackUrl,
-        events,
-        data,
-      };
+      throw new Error("Manual webhooks shouldn't call subscribe");
     case "automatic": {
       const response = await requestEndpoint(
         {
@@ -87,7 +86,10 @@ async function subscribeToWebhook({
           success: true,
           callbackUrl,
           events,
-          data,
+          secret,
+          status: response.status,
+          headers: response.headers,
+          data: response.body,
         };
       }
 

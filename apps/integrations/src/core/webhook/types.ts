@@ -66,6 +66,9 @@ export type WebhookSubscriptionResult =
       success: true;
       callbackUrl: string;
       events: string[];
+      secret?: string;
+      status: number;
+      headers?: Record<string, string>;
       data: any;
     }
   | {
