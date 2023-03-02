@@ -791,7 +791,7 @@ importers:
 
   generated-integrations/airtable:
     specifiers:
-      '@trigger.dev/sdk': workspace:*
+      '@trigger.dev/sdk': workspace:^0.2.19
       '@types/debug': ^4.1.7
       '@types/node': '16'
       debug: ^4.3.4
