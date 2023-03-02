@@ -136,12 +136,8 @@ export const formResponse: WebhookSpec = {
   metadata: {
     name: "Form response",
     description: "A response to your Typeform",
-    displayProperties: {
-      title: "New response to your typeform",
-    },
     tags: ["form"],
   },
-  events: ["form_response"],
   subscribe: {
     type: "automatic",
     create: createEndpoint,

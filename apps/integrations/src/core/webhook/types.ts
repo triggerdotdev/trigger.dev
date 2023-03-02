@@ -1,9 +1,11 @@
+import { DisplayProperties } from "core/action/types";
 import {
   AuthCredentials,
   IntegrationAuthentication,
 } from "core/authentication/types";
 import { EndpointSpec } from "core/endpoint/types";
 import { HTTPMethod, HTTPResponse } from "core/request/types";
+import { JSONSchema } from "core/schemas/types";
 
 export type Webhook = {
   baseUrl: string;
@@ -21,16 +23,13 @@ export type Webhook = {
 export type WebhookSpec = {
   id: string;
   metadata: WebhookMetadata;
-  events: string[];
   subscribe: WebhookSpecSubscribe;
 };
 
 export type WebhookMetadata = {
   name: string;
   description: string;
-  displayProperties: {
-    title: string;
-  };
+  displayProperties: DisplayProperties;
   externalDocs?: ExternalDocs;
   tags: string[];
 };
@@ -94,6 +93,8 @@ export type WebhookIncomingRequest = {
 
 export type WebhookEvent = {
   name: string;
+  metadata: WebhookEventMetadata;
+  schema: JSONSchema;
   matches: (data: {
     subscriptionData: Record<string, any>;
     request: WebhookIncomingRequest;
@@ -101,7 +102,14 @@ export type WebhookEvent = {
   process: (data: WebhookReceiveRequest) => Promise<WebhookEventResult[]>;
 };
 
+export type WebhookEventMetadata = {
+  description: string;
+  displayProperties: DisplayProperties;
+  tags: string[];
+};
+
 export type WebhookEventResult = {
   event: string;
+  displayProperties: DisplayProperties;
   payload: any;
 };
