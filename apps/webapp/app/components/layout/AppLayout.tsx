@@ -10,7 +10,8 @@ export function AppLayout({
 }) {
   if (impersonationId) {
     return (
-      <div className="grid h-full w-full grid-rows-[2rem_2rem_3rem_auto_2rem]">
+      <div className="grid h-full w-full grid-rows-[2rem_3rem_auto_2rem]">
+        {/* <div className="grid h-full w-full grid-rows-[2rem_2rem_3rem_auto_2rem]"> */}
         <ImpersonationBanner impersonationId={impersonationId} />
         {children}
       </div>
@@ -18,7 +19,8 @@ export function AppLayout({
   }
 
   return (
-    <div className="grid h-full w-full grid-rows-[2rem_3rem_auto_2rem]">
+    // <div className="grid h-full w-full grid-rows-[3rem_auto_2rem]">
+    <div className="grid h-full w-full grid-rows-[3rem_auto_2rem]">
       {children}
     </div>
   );
@@ -26,7 +28,8 @@ export function AppLayout({
 
 export function PublicAppLayout({ children }: { children: React.ReactNode }) {
   return (
-    <div className="grid h-full w-full grid-rows-[2rem_auto_auto_2rem]">
+    <div className="grid h-full w-full grid-rows-[5rem_auto_2rem]">
+      {/* <div className="grid h-full w-full grid-rows-[2rem_auto_auto_2rem]"> */}
       {children}
     </div>
   );

@@ -42,7 +42,7 @@ export default function Public() {
 
   return (
     <LayoutComponent>
-      <ProductHuntBanner />
+      {/* <ProductHuntBanner /> */}
       {loaderData.userId ? <Header /> : <MarketingHeader />}
       <AppBody>
         <Outlet />

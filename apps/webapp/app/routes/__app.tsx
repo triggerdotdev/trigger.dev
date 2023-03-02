@@ -39,15 +39,13 @@ export const loader = async ({ request }: LoaderArgs) => {
   );
 };
 
-const INTERCOM_APP_ID = "pfbctmiv";
-
 export default function App() {
   const { impersonationId } = useTypedLoaderData<typeof loader>();
 
   return (
     <AppLayout impersonationId={impersonationId}>
       <NoMobileOverlay />
-      <ProductHuntBanner />
+      {/* <ProductHuntBanner /> */}
       <Header />
       <AppBody>
         <Outlet />
