@@ -1,14 +1,14 @@
 import { AuthCredentials } from "core/authentication/types";
-import { HTTPMethod } from "core/request/types";
+import { FetchConfig, HTTPMethod } from "core/request/types";
 import { JSONSchema } from "json-schema-to-typescript";
 
 export type Webhook = {
   id: string;
   metadata: WebhookMetadata;
+  events: string[];
   subscribe: WebhookSubscribe;
   verify: WebhookVerify;
   receive: WebhookReceive;
-  events: Record<string, WebhookEvent>;
 };
 
 export type WebhookMetadata = {
@@ -26,24 +26,33 @@ type ExternalDocs = {
   url: string;
 };
 
+export type WebhookSubscribe =
+  | WebhookSpecSubscribeManual
+  | WebhookSpecSubscribeAutomatic;
+
 type WebhookSpecSubscribeManual = {
   type: "manual";
 };
 
-type WebhookSpecSubscribeAutomatic = {
-  type: "automatic";
-  subscribe: {
-    /** The action that will be called to register this webhook */
-    endpoint: string;
-    parameters?: Record<string, any>;
-    body?: any;
-  };
-  //todo unsubscribe
+type WebhookSubscriptionResult = {
+  success: true;
+  callbackUrl: string;
+  events: string[];
+  data: any;
 };
 
-export type WebhookSubscribe =
-  | WebhookSpecSubscribeManual
-  | WebhookSpecSubscribeAutomatic;
+export interface WebhookSpecSubscribeAutomatic {
+  type: "automatic";
+  create: (data: {
+    credentials: AuthCredentials;
+    callbackUrl: string;
+    events: string[];
+    secret?: string;
+    params: Record<string, any>;
+  }) => Promise<FetchConfig>;
+
+  //todo unsubscribe
+}
 
 type WebhookRequestData = {
   request: NormalizedRequest;
