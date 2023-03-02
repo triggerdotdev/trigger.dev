@@ -3,7 +3,7 @@ import {
   AuthCredentials,
   IntegrationAuthentication,
 } from "core/authentication/types";
-import { FetchConfig, HTTPMethod, RequestResponse } from "core/request/types";
+import { HTTPRequest, HTTPMethod, RequestResponse } from "core/request/types";
 import {
   getFetch,
   normalizeHeaders,
@@ -28,7 +28,7 @@ export async function serviceFetch({
   credentials,
   authentication,
 }: ServiceFetchOptions): Promise<RequestResponse> {
-  let fetchConfig: FetchConfig = {
+  let fetchConfig: HTTPRequest = {
     url,
     method,
     headers: {

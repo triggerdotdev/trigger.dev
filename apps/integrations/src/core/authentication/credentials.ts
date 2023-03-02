@@ -1,11 +1,11 @@
 import { EndpointSpec } from "core/endpoint/types";
 import { InsufficientScopesError } from "core/request/errors";
-import { FetchConfig } from "core/request/types";
+import { HTTPRequest } from "core/request/types";
 import { IntegrationAuthentication, AuthCredentials } from "./types";
 
 /** Apply the given credentials to the given fetch config */
 export function applyCredentials(
-  fetch: FetchConfig,
+  fetch: HTTPRequest,
   {
     endpointSecurity,
     authentication,
@@ -15,7 +15,7 @@ export function applyCredentials(
     authentication: IntegrationAuthentication;
     credentials: AuthCredentials;
   }
-): FetchConfig {
+): HTTPRequest {
   if (endpointSecurity === undefined) return fetch;
   // check if the credentials have the required scopes
   const requiredScopes = endpointSecurity[credentials.name] ?? [];
@@ -32,7 +32,7 @@ export function applyCredentials(
 }
 
 export function addCredentialsToConfig(
-  fetch: FetchConfig,
+  fetch: HTTPRequest,
   {
     authentication,
     credentials,

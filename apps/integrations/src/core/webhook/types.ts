@@ -3,16 +3,19 @@ import {
   IntegrationAuthentication,
 } from "core/authentication/types";
 import { EndpointSpec } from "core/endpoint/types";
-import { FetchConfig, HTTPMethod } from "core/request/types";
-import { JSONSchema } from "json-schema-to-typescript";
+import { HTTPMethod, HTTPResponse } from "core/request/types";
 
-type Webhook = {
+export type Webhook = {
   baseUrl: string;
   spec: WebhookSpec;
   authentication: IntegrationAuthentication;
+  events: WebhookEvent[];
   subscribe: (
     data: WebhookSubscriptionRequest
   ) => Promise<WebhookSubscriptionResult>;
+  receive: (
+    data: WebhookReceiveRequest
+  ) => Promise<{ eventResults?: WebhookEventResult[]; response: HTTPResponse }>;
 };
 
 export type WebhookSpec = {
@@ -20,8 +23,6 @@ export type WebhookSpec = {
   metadata: WebhookMetadata;
   events: string[];
   subscribe: WebhookSpecSubscribe;
-  // verify: WebhookVerify;
-  // receive: WebhookReceive;
 };
 
 export type WebhookMetadata = {
@@ -58,7 +59,7 @@ export type WebhookSubscriptionRequest = {
   callbackUrl: string;
   events: string[];
   secret?: string;
-  data: Record<string, any>;
+  inputData: Record<string, any>;
 };
 
 export type WebhookSubscriptionResult =
@@ -76,34 +77,31 @@ export type WebhookSubscriptionResult =
       error: string;
     };
 
-// type WebhookRequestData = {
-//   request: NormalizedRequest;
-//   credentials?: AuthCredentials;
-//   secret?: string;
-// };
+export type WebhookReceiveRequest = {
+  credentials?: AuthCredentials;
+  secret?: string;
+  subscriptionData: Record<string, any>;
+  request: WebhookIncomingRequest;
+};
 
-// type WebhookVerifyResponse =
-//   | { status: "ok"; data: any }
-//   | { status: "ignored"; reason: string }
-//   | { status: "error"; error: string };
+export type WebhookIncomingRequest = {
+  method: HTTPMethod;
+  searchParams: URLSearchParams;
+  headers: Record<string, string>;
+  body: any;
+  rawBody: Buffer;
+};
 
-// type WebhookVerify = (
-//   request: WebhookRequestData
-// ) => Promise<WebhookVerifyResponse>;
+export type WebhookEvent = {
+  name: string;
+  matches: (data: {
+    subscriptionData: Record<string, any>;
+    request: WebhookIncomingRequest;
+  }) => boolean;
+  process: (data: WebhookReceiveRequest) => Promise<WebhookEventResult[]>;
+};
 
-// //todo this will be called when receiving a request (can be verify or an actual webhook)
-// //the service will have to decide what to do with it
-// //need auth credentials
-// type WebhookReceive = (request: WebhookRequestData) => Promise<Event>;
-
-// type NormalizedRequest = {
-//   method: HTTPMethod;
-//   searchParams: URLSearchParams;
-//   headers: Record<string, string>;
-//   rawBody: Buffer;
-//   body: any;
-// };
-
-// type EventData = {
-//   payload: JSONSchema;
-// };
+export type WebhookEventResult = {
+  event: string;
+  payload: any;
+};

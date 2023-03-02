@@ -3,24 +3,37 @@ import {
   IntegrationAuthentication,
 } from "core/authentication/types";
 import { requestEndpoint } from "core/request/requestEndpoint";
+import { HTTPResponse } from "core/request/types";
 import {
+  Webhook,
+  WebhookEvent,
+  WebhookReceiveRequest,
   WebhookSpec,
   WebhookSubscriptionRequest,
   WebhookSubscriptionResult,
 } from "./types";
 
-export const makeWebhook = (
+export function makeWebhook(input: {
   data: {
     baseUrl: string;
     spec: WebhookSpec;
     authentication: IntegrationAuthentication;
-  },
+  };
+  /** the events that belong to this webhook */
+  events: WebhookEvent[];
+  /** after a subscription you might want to alter the result, e.g. add secret from response */
   postSubscribe?: (
     result: WebhookSubscriptionResult
-  ) => WebhookSubscriptionResult
-) => {
+  ) => WebhookSubscriptionResult;
+  /** You can verify the payload, or if they do a subscription verification you can respond */
+  preEvent?: (data: WebhookReceiveRequest) => Promise<{
+    processEvents: boolean;
+    response: HTTPResponse;
+  }>;
+}): Webhook {
+  const { baseUrl, spec, authentication } = input.data;
+
   const subscribe = async (config: WebhookSubscriptionRequest) => {
-    const { baseUrl, spec, authentication } = data;
     const result = await subscribeToWebhook({
       baseUrl,
       authentication,
@@ -29,17 +42,58 @@ export const makeWebhook = (
       callbackUrl: config.callbackUrl,
       events: config.events,
       secret: config.secret,
-      data: config.data,
+      data: config.inputData,
     });
-    if (!postSubscribe) return result;
-    return postSubscribe(result);
+    if (!input.postSubscribe) return result;
+    return input.postSubscribe(result);
+  };
+
+  const receive = async (receiveRequest: WebhookReceiveRequest) => {
+    //verification and early response can happen here
+    const preEventResult = await input.preEvent?.(receiveRequest);
+    let response: HTTPResponse | undefined = undefined;
+    if (preEventResult) {
+      if (!preEventResult.processEvents) return preEventResult;
+      response = preEventResult.response;
+    }
+
+    if (!response) {
+      response = {
+        status: 200,
+        headers: {},
+      };
+    }
+
+    const matchingEvents = input.events.filter((event) =>
+      event.matches({
+        subscriptionData: receiveRequest.subscriptionData,
+        request: receiveRequest.request,
+      })
+    );
+
+    //todo process relevant events
+
+    const promises = matchingEvents.map((event) =>
+      event.process(receiveRequest)
+    );
+
+    const results = await Promise.all(promises);
+
+    return {
+      response,
+      eventResults: results.flat(),
+    };
   };
 
   return {
-    spec: data.spec,
+    baseUrl: baseUrl,
+    spec: spec,
+    authentication: authentication,
+    events: input.events,
     subscribe,
+    receive,
   };
-};
+}
 
 async function subscribeToWebhook({
   baseUrl,

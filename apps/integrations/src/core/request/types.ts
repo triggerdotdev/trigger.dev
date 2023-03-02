@@ -18,9 +18,15 @@ export const HTTPMethodSchema = z.union([
 
 export type HTTPMethod = z.infer<typeof HTTPMethodSchema>;
 
-export interface FetchConfig {
+export interface HTTPRequest {
   url: string;
   method: HTTPMethod;
+  headers: Record<string, string>;
+  body?: any;
+}
+
+export interface HTTPResponse {
+  status: number;
   headers: Record<string, string>;
   body?: any;
 }

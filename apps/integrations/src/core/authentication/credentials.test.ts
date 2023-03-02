@@ -1,5 +1,5 @@
 import { EndpointSpec } from "core/endpoint/types";
-import { FetchConfig } from "core/request/types";
+import { HTTPRequest } from "core/request/types";
 import { expect, test } from "vitest";
 import { checkRequiredScopes, applyCredentials } from "./credentials";
 import { AuthCredentials, IntegrationAuthentication } from "./types";
@@ -63,7 +63,7 @@ test("Applied credentials", async () => {
     },
   };
 
-  const existingFetch: FetchConfig = {
+  const existingFetch: HTTPRequest = {
     url: "https://example.com",
     method: "GET",
     headers: {

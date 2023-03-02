@@ -14,7 +14,7 @@ describe("typeform.webhooks", async () => {
         callbackUrl: "https://example.com",
         events: ["form_response"],
         secret: "123456",
-        data: {
+        inputData: {
           form_id: "NclFXN1d",
           tag: "myTag",
         },
@@ -26,7 +26,6 @@ describe("typeform.webhooks", async () => {
         },
       });
 
-      console.log(result);
       expect(result.success).toEqual(true);
       expect(result).toMatchInlineSnapshot(`
         {

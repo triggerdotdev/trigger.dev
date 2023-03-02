@@ -7,7 +7,7 @@ import {
 } from "core/fetch/fetchUtilities";
 import { JSONSchemaError } from "core/schemas/types";
 import {
-  FetchConfig,
+  HTTPRequest,
   RequestData,
   RequestResponse,
   RequestSpec,
@@ -112,7 +112,7 @@ export async function requestEndpoint(
 
   // build the fetch config
   const url = `${baseUrl}${path}`;
-  let fetchConfig: FetchConfig = {
+  let fetchConfig: HTTPRequest = {
     url,
     method,
     headers: {
