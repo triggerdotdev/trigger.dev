@@ -13,6 +13,7 @@ import {
   RequestSpec,
 } from "./types";
 import * as Sentry from "@sentry/node";
+import JsonPointer from "json-pointer";
 
 export async function requestEndpoint(
   { baseUrl, endpointSpec, authentication }: RequestSpec,
@@ -21,7 +22,7 @@ export async function requestEndpoint(
   const { method, security, request, responses } = endpointSpec;
   let path = endpointSpec.path;
 
-  // validate the request body
+  // check the request body is there if it's meant to be
   if (body == null && request.body?.schema != null) {
     throw {
       type: "missing_body",
@@ -74,6 +75,10 @@ export async function requestEndpoint(
             [name]: `${element}`,
           };
           break;
+        case "body": {
+          JsonPointer.set(body, parameter.pointer, element);
+          break;
+        }
       }
     }
   }
@@ -86,6 +91,16 @@ export async function requestEndpoint(
         ...headers,
         [name]: element,
       };
+    }
+  }
+
+  // add any static body content
+  if (request.body?.static != null) {
+    for (const pointer in request.body.static) {
+      if (Object.prototype.hasOwnProperty.call(request.body.static, pointer)) {
+        const element = request.body.static[pointer];
+        JsonPointer.set(body, pointer, element);
+      }
     }
   }
 
