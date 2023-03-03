@@ -5,6 +5,7 @@ import * as Sentry from "@sentry/node";
 import dotenv from "dotenv";
 import express, { Express, NextFunction, Request, Response } from "express";
 import morgan from "morgan";
+import { handleCreateWebhook } from "api/v2/webhooks/create";
 dotenv.config();
 
 const app: Express = express();
@@ -59,10 +60,18 @@ app.get("/", (req: Request, res: Response) => {
 app.get("/healthcheck", (req: Request, res: Response) => {
   res.send("OK");
 });
+
+//services
 app.get("/api/v2/services", handleServices);
+
+//requests
 app.post("/api/v2/:service/action/:action/display", handleActionDisplay);
 app.post("/api/v2/:service/action/:action", handleAction);
 
+//webhooks
+app.post("/api/v2/webhooks", handleCreateWebhook);
+
+//errors
 app.get("/debug-sentry", function mainHandler(req, res) {
   throw new Error("My first Sentry error!");
 });
