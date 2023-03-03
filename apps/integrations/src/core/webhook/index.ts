@@ -32,6 +32,7 @@ export function makeWebhook(input: {
       }
     | {
         type: "manual";
+        requiresSecret: boolean;
       };
   /** You can verify the payload, or if they do a subscription verification you can respond */
   preProcess?: (data: WebhookReceiveRequest) => Promise<
@@ -81,6 +82,7 @@ export function makeWebhook(input: {
     case "manual": {
       subscription = {
         type: "manual",
+        requiresSecret: input.subscription.requiresSecret,
       };
       break;
     }

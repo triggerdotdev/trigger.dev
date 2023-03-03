@@ -40,6 +40,8 @@ model Webhook {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  destinations Destination[]
+
   @@unique([consumerId, key])
 }
 
@@ -57,4 +59,19 @@ enum WebhookStatus {
 enum WebhookSubscriptionType {
   AUTOMATIC
   MANUAL
+}
+
+model Destination {
+  id    String @id @default(cuid())
+  
+  webhook Webhook @relation(fields: [webhookId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  webhookId String
+
+  destinationUrl String @unique
+  destinationSecret String
+  destinationData Json?
+  destinationEvent String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }

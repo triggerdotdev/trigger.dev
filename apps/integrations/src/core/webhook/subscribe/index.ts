@@ -6,6 +6,8 @@ import {
 } from "core/webhook/subscribe/types";
 import { prisma, PrismaClient } from "db/db.server";
 import { catalog } from "integrations/catalog";
+import crypto from "node:crypto";
+import { webhookUrl } from "./webhooks.db";
 
 export class SubscribeToWebhook {
   #prismaClient: PrismaClient;
@@ -62,11 +64,92 @@ export class SubscribeToWebhook {
     }
 
     //the key and consumerId are used to identify the webhook
-    const key = event.createKey(input.data);
+    const key = `${service}-${event.name}-${event.createKey(input.data)}`;
 
     //is there an existing webhook?
+    const existingWebhookRow = await this.#getWebhookRow({
+      consumerId: input.consumerId,
+      key,
+    });
 
-    //todo create webhook in db
+    if (existingWebhookRow) {
+      try {
+        const destination = await this.#createDestination({
+          webhookId: existingWebhookRow.id,
+          callbackUrl: input.callbackUrl,
+          data: input.data,
+          eventName: event.name,
+        });
+
+        const url = webhookUrl(existingWebhookRow.id);
+
+        return {
+          success: true,
+          result: {
+            type: "service",
+            webhookId: existingWebhookRow.id,
+            subscription:
+              existingWebhookRow.subscriptionType === "MANUAL"
+                ? {
+                    type: "manual",
+                    url,
+                    secret: existingWebhookRow.secret ?? undefined,
+                  }
+                : {
+                    type: "automatic",
+                  },
+          },
+        };
+      } catch (e) {
+        return {
+          success: false,
+          error: {
+            code: "destination_already_exists",
+            message: `Destination already exists`,
+          },
+        };
+      }
+    }
+
+    switch (webhook.subscription.type) {
+      case "manual": {
+        const secret = webhook.subscription.requiresSecret
+          ? crypto.randomBytes(32).toString("hex")
+          : undefined;
+        const newWebhookRow = await this.#prismaClient.webhook.create({
+          data: {
+            type: "SERVICE",
+            status: "READY",
+            consumerId: input.consumerId,
+            key,
+            secret,
+            subscriptionType: "MANUAL",
+            service: input.service,
+            webhookName: webhook.spec.id,
+            authenticationData: input.authentication,
+          },
+        });
+
+        const destination = await this.#prismaClient.destination.create({
+          data: {
+            webhook: {
+              connect: {
+                id: newWebhookRow.id,
+              },
+            },
+            destinationUrl: input.callbackUrl,
+            destinationEvent: event.name,
+            destinationData: input.data,
+          },
+        });
+        break;
+      }
+      case "automatic": {
+        break;
+      }
+    }
+
+    //todo create destination in db
 
     //todo determine if it's automatic or manual
   }
@@ -75,5 +158,43 @@ export class SubscribeToWebhook {
     input: SubscribeGenericInput
   ): Promise<SubscribeResult> {
     throw new Error("Not implemented");
+  }
+
+  #getWebhookRow({ consumerId, key }: { consumerId: string; key: string }) {
+    return this.#prismaClient.webhook.findUnique({
+      where: {
+        consumerId_key: {
+          consumerId,
+          key,
+        },
+      },
+    });
+  }
+
+  #createDestination({
+    webhookId,
+    callbackUrl,
+    eventName,
+    data,
+  }: {
+    webhookId: string;
+    callbackUrl: string;
+    eventName: string;
+    data: any;
+  }) {
+    const destinationSecret = crypto.randomBytes(32).toString("hex");
+    return this.#prismaClient.destination.create({
+      data: {
+        webhook: {
+          connect: {
+            id: webhookId,
+          },
+        },
+        destinationUrl: callbackUrl,
+        destinationSecret,
+        destinationEvent: eventName,
+        destinationData: data,
+      },
+    });
   }
 }

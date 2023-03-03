@@ -41,6 +41,7 @@ export type WebhookSubscriptionAutomatic = {
 
 export type WebhookSubscriptionManual = {
   type: "manual";
+  requiresSecret: boolean;
 };
 
 export type WebhookSpec = {

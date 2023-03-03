@@ -1,14 +1,26 @@
 import { z } from "zod";
 
+const OAuthSchema = z.object({
+  type: z.literal("oauth"),
+  connectionId: z.string(),
+});
+
+const APIKeySchema = z.object({
+  type: z.literal("api-key"),
+  api_key: z.string(),
+});
+
+const AuthenticationSchema = z.discriminatedUnion("type", [
+  OAuthSchema,
+  APIKeySchema,
+]);
+
 const ServiceSchema = z.object({
   type: z.literal("service"),
   consumerId: z.string(),
   callbackUrl: z.string().url(),
   service: z.string(),
-  authentication: z.object({
-    type: z.literal("oauth"),
-    connectionId: z.string(),
-  }),
+  authentication: AuthenticationSchema,
   data: z.record(z.any()),
   eventName: z.string(),
 });
@@ -49,6 +61,15 @@ export type SubscribeResult =
         | {
             type: "service";
             webhookId: string;
+            subscription:
+              | {
+                  type: "automatic";
+                }
+              | {
+                  type: "manual";
+                  url: string;
+                  secret?: string;
+                };
           }
         | {
             type: "generic";
