@@ -26,7 +26,7 @@ export function makeWebhook(input: {
     result: WebhookSubscriptionResult
   ) => WebhookSubscriptionResult;
   /** You can verify the payload, or if they do a subscription verification you can respond */
-  preEvent?: (data: WebhookReceiveRequest) => Promise<
+  preProcess?: (data: WebhookReceiveRequest) => Promise<
     | {
         success: true;
         processEvents: boolean;
@@ -59,7 +59,7 @@ export function makeWebhook(input: {
 
   const receive = async (receiveRequest: WebhookReceiveRequest) => {
     //verification and early response can happen here
-    const preEventResult = await input.preEvent?.(receiveRequest);
+    const preEventResult = await input.preProcess?.(receiveRequest);
     let response: HTTPResponse | undefined = undefined;
     if (preEventResult) {
       //fail so we return an error
