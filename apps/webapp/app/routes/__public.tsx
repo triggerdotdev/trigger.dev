@@ -1,9 +1,11 @@
 import { Outlet } from "@remix-run/react";
 import type { LoaderArgs } from "@remix-run/server-runtime";
+import classNames from "classnames";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import {
   AppBody,
   AppLayout,
+  PublicAppBody,
   PublicAppLayout,
 } from "~/components/layout/AppLayout";
 import { Footer } from "~/components/layout/Footer";
@@ -44,9 +46,15 @@ export default function Public() {
     <LayoutComponent>
       {/* <ProductHuntBanner /> */}
       {loaderData.userId ? <Header /> : <MarketingHeader />}
-      <AppBody>
-        <Outlet />
-      </AppBody>
+      {loaderData.userId ? (
+        <AppBody>
+          <Outlet />
+        </AppBody>
+      ) : (
+        <PublicAppBody>
+          <Outlet />
+        </PublicAppBody>
+      )}
       <Footer />
     </LayoutComponent>
   );

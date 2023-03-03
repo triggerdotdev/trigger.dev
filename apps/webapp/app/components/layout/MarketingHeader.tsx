@@ -40,7 +40,7 @@ function MobileNavigation() {
             className="absolute inset-x-6 top-full mt-4 flex origin-top flex-col gap-4 rounded-2xl bg-slate-800 p-6 text-lg tracking-tight text-slate-900 shadow-xl ring-1 ring-slate-700"
           >
             <PrimaryLink
-              className="whitespace-nowrap text-base"
+              className="w-full !max-w-none whitespace-nowrap text-base"
               to="https://app.trigger.dev"
             >
               Sign up
@@ -80,7 +80,7 @@ function MobileNavigation() {
 export function MarketingHeader() {
   return (
     <>
-      <header className="z-50 w-full bg-slate-900">
+      <header className="sticky top-0 z-50 w-full bg-slate-900">
         <nav className="mx-auto flex max-w-7xl items-center justify-between px-4 py-6 sm:px-10 lg:px-16 ">
           <div className="flex items-center gap-x-6 md:gap-x-[56px]">
             <a
