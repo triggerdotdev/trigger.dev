@@ -94,6 +94,7 @@ export type WebhookEvent = {
   name: string;
   metadata: WebhookEventMetadata;
   schema: JSONSchema;
+  examples: any[];
   matches: (data: {
     subscriptionData: Record<string, any>;
     request: WebhookIncomingRequest;

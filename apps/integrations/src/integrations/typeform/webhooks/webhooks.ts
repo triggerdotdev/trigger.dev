@@ -1,11 +1,13 @@
 import { makeWebhook } from "core/webhook";
 import { WebhookEvent, WebhookReceiveRequest } from "core/webhook/types";
 import { authentication } from "../authentication";
+import { example } from "./examples";
+import { formEventSchema } from "./schemas";
 import { formResponse } from "./specs";
 
 const baseUrl = "https://api.typeform.com";
 
-const formResponseEvent: WebhookEvent = {
+export const formResponseEvent: WebhookEvent = {
   name: "form_response",
   metadata: {
     description: "A form response was submitted",
@@ -14,7 +16,8 @@ const formResponseEvent: WebhookEvent = {
     },
     tags: ["form"],
   },
-  schema: {},
+  schema: formEventSchema,
+  examples: [example],
   matches: () => true,
   process: async (data: WebhookReceiveRequest) => [
     {
@@ -33,13 +36,12 @@ const webhook = makeWebhook({
     spec: formResponse,
     authentication,
   },
-  events: [],
+  events: [formResponseEvent],
   postSubscribe: (result) => ({
     ...result,
     secret: "super-secret",
   }),
 });
 
-export default {
-  formResponse: webhook,
-};
+export const webhooks = { formResponse: webhook };
+export const events = { formResponse: formResponseEvent };
