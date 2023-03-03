@@ -30,8 +30,6 @@ describe("typeform.webhooks", async () => {
       },
     });
 
-    console.log(result);
-
     expect(result.success).toEqual(true);
     expect(result).toMatchInlineSnapshot(`
       {

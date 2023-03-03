@@ -20,3 +20,41 @@ model Cache {
 
   @@unique([namespace, key])
 }
+
+model Webhook {
+  id    String @id @default(cuid())
+  type WebhookType
+  status WebhookStatus
+  consumerId String
+  key String
+  secret String?
+  subscriptionType WebhookSubscriptionType
+  /// automatic subscriptions responses are stored here
+  externalData Json?
+  
+  //service
+  service String?
+  webhookName String?
+  authenticationData Json?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([consumerId, key])
+}
+
+enum WebhookType {
+  SERVICE
+  GENERIC
+}
+
+enum WebhookStatus {
+  CREATED
+  READY
+  CANCELLED
+}
+
+enum WebhookSubscriptionType {
+  AUTOMATIC
+  MANUAL
+}

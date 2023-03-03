@@ -50,8 +50,8 @@ export class SubscribeToWebhook {
     const webhook = Object.values(service.webhooks).find((w) =>
       w.events.map((e) => e.name).includes(input.eventName)
     );
-
-    if (!webhook) {
+    const event = webhook?.events.find((e) => e.name === input.eventName);
+    if (!webhook || !event) {
       return {
         success: false,
         error: {
@@ -60,6 +60,13 @@ export class SubscribeToWebhook {
         },
       };
     }
+
+    //the key and consumerId are used to identify the webhook
+    const key = event.createKey(input.data);
+
+    //is there an existing webhook?
+
+    //todo create webhook in db
 
     //todo determine if it's automatic or manual
   }
