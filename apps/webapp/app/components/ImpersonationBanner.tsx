@@ -22,7 +22,7 @@ export function ImpersonationBanner({
       >
         <TertiaryButton
           type="submit"
-          className="text-slate-700 hover:!text-slate-900"
+          className="!text-slate-700 transition hover:!text-slate-900"
         >
           Stop impersonating
         </TertiaryButton>
