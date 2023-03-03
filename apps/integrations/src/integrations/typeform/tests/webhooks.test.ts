@@ -57,7 +57,7 @@ describe("typeform.webhooks", async () => {
             "strict-transport-security": "max-age=63072000; includeSubDomains",
             "x-envoy-upstream-service-time": "14",
           },
-          "secret": "super-secret",
+          "secret": "123456",
           "status": 200,
           "success": true,
         }

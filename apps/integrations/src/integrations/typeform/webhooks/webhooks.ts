@@ -38,11 +38,7 @@ const webhook = makeWebhook({
     authentication,
   },
   events: [formResponseEvent],
-  postSubscribe: (result) => ({
-    ...result,
-    secret: "super-secret",
-  }),
-  preEvent: async (data) => {
+  preProcess: async (data) => {
     if (data.secret) {
       const signatureHeader = data.request.headers["typeform-signature"];
       const hash = crypto
