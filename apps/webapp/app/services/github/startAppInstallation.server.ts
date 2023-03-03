@@ -12,20 +12,24 @@ export class StartAppInstallation {
   public async call({
     userId,
     redirectTo,
+    authorizationId,
   }: {
     userId: string;
     redirectTo: string;
+    authorizationId?: string;
   }) {
     if (!env.GITHUB_APP_NAME) {
       return;
     }
 
-    const attempt = await prisma.gitHubAppAuthorizationAttempt.create({
-      data: {
-        userId,
-        redirectTo,
-      },
-    });
+    const attempt =
+      await this.#prismaClient.gitHubAppAuthorizationAttempt.create({
+        data: {
+          userId,
+          redirectTo,
+          authorizationId,
+        },
+      });
 
     return `https://github.com/apps/${env.GITHUB_APP_NAME}/installations/new?state=${attempt.id}`;
   }

@@ -7,7 +7,7 @@ import { Response } from "@remix-run/node"; // or cloudflare/deno
 import type { EntryContext, Headers } from "@remix-run/node"; // or cloudflare/deno
 import isbot from "isbot";
 
-const ABORT_DELAY = 5000;
+const ABORT_DELAY = 30000;
 
 export default function handleRequest(
   request: Request,

@@ -7,6 +7,7 @@ import { requireUserId } from "~/services/session.server";
 const ParamSchema = z.object({
   state: z.string(),
   installation_id: z.string(),
+  setup_action: z.enum(["install", "update"]),
 });
 
 export async function loader({ request }: LoaderArgs) {

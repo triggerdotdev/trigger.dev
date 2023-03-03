@@ -6,12 +6,13 @@ import { requireUserId } from "~/services/session.server";
 
 const SearchParamsSchema = z.object({
   redirectTo: z.string().default("/"),
+  authorizationId: z.string().optional(),
 });
 
 export async function loader({ request, params }: LoaderArgs) {
   const userId = await requireUserId(request);
   const url = new URL(request.url);
-  const { redirectTo } = SearchParamsSchema.parse(
+  const { redirectTo, authorizationId } = SearchParamsSchema.parse(
     Object.fromEntries(url.searchParams.entries())
   );
 
@@ -20,6 +21,7 @@ export async function loader({ request, params }: LoaderArgs) {
   const location = await service.call({
     userId,
     redirectTo,
+    authorizationId,
   });
 
   return redirect(location ?? `/`);

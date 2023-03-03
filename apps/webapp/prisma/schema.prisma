@@ -570,6 +570,9 @@ model GitHubAppAuthorizationAttempt {
   userId     String
   redirectTo String @default("/")
 
+  authorization   GitHubAppAuthorization? @relation(fields: [authorizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  authorizationId String?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @default(now()) @updatedAt
 }
@@ -592,11 +595,15 @@ model GitHubAppAuthorization {
   htmlUrl             String
   events              String[]
 
+  installationAccessToken          String?
+  installationAccessTokenExpiresAt DateTime?
+
   organizationTemplates OrganizationTemplate[]
   repositories          GitHubRepository[]
 
-  createdAt DateTime @default(now())
-  updatedAt DateTime @default(now()) @updatedAt
+  createdAt                     DateTime                        @default(now())
+  updatedAt                     DateTime                        @default(now()) @updatedAt
+  GitHubAppAuthorizationAttempt GitHubAppAuthorizationAttempt[]
 }
 
 enum GitHubAccountType {

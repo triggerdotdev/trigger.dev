@@ -103,33 +103,95 @@ export async function getAppInstallation({
   return await response.json();
 }
 
-export async function getOAuthAccessToken({
-  code,
-  state,
-}: {
-  code: string;
-  state: string;
-}) {
-  const response = await fetch("https://github.com/login/oauth/access_token", {
+type CreateInstallationAccessTokenEndpoint =
+  Endpoints["POST /app/installations/{installation_id}/access_tokens"];
+
+export type CreateInstallationAccessTokenResponse =
+  CreateInstallationAccessTokenEndpoint["response"]["data"];
+
+export async function createInstallationAccessToken(
+  url: string
+): Promise<CreateInstallationAccessTokenResponse> {
+  const jwt = createSignedGitHubAppJWT();
+
+  const response = await fetch(url, {
     method: "POST",
     headers: {
-      Accept: "application/json",
+      Accept: "application/vnd.github.v3+json",
+      Authorization: `Bearer ${jwt}`,
     },
-    body: JSON.stringify({
-      client_id: env.GITHUB_APP_CLIENT_ID,
-      client_secret: env.GITHUB_APP_CLIENT_SECRET,
-      code,
-      state,
-    }),
   });
 
   if (!response.ok) {
-    throw new Error(`Failed to get OAuth access token: ${response.statusText}`);
+    throw new Error(
+      `Failed to create access token for installation: ${response.statusText}`
+    );
   }
 
-  const { access_token, token_type } = await response.json();
+  return await response.json();
+}
 
-  return { accessToken: access_token, tokenType: token_type };
+export type GetInstallationRepositoriesEndpoint =
+  Endpoints["GET /installation/repositories"];
+
+export type GetInstallationRepositoriesResponse =
+  GetInstallationRepositoriesEndpoint["response"]["data"];
+
+export async function getInstallationRepositories(
+  token: string
+): Promise<GetInstallationRepositoriesResponse["repositories"]> {
+  // Continuously fetch pages until we have all repositories
+  let page = 1;
+  const perPage = 100;
+
+  const repositories: GetInstallationRepositoriesResponse["repositories"] = [];
+
+  while (true) {
+    const response = await getInstallationRepositoriesPage(
+      token,
+      page,
+      perPage
+    );
+
+    console.log(
+      `Fetched page ${page} of repositories, total_count = ${response.total_count}, repositories.length = ${response.repositories.length}`
+    );
+
+    repositories.push(...response.repositories);
+
+    if (response.repositories.length < perPage) {
+      break;
+    }
+
+    page++;
+  }
+
+  return repositories;
+}
+
+async function getInstallationRepositoriesPage(
+  token: string,
+  page = 1,
+  perPage = 100
+): Promise<GetInstallationRepositoriesResponse> {
+  const response = await fetch(
+    `https://api.github.com/installation/repositories?per_page=${perPage}&page=${page}`,
+    {
+      method: "GET",
+      headers: {
+        Authorization: `token ${token}`,
+        Accept: "application/vnd.github.v3+json",
+      },
+    }
+  );
+
+  if (!response.ok) {
+    throw new Error(
+      `Failed to get installation repositories: ${response.statusText}`
+    );
+  }
+
+  return await response.json();
 }
 
 export const AccountSchema = z.object({
