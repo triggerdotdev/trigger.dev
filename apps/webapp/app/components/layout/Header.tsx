@@ -16,16 +16,16 @@ export function Header({ children }: HeaderProps) {
   const user = useOptionalUser();
 
   return (
-    <div className="flex w-full gap-2 items-center border-b border-slate-800 bg-slate-950 py-1 pl-4 pr-3">
-      <Link to="/" aria-label="Trigger" className="flex shrink-0 mr-2 w-28">
+    <div className="flex w-full items-center gap-2 border-b border-slate-800 bg-slate-950 py-1 pl-4 pr-3">
+      <Link to="/" aria-label="Trigger" className="mr-2 flex w-28 shrink-0">
         <Logo className="" />
       </Link>
-      <OrganizationMenu />
-      <WorkflowMenu />
-      <EnvironmentMenu />
-
+      <div className="hidden items-center sm:flex">
+        <OrganizationMenu />
+        <WorkflowMenu />
+        <EnvironmentMenu />
+      </div>
       <div className="flex flex-1 justify-center">{children}</div>
-
       <div className="flex items-center gap-4">
         <TertiaryA href="https://docs.trigger.dev" target="_blank">
           <DocumentTextIcon className="h-5 w-5" />
