@@ -484,6 +484,10 @@ const taskQueueCatalog = {
     data: z.object({ id: z.number() }),
     properties: z.object({}),
   },
+  GITHUB_APP_INSTALLATION_CREATED: {
+    data: z.object({ id: z.string() }),
+    properties: z.object({}),
+  },
   ORGANIZATION_CREATED: {
     data: z.object({ id: z.string() }),
     properties: z.object({}),
@@ -838,6 +842,18 @@ function createTaskQueue() {
             installationId: data.id,
           },
         });
+
+        return true;
+      },
+      GITHUB_APP_INSTALLATION_CREATED: async (
+        id,
+        data,
+        properties,
+        attributes
+      ) => {
+        if (attributes.redeliveryCount >= 4) {
+          return true;
+        }
 
         return true;
       },

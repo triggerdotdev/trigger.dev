@@ -1,6 +1,7 @@
 import type { PrismaClient } from "~/db.server";
 import { prisma } from "~/db.server";
 import { getAppInstallation } from "~/services/github/githubApp.server";
+import { taskQueue } from "../messageBroker.server";
 
 export class AppInstallationCallback {
   #prismaClient: PrismaClient;
@@ -35,31 +36,36 @@ export class AppInstallationCallback {
       return;
     }
 
-    await this.#prismaClient.gitHubAppAuthorization.create({
-      data: {
-        user: {
-          connect: {
-            id: attempt.userId,
+    const authorization =
+      await this.#prismaClient.gitHubAppAuthorization.create({
+        data: {
+          user: {
+            connect: {
+              id: attempt.userId,
+            },
           },
+          installationId: installation.id,
+          account: installation.account,
+          accountName: installation.account.login,
+          permissions: installation.permissions,
+          repositorySelection: installation.repository_selection,
+          accessTokensUrl: installation.access_tokens_url,
+          repositoriesUrl: installation.repositories_url,
+          htmlUrl: installation.html_url,
+          events: installation.events,
+          accountType:
+            installation.account?.type === "User" ? "USER" : "ORGANIZATION",
         },
-        installationId: installation.id,
-        account: installation.account,
-        accountName: installation.account.login,
-        permissions: installation.permissions,
-        repositorySelection: installation.repository_selection,
-        accessTokensUrl: installation.access_tokens_url,
-        repositoriesUrl: installation.repositories_url,
-        htmlUrl: installation.html_url,
-        events: installation.events,
-        accountType:
-          installation.account?.type === "User" ? "USER" : "ORGANIZATION",
-      },
-    });
+      });
 
     await this.#prismaClient.gitHubAppAuthorizationAttempt.delete({
       where: {
         id: attempt.id,
       },
+    });
+
+    await taskQueue.publish("GITHUB_APP_INSTALLATION_CREATED", {
+      id: authorization.id,
     });
 
     return attempt.redirectTo;
