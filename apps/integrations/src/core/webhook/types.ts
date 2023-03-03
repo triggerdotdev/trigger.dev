@@ -76,6 +76,7 @@ export interface WebhookSpecSubscribeAutomatic {
 }
 
 export type WebhookSubscriptionRequest = {
+  webhookId: string;
   credentials?: AuthCredentials;
   callbackUrl: string;
   events: string[];

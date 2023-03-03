@@ -14,64 +14,61 @@ describe("typeform.webhooks", async () => {
       throw new Error("Invalid subscription type");
 
     const nockDone = await startNock("typeform.webhook.subscribe");
-    try {
-      const result = await subscription.subscribe({
-        callbackUrl: "https://example.com",
-        events: ["form_response"],
-        secret: "123456",
-        inputData: {
-          form_id: "NclFXN1d",
-          tag: "myTag",
-        },
-        credentials: {
-          type: "api_key",
-          name: "accessToken",
-          api_key: accessToken,
-          scopes: ["webhooks:write"],
-        },
-      });
+    const result = await subscription.subscribe({
+      webhookId: "abcdefghijklmnopqrstuvwxyz",
+      callbackUrl: "https://example.com",
+      events: ["form_response"],
+      secret: "123456",
+      inputData: {
+        form_id: "NclFXN1d",
+      },
+      credentials: {
+        type: "api_key",
+        name: "accessToken",
+        api_key: accessToken,
+        scopes: ["webhooks:write"],
+      },
+    });
 
-      expect(result.success).toEqual(true);
-      expect(result).toMatchInlineSnapshot(`
-        {
-          "callbackUrl": "https://example.com",
-          "data": {
-            "created_at": "2023-03-02T13:32:00.154368Z",
-            "enabled": true,
-            "form_id": "NclFXN1d",
-            "id": "01GTH8BG8S4KK1XW38SNDN1SRV",
-            "secret": "123456",
-            "tag": "myTag",
-            "updated_at": "2023-03-02T15:08:01.697884Z",
-            "url": "https://example.com",
-            "verify_ssl": true,
-          },
-          "events": [
-            "form_response",
-          ],
-          "headers": {
-            "access-control-allow-headers": "X-Typeform-Key, Content-Type, Authorization, Typeform-Version, typeform-app",
-            "access-control-allow-methods": "GET, OPTIONS, POST, PUT, PATCH, DELETE",
-            "access-control-expose-headers": "Location, X-Request-Id",
-            "connection": "close",
-            "content-length": "236",
-            "content-type": "application/json; charset=UTF-8",
-            "date": "Thu, 02 Mar 2023 15:08:01 GMT",
-            "server": "istio-envoy",
-            "set-cookie": "AWSALBTG=XZsaxHEp0o9b5mG9n0A3X/wO9cNOtnbHMjapJIb1hdKGJ8qN0ifzSuUQKngIMOP77n/x5dT/3Q7pq0zThx8UEAFbt3ViEgrPGAHfvrC1BgSfUZSTPgKF12cM8jkrY7TN9VYzbo2XYq6rO6fUdVmbmaODWu22sXeAXENcKFLf1Vxk; Expires=Thu, 09 Mar 2023 15:08:01 GMT; Path=/, AWSALBTGCORS=XZsaxHEp0o9b5mG9n0A3X/wO9cNOtnbHMjapJIb1hdKGJ8qN0ifzSuUQKngIMOP77n/x5dT/3Q7pq0zThx8UEAFbt3ViEgrPGAHfvrC1BgSfUZSTPgKF12cM8jkrY7TN9VYzbo2XYq6rO6fUdVmbmaODWu22sXeAXENcKFLf1Vxk; Expires=Thu, 09 Mar 2023 15:08:01 GMT; Path=/; SameSite=None; Secure",
-            "strict-transport-security": "max-age=63072000; includeSubDomains",
-            "x-envoy-upstream-service-time": "14",
-          },
+    console.log(result);
+
+    expect(result.success).toEqual(true);
+    expect(result).toMatchInlineSnapshot(`
+      {
+        "callbackUrl": "https://example.com",
+        "data": {
+          "created_at": "2023-03-03T16:43:11.537925Z",
+          "enabled": true,
+          "form_id": "NclFXN1d",
+          "id": "01GTM5P9SHVPWH626RX1HZ2ZRR",
           "secret": "123456",
-          "status": 200,
-          "success": true,
-        }
-      `);
-      stopNock(nockDone);
-    } catch (e) {
-      console.error(e);
-      expect(true).toBe(false);
-    }
+          "tag": "abcdefghijklmnopqrstuvwxyz",
+          "updated_at": "2023-03-03T16:43:11.537925Z",
+          "url": "https://example.com",
+          "verify_ssl": true,
+        },
+        "events": [
+          "form_response",
+        ],
+        "headers": {
+          "access-control-allow-headers": "X-Typeform-Key, Content-Type, Authorization, Typeform-Version, typeform-app",
+          "access-control-allow-methods": "GET, OPTIONS, POST, PUT, PATCH, DELETE",
+          "access-control-expose-headers": "Location, X-Request-Id",
+          "connection": "close",
+          "content-length": "257",
+          "content-type": "application/json; charset=UTF-8",
+          "date": "Fri, 03 Mar 2023 16:43:11 GMT",
+          "server": "istio-envoy",
+          "set-cookie": "AWSALBTG=Y11vNY5M69UbXGI3Morm47RBczox072FvVPkuZwkeF3R/wN2w5GHZG76HnQeb9WAwNjzFZAcEn8PfOtDaNysQXS59YP1aCwW3mmsEfP84BTbD5YY6ud89VOIsc+ycvhCA44kyU8BjscMCdRLGjhOCETiAJ92LAABl3wohYQ/XWM+; Expires=Fri, 10 Mar 2023 16:43:11 GMT; Path=/, AWSALBTGCORS=Y11vNY5M69UbXGI3Morm47RBczox072FvVPkuZwkeF3R/wN2w5GHZG76HnQeb9WAwNjzFZAcEn8PfOtDaNysQXS59YP1aCwW3mmsEfP84BTbD5YY6ud89VOIsc+ycvhCA44kyU8BjscMCdRLGjhOCETiAJ92LAABl3wohYQ/XWM+; Expires=Fri, 10 Mar 2023 16:43:11 GMT; Path=/; SameSite=None; Secure",
+          "strict-transport-security": "max-age=63072000; includeSubDomains",
+          "x-envoy-upstream-service-time": "15",
+        },
+        "secret": "123456",
+        "status": 200,
+        "success": true,
+      }
+    `);
+    stopNock(nockDone);
   });
 
   test("receiving (correct signature)", async () => {

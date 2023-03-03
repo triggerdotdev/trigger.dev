@@ -4,7 +4,7 @@ import { WebhookSpec } from "core/webhook/types";
 
 const createEndpoint: EndpointSpec = {
   method: "PUT",
-  path: "/forms/{form_id}/webhooks/{tag}",
+  path: "/forms/{form_id}/webhooks/{webhookId}",
   metadata: {
     name: "Create webhook",
     description: "Create a webhook for a form",
@@ -27,7 +27,7 @@ const createEndpoint: EndpointSpec = {
       in: "path",
     },
     {
-      name: "tag",
+      name: "webhookId",
       description: "The webhook tag",
       required: true,
       schema: {

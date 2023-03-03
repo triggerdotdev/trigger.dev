@@ -55,6 +55,7 @@ export function makeWebhook(input: {
     case "automatic": {
       const subscribe = async (config: WebhookSubscriptionRequest) => {
         const result = await subscribeToWebhook({
+          id: config.webhookId,
           baseUrl,
           authentication,
           webhook: spec,
@@ -149,6 +150,7 @@ export function makeWebhook(input: {
 }
 
 async function subscribeToWebhook({
+  id,
   baseUrl,
   authentication,
   webhook,
@@ -158,6 +160,7 @@ async function subscribeToWebhook({
   secret,
   data,
 }: {
+  id: string;
   baseUrl: string;
   authentication: IntegrationAuthentication;
   webhook: WebhookSpec;
@@ -180,6 +183,7 @@ async function subscribeToWebhook({
         {
           credentials,
           parameters: {
+            webhookId: id,
             callbackUrl,
             events,
             secret,
