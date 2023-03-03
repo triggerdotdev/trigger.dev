@@ -3,6 +3,7 @@ import { LockClosedIcon, LockOpenIcon } from "@heroicons/react/24/outline";
 import { Await, Form, useLoaderData } from "@remix-run/react";
 import type { LoaderArgs } from "@remix-run/server-runtime";
 import { defer } from "@remix-run/server-runtime";
+import classNames from "classnames";
 import { Suspense } from "react";
 import invariant from "tiny-invariant";
 import { OctoKitty } from "~/components/GitHubLoginButton";
@@ -60,18 +61,24 @@ export default function Page() {
                         <ul>
                           {repos.map((repo) => (
                             <li
-                              key={repo.id}
-                              className="flex items-center justify-between gap-2"
+                              key={repo.repository.id}
+                              className={classNames(
+                                "flex items-center justify-between gap-2",
+                                repo.status === "relevant"
+                                  ? "bg-blue-500 text-white"
+                                  : "text-slate-400"
+                              )}
                             >
                               <a
-                                href={repo.html_url}
+                                href={repo.repository.html_url}
                                 target="_blank"
                                 rel="noreferrer"
                               >
-                                {repo.full_name}#{repo.default_branch}
+                                {repo.repository.full_name}#
+                                {repo.repository.default_branch}
                               </a>
                               <span>
-                                {repo.private ? (
+                                {repo.repository.private ? (
                                   <LockClosedIcon className="h-4 w-4 text-white" />
                                 ) : (
                                   <LockOpenIcon className="h-4 w-4 text-white" />

@@ -1,9 +1,19 @@
 import type { GitHubAppAuthorization } from ".prisma/client";
 import type { PrismaClient } from "~/db.server";
 import { prisma } from "~/db.server";
+import { getRepositoryFromMetadata } from "~/models/workflow.server";
 import type { CreateInstallationAccessTokenResponse } from "~/services/github/githubApp.server";
 import { getInstallationRepositories } from "~/services/github/githubApp.server";
 import { refreshInstallationAccessToken } from "~/services/github/refreshInstallationAccessToken.server";
+
+export type InstallationRepository = NonNullable<
+  CreateInstallationAccessTokenResponse["repositories"]
+>[number];
+
+export type RepositoryWithStatus = {
+  repository: InstallationRepository;
+  status: "relevant" | "unknown";
+};
 
 export class NewProjectPresenter {
   #prismaClient: PrismaClient;
@@ -22,8 +32,15 @@ export class NewProjectPresenter {
         },
       });
 
-    const repositories =
-      this.#findRepositoriesForAuthorizations(appAuthorizations);
+    const relevantRepositories =
+      await this.#gatherRepositoriesFromWorkflowsInOrganization(
+        organizationSlug
+      );
+
+    const repositories = this.#findRepositoriesForAuthorizations(
+      appAuthorizations,
+      relevantRepositories
+    );
 
     return {
       appAuthorizations,
@@ -33,10 +50,10 @@ export class NewProjectPresenter {
   }
 
   async #findRepositoriesForAuthorizations(
-    authorizations: GitHubAppAuthorization[]
-  ) {
-    const repositories: CreateInstallationAccessTokenResponse["repositories"] =
-      [];
+    authorizations: GitHubAppAuthorization[],
+    relevantRepositories: string[] = []
+  ): Promise<Array<RepositoryWithStatus>> {
+    const repositories: Array<RepositoryWithStatus> = [];
 
     for (const authorization of authorizations) {
       const validAuthorization = await refreshInstallationAccessToken(
@@ -47,20 +64,61 @@ export class NewProjectPresenter {
         validAuthorization.installationAccessToken
       );
 
-      repositories.push(...installationRepositories);
+      const repositoriesWithStatus = installationRepositories.map(
+        (repository) => {
+          const status = relevantRepositories.includes(repository.full_name)
+            ? ("relevant" as const)
+            : ("unknown" as const);
+
+          return {
+            repository,
+            status,
+          };
+        }
+      );
+
+      repositories.push(...repositoriesWithStatus);
     }
 
-    // sorted by pushed at desc
+    // Sort by the relevant repositories first, then by the most recently updated
     return repositories.sort((a, b) => {
-      if (!a.pushed_at) {
-        return 1;
-      }
-
-      if (!b.pushed_at) {
+      if (a.status === "relevant" && b.status === "unknown") {
         return -1;
-      }
+      } else if (a.status === "unknown" && b.status === "relevant") {
+        return 1;
+      } else {
+        if (!a.repository.pushed_at) {
+          return 1;
+        }
 
-      return new Date(b.pushed_at).getTime() - new Date(a.pushed_at).getTime();
+        if (!b.repository.pushed_at) {
+          return -1;
+        }
+
+        return (
+          new Date(b.repository.pushed_at).getTime() -
+          new Date(a.repository.pushed_at).getTime()
+        );
+      }
     });
+  }
+
+  async #gatherRepositoriesFromWorkflowsInOrganization(
+    organizationSlug: string
+  ) {
+    const workflows = await this.#prismaClient.workflow.findMany({
+      where: {
+        organization: {
+          slug: organizationSlug,
+        },
+      },
+      select: {
+        metadata: true,
+      },
+    });
+
+    return workflows
+      .map((workflow) => getRepositoryFromMetadata(workflow.metadata))
+      .filter(Boolean);
   }
 }
