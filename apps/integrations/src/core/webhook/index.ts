@@ -56,6 +56,13 @@ export function makeWebhook(input: {
   switch (input.subscription.type) {
     case "automatic": {
       const subscribe = async (config: WebhookSubscriptionRequest) => {
+        if (input.subscription.requiresSecret && !config.secret) {
+          return {
+            success: false as const,
+            error: "Secret is required",
+          };
+        }
+
         const result = await subscribeToWebhook({
           id: config.webhookId,
           baseUrl,
@@ -76,6 +83,7 @@ export function makeWebhook(input: {
 
       subscription = {
         type: "automatic",
+        requiresSecret: input.subscription.requiresSecret,
         subscribe: subscribe,
       };
       break;

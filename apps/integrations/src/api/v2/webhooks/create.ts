@@ -13,21 +13,25 @@ export async function handleCreateWebhook(req: Request, res: Response) {
       success: false,
       error: {
         code: "bad_body",
-        message: parsedBody.error.message,
+        message: parsedBody.error.toString(),
       },
     };
     res.status(400).json(badBodyResponse);
     return;
   }
 
-  const subscribeToWebhook = new SubscribeToWebhook();
-  const result = await subscribeToWebhook.call(parsedBody.data);
+  try {
+    const subscribeToWebhook = new SubscribeToWebhook();
+    const result = await subscribeToWebhook.call(parsedBody.data);
 
-  if (result.success) {
-    res.status(201).json(result);
+    if (result.success) {
+      res.status(201).json(result);
+      return;
+    }
+
+    res.status(400).send(result);
     return;
+  } catch (error) {
+    res.status(500).json(error);
   }
-
-  res.status(400).send(result);
-  return;
 }

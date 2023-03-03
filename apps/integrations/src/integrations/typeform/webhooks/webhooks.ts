@@ -40,8 +40,8 @@ const webhook = makeWebhook({
   },
   events: [formResponseEvent],
   subscription: {
-    requiresSecret: true,
     type: "automatic",
+    requiresSecret: true,
   },
   preProcess: async (data) => {
     if (data.secret) {

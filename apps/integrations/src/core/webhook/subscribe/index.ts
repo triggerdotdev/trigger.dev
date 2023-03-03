@@ -66,7 +66,9 @@ export class SubscribeToWebhook {
     }
 
     //the key and consumerId are used to identify the webhook
-    const key = `${service}-${event.name}-${event.createKey(input.data)}`;
+    const key = `${service.service}-${event.name}-${event.createKey(
+      input.data
+    )}`;
 
     //is there an existing webhook?
     const existingWebhookRow = await this.#getWebhookRow({
