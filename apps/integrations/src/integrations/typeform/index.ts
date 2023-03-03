@@ -1,5 +1,6 @@
 import { Service } from "core/service/types";
 import { authentication } from "./authentication";
+import { webhooks } from "./webhooks/webhooks";
 
 export const typeform: Service = {
   name: "Typeform",
@@ -8,5 +9,6 @@ export const typeform: Service = {
   baseUrl: "https://api.typeform.com",
   live: true,
   authentication,
+  webhooks,
   retryableStatusCodes: [408, 429, 500, 502, 503, 504],
 };
