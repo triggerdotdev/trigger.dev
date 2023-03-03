@@ -29,7 +29,6 @@ export type WebhookSpec = {
 export type WebhookMetadata = {
   name: string;
   description: string;
-  displayProperties: DisplayProperties;
   externalDocs?: ExternalDocs;
   tags: string[];
 };
