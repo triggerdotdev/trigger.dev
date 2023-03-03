@@ -10,7 +10,7 @@ const ServiceSchema = z.object({
     connectionId: z.string(),
   }),
   data: z.record(z.any()),
-  events: z.array(z.string()),
+  eventName: z.string(),
 });
 
 const GenericSchema = z.object({
@@ -29,6 +29,9 @@ export const SubscribeInputSchema = z.discriminatedUnion("type", [
   ServiceSchema,
   GenericSchema,
 ]);
+
+export type SubscribeServiceInput = z.infer<typeof ServiceSchema>;
+export type SubscribeGenericInput = z.infer<typeof GenericSchema>;
 
 export type SubscribeInput = z.infer<typeof SubscribeInputSchema>;
 
