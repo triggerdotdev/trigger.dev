@@ -1,6 +1,5 @@
-import type { Prisma, Cache } from ".prisma/client";
-import { prisma } from "./db.server";
 import { CacheService } from "core/cache/types";
+import { prisma } from "../db/db.server";
 
 export class PostgresCacheService implements CacheService {
   constructor(private readonly namespace: string) {}
