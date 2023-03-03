@@ -8,6 +8,5 @@ export const typeform: Service = {
   baseUrl: "https://api.typeform.com",
   live: true,
   authentication,
-  actions: {},
   retryableStatusCodes: [408, 429, 500, 502, 503, 504],
 };

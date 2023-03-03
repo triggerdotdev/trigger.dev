@@ -8,6 +8,6 @@ export type Service = {
   baseUrl: string;
   live: boolean;
   authentication: IntegrationAuthentication;
-  actions: Record<string, Action>;
+  actions?: Record<string, Action>;
   retryableStatusCodes: number[];
 };

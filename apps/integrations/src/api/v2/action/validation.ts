@@ -30,6 +30,18 @@ export function getServiceAction(
     };
   }
 
+  if (!matchingService.actions) {
+    return {
+      success: false,
+      error: {
+        type: "missing_action",
+        message: "Action not found",
+        service,
+        action,
+      },
+    };
+  }
+
   const matchingAction = Object.values(matchingService.actions).find(
     (a) => a.name === action
   );
