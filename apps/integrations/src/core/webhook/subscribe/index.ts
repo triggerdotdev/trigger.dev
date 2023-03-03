@@ -3,6 +3,7 @@ import {
   SubscribeInput,
   SubscribeResult,
   SubscribeServiceInput,
+  WebhookAuthentication,
 } from "core/webhook/subscribe/types";
 import { prisma, PrismaClient } from "db/db.server";
 import { catalog } from "integrations/catalog";
@@ -113,36 +114,33 @@ export class SubscribeToWebhook {
 
     switch (webhook.subscription.type) {
       case "manual": {
-        const secret = webhook.subscription.requiresSecret
-          ? crypto.randomBytes(32).toString("hex")
-          : undefined;
-        const newWebhookRow = await this.#prismaClient.webhook.create({
-          data: {
-            type: "SERVICE",
-            status: "READY",
-            consumerId: input.consumerId,
-            key,
-            secret,
-            subscriptionType: "MANUAL",
-            service: input.service,
-            webhookName: webhook.spec.id,
-            authenticationData: input.authentication,
-          },
+        const newWebhookRow = await this.#createManualWebhook({
+          requiresSecret: webhook.subscription.requiresSecret,
+          consumerId: input.consumerId,
+          key,
+          service: input.service,
+          webhookName: webhook.spec.id,
+          authenticationData: input.authentication,
+        });
+        const destination = await this.#createDestination({
+          webhookId: newWebhookRow.id,
+          callbackUrl: input.callbackUrl,
+          data: input.data,
+          eventName: event.name,
         });
 
-        const destination = await this.#prismaClient.destination.create({
-          data: {
-            webhook: {
-              connect: {
-                id: newWebhookRow.id,
-              },
+        return {
+          success: true,
+          result: {
+            type: "service",
+            webhookId: newWebhookRow.id,
+            subscription: {
+              type: "manual",
+              url: webhookUrl(newWebhookRow.id),
+              secret: newWebhookRow.secret ?? undefined,
             },
-            destinationUrl: input.callbackUrl,
-            destinationEvent: event.name,
-            destinationData: input.data,
           },
-        });
-        break;
+        };
       }
       case "automatic": {
         break;
@@ -167,6 +165,39 @@ export class SubscribeToWebhook {
           consumerId,
           key,
         },
+      },
+    });
+  }
+
+  #createManualWebhook({
+    requiresSecret,
+    consumerId,
+    key,
+    service,
+    webhookName,
+    authenticationData,
+  }: {
+    requiresSecret: boolean;
+    consumerId: string;
+    key: string;
+    service: string;
+    webhookName: string;
+    authenticationData: WebhookAuthentication;
+  }) {
+    const secret = requiresSecret
+      ? crypto.randomBytes(32).toString("hex")
+      : undefined;
+    return this.#prismaClient.webhook.create({
+      data: {
+        type: "SERVICE",
+        status: "READY",
+        consumerId,
+        key,
+        secret,
+        subscriptionType: "MANUAL",
+        service,
+        webhookName,
+        authenticationData,
       },
     });
   }

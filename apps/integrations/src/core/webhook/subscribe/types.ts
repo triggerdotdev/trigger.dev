@@ -15,6 +15,8 @@ const AuthenticationSchema = z.discriminatedUnion("type", [
   APIKeySchema,
 ]);
 
+export type WebhookAuthentication = z.infer<typeof AuthenticationSchema>;
+
 const ServiceSchema = z.object({
   type: z.literal("service"),
   consumerId: z.string(),
