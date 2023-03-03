@@ -26,10 +26,19 @@ export function makeWebhook(input: {
     result: WebhookSubscriptionResult
   ) => WebhookSubscriptionResult;
   /** You can verify the payload, or if they do a subscription verification you can respond */
-  preEvent?: (data: WebhookReceiveRequest) => Promise<{
-    processEvents: boolean;
-    response: HTTPResponse;
-  }>;
+  preEvent?: (data: WebhookReceiveRequest) => Promise<
+    | {
+        success: true;
+        processEvents: boolean;
+        response: HTTPResponse;
+      }
+    | {
+        success: false;
+        error: string;
+        processEvents: boolean;
+        response: HTTPResponse;
+      }
+  >;
 }): Webhook {
   const { baseUrl, spec, authentication } = input.data;
 
@@ -53,7 +62,24 @@ export function makeWebhook(input: {
     const preEventResult = await input.preEvent?.(receiveRequest);
     let response: HTTPResponse | undefined = undefined;
     if (preEventResult) {
-      if (!preEventResult.processEvents) return preEventResult;
+      //fail so we return an error
+      if (!preEventResult.success) {
+        return {
+          success: false as const,
+          error: preEventResult.error,
+          response: preEventResult.response,
+        };
+      }
+
+      //we don't want to process any events
+      if (!preEventResult.processEvents) {
+        return {
+          success: true as const,
+          eventResults: [],
+          response: preEventResult.response,
+        };
+      }
+
       response = preEventResult.response;
     }
 
@@ -71,8 +97,6 @@ export function makeWebhook(input: {
       })
     );
 
-    //todo process relevant events
-
     const promises = matchingEvents.map((event) =>
       event.process(receiveRequest)
     );
@@ -80,8 +104,9 @@ export function makeWebhook(input: {
     const results = await Promise.all(promises);
 
     return {
-      response,
+      success: true as const,
       eventResults: results.flat(),
+      response,
     };
   };
 

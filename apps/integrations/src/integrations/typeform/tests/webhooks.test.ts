@@ -69,7 +69,7 @@ describe("typeform.webhooks", async () => {
     }
   });
 
-  test("receiving", async () => {
+  test("receiving (correct signature)", async () => {
     const accessToken = authToken();
 
     //explicitly pass in a payload (this is hardcoded, not from a request)
@@ -96,7 +96,11 @@ describe("typeform.webhooks", async () => {
         request: {
           method: "POST",
           searchParams: new URLSearchParams(),
-          headers: {},
+          headers: {
+            "content-type": "application/json",
+            "typeform-signature":
+              "sha256=VsvwNrh0fT5VWF+05H3azXZXJyFkhHTtONMxIVm6PZ4=",
+          },
           body: events.formResponse.examples[0],
           rawBody: Buffer.from(JSON.stringify(events.formResponse.examples[0])),
         },
@@ -385,6 +389,60 @@ describe("typeform.webhooks", async () => {
             "headers": {},
             "status": 200,
           },
+          "success": true,
+        }
+      `);
+    } catch (e) {
+      console.error(e);
+      expect(true).toBe(false);
+    }
+  });
+
+  test("receiving (bad signature)", async () => {
+    const accessToken = authToken();
+
+    //explicitly pass in a payload (this is hardcoded, not from a request)
+    try {
+      const result = await webhooks.formResponse.receive({
+        credentials: {
+          type: "api_key",
+          name: "accessToken",
+          api_key: accessToken,
+          scopes: ["webhooks:write"],
+        },
+        secret: "123",
+        subscriptionData: {
+          id: "01GTH8BG8S4KK1XW38SNDN1SRV",
+          form_id: "NclFXN1d",
+          tag: "myTag",
+          url: "https://example.com",
+          enabled: true,
+          verify_ssl: true,
+          secret: "123456",
+          created_at: "2023-03-02T13:32:00.154368Z",
+          updated_at: "2023-03-02T15:08:01.697884Z",
+        },
+        request: {
+          method: "POST",
+          searchParams: new URLSearchParams(),
+          headers: {
+            "content-type": "application/json",
+            "typeform-signature":
+              "sha256=VsvwNrh0fT5VWF+05H3azXZXJyFkhHTtONMxIVm6PZ4=",
+          },
+          body: events.formResponse.examples[0],
+          rawBody: Buffer.from(JSON.stringify(events.formResponse.examples[0])),
+        },
+      });
+
+      expect(result).toMatchInlineSnapshot(`
+        {
+          "error": "Invalid signature",
+          "response": {
+            "headers": {},
+            "status": 401,
+          },
+          "success": false,
         }
       `);
     } catch (e) {

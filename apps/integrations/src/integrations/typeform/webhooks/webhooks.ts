@@ -4,6 +4,7 @@ import { authentication } from "../authentication";
 import { example } from "./examples";
 import { formEventSchema } from "./schemas";
 import { formResponse } from "./specs";
+import crypto from "node:crypto";
 
 const baseUrl = "https://api.typeform.com";
 
@@ -41,6 +42,36 @@ const webhook = makeWebhook({
     ...result,
     secret: "super-secret",
   }),
+  preEvent: async (data) => {
+    if (data.secret) {
+      const signatureHeader = data.request.headers["typeform-signature"];
+      const hash = crypto
+        .createHmac("sha256", data.secret)
+        .update(data.request.rawBody)
+        .digest("base64");
+
+      if (signatureHeader !== `sha256=${hash}`) {
+        return {
+          success: false,
+          processEvents: false,
+          error: "Invalid signature",
+          response: {
+            status: 401,
+            headers: {},
+          },
+        };
+      }
+    }
+
+    return {
+      success: true,
+      processEvents: true,
+      response: {
+        status: 200,
+        headers: {},
+      },
+    };
+  },
 });
 
 export const webhooks = { formResponse: webhook };

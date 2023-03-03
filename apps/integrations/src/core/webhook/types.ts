@@ -7,6 +7,18 @@ import { EndpointSpec } from "core/endpoint/types";
 import { HTTPMethod, HTTPResponse } from "core/request/types";
 import { JSONSchema } from "core/schemas/types";
 
+export type WebhookResult =
+  | {
+      success: true;
+      eventResults: WebhookEventResult[];
+      response: HTTPResponse;
+    }
+  | {
+      success: false;
+      error: string;
+      response: HTTPResponse;
+    };
+
 export type Webhook = {
   baseUrl: string;
   spec: WebhookSpec;
@@ -15,9 +27,7 @@ export type Webhook = {
   subscribe: (
     data: WebhookSubscriptionRequest
   ) => Promise<WebhookSubscriptionResult>;
-  receive: (
-    data: WebhookReceiveRequest
-  ) => Promise<{ eventResults?: WebhookEventResult[]; response: HTTPResponse }>;
+  receive: (data: WebhookReceiveRequest) => Promise<WebhookResult>;
 };
 
 export type WebhookSpec = {
