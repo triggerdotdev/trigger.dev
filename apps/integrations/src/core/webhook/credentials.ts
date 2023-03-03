@@ -2,11 +2,11 @@ import { AuthCredentials } from "core/authentication/types";
 import { WebhookAuthentication } from "./subscribe/types";
 import { Service } from "core/service/types";
 
-let cachedClient: any;
+let cachedClient: any = undefined;
 async function getNangoClient() {
   const Nango = (await import("@nangohq/node")).Nango;
 
-  if (cachedClient) {
+  if (cachedClient !== undefined) {
     return cachedClient as InstanceType<typeof Nango>;
   }
 
@@ -16,6 +16,7 @@ async function getNangoClient() {
   });
   return cachedClient as InstanceType<typeof Nango>;
 }
+getNangoClient();
 
 export async function getCredentials({
   service,
@@ -61,10 +62,10 @@ export async function getCredentials({
     }
     case "api-key": {
       const serviceAuthentication = Object.entries(service.authentication).find(
-        ([name, info]) => info.type === "oauth2"
+        ([name, info]) => info.type === "api_key"
       );
       if (!serviceAuthentication) {
-        console.error("Service does not support oauth2");
+        console.error("Service does not support api_key");
         return undefined;
       }
 

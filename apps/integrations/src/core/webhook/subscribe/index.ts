@@ -160,6 +160,16 @@ export class SubscribeToWebhook {
           authentication: input.authentication,
         });
 
+        if (!credentials) {
+          return {
+            success: false,
+            error: {
+              code: "credentials_not_found",
+              message: `Credentials not found`,
+            },
+          };
+        }
+
         const subscriptionResult = await webhook.subscription.subscribe({
           webhookId: newWebhookRow.id,
           callbackUrl: webhookUrl(newWebhookRow.id),
