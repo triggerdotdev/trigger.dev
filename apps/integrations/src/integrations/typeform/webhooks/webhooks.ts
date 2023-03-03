@@ -38,6 +38,9 @@ const webhook = makeWebhook({
     authentication,
   },
   events: [formResponseEvent],
+  subscription: {
+    type: "automatic",
+  },
   preProcess: async (data) => {
     if (data.secret) {
       const signatureHeader = data.request.headers["typeform-signature"];

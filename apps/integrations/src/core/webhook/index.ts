@@ -9,6 +9,7 @@ import {
   WebhookEvent,
   WebhookReceiveRequest,
   WebhookSpec,
+  WebhookSubscription,
   WebhookSubscriptionRequest,
   WebhookSubscriptionResult,
 } from "./types";
@@ -21,10 +22,17 @@ export function makeWebhook(input: {
   };
   /** the events that belong to this webhook */
   events: WebhookEvent[];
-  /** after a subscription you might want to alter the result, e.g. add secret from response */
-  postSubscribe?: (
-    result: WebhookSubscriptionResult
-  ) => WebhookSubscriptionResult;
+  subscription:
+    | {
+        type: "automatic";
+        /** after a subscription you might want to alter the result, e.g. add secret from response */
+        postSubscribe?: (
+          result: WebhookSubscriptionResult
+        ) => WebhookSubscriptionResult;
+      }
+    | {
+        type: "manual";
+      };
   /** You can verify the payload, or if they do a subscription verification you can respond */
   preProcess?: (data: WebhookReceiveRequest) => Promise<
     | {
@@ -42,20 +50,40 @@ export function makeWebhook(input: {
 }): Webhook {
   const { baseUrl, spec, authentication } = input.data;
 
-  const subscribe = async (config: WebhookSubscriptionRequest) => {
-    const result = await subscribeToWebhook({
-      baseUrl,
-      authentication,
-      webhook: spec,
-      credentials: config.credentials,
-      callbackUrl: config.callbackUrl,
-      events: config.events,
-      secret: config.secret,
-      data: config.inputData,
-    });
-    if (!input.postSubscribe) return result;
-    return input.postSubscribe(result);
-  };
+  let subscription: WebhookSubscription;
+  switch (input.subscription.type) {
+    case "automatic": {
+      const subscribe = async (config: WebhookSubscriptionRequest) => {
+        const result = await subscribeToWebhook({
+          baseUrl,
+          authentication,
+          webhook: spec,
+          credentials: config.credentials,
+          callbackUrl: config.callbackUrl,
+          events: config.events,
+          secret: config.secret,
+          data: config.inputData,
+        });
+        //have to do this because TS is dumb because this in a closure
+        if (!("postSubscribe" in input.subscription)) return result;
+
+        if (!input.subscription.postSubscribe) return result;
+        return input.subscription.postSubscribe(result);
+      };
+
+      subscription = {
+        type: "automatic",
+        subscribe: subscribe,
+      };
+      break;
+    }
+    case "manual": {
+      subscription = {
+        type: "manual",
+      };
+      break;
+    }
+  }
 
   const receive = async (receiveRequest: WebhookReceiveRequest) => {
     //verification and early response can happen here
@@ -115,7 +143,7 @@ export function makeWebhook(input: {
     spec: spec,
     authentication: authentication,
     events: input.events,
-    subscribe,
+    subscription,
     receive,
   };
 }

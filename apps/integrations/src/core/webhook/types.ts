@@ -24,10 +24,23 @@ export type Webhook = {
   spec: WebhookSpec;
   authentication: IntegrationAuthentication;
   events: WebhookEvent[];
+  subscription: WebhookSubscription;
+  receive: (data: WebhookReceiveRequest) => Promise<WebhookResult>;
+};
+
+export type WebhookSubscription =
+  | WebhookSubscriptionAutomatic
+  | WebhookSubscriptionManual;
+
+export type WebhookSubscriptionAutomatic = {
+  type: "automatic";
   subscribe: (
     data: WebhookSubscriptionRequest
   ) => Promise<WebhookSubscriptionResult>;
-  receive: (data: WebhookReceiveRequest) => Promise<WebhookResult>;
+};
+
+export type WebhookSubscriptionManual = {
+  type: "manual";
 };
 
 export type WebhookSpec = {

@@ -8,9 +8,14 @@ describe("typeform.webhooks", async () => {
   test("subscribe", async () => {
     const accessToken = authToken();
 
+    const subscription = webhooks.formResponse.subscription;
+    expect(subscription.type).toEqual("automatic");
+    if (subscription.type !== "automatic")
+      throw new Error("Invalid subscription type");
+
     const nockDone = await startNock("typeform.webhook.subscribe");
     try {
-      const result = await webhooks.formResponse.subscribe({
+      const result = await subscription.subscribe({
         callbackUrl: "https://example.com",
         events: ["form_response"],
         secret: "123456",
