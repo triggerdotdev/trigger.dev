@@ -47,7 +47,7 @@ export function WorkflowOnboarding({
               </div>
               <div className="flex h-full w-full flex-col overflow-hidden bg-slate-800 p-5">
                 <div className="grid grid-cols-[minmax(0,_1fr),_4rem,_minmax(0,_1fr)]">
-                  <div className="flex h-full flex-col justify-between">
+                  <div className="flex flex-col justify-between">
                     <Body className="mb-4 text-slate-400">
                       Add Trigger.dev to an existing Node.js repo.
                     </Body>
@@ -59,14 +59,14 @@ export function WorkflowOnboarding({
                       <ArrowTopRightOnSquareIcon className="ml-1 h-4 w-4" />
                     </PrimaryA>
                   </div>
-                  <div className="flex flex-col items-center gap-2">
+                  <div className="grid grid-rows-[minmax(0,_1fr)_1rem_minmax(0,_1fr)] items-center justify-items-center gap-2">
                     <div className="h-full w-px bg-slate-700"></div>
                     <Body size="small" className="uppercase text-slate-600">
                       or
                     </Body>
                     <div className="h-full w-px bg-slate-700"></div>
                   </div>
-                  <div className="flex h-full flex-col justify-between">
+                  <div className="flex flex-col justify-between">
                     <Body className="mb-4 text-slate-400">
                       Setup a new Node.js project ready for Trigger.dev by
                       running this command.
