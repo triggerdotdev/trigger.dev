@@ -32,7 +32,7 @@ export async function handleServices(_req: Request, res: Response) {
 
 function omitExtraInfo(
   service: Service
-): Omit<Service, "actions" | "retryableStatusCodes"> {
-  const { actions, retryableStatusCodes, ...rest } = service;
+): Omit<Service, "actions" | "retryableStatusCodes" | "webhooks"> {
+  const { actions, retryableStatusCodes, webhooks, ...rest } = service;
   return rest;
 }
