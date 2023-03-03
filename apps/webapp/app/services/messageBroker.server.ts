@@ -50,7 +50,6 @@ import { RegisterExternalSource } from "./externalSources/registerExternalSource
 import { CreateFetchRequest } from "./fetches/createFetchRequest.server";
 import { PerformFetchRequest } from "./fetches/performFetchRequest.server";
 import { StartFetchRequest } from "./fetches/startFetchRequest.server";
-import { GithubRepositoryCreated } from "./github/repositoryCreated.server";
 import type { PulsarClient } from "./pulsarClient.server";
 import { createPulsarClient } from "./pulsarClient.server";
 import { CreateIntegrationRequest } from "./requests/createIntegrationRequest.server";
@@ -485,10 +484,6 @@ const taskQueueCatalog = {
     data: z.object({ id: z.number() }),
     properties: z.object({}),
   },
-  GITHUB_APP_REPOSITORY_CREATED: {
-    data: z.object({ id: z.number() }),
-    properties: z.object({}),
-  },
   ORGANIZATION_CREATED: {
     data: z.object({ id: z.string() }),
     properties: z.object({}),
@@ -843,22 +838,6 @@ function createTaskQueue() {
             installationId: data.id,
           },
         });
-
-        return true;
-      },
-      GITHUB_APP_REPOSITORY_CREATED: async (
-        id,
-        data,
-        properties,
-        attributes
-      ) => {
-        if (attributes.redeliveryCount >= 4) {
-          return true;
-        }
-
-        const service = new GithubRepositoryCreated();
-
-        await service.call(data.id);
 
         return true;
       },

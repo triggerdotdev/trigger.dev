@@ -46,17 +46,16 @@ model Organization {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  users                   User[]
-  workflows               Workflow[]
-  environments            RuntimeEnvironment[]
-  apiConnections          APIConnection[]
-  events                  TriggerEvent[]
-  externalSources         ExternalSource[]
-  eventRules              EventRule[]
-  schedulerSources        SchedulerSource[]
-  internalSources         InternalSource[]
-  gitHubAppAuthorizations GitHubAppAuthorization[]
-  templates               OrganizationTemplate[]
+  users            User[]
+  workflows        Workflow[]
+  environments     RuntimeEnvironment[]
+  apiConnections   APIConnection[]
+  events           TriggerEvent[]
+  externalSources  ExternalSource[]
+  eventRules       EventRule[]
+  schedulerSources SchedulerSource[]
+  internalSources  InternalSource[]
+  templates        OrganizationTemplate[]
 }
 
 model APIConnection {
@@ -567,10 +566,12 @@ model FetchResponse {
 }
 
 model GitHubAppAuthorizationAttempt {
-  id             String  @id @default(cuid())
-  userId         String
-  organizationId String
-  templateId     String?
+  id         String @id @default(cuid())
+  userId     String
+  redirectTo String @default("/")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
 }
 
 model GitHubAppAuthorization {
@@ -578,9 +579,6 @@ model GitHubAppAuthorization {
 
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   userId String
-
-  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  organizationId String
 
   accountType GitHubAccountType @default(USER)
   accountName String
@@ -594,16 +592,32 @@ model GitHubAppAuthorization {
   htmlUrl             String
   events              String[]
 
-  token                 String
-  tokenExpiresAt        DateTime
-  refreshToken          String
-  refreshTokenExpiresAt DateTime
   organizationTemplates OrganizationTemplate[]
+  repositories          GitHubRepository[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
 }
 
 enum GitHubAccountType {
   USER
   ORGANIZATION
+}
+
+model GitHubRepository {
+  id String @id @default(cuid())
+
+  name String
+  url  String
+
+  authorization   GitHubAppAuthorization @relation(fields: [authorizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  authorizationId String
+
+  template   Template? @relation(fields: [templateId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  templateId String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 model Template {
@@ -628,6 +642,7 @@ model Template {
   isLive Boolean @default(true)
 
   organizationTemplates OrganizationTemplate[]
+  repositories          GitHubRepository[]
 }
 
 model OrganizationTemplate {

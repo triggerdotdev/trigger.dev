@@ -5,7 +5,6 @@ import { AppInstallationCallback } from "~/services/github/appInstallationCallba
 import { requireUserId } from "~/services/session.server";
 
 const ParamSchema = z.object({
-  code: z.string(),
   state: z.string(),
   installation_id: z.string(),
 });
@@ -29,17 +28,7 @@ export async function loader({ request }: LoaderArgs) {
     throw new Response("Failed to connect to GitHub", { status: 400 });
   }
 
-  const result = await service.call(parsedParams.data);
+  const location = await service.call(parsedParams.data);
 
-  if (result) {
-    const { authorization, templateId } = result;
-
-    return redirect(
-      `/orgs/${authorization.organization.slug}/templates/add${
-        templateId ? `?templateId=${templateId}` : ""
-      }`
-    );
-  } else {
-    return redirect(`/`);
-  }
+  return redirect(location ?? `/`);
 }

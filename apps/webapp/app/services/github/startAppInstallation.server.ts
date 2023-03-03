@@ -11,32 +11,19 @@ export class StartAppInstallation {
 
   public async call({
     userId,
-    organizationSlug,
-    templateId,
+    redirectTo,
   }: {
     userId: string;
-    organizationSlug: string;
-    templateId?: string;
+    redirectTo: string;
   }) {
     if (!env.GITHUB_APP_NAME) {
       return;
     }
 
-    const organization = await this.#prismaClient.organization.findUnique({
-      where: {
-        slug: organizationSlug,
-      },
-    });
-
-    if (!organization) {
-      return;
-    }
-
     const attempt = await prisma.gitHubAppAuthorizationAttempt.create({
       data: {
-        organizationId: organization.id,
         userId,
-        templateId,
+        redirectTo,
       },
     });
 
