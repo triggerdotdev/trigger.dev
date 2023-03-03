@@ -1,12 +1,21 @@
 import { AuthCredentials } from "core/authentication/types";
 import { WebhookAuthentication } from "./subscribe/types";
-import { Nango } from "@nangohq/node";
 import { Service } from "core/service/types";
 
-const nango = new Nango({
-  host: process.env.NANGO_HOST,
-  secretKey: process.env.NANGO_SECRET_KEY,
-});
+let cachedClient: any;
+async function getNangoClient() {
+  const Nango = (await import("@nangohq/node")).Nango;
+
+  if (cachedClient) {
+    return cachedClient as InstanceType<typeof Nango>;
+  }
+
+  cachedClient = new Nango({
+    host: process.env.NANGO_HOST,
+    secretKey: process.env.NANGO_SECRET_KEY,
+  });
+  return cachedClient as InstanceType<typeof Nango>;
+}
 
 export async function getCredentials({
   service,
@@ -18,7 +27,8 @@ export async function getCredentials({
   switch (authentication.type) {
     case "oauth": {
       try {
-        const accessToken = await nango.getToken(
+        const nangoClient = await getNangoClient();
+        const accessToken = await nangoClient.getToken(
           service.service,
           authentication.connectionId
         );
