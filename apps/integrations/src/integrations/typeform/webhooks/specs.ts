@@ -140,6 +140,7 @@ export const formResponse: WebhookSpec = {
   },
   subscribe: {
     type: "automatic",
+    requiresSecret: true,
     create: createEndpoint,
   },
 };

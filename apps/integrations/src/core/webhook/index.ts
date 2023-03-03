@@ -25,6 +25,7 @@ export function makeWebhook(input: {
   subscription:
     | {
         type: "automatic";
+        requiresSecret: boolean;
         /** after a subscription you might want to alter the result, e.g. add secret from response */
         postSubscribe?: (
           result: WebhookSubscriptionResult

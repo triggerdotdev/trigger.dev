@@ -20,6 +20,7 @@
   },
   "dependencies": {
     "@cfworker/json-schema": "^1.12.5",
+    "@nangohq/node": "^0.8.4",
     "@prisma/client": "^4.3.0",
     "@sentry/node": "^7.38.0",
     "ajv": "^8.12.0",

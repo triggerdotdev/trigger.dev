@@ -8,7 +8,8 @@ import {
 import { prisma, PrismaClient } from "db/db.server";
 import { catalog } from "integrations/catalog";
 import crypto from "node:crypto";
-import { webhookUrl } from "./webhooks.db";
+import { getCredentials } from "../credentials";
+import { webhookUrl } from "./utilities";
 
 export class SubscribeToWebhook {
   #prismaClient: PrismaClient;
@@ -143,13 +144,70 @@ export class SubscribeToWebhook {
         };
       }
       case "automatic": {
-        break;
+        const newWebhookRow = await this.#createAutomaticWebhook({
+          requiresSecret: webhook.subscription.requiresSecret,
+          consumerId: input.consumerId,
+          key,
+          service: input.service,
+          webhookName: webhook.spec.id,
+          authenticationData: input.authentication,
+        });
+
+        const credentials = await getCredentials({
+          service,
+          authentication: input.authentication,
+        });
+
+        const subscriptionResult = await webhook.subscription.subscribe({
+          webhookId: newWebhookRow.id,
+          callbackUrl: webhookUrl(newWebhookRow.id),
+          events: [event.name],
+          secret: newWebhookRow.secret ?? undefined,
+          inputData: input.data,
+          credentials,
+        });
+
+        if (!subscriptionResult.success) {
+          return {
+            success: false,
+            error: {
+              code: "subscription_failed",
+              message: subscriptionResult.error,
+            },
+          };
+        }
+
+        //update status of the webhook to READY
+        await this.#prismaClient.webhook.update({
+          where: {
+            id: newWebhookRow.id,
+          },
+          data: {
+            status: "READY",
+            secret: subscriptionResult.secret,
+          },
+        });
+
+        //create destination
+        const destination = await this.#createDestination({
+          webhookId: newWebhookRow.id,
+          callbackUrl: input.callbackUrl,
+          data: input.data,
+          eventName: event.name,
+        });
+
+        return {
+          success: true,
+          result: {
+            type: "service",
+            webhookId: newWebhookRow.id,
+            subscription: {
+              type: "automatic",
+            },
+          },
+        };
       }
     }
-
-    //todo create destination in db
-
-    //todo determine if it's automatic or manual
   }
 
   async #subscribeToGeneric(
@@ -195,6 +253,39 @@ export class SubscribeToWebhook {
         key,
         secret,
         subscriptionType: "MANUAL",
+        service,
+        webhookName,
+        authenticationData,
+      },
+    });
+  }
+
+  #createAutomaticWebhook({
+    requiresSecret,
+    consumerId,
+    key,
+    service,
+    webhookName,
+    authenticationData,
+  }: {
+    requiresSecret: boolean;
+    consumerId: string;
+    key: string;
+    service: string;
+    webhookName: string;
+    authenticationData: WebhookAuthentication;
+  }) {
+    const secret = requiresSecret
+      ? crypto.randomBytes(32).toString("hex")
+      : undefined;
+    return this.#prismaClient.webhook.create({
+      data: {
+        type: "SERVICE",
+        status: "CREATED",
+        consumerId,
+        key,
+        secret,
+        subscriptionType: "AUTOMATIC",
         service,
         webhookName,
         authenticationData,

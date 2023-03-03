@@ -39,6 +39,7 @@ importers:
     specifiers:
       '@apidevtools/json-schema-ref-parser': ^10.1.0
       '@cfworker/json-schema': ^1.12.5
+      '@nangohq/node': ^0.8.4
       '@prisma/client': ^4.3.0
       '@sentry/node': ^7.38.0
       '@types/eslint': ^8.4.6
@@ -82,6 +83,7 @@ importers:
       zod: ^3.20.2
     dependencies:
       '@cfworker/json-schema': 1.12.5
+      '@nangohq/node': 0.8.4
       '@prisma/client': 4.8.1_prisma@4.8.1
       '@sentry/node': 7.39.0
       ajv: 8.12.0

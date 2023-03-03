@@ -34,6 +34,7 @@ export type WebhookSubscription =
 
 export type WebhookSubscriptionAutomatic = {
   type: "automatic";
+  requiresSecret: boolean;
   subscribe: (
     data: WebhookSubscriptionRequest
   ) => Promise<WebhookSubscriptionResult>;
@@ -72,6 +73,7 @@ type WebhookSpecSubscribeManual = {
 
 export interface WebhookSpecSubscribeAutomatic {
   type: "automatic";
+  requiresSecret: boolean;
   create: EndpointSpec;
   //todo delete: EndpointSpec;
 }
