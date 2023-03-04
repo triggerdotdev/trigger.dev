@@ -29,6 +29,9 @@ app.use(
 
 app.use(morgan("combined"));
 
+//receive webhooks, doesn't require authentication
+app.all("/api/v2/webhooks/:webhookId/receive", handleReceivingWebhook);
+
 const checkAuthentication = function (
   req: Request,
   res: Response,
@@ -79,7 +82,6 @@ app.post("/api/v2/:service/action/:action", handleAction);
 
 //webhooks
 app.post("/api/v2/webhooks", handleCreateWebhook);
-app.all("/api/v2/webhooks/:webhookId/receive", handleReceivingWebhook);
 
 //errors
 app.get("/debug-sentry", function mainHandler(req, res) {

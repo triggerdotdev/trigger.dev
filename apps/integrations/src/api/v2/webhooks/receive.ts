@@ -1,21 +1,44 @@
-import { Request, Response } from "express";
+import { HTTPMethod } from "core/request/types";
+import { ReceiveWebhook } from "core/webhook/receive";
 import {
-  SubscribeInputSchema,
-  SubscribeResult,
-} from "core/webhook/subscribe/types";
+  WebhookIncomingRequest,
+  WebhookReceiveRequest,
+} from "core/webhook/types";
+import { Request, Response } from "express";
 
 export async function handleReceivingWebhook(req: Request, res: Response) {
-  const parsedBody = SubscribeInputSchema.safeParse(req.body);
+  const { webhookId } = req.params;
 
-  if (!parsedBody.success) {
-    const badBodyResponse: SubscribeResult = {
-      success: false,
-      error: {
-        code: "bad_body",
-        message: parsedBody.error.toString(),
-      },
-    };
-    res.status(400).json(badBodyResponse);
+  if (!webhookId) {
+    res.status(400).json({ success: false, error: "Missing webhook ID" });
     return;
+  }
+
+  const headers = Object.entries(req.headers)
+    .filter(([key, value]) => value !== undefined)
+    .reduce((acc, [key, value]) => {
+      acc[key] =
+        typeof value === "string" ? (value as string) : value?.join(", ") ?? "";
+      return acc;
+    }, {} as Record<string, string>);
+
+  const request: WebhookIncomingRequest = {
+    method: req.method as HTTPMethod,
+    searchParams: new URLSearchParams(req.url),
+    headers,
+    body: req.body,
+    rawBody: req.rawBody,
+  };
+
+  try {
+    const receiver = new ReceiveWebhook();
+    const result = await receiver.call({ request, webhookId });
+
+    res
+      .writeHead(result.response.status, result.response.headers)
+      .json(result.response.body);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ success: false, error: "Internal server error" });
   }
 }

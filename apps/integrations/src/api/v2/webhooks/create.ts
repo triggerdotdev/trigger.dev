@@ -29,7 +29,7 @@ export async function handleCreateWebhook(req: Request, res: Response) {
       return;
     }
 
-    res.status(400).send(result);
+    res.status(400).json(result);
     return;
   } catch (error) {
     res.status(500).json(error);
