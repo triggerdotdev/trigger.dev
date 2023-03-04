@@ -5,7 +5,78 @@ import type {
   PerformedRequestResponse,
   ServiceMetadata,
 } from "@trigger.dev/integration-sdk";
+import { z } from "zod";
 import { env } from "~/env.server";
+
+type ServiceSubscription = {
+  service: string;
+  type: "service";
+  data: Record<string, any>;
+  consumerId: string;
+  callbackUrl: string;
+  authentication:
+    | {
+        type: "oauth";
+        connectionId: string;
+      }
+    | {
+        type: "api-key";
+        api_key: string;
+      };
+  eventName: string;
+};
+
+type GenericSubscription = {
+  type: "generic";
+  consumerId: string;
+  callbackUrl: string;
+  eventName: string;
+  schema: any;
+  verifyPayload: {
+    enabled: boolean;
+    header?: string;
+  };
+};
+
+export type Subscription = ServiceSubscription | GenericSubscription;
+
+const SubscriptionResponseSchema = z.discriminatedUnion("success", [
+  z.object({
+    success: z.literal(false),
+    error: z.object({
+      code: z.string(),
+      message: z.string(),
+    }),
+  }),
+  z.object({
+    success: z.literal(true),
+    destinationSecret: z.string(),
+    result: z.union([
+      z.object({
+        type: z.literal("service"),
+        webhookId: z.string(),
+        subscription: z.discriminatedUnion("type", [
+          z.object({
+            type: z.literal("automatic"),
+          }),
+          z.object({
+            type: z.literal("manual"),
+            url: z.string(),
+            secret: z.string().optional(),
+          }),
+        ]),
+      }),
+      z.object({
+        type: z.literal("generic"),
+        webhookId: z.string(),
+        url: z.string(),
+        secret: z.string().optional(),
+      }),
+    ]),
+  }),
+]);
+
+export type SubscribeResponse = z.infer<typeof SubscriptionResponseSchema>;
 
 class IntegrationsClient {
   #baseUrl: string;
@@ -124,6 +195,74 @@ class IntegrationsClient {
     } catch (e) {
       console.error(e);
       return undefined;
+    }
+  }
+
+  async registerWebhook({
+    service,
+    connectionId,
+    externalSourceId,
+    accessInfo,
+    event,
+    data,
+  }: {
+    service: string;
+    connectionId: string;
+    externalSourceId: string;
+    accessInfo: AccessInfo;
+    event: string;
+    data: any;
+  }): Promise<SubscribeResponse> {
+    let credentials: ServiceSubscription["authentication"];
+    switch (accessInfo.type) {
+      case "oauth2":
+        credentials = {
+          type: "oauth",
+          connectionId,
+        };
+        break;
+      case "api_key":
+        credentials = {
+          type: "api-key",
+          api_key: accessInfo.api_key,
+        };
+        break;
+    }
+
+    const callbackUrl = `${env.APP_ORIGIN}/api/v2/internal/webhooks/${externalSourceId}`;
+    const body: Subscription = {
+      type: "service",
+      service,
+      consumerId: connectionId,
+      callbackUrl,
+      authentication: credentials,
+      data,
+      eventName: event,
+    };
+
+    try {
+      const response = await fetch(`${this.#baseUrl}/webhooks`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${this.#apiKey}`,
+        },
+        body: JSON.stringify(body),
+      });
+
+      const json = await response.json();
+      const parsedResult = SubscriptionResponseSchema.parse(json);
+
+      return parsedResult;
+    } catch (e) {
+      console.error(e);
+      return {
+        success: false,
+        error: {
+          code: "unknown",
+          message: JSON.stringify(e),
+        },
+      };
     }
   }
 }

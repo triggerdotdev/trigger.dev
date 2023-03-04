@@ -9,6 +9,8 @@ import {
   findExternalSourceById,
 } from "~/models/externalSource.server";
 import { getAccessInfo } from "../accessInfo.server";
+import { env } from "~/env.server";
+import { integrationsClient } from "../integrationsClient.server";
 
 export class RegisterExternalSource {
   #prismaClient: PrismaClient;
@@ -56,6 +58,12 @@ export class RegisterExternalSource {
       case "HTTP_POLLING": {
         return this.#registerHttpPolling(externalSource);
       }
+      case "INTEGRATION_WEBHOOK": {
+        return this.#registerIntegrationWebhook(
+          externalSource,
+          externalSource.connection
+        );
+      }
     }
   }
 
@@ -97,6 +105,59 @@ export class RegisterExternalSource {
         readyAt: new Date(),
         externalData: serviceWebhook,
         secret,
+      },
+    });
+
+    await this.#prismaClient.workflow.updateMany({
+      where: {
+        externalSourceId: externalSource.id,
+      },
+      data: {
+        status: "READY",
+      },
+    });
+
+    return true;
+  }
+
+  async #registerIntegrationWebhook(
+    externalSource: ExternalSource,
+    connection?: APIConnection | null
+  ) {
+    if (!connection) {
+      return true; // Somehow the connection slot was deleted, so by returning true we're saying we're done with this webhook
+    }
+
+    const accessInfo = await getAccessInfo(connection);
+    if (accessInfo == null) {
+      throw new Error("No access token found for webhook");
+    }
+
+    if (!externalSource.event) {
+      throw new Error("No event found for integration webhook");
+    }
+
+    const registrationResponse = await integrationsClient.registerWebhook({
+      service: externalSource.service,
+      connectionId: connection.id,
+      externalSourceId: externalSource.id,
+      accessInfo,
+      event: externalSource.event,
+      data: externalSource.source,
+    });
+
+    if (!registrationResponse.success) {
+      return false;
+    }
+
+    await this.#prismaClient.externalSource.update({
+      where: {
+        id: externalSource.id,
+      },
+      data: {
+        status: "READY",
+        readyAt: new Date(),
+        secret: registrationResponse.destinationSecret,
       },
     });
 
