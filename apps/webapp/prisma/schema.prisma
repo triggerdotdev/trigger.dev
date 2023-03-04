@@ -226,6 +226,8 @@ model ExternalSource {
   connection   APIConnection? @relation(fields: [connectionId], references: [id], onDelete: SetNull)
   connectionId String?
 
+  event String?
+
   @@unique([organizationId, key])
 }
 
