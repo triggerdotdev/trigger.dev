@@ -3,6 +3,7 @@ import { handleActionDisplay } from "api/v2/action/display";
 import { handleServices } from "api/v2/services";
 import * as Sentry from "@sentry/node";
 import dotenv from "dotenv";
+import bodyParser from "body-parser";
 import express, { Express, NextFunction, Request, Response } from "express";
 import morgan from "morgan";
 import { handleCreateWebhook } from "api/v2/webhooks/create";
@@ -17,7 +18,14 @@ Sentry.init({
 });
 app.use(Sentry.Handlers.requestHandler());
 
-app.use(express.json());
+app.use(
+  bodyParser.json({
+    verify: (req, res, buf) => {
+      req.rawBody = buf;
+    },
+  })
+);
+
 app.use(morgan("combined"));
 
 const checkAuthentication = function (

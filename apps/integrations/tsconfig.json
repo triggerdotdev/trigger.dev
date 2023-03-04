@@ -15,6 +15,7 @@
     "forceConsistentCasingInFileNames": true,
     "resolveJsonModule": true
   },
+  "files": ["src/http.d.ts"],
   "include": ["./src/**/*.ts", "./src/**/*.d.ts"],
   "exclude": ["node_modules"]
 }
