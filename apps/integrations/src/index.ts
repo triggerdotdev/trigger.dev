@@ -7,6 +7,7 @@ import bodyParser from "body-parser";
 import express, { Express, NextFunction, Request, Response } from "express";
 import morgan from "morgan";
 import { handleCreateWebhook } from "api/v2/webhooks/create";
+import { handleReceivingWebhook } from "api/v2/webhooks/receive";
 dotenv.config();
 
 const app: Express = express();
@@ -78,6 +79,7 @@ app.post("/api/v2/:service/action/:action", handleAction);
 
 //webhooks
 app.post("/api/v2/webhooks", handleCreateWebhook);
+app.all("/api/v2/webhooks/:webhookId/receive", handleReceivingWebhook);
 
 //errors
 app.get("/debug-sentry", function mainHandler(req, res) {
