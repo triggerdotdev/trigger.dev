@@ -80,7 +80,14 @@ export async function webhookTask(
 
   const fetch = await getFetch();
 
-  const bodyText = JSON.stringify(delivery.payload);
+  const bodyText = JSON.stringify({
+    id: delivery.id,
+    timestamp: delivery.createdAt.toISOString(),
+    event: delivery.eventName,
+    input: delivery.destination.destinationData,
+    payload: delivery.payload,
+  });
+
   const hash = crypto
     .createHmac("sha256", delivery.destination.destinationSecret)
     .update(Buffer.from(bodyText, "utf8"))
