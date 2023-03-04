@@ -8,6 +8,7 @@ import express, { Express, NextFunction, Request, Response } from "express";
 import morgan from "morgan";
 import { handleCreateWebhook } from "api/v2/webhooks/create";
 import { handleReceivingWebhook } from "api/v2/webhooks/receive";
+import "core/jobs/worker";
 dotenv.config();
 
 const app: Express = express();

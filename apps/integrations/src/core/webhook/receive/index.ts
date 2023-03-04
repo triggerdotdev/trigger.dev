@@ -2,6 +2,7 @@ import {
   Destination as DestinationRow,
   Webhook as WebhookRow,
 } from ".prisma/client";
+import { createDeliveriesAndTasks } from "core/jobs/tasks/webhookJob";
 import { prisma, PrismaClient } from "db/db.server";
 import { catalog } from "integrations/catalog";
 import { getCredentials } from "../credentials";
@@ -68,6 +69,13 @@ export class ReceiveWebhook {
     }
 
     //create deliveries and jobs in Graphile Worker
+    if (result.success) {
+      await createDeliveriesAndTasks({
+        eventResults: result.eventResults,
+        destinations: webhookRow.destinations,
+      });
+    }
+
     //return response
     return result;
   }
