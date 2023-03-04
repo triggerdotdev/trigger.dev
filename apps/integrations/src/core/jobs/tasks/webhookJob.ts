@@ -22,6 +22,7 @@ export async function createDeliveriesAndTasks({
     return matchingDestinations.map((destination) => ({
       eventName: eventResult.event,
       destinationId: destination.id,
+      displayProperties: eventResult.displayProperties,
       payload: eventResult.payload,
     }));
   });
@@ -32,6 +33,7 @@ export async function createDeliveriesAndTasks({
         data: {
           eventName: delivery.eventName,
           destinationId: delivery.destinationId,
+          displayProperties: delivery.displayProperties,
           payload: delivery.payload,
         },
       })
@@ -85,6 +87,7 @@ export async function webhookTask(
     timestamp: delivery.createdAt.toISOString(),
     event: delivery.eventName,
     input: delivery.destination.destinationData,
+    displayProperties: delivery.displayProperties,
     payload: delivery.payload,
   });
 

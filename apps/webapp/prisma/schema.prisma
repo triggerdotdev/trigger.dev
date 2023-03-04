@@ -239,6 +239,7 @@ enum ExternalSourceType {
   WEBHOOK
   EVENT_BRIDGE
   HTTP_POLLING
+  INTEGRATION_WEBHOOK
 }
 
 model SchedulerSource {
@@ -423,6 +424,8 @@ model TriggerEvent {
   dispatchedAt DateTime?
 
   isTest Boolean @default(false)
+
+  displayProperties Json?
 }
 
 enum TriggerEventStatus {

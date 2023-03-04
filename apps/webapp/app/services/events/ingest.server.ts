@@ -1,4 +1,5 @@
 import type { TriggerType } from ".prisma/client";
+import type { DisplayProperties } from "@trigger.dev/integration-sdk";
 import { ulid } from "ulid";
 import type { PrismaClient } from "~/db.server";
 import { prisma, Prisma } from "~/db.server";
@@ -16,6 +17,7 @@ export type IngestEventOptions = {
   context?: any;
   apiKey?: string;
   isTest?: boolean;
+  displayProperties?: DisplayProperties;
 };
 
 export class IngestEvent {
@@ -65,6 +67,7 @@ export class IngestEvent {
           service: options.service,
           type: options.type,
           isTest: options.isTest ?? false,
+          displayProperties: options.displayProperties,
         },
       });
 

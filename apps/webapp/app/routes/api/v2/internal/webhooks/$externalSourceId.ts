@@ -12,17 +12,21 @@ const bodySchema = z.object({
   timestamp: z.string(),
   event: z.string(),
   input: z.record(z.any()),
+  displayProperties: z.object({
+    title: z.string(),
+  }),
   payload: z.any(),
 });
 
 export async function action({ request, params }: ActionArgs) {
   const { externalSourceId } = paramsSchema.parse(params);
   const body = await request.json();
-  const { id, timestamp, event, input, payload } = bodySchema.parse(body);
+  const { id, timestamp, event, displayProperties, payload } =
+    bodySchema.parse(body);
 
   const externalSource = await findExternalSourceById(externalSourceId);
 
-  if (!externalSource) {
+  if (!externalSource || externalSource.type !== "INTEGRATION_WEBHOOK") {
     return {
       status: 404,
       body: `Could not find external source with id ${externalSourceId}`,
@@ -36,10 +40,11 @@ export async function action({ request, params }: ActionArgs) {
         id,
         payload,
         name: event,
-        type: externalSource.type,
+        type: "WEBHOOK",
         service: externalSource.service,
         timestamp,
         context: {},
+        displayProperties,
       },
       externalSource.organization
     );

@@ -85,6 +85,7 @@ model WebhookEventDelivery {
   destination Destination @relation(fields: [destinationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   destinationId String
 
+  displayProperties Json
   payload Json
 
   createdAt DateTime @default(now())
