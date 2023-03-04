@@ -34,9 +34,11 @@ export async function handleReceivingWebhook(req: Request, res: Response) {
     const receiver = new ReceiveWebhook();
     const result = await receiver.call({ request, webhookId });
 
-    res
-      .writeHead(result.response.status, result.response.headers)
-      .json(result.response.body);
+    const response = res.status(result.response.status);
+    Object.entries(result.response.headers).forEach(([key, value]) => {
+      response.header(key, value);
+    });
+    response.json(result.response.body);
   } catch (error) {
     console.error(error);
     res.status(500).json({ success: false, error: "Internal server error" });

@@ -10,7 +10,7 @@ const APIKeySchema = z.object({
   api_key: z.string(),
 });
 
-const AuthenticationSchema = z.discriminatedUnion("type", [
+export const AuthenticationSchema = z.discriminatedUnion("type", [
   OAuthSchema,
   APIKeySchema,
 ]);
