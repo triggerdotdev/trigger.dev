@@ -59,6 +59,7 @@ export type SubscribeResult =
     }
   | {
       success: true;
+      destinationSecret: string;
       result:
         | {
             type: "service";

@@ -89,6 +89,7 @@ export class SubscribeToWebhook {
 
         return {
           success: true,
+          destinationSecret: destination.destinationSecret,
           result: {
             type: "service",
             webhookId: existingWebhookRow.id,
@@ -134,6 +135,7 @@ export class SubscribeToWebhook {
 
         return {
           success: true,
+          destinationSecret: destination.destinationSecret,
           result: {
             type: "service",
             webhookId: newWebhookRow.id,
@@ -210,6 +212,7 @@ export class SubscribeToWebhook {
 
         return {
           success: true,
+          destinationSecret: destination.destinationSecret,
           result: {
             type: "service",
             webhookId: newWebhookRow.id,
