@@ -11,11 +11,12 @@ import {
 //https://www.typeform.com/developers/webhooks/example-payload/
 
 function makeAnswerField(types: string[]) {
-  let typeField = makeStringSchema("type", `The type of the field`, {
-    const: types[0],
-  });
-
-  if (types.length > 1) {
+  let typeField = makeStringSchema("type", `The type of the field`);
+  if (types.length === 1) {
+    typeField = makeStringSchema("type", `The type of the field`, {
+      const: types[0],
+    });
+  } else if (types.length > 1) {
     typeField = makeStringSchema("type", `The type of the field`, {
       enum: types,
     });
@@ -129,7 +130,7 @@ const NumberAnswer = makeObjectSchema("number answer", {
       const: "number",
     }),
     number: makeNumberSchema("number", `The value of the answer`),
-    field: makeAnswerField(["rating", "opinion_scale", "number"]),
+    field: makeAnswerField([]),
   },
 });
 
@@ -214,8 +215,10 @@ export const formEventSchema = makeObjectSchema("form_response", {
                     "ref",
                     "A reference to the field – this will be different on every response unless you used the Create API to create the field. In that case, it will be what you set it to."
                   ),
-                  allow_multiple_selectiors: makeBooleanSchema(
-                    "allow_multiple_selectiors",
+                },
+                optionalProperties: {
+                  allow_multiple_selections: makeBooleanSchema(
+                    "allow_multiple_selections",
                     "Whether or not the field allows multiple selections"
                   ),
                   allow_other_choice: makeBooleanSchema(
@@ -256,7 +259,7 @@ export const formEventSchema = makeObjectSchema("form_response", {
             ),
           },
         }),
-        answers: makeArraySchema("answers", makeOneOf("answer", [Answers])),
+        answers: makeArraySchema("answers", makeOneOf("answer", Answers)),
         ending: makeObjectSchema("ending", {
           requiredProperties: {
             id: makeStringSchema("id", `The ID of the ending`),
@@ -282,7 +285,10 @@ export const formEventSchema = makeObjectSchema("form_response", {
           makeOneOf("variable", [
             makeObjectSchema("number variable", {
               requiredProperties: {
-                id: makeStringSchema("id", `The ID of the variable`),
+                key: makeStringSchema(
+                  "key",
+                  `The unique identifier for the variable`
+                ),
                 type: makeStringSchema("type", `The type of the variable`, {
                   const: "text",
                 }),
@@ -291,7 +297,10 @@ export const formEventSchema = makeObjectSchema("form_response", {
             }),
             makeObjectSchema("number variable", {
               requiredProperties: {
-                id: makeStringSchema("id", `The ID of the variable`),
+                key: makeStringSchema(
+                  "key",
+                  `The unique identifier for the variable`
+                ),
                 type: makeStringSchema("type", `The type of the variable`, {
                   const: "number",
                 }),
