@@ -67,7 +67,7 @@ function updatePackageJson(projectName: string, projectDir: string) {
   });
 }
 
-function updateReadme(projectName: string, projectDir: string) {
+function updateReadme(_projectName: string, projectDir: string) {
   const existingReadme = fs.readFileSync(path.resolve(projectDir, "README.md"));
 
   fs.writeFileSync(path.resolve(projectDir, "README.md"), existingReadme);
