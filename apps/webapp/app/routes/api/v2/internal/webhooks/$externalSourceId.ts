@@ -1,4 +1,4 @@
-import type { ActionArgs, LoaderArgs } from "@remix-run/server-runtime";
+import type { ActionArgs } from "@remix-run/server-runtime";
 import { z } from "zod";
 import { findExternalSourceById } from "~/models/externalSource.server";
 import { IngestEvent } from "~/services/events/ingest.server";
@@ -40,7 +40,7 @@ export async function action({ request, params }: ActionArgs) {
         id,
         payload,
         name: event,
-        type: "WEBHOOK",
+        type: "INTEGRATION_WEBHOOK",
         service: externalSource.service,
         timestamp,
         context: {},
