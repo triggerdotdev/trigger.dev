@@ -410,13 +410,14 @@ export class RegisterWorkflow {
       },
       create: {
         organizationId: organization.id,
-        key: this.#keyForExternalSource(payload),
+        key: payload.trigger.key,
         type: "INTEGRATION_WEBHOOK",
         source: payload.trigger.source ?? {},
         status: "CREATED",
         connectionId: existingConnection?.id,
         service: payload.trigger.service,
         manualRegistration: false,
+        event: payload.trigger.name,
       },
     });
 
