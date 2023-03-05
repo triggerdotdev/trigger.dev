@@ -8,7 +8,7 @@ new Trigger({
   endpoint: "ws://localhost:8889/ws",
   logLevel: "debug",
   on: events.formResponseEvent({
-    form_id: "NclFXN1d",
+    form_id: "KywLXMeB",
   }),
   run: async (event, ctx) => {
     await ctx.logger.info(`Action was ${event.event_id}`, event.form_response);
