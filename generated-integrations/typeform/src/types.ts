@@ -14,9 +14,9 @@ export type EventType = "form_response"
 export type Score = number
 export type Variable = (NumberVariable | NumberVariable1)
 /**
- * The ID of the variable
+ * The unique identifier for the variable
  */
-export type Id = string
+export type Key = string
 /**
  * The type of the variable
  */
@@ -26,9 +26,9 @@ export type Type = "text"
  */
 export type Text = string
 /**
- * The ID of the variable
+ * The unique identifier for the variable
  */
-export type Id1 = string
+export type Key1 = string
 /**
  * The type of the variable
  */
@@ -57,7 +57,7 @@ export type LandedAt = string
 /**
  * The ID of the ending
  */
-export type Id2 = string
+export type Id = string
 /**
  * A reference to the field – this will be different on every response unless you used the Create API to create the field. In that case, it will be what you set it to.
  */
@@ -74,15 +74,32 @@ export type Endings = Ending[]
 /**
  * The ID of the form
  */
-export type Id3 = string
+export type Id1 = string
 /**
  * The title of the form
  */
 export type Title1 = string
 /**
+ * Whether or not the field allows multiple selections
+ */
+export type AllowMultipleSelections = boolean
+/**
+ * Whether or not the field allows an 'other' choice
+ */
+export type AllowOtherChoice = boolean
+/**
+ * The label of the choice
+ */
+export type Label = string
+/**
+ * The ID of the choice
+ */
+export type Id2 = string
+export type Choices = Choice[]
+/**
  * The ID of the field
  */
-export type Id4 = string
+export type Id3 = string
 /**
  * The title of the field
  */
@@ -95,34 +112,238 @@ export type Type3 = string
  * A reference to the field – this will be different on every response unless you used the Create API to create the field. In that case, it will be what you set it to.
  */
 export type Ref1 = string
+export type Fields = Field[]
+export type Answer = (TextAnswer | ChoiceAnswer | ChoicesAnswer | EmailAnswer | DateAnswer | BooleanAnswer | UrlAnswer | NumberAnswer | FileUrlAnswer | PaymentAnswer)
 /**
- * Whether or not the field allows multiple selections
+ * The type of the answer
  */
-export type AllowMultipleSelectiors = boolean
+export type Type4 = "text"
 /**
- * Whether or not the field allows an 'other' choice
+ * The value of the answer
  */
-export type AllowOtherChoice = boolean
+export type Text1 = string
+/**
+ * The ref of the field
+ */
+export type Ref2 = string
+/**
+ * The ID of the field
+ */
+export type Id4 = string
+/**
+ * The type of the field
+ */
+export type Type5 = ("short_text" | "long_text")
+/**
+ * The type of the answer
+ */
+export type Type6 = "choice"
 /**
  * The label of the choice
  */
-export type Label = string
+export type Label1 = string
 /**
- * The ID of the choice
+ * What the user typed in to the "other" field
+ */
+export type Label2 = string
+/**
+ * The ref of the field
+ */
+export type Ref3 = string
+/**
+ * The ID of the field
  */
 export type Id5 = string
-export type Choices = Choice[]
-export type Fields = Field[]
-export type Answer = [{ "type": "object", "title": "text answer", "properties": { "type": { "type": "string", "title": "type", "description": "The type of the answer", "const": "text" }, "text": { "type": "string", "title": "text", "description": "The value of the answer" }, "field": { "type": "object", "title": "field", "properties": { "ref": { "type": "string", "title": "ref", "description": "The ref of the field" }, "id": { "type": "string", "title": "id", "description": "The ID of the field" }, "type": { "type": "string", "title": "type", "description": "The type of the field", "enum": ["short_text", "long_text"] } }, "required": ["id", "type"] } }, "required": ["type", "text", "field"] }, { "type": "object", "title": "choice answer", "properties": { "type": { "type": "string", "title": "type", "description": "The type of the answer", "const": "choice" }, "choice": { "type": "object", "title": "choice", "properties": { "label": { "type": "string", "title": "label", "description": "The label of the choice" }, "other": { "type": "string", "title": "label", "description": "What the user typed in to the \"other\" field" } } }, "field": { "type": "object", "title": "field", "properties": { "ref": { "type": "string", "title": "ref", "description": "The ref of the field" }, "id": { "type": "string", "title": "id", "description": "The ID of the field" }, "type": { "type": "string", "title": "type", "description": "The type of the field", "enum": ["picture_choice", "dropdown", "multiple_choice"] } }, "required": ["id", "type"] } }, "required": ["type", "choice", "field"] }, { "type": "object", "title": "choices answer", "properties": { "type": { "type": "string", "title": "type", "description": "The type of the answer", "const": "choices" }, "choices": { "type": "object", "title": "choices", "properties": { "other": { "type": "string", "title": "label", "description": "What the user typed in to the \"other\" field" }, "labels": { "type": "array", "title": "labels", "items": { "type": "string", "title": "label", "description": "The label of the choice" } } }, "required": ["labels"] }, "field": { "type": "object", "title": "field", "properties": { "ref": { "type": "string", "title": "ref", "description": "The ref of the field" }, "id": { "type": "string", "title": "id", "description": "The ID of the field" }, "type": { "type": "string", "title": "type", "description": "The type of the field", "enum": ["picture_choice", "dropdown", "multiple_choice"] } }, "required": ["id", "type"] } }, "required": ["type", "choices", "field"] }, { "type": "object", "title": "email answer", "properties": { "type": { "type": "string", "title": "type", "description": "The type of the answer", "const": "email" }, "email": { "type": "string", "title": "email", "description": "The value of the answer" }, "field": { "type": "object", "title": "field", "properties": { "ref": { "type": "string", "title": "ref", "description": "The ref of the field" }, "id": { "type": "string", "title": "id", "description": "The ID of the field" }, "type": { "type": "string", "title": "type", "description": "The type of the field", "const": "email" } }, "required": ["id", "type"] } }, "required": ["type", "email", "field"] }, { "type": "object", "title": "date answer", "properties": { "type": { "type": "string", "title": "type", "description": "The type of the answer", "const": "date" }, "date": { "type": "string", "title": "date", "description": "The value of the answer" }, "field": { "type": "object", "title": "field", "properties": { "ref": { "type": "string", "title": "ref", "description": "The ref of the field" }, "id": { "type": "string", "title": "id", "description": "The ID of the field" }, "type": { "type": "string", "title": "type", "description": "The type of the field", "const": "date" } }, "required": ["id", "type"] } }, "required": ["type", "date", "field"] }, { "type": "object", "title": "boolean answer", "properties": { "type": { "type": "string", "title": "type", "description": "The type of the answer", "const": "boolean" }, "boolean": { "title": "boolean", "type": "boolean", "description": "The value of the answer" }, "field": { "type": "object", "title": "field", "properties": { "ref": { "type": "string", "title": "ref", "description": "The ref of the field" }, "id": { "type": "string", "title": "id", "description": "The ID of the field" }, "type": { "type": "string", "title": "type", "description": "The type of the field", "enum": ["legal", "yes_no"] } }, "required": ["id", "type"] } }, "required": ["type", "boolean", "field"] }, { "type": "object", "title": "url answer", "properties": { "type": { "type": "string", "title": "type", "description": "The type of the answer", "const": "url" }, "url": { "type": "string", "title": "url", "description": "The value of the answer" }, "field": { "type": "object", "title": "field", "properties": { "ref": { "type": "string", "title": "ref", "description": "The ref of the field" }, "id": { "type": "string", "title": "id", "description": "The ID of the field" }, "type": { "type": "string", "title": "type", "description": "The type of the field", "enum": ["website", "calendly"] } }, "required": ["id", "type"] } }, "required": ["type", "url", "field"] }, { "type": "object", "title": "number answer", "properties": { "type": { "type": "string", "title": "type", "description": "The type of the answer", "const": "number" }, "number": { "type": "number", "title": "number", "description": "The value of the answer" }, "field": { "type": "object", "title": "field", "properties": { "ref": { "type": "string", "title": "ref", "description": "The ref of the field" }, "id": { "type": "string", "title": "id", "description": "The ID of the field" }, "type": { "type": "string", "title": "type", "description": "The type of the field", "enum": ["rating", "opinion_scale", "number"] } }, "required": ["id", "type"] } }, "required": ["type", "number", "field"] }, { "type": "object", "title": "file url answer", "properties": { "type": { "type": "string", "title": "type", "description": "The type of the answer", "const": "file_url" }, "file_url": { "type": "string", "title": "file_url", "description": "The value of the answer" }, "field": { "type": "object", "title": "field", "properties": { "ref": { "type": "string", "title": "ref", "description": "The ref of the field" }, "id": { "type": "string", "title": "id", "description": "The ID of the field" }, "type": { "type": "string", "title": "type", "description": "The type of the field", "const": "file_upload" } }, "required": ["id", "type"] } }, "required": ["type", "file_url", "field"] }, { "type": "object", "title": "payment answer", "properties": { "type": { "type": "string", "title": "type", "description": "The type of the answer", "const": "payment" }, "payment": { "type": "object", "title": "payment", "properties": { "amount": { "type": "number", "title": "amount", "description": "The amount of the payment" }, "last4": { "type": "string", "title": "last4", "description": "The last 4 digits of the card" }, "name": { "type": "string", "title": "name", "description": "The name of the credit card" }, "success": { "title": "success", "type": "boolean", "description": "Whether the payment succeeded" } }, "required": ["amount", "last4", "name", "success"] }, "field": { "type": "object", "title": "field", "properties": { "ref": { "type": "string", "title": "ref", "description": "The ref of the field" }, "id": { "type": "string", "title": "id", "description": "The ID of the field" }, "type": { "type": "string", "title": "type", "description": "The type of the field", "const": "payment" } }, "required": ["id", "type"] } }, "required": ["type", "payment", "field"] }]
+/**
+ * The type of the field
+ */
+export type Type7 = ("picture_choice" | "dropdown" | "multiple_choice")
+/**
+ * The type of the answer
+ */
+export type Type8 = "choices"
+/**
+ * What the user typed in to the "other" field
+ */
+export type Label3 = string
+/**
+ * The label of the choice
+ */
+export type Label4 = string
+export type Labels = Label4[]
+/**
+ * The ref of the field
+ */
+export type Ref4 = string
+/**
+ * The ID of the field
+ */
+export type Id6 = string
+/**
+ * The type of the field
+ */
+export type Type9 = ("picture_choice" | "dropdown" | "multiple_choice")
+/**
+ * The type of the answer
+ */
+export type Type10 = "email"
+/**
+ * The value of the answer
+ */
+export type Email = string
+/**
+ * The ref of the field
+ */
+export type Ref5 = string
+/**
+ * The ID of the field
+ */
+export type Id7 = string
+/**
+ * The type of the field
+ */
+export type Type11 = "email"
+/**
+ * The type of the answer
+ */
+export type Type12 = "date"
+/**
+ * The value of the answer
+ */
+export type Date = string
+/**
+ * The ref of the field
+ */
+export type Ref6 = string
+/**
+ * The ID of the field
+ */
+export type Id8 = string
+/**
+ * The type of the field
+ */
+export type Type13 = "date"
+/**
+ * The type of the answer
+ */
+export type Type14 = "boolean"
+/**
+ * The value of the answer
+ */
+export type Boolean = boolean
+/**
+ * The ref of the field
+ */
+export type Ref7 = string
+/**
+ * The ID of the field
+ */
+export type Id9 = string
+/**
+ * The type of the field
+ */
+export type Type15 = ("legal" | "yes_no")
+/**
+ * The type of the answer
+ */
+export type Type16 = "url"
+/**
+ * The value of the answer
+ */
+export type Url = string
+/**
+ * The ref of the field
+ */
+export type Ref8 = string
+/**
+ * The ID of the field
+ */
+export type Id10 = string
+/**
+ * The type of the field
+ */
+export type Type17 = ("website" | "calendly")
+/**
+ * The type of the answer
+ */
+export type Type18 = "number"
+/**
+ * The value of the answer
+ */
+export type Number1 = number
+/**
+ * The ref of the field
+ */
+export type Ref9 = string
+/**
+ * The ID of the field
+ */
+export type Id11 = string
+/**
+ * The type of the field
+ */
+export type Type19 = string
+/**
+ * The type of the answer
+ */
+export type Type20 = "file_url"
+/**
+ * The value of the answer
+ */
+export type FileUrl = string
+/**
+ * The ref of the field
+ */
+export type Ref10 = string
+/**
+ * The ID of the field
+ */
+export type Id12 = string
+/**
+ * The type of the field
+ */
+export type Type21 = "file_upload"
+/**
+ * The type of the answer
+ */
+export type Type22 = "payment"
+/**
+ * The amount of the payment
+ */
+export type Amount = number
+/**
+ * The last 4 digits of the card
+ */
+export type Last4 = string
+/**
+ * The name of the credit card
+ */
+export type Name = string
+/**
+ * Whether the payment succeeded
+ */
+export type Success = boolean
+/**
+ * The ref of the field
+ */
+export type Ref11 = string
+/**
+ * The ID of the field
+ */
+export type Id13 = string
+/**
+ * The type of the field
+ */
+export type Type23 = "payment"
 export type Answers = Answer[]
 /**
  * The ID of the ending
  */
-export type Id6 = string
+export type Id14 = string
 /**
  * A reference to the field – this will be different on every response unless you used the Create API to create the field. In that case, it will be what you set it to.
  */
-export type Ref2 = string
+export type Ref12 = string
 
 export interface FormResponseInput {
   form_id: FormID
@@ -148,12 +369,12 @@ export interface Calculated {
   score: Score
 }
 export interface NumberVariable {
-  id: Id
+  key: Key
   type: Type
   text: Text
 }
 export interface NumberVariable1 {
-  id: Id1
+  key: Key1
   type: Type1
   number: Number
 }
@@ -162,33 +383,147 @@ export interface Hidden {
 }
 export interface Definition {
   endings?: Endings
-  id: Id3
+  id: Id1
   title: Title1
   fields: Fields
 }
 export interface Ending {
-  id: Id2
+  id: Id
   ref: Ref
   title: Title
   type: Type2
   [k: string]: unknown
 }
 export interface Field {
-  id: Id4
+  allow_multiple_selections?: AllowMultipleSelections
+  allow_other_choice?: AllowOtherChoice
+  choices?: Choices
+  id: Id3
   title: Title2
   type: Type3
   ref: Ref1
-  allow_multiple_selectiors: AllowMultipleSelectiors
-  allow_other_choice: AllowOtherChoice
-  choices: Choices
 }
 export interface Choice {
   label: Label
+  id: Id2
+}
+export interface TextAnswer {
+  type: Type4
+  text: Text1
+  field: Field1
+}
+export interface Field1 {
+  ref?: Ref2
+  id: Id4
+  type: Type5
+}
+export interface ChoiceAnswer {
+  type: Type6
+  choice: Choice1
+  field: Field2
+}
+export interface Choice1 {
+  label?: Label1
+  other?: Label2
+}
+export interface Field2 {
+  ref?: Ref3
   id: Id5
+  type: Type7
+}
+export interface ChoicesAnswer {
+  type: Type8
+  choices: Choices1
+  field: Field3
+}
+export interface Choices1 {
+  other?: Label3
+  labels: Labels
+}
+export interface Field3 {
+  ref?: Ref4
+  id: Id6
+  type: Type9
+}
+export interface EmailAnswer {
+  type: Type10
+  email: Email
+  field: Field4
+}
+export interface Field4 {
+  ref?: Ref5
+  id: Id7
+  type: Type11
+}
+export interface DateAnswer {
+  type: Type12
+  date: Date
+  field: Field5
+}
+export interface Field5 {
+  ref?: Ref6
+  id: Id8
+  type: Type13
+}
+export interface BooleanAnswer {
+  type: Type14
+  boolean: Boolean
+  field: Field6
+}
+export interface Field6 {
+  ref?: Ref7
+  id: Id9
+  type: Type15
+}
+export interface UrlAnswer {
+  type: Type16
+  url: Url
+  field: Field7
+}
+export interface Field7 {
+  ref?: Ref8
+  id: Id10
+  type: Type17
+}
+export interface NumberAnswer {
+  type: Type18
+  number: Number1
+  field: Field8
+}
+export interface Field8 {
+  ref?: Ref9
+  id: Id11
+  type: Type19
+}
+export interface FileUrlAnswer {
+  type: Type20
+  file_url: FileUrl
+  field: Field9
+}
+export interface Field9 {
+  ref?: Ref10
+  id: Id12
+  type: Type21
+}
+export interface PaymentAnswer {
+  type: Type22
+  payment: Payment
+  field: Field10
+}
+export interface Payment {
+  amount: Amount
+  last4: Last4
+  name: Name
+  success: Success
+}
+export interface Field10 {
+  ref?: Ref11
+  id: Id13
+  type: Type23
 }
 export interface Ending1 {
-  id: Id6
-  ref: Ref2
+  id: Id14
+  ref: Ref12
   [k: string]: unknown
 }
 

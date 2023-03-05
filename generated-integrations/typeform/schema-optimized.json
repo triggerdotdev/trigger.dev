@@ -57,10 +57,10 @@
                     "type": "object",
                     "title": "number variable",
                     "properties": {
-                      "id": {
+                      "key": {
                         "type": "string",
-                        "title": "id",
-                        "description": "The ID of the variable"
+                        "title": "key",
+                        "description": "The unique identifier for the variable"
                       },
                       "type": {
                         "type": "string",
@@ -75,7 +75,7 @@
                       }
                     },
                     "required": [
-                      "id",
+                      "key",
                       "type",
                       "text"
                     ]
@@ -84,10 +84,10 @@
                     "type": "object",
                     "title": "number variable",
                     "properties": {
-                      "id": {
+                      "key": {
                         "type": "string",
-                        "title": "id",
-                        "description": "The ID of the variable"
+                        "title": "key",
+                        "description": "The unique identifier for the variable"
                       },
                       "type": {
                         "type": "string",
@@ -102,7 +102,7 @@
                       }
                     },
                     "required": [
-                      "id",
+                      "key",
                       "type",
                       "number"
                     ]
@@ -193,28 +193,8 @@
                     "type": "object",
                     "title": "field",
                     "properties": {
-                      "id": {
-                        "type": "string",
-                        "title": "id",
-                        "description": "The ID of the field"
-                      },
-                      "title": {
-                        "type": "string",
-                        "title": "title",
-                        "description": "The title of the field"
-                      },
-                      "type": {
-                        "type": "string",
-                        "title": "type",
-                        "description": "The type of the field"
-                      },
-                      "ref": {
-                        "type": "string",
-                        "title": "ref",
-                        "description": "A reference to the field – this will be different on every response unless you used the Create API to create the field. In that case, it will be what you set it to."
-                      },
-                      "allow_multiple_selectiors": {
-                        "title": "allow_multiple_selectiors",
+                      "allow_multiple_selections": {
+                        "title": "allow_multiple_selections",
                         "type": "boolean",
                         "description": "Whether or not the field allows multiple selections"
                       },
@@ -246,16 +226,33 @@
                             "id"
                           ]
                         }
+                      },
+                      "id": {
+                        "type": "string",
+                        "title": "id",
+                        "description": "The ID of the field"
+                      },
+                      "title": {
+                        "type": "string",
+                        "title": "title",
+                        "description": "The title of the field"
+                      },
+                      "type": {
+                        "type": "string",
+                        "title": "type",
+                        "description": "The type of the field"
+                      },
+                      "ref": {
+                        "type": "string",
+                        "title": "ref",
+                        "description": "A reference to the field – this will be different on every response unless you used the Create API to create the field. In that case, it will be what you set it to."
                       }
                     },
                     "required": [
                       "id",
                       "title",
                       "type",
-                      "ref",
-                      "allow_multiple_selectiors",
-                      "allow_other_choice",
-                      "choices"
+                      "ref"
                     ]
                   }
                 }
@@ -272,565 +269,558 @@
               "items": {
                 "title": "answer",
                 "oneOf": [
-                  [
-                    {
-                      "type": "object",
-                      "title": "text answer",
-                      "properties": {
-                        "type": {
-                          "type": "string",
-                          "title": "type",
-                          "description": "The type of the answer",
-                          "const": "text"
-                        },
-                        "text": {
-                          "type": "string",
-                          "title": "text",
-                          "description": "The value of the answer"
-                        },
-                        "field": {
-                          "type": "object",
-                          "title": "field",
-                          "properties": {
-                            "ref": {
-                              "type": "string",
-                              "title": "ref",
-                              "description": "The ref of the field"
-                            },
-                            "id": {
-                              "type": "string",
-                              "title": "id",
-                              "description": "The ID of the field"
-                            },
-                            "type": {
-                              "type": "string",
-                              "title": "type",
-                              "description": "The type of the field",
-                              "enum": [
-                                "short_text",
-                                "long_text"
-                              ]
-                            }
+                  {
+                    "type": "object",
+                    "title": "text answer",
+                    "properties": {
+                      "type": {
+                        "type": "string",
+                        "title": "type",
+                        "description": "The type of the answer",
+                        "const": "text"
+                      },
+                      "text": {
+                        "type": "string",
+                        "title": "text",
+                        "description": "The value of the answer"
+                      },
+                      "field": {
+                        "type": "object",
+                        "title": "field",
+                        "properties": {
+                          "ref": {
+                            "type": "string",
+                            "title": "ref",
+                            "description": "The ref of the field"
                           },
-                          "required": [
-                            "id",
-                            "type"
-                          ]
+                          "id": {
+                            "type": "string",
+                            "title": "id",
+                            "description": "The ID of the field"
+                          },
+                          "type": {
+                            "type": "string",
+                            "title": "type",
+                            "description": "The type of the field",
+                            "enum": [
+                              "short_text",
+                              "long_text"
+                            ]
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "type"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "type",
+                      "text",
+                      "field"
+                    ]
+                  },
+                  {
+                    "type": "object",
+                    "title": "choice answer",
+                    "properties": {
+                      "type": {
+                        "type": "string",
+                        "title": "type",
+                        "description": "The type of the answer",
+                        "const": "choice"
+                      },
+                      "choice": {
+                        "type": "object",
+                        "title": "choice",
+                        "properties": {
+                          "label": {
+                            "type": "string",
+                            "title": "label",
+                            "description": "The label of the choice"
+                          },
+                          "other": {
+                            "type": "string",
+                            "title": "label",
+                            "description": "What the user typed in to the \"other\" field"
+                          }
                         }
                       },
-                      "required": [
-                        "type",
-                        "text",
-                        "field"
-                      ]
-                    },
-                    {
-                      "type": "object",
-                      "title": "choice answer",
-                      "properties": {
-                        "type": {
-                          "type": "string",
-                          "title": "type",
-                          "description": "The type of the answer",
-                          "const": "choice"
+                      "field": {
+                        "type": "object",
+                        "title": "field",
+                        "properties": {
+                          "ref": {
+                            "type": "string",
+                            "title": "ref",
+                            "description": "The ref of the field"
+                          },
+                          "id": {
+                            "type": "string",
+                            "title": "id",
+                            "description": "The ID of the field"
+                          },
+                          "type": {
+                            "type": "string",
+                            "title": "type",
+                            "description": "The type of the field",
+                            "enum": [
+                              "picture_choice",
+                              "dropdown",
+                              "multiple_choice"
+                            ]
+                          }
                         },
-                        "choice": {
-                          "type": "object",
-                          "title": "choice",
-                          "properties": {
-                            "label": {
+                        "required": [
+                          "id",
+                          "type"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "type",
+                      "choice",
+                      "field"
+                    ]
+                  },
+                  {
+                    "type": "object",
+                    "title": "choices answer",
+                    "properties": {
+                      "type": {
+                        "type": "string",
+                        "title": "type",
+                        "description": "The type of the answer",
+                        "const": "choices"
+                      },
+                      "choices": {
+                        "type": "object",
+                        "title": "choices",
+                        "properties": {
+                          "other": {
+                            "type": "string",
+                            "title": "label",
+                            "description": "What the user typed in to the \"other\" field"
+                          },
+                          "labels": {
+                            "type": "array",
+                            "title": "labels",
+                            "items": {
                               "type": "string",
                               "title": "label",
                               "description": "The label of the choice"
-                            },
-                            "other": {
-                              "type": "string",
-                              "title": "label",
-                              "description": "What the user typed in to the \"other\" field"
                             }
                           }
                         },
-                        "field": {
-                          "type": "object",
-                          "title": "field",
-                          "properties": {
-                            "ref": {
-                              "type": "string",
-                              "title": "ref",
-                              "description": "The ref of the field"
-                            },
-                            "id": {
-                              "type": "string",
-                              "title": "id",
-                              "description": "The ID of the field"
-                            },
-                            "type": {
-                              "type": "string",
-                              "title": "type",
-                              "description": "The type of the field",
-                              "enum": [
-                                "picture_choice",
-                                "dropdown",
-                                "multiple_choice"
-                              ]
-                            }
-                          },
-                          "required": [
-                            "id",
-                            "type"
-                          ]
-                        }
+                        "required": [
+                          "labels"
+                        ]
                       },
-                      "required": [
-                        "type",
-                        "choice",
-                        "field"
-                      ]
+                      "field": {
+                        "type": "object",
+                        "title": "field",
+                        "properties": {
+                          "ref": {
+                            "type": "string",
+                            "title": "ref",
+                            "description": "The ref of the field"
+                          },
+                          "id": {
+                            "type": "string",
+                            "title": "id",
+                            "description": "The ID of the field"
+                          },
+                          "type": {
+                            "type": "string",
+                            "title": "type",
+                            "description": "The type of the field",
+                            "enum": [
+                              "picture_choice",
+                              "dropdown",
+                              "multiple_choice"
+                            ]
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "type"
+                        ]
+                      }
                     },
-                    {
-                      "type": "object",
-                      "title": "choices answer",
-                      "properties": {
-                        "type": {
-                          "type": "string",
-                          "title": "type",
-                          "description": "The type of the answer",
-                          "const": "choices"
-                        },
-                        "choices": {
-                          "type": "object",
-                          "title": "choices",
-                          "properties": {
-                            "other": {
-                              "type": "string",
-                              "title": "label",
-                              "description": "What the user typed in to the \"other\" field"
-                            },
-                            "labels": {
-                              "type": "array",
-                              "title": "labels",
-                              "items": {
-                                "type": "string",
-                                "title": "label",
-                                "description": "The label of the choice"
-                              }
-                            }
-                          },
-                          "required": [
-                            "labels"
-                          ]
-                        },
-                        "field": {
-                          "type": "object",
-                          "title": "field",
-                          "properties": {
-                            "ref": {
-                              "type": "string",
-                              "title": "ref",
-                              "description": "The ref of the field"
-                            },
-                            "id": {
-                              "type": "string",
-                              "title": "id",
-                              "description": "The ID of the field"
-                            },
-                            "type": {
-                              "type": "string",
-                              "title": "type",
-                              "description": "The type of the field",
-                              "enum": [
-                                "picture_choice",
-                                "dropdown",
-                                "multiple_choice"
-                              ]
-                            }
-                          },
-                          "required": [
-                            "id",
-                            "type"
-                          ]
-                        }
+                    "required": [
+                      "type",
+                      "choices",
+                      "field"
+                    ]
+                  },
+                  {
+                    "type": "object",
+                    "title": "email answer",
+                    "properties": {
+                      "type": {
+                        "type": "string",
+                        "title": "type",
+                        "description": "The type of the answer",
+                        "const": "email"
                       },
-                      "required": [
-                        "type",
-                        "choices",
-                        "field"
-                      ]
+                      "email": {
+                        "type": "string",
+                        "title": "email",
+                        "description": "The value of the answer"
+                      },
+                      "field": {
+                        "type": "object",
+                        "title": "field",
+                        "properties": {
+                          "ref": {
+                            "type": "string",
+                            "title": "ref",
+                            "description": "The ref of the field"
+                          },
+                          "id": {
+                            "type": "string",
+                            "title": "id",
+                            "description": "The ID of the field"
+                          },
+                          "type": {
+                            "type": "string",
+                            "title": "type",
+                            "description": "The type of the field",
+                            "const": "email"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "type"
+                        ]
+                      }
                     },
-                    {
-                      "type": "object",
-                      "title": "email answer",
-                      "properties": {
-                        "type": {
-                          "type": "string",
-                          "title": "type",
-                          "description": "The type of the answer",
-                          "const": "email"
-                        },
-                        "email": {
-                          "type": "string",
-                          "title": "email",
-                          "description": "The value of the answer"
-                        },
-                        "field": {
-                          "type": "object",
-                          "title": "field",
-                          "properties": {
-                            "ref": {
-                              "type": "string",
-                              "title": "ref",
-                              "description": "The ref of the field"
-                            },
-                            "id": {
-                              "type": "string",
-                              "title": "id",
-                              "description": "The ID of the field"
-                            },
-                            "type": {
-                              "type": "string",
-                              "title": "type",
-                              "description": "The type of the field",
-                              "const": "email"
-                            }
-                          },
-                          "required": [
-                            "id",
-                            "type"
-                          ]
-                        }
+                    "required": [
+                      "type",
+                      "email",
+                      "field"
+                    ]
+                  },
+                  {
+                    "type": "object",
+                    "title": "date answer",
+                    "properties": {
+                      "type": {
+                        "type": "string",
+                        "title": "type",
+                        "description": "The type of the answer",
+                        "const": "date"
                       },
-                      "required": [
-                        "type",
-                        "email",
-                        "field"
-                      ]
+                      "date": {
+                        "type": "string",
+                        "title": "date",
+                        "description": "The value of the answer"
+                      },
+                      "field": {
+                        "type": "object",
+                        "title": "field",
+                        "properties": {
+                          "ref": {
+                            "type": "string",
+                            "title": "ref",
+                            "description": "The ref of the field"
+                          },
+                          "id": {
+                            "type": "string",
+                            "title": "id",
+                            "description": "The ID of the field"
+                          },
+                          "type": {
+                            "type": "string",
+                            "title": "type",
+                            "description": "The type of the field",
+                            "const": "date"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "type"
+                        ]
+                      }
                     },
-                    {
-                      "type": "object",
-                      "title": "date answer",
-                      "properties": {
-                        "type": {
-                          "type": "string",
-                          "title": "type",
-                          "description": "The type of the answer",
-                          "const": "date"
-                        },
-                        "date": {
-                          "type": "string",
-                          "title": "date",
-                          "description": "The value of the answer"
-                        },
-                        "field": {
-                          "type": "object",
-                          "title": "field",
-                          "properties": {
-                            "ref": {
-                              "type": "string",
-                              "title": "ref",
-                              "description": "The ref of the field"
-                            },
-                            "id": {
-                              "type": "string",
-                              "title": "id",
-                              "description": "The ID of the field"
-                            },
-                            "type": {
-                              "type": "string",
-                              "title": "type",
-                              "description": "The type of the field",
-                              "const": "date"
-                            }
-                          },
-                          "required": [
-                            "id",
-                            "type"
-                          ]
-                        }
+                    "required": [
+                      "type",
+                      "date",
+                      "field"
+                    ]
+                  },
+                  {
+                    "type": "object",
+                    "title": "boolean answer",
+                    "properties": {
+                      "type": {
+                        "type": "string",
+                        "title": "type",
+                        "description": "The type of the answer",
+                        "const": "boolean"
                       },
-                      "required": [
-                        "type",
-                        "date",
-                        "field"
-                      ]
+                      "boolean": {
+                        "title": "boolean",
+                        "type": "boolean",
+                        "description": "The value of the answer"
+                      },
+                      "field": {
+                        "type": "object",
+                        "title": "field",
+                        "properties": {
+                          "ref": {
+                            "type": "string",
+                            "title": "ref",
+                            "description": "The ref of the field"
+                          },
+                          "id": {
+                            "type": "string",
+                            "title": "id",
+                            "description": "The ID of the field"
+                          },
+                          "type": {
+                            "type": "string",
+                            "title": "type",
+                            "description": "The type of the field",
+                            "enum": [
+                              "legal",
+                              "yes_no"
+                            ]
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "type"
+                        ]
+                      }
                     },
-                    {
-                      "type": "object",
-                      "title": "boolean answer",
-                      "properties": {
-                        "type": {
-                          "type": "string",
-                          "title": "type",
-                          "description": "The type of the answer",
-                          "const": "boolean"
-                        },
-                        "boolean": {
-                          "title": "boolean",
-                          "type": "boolean",
-                          "description": "The value of the answer"
-                        },
-                        "field": {
-                          "type": "object",
-                          "title": "field",
-                          "properties": {
-                            "ref": {
-                              "type": "string",
-                              "title": "ref",
-                              "description": "The ref of the field"
-                            },
-                            "id": {
-                              "type": "string",
-                              "title": "id",
-                              "description": "The ID of the field"
-                            },
-                            "type": {
-                              "type": "string",
-                              "title": "type",
-                              "description": "The type of the field",
-                              "enum": [
-                                "legal",
-                                "yes_no"
-                              ]
-                            }
-                          },
-                          "required": [
-                            "id",
-                            "type"
-                          ]
-                        }
+                    "required": [
+                      "type",
+                      "boolean",
+                      "field"
+                    ]
+                  },
+                  {
+                    "type": "object",
+                    "title": "url answer",
+                    "properties": {
+                      "type": {
+                        "type": "string",
+                        "title": "type",
+                        "description": "The type of the answer",
+                        "const": "url"
                       },
-                      "required": [
-                        "type",
-                        "boolean",
-                        "field"
-                      ]
+                      "url": {
+                        "type": "string",
+                        "title": "url",
+                        "description": "The value of the answer"
+                      },
+                      "field": {
+                        "type": "object",
+                        "title": "field",
+                        "properties": {
+                          "ref": {
+                            "type": "string",
+                            "title": "ref",
+                            "description": "The ref of the field"
+                          },
+                          "id": {
+                            "type": "string",
+                            "title": "id",
+                            "description": "The ID of the field"
+                          },
+                          "type": {
+                            "type": "string",
+                            "title": "type",
+                            "description": "The type of the field",
+                            "enum": [
+                              "website",
+                              "calendly"
+                            ]
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "type"
+                        ]
+                      }
                     },
-                    {
-                      "type": "object",
-                      "title": "url answer",
-                      "properties": {
-                        "type": {
-                          "type": "string",
-                          "title": "type",
-                          "description": "The type of the answer",
-                          "const": "url"
-                        },
-                        "url": {
-                          "type": "string",
-                          "title": "url",
-                          "description": "The value of the answer"
-                        },
-                        "field": {
-                          "type": "object",
-                          "title": "field",
-                          "properties": {
-                            "ref": {
-                              "type": "string",
-                              "title": "ref",
-                              "description": "The ref of the field"
-                            },
-                            "id": {
-                              "type": "string",
-                              "title": "id",
-                              "description": "The ID of the field"
-                            },
-                            "type": {
-                              "type": "string",
-                              "title": "type",
-                              "description": "The type of the field",
-                              "enum": [
-                                "website",
-                                "calendly"
-                              ]
-                            }
-                          },
-                          "required": [
-                            "id",
-                            "type"
-                          ]
-                        }
+                    "required": [
+                      "type",
+                      "url",
+                      "field"
+                    ]
+                  },
+                  {
+                    "type": "object",
+                    "title": "number answer",
+                    "properties": {
+                      "type": {
+                        "type": "string",
+                        "title": "type",
+                        "description": "The type of the answer",
+                        "const": "number"
                       },
-                      "required": [
-                        "type",
-                        "url",
-                        "field"
-                      ]
+                      "number": {
+                        "type": "number",
+                        "title": "number",
+                        "description": "The value of the answer"
+                      },
+                      "field": {
+                        "type": "object",
+                        "title": "field",
+                        "properties": {
+                          "ref": {
+                            "type": "string",
+                            "title": "ref",
+                            "description": "The ref of the field"
+                          },
+                          "id": {
+                            "type": "string",
+                            "title": "id",
+                            "description": "The ID of the field"
+                          },
+                          "type": {
+                            "type": "string",
+                            "title": "type",
+                            "description": "The type of the field"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "type"
+                        ]
+                      }
                     },
-                    {
-                      "type": "object",
-                      "title": "number answer",
-                      "properties": {
-                        "type": {
-                          "type": "string",
-                          "title": "type",
-                          "description": "The type of the answer",
-                          "const": "number"
-                        },
-                        "number": {
-                          "type": "number",
-                          "title": "number",
-                          "description": "The value of the answer"
-                        },
-                        "field": {
-                          "type": "object",
-                          "title": "field",
-                          "properties": {
-                            "ref": {
-                              "type": "string",
-                              "title": "ref",
-                              "description": "The ref of the field"
-                            },
-                            "id": {
-                              "type": "string",
-                              "title": "id",
-                              "description": "The ID of the field"
-                            },
-                            "type": {
-                              "type": "string",
-                              "title": "type",
-                              "description": "The type of the field",
-                              "enum": [
-                                "rating",
-                                "opinion_scale",
-                                "number"
-                              ]
-                            }
-                          },
-                          "required": [
-                            "id",
-                            "type"
-                          ]
-                        }
+                    "required": [
+                      "type",
+                      "number",
+                      "field"
+                    ]
+                  },
+                  {
+                    "type": "object",
+                    "title": "file url answer",
+                    "properties": {
+                      "type": {
+                        "type": "string",
+                        "title": "type",
+                        "description": "The type of the answer",
+                        "const": "file_url"
                       },
-                      "required": [
-                        "type",
-                        "number",
-                        "field"
-                      ]
+                      "file_url": {
+                        "type": "string",
+                        "title": "file_url",
+                        "description": "The value of the answer"
+                      },
+                      "field": {
+                        "type": "object",
+                        "title": "field",
+                        "properties": {
+                          "ref": {
+                            "type": "string",
+                            "title": "ref",
+                            "description": "The ref of the field"
+                          },
+                          "id": {
+                            "type": "string",
+                            "title": "id",
+                            "description": "The ID of the field"
+                          },
+                          "type": {
+                            "type": "string",
+                            "title": "type",
+                            "description": "The type of the field",
+                            "const": "file_upload"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "type"
+                        ]
+                      }
                     },
-                    {
-                      "type": "object",
-                      "title": "file url answer",
-                      "properties": {
-                        "type": {
-                          "type": "string",
-                          "title": "type",
-                          "description": "The type of the answer",
-                          "const": "file_url"
-                        },
-                        "file_url": {
-                          "type": "string",
-                          "title": "file_url",
-                          "description": "The value of the answer"
-                        },
-                        "field": {
-                          "type": "object",
-                          "title": "field",
-                          "properties": {
-                            "ref": {
-                              "type": "string",
-                              "title": "ref",
-                              "description": "The ref of the field"
-                            },
-                            "id": {
-                              "type": "string",
-                              "title": "id",
-                              "description": "The ID of the field"
-                            },
-                            "type": {
-                              "type": "string",
-                              "title": "type",
-                              "description": "The type of the field",
-                              "const": "file_upload"
-                            }
-                          },
-                          "required": [
-                            "id",
-                            "type"
-                          ]
-                        }
+                    "required": [
+                      "type",
+                      "file_url",
+                      "field"
+                    ]
+                  },
+                  {
+                    "type": "object",
+                    "title": "payment answer",
+                    "properties": {
+                      "type": {
+                        "type": "string",
+                        "title": "type",
+                        "description": "The type of the answer",
+                        "const": "payment"
                       },
-                      "required": [
-                        "type",
-                        "file_url",
-                        "field"
-                      ]
+                      "payment": {
+                        "type": "object",
+                        "title": "payment",
+                        "properties": {
+                          "amount": {
+                            "type": "number",
+                            "title": "amount",
+                            "description": "The amount of the payment"
+                          },
+                          "last4": {
+                            "type": "string",
+                            "title": "last4",
+                            "description": "The last 4 digits of the card"
+                          },
+                          "name": {
+                            "type": "string",
+                            "title": "name",
+                            "description": "The name of the credit card"
+                          },
+                          "success": {
+                            "title": "success",
+                            "type": "boolean",
+                            "description": "Whether the payment succeeded"
+                          }
+                        },
+                        "required": [
+                          "amount",
+                          "last4",
+                          "name",
+                          "success"
+                        ]
+                      },
+                      "field": {
+                        "type": "object",
+                        "title": "field",
+                        "properties": {
+                          "ref": {
+                            "type": "string",
+                            "title": "ref",
+                            "description": "The ref of the field"
+                          },
+                          "id": {
+                            "type": "string",
+                            "title": "id",
+                            "description": "The ID of the field"
+                          },
+                          "type": {
+                            "type": "string",
+                            "title": "type",
+                            "description": "The type of the field",
+                            "const": "payment"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "type"
+                        ]
+                      }
                     },
-                    {
-                      "type": "object",
-                      "title": "payment answer",
-                      "properties": {
-                        "type": {
-                          "type": "string",
-                          "title": "type",
-                          "description": "The type of the answer",
-                          "const": "payment"
-                        },
-                        "payment": {
-                          "type": "object",
-                          "title": "payment",
-                          "properties": {
-                            "amount": {
-                              "type": "number",
-                              "title": "amount",
-                              "description": "The amount of the payment"
-                            },
-                            "last4": {
-                              "type": "string",
-                              "title": "last4",
-                              "description": "The last 4 digits of the card"
-                            },
-                            "name": {
-                              "type": "string",
-                              "title": "name",
-                              "description": "The name of the credit card"
-                            },
-                            "success": {
-                              "title": "success",
-                              "type": "boolean",
-                              "description": "Whether the payment succeeded"
-                            }
-                          },
-                          "required": [
-                            "amount",
-                            "last4",
-                            "name",
-                            "success"
-                          ]
-                        },
-                        "field": {
-                          "type": "object",
-                          "title": "field",
-                          "properties": {
-                            "ref": {
-                              "type": "string",
-                              "title": "ref",
-                              "description": "The ref of the field"
-                            },
-                            "id": {
-                              "type": "string",
-                              "title": "id",
-                              "description": "The ID of the field"
-                            },
-                            "type": {
-                              "type": "string",
-                              "title": "type",
-                              "description": "The type of the field",
-                              "const": "payment"
-                            }
-                          },
-                          "required": [
-                            "id",
-                            "type"
-                          ]
-                        }
-                      },
-                      "required": [
-                        "type",
-                        "payment",
-                        "field"
-                      ]
-                    }
-                  ]
+                    "required": [
+                      "type",
+                      "payment",
+                      "field"
+                    ]
+                  }
                 ]
               }
             },
