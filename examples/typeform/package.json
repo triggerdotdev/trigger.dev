@@ -1,0 +1,19 @@
+{
+  "private": true,
+  "name": "@examples/typeform",
+  "version": "0.0.1",
+  "description": "Example trigger.dev workflow that uses the Typeform integration",
+  "dependencies": {
+    "@trigger.dev/typeform": "workspace:*",
+    "@trigger.dev/sdk": "workspace:*",
+    "zod": "^3.20.2"
+  },
+  "devDependencies": {
+    "@trigger.dev/tsconfig": "workspace:*",
+    "@types/node": "16",
+    "tsx": "^3.12.0"
+  },
+  "scripts": {
+    "dev": "tsx src/index.ts"
+  }
+}

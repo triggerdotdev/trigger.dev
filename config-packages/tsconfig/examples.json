@@ -53,7 +53,11 @@
       ],
       "@trigger.dev/whatsapp/*": [
         "../../integrations/whatsapp/src/*"
-      ]
+      ],
+      "@trigger.dev/typeform": [
+        "../../generated-integrations/typeform/src/index"
+      ],
+      "@trigger.dev/typeform/*": ["../../generated-integrations/typeform/src/*"]
     }
   }
 }
