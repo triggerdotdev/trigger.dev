@@ -1,0 +1,119 @@
+---
+title: New response
+sidebarTitle: New response
+description: A form response was submitted
+---
+    
+## Params
+    
+<ParamField path="key" type="string" required={true}>
+  A unique string. Please see the [Keys and Resumability](/guides/resumability)
+  doc for more info.
+</ParamField><ParamField path="params" type="object" required={true}>
+   Form Response Input
+<Expandable title="properties" defaultOpen={true}><ParamField path="form_id" type="string" required={true}>
+   Form ID
+</ParamField></Expandable></ParamField>
+
+## Response
+
+<ResponseField path="response" type="object" required={true}>
+   Form Response Output
+<Expandable title="properties" defaultOpen={false}><ResponseField path="event_id" type="string" required={true}>
+   The ID of the event that triggered this webhook
+</ResponseField><ResponseField path="event_type" type="string" required={true}>
+   The type of event, always "form_response"
+</ResponseField><ResponseField path="form_response" type="object" required={true}>
+   Form_response
+<Expandable title="properties" defaultOpen={false}><ResponseField path="form_id" type="string" required={true}>
+   The ID of the form that was submitted
+</ResponseField><ResponseField path="token" type="string" required={true}>
+   The unique token for this response
+</ResponseField><ResponseField path="submitted_at" type="string" required={true}>
+   The date and time the response was submitted
+</ResponseField><ResponseField path="landed_at" type="string" required={true}>
+   The date and time the respondent landed on the form
+</ResponseField><ResponseField path="definition" type="object" required={true}>
+   Definition
+<Expandable title="properties" defaultOpen={false}><ResponseField path="id" type="string" required={true}>
+   The ID of the form
+</ResponseField><ResponseField path="title" type="string" required={true}>
+   The title of the form
+</ResponseField><ResponseField path="fields" type="array" required={true}>
+   Fields
+<Expandable title="items" defaultOpen={false}><ResponseField path="fields[n]" type="object" required={true}>
+   Field
+<Expandable title="properties" defaultOpen={false}><ResponseField path="id" type="string" required={true}>
+   The ID of the field
+</ResponseField><ResponseField path="title" type="string" required={true}>
+   The title of the field
+</ResponseField><ResponseField path="type" type="string" required={true}>
+   The type of the field
+</ResponseField><ResponseField path="ref" type="string" required={true}>
+   A reference to the field – this will be different on every response unless you used the Create API to create the field. In that case, it will be what you set it to.
+</ResponseField><ResponseField path="allow_multiple_selectiors" type="boolean" required={true}>
+   Whether or not the field allows multiple selections
+</ResponseField><ResponseField path="allow_other_choice" type="boolean" required={true}>
+   Whether or not the field allows an 'other' choice
+</ResponseField><ResponseField path="choices" type="array" required={true}>
+   Choices
+<Expandable title="items" defaultOpen={false}><ResponseField path="choices[n]" type="object" required={true}>
+   Choice
+<Expandable title="properties" defaultOpen={false}><ResponseField path="label" type="string" required={true}>
+   The label of the choice
+</ResponseField><ResponseField path="id" type="string" required={true}>
+   The ID of the choice
+</ResponseField></Expandable></ResponseField></Expandable></ResponseField></Expandable></ResponseField></Expandable></ResponseField><ResponseField path="endings" type="array" required={false}>
+   Endings
+<Expandable title="items" defaultOpen={false}><ResponseField path="endings[n]" type="object" required={false}>
+   Ending
+<Expandable title="properties" defaultOpen={false}><ResponseField path="id" type="string" required={true}>
+   The ID of the ending
+</ResponseField><ResponseField path="ref" type="string" required={true}>
+   A reference to the field – this will be different on every response unless you used the Create API to create the field. In that case, it will be what you set it to.
+</ResponseField><ResponseField path="title" type="string" required={true}>
+   The title of the ending
+</ResponseField><ResponseField path="type" type="string" required={true}>
+   The type of the ending
+</ResponseField></Expandable></ResponseField></Expandable></ResponseField></Expandable></ResponseField><ResponseField path="answers" type="array" required={true}>
+   Answers
+<Expandable title="items" defaultOpen={false}><ResponseField path="answers[n]" type="" required={true}>
+   Answer
+
+*Please note that this object is one of the following possible types*
+<Expandable title="possible types for answers[n]" defaultOpen={false}><ResponseField path="Value" type="undefined" required={false}>
+</ResponseField></Expandable></ResponseField></Expandable></ResponseField><ResponseField path="ending" type="object" required={true}>
+   Ending
+<Expandable title="properties" defaultOpen={false}><ResponseField path="id" type="string" required={true}>
+   The ID of the ending
+</ResponseField><ResponseField path="ref" type="string" required={true}>
+   A reference to the field – this will be different on every response unless you used the Create API to create the field. In that case, it will be what you set it to.
+</ResponseField></Expandable></ResponseField><ResponseField path="calculated" type="object" required={false}>
+   Calculated
+<Expandable title="properties" defaultOpen={false}><ResponseField path="score" type="number" required={true}>
+   The score of the response, if the form has a score field
+</ResponseField></Expandable></ResponseField><ResponseField path="variables" type="array" required={false}>
+   Variables
+<Expandable title="items" defaultOpen={false}><ResponseField path="variables[n]" type="object" required={false}>
+   Variable
+
+*Please note that this object is one of the following possible types*
+<Expandable title="possible types for variables[n]" defaultOpen={false}><ResponseField path="Numbervariable" type="object" required={false}>
+   Number variable
+<Expandable title="properties" defaultOpen={false}><ResponseField path="id" type="string" required={true}>
+   The ID of the variable
+</ResponseField><ResponseField path="type" type="string" required={true}>
+   The type of the variable
+</ResponseField><ResponseField path="text" type="string" required={true}>
+   The value of the variable
+</ResponseField></Expandable></ResponseField><ResponseField path="Numbervariable" type="object" required={false}>
+   Number variable
+<Expandable title="properties" defaultOpen={false}><ResponseField path="id" type="string" required={true}>
+   The ID of the variable
+</ResponseField><ResponseField path="type" type="string" required={true}>
+   The type of the variable
+</ResponseField><ResponseField path="number" type="number" required={true}>
+   The value of the variable
+</ResponseField></Expandable></ResponseField></Expandable></ResponseField></Expandable></ResponseField><ResponseField path="hidden" type="object" required={false}>
+   Hidden
+<Expandable title="properties" defaultOpen={false}></Expandable></ResponseField></Expandable></ResponseField></Expandable></ResponseField>

@@ -228,7 +228,7 @@ export async function ${action.name}(
 const ${zodSchemaName} = ${zodReturnSchema}
 
 ${event.metadata.description ? `/** ${event.metadata.description} */` : ""}
-export function ${functionName}(
+function ${functionName}(
   /** The params for this call */
   params: Prettify<${inputSpec.title}>
 ): TriggerEvent<typeof ${zodSchemaName}> {
@@ -250,7 +250,7 @@ export function ${functionName}(
       `;
 
             const functionData: FunctionData = {
-              type: "action",
+              type: "event",
               title,
               name: functionName,
               friendlyName,
@@ -318,17 +318,32 @@ async function createFunctionsAndTypesFiles(
   );
   typesFile.formatText();
 
+  const imports = `import { getTriggerRun } from "@trigger.dev/sdk";
+  import type { TriggerEvent } from "@trigger.dev/sdk";
+  import { z } from "zod";
+    import { ${typeSchemas
+      .map((t) => t && t.title)
+      .join(", ")}, Prettify } from "./types";`;
+
+  const functions = `${Object.values(functionsData)
+    .map((f) => f.functionCode)
+    .join("")}`;
+
+  const eventFunctions = Object.values(functionsData).filter(
+    (f) => f.type === "event"
+  );
+  const eventExport =
+    eventFunctions.length > 0
+      ? `export const events = { ${eventFunctions
+          .map((f) => f.name)
+          .join(", ")} };`
+      : "";
+
   const functionsFile = project.createSourceFile(
     `${basePath}/src/index.ts`,
-    `import { getTriggerRun } from "@trigger.dev/sdk";
-    import type { TriggerEvent } from "@trigger.dev/sdk";
-    import { z } from "zod";
-      import { ${typeSchemas
-        .map((t) => t && t.title)
-        .join(", ")}, Prettify } from "./types";
-      ${Object.values(functionsData)
-        .map((f) => f.functionCode)
-        .join("")}`,
+    `${imports}
+    ${functions}
+    ${eventExport}`,
     {
       overwrite: true,
     }

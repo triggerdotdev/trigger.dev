@@ -778,6 +778,23 @@ importers:
       '@types/node': 16.18.11
       tsx: 3.12.2
 
+  examples/typeform:
+    specifiers:
+      '@trigger.dev/sdk': workspace:*
+      '@trigger.dev/tsconfig': workspace:*
+      '@trigger.dev/typeform': workspace:*
+      '@types/node': '16'
+      tsx: ^3.12.0
+      zod: ^3.20.2
+    dependencies:
+      '@trigger.dev/sdk': link:../../packages/trigger-sdk
+      '@trigger.dev/typeform': link:../../generated-integrations/typeform
+      zod: 3.20.2
+    devDependencies:
+      '@trigger.dev/tsconfig': link:../../config-packages/tsconfig
+      '@types/node': 16.18.11
+      tsx: 3.12.3
+
   examples/whatsapp:
     specifiers:
       '@trigger.dev/sdk': workspace:*

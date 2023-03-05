@@ -194,6 +194,7 @@ enum TriggerType {
   EVENT_BRIDGE
   HTTP_POLLING
   SLACK_INTERACTION
+  INTEGRATION_WEBHOOK
 }
 
 enum WorkflowStatus {
