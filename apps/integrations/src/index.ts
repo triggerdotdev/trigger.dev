@@ -38,8 +38,9 @@ const checkAuthentication = function (
   res: Response,
   next: NextFunction
 ) {
-  //if the path is /healthcheck, skip authentication
-  if (req.path === "/healthcheck") {
+  //if the path is /healthcheck, or /api/v2/webhooks/$id/receive skip authentication
+  const regex = /api\/v2\/webhooks\/[a-zA-Z0-9_-]+\/receive/g;
+  if (req.path === "/healthcheck" || regex.test(req.path)) {
     next();
     return;
   }
