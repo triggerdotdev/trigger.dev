@@ -5,6 +5,7 @@ import { example } from "./examples";
 import { formEventSchema } from "./schemas";
 import { formResponse } from "./specs";
 import crypto from "node:crypto";
+import { makeObjectSchema, makeStringSchema } from "core/schemas/makeSchema";
 
 const baseUrl = "https://api.typeform.com";
 
@@ -19,7 +20,7 @@ export const formResponseEvent: WebhookEvent = {
   },
   schema: formEventSchema,
   examples: [example],
-  key: "${data.form_id}",
+  key: "${params.form_id}",
   matches: () => true,
   process: async (data: WebhookReceiveRequest) => [
     {
@@ -42,6 +43,25 @@ const webhook = makeWebhook({
   subscription: {
     type: "automatic",
     requiresSecret: true,
+    inputSchema: makeObjectSchema("Input", {
+      requiredProperties: {
+        form_id: makeStringSchema("Form ID"),
+      },
+    }),
+    preSubscribe: (input) => {
+      return {
+        parameters: {
+          form_id: input.data.form_id,
+          tag: input.webhookId,
+        },
+        body: {
+          enabled: true,
+          secret: input.secret,
+          url: input.callbackUrl,
+          verify_ssl: true,
+        },
+      };
+    },
   },
   preProcess: async (data) => {
     if (data.secret) {

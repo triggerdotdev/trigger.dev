@@ -4,7 +4,7 @@ import { WebhookSpec } from "core/webhook/types";
 
 const createEndpoint: EndpointSpec = {
   method: "PUT",
-  path: "/forms/{form_id}/webhooks/{webhookId}",
+  path: "/forms/{form_id}/webhooks/{tag}",
   metadata: {
     name: "Create webhook",
     description: "Create a webhook for a form",
@@ -27,33 +27,13 @@ const createEndpoint: EndpointSpec = {
       in: "path",
     },
     {
-      name: "webhookId",
+      name: "tag",
       description: "The webhook tag",
       required: true,
       schema: {
         type: "string",
       },
       in: "path",
-    },
-    {
-      name: "secret",
-      description: "The webhook secret",
-      required: true,
-      schema: {
-        type: "string",
-      },
-      in: "body",
-      pointer: createJSONPointer(["secret"]),
-    },
-    {
-      name: "callbackUrl",
-      description: "The webhook url",
-      required: true,
-      schema: {
-        type: "string",
-      },
-      in: "body",
-      pointer: createJSONPointer(["url"]),
     },
   ],
   request: {
@@ -77,10 +57,6 @@ const createEndpoint: EndpointSpec = {
             type: "boolean",
           },
         },
-      },
-      static: {
-        "/enabled": true,
-        "/verify_ssl": true,
       },
     },
   },

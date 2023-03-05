@@ -4,6 +4,7 @@ import {
 } from "core/authentication/types";
 import { requestEndpoint } from "core/request/requestEndpoint";
 import { HTTPResponse } from "core/request/types";
+import { JSONSchema } from "core/schemas/types";
 import {
   Webhook,
   WebhookEvent,
@@ -26,6 +27,15 @@ export function makeWebhook(input: {
     | {
         type: "automatic";
         requiresSecret: boolean;
+        inputSchema: JSONSchema;
+        /** take the raw data and turn it into the appropriate input for the subscribe request */
+        preSubscribe: (input: {
+          webhookId: string;
+          callbackUrl: string;
+          events: string[];
+          secret?: string;
+          data: Record<string, any>;
+        }) => { parameters?: Record<string, any>; body?: any };
         /** after a subscription you might want to alter the result, e.g. add secret from response */
         postSubscribe?: (
           result: WebhookSubscriptionResult
@@ -63,6 +73,17 @@ export function makeWebhook(input: {
           };
         }
 
+        if (!("preSubscribe" in input.subscription))
+          throw new Error("No required presubscribe field");
+
+        const subscribeInputData = input.subscription.preSubscribe({
+          webhookId: config.webhookId,
+          callbackUrl: config.callbackUrl,
+          events: config.events,
+          secret: config.secret,
+          data: config.inputData,
+        });
+
         const result = await subscribeToWebhook({
           id: config.webhookId,
           baseUrl,
@@ -73,6 +94,7 @@ export function makeWebhook(input: {
           events: config.events,
           secret: config.secret,
           data: config.inputData,
+          subscribeInputData,
         });
         //have to do this because TS is dumb because this in a closure
         if (!("postSubscribe" in input.subscription)) return result;
@@ -83,6 +105,7 @@ export function makeWebhook(input: {
 
       subscription = {
         type: "automatic",
+        inputSpec: input.subscription.inputSchema,
         requiresSecret: input.subscription.requiresSecret,
         subscribe: subscribe,
       };
@@ -170,6 +193,7 @@ async function subscribeToWebhook({
   events,
   secret,
   data,
+  subscribeInputData,
 }: {
   id: string;
   baseUrl: string;
@@ -180,6 +204,10 @@ async function subscribeToWebhook({
   events: string[];
   secret?: string;
   data: Record<string, any>;
+  subscribeInputData: {
+    parameters?: Record<string, any> | undefined;
+    body?: any;
+  };
 }): Promise<WebhookSubscriptionResult> {
   switch (webhook.subscribe.type) {
     case "manual":
@@ -193,13 +221,8 @@ async function subscribeToWebhook({
         },
         {
           credentials,
-          parameters: {
-            webhookId: id,
-            callbackUrl,
-            events,
-            secret,
-            ...data,
-          },
+          parameters: subscribeInputData.parameters,
+          body: subscribeInputData.body,
         }
       );
 

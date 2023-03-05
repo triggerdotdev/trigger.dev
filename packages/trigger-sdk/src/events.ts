@@ -20,6 +20,11 @@ export type TriggerEvent<TSchema extends z.ZodTypeAny> = {
   schema: TSchema;
 };
 
+export type TriggerIntegrationWebhookEvent<TSchema extends z.ZodTypeAny> = {
+  metadata: z.infer<typeof TriggerMetadataSchema>;
+  schema: TSchema;
+};
+
 export type TriggerCustomEventOptions<TSchema extends z.ZodTypeAny> = {
   name: string;
   schema?: TSchema;

@@ -27,11 +27,7 @@ export type EndpointSpecParameter = {
   description: string;
   required?: boolean;
   schema: JSONSchema;
-} & (
-  | EndpointSpecParameterUrl
-  | EndpointSpecParameterHeader
-  | EndpointSpecParameterBody
-);
+} & (EndpointSpecParameterUrl | EndpointSpecParameterHeader);
 
 type EndpointSpecParameterUrl = {
   in: "query" | "path";
@@ -41,16 +37,10 @@ type EndpointSpecParameterHeader = {
   in: "header";
 };
 
-type EndpointSpecParameterBody = {
-  in: "body";
-  pointer: JSONPointer;
-};
-
 interface EndpointSpecRequest {
   headers?: Record<string, string>;
   body?: {
     schema: JSONSchema;
-    static?: Record<JSONPointer, any>;
   };
 }
 

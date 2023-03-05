@@ -1,16 +1,22 @@
-import { IndentationText, NewLineKind, Project, QuoteKind } from "ts-morph";
-import { Service } from "core/service/types";
-import fs from "fs/promises";
-import path from "path";
-import { generateInputOutputSchemas } from "generators/combineSchemas";
-import { getTypesFromSchema } from "generators/generateTypes";
-import rimraf from "rimraf";
+import { AutoReffer } from "core/schemas/autoReffer";
 import { makeAnyOf } from "core/schemas/makeSchema";
 import { JSONSchema } from "core/schemas/types";
-import { FunctionData } from "./types";
+import { Service } from "core/service/types";
+import fs from "fs/promises";
+import { generateInputOutputSchemas } from "generators/combineSchemas";
+import { getTypesFromSchema } from "generators/generateTypes";
+import { parseSchema } from "json-schema-to-zod";
+import path from "path";
+import rimraf from "rimraf";
+import { IndentationText, NewLineKind, Project, QuoteKind } from "ts-morph";
 import { generateDocs } from "./generateDocs";
-import { TitleCaseWithSpaces, toFriendlyTypeName } from "./utilities";
-import { AutoReffer } from "core/schemas/autoReffer";
+import { FunctionData } from "./types";
+import {
+  TitleCaseWithSpaces,
+  toCamelCase,
+  toFriendlyTypeName,
+  toTitleCase,
+} from "./utilities";
 
 const appDir = process.cwd();
 
@@ -140,19 +146,20 @@ async function createFileAndReplaceVariables(
 }
 
 async function generateFunctionData(service: Service) {
-  const { actions } = service;
+  const { actions, webhooks } = service;
   const functions: Record<string, FunctionData> = {};
   //loop through actions
-  for (const key in actions) {
-    const action = actions[key];
+  if (actions) {
+    for (const key in actions) {
+      const action = actions[key];
 
-    //generate schemas for input and output
-    const title = TitleCaseWithSpaces(action.name);
-    const name = action.name;
-    const friendlyName = toFriendlyTypeName(name);
-    const schemas = generateInputOutputSchemas(action.spec, friendlyName);
+      //generate schemas for input and output
+      const title = TitleCaseWithSpaces(action.name);
+      const name = action.name;
+      const friendlyName = toFriendlyTypeName(name);
+      const schemas = generateInputOutputSchemas(action.spec, friendlyName);
 
-    const functionCode = `
+      const functionCode = `
 ${action.description ? `/** ${action.description} */` : ""}
 export async function ${action.name}(
   /** This key should be unique inside your workflow */
@@ -181,16 +188,86 @@ export async function ${action.name}(
 }
       `;
 
-    const functionData: FunctionData = {
-      title,
-      name,
-      friendlyName,
-      description: action.description,
-      input: schemas.input,
-      output: schemas.output,
-      functionCode,
-    };
-    functions[name] = functionData;
+      const functionData: FunctionData = {
+        type: "action",
+        title,
+        name,
+        friendlyName,
+        description: action.description,
+        input: schemas.input,
+        output: schemas.output,
+        functionCode,
+      };
+      functions[name] = functionData;
+    }
+  }
+
+  if (webhooks) {
+    for (const key in webhooks) {
+      const webhook = webhooks[key];
+
+      for (const eventKey in webhook.events) {
+        const event = webhook.events[eventKey];
+
+        //generate schemas for input and output
+        switch (webhook.subscription.type) {
+          case "automatic": {
+            const typeName = toTitleCase(event.name);
+            const inputSpec = webhook.subscription.inputSpec;
+            inputSpec.title = `${typeName}Input`;
+            const outputSpec = event.schema;
+            outputSpec.title = `${typeName}Output`;
+            const title = event.metadata.displayProperties.title;
+            const functionName = toCamelCase(`${typeName}Event`);
+            const friendlyName = toFriendlyTypeName(functionName);
+
+            const zodReturnSchema = parseSchema(outputSpec as any);
+            const zodSchemaName = `${functionName}Schema`;
+
+            const functionCode = `
+const ${zodSchemaName} = ${zodReturnSchema}
+
+${event.metadata.description ? `/** ${event.metadata.description} */` : ""}
+export function ${functionName}(
+  /** The params for this call */
+  params: Prettify<${inputSpec.title}>
+): TriggerEvent<typeof ${zodSchemaName}> {
+  return {
+    metadata: {
+      type: "INTEGRATION_WEBHOOK",
+      service: "${service.service}",
+      name: "${event.name}",
+      key: \`${event.key}\`,
+      filter: {
+        service: ["${service.service}"],
+        event: ["${event.name}"],
+      },
+      source: params,
+    },
+    schema: ${zodSchemaName},
+  }; 
+}
+      `;
+
+            const functionData: FunctionData = {
+              type: "action",
+              title,
+              name: functionName,
+              friendlyName,
+              description: event.metadata.description,
+              input: inputSpec,
+              output: outputSpec,
+              functionCode,
+            };
+            functions[functionName] = functionData;
+            break;
+          }
+          case "manual": {
+            throw new Error("Manual subscriptions not supported yet");
+          }
+        }
+      }
+    }
   }
 
   return functions;
@@ -244,6 +321,8 @@ async function createFunctionsAndTypesFiles(
   const functionsFile = project.createSourceFile(
     `${basePath}/src/index.ts`,
     `import { getTriggerRun } from "@trigger.dev/sdk";
+    import type { TriggerEvent } from "@trigger.dev/sdk";
+    import { z } from "zod";
       import { ${typeSchemas
         .map((t) => t && t.title)
         .join(", ")}, Prettify } from "./types";

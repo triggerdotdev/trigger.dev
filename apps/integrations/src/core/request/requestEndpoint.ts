@@ -24,7 +24,7 @@ export async function requestEndpoint(
 
   // check the request body is there if it's meant to be
   const requiresBody = request.body?.schema != null;
-  if (body == null && requiresBody && request.body?.static === undefined) {
+  if (body == null && requiresBody) {
     throw {
       type: "missing_body",
     };
@@ -81,10 +81,6 @@ export async function requestEndpoint(
             [name]: `${element}`,
           };
           break;
-        case "body": {
-          JsonPointer.set(body, parameter.pointer, element);
-          break;
-        }
       }
     }
   }
@@ -97,16 +93,6 @@ export async function requestEndpoint(
         ...headers,
         [name]: element,
       };
-    }
-  }
-
-  // add any static body content
-  if (request.body?.static != null) {
-    for (const pointer in request.body.static) {
-      if (Object.prototype.hasOwnProperty.call(request.body.static, pointer)) {
-        const element = request.body.static[pointer];
-        JsonPointer.set(body, pointer, element);
-      }
     }
   }
 

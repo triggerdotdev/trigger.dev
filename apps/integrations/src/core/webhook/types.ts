@@ -37,6 +37,7 @@ export type WebhookSubscription =
 export type WebhookSubscriptionAutomatic = {
   type: "automatic";
   requiresSecret: boolean;
+  inputSpec: JSONSchema;
   subscribe: (
     data: WebhookSubscriptionRequest
   ) => Promise<WebhookSubscriptionResult>;
