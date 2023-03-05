@@ -19,7 +19,7 @@ export const formResponseEvent: WebhookEvent = {
   },
   schema: formEventSchema,
   examples: [example],
-  createKey: (data) => `${data.form_id}`,
+  key: "${data.form_id}",
   matches: () => true,
   process: async (data: WebhookReceiveRequest) => [
     {

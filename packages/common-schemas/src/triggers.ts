@@ -26,6 +26,18 @@ export const WebhookEventTriggerSchema = z.object({
 });
 export type WebhookEventTrigger = z.infer<typeof WebhookEventTriggerSchema>;
 
+export const IntegrationWebhookEventTriggerSchema = z.object({
+  type: z.literal("INTEGRATION_WEBHOOK"),
+  service: z.string(),
+  name: z.string(),
+  key: z.string(),
+  filter: EventFilterSchema,
+  source: JsonSchema.optional(),
+});
+export type IntegrationWebhookEventTrigger = z.infer<
+  typeof IntegrationWebhookEventTriggerSchema
+>;
+
 export const HttpEventTriggerSchema = z.object({
   type: z.literal("HTTP_ENDPOINT"),
   service: z.literal("trigger"),
@@ -56,6 +68,7 @@ export type SlackInteractionEventTrigger = z.infer<
 export const TriggerMetadataSchema = z.discriminatedUnion("type", [
   CustomEventTriggerSchema,
   WebhookEventTriggerSchema,
+  IntegrationWebhookEventTriggerSchema,
   HttpEventTriggerSchema,
   ScheduledEventTriggerSchema,
   SlackInteractionTriggerSchema,

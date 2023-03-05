@@ -144,6 +144,7 @@ export class RegisterExternalSource {
       accessInfo,
       event: externalSource.event,
       data: externalSource.source,
+      key: externalSource.key,
     });
 
     if (!registrationResponse.success) {

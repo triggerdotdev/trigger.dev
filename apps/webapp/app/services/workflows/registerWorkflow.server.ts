@@ -212,6 +212,32 @@ export class RegisterWorkflow {
 
         return externalSource;
       }
+      case "INTEGRATION_WEBHOOK": {
+        const externalSource = await this.#upsertIntegrationWebhookSource(
+          payload,
+          organization,
+          workflow
+        );
+
+        if (!externalSource) {
+          return;
+        }
+
+        await this.#prismaClient.workflow.update({
+          where: {
+            id: workflow.id,
+          },
+          data: {
+            externalSourceId: externalSource.id,
+          },
+        });
+
+        await taskQueue.publish("EXTERNAL_SOURCE_UPSERTED", {
+          id: externalSource.id,
+        });
+
+        return externalSource;
+      }
       case "SCHEDULE": {
         if (!payload.trigger.source) {
           return;
@@ -356,6 +382,56 @@ export class RegisterWorkflow {
 
       return externalSource;
     }
+  }
+
+  async #upsertIntegrationWebhookSource(
+    payload: WorkflowMetadata,
+    organization: Organization,
+    workflow: Workflow
+  ) {
+    if (payload.trigger.type !== "INTEGRATION_WEBHOOK") {
+      return;
+    }
+
+    const existingConnection = await this.#findLatestExistingConnectionInOrg(
+      payload.trigger.service,
+      organization
+    );
+
+    const externalSource = await this.#prismaClient.externalSource.upsert({
+      where: {
+        organizationId_key: {
+          key: payload.trigger.key,
+          organizationId: organization.id,
+        },
+      },
+      update: {
+        source: payload.trigger.source ?? undefined,
+      },
+      create: {
+        organizationId: organization.id,
+        key: this.#keyForExternalSource(payload),
+        type: "INTEGRATION_WEBHOOK",
+        source: payload.trigger.source ?? {},
+        status: "CREATED",
+        connectionId: existingConnection?.id,
+        service: payload.trigger.service,
+        manualRegistration: false,
+      },
+    });
+
+    if (!externalSource.connectionId && existingConnection) {
+      await this.#prismaClient.externalSource.update({
+        where: {
+          id: externalSource.id,
+        },
+        data: {
+          connectionId: existingConnection.id,
+        },
+      });
+    }
+
+    return externalSource;
   }
 
   #keyForExternalSource(payload: WorkflowMetadata): string {

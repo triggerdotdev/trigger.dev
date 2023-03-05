@@ -25,6 +25,7 @@ const ServiceSchema = z.object({
   authentication: AuthenticationSchema,
   data: z.record(z.any()),
   eventName: z.string(),
+  key: z.string(),
 });
 
 const GenericSchema = z.object({
@@ -37,6 +38,7 @@ const GenericSchema = z.object({
     enabled: z.boolean(),
     header: z.string().optional(),
   }),
+  key: z.string(),
 });
 
 export const SubscribeInputSchema = z.discriminatedUnion("type", [

@@ -24,6 +24,7 @@ type ServiceSubscription = {
         api_key: string;
       };
   eventName: string;
+  key: string;
 };
 
 type GenericSubscription = {
@@ -36,6 +37,7 @@ type GenericSubscription = {
     enabled: boolean;
     header?: string;
   };
+  key: string;
 };
 
 export type Subscription = ServiceSubscription | GenericSubscription;
@@ -205,12 +207,14 @@ class IntegrationsClient {
     accessInfo,
     event,
     data,
+    key,
   }: {
     service: string;
     connectionId: string;
     externalSourceId: string;
     accessInfo: AccessInfo;
     event: string;
+    key: string;
     data: any;
   }): Promise<SubscribeResponse> {
     let credentials: ServiceSubscription["authentication"];
@@ -238,6 +242,7 @@ class IntegrationsClient {
       authentication: credentials,
       data,
       eventName: event,
+      key,
     };
 
     try {

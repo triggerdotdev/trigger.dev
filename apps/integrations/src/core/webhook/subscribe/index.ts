@@ -65,15 +65,10 @@ export class SubscribeToWebhook {
       };
     }
 
-    //the key and consumerId are used to identify the webhook
-    const key = `${service.service}-${event.name}-${event.createKey(
-      input.data
-    )}`;
-
     //is there an existing webhook?
     const existingWebhookRow = await this.#getWebhookRow({
       consumerId: input.consumerId,
-      key,
+      key: input.key,
     });
 
     if (existingWebhookRow) {
@@ -121,7 +116,7 @@ export class SubscribeToWebhook {
         const newWebhookRow = await this.#createManualWebhook({
           requiresSecret: webhook.subscription.requiresSecret,
           consumerId: input.consumerId,
-          key,
+          key: input.key,
           service: input.service,
           webhookName: webhook.spec.id,
           authenticationData: input.authentication,
@@ -151,7 +146,7 @@ export class SubscribeToWebhook {
         const newWebhookRow = await this.#createAutomaticWebhook({
           requiresSecret: webhook.subscription.requiresSecret,
           consumerId: input.consumerId,
-          key,
+          key: input.key,
           service: input.service,
           webhookName: webhook.spec.id,
           authenticationData: input.authentication,

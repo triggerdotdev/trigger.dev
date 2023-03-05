@@ -124,7 +124,8 @@ export type WebhookEvent = {
   metadata: WebhookEventMetadata;
   schema: JSONSchema;
   examples: any[];
-  createKey: (data: Record<string, any>) => string;
+  /** This will be used to identify this event, you should use template language but inside a double quoted string */
+  key: string;
   matches: (data: {
     subscriptionData: Record<string, any>;
     request: WebhookIncomingRequest;
