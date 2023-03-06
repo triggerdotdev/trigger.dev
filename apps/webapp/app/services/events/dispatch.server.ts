@@ -26,7 +26,7 @@ export class DispatchEvent {
     }
 
     console.log(
-      `Dispatching event ${event.id}, type = ${event.type}, name = ${event.name}, service = ${event.service}, environment = ${event.environmentId}`
+      `Dispatching event ${event.id}, type = ${event.type}, name = ${event.name}, service = ${event.service}, environment = ${event.environmentId}, organization = ${event.organizationId}`
     );
 
     const eventRules = await this.#prismaClient.eventRule.findMany({
