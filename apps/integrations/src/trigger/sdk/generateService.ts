@@ -217,7 +217,7 @@ export async function ${action.name}(
             inputSpec.title = `${typeName}Input`;
             const outputSpec = event.schema;
             outputSpec.title = `${typeName}Output`;
-            const title = event.metadata.displayProperties.title;
+            const title = event.metadata.title;
             const functionName = toCamelCase(`${typeName}Event`);
             const friendlyName = toFriendlyTypeName(functionName);
 

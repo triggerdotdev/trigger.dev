@@ -1,3 +1,4 @@
+import { DisplayProperties } from "core/action/types";
 import { z } from "zod";
 
 const OAuthSchema = z.object({
@@ -62,6 +63,7 @@ export type SubscribeResult =
   | {
       success: true;
       destinationSecret: string;
+      displayProperties: DisplayProperties;
       result:
         | {
             type: "service";

@@ -4,6 +4,10 @@ import {
   ManualWebhookSourceSchema,
   TriggerMetadataSchema,
 } from "@trigger.dev/common-schemas";
+import {
+  DisplayProperties,
+  DisplayPropertiesSchema,
+} from "@trigger.dev/integration-sdk";
 import { typedjson } from "remix-typedjson";
 import invariant from "tiny-invariant";
 import { Container } from "~/components/layout/Container";
@@ -149,11 +153,21 @@ export const loader = async ({ request, params }: LoaderArgs) => {
     }
   }
 
+  //external source displayProperties
+  const parsedDisplayProperties = DisplayPropertiesSchema.safeParse(
+    workflow.externalSource?.displayProperties
+  );
+  let triggerDisplayProperties: DisplayProperties | undefined = undefined;
+  if (parsedDisplayProperties.success) {
+    triggerDisplayProperties = parsedDisplayProperties.data;
+  }
+
   return typedjson({
     workflow: {
       ...workflow,
       rules,
       externalSourceConfig,
+      triggerDisplayProperties,
     },
     connectionSlots,
   });

@@ -19,6 +19,7 @@ import {
 import { useFetcher } from "@remix-run/react";
 import type { LoaderArgs } from "@remix-run/server-runtime";
 import type { Delay, Scheduled } from "@trigger.dev/common-schemas";
+import { DisplayProperties } from "@trigger.dev/integration-sdk";
 import type { schemas as resendSchemas } from "@trigger.dev/resend/internal";
 import classNames from "classnames";
 import humanizeDuration from "humanize-duration";
@@ -165,7 +166,10 @@ export default function Page() {
         )}
       </ul>
 
-      <TriggerStep trigger={run.trigger} />
+      <TriggerStep
+        trigger={run.trigger}
+        displayProperties={workflow.triggerDisplayProperties}
+      />
 
       {run.steps
         .filter((s) => s.type !== "OUTPUT")
@@ -292,7 +296,13 @@ const workflowNodeUppercaseClasses = "uppercase text-slate-400 tracking-wider";
 const workflowNodeDelayClasses =
   "flex rounded-md bg-[#0F172A] pl-4 p-3 font-mono";
 
-function TriggerStep({ trigger }: { trigger: Trigger }) {
+function TriggerStep({
+  trigger,
+  displayProperties,
+}: {
+  trigger: Trigger;
+  displayProperties?: DisplayProperties;
+}) {
   return (
     <>
       <Panel className="mt-4">
@@ -311,7 +321,7 @@ function TriggerStep({ trigger }: { trigger: Trigger }) {
           // name="Initial wait"
           // integration={trigger.type === "WEBHOOK"}
         />
-        <TriggerBody trigger={trigger} />
+        <TriggerBody trigger={trigger} displayProperties={displayProperties} />
         {trigger.input && (
           <CodeBlock
             code={stringifyCode(trigger.input)}

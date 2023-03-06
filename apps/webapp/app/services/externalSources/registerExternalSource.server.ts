@@ -159,6 +159,7 @@ export class RegisterExternalSource {
         status: "READY",
         readyAt: new Date(),
         secret: registrationResponse.destinationSecret,
+        displayProperties: registrationResponse.displayProperties,
       },
     });
 

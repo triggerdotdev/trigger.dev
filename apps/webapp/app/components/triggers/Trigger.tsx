@@ -8,11 +8,18 @@ import type {
   TriggerMetadata,
   WebhookEventTrigger,
 } from "@trigger.dev/common-schemas";
+import type { DisplayProperties } from "@trigger.dev/integration-sdk";
+import cronstrue from "cronstrue";
 import { Body } from "../primitives/text/Body";
 import { Header2 } from "../primitives/text/Headers";
-import cronstrue from "cronstrue";
 
-export function TriggerBody({ trigger }: { trigger: TriggerMetadata }) {
+export function TriggerBody({
+  trigger,
+  displayProperties,
+}: {
+  trigger: TriggerMetadata;
+  displayProperties?: DisplayProperties;
+}) {
   switch (trigger.type) {
     case "WEBHOOK":
       return <Webhook webhook={trigger} />;
@@ -25,7 +32,12 @@ export function TriggerBody({ trigger }: { trigger: TriggerMetadata }) {
     case "SLACK_INTERACTION":
       return <SlackInteraction trigger={trigger} />;
     case "INTEGRATION_WEBHOOK":
-      return <IntegrationWebhook webhook={trigger} />;
+      return (
+        <IntegrationWebhook
+          webhook={trigger}
+          displayProperties={displayProperties}
+        />
+      );
     default:
       break;
   }
@@ -109,13 +121,15 @@ function Webhook({ webhook }: { webhook: WebhookEventTrigger }) {
 
 function IntegrationWebhook({
   webhook,
+  displayProperties,
 }: {
   webhook: IntegrationWebhookEventTrigger;
+  displayProperties?: DisplayProperties;
 }) {
   return (
     <>
       <Header2 size="small" className="mb-2 text-slate-300">
-        {webhook.name}
+        {displayProperties?.title ?? webhook.name}
       </Header2>
       <div className="flex flex-col gap-1">
         {webhook.source &&

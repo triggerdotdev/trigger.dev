@@ -1,6 +1,7 @@
 import { CacheService } from "core/cache/types";
 import { EndpointSpec } from "core/endpoint/types";
 import { HTTPMethod, RequestData, RequestResponse } from "core/request/types";
+import { z } from "zod";
 
 export type InputSpec = {
   security?: EndpointSpec["security"];
@@ -14,8 +15,14 @@ export type OutputSpec = {
 
 export type Metadata = Record<string, any>;
 
+export type DisplayProperty = {
+  key: string;
+  value: string | number | boolean;
+};
+
 export type DisplayProperties = {
   title: string;
+  properties?: DisplayProperty[];
 };
 
 export type Action = {

@@ -9,6 +9,7 @@ import {
   InformationCircleIcon,
 } from "@heroicons/react/24/outline";
 import type { LoaderArgs } from "@remix-run/server-runtime";
+import { DisplayPropertiesSchema } from "@trigger.dev/integration-sdk";
 import classNames from "classnames";
 import {
   typedjson,
@@ -179,7 +180,10 @@ export default function Page() {
               startedAt={null}
               finishedAt={null}
             />
-            <TriggerBody trigger={eventRule.trigger} />
+            <TriggerBody
+              trigger={eventRule.trigger}
+              displayProperties={workflow.triggerDisplayProperties}
+            />
           </Panel>
           <div className="divide-y divide-slate-800 rounded-b-md">
             {connectionSlots.source &&

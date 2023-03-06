@@ -4,7 +4,10 @@ import {
   SlackInteractionSourceSchema,
 } from "@trigger.dev/common-schemas";
 import cronstrue from "cronstrue";
-import type { DisplayProperties } from "@trigger.dev/integration-sdk";
+import {
+  DisplayProperties,
+  DisplayPropertiesSchema,
+} from "@trigger.dev/integration-sdk";
 import * as github from "@trigger.dev/github/internal";
 import invariant from "tiny-invariant";
 import { triggerLabel } from "~/components/triggers/triggerLabel";
@@ -83,6 +86,7 @@ function getWorkflows(
         select: {
           service: true,
           source: true,
+          displayProperties: true,
         },
       },
       schedulerSources: {
@@ -124,7 +128,10 @@ function getWorkflows(
 
 function triggerProperties(
   workflow: Pick<Workflow, "type" | "eventNames">,
-  externalSource?: Pick<ExternalSource, "service" | "source">,
+  externalSource?: Pick<
+    ExternalSource,
+    "service" | "source" | "displayProperties"
+  >,
   schedulerSource?: Pick<SchedulerSource, "schedule">,
   internalSource?: Pick<InternalSource, "type" | "source">
 ): {
@@ -164,6 +171,30 @@ function triggerProperties(
         title: displayProperties.title,
         properties: displayProperties.properties,
       };
+    }
+    case "INTEGRATION_WEBHOOK": {
+      invariant(
+        externalSource,
+        "External source is required for integration webhook"
+      );
+
+      const displayPropertiesResult = DisplayPropertiesSchema.safeParse(
+        externalSource.displayProperties
+      );
+      if (!displayPropertiesResult.success) {
+        return {
+          type: workflow.type,
+          typeTitle: triggerLabel(workflow.type),
+          title: workflow.type,
+        };
+      } else {
+        return {
+          type: workflow.type,
+          typeTitle: triggerLabel(workflow.type),
+          title: displayPropertiesResult.data.title,
+          properties: displayPropertiesResult.data.properties,
+        };
+      }
     }
     case "SCHEDULE": {
       if (!schedulerSource) {

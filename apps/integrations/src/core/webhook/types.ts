@@ -78,7 +78,8 @@ export interface WebhookSpecSubscribeAutomatic {
   type: "automatic";
   requiresSecret: boolean;
   create: EndpointSpec;
-  //todo delete: EndpointSpec;
+  //todo unregistering a webhook
+  //todo updating a webhook to add more events
 }
 
 export type WebhookSubscriptionRequest = {
@@ -127,6 +128,7 @@ export type WebhookEvent = {
   examples: any[];
   /** This will be used to identify this event, you should use template language but inside a double quoted string */
   key: string;
+  displayProperties: (inputData: Record<string, any>) => DisplayProperties;
   matches: (data: {
     subscriptionData: Record<string, any>;
     request: WebhookIncomingRequest;
@@ -136,7 +138,7 @@ export type WebhookEvent = {
 
 export type WebhookEventMetadata = {
   description: string;
-  displayProperties: DisplayProperties;
+  title: string;
   tags: string[];
 };
 

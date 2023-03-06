@@ -228,6 +228,7 @@ model ExternalSource {
   connectionId String?
 
   event String?
+  displayProperties Json?
 
   @@unique([organizationId, key])
 }
