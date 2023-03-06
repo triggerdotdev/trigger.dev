@@ -2,13 +2,13 @@ import { Trigger } from "@trigger.dev/sdk";
 import { events } from "@trigger.dev/typeform";
 
 new Trigger({
-  id: "typeform-webhook-3",
+  id: "typeform-webhook-4",
   name: "Typeform webhook example",
   apiKey: "trigger_dev_zC25mKNn6c0q",
   endpoint: "ws://localhost:8889/ws",
   logLevel: "debug",
   on: events.formResponseEvent({
-    form_id: "Wu9xVIt6",
+    form_id: "nvK1oxMm",
   }),
   run: async (event, ctx) => {
     await ctx.logger.info(`Action was ${event.event_id}`, event.form_response);

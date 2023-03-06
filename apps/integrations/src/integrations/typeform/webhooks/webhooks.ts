@@ -17,6 +17,8 @@ export const formResponseEvent: WebhookEvent = {
     tags: ["form"],
   },
   schema: formEventSchema,
+  instructions: (data) =>
+    `Fill in your Typeform (${data.form_id}) as a real user would`,
   examples: [example],
   key: "${params.form_id}",
   displayProperties: (data) => ({

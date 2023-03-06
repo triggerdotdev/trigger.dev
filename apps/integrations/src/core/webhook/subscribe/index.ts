@@ -66,6 +66,7 @@ export class SubscribeToWebhook {
     }
 
     const displayProperties = event.displayProperties(input.data);
+    const instructions = event.instructions(input.data);
 
     //is there an existing webhook?
     const existingWebhookRow = await this.#getWebhookRow({
@@ -88,6 +89,8 @@ export class SubscribeToWebhook {
           success: true,
           destinationSecret: destination.destinationSecret,
           displayProperties,
+          instructions,
+          examples: event.examples,
           result: {
             type: "service",
             webhookId: existingWebhookRow.id,
@@ -135,6 +138,8 @@ export class SubscribeToWebhook {
           success: true,
           destinationSecret: destination.destinationSecret,
           displayProperties,
+          instructions,
+          examples: event.examples,
           result: {
             type: "service",
             webhookId: newWebhookRow.id,
@@ -213,6 +218,8 @@ export class SubscribeToWebhook {
           success: true,
           destinationSecret: destination.destinationSecret,
           displayProperties,
+          instructions,
+          examples: event.examples,
           result: {
             type: "service",
             webhookId: newWebhookRow.id,

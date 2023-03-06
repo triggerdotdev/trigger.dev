@@ -160,6 +160,8 @@ export class RegisterExternalSource {
         readyAt: new Date(),
         secret: registrationResponse.destinationSecret,
         displayProperties: registrationResponse.displayProperties,
+        instructions: registrationResponse.instructions,
+        examples: registrationResponse.examples,
       },
     });
 

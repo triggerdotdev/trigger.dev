@@ -1,11 +1,11 @@
 import type { IntegrationRequest } from ".prisma/client";
-import {
+import type {
   AccessInfo,
   DisplayProperties,
-  DisplayPropertiesSchema,
   PerformedRequestResponse,
   ServiceMetadata,
 } from "@trigger.dev/integration-sdk";
+import { DisplayPropertiesSchema } from "@trigger.dev/integration-sdk";
 import { z } from "zod";
 import { env } from "~/env.server";
 
@@ -55,6 +55,8 @@ const SubscriptionResponseSchema = z.discriminatedUnion("success", [
     success: z.literal(true),
     destinationSecret: z.string(),
     displayProperties: DisplayPropertiesSchema,
+    instructions: z.string(),
+    examples: z.array(z.any()),
     result: z.union([
       z.object({
         type: z.literal("service"),

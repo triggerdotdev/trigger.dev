@@ -12,7 +12,8 @@ import { Select } from "~/components/primitives/Select";
 import { SubTitle } from "~/components/primitives/text/SubTitle";
 import { Title } from "~/components/primitives/text/Title";
 import { useCurrentOrganization } from "~/hooks/useOrganizations";
-import { CurrentWorkflow, useCurrentWorkflow } from "~/hooks/useWorkflows";
+import type { CurrentWorkflow } from "~/hooks/useWorkflows";
+import { useCurrentWorkflow } from "~/hooks/useWorkflows";
 import { getRuntimeEnvironmentFromRequest } from "~/models/runtimeEnvironment.server";
 import { WorkflowTestPresenter } from "~/presenters/testPresenter.server";
 import { requireUserId } from "~/services/session.server";
@@ -143,6 +144,7 @@ function Tester({
 function workflowType(workflow: CurrentWorkflow) {
   switch (workflow?.type) {
     case "WEBHOOK":
+    case "INTEGRATION_WEBHOOK":
       return "This test will simulate receiving this JSON payload for this webhook.";
     case "SCHEDULE":
       return "This test will simulate receiving a scheduled trigger from this datetime string.";

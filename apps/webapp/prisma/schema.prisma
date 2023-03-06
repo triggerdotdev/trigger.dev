@@ -229,6 +229,8 @@ model ExternalSource {
 
   event String?
   displayProperties Json?
+  instructions String?
+  examples Json?
 
   @@unique([organizationId, key])
 }

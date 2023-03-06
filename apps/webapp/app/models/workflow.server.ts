@@ -36,6 +36,7 @@ export function getWorkflowFromSlugs({
           manualRegistration: true,
           secret: true,
           displayProperties: true,
+          instructions: true,
         },
       },
       externalServices: {

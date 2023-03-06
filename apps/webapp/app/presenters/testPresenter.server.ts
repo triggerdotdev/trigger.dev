@@ -1,9 +1,10 @@
 import type { Workflow, WorkflowRun } from ".prisma/client";
 import { TriggerMetadataSchema } from "@trigger.dev/common-schemas";
 import { JSONSchemaFaker } from "json-schema-faker";
+import { z } from "zod";
 import type { PrismaClient } from "~/db.server";
 import { prisma } from "~/db.server";
-import type { EventRule } from "~/models/workflow.server";
+import type { EventRule, ExternalSource } from "~/models/workflow.server";
 import { WebhookExamplesPresenter } from "./webhookExamplePresenter.server";
 
 export class WorkflowTestPresenter {
@@ -77,7 +78,7 @@ export class WorkflowTestPresenter {
   }
 
   async #getPayload(
-    workflow: Workflow,
+    workflow: Workflow & { externalSource: ExternalSource | null },
     lastRun?: WorkflowRun & { event: { payload: any } },
     rule?: EventRule
   ) {
@@ -117,6 +118,15 @@ export class WorkflowTestPresenter {
         service: workflow.service,
         name: trigger.data.name,
       });
+    }
+
+    if (workflow.type === "INTEGRATION_WEBHOOK") {
+      const examples = z
+        .array(z.any())
+        .safeParse(workflow.externalSource?.examples);
+      if (examples.success) {
+        return examples.data[0];
+      }
     }
 
     return {};

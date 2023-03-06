@@ -64,6 +64,8 @@ export type SubscribeResult =
       success: true;
       destinationSecret: string;
       displayProperties: DisplayProperties;
+      instructions: string;
+      examples: any[];
       result:
         | {
             type: "service";
