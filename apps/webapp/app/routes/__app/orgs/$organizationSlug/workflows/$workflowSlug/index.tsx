@@ -411,7 +411,12 @@ export default function Page() {
                       </span>
                     </div>
                     <ol className="flex list-inside list-decimal flex-col gap-1.5 border-b border-slate-800 pb-4 pl-2 text-slate-400">
-                      <li>{howToText(eventRule, workflow.externalSource)}</li>
+                      <li>
+                        {howToText(
+                          eventRule,
+                          workflow.externalSource?.instructions ?? undefined
+                        )}
+                      </li>
                       <li>Return here to view the new workflow run.</li>
                     </ol>
                     <SubTitle className="mt-4 mb-3 text-slate-300">
@@ -549,10 +554,7 @@ type WorkflowEventRule = NonNullable<
   ReturnType<typeof useCurrentWorkflow>
 >["rules"][number];
 
-function howToText(
-  eventRule: WorkflowEventRule,
-  externalSource: ExternalSource
-) {
+function howToText(eventRule: WorkflowEventRule, instructions?: string) {
   if (!eventRule.trigger) {
     return "This workflow hasn't been connected.";
   }
@@ -564,8 +566,8 @@ function howToText(
     case "CUSTOM_EVENT":
       return "This workflow will run when you send a custom event.";
     case "INTEGRATION_WEBHOOK": {
-      if (externalSource?.instructions) {
-        return `${externalSource.instructions}`;
+      if (instructions) {
+        return `${instructions}`;
       }
       return "Run this workflow by triggering the webhook.";
     }
