@@ -10,7 +10,7 @@ exporters:
       insecure: true
 
   otlphttp/traceloop:
-    traces_endpoint: https://api-staging.traceloop.dev/v1/traces 
+    traces_endpoint: https://api.traceloop.dev/v1/traces 
     headers:
       Authorization: trigger-dev-api-key
 
