@@ -120,7 +120,7 @@ new Trigger({
   endpoint: "ws://localhost:8889/ws",
   logLevel: "debug",
   on: events.newStarEvent({
-    repo: "triggerdotdev/trigger.dev-examples",
+    repo: "triggerdotdev/hello-world",
   }),
   run: async (event, ctx) => {
     return {};
