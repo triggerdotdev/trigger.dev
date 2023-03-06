@@ -12,6 +12,8 @@ export function triggerLabel(type: TriggerType) {
       return "HTTP endpoint";
     case "SCHEDULE":
       return "Scheduled";
+    case "INTEGRATION_WEBHOOK":
+      return "Webhook";
     case "SLACK_INTERACTION":
       return "Slack interaction";
     default:
