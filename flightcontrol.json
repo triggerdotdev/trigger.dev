@@ -205,6 +205,24 @@
           }
         },
         {
+          "id": "p-otel-collector",
+          "name": "Prod Opentelemetry Collector",
+          "type": "fargate",
+          "buildType": "docker",
+          "dockerfilePath": "./apps/otel-collector/Dockerfile",
+          "dockerContext": ".",
+          "cpu": 1,
+          "memory": 2,
+          "minInstances": 1,
+          "maxInstances": 2,
+          "port": 4318,
+          "envVariables": {
+            "TRACELOOP_API_KEY": {
+              "fromParameterStore": "/Prod/otel-collector/TRACELOOP_API_KEY"
+            }
+          }
+        },
+        {
           "id": "p-db",
           "name": "Prod Database",
           "type": "rds",
@@ -429,6 +447,24 @@
             },
             "API_TOKEN": {
               "fromParameterStore": "/Staging/integrations/API_TOKEN"
+            }
+          }
+        },
+        {
+          "id": "s-otel-collector",
+          "name": "Staging Opentelemetry Collector",
+          "type": "fargate",
+          "buildType": "docker",
+          "dockerfilePath": "./apps/otel-collector/Dockerfile",
+          "dockerContext": ".",
+          "cpu": 1,
+          "memory": 2,
+          "minInstances": 1,
+          "maxInstances": 2,
+          "port": 4318,
+          "envVariables": {
+            "TRACELOOP_API_KEY": {
+              "fromParameterStore": "/Staging/otel-collector/TRACELOOP_API_KEY"
             }
           }
         },
