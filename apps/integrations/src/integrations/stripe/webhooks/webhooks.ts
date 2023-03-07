@@ -2,8 +2,8 @@ import { makeWebhook } from "core/webhook";
 import { WebhookEvent, WebhookReceiveRequest } from "core/webhook/types";
 import crypto from "node:crypto";
 import { authentication } from "../authentication";
-import { example } from "./examples";
-import { formEventSchema } from "./schemas";
+import { checkoutCompletedSuccess } from "./examples";
+import { checkoutSessionCompletedSchema } from "./schemas";
 import { webhookSpec } from "./specs";
 
 const baseUrl = "https://api.stripe.com/v1";
@@ -15,10 +15,10 @@ export const checkoutCompleted: WebhookEvent = {
     description: "A form response was submitted",
     tags: ["checkout"],
   },
-  schema: formEventSchema,
+  schema: checkoutSessionCompletedSchema,
   instructions: (data) =>
-    `Fill in your Typeform (${data.form_id}) as a real user would`,
-  examples: [example],
+    `Perform a Stripe checkout session or use the [Stripe CLI](https://stripe.com/docs/stripe-cli) to test this webhook.`,
+  examples: [checkoutCompletedSuccess],
   key: "checkout.session.completed",
   displayProperties: (data) => ({
     title: `New response for form ${data.form_id}`,
