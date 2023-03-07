@@ -9,8 +9,8 @@ import {
   NoSymbolIcon,
   StopCircleIcon,
 } from "@heroicons/react/24/outline";
-import { useRevalidator } from "@remix-run/react";
-import type { LoaderArgs } from "@remix-run/server-runtime";
+import { Form, useRevalidator } from "@remix-run/react";
+import type { ActionArgs, LoaderArgs } from "@remix-run/server-runtime";
 import { useEffect } from "react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { useEventSource } from "remix-utils";
@@ -19,12 +19,13 @@ import { IntlDate } from "~/components/IntlDate";
 import { List } from "~/components/layout/List";
 import { Panel } from "~/components/layout/Panel";
 import { PanelHeader } from "~/components/layout/PanelHeader";
-import { TertiaryA } from "~/components/primitives/Buttons";
+import { PrimaryButton, TertiaryA } from "~/components/primitives/Buttons";
 import { SubTitle } from "~/components/primitives/text/SubTitle";
 import { Title } from "~/components/primitives/text/Title";
 import { WorkflowList } from "~/components/workflows/workflowList";
 import { ProjectOverviewPresenter } from "~/features/ee/projects/presenters/projectOverviewPresenter.server";
 import { useCurrentProject } from "../$projectP";
+import { ManuallyDeployProject } from "../../services/manuallyDeployProject.server";
 
 export async function loader({ params }: LoaderArgs) {
   const { projectP, organizationSlug } = z
@@ -34,6 +35,16 @@ export async function loader({ params }: LoaderArgs) {
   const presenter = new ProjectOverviewPresenter();
 
   return typedjson(await presenter.data(organizationSlug, projectP));
+}
+
+export async function action({ params }: ActionArgs) {
+  const { projectP } = z.object({ projectP: z.string() }).parse(params);
+
+  const service = new ManuallyDeployProject();
+
+  const deployment = await service.call(projectP);
+
+  return typedjson({ deployment });
 }
 
 export default function ProjectOverviewPage() {
@@ -80,7 +91,20 @@ export default function ProjectOverviewPage() {
 
   return (
     <>
-      <Title>Overview</Title>
+      <div className="flex items-baseline">
+        <Title>Overview</Title>
+        <Form
+          reloadDocument
+          method="post"
+          onSubmit={(e) =>
+            !confirm(
+              "Are you sure you want to manually deploy this project?"
+            ) && e.preventDefault()
+          }
+        >
+          <PrimaryButton>Manual Deploy</PrimaryButton>
+        </Form>
+      </div>
       <SubTitle>
         {project.name}#{project.branch}
       </SubTitle>
@@ -165,6 +189,7 @@ function DeploymentListItem({
       Icon = NoSymbolIcon;
       break;
     }
+    case "STOPPING":
     case "STOPPED": {
       Icon = StopCircleIcon;
       break;
@@ -195,12 +220,13 @@ function DeploymentListItem({
                   href={`https://github.com/${repo}/commit/${deployment.commitHash}`}
                   target="_blank"
                 >
-                  Commit #{deployment.commitHash.substring(0, 7)}{" "}
+                  {deployment.commitMessage} #
+                  {deployment.commitHash.substring(0, 7)}{" "}
                   <ArrowTopRightOnSquareIcon className="h-4 w-4" />
                 </TertiaryA>
               </div>
               <div className="text-sm font-medium text-slate-200">
-                {deployment.commitMessage}
+                {deployment.version}
               </div>
             </div>
           </div>

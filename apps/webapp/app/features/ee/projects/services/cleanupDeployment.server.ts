@@ -41,6 +41,25 @@ export class CleanupDeployment {
         `Stopping VM: ${deployment.vmIdentifier} for deployment ${id}`
       );
 
+      await this.#prismaClient.projectDeployment.update({
+        where: {
+          id,
+        },
+        data: {
+          status: "STOPPING",
+          stoppedAt: new Date(),
+        },
+      });
+
+      await this.#prismaClient.repositoryProject.update({
+        where: {
+          id: deployment.projectId,
+        },
+        data: {
+          updatedAt: new Date(),
+        },
+      });
+
       await cakework.stopVm(deployment.vmIdentifier);
 
       console.log(
@@ -54,6 +73,15 @@ export class CleanupDeployment {
         data: {
           status: "STOPPED",
           stoppedAt: new Date(),
+        },
+      });
+
+      await this.#prismaClient.repositoryProject.update({
+        where: {
+          id: deployment.projectId,
+        },
+        data: {
+          updatedAt: new Date(),
         },
       });
 

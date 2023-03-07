@@ -1,10 +1,15 @@
-import type { RepositoryProject, RuntimeEnvironment } from ".prisma/client";
+import type {
+  RepositoryProject,
+  RuntimeEnvironment,
+  ProjectDeployment,
+} from ".prisma/client";
 import type { PrismaClient } from "~/db.server";
 import { prisma } from "~/db.server";
 import { cakework } from "../cakework.server";
 import { taskQueue } from "~/services/messageBroker.server";
 import type { GitHubAppAuthorizationWithValidToken } from "../github/refreshInstallationAccessToken.server";
 import type { GitHubCommit } from "../github/githubApp.server";
+import { getNextDeploymentVersion } from "../models/repositoryProject.server";
 
 export type CreateProjectDeploymentOptions = {
   project: RepositoryProject;
@@ -20,12 +25,17 @@ export class CreateProjectDeployment {
     this.#prismaClient = prismaClient;
   }
 
-  public async call({
-    project,
-    environment,
-    authorization,
-    commit,
-  }: CreateProjectDeploymentOptions) {
+  public async call(
+    {
+      project,
+      environment,
+      authorization,
+      commit,
+    }: CreateProjectDeploymentOptions,
+    retryCount = 0
+  ): Promise<ProjectDeployment | undefined> {
+    const version = await getNextDeploymentVersion(project.id);
+
     const dockerfile = formatFileContents(`
       FROM node:18-bullseye-slim
       WORKDIR /app
@@ -43,7 +53,9 @@ export class CreateProjectDeployment {
     `);
 
     console.log(
-      `Building image for ${project.name} with token ${authorization.installationAccessToken}`
+      `[${version}][attempt=${retryCount + 1}] Building image for ${
+        project.name
+      } with token ${authorization.installationAccessToken}`
     );
 
     const build = await cakework.buildImageFromGithub({
@@ -54,38 +66,71 @@ export class CreateProjectDeployment {
       branch: project.branch,
     });
 
-    console.log(`Build started for ${project.name} with id ${build.buildId}`);
+    console.log(
+      `[${version}][attempt=${retryCount + 1}] Build started for ${
+        project.name
+      } with id ${build.buildId}`
+    );
 
-    // Create the deployment
-    // Setting the buildStartAt because even though this is a PENDING deployment,
-    // we have already started to build it with Cakework (it can still end up not getting deployed if this deployment is cancelled)
-    const deployment = await this.#prismaClient.projectDeployment.create({
-      data: {
-        buildId: build.buildId,
-        buildStartedAt: new Date(),
-        project: {
-          connect: {
-            id: project.id,
+    try {
+      // Create the deployment
+      // Setting the buildStartAt because even though this is a PENDING deployment,
+      // we have already started to build it with Cakework (it can still end up not getting deployed if this deployment is cancelled)
+      const deployment = await this.#prismaClient.projectDeployment.create({
+        data: {
+          version,
+          buildId: build.buildId,
+          buildStartedAt: new Date(),
+          project: {
+            connect: {
+              id: project.id,
+            },
           },
-        },
-        environment: {
-          connect: {
-            id: environment.id,
+          environment: {
+            connect: {
+              id: environment.id,
+            },
           },
+          status: "PENDING",
+          branch: project.branch,
+          commitHash: commit.sha,
+          commitMessage: commit.commit.message,
+          committer: getCommitAuthor(commit),
+          dockerfile,
+          dockerIgnore,
         },
-        status: "PENDING",
-        branch: project.branch,
-        commitHash: commit.sha,
-        commitMessage: commit.commit.message,
-        committer: getCommitAuthor(commit),
-        dockerfile,
-        dockerIgnore,
-      },
-    });
+      });
 
-    await taskQueue.publish("PROJECT_DEPLOYMENT_CREATED", {
-      id: deployment.id,
-    });
+      await taskQueue.publish("PROJECT_DEPLOYMENT_CREATED", {
+        id: deployment.id,
+      });
+
+      return deployment;
+    } catch (error) {
+      console.error(
+        `[${version}] Error creating deployment for ${project.name}: ${error}`
+      );
+
+      if (typeof error === "object" && error !== null) {
+        if ("code" in error && error.code === "P2002") {
+          if (retryCount > 3) {
+            return;
+          }
+          // If the deployment version already exists, then we should retry
+          return await this.call(
+            {
+              project,
+              environment,
+              authorization,
+              commit,
+            },
+            retryCount + 1
+          );
+        }
+      }
+
+      throw error;
+    }
   }
 }
 

@@ -668,6 +668,8 @@ model ProjectDeployment {
   environment   RuntimeEnvironment @relation(fields: [environmentId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   environmentId String
 
+  version String
+
   status ProjectDeploymentStatus @default(PENDING)
 
   buildId         String    @unique
@@ -691,7 +693,7 @@ model ProjectDeployment {
   updatedAt         DateTime            @updatedAt
   RepositoryProject RepositoryProject[]
 
-  @@unique([projectId, commitHash])
+  @@unique([projectId, version])
 }
 
 enum ProjectDeploymentStatus {
@@ -701,6 +703,7 @@ enum ProjectDeploymentStatus {
   DEPLOYED
   CANCELLED
   ERROR
+  STOPPING
   STOPPED
 }
 

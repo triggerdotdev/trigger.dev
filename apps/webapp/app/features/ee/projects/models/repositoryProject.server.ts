@@ -40,6 +40,60 @@ export async function findProjectById(id: string) {
   });
 }
 
+// Generates a new version number for a deployment
+// The version numbers are in the following format:
+// YYYYMMDD.NUMBER
+//
+// So for example, the first deploy on March 7th, 2023 would be:
+// 20230307.1
+// The second deploy on March 7th, 2023 would be:
+// 20230307.2
+//
+// The version number is used to determine the order of deployments
+export async function getNextDeploymentVersion(
+  projectId: string
+): Promise<string> {
+  const latestDeploymentVersion = await getLatestDeploymentVersion(projectId);
+
+  const generateCurrentDatePart = () => {
+    return new Date().toISOString().slice(0, 10).replace(/-/g, "");
+  };
+
+  if (!latestDeploymentVersion) {
+    return `${generateCurrentDatePart()}.1`;
+  }
+
+  const [datePart, numberPart] = latestDeploymentVersion.split(".");
+
+  if (datePart === generateCurrentDatePart()) {
+    return `${datePart}.${Number(numberPart) + 1}`;
+  }
+
+  return `${generateCurrentDatePart()}.1`;
+}
+
+async function getLatestDeploymentVersion(
+  projectId: string
+): Promise<string | undefined> {
+  const latestDeployment = await prisma.projectDeployment.findFirst({
+    where: {
+      projectId,
+    },
+    orderBy: {
+      createdAt: "desc",
+    },
+    select: {
+      version: true,
+    },
+  });
+
+  if (!latestDeployment) {
+    return;
+  }
+
+  return latestDeployment.version;
+}
+
 export function statusTextForBuilding(
   deployment: ProjectDeployment,
   project: RepositoryProject

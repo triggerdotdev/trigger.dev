@@ -4,17 +4,13 @@ import { getCommit } from "../github/githubApp.server";
 import { refreshInstallationAccessToken } from "../github/refreshInstallationAccessToken.server";
 import { CreateProjectDeployment } from "./createProjectDeployment.server";
 
-export class InitialProjectDeployment {
+export class ManuallyDeployProject {
   #createProjectDeployment = new CreateProjectDeployment();
 
   public async call(projectId: string) {
     const project = await findProjectById(projectId);
 
     if (!project) {
-      return;
-    }
-
-    if (project.status !== "PENDING") {
       return;
     }
 
