@@ -32,11 +32,6 @@ export async function requestEndpoint(
 
   let headers: Record<string, string> = {};
 
-  //if the body doesn't exist but is required, create it
-  if (requiresBody && body == null) {
-    body = {};
-  }
-
   // validate and add the parameters
   if (endpointSpec.parameters != null) {
     for (const parameter of endpointSpec.parameters) {
@@ -96,6 +91,53 @@ export async function requestEndpoint(
     }
   }
 
+  //create the body
+  let requestBody: any = undefined;
+  if (body != null) {
+    //if the body format is form-urlencoded then we need to encode the body
+    if (request.body?.format?.type === "form-urlencoded") {
+      const encoding = request.body.format.encoding;
+      const encodedBody: Record<string, string> = {};
+      for (const key in body) {
+        if (Object.prototype.hasOwnProperty.call(body, key)) {
+          const element = body[key];
+          const encodingType = encoding[key]?.style ?? "form";
+          switch (encodingType) {
+            case "form":
+              encodedBody[key] = element;
+              break;
+            case "spaceDelimited":
+              encodedBody[key] = element.join(" ");
+              break;
+            case "pipeDelimited":
+              encodedBody[key] = element.join("|");
+              break;
+            case "deepObject":
+              switch (typeof element) {
+                case "string":
+                  encodedBody[key] = element;
+                  break;
+                case "object":
+                  encodedBody[key] = Object.entries(element)
+                    .map(([key, value]) => `${key}[${value}]`)
+                    .join(",");
+                  break;
+              }
+              break;
+          }
+        }
+      }
+
+      const formElements: string[] = Object.entries(encodedBody).map(
+        ([key, value]) =>
+          `${encodeURIComponent(key)}=${encodeURIComponent(value)}`
+      );
+      requestBody = formElements.join("&");
+    } else {
+      requestBody = JSON.stringify(body);
+    }
+  }
+
   // build the fetch config
   const url = `${baseUrl}${path}`;
   let fetchConfig: HTTPRequest = {
@@ -104,8 +146,10 @@ export async function requestEndpoint(
     headers: {
       ...headers,
     },
-    body: JSON.stringify(body),
+    body: requestBody,
   };
+
+  console.log("fetchConfig", JSON.stringify(fetchConfig));
 
   // apply credentials
   if (security != null) {

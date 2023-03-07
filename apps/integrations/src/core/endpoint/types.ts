@@ -40,9 +40,26 @@ type EndpointSpecParameterHeader = {
 interface EndpointSpecRequest {
   headers?: Record<string, string>;
   body?: {
+    format?: BodyFormat;
     schema: JSONSchema;
   };
 }
+
+type BodyFormat = JSONBodyFormat | FormEncodedBodyFormat;
+
+type JSONBodyFormat = {
+  type: "json";
+};
+
+export type FormEncodedBodyFormat = {
+  type: "form-urlencoded";
+  encoding: Record<string, FormEncodedBodyFormatEncoding>;
+};
+
+export type FormEncodedBodyFormatEncoding = {
+  style: "form" | "spaceDelimited" | "pipeDelimited" | "deepObject";
+  explode: boolean;
+};
 
 export interface EndpointSpecResponse {
   /** If you return true then this response is the relevant one */
