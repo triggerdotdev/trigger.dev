@@ -730,7 +730,6 @@ describe("typeform.webhooks", async () => {
       };
 
       const validationResult = await validate(data, events.formResponse.schema);
-      console.log(validationResult);
       expect(validationResult).toEqual({
         success: true,
       });
@@ -1289,7 +1288,6 @@ describe("typeform.webhooks", async () => {
       };
 
       const validationResult = await validate(data, events.formResponse.schema);
-      console.log(validationResult);
       expect(validationResult).toEqual({
         success: true,
       });
