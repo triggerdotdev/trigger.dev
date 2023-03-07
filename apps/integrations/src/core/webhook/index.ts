@@ -27,7 +27,7 @@ export function makeWebhook(input: {
     | {
         type: "automatic";
         requiresSecret: boolean;
-        inputSchema: JSONSchema;
+        inputSchema: JSONSchema | null;
         /** take the raw data and turn it into the appropriate input for the subscribe request */
         preSubscribe: (input: {
           webhookId: string;
@@ -105,7 +105,7 @@ export function makeWebhook(input: {
 
       subscription = {
         type: "automatic",
-        inputSpec: input.subscription.inputSchema,
+        inputSchema: input.subscription.inputSchema,
         requiresSecret: input.subscription.requiresSecret,
         subscribe: subscribe,
       };

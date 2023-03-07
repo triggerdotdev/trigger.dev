@@ -213,8 +213,10 @@ export async function ${action.name}(
         switch (webhook.subscription.type) {
           case "automatic": {
             const typeName = toTitleCase(event.name);
-            const inputSpec = webhook.subscription.inputSpec;
-            inputSpec.title = `${typeName}Input`;
+            const inputSpec = webhook.subscription.inputSchema;
+            if (inputSpec) {
+              inputSpec.title = `${typeName}Input`;
+            }
             const outputSpec = event.schema;
             outputSpec.title = `${typeName}Output`;
             const title = event.metadata.title;
@@ -229,8 +231,12 @@ const ${zodSchemaName} = ${zodReturnSchema}
 
 ${event.metadata.description ? `/** ${event.metadata.description} */` : ""}
 function ${functionName}(
-  /** The params for this call */
-  params: Prettify<${inputSpec.title}>
+  ${
+    inputSpec
+      ? `/** The params for this call */
+  params: Prettify<${inputSpec.title}>`
+      : ""
+  }
 ): TriggerEvent<typeof ${zodSchemaName}> {
   return {
     metadata: {
@@ -255,7 +261,7 @@ function ${functionName}(
               name: functionName,
               friendlyName,
               description: event.metadata.description,
-              input: inputSpec,
+              input: inputSpec ?? undefined,
               output: outputSpec,
               functionCode,
             };
