@@ -14,6 +14,7 @@ import {
 } from "./types";
 import * as Sentry from "@sentry/node";
 import JsonPointer from "json-pointer";
+import { urlEncodeBody } from "./urlEncode";
 
 export async function requestEndpoint(
   { baseUrl, endpointSpec, authentication }: RequestSpec,
@@ -96,43 +97,8 @@ export async function requestEndpoint(
   if (body != null) {
     //if the body format is form-urlencoded then we need to encode the body
     if (request.body?.format?.type === "form-urlencoded") {
-      const encoding = request.body.format.encoding;
-      const encodedBody: Record<string, string> = {};
-      for (const key in body) {
-        if (Object.prototype.hasOwnProperty.call(body, key)) {
-          const element = body[key];
-          const encodingType = encoding[key]?.style ?? "form";
-          switch (encodingType) {
-            case "form":
-              encodedBody[key] = element;
-              break;
-            case "spaceDelimited":
-              encodedBody[key] = element.join(" ");
-              break;
-            case "pipeDelimited":
-              encodedBody[key] = element.join("|");
-              break;
-            case "deepObject":
-              switch (typeof element) {
-                case "string":
-                  encodedBody[key] = element;
-                  break;
-                case "object":
-                  encodedBody[key] = Object.entries(element)
-                    .map(([key, value]) => `${key}[${value}]`)
-                    .join(",");
-                  break;
-              }
-              break;
-          }
-        }
-      }
-
-      const formElements: string[] = Object.entries(encodedBody).map(
-        ([key, value]) =>
-          `${encodeURIComponent(key)}=${encodeURIComponent(value)}`
-      );
-      requestBody = formElements.join("&");
+      const encodedBody = urlEncodeBody(request.body.format, body);
+      requestBody = encodedBody;
     } else {
       requestBody = JSON.stringify(body);
     }

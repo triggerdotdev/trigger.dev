@@ -4,11 +4,14 @@ import {
 } from "core/endpoint/types";
 import { URLSearchParams } from "url";
 
-function urlEncodeBody(format: FormEncodedBodyFormat, body: any): string {
+export function urlEncodeBody(
+  format: FormEncodedBodyFormat,
+  body: any
+): string {
   const parts = new URLSearchParams();
   const encoding = format.encoding;
 
-  for (const name in encoding.e) {
+  for (const name in encoding) {
     if (!Object.prototype.hasOwnProperty.call(encoding, name)) continue;
 
     const element = encoding[name];
@@ -49,7 +52,9 @@ function urlEncodeBody(format: FormEncodedBodyFormat, body: any): string {
         break;
       case "deepObject":
         if (Array.isArray(value)) {
-          throw new Error(`Not implemented: ${element.style} array`);
+          value.forEach((item) => {
+            parts.append(`${name}[]`, `${item}`);
+          });
         } else if (typeof value === "object") {
           if (element.explode) {
             Object.entries(value).forEach(([key, value]) => {
