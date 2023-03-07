@@ -1,7 +1,7 @@
 import type { LoaderArgs } from "@remix-run/server-runtime";
 import { redirect } from "@remix-run/server-runtime";
 import { z } from "zod";
-import { AppInstallationCallback } from "~/services/github/appInstallationCallback.server";
+import { AppInstallationCallback } from "~/features/ee/projects/github/appInstallationCallback.server";
 import { requireUserId } from "~/services/session.server";
 
 const ParamSchema = z.object({

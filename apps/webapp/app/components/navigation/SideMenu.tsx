@@ -8,11 +8,13 @@ import {
   ArrowTopRightOnSquareIcon,
   BeakerIcon,
   ChevronLeftIcon,
+  CloudArrowUpIcon,
   Cog6ToothIcon,
   EnvelopeIcon,
   ForwardIcon,
   PhoneArrowUpRightIcon,
   PlusCircleIcon,
+  QueueListIcon,
   Squares2X2Icon,
   SquaresPlusIcon,
   UsersIcon,
@@ -27,6 +29,7 @@ import {
 } from "~/hooks/useOrganizations";
 import { useCurrentWorkflow } from "~/hooks/useWorkflows";
 import { EnvironmentIcon } from "~/routes/resources/environment";
+import { CurrentProject } from "~/routes/__app/orgs/$organizationSlug/projects/$projectP";
 import { titleCase } from "~/utils";
 import { CopyTextPanel } from "../CopyTextButton";
 import { TertiaryA, TertiaryButton } from "../primitives/Buttons";
@@ -150,6 +153,43 @@ export function WorkflowsSideMenu() {
       backPath={`/orgs/${organization.slug}`}
     />
   );
+}
+
+export function ProjectSideMenu({
+  project,
+  backPath,
+}: {
+  project: CurrentProject;
+  backPath: string;
+}) {
+  if (!project) {
+    return null;
+  }
+
+  const items: SideMenuItem[] = [
+    {
+      name: "Overview",
+      icon: <ArrowsRightLeftIcon className={iconStyle} />,
+      to: ``,
+    },
+    {
+      name: "Deploys",
+      icon: <CloudArrowUpIcon className={iconStyle} />,
+      to: `deploys`,
+    },
+    {
+      name: "Logs",
+      icon: <QueueListIcon className={iconStyle} />,
+      to: `logs`,
+    },
+    {
+      name: "Settings",
+      icon: <Cog6ToothIcon className={iconStyle} />,
+      to: `settings`,
+    },
+  ];
+
+  return <SideMenu title={project.name} items={items} backPath={backPath} />;
 }
 
 const defaultStyle =

@@ -1,20 +1,13 @@
-import { EventRule } from ".prisma/client";
 import { Disclosure } from "@headlessui/react";
 import { BeakerIcon, CheckCircleIcon } from "@heroicons/react/20/solid";
 import {
   ArrowsRightLeftIcon,
-  CheckIcon,
   ChevronDownIcon,
   Cog6ToothIcon,
-  InformationCircleIcon,
 } from "@heroicons/react/24/outline";
 import type { LoaderArgs } from "@remix-run/server-runtime";
 import classNames from "classnames";
-import {
-  typedjson,
-  UseDataFunctionReturn,
-  useTypedLoaderData,
-} from "remix-typedjson";
+import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import invariant from "tiny-invariant";
 import { ApiLogoIcon } from "~/components/code/ApiLogoIcon";
 import CodeBlock from "~/components/code/CodeBlock";
@@ -26,12 +19,7 @@ import { Panel } from "~/components/layout/Panel";
 import { PanelHeader } from "~/components/layout/PanelHeader";
 import { PanelInfo } from "~/components/layout/PanelInfo";
 import { PanelWarning } from "~/components/layout/PanelWarning";
-import {
-  PrimaryLink,
-  SecondaryLink,
-  TertiaryLink,
-} from "~/components/primitives/Buttons";
-import { PlugIcon } from "~/components/primitives/IconPlug";
+import { SecondaryLink, TertiaryLink } from "~/components/primitives/Buttons";
 import { Input } from "~/components/primitives/Input";
 import { Body } from "~/components/primitives/text/Body";
 import { Header2 } from "~/components/primitives/text/Headers";

@@ -132,6 +132,7 @@ importers:
     specifiers:
       '@aws-sdk/client-s3': ^3.186.0
       '@aws-sdk/s3-request-presigner': ^3.186.0
+      '@cakework/client': ^0.0.42
       '@cfworker/json-schema': ^1.12.5
       '@codemirror/autocomplete': ^6.3.1
       '@codemirror/commands': ^6.1.2
@@ -152,6 +153,7 @@ importers:
       '@octokit/types': ^9.0.0
       '@octokit/webhooks': ^10.4.0
       '@octokit/webhooks-methods': ^3.0.2
+      '@octokit/webhooks-types': ^6.10.0
       '@prisma/client': ^4.3.0
       '@react-email/head': ^0.0.2
       '@remix-run/dev': v1.11.0
@@ -231,6 +233,7 @@ importers:
       internal-bridge: workspace:*
       internal-platform: workspace:*
       internal-pulsar: workspace:*
+      intl-parse-accept-language: ^1.0.0
       ioredis: ^5.2.4
       isbot: ^3.6.5
       javascript-time-ago: ^2.5.7
@@ -289,11 +292,13 @@ importers:
       vite: ^3.1.4
       vite-tsconfig-paths: ^3.5.1
       vitest: ^0.23.4
+      yaml: ^2.2.1
       zod: ^3.20.2
       zod-error: ^1.1.0
     dependencies:
       '@aws-sdk/client-s3': 3.245.0
       '@aws-sdk/s3-request-presigner': 3.245.0
+      '@cakework/client': 0.0.42
       '@cfworker/json-schema': 1.12.5
       '@codemirror/autocomplete': 6.4.0_czcfkg2f66rxeiodoti7r2gulu
       '@codemirror/commands': 6.1.3
@@ -345,6 +350,7 @@ importers:
       internal-bridge: link:../../packages/internal-bridge
       internal-platform: link:../../packages/internal-platform
       internal-pulsar: link:../../packages/internal-pulsar
+      intl-parse-accept-language: 1.0.0
       ioredis: 5.2.4
       isbot: 3.6.5
       javascript-time-ago: 2.5.9
@@ -386,11 +392,13 @@ importers:
       tiny-invariant: 1.3.1
       tsx: 3.12.2
       ulid: 2.3.0
+      yaml: 2.2.1
       zod: 3.20.2
       zod-error: 1.1.0
     devDependencies:
       '@faker-js/faker': 7.6.0
       '@octokit/types': 9.0.0
+      '@octokit/webhooks-types': 6.10.0
       '@remix-run/dev': 1.11.0_biqbaboplfbrettd7655fr4n2y
       '@remix-run/eslint-config': 1.11.0_ol4nhuzbuflsbzk2mijpqykzba
       '@swc/core': 1.3.26
@@ -3682,6 +3690,20 @@ packages:
     resolution: {integrity: sha512-0hYQ8SB4Db5zvZB4axdMHGwEaQjkZzFjQiN9LVYvIFB2nSUHW9tYpxWriPrWDASIxiaXax83REcLxuSdnGPZtw==}
     dev: true
 
+  /@cakework/client/0.0.42:
+    resolution: {integrity: sha512-vnL30mqCFwTYvOWb2WfEfO/XlrMDbfACYuenvmQo3aXumtgv23k6/jGCKbQKI9b/Wpoi7cHwx2Naod14TyRnzA==}
+    dependencies:
+      '@types/basic-auth': 1.1.3
+      '@types/url-join': 4.0.1
+      axios: 0.27.2
+      basic-auth: 2.0.1
+      buffer: 6.0.3
+      js-base64: 3.7.5
+      url-join: 4.0.1
+    transitivePeerDependencies:
+      - debug
+    dev: false
+
   /@cfworker/json-schema/1.12.5:
     resolution: {integrity: sha512-k+ungOs1TxSfNfmfOxkwaiNL2EgRQjhk2SRweMYoKkBJZUYsGsY+XYpe2KpuS9EyjZWjZhq8QvVM+gwi3g1+hQ==}
     dev: false
@@ -5264,6 +5286,10 @@ packages:
     engines: {node: '>= 14'}
     dev: false
 
+  /@octokit/webhooks-types/6.10.0:
+    resolution: {integrity: sha512-lDNv83BeEyxxukdQ0UttiUXawk9+6DkdjjFtm2GFED+24IQhTVaoSbwV9vWWKONyGLzRmCQqZmoEWkDhkEmPlw==}
+    dev: true
+
   /@octokit/webhooks-types/6.7.0:
     resolution: {integrity: sha512-bykm7UkSnxmb2uhSfcLM1Pity/LQ6ZBSdzy9HU0vXjR+2g+tzlmRhXb7Go8oj0TlgO+vDrTivGXju6zkzOGKjA==}
     dev: false
@@ -6213,6 +6239,12 @@ packages:
     resolution: {integrity: sha512-XTIieEY+gvJ39ChLcB4If5zHtPxt3Syj5rgZR+e1ctpmK8NjPf0zFqsz4JpLJT0xla9GFDKjy8Cpu331nrmE1Q==}
     dev: true
 
+  /@types/basic-auth/1.1.3:
+    resolution: {integrity: sha512-W3rv6J0IGlxqgE2eQ2pTb0gBjaGtejQpJ6uaCjz3UQ65+TFTPC5/lAE+POfx1YLdjtxvejJzsIAfd3MxWiVmfg==}
+    dependencies:
+      '@types/node': 18.14.0
+    dev: false
+
   /@types/bcryptjs/2.4.2:
     resolution: {integrity: sha512-LiMQ6EOPob/4yUL66SZzu6Yh77cbzJFYll+ZfaPiPPFswtIlA/Fs1MzdKYA7JApHU49zQTbJGX3PDmCpIdDBRQ==}
     dev: true
@@ -6635,6 +6667,10 @@ packages:
   /@types/unist/2.0.6:
     resolution: {integrity: sha512-PBjIUxZHOuj0R15/xuwJYjFi+KZdNFrehocChv4g5hu6aFroHue8m0lBP0POdK2nKzbw0cgV1mws8+V/JAcEkQ==}
     dev: true
+
+  /@types/url-join/4.0.1:
+    resolution: {integrity: sha512-wDXw9LEEUHyV+7UWy7U315nrJGJ7p1BzaCxDpEoLr789Dk1WDVMMlf3iBfbG2F8NdWnYyFbtTxUn2ZNbm1Q4LQ==}
+    dev: false
 
   /@types/uuid/9.0.0:
     resolution: {integrity: sha512-kr90f+ERiQtKWMz5rP32ltJ/BtULDI5RVO0uavn1HQUOwjx0R1h0rnDYNL0CepF1zL5bSY6FISAfd9tOdDhU5Q==}
@@ -12522,6 +12558,10 @@ packages:
     engines: {node: '>=10'}
     dev: true
 
+  /js-base64/3.7.5:
+    resolution: {integrity: sha512-3MEt5DTINKqfScXKfJFrRbxkrnk2AxPWGBL/ycjz4dK8iqiSJ06UxD8jh8xuh6p10TX4t2+7FsBYVxxQbMg+qA==}
+    dev: false
+
   /js-beautify/1.14.7:
     resolution: {integrity: sha512-5SOX1KXPFKx+5f6ZrPsIPEY7NwKeQz47n3jm2i+XeHx9MoRsfQenlOP13FQhWvg8JRS0+XLO6XYUQ2GX+q+T9A==}
     engines: {node: '>=10'}
@@ -17784,6 +17824,10 @@ packages:
     resolution: {integrity: sha512-Am1ousAhSLBeB9cG/7k7r2R0zj50uDRlZHPGbazid5s9rlF1F/QKYObEKSIunSjIOkJZqwRRLpvewjEkM7pSqg==}
     deprecated: Please see https://github.com/lydell/urix#deprecated
 
+  /url-join/4.0.1:
+    resolution: {integrity: sha512-jk1+QP6ZJqyOiuEI9AEWQfju/nB2Pw466kbA0LEZljHwKeMgd9WrAEgEGxjPDD2+TNbbb37rTyhEfrCXfuKXnA==}
+    dev: false
+
   /url-parse-lax/3.0.0:
     resolution: {integrity: sha512-NjFKA0DidqPa5ciFcSrXnAltTtzz84ogy+NebPvfEgAck0+TNg4UJ4IN+fB7zRZfbgUf0syOo9MDxFkDSMuFaQ==}
     engines: {node: '>=4'}
@@ -18529,6 +18573,11 @@ packages:
     resolution: {integrity: sha512-r3vXyErRCYJ7wg28yvBY5VSoAF8ZvlcW9/BwUzEtUsjvX/DKs24dIkuwjtuprwJJHsbyUbLApepYTR1BN4uHrg==}
     engines: {node: '>= 6'}
     dev: true
+
+  /yaml/2.2.1:
+    resolution: {integrity: sha512-e0WHiYql7+9wr4cWMx3TVQrNwejKaEe7/rHNmQmqRjazfOP5W8PB6Jpebb5o6fIapbz9o9+2ipcaTM2ZwDI6lw==}
+    engines: {node: '>= 14'}
+    dev: false
 
   /yargs-parser/18.1.3:
     resolution: {integrity: sha512-o50j0JeToy/4K6OZcaQmW6lyXXKhq7csREXcDwk2omFPJEwUNOVtJKvmDr9EI1fAJZUyZcRF7kxGBWmRXudrCQ==}

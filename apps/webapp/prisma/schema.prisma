@@ -46,16 +46,17 @@ model Organization {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  users            User[]
-  workflows        Workflow[]
-  environments     RuntimeEnvironment[]
-  apiConnections   APIConnection[]
-  events           TriggerEvent[]
-  externalSources  ExternalSource[]
-  eventRules       EventRule[]
-  schedulerSources SchedulerSource[]
-  internalSources  InternalSource[]
-  templates        OrganizationTemplate[]
+  users              User[]
+  workflows          Workflow[]
+  environments       RuntimeEnvironment[]
+  apiConnections     APIConnection[]
+  events             TriggerEvent[]
+  externalSources    ExternalSource[]
+  eventRules         EventRule[]
+  schedulerSources   SchedulerSource[]
+  internalSources    InternalSource[]
+  templates          OrganizationTemplate[]
+  repositoryProjects RepositoryProject[]
 }
 
 model APIConnection {
@@ -112,6 +113,7 @@ model RuntimeEnvironment {
   eventRules       EventRule[]
   schedulerSources SchedulerSource[]
   internalSources  InternalSource[]
+  deployments      ProjectDeployment[]
 
   @@unique([organizationId, slug])
 }
@@ -154,6 +156,9 @@ model Workflow {
 
   organizationTemplate   OrganizationTemplate? @relation(fields: [organizationTemplateId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   organizationTemplateId String?
+
+  repositoryProject   RepositoryProject? @relation(fields: [repositoryProjectId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  repositoryProjectId String?
 
   @@unique([organizationId, slug])
 }
@@ -599,11 +604,11 @@ model GitHubAppAuthorization {
   installationAccessTokenExpiresAt DateTime?
 
   organizationTemplates OrganizationTemplate[]
-  repositories          GitHubRepository[]
 
   createdAt                     DateTime                        @default(now())
   updatedAt                     DateTime                        @default(now()) @updatedAt
   GitHubAppAuthorizationAttempt GitHubAppAuthorizationAttempt[]
+  repositoryProjects            RepositoryProject[]
 }
 
 enum GitHubAccountType {
@@ -611,20 +616,92 @@ enum GitHubAccountType {
   ORGANIZATION
 }
 
-model GitHubRepository {
+model RepositoryProject {
   id String @id @default(cuid())
 
-  name String
-  url  String
+  name   String @unique
+  url    String
+  branch String @default("main")
 
   authorization   GitHubAppAuthorization @relation(fields: [authorizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   authorizationId String
 
-  template   Template? @relation(fields: [templateId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  templateId String?
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  organizationId String
+
+  buildCommand String
+  startCommand String
+  autoDeploy   Boolean @default(true)
+  envVars      Json
+
+  status     RepositoryProjectStatus @default(PENDING)
+  statusText String?
+
+  currentVMIdentifier String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  deployments ProjectDeployment[] @relation("repoProject")
+
+  currentDeployment   ProjectDeployment? @relation(fields: [currentDeploymentId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  currentDeploymentId String?
+
+  workflows Workflow[]
+}
+
+enum RepositoryProjectStatus {
+  PENDING
+  BUILDING
+  DEPLOYING
+  DEPLOYED
+  ERROR
+  DISABLED
+}
+
+model ProjectDeployment {
+  id String @id @default(cuid())
+
+  project   RepositoryProject @relation("repoProject", fields: [projectId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  projectId String
+
+  environment   RuntimeEnvironment @relation(fields: [environmentId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  environmentId String
+
+  status ProjectDeploymentStatus @default(PENDING)
+
+  buildId         String    @unique
+  imageId         String?
+  vmIdentifier    String?
+  buildStartedAt  DateTime?
+  buildFinishedAt DateTime?
+  stoppedAt       DateTime?
+
+  dockerfile   String
+  dockerIgnore String
+
+  branch        String
+  commitHash    String
+  commitMessage String
+  committer     String
+
+  error Json?
+
+  createdAt         DateTime            @default(now())
+  updatedAt         DateTime            @updatedAt
+  RepositoryProject RepositoryProject[]
+
+  @@unique([projectId, commitHash])
+}
+
+enum ProjectDeploymentStatus {
+  PENDING
+  BUILDING
+  DEPLOYING
+  DEPLOYED
+  CANCELLED
+  ERROR
+  STOPPED
 }
 
 model Template {
@@ -649,7 +726,6 @@ model Template {
   isLive Boolean @default(true)
 
   organizationTemplates OrganizationTemplate[]
-  repositories          GitHubRepository[]
 }
 
 model OrganizationTemplate {

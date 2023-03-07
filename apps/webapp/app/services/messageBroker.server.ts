@@ -50,6 +50,12 @@ import { RegisterExternalSource } from "./externalSources/registerExternalSource
 import { CreateFetchRequest } from "./fetches/createFetchRequest.server";
 import { PerformFetchRequest } from "./fetches/performFetchRequest.server";
 import { StartFetchRequest } from "./fetches/startFetchRequest.server";
+import { BuildComplete } from "../features/ee/projects/services/buildComplete.server";
+import { CleanupDeployment } from "../features/ee/projects/services/cleanupDeployment.server";
+import { DeploymentCreated } from "../features/ee/projects/services/deploymentCreated.server";
+import { InitialProjectDeployment } from "../features/ee/projects/services/initialProjectDeployment.server";
+import { ReceiveRepositoryPush } from "../features/ee/projects/services/receiveRepositoryPush.server";
+import { StartPendingDeployment } from "../features/ee/projects/services/startPendingDeployment.server";
 import type { PulsarClient } from "./pulsarClient.server";
 import { createPulsarClient } from "./pulsarClient.server";
 import { CreateIntegrationRequest } from "./requests/createIntegrationRequest.server";
@@ -504,6 +510,34 @@ const taskQueueCatalog = {
     data: z.object({ id: z.string() }),
     properties: z.object({}),
   },
+  START_INITIAL_PROJECT_DEPLOYMENT: {
+    data: z.object({ id: z.string() }),
+    properties: z.object({}),
+  },
+  DEPLOYMENT_BUILD_COMPLETE: {
+    data: z.object({ buildId: z.string(), imageId: z.string() }),
+    properties: z.object({}),
+  },
+  GITHUB_PUSH: {
+    data: z.object({
+      branch: z.string(),
+      commitSha: z.string(),
+      repository: z.string(),
+    }),
+    properties: z.object({}),
+  },
+  PROJECT_DEPLOYMENT_CREATED: {
+    data: z.object({ id: z.string() }),
+    properties: z.object({}),
+  },
+  DEPLOYMENT_DEPLOYED: {
+    data: z.object({ id: z.string(), projectId: z.string() }),
+    properties: z.object({}),
+  },
+  CLEANUP_DEPLOYMENT: {
+    data: z.object({ id: z.string() }),
+    properties: z.object({}),
+  },
 };
 
 function createTaskQueue() {
@@ -890,6 +924,69 @@ function createTaskQueue() {
 
         const service = new WorkflowRunCreatedEvent();
         return service.call(data.id);
+      },
+      START_INITIAL_PROJECT_DEPLOYMENT: async (
+        id,
+        data,
+        properties,
+        attributes
+      ) => {
+        const service = new InitialProjectDeployment();
+
+        await service.call(data.id);
+
+        return true;
+      },
+      DEPLOYMENT_BUILD_COMPLETE: async (id, data, properties, attributes) => {
+        if (attributes.redeliveryCount >= 4) {
+          return true;
+        }
+
+        const service = new BuildComplete();
+
+        return await service.call(data);
+      },
+      GITHUB_PUSH: async (id, data, properties, attributes) => {
+        if (attributes.redeliveryCount >= 4) {
+          return true;
+        }
+
+        const service = new ReceiveRepositoryPush();
+
+        await service.call(data);
+
+        return true;
+      },
+      PROJECT_DEPLOYMENT_CREATED: async (id, data, properties, attributes) => {
+        if (attributes.redeliveryCount >= 4) {
+          return true;
+        }
+
+        const service = new DeploymentCreated();
+
+        await service.call(data.id);
+
+        return true;
+      },
+      CLEANUP_DEPLOYMENT: async (id, data, properties, attributes) => {
+        if (attributes.redeliveryCount >= 4) {
+          return true;
+        }
+
+        const service = new CleanupDeployment();
+
+        return await service.call(data.id);
+      },
+      DEPLOYMENT_DEPLOYED: async (id, data, properties, attributes) => {
+        if (attributes.redeliveryCount >= 4) {
+          return true;
+        }
+
+        const service = new StartPendingDeployment();
+
+        await service.call(data.projectId);
+
+        return true;
       },
     },
   });

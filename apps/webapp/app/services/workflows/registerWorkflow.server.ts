@@ -71,6 +71,12 @@ export class RegisterWorkflow {
       environment
     );
 
+    if (isNew) {
+      await taskQueue.publish("WORKFLOW_CREATED", {
+        id: workflow.id,
+      });
+    }
+
     return {
       status: "success" as const,
       data: { workflow, environment, organization, isNew },
@@ -122,6 +128,10 @@ export class RegisterWorkflow {
       },
     });
 
+    const metadata = payload.metadata
+      ? JSON.parse(payload.metadata)
+      : undefined;
+
     const workflow = await this.#prismaClient.workflow.upsert({
       where: {
         organizationId_slug: {
@@ -136,7 +146,8 @@ export class RegisterWorkflow {
         service: payload.trigger.service,
         eventNames: payload.trigger.name,
         triggerTtlInSeconds: payload.triggerTTL,
-        metadata: payload.metadata ? JSON.parse(payload.metadata) : undefined,
+        metadata,
+        repositoryProjectId: metadata?.env?.PROJECT_ID,
         jsonSchema:
           "schema" in payload.trigger
             ? payload.trigger.schema
@@ -154,6 +165,8 @@ export class RegisterWorkflow {
         service: payload.trigger.service,
         eventNames: payload.trigger.name,
         triggerTtlInSeconds: payload.triggerTTL,
+        metadata,
+        repositoryProjectId: metadata?.env?.PROJECT_ID,
         jsonSchema:
           "schema" in payload.trigger
             ? payload.trigger.schema
@@ -167,13 +180,6 @@ export class RegisterWorkflow {
     });
 
     if (!existingWorkflow) {
-      await taskQueue.publish("WORKFLOW_CREATED", {
-        id: workflow.id,
-      });
-      await taskQueue.publish("WORKFLOW_CREATED", {
-        id: workflow.id,
-      });
-
       return { workflow, isNew: true };
     }
 

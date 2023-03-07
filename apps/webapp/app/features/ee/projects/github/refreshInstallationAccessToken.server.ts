@@ -8,8 +8,21 @@ export type GitHubAppAuthorizationWithValidToken = GitHubAppAuthorization & {
 };
 
 export async function refreshInstallationAccessToken(
-  authorization: GitHubAppAuthorization
+  authorizationOrId: GitHubAppAuthorization | string
 ): Promise<GitHubAppAuthorizationWithValidToken> {
+  const authorization =
+    typeof authorizationOrId === "string"
+      ? await prisma.gitHubAppAuthorization.findUnique({
+          where: {
+            id: authorizationOrId,
+          },
+        })
+      : authorizationOrId;
+
+  if (!authorization) {
+    throw new Error("App authorization not found");
+  }
+
   // Make sure the access token is not expired, or less than 10 minutes from expiring
   const accessTokenExpired =
     !authorization.installationAccessTokenExpiresAt ||

@@ -57,6 +57,8 @@ const EnvironmentSchema = z.object({
   GITHUB_APP_WEBHOOK_SECRET: z.string().optional(),
   INTEGRATIONS_API_KEY: z.string(),
   INTEGRATIONS_API_ORIGIN: z.string(),
+  CAKEWORK_API_KEY: z.string(),
+  TRIGGER_WSS_URL: z.string().default("wss://wss.trigger.dev/ws"),
 });
 
 export type Environment = z.infer<typeof EnvironmentSchema>;

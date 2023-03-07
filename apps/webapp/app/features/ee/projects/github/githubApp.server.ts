@@ -1,10 +1,11 @@
 import type { Endpoints } from "@octokit/types";
+import type { PushEvent } from "@octokit/webhooks-types";
 import { verify } from "@octokit/webhooks-methods";
 import { sign as signJWT } from "jsonwebtoken";
 import { z } from "zod";
 import { env } from "~/env.server";
 import type { EmitterWebhookEventName } from "@octokit/webhooks";
-import { taskQueue } from "../messageBroker.server";
+import { taskQueue } from "../../../../services/messageBroker.server";
 
 export async function verifyAndReceiveWebhook(request: Request) {
   if (!env.GITHUB_APP_WEBHOOK_SECRET) {
@@ -38,7 +39,9 @@ export async function verifyAndReceiveWebhook(request: Request) {
 
   const parsedPayload = JSON.parse(payload);
 
-  const name = `${hookName}.${parsedPayload.action}` as EmitterWebhookEventName;
+  const name = (
+    parsedPayload.action ? `${hookName}.${parsedPayload.action}` : hookName
+  ) as EmitterWebhookEventName;
 
   console.log(`[webhooks.github] Received event`, {
     id,
@@ -68,6 +71,22 @@ async function handleGithubEvent<TName extends EmitterWebhookEventName>({
     case "installation.deleted": {
       await taskQueue.publish("GITHUB_APP_INSTALLATION_DELETED", {
         id: payload.installation.id,
+      });
+    }
+    case "push": {
+      const push = payload as PushEvent;
+
+      // Only on pushes to a branch
+      if (!push.ref.startsWith("refs/heads/")) {
+        return;
+      }
+
+      const branch = push.ref.replace("refs/heads/", "");
+
+      await taskQueue.publish("GITHUB_PUSH", {
+        branch: branch,
+        commitSha: push.after,
+        repository: push.repository.full_name,
       });
     }
   }
@@ -153,10 +172,6 @@ export async function getInstallationRepositories(
       perPage
     );
 
-    console.log(
-      `Fetched page ${page} of repositories, total_count = ${response.total_count}, repositories.length = ${response.repositories.length}`
-    );
-
     repositories.push(...response.repositories);
 
     if (response.repositories.length < perPage) {
@@ -189,6 +204,63 @@ async function getInstallationRepositoriesPage(
     throw new Error(
       `Failed to get installation repositories: ${response.statusText}`
     );
+  }
+
+  return await response.json();
+}
+
+export async function getRepositoryContent(
+  token: string,
+  repo: string,
+  path: string
+): Promise<string | undefined> {
+  const response = await fetch(
+    `https://api.github.com/repos/${repo}/contents/${path}`,
+    {
+      method: "GET",
+      headers: {
+        Authorization: `token ${token}`,
+        Accept: "application/vnd.github.raw",
+      },
+    }
+  );
+
+  if (response.status === 404) {
+    return;
+  }
+
+  if (!response.ok) {
+    throw new Error(`Failed to get repository content: ${response.statusText}`);
+  }
+
+  return await response.text();
+}
+
+export type GetCommitEndpoint =
+  Endpoints["GET /repos/{owner}/{repo}/commits/{ref}"];
+
+export type GetCommitResponse = GetCommitEndpoint["response"]["data"];
+
+export type GitHubCommit = GetCommitResponse;
+
+export async function getCommit(
+  token: string,
+  repo: string,
+  ref: string
+): Promise<GitHubCommit> {
+  const response = await fetch(
+    `https://api.github.com/repos/${repo}/commits/${ref}`,
+    {
+      method: "GET",
+      headers: {
+        Authorization: `token ${token}`,
+        Accept: "application/vnd.github.v3+json",
+      },
+    }
+  );
+
+  if (!response.ok) {
+    throw new Error(`Failed to get commit: ${response.statusText}`);
   }
 
   return await response.json();

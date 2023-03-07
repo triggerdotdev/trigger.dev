@@ -1,7 +1,7 @@
 import type { PrismaClient } from "~/db.server";
 import { prisma } from "~/db.server";
-import { getAppInstallation } from "~/services/github/githubApp.server";
-import { taskQueue } from "../messageBroker.server";
+import { getAppInstallation } from "~/features/ee/projects/github/githubApp.server";
+import { taskQueue } from "../../../../services/messageBroker.server";
 
 export class AppInstallationCallback {
   #prismaClient: PrismaClient;

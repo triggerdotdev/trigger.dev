@@ -18,6 +18,30 @@ export async function findEnvironmentByApiKey(apiKey: string) {
   return environment;
 }
 
+export async function getEnvironmentForOrganization(
+  organizationSlug: string,
+  slug: string
+) {
+  const organization = await prisma.organization.findUnique({
+    where: {
+      slug: organizationSlug,
+    },
+    include: {
+      environments: true,
+    },
+  });
+
+  if (!organization) {
+    return;
+  }
+
+  const environment = organization.environments.find(
+    (environment) => environment.slug === slug
+  );
+
+  return environment;
+}
+
 export const { commitSession, getSession } = createCookieSessionStorage({
   cookie: {
     name: "__environment",

@@ -5,7 +5,9 @@ import { renderToPipeableStream } from "react-dom/server";
 import { RemixServer } from "@remix-run/react";
 import { Response } from "@remix-run/node"; // or cloudflare/deno
 import type { EntryContext, Headers } from "@remix-run/node"; // or cloudflare/deno
+import { parseAcceptLanguage } from "intl-parse-accept-language";
 import isbot from "isbot";
+import { LocaleContextProvider } from "./components/LocaleProvider";
 
 const ABORT_DELAY = 30000;
 
@@ -15,6 +17,11 @@ export default function handleRequest(
   responseHeaders: Headers,
   remixContext: EntryContext
 ) {
+  const acceptLanguage = request.headers.get("accept-language");
+  const locales = parseAcceptLanguage(acceptLanguage, {
+    validate: Intl.DateTimeFormat.supportedLocalesOf,
+  });
+
   // If the request is from a bot, we want to wait for the full
   // response to render before sending it to the client. This
   // ensures that bots can see the full page content.
@@ -23,7 +30,8 @@ export default function handleRequest(
       request,
       responseStatusCode,
       responseHeaders,
-      remixContext
+      remixContext,
+      locales
     );
   }
 
@@ -31,7 +39,8 @@ export default function handleRequest(
     request,
     responseStatusCode,
     responseHeaders,
-    remixContext
+    remixContext,
+    locales
   );
 }
 
@@ -39,15 +48,18 @@ function serveTheBots(
   request: Request,
   responseStatusCode: number,
   responseHeaders: Headers,
-  remixContext: EntryContext
+  remixContext: EntryContext,
+  locales: string[]
 ) {
   return new Promise((resolve, reject) => {
     const { pipe, abort } = renderToPipeableStream(
-      <RemixServer
-        context={remixContext}
-        url={request.url}
-        abortDelay={ABORT_DELAY}
-      />,
+      <LocaleContextProvider locales={locales}>
+        <RemixServer
+          context={remixContext}
+          url={request.url}
+          abortDelay={ABORT_DELAY}
+        />
+      </LocaleContextProvider>,
       {
         // Use onAllReady to wait for the entire document to be ready
         onAllReady() {
@@ -74,16 +86,19 @@ function serveBrowsers(
   request: Request,
   responseStatusCode: number,
   responseHeaders: Headers,
-  remixContext: EntryContext
+  remixContext: EntryContext,
+  locales: string[]
 ) {
   return new Promise((resolve, reject) => {
     let didError = false;
     const { pipe, abort } = renderToPipeableStream(
-      <RemixServer
-        context={remixContext}
-        url={request.url}
-        abortDelay={ABORT_DELAY}
-      />,
+      <LocaleContextProvider locales={locales}>
+        <RemixServer
+          context={remixContext}
+          url={request.url}
+          abortDelay={ABORT_DELAY}
+        />
+      </LocaleContextProvider>,
       {
         // use onShellReady to wait until a suspense boundary is triggered
         onShellReady() {

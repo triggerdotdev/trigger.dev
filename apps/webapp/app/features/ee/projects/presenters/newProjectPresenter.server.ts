@@ -2,9 +2,9 @@ import type { GitHubAppAuthorization } from ".prisma/client";
 import type { PrismaClient } from "~/db.server";
 import { prisma } from "~/db.server";
 import { getRepositoryFromMetadata } from "~/models/workflow.server";
-import type { CreateInstallationAccessTokenResponse } from "~/services/github/githubApp.server";
-import { getInstallationRepositories } from "~/services/github/githubApp.server";
-import { refreshInstallationAccessToken } from "~/services/github/refreshInstallationAccessToken.server";
+import type { CreateInstallationAccessTokenResponse } from "~/features/ee/projects/github/githubApp.server";
+import { getInstallationRepositories } from "~/features/ee/projects/github/githubApp.server";
+import { refreshInstallationAccessToken } from "~/features/ee/projects/github/refreshInstallationAccessToken.server";
 
 export type InstallationRepository = NonNullable<
   CreateInstallationAccessTokenResponse["repositories"]
@@ -13,6 +13,7 @@ export type InstallationRepository = NonNullable<
 export type RepositoryWithStatus = {
   repository: InstallationRepository;
   status: "relevant" | "unknown";
+  appAuthorizationId: string;
 };
 
 export class NewProjectPresenter {
@@ -73,6 +74,7 @@ export class NewProjectPresenter {
           return {
             repository,
             status,
+            appAuthorizationId: authorization.id,
           };
         }
       );

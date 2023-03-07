@@ -762,6 +762,7 @@ export class TriggerClient<TSchema extends z.ZodTypeAny> {
             }
           : undefined,
         packageMetadata,
+        env: gatherEnvVars(process.env),
       },
     });
 
@@ -870,4 +871,17 @@ function safeGetRepoInfo() {
   } catch (err) {
     return;
   }
+}
+
+// Get all env vars that are prefixed with TRIGGER_ (exccpt for TRIGGER_API_KEY)
+function gatherEnvVars(env: NodeJS.ProcessEnv): Record<string, string> {
+  if (!env) {
+    return {};
+  }
+
+  const envVars = Object.entries(env)
+    .filter(([key]) => key.startsWith("TRIGGER_") && key !== "TRIGGER_API_KEY")
+    .map(([key, value]) => [key.replace("TRIGGER_", ""), `${value}`]);
+
+  return Object.fromEntries(envVars);
 }
