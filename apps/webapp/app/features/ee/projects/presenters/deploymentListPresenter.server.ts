@@ -4,7 +4,7 @@ import { prisma } from "~/db.server";
 import { getEnvironmentForOrganization } from "~/models/runtimeEnvironment.server";
 import { WorkflowsPresenter } from "~/presenters/workflowsPresenter.server";
 
-export class ProjectOverviewPresenter {
+export class DeploymentListPresenter {
   #prismaClient: PrismaClient;
 
   constructor(prismaClient: PrismaClient = prisma) {
@@ -12,26 +12,6 @@ export class ProjectOverviewPresenter {
   }
 
   async data(organizationSlug: string, projectId: string) {
-    const liveEnvironment = await getEnvironmentForOrganization(
-      organizationSlug,
-      LIVE_ENVIRONMENT
-    );
-
-    if (!liveEnvironment) {
-      throw new Error("No live environment found");
-    }
-
-    const workflowsPresenter = new WorkflowsPresenter(this.#prismaClient);
-
-    const workflows = await workflowsPresenter.data(
-      {
-        repositoryProject: {
-          id: projectId,
-        },
-      },
-      liveEnvironment.id
-    );
-
     const deployments = await this.#prismaClient.projectDeployment.findMany({
       where: {
         projectId,
@@ -39,11 +19,10 @@ export class ProjectOverviewPresenter {
       orderBy: {
         version: "desc",
       },
-      take: 5,
+      take: 30,
     });
 
     return {
-      workflows,
       organizationSlug,
       deployments,
     };

@@ -15,6 +15,7 @@ import {
   PhoneArrowUpRightIcon,
   PlusCircleIcon,
   QueueListIcon,
+  ServerIcon,
   Squares2X2Icon,
   SquaresPlusIcon,
   UsersIcon,
@@ -22,6 +23,7 @@ import {
 import { Link, NavLink } from "@remix-run/react";
 import { useState } from "react";
 import invariant from "tiny-invariant";
+import { CurrentProject } from "~/features/ee/projects/routes/$projectP";
 import { useCurrentEnvironment } from "~/hooks/useEnvironments";
 import {
   useCurrentOrganization,
@@ -29,7 +31,6 @@ import {
 } from "~/hooks/useOrganizations";
 import { useCurrentWorkflow } from "~/hooks/useWorkflows";
 import { EnvironmentIcon } from "~/routes/resources/environment";
-import { CurrentProject } from "~/routes/__app/orgs/$organizationSlug/projects/$projectP";
 import { titleCase } from "~/utils";
 import { CopyTextPanel } from "../CopyTextButton";
 import { TertiaryA, TertiaryButton } from "../primitives/Buttons";
@@ -68,6 +69,11 @@ export function OrganizationsSideMenu() {
   if (currentOrganization.workflows.length > 0) {
     items = [
       ...items,
+      {
+        name: "Repositories",
+        icon: <ServerIcon className={iconStyle} />,
+        to: `/orgs/${currentOrganization.slug}/projects`,
+      },
       {
         name: "API Integrations",
         icon: <SquaresPlusIcon className={iconStyle} />,
