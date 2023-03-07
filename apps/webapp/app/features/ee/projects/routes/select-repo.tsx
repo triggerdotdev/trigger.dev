@@ -150,29 +150,41 @@ export default function Page() {
                                   )}
                                 </span>
                                 <span>
-                                  <Form method="post">
-                                    <input
-                                      type="hidden"
-                                      name="repoId"
-                                      value={repo.repository.id}
-                                    />
+                                  {repo.projectId ? (
+                                    <SecondaryLink
+                                      to={`../projects/${repo.projectId}`}
+                                      reloadDocument
+                                    >
+                                      View Project
+                                    </SecondaryLink>
+                                  ) : (
+                                    <Form method="post">
+                                      <input
+                                        type="hidden"
+                                        name="repoId"
+                                        value={repo.repository.id}
+                                      />
 
-                                    <input
-                                      type="hidden"
-                                      name="repoName"
-                                      value={repo.repository.full_name}
-                                    />
+                                      <input
+                                        type="hidden"
+                                        name="repoName"
+                                        value={repo.repository.full_name}
+                                      />
 
-                                    <input
-                                      type="hidden"
-                                      name="appAuthorizationId"
-                                      value={repo.appAuthorizationId}
-                                    />
+                                      <input
+                                        type="hidden"
+                                        name="appAuthorizationId"
+                                        value={repo.appAuthorizationId}
+                                      />
 
-                                    <PrimaryButton type="submit" size="regular">
-                                      Select
-                                    </PrimaryButton>
-                                  </Form>
+                                      <PrimaryButton
+                                        type="submit"
+                                        size="regular"
+                                      >
+                                        Select
+                                      </PrimaryButton>
+                                    </Form>
+                                  )}
                                 </span>
                               </li>
                             ))}

@@ -14,6 +14,7 @@ export type RepositoryWithStatus = {
   repository: InstallationRepository;
   status: "relevant" | "unknown";
   appAuthorizationId: string;
+  projectId?: string;
 };
 
 export class NewProjectPresenter {
@@ -33,6 +34,18 @@ export class NewProjectPresenter {
         },
       });
 
+    const projects = await this.#prismaClient.repositoryProject.findMany({
+      where: {
+        organization: {
+          slug: organizationSlug,
+        },
+      },
+      select: {
+        name: true,
+        id: true,
+      },
+    });
+
     const relevantRepositories =
       await this.#gatherRepositoriesFromWorkflowsInOrganization(
         organizationSlug
@@ -40,6 +53,7 @@ export class NewProjectPresenter {
 
     const repositories = this.#findRepositoriesForAuthorizations(
       appAuthorizations,
+      projects,
       relevantRepositories
     );
 
@@ -52,6 +66,7 @@ export class NewProjectPresenter {
 
   async #findRepositoriesForAuthorizations(
     authorizations: GitHubAppAuthorization[],
+    projects: Array<{ name: string; id: string }>,
     relevantRepositories: string[] = []
   ): Promise<Array<RepositoryWithStatus>> {
     const repositories: Array<RepositoryWithStatus> = [];
@@ -71,10 +86,15 @@ export class NewProjectPresenter {
             ? ("relevant" as const)
             : ("unknown" as const);
 
+          const project = projects.find(
+            (project) => project.name === repository.full_name
+          );
+
           return {
             repository,
             status,
             appAuthorizationId: authorization.id,
+            projectId: project?.id,
           };
         }
       );
