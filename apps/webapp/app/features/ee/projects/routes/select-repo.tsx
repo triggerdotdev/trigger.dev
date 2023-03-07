@@ -153,7 +153,6 @@ export default function Page() {
                                   {repo.projectId ? (
                                     <SecondaryLink
                                       to={`../projects/${repo.projectId}`}
-                                      reloadDocument
                                     >
                                       View Project
                                     </SecondaryLink>
