@@ -35,6 +35,7 @@
     "morgan": "^1.10.0",
     "node-fetch": "^3.3.0",
     "node-object-hash": "^2.3.10",
+    "qs": "^6.11.0",
     "zod": "^3.20.2"
   },
   "devDependencies": {
@@ -45,6 +46,7 @@
     "@types/json-pointer": "^1.0.31",
     "@types/morgan": "^1.9.3",
     "@types/node": "^18.13.0",
+    "@types/qs": "^6.9.7",
     "@typescript-eslint/eslint-plugin": "^5.51.0",
     "commander": "^9.4.1",
     "concurrently": "^7.6.0",

@@ -1,0 +1,62 @@
+[
+    {
+        "scope": "https://api.stripe.com:443",
+        "method": "POST",
+        "path": "/v1/webhook_endpoints",
+        "body": "description=Trigger.dev%20webhook%20for%20events%20checkout.session.completed&enabled_events%5B0%5D=checkout.session.completed&url=https%3A%2F%2Fexample.com",
+        "status": 200,
+        "response": {
+            "id": "we_1Mj137GHlQRWA8CggGfaBkhz",
+            "object": "webhook_endpoint",
+            "api_version": null,
+            "application": null,
+            "created": 1678197569,
+            "description": "Trigger.dev webhook for events checkout.session.completed",
+            "enabled_events": [
+                "checkout.session.completed"
+            ],
+            "livemode": false,
+            "metadata": {},
+            "secret": "whsec_4gm8qR9cYScNcvMZKUgwhtkzwoNY0NhB",
+            "status": "enabled",
+            "url": "https://example.com"
+        },
+        "rawHeaders": [
+            "Server",
+            "nginx",
+            "Date",
+            "Tue, 07 Mar 2023 13:59:29 GMT",
+            "Content-Type",
+            "application/json",
+            "Content-Length",
+            "430",
+            "Connection",
+            "close",
+            "Access-Control-Allow-Credentials",
+            "true",
+            "Access-Control-Allow-Methods",
+            "GET, POST, HEAD, OPTIONS, DELETE",
+            "Access-Control-Allow-Origin",
+            "*",
+            "Access-Control-Expose-Headers",
+            "Request-Id, Stripe-Manage-Version, X-Stripe-External-Auth-Required, X-Stripe-Privileged-Session-Required",
+            "Access-Control-Max-Age",
+            "300",
+            "Cache-Control",
+            "no-cache, no-store",
+            "Idempotency-Key",
+            "e8ac06e5-f582-4e18-9efa-ed0c9348df02",
+            "Original-Request",
+            "req_wat7ygbANPveOQ",
+            "Request-Id",
+            "req_wat7ygbANPveOQ",
+            "Stripe-Should-Retry",
+            "false",
+            "Stripe-Version",
+            "2022-11-15",
+            "Strict-Transport-Security",
+            "max-age=63072000; includeSubDomains; preload"
+        ],
+        "responseIsBinary": false
+    }
+]
