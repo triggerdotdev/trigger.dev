@@ -1,0 +1,223 @@
+---
+title: Checkout session completed
+sidebarTitle: Checkout session completed
+description: A form response was submitted
+---
+    
+## Params
+    
+<ParamField path="key" type="string" required={true}>
+  A unique string. Please see the [Keys and Resumability](/guides/resumability)
+  doc for more info.
+</ParamField>
+
+## Response
+
+<ResponseField path="response" type="object" required={true}>
+   A Checkout Session represents your customer's session as they pay for
+one-time purchases or subscriptions through [Checkout](https://stripe.com/docs/payments/checkout)
+or [Payment Links](https://stripe.com/docs/payments/payment-links). We recommend creating a
+new Session each time your customer attempts to pay.
+
+Once payment is successful, the Checkout Session will contain a reference
+to the [Customer](https://stripe.com/docs/api/customers), and either the successful
+[PaymentIntent](https://stripe.com/docs/api/payment_intents) or an active
+[Subscription](https://stripe.com/docs/api/subscriptions).
+
+You can create a Checkout Session on your server and redirect to its URL
+to begin Checkout.
+
+Related guide: [Checkout Quickstart](https://stripe.com/docs/checkout/quickstart).
+<Expandable title="properties" defaultOpen={false}><ResponseField path="automatic_tax" type="undefined" required={true}>
+</ResponseField><ResponseField path="created" type="integer" required={true}>
+   Time at which the object was created. Measured in seconds since the Unix epoch.
+</ResponseField><ResponseField path="custom_fields" type="array" required={true}>
+   Collect additional information from your customer using custom fields. Up to 2 fields are supported.
+<Expandable title="items" defaultOpen={false}><ResponseField path="custom_fields[n]" type="undefined" required={true}>
+</ResponseField></Expandable></ResponseField><ResponseField path="custom_text" type="undefined" required={true}>
+</ResponseField><ResponseField path="expires_at" type="integer" required={true}>
+   The timestamp at which the Checkout Session will expire.
+</ResponseField><ResponseField path="id" type="string" required={true}>
+   Unique identifier for the object.
+</ResponseField><ResponseField path="livemode" type="boolean" required={true}>
+   Has the value `true` if the object exists in live mode or the value `false` if the object exists in test mode.
+</ResponseField><ResponseField path="mode" type="string" required={true}>
+   The mode of the Checkout Session.
+</ResponseField><ResponseField path="object" type="string" required={true}>
+   String representing the object's type. Objects of the same type share the same value.
+</ResponseField><ResponseField path="payment_method_types" type="array" required={true}>
+   A list of the types of payment methods (e.g. card) this Checkout
+Session is allowed to accept.
+<Expandable title="items" defaultOpen={false}><ResponseField path="payment_method_types[n]" type="string" required={true}>
+</ResponseField></Expandable></ResponseField><ResponseField path="payment_status" type="string" required={true}>
+   The payment status of the Checkout Session, one of `paid`, `unpaid`, or `no_payment_required`.
+You can use this value to decide when to fulfill your customer's order.
+</ResponseField><ResponseField path="shipping_options" type="array" required={true}>
+   The shipping rate options applied to this Session.
+<Expandable title="items" defaultOpen={false}><ResponseField path="shipping_options[n]" type="undefined" required={true}>
+</ResponseField></Expandable></ResponseField><ResponseField path="success_url" type="string" required={true}>
+   The URL the customer will be directed to after the payment or
+subscription creation is successful.
+</ResponseField><ResponseField path="after_expiration" type="null" required={false}>
+   When set, provides configuration for actions to take if this Checkout Session expires.
+
+*Please note that this object is one of the following possible types*
+<Expandable title="possible types for after_expiration" defaultOpen={false}><ResponseField path="Value" type="undefined" required={false}>
+</ResponseField><ResponseField path="Value" type="null" required={false}>
+</ResponseField></Expandable></ResponseField><ResponseField path="allow_promotion_codes" type="boolean,null" required={false}>
+   Enables user redeemable promotion codes.
+</ResponseField><ResponseField path="amount_subtotal" type="integer,null" required={false}>
+   Total of all items before discounts or taxes are applied.
+</ResponseField><ResponseField path="amount_total" type="integer,null" required={false}>
+   Total of all items after discounts and taxes are applied.
+</ResponseField><ResponseField path="billing_address_collection" type="string,null" required={false}>
+   Describes whether Checkout should collect the customer's billing address.
+</ResponseField><ResponseField path="cancel_url" type="string,null" required={false}>
+   If set, Checkout displays a back button and customers will be directed to this URL if they decide to cancel payment and return to your website.
+</ResponseField><ResponseField path="client_reference_id" type="string,null" required={false}>
+   A unique string to reference the Checkout Session. This can be a
+customer ID, a cart ID, or similar, and can be used to reconcile the
+Session with your internal systems.
+</ResponseField><ResponseField path="consent" type="null" required={false}>
+   Results of `consent_collection` for this session.
+
+*Please note that this object is one of the following possible types*
+<Expandable title="possible types for consent" defaultOpen={false}><ResponseField path="Value" type="undefined" required={false}>
+</ResponseField><ResponseField path="Value" type="null" required={false}>
+</ResponseField></Expandable></ResponseField><ResponseField path="consent_collection" type="null" required={false}>
+   When set, provides configuration for the Checkout Session to gather active consent from customers.
+
+*Please note that this object is one of the following possible types*
+<Expandable title="possible types for consent_collection" defaultOpen={false}><ResponseField path="Value" type="undefined" required={false}>
+</ResponseField><ResponseField path="Value" type="null" required={false}>
+</ResponseField></Expandable></ResponseField><ResponseField path="currency" type="string,null" required={false}>
+   Three-letter [ISO currency code](https://www.iso.org/iso-4217-currency-codes.html), in lowercase. Must be a [supported currency](https://stripe.com/docs/currencies).
+</ResponseField><ResponseField path="customer" type="string | null" required={false}>
+   The ID of the customer for this Session.
+For Checkout Sessions in `payment` or `subscription` mode, Checkout
+will create a new customer object based on information provided
+during the payment flow unless an existing customer was provided when
+the Session was created.
+
+*Please note that this object is one of the following possible types*
+<Expandable title="possible types for customer" defaultOpen={false}><ResponseField path="Value" type="string" required={false}>
+</ResponseField><ResponseField path="Value" type="undefined" required={false}>
+</ResponseField><ResponseField path="Value" type="undefined" required={false}>
+</ResponseField><ResponseField path="Value" type="null" required={false}>
+</ResponseField></Expandable></ResponseField><ResponseField path="customer_creation" type="string,null" required={false}>
+   Configure whether a Checkout Session creates a Customer when the Checkout Session completes.
+</ResponseField><ResponseField path="customer_details" type="null" required={false}>
+   The customer details including the customer's tax exempt status and the customer's tax IDs. Only the customer's email is present on Sessions in `setup` mode.
+
+*Please note that this object is one of the following possible types*
+<Expandable title="possible types for customer_details" defaultOpen={false}><ResponseField path="Value" type="undefined" required={false}>
+</ResponseField><ResponseField path="Value" type="null" required={false}>
+</ResponseField></Expandable></ResponseField><ResponseField path="customer_email" type="string,null" required={false}>
+   If provided, this value will be used when the Customer object is created.
+If not provided, customers will be asked to enter their email address.
+Use this parameter to prefill customer data if you already have an email
+on file. To access information about the customer once the payment flow is
+complete, use the `customer` attribute.
+</ResponseField><ResponseField path="invoice" type="string | null" required={false}>
+   ID of the invoice created by the Checkout Session, if it exists.
+
+*Please note that this object is one of the following possible types*
+<Expandable title="possible types for invoice" defaultOpen={false}><ResponseField path="Value" type="string" required={false}>
+</ResponseField><ResponseField path="Value" type="undefined" required={false}>
+</ResponseField><ResponseField path="Value" type="null" required={false}>
+</ResponseField></Expandable></ResponseField><ResponseField path="invoice_creation" type="null" required={false}>
+   Details on the state of invoice creation for the Checkout Session.
+
+*Please note that this object is one of the following possible types*
+<Expandable title="possible types for invoice_creation" defaultOpen={false}><ResponseField path="Value" type="undefined" required={false}>
+</ResponseField><ResponseField path="Value" type="null" required={false}>
+</ResponseField></Expandable></ResponseField><ResponseField path="line_items" type="object" required={false}>
+   The line items purchased by the customer.
+<Expandable title="properties" defaultOpen={false}><ResponseField path="data" type="array" required={true}>
+   Details about each object.
+<Expandable title="items" defaultOpen={false}><ResponseField path="data[n]" type="undefined" required={true}>
+</ResponseField></Expandable></ResponseField><ResponseField path="has_more" type="boolean" required={true}>
+   True if this list has another page of items after this one that can be fetched.
+</ResponseField><ResponseField path="object" type="string" required={true}>
+   String representing the object's type. Objects of the same type share the same value. Always has the value `list`.
+</ResponseField><ResponseField path="url" type="string" required={true}>
+   The URL where this list can be accessed.
+</ResponseField></Expandable></ResponseField><ResponseField path="locale" type="string,null" required={false}>
+   The IETF language tag of the locale Checkout is displayed in. If blank or `auto`, the browser's locale is used.
+</ResponseField><ResponseField path="metadata" type="object,null" required={false}>
+   Set of [key-value pairs](https://stripe.com/docs/api/metadata) that you can attach to an object. This can be useful for storing additional information about the object in a structured format.
+</ResponseField><ResponseField path="payment_intent" type="string | null" required={false}>
+   The ID of the PaymentIntent for Checkout Sessions in `payment` mode.
+
+*Please note that this object is one of the following possible types*
+<Expandable title="possible types for payment_intent" defaultOpen={false}><ResponseField path="Value" type="string" required={false}>
+</ResponseField><ResponseField path="Value" type="undefined" required={false}>
+</ResponseField><ResponseField path="Value" type="null" required={false}>
+</ResponseField></Expandable></ResponseField><ResponseField path="payment_link" type="string | null" required={false}>
+   The ID of the Payment Link that created this Session.
+
+*Please note that this object is one of the following possible types*
+<Expandable title="possible types for payment_link" defaultOpen={false}><ResponseField path="Value" type="string" required={false}>
+</ResponseField><ResponseField path="Value" type="undefined" required={false}>
+</ResponseField><ResponseField path="Value" type="null" required={false}>
+</ResponseField></Expandable></ResponseField><ResponseField path="payment_method_collection" type="string,null" required={false}>
+   Configure whether a Checkout Session should collect a payment method.
+</ResponseField><ResponseField path="payment_method_options" type="null" required={false}>
+   Payment-method-specific configuration for the PaymentIntent or SetupIntent of this CheckoutSession.
+
+*Please note that this object is one of the following possible types*
+<Expandable title="possible types for payment_method_options" defaultOpen={false}><ResponseField path="Value" type="undefined" required={false}>
+</ResponseField><ResponseField path="Value" type="null" required={false}>
+</ResponseField></Expandable></ResponseField><ResponseField path="phone_number_collection" type="undefined" required={false}>
+</ResponseField><ResponseField path="recovered_from" type="string,null" required={false}>
+   The ID of the original expired Checkout Session that triggered the recovery flow.
+</ResponseField><ResponseField path="setup_intent" type="string | null" required={false}>
+   The ID of the SetupIntent for Checkout Sessions in `setup` mode.
+
+*Please note that this object is one of the following possible types*
+<Expandable title="possible types for setup_intent" defaultOpen={false}><ResponseField path="Value" type="string" required={false}>
+</ResponseField><ResponseField path="Value" type="undefined" required={false}>
+</ResponseField><ResponseField path="Value" type="null" required={false}>
+</ResponseField></Expandable></ResponseField><ResponseField path="shipping_address_collection" type="null" required={false}>
+   When set, provides configuration for Checkout to collect a shipping address from a customer.
+
+*Please note that this object is one of the following possible types*
+<Expandable title="possible types for shipping_address_collection" defaultOpen={false}><ResponseField path="Value" type="undefined" required={false}>
+</ResponseField><ResponseField path="Value" type="null" required={false}>
+</ResponseField></Expandable></ResponseField><ResponseField path="shipping_cost" type="null" required={false}>
+   The details of the customer cost of shipping, including the customer chosen ShippingRate.
+
+*Please note that this object is one of the following possible types*
+<Expandable title="possible types for shipping_cost" defaultOpen={false}><ResponseField path="Value" type="undefined" required={false}>
+</ResponseField><ResponseField path="Value" type="null" required={false}>
+</ResponseField></Expandable></ResponseField><ResponseField path="shipping_details" type="null" required={false}>
+   Shipping information for this Checkout Session.
+
+*Please note that this object is one of the following possible types*
+<Expandable title="possible types for shipping_details" defaultOpen={false}><ResponseField path="Value" type="undefined" required={false}>
+</ResponseField><ResponseField path="Value" type="null" required={false}>
+</ResponseField></Expandable></ResponseField><ResponseField path="status" type="string,null" required={false}>
+   The status of the Checkout Session, one of `open`, `complete`, or `expired`.
+</ResponseField><ResponseField path="submit_type" type="string,null" required={false}>
+   Describes the type of transaction being performed by Checkout in order to customize
+relevant text on the page, such as the submit button. `submit_type` can only be
+specified on Checkout Sessions in `payment` mode, but not Checkout Sessions
+in `subscription` or `setup` mode.
+</ResponseField><ResponseField path="subscription" type="string | null" required={false}>
+   The ID of the subscription for Checkout Sessions in `subscription` mode.
+
+*Please note that this object is one of the following possible types*
+<Expandable title="possible types for subscription" defaultOpen={false}><ResponseField path="Value" type="string" required={false}>
+</ResponseField><ResponseField path="Value" type="undefined" required={false}>
+</ResponseField><ResponseField path="Value" type="null" required={false}>
+</ResponseField></Expandable></ResponseField><ResponseField path="tax_id_collection" type="undefined" required={false}>
+</ResponseField><ResponseField path="total_details" type="null" required={false}>
+   Tax and discount details for the computed total amount.
+
+*Please note that this object is one of the following possible types*
+<Expandable title="possible types for total_details" defaultOpen={false}><ResponseField path="Value" type="undefined" required={false}>
+</ResponseField><ResponseField path="Value" type="null" required={false}>
+</ResponseField></Expandable></ResponseField><ResponseField path="url" type="string,null" required={false}>
+   The URL to the Checkout Session. Redirect customers to this URL to take them to Checkout. If you’re using [Custom Domains](https://stripe.com/docs/payments/checkout/custom-domains), the URL will use your subdomain. Otherwise, it’ll use `checkout.stripe.com.`
+This value is only present when the session is active.
+</ResponseField></Expandable></ResponseField>

@@ -62,6 +62,8 @@ export class SchemaRefWalker {
           });
 
           this.refsExplored.set(path, ptr);
+
+          this.stack.push({ key, object: ptr });
         } else {
           const ptr = this.refsExplored.get(path);
           action({

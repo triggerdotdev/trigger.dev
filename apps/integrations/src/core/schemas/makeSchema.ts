@@ -1,3 +1,6 @@
+import nodeObjectHash from "node-object-hash";
+import pointer from "json-pointer";
+import { SchemaRefWalker } from "./schemaRefWalker";
 import { JSONSchema, JSONSchemaInstanceType } from "./types";
 
 export function makeStringSchema(
@@ -239,4 +242,44 @@ export function makeRefInSchema(ref: string, schema: JSONSchema): JSONSchema {
     $ref: ref,
     ...schema,
   };
+}
+
+const hasher = nodeObjectHash({ sort: true });
+
+export function schemaFromRef(ref: string, schema: JSONSchema): JSONSchema {
+  //this is what we want to use as the base for the schema
+  const newSchema = pointer.get(schema, ref.replace("#", ""));
+
+  const definitions = new Map<string, JSONSchema>();
+
+  const walker = new SchemaRefWalker(schema);
+  walker.run(newSchema, ({ definition, ref, setRef }) => {
+    const existing = definitions.get(ref);
+    if (existing) {
+      if (existing && hasher.hash(existing) !== hasher.hash(definition)) {
+        console.log(
+          "duplicate definition with different hash, inventing a new name"
+        );
+        for (let index = 0; index < 50; index++) {
+          const newName = `${ref}${index}`;
+          if (!definitions.has(newName)) {
+            definitions.set(newName, definition);
+            setRef(newName);
+            break;
+          }
+        }
+      } else {
+        definitions.set(ref, definition);
+      }
+    } else {
+      definitions.set(ref, definition);
+    }
+  });
+
+  //add all of the definitions, using their paths
+  definitions.forEach((definition, ref) => {
+    pointer.set(newSchema, ref.replace("#", ""), definition);
+  });
+
+  return newSchema;
 }

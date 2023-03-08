@@ -3,7 +3,10 @@ import { makeAnyOf } from "core/schemas/makeSchema";
 import { JSONSchema } from "core/schemas/types";
 import { Service } from "core/service/types";
 import fs from "fs/promises";
-import { combineSchemasAndHoistReferences, generateInputOutputSchemas } from "generators/combineSchemas";
+import {
+  combineSchemasAndHoistReferences,
+  generateInputOutputSchemas,
+} from "generators/combineSchemas";
 import { getTypesFromSchema } from "generators/generateTypes";
 import { parseSchema } from "json-schema-to-zod";
 import path from "path";
