@@ -115,8 +115,6 @@ export async function requestEndpoint(
     body: requestBody,
   };
 
-  console.log("fetchConfig", JSON.stringify(fetchConfig));
-
   // apply credentials
   if (security != null) {
     if (credentials == null) {
