@@ -54,7 +54,7 @@ export function toCamelCase(original: string) {
 export function toTitleCase(original: string) {
   return original
     .replace(/([A-Z])/g, " $1")
-    .replace(/[_-]/g, " ")
+    .replace(/[_.-]/g, " ")
     .replace(/^./, function (str: string) {
       return str.toUpperCase();
     })
