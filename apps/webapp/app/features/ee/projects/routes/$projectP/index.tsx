@@ -8,7 +8,7 @@ import {
 import { Form, useRevalidator } from "@remix-run/react";
 import type { ActionArgs, LoaderArgs } from "@remix-run/server-runtime";
 import { useEffect } from "react";
-import { typedjson, useTypedLoaderData } from "remix-typedjson";
+import { redirect, typedjson, useTypedLoaderData } from "remix-typedjson";
 import { useEventSource } from "remix-utils";
 import { z } from "zod";
 import { List } from "~/components/layout/List";
@@ -19,6 +19,7 @@ import { SubTitle } from "~/components/primitives/text/SubTitle";
 import { Title } from "~/components/primitives/text/Title";
 import { WorkflowList } from "~/components/workflows/workflowList";
 import { ProjectOverviewPresenter } from "~/features/ee/projects/presenters/projectOverviewPresenter.server";
+import { redirectWithErrorMessage } from "~/models/message.server";
 import { useCurrentProject } from "../$projectP";
 import { DeploymentListItem } from "../../components/DeploymentListItem";
 import { ManuallyDeployProject } from "../../services/manuallyDeployProject.server";
@@ -33,14 +34,26 @@ export async function loader({ params }: LoaderArgs) {
   return typedjson(await presenter.data(organizationSlug, projectP));
 }
 
-export async function action({ params }: ActionArgs) {
-  const { projectP } = z.object({ projectP: z.string() }).parse(params);
+export async function action({ params, request }: ActionArgs) {
+  const { projectP, organizationSlug } = z
+    .object({ projectP: z.string(), organizationSlug: z.string() })
+    .parse(params);
 
   const service = new ManuallyDeployProject();
 
   const deployment = await service.call(projectP);
 
-  return typedjson({ deployment });
+  if (deployment) {
+    return redirect(
+      `/orgs/${organizationSlug}/projects/${projectP}/deploys/${deployment.id}`
+    );
+  }
+
+  return redirectWithErrorMessage(
+    `/orgs/${organizationSlug}/projects/${projectP}/deploys`,
+    request,
+    "Failed to deploy project"
+  );
 }
 
 export default function ProjectOverviewPage() {
@@ -134,6 +147,7 @@ export default function ProjectOverviewPage() {
           <List className="relative z-50 !mb-0">
             {deployments.map((deployment) => (
               <DeploymentListItem
+                pathPrefix="deploys"
                 key={deployment.id}
                 deployment={deployment}
                 repo={project.name}

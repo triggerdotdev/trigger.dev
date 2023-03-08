@@ -1,8 +1,5 @@
-import { LIVE_ENVIRONMENT } from "~/consts";
 import type { PrismaClient } from "~/db.server";
 import { prisma } from "~/db.server";
-import { getEnvironmentForOrganization } from "~/models/runtimeEnvironment.server";
-import { WorkflowsPresenter } from "~/presenters/workflowsPresenter.server";
 
 export class DeploymentListPresenter {
   #prismaClient: PrismaClient;
@@ -17,7 +14,7 @@ export class DeploymentListPresenter {
         projectId,
       },
       orderBy: {
-        version: "desc",
+        createdAt: "desc",
       },
       take: 30,
     });

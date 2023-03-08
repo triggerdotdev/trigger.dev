@@ -69,6 +69,7 @@ import { WorkflowRunTriggerTimeout } from "./runs/runTriggerTimeout.server";
 import { DeliverScheduledEvent } from "./scheduler/deliverScheduledEvent.server";
 import { RegisterSchedulerSource } from "./scheduler/registerSchedulerSource.server";
 import { WorkflowCreated } from "./workflows/events/workflowCreated.server";
+import { DeploymentLogPoll } from "~/features/ee/projects/services/deploymentLogPoll.server";
 
 let pulsarClient: PulsarClient;
 let triggerPublisher: ZodPublisher<TriggerCatalog>;
@@ -538,6 +539,10 @@ const taskQueueCatalog = {
     data: z.object({ id: z.string() }),
     properties: z.object({}),
   },
+  DEPLOYMENT_LOG_POLL: {
+    data: z.object({ id: z.string(), count: z.number().default(0) }),
+    properties: z.object({}),
+  },
 };
 
 function createTaskQueue() {
@@ -985,6 +990,13 @@ function createTaskQueue() {
         const service = new StartPendingDeployment();
 
         await service.call(data.projectId);
+
+        return true;
+      },
+      DEPLOYMENT_LOG_POLL: async (id, data, properties, attributes) => {
+        const service = new DeploymentLogPoll();
+
+        await service.call(data.id, data.count);
 
         return true;
       },

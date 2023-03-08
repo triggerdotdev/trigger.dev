@@ -32,7 +32,7 @@ export class BuildComplete {
       return true;
     }
 
-    // Only continue if this deployment is building
+    // Only continue if this deployment is building or pending
     if (deployment.status !== "BUILDING") {
       return true;
     }

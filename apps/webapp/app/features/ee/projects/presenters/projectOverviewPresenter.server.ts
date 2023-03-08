@@ -37,7 +37,7 @@ export class ProjectOverviewPresenter {
         projectId,
       },
       orderBy: {
-        version: "desc",
+        createdAt: "desc",
       },
       take: 5,
     });

@@ -1,14 +1,11 @@
-import { useRevalidator } from "@remix-run/react";
 import type { LoaderArgs } from "@remix-run/server-runtime";
-import { useEffect } from "react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
-import { useEventSource } from "remix-utils";
 import { z } from "zod";
 import { List } from "~/components/layout/List";
 import { Title } from "~/components/primitives/text/Title";
-import { useCurrentProject } from "../$projectP";
-import { DeploymentListItem } from "../../components/DeploymentListItem";
-import { DeploymentListPresenter } from "../../presenters/deploymentListPresenter.server";
+import { useCurrentProject } from "../../$projectP";
+import { DeploymentListItem } from "../../../components/DeploymentListItem";
+import { DeploymentListPresenter } from "../../../presenters/deploymentListPresenter.server";
 
 export async function loader({ params }: LoaderArgs) {
   const { projectP, organizationSlug } = z
@@ -46,6 +43,7 @@ export default function ProjectDeploysPage() {
           <List className="relative z-50 !mb-0">
             {deployments.map((deployment) => (
               <DeploymentListItem
+                pathPrefix="."
                 key={deployment.id}
                 deployment={deployment}
                 repo={project.name}
