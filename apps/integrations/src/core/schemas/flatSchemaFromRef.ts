@@ -21,19 +21,22 @@ function deReffer(spec: any, object: any) {
   //if the object has additionalProperties then we need to deReffer that
   //if the object has a type of "object" then we need to deReffer that
 
+  if (object == null) return;
+
+  if (object.$ref) {
+    const path = (object.$ref as string).replace("#", "");
+    const ptr = pointer.get(spec, path);
+    if (ptr === undefined) {
+      throw new Error(`Invalid reference: ${object.$ref}`);
+    }
+
+    Object.assign(object, ptr);
+    delete object.$ref;
+  }
+
   Object.entries(object).forEach(([key, value]) => {
     if (key === "$ref") {
-      const path = (value as string).replace("#", "");
-      const ptr = pointer.get(spec, path);
-      if (ptr === undefined) {
-        throw new Error(`Invalid reference: ${value}`);
-      }
-
-      Object.assign(object, ptr);
-      delete object.$ref;
-
-      //because we've modified the object, we need to re-run the loop
-      deReffer(spec, object);
+      return;
     }
 
     if (typeof value === "object") {
