@@ -1,5 +1,9 @@
 import { Action } from "core/action/types";
+import { makeAnyOf } from "core/schemas/makeSchema";
+import { SchemaRefWalker } from "core/schemas/schemaRefWalker";
 import { JSONSchema } from "core/schemas/types";
+import nodeObjectHash from "node-object-hash";
+import pointer from "json-pointer";
 
 export function generateInputOutputSchemas(
   spec: Action["spec"],
@@ -82,4 +86,47 @@ function createDiscriminatedUnionSchema(
     $id: name,
     oneOf: schemas,
   };
+}
+
+const hasher = nodeObjectHash({ sort: true });
+
+export function combineSchemasAndHoistReferences(
+  name: string,
+  schemas: JSONSchema[]
+): JSONSchema {
+  const definitions = new Map<string, JSONSchema>();
+
+  schemas.forEach((s) => {
+    const walker = new SchemaRefWalker(s);
+    walker.run(s, ({ definition, ref, setRef }) => {
+      const existing = definitions.get(ref);
+      if (existing) {
+        if (existing && hasher.hash(existing) !== hasher.hash(definition)) {
+          console.log(
+            "duplicate definition with different hash, inventing a new name"
+          );
+          for (let index = 0; index < 50; index++) {
+            const newName = `${ref}${index}`;
+            if (!definitions.has(newName)) {
+              definitions.set(newName, definition);
+              break;
+            }
+          }
+        } else {
+          definitions.set(ref, definition);
+        }
+      } else {
+        definitions.set(ref, definition);
+      }
+    });
+  });
+
+  const combinedSchema = makeAnyOf(name, schemas);
+
+  //add all of the definitions, using their paths
+  definitions.forEach((definition, ref) => {
+    pointer.set(combinedSchema, ref.replace("#", ""), definition);
+  });
+
+  return combinedSchema;
 }
