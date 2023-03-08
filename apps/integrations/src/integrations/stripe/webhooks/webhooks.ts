@@ -1,5 +1,6 @@
 import { makeWebhook } from "core/webhook";
 import { WebhookEvent, WebhookReceiveRequest } from "core/webhook/types";
+import { JSONSchema } from "json-schema-to-typescript";
 import Stripe from "stripe";
 import { authentication } from "../authentication";
 import { checkoutCompletedSuccess } from "./examples";

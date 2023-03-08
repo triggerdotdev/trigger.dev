@@ -44,6 +44,22 @@ export type RefundList = ({
 } | null)
 export type Polymorphic1 = (BankAccount | Card | Source)
 
+export interface CheckoutSessionCompletedOutput {
+  id: string
+  data: {
+    object: Session
+  }
+  type: string
+  object: "event"
+  created: number
+  request: {
+    id: (string | null)
+    idempotency_key: (string | null)
+  }
+  livemode: boolean
+  api_version: string
+  pending_webhooks: number
+}
 /**
  * A Checkout Session represents your customer's session as they pay for
  * one-time purchases or subscriptions through [Checkout](https://stripe.com/docs/payments/checkout)
@@ -60,7 +76,7 @@ export type Polymorphic1 = (BankAccount | Card | Source)
  * 
  * Related guide: [Checkout Quickstart](https://stripe.com/docs/checkout/quickstart).
  */
-export interface CheckoutSessionCompletedOutput {
+export interface Session {
   /**
    * When set, provides configuration for actions to take if this Checkout Session expires.
    */

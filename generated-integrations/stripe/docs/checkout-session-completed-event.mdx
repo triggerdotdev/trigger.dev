@@ -14,6 +14,10 @@ description: A form response was submitted
 ## Response
 
 <ResponseField path="response" type="object" required={true}>
+   Checkout Session Completed Output
+<Expandable title="properties" defaultOpen={false}><ResponseField path="id" type="string" required={true}>
+</ResponseField><ResponseField path="data" type="object" required={true}>
+<Expandable title="properties" defaultOpen={false}><ResponseField path="object" type="object" required={true}>
    A Checkout Session represents your customer's session as they pay for
 one-time purchases or subscriptions through [Checkout](https://stripe.com/docs/payments/checkout)
 or [Payment Links](https://stripe.com/docs/payments/payment-links). We recommend creating a
@@ -220,4 +224,13 @@ in `subscription` or `setup` mode.
 </ResponseField></Expandable></ResponseField><ResponseField path="url" type="string,null" required={false}>
    The URL to the Checkout Session. Redirect customers to this URL to take them to Checkout. If you’re using [Custom Domains](https://stripe.com/docs/payments/checkout/custom-domains), the URL will use your subdomain. Otherwise, it’ll use `checkout.stripe.com.`
 This value is only present when the session is active.
+</ResponseField></Expandable></ResponseField></Expandable></ResponseField><ResponseField path="type" type="string" required={true}>
+</ResponseField><ResponseField path="object" type="string" required={true}>
+</ResponseField><ResponseField path="created" type="number" required={true}>
+</ResponseField><ResponseField path="request" type="object" required={true}>
+<Expandable title="properties" defaultOpen={false}><ResponseField path="id" type="string,null" required={true}>
+</ResponseField><ResponseField path="idempotency_key" type="string,null" required={true}>
+</ResponseField></Expandable></ResponseField><ResponseField path="livemode" type="boolean" required={true}>
+</ResponseField><ResponseField path="api_version" type="string" required={true}>
+</ResponseField><ResponseField path="pending_webhooks" type="number" required={true}>
 </ResponseField></Expandable></ResponseField>
