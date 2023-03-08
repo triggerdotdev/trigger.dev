@@ -4,6 +4,7 @@ import { useEffect } from "react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { useEventSource } from "remix-utils";
 import { z } from "zod";
+import { Header1 } from "~/components/primitives/text/Headers";
 import { DeploymentPresenter } from "~/features/ee/projects/presenters/deploymentPresenter.server";
 
 export async function loader({ request, params }: LoaderArgs) {
@@ -37,13 +38,13 @@ export default function DeploymentPage() {
   }, [events]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
-    <div>
-      <h1>Deployment</h1>
+    <>
+      <Header1 className="mb-6">Deployment</Header1>
       <h2>
         {deployment.version} - {deployment.status} - {deployment.commitHash} -{" "}
         {deployment.commitMessage} by {deployment.committer}
       </h2>
       <pre>{logs.map((log) => `${log.level} ${log.log}`).join("\n")}</pre>
-    </div>
+    </>
   );
 }
