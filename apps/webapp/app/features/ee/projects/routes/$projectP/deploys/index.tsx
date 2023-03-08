@@ -35,26 +35,20 @@ export default function ProjectDeploysPage() {
 
   return (
     <>
-      <div className="flex items-baseline">
-        <Title>Deploys</Title>
-      </div>
-      <div className="mt-6 max-w-4xl">
-        <div className="relative rounded-lg bg-slate-850">
-          <List className="relative z-50 !mb-0">
-            {deployments.map((deployment) => (
-              <DeploymentListItem
-                pathPrefix="."
-                key={deployment.id}
-                deployment={deployment}
-                repo={project.name}
-                isCurrentDeployment={
-                  deployment.id === project.currentDeployment?.id
-                }
-              />
-            ))}
-          </List>
-        </div>
-      </div>
+      <Title>Deploys</Title>
+      <List>
+        {deployments.map((deployment) => (
+          <DeploymentListItem
+            pathPrefix="."
+            key={deployment.id}
+            deployment={deployment}
+            repo={project.name}
+            isCurrentDeployment={
+              deployment.id === project.currentDeployment?.id
+            }
+          />
+        ))}
+      </List>
     </>
   );
 }
