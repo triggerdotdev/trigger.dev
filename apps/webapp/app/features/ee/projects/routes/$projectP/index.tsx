@@ -117,7 +117,7 @@ export default function ProjectOverviewPage() {
             ) && e.preventDefault()
           }
         >
-          <PrimaryButton>
+          <PrimaryButton type="submit">
             <CloudArrowUpIcon className="-ml-1 h-5 w-5" />
             Manual Deploy
           </PrimaryButton>
