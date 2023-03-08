@@ -233,3 +233,10 @@ export function makePropertiesOptional(
     required: schema.required?.filter((p) => !properties.includes(p)),
   };
 }
+
+export function makeRefInSchema(ref: string, schema: JSONSchema): JSONSchema {
+  return {
+    $ref: ref,
+    ...schema,
+  };
+}
