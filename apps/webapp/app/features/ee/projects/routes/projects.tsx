@@ -1,5 +1,6 @@
 import { CheckIcon } from "@heroicons/react/20/solid";
 import {
+  ArrowTopRightOnSquareIcon,
   ChevronRightIcon,
   ClockIcon,
   CloudArrowUpIcon,
@@ -15,7 +16,11 @@ import { z } from "zod";
 import { IntlDate } from "~/components/IntlDate";
 import { Container } from "~/components/layout/Container";
 import { List } from "~/components/layout/List";
-import { SecondaryLink } from "~/components/primitives/Buttons";
+import {
+  PrimaryLink,
+  SecondaryLink,
+  SecondaryA,
+} from "~/components/primitives/Buttons";
 import { Spinner } from "~/components/primitives/Spinner";
 import { Body } from "~/components/primitives/text/Body";
 import { Header2 } from "~/components/primitives/text/Headers";
@@ -40,15 +45,37 @@ export default function ProjectDeploysPage() {
   return (
     <Container>
       <Title>Repositories</Title>
-      <div className="mb-2 flex items-center justify-between">
-        <SubTitle className="-mb-1">
-          {projects.length} connected repo{projects.length > 1 ? "s" : ""}
-        </SubTitle>
-        <SecondaryLink to="../select-repo">
-          <PlusIcon className="-ml-1 h-4 w-4" />
-          Add Repo
-        </SecondaryLink>
-      </div>
+      {projects.length === 0 ? (
+        <div className="mb-2 flex flex-col">
+          <SubTitle className="mb-2">
+            Add a GitHub repository to get started
+          </SubTitle>
+          <div className="flex gap-2">
+            <PrimaryLink to="../select-repo">
+              <PlusIcon className="-ml-1 h-4 w-4" />
+              Add Repo
+            </PrimaryLink>
+            <SecondaryA
+              href="https://docs.trigger.dev"
+              target="_blank"
+              rel="noreferrer"
+            >
+              <ArrowTopRightOnSquareIcon className="h-4 w-4" />
+              <span>Documentation</span>
+            </SecondaryA>
+          </div>
+        </div>
+      ) : (
+        <div className="mb-2 flex items-center justify-between">
+          <SubTitle className="-mb-1">
+            {projects.length} connected repo{projects.length > 1 ? "s" : ""}
+          </SubTitle>
+          <SecondaryLink to="../select-repo">
+            <PlusIcon className="-ml-1 h-4 w-4" />
+            Add Repo
+          </SecondaryLink>
+        </div>
+      )}
       <List>
         {projects.map((project) => (
           <li key={project.id}>
