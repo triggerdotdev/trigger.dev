@@ -21,20 +21,24 @@ export const checkoutCompleted: WebhookEvent = {
   examples: [checkoutCompletedSuccess],
   key: "checkout.session.completed",
   displayProperties: (data) => ({
-    title: `New response for form ${data.form_id}`,
-    properties: [
-      {
-        key: "Form ID",
-        value: data.form_id,
-      },
-    ],
+    title: `New Stripe checkout`,
   }),
-  matches: () => true,
+  matches: (data) => data.request.body.object === "checkout.session",
   process: async (data: WebhookReceiveRequest) => [
     {
       event: "checkout.session.completed",
       displayProperties: {
-        title: "New response",
+        title: `New Stripe checkout`,
+        properties: [
+          {
+            key: "amount",
+            value: data.request.body.amount_total,
+          },
+          {
+            key: "currency",
+            value: data.request.body.currency,
+          },
+        ],
       },
       payload: data.request.body,
     },
