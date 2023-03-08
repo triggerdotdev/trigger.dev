@@ -248,7 +248,7 @@ function ${functionName}(
         service: ["${service.service}"],
         event: ["${event.name}"],
       },
-      source: params,
+      source: ${inputSpec ? "params" : "undefined"},
     },
     schema: ${zodSchemaName},
   }; 
