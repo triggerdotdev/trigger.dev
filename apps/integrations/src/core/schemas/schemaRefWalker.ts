@@ -13,7 +13,7 @@ type Action = ({
   key: string;
   definition: any;
   seenBefore: boolean;
-  setRef?: (newRef: string) => void;
+  setRef: (newRef: string) => void;
 }) => void;
 
 export class SchemaRefWalker {

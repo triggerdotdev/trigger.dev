@@ -109,6 +109,7 @@ export function combineSchemasAndHoistReferences(
             const newName = `${ref}${index}`;
             if (!definitions.has(newName)) {
               definitions.set(newName, definition);
+              setRef(newName);
               break;
             }
           }
