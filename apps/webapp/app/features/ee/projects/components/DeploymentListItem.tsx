@@ -1,17 +1,10 @@
 import type { ProjectDeployment } from ".prisma/client";
-import {
-  ArrowTopRightOnSquareIcon,
-  ClockIcon,
-  CloudArrowUpIcon,
-  CloudIcon,
-  CubeTransparentIcon,
-  ExclamationTriangleIcon,
-  NoSymbolIcon,
-  StopCircleIcon,
-} from "@heroicons/react/24/outline";
+import { ArrowTopRightOnSquareIcon } from "@heroicons/react/24/outline";
 import { Link } from "@remix-run/react";
 import { IntlDate } from "~/components/IntlDate";
 import { TertiaryA } from "~/components/primitives/Buttons";
+import { Body } from "~/components/primitives/text/Body";
+import { deploymentStatusDot, deploymentStatusIcon } from "./deploymentStatus";
 
 export function DeploymentListItem({
   deployment,
@@ -24,40 +17,6 @@ export function DeploymentListItem({
   isCurrentDeployment: boolean;
   pathPrefix: string;
 }) {
-  let Icon = ExclamationTriangleIcon;
-
-  switch (deployment.status) {
-    case "PENDING": {
-      Icon = ClockIcon;
-      break;
-    }
-    case "BUILDING": {
-      Icon = CubeTransparentIcon;
-      break;
-    }
-    case "DEPLOYING": {
-      Icon = CloudArrowUpIcon;
-      break;
-    }
-    case "DEPLOYED": {
-      Icon = CloudIcon;
-      break;
-    }
-    case "ERROR": {
-      Icon = ExclamationTriangleIcon;
-      break;
-    }
-    case "CANCELLED": {
-      Icon = NoSymbolIcon;
-      break;
-    }
-    case "STOPPING":
-    case "STOPPED": {
-      Icon = StopCircleIcon;
-      break;
-    }
-  }
-
   let timestamp = deployment.createdAt;
 
   if (deployment.stoppedAt) {
@@ -69,33 +28,39 @@ export function DeploymentListItem({
   }
 
   return (
-    <Link to={`${pathPrefix}/${deployment.id}`}>
-      <li className={isCurrentDeployment ? "border-2 border-green-300" : ""}>
-        <div className="flex flex-col flex-wrap justify-between py-4 pl-4 pr-4 lg:flex-row lg:flex-nowrap lg:items-center">
+    <li>
+      <Link to={`${pathPrefix}/${deployment.id}`}>
+        <div className="flex flex-col flex-wrap justify-between py-4 pl-4 pr-6">
           <div className="flex flex-1 items-center justify-between">
             <div className="relative flex items-center">
-              <div className="mr-4 h-20 w-20 flex-shrink-0 self-start rounded-md bg-slate-850 p-3">
-                <Icon className="h-12 w-12 text-slate-500" />
+              <div className="absolute -left-7 flex h-6 w-6 items-center justify-center rounded-full bg-slate-800">
+                {deploymentStatusDot(deployment)}
+              </div>
+              <div className="mr-4 flex h-12 w-12 items-center justify-center rounded-md bg-slate-850 p-2">
+                {deploymentStatusIcon(deployment, "large")}
               </div>
               <div className="flex flex-col">
-                <div className="text-sm font-medium text-slate-200">
-                  <TertiaryA
-                    href={`https://github.com/${repo}/commit/${deployment.commitHash}`}
-                    target="_blank"
-                  >
-                    {deployment.commitMessage} #
-                    {deployment.commitHash.substring(0, 7)}{" "}
-                    <ArrowTopRightOnSquareIcon className="h-4 w-4" />
-                  </TertiaryA>
-                </div>
-                <div className="text-sm font-medium text-slate-200">
-                  {deployment.version}
+                <Body className="text-lg font-medium text-slate-100/80 transition hover:text-white">
+                  {deployment.commitMessage} #
+                  {deployment.commitHash.substring(0, 7)}
+                </Body>
+                <div className="flex items-center gap-2">
+                  <Body size="small" className="text-slate-500">
+                    Production
+                  </Body>
+                  <Body size="small" className="text-slate-500">
+                    Version: {deployment.version}
+                  </Body>
                 </div>
               </div>
             </div>
             <div className="flex flex-col items-end">
-              <div className="text-sm font-medium text-slate-200">
-                {deployment.status.toLocaleLowerCase()}
+              <div className="flex items-center gap-1.5">
+                {deploymentStatusDot(deployment)}
+                <Body size="small" className="text-slate-300">
+                  {deployment.status.charAt(0).toUpperCase() +
+                    deployment.status.slice(1).toLowerCase()}
+                </Body>
               </div>
               <div className="text-sm font-medium text-slate-200">
                 <IntlDate date={timestamp} timeZone="UTC" />
@@ -103,7 +68,7 @@ export function DeploymentListItem({
             </div>
           </div>
         </div>
-      </li>
-    </Link>
+      </Link>
+    </li>
   );
 }

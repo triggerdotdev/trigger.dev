@@ -14,7 +14,13 @@ import { z } from "zod";
 import { List } from "~/components/layout/List";
 import { Panel } from "~/components/layout/Panel";
 import { PanelHeader } from "~/components/layout/PanelHeader";
-import { PrimaryButton } from "~/components/primitives/Buttons";
+import {
+  PrimaryButton,
+  SecondaryButton,
+  SecondaryLink,
+  TertiaryLink,
+} from "~/components/primitives/Buttons";
+import { Body } from "~/components/primitives/text/Body";
 import { SubTitle } from "~/components/primitives/text/SubTitle";
 import { Title } from "~/components/primitives/text/Title";
 import { WorkflowList } from "~/components/workflows/workflowList";
@@ -100,7 +106,7 @@ export default function ProjectOverviewPage() {
 
   return (
     <>
-      <div className="flex items-baseline">
+      <div className="flex items-start justify-between">
         <Title>Overview</Title>
         <Form
           reloadDocument
@@ -111,13 +117,16 @@ export default function ProjectOverviewPage() {
             ) && e.preventDefault()
           }
         >
-          <PrimaryButton>Manual Deploy</PrimaryButton>
+          <PrimaryButton>
+            <CloudArrowUpIcon className="-ml-1 h-5 w-5" />
+            Manual Deploy
+          </PrimaryButton>
         </Form>
       </div>
       <SubTitle>
         {project.name}#{project.branch}
       </SubTitle>
-      <Panel>
+      <Panel className="mb-6">
         <PanelHeader
           icon={
             <div className="mr-1 h-6 w-6">
@@ -129,22 +138,30 @@ export default function ProjectOverviewPage() {
           finishedAt={null}
         />
       </Panel>
-      <div className="mt-6 max-w-4xl">
-        <div className="relative rounded-lg bg-slate-850">
-          <SubTitle>Workflows</SubTitle>
-
+      <div className="relative mb-6 rounded-lg bg-slate-850">
+        <SubTitle>Workflows</SubTitle>
+        {workflows.length === 0 ? (
+          <Body className="text-slate-500">No workflows added</Body>
+        ) : (
           <WorkflowList
-            className="relative z-50 !mb-0"
             workflows={workflows}
             currentOrganizationSlug={organizationSlug}
           />
-        </div>
+        )}
       </div>
-      <div className="mt-6 max-w-4xl">
-        <div className="relative rounded-lg bg-slate-850">
-          <SubTitle>Latest deploys</SubTitle>
-
-          <List className="relative z-50 !mb-0">
+      <div className="relative rounded-lg bg-slate-850">
+        <div className="mb-2 flex items-center justify-between">
+          <SubTitle className="mb-0">Latest deploys</SubTitle>
+          {deployments.length === 0 ? (
+            <></>
+          ) : (
+            <SecondaryLink to="deploys">View all</SecondaryLink>
+          )}
+        </div>
+        {deployments.length === 0 ? (
+          <Body className="text-slate-500">No deploys yet</Body>
+        ) : (
+          <List>
             {deployments.map((deployment) => (
               <DeploymentListItem
                 pathPrefix="deploys"
@@ -157,7 +174,7 @@ export default function ProjectOverviewPage() {
               />
             ))}
           </List>
-        </div>
+        )}
       </div>
     </>
   );
