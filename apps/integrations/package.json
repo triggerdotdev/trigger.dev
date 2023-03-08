@@ -36,6 +36,7 @@
     "node-fetch": "^3.3.0",
     "node-object-hash": "^2.3.10",
     "qs": "^6.11.0",
+    "stripe": "^11.13.0",
     "zod": "^3.20.2"
   },
   "devDependencies": {

@@ -57,7 +57,11 @@
       "@trigger.dev/typeform": [
         "../../generated-integrations/typeform/src/index"
       ],
-      "@trigger.dev/typeform/*": ["../../generated-integrations/typeform/src/*"]
+      "@trigger.dev/typeform/*": ["../../generated-integrations/typeform/src/*"],
+      "@trigger.dev/stripe": [
+        "../../generated-integrations/stripe/src/index"
+      ],
+      "@trigger.dev/stripe/*": ["../../generated-integrations/stripe/src/*"]
     }
   }
 }

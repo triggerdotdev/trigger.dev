@@ -1,6 +1,6 @@
 import { makeWebhook } from "core/webhook";
 import { WebhookEvent, WebhookReceiveRequest } from "core/webhook/types";
-import crypto from "node:crypto";
+import Stripe from "stripe";
 import { authentication } from "../authentication";
 import { checkoutCompletedSuccess } from "./examples";
 import { checkoutSessionCompletedSchema } from "./schemas";
@@ -23,7 +23,7 @@ export const checkoutCompleted: WebhookEvent = {
   displayProperties: (data) => ({
     title: `New Stripe checkout`,
   }),
-  matches: (data) => data.request.body.object === "checkout.session",
+  matches: (data) => data.request.body.type === "checkout.session.completed",
   process: async (data: WebhookReceiveRequest) => [
     {
       event: "checkout.session.completed",
@@ -77,18 +77,17 @@ const webhook = makeWebhook({
   },
   preProcess: async (data) => {
     if (data.secret) {
-      //https://stripe.com/docs/webhooks/signatures#verify-manually
       const signatureHeader = data.request.headers["stripe-signature"];
-      const elements = signatureHeader.split(",");
-      const timestamp = elements[0].split("=")[1];
-      const signature = elements[1].split("=")[1];
-      const contentToEncode = `${timestamp}.${data.request.rawBody}`;
-      const hash = crypto
-        .createHmac("sha256", data.secret)
-        .update(contentToEncode)
-        .digest("base64");
-
-      if (signature !== `sha256=${hash}`) {
+      try {
+        const client = new Stripe(data.secret, {
+          apiVersion: "2022-11-15",
+        });
+        const event = client.webhooks.constructEvent(
+          data.request.rawBody,
+          signatureHeader,
+          data.secret
+        );
+      } catch (e) {
         return {
           success: false,
           processEvents: false,
