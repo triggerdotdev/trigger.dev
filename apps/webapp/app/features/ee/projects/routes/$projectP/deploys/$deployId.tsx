@@ -53,7 +53,9 @@ export default function DeploymentPage() {
             Status
           </Body>
           <div className="flex items-center gap-2">
-            {deployment.status === "DEPLOYING" || "PENDING" || "BUILDING" ? (
+            {deployment.status === "DEPLOYING" ||
+            deployment.status === "PENDING" ||
+            deployment.status === "BUILDING" ? (
               <Spinner />
             ) : (
               <></>
@@ -95,7 +97,23 @@ export default function DeploymentPage() {
           </Body>
         </li>
       </List>
-      <SubTitle>Deploy logs</SubTitle>
+      <div className="mb-2 flex items-center justify-between">
+        <SubTitle className="mb-0">Deploy logs</SubTitle>
+        <div className="flex items-center gap-4">
+          <div className="flex items-center gap-1.5">
+            <Spinner className="h-4 w-4" />
+            <Body size="small" className="text-slate-400">
+              Loading new logs…
+            </Body>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <span className="h-2 w-2 animate-pulse rounded-full bg-emerald-500"></span>
+            <Body size="small" className="text-slate-400">
+              Live reloading
+            </Body>
+          </div>
+        </div>
+      </div>
       <div className="rounded bg-slate-950 p-4">
         <pre className="text-slate-300">
           {logs.map((log) => `${log.level} ${log.log}`).join("\n")}
