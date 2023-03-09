@@ -22,7 +22,7 @@ new Trigger({
       from: FROM_EMAIL,
       replyTo: REPLY_TO_EMAIL,
       to: event.email,
-      subject: "Welcome to Acme.dev!",
+      subject: "Welcome to Acme!",
       react: <WelcomeEmail name={event.name} />,
     });
 
@@ -34,7 +34,7 @@ new Trigger({
       from: FROM_EMAIL,
       replyTo: REPLY_TO_EMAIL,
       to: event.email,
-      subject: "3 tips to get the most out of Acme.dev",
+      subject: "3 tips to get the most out of Acme",
       react: <TipsEmail name={event.name} />,
     });
 

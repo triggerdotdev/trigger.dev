@@ -20,7 +20,7 @@ new Trigger({
     await sendgrid.mailSend("send-welcome-email", {
       from: {
         // Your 'from' email needs to be verified in SendGrid. https://docs.sendgrid.com/for-developers/sending-email/sender-identity
-        email: "john@acme.dev",
+        email: "john@acme.test",
         name: "John from the Acme Corporation",
       },
       personalizations: [
@@ -42,7 +42,7 @@ new Trigger({
 
 <p>Thanks for signing up to the Acme Corporation. </p>
 
-<p>To get started, we recommend browsing our <a href="https://app.acme.dev/templates">templates</a>.</p>
+<p>To get started, we recommend browsing our <a href="https://app.acme.test/templates">templates</a>.</p>
 
 <p>Best,</p>
 <p>John</p>
@@ -58,7 +58,7 @@ new Trigger({
     await sendgrid.mailSend("send-follow-up-email", {
       // Your 'from' email needs to be verified in SendGrid. https://docs.sendgrid.com/for-developers/sending-email/sender-identity
       from: {
-        email: "john@acme.dev",
+        email: "john@acme.test",
         name: "John Doe",
       },
       personalizations: [
