@@ -69,7 +69,7 @@ import { WorkflowRunTriggerTimeout } from "./runs/runTriggerTimeout.server";
 import { DeliverScheduledEvent } from "./scheduler/deliverScheduledEvent.server";
 import { RegisterSchedulerSource } from "./scheduler/registerSchedulerSource.server";
 import { WorkflowCreated } from "./workflows/events/workflowCreated.server";
-import { DeploymentLogPoll } from "~/features/ee/projects/services/deploymentLogPoll.server";
+import { PollDeploymentLogs } from "~/features/ee/projects/services/pollDeploymentLogs.server";
 
 let pulsarClient: PulsarClient;
 let triggerPublisher: ZodPublisher<TriggerCatalog>;
@@ -994,7 +994,7 @@ function createTaskQueue() {
         return true;
       },
       DEPLOYMENT_LOG_POLL: async (id, data, properties, attributes) => {
-        const service = new DeploymentLogPoll();
+        const service = new PollDeploymentLogs();
 
         await service.call(data.id, data.count);
 

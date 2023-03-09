@@ -693,9 +693,8 @@ model ProjectDeployment {
   updatedAt DateTime            @updatedAt
   projects  RepositoryProject[]
 
-  logs                DeploymentLog[]
-  buildLogLatestLog   DateTime?
-  machineLogLatestLog DateTime?
+  logs  DeploymentLog[]
+  polls DeploymentLogPoll[]
 
   @@unique([projectId, version])
 }
@@ -728,6 +727,27 @@ model DeploymentLog {
 enum DeploymentLogType {
   BUILD
   MACHINE
+}
+
+model DeploymentLogPoll {
+  id String @id @default(cuid())
+
+  deployment   ProjectDeployment @relation(fields: [deploymentId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  deploymentId String
+
+  logType DeploymentLogType @default(BUILD)
+
+  from DateTime
+  to   DateTime
+
+  totalLogsCount    Int
+  filteredLogsCount Int
+
+  nextPollScheduledAt DateTime?
+
+  pollNumber Int
+
+  createdAt DateTime @default(now())
 }
 
 model Template {

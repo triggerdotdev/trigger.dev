@@ -15,7 +15,7 @@ export async function loader({ request, params }: LoaderArgs) {
     return new Response("Not found", { status: 404 });
   }
 
-  let latestLogAt: number = deployment.logs[0]?.createdAt.getTime() ?? 0;
+  let latestLogAt: number = deployment.polls[0]?.to.getTime() ?? 0;
   let lastUpdatedAt: number = deployment.updatedAt.getTime();
 
   return eventStream(request.signal, (send) => {
@@ -29,16 +29,16 @@ export async function loader({ request, params }: LoaderArgs) {
           if (lastUpdatedAt !== deployment.updatedAt.getTime()) {
             send({ event: "update", data: deployment.updatedAt.toISOString() });
           } else if (
-            deployment.logs[0] &&
-            latestLogAt !== deployment.logs[0].createdAt.getTime()
+            deployment.polls[0] &&
+            latestLogAt !== deployment.polls[0].to.getTime()
           ) {
             send({
               event: "update",
-              data: deployment.logs[0]?.createdAt.toISOString(),
+              data: deployment.polls[0].to.toISOString(),
             });
           }
 
-          latestLogAt = deployment.logs[0]?.createdAt.getTime();
+          latestLogAt = deployment.polls[0]?.to.getTime() ?? 0;
           lastUpdatedAt = deployment.updatedAt.getTime();
         }
       });
@@ -55,9 +55,12 @@ async function findDeploymentWithLatestLog(id: string) {
   return await prisma.projectDeployment.findUnique({
     where: { id },
     include: {
-      logs: {
+      polls: {
         take: 1,
-        orderBy: [{ createdAt: "desc" }],
+        orderBy: { createdAt: "desc" },
+        where: {
+          filteredLogsCount: { gt: 0 },
+        },
       },
     },
   });
