@@ -151,7 +151,13 @@ export default function DeploymentPage() {
           {logs.map((log) => (
             <>
               <span>${log.createdAt.toTimeString()}</span>
-              <span>${log.level}</span>
+              <span
+                className={classNames(
+                  log.level === "ERROR" ? "text-rose-500" : ""
+                )}
+              >
+                ${log.level}
+              </span>
               <span>${log.log}</span>
               <TertiaryLink
                 to="#"
