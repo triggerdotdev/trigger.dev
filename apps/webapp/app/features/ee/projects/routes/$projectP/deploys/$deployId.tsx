@@ -1,3 +1,4 @@
+import { StopIcon } from "@heroicons/react/20/solid";
 import { useRevalidator } from "@remix-run/react";
 import type { LoaderArgs } from "@remix-run/server-runtime";
 import classNames from "classnames";
@@ -50,14 +51,20 @@ export default function DeploymentPage() {
     <>
       <div className="flex items-start justify-between">
         <Header1 className="mb-6">Deployment</Header1>
-        <SecondaryLink
-          to="#"
-          className={classNames(
-            disabled ? "pointer-events-none opacity-40" : ""
-          )}
-        >
-          View Build Logs
-        </SecondaryLink>
+        <div className="flex gap-2">
+          <SecondaryLink to="#">
+            <StopIcon className="-ml-1 h-3 w-3 text-rose-500" />
+            Stop
+          </SecondaryLink>
+          <SecondaryLink
+            to="#"
+            className={classNames(
+              disabled ? "pointer-events-none opacity-40" : ""
+            )}
+          >
+            View Build Logs
+          </SecondaryLink>
+        </div>
       </div>
       <SubTitle className="">Deploy Summary</SubTitle>
       <List className="mb-6 px-4">
