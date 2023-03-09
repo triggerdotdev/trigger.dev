@@ -130,24 +130,24 @@ export function ProjectListItemView({ project }: { project: ProjectListItem }) {
           </div>
           <div className="flex items-center gap-4">
             <div className="flex flex-col items-end gap-2">
-              <div className="text-sm font-medium text-slate-200">
-                <IntlDate date={project.createdAt} timeZone="UTC" />
-              </div>
               <div className="flex items-center gap-2">
                 {project.status === "DEPLOYED" ? (
                   <CheckIcon className="h-4 w-4 text-green-500" />
                 ) : project.status === "ERROR" ? (
-                  <ExclamationTriangleIcon className="h-4 w-4 text-amber-500" />
+                  <ExclamationTriangleIcon className="h-4 w-4 text-rose-500" />
                 ) : project.status === "PENDING" ||
                   project.status === "BUILDING" ||
                   project.status === "DEPLOYING" ? (
                   <Spinner className="h-4 w-4" />
                 ) : null}
-                <Body size="small" className="text-slate-300">
+                <Body className="text-slate-300">
                   {project.status.charAt(0).toUpperCase() +
                     project.status.slice(1).toLowerCase()}
                 </Body>
               </div>
+              <Body size="small" className="text-slate-400">
+                <IntlDate date={project.createdAt} timeZone="UTC" />
+              </Body>
             </div>
             <ChevronRightIcon
               className="ml-5 h-5 w-5 shrink-0 text-slate-400"
