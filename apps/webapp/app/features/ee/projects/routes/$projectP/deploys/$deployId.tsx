@@ -2,26 +2,26 @@ import { ArrowTopRightOnSquareIcon, StopIcon } from "@heroicons/react/20/solid";
 import { Form, useRevalidator, useTransition } from "@remix-run/react";
 import type { ActionArgs, LoaderArgs } from "@remix-run/server-runtime";
 import classNames from "classnames";
-import { Fragment, useEffect } from "react";
+import { useEffect } from "react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { useEventSource } from "remix-utils";
 import { z } from "zod";
+import { IntlDate } from "~/components/IntlDate";
 import { Panel } from "~/components/layout/Panel";
 import {
   SecondaryButton,
   SecondaryLink,
-  TertiaryLink,
 } from "~/components/primitives/Buttons";
 import { Spinner } from "~/components/primitives/Spinner";
 import { Body } from "~/components/primitives/text/Body";
 import { Header1 } from "~/components/primitives/text/Headers";
 import { SubTitle } from "~/components/primitives/text/SubTitle";
-import { DeploymentPresenter } from "~/features/ee/projects/presenters/deploymentPresenter.server";
 import { deploymentStatusTitle } from "~/features/ee/projects/components/deploymentStatus";
+import { DeploymentPresenter } from "~/features/ee/projects/presenters/deploymentPresenter.server";
 import { CancelProjectDeployment } from "~/features/ee/projects/services/cancelProjectDeployment.server";
 import { StopProjectDeployment } from "~/features/ee/projects/services/stopProjectDeployment.server";
-import { IntlDate } from "~/components/IntlDate";
 import { useCurrentProject } from "../../$projectP";
+import { LogOutput } from "../../../components/LogOutput";
 
 export async function loader({ request, params }: LoaderArgs) {
   const { projectP, organizationSlug, deployId } = z
@@ -250,33 +250,7 @@ export default function DeploymentPage() {
         </div>
       </div>
       <div className="flex flex-auto overflow-auto rounded-md bg-slate-950 p-4">
-        <pre className="grid max-h-[50px] w-full grid-cols-[repeat(3,_fit-content(800px))_1fr] items-start gap-y-1 gap-x-4 text-sm text-slate-300">
-          {logs.map((log) => (
-            <Fragment key={log.id}>
-              <span>
-                <IntlDate date={log.createdAt} />
-              </span>
-              <span
-                className={classNames(
-                  log.level === "error"
-                    ? "text-rose-500"
-                    : log.level === "warn"
-                    ? "text-amber-500"
-                    : ""
-                )}
-              >
-                {log.level}
-              </span>
-              <span>{log.log}</span>
-              <TertiaryLink
-                to="#"
-                className="sticky -right-4 justify-self-end bg-slate-950 px-3.5"
-              >
-                View run
-              </TertiaryLink>
-            </Fragment>
-          ))}
-        </pre>
+        <LogOutput logs={logs} />
       </div>
     </div>
   );

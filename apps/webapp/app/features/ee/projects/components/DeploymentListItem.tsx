@@ -44,10 +44,7 @@ export function DeploymentListItem({
                 </Body>
                 <div className="flex items-center gap-2">
                   <Body size="small" className="text-slate-500">
-                    Production
-                  </Body>
-                  <Body size="small" className="text-slate-500">
-                    Version: {deployment.version}
+                    {deployment.version}
                   </Body>
                 </div>
               </div>

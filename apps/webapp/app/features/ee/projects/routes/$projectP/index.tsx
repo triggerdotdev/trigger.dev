@@ -14,12 +14,7 @@ import { z } from "zod";
 import { List } from "~/components/layout/List";
 import { Panel } from "~/components/layout/Panel";
 import { PanelHeader } from "~/components/layout/PanelHeader";
-import {
-  PrimaryButton,
-  SecondaryButton,
-  SecondaryLink,
-  TertiaryLink,
-} from "~/components/primitives/Buttons";
+import { PrimaryButton, SecondaryLink } from "~/components/primitives/Buttons";
 import { Body } from "~/components/primitives/text/Body";
 import { SubTitle } from "~/components/primitives/text/SubTitle";
 import { Title } from "~/components/primitives/text/Title";
