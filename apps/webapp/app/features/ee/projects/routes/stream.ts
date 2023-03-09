@@ -17,7 +17,7 @@ export async function loader({ request, params }: LoaderArgs) {
   }
 
   let lastUpdatedAt: number = project.updatedAt.getTime();
-  let lastDeploymentId: string | null = project.deployments[0]?.id || null;
+  let lastDeploymentId: string | undefined = project.deployments[0]?.id;
   let workflowCount = project._count.workflows;
 
   let stopped = false;
@@ -28,24 +28,29 @@ export async function loader({ request, params }: LoaderArgs) {
     }, 1000);
 
     const interval = setInterval(() => {
+      if (stopped) return;
       // Get the updatedAt date from the projects database, and send it to the client if it's different from the last one
-      findProjectForUpdates(id).then((project) => {
-        if (stopped) return;
+      findProjectForUpdates(id)
+        .then((project) => {
+          if (stopped) return;
 
-        if (project) {
-          if (lastUpdatedAt !== project.updatedAt.getTime()) {
-            send({ event: "update", data: project.updatedAt.toISOString() });
-          } else if (lastDeploymentId !== project.deployments[0]?.id) {
-            send({ event: "update", data: randomUUID() });
-          } else if (workflowCount !== project._count.workflows) {
-            send({ event: "update", data: randomUUID() });
+          if (project) {
+            if (lastUpdatedAt !== project.updatedAt.getTime()) {
+              send({ event: "update", data: project.updatedAt.toISOString() });
+            } else if (lastDeploymentId !== project.deployments[0]?.id) {
+              send({ event: "update", data: randomUUID() });
+            } else if (workflowCount !== project._count.workflows) {
+              send({ event: "update", data: randomUUID() });
+            }
+
+            workflowCount = project._count.workflows;
+            lastDeploymentId = project.deployments[0]?.id;
+            lastUpdatedAt = project.updatedAt.getTime();
           }
-
-          workflowCount = project._count.workflows;
-          lastDeploymentId = project.deployments[0]?.id || null;
-          lastUpdatedAt = project.updatedAt.getTime();
-        }
-      });
+        })
+        .catch((error) => {
+          stopped = true;
+        });
     }, 348);
 
     return function clear() {
