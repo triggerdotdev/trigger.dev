@@ -1,13 +1,14 @@
 import type { ProjectDeploymentStatus } from ".prisma/client";
 import {
+  StopCircleIcon,
+  CloudIcon,
   ClockIcon,
   CloudArrowUpIcon,
-  CloudIcon,
   CubeTransparentIcon,
   ExclamationTriangleIcon,
   NoSymbolIcon,
-  StopCircleIcon,
-} from "@heroicons/react/24/outline";
+  PauseCircleIcon,
+} from "@heroicons/react/24/solid";
 import classNames from "classnames";
 import { ReactNode } from "react";
 
@@ -68,7 +69,7 @@ export function deploymentStatusDot(
     case "DEPLOYED":
       return (
         <div
-          className={classNames(deploymentStatusDotStyles, "bg-green-300")}
+          className={classNames(deploymentStatusDotStyles, "bg-green-500")}
         ></div>
       );
     case "ERROR":
@@ -140,7 +141,7 @@ export function deploymentStatusIcon(
         <CloudIcon
           className={classNames(
             iconSize === "small" ? smallClasses : largeClasses,
-            "relative text-green-300"
+            "relative text-blue-500"
           )}
         />
       );
@@ -164,7 +165,7 @@ export function deploymentStatusIcon(
       );
     case "STOPPING":
       return (
-        <StopCircleIcon
+        <PauseCircleIcon
           className={classNames(
             iconSize === "small" ? smallClasses : largeClasses,
             "relative text-slate-400"
