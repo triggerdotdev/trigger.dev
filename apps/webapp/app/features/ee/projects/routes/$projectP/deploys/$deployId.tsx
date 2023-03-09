@@ -256,6 +256,7 @@ export default function DeploymentPage() {
   );
 }
 
-const deploySummaryGridStyles = "flex flex-col gap-1";
-const deploySummaryLabelStyles = "uppercase text-slate-400 tracking-wide";
-const deploySummaryValueStyles = "text-slate-300";
+export const deploySummaryGridStyles = "flex flex-col gap-1";
+export const deploySummaryLabelStyles =
+  "uppercase text-slate-400 tracking-wide";
+export const deploySummaryValueStyles = "text-slate-300";

@@ -1,4 +1,5 @@
 import {
+  ArrowTopRightOnSquareIcon,
   ClockIcon,
   CloudArrowUpIcon,
   CloudIcon,
@@ -7,14 +8,18 @@ import {
 } from "@heroicons/react/24/outline";
 import { Form, useRevalidator } from "@remix-run/react";
 import type { ActionArgs, LoaderArgs } from "@remix-run/server-runtime";
+import classNames from "classnames";
 import { useEffect } from "react";
 import { redirect, typedjson, useTypedLoaderData } from "remix-typedjson";
 import { useEventSource } from "remix-utils";
 import { z } from "zod";
 import { List } from "~/components/layout/List";
 import { Panel } from "~/components/layout/Panel";
-import { PanelHeader } from "~/components/layout/PanelHeader";
-import { PrimaryButton, SecondaryLink } from "~/components/primitives/Buttons";
+import {
+  PrimaryButton,
+  SecondaryLink,
+  TertiaryA,
+} from "~/components/primitives/Buttons";
 import { Body } from "~/components/primitives/text/Body";
 import { SubTitle } from "~/components/primitives/text/SubTitle";
 import { Title } from "~/components/primitives/text/Title";
@@ -24,6 +29,11 @@ import { redirectWithErrorMessage } from "~/models/message.server";
 import { useCurrentProject } from "../$projectP";
 import { DeploymentListItem } from "../../components/DeploymentListItem";
 import { ManuallyDeployProject } from "../../services/manuallyDeployProject.server";
+import {
+  deploySummaryGridStyles,
+  deploySummaryLabelStyles,
+  deploySummaryValueStyles,
+} from "./deploys/$deployId";
 
 export async function loader({ params }: LoaderArgs) {
   const { projectP, organizationSlug } = z
@@ -118,25 +128,76 @@ export default function ProjectOverviewPage() {
           </PrimaryButton>
         </Form>
       </div>
-      <SubTitle>
-        {project.name}#{project.branch}
-      </SubTitle>
-      <Panel className="mb-6">
-        <PanelHeader
-          icon={
-            <div className="mr-1 h-6 w-6">
-              <Icon />
+      <SubTitle>Repository</SubTitle>
+      <Panel className="mb-6 !p-4">
+        <ul className="mb-6 grid grid-cols-[repeat(4,_fit-content(800px))] gap-x-6">
+          <li className={deploySummaryGridStyles}>
+            <Body size="extra-small" className={deploySummaryLabelStyles}>
+              Name
+            </Body>
+            <Body className={deploySummaryValueStyles}>
+              {project.name}#{project.branch}
+            </Body>
+          </li>
+          <li className={deploySummaryGridStyles}>
+            <Body size="extra-small" className={deploySummaryLabelStyles}>
+              Environment
+            </Body>
+            <Body className={deploySummaryValueStyles}>Live</Body>
+          </li>
+          <li className={deploySummaryGridStyles}>
+            <Body size="extra-small" className={deploySummaryLabelStyles}>
+              Status
+            </Body>
+            <div className="flex items-start gap-2">
+              <div className="h-5 w-5 text-slate-400">
+                <Icon />
+              </div>
+              <Body className={deploySummaryValueStyles}>
+                {project.statusText ? project.statusText : "No status"}
+              </Body>
             </div>
-          }
-          title={project.statusText ? project.statusText : "No status"}
-          startedAt={null}
-          finishedAt={null}
-        />
+          </li>
+          <li className={deploySummaryGridStyles}>
+            <Body size="extra-small" className={deploySummaryLabelStyles}>
+              URL
+            </Body>
+            <TertiaryA
+              href={project.url}
+              target="_blank"
+              className={classNames(deploySummaryValueStyles, "!text-base")}
+            >
+              {project.url}
+              <ArrowTopRightOnSquareIcon className="h-4 w-4" />
+            </TertiaryA>
+          </li>
+        </ul>
+        <ul className="grid grid-cols-[repeat(4,_fit-content(800px))] gap-x-6">
+          <li className={deploySummaryGridStyles}>
+            <Body size="extra-small" className={deploySummaryLabelStyles}>
+              Branch
+            </Body>
+            <Body className={deploySummaryValueStyles}>{project.branch}</Body>
+          </li>
+          <li className={deploySummaryGridStyles}>
+            <Body size="extra-small" className={deploySummaryLabelStyles}>
+              Latest commit
+            </Body>
+            <Body className={deploySummaryValueStyles}>
+              {/* {deployment.commitHash.slice(0, 12)}
+              <span>
+                "{deployment.commitMessage}" by {deployment.committer}
+              </span> */}
+            </Body>
+          </li>
+        </ul>
       </Panel>
       <div className="relative mb-6 rounded-lg bg-slate-850">
         <SubTitle>Workflows</SubTitle>
         {workflows.length === 0 ? (
-          <Body className="text-slate-500">No workflows added</Body>
+          <Body className="text-slate-500">
+            No workflows have been added to this repo yet.
+          </Body>
         ) : (
           <WorkflowList
             workflows={workflows}

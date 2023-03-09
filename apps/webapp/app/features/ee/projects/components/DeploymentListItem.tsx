@@ -1,8 +1,13 @@
 import type { ProjectDeployment } from ".prisma/client";
+import { ChevronRightIcon } from "@heroicons/react/24/outline";
 import { Link } from "@remix-run/react";
 import { IntlDate } from "~/components/IntlDate";
 import { Body } from "~/components/primitives/text/Body";
-import { deploymentStatusDot, deploymentStatusIcon } from "./deploymentStatus";
+import {
+  deploymentStatusDot,
+  deploymentStatusIcon,
+  deploymentStatusTitle,
+} from "./deploymentStatus";
 
 export function DeploymentListItem({
   deployment,
@@ -26,7 +31,7 @@ export function DeploymentListItem({
   }
 
   return (
-    <li>
+    <li className="transition hover:bg-slate-850/40">
       <Link to={`${pathPrefix}/${deployment.id}`}>
         <div className="flex flex-col flex-wrap justify-between py-4 pl-4 pr-6">
           <div className="flex flex-1 items-center justify-between">
@@ -49,17 +54,19 @@ export function DeploymentListItem({
                 </div>
               </div>
             </div>
-            <div className="flex flex-col items-end">
-              <div className="flex items-center gap-1.5">
-                {deploymentStatusDot(deployment.status)}
-                <Body size="small" className="text-slate-300">
-                  {deployment.status.charAt(0).toUpperCase() +
-                    deployment.status.slice(1).toLowerCase()}
-                </Body>
+            <div className="flex items-center gap-4">
+              <div className="flex flex-col items-end gap-1">
+                <div className="flex items-center gap-1.5">
+                  {deploymentStatusDot(deployment.status)}
+                  <Body size="small" className="text-slate-300">
+                    {deploymentStatusTitle(deployment.status)}
+                  </Body>
+                </div>
+                <div className="text-xs font-medium text-slate-500">
+                  <IntlDate date={timestamp} timeZone="UTC" />
+                </div>
               </div>
-              <div className="text-sm font-medium text-slate-200">
-                <IntlDate date={timestamp} timeZone="UTC" />
-              </div>
+              <ChevronRightIcon className="h-4 w-4 text-slate-400" />
             </div>
           </div>
         </div>
