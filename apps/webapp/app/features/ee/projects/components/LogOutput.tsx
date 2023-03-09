@@ -1,7 +1,6 @@
 import type { DeploymentLog } from ".prisma/client";
 import classNames from "classnames";
-import { Fragment } from "react";
-import { IntlDate } from "~/components/IntlDate";
+import { LogDate } from "~/components/IntlDate";
 import { TertiaryLink } from "~/components/primitives/Buttons";
 
 export function LogOutput({ logs }: { logs: DeploymentLog[] }) {
@@ -21,7 +20,7 @@ function LogItem({ log }: { log: DeploymentLog }) {
   return (
     <>
       <span>
-        <IntlDate date={log.createdAt} />
+        <LogDate date={log.createdAt} />
       </span>
       <span
         className={classNames(
