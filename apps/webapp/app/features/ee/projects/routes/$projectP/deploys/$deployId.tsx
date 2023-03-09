@@ -6,9 +6,8 @@ import { useEffect } from "react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { useEventSource } from "remix-utils";
 import { z } from "zod";
-import { List } from "~/components/layout/List";
 import { Panel } from "~/components/layout/Panel";
-import { SecondaryLink } from "~/components/primitives/Buttons";
+import { SecondaryLink, TertiaryLink } from "~/components/primitives/Buttons";
 import { Spinner } from "~/components/primitives/Spinner";
 import { Body } from "~/components/primitives/text/Body";
 import { Header1 } from "~/components/primitives/text/Headers";
@@ -49,7 +48,7 @@ export default function DeploymentPage() {
   const disabled = deployment.status !== "DEPLOYED";
 
   return (
-    <>
+    <div className="flex h-full flex-col">
       <div className="flex items-start justify-between">
         <Header1 className="mb-6">Deployment</Header1>
         <div className="flex gap-2">
@@ -147,12 +146,24 @@ export default function DeploymentPage() {
           </div>
         </div>
       </div>
-      <div className="rounded bg-slate-950 p-4">
-        <pre className="text-slate-300">
-          {logs.map((log) => `${log.level} ${log.log}`).join("\n")}
+      <div className="flex flex-auto overflow-auto rounded-md bg-slate-950 p-4">
+        <pre className="grid max-h-[50px] w-full grid-cols-[repeat(3,_fit-content(800px))_1fr] items-start gap-y-3 gap-x-6 text-sm text-slate-300">
+          {logs.map((log) => (
+            <>
+              <span>${log.createdAt.toTimeString()}</span>
+              <span>${log.level}</span>
+              <span>${log.log}</span>
+              <TertiaryLink
+                to="#"
+                className="sticky -right-4 justify-self-end bg-slate-950 px-3.5"
+              >
+                View run
+              </TertiaryLink>
+            </>
+          ))}
         </pre>
       </div>
-    </>
+    </div>
   );
 }
 
