@@ -1,7 +1,13 @@
 import { makeWebhook } from "core/webhook";
 import Stripe from "stripe";
 import { authentication } from "../authentication";
-import { checkoutCompleted } from "./events/checkoutSession";
+import {
+  checkoutAsyncPaymentFailed,
+  checkoutAsyncPaymentSucceeded,
+  checkoutCompleted,
+  checkoutExpired,
+} from "./events/checkoutSession";
+import { paymentIntentSucceeded } from "./events/paymentIntent";
 import { webhookSpec } from "./specs";
 
 const baseUrl = "https://api.stripe.com/v1";
@@ -12,7 +18,13 @@ const webhook = makeWebhook({
     spec: webhookSpec,
     authentication,
   },
-  events: [checkoutCompleted],
+  events: [
+    checkoutCompleted,
+    checkoutExpired,
+    checkoutAsyncPaymentSucceeded,
+    checkoutAsyncPaymentFailed,
+    paymentIntentSucceeded,
+  ],
   subscription: {
     type: "automatic",
     requiresSecret: true,
