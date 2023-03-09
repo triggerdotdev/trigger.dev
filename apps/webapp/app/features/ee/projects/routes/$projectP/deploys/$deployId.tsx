@@ -7,6 +7,7 @@ import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { useEventSource } from "remix-utils";
 import { z } from "zod";
 import { List } from "~/components/layout/List";
+import { Panel } from "~/components/layout/Panel";
 import { SecondaryLink } from "~/components/primitives/Buttons";
 import { Spinner } from "~/components/primitives/Spinner";
 import { Body } from "~/components/primitives/text/Body";
@@ -66,57 +67,69 @@ export default function DeploymentPage() {
           </SecondaryLink>
         </div>
       </div>
-      <SubTitle className="">Deploy Summary</SubTitle>
-      <List className="mb-6 px-4">
-        <li className={deploySummaryGridStyles}>
-          <Body size="extra-small" className={deploySummaryLabelStyles}>
-            Status
-          </Body>
-          <div className="flex items-center gap-2">
-            {deployment.status === "DEPLOYING" ||
-            deployment.status === "PENDING" ||
-            deployment.status === "BUILDING" ? (
-              <Spinner />
-            ) : (
-              <></>
-            )}
-            <Body className={deploySummaryValueStyles}>
-              {deploymentStatusTitle(deployment.status)}
+      <SubTitle>Deploy Summary</SubTitle>
+      <Panel className="mb-6 !p-4">
+        <ul className="mb-4 grid grid-cols-4">
+          <li className={deploySummaryGridStyles}>
+            <Body size="extra-small" className={deploySummaryLabelStyles}>
+              Status
             </Body>
-          </div>
-        </li>
-        <li className={deploySummaryGridStyles}>
-          <Body size="extra-small" className={deploySummaryLabelStyles}>
-            Started
-          </Body>
-          <Body className={deploySummaryValueStyles}>
-            {/* {deployment.buildStartedAt} */}
-            Add date here
-          </Body>
-        </li>
-        <li className={deploySummaryGridStyles}>
-          <Body size="extra-small" className={deploySummaryLabelStyles}>
-            Version
-          </Body>
-          <Body className={deploySummaryValueStyles}>{deployment.version}</Body>
-        </li>
-        <li className={deploySummaryGridStyles}>
-          <Body size="extra-small" className={deploySummaryLabelStyles}>
-            Commit
-          </Body>
-          <Body className={deploySummaryValueStyles}>
-            {deployment.commitHash}
-          </Body>
-        </li>
-        <li className={deploySummaryGridStyles}>
-          <Body size="extra-small" className={deploySummaryLabelStyles}>
-            Message
-          </Body>
-          <Body className={deploySummaryValueStyles}>
-            {deployment.commitMessage} by {deployment.committer}
-          </Body>
-        </li>
-      </List>
+            <div className="flex items-center gap-2">
+              {deployment.status === "DEPLOYING" ||
+              deployment.status === "PENDING" ||
+              deployment.status === "BUILDING" ? (
+                <Spinner />
+              ) : (
+                <></>
+              )}
+              <Body className={deploySummaryValueStyles}>
+                {deploymentStatusTitle(deployment.status)}
+              </Body>
+            </div>
+          </li>
+          <li className={deploySummaryGridStyles}>
+            <Body size="extra-small" className={deploySummaryLabelStyles}>
+              Started
+            </Body>
+            <Body className={deploySummaryValueStyles}>
+              {/* {deployment.buildStartedAt} */}
+              Add date here
+            </Body>
+          </li>
+          <li className={deploySummaryGridStyles}>
+            <Body size="extra-small" className={deploySummaryLabelStyles}>
+              Environment
+            </Body>
+            <Body className={deploySummaryValueStyles}>Production</Body>
+          </li>
+          <li className={deploySummaryGridStyles}>
+            <Body size="extra-small" className={deploySummaryLabelStyles}>
+              Version
+            </Body>
+            <Body className={deploySummaryValueStyles}>
+              {deployment.version}
+            </Body>
+          </li>
+        </ul>
+        <ul className="flex flex-col gap-4">
+          <li className={deploySummaryGridStyles}>
+            <Body size="extra-small" className={deploySummaryLabelStyles}>
+              Commit
+            </Body>
+            <Body className={deploySummaryValueStyles}>
+              {deployment.commitHash}
+            </Body>
+          </li>
+          <li className={deploySummaryGridStyles}>
+            <Body size="extra-small" className={deploySummaryLabelStyles}>
+              Message
+            </Body>
+            <Body className={deploySummaryValueStyles}>
+              {deployment.commitMessage} by {deployment.committer}
+            </Body>
+          </li>
+        </ul>
+      </Panel>
       <div className="mb-2 flex items-center justify-between">
         <SubTitle className="mb-0">Deploy logs</SubTitle>
         <div className="flex items-center gap-4">
@@ -143,6 +156,6 @@ export default function DeploymentPage() {
   );
 }
 
-const deploySummaryGridStyles = "grid grid-cols-[6rem_1fr] py-3 items-center";
+const deploySummaryGridStyles = "flex flex-col gap-1";
 const deploySummaryLabelStyles = "uppercase text-slate-400 tracking-wide";
 const deploySummaryValueStyles = "text-slate-300";
