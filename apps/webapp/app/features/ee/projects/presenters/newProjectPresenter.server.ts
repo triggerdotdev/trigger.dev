@@ -68,8 +68,16 @@ export class NewProjectPresenter {
     authorizations: GitHubAppAuthorization[],
     projects: Array<{ name: string; id: string }>,
     relevantRepositories: string[] = []
-  ): Promise<Array<RepositoryWithStatus>> {
-    const repositories: Array<RepositoryWithStatus> = [];
+  ): Promise<
+    Array<{
+      repositories: Array<RepositoryWithStatus>;
+      authorization: GitHubAppAuthorization;
+    }>
+  > {
+    const repositories: Array<{
+      repositories: Array<RepositoryWithStatus>;
+      authorization: GitHubAppAuthorization;
+    }> = [];
 
     for (const authorization of authorizations) {
       const validAuthorization = await refreshInstallationAccessToken(
@@ -99,29 +107,43 @@ export class NewProjectPresenter {
         }
       );
 
-      repositories.push(...repositoriesWithStatus);
+      const sortedRepos = repositoriesWithStatus.sort((a, b) => {
+        if (a.status === "relevant" && b.status === "unknown") {
+          return -1;
+        } else if (a.status === "unknown" && b.status === "relevant") {
+          return 1;
+        } else {
+          if (!a.repository.pushed_at) {
+            return 1;
+          }
+
+          if (!b.repository.pushed_at) {
+            return -1;
+          }
+
+          return (
+            new Date(b.repository.pushed_at).getTime() -
+            new Date(a.repository.pushed_at).getTime()
+          );
+        }
+      });
+
+      repositories.push({
+        repositories: sortedRepos,
+        authorization,
+      });
     }
 
-    // Sort by the relevant repositories first, then by the most recently updated
+    // Sort by the number of relevant repositories
     return repositories.sort((a, b) => {
-      if (a.status === "relevant" && b.status === "unknown") {
-        return -1;
-      } else if (a.status === "unknown" && b.status === "relevant") {
-        return 1;
-      } else {
-        if (!a.repository.pushed_at) {
-          return 1;
-        }
+      const aRelevant = a.repositories.filter(
+        (repository) => repository.status === "relevant"
+      ).length;
+      const bRelevant = b.repositories.filter(
+        (repository) => repository.status === "relevant"
+      ).length;
 
-        if (!b.repository.pushed_at) {
-          return -1;
-        }
-
-        return (
-          new Date(b.repository.pushed_at).getTime() -
-          new Date(a.repository.pushed_at).getTime()
-        );
-      }
+      return bRelevant - aRelevant;
     });
   }
 

@@ -8,7 +8,7 @@ import { Await, Form, useLoaderData, useTransition } from "@remix-run/react";
 import type { LoaderArgs } from "@remix-run/server-runtime";
 import { defer } from "@remix-run/server-runtime";
 import classNames from "classnames";
-import { Suspense } from "react";
+import { Fragment, Suspense } from "react";
 import { redirect, typedjson, useTypedActionData } from "remix-typedjson";
 import invariant from "tiny-invariant";
 import { OctoKitty } from "~/components/GitHubLoginButton";
@@ -110,182 +110,110 @@ export default function Page() {
             ) : (
               <></>
             )}
-            <div className="flex w-full items-center justify-between">
-              <div className="mb-2 flex items-center gap-2">
-                <OctoKitty className="h-5 w-5" />
-                <SubTitle className="mb-0">samejr</SubTitle>
-              </div>
-              <TertiaryLink to={`#`} reloadDocument>
-                Configure samejr
-                <ArrowTopRightOnSquareIcon className="h-4 w-4 text-slate-500" />
-              </TertiaryLink>
-            </div>
-            <List className="mb-6 pl-4 pr-2.5">
-              <Suspense
-                fallback={
-                  <div className="flex h-10 items-center justify-center gap-2 py-10">
-                    <Spinner />
-                    <Body>Loading repositories…</Body>
-                  </div>
-                }
+            <Suspense
+              fallback={
+                <div className="flex h-10 items-center justify-center gap-2 py-10">
+                  <Spinner />
+                  <Body>Loading repositories…</Body>
+                </div>
+              }
+            >
+              <Await
+                errorElement={<p>Error loading repositories</p>}
+                resolve={repositories}
               >
-                <Await
-                  errorElement={<p>Error loading repositories</p>}
-                  resolve={repositories}
-                >
-                  {(repos) => (
-                    <>
-                      {repos.map((repo) => (
-                        <li
-                          key={repo.repository.id}
-                          className={classNames(
-                            "flex items-center justify-between gap-2 py-2.5",
-                            repo.status === "relevant"
-                              ? "bg-blue-500 text-white"
-                              : "text-slate-400"
-                          )}
-                        >
-                          <div className="flex items-center gap-2.5">
-                            {repo.repository.private ? (
-                              <LockClosedIcon className="h-4 w-4 text-slate-400" />
-                            ) : (
-                              <LockOpenIcon className="h-4 w-4 text-slate-400" />
-                            )}
-                            <a
-                              className="group flex items-center gap-2 text-slate-300 transition hover:text-slate-100"
-                              href={repo.repository.html_url}
-                              target="_blank"
-                              rel="noreferrer"
-                            >
-                              {repo.repository.full_name}#
-                              {repo.repository.default_branch}
-                              <ArrowTopRightOnSquareIcon className="h-4 w-4 text-slate-400 opacity-0 transition group-hover:opacity-100" />
-                            </a>
+                {(resolvedPromise) => (
+                  <>
+                    {resolvedPromise.map((reposWithAuth) => (
+                      <Fragment key={reposWithAuth.authorization.id}>
+                        <div className="flex w-full items-center justify-between">
+                          <div className="mb-2 flex items-center gap-2">
+                            <OctoKitty className="h-5 w-5" />
+                            <SubTitle className="mb-0">
+                              {reposWithAuth.authorization.accountName}
+                            </SubTitle>
                           </div>
-                          {repo.projectId ? (
-                            <SecondaryLink to={`../projects/${repo.projectId}`}>
-                              View Project
-                            </SecondaryLink>
-                          ) : (
-                            <Form method="post">
-                              <input
-                                type="hidden"
-                                name="repoId"
-                                value={repo.repository.id}
-                              />
-
-                              <input
-                                type="hidden"
-                                name="repoName"
-                                value={repo.repository.full_name}
-                              />
-
-                              <input
-                                type="hidden"
-                                name="appAuthorizationId"
-                                value={repo.appAuthorizationId}
-                              />
-
-                              <PrimaryButton type="submit" size="regular">
-                                Select
-                              </PrimaryButton>
-                            </Form>
-                          )}
-                        </li>
-                      ))}
-                    </>
-                  )}
-                </Await>
-              </Suspense>
-            </List>
-            <div className="flex w-full items-center justify-between">
-              <div className="mb-2 flex items-center gap-2">
-                <OctoKitty className="h-5 w-5" />
-                <SubTitle className="mb-0">triggerdotdev</SubTitle>
-              </div>
-              <TertiaryLink to={`#`} reloadDocument>
-                Configure triggerdotdev
-                <ArrowTopRightOnSquareIcon className="h-4 w-4 text-slate-500" />
-              </TertiaryLink>
-            </div>
-            <List className="pl-4 pr-2.5">
-              <Suspense
-                fallback={
-                  <div className="flex h-10 items-center justify-center gap-2 py-10">
-                    <Spinner />
-                    <Body>Loading repositories…</Body>
-                  </div>
-                }
-              >
-                <Await
-                  errorElement={<p>Error loading repositories</p>}
-                  resolve={repositories}
-                >
-                  {(repos) => (
-                    <>
-                      {repos.map((repo) => (
-                        <li
-                          key={repo.repository.id}
-                          className={classNames(
-                            "flex items-center justify-between gap-2 py-2.5",
-                            repo.status === "relevant"
-                              ? "bg-blue-500 text-white"
-                              : "text-slate-400"
-                          )}
-                        >
-                          <div className="flex items-center gap-2.5">
-                            {repo.repository.private ? (
-                              <LockClosedIcon className="h-4 w-4 text-slate-400" />
-                            ) : (
-                              <LockOpenIcon className="h-4 w-4 text-slate-400" />
-                            )}
-                            <a
-                              className="group flex items-center gap-2 text-slate-300 transition hover:text-slate-100"
-                              href={repo.repository.html_url}
-                              target="_blank"
-                              rel="noreferrer"
+                          <TertiaryLink
+                            to={`/apps/github?redirectTo=${encodeURIComponent(
+                              redirectTo
+                            )}&authorizationId=${
+                              reposWithAuth.authorization.id
+                            }`}
+                            reloadDocument
+                          >
+                            Configure {reposWithAuth.authorization.accountName}
+                            <ArrowTopRightOnSquareIcon className="h-4 w-4 text-slate-500" />
+                          </TertiaryLink>
+                        </div>
+                        <List className="mb-6 pl-4 pr-2.5">
+                          {reposWithAuth.repositories.map((repo) => (
+                            <li
+                              key={repo.repository.id}
+                              className={classNames(
+                                "flex items-center justify-between gap-2 py-2.5",
+                                repo.status === "relevant"
+                                  ? "bg-blue-500 text-white"
+                                  : "text-slate-400"
+                              )}
                             >
-                              {repo.repository.full_name}#
-                              {repo.repository.default_branch}
-                              <ArrowTopRightOnSquareIcon className="h-4 w-4 text-slate-400 opacity-0 transition group-hover:opacity-100" />
-                            </a>
-                          </div>
-                          {repo.projectId ? (
-                            <SecondaryLink to={`../projects/${repo.projectId}`}>
-                              View Project
-                            </SecondaryLink>
-                          ) : (
-                            <Form method="post">
-                              <input
-                                type="hidden"
-                                name="repoId"
-                                value={repo.repository.id}
-                              />
+                              <div className="flex items-center gap-2.5">
+                                {repo.repository.private ? (
+                                  <LockClosedIcon className="h-4 w-4 text-slate-400" />
+                                ) : (
+                                  <LockOpenIcon className="h-4 w-4 text-slate-400" />
+                                )}
+                                <a
+                                  className="group flex items-center gap-2 text-slate-300 transition hover:text-slate-100"
+                                  href={repo.repository.html_url}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                >
+                                  {repo.repository.full_name}#
+                                  {repo.repository.default_branch}
+                                  <ArrowTopRightOnSquareIcon className="h-4 w-4 text-slate-400 opacity-0 transition group-hover:opacity-100" />
+                                </a>
+                              </div>
+                              {repo.projectId ? (
+                                <SecondaryLink
+                                  to={`../projects/${repo.projectId}`}
+                                >
+                                  View Project
+                                </SecondaryLink>
+                              ) : (
+                                <Form method="post">
+                                  <input
+                                    type="hidden"
+                                    name="repoId"
+                                    value={repo.repository.id}
+                                  />
 
-                              <input
-                                type="hidden"
-                                name="repoName"
-                                value={repo.repository.full_name}
-                              />
+                                  <input
+                                    type="hidden"
+                                    name="repoName"
+                                    value={repo.repository.full_name}
+                                  />
 
-                              <input
-                                type="hidden"
-                                name="appAuthorizationId"
-                                value={repo.appAuthorizationId}
-                              />
+                                  <input
+                                    type="hidden"
+                                    name="appAuthorizationId"
+                                    value={repo.appAuthorizationId}
+                                  />
 
-                              <PrimaryButton type="submit" size="regular">
-                                Select
-                              </PrimaryButton>
-                            </Form>
-                          )}
-                        </li>
-                      ))}
-                    </>
-                  )}
-                </Await>
-              </Suspense>
-            </List>
+                                  <PrimaryButton type="submit" size="regular">
+                                    Select
+                                  </PrimaryButton>
+                                </Form>
+                              )}
+                            </li>
+                          ))}
+                        </List>
+                      </Fragment>
+                    ))}
+                  </>
+                )}
+              </Await>
+            </Suspense>
+
             <SubTitle>Connect another GitHub account</SubTitle>
             <div className="mb-3 grid grid-cols-2 gap-4">
               <PrimaryLink
