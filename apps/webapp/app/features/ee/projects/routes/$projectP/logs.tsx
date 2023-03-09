@@ -7,6 +7,7 @@ import { z } from "zod";
 import { Spinner } from "~/components/primitives/Spinner";
 import { Body } from "~/components/primitives/text/Body";
 import { Header1, Header4 } from "~/components/primitives/text/Headers";
+import { SubTitle } from "~/components/primitives/text/SubTitle";
 import { useCurrentProject } from "../$projectP";
 import { LogOutput } from "../../components/LogOutput";
 import { ProjectLogsPresenter } from "../../presenters/projectLogsPresenter.server";
@@ -54,17 +55,17 @@ export default function ProjectLogsPage() {
 
   return (
     <div className="flex h-full flex-col">
-      <div className="flex items-start justify-between">
+      <div className="flex items-baseline justify-between">
         <Header1 className="mb-6">Logs</Header1>
-
-        <Header4>
+        <Body size="small" className="text-slate-300">
           {currentDeployment.commitMessage} -{" "}
           {currentDeployment.commitHash.slice(0, 7)} -{" "}
           {currentDeployment.version}
-        </Header4>
+        </Body>
       </div>
 
       <div className="mb-2 flex items-center justify-between">
+        <SubTitle className="mb-0">Deploy logs</SubTitle>
         <div className="flex items-center gap-4">
           {revalidator.state === "loading" && (
             <div className="flex items-center gap-1.5">
