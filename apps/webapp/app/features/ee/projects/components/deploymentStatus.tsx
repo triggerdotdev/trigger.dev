@@ -113,7 +113,7 @@ export function deploymentStatusIcon(
         <ClockIcon
           className={classNames(
             iconSize === "small" ? smallClasses : largeClasses,
-            "relative text-green-500"
+            "relative text-blue-500"
           )}
         />
       );
@@ -122,7 +122,7 @@ export function deploymentStatusIcon(
         <CubeTransparentIcon
           className={classNames(
             iconSize === "small" ? smallClasses : largeClasses,
-            "relative text-slate-500"
+            "relative text-blue-500"
           )}
         />
       );
@@ -140,7 +140,7 @@ export function deploymentStatusIcon(
         <CloudIcon
           className={classNames(
             iconSize === "small" ? smallClasses : largeClasses,
-            "relative text-amber-300"
+            "relative text-green-300"
           )}
         />
       );
@@ -158,7 +158,7 @@ export function deploymentStatusIcon(
         <NoSymbolIcon
           className={classNames(
             iconSize === "small" ? smallClasses : largeClasses,
-            "relative text-amber-300"
+            "relative text-slate-400"
           )}
         />
       );
@@ -167,7 +167,7 @@ export function deploymentStatusIcon(
         <StopCircleIcon
           className={classNames(
             iconSize === "small" ? smallClasses : largeClasses,
-            "relative text-amber-300"
+            "relative text-slate-400"
           )}
         />
       );
@@ -176,7 +176,7 @@ export function deploymentStatusIcon(
         <StopCircleIcon
           className={classNames(
             iconSize === "small" ? smallClasses : largeClasses,
-            "relative text-amber-300"
+            "relative text-slate-400"
           )}
         />
       );
