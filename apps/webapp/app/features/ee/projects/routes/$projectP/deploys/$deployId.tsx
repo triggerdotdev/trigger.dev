@@ -2,7 +2,7 @@ import { ArrowTopRightOnSquareIcon, StopIcon } from "@heroicons/react/20/solid";
 import { Form, useRevalidator, useTransition } from "@remix-run/react";
 import type { ActionArgs, LoaderArgs } from "@remix-run/server-runtime";
 import classNames from "classnames";
-import { useEffect } from "react";
+import { Fragment, useEffect } from "react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { useEventSource } from "remix-utils";
 import { z } from "zod";
@@ -250,25 +250,31 @@ export default function DeploymentPage() {
         </div>
       </div>
       <div className="flex flex-auto overflow-auto rounded-md bg-slate-950 p-4">
-        <pre className="grid max-h-[50px] w-full grid-cols-[repeat(3,_fit-content(800px))_1fr] items-start gap-y-3 gap-x-6 text-sm text-slate-300">
+        <pre className="grid max-h-[50px] w-full grid-cols-[repeat(3,_fit-content(800px))_1fr] items-start gap-y-1 gap-x-4 text-sm text-slate-300">
           {logs.map((log) => (
-            <>
-              <span>${log.createdAt.toTimeString()}</span>
+            <Fragment key={log.id}>
+              <span>
+                <IntlDate date={log.createdAt} />
+              </span>
               <span
                 className={classNames(
-                  log.level === "ERROR" ? "text-rose-500" : ""
+                  log.level === "error"
+                    ? "text-rose-500"
+                    : log.level === "warn"
+                    ? "text-amber-500"
+                    : ""
                 )}
               >
-                ${log.level}
+                {log.level}
               </span>
-              <span>${log.log}</span>
+              <span>{log.log}</span>
               <TertiaryLink
                 to="#"
                 className="sticky -right-4 justify-self-end bg-slate-950 px-3.5"
               >
                 View run
               </TertiaryLink>
-            </>
+            </Fragment>
           ))}
         </pre>
       </div>
