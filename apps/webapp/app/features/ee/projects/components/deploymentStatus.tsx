@@ -1,7 +1,4 @@
-import type {
-  ProjectDeployment,
-  ProjectDeploymentStatus,
-} from ".prisma/client";
+import type { ProjectDeploymentStatus } from ".prisma/client";
 import {
   ClockIcon,
   CloudArrowUpIcon,
@@ -37,8 +34,10 @@ export function deploymentStatusTitle(status: ProjectDeploymentStatus) {
 
 const deploymentStatusDotStyles = "h-2.5 w-2.5 rounded-full";
 
-export function deploymentStatusDot(deployment: ProjectDeployment): ReactNode {
-  switch (deployment.status) {
+export function deploymentStatusDot(
+  status: ProjectDeploymentStatus
+): ReactNode {
+  switch (status) {
     case "PENDING":
       return (
         <div
@@ -103,12 +102,12 @@ export function deploymentStatusDot(deployment: ProjectDeployment): ReactNode {
 }
 
 export function deploymentStatusIcon(
-  deployment: ProjectDeployment,
+  status: ProjectDeploymentStatus,
   iconSize: "small" | "large"
 ): ReactNode {
   const largeClasses = "relative h-7 w-7";
   const smallClasses = "relative h-4 w-4";
-  switch (deployment.status) {
+  switch (status) {
     case "PENDING":
       return (
         <ClockIcon

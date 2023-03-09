@@ -1,8 +1,6 @@
 import type { ProjectDeployment } from ".prisma/client";
-import { ArrowTopRightOnSquareIcon } from "@heroicons/react/24/outline";
 import { Link } from "@remix-run/react";
 import { IntlDate } from "~/components/IntlDate";
-import { TertiaryA } from "~/components/primitives/Buttons";
 import { Body } from "~/components/primitives/text/Body";
 import { deploymentStatusDot, deploymentStatusIcon } from "./deploymentStatus";
 
@@ -34,10 +32,10 @@ export function DeploymentListItem({
           <div className="flex flex-1 items-center justify-between">
             <div className="relative flex items-center">
               <div className="absolute -left-7 flex h-6 w-6 items-center justify-center rounded-full bg-slate-800">
-                {deploymentStatusDot(deployment)}
+                {deploymentStatusDot(deployment.status)}
               </div>
               <div className="mr-4 flex h-12 w-12 items-center justify-center rounded-md bg-slate-850 p-2">
-                {deploymentStatusIcon(deployment, "large")}
+                {deploymentStatusIcon(deployment.status, "large")}
               </div>
               <div className="flex flex-col">
                 <Body className="text-lg font-medium text-slate-100/80 transition hover:text-white">
@@ -56,7 +54,7 @@ export function DeploymentListItem({
             </div>
             <div className="flex flex-col items-end">
               <div className="flex items-center gap-1.5">
-                {deploymentStatusDot(deployment)}
+                {deploymentStatusDot(deployment.status)}
                 <Body size="small" className="text-slate-300">
                   {deployment.status.charAt(0).toUpperCase() +
                     deployment.status.slice(1).toLowerCase()}
