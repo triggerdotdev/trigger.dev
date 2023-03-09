@@ -146,7 +146,7 @@ export default function DeploymentPage() {
                       </>
                     ) : (
                       <>
-                        <StopIcon className="-ml-1 h-3 w-3" />
+                        <StopIcon className="-ml-1 h-3 w-3 text-rose-500" />
                         Cancel deployment
                       </>
                     )}
@@ -209,26 +209,22 @@ export default function DeploymentPage() {
             </Body>
           </li>
         </ul>
-        <ul className="flex flex-col gap-4">
-          <li className={deploySummaryGridStyles}>
-            <Body size="extra-small" className={deploySummaryLabelStyles}>
-              Commit
-            </Body>
-            <Body className={deploySummaryValueStyles}>
-              <a
-                href={`https://github.com/${project.name}/commit/${deployment.commitHash}`}
-                target="_blank"
-                className="flex items-center gap-1.5 transition hover:text-white"
-              >
-                {deployment.commitHash.slice(0, 12)}
-                <span>
-                  "{deployment.commitMessage}" by {deployment.committer}
-                </span>
-                <ArrowTopRightOnSquareIcon className="h-4 w-4" />
-              </a>
-            </Body>
-          </li>
-        </ul>
+        <div className={deploySummaryGridStyles}>
+          <Body size="extra-small" className={deploySummaryLabelStyles}>
+            Commit
+          </Body>
+          <a
+            href={`https://github.com/${project.name}/commit/${deployment.commitHash}`}
+            target="_blank"
+            className="flex max-w-max items-center gap-1.5 text-slate-300 transition hover:text-slate-100"
+          >
+            {deployment.commitHash.slice(0, 12)}
+            <span>
+              "{deployment.commitMessage}" by {deployment.committer}
+            </span>
+            <ArrowTopRightOnSquareIcon className="h-4 w-4" />
+          </a>
+        </div>
       </Panel>
       <div className="mb-2 flex items-center justify-between">
         <SubTitle className="mb-0">Deploy logs</SubTitle>
