@@ -80,7 +80,7 @@ export function deploymentStatusDot(
     case "CANCELLED":
       return (
         <div
-          className={classNames(deploymentStatusDotStyles, "bg-rose-500")}
+          className={classNames(deploymentStatusDotStyles, "bg-slate-400")}
         ></div>
       );
     case "STOPPING":
@@ -88,14 +88,14 @@ export function deploymentStatusDot(
         <div
           className={classNames(
             deploymentStatusDotStyles,
-            "animate-pulse bg-amber-400"
+            "animate-pulse bg-slate-400"
           )}
         ></div>
       );
     case "STOPPED":
       return (
         <div
-          className={classNames(deploymentStatusDotStyles, "bg-rose-500")}
+          className={classNames(deploymentStatusDotStyles, "bg-slate-400")}
         ></div>
       );
   }
