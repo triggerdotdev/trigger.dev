@@ -1,50 +1,10 @@
 import { makeWebhook } from "core/webhook";
-import { WebhookEvent, WebhookReceiveRequest } from "core/webhook/types";
-import { JSONSchema } from "json-schema-to-typescript";
 import Stripe from "stripe";
 import { authentication } from "../authentication";
-import { checkoutCompletedSuccess } from "./examples";
-import { checkoutSessionCompletedSchema } from "./schemas";
+import { checkoutCompleted } from "./events/checkoutSession";
 import { webhookSpec } from "./specs";
 
 const baseUrl = "https://api.stripe.com/v1";
-
-export const checkoutCompleted: WebhookEvent = {
-  name: "checkout.session.completed",
-  metadata: {
-    title: "Checkout session completed",
-    description: "A form response was submitted",
-    tags: ["checkout"],
-  },
-  schema: checkoutSessionCompletedSchema,
-  instructions: (data) =>
-    `Perform a Stripe checkout session or use the [Stripe CLI](https://stripe.com/docs/stripe-cli) to test this webhook.`,
-  examples: [checkoutCompletedSuccess],
-  key: "checkout.session.completed",
-  displayProperties: (data) => ({
-    title: `New Stripe checkout`,
-  }),
-  matches: (data) => data.request.body.type === "checkout.session.completed",
-  process: async (data: WebhookReceiveRequest) => [
-    {
-      event: "checkout.session.completed",
-      displayProperties: {
-        title: `New Stripe checkout`,
-        properties: [
-          {
-            key: "amount",
-            value: data.request.body.amount_total,
-          },
-          {
-            key: "currency",
-            value: data.request.body.currency,
-          },
-        ],
-      },
-      payload: data.request.body,
-    },
-  ],
-};
 
 const webhook = makeWebhook({
   data: {
@@ -113,4 +73,3 @@ const webhook = makeWebhook({
 });
 
 export const webhooks = { webhook };
-export const events = { checkoutCompleted };

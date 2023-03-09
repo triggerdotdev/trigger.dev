@@ -1,14 +1,10 @@
-import { schemaFromRef } from "core/schemas/makeSchema";
 import { JSONSchema } from "core/schemas/types";
-import { spec } from "../schemas/spec";
 
-export const checkoutSessionCompletedSchema: JSONSchema =
-  wrapEventWithWebhookData(
-    "Checkout session completed",
-    schemaFromRef("#/components/schemas/checkout.session", spec)
-  );
+export function instructions(eventName: string): string {
+  return `Perform a Stripe ${eventName} or use the [Stripe CLI](https://stripe.com/docs/stripe-cli) to test this webhook.`;
+}
 
-function wrapEventWithWebhookData(
+export function wrapEventWithWebhookData(
   name: string,
   eventSchema: JSONSchema
 ): JSONSchema {

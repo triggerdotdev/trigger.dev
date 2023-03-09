@@ -1,7 +1,8 @@
 import { validate } from "core/schemas/validate";
 import { startNock, stopNock } from "testing/nock";
 import { describe, expect, test } from "vitest";
-import { webhooks, events } from "../webhooks/webhooks";
+import { checkoutCompleted } from "../webhooks/events/checkoutSession";
+import { webhooks } from "../webhooks/webhooks";
 
 const authToken = () => process.env.STRIPE_API_KEY ?? "";
 
@@ -179,12 +180,9 @@ describe("stripe.webhooks", async () => {
 
   describe("schemas", async () => {
     test("check 1", async () => {
-      const data = events.checkoutCompleted.examples[0];
+      const data = checkoutCompleted.examples[0];
 
-      const validationResult = await validate(
-        data,
-        events.checkoutCompleted.schema
-      );
+      const validationResult = await validate(data, checkoutCompleted.schema);
       expect(validationResult).toEqual({
         success: true,
       });

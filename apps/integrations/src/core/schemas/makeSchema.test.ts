@@ -1,7 +1,7 @@
-import { checkoutSessionCompletedSchema } from "integrations/stripe/webhooks/schemas";
 import { describe, expect, test } from "vitest";
 import { schemaFromRef } from "./makeSchema";
 import { promises as fs } from "fs";
+import { checkoutSessionEventSchema } from "integrations/stripe/webhooks/events/checkoutSession";
 
 describe("make schema", async () => {
   test("schemaFromRef", async () => {
@@ -62,7 +62,7 @@ describe("make schema", async () => {
   });
 
   test("schemaFromRef", async () => {
-    const schema = checkoutSessionCompletedSchema;
+    const schema = checkoutSessionEventSchema;
     await fs.writeFile(
       "/Users/Matt/Downloads/schemaFromRef.json",
       JSON.stringify(schema, null, 2)
