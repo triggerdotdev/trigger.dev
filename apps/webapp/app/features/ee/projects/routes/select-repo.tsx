@@ -1,4 +1,8 @@
-import { FolderIcon } from "@heroicons/react/20/solid";
+import {
+  FolderIcon,
+  InformationCircleIcon,
+  StarIcon,
+} from "@heroicons/react/20/solid";
 import {
   ArrowTopRightOnSquareIcon,
   LockClosedIcon,
@@ -27,6 +31,7 @@ import { Spinner } from "~/components/primitives/Spinner";
 import { Body } from "~/components/primitives/text/Body";
 import { SubTitle } from "~/components/primitives/text/SubTitle";
 import { Title } from "~/components/primitives/text/Title";
+import { Tooltip } from "~/components/primitives/Tooltip";
 import { NewProjectPresenter } from "~/features/ee/projects/presenters/newProjectPresenter.server";
 import { CreateProjectService } from "~/features/ee/projects/services/createProject.server";
 import { requireUserId } from "~/services/session.server";
@@ -112,10 +117,10 @@ export default function Page() {
             )}
             <Suspense
               fallback={
-                <div className="flex h-10 items-center justify-center gap-2 py-10">
+                <Panel className="mb-6 flex h-10 items-center justify-center gap-2 py-10">
                   <Spinner />
                   <Body>Loading repositories…</Body>
-                </div>
+                </Panel>
               }
             >
               <Await
@@ -145,16 +150,11 @@ export default function Page() {
                             <ArrowTopRightOnSquareIcon className="h-4 w-4 text-slate-500" />
                           </TertiaryLink>
                         </div>
-                        <List className="mb-6 pl-4 pr-2.5">
+                        <List className="mb-6">
                           {reposWithAuth.repositories.map((repo) => (
                             <li
                               key={repo.repository.id}
-                              className={classNames(
-                                "flex items-center justify-between gap-2 py-2.5",
-                                repo.status === "relevant"
-                                  ? "bg-blue-500 text-white"
-                                  : "text-slate-400"
-                              )}
+                              className="flex items-center justify-between gap-2 py-2.5 pl-4 pr-2.5 first:rounded-t-md"
                             >
                               <div className="flex items-center gap-2.5">
                                 {repo.repository.private ? (
@@ -162,6 +162,7 @@ export default function Page() {
                                 ) : (
                                   <LockOpenIcon className="h-4 w-4 text-slate-400" />
                                 )}
+
                                 <a
                                   className="group flex items-center gap-2 text-slate-300 transition hover:text-slate-100"
                                   href={repo.repository.html_url}
@@ -174,35 +175,65 @@ export default function Page() {
                                 </a>
                               </div>
                               {repo.projectId ? (
-                                <SecondaryLink
-                                  to={`../projects/${repo.projectId}`}
-                                >
-                                  View Project
-                                </SecondaryLink>
+                                <div className="flex items-center gap-6">
+                                  {repo.status === "relevant" ? (
+                                    <Tooltip text="This repo is configured for deploying a workflow">
+                                      <div className="flex items-center gap-1 text-slate-400">
+                                        <StarIcon className="h-4 w-4 text-yellow-500" />
+                                        <Body size="small" className="">
+                                          This repo is configured
+                                        </Body>
+                                        <InformationCircleIcon className="h-4 w-4" />
+                                      </div>
+                                    </Tooltip>
+                                  ) : (
+                                    <></>
+                                  )}
+                                  <SecondaryLink
+                                    to={`../projects/${repo.projectId}`}
+                                  >
+                                    View Project
+                                  </SecondaryLink>
+                                </div>
                               ) : (
-                                <Form method="post">
-                                  <input
-                                    type="hidden"
-                                    name="repoId"
-                                    value={repo.repository.id}
-                                  />
+                                <div className="flex items-center gap-6">
+                                  {repo.status === "relevant" ? (
+                                    <Tooltip text="This repo is configured for deploying a workflow">
+                                      <div className="flex items-center gap-1 text-slate-400">
+                                        <StarIcon className="h-4 w-4 text-yellow-500" />
+                                        <Body size="small" className="">
+                                          This repo is configured
+                                        </Body>
+                                        <InformationCircleIcon className="h-4 w-4" />
+                                      </div>
+                                    </Tooltip>
+                                  ) : (
+                                    <></>
+                                  )}
+                                  <Form method="post">
+                                    <input
+                                      type="hidden"
+                                      name="repoId"
+                                      value={repo.repository.id}
+                                    />
 
-                                  <input
-                                    type="hidden"
-                                    name="repoName"
-                                    value={repo.repository.full_name}
-                                  />
+                                    <input
+                                      type="hidden"
+                                      name="repoName"
+                                      value={repo.repository.full_name}
+                                    />
 
-                                  <input
-                                    type="hidden"
-                                    name="appAuthorizationId"
-                                    value={repo.appAuthorizationId}
-                                  />
+                                    <input
+                                      type="hidden"
+                                      name="appAuthorizationId"
+                                      value={repo.appAuthorizationId}
+                                    />
 
-                                  <PrimaryButton type="submit" size="regular">
-                                    Select
-                                  </PrimaryButton>
-                                </Form>
+                                    <PrimaryButton type="submit" size="regular">
+                                      Select
+                                    </PrimaryButton>
+                                  </Form>
+                                </div>
                               )}
                             </li>
                           ))}
