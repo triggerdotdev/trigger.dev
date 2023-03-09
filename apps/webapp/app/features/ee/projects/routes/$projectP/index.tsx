@@ -129,8 +129,8 @@ export default function ProjectOverviewPage() {
         </Form>
       </div>
       <SubTitle>Repository</SubTitle>
-      <Panel className="mb-6 !p-4">
-        <ul className="mb-6 grid grid-cols-[repeat(4,_fit-content(800px))] gap-x-6">
+      <Panel className="mb-6 px-4 py-5">
+        <ul className="mb-6 grid grid-cols-3 gap-x-8">
           <li className={deploySummaryGridStyles}>
             <Body size="extra-small" className={deploySummaryLabelStyles}>
               Name
@@ -141,23 +141,20 @@ export default function ProjectOverviewPage() {
           </li>
           <li className={deploySummaryGridStyles}>
             <Body size="extra-small" className={deploySummaryLabelStyles}>
-              Environment
-            </Body>
-            <Body className={deploySummaryValueStyles}>Live</Body>
-          </li>
-          <li className={deploySummaryGridStyles}>
-            <Body size="extra-small" className={deploySummaryLabelStyles}>
               Status
             </Body>
             <div className="flex items-start gap-2">
-              <div className="h-5 w-5 text-slate-400">
+              <Body className={deploySummaryValueStyles}>
+                {project.status.charAt(0).toUpperCase() +
+                  project.status.slice(1).toLowerCase()}
+              </Body>
+              <div className="h-6 w-6 text-slate-400">
                 <Icon />
               </div>
-              <Body className={deploySummaryValueStyles}>
-                {project.statusText ? project.statusText : "No status"}
-              </Body>
             </div>
           </li>
+        </ul>
+        <ul className="grid grid-cols-3 gap-x-8">
           <li className={deploySummaryGridStyles}>
             <Body size="extra-small" className={deploySummaryLabelStyles}>
               URL
@@ -171,23 +168,12 @@ export default function ProjectOverviewPage() {
               <ArrowTopRightOnSquareIcon className="h-4 w-4" />
             </TertiaryA>
           </li>
-        </ul>
-        <ul className="grid grid-cols-[repeat(4,_fit-content(800px))] gap-x-6">
-          <li className={deploySummaryGridStyles}>
-            <Body size="extra-small" className={deploySummaryLabelStyles}>
-              Branch
-            </Body>
-            <Body className={deploySummaryValueStyles}>{project.branch}</Body>
-          </li>
           <li className={deploySummaryGridStyles}>
             <Body size="extra-small" className={deploySummaryLabelStyles}>
               Latest commit
             </Body>
             <Body className={deploySummaryValueStyles}>
-              {/* {deployment.commitHash.slice(0, 12)}
-              <span>
-                "{deployment.commitMessage}" by {deployment.committer}
-              </span> */}
+              eb9adfe: "Initial commit" by James Ritchie
             </Body>
           </li>
         </ul>
