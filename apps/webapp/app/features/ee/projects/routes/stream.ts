@@ -20,6 +20,8 @@ export async function loader({ request, params }: LoaderArgs) {
   let lastDeploymentId: string | null = project.deployments[0]?.id || null;
   let workflowCount = project._count.workflows;
 
+  let stopped = false;
+
   return eventStream(request.signal, (send) => {
     const pinger = setInterval(() => {
       send({ event: "ping", data: new Date().toISOString() });
@@ -28,6 +30,8 @@ export async function loader({ request, params }: LoaderArgs) {
     const interval = setInterval(() => {
       // Get the updatedAt date from the projects database, and send it to the client if it's different from the last one
       findProjectForUpdates(id).then((project) => {
+        if (stopped) return;
+
         if (project) {
           if (lastUpdatedAt !== project.updatedAt.getTime()) {
             send({ event: "update", data: project.updatedAt.toISOString() });
@@ -45,6 +49,7 @@ export async function loader({ request, params }: LoaderArgs) {
     }, 348);
 
     return function clear() {
+      stopped = true;
       clearInterval(pinger);
       clearInterval(interval);
     };

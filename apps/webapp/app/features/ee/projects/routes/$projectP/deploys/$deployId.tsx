@@ -1,19 +1,27 @@
-import { StopIcon } from "@heroicons/react/20/solid";
-import { useRevalidator } from "@remix-run/react";
-import type { LoaderArgs } from "@remix-run/server-runtime";
+import { ArrowTopRightOnSquareIcon, StopIcon } from "@heroicons/react/20/solid";
+import { Form, useRevalidator, useTransition } from "@remix-run/react";
+import type { ActionArgs, LoaderArgs } from "@remix-run/server-runtime";
 import classNames from "classnames";
 import { useEffect } from "react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { useEventSource } from "remix-utils";
 import { z } from "zod";
 import { Panel } from "~/components/layout/Panel";
-import { SecondaryLink, TertiaryLink } from "~/components/primitives/Buttons";
+import {
+  SecondaryButton,
+  SecondaryLink,
+  TertiaryLink,
+} from "~/components/primitives/Buttons";
 import { Spinner } from "~/components/primitives/Spinner";
 import { Body } from "~/components/primitives/text/Body";
 import { Header1 } from "~/components/primitives/text/Headers";
 import { SubTitle } from "~/components/primitives/text/SubTitle";
 import { DeploymentPresenter } from "~/features/ee/projects/presenters/deploymentPresenter.server";
-import { deploymentStatusTitle } from "../../../components/deploymentStatus";
+import { deploymentStatusTitle } from "~/features/ee/projects/components/deploymentStatus";
+import { CancelProjectDeployment } from "~/features/ee/projects/services/cancelProjectDeployment.server";
+import { StopProjectDeployment } from "~/features/ee/projects/services/stopProjectDeployment.server";
+import { IntlDate } from "~/components/IntlDate";
+import { useCurrentProject } from "../../$projectP";
 
 export async function loader({ request, params }: LoaderArgs) {
   const { projectP, organizationSlug, deployId } = z
@@ -29,8 +37,34 @@ export async function loader({ request, params }: LoaderArgs) {
   return typedjson(await presenter.data(organizationSlug, projectP, deployId));
 }
 
+export async function action({ request, params }: ActionArgs) {
+  const { deployId } = z
+    .object({
+      deployId: z.string(),
+    })
+    .parse(params);
+
+  const formPayload = Object.fromEntries(await request.formData());
+
+  if (formPayload.action === "cancel") {
+    const service = new CancelProjectDeployment();
+
+    await service.call(deployId);
+  }
+
+  if (formPayload.action === "stop") {
+    const service = new StopProjectDeployment();
+
+    await service.call(deployId);
+  }
+
+  return { action: formPayload.action };
+}
+
 export default function DeploymentPage() {
+  const project = useCurrentProject();
   const { deployment, logs } = useTypedLoaderData<typeof loader>();
+  const transitionData = useTransition();
 
   const events = useEventSource(`/resources/deploys/${deployment.id}/stream`, {
     event: "update",
@@ -47,15 +81,81 @@ export default function DeploymentPage() {
 
   const disabled = deployment.status !== "DEPLOYED";
 
+  let action: "cancel" | "stop" | undefined;
+  let actionConfirm: string | undefined;
+
+  const actionLoading =
+    (transitionData.state === "submitting" &&
+      transitionData.type === "actionSubmission") ||
+    (transitionData.state === "loading" &&
+      transitionData.type === "actionReload");
+
+  switch (deployment.status) {
+    case "PENDING": {
+      action = "cancel";
+      actionConfirm = "Are you sure you want to cancel this deployment?";
+
+      break;
+    }
+    case "BUILDING":
+    case "DEPLOYED": {
+      action = "stop";
+      actionConfirm = "Are you sure you want to stop this deployment?";
+      break;
+    }
+  }
+
   return (
     <div className="flex h-full flex-col">
       <div className="flex items-start justify-between">
         <Header1 className="mb-6">Deployment</Header1>
         <div className="flex gap-2">
-          <SecondaryLink to="#">
-            <StopIcon className="-ml-1 h-3 w-3 text-rose-500" />
-            Stop
-          </SecondaryLink>
+          {action && (
+            <Form
+              method="post"
+              onSubmit={(e) =>
+                !confirm(actionConfirm ?? "Are you sure?") && e.preventDefault()
+              }
+            >
+              <SecondaryButton
+                disabled={actionLoading}
+                type="submit"
+                name="action"
+                value={action}
+              >
+                {action === "stop" ? (
+                  <>
+                    {actionLoading ? (
+                      <>
+                        <Spinner className="-ml-1 h-3 w-3" />
+                        Stopping deployment
+                      </>
+                    ) : (
+                      <>
+                        <StopIcon className="-ml-1 h-3 w-3 text-rose-500" />
+                        Stop deployment
+                      </>
+                    )}
+                  </>
+                ) : (
+                  <>
+                    {actionLoading ? (
+                      <>
+                        <Spinner className="-ml-1 h-3 w-3" />
+                        Cancelling deployment
+                      </>
+                    ) : (
+                      <>
+                        <StopIcon className="-ml-1 h-3 w-3" />
+                        Cancel deployment
+                      </>
+                    )}
+                  </>
+                )}
+              </SecondaryButton>
+            </Form>
+          )}
+
           <SecondaryLink
             to="#"
             className={classNames(
@@ -91,15 +191,14 @@ export default function DeploymentPage() {
               Started
             </Body>
             <Body className={deploySummaryValueStyles}>
-              {/* {deployment.buildStartedAt} */}
-              Add date here
+              <IntlDate date={deployment.createdAt} />
             </Body>
           </li>
           <li className={deploySummaryGridStyles}>
             <Body size="extra-small" className={deploySummaryLabelStyles}>
               Environment
             </Body>
-            <Body className={deploySummaryValueStyles}>Production</Body>
+            <Body className={deploySummaryValueStyles}>Live</Body>
           </li>
           <li className={deploySummaryGridStyles}>
             <Body size="extra-small" className={deploySummaryLabelStyles}>
@@ -116,15 +215,17 @@ export default function DeploymentPage() {
               Commit
             </Body>
             <Body className={deploySummaryValueStyles}>
-              {deployment.commitHash}
-            </Body>
-          </li>
-          <li className={deploySummaryGridStyles}>
-            <Body size="extra-small" className={deploySummaryLabelStyles}>
-              Message
-            </Body>
-            <Body className={deploySummaryValueStyles}>
-              {deployment.commitMessage} by {deployment.committer}
+              <a
+                href={`https://github.com/${project.name}/commit/${deployment.commitHash}`}
+                target="_blank"
+                className="flex items-center gap-1.5 transition hover:text-white"
+              >
+                {deployment.commitHash.slice(0, 12)}
+                <span>
+                  "{deployment.commitMessage}" by {deployment.committer}
+                </span>
+                <ArrowTopRightOnSquareIcon className="h-4 w-4" />
+              </a>
             </Body>
           </li>
         </ul>
@@ -132,12 +233,14 @@ export default function DeploymentPage() {
       <div className="mb-2 flex items-center justify-between">
         <SubTitle className="mb-0">Deploy logs</SubTitle>
         <div className="flex items-center gap-4">
-          <div className="flex items-center gap-1.5">
-            <Spinner className="h-4 w-4" />
-            <Body size="small" className="text-slate-400">
-              Loading new logs…
-            </Body>
-          </div>
+          {revalidator.state === "loading" && (
+            <div className="flex items-center gap-1.5">
+              <Spinner className="h-4 w-4" />
+              <Body size="small" className="text-slate-400">
+                Loading new logs…
+              </Body>
+            </div>
+          )}
           <div className="flex items-center gap-1.5">
             <span className="h-2 w-2 animate-pulse rounded-full bg-emerald-500"></span>
             <Body size="small" className="text-slate-400">

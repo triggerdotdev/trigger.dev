@@ -44,7 +44,7 @@
   "dependencies": {
     "@aws-sdk/client-s3": "^3.186.0",
     "@aws-sdk/s3-request-presigner": "^3.186.0",
-    "@cakework/client": "^0.0.42",
+    "@cakework/client": "^0.0.54",
     "@cfworker/json-schema": "^1.12.5",
     "@codemirror/autocomplete": "^6.3.1",
     "@codemirror/commands": "^6.1.2",

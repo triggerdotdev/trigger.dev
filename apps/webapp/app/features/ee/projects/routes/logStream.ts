@@ -18,6 +18,8 @@ export async function loader({ request, params }: LoaderArgs) {
   let latestLogAt: number = deployment.polls[0]?.to.getTime() ?? 0;
   let lastUpdatedAt: number = deployment.updatedAt.getTime();
 
+  let stopped = false;
+
   return eventStream(request.signal, (send) => {
     const pinger = setInterval(() => {
       send({ event: "ping", data: new Date().toISOString() });
@@ -25,6 +27,8 @@ export async function loader({ request, params }: LoaderArgs) {
 
     const interval = setInterval(() => {
       findDeploymentWithLatestLog(id).then((deployment) => {
+        if (stopped) return;
+
         if (deployment) {
           if (lastUpdatedAt !== deployment.updatedAt.getTime()) {
             send({ event: "update", data: deployment.updatedAt.toISOString() });
@@ -45,6 +49,7 @@ export async function loader({ request, params }: LoaderArgs) {
     }, 1000);
 
     return function clear() {
+      stopped = true;
       clearInterval(interval);
       clearInterval(pinger);
     };

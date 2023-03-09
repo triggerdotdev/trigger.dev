@@ -74,11 +74,22 @@ export class PollDeploymentLogs {
     );
   }
 
-  #calculateNextPollScheduledAt(
+  async #calculateNextPollScheduledAt(
     deployment: ProjectDeployment,
-    logType: "BUILD" | "MACHINE",
-    latestLogAt?: Date
-  ): Date | undefined {
+    logType: "BUILD" | "MACHINE"
+  ): Promise<Date | undefined> {
+    const lastLog = await this.#prismaClient.deploymentLog.findFirst({
+      where: {
+        deploymentId: deployment.id,
+        logType,
+      },
+      orderBy: {
+        createdAt: "desc",
+      },
+    });
+
+    const latestLogAt = lastLog?.createdAt;
+
     if (!latestLogAt) {
       console.log(
         `[${logType}] No logs for ${deployment.id} yet. Trying again in 3 seconds.`
@@ -112,6 +123,24 @@ export class PollDeploymentLogs {
       );
 
       return new Date(Date.now() + 10000);
+    }
+
+    // And it's less than 15 minutes old, schedule again in 15 seconds
+    if (latestLogAt.getTime() > Date.now() - 15 * 60 * 1000) {
+      console.log(
+        `[${logType}] Latest log for ${deployment.id} is less than 15 minutes old. Trying again in 15 seconds.`
+      );
+
+      return new Date(Date.now() + 15000);
+    }
+
+    // And it's less than 30 minutes old, schedule again in 20 seconds
+    if (latestLogAt.getTime() > Date.now() - 20 * 60 * 1000) {
+      console.log(
+        `[${logType}] Latest log for ${deployment.id} is less than 20 minutes old. Trying again in 20 seconds.`
+      );
+
+      return new Date(Date.now() + 20000);
     }
 
     // And it's less than 60 minutes old, schedule again in 30 seconds
@@ -163,7 +192,7 @@ export class PollDeploymentLogs {
   ) {
     const latestPoll = await this.#prismaClient.deploymentLogPoll.findFirst({
       where: {
-        id: deployment.id,
+        deploymentId: deployment.id,
         logType,
       },
       orderBy: {
@@ -181,6 +210,12 @@ export class PollDeploymentLogs {
     fromDate = new Date(fromDate.getTime() + 1);
 
     const toDate = new Date();
+
+    console.log(
+      `[${logType}] Polling logs for ${
+        deployment.id
+      }, from ${fromDate.toISOString()} to ${toDate.toISOString()}...`
+    );
 
     const logs = await this.#gatherLogs(deployment, logType, fromDate, toDate);
 
@@ -208,10 +243,9 @@ export class PollDeploymentLogs {
         to: toDate,
         totalLogsCount: logs.length,
         filteredLogsCount: filteredLogs.length,
-        nextPollScheduledAt: this.#calculateNextPollScheduledAt(
+        nextPollScheduledAt: await this.#calculateNextPollScheduledAt(
           deployment,
-          logType,
-          latestFilteredLog ? new Date(latestFilteredLog.timestamp) : undefined
+          logType
         ),
         pollNumber: pollNumber + 1,
       },
@@ -226,10 +260,6 @@ export class PollDeploymentLogs {
     paginationToken?: string,
     logs: LogLine[] = []
   ): Promise<Array<LogLine>> {
-    if (!deployment.vmIdentifier) {
-      return [];
-    }
-
     const logsResponse = await this.#getLogs(deployment, logType, {
       from: fromDate,
       to: toDate,
@@ -288,7 +318,7 @@ function createLogRecord(
     deploymentId,
     logNumber,
     logType,
-    log: log.message,
+    log: log.message.trim(),
     level: log.level,
     createdAt: new Date(log.timestamp),
   };
