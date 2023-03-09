@@ -1,11 +1,12 @@
 import { useRevalidator } from "@remix-run/react";
 import type { LoaderArgs } from "@remix-run/server-runtime";
+import classNames from "classnames";
 import { useEffect } from "react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { useEventSource } from "remix-utils";
 import { z } from "zod";
 import { List } from "~/components/layout/List";
-import { Panel } from "~/components/layout/Panel";
+import { SecondaryLink } from "~/components/primitives/Buttons";
 import { Spinner } from "~/components/primitives/Spinner";
 import { Body } from "~/components/primitives/text/Body";
 import { Header1 } from "~/components/primitives/text/Headers";
@@ -43,9 +44,21 @@ export default function DeploymentPage() {
     // WARNING Don't put the revalidator in the useEffect deps array or bad things will happen
   }, [events]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  const disabled = deployment.status !== "DEPLOYED";
+
   return (
     <>
-      <Header1 className="mb-6">Deployment</Header1>
+      <div className="flex items-start justify-between">
+        <Header1 className="mb-6">Deployment</Header1>
+        <SecondaryLink
+          to="#"
+          className={classNames(
+            disabled ? "pointer-events-none opacity-40" : ""
+          )}
+        >
+          View Build Logs
+        </SecondaryLink>
+      </div>
       <SubTitle className="">Deploy Summary</SubTitle>
       <List className="mb-6 px-4">
         <li className={deploySummaryGridStyles}>
