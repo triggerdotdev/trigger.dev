@@ -692,7 +692,10 @@ model ProjectDeployment {
   createdAt DateTime            @default(now())
   updatedAt DateTime            @updatedAt
   projects  RepositoryProject[]
-  logs      DeploymentLog[]
+
+  logs                DeploymentLog[]
+  buildLogLatestLog   DateTime?
+  machineLogLatestLog DateTime?
 
   @@unique([projectId, version])
 }
