@@ -46,7 +46,9 @@ export function AppBody({
   className?: string;
 }) {
   return (
-    <div className={classNames("overflow-y-auto", className)}>{children}</div>
+    <div className={classNames("h-full overflow-y-auto", className)}>
+      {children}
+    </div>
   );
 }
 
