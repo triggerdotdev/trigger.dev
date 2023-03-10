@@ -7,11 +7,11 @@ const commonClasses =
   "inline-flex items-center justify-center max-w-max rounded transition whitespace-nowrap";
 const primaryClasses = classnames(
   commonClasses,
-  "px-4 py-2 bg-indigo-700 text-white hover:bg-indigo-600 focus:ring-indigo-800 gap-2 disabled:opacity-50 disabled:cursor-not-allowed disabled:bg-slate-700 disabled:text-slate-400"
+  "px-4 py-2 bg-indigo-700 text-white hover:bg-indigo-600 focus-visible:ring-indigo-800 gap-2 disabled:opacity-50 disabled:cursor-not-allowed disabled:bg-slate-700 disabled:text-slate-400"
 );
 const secondaryClasses = classnames(
   commonClasses,
-  "px-4 py-2 bg-transparent ring-1 ring-slate-700 ring-inset text-white hover:bg-white/5 hover:border-slate-700 focus:ring-slate-300 gap-2"
+  "px-4 py-2 bg-transparent ring-1 ring-slate-700 ring-inset text-white hover:bg-white/5 hover:border-slate-700 focus-visible:ring-slate-300 gap-2"
 );
 const tertiaryClasses = classnames(
   commonClasses,
@@ -19,11 +19,11 @@ const tertiaryClasses = classnames(
 );
 const dangerClasses = classnames(
   commonClasses,
-  "px-4 py-2 bg-rose-700 text-white hover:bg-rose-600 focus:ring-rose-800 gap-2"
+  "px-4 py-2 bg-rose-700 text-white hover:bg-rose-600 focus-visible:ring-rose-800 gap-2"
 );
 const toxicClasses = classnames(
   commonClasses,
-  "hover:cursor-pointer px-3 py-1 transition bg-gradient-to-r from-acid-500 to-toxic-500 text-slate-1000 !text-base font-bold hover:from-acid-600 hover:to-toxic-600 focus:ring-slate-300"
+  "hover:cursor-pointer px-3 py-1 transition bg-gradient-to-r from-acid-500 to-toxic-500 text-slate-1000 !text-base font-bold hover:from-acid-600 hover:to-toxic-600 focus-visible:ring-slate-300"
 );
 
 function getSizeClassName(size: Size) {
