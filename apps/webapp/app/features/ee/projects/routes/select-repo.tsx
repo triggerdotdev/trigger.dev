@@ -105,7 +105,15 @@ export default function Page() {
     <AppBody>
       <Header />
       <Container>
-        <Title>Repositories</Title>
+        <div className="flex items-start justify-between">
+          <Title>Repositories</Title>
+          <PrimaryLink
+            to={`/apps/github?redirectTo=${encodeURIComponent(redirectTo)}`}
+          >
+            <OctoKitty className="-ml-1 h-5 w-5" />
+            Connect another GitHub account
+          </PrimaryLink>
+        </div>
         {appAuthorizations.length === 0 ? (
           <>
             <ConnectToGithub redirectTo={redirectTo} />
@@ -249,16 +257,6 @@ export default function Page() {
                 )}
               </Await>
             </Suspense>
-
-            <SubTitle>Connect another GitHub account</SubTitle>
-            <div className="mb-3 grid grid-cols-2 gap-4">
-              <PrimaryLink
-                to={`/apps/github?redirectTo=${encodeURIComponent(redirectTo)}`}
-              >
-                <OctoKitty className="-ml-1 h-5 w-5" />
-                Add another account
-              </PrimaryLink>
-            </div>
           </>
         )}
       </Container>
