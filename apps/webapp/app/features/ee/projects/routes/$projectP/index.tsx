@@ -15,10 +15,12 @@ import { useEventSource } from "remix-utils";
 import { z } from "zod";
 import { List } from "~/components/layout/List";
 import { Panel } from "~/components/layout/Panel";
+import { PanelWarning } from "~/components/layout/PanelInfo";
 import {
   PrimaryButton,
   SecondaryLink,
   TertiaryA,
+  TertiaryLink,
 } from "~/components/primitives/Buttons";
 import { Body } from "~/components/primitives/text/Body";
 import { SubTitle } from "~/components/primitives/text/SubTitle";
@@ -68,7 +70,7 @@ export async function action({ params, request }: ActionArgs) {
 }
 
 export default function ProjectOverviewPage() {
-  const project = useCurrentProject();
+  const { project, needsEnvVars } = useCurrentProject();
   const { workflows, organizationSlug, deployments } =
     useTypedLoaderData<typeof loader>();
 
@@ -91,6 +93,7 @@ export default function ProjectOverviewPage() {
       Icon = ClockIcon;
       break;
     }
+    case "PREPARING":
     case "BUILDING": {
       Icon = CubeTransparentIcon;
       break;
@@ -128,7 +131,18 @@ export default function ProjectOverviewPage() {
           </PrimaryButton>
         </Form>
       </div>
+      {needsEnvVars && (
+        <PanelWarning
+          message="Deployments are disabled until you add the required environment variables."
+          className="mb-6"
+        >
+          <TertiaryLink to="settings" className="mr-1">
+            Set Environment Variables
+          </TertiaryLink>
+        </PanelWarning>
+      )}
       <SubTitle>Repository</SubTitle>
+
       <Panel className="mb-6 px-4 py-5">
         <ul className="mb-6 grid grid-cols-3 gap-x-8">
           <li className={deploySummaryGridStyles}>
@@ -182,7 +196,7 @@ export default function ProjectOverviewPage() {
         <SubTitle>Workflows</SubTitle>
         {workflows.length === 0 ? (
           <Body className="text-slate-500">
-            No workflows have been added to this repo yet.
+            No workflows have connected in this repo yet.
           </Body>
         ) : (
           <WorkflowList

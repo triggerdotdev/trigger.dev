@@ -65,6 +65,15 @@ export class CreateProjectService {
       });
 
       if (repositoryProjectReadyToDeploy(project)) {
+        await this.#prismaClient.repositoryProject.update({
+          where: {
+            id: project.id,
+          },
+          data: {
+            status: "PREPARING",
+          },
+        });
+
         await taskQueue.publish("START_INITIAL_PROJECT_DEPLOYMENT", {
           id: project.id,
         });

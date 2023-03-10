@@ -10,6 +10,10 @@ import {
 } from "~/components/navigation/SideMenu";
 import { prisma } from "~/db.server";
 import { hydrateObject, useMatchesData } from "~/utils";
+import {
+  hasAllEnvVars,
+  parseEnvVars,
+} from "../models/repositoryProject.server";
 
 export async function loader({ params }: LoaderArgs) {
   const { organizationSlug, projectP } = params;
@@ -28,9 +32,15 @@ export async function loader({ params }: LoaderArgs) {
     },
   });
 
+  const envVars = parseEnvVars(project);
+
+  const needsEnvVars = !hasAllEnvVars(project);
+
   return typedjson({
     project,
     organizationSlug,
+    needsEnvVars,
+    envVars,
   });
 }
 
@@ -61,11 +71,12 @@ export function useCurrentProject() {
     throw new Error("Calling useCurrentProject outside of a project route");
   }
 
-  const result = hydrateObject<UseDataFunctionReturn<typeof loader>["project"]>(
-    routeMatch.data.project
+  const result = hydrateObject<UseDataFunctionReturn<typeof loader>>(
+    routeMatch.data
   );
 
   return result;
 }
 
-export type CurrentProject = ReturnType<typeof useCurrentProject>;
+export type CurrentProjectLoaderData = ReturnType<typeof useCurrentProject>;
+export type CurrentProject = CurrentProjectLoaderData["project"];

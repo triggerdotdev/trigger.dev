@@ -26,6 +26,10 @@ export class ReceiveRepositoryPush {
       return;
     }
 
+    if (!project.autoDeploy) {
+      return;
+    }
+
     const environment = project.organization.environments.find(
       (environment) => environment.slug === LIVE_ENVIRONMENT
     );

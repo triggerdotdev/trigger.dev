@@ -162,7 +162,7 @@ export function buildEnvVars(
   };
 }
 
-function hasAllEnvVars(project: RepositoryProject) {
+export function hasAllEnvVars(project: RepositoryProject) {
   const envVars = BluePrintEnvVarsSchema.parse(project.envVars);
 
   // Removing the TRIGGER_API_KEY environment var, are there any other env vars that don't have a value?
@@ -170,6 +170,12 @@ function hasAllEnvVars(project: RepositoryProject) {
     envVars
       .filter((envVar) => envVar.key !== "TRIGGER_API_KEY")
       .filter((envVar) => !envVar.value).length === 0
+  );
+}
+
+export function parseEnvVars(project: RepositoryProject) {
+  return BluePrintEnvVarsSchema.parse(project.envVars).filter(
+    (envVar) => envVar.key !== "TRIGGER_API_KEY"
   );
 }
 

@@ -14,7 +14,8 @@ export class InitialProjectDeployment {
       return;
     }
 
-    if (project.status !== "PENDING") {
+    // If the project isn't either PENDING or PREPARING, then we return
+    if (project.status !== "PENDING" && project.status !== "PREPARING") {
       return;
     }
 

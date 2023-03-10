@@ -63,17 +63,7 @@ export class BuildComplete {
         },
       });
     } catch (error) {
-      if (
-        typeof error === "object" &&
-        error &&
-        "code" in error &&
-        error.code === "P2025"
-      ) {
-        // Record to update not found
-        return;
-      }
-
-      throw error;
+      return;
     }
   }
 }

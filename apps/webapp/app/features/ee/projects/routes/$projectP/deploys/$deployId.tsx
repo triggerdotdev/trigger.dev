@@ -62,7 +62,7 @@ export async function action({ request, params }: ActionArgs) {
 }
 
 export default function DeploymentPage() {
-  const project = useCurrentProject();
+  const { project } = useCurrentProject();
   const { deployment, logs } = useTypedLoaderData<typeof loader>();
   const transitionData = useTransition();
 

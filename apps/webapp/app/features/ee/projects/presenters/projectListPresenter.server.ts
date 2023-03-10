@@ -27,6 +27,9 @@ export class ProjectListPresenter {
         organization: {
           slug: organizationSlug,
         },
+        status: {
+          not: "DISABLED",
+        },
       },
       orderBy: {
         createdAt: "desc",

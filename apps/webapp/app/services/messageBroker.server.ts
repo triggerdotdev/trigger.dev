@@ -25,6 +25,9 @@ import { EventEmitter } from "stream";
 import { z } from "zod";
 import { prisma } from "~/db.server";
 import { env } from "~/env.server";
+import { cakework } from "~/features/ee/projects/cakework.server";
+import { CleanupProject } from "~/features/ee/projects/services/cleanupProject.server";
+import { PollDeploymentLogs } from "~/features/ee/projects/services/pollDeploymentLogs.server";
 import { findFetchRequestById } from "~/models/fetchRequest.server";
 import { findIntegrationRequestById } from "~/models/integrationRequest.server";
 import {
@@ -37,6 +40,12 @@ import {
 } from "~/models/workflowRun.server";
 import { findWorkflowStepById } from "~/models/workflowRunStep.server";
 import { omit } from "~/utils/objects";
+import { BuildComplete } from "../features/ee/projects/services/buildComplete.server";
+import { CleanupDeployment } from "../features/ee/projects/services/cleanupDeployment.server";
+import { DeploymentCreated } from "../features/ee/projects/services/deploymentCreated.server";
+import { InitialProjectDeployment } from "../features/ee/projects/services/initialProjectDeployment.server";
+import { ReceiveRepositoryPush } from "../features/ee/projects/services/receiveRepositoryPush.server";
+import { StartPendingDeployment } from "../features/ee/projects/services/startPendingDeployment.server";
 import { OrganizationCreatedEvent } from "./analyticsEvents/organizationCreated.server";
 import { WorkflowCreatedEvent } from "./analyticsEvents/workflowCreated.server";
 import { WorkflowRunCreatedEvent } from "./analyticsEvents/workflowRunCreated.server";
@@ -50,12 +59,6 @@ import { RegisterExternalSource } from "./externalSources/registerExternalSource
 import { CreateFetchRequest } from "./fetches/createFetchRequest.server";
 import { PerformFetchRequest } from "./fetches/performFetchRequest.server";
 import { StartFetchRequest } from "./fetches/startFetchRequest.server";
-import { BuildComplete } from "../features/ee/projects/services/buildComplete.server";
-import { CleanupDeployment } from "../features/ee/projects/services/cleanupDeployment.server";
-import { DeploymentCreated } from "../features/ee/projects/services/deploymentCreated.server";
-import { InitialProjectDeployment } from "../features/ee/projects/services/initialProjectDeployment.server";
-import { ReceiveRepositoryPush } from "../features/ee/projects/services/receiveRepositoryPush.server";
-import { StartPendingDeployment } from "../features/ee/projects/services/startPendingDeployment.server";
 import type { PulsarClient } from "./pulsarClient.server";
 import { createPulsarClient } from "./pulsarClient.server";
 import { CreateIntegrationRequest } from "./requests/createIntegrationRequest.server";
@@ -69,7 +72,6 @@ import { WorkflowRunTriggerTimeout } from "./runs/runTriggerTimeout.server";
 import { DeliverScheduledEvent } from "./scheduler/deliverScheduledEvent.server";
 import { RegisterSchedulerSource } from "./scheduler/registerSchedulerSource.server";
 import { WorkflowCreated } from "./workflows/events/workflowCreated.server";
-import { PollDeploymentLogs } from "~/features/ee/projects/services/pollDeploymentLogs.server";
 
 let pulsarClient: PulsarClient;
 let triggerPublisher: ZodPublisher<TriggerCatalog>;
@@ -543,6 +545,14 @@ const taskQueueCatalog = {
     data: z.object({ id: z.string(), count: z.number().default(0) }),
     properties: z.object({}),
   },
+  CLEANUP_PROJECT: {
+    data: z.object({ id: z.string() }),
+    properties: z.object({}),
+  },
+  STOP_VM: {
+    data: z.object({ id: z.string() }),
+    properties: z.object({}),
+  },
 };
 
 function createTaskQueue() {
@@ -999,6 +1009,24 @@ function createTaskQueue() {
         await service.call(data.id, data.count);
 
         return true;
+      },
+      CLEANUP_PROJECT: async (id, data, properties, attributes) => {
+        const service = new CleanupProject();
+
+        await service.call(data.id);
+        return true;
+      },
+      STOP_VM: async (id, data, properties, attributes) => {
+        try {
+          await cakework.stopVm(data.id);
+          return true;
+        } catch (error) {
+          if (attributes.redeliveryCount >= 4) {
+            return true;
+          }
+
+          return false;
+        }
       },
     },
   });

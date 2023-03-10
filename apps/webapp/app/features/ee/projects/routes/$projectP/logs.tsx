@@ -4,6 +4,8 @@ import { useEffect } from "react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { useEventSource } from "remix-utils";
 import { z } from "zod";
+import { PanelWarning } from "~/components/layout/PanelInfo";
+import { TertiaryLink } from "~/components/primitives/Buttons";
 import { Spinner } from "~/components/primitives/Spinner";
 import { Body } from "~/components/primitives/text/Body";
 import { Header1, Header4 } from "~/components/primitives/text/Headers";
@@ -23,7 +25,7 @@ export async function loader({ params }: LoaderArgs) {
 }
 
 export default function ProjectLogsPage() {
-  const project = useCurrentProject();
+  const { needsEnvVars } = useCurrentProject();
 
   const { logs, currentDeployment } = useTypedLoaderData<typeof loader>();
 
@@ -33,6 +35,17 @@ export default function ProjectLogsPage() {
         <div className="flex items-start justify-between">
           <Header1 className="mb-6">Logs</Header1>
         </div>
+
+        {needsEnvVars && (
+          <PanelWarning
+            message="Deployments are disabled until you add the required environment variables."
+            className="mb-6"
+          >
+            <TertiaryLink to="../settings" className="mr-1">
+              Set Environment Variables
+            </TertiaryLink>
+          </PanelWarning>
+        )}
       </div>
     );
   }
@@ -63,6 +76,17 @@ export default function ProjectLogsPage() {
           {currentDeployment.version}
         </Body>
       </div>
+
+      {needsEnvVars && (
+        <PanelWarning
+          message="Deployments are disabled until you add the required environment variables."
+          className="mb-6"
+        >
+          <TertiaryLink to="../settings" className="mr-1">
+            Set Environment Variables
+          </TertiaryLink>
+        </PanelWarning>
+      )}
 
       <div className="mb-2 flex items-center justify-between">
         <SubTitle className="mb-0">Deploy logs</SubTitle>

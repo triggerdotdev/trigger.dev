@@ -27,6 +27,7 @@ export class DeploymentCreated {
     // If the RepositoryProjec status is:
     // - PENDING: Update the project to be building
     // - DEPLOYED: Update the project to be building
+    // - PREPARING: Update the project to be building
     // - BUILDING: Do nothing
     // - ERROR: Update the project to be building
     // - DISABLED: Do nothing
@@ -35,6 +36,7 @@ export class DeploymentCreated {
     switch (deployment.project.status) {
       case "PENDING":
       case "DEPLOYED":
+      case "PREPARING":
       case "ERROR": {
         // Set the project as "building"
         // will transition to "deploying" when the build is complete (see: buildComplete.server.ts)

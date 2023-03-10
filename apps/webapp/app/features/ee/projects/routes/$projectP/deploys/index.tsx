@@ -2,6 +2,8 @@ import type { LoaderArgs } from "@remix-run/server-runtime";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
 import { List } from "~/components/layout/List";
+import { PanelWarning } from "~/components/layout/PanelInfo";
+import { TertiaryLink } from "~/components/primitives/Buttons";
 import { Title } from "~/components/primitives/text/Title";
 import { useCurrentProject } from "../../$projectP";
 import { DeploymentListItem } from "../../../components/DeploymentListItem";
@@ -18,24 +20,22 @@ export async function loader({ params }: LoaderArgs) {
 }
 
 export default function ProjectDeploysPage() {
-  const project = useCurrentProject();
+  const { project, needsEnvVars } = useCurrentProject();
   const { deployments } = useTypedLoaderData<typeof loader>();
-
-  // const events = useEventSource(`/resources/projects/${project.id}/deploys`, {
-  //   event: "update",
-  // });
-  // const revalidator = useRevalidator();
-
-  // useEffect(() => {
-  //   if (events !== null) {
-  //     revalidator.revalidate();
-  //   }
-  //   // WARNING Don't put the revalidator in the useEffect deps array or bad things will happen
-  // }, [events]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <>
       <Title>Deploys</Title>
+      {needsEnvVars && (
+        <PanelWarning
+          message="Deployments are disabled until you add the required environment variables."
+          className="mb-6"
+        >
+          <TertiaryLink to="../settings" className="mr-1">
+            Set Environment Variables
+          </TertiaryLink>
+        </PanelWarning>
+      )}
       <List>
         {deployments.map((deployment) => (
           <DeploymentListItem
