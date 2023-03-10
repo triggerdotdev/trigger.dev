@@ -6,7 +6,9 @@ import {
 } from "@trigger.dev/common-schemas";
 import { typedjson } from "remix-typedjson";
 import invariant from "tiny-invariant";
+import { AppBody } from "~/components/layout/AppLayout";
 import { Container } from "~/components/layout/Container";
+import { Header } from "~/components/layout/Header";
 import {
   SideMenuContainer,
   WorkflowsSideMenu,
@@ -161,13 +163,13 @@ export const loader = async ({ request, params }: LoaderArgs) => {
 
 export default function Page() {
   return (
-    <>
+    <AppBody>
       <SideMenuContainer>
         <WorkflowsSideMenu />
         <Container>
           <Outlet />
         </Container>
       </SideMenuContainer>
-    </>
+    </AppBody>
   );
 }

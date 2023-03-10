@@ -1,16 +1,29 @@
 import { Outlet } from "@remix-run/react";
 import {
-  SideMenuContainer,
+  AppLayoutThreeCol,
+  AppLayoutTwoCol,
+} from "~/components/layout/AppLayout";
+import {
   OrganizationsSideMenu,
+  OrganizationSideMenuCollapsed,
 } from "~/components/navigation/SideMenu";
+
+const isThreeColLayout = false;
 
 export default function Layout() {
   return (
     <>
-      <SideMenuContainer>
-        <OrganizationsSideMenu />
-        <Outlet />
-      </SideMenuContainer>
+      {isThreeColLayout ? (
+        <AppLayoutThreeCol>
+          <OrganizationSideMenuCollapsed />
+          <Outlet />
+        </AppLayoutThreeCol>
+      ) : (
+        <AppLayoutTwoCol>
+          <OrganizationsSideMenu />
+          <Outlet />
+        </AppLayoutTwoCol>
+      )}
     </>
   );
 }

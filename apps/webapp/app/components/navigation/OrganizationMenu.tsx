@@ -30,7 +30,6 @@ export function OrganizationMenu() {
 
   return (
     <>
-      <BreadcrumbDivider />
       <div className="w-full max-w-max">
         <Popover className="relative">
           {({ open }) => (

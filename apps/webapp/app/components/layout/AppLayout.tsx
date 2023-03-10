@@ -1,7 +1,7 @@
 import classNames from "classnames";
 import { ImpersonationBanner } from "../ImpersonationBanner";
 
-export function AppLayout({
+export function AppLayoutThreeCol({
   children,
   impersonationId,
 }: {
@@ -11,7 +11,6 @@ export function AppLayout({
   if (impersonationId) {
     return (
       <div className="grid h-full w-full grid-rows-[2rem_3rem_auto_2rem]">
-        {/* <div className="grid h-full w-full grid-rows-[2rem_2rem_3rem_auto_2rem]"> */}
         <ImpersonationBanner impersonationId={impersonationId} />
         {children}
       </div>
@@ -19,17 +18,21 @@ export function AppLayout({
   }
 
   return (
-    // <div className="grid h-full w-full grid-rows-[3rem_auto_2rem]">
-    <div className="grid h-full w-full grid-rows-[3rem_auto_auto] sm:grid-rows-[3rem_auto_2rem]">
+    <div className="grid h-full w-full grid-cols-[3rem_auto_auto]">
       {children}
     </div>
   );
 }
 
+export function AppLayoutTwoCol({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="grid h-full w-full grid-cols-[16rem_auto]">{children}</div>
+  );
+}
+
 export function PublicAppLayout({ children }: { children: React.ReactNode }) {
   return (
-    <div className="grid h-full w-full grid-rows-[5rem_auto_auto] overflow-y-auto">
-      {/* <div className="grid h-full w-full grid-rows-[2rem_auto_auto_2rem]"> */}
+    <div className="grid h-full w-full grid-rows-[3.6rem_auto_auto] overflow-y-auto">
       {children}
     </div>
   );

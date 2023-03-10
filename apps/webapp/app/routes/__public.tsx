@@ -1,17 +1,15 @@
 import { Outlet } from "@remix-run/react";
 import type { LoaderArgs } from "@remix-run/server-runtime";
-import classNames from "classnames";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import {
   AppBody,
-  AppLayout,
+  AppLayoutThreeCol,
   PublicAppBody,
   PublicAppLayout,
 } from "~/components/layout/AppLayout";
 import { Footer } from "~/components/layout/Footer";
 import { Header } from "~/components/layout/Header";
 import { MarketingHeader } from "~/components/layout/MarketingHeader";
-import { ProductHuntBanner } from "~/components/ProductHuntBanner";
 import { getOrganizations } from "~/models/organization.server";
 import { getImpersonationId } from "~/services/impersonation.server";
 import { getUserId } from "~/services/session.server";
@@ -40,7 +38,9 @@ export const loader = async ({ request }: LoaderArgs) => {
 export default function Public() {
   const loaderData = useTypedLoaderData<typeof loader>();
 
-  const LayoutComponent = loaderData.userId ? AppLayout : PublicAppLayout;
+  const LayoutComponent = loaderData.userId
+    ? AppLayoutThreeCol
+    : PublicAppLayout;
 
   return (
     <LayoutComponent>

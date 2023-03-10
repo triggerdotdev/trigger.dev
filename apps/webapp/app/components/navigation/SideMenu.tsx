@@ -14,12 +14,9 @@ import {
   EnvelopeIcon,
   ForwardIcon,
   PhoneArrowUpRightIcon,
-  PlusCircleIcon,
   QueueListIcon,
-  ServerIcon,
   Squares2X2Icon,
   SquaresPlusIcon,
-  UsersIcon,
 } from "@heroicons/react/24/outline";
 import { Link, NavLink } from "@remix-run/react";
 import { useState } from "react";
@@ -34,6 +31,8 @@ import { useCurrentWorkflow } from "~/hooks/useWorkflows";
 import { EnvironmentIcon } from "~/routes/resources/environment";
 import { titleCase } from "~/utils";
 import { CopyTextPanel } from "../CopyTextButton";
+import { Logo } from "../Logo";
+import { LogoIcon } from "../LogoIcon";
 import { TertiaryA, TertiaryButton } from "../primitives/Buttons";
 import { Body } from "../primitives/text/Body";
 import { Header1 } from "../primitives/text/Headers";
@@ -87,6 +86,42 @@ export function OrganizationsSideMenu() {
     <SideMenu title={currentOrganization.title} items={items} backPath="/" />
   );
 }
+
+export function OrganizationSideMenuCollapsed() {
+  const organizations = useOrganizations();
+  const currentOrganization = useCurrentOrganization();
+
+  if (organizations === undefined || currentOrganization === undefined) {
+    return null;
+  }
+
+  return (
+    <ul className="flex h-full flex-col items-center justify-start space-y-2 border-r border-slate-800 bg-slate-950 pt-2.5">
+      <NavLink to="/">
+        <li className={sideMenuCollapsedItem}>
+          <LogoIcon className="h-6 w-6" />
+        </li>
+      </NavLink>
+      <NavLink to={`/orgs/${currentOrganization.slug}`}>
+        <li className={sideMenuCollapsedItem}>
+          <ArrowsRightLeftIcon className="h-6 w-6 text-slate-300" />
+        </li>
+      </NavLink>
+      <NavLink to={`/orgs/${currentOrganization.slug}/projects`}>
+        <li className={sideMenuCollapsedItem}>
+          <CloudIcon className="h-6 w-6 text-slate-300" />
+        </li>
+      </NavLink>
+      <NavLink to={`/orgs/${currentOrganization.slug}/integrations`}>
+        <li className={sideMenuCollapsedItem}>
+          <SquaresPlusIcon className="h-6 w-6 text-slate-300" />
+        </li>
+      </NavLink>
+    </ul>
+  );
+}
+
+const sideMenuCollapsedItem = "rounded p-2 transition hover:bg-slate-800";
 
 export function WorkflowsSideMenu() {
   const currentWorkflow = useCurrentWorkflow();
@@ -195,9 +230,7 @@ const activeStyle =
   "group flex items-center gap-2 px-3 py-3 text-base rounded transition bg-slate-800 text-white";
 
 function SideMenu({
-  title,
   items,
-  backPath,
 }: {
   title: string;
   items: SideMenuItem[];
@@ -213,23 +246,13 @@ function SideMenu({
       <div className="flex flex-1 flex-col overflow-y-auto pb-4">
         <nav
           className="mt-2 flex h-full flex-col justify-between space-y-1 px-2"
-          aria-label="Sidebar"
+          aria-label="Side menu"
         >
-          <div>
-            <div className="group my-2 flex items-center divide-x divide-transparent rounded border border-transparent text-slate-400 transition hover:divide-slate-900 hover:border-slate-800 hover:bg-slate-950">
-              <Link
-                to={backPath}
-                className="rounded-l px-2 py-3 transition hover:bg-slate-800"
-              >
-                <ChevronLeftIcon className="h-5 w-5 text-slate-400" />
-              </Link>
-
-              <Header1
-                size="small"
-                className="w-full overflow-hidden text-ellipsis whitespace-nowrap rounded-r py-2 pl-2 text-slate-400 transition hover:bg-slate-800"
-              >
-                <Link to="">{title}</Link>
-              </Header1>
+          <div className="flex flex-col">
+            <div className="mb-2 p-3">
+              <NavLink to="/">
+                <Logo className="h-7 w-[160px]" />
+              </NavLink>
             </div>
 
             {items.map((item) => (
@@ -310,55 +333,6 @@ function SideMenu({
                   </Tooltip>
                 );
               })}
-            </ul>
-            <ul className="ml-3 flex flex-col gap-3">
-              <li>
-                <Body size="extra-small" className={menuSmallTitleStyle}>
-                  Help and resources
-                </Body>
-              </li>
-              <li>
-                <a
-                  href="https://docs.trigger.dev"
-                  target="_blank"
-                  rel="noreferrer"
-                  className={menuSmallLinkStyle}
-                >
-                  <ArrowTopRightOnSquareIcon className={menuSmallIconStyle} />
-                  Documentation
-                </a>
-              </li>
-              <li>
-                <a
-                  href="https://docs.trigger.dev/getting-started"
-                  rel="noreferrer"
-                  target="_blank"
-                  className={menuSmallLinkStyle}
-                >
-                  <ArrowTopRightOnSquareIcon className={menuSmallIconStyle} />
-                  Quick start guide
-                </a>
-              </li>
-              <li>
-                <a
-                  href="https://cal.com/team/triggerdotdev/call"
-                  rel="noreferrer"
-                  target="_blank"
-                  className={menuSmallLinkStyle}
-                >
-                  <PhoneArrowUpRightIcon className={menuSmallIconStyle} />
-                  Schedule a call
-                </a>
-              </li>
-              <li>
-                <a
-                  href="mailto:hello@trigger.dev"
-                  className={menuSmallLinkStyle}
-                >
-                  <EnvelopeIcon className={menuSmallIconStyle} />
-                  Contact us
-                </a>
-              </li>
             </ul>
           </div>
         </nav>
