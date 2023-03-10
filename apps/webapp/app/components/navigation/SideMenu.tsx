@@ -9,6 +9,7 @@ import {
   BeakerIcon,
   ChevronLeftIcon,
   CloudArrowUpIcon,
+  CloudIcon,
   Cog6ToothIcon,
   EnvelopeIcon,
   ForwardIcon,
@@ -71,23 +72,13 @@ export function OrganizationsSideMenu() {
       ...items,
       {
         name: "Repositories",
-        icon: <ServerIcon className={iconStyle} />,
+        icon: <CloudIcon className={iconStyle} />,
         to: `/orgs/${currentOrganization.slug}/projects`,
       },
       {
         name: "API Integrations",
         icon: <SquaresPlusIcon className={iconStyle} />,
         to: `/orgs/${currentOrganization.slug}/integrations`,
-      },
-      {
-        name: "Team",
-        icon: <UsersIcon className={iconStyle} />,
-        to: `/orgs/${currentOrganization.slug}/members`,
-      },
-      {
-        name: "New Workflow",
-        icon: <PlusCircleIcon className={iconStyle} />,
-        to: `/orgs/${currentOrganization.slug}/workflows/new`,
       },
     ];
   }
