@@ -1,10 +1,14 @@
-import { DocumentTextIcon } from "@heroicons/react/24/outline";
+import {
+  ArrowTopRightOnSquareIcon,
+  ChatBubbleLeftRightIcon,
+  DocumentTextIcon,
+} from "@heroicons/react/24/outline";
 import { Link } from "@remix-run/react";
 import { useOptionalUser } from "~/hooks/useUser";
 import { EnvironmentMenu } from "../../routes/resources/environment";
 import { OrganizationMenu } from "../navigation/OrganizationMenu";
 import { WorkflowMenu } from "../navigation/WorkflowMenu";
-import { TertiaryA } from "../primitives/Buttons";
+import { SecondaryA, TertiaryA } from "../primitives/Buttons";
 import { UserProfileMenu } from "../UserProfileMenu";
 
 type HeaderProps = {
@@ -22,11 +26,15 @@ export function Header({ children }: HeaderProps) {
         <EnvironmentMenu />
       </div>
       <div className="flex flex-1 justify-center">{children}</div>
-      <div className="flex items-center gap-4">
-        <TertiaryA href="https://docs.trigger.dev" target="_blank">
-          <DocumentTextIcon className="h-5 w-5" />
-          Docs
-        </TertiaryA>
+      <div className="flex items-center gap-2">
+        <SecondaryA href="https://docs.trigger.dev" target="_blank">
+          <ArrowTopRightOnSquareIcon className="-ml-1 h-4 w-4" />
+          Documentation
+        </SecondaryA>
+        <SecondaryA href="mailto:help@trigger.dev">
+          <ChatBubbleLeftRightIcon className="-ml-1 h-4 w-4" />
+          Send us feedback
+        </SecondaryA>
         {user ? (
           <UserProfileMenu user={user} />
         ) : (
