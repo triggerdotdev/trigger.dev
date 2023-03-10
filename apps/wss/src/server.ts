@@ -429,7 +429,16 @@ export class TriggerServer {
               );
             }
 
-            if (properties["x-ttl"] && messageAttributes.eventTimestamp) {
+            const runAttempt =
+              typeof properties["x-attempt"] === "string"
+                ? Number(properties["x-attempt"])
+                : 0;
+
+            if (
+              properties["x-ttl"] &&
+              messageAttributes.eventTimestamp &&
+              runAttempt === 0
+            ) {
               const ttl = properties["x-ttl"];
               const eventTimestamp = messageAttributes.eventTimestamp;
               const now = Date.now();
