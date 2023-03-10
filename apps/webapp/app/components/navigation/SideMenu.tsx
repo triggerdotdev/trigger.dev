@@ -272,20 +272,12 @@ function SideMenu({
           <div className="flex flex-col gap-6">
             <ul className="ml-3 mr-2 flex flex-col gap-2">
               <li className="flex w-full items-center justify-between">
-                <TertiaryA
-                  href="https://docs.trigger.dev/guides/environments"
-                  target="_blank"
-                  className="group flex items-center gap-1 transition"
+                <Body
+                  size="extra-small"
+                  className={`overflow-hidden text-slate-300 transition group-hover:text-slate-400 ${menuSmallTitleStyle}`}
                 >
-                  <InformationCircleIcon className="h-4 w-4 text-slate-500 transition group-hover:text-slate-400" />
-                  <Body
-                    size="extra-small"
-                    className={`overflow-hidden text-slate-300 transition group-hover:text-slate-400 ${menuSmallTitleStyle}`}
-                  >
-                    API keys
-                  </Body>
-                </TertiaryA>
-
+                  API keys
+                </Body>
                 {!isShowingKeys ? (
                   <TertiaryButton
                     onClick={() => setIsShowingKeys(true)}
@@ -304,35 +296,39 @@ function SideMenu({
               </li>
               {organization.environments.map((environment) => {
                 return (
-                  <Tooltip
-                    key={environment.id}
-                    text={
-                      environment.slug === "live"
-                        ? "Use in live / production"
-                        : "Use in dev / local"
-                    }
-                  >
-                    <li className="flex w-full flex-col justify-between">
-                      <div className="relative flex items-center">
-                        <EnvironmentIcon
-                          slug={environment.slug}
-                          className="absolute top-4 left-2"
-                        />
-                        <CopyTextPanel
-                          value={environment.apiKey}
-                          text={
-                            isShowingKeys
-                              ? environment.apiKey
-                              : `${titleCase(environment.slug)}`
-                          }
-                          variant="slate"
-                          className="pl-6 text-slate-300 hover:text-slate-300"
-                        />
-                      </div>
-                    </li>
-                  </Tooltip>
+                  <li className="flex w-full flex-col justify-between">
+                    <div className="relative flex items-center">
+                      <EnvironmentIcon
+                        slug={environment.slug}
+                        className="absolute top-4 left-2"
+                      />
+                      <CopyTextPanel
+                        value={environment.apiKey}
+                        text={
+                          isShowingKeys
+                            ? environment.apiKey
+                            : `${titleCase(environment.slug)}`
+                        }
+                        variant="slate"
+                        className="pl-6 text-slate-300 hover:text-slate-300"
+                      />
+                    </div>
+                  </li>
                 );
               })}
+              <Body size="extra-small" className="mt-1 text-slate-500">
+                Copy these keys into your workflow code. Use the Live key for
+                production and Development key for local. Learn more about API
+                keys{" "}
+                <a
+                  href="https://docs.trigger.dev/guides/environments"
+                  target="_blank"
+                  className="underline underline-offset-2 transition hover:text-slate-200"
+                >
+                  here
+                </a>
+                .
+              </Body>
             </ul>
           </div>
         </nav>
