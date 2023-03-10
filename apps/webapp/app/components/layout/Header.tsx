@@ -1,14 +1,13 @@
 import {
   ArrowTopRightOnSquareIcon,
   ChatBubbleLeftRightIcon,
-  DocumentTextIcon,
 } from "@heroicons/react/24/outline";
 import { Link } from "@remix-run/react";
 import { useOptionalUser } from "~/hooks/useUser";
 import { EnvironmentMenu } from "../../routes/resources/environment";
 import { OrganizationMenu } from "../navigation/OrganizationMenu";
 import { WorkflowMenu } from "../navigation/WorkflowMenu";
-import { SecondaryA, TertiaryA } from "../primitives/Buttons";
+import { SecondaryA } from "../primitives/Buttons";
 import { UserProfileMenu } from "../UserProfileMenu";
 
 type HeaderProps = {
