@@ -5,6 +5,7 @@ import {
 } from "@heroicons/react/20/solid";
 import {
   ArrowTopRightOnSquareIcon,
+  CloudArrowUpIcon,
   LockClosedIcon,
   LockOpenIcon,
 } from "@heroicons/react/24/outline";
@@ -106,17 +107,20 @@ export default function Page() {
       <Container>
         <div className="flex items-start justify-between">
           <Title>Repositories</Title>
-          <PrimaryLink
-            to={`/apps/github?redirectTo=${encodeURIComponent(redirectTo)}`}
-          >
-            <OctoKitty className="-ml-1 h-5 w-5" />
-            Connect another GitHub account
-          </PrimaryLink>
+          {appAuthorizations.length === 0 ? (
+            <></>
+          ) : (
+            <PrimaryLink
+              to={`/apps/github?redirectTo=${encodeURIComponent(redirectTo)}`}
+            >
+              <OctoKitty className="-ml-1 h-5 w-5" />
+              Connect another GitHub account
+            </PrimaryLink>
+          )}
         </div>
         {appAuthorizations.length === 0 ? (
           <>
             <ConnectToGithub redirectTo={redirectTo} />
-            <ConfigureGithub />
           </>
         ) : (
           <>
@@ -242,6 +246,7 @@ export default function Page() {
                                     />
 
                                     <PrimaryButton type="submit" size="regular">
+                                      <CloudArrowUpIcon className="-ml-1 h-5 w-5" />
                                       Deploy
                                     </PrimaryButton>
                                   </Form>
@@ -267,10 +272,9 @@ function ConnectToGithub({ redirectTo }: { redirectTo: string }) {
   return (
     <>
       <SubTitle className="flex items-center">
-        <StepNumber active stepNumber="1" />
         Grant GitHub repo access to get started
       </SubTitle>
-      <Panel className="mb-6 flex h-56 flex-col items-center justify-center gap-4">
+      <Panel className="mb-6 flex h-56 flex-col items-center justify-center gap-6">
         <PrimaryLink
           size="large"
           to={`/apps/github?redirectTo=${encodeURIComponent(redirectTo)}`}
@@ -290,24 +294,6 @@ function ConnectToGithub({ redirectTo }: { redirectTo: string }) {
           </a>
         </Body>
       </Panel>
-    </>
-  );
-}
-
-function ConfigureGithub() {
-  return (
-    <>
-      <div className="mt-6">
-        <SubTitle className="flex items-center">
-          <StepNumber stepNumber="2" />
-          Create your GitHub repository from a template
-        </SubTitle>
-        <Panel className="flex w-full items-center justify-center gap-6">
-          <OctoKitty className="h-10 w-10 text-slate-600" />
-          <div className="h-[1px] w-16 border border-dashed border-slate-600"></div>
-          <FolderIcon className="h-10 w-10 text-slate-600" />
-        </Panel>
-      </div>
     </>
   );
 }
