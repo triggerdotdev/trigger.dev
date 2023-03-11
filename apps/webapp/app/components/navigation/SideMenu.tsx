@@ -1,25 +1,17 @@
-import {
-  EyeIcon,
-  EyeSlashIcon,
-  InformationCircleIcon,
-} from "@heroicons/react/20/solid";
+import { EyeIcon, EyeSlashIcon } from "@heroicons/react/20/solid";
 import {
   ArrowsRightLeftIcon,
-  ArrowTopRightOnSquareIcon,
   BeakerIcon,
-  ChevronLeftIcon,
   CloudArrowUpIcon,
   CloudIcon,
   Cog6ToothIcon,
-  EnvelopeIcon,
   ForwardIcon,
   HomeIcon,
-  PhoneArrowUpRightIcon,
   QueueListIcon,
   Squares2X2Icon,
   SquaresPlusIcon,
 } from "@heroicons/react/24/outline";
-import { Link, NavLink } from "@remix-run/react";
+import { NavLink } from "@remix-run/react";
 import { useState } from "react";
 import invariant from "tiny-invariant";
 import { CurrentProject } from "~/features/ee/projects/routes/projects/$projectP";
@@ -32,15 +24,17 @@ import { useCurrentWorkflow } from "~/hooks/useWorkflows";
 import { EnvironmentIcon } from "~/routes/resources/environment";
 import { titleCase } from "~/utils";
 import { CopyTextPanel } from "../CopyTextButton";
-import { Logo } from "../Logo";
 import { LogoIcon } from "../LogoIcon";
-import { TertiaryA, TertiaryButton } from "../primitives/Buttons";
+import { TertiaryButton } from "../primitives/Buttons";
 import { Body } from "../primitives/text/Body";
 import { Header1 } from "../primitives/text/Headers";
-import { Tooltip } from "../primitives/Tooltip";
 
 export function SideMenuContainer({ children }: { children: React.ReactNode }) {
-  return <div className="grid h-full grid-cols-[250px_2fr]">{children}</div>;
+  return (
+    <div className="grid h-full grid-cols-[250px_2fr] overflow-hidden">
+      {children}
+    </div>
+  );
 }
 
 type SideMenuItem = {
@@ -260,8 +254,11 @@ function SideMenu({
               </NavLink>
             </div> */}
 
-            <div className="flex h-[3.6rem] items-center overflow-hidden text-ellipsis whitespace-nowrap border-b border-slate-800 pl-4">
-              <Header1 size="extra-small" className=" text-slate-300">
+            <div className="flex h-[3.6rem] items-center border-b border-slate-800 pl-5 pr-1">
+              <Header1
+                size="extra-small"
+                className="overflow-hidden text-ellipsis whitespace-nowrap text-slate-300"
+              >
                 {title}
               </Header1>
             </div>
