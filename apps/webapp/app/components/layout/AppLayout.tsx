@@ -18,9 +18,7 @@ export function AppLayoutThreeCol({
   }
 
   return (
-    <div className="grid h-full w-full grid-cols-[3.6rem_auto_auto]">
-      {children}
-    </div>
+    <div className="grid h-full w-full grid-cols-[3.6rem_auto]">{children}</div>
   );
 }
 

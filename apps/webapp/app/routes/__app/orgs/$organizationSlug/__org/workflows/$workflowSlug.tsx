@@ -6,7 +6,7 @@ import {
 } from "@trigger.dev/common-schemas";
 import { typedjson } from "remix-typedjson";
 import invariant from "tiny-invariant";
-import { AppBody } from "~/components/layout/AppLayout";
+import { AppBody, AppLayoutTwoCol } from "~/components/layout/AppLayout";
 import { Container } from "~/components/layout/Container";
 import { Header } from "~/components/layout/Header";
 import {
@@ -163,14 +163,14 @@ export const loader = async ({ request, params }: LoaderArgs) => {
 
 export default function WorkflowSlugLayout() {
   return (
-    <AppBody>
-      <SideMenuContainer>
-        <WorkflowsSideMenu />
+    <SideMenuContainer>
+      <WorkflowsSideMenu />
+      <div className="grid w-full grid-rows-[3.6rem_auto] overflow-y-auto bg-slate-850">
         <Header context="workflows" />
         <Container>
           <Outlet />
         </Container>
-      </SideMenuContainer>
-    </AppBody>
+      </div>
+    </SideMenuContainer>
   );
 }

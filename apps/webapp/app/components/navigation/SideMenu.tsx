@@ -40,7 +40,7 @@ import { Header1 } from "../primitives/text/Headers";
 import { Tooltip } from "../primitives/Tooltip";
 
 export function SideMenuContainer({ children }: { children: React.ReactNode }) {
-  return <div className="grid h-full grid-cols-[300px_2fr]">{children}</div>;
+  return <div className="grid h-full grid-cols-[250px_2fr]">{children}</div>;
 }
 
 type SideMenuItem = {

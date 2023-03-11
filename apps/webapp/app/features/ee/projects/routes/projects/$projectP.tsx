@@ -52,18 +52,18 @@ export default function ProjectLayout() {
   console.log("ProjectLayout");
 
   return (
-    <AppBody>
-      <SideMenuContainer>
-        <ProjectSideMenu
-          project={project}
-          backPath={`/orgs/${organizationSlug}`}
-        />
+    <SideMenuContainer>
+      <ProjectSideMenu
+        project={project}
+        backPath={`/orgs/${organizationSlug}`}
+      />
+      <div className="grid w-full grid-rows-[3.6rem_auto] overflow-y-auto bg-slate-850">
         <Header context="projects" />
         <Container>
           <Outlet />
-        </Container>
-      </SideMenuContainer>
-    </AppBody>
+        </Container>{" "}
+      </div>
+    </SideMenuContainer>
   );
 }
 
