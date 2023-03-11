@@ -232,6 +232,7 @@ const activeStyle =
 
 function SideMenu({
   items,
+  title,
 }: {
   title: string;
   items: SideMenuItem[];
@@ -246,29 +247,36 @@ function SideMenu({
     <div className="flex min-h-0 flex-1 flex-col border-r border-slate-800 bg-slate-950">
       <div className="flex flex-1 flex-col overflow-y-auto pb-4">
         <nav
-          className="mt-2 flex h-full flex-col justify-between space-y-1 px-2"
+          className="flex h-full flex-col justify-between space-y-1"
           aria-label="Side menu"
         >
           <div className="flex flex-col">
-            <div className="mb-2 p-3">
+            {/* <div className="mb-2 p-3">
               <NavLink to="/">
                 <Logo className="h-7 w-[160px]" />
               </NavLink>
-            </div>
+            </div> */}
 
-            {items.map((item) => (
-              <NavLink
-                key={item.name}
-                to={item.to}
-                end
-                className={({ isActive }) =>
-                  isActive ? activeStyle : defaultStyle
-                }
-              >
-                {item.icon}
-                <span>{item.name}</span>
-              </NavLink>
-            ))}
+            <div className="flex h-[3.6rem] w-full items-center overflow-hidden text-ellipsis whitespace-nowrap border-b border-slate-800 pl-4">
+              <Header1 size="extra-small" className=" text-slate-300">
+                {title}
+              </Header1>
+            </div>
+            <div className="p-2">
+              {items.map((item) => (
+                <NavLink
+                  key={item.name}
+                  to={item.to}
+                  end
+                  className={({ isActive }) =>
+                    isActive ? activeStyle : defaultStyle
+                  }
+                >
+                  {item.icon}
+                  <span>{item.name}</span>
+                </NavLink>
+              ))}
+            </div>
           </div>
           <div className="flex flex-col gap-6">
             <ul className="ml-3 mr-2 flex flex-col gap-2">
