@@ -10,7 +10,7 @@ export function AppLayoutThreeCol({
 }) {
   if (impersonationId) {
     return (
-      <div className="grid h-full w-full grid-rows-[2rem_3rem_auto_2rem]">
+      <div className="grid h-full w-full grid-rows-[3.6rem_auto_auto]">
         <ImpersonationBanner impersonationId={impersonationId} />
         {children}
       </div>
@@ -18,7 +18,7 @@ export function AppLayoutThreeCol({
   }
 
   return (
-    <div className="grid h-full w-full grid-cols-[3rem_auto_auto]">
+    <div className="grid h-full w-full grid-cols-[3.6rem_auto_auto]">
       {children}
     </div>
   );
