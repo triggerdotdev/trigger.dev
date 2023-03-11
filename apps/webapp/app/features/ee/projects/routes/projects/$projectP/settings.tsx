@@ -1,3 +1,4 @@
+import { TrashIcon } from "@heroicons/react/24/outline";
 import { Form, useTransition } from "@remix-run/react";
 import { ActionArgs } from "@remix-run/server-runtime";
 import { redirect, typedjson, useTypedActionData } from "remix-typedjson";
@@ -124,6 +125,20 @@ export default function ProjectSettingsPage() {
     <div className="flex h-full flex-col">
       <div className="flex items-start justify-between">
         <Header1 className="mb-6">Settings</Header1>
+        <Form
+          method="delete"
+          reloadDocument
+          onSubmit={(e) =>
+            !confirm(
+              "Are you sure you want to remove this repository? This action cannot be undone. Any running deployments will be stopped."
+            ) && e.preventDefault()
+          }
+        >
+          <DangerButton name="action" value="destroy" type="submit">
+            <TrashIcon className="-ml-1.5 h-5 w-5" />
+            Remove repository
+          </DangerButton>
+        </Form>
       </div>
 
       {needsEnvVars && (
@@ -132,12 +147,12 @@ export default function ProjectSettingsPage() {
           className="mb-6"
         ></PanelWarning>
       )}
-
-      <Panel className="w-2/3 !p-4">
+      <SubTitle>Build and deploy</SubTitle>
+      <Panel className="px-4 py-4">
         <Form method="post">
           {envVars.length > 0 && (
             <>
-              <SubTitle>Environment Variables</SubTitle>
+              <SubTitle>Environment variables</SubTitle>
               <div className="mb-3 grid grid-cols-1 gap-4">
                 {envVars.map((envVar) => (
                   <InputGroup key={envVar.key}>
@@ -166,10 +181,9 @@ export default function ProjectSettingsPage() {
             </>
           )}
 
-          <SubTitle>Build & Deploy</SubTitle>
-          <div className="mb-3 grid grid-cols-2 gap-4">
+          <div className="mb-3 grid grid-cols-2 items-start gap-4">
             <InputGroup>
-              <Label htmlFor="autoDeploy">Auto Deploy</Label>
+              <Label htmlFor="autoDeploy">Auto deploy</Label>
               <Select
                 disabled={isSubmittingOrLoading}
                 name="autoDeploy"
@@ -185,7 +199,7 @@ export default function ProjectSettingsPage() {
             </InputGroup>
 
             <InputGroup>
-              <Label htmlFor="branch">Repo Branch</Label>
+              <Label htmlFor="branch">Repo branch</Label>
               <Input
                 id="branch"
                 name="branch"
@@ -202,9 +216,9 @@ export default function ProjectSettingsPage() {
                 )}
             </InputGroup>
           </div>
-          <div className="mb-3 grid grid-cols-2 gap-4">
+          <div className="mb-3 grid grid-cols-2 items-start gap-4">
             <InputGroup>
-              <Label htmlFor="buildCommand">Build Command</Label>
+              <Label htmlFor="buildCommand">Build command</Label>
               <Input
                 id="buildCommand"
                 name="buildCommand"
@@ -225,7 +239,7 @@ export default function ProjectSettingsPage() {
             </InputGroup>
 
             <InputGroup>
-              <Label htmlFor="startCommand">Start Command</Label>
+              <Label htmlFor="startCommand">Start command</Label>
               <Input
                 id="startCommand"
                 name="startCommand"
@@ -256,22 +270,6 @@ export default function ProjectSettingsPage() {
           </div>
         </Form>
       </Panel>
-
-      <div className="mt-8 flex gap-3">
-        <Form
-          method="delete"
-          reloadDocument
-          onSubmit={(e) =>
-            !confirm(
-              "Are you sure you want to remove this repository? This action cannot be undone. Any running deployments will be stopped."
-            ) && e.preventDefault()
-          }
-        >
-          <DangerButton name="action" value="destroy" type="submit">
-            Remove repository
-          </DangerButton>
-        </Form>
-      </div>
     </div>
   );
 }
