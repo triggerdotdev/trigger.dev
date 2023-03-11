@@ -97,8 +97,11 @@ export function OrganizationSideMenuCollapsed() {
   }
 
   return (
-    <ul className="flex h-full flex-col items-center justify-start space-y-2 border-r border-slate-800 bg-slate-950 pt-2.5">
-      <NavLink to="/">
+    <ul className="flex h-full flex-col items-center justify-start space-y-2 border-r border-slate-800 bg-slate-950">
+      <NavLink
+        to="/"
+        className="flex h-[3.6rem] w-full items-center justify-center border-b border-slate-800"
+      >
         <li className={sideMenuCollapsedItem}>
           <LogoIcon className="h-6 w-6" />
         </li>
@@ -257,12 +260,18 @@ function SideMenu({
               </NavLink>
             </div> */}
 
-            <div className="flex h-[3.6rem] w-full items-center overflow-hidden text-ellipsis whitespace-nowrap border-b border-slate-800 pl-4">
+            <div className="flex h-[3.6rem] items-center overflow-hidden text-ellipsis whitespace-nowrap border-b border-slate-800 pl-4">
               <Header1 size="extra-small" className=" text-slate-300">
                 {title}
               </Header1>
             </div>
             <div className="p-2">
+              <Body
+                size="small"
+                className="py-3 pl-3 uppercase tracking-wide text-slate-400"
+              >
+                Workflow
+              </Body>
               {items.map((item) => (
                 <NavLink
                   key={item.name}
