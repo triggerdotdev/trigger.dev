@@ -1,6 +1,6 @@
 import type { UseDataFunctionReturn } from "remix-typedjson/dist/remix";
 import type { loader as orgLoader } from "~/routes/__app/orgs/$organizationSlug";
-import type { loader as workflowLoader } from "~/routes/__app/orgs/$organizationSlug/workflows/$workflowSlug";
+import type { loader as workflowLoader } from "~/routes/__app/orgs/$organizationSlug/__org/workflows/$workflowSlug";
 import { hydrateObject, useMatchesData } from "~/utils";
 
 export function useWorkflows() {
@@ -19,7 +19,7 @@ export type OrgWorkflow = NonNullable<ReturnType<typeof useWorkflows>>[number];
 
 export function useCurrentWorkflow() {
   const routeMatch = useMatchesData(
-    "routes/__app/orgs/$organizationSlug/workflows/$workflowSlug"
+    "routes/__app/orgs/$organizationSlug/__org/workflows/$workflowSlug"
   );
 
   if (!routeMatch || !routeMatch.data.workflow) {

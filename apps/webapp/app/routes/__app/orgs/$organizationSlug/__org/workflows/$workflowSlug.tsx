@@ -161,11 +161,12 @@ export const loader = async ({ request, params }: LoaderArgs) => {
   });
 };
 
-export default function Page() {
+export default function WorkflowSlugLayout() {
   return (
     <AppBody>
       <SideMenuContainer>
         <WorkflowsSideMenu />
+        <Header context="workflows" />
         <Container>
           <Outlet />
         </Container>

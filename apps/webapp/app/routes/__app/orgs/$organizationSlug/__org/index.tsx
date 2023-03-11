@@ -48,7 +48,7 @@ export default function Page() {
 
   return (
     <AppBody>
-      <Header />
+      <Header context="workflows" />
       <Container>
         {workflows.length === 0 ? (
           <>

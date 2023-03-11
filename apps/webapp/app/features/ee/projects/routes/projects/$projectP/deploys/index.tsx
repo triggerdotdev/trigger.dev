@@ -6,8 +6,8 @@ import { PanelWarning } from "~/components/layout/PanelInfo";
 import { TertiaryLink } from "~/components/primitives/Buttons";
 import { Title } from "~/components/primitives/text/Title";
 import { useCurrentProject } from "../../$projectP";
-import { DeploymentListItem } from "../../../components/DeploymentListItem";
-import { DeploymentListPresenter } from "../../../presenters/deploymentListPresenter.server";
+import { DeploymentListItem } from "../../../../components/DeploymentListItem";
+import { DeploymentListPresenter } from "../../../../presenters/deploymentListPresenter.server";
 
 export async function loader({ params }: LoaderArgs) {
   const { projectP, organizationSlug } = z

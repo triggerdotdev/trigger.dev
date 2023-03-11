@@ -21,7 +21,7 @@ import { DeploymentPresenter } from "~/features/ee/projects/presenters/deploymen
 import { CancelProjectDeployment } from "~/features/ee/projects/services/cancelProjectDeployment.server";
 import { StopProjectDeployment } from "~/features/ee/projects/services/stopProjectDeployment.server";
 import { useCurrentProject } from "../../$projectP";
-import { LogOutput } from "../../../components/LogOutput";
+import { LogOutput } from "../../../../components/LogOutput";
 
 export async function loader({ request, params }: LoaderArgs) {
   const { projectP, organizationSlug, deployId } = z

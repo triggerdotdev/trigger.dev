@@ -11,8 +11,8 @@ import { Body } from "~/components/primitives/text/Body";
 import { Header1, Header4 } from "~/components/primitives/text/Headers";
 import { SubTitle } from "~/components/primitives/text/SubTitle";
 import { useCurrentProject } from "../$projectP";
-import { LogOutput } from "../../components/LogOutput";
-import { ProjectLogsPresenter } from "../../presenters/projectLogsPresenter.server";
+import { LogOutput } from "../../../components/LogOutput";
+import { ProjectLogsPresenter } from "../../../presenters/projectLogsPresenter.server";
 
 export async function loader({ params }: LoaderArgs) {
   const { projectP, organizationSlug } = z

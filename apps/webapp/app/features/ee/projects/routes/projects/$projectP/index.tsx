@@ -29,8 +29,8 @@ import { WorkflowList } from "~/components/workflows/workflowList";
 import { ProjectOverviewPresenter } from "~/features/ee/projects/presenters/projectOverviewPresenter.server";
 import { redirectWithErrorMessage } from "~/models/message.server";
 import { useCurrentProject } from "../$projectP";
-import { DeploymentListItem } from "../../components/DeploymentListItem";
-import { ManuallyDeployProject } from "../../services/manuallyDeployProject.server";
+import { DeploymentListItem } from "../../../components/DeploymentListItem";
+import { ManuallyDeployProject } from "../../../services/manuallyDeployProject.server";
 import {
   deploySummaryGridStyles,
   deploySummaryLabelStyles,

@@ -17,8 +17,8 @@ import {
   setToastMessageCookie,
 } from "~/models/message.server";
 import { useCurrentProject } from "../$projectP";
-import { DisableProjectService } from "../../services/disableProject.server";
-import { UpdateProjectSettings } from "../../services/updateProjectSettings.server";
+import { DisableProjectService } from "../../../services/disableProject.server";
+import { UpdateProjectSettings } from "../../../services/updateProjectSettings.server";
 
 export async function action({ params, request }: ActionArgs) {
   const { projectP, organizationSlug } = z

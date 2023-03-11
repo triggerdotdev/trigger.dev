@@ -3,7 +3,9 @@ import type { LoaderArgs } from "@remix-run/server-runtime";
 import type { UseDataFunctionReturn } from "remix-typedjson";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import invariant from "tiny-invariant";
+import { AppBody } from "~/components/layout/AppLayout";
 import { Container } from "~/components/layout/Container";
+import { Header } from "~/components/layout/Header";
 import {
   ProjectSideMenu,
   SideMenuContainer,
@@ -13,7 +15,7 @@ import { hydrateObject, useMatchesData } from "~/utils";
 import {
   hasAllEnvVars,
   parseEnvVars,
-} from "../models/repositoryProject.server";
+} from "../../models/repositoryProject.server";
 
 export async function loader({ params }: LoaderArgs) {
   const { organizationSlug, projectP } = params;
@@ -47,24 +49,27 @@ export async function loader({ params }: LoaderArgs) {
 export default function ProjectLayout() {
   const { project, organizationSlug } = useTypedLoaderData<typeof loader>();
 
+  console.log("ProjectLayout");
+
   return (
-    <>
+    <AppBody>
       <SideMenuContainer>
         <ProjectSideMenu
           project={project}
           backPath={`/orgs/${organizationSlug}`}
         />
+        <Header context="projects" />
         <Container>
           <Outlet />
         </Container>
       </SideMenuContainer>
-    </>
+    </AppBody>
   );
 }
 
 export function useCurrentProject() {
   const routeMatch = useMatchesData(
-    "routes/__app/orgs/$organizationSlug/projects/$projectP"
+    "routes/__app/orgs/$organizationSlug/__org/projects/$projectP"
   );
 
   if (!routeMatch || !routeMatch.data.project) {

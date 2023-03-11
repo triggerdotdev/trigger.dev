@@ -44,7 +44,7 @@ export default function Integrations() {
 
   return (
     <AppBody>
-      <Header />
+      <Header context="workflows" />
       <Container>
         <Title>API Integrations</Title>
         <div>

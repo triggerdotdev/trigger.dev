@@ -13,6 +13,7 @@ import {
   Cog6ToothIcon,
   EnvelopeIcon,
   ForwardIcon,
+  HomeIcon,
   PhoneArrowUpRightIcon,
   QueueListIcon,
   Squares2X2Icon,
@@ -21,7 +22,7 @@ import {
 import { Link, NavLink } from "@remix-run/react";
 import { useState } from "react";
 import invariant from "tiny-invariant";
-import { CurrentProject } from "~/features/ee/projects/routes/$projectP";
+import { CurrentProject } from "~/features/ee/projects/routes/projects/$projectP";
 import { useCurrentEnvironment } from "~/hooks/useEnvironments";
 import {
   useCurrentOrganization,
@@ -143,7 +144,7 @@ export function WorkflowsSideMenu() {
   let items: SideMenuItem[] = [
     {
       name: "Overview",
-      icon: <ArrowsRightLeftIcon className={iconStyle} />,
+      icon: <HomeIcon className={iconStyle} />,
       to: ``,
     },
   ];
@@ -201,7 +202,7 @@ export function ProjectSideMenu({
   const items: SideMenuItem[] = [
     {
       name: "Overview",
-      icon: <ArrowsRightLeftIcon className={iconStyle} />,
+      icon: <HomeIcon className={iconStyle} />,
       to: ``,
     },
     {
@@ -296,7 +297,10 @@ function SideMenu({
               </li>
               {organization.environments.map((environment) => {
                 return (
-                  <li className="flex w-full flex-col justify-between">
+                  <li
+                    key={environment.id}
+                    className="flex w-full flex-col justify-between"
+                  >
                     <div className="relative flex items-center">
                       <EnvironmentIcon
                         slug={environment.slug}

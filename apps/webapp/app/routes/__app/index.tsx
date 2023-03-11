@@ -21,7 +21,7 @@ export default function AppLayout() {
   return (
     <>
       <AppBody>
-        <Header />
+        <Header context="workflows" />
         <div className="flex h-80 w-full items-center justify-center bg-slate-900/50">
           <h1 className="relative bottom-6 text-4xl text-slate-400">
             Your Organizations

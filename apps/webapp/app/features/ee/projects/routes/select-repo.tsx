@@ -103,7 +103,6 @@ export default function Page() {
 
   return (
     <AppBody>
-      <Header />
       <Container>
         <div className="flex items-start justify-between">
           <Title>Repositories</Title>
