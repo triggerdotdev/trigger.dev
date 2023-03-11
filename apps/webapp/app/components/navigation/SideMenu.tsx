@@ -11,11 +11,12 @@ import {
   Squares2X2Icon,
   SquaresPlusIcon,
 } from "@heroicons/react/24/outline";
-import { NavLink } from "@remix-run/react";
+import { Link, NavLink, useLocation } from "@remix-run/react";
 import { useState } from "react";
 import invariant from "tiny-invariant";
 import { CurrentProject } from "~/features/ee/projects/routes/projects/$projectP";
 import { useCurrentEnvironment } from "~/hooks/useEnvironments";
+import { useIsOrgChildPage } from "~/hooks/useIsOrgChildPage";
 import {
   useCurrentOrganization,
   useOrganizations,
@@ -24,6 +25,7 @@ import { useCurrentWorkflow } from "~/hooks/useWorkflows";
 import { EnvironmentIcon } from "~/routes/resources/environment";
 import { titleCase } from "~/utils";
 import { CopyTextPanel } from "../CopyTextButton";
+import { Logo } from "../Logo";
 import { LogoIcon } from "../LogoIcon";
 import { TertiaryButton } from "../primitives/Buttons";
 import { MenuTitleToolTip } from "../primitives/MenuTitleToolTip";
@@ -79,7 +81,12 @@ export function OrganizationsSideMenu() {
   }
 
   return (
-    <SideMenu title={currentOrganization.title} items={items} backPath="/" />
+    <SideMenu
+      subtitle="Organization"
+      title={currentOrganization.title}
+      items={items}
+      backPath="/"
+    />
   );
 }
 
@@ -102,16 +109,11 @@ export function OrganizationSideMenuCollapsed() {
         </li>
       </NavLink>
       <MenuTitleToolTip text="Workflows">
-        <NavLink
-          to={`/orgs/${currentOrganization.slug}`}
-          className={({ isActive }) =>
-            isActive ? activeCollapsedStyle : defaultCollapsedStyle
-          }
-        >
+        <WorkflowsNavLink slug={currentOrganization.slug}>
           <li>
             <ArrowsRightLeftIcon className="h-6 w-6 text-slate-300" />
           </li>
-        </NavLink>
+        </WorkflowsNavLink>
       </MenuTitleToolTip>
       <MenuTitleToolTip text="Repositories">
         <NavLink
@@ -202,6 +204,7 @@ export function WorkflowsSideMenu() {
 
   return (
     <SideMenu
+      subtitle="Workflow"
       title={currentWorkflow.title}
       items={items}
       backPath={`/orgs/${organization.slug}`}
@@ -243,7 +246,14 @@ export function ProjectSideMenu({
     },
   ];
 
-  return <SideMenu title={project.name} items={items} backPath={backPath} />;
+  return (
+    <SideMenu
+      subtitle="Repository"
+      title={project.name}
+      items={items}
+      backPath={backPath}
+    />
+  );
 }
 
 const defaultStyle =
@@ -254,13 +264,17 @@ const activeStyle =
 function SideMenu({
   items,
   title,
+  subtitle,
 }: {
   title: string;
   items: SideMenuItem[];
   backPath: string;
+  subtitle: string;
 }) {
   const organization = useCurrentOrganization();
   invariant(organization, "Organization must be defined");
+
+  const isOrgChildPage = useIsOrgChildPage();
 
   const [isShowingKeys, setIsShowingKeys] = useState(false);
 
@@ -272,26 +286,29 @@ function SideMenu({
           aria-label="Side menu"
         >
           <div className="flex flex-col">
-            {/* <div className="mb-2 p-3">
-              <NavLink to="/">
-                <Logo className="h-7 w-[160px]" />
-              </NavLink>
-            </div> */}
+            {isOrgChildPage ? (
+              <div className="flex h-[3.6rem] items-center border-b border-slate-800 pl-5 pr-1">
+                <Header1
+                  size="extra-small"
+                  className="overflow-hidden text-ellipsis whitespace-nowrap text-slate-300"
+                >
+                  {title}
+                </Header1>
+              </div>
+            ) : (
+              <div className="mb-2 p-3">
+                <NavLink to="/">
+                  <Logo className="h-7 w-[160px]" />
+                </NavLink>
+              </div>
+            )}
 
-            <div className="flex h-[3.6rem] items-center border-b border-slate-800 pl-5 pr-1">
-              <Header1
-                size="extra-small"
-                className="overflow-hidden text-ellipsis whitespace-nowrap text-slate-300"
-              >
-                {title}
-              </Header1>
-            </div>
             <div className="p-2">
               <Body
                 size="small"
                 className="py-3 pl-3 uppercase tracking-wider text-slate-400"
               >
-                Workflow
+                {subtitle}
               </Body>
               {items.map((item) => (
                 <NavLink
@@ -376,6 +393,30 @@ function SideMenu({
         </nav>
       </div>
     </div>
+  );
+}
+
+function WorkflowsNavLink({
+  slug,
+  children,
+}: {
+  slug: string;
+  children: React.ReactNode;
+}) {
+  const location = useLocation();
+
+  const isActive =
+    location.pathname === `/orgs/${slug}` ||
+    location.pathname.startsWith(`/orgs/${slug}/workflows`);
+
+  return (
+    <Link
+      to={`/orgs/${slug}`}
+      prefetch="intent"
+      className={isActive ? activeCollapsedStyle : defaultCollapsedStyle}
+    >
+      {children}
+    </Link>
   );
 }
 

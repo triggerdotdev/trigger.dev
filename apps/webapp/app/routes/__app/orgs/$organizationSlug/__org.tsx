@@ -1,30 +1,20 @@
-import { Outlet, useMatches } from "@remix-run/react";
+import { Outlet } from "@remix-run/react";
 import {
   AppLayoutThreeCol,
   AppLayoutTwoCol,
 } from "~/components/layout/AppLayout";
 import {
-  OrganizationsSideMenu,
   OrganizationSideMenuCollapsed,
+  OrganizationsSideMenu,
 } from "~/components/navigation/SideMenu";
+import { useIsOrgChildPage } from "~/hooks/useIsOrgChildPage";
 
 export default function OrganizationLayout() {
-  const matchesData = useMatches();
-
-  const isThreeColLayout = matchesData.some((matchData) => {
-    return (
-      matchData.id.startsWith(
-        "routes/__app/orgs/$organizationSlug/__org/workflows/$workflowSlug"
-      ) ||
-      matchData.id.startsWith(
-        "routes/__app/orgs/$organizationSlug/__org/projects/$projectP"
-      )
-    );
-  });
+  const isOrgChildPage = useIsOrgChildPage();
 
   return (
     <>
-      {isThreeColLayout ? (
+      {isOrgChildPage ? (
         <AppLayoutThreeCol>
           <OrganizationSideMenuCollapsed />
           <Outlet />

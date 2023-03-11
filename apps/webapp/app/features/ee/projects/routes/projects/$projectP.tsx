@@ -49,8 +49,6 @@ export async function loader({ params }: LoaderArgs) {
 export default function ProjectLayout() {
   const { project, organizationSlug } = useTypedLoaderData<typeof loader>();
 
-  console.log("ProjectLayout");
-
   return (
     <SideMenuContainer>
       <ProjectSideMenu
