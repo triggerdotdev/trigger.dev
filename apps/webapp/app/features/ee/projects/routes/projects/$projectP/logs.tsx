@@ -35,6 +35,11 @@ export default function ProjectLogsPage() {
         <div className="flex items-start justify-between">
           <Header1 className="mb-6">Logs</Header1>
         </div>
+        {currentDeployment === null ? (
+          <Body className="text-slate-500">No logs to display</Body>
+        ) : (
+          <></>
+        )}
 
         {needsEnvVars && (
           <PanelWarning

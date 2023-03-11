@@ -196,7 +196,7 @@ export default function ProjectOverviewPage() {
         <SubTitle>Workflows</SubTitle>
         {workflows.length === 0 ? (
           <Body className="text-slate-500">
-            No workflows have connected in this repo yet.
+            No workflows have connected in this repo yet
           </Body>
         ) : (
           <WorkflowList

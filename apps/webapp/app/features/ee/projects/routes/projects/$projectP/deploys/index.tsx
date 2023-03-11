@@ -4,6 +4,7 @@ import { z } from "zod";
 import { List } from "~/components/layout/List";
 import { PanelWarning } from "~/components/layout/PanelInfo";
 import { TertiaryLink } from "~/components/primitives/Buttons";
+import { Body } from "~/components/primitives/text/Body";
 import { Title } from "~/components/primitives/text/Title";
 import { useCurrentProject } from "../../$projectP";
 import { DeploymentListItem } from "../../../../components/DeploymentListItem";
@@ -36,19 +37,23 @@ export default function ProjectDeploysPage() {
           </TertiaryLink>
         </PanelWarning>
       )}
-      <List>
-        {deployments.map((deployment) => (
-          <DeploymentListItem
-            pathPrefix="."
-            key={deployment.id}
-            deployment={deployment}
-            repo={project.name}
-            isCurrentDeployment={
-              deployment.id === project.currentDeployment?.id
-            }
-          />
-        ))}
-      </List>
+      {deployments.length === 0 ? (
+        <Body className="text-slate-500">No deploys yet</Body>
+      ) : (
+        <List>
+          {deployments.map((deployment) => (
+            <DeploymentListItem
+              pathPrefix="."
+              key={deployment.id}
+              deployment={deployment}
+              repo={project.name}
+              isCurrentDeployment={
+                deployment.id === project.currentDeployment?.id
+              }
+            />
+          ))}
+        </List>
+      )}
     </>
   );
 }
