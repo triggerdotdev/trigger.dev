@@ -97,27 +97,42 @@ export function OrganizationSideMenuCollapsed() {
         to="/"
         className="flex h-[3.6rem] w-full items-center justify-center border-b border-slate-800"
       >
-        <li className={sideMenuCollapsedItem}>
+        <li className="rounded p-2 transition hover:bg-slate-800">
           <LogoIcon className="h-6 w-6" />
         </li>
       </NavLink>
       <MenuTitleToolTip text="Workflows">
-        <NavLink to={`/orgs/${currentOrganization.slug}`}>
-          <li className={sideMenuCollapsedItem}>
+        <NavLink
+          to={`/orgs/${currentOrganization.slug}`}
+          className={({ isActive }) =>
+            isActive ? activeCollapsedStyle : defaultCollapsedStyle
+          }
+        >
+          <li>
             <ArrowsRightLeftIcon className="h-6 w-6 text-slate-300" />
           </li>
         </NavLink>
       </MenuTitleToolTip>
       <MenuTitleToolTip text="Repositories">
-        <NavLink to={`/orgs/${currentOrganization.slug}/projects`}>
-          <li className={sideMenuCollapsedItem}>
+        <NavLink
+          to={`/orgs/${currentOrganization.slug}/projects`}
+          className={({ isActive }) =>
+            isActive ? activeCollapsedStyle : defaultCollapsedStyle
+          }
+        >
+          <li>
             <CloudIcon className="h-6 w-6 text-slate-300" />
           </li>
         </NavLink>
       </MenuTitleToolTip>
       <MenuTitleToolTip text="API Integrations">
-        <NavLink to={`/orgs/${currentOrganization.slug}/integrations`}>
-          <li className={sideMenuCollapsedItem}>
+        <NavLink
+          to={`/orgs/${currentOrganization.slug}/integrations`}
+          className={({ isActive }) =>
+            isActive ? activeCollapsedStyle : defaultCollapsedStyle
+          }
+        >
+          <li>
             <SquaresPlusIcon className="h-6 w-6 text-slate-300" />
           </li>
         </NavLink>
@@ -126,7 +141,9 @@ export function OrganizationSideMenuCollapsed() {
   );
 }
 
-const sideMenuCollapsedItem = "rounded p-2 transition hover:bg-slate-800";
+const defaultCollapsedStyle = "rounded p-2 transition hover:bg-slate-800";
+const activeCollapsedStyle =
+  "rounded p-2 transition bg-slate-800 hover:bg-slate-600/50";
 
 export function WorkflowsSideMenu() {
   const currentWorkflow = useCurrentWorkflow();
