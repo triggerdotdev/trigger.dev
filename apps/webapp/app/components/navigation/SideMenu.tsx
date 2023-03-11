@@ -26,6 +26,7 @@ import { titleCase } from "~/utils";
 import { CopyTextPanel } from "../CopyTextButton";
 import { LogoIcon } from "../LogoIcon";
 import { TertiaryButton } from "../primitives/Buttons";
+import { MenuTitleToolTip } from "../primitives/MenuTitleToolTip";
 import { Body } from "../primitives/text/Body";
 import { Header1 } from "../primitives/text/Headers";
 
@@ -100,21 +101,27 @@ export function OrganizationSideMenuCollapsed() {
           <LogoIcon className="h-6 w-6" />
         </li>
       </NavLink>
-      <NavLink to={`/orgs/${currentOrganization.slug}`}>
-        <li className={sideMenuCollapsedItem}>
-          <ArrowsRightLeftIcon className="h-6 w-6 text-slate-300" />
-        </li>
-      </NavLink>
-      <NavLink to={`/orgs/${currentOrganization.slug}/projects`}>
-        <li className={sideMenuCollapsedItem}>
-          <CloudIcon className="h-6 w-6 text-slate-300" />
-        </li>
-      </NavLink>
-      <NavLink to={`/orgs/${currentOrganization.slug}/integrations`}>
-        <li className={sideMenuCollapsedItem}>
-          <SquaresPlusIcon className="h-6 w-6 text-slate-300" />
-        </li>
-      </NavLink>
+      <MenuTitleToolTip text="Workflows">
+        <NavLink to={`/orgs/${currentOrganization.slug}`}>
+          <li className={sideMenuCollapsedItem}>
+            <ArrowsRightLeftIcon className="h-6 w-6 text-slate-300" />
+          </li>
+        </NavLink>
+      </MenuTitleToolTip>
+      <MenuTitleToolTip text="Repositories">
+        <NavLink to={`/orgs/${currentOrganization.slug}/projects`}>
+          <li className={sideMenuCollapsedItem}>
+            <CloudIcon className="h-6 w-6 text-slate-300" />
+          </li>
+        </NavLink>
+      </MenuTitleToolTip>
+      <MenuTitleToolTip text="API Integrations">
+        <NavLink to={`/orgs/${currentOrganization.slug}/integrations`}>
+          <li className={sideMenuCollapsedItem}>
+            <SquaresPlusIcon className="h-6 w-6 text-slate-300" />
+          </li>
+        </NavLink>
+      </MenuTitleToolTip>
     </ul>
   );
 }
@@ -265,7 +272,7 @@ function SideMenu({
             <div className="p-2">
               <Body
                 size="small"
-                className="py-3 pl-3 uppercase tracking-wide text-slate-400"
+                className="py-3 pl-3 uppercase tracking-wider text-slate-400"
               >
                 Workflow
               </Body>
