@@ -40,12 +40,14 @@ export type ZodSubscriberOptions<
   config: Omit<PulsarConsumerConfig, "listener">;
   schema: SubscriberSchema;
   handlers: ZodSubscriberHandlers<SubscriberSchema>;
+  filter?: Record<string, string>;
 };
 
 export class ZodSubscriber<SubscriberSchema extends MessageCatalogSchema> {
   #config: Omit<PulsarConsumerConfig, "listener">;
   #schema: SubscriberSchema;
   #handlers: ZodSubscriberHandlers<SubscriberSchema>;
+  #filter?: Record<string, string>;
 
   #subscriber?: PulsarConsumer;
   #client: PulsarClient;
@@ -58,6 +60,7 @@ export class ZodSubscriber<SubscriberSchema extends MessageCatalogSchema> {
     this.#schema = options.schema;
     this.#handlers = options.handlers;
     this.#client = options.client;
+    this.#filter = options.filter;
     this.#logger = new Logger("trigger.dev subscriber");
   }
 
@@ -122,6 +125,23 @@ export class ZodSubscriber<SubscriberSchema extends MessageCatalogSchema> {
     const publishedTimestamp = msg.getPublishTimestamp();
     const eventTimestamp = msg.getEventTimestamp();
     const redeliveryCount = msg.getRedeliveryCount();
+
+    const filter = this.#filter;
+
+    // Return if the filter exists and doesn't match
+    if (filter) {
+      const filterKeys = Object.keys(filter);
+
+      if (
+        filterKeys.some((key) => {
+          return properties[key] !== filter[key];
+        })
+      ) {
+        await consumer.acknowledge(msg);
+
+        return;
+      }
+    }
 
     this.#logger.debug("#onMessage", {
       messageId,

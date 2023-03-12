@@ -171,6 +171,43 @@ export const ServerRPCSchema = {
     }),
     response: z.boolean(),
   },
+  SEND_KV_GET: {
+    request: z.object({
+      runId: z.string(),
+      key: z.string(),
+      timestamp: z.string(),
+      get: z.object({
+        namespace: z.string(),
+        key: z.string(),
+      }),
+    }),
+    response: z.boolean(),
+  },
+  SEND_KV_SET: {
+    request: z.object({
+      runId: z.string(),
+      key: z.string(),
+      timestamp: z.string(),
+      set: z.object({
+        namespace: z.string(),
+        key: z.string(),
+        value: SerializableJsonSchema,
+      }),
+    }),
+    response: z.boolean(),
+  },
+  SEND_KV_DELETE: {
+    request: z.object({
+      runId: z.string(),
+      key: z.string(),
+      timestamp: z.string(),
+      delete: z.object({
+        namespace: z.string(),
+        key: z.string(),
+      }),
+    }),
+    response: z.boolean(),
+  },
 };
 
 export type ServerRPC = typeof ServerRPCSchema;

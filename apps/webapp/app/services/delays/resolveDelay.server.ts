@@ -15,7 +15,7 @@ export class ResolveDelay {
         step: {
           include: {
             run: {
-              include: { environment: true },
+              include: { environment: true, workflow: true },
             },
           },
         },
@@ -23,11 +23,18 @@ export class ResolveDelay {
     });
 
     if (!existingDelay) {
-      throw new Error("Delay not found");
+      return;
     }
 
     if (existingDelay.resolvedAt) {
       return existingDelay;
+    }
+
+    if (
+      existingDelay.step.run.workflow.disabledAt ||
+      existingDelay.step.run.workflow.archivedAt
+    ) {
+      return;
     }
 
     const delay = await this.#prismaClient.durableDelay.update({

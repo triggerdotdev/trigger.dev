@@ -13,6 +13,7 @@ import {
   ArrowPathRoundedSquareIcon,
   ChatBubbleOvalLeftEllipsisIcon,
   CheckCircleIcon,
+  CircleStackIcon,
   ExclamationCircleIcon,
   ExclamationTriangleIcon,
 } from "@heroicons/react/24/solid";
@@ -517,6 +518,12 @@ function StepBody({ step }: { step: Step }) {
       return <FetchRequestStep request={step} />;
     case "DURABLE_DELAY":
       return <DelayStep step={step} />;
+    case "KV_GET":
+      return <KVGetStep step={step} />;
+    case "KV_SET":
+      return <KVSetStep step={step} />;
+    case "KV_DELETE":
+      return <KVDeleteStep step={step} />;
   }
   return <></>;
 }
@@ -704,6 +711,104 @@ function CustomEventStep({ event }: { event: StepType<Step, "CUSTOM_EVENT"> }) {
           <CodeBlock code={stringifyCode(event.input.context)} align="top" />
         </>
       )}
+    </>
+  );
+}
+
+function KVGetStep({ step }: { step: StepType<Step, "KV_GET"> }) {
+  const scope = step.input.namespace.split(":")[0];
+
+  return (
+    <>
+      <div className="flex gap-16">
+        <div>
+          <Body size="extra-small" className={workflowNodeUppercaseClasses}>
+            Key
+          </Body>
+          <Header2 size="small" className="mb-2 text-slate-300">
+            {step.input.key}
+          </Header2>
+        </div>
+
+        <div>
+          <Body size="extra-small" className={workflowNodeUppercaseClasses}>
+            Scope
+          </Body>
+          <Header2 size="small" className="mb-2 text-slate-300">
+            {scope}
+          </Header2>
+        </div>
+      </div>
+
+      {step.output && (
+        <>
+          <Header4>Output</Header4>
+          <CodeBlock code={stringifyCode(step.output)} align="top" />
+        </>
+      )}
+    </>
+  );
+}
+
+function KVSetStep({ step }: { step: StepType<Step, "KV_SET"> }) {
+  const scope = step.input.namespace.split(":")[0];
+
+  return (
+    <>
+      <div className="flex gap-16">
+        <div>
+          <Body size="extra-small" className={workflowNodeUppercaseClasses}>
+            Key
+          </Body>
+          <Header2 size="small" className="mb-2 text-slate-300">
+            {step.input.key}
+          </Header2>
+        </div>
+
+        <div>
+          <Body size="extra-small" className={workflowNodeUppercaseClasses}>
+            Scope
+          </Body>
+          <Header2 size="small" className="mb-2 text-slate-300">
+            {scope}
+          </Header2>
+        </div>
+      </div>
+
+      {step.input.value && (
+        <>
+          <Header4>Value</Header4>
+          <CodeBlock code={stringifyCode(step.input.value)} align="top" />
+        </>
+      )}
+    </>
+  );
+}
+
+function KVDeleteStep({ step }: { step: StepType<Step, "KV_DELETE"> }) {
+  const scope = step.input.namespace.split(":")[0];
+
+  return (
+    <>
+      <div className="flex gap-16">
+        <div>
+          <Body size="extra-small" className={workflowNodeUppercaseClasses}>
+            Key
+          </Body>
+          <Header2 size="small" className="mb-2 text-slate-300">
+            {step.input.key}
+          </Header2>
+        </div>
+
+        <div>
+          <Body size="extra-small" className={workflowNodeUppercaseClasses}>
+            Scope
+          </Body>
+          <Header2 size="small" className="mb-2 text-slate-300">
+            {scope}
+          </Header2>
+        </div>
+      </div>
     </>
   );
 }
@@ -963,6 +1068,18 @@ const stepInfo: Record<Step["type"], { label: string; icon: ReactNode }> = {
   RUN_ONCE: {
     label: "Run once",
     icon: <KeyIcon className={styleClass} />,
+  },
+  KV_GET: {
+    label: "Get Key Value",
+    icon: <CircleStackIcon className={styleClass} />,
+  },
+  KV_SET: {
+    label: "Set Key Value",
+    icon: <CircleStackIcon className={styleClass} />,
+  },
+  KV_DELETE: {
+    label: "Delete Key Value",
+    icon: <CircleStackIcon className={styleClass} />,
   },
 } as const;
 

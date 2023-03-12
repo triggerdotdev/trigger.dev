@@ -1,4 +1,9 @@
-import type { SecureString } from "@trigger.dev/common-schemas";
+import {
+  KVDeleteSchema,
+  KVGetSchema,
+  KVSetSchema,
+  SecureString,
+} from "@trigger.dev/common-schemas";
 import {
   CustomEventSchema,
   ErrorSchema,
@@ -104,6 +109,25 @@ async function parseStep(
         ...base,
         type: "CUSTOM_EVENT" as const,
         input: await CustomEventSchema.parseAsync(original.input),
+      };
+    case "KV_GET":
+      return {
+        ...base,
+        type: "KV_GET" as const,
+        output: original.output,
+        input: await KVGetSchema.parseAsync(original.input),
+      };
+    case "KV_SET":
+      return {
+        ...base,
+        type: "KV_SET" as const,
+        input: await KVSetSchema.parseAsync(original.input),
+      };
+    case "KV_DELETE":
+      return {
+        ...base,
+        type: "KV_DELETE" as const,
+        input: await KVDeleteSchema.parseAsync(original.input),
       };
     case "OUTPUT":
       return {

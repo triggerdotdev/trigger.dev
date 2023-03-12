@@ -114,6 +114,7 @@ model RuntimeEnvironment {
   schedulerSources SchedulerSource[]
   internalSources  InternalSource[]
   deployments      ProjectDeployment[]
+  keyValueItems    KeyValueItem[]
 
   @@unique([organizationId, slug])
 }
@@ -526,6 +527,24 @@ enum WorkflowRunStepType {
   DISCONNECTION
   FETCH_REQUEST
   RUN_ONCE
+  KV_GET
+  KV_SET
+  KV_DELETE
+}
+
+model KeyValueItem {
+  id String @id @default(cuid())
+
+  key   String
+  value Json
+
+  environment   RuntimeEnvironment @relation(fields: [environmentId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  environmentId String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([environmentId, key])
 }
 
 model FetchRequest {

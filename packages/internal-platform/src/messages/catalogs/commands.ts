@@ -5,6 +5,7 @@ import { commands as customEvents } from "../schemas/customEvents";
 import { commands as delays } from "../schemas/delays";
 import { commands as fetchRequests } from "../schemas/fetchRequests";
 import { commands as runOnce } from "../schemas/runOnce";
+import { commands as kvStorage } from "../schemas/kvStorage";
 
 const Catalog = {
   ...integrationRequests,
@@ -14,6 +15,7 @@ const Catalog = {
   ...delays,
   ...fetchRequests,
   ...runOnce,
+  ...kvStorage,
 };
 
 export default Catalog;

@@ -63,12 +63,11 @@ export class WorkflowRunController {
         subscriptionType: "Exclusive",
         subscriptionInitialPosition: "Latest",
       },
+      filter: {
+        "x-workflow-run-id": this.#runId,
+      },
       handlers: {
         RESOLVE_DELAY: async (id, data, properties) => {
-          if (properties["x-workflow-run-id"] !== this.#runId) {
-            return true;
-          }
-
           this.#logger.debug(
             "Received resolve delay request",
             id,
@@ -91,10 +90,6 @@ export class WorkflowRunController {
           return success;
         },
         RESOLVE_INTEGRATION_REQUEST: async (id, data, properties) => {
-          if (properties["x-workflow-run-id"] !== this.#runId) {
-            return true;
-          }
-
           this.#logger.debug(
             "Received resolve integration request",
             id,
@@ -118,10 +113,6 @@ export class WorkflowRunController {
           return success;
         },
         RESOLVE_RUN_ONCE: async (id, data, properties) => {
-          if (properties["x-workflow-run-id"] !== this.#runId) {
-            return true;
-          }
-
           this.#logger.debug("Received resolve runOnce", id, data, properties);
 
           const success = await this.#hostRPC.send("RESOLVE_RUN_ONCE", {
@@ -140,10 +131,6 @@ export class WorkflowRunController {
           return success;
         },
         REJECT_INTEGRATION_REQUEST: async (id, data, properties) => {
-          if (properties["x-workflow-run-id"] !== this.#runId) {
-            return true;
-          }
-
           this.#logger.debug(
             "Received reject integration request",
             id,
@@ -167,10 +154,6 @@ export class WorkflowRunController {
           return success;
         },
         RESOLVE_FETCH_REQUEST: async (id, data, properties) => {
-          if (properties["x-workflow-run-id"] !== this.#runId) {
-            return true;
-          }
-
           this.#logger.debug(
             "Received resolve fetch request",
             id,
@@ -194,10 +177,6 @@ export class WorkflowRunController {
           return success;
         },
         REJECT_FETCH_REQUEST: async (id, data, properties) => {
-          if (properties["x-workflow-run-id"] !== this.#runId) {
-            return true;
-          }
-
           this.#logger.debug(
             "Received reject fetch request",
             id,
@@ -209,6 +188,70 @@ export class WorkflowRunController {
             id: data.id,
             key: data.key,
             error: data.error,
+            meta: {
+              workflowId: properties["x-workflow-id"],
+              organizationId: properties["x-org-id"],
+              environment: properties["x-env"],
+              apiKey: properties["x-api-key"],
+              runId: properties["x-workflow-run-id"],
+            },
+          });
+
+          return success;
+        },
+        RESOLVE_KV_GET: async (id, data, properties) => {
+          this.#logger.debug(
+            "Received RESOLVE_KV_GET request",
+            id,
+            data,
+            properties
+          );
+
+          const success = await this.#hostRPC.send("RESOLVE_KV_GET", {
+            output: data.operation.output,
+            key: data.key,
+            meta: {
+              workflowId: properties["x-workflow-id"],
+              organizationId: properties["x-org-id"],
+              environment: properties["x-env"],
+              apiKey: properties["x-api-key"],
+              runId: properties["x-workflow-run-id"],
+            },
+          });
+
+          return success;
+        },
+        RESOLVE_KV_SET: async (id, data, properties) => {
+          this.#logger.debug(
+            "Received RESOLVE_KV_SET request",
+            id,
+            data,
+            properties
+          );
+
+          const success = await this.#hostRPC.send("RESOLVE_KV_SET", {
+            key: data.key,
+            meta: {
+              workflowId: properties["x-workflow-id"],
+              organizationId: properties["x-org-id"],
+              environment: properties["x-env"],
+              apiKey: properties["x-api-key"],
+              runId: properties["x-workflow-run-id"],
+            },
+          });
+
+          return success;
+        },
+        RESOLVE_KV_DELETE: async (id, data, properties) => {
+          this.#logger.debug(
+            "Received RESOLVE_KV_DELETE request",
+            id,
+            data,
+            properties
+          );
+
+          const success = await this.#hostRPC.send("RESOLVE_KV_DELETE", {
+            key: data.key,
             meta: {
               workflowId: properties["x-workflow-id"],
               organizationId: properties["x-org-id"],

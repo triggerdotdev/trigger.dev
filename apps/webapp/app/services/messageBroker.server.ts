@@ -59,6 +59,11 @@ import { RegisterExternalSource } from "./externalSources/registerExternalSource
 import { CreateFetchRequest } from "./fetches/createFetchRequest.server";
 import { PerformFetchRequest } from "./fetches/performFetchRequest.server";
 import { StartFetchRequest } from "./fetches/startFetchRequest.server";
+import {
+  KVDeleteService,
+  KVGetService,
+  KVSetService,
+} from "./kv/services.server";
 import type { PulsarClient } from "./pulsarClient.server";
 import { createPulsarClient } from "./pulsarClient.server";
 import { CreateIntegrationRequest } from "./requests/createIntegrationRequest.server";
@@ -276,6 +281,100 @@ function createCommandSubscriber() {
           properties["x-api-key"],
           properties["x-timestamp"],
           data.fetch
+        );
+
+        return true;
+      },
+      SEND_KV_GET: async (id, data, properties) => {
+        const service = new KVGetService();
+
+        const { output, environment } = await service.call(
+          data.key,
+          properties["x-workflow-run-id"],
+          properties["x-api-key"],
+          properties["x-timestamp"],
+          data.get
+        );
+
+        await commandResponsePublisher.publish(
+          "RESOLVE_KV_GET",
+          {
+            key: data.key,
+            operation: {
+              key: data.get.key,
+              namespace: data.get.namespace,
+              output,
+            },
+          },
+          {
+            "x-workflow-run-id": properties["x-workflow-run-id"],
+            "x-api-key": properties["x-api-key"],
+            "x-org-id": environment.organization.id,
+            "x-workflow-id": properties["x-workflow-id"],
+            "x-env": environment.slug,
+          }
+        );
+
+        return true;
+      },
+      SEND_KV_SET: async (id, data, properties) => {
+        const service = new KVSetService();
+
+        const environment = await service.call(
+          data.key,
+          properties["x-workflow-run-id"],
+          properties["x-api-key"],
+          properties["x-timestamp"],
+          data.set
+        );
+
+        await commandResponsePublisher.publish(
+          "RESOLVE_KV_SET",
+          {
+            key: data.key,
+            operation: {
+              key: data.set.key,
+              namespace: data.set.namespace,
+            },
+          },
+          {
+            "x-workflow-run-id": properties["x-workflow-run-id"],
+            "x-api-key": properties["x-api-key"],
+            "x-org-id": environment.organization.id,
+            "x-workflow-id": properties["x-workflow-id"],
+            "x-env": environment.slug,
+          }
+        );
+
+        return true;
+      },
+      SEND_KV_DELETE: async (id, data, properties) => {
+        const service = new KVDeleteService();
+
+        const environment = await service.call(
+          data.key,
+          properties["x-workflow-run-id"],
+          properties["x-api-key"],
+          properties["x-timestamp"],
+          data.delete
+        );
+
+        await commandResponsePublisher.publish(
+          "RESOLVE_KV_DELETE",
+          {
+            key: data.key,
+            operation: {
+              key: data.delete.key,
+              namespace: data.delete.namespace,
+            },
+          },
+          {
+            "x-workflow-run-id": properties["x-workflow-run-id"],
+            "x-api-key": properties["x-api-key"],
+            "x-org-id": environment.organization.id,
+            "x-workflow-id": properties["x-workflow-id"],
+            "x-env": environment.slug,
+          }
         );
 
         return true;
@@ -571,19 +670,22 @@ function createTaskQueue() {
       RESOLVE_DELAY: async (id, data, properties) => {
         const service = new ResolveDelay();
 
-        const { step } = await service.call(data.id);
+        const delay = await service.call(data.id);
 
-        commandResponsePublisher.publish(
-          "RESOLVE_DELAY",
-          { id: data.id, key: step.idempotencyKey },
-          {
-            "x-workflow-run-id": step.run.id,
-            "x-api-key": step.run.environment.apiKey,
-            "x-org-id": step.run.environment.organizationId,
-            "x-workflow-id": step.run.workflowId,
-            "x-env": step.run.environment.slug,
-          }
-        );
+        if (delay) {
+          commandResponsePublisher.publish(
+            "RESOLVE_DELAY",
+            { id: data.id, key: delay.step.idempotencyKey },
+            {
+              "x-workflow-run-id": delay.step.run.id,
+              "x-api-key": delay.step.run.environment.apiKey,
+              "x-org-id": delay.step.run.environment.organizationId,
+              "x-workflow-id": delay.step.run.workflowId,
+              "x-env": delay.step.run.environment.slug,
+            }
+          );
+        }
+
         return true;
       },
       INTEGRATION_REQUEST_CREATED: async (id, data, properties) => {

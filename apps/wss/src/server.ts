@@ -169,6 +169,51 @@ export class TriggerServer {
 
           return !!response;
         },
+        SEND_KV_GET: async (request) => {
+          const runController = this.#runControllers.get(request.runId);
+
+          if (!runController) {
+            // TODO: need to recover from this issue by trying to reconnect
+            return false;
+          }
+
+          const response = await runController.publish("SEND_KV_GET", {
+            key: request.key,
+            get: request.get,
+          });
+
+          return !!response;
+        },
+        SEND_KV_SET: async (request) => {
+          const runController = this.#runControllers.get(request.runId);
+
+          if (!runController) {
+            // TODO: need to recover from this issue by trying to reconnect
+            return false;
+          }
+
+          const response = await runController.publish("SEND_KV_SET", {
+            key: request.key,
+            set: request.set,
+          });
+
+          return !!response;
+        },
+        SEND_KV_DELETE: async (request) => {
+          const runController = this.#runControllers.get(request.runId);
+
+          if (!runController) {
+            // TODO: need to recover from this issue by trying to reconnect
+            return false;
+          }
+
+          const response = await runController.publish("SEND_KV_DELETE", {
+            key: request.key,
+            delete: request.delete,
+          });
+
+          return !!response;
+        },
         INITIALIZE_RUN_ONCE: async (request) => {
           const runController = this.#runControllers.get(request.runId);
 

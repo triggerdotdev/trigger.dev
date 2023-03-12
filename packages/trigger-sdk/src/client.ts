@@ -20,6 +20,12 @@ import chalk from "chalk";
 import getRepoInfo from "git-repo-info";
 import gitRemoteOriginUrl from "git-remote-origin-url";
 import { readFile } from "node:fs/promises";
+import {
+  ContextKeyValueStorage,
+  KvDeleteFunction,
+  KvGetFunction,
+  KvSetFunction,
+} from "./keyValueStorage";
 
 const zodErrorMessageOptions: ErrorMessageOptions = {
   delimiter: {
@@ -89,6 +95,30 @@ export class TriggerClient<TSchema extends z.ZodTypeAny> {
     string,
     {
       resolve: (output: RunOnceOutput) => void;
+      reject: (err?: any) => void;
+    }
+  >();
+
+  #kvGetCallbacks = new Map<
+    string,
+    {
+      resolve: (output: any) => void;
+      reject: (err?: any) => void;
+    }
+  >();
+
+  #kvSetCallbacks = new Map<
+    string,
+    {
+      resolve: () => void;
+      reject: (err?: any) => void;
+    }
+  >();
+
+  #kvDeleteCallbacks = new Map<
+    string,
+    {
+      resolve: () => void;
       reject: (err?: any) => void;
     }
   >();
@@ -384,6 +414,78 @@ export class TriggerClient<TSchema extends z.ZodTypeAny> {
 
           return true;
         },
+        RESOLVE_KV_GET: async (data) => {
+          this.#logger.debug("Handling RESOLVE_KV_GET", data);
+
+          const getCallbacks = this.#kvGetCallbacks.get(
+            messageKey(data.meta.runId, data.key)
+          );
+
+          if (!getCallbacks) {
+            this.#logger.debug(
+              `Could not find kvGet callbacks for request ID ${messageKey(
+                data.meta.runId,
+                data.key
+              )}. This can happen when a workflow run is resumed`
+            );
+
+            return true;
+          }
+
+          const { resolve } = getCallbacks;
+
+          resolve(data.output);
+
+          return true;
+        },
+        RESOLVE_KV_SET: async (data) => {
+          this.#logger.debug("Handling RESOLVE_KV_SET", data);
+
+          const setCallbacks = this.#kvSetCallbacks.get(
+            messageKey(data.meta.runId, data.key)
+          );
+
+          if (!setCallbacks) {
+            this.#logger.debug(
+              `Could not find kvSet callbacks for request ID ${messageKey(
+                data.meta.runId,
+                data.key
+              )}. This can happen when a workflow run is resumed`
+            );
+
+            return true;
+          }
+
+          const { resolve } = setCallbacks;
+
+          resolve();
+
+          return true;
+        },
+        RESOLVE_KV_DELETE: async (data) => {
+          this.#logger.debug("Handling RESOLVE_KV_DELETE", data);
+
+          const deleteCallbacks = this.#kvDeleteCallbacks.get(
+            messageKey(data.meta.runId, data.key)
+          );
+
+          if (!deleteCallbacks) {
+            this.#logger.debug(
+              `Could not find kvDelete callbacks for request ID ${messageKey(
+                data.meta.runId,
+                data.key
+              )}. This can happen when a workflow run is resumed`
+            );
+
+            return true;
+          }
+
+          const { resolve } = deleteCallbacks;
+
+          resolve();
+
+          return true;
+        },
         TRIGGER_WORKFLOW: async (data) => {
           this.#logger.debug("Handling TRIGGER_WORKFLOW", data);
 
@@ -440,12 +542,103 @@ export class TriggerClient<TSchema extends z.ZodTypeAny> {
             };
           };
 
+          const kvGetFunction: KvGetFunction = async (op) => {
+            const result = new Promise<any>((resolve, reject) => {
+              this.#kvGetCallbacks.set(messageKey(data.id, op.idempotencyKey), {
+                resolve,
+                reject,
+              });
+            });
+
+            await serverRPC.send("SEND_KV_GET", {
+              runId: data.id,
+              key: op.idempotencyKey,
+              get: {
+                namespace: op.namespace,
+                key: op.key,
+              },
+              timestamp: String(highPrecisionTimestamp()),
+            });
+
+            const output = await result;
+
+            return output;
+          };
+
+          const kvSetFunction: KvSetFunction = async (op) => {
+            const result = new Promise<void>((resolve, reject) => {
+              this.#kvSetCallbacks.set(messageKey(data.id, op.idempotencyKey), {
+                resolve,
+                reject,
+              });
+            });
+
+            await serverRPC.send("SEND_KV_SET", {
+              runId: data.id,
+              key: op.idempotencyKey,
+              set: {
+                namespace: op.namespace,
+                key: op.key,
+                value: op.value,
+              },
+              timestamp: String(highPrecisionTimestamp()),
+            });
+
+            await result;
+
+            return;
+          };
+
+          const kvDeleteFunction: KvDeleteFunction = async (op) => {
+            const result = new Promise<void>((resolve, reject) => {
+              this.#kvDeleteCallbacks.set(
+                messageKey(data.id, op.idempotencyKey),
+                {
+                  resolve,
+                  reject,
+                }
+              );
+            });
+
+            await serverRPC.send("SEND_KV_DELETE", {
+              runId: data.id,
+              key: op.idempotencyKey,
+              delete: {
+                namespace: op.namespace,
+                key: op.key,
+              },
+              timestamp: String(highPrecisionTimestamp()),
+            });
+
+            await result;
+
+            return;
+          };
+
           const ctx: TriggerContext = {
             id: data.id,
             environment: data.meta.environment,
             apiKey: data.meta.apiKey,
             organizationId: data.meta.organizationId,
             isTest: data.meta.isTest,
+            kv: new ContextKeyValueStorage(
+              `workflow:${data.meta.workflowId}`,
+              kvGetFunction,
+              kvSetFunction,
+              kvDeleteFunction
+            ),
+            globalKv: new ContextKeyValueStorage(
+              `org:${data.meta.organizationId}`,
+              kvGetFunction,
+              kvSetFunction,
+              kvDeleteFunction
+            ),
+            runKv: new ContextKeyValueStorage(
+              `run:${data.id}`,
+              kvGetFunction,
+              kvSetFunction,
+              kvDeleteFunction
+            ),
             logger: new ContextLogger(async (level, message, properties) => {
               await serverRPC.send("SEND_LOG", {
                 runId: data.id,
