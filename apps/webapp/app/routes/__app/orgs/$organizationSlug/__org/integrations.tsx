@@ -11,6 +11,7 @@ import { AppBody } from "~/components/layout/AppLayout";
 import { Container } from "~/components/layout/Container";
 import { Header } from "~/components/layout/Header";
 import { List } from "~/components/layout/List";
+import { PrimaryA } from "~/components/primitives/Buttons";
 import { Body } from "~/components/primitives/text/Body";
 import { Header3 } from "~/components/primitives/text/Headers";
 import { SubTitle } from "~/components/primitives/text/SubTitle";
@@ -46,7 +47,13 @@ export default function Integrations() {
     <AppBody>
       <Header context="workflows" />
       <Container>
-        <Title>API Integrations</Title>
+        <div className="flex items-start justify-between">
+          <Title>API Integrations</Title>
+          <PrimaryA href="mailto:hello@trigger.dev">
+            <EnvelopeIcon className="-ml-1 h-5 w-5" />
+            Request an integration
+          </PrimaryA>
+        </div>
         <div>
           {connections.length === 0 ? (
             <></>
@@ -107,20 +114,6 @@ export default function Integrations() {
                   )}
                 </ConnectButton>
               ))}
-            <a
-              href="mailto:hello@trigger.dev"
-              className="group flex max-w-[160px] flex-col items-center gap-4 overflow-hidden rounded-md border border-slate-800 bg-slate-800 text-sm text-slate-200 shadow-md transition hover:bg-slate-800/30 disabled:opacity-50"
-            >
-              <div className="relative flex w-full items-center justify-center border-b border-slate-800 bg-black/20 py-6">
-                <EnvelopeIcon className="h-20 w-20 text-slate-400" />
-              </div>
-              <div className="flex flex-col items-center justify-center text-center leading-relaxed text-slate-400">
-                <span className="px-2.5">Need an integration?</span>
-                <span className="mb-4 px-6 text-base text-slate-200">
-                  Let us know!
-                </span>
-              </div>
-            </a>
           </div>
         </div>
       </Container>
