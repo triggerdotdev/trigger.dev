@@ -1,11 +1,8 @@
 import { TriggerClient } from "../client";
 import { LogLevel } from "internal-bridge";
 import { TriggerEvent } from "../events";
-import chalk from "chalk";
-
 import type { TriggerContext } from "../types";
 import { z } from "zod";
-import terminalLink from "terminal-link";
 
 export type TriggerOptions<TSchema extends z.ZodTypeAny> = {
   id: string;
@@ -34,6 +31,9 @@ export class Trigger<TSchema extends z.ZodTypeAny> {
 
   async listen() {
     const apiKey = this.#getApiKey();
+
+    const chalk = (await import("chalk")).default;
+    const terminalLink = (await import("terminal-link")).default;
 
     if (apiKey.status === "invalid") {
       console.log(

@@ -15,10 +15,6 @@ import { ContextLogger } from "./logger";
 import { Trigger, TriggerOptions } from "./trigger";
 import { TriggerContext, TriggerFetch } from "./types";
 import { generateErrorMessage, ErrorMessageOptions } from "zod-error";
-import terminalLink from "terminal-link";
-import chalk from "chalk";
-import getRepoInfo from "git-repo-info";
-import gitRemoteOriginUrl from "git-remote-origin-url";
 import { readFile } from "node:fs/promises";
 import {
   ContextKeyValueStorage,
@@ -152,6 +148,9 @@ export class TriggerClient<TSchema extends z.ZodTypeAny> {
       this.#initializeRPC();
       await this.#initializeHost();
 
+      // async import terminalLink to avoid ESM error
+      const terminalLink = (await import("terminal-link")).default;
+
       if (this.#registerResponse?.isNew) {
         this.#logger.logClean(
           `🎉 Successfully registered "${
@@ -213,6 +212,8 @@ export class TriggerClient<TSchema extends z.ZodTypeAny> {
         this.#closedByUser = false;
         return;
       }
+
+      const chalk = (await import("chalk")).default;
 
       this.#logger.error(
         `${chalk.red("error")} Could not connect to trigger.dev${
@@ -774,6 +775,8 @@ export class TriggerClient<TSchema extends z.ZodTypeAny> {
 
           this.#logger.debug("Parsed event data", eventData);
 
+          const terminalLink = (await import("terminal-link")).default;
+
           triggerRunLocalStorage.run(
             {
               performRequest: async (key, options) => {
@@ -928,7 +931,7 @@ export class TriggerClient<TSchema extends z.ZodTypeAny> {
       throw new Error("Cannot initialize host without an RPC connection");
     }
 
-    const repoInfo = safeGetRepoInfo();
+    const repoInfo = await safeGetRepoInfo();
     const remoteUrl = repoInfo
       ? await getRemoteUrl(repoInfo.commonGitDir)
       : undefined;
@@ -1052,15 +1055,17 @@ async function getTriggerPackageEnvVars(
 
 async function getRemoteUrl(cwd: string) {
   try {
+    const gitRemoteOriginUrl = (await import("git-remote-origin-url")).default;
     return await gitRemoteOriginUrl({ cwd });
   } catch (err) {
     return;
   }
 }
 
-function safeGetRepoInfo() {
+async function safeGetRepoInfo() {
   try {
-    return getRepoInfo();
+    const gitRepoInfo = (await import("git-repo-info")).default;
+    return gitRepoInfo();
   } catch (err) {
     return;
   }
