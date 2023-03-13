@@ -1,6 +1,7 @@
 import { InformationCircleIcon, StarIcon } from "@heroicons/react/20/solid";
 import {
   ArrowTopRightOnSquareIcon,
+  ChevronRightIcon,
   CloudArrowUpIcon,
   LockClosedIcon,
   LockOpenIcon,
@@ -197,7 +198,8 @@ export default function NewProjectPage() {
                                 {repo.projectId ? (
                                   <div className="flex items-center gap-6">
                                     <SecondaryLink to={`../${repo.projectId}`}>
-                                      View Project
+                                      View
+                                      <ChevronRightIcon className="-mr-1 h-4 w-4 text-slate-300" />
                                     </SecondaryLink>
                                   </div>
                                 ) : (

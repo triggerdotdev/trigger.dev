@@ -22,6 +22,7 @@ import {
   TertiaryA,
   TertiaryLink,
 } from "~/components/primitives/Buttons";
+import { Spinner } from "~/components/primitives/Spinner";
 import { Body } from "~/components/primitives/text/Body";
 import { SubTitle } from "~/components/primitives/text/SubTitle";
 import { Title } from "~/components/primitives/text/Title";
@@ -86,32 +87,6 @@ export default function ProjectOverviewPage() {
     // WARNING Don't put the revalidator in the useEffect deps array or bad things will happen
   }, [events]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  let Icon = ExclamationTriangleIcon;
-
-  switch (project.status) {
-    case "PENDING": {
-      Icon = ClockIcon;
-      break;
-    }
-    case "PREPARING":
-    case "BUILDING": {
-      Icon = CubeTransparentIcon;
-      break;
-    }
-    case "DEPLOYING": {
-      Icon = CloudArrowUpIcon;
-      break;
-    }
-    case "DEPLOYED": {
-      Icon = CloudIcon;
-      break;
-    }
-    case "ERROR": {
-      Icon = ExclamationTriangleIcon;
-      break;
-    }
-  }
-
   return (
     <>
       <div className="flex items-start justify-between">
@@ -163,13 +138,35 @@ export default function ProjectOverviewPage() {
               Status
             </Body>
             <div className="flex items-start gap-2">
+              <div>
+                {project.status === "PENDING" ||
+                project.status === "PREPARING" ||
+                project.status === "BUILDING" ||
+                project.status === "DEPLOYING" ? (
+                  <Spinner className="h-6 w-6" />
+                ) : (
+                  <></>
+                )}
+                {project.status === "DEPLOYED" ? (
+                  <CloudIcon className="h-6 w-6 text-blue-500" />
+                ) : (
+                  <></>
+                )}
+                {project.status === "DISABLED" ? (
+                  <ExclamationTriangleIcon className="h-6 w-6 text-amber-500" />
+                ) : (
+                  <></>
+                )}
+                {project.status === "ERROR" ? (
+                  <ExclamationTriangleIcon className="h-6 w-6 text-rose-500" />
+                ) : (
+                  <></>
+                )}
+              </div>
               <Body className={deploySummaryValueStyles}>
                 {project.status.charAt(0).toUpperCase() +
                   project.status.slice(1).toLowerCase()}
               </Body>
-              <div className="h-6 w-6 text-slate-400">
-                <Icon />
-              </div>
             </div>
           </li>
         </ul>
