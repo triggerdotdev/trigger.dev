@@ -8,7 +8,7 @@ import { useOptionalUser } from "~/hooks/useUser";
 import { EnvironmentMenu } from "../../routes/resources/environment";
 import { OrganizationMenu } from "../navigation/OrganizationMenu";
 import { WorkflowMenu } from "../navigation/WorkflowMenu";
-import { SecondaryA } from "../primitives/Buttons";
+import { SecondaryA, SecondaryButton } from "../primitives/Buttons";
 import { UserProfileMenu } from "../UserProfileMenu";
 
 type HeaderProps = {
@@ -32,10 +32,10 @@ export function Header({ children, context }: HeaderProps) {
           <ArrowTopRightOnSquareIcon className="-ml-1 h-4 w-4" />
           Documentation
         </SecondaryA>
-        <SecondaryA href="mailto:help@trigger.dev">
+        <SecondaryButton data-attr="posthog-feedback-button">
           <ChatBubbleLeftRightIcon className="-ml-1 h-4 w-4" />
           Send us feedback
-        </SecondaryA>
+        </SecondaryButton>
         {user ? (
           <UserProfileMenu user={user} />
         ) : (
