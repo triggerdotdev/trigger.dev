@@ -11,7 +11,7 @@ import {
 } from "@heroicons/react/24/outline";
 import { Link } from "@remix-run/react";
 import type { LoaderArgs } from "@remix-run/server-runtime";
-import { typedjson, useTypedLoaderData } from "remix-typedjson";
+import { redirect, typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
 import { IntlDate } from "~/components/IntlDate";
 import { AppBody } from "~/components/layout/AppLayout";
@@ -24,15 +24,28 @@ import { Body } from "~/components/primitives/text/Body";
 import { Header2 } from "~/components/primitives/text/Headers";
 import { SubTitle } from "~/components/primitives/text/SubTitle";
 import { Title } from "~/components/primitives/text/Title";
+import { requireUser } from "~/services/session.server";
 import {
   ProjectListItem,
   ProjectListPresenter,
 } from "../../presenters/projectListPresenter.server";
 
-export async function loader({ params }: LoaderArgs) {
+export async function loader({ params, request }: LoaderArgs) {
   const { organizationSlug } = z
     .object({ organizationSlug: z.string() })
     .parse(params);
+
+  const user = await requireUser(request);
+
+  if (!user.featureCloud) {
+    const url = new URL(request.url);
+
+    if (!url.pathname.endsWith("/coming-soon")) {
+      return redirect(`/orgs/${organizationSlug}/projects/coming-soon`, {
+        status: 302,
+      });
+    }
+  }
 
   const presenter = new ProjectListPresenter();
 
