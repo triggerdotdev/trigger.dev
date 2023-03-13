@@ -1,24 +1,8 @@
 import classNames from "classnames";
-import { ImpersonationBanner } from "../ImpersonationBanner";
 
-export function AppLayoutThreeCol({
-  children,
-  impersonationId,
-}: {
-  children: React.ReactNode;
-  impersonationId?: string;
-}) {
-  if (impersonationId) {
-    return (
-      <div className="grid h-full w-full grid-rows-[3.6rem_auto_auto]">
-        <ImpersonationBanner impersonationId={impersonationId} />
-        {children}
-      </div>
-    );
-  }
-
+export function AppLayoutThreeCol({ children }: { children: React.ReactNode }) {
   return (
-    <div className="grid h-full w-full grid-cols-[3.6rem_auto]">{children}</div>
+    <div className="grid h-full w-full grid-cols-[3.5rem_auto]">{children}</div>
   );
 }
 

@@ -5,7 +5,7 @@ import { ArrowRightIcon } from "@heroicons/react/20/solid";
 
 export function ProductHuntBanner() {
   return (
-    <div className="flex items-center justify-center gap-2 bg-[#ff6154]">
+    <div className="flex h-8 items-center justify-center gap-2 bg-[#ff6154]">
       <Body size="small" className="text-white">
         We're live on{" "}
       </Body>

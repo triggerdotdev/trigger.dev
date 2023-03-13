@@ -1,6 +1,9 @@
 import { Outlet } from "@remix-run/react";
 import type { LoaderArgs } from "@remix-run/server-runtime";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
+import { ImpersonationBanner } from "~/components/ImpersonationBanner";
+import { NoMobileOverlay } from "~/components/NoMobileOverlay";
+import { ProductHuntBanner } from "~/components/ProductHuntBanner";
 import { getOrganizations } from "~/models/organization.server";
 import {
   clearCurrentTemplate,
@@ -37,15 +40,22 @@ export const loader = async ({ request }: LoaderArgs) => {
 export default function App() {
   const { impersonationId } = useTypedLoaderData<typeof loader>();
 
-  return <Outlet />;
+  if (impersonationId) {
+    return (
+      <>
+        <ImpersonationBanner impersonationId={impersonationId} />
+        <NoMobileOverlay />
+        <Outlet />
+      </>
+    );
+  }
+
+  return (
+    <>
+      <NoMobileOverlay />
+      <Outlet />
+    </>
+  );
 }
 
-{
-  /* <NoMobileOverlay /> */
-}
-{
-  /* <Footer /> */
-}
-{
-  /* <ProductHuntBanner /> */
-}
+/* <ProductHuntBanner /> */
