@@ -117,19 +117,19 @@ export class CreateProjectService {
       payloadValidation.data.repoName
     );
 
+    const serviceDefinitionErrorMessage = `Could not deploy ${payloadValidation.data.repoName} because deploying this type of repository is not supported. We currently only support deploying repositories based on Trigger.dev templates`;
+
     if (!serviceDefinition) {
       return {
         type: "serviceDefinitionError" as const,
-        message:
-          "Could not find a service definition in the selected repository. We only support repositories based on our templates for now.",
+        message: serviceDefinitionErrorMessage,
       };
     }
 
     if (!this.#validateServiceMetadata(serviceDefinition)) {
       return {
         type: "serviceDefinitionError" as const,
-        message:
-          "Could not find a service definition in the selected repository. We only support repositories based on our templates for now.",
+        message: serviceDefinitionErrorMessage,
       };
     }
 
