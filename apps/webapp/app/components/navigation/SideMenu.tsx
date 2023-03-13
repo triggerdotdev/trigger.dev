@@ -34,7 +34,7 @@ import { Header1 } from "../primitives/text/Headers";
 
 export function SideMenuContainer({ children }: { children: React.ReactNode }) {
   return (
-    <div className="grid h-full grid-cols-[250px_2fr] overflow-hidden">
+    <div className="grid h-full grid-cols-[16rem_auto] overflow-hidden">
       {children}
     </div>
   );
