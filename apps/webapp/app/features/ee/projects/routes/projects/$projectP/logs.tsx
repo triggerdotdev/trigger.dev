@@ -36,7 +36,11 @@ export default function ProjectLogsPage() {
           <Header1 className="mb-6">Logs</Header1>
         </div>
         {currentDeployment === null ? (
-          <Body className="text-slate-500">No logs to display</Body>
+          <Body className="text-slate-500">
+            No deploy logs to display, visit the{" "}
+            <TertiaryLink to="../deploys">deploys</TertiaryLink> page to view
+            deploy specific logs
+          </Body>
         ) : (
           <></>
         )}

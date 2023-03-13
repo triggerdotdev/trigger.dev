@@ -33,10 +33,10 @@ export class PollDeploymentLogs {
 
     switch (deployment.status) {
       case "STOPPED":
-      case "ERROR":
       case "CANCELLED": {
         return true;
       }
+      case "ERROR":
       case "PENDING":
       case "BUILDING":
       case "DEPLOYING": {
@@ -134,7 +134,16 @@ export class PollDeploymentLogs {
       return new Date(Date.now() + 15000);
     }
 
-    // And it's less than 30 minutes old, schedule again in 20 seconds
+    // If this is a BUILD log poll, then we're going to just stop polling now (builds don't take that long)
+    if (logType === "BUILD") {
+      console.log(
+        `[${logType}] Latest log for ${deployment.id} is more than 15 minutes old. Stopping polling.`
+      );
+
+      return;
+    }
+
+    // And it's less than 20 minutes old, schedule again in 20 seconds
     if (latestLogAt.getTime() > Date.now() - 20 * 60 * 1000) {
       console.log(
         `[${logType}] Latest log for ${deployment.id} is less than 20 minutes old. Trying again in 20 seconds.`

@@ -1,7 +1,6 @@
 import { ArrowTopRightOnSquareIcon, StopIcon } from "@heroicons/react/20/solid";
 import { Form, useRevalidator, useTransition } from "@remix-run/react";
 import type { ActionArgs, LoaderArgs } from "@remix-run/server-runtime";
-import classNames from "classnames";
 import { useEffect } from "react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { useEventSource } from "remix-utils";
@@ -79,7 +78,7 @@ export default function DeploymentPage() {
     // WARNING Don't put the revalidator in the useEffect deps array or bad things will happen
   }, [events]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const disabled = deployment.status !== "DEPLOYED";
+  const isDeployLogs = deployment.status === "DEPLOYED";
 
   let action: "cancel" | "stop" | undefined;
   let actionConfirm: string | undefined;
@@ -156,14 +155,9 @@ export default function DeploymentPage() {
             </Form>
           )}
 
-          <SecondaryLink
-            to="#"
-            className={classNames(
-              disabled ? "pointer-events-none opacity-40" : ""
-            )}
-          >
-            View Build Logs
-          </SecondaryLink>
+          {isDeployLogs && (
+            <SecondaryLink to="build-logs">View Build Logs</SecondaryLink>
+          )}
         </div>
       </div>
       <SubTitle>Deploy Summary</SubTitle>
@@ -227,7 +221,9 @@ export default function DeploymentPage() {
         </div>
       </Panel>
       <div className="mb-2 flex items-center justify-between">
-        <SubTitle className="mb-0">Deploy logs</SubTitle>
+        <SubTitle className="mb-0">
+          {isDeployLogs ? "Deploy" : "Build"} logs
+        </SubTitle>
         <div className="flex items-center gap-4">
           {revalidator.state === "loading" && (
             <div className="flex items-center gap-1.5">

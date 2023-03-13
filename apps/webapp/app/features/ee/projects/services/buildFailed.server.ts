@@ -38,5 +38,24 @@ export class BuildFailed {
         status: "ERROR",
       },
     });
+
+    const project = await this.#prismaClient.repositoryProject.findUnique({
+      where: {
+        id: deployment.projectId,
+      },
+    });
+
+    if (!project || project.status !== "BUILDING") {
+      return true;
+    }
+
+    await this.#prismaClient.repositoryProject.update({
+      where: {
+        id: project.id,
+      },
+      data: {
+        status: "ERROR",
+      },
+    });
   }
 }
