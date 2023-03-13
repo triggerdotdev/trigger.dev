@@ -26,6 +26,15 @@ export class NewProjectPresenter {
   }
 
   async data(userId: string, organizationSlug: string) {
+    const { admin } = await this.#prismaClient.user.findUniqueOrThrow({
+      where: {
+        id: userId,
+      },
+      select: {
+        admin: true,
+      },
+    });
+
     const appAuthorizations =
       await this.#prismaClient.gitHubAppAuthorization.findMany({
         where: {
@@ -62,7 +71,7 @@ export class NewProjectPresenter {
       appAuthorizations,
       redirectTo: `/orgs/${organizationSlug}/projects/new`,
       repositories,
-      canDeployMoreProjects: projects.length < MAX_LIVE_PROJECTS,
+      canDeployMoreProjects: admin || projects.length < MAX_LIVE_PROJECTS,
     };
   }
 
