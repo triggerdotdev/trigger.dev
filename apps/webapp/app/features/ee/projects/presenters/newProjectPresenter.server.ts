@@ -5,6 +5,7 @@ import { getRepositoryFromMetadata } from "~/models/workflow.server";
 import type { CreateInstallationAccessTokenResponse } from "~/features/ee/projects/github/githubApp.server";
 import { getInstallationRepositories } from "~/features/ee/projects/github/githubApp.server";
 import { refreshInstallationAccessToken } from "~/features/ee/projects/github/refreshInstallationAccessToken.server";
+import { MAX_LIVE_PROJECTS } from "~/consts";
 
 export type InstallationRepository = NonNullable<
   CreateInstallationAccessTokenResponse["repositories"]
@@ -61,6 +62,7 @@ export class NewProjectPresenter {
       appAuthorizations,
       redirectTo: `/orgs/${organizationSlug}/projects/new`,
       repositories,
+      canDeployMoreProjects: projects.length < MAX_LIVE_PROJECTS,
     };
   }
 

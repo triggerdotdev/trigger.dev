@@ -32,7 +32,8 @@ model User {
   organizations           Organization[]
   gitHubAppAuthorizations GitHubAppAuthorization[]
 
-  featureCloud Boolean @default(false)
+  featureCloud           Boolean @default(false)
+  isOnHostedRepoWaitlist Boolean @default(false)
 }
 
 enum AuthenticationMethod {

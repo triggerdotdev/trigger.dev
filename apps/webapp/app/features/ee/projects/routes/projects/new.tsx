@@ -16,10 +16,16 @@ import {
   SunIcon,
   XCircleIcon,
 } from "@heroicons/react/24/solid";
-import { Await, Form, useLoaderData, useTransition } from "@remix-run/react";
+import {
+  Await,
+  Form,
+  useFetcher,
+  useLoaderData,
+  useTransition,
+} from "@remix-run/react";
 import type { LoaderArgs } from "@remix-run/server-runtime";
 import { defer } from "@remix-run/server-runtime";
-import { Fragment, Suspense, useState } from "react";
+import { Fragment, Suspense, useEffect, useState } from "react";
 import { redirect, typedjson, useTypedActionData } from "remix-typedjson";
 import invariant from "tiny-invariant";
 import { OctoKitty } from "~/components/GitHubLoginButton";
@@ -47,6 +53,7 @@ import { Tooltip } from "~/components/primitives/Tooltip";
 import { NewProjectPresenter } from "~/features/ee/projects/presenters/newProjectPresenter.server";
 import { CreateProjectService } from "~/features/ee/projects/services/createProject.server";
 import { useCurrentOrganization } from "~/hooks/useOrganizations";
+import { useUser } from "~/hooks/useUser";
 import { requireUserId } from "~/services/session.server";
 
 export async function loader({ request, params }: LoaderArgs) {
@@ -95,7 +102,7 @@ export async function action({ request, params }: LoaderArgs) {
 }
 
 export default function NewProjectPage() {
-  const { appAuthorizations, redirectTo, repositories } =
+  const { appAuthorizations, redirectTo, repositories, canDeployMoreProjects } =
     useLoaderData<typeof loader>();
 
   const currentOrganization = useCurrentOrganization();
@@ -103,6 +110,8 @@ export default function NewProjectPage() {
   if (currentOrganization === undefined) {
     return <></>;
   }
+
+  const user = useUser();
 
   const actionData = useTypedActionData<typeof action>();
   const transition = useTransition();
@@ -112,14 +121,22 @@ export default function NewProjectPage() {
       transition.type === "actionSubmission") ||
     (transition.state === "loading" && transition.type === "actionRedirect");
 
-  let [isOpen, setIsOpen] = useState(false);
+  let [technologyPreviewIsOpen, setTechnologyPreviewIsOpen] = useState(false);
+
+  const fetcher = useFetcher();
+
+  useEffect(() => {
+    if (fetcher.state === "submitting") {
+      setTechnologyPreviewIsOpen(false);
+    }
+  }, [fetcher.state, setTechnologyPreviewIsOpen]);
 
   return (
     <>
       <StyledDialog.Dialog
-        onClose={(e) => setIsOpen(false)}
+        onClose={(e) => setTechnologyPreviewIsOpen(false)}
         appear
-        show={isOpen}
+        show={technologyPreviewIsOpen}
         as={Fragment}
       >
         <div className="fixed inset-0 overflow-y-auto">
@@ -133,7 +150,7 @@ export default function NewProjectPage() {
                     </Header4>
                   </div>
                   <button
-                    onClick={(e) => setIsOpen(false)}
+                    onClick={(e) => setTechnologyPreviewIsOpen(false)}
                     className="group rounded p-1 text-slate-600 transition hover:bg-slate-700 hover:text-slate-500"
                   >
                     <XMarkIcon className="h-6 w-6 text-slate-600 transition group-hover:text-slate-400" />
@@ -147,28 +164,37 @@ export default function NewProjectPage() {
                 </div>
                 <div className="p-6">
                   <Body size="regular" className="text-left text-slate-400">
-                    We're working hard to bring you our full Cloud hosting
-                    service. Right now, we're in a Technical Preview phase, so
-                    you can only deploy one repo to the Cloud. We'll open up the
-                    cloud to multiple repos soon. Click 'Notify me' to stay in
-                    the loop.
+                    Our full repo hosting service is coming soon, and we're
+                    currently in a Technical Preview phase. While we put the
+                    finishing touches on our service, you can deploy one repo at
+                    a time. Don't worry, we'll be opening up this service to
+                    multiple repos very soon. Be the first to know when we do by
+                    clicking 'Notify Me' and stay in the loop.
                   </Body>
                   <div className="flex w-full justify-end">
-                    <PrimaryButton
-                      onClick={() => setIsOpen(false)}
-                      className="mt-4 w-full"
-                      disabled
-                    >
-                      <CheckIcon className="-ml-1 h-5 w-5" />
-                      You'll be notified
-                    </PrimaryButton>
-                    <PrimaryButton
-                      onClick={() => setIsOpen(false)}
-                      className="mt-4 w-full"
-                    >
-                      <MegaphoneIcon className="-ml-1 h-5 w-5" />
-                      Notify me
-                    </PrimaryButton>
+                    {user.isOnHostedRepoWaitlist ? (
+                      <PrimaryButton
+                        onClick={() => setTechnologyPreviewIsOpen(false)}
+                        className="mt-4 w-full"
+                        disabled
+                      >
+                        <CheckIcon className="-ml-1 h-5 w-5" />
+                        You'll be notified
+                      </PrimaryButton>
+                    ) : (
+                      <fetcher.Form
+                        action="/resources/cloud-waitlist"
+                        method="post"
+                      >
+                        <PrimaryButton
+                          onClick={() => setTechnologyPreviewIsOpen(false)}
+                          className="mt-4 w-full"
+                        >
+                          <MegaphoneIcon className="-ml-1 h-5 w-5" />
+                          Notify me
+                        </PrimaryButton>
+                      </fetcher.Form>
+                    )}
                   </div>
                 </div>
               </div>
@@ -187,10 +213,6 @@ export default function NewProjectPage() {
                 <></>
               ) : (
                 <>
-                  <SecondaryButton onClick={(e) => setIsOpen(true)}>
-                    Cloud modal
-                  </SecondaryButton>
-
                   <PrimaryLink
                     to={`/apps/github?redirectTo=${encodeURIComponent(
                       redirectTo
@@ -305,40 +327,52 @@ export default function NewProjectPage() {
                                       ) : (
                                         <></>
                                       )}
-                                      <Form
-                                        method="post"
-                                        onSubmit={(e) =>
-                                          !confirm(
-                                            "This will deploy this repository and automatically run your workflows in the live environment. Are you sure?"
-                                          ) && e.preventDefault()
-                                        }
-                                      >
-                                        <input
-                                          type="hidden"
-                                          name="repoId"
-                                          value={repo.repository.id}
-                                        />
+                                      {canDeployMoreProjects ? (
+                                        <Form
+                                          method="post"
+                                          onSubmit={(e) =>
+                                            !confirm(
+                                              "This will deploy this repository and automatically run your workflows in the live environment. Are you sure?"
+                                            ) && e.preventDefault()
+                                          }
+                                        >
+                                          <input
+                                            type="hidden"
+                                            name="repoId"
+                                            value={repo.repository.id}
+                                          />
 
-                                        <input
-                                          type="hidden"
-                                          name="repoName"
-                                          value={repo.repository.full_name}
-                                        />
+                                          <input
+                                            type="hidden"
+                                            name="repoName"
+                                            value={repo.repository.full_name}
+                                          />
 
-                                        <input
-                                          type="hidden"
-                                          name="appAuthorizationId"
-                                          value={repo.appAuthorizationId}
-                                        />
+                                          <input
+                                            type="hidden"
+                                            name="appAuthorizationId"
+                                            value={repo.appAuthorizationId}
+                                          />
 
+                                          <PrimaryButton
+                                            type="submit"
+                                            size="regular"
+                                          >
+                                            <CloudArrowUpIcon className="-ml-1 h-5 w-5" />
+                                            Deploy
+                                          </PrimaryButton>
+                                        </Form>
+                                      ) : (
                                         <PrimaryButton
-                                          type="submit"
                                           size="regular"
+                                          onClick={() =>
+                                            setTechnologyPreviewIsOpen(true)
+                                          }
                                         >
                                           <CloudArrowUpIcon className="-ml-1 h-5 w-5" />
                                           Deploy
                                         </PrimaryButton>
-                                      </Form>
+                                      )}
                                     </div>
                                   )}
                                 </li>

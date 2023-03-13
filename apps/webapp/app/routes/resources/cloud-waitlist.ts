@@ -8,7 +8,7 @@ export async function action({ request }: ActionArgs) {
 
   const user = await prisma.user.update({
     where: { id: userId },
-    data: { isOnCloudWaitlist: true },
+    data: { isOnHostedRepoWaitlist: true },
   });
 
   return jsonWithSuccessMessage(
