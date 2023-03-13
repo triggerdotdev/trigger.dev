@@ -1,6 +1,6 @@
 {
   "name": "@trigger.dev/whatsapp",
-  "version": "0.1.25",
+  "version": "0.1.26-next.0",
   "description": "The official WhatsApp Business integration for Trigger.dev",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -14,7 +14,7 @@
   ],
   "devDependencies": {
     "@trigger.dev/integration-sdk": "workspace:*",
-    "@trigger.dev/sdk": "workspace:^0.2.20",
+    "@trigger.dev/sdk": "workspace:^0.2.22-next.0",
     "@trigger.dev/tsconfig": "workspace:*",
     "@types/node": "16",
     "rimraf": "^3.0.2",
@@ -22,7 +22,7 @@
     "@types/debug": "^4.1.7"
   },
   "peerDependencies": {
-    "@trigger.dev/sdk": "workspace:^0.2.20"
+    "@trigger.dev/sdk": "workspace:^0.2.22-next.0"
   },
   "scripts": {
     "clean": "rimraf dist",

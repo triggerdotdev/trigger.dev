@@ -1,5 +1,15 @@
 # @trigger.dev/sendgrid
 
+## 0.1.28-next.0
+
+### Patch Changes
+
+- Updated dependencies [ab512157]
+- Updated dependencies [1673d452]
+- Updated dependencies [0b67b51a]
+- Updated dependencies [f39bc44e]
+  - @trigger.dev/sdk@0.2.22-next.0
+
 ## 0.1.27
 
 ### Patch Changes
