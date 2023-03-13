@@ -81,18 +81,12 @@ async function getLogs(
     url.searchParams.set("batch", options.batch.toString());
   }
 
-  console.log(`GET ${url.toString()}`);
-
   const response = await fetch(url.toString(), {
     headers: {
       "X-Api-Key": env.CAKEWORK_API_KEY,
       Accept: "application/json",
     },
   });
-
-  console.log(
-    `GET ${url.toString()}: ${response.status} ${response.statusText}`
-  );
 
   if (!response.ok) {
     return { lines: [] };

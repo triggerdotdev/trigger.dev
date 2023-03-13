@@ -91,107 +91,60 @@ export class PollDeploymentLogs {
     const latestLogAt = lastLog?.createdAt;
 
     if (!latestLogAt) {
-      console.log(
-        `[${logType}] No logs for ${deployment.id} yet. Trying again in 3 seconds.`
-      );
-
       return new Date(Date.now() + 3000);
     }
 
     // and it's less than 10 seconds old, schedule again in 3 seconds
     if (latestLogAt.getTime() > Date.now() - 10000) {
-      console.log(
-        `[${logType}] Latest log for ${deployment.id} is less than 10 seconds old. Trying again in 3 seconds.`
-      );
-
       return new Date(Date.now() + 3000);
     }
 
     // and it's less than 60 seconds old, schedule again in 5 seconds
     if (latestLogAt.getTime() > Date.now() - 60 * 1000) {
-      console.log(
-        `[${logType}] Latest log for ${deployment.id} is less than 60 seconds old. Trying again in 5 seconds.`
-      );
-
       return new Date(Date.now() + 5000);
     }
 
     // and it's less than 5 minutes old, schedule again in 10 seconds
     if (latestLogAt.getTime() > Date.now() - 5 * 60 * 1000) {
-      console.log(
-        `[${logType}] Latest log for ${deployment.id} is less than 5 minutes old. Trying again in 10 seconds.`
-      );
-
       return new Date(Date.now() + 10000);
     }
 
     // And it's less than 15 minutes old, schedule again in 15 seconds
     if (latestLogAt.getTime() > Date.now() - 15 * 60 * 1000) {
-      console.log(
-        `[${logType}] Latest log for ${deployment.id} is less than 15 minutes old. Trying again in 15 seconds.`
-      );
-
       return new Date(Date.now() + 15000);
     }
 
     // If this is a BUILD log poll, then we're going to just stop polling now (builds don't take that long)
     if (logType === "BUILD") {
-      console.log(
-        `[${logType}] Latest log for ${deployment.id} is more than 15 minutes old. Stopping polling.`
-      );
-
       return;
     }
 
     // And it's less than 20 minutes old, schedule again in 20 seconds
     if (latestLogAt.getTime() > Date.now() - 20 * 60 * 1000) {
-      console.log(
-        `[${logType}] Latest log for ${deployment.id} is less than 20 minutes old. Trying again in 20 seconds.`
-      );
-
       return new Date(Date.now() + 20000);
     }
 
     // And it's less than 60 minutes old, schedule again in 30 seconds
     if (latestLogAt.getTime() > Date.now() - 60 * 60 * 1000) {
-      console.log(
-        `[${logType}] Latest log for ${deployment.id} is less than 60 minutes old. Trying again in 30 seconds.`
-      );
-
       return new Date(Date.now() + 30000);
     }
 
     // And it's less than 24 hours old, schedule again in 5 minutes
     if (latestLogAt.getTime() > Date.now() - 24 * 60 * 60 * 1000) {
-      console.log(
-        `[${logType}] Latest log for ${deployment.id} is less than 24 hours old. Trying again in 5 minutes.`
-      );
-
       return new Date(Date.now() + 5 * 60 * 1000);
     }
 
     // And it's less than 7 days old, schedule again in 30 minutes
     if (latestLogAt.getTime() > Date.now() - 7 * 24 * 60 * 60 * 1000) {
-      console.log(
-        `[${logType}] Latest log for ${deployment.id} is less than 7 days old. Trying again in 30 minutes.`
-      );
-
       return new Date(Date.now() + 30 * 60 * 1000);
     }
 
     // If it's less than 30 days old, schedule again in 2 hours
     if (latestLogAt.getTime() > Date.now() - 30 * 24 * 60 * 60 * 1000) {
-      console.log(
-        `[${logType}] Latest log for ${deployment.id} is less than 30 days old. Trying again in 2 hours.`
-      );
-
       return new Date(Date.now() + 2 * 60 * 60 * 1000);
     }
 
     // Else stop scheduling
-    console.log(
-      `[${logType}] Latest log for ${deployment.id} is more than 30 days old. Stopping polling.`
-    );
   }
 
   async #pollLogs(
@@ -219,12 +172,6 @@ export class PollDeploymentLogs {
     fromDate = new Date(fromDate.getTime() + 1);
 
     const toDate = new Date();
-
-    console.log(
-      `[${logType}] Polling logs for ${
-        deployment.id
-      }, from ${fromDate.toISOString()} to ${toDate.toISOString()}...`
-    );
 
     const logs = await this.#gatherLogs(deployment, logType, fromDate, toDate);
 
