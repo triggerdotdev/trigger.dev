@@ -1,5 +1,14 @@
 # @trigger.dev/sdk
 
+## 0.2.22-next.0
+
+### Patch Changes
+
+- ab512157: Fixed an error message
+- 1673d452: Added kv storage to persist data in between runs and between workflows
+- 0b67b51a: Fix ESM error by dynamically importing ESM packages (chalk, terminal-link, etc.)
+- f39bc44e: SDK now passes through the project ID from the env var
+
 ## 0.2.21
 
 ### Patch Changes

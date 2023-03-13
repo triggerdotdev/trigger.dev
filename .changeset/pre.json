@@ -1,0 +1,33 @@
+{
+  "mode": "pre",
+  "tag": "next",
+  "initialVersions": {
+    "integrations": "1.0.0",
+    "webapp": "1.0.0",
+    "wss": "1.0.0",
+    "@trigger.dev/airtable": "0.1.27",
+    "@trigger.dev/notion": "0.1.26",
+    "@trigger.dev/sendgrid": "0.1.27",
+    "@trigger.dev/github": "0.1.27",
+    "@trigger.dev/resend": "0.1.27",
+    "@trigger.dev/shopify": "0.1.27",
+    "@trigger.dev/slack": "0.1.27",
+    "@trigger.dev/whatsapp": "0.1.25",
+    "@trigger.dev/common-schemas": "0.1.1",
+    "create-trigger": "0.2.0",
+    "emails": "1.0.0",
+    "integration-catalog": "0.1.16",
+    "@trigger.dev/integration-sdk": "0.1.17",
+    "internal-bridge": "0.0.1",
+    "internal-cli": "0.0.1",
+    "internal-platform": "0.0.3",
+    "internal-pulsar": "0.0.1",
+    "@trigger.dev/sdk": "0.2.21"
+  },
+  "changesets": [
+    "eleven-gorillas-obey",
+    "little-lizards-joke",
+    "moody-ligers-arrive",
+    "shaggy-hounds-appear"
+  ]
+}
