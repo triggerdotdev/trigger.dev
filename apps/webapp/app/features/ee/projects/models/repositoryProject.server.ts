@@ -151,13 +151,6 @@ export function buildEnvVars(
   const envVars = BluePrintEnvVarsSchema.parse(project.envVars);
 
   const result = envVars.reduce((acc, envVar) => {
-    if (envVar.key === "TRIGGER_API_KEY") {
-      return {
-        ...acc,
-        [envVar.key]: environment.apiKey,
-      };
-    }
-
     if (!envVar.value) {
       return acc;
     }
@@ -173,6 +166,7 @@ export function buildEnvVars(
     TRIGGER_PROJECT_ID: project.id,
     TRIGGER_DEPLOYMENT_ID: deployment.id,
     TRIGGER_WSS_URL: env.TRIGGER_WSS_URL,
+    TRIGGER_API_KEY: environment.apiKey,
   };
 }
 

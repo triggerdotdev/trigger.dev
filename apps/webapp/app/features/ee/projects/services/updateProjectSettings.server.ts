@@ -78,7 +78,7 @@ export class UpdateProjectSettings {
         id: projectId,
       },
       data: {
-        envVars: newEnvVars,
+        envVars: [...newEnvVars, { key: "TRIGGER_API_KEY", sync: false }],
         buildCommand: data.buildCommand,
         startCommand: data.startCommand,
         autoDeploy: data.autoDeploy === "yes",

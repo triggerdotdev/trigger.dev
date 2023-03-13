@@ -54,6 +54,18 @@ export class CreateProjectService {
     latestCommit: GitHubCommit
   ) {
     try {
+      const isDeprecatedServiceDefinition =
+        serviceDefinition.buildCommand === "npm install && npm run build" &&
+        serviceDefinition.startCommand === "node dist/index.js";
+
+      const buildCommand = isDeprecatedServiceDefinition
+        ? "npm install"
+        : serviceDefinition.buildCommand;
+
+      const startCommand = isDeprecatedServiceDefinition
+        ? "npm exec tsx src/index.ts"
+        : serviceDefinition.startCommand;
+
       const project = await this.#prismaClient.repositoryProject.create({
         data: {
           name: data.repoName,
@@ -69,8 +81,8 @@ export class CreateProjectService {
               slug: organizationSlug,
             },
           },
-          buildCommand: serviceDefinition.buildCommand ?? "npm run build",
-          startCommand: serviceDefinition.startCommand ?? "npm run start",
+          buildCommand: buildCommand ?? "npm install",
+          startCommand: startCommand ?? "npm start",
           envVars: serviceDefinition.envVars,
           latestCommit,
         },
