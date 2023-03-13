@@ -119,7 +119,9 @@ export default function NewProjectPage() {
   const isSubmittingOrLoading =
     (transition.state === "submitting" &&
       transition.type === "actionSubmission") ||
-    (transition.state === "loading" && transition.type === "actionRedirect");
+    (transition.state === "loading" &&
+      transition.type === "actionRedirect" &&
+      transition.submission.action.endsWith("/projects/new"));
 
   let [technologyPreviewIsOpen, setTechnologyPreviewIsOpen] = useState(false);
 
@@ -354,17 +356,35 @@ export default function NewProjectPage() {
                                             value={repo.appAuthorizationId}
                                           />
 
-                                          <PrimaryButton
-                                            type="submit"
-                                            size="regular"
-                                          >
-                                            <CloudArrowUpIcon className="-ml-1 h-5 w-5" />
-                                            Deploy
-                                          </PrimaryButton>
+                                          {isSubmittingOrLoading &&
+                                          transition.submission.formData.get(
+                                            "repoName"
+                                          ) === repo.repository.full_name ? (
+                                            <>
+                                              <PrimaryButton
+                                                type="submit"
+                                                size="regular"
+                                                disabled
+                                              >
+                                                <Spinner className="-ml-1 h-5 w-5" />
+                                                Deploying
+                                              </PrimaryButton>
+                                            </>
+                                          ) : (
+                                            <PrimaryButton
+                                              type="submit"
+                                              size="regular"
+                                              disabled={isSubmittingOrLoading}
+                                            >
+                                              <CloudArrowUpIcon className="-ml-1 h-5 w-5" />
+                                              Deploy
+                                            </PrimaryButton>
+                                          )}
                                         </Form>
                                       ) : (
                                         <PrimaryButton
                                           size="regular"
+                                          disabled={isSubmittingOrLoading}
                                           onClick={() =>
                                             setTechnologyPreviewIsOpen(true)
                                           }
