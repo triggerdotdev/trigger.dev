@@ -363,7 +363,11 @@
             "INTEGRATIONS_API_KEY": {
               "fromParameterStore": "/Staging/integrations/API_TOKEN"
             },
-            "INTEGRATIONS_API_ORIGIN": "https://integrations-staging.trigger.dev"
+            "INTEGRATIONS_API_ORIGIN": "https://integrations-staging.trigger.dev",
+            "CAKEWORK_API_KEY": {
+              "fromParameterStore": "/Staging/webapp/CAKEWORK_API_KEY"
+            },
+            "TRIGGER_WSS_URL": "wss://wss-staging.trigger.dev/ws"
           }
         },
         {
