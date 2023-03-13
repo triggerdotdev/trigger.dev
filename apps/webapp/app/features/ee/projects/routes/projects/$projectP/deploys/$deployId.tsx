@@ -190,9 +190,9 @@ export default function DeploymentPage() {
           </li>
           <li className={deploySummaryGridStyles}>
             <Body size="extra-small" className={deploySummaryLabelStyles}>
-              Environment
+              Duration
             </Body>
-            <Body className={deploySummaryValueStyles}>Live</Body>
+            <Body className={deploySummaryValueStyles}>1m 35s</Body>
           </li>
           <li className={deploySummaryGridStyles}>
             <Body size="extra-small" className={deploySummaryLabelStyles}>
