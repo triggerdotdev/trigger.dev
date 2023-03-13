@@ -144,9 +144,11 @@ export function OrganizationSideMenuCollapsed() {
         to="/"
         className="flex h-[3.6rem] w-full items-center justify-center border-b border-slate-800"
       >
-        <li className="rounded p-2 transition hover:bg-slate-800">
-          <LogoIcon className="h-6 w-6" />
-        </li>
+        <MenuTitleToolTip text="All Organizations">
+          <li className="rounded p-2 transition hover:bg-slate-800">
+            <LogoIcon className="h-6 w-6" />
+          </li>
+        </MenuTitleToolTip>
       </NavLink>
       <MenuTitleToolTip text="Workflows">
         <WorkflowsNavLink slug={currentOrganization.slug}>
