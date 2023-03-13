@@ -26,7 +26,7 @@ export function TemplateOverview({
         "grid w-full grid-cols-1 gap-8 rounded-lg bg-slate-850 pl-8 text-left lg:grid-cols-[24rem_minmax(0,_1fr)]"
       )}
     >
-      <div className="flex h-max flex-col rounded-r lg:sticky lg:top-4">
+      <div className="flex h-max flex-col rounded-r lg:sticky lg:top-[5.5rem]">
         <TemplateDetails
           template={template}
           commandFlags={commandFlags}

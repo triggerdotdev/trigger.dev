@@ -80,7 +80,7 @@ function MobileNavigation() {
 export function MarketingHeader() {
   return (
     <>
-      <header className="sticky top-0 z-50 w-full bg-slate-900">
+      <header className="sticky top-0 z-50 h-20 w-full bg-slate-900">
         <nav className="mx-auto flex max-w-7xl items-center justify-between px-4 py-6 sm:px-10 lg:px-16 ">
           <div className="flex items-center gap-x-6 md:gap-x-[56px]">
             <a
@@ -111,6 +111,14 @@ export function MarketingHeader() {
               >
                 Templates
               </NavLink>
+              <a
+                href="https://blog.trigger.dev/"
+                title="Blog"
+                aria-label="Blog"
+                className="transform text-slate-200 hover:text-toxic-500"
+              >
+                Blog
+              </a>
               <a
                 href="https://trigger.dev/pricing"
                 title="Pricing"

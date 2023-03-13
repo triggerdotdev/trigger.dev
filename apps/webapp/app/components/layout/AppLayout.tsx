@@ -14,14 +14,6 @@ export function AppLayoutTwoCol({ children }: { children: React.ReactNode }) {
   );
 }
 
-export function PublicAppLayout({ children }: { children: React.ReactNode }) {
-  return (
-    <div className="grid h-full w-full grid-rows-[3.6rem_auto_auto] overflow-y-auto">
-      {children}
-    </div>
-  );
-}
-
 export function AppBody({
   children,
   className = "bg-slate-850",
@@ -31,6 +23,22 @@ export function AppBody({
 }) {
   return (
     <div className={classNames("h-full overflow-y-auto", className)}>
+      {children}
+    </div>
+  );
+}
+
+export function PublicAppLayout({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="grid h-full w-full grid-rows-[4rem_auto] overflow-y-auto">
+      {children}
+    </div>
+  );
+}
+
+export function LoggedInAppLayout({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="grid h-full w-full grid-rows-[2rem_auto] overflow-y-auto">
       {children}
     </div>
   );

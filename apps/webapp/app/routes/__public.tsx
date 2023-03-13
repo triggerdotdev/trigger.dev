@@ -3,11 +3,10 @@ import type { LoaderArgs } from "@remix-run/server-runtime";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import {
   AppBody,
-  AppLayoutThreeCol,
+  LoggedInAppLayout,
   PublicAppBody,
   PublicAppLayout,
 } from "~/components/layout/AppLayout";
-import { Footer } from "~/components/layout/Footer";
 import { Header } from "~/components/layout/Header";
 import { MarketingHeader } from "~/components/layout/MarketingHeader";
 import { getOrganizations } from "~/models/organization.server";
@@ -39,13 +38,17 @@ export default function Public() {
   const loaderData = useTypedLoaderData<typeof loader>();
 
   const LayoutComponent = loaderData.userId
-    ? AppLayoutThreeCol
+    ? LoggedInAppLayout
     : PublicAppLayout;
 
   return (
     <LayoutComponent>
       {/* <ProductHuntBanner /> */}
-      {loaderData.userId ? <Header /> : <MarketingHeader />}
+      {loaderData.userId ? (
+        <Header context={"workflows"} />
+      ) : (
+        <MarketingHeader />
+      )}
       {loaderData.userId ? (
         <AppBody>
           <Outlet />
@@ -55,7 +58,6 @@ export default function Public() {
           <Outlet />
         </PublicAppBody>
       )}
-      <Footer />
     </LayoutComponent>
   );
 }
