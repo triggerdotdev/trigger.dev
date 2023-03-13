@@ -6,11 +6,9 @@ import {
 } from "@trigger.dev/common-schemas";
 import { typedjson } from "remix-typedjson";
 import invariant from "tiny-invariant";
-import { AppBody, AppLayoutTwoCol } from "~/components/layout/AppLayout";
 import { Container } from "~/components/layout/Container";
 import { Header } from "~/components/layout/Header";
 import {
-  OrganizationsSideMenu,
   SideMenuContainer,
   WorkflowsSideMenu,
 } from "~/components/navigation/SideMenu";

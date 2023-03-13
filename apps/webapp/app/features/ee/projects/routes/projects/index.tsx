@@ -14,10 +14,11 @@ import type { LoaderArgs } from "@remix-run/server-runtime";
 import { redirect, typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
 import { IntlDate } from "~/components/IntlDate";
-import { AppBody } from "~/components/layout/AppLayout";
+import { AppBody, AppLayoutTwoCol } from "~/components/layout/AppLayout";
 import { Container } from "~/components/layout/Container";
 import { Header } from "~/components/layout/Header";
 import { List } from "~/components/layout/List";
+import { OrganizationsSideMenu } from "~/components/navigation/SideMenu";
 import { PrimaryLink, SecondaryA } from "~/components/primitives/Buttons";
 import { Spinner } from "~/components/primitives/Spinner";
 import { Body } from "~/components/primitives/text/Body";
@@ -56,57 +57,61 @@ export default function ProjectDeploysPage() {
   const { projects } = useTypedLoaderData<typeof loader>();
 
   return (
-    <AppBody>
-      <Header context="projects" />
-      <Container>
-        {projects.length === 0 ? (
-          <>
-            <Title>Repositories</Title>
-            <div className="mb-2 flex flex-col">
-              <SubTitle className="mb-2">
-                Add a GitHub repository to get started
-              </SubTitle>
-              <div className="flex gap-2">
-                <PrimaryLink to="../select-repo">
+    <AppLayoutTwoCol>
+      <OrganizationsSideMenu />
+      <AppBody>
+        <Header context="projects" />
+        <Container>
+          {projects.length === 0 ? (
+            <>
+              <Title>Repositories</Title>
+              <div className="mb-2 flex flex-col">
+                <SubTitle className="mb-2">
+                  Add a GitHub repository to get started
+                </SubTitle>
+                <div className="flex gap-2">
+                  <PrimaryLink to="../projects/new">
+                    <PlusIcon className="-ml-1 h-4 w-4" />
+                    Add Repo
+                  </PrimaryLink>
+                  <SecondaryA
+                    href="https://docs.trigger.dev"
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    <ArrowTopRightOnSquareIcon className="h-4 w-4" />
+                    <span>Documentation</span>
+                  </SecondaryA>
+                </div>
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="flex items-start justify-between">
+                <Title>Repositories</Title>
+                <PrimaryLink to="../projects/new">
                   <PlusIcon className="-ml-1 h-4 w-4" />
                   Add Repo
                 </PrimaryLink>
-                <SecondaryA
-                  href="https://docs.trigger.dev"
-                  target="_blank"
-                  rel="noreferrer"
-                >
-                  <ArrowTopRightOnSquareIcon className="h-4 w-4" />
-                  <span>Documentation</span>
-                </SecondaryA>
               </div>
-            </div>
-          </>
-        ) : (
-          <>
-            <div className="flex items-start justify-between">
-              <Title>Repositories</Title>
-              <PrimaryLink to="../select-repo">
-                <PlusIcon className="-ml-1 h-4 w-4" />
-                Add Repo
-              </PrimaryLink>
-            </div>
-            <div className="mb-2 flex items-center justify-between">
-              <SubTitle className="-mb-1">
-                {projects.length} connected repo{projects.length > 1 ? "s" : ""}
-              </SubTitle>
-            </div>
-          </>
-        )}
-        <List>
-          {projects.map((project) => (
-            <li key={project.id}>
-              <ProjectListItemView project={project} />
-            </li>
-          ))}
-        </List>
-      </Container>
-    </AppBody>
+              <div className="mb-2 flex items-center justify-between">
+                <SubTitle className="-mb-1">
+                  {projects.length} connected repo
+                  {projects.length > 1 ? "s" : ""}
+                </SubTitle>
+              </div>
+            </>
+          )}
+          <List>
+            {projects.map((project) => (
+              <li key={project.id}>
+                <ProjectListItemView project={project} />
+              </li>
+            ))}
+          </List>
+        </Container>
+      </AppBody>
+    </AppLayoutTwoCol>
   );
 }
 

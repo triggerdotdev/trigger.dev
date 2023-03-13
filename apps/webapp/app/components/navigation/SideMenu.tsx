@@ -26,7 +26,6 @@ import { useCurrentWorkflow } from "~/hooks/useWorkflows";
 import { EnvironmentIcon } from "~/routes/resources/environment";
 import { titleCase } from "~/utils";
 import { CopyTextPanel } from "../CopyTextButton";
-import { Logo } from "../Logo";
 import { LogoIcon } from "../LogoIcon";
 import { TertiaryButton } from "../primitives/Buttons";
 import { MenuTitleToolTip } from "../primitives/MenuTitleToolTip";
@@ -45,6 +44,7 @@ type SideMenuItem = {
   name: string;
   icon: React.ReactNode;
   to: string;
+  end?: boolean;
 };
 
 const iconStyle = "h-6 w-6";
@@ -62,6 +62,7 @@ export function OrganizationsSideMenu() {
       name: "Workflows",
       icon: <ArrowsRightLeftIcon className={iconStyle} />,
       to: `/orgs/${currentOrganization.slug}`,
+      end: true,
     },
   ];
 
@@ -72,11 +73,13 @@ export function OrganizationsSideMenu() {
         name: "Repositories",
         icon: <CloudIcon className={iconStyle} />,
         to: `/orgs/${currentOrganization.slug}/projects`,
+        end: false,
       },
       {
         name: "API Integrations",
         icon: <SquaresPlusIcon className={iconStyle} />,
         to: `/orgs/${currentOrganization.slug}/integrations`,
+        end: false,
       },
     ];
   }
@@ -112,11 +115,16 @@ export function CurrentOrganizationSideMenu() {
         </MenuTitleToolTip>
       </NavLink>
       <MenuTitleToolTip text={currentOrganization.title}>
-        <WorkflowsNavLink slug={currentOrganization.slug}>
+        <NavLink
+          to={`/orgs/${currentOrganization.slug}`}
+          className={(isActive) =>
+            isActive ? activeCollapsedStyle : defaultCollapsedStyle
+          }
+        >
           <li>
             <BuildingOffice2Icon className="h-6 w-6 text-slate-300" />
           </li>
-        </WorkflowsNavLink>
+        </NavLink>
       </MenuTitleToolTip>
     </ul>
   );
@@ -201,6 +209,7 @@ export function WorkflowsSideMenu() {
       name: "Overview",
       icon: <HomeIcon className={iconStyle} />,
       to: ``,
+      end: true,
     },
   ];
 
@@ -260,6 +269,7 @@ export function ProjectSideMenu({
       name: "Overview",
       icon: <HomeIcon className={iconStyle} />,
       to: ``,
+      end: true,
     },
     {
       name: "Deploys",
@@ -349,7 +359,7 @@ function SideMenu({
                 <NavLink
                   key={item.name}
                   to={item.to}
-                  end
+                  end={item.end}
                   className={({ isActive }) =>
                     isActive ? activeStyle : defaultStyle
                   }

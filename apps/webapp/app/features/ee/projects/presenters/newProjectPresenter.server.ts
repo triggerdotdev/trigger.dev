@@ -59,7 +59,7 @@ export class NewProjectPresenter {
 
     return {
       appAuthorizations,
-      redirectTo: `/orgs/${organizationSlug}/select-repo`,
+      redirectTo: `/orgs/${organizationSlug}/projects/new`,
       repositories,
     };
   }

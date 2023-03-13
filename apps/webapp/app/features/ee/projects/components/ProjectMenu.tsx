@@ -55,7 +55,7 @@ export function ProjectMenu() {
                     <div className="relative grid grid-cols-1 gap-y-1 bg-slate-700 py-1">
                       <Popover.Button
                         as={Link}
-                        to={`/orgs/${currentOrganization.slug}/select-repo`}
+                        to={`/orgs/${currentOrganization.slug}/projects/new`}
                       >
                         <div className="mx-1 flex items-center gap-2 rounded py-2 pl-2.5 transition hover:bg-slate-800">
                           <PlusIcon

@@ -3,7 +3,6 @@ import type { LoaderArgs } from "@remix-run/server-runtime";
 import type { UseDataFunctionReturn } from "remix-typedjson";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import invariant from "tiny-invariant";
-import { AppBody } from "~/components/layout/AppLayout";
 import { Container } from "~/components/layout/Container";
 import { Header } from "~/components/layout/Header";
 import {
