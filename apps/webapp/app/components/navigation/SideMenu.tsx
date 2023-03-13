@@ -108,7 +108,7 @@ export function CurrentOrganizationSideMenu() {
     <ul className="flex h-full flex-col items-center justify-start space-y-2 border-r border-slate-800 bg-slate-950">
       <NavLink
         to="/"
-        className="flex h-[3.6rem] w-full items-center justify-center border-b border-slate-800"
+        className="flex min-h-[3.6rem] w-full items-center justify-center border-b border-slate-800"
       >
         <MenuTitleToolTip text="All Organizations">
           <li className="rounded p-2 transition hover:bg-slate-800">
