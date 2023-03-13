@@ -132,6 +132,17 @@ export function repositoryProjectReadyToDeploy(project: RepositoryProject) {
   return project.status === "PENDING" && hasAllEnvVars(project);
 }
 
+export function repositoryCanDeploy(project: RepositoryProject) {
+  switch (project.status) {
+    case "PENDING": {
+      return hasAllEnvVars(project);
+    }
+    default: {
+      return true;
+    }
+  }
+}
+
 export function buildEnvVars(
   deployment: ProjectDeployment,
   project: RepositoryProject,

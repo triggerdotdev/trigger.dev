@@ -2,7 +2,7 @@ import { LIVE_ENVIRONMENT } from "~/consts";
 import { prisma, PrismaClient } from "~/db.server";
 import {
   findProjectByRepo,
-  repositoryProjectReadyToDeploy,
+  repositoryCanDeploy,
 } from "~/features/ee/projects/models/repositoryProject.server";
 import { getCommit } from "../github/githubApp.server";
 import { refreshInstallationAccessToken } from "../github/refreshInstallationAccessToken.server";
@@ -67,7 +67,7 @@ export class ReceiveRepositoryPush {
       return;
     }
 
-    if (!repositoryProjectReadyToDeploy(project)) {
+    if (!repositoryCanDeploy(project)) {
       return;
     }
 
