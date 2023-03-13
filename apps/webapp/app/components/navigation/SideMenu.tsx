@@ -2,6 +2,7 @@ import { EyeIcon, EyeSlashIcon } from "@heroicons/react/20/solid";
 import {
   ArrowsRightLeftIcon,
   BeakerIcon,
+  BuildingOffice2Icon,
   CloudArrowUpIcon,
   CloudIcon,
   Cog6ToothIcon,
@@ -87,6 +88,37 @@ export function OrganizationsSideMenu() {
       items={items}
       backPath="/"
     />
+  );
+}
+
+export function CurrentOrganizationSideMenu() {
+  const organizations = useOrganizations();
+  const currentOrganization = useCurrentOrganization();
+
+  if (organizations === undefined || currentOrganization === undefined) {
+    return null;
+  }
+
+  return (
+    <ul className="flex h-full flex-col items-center justify-start space-y-2 border-r border-slate-800 bg-slate-950">
+      <NavLink
+        to="/"
+        className="flex h-[3.6rem] w-full items-center justify-center border-b border-slate-800"
+      >
+        <MenuTitleToolTip text="All Organizations">
+          <li className="rounded p-2 transition hover:bg-slate-800">
+            <LogoIcon className="h-6 w-6" />
+          </li>
+        </MenuTitleToolTip>
+      </NavLink>
+      <MenuTitleToolTip text={currentOrganization.title}>
+        <WorkflowsNavLink slug={currentOrganization.slug}>
+          <li>
+            <BuildingOffice2Icon className="h-6 w-6 text-slate-300" />
+          </li>
+        </WorkflowsNavLink>
+      </MenuTitleToolTip>
+    </ul>
   );
 }
 
@@ -296,10 +328,13 @@ function SideMenu({
                 </Header1>
               </div>
             ) : (
-              <div className="mb-2 p-3">
-                <NavLink to="/">
-                  <Logo className="h-7 w-[160px]" />
-                </NavLink>
+              <div className="flex h-[3.6rem] items-center border-b border-slate-800 pl-5 pr-1">
+                <Header1
+                  size="extra-small"
+                  className="overflow-hidden text-ellipsis whitespace-nowrap text-slate-300"
+                >
+                  {title}
+                </Header1>
               </div>
             )}
 
@@ -421,6 +456,3 @@ function WorkflowsNavLink({
 }
 
 const menuSmallTitleStyle = "uppercase text-slate-500 tracking-wide";
-const menuSmallLinkStyle =
-  "flex gap-1.5 text-slate-400 hover:text-white text-sm items-center transition";
-const menuSmallIconStyle = "h-4 w-4";

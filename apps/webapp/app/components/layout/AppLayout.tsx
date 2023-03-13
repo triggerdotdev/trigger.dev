@@ -24,7 +24,9 @@ export function AppLayoutThreeCol({
 
 export function AppLayoutTwoCol({ children }: { children: React.ReactNode }) {
   return (
-    <div className="grid h-full w-full grid-cols-[16rem_auto]">{children}</div>
+    <div className="grid h-full w-full grid-cols-[16rem_auto] overflow-hidden">
+      {children}
+    </div>
   );
 }
 

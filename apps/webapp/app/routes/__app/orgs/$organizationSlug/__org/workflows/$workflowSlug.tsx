@@ -10,6 +10,7 @@ import { AppBody, AppLayoutTwoCol } from "~/components/layout/AppLayout";
 import { Container } from "~/components/layout/Container";
 import { Header } from "~/components/layout/Header";
 import {
+  OrganizationsSideMenu,
   SideMenuContainer,
   WorkflowsSideMenu,
 } from "~/components/navigation/SideMenu";

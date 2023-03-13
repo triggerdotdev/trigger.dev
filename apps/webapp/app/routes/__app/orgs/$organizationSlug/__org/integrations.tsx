@@ -7,10 +7,11 @@ import invariant from "tiny-invariant";
 import { ApiLogoIcon } from "~/components/code/ApiLogoIcon";
 import type { Status } from "~/components/integrations/ConnectButton";
 import { ConnectButton } from "~/components/integrations/ConnectButton";
-import { AppBody } from "~/components/layout/AppLayout";
+import { AppBody, AppLayoutTwoCol } from "~/components/layout/AppLayout";
 import { Container } from "~/components/layout/Container";
 import { Header } from "~/components/layout/Header";
 import { List } from "~/components/layout/List";
+import { OrganizationsSideMenu } from "~/components/navigation/SideMenu";
 import { PrimaryA } from "~/components/primitives/Buttons";
 import { Body } from "~/components/primitives/text/Body";
 import { Header3 } from "~/components/primitives/text/Headers";
@@ -44,80 +45,83 @@ export default function Integrations() {
   invariant(organization, "Organization not found");
 
   return (
-    <AppBody>
-      <Header context="workflows" />
-      <Container>
-        <div className="flex items-start justify-between">
-          <Title>API Integrations</Title>
-          <PrimaryA href="mailto:hello@trigger.dev">
-            <EnvelopeIcon className="-ml-1 h-5 w-5" />
-            Request an integration
-          </PrimaryA>
-        </div>
-        <div>
-          {connections.length === 0 ? (
-            <></>
-          ) : (
-            <>
-              <SubTitle>
-                {connections.length} connected API
-                {connections.length > 1 ? "s" : ""}
-              </SubTitle>
-              <List>
-                {connections.map((connection) => {
-                  return (
-                    <li key={connection.id}>
-                      <div className="flex items-center gap-4 px-4 py-4">
-                        <ApiLogoIcon
-                          integration={services[connection.apiIdentifier]}
-                          size="regular"
-                        />
-                        <div className="flex flex-col gap-2">
-                          <div>
-                            <Header3
-                              size="extra-small"
-                              className="truncate font-medium"
-                            >
-                              {connection.title}
-                            </Header3>
-                            <Body size="small" className="text-slate-400">
-                              Added {formatDateTime(connection.createdAt)}
-                            </Body>
+    <AppLayoutTwoCol>
+      <OrganizationsSideMenu />
+      <AppBody>
+        <Header context="workflows" />
+        <Container>
+          <div className="flex items-start justify-between">
+            <Title>API Integrations</Title>
+            <PrimaryA href="mailto:hello@trigger.dev">
+              <EnvelopeIcon className="-ml-1 h-5 w-5" />
+              Request an integration
+            </PrimaryA>
+          </div>
+          <div>
+            {connections.length === 0 ? (
+              <></>
+            ) : (
+              <>
+                <SubTitle>
+                  {connections.length} connected API
+                  {connections.length > 1 ? "s" : ""}
+                </SubTitle>
+                <List>
+                  {connections.map((connection) => {
+                    return (
+                      <li key={connection.id}>
+                        <div className="flex items-center gap-4 px-4 py-4">
+                          <ApiLogoIcon
+                            integration={services[connection.apiIdentifier]}
+                            size="regular"
+                          />
+                          <div className="flex flex-col gap-2">
+                            <div>
+                              <Header3
+                                size="extra-small"
+                                className="truncate font-medium"
+                              >
+                                {connection.title}
+                              </Header3>
+                              <Body size="small" className="text-slate-400">
+                                Added {formatDateTime(connection.createdAt)}
+                              </Body>
+                            </div>
                           </div>
                         </div>
-                      </div>
-                    </li>
-                  );
-                })}
-              </List>
-            </>
-          )}
-        </div>
-
-        <div>
-          <SubTitle>Add an API integration</SubTitle>
-          <div className="flex w-full flex-wrap gap-2">
-            {Object.values(services)
-              .sort((a, b) => a.name.localeCompare(b.name))
-              .map((integration) => (
-                <ConnectButton
-                  key={integration.service}
-                  integration={integration}
-                  organizationId={organization.id}
-                  className="group flex max-w-[160px] flex-col items-center gap-4 overflow-hidden rounded-md border border-slate-800 bg-slate-800 text-sm text-slate-200 shadow-md transition hover:bg-slate-800/30 disabled:opacity-50"
-                >
-                  {(status) => (
-                    <AddButtonContent
-                      integration={integration}
-                      status={status}
-                    />
-                  )}
-                </ConnectButton>
-              ))}
+                      </li>
+                    );
+                  })}
+                </List>
+              </>
+            )}
           </div>
-        </div>
-      </Container>
-    </AppBody>
+
+          <div>
+            <SubTitle>Add an API integration</SubTitle>
+            <div className="flex w-full flex-wrap gap-2">
+              {Object.values(services)
+                .sort((a, b) => a.name.localeCompare(b.name))
+                .map((integration) => (
+                  <ConnectButton
+                    key={integration.service}
+                    integration={integration}
+                    organizationId={organization.id}
+                    className="group flex max-w-[160px] flex-col items-center gap-4 overflow-hidden rounded-md border border-slate-800 bg-slate-800 text-sm text-slate-200 shadow-md transition hover:bg-slate-800/30 disabled:opacity-50"
+                  >
+                    {(status) => (
+                      <AddButtonContent
+                        integration={integration}
+                        status={status}
+                      />
+                    )}
+                  </ConnectButton>
+                ))}
+            </div>
+          </div>
+        </Container>
+      </AppBody>
+    </AppLayoutTwoCol>
   );
 }
 
