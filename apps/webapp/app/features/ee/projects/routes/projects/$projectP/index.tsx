@@ -149,9 +149,14 @@ export default function ProjectOverviewPage() {
             <Body size="extra-small" className={deploySummaryLabelStyles}>
               Name
             </Body>
-            <Body className={deploySummaryValueStyles}>
+            <TertiaryA
+              href={project.url}
+              target="_blank"
+              className={classNames(deploySummaryValueStyles, "!text-base")}
+            >
               {project.name}#{project.branch}
-            </Body>
+              <ArrowTopRightOnSquareIcon className="h-4 w-4" />
+            </TertiaryA>
           </li>
           <li className={deploySummaryGridStyles}>
             <Body size="extra-small" className={deploySummaryLabelStyles}>
@@ -168,29 +173,14 @@ export default function ProjectOverviewPage() {
             </div>
           </li>
         </ul>
-        <ul className="grid grid-cols-3 gap-x-8">
-          <li className={deploySummaryGridStyles}>
-            <Body size="extra-small" className={deploySummaryLabelStyles}>
-              URL
-            </Body>
-            <TertiaryA
-              href={project.url}
-              target="_blank"
-              className={classNames(deploySummaryValueStyles, "!text-base")}
-            >
-              {project.url}
-              <ArrowTopRightOnSquareIcon className="h-4 w-4" />
-            </TertiaryA>
-          </li>
-          <li className={deploySummaryGridStyles}>
-            <Body size="extra-small" className={deploySummaryLabelStyles}>
-              Latest commit
-            </Body>
-            <Body className={deploySummaryValueStyles}>
-              eb9adfe: "Initial commit" by James Ritchie
-            </Body>
-          </li>
-        </ul>
+        <div className={deploySummaryGridStyles}>
+          <Body size="extra-small" className={deploySummaryLabelStyles}>
+            Latest commit
+          </Body>
+          <Body className={deploySummaryValueStyles}>
+            eb9adfe: "Initial commit" by James Ritchie
+          </Body>
+        </div>
       </Panel>
       <div className="relative mb-6 rounded-lg bg-slate-850">
         <SubTitle>Workflows</SubTitle>
