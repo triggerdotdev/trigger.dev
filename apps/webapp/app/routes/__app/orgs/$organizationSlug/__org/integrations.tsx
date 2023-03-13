@@ -1,4 +1,8 @@
-import { EnvelopeIcon } from "@heroicons/react/24/outline";
+import {
+  ArrowsRightLeftIcon,
+  CursorArrowRaysIcon,
+  EnvelopeIcon,
+} from "@heroicons/react/24/outline";
 import { PlusCircleIcon } from "@heroicons/react/24/solid";
 import type { LoaderArgs } from "@remix-run/server-runtime";
 import type { ServiceMetadata } from "@trigger.dev/integration-sdk";
@@ -12,7 +16,11 @@ import { Container } from "~/components/layout/Container";
 import { Header } from "~/components/layout/Header";
 import { List } from "~/components/layout/List";
 import { OrganizationsSideMenu } from "~/components/navigation/SideMenu";
-import { PrimaryA } from "~/components/primitives/Buttons";
+import {
+  PrimaryA,
+  PrimaryButton,
+  SecondaryButton,
+} from "~/components/primitives/Buttons";
 import { Body } from "~/components/primitives/text/Body";
 import { Header3 } from "~/components/primitives/text/Headers";
 import { SubTitle } from "~/components/primitives/text/SubTitle";
@@ -52,10 +60,34 @@ export default function Integrations() {
         <Container>
           <div className="flex items-start justify-between">
             <Title>API Integrations</Title>
-            <PrimaryA href="mailto:hello@trigger.dev">
-              <EnvelopeIcon className="-ml-1 h-5 w-5" />
-              Request an integration
-            </PrimaryA>
+            <div className="flex items-center gap-2">
+              <script src="//embed.typeform.com/next/embed.js"></script>
+              <SecondaryButton
+                data-tf-slider="Rffdj2Ma"
+                data-tf-position="right"
+                data-tf-opacity="100"
+                data-tf-iframe-props="title=Trigger.dev workflow request"
+                data-tf-transitive-search-params
+                data-tf-medium="snippet"
+                data-tf-hidden="source="
+              >
+                <CursorArrowRaysIcon className="-ml-1 h-5 w-5" />
+                Request a Workflow
+              </SecondaryButton>
+              <PrimaryButton
+                data-tf-slider="VwblgGDZ"
+                data-tf-position="right"
+                data-tf-opacity="100"
+                data-tf-iframe-props="title=Request an integration"
+                data-tf-transitive-search-params
+                data-tf-medium="snippet"
+                data-tf-hidden="apponboarding=,eventlog1="
+              >
+                <CursorArrowRaysIcon className="-ml-1 h-5 w-5" />
+                Request an Integration
+              </PrimaryButton>
+              <script src="//embed.typeform.com/next/embed.js"></script>
+            </div>
           </div>
           <div>
             {connections.length === 0 ? (

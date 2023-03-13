@@ -2,14 +2,12 @@ import {
   ArrowTopRightOnSquareIcon,
   ChatBubbleLeftRightIcon,
 } from "@heroicons/react/24/outline";
-import { Link } from "@remix-run/react";
 import { ProjectMenu } from "~/features/ee/projects/components/ProjectMenu";
 import { useOptionalUser } from "~/hooks/useUser";
 import { EnvironmentMenu } from "../../routes/resources/environment";
 import { OrganizationMenu } from "../navigation/OrganizationMenu";
 import { WorkflowMenu } from "../navigation/WorkflowMenu";
 import { SecondaryA, SecondaryButton } from "../primitives/Buttons";
-import { UserProfileMenu } from "../UserProfileMenu";
 
 type HeaderProps = {
   children?: React.ReactNode;
