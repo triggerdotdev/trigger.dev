@@ -11,6 +11,7 @@ import {
   SecondaryButton,
   SecondaryLink,
 } from "~/components/primitives/Buttons";
+import { PrettyDuration } from "~/components/primitives/PrettyDuration";
 import { Spinner } from "~/components/primitives/Spinner";
 import { Body } from "~/components/primitives/text/Body";
 import { Header1 } from "~/components/primitives/text/Headers";
@@ -190,9 +191,14 @@ export default function DeploymentPage() {
           </li>
           <li className={deploySummaryGridStyles}>
             <Body size="extra-small" className={deploySummaryLabelStyles}>
-              Duration
+              Build Duration
             </Body>
-            <Body className={deploySummaryValueStyles}>1m 35s</Body>
+            <Body className={deploySummaryValueStyles}>
+              <PrettyDuration
+                startAt={deployment.buildStartedAt}
+                endAt={deployment.buildFinishedAt}
+              />
+            </Body>
           </li>
           <li className={deploySummaryGridStyles}>
             <Body size="extra-small" className={deploySummaryLabelStyles}>
