@@ -20,7 +20,7 @@ export function Header({ children, context }: HeaderProps) {
   const user = useOptionalUser();
 
   return (
-    <div className="sticky top-0 z-50 flex h-[3.6rem] w-full items-center gap-2 border-b border-slate-800 bg-slate-950 py-1 pl-2 pr-3">
+    <div className="sticky top-0 z-50 flex h-[3.6rem] w-full items-center gap-2 border-b border-slate-800 bg-slate-950 py-1 pl-2 pr-2.5">
       <div className="hidden items-center sm:flex">
         <OrganizationMenu />
         {context === "workflows" ? <WorkflowMenu /> : <ProjectMenu />}
@@ -36,16 +36,6 @@ export function Header({ children, context }: HeaderProps) {
           <ChatBubbleLeftRightIcon className="-ml-1 h-4 w-4" />
           Send us feedback
         </SecondaryButton>
-        {user ? (
-          <UserProfileMenu user={user} />
-        ) : (
-          <Link
-            to="/login"
-            className="text-gray-700 transition hover:text-black"
-          >
-            Login
-          </Link>
-        )}
       </div>
     </div>
   );

@@ -1,5 +1,6 @@
 import { EyeIcon, EyeSlashIcon } from "@heroicons/react/20/solid";
 import {
+  ArrowLeftOnRectangleIcon,
   ArrowsRightLeftIcon,
   BeakerIcon,
   BuildingOffice2Icon,
@@ -13,6 +14,7 @@ import {
   SquaresPlusIcon,
 } from "@heroicons/react/24/outline";
 import { Link, NavLink, useLocation } from "@remix-run/react";
+import classNames from "classnames";
 import { useState } from "react";
 import invariant from "tiny-invariant";
 import { CurrentProject } from "~/features/ee/projects/routes/projects/$projectP";
@@ -114,18 +116,30 @@ export function CurrentOrganizationSideMenu() {
           </li>
         </MenuTitleToolTip>
       </NavLink>
-      <MenuTitleToolTip text={currentOrganization.title}>
-        <NavLink
-          to={`/orgs/${currentOrganization.slug}`}
-          className={(isActive) =>
-            isActive ? activeCollapsedStyle : defaultCollapsedStyle
-          }
-        >
-          <li>
-            <BuildingOffice2Icon className="h-6 w-6 text-slate-300" />
-          </li>
-        </NavLink>
-      </MenuTitleToolTip>
+      <div className="flex h-full flex-col items-center justify-between">
+        <MenuTitleToolTip text={currentOrganization.title}>
+          <NavLink
+            to={`/orgs/${currentOrganization.slug}`}
+            className={(isActive) =>
+              isActive ? activeCollapsedStyle : defaultCollapsedStyle
+            }
+          >
+            <li>
+              <BuildingOffice2Icon className="h-6 w-6 text-slate-300" />
+            </li>
+          </NavLink>
+        </MenuTitleToolTip>
+        <MenuTitleToolTip text="Logout">
+          <a
+            href={`/logout`}
+            className="mb-2 rounded p-2 transition hover:bg-slate-600/50"
+          >
+            <li>
+              <ArrowLeftOnRectangleIcon className="h-6 w-6 text-slate-300" />
+            </li>
+          </a>
+        </MenuTitleToolTip>
+      </div>
     </ul>
   );
 }
