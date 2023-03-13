@@ -6,7 +6,10 @@ import type {
 import { z } from "zod";
 import { parse as parseYAML } from "yaml";
 import { getRepositoryContent } from "~/features/ee/projects/github/githubApp.server";
-import { refreshInstallationAccessToken } from "~/features/ee/projects/github/refreshInstallationAccessToken.server";
+import {
+  GitHubAppAuthorizationWithValidToken,
+  refreshInstallationAccessToken,
+} from "~/features/ee/projects/github/refreshInstallationAccessToken.server";
 import { env } from "~/env.server";
 import { prisma } from "~/db.server";
 
@@ -180,13 +183,9 @@ export function parseEnvVars(project: RepositoryProject) {
 }
 
 export async function serviceDefinitionFromRepository(
-  appAuthorizationId: string,
+  appAuthorization: GitHubAppAuthorizationWithValidToken,
   repoName: string
 ) {
-  const appAuthorization = await refreshInstallationAccessToken(
-    appAuthorizationId
-  );
-
   const renderYamlContent = await getRepositoryContent(
     appAuthorization.installationAccessToken,
     repoName,

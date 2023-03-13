@@ -65,7 +65,9 @@ export async function action({ request, params }: LoaderArgs) {
         userId,
         params.organizationSlug,
         validation.data,
-        validation.serviceDefinition
+        validation.serviceDefinition,
+        validation.repo,
+        validation.latestCommit
       );
 
       if (result.type === "serviceError") {

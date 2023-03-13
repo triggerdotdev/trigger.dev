@@ -665,6 +665,8 @@ model RepositoryProject {
 
   deployments ProjectDeployment[] @relation("repoProject")
 
+  latestCommit Json?
+
   currentDeployment   ProjectDeployment? @relation(fields: [currentDeploymentId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   currentDeploymentId String?
 

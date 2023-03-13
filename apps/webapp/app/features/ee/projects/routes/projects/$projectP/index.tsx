@@ -13,6 +13,7 @@ import { useEffect } from "react";
 import { redirect, typedjson, useTypedLoaderData } from "remix-typedjson";
 import { useEventSource } from "remix-utils";
 import { z } from "zod";
+import { IntlDate } from "~/components/IntlDate";
 import { List } from "~/components/layout/List";
 import { Panel } from "~/components/layout/Panel";
 import { PanelWarning } from "~/components/layout/PanelInfo";
@@ -71,7 +72,7 @@ export async function action({ params, request }: ActionArgs) {
 }
 
 export default function ProjectOverviewPage() {
-  const { project, needsEnvVars } = useCurrentProject();
+  const { project, needsEnvVars, latestCommit } = useCurrentProject();
   const { workflows, organizationSlug, deployments } =
     useTypedLoaderData<typeof loader>();
 
@@ -175,7 +176,13 @@ export default function ProjectOverviewPage() {
             Latest commit
           </Body>
           <Body className={deploySummaryValueStyles}>
-            eb9adfe: "Initial commit" by James Ritchie
+            {latestCommit.sha.slice(0, 7)}: "{latestCommit.commit.message}" by{" "}
+            {latestCommit.commit.author?.name}{" "}
+            {latestCommit.commit.committer?.date && (
+              <>
+                at <IntlDate date={latestCommit.commit.committer?.date} />
+              </>
+            )}
           </Body>
         </div>
       </Panel>

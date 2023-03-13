@@ -1,11 +1,20 @@
 import { LIVE_ENVIRONMENT } from "~/consts";
-import { findProjectByRepo } from "~/features/ee/projects/models/repositoryProject.server";
+import { prisma, PrismaClient } from "~/db.server";
+import {
+  findProjectByRepo,
+  repositoryProjectReadyToDeploy,
+} from "~/features/ee/projects/models/repositoryProject.server";
 import { getCommit } from "../github/githubApp.server";
 import { refreshInstallationAccessToken } from "../github/refreshInstallationAccessToken.server";
 import { CreateProjectDeployment } from "./createProjectDeployment.server";
 
 export class ReceiveRepositoryPush {
+  #prismaClient: PrismaClient;
   #createProjectDeployment = new CreateProjectDeployment();
+
+  constructor(prismaClient: PrismaClient = prisma) {
+    this.#prismaClient = prismaClient;
+  }
 
   public async call(data: {
     branch: string;
@@ -26,18 +35,6 @@ export class ReceiveRepositoryPush {
       return;
     }
 
-    if (!project.autoDeploy) {
-      return;
-    }
-
-    const environment = project.organization.environments.find(
-      (environment) => environment.slug === LIVE_ENVIRONMENT
-    );
-
-    if (!environment) {
-      return;
-    }
-
     // Retrieve the latest commit from the "main" branch in the repo
     const appAuthorization = await refreshInstallationAccessToken(
       project.authorizationId
@@ -50,6 +47,29 @@ export class ReceiveRepositoryPush {
     );
 
     console.log(`Received commit for ${project.name}: ${commit.sha}`);
+
+    await this.#prismaClient.repositoryProject.update({
+      where: { id: project.id },
+      data: {
+        latestCommit: commit,
+      },
+    });
+
+    if (!project.autoDeploy) {
+      return;
+    }
+
+    const environment = project.organization.environments.find(
+      (environment) => environment.slug === LIVE_ENVIRONMENT
+    );
+
+    if (!environment) {
+      return;
+    }
+
+    if (!repositoryProjectReadyToDeploy(project)) {
+      return;
+    }
 
     await this.#createProjectDeployment.call({
       project,

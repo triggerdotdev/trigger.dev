@@ -7,6 +7,13 @@ import {
   serviceDefinitionFromRepository,
 } from "~/features/ee/projects/models/repositoryProject.server";
 import { taskQueue } from "~/services/messageBroker.server";
+import {
+  getCommit,
+  getRepo,
+  GetRepoResponse,
+  GitHubCommit,
+} from "../github/githubApp.server";
+import { refreshInstallationAccessToken } from "../github/refreshInstallationAccessToken.server";
 
 const FormSchema = z.object({
   repoId: z.string(),
@@ -27,6 +34,8 @@ export type CreateProjectValidationResult =
       type: "success";
       data: z.infer<typeof FormSchema>;
       serviceDefinition: BlueprintService;
+      latestCommit: GitHubCommit;
+      repo: GetRepoResponse;
     };
 
 export class CreateProjectService {
@@ -40,7 +49,9 @@ export class CreateProjectService {
     userId: string,
     organizationSlug: string,
     data: z.infer<typeof FormSchema>,
-    serviceDefinition: BlueprintService
+    serviceDefinition: BlueprintService,
+    repo: GetRepoResponse,
+    latestCommit: GitHubCommit
   ) {
     try {
       const project = await this.#prismaClient.repositoryProject.create({
@@ -52,7 +63,7 @@ export class CreateProjectService {
               id: data.appAuthorizationId,
             },
           },
-          branch: "main",
+          branch: repo.default_branch,
           organization: {
             connect: {
               slug: organizationSlug,
@@ -61,6 +72,7 @@ export class CreateProjectService {
           buildCommand: serviceDefinition.buildCommand ?? "npm run build",
           startCommand: serviceDefinition.startCommand ?? "npm run start",
           envVars: serviceDefinition.envVars,
+          latestCommit,
         },
       });
 
@@ -112,8 +124,12 @@ export class CreateProjectService {
       };
     }
 
+    const appAuthorization = await refreshInstallationAccessToken(
+      payloadValidation.data.appAuthorizationId
+    );
+
     const serviceDefinition = await serviceDefinitionFromRepository(
-      payloadValidation.data.appAuthorizationId,
+      appAuthorization,
       payloadValidation.data.repoName
     );
 
@@ -133,10 +149,23 @@ export class CreateProjectService {
       };
     }
 
+    const repo = await getRepo(
+      appAuthorization.installationAccessToken,
+      payloadValidation.data.repoName
+    );
+
+    const latestCommit = await getCommit(
+      appAuthorization.installationAccessToken,
+      payloadValidation.data.repoName,
+      repo.default_branch
+    );
+
     return {
       type: "success" as const,
       data: payloadValidation.data,
       serviceDefinition,
+      latestCommit,
+      repo,
     };
   }
 

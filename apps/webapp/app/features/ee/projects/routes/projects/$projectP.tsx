@@ -11,6 +11,7 @@ import {
 } from "~/components/navigation/SideMenu";
 import { prisma } from "~/db.server";
 import { hydrateObject, useMatchesData } from "~/utils";
+import { GitHubCommit } from "../../github/githubApp.server";
 import {
   hasAllEnvVars,
   parseEnvVars,
@@ -37,11 +38,14 @@ export async function loader({ params }: LoaderArgs) {
 
   const needsEnvVars = !hasAllEnvVars(project);
 
+  const latestCommit = project.latestCommit as GitHubCommit;
+
   return typedjson({
     project,
     organizationSlug,
     needsEnvVars,
     envVars,
+    latestCommit,
   });
 }
 

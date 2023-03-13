@@ -236,6 +236,28 @@ export async function getRepositoryContent(
   return await response.text();
 }
 
+export type GetRepEndpoint = Endpoints["GET /repos/{owner}/{repo}"];
+export type GetRepoResponse = GetRepEndpoint["response"]["data"];
+
+export async function getRepo(
+  token: string,
+  name: string
+): Promise<GetRepoResponse> {
+  const response = await fetch(`https://api.github.com/repos/${name}`, {
+    method: "GET",
+    headers: {
+      Authorization: `token ${token}`,
+      Accept: "application/vnd.github.v3+json",
+    },
+  });
+
+  if (!response.ok) {
+    throw new Error(`Failed to get repo: ${response.statusText}`);
+  }
+
+  return await response.json();
+}
+
 export type GetCommitEndpoint =
   Endpoints["GET /repos/{owner}/{repo}/commits/{ref}"];
 
