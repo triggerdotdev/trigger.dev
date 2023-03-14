@@ -1,4 +1,5 @@
 import {
+  ArrowLeftOnRectangleIcon,
   BuildingOffice2Icon,
   PlusIcon,
   UserIcon,
@@ -8,15 +9,18 @@ import classNames from "classnames";
 import { CopyTextPanel } from "~/components/CopyTextButton";
 import { AppBody } from "~/components/layout/AppLayout";
 import { Header } from "~/components/layout/Header";
+import { MenuTitleToolTip } from "~/components/primitives/MenuTitleToolTip";
 import { Body } from "~/components/primitives/text/Body";
 import { Header4 } from "~/components/primitives/text/Headers";
 import { Tooltip } from "~/components/primitives/Tooltip";
 import type { MatchedOrganization } from "~/hooks/useOrganizations";
 import { useOrganizations } from "~/hooks/useOrganizations";
+import { useOptionalUser } from "~/hooks/useUser";
 import { environmentShortName } from "~/utils";
 
 export default function AppLayout() {
   const organizations = useOrganizations();
+  const user = useOptionalUser();
 
   return (
     <>
@@ -27,7 +31,7 @@ export default function AppLayout() {
             Your Organizations
           </h1>
         </div>
-        <div className="flex items-center justify-center">
+        <div className="mb-12 flex items-center justify-center">
           <ul className="-mt-24 grid max-w-7xl grid-cols-2 gap-2 lg:grid-cols-3">
             {organizations ? (
               <OrganizationGrid organizations={organizations} />
@@ -51,6 +55,16 @@ export default function AppLayout() {
               </Link>
             </li>
           </ul>
+        </div>
+        <div className="absolute bottom-0 left-2">
+          <MenuTitleToolTip text={user ? `Logout ${user}` : "Logout"}>
+            <a
+              href={`/logout`}
+              className="mb-2 rounded p-2 transition hover:bg-slate-600/50"
+            >
+              <ArrowLeftOnRectangleIcon className="h-6 w-6 text-slate-300" />
+            </a>
+          </MenuTitleToolTip>
         </div>
       </AppBody>
     </>

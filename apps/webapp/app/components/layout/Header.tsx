@@ -3,7 +3,6 @@ import {
   ChatBubbleLeftRightIcon,
 } from "@heroicons/react/24/outline";
 import { ProjectMenu } from "~/features/ee/projects/components/ProjectMenu";
-import { useOptionalUser } from "~/hooks/useUser";
 import { EnvironmentMenu } from "../../routes/resources/environment";
 import { OrganizationMenu } from "../navigation/OrganizationMenu";
 import { WorkflowMenu } from "../navigation/WorkflowMenu";
@@ -15,8 +14,6 @@ type HeaderProps = {
 };
 
 export function Header({ children, context }: HeaderProps) {
-  const user = useOptionalUser();
-
   return (
     <div className="sticky top-0 z-50 flex h-[3.6rem] w-full items-center gap-2 border-b border-slate-800 bg-slate-950 py-1 pl-2 pr-2.5">
       <div className="hidden items-center sm:flex">

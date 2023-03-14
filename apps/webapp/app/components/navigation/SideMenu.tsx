@@ -14,7 +14,6 @@ import {
   SquaresPlusIcon,
 } from "@heroicons/react/24/outline";
 import { Link, NavLink, useLocation } from "@remix-run/react";
-import classNames from "classnames";
 import { useState } from "react";
 import invariant from "tiny-invariant";
 import { CurrentProject } from "~/features/ee/projects/routes/projects/$projectP";
@@ -24,6 +23,7 @@ import {
   useCurrentOrganization,
   useOrganizations,
 } from "~/hooks/useOrganizations";
+import { useOptionalUser } from "~/hooks/useUser";
 import { useCurrentWorkflow } from "~/hooks/useWorkflows";
 import { EnvironmentIcon } from "~/routes/resources/environment";
 import { titleCase } from "~/utils";
@@ -97,6 +97,7 @@ export function OrganizationsSideMenu() {
 }
 
 export function CurrentOrganizationSideMenu() {
+  const user = useOptionalUser();
   const organizations = useOrganizations();
   const currentOrganization = useCurrentOrganization();
 
@@ -129,7 +130,7 @@ export function CurrentOrganizationSideMenu() {
             </li>
           </NavLink>
         </MenuTitleToolTip>
-        <MenuTitleToolTip text="Logout">
+        <MenuTitleToolTip text={user ? `Logout ${user}` : "Logout"}>
           <a
             href={`/logout`}
             className="mb-2 rounded p-2 transition hover:bg-slate-600/50"
