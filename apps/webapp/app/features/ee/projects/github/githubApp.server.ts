@@ -72,6 +72,7 @@ async function handleGithubEvent<TName extends EmitterWebhookEventName>({
       await taskQueue.publish("GITHUB_APP_INSTALLATION_DELETED", {
         id: payload.installation.id,
       });
+      break;
     }
     case "push": {
       const push = payload as PushEvent;
@@ -88,6 +89,7 @@ async function handleGithubEvent<TName extends EmitterWebhookEventName>({
         commitSha: push.after,
         repository: push.repository.full_name,
       });
+      break;
     }
   }
 }
