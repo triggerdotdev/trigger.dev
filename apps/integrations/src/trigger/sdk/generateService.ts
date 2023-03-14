@@ -328,11 +328,11 @@ async function createFunctionsAndTypesFiles(
   });
 
   //uncomment to write intermediate schema to disk
-  await fs.mkdir(basePath, { recursive: true });
-  await fs.writeFile(
-    `${basePath}/schema-optimized.json`,
-    JSON.stringify(combinedSchema, null, 2)
-  );
+  // await fs.mkdir(basePath, { recursive: true });
+  // await fs.writeFile(
+  //   `${basePath}/schema-optimized.json`,
+  //   JSON.stringify(combinedSchema, null, 2)
+  // );
 
   let typesFileText = `import { z } from "zod";\n`;
 
