@@ -72,7 +72,7 @@ export default function Page() {
                   rel="noreferrer"
                 >
                   <PlusIcon className="-ml-1 h-4 w-4" />
-                  New workflow
+                  New Workflow
                 </PrimaryLink>
               </div>
               <SubTitle>
