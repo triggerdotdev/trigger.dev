@@ -41,10 +41,11 @@ function MobileNavigation() {
           >
             <PrimaryLink
               className="w-full !max-w-none whitespace-nowrap text-base"
-              to="https://app.trigger.dev"
+              to="/login"
             >
               Sign up
             </PrimaryLink>
+            <MobileNavLink to="/login">Login</MobileNavLink>
             <MobileNavLink
               className="whitespace-nowrap text-base"
               to="https://docs.trigger.dev"
@@ -69,7 +70,6 @@ function MobileNavigation() {
             >
               GitHub
             </MobileNavLink>
-            <MobileNavLink to="https://app.trigger.dev">Login</MobileNavLink>
           </Popover.Panel>
         </Transition.Child>
       </Transition.Root>
