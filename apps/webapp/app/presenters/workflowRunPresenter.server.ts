@@ -39,11 +39,11 @@ export class WorkflowRunPresenter {
     }
 
     const serviceMetadatas = await getServiceMetadatas(true);
-    const steps = await Promise.all(
-      workflowRun.tasks
-        .map((step) => parseStep(step, serviceMetadatas))
-        .filter(Boolean)
-    );
+    const steps = (
+      await Promise.all(
+        workflowRun.tasks.map((step) => parseStep(step, serviceMetadatas))
+      )
+    ).filter(Boolean);
 
     let trigger = {
       startedAt: workflowRun.startedAt,
