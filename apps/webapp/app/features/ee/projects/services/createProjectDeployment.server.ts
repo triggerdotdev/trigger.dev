@@ -37,11 +37,17 @@ export class CreateProjectDeployment {
     const version = await getNextDeploymentVersion(project.id);
 
     const dockerfile = formatFileContents(`
-      FROM node:18-bullseye-slim
+      FROM node:18.15-bullseye-slim
+      LABEL "org.opencontainers.image.source"="${project.url}"
+      LABEL "org.opencontainers.image.revision"="${commit.sha}"
+      LABEL "org.opencontainers.image.created"="${new Date().toISOString()}"
+      LABEL "org.opencontainers.image.version"="${version}"
       WORKDIR /app
       COPY package*.json ./
       RUN ${project.buildCommand}
-      COPY . .
+      ENV NODE_ENV=production
+      USER node
+      COPY --chown=node:node . .
       CMD [${project.startCommand
         .split(" ")
         .map((s) => `"${s}"`)
@@ -50,6 +56,7 @@ export class CreateProjectDeployment {
 
     const dockerIgnore = formatFileContents(`
       node_modules
+      render.yaml
     `);
 
     console.log(
