@@ -187,21 +187,8 @@ export default function ProjectOverviewPage() {
         </div>
       </Panel>
       <div className="relative mb-6 rounded-lg bg-slate-850">
-        <SubTitle>Workflows</SubTitle>
-        {workflows.length === 0 ? (
-          <Body className="text-slate-500">
-            No workflows have connected in this repo yet
-          </Body>
-        ) : (
-          <WorkflowList
-            workflows={workflows}
-            currentOrganizationSlug={organizationSlug}
-          />
-        )}
-      </div>
-      <div className="relative rounded-lg bg-slate-850">
         <div className="mb-2 flex items-center justify-between">
-          <SubTitle className="mb-0">Latest deploys</SubTitle>
+          <SubTitle className="mb-0">Last 3 deploys</SubTitle>
           {deployments.length === 0 ? (
             <></>
           ) : (
@@ -224,6 +211,19 @@ export default function ProjectOverviewPage() {
               />
             ))}
           </List>
+        )}
+      </div>
+      <div className="relative rounded-lg bg-slate-850">
+        <SubTitle>Workflows</SubTitle>
+        {workflows.length === 0 ? (
+          <Body className="text-slate-500">
+            No workflows have connected in this repo yet
+          </Body>
+        ) : (
+          <WorkflowList
+            workflows={workflows}
+            currentOrganizationSlug={organizationSlug}
+          />
         )}
       </div>
     </>

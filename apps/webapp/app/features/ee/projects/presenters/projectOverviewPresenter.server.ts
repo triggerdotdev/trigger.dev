@@ -39,7 +39,7 @@ export class ProjectOverviewPresenter {
       orderBy: {
         createdAt: "desc",
       },
-      take: 10,
+      take: 3,
     });
 
     return {
