@@ -79,7 +79,10 @@ export default function DeploymentPage() {
     // WARNING Don't put the revalidator in the useEffect deps array or bad things will happen
   }, [events]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const isDeployLogs = deployment.status === "DEPLOYED";
+  const isDeployLogs =
+    deployment.status === "DEPLOYED" ||
+    deployment.status === "STOPPED" ||
+    deployment.status === "STOPPING";
 
   let action: "cancel" | "stop" | undefined;
   let actionConfirm: string | undefined;
