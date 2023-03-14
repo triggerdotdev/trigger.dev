@@ -40,7 +40,9 @@ export class WorkflowRunPresenter {
 
     const serviceMetadatas = await getServiceMetadatas(true);
     const steps = await Promise.all(
-      workflowRun.tasks.map((step) => parseStep(step, serviceMetadatas))
+      workflowRun.tasks
+        .map((step) => parseStep(step, serviceMetadatas))
+        .filter(Boolean)
     );
 
     let trigger = {
@@ -147,10 +149,9 @@ async function parseStep(
         type: "DISCONNECTION" as const,
       };
     case "FETCH_REQUEST":
-      invariant(
-        original.fetchRequest,
-        `Fetch request is missing from run step ${original.id}}`
-      );
+      if (!original.fetchRequest) {
+        return;
+      }
 
       const fetchRequest = FetchRequestSchema.parse(original.input);
       const lastFetchResponse = original.fetchRequest.responses[0];
@@ -174,10 +175,10 @@ async function parseStep(
         lastResponse,
       };
     case "INTEGRATION_REQUEST":
-      invariant(
-        original.integrationRequest,
-        `Integration request is missing from run step ${original.id}}`
-      );
+      if (!original.integrationRequest) {
+        return;
+      }
+
       const externalService = original.integrationRequest.externalService;
       const service = services[externalService.slug];
       invariant(service, `Service ${externalService.slug} not found`);
@@ -218,8 +219,6 @@ async function parseStep(
         customComponent,
       };
   }
-
-  throw new Error(`Unknown step type ${original.type}`);
 }
 
 function triggerStatus(stepCount: number, workflowStatus: WorkflowRunStatus) {
