@@ -1,4 +1,5 @@
 import invariant from "tiny-invariant";
+import { EnvironmentBanner } from "~/components/EnvironmentBanner";
 import { WorkflowConnections } from "~/components/integrations/WorkflowConnections";
 import { PanelInfo } from "~/components/layout/PanelInfo";
 import { PanelWarning } from "~/components/layout/PanelWarning";
@@ -17,6 +18,7 @@ export default function Page() {
 
   return (
     <>
+      <EnvironmentBanner />
       <Title>Connected APIs</Title>
       {workflow.status === "CREATED" && (
         <>

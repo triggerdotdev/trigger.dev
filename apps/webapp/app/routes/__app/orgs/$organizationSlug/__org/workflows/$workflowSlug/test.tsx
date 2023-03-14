@@ -4,6 +4,7 @@ import { useCallback, useState } from "react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import invariant from "tiny-invariant";
 import { JSONEditor } from "~/components/code/JSONEditor";
+import { EnvironmentBanner } from "~/components/EnvironmentBanner";
 import { Panel } from "~/components/layout/Panel";
 import { PanelInfo } from "~/components/layout/PanelInfo";
 import { PanelWarning } from "~/components/layout/PanelWarning";
@@ -115,28 +116,31 @@ function Tester({
   }, [eventName, organizationSlug, testContent, testFetcher, workflowSlug]);
 
   return (
-    <div className="flex flex-col gap-2">
-      {eventNames.length > 1 ? (
-        <Select
-          name="eventName"
-          defaultValue={eventName}
-          onChange={(e) => setEventName(e.currentTarget.value)}
-        >
-          {eventNames.map((eventName) => (
-            <option key={eventName} value={eventName}>
-              {eventName}
-            </option>
-          ))}
-        </Select>
-      ) : null}
-      <JSONEditor
-        content={testContent}
-        readOnly={false}
-        onChange={(c) => setTestContent(c)}
-        maxHeight="calc(100vh - 300px)"
-      />
-      <PrimaryButton onClick={submit}>Run test</PrimaryButton>
-    </div>
+    <>
+      <EnvironmentBanner />
+      <div className="flex flex-col gap-2">
+        {eventNames.length > 1 ? (
+          <Select
+            name="eventName"
+            defaultValue={eventName}
+            onChange={(e) => setEventName(e.currentTarget.value)}
+          >
+            {eventNames.map((eventName) => (
+              <option key={eventName} value={eventName}>
+                {eventName}
+              </option>
+            ))}
+          </Select>
+        ) : null}
+        <JSONEditor
+          content={testContent}
+          readOnly={false}
+          onChange={(c) => setTestContent(c)}
+          maxHeight="calc(100vh - 300px)"
+        />
+        <PrimaryButton onClick={submit}>Run test</PrimaryButton>
+      </div>
+    </>
   );
 }
 

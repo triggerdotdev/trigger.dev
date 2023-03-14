@@ -3,6 +3,7 @@ import type { ActionArgs } from "@remix-run/server-runtime";
 import invariant from "tiny-invariant";
 import { z } from "zod";
 import { ApiLogoIcon } from "~/components/code/ApiLogoIcon";
+import { EnvironmentBanner } from "~/components/EnvironmentBanner";
 import { Panel } from "~/components/layout/Panel";
 import {
   DangerButton,
@@ -145,6 +146,7 @@ export default function Page() {
 
   return (
     <>
+      <EnvironmentBanner />
       <Title>Settings</Title>
       <SubTitle>Workflow status</SubTitle>
       {panel}

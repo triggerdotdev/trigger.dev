@@ -29,6 +29,7 @@ import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import invariant from "tiny-invariant";
 import type { z } from "zod";
 import CodeBlock from "~/components/code/CodeBlock";
+import { EnvironmentBanner } from "~/components/EnvironmentBanner";
 import { BasicConnectButton } from "~/components/integrations/ConnectButton";
 import { Panel } from "~/components/layout/Panel";
 import { PanelHeader } from "~/components/layout/PanelHeader";
@@ -97,6 +98,7 @@ export default function Page() {
 
   return (
     <>
+      <EnvironmentBanner />
       <div className="sticky -top-12 z-10 -mt-4 -ml-1 flex items-center justify-between bg-slate-850 py-4 pl-1">
         <Header1 className="truncate text-slate-300">Run {run.id}</Header1>
         <div className="flex gap-2">

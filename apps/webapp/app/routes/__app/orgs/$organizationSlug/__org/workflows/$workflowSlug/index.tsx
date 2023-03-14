@@ -12,6 +12,7 @@ import invariant from "tiny-invariant";
 import { ApiLogoIcon } from "~/components/code/ApiLogoIcon";
 import CodeBlock from "~/components/code/CodeBlock";
 import { CopyTextButton } from "~/components/CopyTextButton";
+import { EnvironmentBanner } from "~/components/EnvironmentBanner";
 import { OctoKitty } from "~/components/GitHubLoginButton";
 import { ConnectionSelector } from "~/components/integrations/ConnectionSelector";
 import { WorkflowConnections } from "~/components/integrations/WorkflowConnections";
@@ -107,14 +108,7 @@ export default function Page() {
 
   return (
     <>
-      <div
-        className={classNames(
-          environment.slug === DEV_ENVIRONMENT
-            ? "bg-emerald-500"
-            : "bg-orange-500",
-          "absolute top-[3.6rem] left-0 h-1 w-full"
-        )}
-      />
+      <EnvironmentBanner />
       <div className="flex items-baseline justify-between">
         <Title>Overview</Title>
         <div className="flex items-center gap-4">
@@ -472,6 +466,7 @@ function ConnectToLiveInstructions({
 }) {
   return (
     <>
+      <EnvironmentBanner />
       <Header2>Deploying your workflow to Live</Header2>
       <div className="mt-4 flex flex-col gap-2">
         <Body>

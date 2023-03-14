@@ -14,7 +14,6 @@ import {
 import { commitSession, getSession } from "~/models/runtimeEnvironment.server";
 import { requireUserId } from "~/services/session.server";
 import { titleCase } from "~/utils";
-import { BreadcrumbDivider } from "../../components/layout/Header";
 
 const requestSchema = z.object({
   environment: z.string().min(1),
@@ -77,8 +76,8 @@ export function EnvironmentMenu() {
               <Popover.Button
                 className={classNames(
                   currentEnvironment.slug === "live"
-                    ? "bg-orange-500/10 hover:bg-orange-500/30"
-                    : "bg-emerald-500/20 hover:bg-emerald-500/10",
+                    ? "bg-orange-500/20 hover:bg-orange-500/30"
+                    : "bg-blue-500/20 hover:bg-blue-500/30",
                   "flex w-full items-center justify-between gap-2 rounded py-2 pl-3.5 pr-2 text-base text-slate-300 transition focus:outline-none"
                 )}
               >
@@ -155,7 +154,7 @@ export function EnvironmentIcon({
   slug: string;
   className?: string;
 }) {
-  let color = "bg-emerald-500";
+  let color = "bg-blue-500";
   if (slug === "live") {
     color = "bg-orange-500";
   }

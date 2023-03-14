@@ -25,6 +25,7 @@ import type { WorkflowRunStatus } from "~/models/workflowRun.server";
 import { WorkflowRunListPresenter } from "~/presenters/workflowRunListPresenter.server";
 import { allStatuses } from "~/models/workflowRunStatus";
 import { requireUserId } from "~/services/session.server";
+import { EnvironmentBanner } from "~/components/EnvironmentBanner";
 
 export const loader = async ({ request, params }: LoaderArgs) => {
   const userId = await requireUserId(request);
@@ -77,6 +78,7 @@ export default function Page() {
 
   return (
     <>
+      <EnvironmentBanner />
       <Title>Runs</Title>
       {workflow.status === "CREATED" && (
         <>
