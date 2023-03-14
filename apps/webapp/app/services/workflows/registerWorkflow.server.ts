@@ -44,6 +44,13 @@ export class RegisterWorkflow {
       };
     }
 
+    if (workflow.status === "DISABLED") {
+      return {
+        status: "isDisabled" as const,
+        data: { id: workflow.id },
+      };
+    }
+
     if (validation.data.trigger.service !== "trigger") {
       const source = await this.upsertSource(
         validation.data,
