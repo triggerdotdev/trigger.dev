@@ -1,5 +1,6 @@
 import { Service } from "core/service/types";
 import { authentication } from "./authentication";
+import { spec } from "./schemas/spec";
 import { webhooks } from "./webhooks/webhooks";
 
 export const typeform: Service = {
@@ -11,4 +12,5 @@ export const typeform: Service = {
   authentication,
   webhooks,
   retryableStatusCodes: [408, 429, 500, 502, 503, 504],
+  schema: spec,
 };

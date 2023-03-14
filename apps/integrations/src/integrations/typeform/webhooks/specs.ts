@@ -20,18 +20,14 @@ const createEndpoint: EndpointSpec = {
       name: "form_id",
       description: "The form ID",
       required: true,
-      schema: {
-        type: "string",
-      },
+      schema: "#/definitions/form_id",
       in: "path",
     },
     {
       name: "tag",
       description: "The webhook tag",
       required: true,
-      schema: {
-        type: "string",
-      },
+      schema: "#/definitions/tag",
       in: "path",
     },
   ],
@@ -40,23 +36,7 @@ const createEndpoint: EndpointSpec = {
       "Content-Type": "application/json",
     },
     body: {
-      schema: {
-        type: "object",
-        properties: {
-          enabled: {
-            type: "boolean",
-          },
-          secret: {
-            type: "string",
-          },
-          url: {
-            type: "string",
-          },
-          verify_ssl: {
-            type: "boolean",
-          },
-        },
-      },
+      schema: "#/definitions/create_endpoint_request_body",
     },
   },
   responses: [
@@ -64,44 +44,13 @@ const createEndpoint: EndpointSpec = {
       success: true,
       name: "Success",
       matches: ({ statusCode }) => statusCode >= 200 && statusCode < 300,
-      schema: {
-        type: "object",
-        properties: {
-          created_at: {
-            type: "string",
-          },
-          enabled: {
-            type: "boolean",
-          },
-          form_id: {
-            type: "string",
-          },
-          id: {
-            type: "string",
-          },
-          tag: {
-            type: "string",
-          },
-          updated_at: {
-            type: "string",
-          },
-          url: {
-            type: "string",
-          },
-          verify_ssl: {
-            type: "boolean",
-          },
-        },
-      },
+      schema: "#/definitions/create_endpoint_response_body_success",
     },
     {
       success: false,
       name: "Error",
       matches: ({ statusCode }) => statusCode < 200 || statusCode >= 300,
-      schema: {
-        type: "object",
-        additionalProperties: true,
-      },
+      schema: "#/definitions/error_response_body",
     },
   ],
 };

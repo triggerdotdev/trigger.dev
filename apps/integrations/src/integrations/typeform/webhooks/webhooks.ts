@@ -1,11 +1,9 @@
 import { makeWebhook } from "core/webhook";
 import { WebhookEvent, WebhookReceiveRequest } from "core/webhook/types";
+import crypto from "node:crypto";
 import { authentication } from "../authentication";
 import { example } from "./examples";
-import { formEventSchema } from "./schemas";
 import { formResponse } from "./specs";
-import crypto from "node:crypto";
-import { makeObjectSchema, makeStringSchema } from "core/schemas/makeSchema";
 
 const baseUrl = "https://api.typeform.com";
 
@@ -16,7 +14,7 @@ export const formResponseEvent: WebhookEvent = {
     description: "A form response was submitted",
     tags: ["form"],
   },
-  schema: formEventSchema,
+  outputSchemaRef: "#/definitions/form_event",
   instructions: (data) =>
     `Fill in your Typeform (${data.form_id}) as a real user would`,
   examples: [example],
@@ -52,11 +50,7 @@ const webhook = makeWebhook({
   subscription: {
     type: "automatic",
     requiresSecret: true,
-    inputSchema: makeObjectSchema("Input", {
-      requiredProperties: {
-        form_id: makeStringSchema("Form ID"),
-      },
-    }),
+    inputSchemaRef: "#/definitions/webhook_subscription_input",
     preSubscribe: (input) => {
       return {
         parameters: {
