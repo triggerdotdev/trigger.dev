@@ -57,7 +57,13 @@ export default function AppLayout() {
           </ul>
         </div>
         <div className="absolute bottom-0 left-2">
-          <MenuTitleToolTip text={user ? `Logout ${user}` : "Logout"}>
+          <MenuTitleToolTip
+            text={
+              user
+                ? `Logout ${user.displayName ? user.displayName : user.email}`
+                : "Logout"
+            }
+          >
             <a
               href={`/logout`}
               className="mb-2 rounded p-2 transition hover:bg-slate-600/50"

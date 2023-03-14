@@ -130,7 +130,13 @@ export function CurrentOrganizationSideMenu() {
             </li>
           </NavLink>
         </MenuTitleToolTip>
-        <MenuTitleToolTip text={user ? `Logout ${user}` : "Logout"}>
+        <MenuTitleToolTip
+          text={
+            user
+              ? `Logout ${user.displayName ? user.displayName : user.email}`
+              : "Logout"
+          }
+        >
           <a
             href={`/logout`}
             className="mb-2 rounded p-2 transition hover:bg-slate-600/50"
