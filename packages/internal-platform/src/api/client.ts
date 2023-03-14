@@ -3,6 +3,24 @@ import { UpdateWorkflowRun, RegisteredWorkflow } from "../schemas";
 import fetch from "node-fetch";
 import { Logger } from "../logger";
 
+const RETRYABLE_STATUS_CODES = [500, 502, 503, 504];
+
+// Response error with status code
+export class InternalResponseError extends Error {
+  retryable: boolean;
+
+  constructor(retryable: boolean, message: string) {
+    super(message);
+
+    this.retryable = retryable;
+  }
+}
+
+// export type of InternalApiClient.registerWorkflow
+export type RegisterWorkflowResponse = Awaited<
+  ReturnType<InstanceType<typeof InternalApiClient>["registerWorkflow"]>
+>;
+
 export class InternalApiClient {
   #apiKey: string;
   #baseUrl: string;
@@ -104,8 +122,9 @@ export class InternalApiClient {
       throw new Error(body.error);
     }
 
-    throw new Error(
-      `[${response.status}] Something went wrong: ${response.statusText}`
+    throw new InternalResponseError(
+      RETRYABLE_STATUS_CODES.includes(response.status),
+      response.statusText
     );
   }
 

@@ -71,13 +71,18 @@ export class Logger {
     );
   }
 
-  debug(...args: any[]) {
+  debug(message: string, ...args: any[]) {
     if (this.#level < 5) return;
 
-    console.debug(
-      `[${formattedDateTime()}] ${this.#formatName()} `,
-      ...[...args, ...this.#formatTags()]
-    );
+    const structuredLog = {
+      timestamp: formattedDateTime(),
+      name: this.#name,
+      tags: this.#tags,
+      message,
+      args: structureArgs(args),
+    };
+
+    console.debug(JSON.stringify(structuredLog));
   }
 
   #formatName() {
@@ -113,4 +118,17 @@ function formattedDateTime() {
       : milliseconds;
 
   return `${formattedHours}:${formattedMinutes}:${formattedSeconds}.${formattedMilliseconds}`;
+}
+
+// If args is has a single item that is an object, return that object
+function structureArgs(args: any[]) {
+  if (args.length === 0) {
+    return;
+  }
+
+  if (args.length === 1 && typeof args[0] === "object") {
+    return args[0];
+  }
+
+  return args;
 }
