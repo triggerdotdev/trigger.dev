@@ -216,6 +216,10 @@ export async function ${action.name}(
         switch (webhook.subscription.type) {
           case "automatic": {
             const typeName = toTitleCase(event.name);
+            const title = event.metadata.title;
+            const functionName = toCamelCase(`${typeName}Event`);
+            const friendlyName = toFriendlyTypeName(functionName);
+
             let inputSpecTitle: undefined | string = undefined;
             let inputRef: undefined | SchemaRef = undefined;
             if (webhook.subscription.inputSchemaRef) {
@@ -225,13 +229,9 @@ export async function ${action.name}(
               );
               const inputSpec = pointer.get(service.schema, ptr);
               if (inputSpec) {
-                inputSpecTitle = `${typeName}Input`;
+                inputSpecTitle = `${friendlyName}Input`;
               }
             }
-
-            const title = event.metadata.title;
-            const functionName = toCamelCase(`${typeName}Event`);
-            const friendlyName = toFriendlyTypeName(functionName);
 
             const zodSchemaName = `${functionName}Schema`;
 
