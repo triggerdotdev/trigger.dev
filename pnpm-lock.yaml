@@ -465,6 +465,8 @@ importers:
 
   apps/wss:
     specifiers:
+      '@sentry/node': ^7.38.0
+      '@sentry/tracing': ^7.43.0
       '@trigger.dev/common-schemas': workspace:*
       '@trigger.dev/tsconfig': workspace:*
       '@types/debug': ^4.1.7
@@ -484,6 +486,8 @@ importers:
       ws: ^8.11.0
       zod: ^3.20.2
     dependencies:
+      '@sentry/node': 7.39.0
+      '@sentry/tracing': 7.43.0
       evt: 2.4.13
       pulsar-client: 1.7.0
       uuid: 9.0.0
@@ -5756,6 +5760,15 @@ packages:
       tslib: 1.14.1
     dev: false
 
+  /@sentry/core/7.43.0:
+    resolution: {integrity: sha512-zvMZgEi7ptLBwDnd+xR/u4zdSe5UzS4S3ZhoemdQrn1PxsaVySD/ptyzLoGSZEABqlRxGHnQrZ78MU1hUDvKuQ==}
+    engines: {node: '>=8'}
+    dependencies:
+      '@sentry/types': 7.43.0
+      '@sentry/utils': 7.43.0
+      tslib: 1.14.1
+    dev: false
+
   /@sentry/integrations/7.37.2:
     resolution: {integrity: sha512-kqfXo2hRLo3y0vM9ZcjbrB3grOYfPuKpSHN8MZVx3MHTbAUkjHVwjPf5dfi5a0nMvMYAjg2v/Olt8OGayBgjmg==}
     engines: {node: '>=8'}
@@ -5857,6 +5870,16 @@ packages:
       tslib: 1.14.1
     dev: false
 
+  /@sentry/tracing/7.43.0:
+    resolution: {integrity: sha512-Mld2AyV8xYnRLYbDWvDy8PlGcln3h5JsUx6ScQGOxnFTmCQR50Tldtzq50VDs2fv6xH0+YrL/UIyjxCDc7EXzQ==}
+    engines: {node: '>=8'}
+    dependencies:
+      '@sentry/core': 7.43.0
+      '@sentry/types': 7.43.0
+      '@sentry/utils': 7.43.0
+      tslib: 1.14.1
+    dev: false
+
   /@sentry/types/7.22.0:
     resolution: {integrity: sha512-LhCL+wb1Jch+OesB2CIt6xpfO1Ab6CRvoNYRRzVumWPLns1T3ZJkarYfhbLaOEIb38EIbPgREdxn2AJT560U4Q==}
     engines: {node: '>=8'}
@@ -5869,6 +5892,11 @@ packages:
 
   /@sentry/types/7.39.0:
     resolution: {integrity: sha512-5Y83Y8O3dT5zT2jTKEIPMcpn5lUm05KRMaCXuw0sRsv4r9TbBUKeqiSU1LjowT8rB/XNy8m7DHav8+NmogPaJw==}
+    engines: {node: '>=8'}
+    dev: false
+
+  /@sentry/types/7.43.0:
+    resolution: {integrity: sha512-5XxCWqYWJNoS+P6Ie2ZpUDxLRCt7FTEzmlQkCdjW6MFWOX26hAbF/wEuOTYAFKZXMIXOz0Egofik1e8v1Cg6/A==}
     engines: {node: '>=8'}
     dev: false
 
@@ -5885,6 +5913,14 @@ packages:
     engines: {node: '>=8'}
     dependencies:
       '@sentry/types': 7.39.0
+      tslib: 1.14.1
+    dev: false
+
+  /@sentry/utils/7.43.0:
+    resolution: {integrity: sha512-f78YfMLcgNU7+suyWFCuQhQlneXXMS+egb0EFZh7iU7kANUPRX5T4b+0C+fwaPm5gA6XfGYskr4ZnzQJLOlSqg==}
+    engines: {node: '>=8'}
+    dependencies:
+      '@sentry/types': 7.43.0
       tslib: 1.14.1
     dev: false
 

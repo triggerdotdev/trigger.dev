@@ -173,7 +173,11 @@
               "fromParameterStore": "/Prod/Pulsar/wss/Role"
             },
             "PLATFORM_API_URL": "https://app.trigger.dev",
-            "TRIGGER_LOG_LEVEL": "debug"
+            "TRIGGER_LOG_LEVEL": "debug",
+            "SENTRY_DSN": {
+              "fromParameterStore": "/wss/SENTRY_DSN"
+            },
+            "APP_ENV": "production"
           }
         },
         {
@@ -406,7 +410,11 @@
               "fromParameterStore": "/Staging/Pulsar/wss/Role"
             },
             "PLATFORM_API_URL": "https://app-staging.trigger.dev",
-            "TRIGGER_LOG_LEVEL": "debug"
+            "TRIGGER_LOG_LEVEL": "debug",
+            "SENTRY_DSN": {
+              "fromParameterStore": "/wss/SENTRY_DSN"
+            },
+            "APP_ENV": "staging"
           }
         },
         {
