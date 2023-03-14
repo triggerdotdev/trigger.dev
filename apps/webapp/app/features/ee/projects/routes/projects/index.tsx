@@ -56,11 +56,12 @@ export async function loader({ params, request }: LoaderArgs) {
 
   const presenter = new ProjectListPresenter();
 
-  return typedjson(await presenter.data(organizationSlug));
+  return typedjson(await presenter.data(user.id, organizationSlug));
 }
 
 export default function ProjectDeploysPage() {
-  const { projects } = useTypedLoaderData<typeof loader>();
+  const { projects, appAuthorizationCount } =
+    useTypedLoaderData<typeof loader>();
   const { redirectTo } = useLoaderData<typeof loader>();
 
   return (
@@ -73,8 +74,11 @@ export default function ProjectDeploysPage() {
             <>
               <Title>Repositories</Title>
               <div className="mb-2 flex flex-col">
-                <ConnectToGithub redirectTo={redirectTo} />
-                <AddRepo />
+                {appAuthorizationCount === 0 ? (
+                  <ConnectToGithub redirectTo={redirectTo} />
+                ) : (
+                  <AddRepo />
+                )}
               </div>
             </>
           ) : (
@@ -196,7 +200,7 @@ function ConnectToGithub({ redirectTo }: { redirectTo: string }) {
             Grant access
           </PrimaryLink>
           <Body size="small" className="flex items-center text-slate-400">
-            To deploy a new project you need to authorize our GitHub app.{" "}
+            To deploy a repository you need to authorize our GitHub app.{" "}
             <a
               href="https://docs.trigger.dev/faq#why-do-we-ask-for-github-access"
               target="_blank"
@@ -210,12 +214,14 @@ function ConnectToGithub({ redirectTo }: { redirectTo: string }) {
         <div className="flex w-full flex-col items-center justify-center gap-y-4 border-t border-slate-900 bg-slate-850/50 pt-6 pb-4">
           <div className="flex max-w-2xl flex-col items-center gap-2 text-center">
             <Body className="text-slate-400">
-              Deploying a workflow to the Trigger.dev Cloud
+              Deploying a repository to the Trigger.dev Cloud (Technology
+              Preview)
             </Body>
             <Body size="small" className="text-slate-500">
-              Deploy your workflow to the Trigger.dev Cloud in 3 easy steps.
-              While we are in our Technical Preview phase, we are limiting the
-              number of repos you can deploy to the Cloud to one.
+              Deploy your repository hosting Trigger.dev workflows to our Cloud
+              in 3 easy steps. While we are in our Technical Preview phase, we
+              are limiting the number of repos you can deploy to the Cloud to
+              one.
             </Body>
           </div>
           <ul className="grid grid-cols-[14rem_2rem_14rem_2rem_14rem] place-content-stretch items-center gap-4">

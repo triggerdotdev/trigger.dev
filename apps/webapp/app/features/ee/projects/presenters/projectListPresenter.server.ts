@@ -12,12 +12,22 @@ export class ProjectListPresenter {
     this.#prismaClient = prismaClient;
   }
 
-  async data(organizationSlug: string) {
+  async data(userId: string, organizationSlug: string) {
     const projects = await this.projectsForOrg(organizationSlug);
+
+    const appAuthorizationCount =
+      await this.#prismaClient.gitHubAppAuthorization.count({
+        where: {
+          user: {
+            id: userId,
+          },
+        },
+      });
 
     return {
       organizationSlug,
       projects,
+      appAuthorizationCount,
     };
   }
 
