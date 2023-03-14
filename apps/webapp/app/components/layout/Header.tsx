@@ -4,6 +4,7 @@ import {
 } from "@heroicons/react/24/outline";
 import { ProjectMenu } from "~/features/ee/projects/components/ProjectMenu";
 import { EnvironmentMenu } from "../../routes/resources/environment";
+import { Logo } from "../Logo";
 import { OrganizationMenu } from "../navigation/OrganizationMenu";
 import { WorkflowMenu } from "../navigation/WorkflowMenu";
 import { SecondaryA, SecondaryButton } from "../primitives/Buttons";
@@ -16,20 +17,22 @@ type HeaderProps = {
 export function Header({ children, context }: HeaderProps) {
   return (
     <div className="sticky top-0 z-50 flex h-[3.6rem] w-full items-center gap-2 border-b border-slate-800 bg-slate-950 py-1 pl-2 pr-2.5">
-      <div className="hidden items-center sm:flex">
+      <div className="hidden items-center lg:flex">
         <OrganizationMenu />
         {context === "workflows" ? <WorkflowMenu /> : <ProjectMenu />}
         <EnvironmentMenu />
       </div>
+      <Logo className="ml-1 w-36 lg:hidden" />
       <div className="flex flex-1 justify-center">{children}</div>
       <div className="flex items-center gap-2">
         <SecondaryA href="https://docs.trigger.dev" target="_blank">
           <ArrowTopRightOnSquareIcon className="-ml-1 h-4 w-4" />
-          Documentation
+          Doc<span className="-ml-2 hidden lg:block">umentation</span>
+          <span className="-ml-2 lg:hidden">s</span>
         </SecondaryA>
         <SecondaryButton data-attr="posthog-feedback-button">
           <ChatBubbleLeftRightIcon className="-ml-1 h-4 w-4" />
-          Send us feedback
+          Send <span className="-mx-1 hidden lg:block">us</span> feedback
         </SecondaryButton>
       </div>
     </div>
