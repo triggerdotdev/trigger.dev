@@ -5,11 +5,14 @@ import { Trigger } from "@trigger.dev/sdk";
 import * as github from "@trigger.dev/github";
 import * as notion from "@trigger.dev/notion";
 
+//Change "triggerdotdev/github-issues-to-notion" to your own repo, e.g. "yourorg/yourrepo"
 const repo =
   process.env.GITHUB_REPOSITORY ?? "triggerdotdev/github-issues-to-notion";
 
-//todo you can find the database ID in the URL of your Notion database, it's the part after the name
-//e.g. https://www.notion.so/triggerdotdev/Notion-test-page-9257302b0758480ebef110889636f107?pvs=4#7953d4fb90724da89d9df4ad68d5e78a
+//you can find the database ID in the URL of your Notion database, it's the part after the name but before the question mark
+// e.g. for https://www.notion.so/triggerdotdev/Notion-test-page-9257302b0758480ebef110889636f107?pvs=4#7953d4fb90724da89d9df4ad68d5e78a
+// the database ID would be: 9257302b0758480ebef110889636f107
+const notionDatabaseId = process.env.NOTION_DATABASE_ID;
 const notionDatabaseId = process.env.NOTION_DATABASE_ID;
 
 new Trigger({
