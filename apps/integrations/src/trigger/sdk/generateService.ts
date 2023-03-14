@@ -157,10 +157,14 @@ async function generateFunctionData(service: Service) {
       const title = TitleCaseWithSpaces(action.name);
       const name = action.name;
       const friendlyName = toFriendlyTypeName(name);
-      const inputName = action.spec.input ? `${friendlyName}Input` : undefined;
-      const outputName = action.spec.output
-        ? `${friendlyName}Output`
-        : undefined;
+      const hasInput =
+        action.spec.input.body !== undefined ||
+        action.spec.input.parameters !== undefined;
+      const inputName = hasInput ? `${friendlyName}Input` : undefined;
+      const hasOutput =
+        action.spec.output.responses.find((r) => r.success)?.schema !==
+        undefined;
+      const outputName = hasOutput ? `${friendlyName}Output` : undefined;
 
       const functionCode = `
 ${action.description ? `/** ${action.description} */` : ""}
