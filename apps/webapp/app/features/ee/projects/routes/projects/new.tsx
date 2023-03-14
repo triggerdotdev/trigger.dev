@@ -427,7 +427,7 @@ function ConnectToGithub({ redirectTo }: { redirectTo: string }) {
           <OctoKitty className="mr-1 h-5 w-5" />
           Grant access
         </PrimaryLink>
-        <Body size="extra-small" className="flex items-center text-slate-400">
+        <Body size="small" className="flex items-center text-slate-400">
           To deploy a new project you need to authorize our GitHub app.{" "}
           <a
             href="https://docs.trigger.dev/faq#why-do-we-ask-for-github-access"

@@ -1,25 +1,31 @@
 import { CheckIcon } from "@heroicons/react/20/solid";
 import {
-  ArrowTopRightOnSquareIcon,
+  ArrowRightIcon,
   ChevronRightIcon,
   ClockIcon,
-  CloudArrowUpIcon,
-  CloudIcon,
   CubeTransparentIcon,
   ExclamationTriangleIcon,
   PlusIcon,
 } from "@heroicons/react/24/outline";
-import { Link } from "@remix-run/react";
+import {
+  CheckCircleIcon,
+  PlusCircleIcon,
+  CloudIcon,
+  CloudArrowUpIcon,
+} from "@heroicons/react/24/solid";
+import { Link, useLoaderData } from "@remix-run/react";
 import type { LoaderArgs } from "@remix-run/server-runtime";
 import { redirect, typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
+import { OctoKitty } from "~/components/GitHubLoginButton";
 import { IntlDate } from "~/components/IntlDate";
 import { AppBody, AppLayoutTwoCol } from "~/components/layout/AppLayout";
 import { Container } from "~/components/layout/Container";
 import { Header } from "~/components/layout/Header";
 import { List } from "~/components/layout/List";
+import { Panel } from "~/components/layout/Panel";
 import { OrganizationsSideMenu } from "~/components/navigation/SideMenu";
-import { PrimaryLink, SecondaryA } from "~/components/primitives/Buttons";
+import { PrimaryLink } from "~/components/primitives/Buttons";
 import { Spinner } from "~/components/primitives/Spinner";
 import { Body } from "~/components/primitives/text/Body";
 import { Header2 } from "~/components/primitives/text/Headers";
@@ -55,6 +61,7 @@ export async function loader({ params, request }: LoaderArgs) {
 
 export default function ProjectDeploysPage() {
   const { projects } = useTypedLoaderData<typeof loader>();
+  const { redirectTo } = useLoaderData<typeof loader>();
 
   return (
     <AppLayoutTwoCol>
@@ -66,23 +73,8 @@ export default function ProjectDeploysPage() {
             <>
               <Title>Repositories</Title>
               <div className="mb-2 flex flex-col">
-                <SubTitle className="mb-2">
-                  Add a GitHub repository to get started
-                </SubTitle>
-                <div className="flex gap-2">
-                  <PrimaryLink to="../projects/new">
-                    <PlusIcon className="-ml-1 h-4 w-4" />
-                    Add Repo
-                  </PrimaryLink>
-                  <SecondaryA
-                    href="https://docs.trigger.dev"
-                    target="_blank"
-                    rel="noreferrer"
-                  >
-                    <ArrowTopRightOnSquareIcon className="h-4 w-4" />
-                    <span>Documentation</span>
-                  </SecondaryA>
-                </div>
+                <ConnectToGithub redirectTo={redirectTo} />
+                <AddRepo />
               </div>
             </>
           ) : (
@@ -185,5 +177,92 @@ export function ProjectListItemView({ project }: { project: ProjectListItem }) {
         </div>
       </div>
     </Link>
+  );
+}
+
+function ConnectToGithub({ redirectTo }: { redirectTo: string }) {
+  return (
+    <>
+      <SubTitle className="flex items-center">
+        Grant GitHub repo access to get started
+      </SubTitle>
+      <Panel className="mb-6">
+        <div className="flex h-full flex-col items-center justify-center gap-6 py-20">
+          <PrimaryLink
+            size="large"
+            to={`/apps/github?redirectTo=${encodeURIComponent(redirectTo)}`}
+          >
+            <OctoKitty className="mr-1 h-5 w-5" />
+            Grant access
+          </PrimaryLink>
+          <Body size="small" className="flex items-center text-slate-400">
+            To deploy a new project you need to authorize our GitHub app.{" "}
+            <a
+              href="https://docs.trigger.dev/faq#why-do-we-ask-for-github-access"
+              target="_blank"
+              rel="noreferrer"
+              className="ml-1 underline decoration-slate-500 underline-offset-2 transition hover:cursor-pointer hover:text-slate-300"
+            >
+              Learn more.
+            </a>
+          </Body>
+        </div>
+        <div className="flex w-full flex-col items-center justify-center gap-y-4 border-t border-slate-900 bg-slate-850/50 pt-6 pb-4">
+          <div className="flex max-w-2xl flex-col items-center gap-2 text-center">
+            <Body className="text-slate-400">
+              Deploying a workflow to the Trigger.dev Cloud
+            </Body>
+            <Body size="small" className="text-slate-500">
+              Deploy your workflow to the Trigger.dev Cloud in 3 easy steps.
+              While we are in our Technical Preview phase, we are limiting the
+              number of repos you can deploy to the Cloud to one.
+            </Body>
+          </div>
+          <ul className="grid grid-cols-[14rem_2rem_14rem_2rem_14rem] place-content-stretch items-center gap-4">
+            <li className="flex h-full flex-col items-center justify-start gap-3 rounded p-5 text-center">
+              <OctoKitty className="h-8 w-8 opacity-70" />
+              <Body className="text-slate-400" size="small">
+                Grant access to a GitHub repo
+              </Body>
+            </li>
+            <li>
+              <ArrowRightIcon className="h-6 w-6 text-slate-500" />
+            </li>
+            <li className="flex h-full flex-col items-center justify-start gap-3 rounded p-5 text-center">
+              <PlusCircleIcon className="h-9 w-9 opacity-70" />
+              <Body className="text-slate-400" size="small">
+                Add a repo that contains your workflow
+              </Body>
+            </li>
+            <li>
+              <ArrowRightIcon className="h-6 w-6 text-slate-500" />
+            </li>
+            <li className="flex h-full flex-col items-center justify-start gap-3 rounded p-5 text-center">
+              <CloudArrowUpIcon className="h-9 w-9 opacity-70" />
+              <Body className="text-slate-400" size="small">
+                Deploy your repo to the Cloud
+              </Body>
+            </li>
+          </ul>
+        </div>
+      </Panel>
+    </>
+  );
+}
+
+function AddRepo() {
+  return (
+    <>
+      <SubTitle className="flex items-center">
+        <CheckCircleIcon className="mr-1 h-6 w-6 text-green-500" />
+        Your GitHub account is connected. Now add a repo.
+      </SubTitle>
+      <Panel className="mb-6 flex h-56 flex-col items-center justify-center gap-6">
+        <PrimaryLink size="large" to="../projects/new">
+          <PlusIcon className="-ml-1 h-6 w-6" />
+          Add Repo
+        </PrimaryLink>
+      </Panel>
+    </>
   );
 }
