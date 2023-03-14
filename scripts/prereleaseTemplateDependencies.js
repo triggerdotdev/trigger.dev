@@ -22,9 +22,9 @@ async function updateTemplate(templateName, branchName) {
       `cd ${templateDir} && git rev-parse --abbrev-ref HEAD`
     );
 
-    if (currentBranch !== "main") {
+    if (currentBranch.trim() !== "main") {
       console.error(
-        `Current branch is '${currentBranch}' for template '${templateName}'`
+        `Current branch is '${currentBranch.trim()}' for template '${templateName}', exiting.`
       );
       return;
     }
@@ -109,11 +109,6 @@ async function execAsync(command) {
 }
 
 async function main() {
-  // Make a JSON request to https://app.trigger.dev/api/v1/templates and parse the response as an array of templates
-  const templates = await fetch(
-    "https://app.trigger.dev/api/v1/templates"
-  ).then((res) => res.json());
-
   // Get the branch name from the args
   const branchName = process.argv[3];
 
@@ -121,6 +116,23 @@ async function main() {
     console.error("Please provide a branch name");
     process.exit(1);
   }
+
+  const templateSlug = process.argv[4];
+
+  if (templateSlug) {
+    try {
+      await updateTemplate(templateSlug, branchName);
+    } catch (error) {
+      console.log(`Failed to update template '${templateSlug}'`, error);
+    }
+
+    return;
+  }
+
+  // Make a JSON request to https://app.trigger.dev/api/v1/templates and parse the response as an array of templates
+  const templates = await fetch(
+    "https://app.trigger.dev/api/v1/templates"
+  ).then((res) => res.json());
 
   for (const template of templates) {
     try {
