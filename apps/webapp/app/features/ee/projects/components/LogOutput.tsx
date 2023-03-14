@@ -57,6 +57,8 @@ function parseLogLevel(log: DeploymentLog): string {
   return log.level;
 }
 
+// Need to also match:
+// [trigger.dev]  🎉 Successfully registered "GitHub Stars to Slack" to trigger.dev 👉 View on dashboard: (https://app-staging.trigger.dev/orgs/cloud-test-1-f720/workflows/github-stars-to-slack). Listening for events...
 function parseLogForTriggerDevLink(log: string): {
   log: string;
   action?: { url: string; text: string };
@@ -67,6 +69,8 @@ function parseLogForTriggerDevLink(log: string): {
     /^\[\w+\.\w+\]\s+Run\s+(\w+)\s+complete\s+👉\s+View\s+on\s+dashboard:\s+\((\S+)\)\s+\[([^\]]+)\]/;
   const connectedRegex =
     /^\[\w+\.\w+\]\s+✨\s+Connected\s+and\s+listening\s+for\s+events\s+👉\s+View\s+on\s+dashboard:\s+\((\S+)\)\s+\[([^\]]+)\]/;
+  const registeredRegex =
+    /^\[\w+\.\w+\]\s+🎉\s+Successfully\s+registered\s+"([^"]+)"\s+to\s+trigger.dev\s+👉\s+View\s+on\s+dashboard:\s+\((\S+)\)\.\s+Listening\s+for\s+events/;
 
   const runStartedMatch = log.match(runStartedRegex);
 
@@ -100,6 +104,19 @@ function parseLogForTriggerDevLink(log: string): {
     const [, url, workflowSlug] = connectedMatch;
 
     const log = `[trigger.dev] ✨ Connected and listening for events [${workflowSlug}]`;
+
+    return {
+      log,
+      action: { url: getUrlPath(url), text: "View" },
+    };
+  }
+
+  const registeredMatch = log.match(registeredRegex);
+
+  if (registeredMatch) {
+    const [, name, url] = registeredMatch;
+
+    const log = `[trigger.dev] 🎉 Successfully registered "${name}" to trigger.dev. Listening for events`;
 
     return {
       log,
