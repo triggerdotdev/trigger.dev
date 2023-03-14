@@ -211,7 +211,7 @@ function ConnectToGithub({ redirectTo }: { redirectTo: string }) {
             </a>
           </Body>
         </div>
-        <div className="flex w-full flex-col items-center justify-center gap-y-4 border-t border-slate-900 bg-slate-850/50 pt-6 pb-4">
+        <div className="flex w-full flex-col items-center justify-center gap-y-4 rounded bg-slate-850/50 pt-6 pb-4">
           <div className="flex max-w-2xl flex-col items-center gap-2 text-center">
             <Body className="text-slate-400">
               Deploying a repository to the Trigger.dev Cloud (Technology
@@ -219,13 +219,13 @@ function ConnectToGithub({ redirectTo }: { redirectTo: string }) {
             </Body>
             <Body size="small" className="text-slate-500">
               Deploy your repository hosting Trigger.dev workflows to our Cloud
-              in 3 easy steps. While we are in our Technical Preview phase, we
+              in 3 easy steps. While we are in our Technology Preview phase, we
               are limiting the number of repos you can deploy to the Cloud to
               one.
             </Body>
           </div>
-          <ul className="grid grid-cols-[14rem_2rem_14rem_2rem_14rem] place-content-stretch items-center gap-4">
-            <li className="flex h-full flex-col items-center justify-start gap-3 rounded p-5 text-center">
+          <ul className="grid grid-cols-[14rem_2rem_14rem_2rem_14rem] items-center gap-4">
+            <li className="flex flex-col items-center justify-start gap-3 rounded p-5 text-center">
               <OctoKitty className="h-8 w-8 opacity-70" />
               <Body className="text-slate-400" size="small">
                 Grant access to a GitHub repo
@@ -234,7 +234,7 @@ function ConnectToGithub({ redirectTo }: { redirectTo: string }) {
             <li>
               <ArrowRightIcon className="h-6 w-6 text-slate-500" />
             </li>
-            <li className="flex h-full flex-col items-center justify-start gap-3 rounded p-5 text-center">
+            <li className="flex flex-col items-center justify-start gap-3 rounded p-5 text-center">
               <PlusCircleIcon className="h-9 w-9 opacity-70" />
               <Body className="text-slate-400" size="small">
                 Add a repo that contains your workflow
@@ -243,7 +243,7 @@ function ConnectToGithub({ redirectTo }: { redirectTo: string }) {
             <li>
               <ArrowRightIcon className="h-6 w-6 text-slate-500" />
             </li>
-            <li className="flex h-full flex-col items-center justify-start gap-3 rounded p-5 text-center">
+            <li className="flex flex-col items-center justify-start gap-3 rounded p-5 text-center">
               <CloudArrowUpIcon className="h-9 w-9 opacity-70" />
               <Body className="text-slate-400" size="small">
                 Deploy your repo to the Cloud
