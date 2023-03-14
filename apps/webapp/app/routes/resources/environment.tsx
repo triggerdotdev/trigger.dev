@@ -66,9 +66,8 @@ export function EnvironmentMenu() {
 
   return (
     <>
-      <BreadcrumbDivider />
       <fetcher.Form
-        className="w-full max-w-max"
+        className="w-full"
         action="/resources/environment"
         method="post"
       >
@@ -76,21 +75,26 @@ export function EnvironmentMenu() {
           {({ open }) => (
             <>
               <Popover.Button
-                className={`
-                ${open ? "" : ""}
-                inline-flex items-center justify-between gap-2 rounded bg-transparent py-2 pl-3.5 pr-2 text-sm text-white hover:bg-slate-800 focus:outline-none`}
+                className={classNames(
+                  currentEnvironment.slug === "live"
+                    ? "bg-orange-500/10 hover:bg-orange-500/30"
+                    : "bg-emerald-500/20 hover:bg-emerald-500/10",
+                  "flex w-full items-center justify-between gap-2 rounded py-2 pl-3.5 pr-2 text-base text-slate-300 transition focus:outline-none"
+                )}
               >
-                <EnvironmentIcon slug={currentEnvironment.slug} />
-                <span className="transition">
-                  {currentEnvironment ? (
-                    <span>{titleCase(currentEnvironment.slug)}</span>
-                  ) : (
-                    <span className="">Select environment</span>
-                  )}
-                </span>
+                <div className="flex items-center gap-2">
+                  <EnvironmentIcon slug={currentEnvironment.slug} />
+                  <span className="transition">
+                    {currentEnvironment ? (
+                      <span>{titleCase(currentEnvironment.slug)}</span>
+                    ) : (
+                      <span className="">Select environment</span>
+                    )}
+                  </span>
+                </div>
                 <ChevronUpDownIcon
                   className={`${open ? "" : ""}
-                  ml-1 h-5 w-5 text-slate-500 transition duration-150 ease-in-out`}
+                  ml-1 h-5 w-5 text-slate-300 transition duration-150 ease-in-out`}
                   aria-hidden="true"
                 />
               </Popover.Button>
@@ -103,7 +107,7 @@ export function EnvironmentMenu() {
                 leaveFrom="opacity-100 translate-y-0"
                 leaveTo="opacity-0 translate-y-1"
               >
-                <Popover.Panel className="absolute left-0 z-30 mt-3 w-screen min-w-max max-w-xs translate-x-0 transform px-4 sm:px-0">
+                <Popover.Panel className="absolute left-0 z-50 mt-2 w-screen min-w-[15rem] max-w-[15rem] translate-x-0 transform px-4 sm:px-0">
                   <div className="overflow-hidden rounded-lg shadow-lg ring-1 ring-black ring-opacity-5">
                     <div className="relative grid grid-cols-1 gap-y-1 bg-slate-700 py-1">
                       {environments.map((environment) => {

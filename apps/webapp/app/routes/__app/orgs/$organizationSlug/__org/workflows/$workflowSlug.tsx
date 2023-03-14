@@ -164,7 +164,7 @@ export default function WorkflowSlugLayout() {
   return (
     <SideMenuContainer>
       <WorkflowsSideMenu />
-      <div className="grid w-full grid-rows-[3.6rem_auto] overflow-y-auto bg-slate-850">
+      <div className="relative grid w-full grid-rows-[3.6rem_auto] overflow-y-auto bg-slate-850">
         <Header context="workflows" />
         <Container>
           <Outlet />

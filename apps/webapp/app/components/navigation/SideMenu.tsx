@@ -25,7 +25,10 @@ import {
 } from "~/hooks/useOrganizations";
 import { useOptionalUser } from "~/hooks/useUser";
 import { useCurrentWorkflow } from "~/hooks/useWorkflows";
-import { EnvironmentIcon } from "~/routes/resources/environment";
+import {
+  EnvironmentIcon,
+  EnvironmentMenu,
+} from "~/routes/resources/environment";
 import { titleCase } from "~/utils";
 import { CopyTextPanel } from "../CopyTextButton";
 import { LogoIcon } from "../LogoIcon";
@@ -322,9 +325,9 @@ export function ProjectSideMenu({
 }
 
 const defaultStyle =
-  "group flex items-center gap-2 px-3 py-3 text-base rounded transition text-slate-300 hover:bg-slate-850 hover:text-white";
+  "group flex items-center gap-2 px-3 py-2 text-base rounded transition text-slate-300 hover:bg-slate-850 hover:text-white";
 const activeStyle =
-  "group flex items-center gap-2 px-3 py-3 text-base rounded transition bg-slate-800 text-white";
+  "group flex items-center gap-2 px-3 py-2 text-base rounded transition bg-slate-800 text-white";
 
 function SideMenu({
   items,
@@ -370,27 +373,37 @@ function SideMenu({
                 </Header1>
               </div>
             )}
-
             <div className="p-2">
               <Body
                 size="small"
-                className="py-3 pl-3 uppercase tracking-wider text-slate-400"
+                className="mb-1 py-3 pl-1 uppercase tracking-wider text-slate-400"
               >
                 {subtitle}
               </Body>
-              {items.map((item) => (
-                <NavLink
-                  key={item.name}
-                  to={item.to}
-                  end={item.end}
-                  className={({ isActive }) =>
-                    isActive ? activeStyle : defaultStyle
-                  }
+              <div className="flex flex-col gap-y-2">
+                {items.map((item) => (
+                  <NavLink
+                    key={item.name}
+                    to={item.to}
+                    end={item.end}
+                    className={({ isActive }) =>
+                      isActive ? activeStyle : defaultStyle
+                    }
+                  >
+                    {item.icon}
+                    <span>{item.name}</span>
+                  </NavLink>
+                ))}
+              </div>
+              <div className="mt-2">
+                <Body
+                  size="small"
+                  className="py-3 pl-1 uppercase tracking-wider text-slate-400"
                 >
-                  {item.icon}
-                  <span>{item.name}</span>
-                </NavLink>
-              ))}
+                  Environment
+                </Body>
+                <EnvironmentMenu />
+              </div>
             </div>
           </div>
           <div className="flex flex-col gap-6">

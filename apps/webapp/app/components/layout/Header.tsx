@@ -3,7 +3,6 @@ import {
   ChatBubbleLeftRightIcon,
 } from "@heroicons/react/24/outline";
 import { ProjectMenu } from "~/features/ee/projects/components/ProjectMenu";
-import { EnvironmentMenu } from "../../routes/resources/environment";
 import { Logo } from "../Logo";
 import { OrganizationMenu } from "../navigation/OrganizationMenu";
 import { WorkflowMenu } from "../navigation/WorkflowMenu";
@@ -20,7 +19,6 @@ export function Header({ children, context }: HeaderProps) {
       <div className="hidden items-center lg:flex">
         <OrganizationMenu />
         {context === "workflows" ? <WorkflowMenu /> : <ProjectMenu />}
-        <EnvironmentMenu />
       </div>
       <Logo className="ml-1 w-36 lg:hidden" />
       <div className="flex flex-1 justify-center">{children}</div>

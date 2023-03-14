@@ -95,7 +95,7 @@ export default function Page() {
         <PanelWarning
           className="mb-6"
           message={`This workflow hasn't been connected in the ${environment.slug} environment yet.`}
-        ></PanelWarning>
+        />
         {environment.slug === DEV_ENVIRONMENT ? (
           <ConnectToDevelopmentInstructions environment={environment} />
         ) : (
@@ -107,6 +107,14 @@ export default function Page() {
 
   return (
     <>
+      <div
+        className={classNames(
+          environment.slug === DEV_ENVIRONMENT
+            ? "bg-emerald-500"
+            : "bg-orange-500",
+          "absolute top-[3.6rem] left-0 h-1 w-full"
+        )}
+      />
       <div className="flex items-baseline justify-between">
         <Title>Overview</Title>
         <div className="flex items-center gap-4">
