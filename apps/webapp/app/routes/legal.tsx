@@ -21,7 +21,7 @@ export default function Legal() {
   return (
     <div className="flex h-screen flex-col overflow-auto">
       <div className="flex-shrink-0">
-        <Header>Dashboard</Header>
+        <Header context="workflows">Dashboard</Header>
       </div>
       <div className="flex flex-shrink flex-grow items-center justify-between bg-slate-50">
         <ul className="h-full basis-80 bg-white p-6">
