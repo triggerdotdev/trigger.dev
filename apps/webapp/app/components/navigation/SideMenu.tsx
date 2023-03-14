@@ -95,6 +95,7 @@ export function OrganizationsSideMenu() {
       title={currentOrganization.title}
       items={items}
       backPath="/"
+      environmentSwitcher={false}
     />
   );
 }
@@ -275,6 +276,7 @@ export function WorkflowsSideMenu() {
       title={currentWorkflow.title}
       items={items}
       backPath={`/orgs/${organization.slug}`}
+      environmentSwitcher={true}
     />
   );
 }
@@ -320,6 +322,7 @@ export function ProjectSideMenu({
       title={project.name}
       items={items}
       backPath={backPath}
+      environmentSwitcher={false}
     />
   );
 }
@@ -333,11 +336,13 @@ function SideMenu({
   items,
   title,
   subtitle,
+  environmentSwitcher,
 }: {
   title: string;
   items: SideMenuItem[];
   backPath: string;
   subtitle: string;
+  environmentSwitcher: boolean;
 }) {
   const organization = useCurrentOrganization();
   invariant(organization, "Organization must be defined");
@@ -395,15 +400,17 @@ function SideMenu({
                   </NavLink>
                 ))}
               </div>
-              <div className="mt-2">
-                <Body
-                  size="small"
-                  className="py-3 pl-1 uppercase tracking-wider text-slate-400"
-                >
-                  Environment
-                </Body>
-                <EnvironmentMenu />
-              </div>
+              {environmentSwitcher && (
+                <div className="mt-2">
+                  <Body
+                    size="small"
+                    className="py-3 pl-1 uppercase tracking-wider text-slate-400"
+                  >
+                    Environment
+                  </Body>
+                  <EnvironmentMenu />
+                </div>
+              )}
             </div>
           </div>
           <div className="flex flex-col gap-6">
