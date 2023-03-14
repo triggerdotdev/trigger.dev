@@ -218,10 +218,10 @@ function ConnectToGithub({ redirectTo }: { redirectTo: string }) {
               Preview)
             </Body>
             <Body size="small" className="text-slate-500">
-              Deploy your repository hosting Trigger.dev workflows to our Cloud
-              in 3 easy steps. While we are in our Technology Preview phase, we
-              are limiting the number of repos you can deploy to the Cloud to
-              one.
+              Get ready for our repo hosting service! During our exclusive
+              Technical Preview phase, enjoy deploying a single repo for free
+              while we perfect the experience. Multiple repo support is just
+              around the corner!.
             </Body>
           </div>
           <ul className="grid grid-cols-[14rem_2rem_14rem_2rem_14rem] items-center gap-4">
