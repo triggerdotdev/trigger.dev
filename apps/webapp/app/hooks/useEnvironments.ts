@@ -1,4 +1,4 @@
-import { DEV_ENVIRONMENT } from "~/consts";
+import { DEV_ENVIRONMENT, LIVE_ENVIRONMENT } from "~/consts";
 import type { RuntimeEnvironment } from "~/models/runtimeEnvironment.server";
 import { useMatchesData } from "~/utils";
 
@@ -61,5 +61,19 @@ export function useDevEnvironment(): RuntimeEnvironment | undefined {
   }
   return routeMatch.data.organization.environments.find(
     (environment: any) => environment.slug === DEV_ENVIRONMENT
+  );
+}
+
+export function useLiveEnvironment(): RuntimeEnvironment | undefined {
+  const routeMatch = useMatchesData("routes/__app/orgs/$organizationSlug");
+
+  if (
+    !routeMatch ||
+    !isRuntimeEnvironments(routeMatch.data.organization.environments)
+  ) {
+    return undefined;
+  }
+  return routeMatch.data.organization.environments.find(
+    (environment: any) => environment.slug === LIVE_ENVIRONMENT
   );
 }

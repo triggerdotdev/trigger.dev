@@ -13,6 +13,7 @@ import { Label } from "~/components/primitives/Label";
 import { Select } from "~/components/primitives/Select";
 import { Header1 } from "~/components/primitives/text/Headers";
 import { SubTitle } from "~/components/primitives/text/SubTitle";
+import { useLiveEnvironment } from "~/hooks/useEnvironments";
 import {
   setRequestSuccessMessage,
   setToastMessageCookie,
@@ -111,6 +112,7 @@ export async function action({ params, request }: ActionArgs) {
 
 export default function ProjectSettingsPage() {
   const { project, needsEnvVars, envVars } = useCurrentProject();
+  const env = useLiveEnvironment();
 
   const actionData = useTypedActionData<typeof action>();
   const transition = useTransition();
@@ -150,9 +152,21 @@ export default function ProjectSettingsPage() {
       <SubTitle>Build and deploy</SubTitle>
       <Panel className="px-4 py-4">
         <Form method="post">
-          {envVars.length > 0 && (
-            <>
-              <SubTitle>Environment variables</SubTitle>
+          <>
+            <SubTitle>Environment variables</SubTitle>
+            {env && (
+              <InputGroup>
+                <Label htmlFor="TRIGGER_API_KEY">TRIGGER_API_KEY</Label>
+
+                <Input
+                  id="TRIGGER_API_KEY"
+                  spellCheck={false}
+                  disabled={true}
+                  value={env.apiKey}
+                />
+              </InputGroup>
+            )}
+            {envVars.length > 0 && (
               <div className="mb-3 grid grid-cols-1 gap-4">
                 {envVars.map((envVar) => (
                   <InputGroup key={envVar.key}>
@@ -178,8 +192,8 @@ export default function ProjectSettingsPage() {
                   </InputGroup>
                 ))}
               </div>
-            </>
-          )}
+            )}
+          </>
 
           <div className="mb-3 grid grid-cols-2 items-start gap-4">
             <InputGroup>
