@@ -1,4 +1,3 @@
-import { createJSONPointer } from "core/common/pointer";
 import { EndpointSpec } from "core/endpoint/types";
 import { WebhookSpec } from "core/webhook/types";
 

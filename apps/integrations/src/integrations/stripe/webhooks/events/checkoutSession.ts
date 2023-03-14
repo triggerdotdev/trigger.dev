@@ -1,14 +1,8 @@
-import { schemaFromRef } from "core/schemas/makeSchema";
-import { JSONSchema } from "core/schemas/types";
 import { WebhookEvent, WebhookReceiveRequest } from "core/webhook/types";
-import { spec } from "integrations/stripe/schemas/spec";
 import { checkoutCompletedSuccess } from "./checkoutSession.examples";
-import { instructions, wrapEventWithWebhookData } from "./utilities";
+import { instructions } from "./utilities";
 
-export const checkoutSessionEventSchema: JSONSchema = wrapEventWithWebhookData(
-  "Checkout session",
-  schemaFromRef("#/components/schemas/checkout.session", spec)
-);
+const outputSchemaRef = "#/definitions/checkout.session";
 
 export const checkoutCompleted: WebhookEvent = {
   name: "checkout.session.completed",
@@ -17,7 +11,7 @@ export const checkoutCompleted: WebhookEvent = {
     description: "A checkout session was completed",
     tags: ["checkout"],
   },
-  schema: checkoutSessionEventSchema,
+  outputSchemaRef,
   instructions: (data) => instructions("checkout session complete"),
   examples: [checkoutCompletedSuccess],
   key: "checkout.session.completed",
@@ -53,7 +47,7 @@ export const checkoutExpired: WebhookEvent = {
     description: "A checkout session expired",
     tags: ["checkout"],
   },
-  schema: checkoutSessionEventSchema,
+  outputSchemaRef,
   instructions: (data) => instructions("checkout session expired"),
   examples: [checkoutCompletedSuccess],
   key: "checkout.session.expired",
@@ -90,7 +84,7 @@ export const checkoutAsyncPaymentFailed: WebhookEvent = {
       "Occurs when a payment intent using a delayed payment method fails.",
     tags: ["checkout"],
   },
-  schema: checkoutSessionEventSchema,
+  outputSchemaRef,
   instructions: (data) => instructions("checkout session async payment failed"),
   examples: [checkoutCompletedSuccess],
   key: "checkout.session.async_payment_failed",
@@ -128,7 +122,7 @@ export const checkoutAsyncPaymentSucceeded: WebhookEvent = {
       "Occurs when a payment intent using a delayed payment method finally succeeds.",
     tags: ["checkout"],
   },
-  schema: checkoutSessionEventSchema,
+  outputSchemaRef,
   instructions: (data) =>
     instructions("checkout session async payment succeeded"),
   examples: [checkoutCompletedSuccess],

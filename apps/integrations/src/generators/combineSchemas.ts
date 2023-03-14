@@ -1,91 +1,32 @@
-import { Action } from "core/action/types";
 import { makeAnyOf } from "core/schemas/makeSchema";
 import { SchemaRefWalker } from "core/schemas/schemaRefWalker";
-import { JSONSchema } from "core/schemas/types";
-import nodeObjectHash from "node-object-hash";
+import { JSONSchema, SchemaRef } from "core/schemas/types";
 import pointer from "json-pointer";
+import nodeObjectHash from "node-object-hash";
 
-export function generateInputOutputSchemas(
-  spec: Action["spec"],
-  name: string
-): {
-  input: JSONSchema | undefined;
-  output: JSONSchema | undefined;
-} {
-  const inputSchema = createInputSchema(spec.input);
-  if (inputSchema) inputSchema.title = `${name}Input`;
-
-  const outputSchema = createSuccessfulOutputSchema(spec.output);
-  if (outputSchema) outputSchema.title = `${name}Output`;
-
-  return {
-    input: inputSchema,
-    output: outputSchema,
-  };
-}
-
-export function createInputSchema(
-  spec: Action["spec"]["input"]
-): JSONSchema | undefined {
-  if (
-    (spec.parameters === undefined || spec.parameters.length === 0) &&
-    spec.body === undefined
-  )
-    return undefined;
-
-  const inputSchema: JSONSchema = {
-    allOf: [],
-  };
-
-  if (spec.parameters && spec.parameters.length > 0) {
-    const paramsSchema: JSONSchema = {
-      type: "object",
-      properties: {
-        ...Object.fromEntries(
-          spec.parameters.map((p) => [
-            p.name,
-            { ...p.schema, description: p.description },
-          ])
-        ),
-      },
-      required: [
-        ...spec.parameters.filter((p) => p.required).map((p) => p.name),
-      ],
-    };
-
-    inputSchema.allOf?.push(paramsSchema);
-  }
-
-  if (spec.body) {
-    inputSchema.allOf?.push(spec.body);
-  }
-
-  return inputSchema;
-}
-
-export function createSuccessfulOutputSchema(
-  spec: Action["spec"]["output"]
-): JSONSchema | undefined {
-  if (spec === undefined) return undefined;
-
-  //combine all "success" output schemas into a union
-  const outputSuccessSchemas = spec.responses.flatMap((r) =>
-    r.success ? r.schema : []
-  );
-
-  return outputSuccessSchemas.length === 1
-    ? outputSuccessSchemas[0]
-    : createDiscriminatedUnionSchema(`Output`, outputSuccessSchemas);
-}
-
-function createDiscriminatedUnionSchema(
-  name: string,
-  schemas: JSONSchema[]
+/** Creates the smallest schema with only the used references */
+export function createMinimalSchema(
+  ref: SchemaRef,
+  definitions: Record<string, JSONSchema>
 ): JSONSchema {
-  return {
-    $id: name,
-    oneOf: schemas,
+  const refWalker = new SchemaRefWalker({ definitions });
+
+  //we want the schema to have the top-level ref expanded (for the zod generator)
+  const rootObject = pointer.get({ definitions }, ref.replace("#", ""));
+
+  const schema = {
+    ...rootObject,
+    definitions: {},
   };
+
+  refWalker.run(schema, ({ object, key, ref, definition, seenBefore }) => {
+    if (seenBefore) {
+      return;
+    }
+    pointer.set(schema, ref.replace("#", ""), definition);
+  });
+
+  return schema;
 }
 
 const hasher = nodeObjectHash({ sort: true });

@@ -36,6 +36,7 @@ export interface RequestSpec {
   endpointSpec: EndpointSpec;
   authentication: IntegrationAuthentication;
 }
+
 export interface RequestData {
   parameters?: Record<string, any>;
   body?: any;

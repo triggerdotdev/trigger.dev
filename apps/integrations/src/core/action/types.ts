@@ -1,12 +1,12 @@
 import { CacheService } from "core/cache/types";
 import { EndpointSpec } from "core/endpoint/types";
 import { HTTPMethod, RequestData, RequestResponse } from "core/request/types";
-import { z } from "zod";
+import { SchemaRef } from "core/schemas/types";
 
 export type InputSpec = {
   security?: EndpointSpec["security"];
   parameters?: EndpointSpec["parameters"];
-  body?: NonNullable<EndpointSpec["request"]["body"]>["schema"];
+  body?: SchemaRef;
 };
 
 export type OutputSpec = {

@@ -1,13 +1,10 @@
-import { AutoReffer } from "core/schemas/autoReffer";
-import { makeAnyOf } from "core/schemas/makeSchema";
-import { JSONSchema } from "core/schemas/types";
+import { createJSONPointer } from "core/common/pointer";
+import { JSONSchema, SchemaRef } from "core/schemas/types";
 import { Service } from "core/service/types";
 import fs from "fs/promises";
-import {
-  combineSchemasAndHoistReferences,
-  generateInputOutputSchemas,
-} from "generators/combineSchemas";
+import { createMinimalSchema } from "generators/combineSchemas";
 import { getTypesFromSchema } from "generators/generateTypes";
+import pointer from "json-pointer";
 import { parseSchema } from "json-schema-to-zod";
 import path from "path";
 import rimraf from "rimraf";
@@ -160,7 +157,10 @@ async function generateFunctionData(service: Service) {
       const title = TitleCaseWithSpaces(action.name);
       const name = action.name;
       const friendlyName = toFriendlyTypeName(name);
-      const schemas = generateInputOutputSchemas(action.spec, friendlyName);
+      const inputName = action.spec.input ? `${friendlyName}Input` : undefined;
+      const outputName = action.spec.output
+        ? `${friendlyName}Output`
+        : undefined;
 
       const functionCode = `
 ${action.description ? `/** ${action.description} */` : ""}
@@ -168,12 +168,12 @@ export async function ${action.name}(
   /** This key should be unique inside your workflow */
   key: string,
   ${
-    schemas.input
+    inputName
       ? `/** The params for this call */
-  params: Prettify<${schemas.input.title}>`
+  params: Prettify<${inputName}>`
       : ""
   }
-): Promise<Prettify<${schemas.output?.title ?? "void"}>> {
+): Promise<Prettify<${outputName ?? "void"}>> {
   const run = getTriggerRun();
 
   if (!run) {
@@ -184,7 +184,7 @@ export async function ${action.name}(
     version: "2",
     service: "${service.service}",
     endpoint: "${action.name}",
-    ${schemas.input ? "params," : "params: undefined,"}
+    ${inputName ? "params," : "params: undefined,"}
   });
 
   return output;
@@ -197,8 +197,8 @@ export async function ${action.name}(
         name,
         friendlyName,
         description: action.description,
-        input: schemas.input,
-        output: schemas.output,
+        inputRef: action.spec.input.body,
+        outputRef: action.spec.output.responses.find((r) => r.success)?.schema,
         functionCode,
       };
       functions[name] = functionData;
@@ -216,28 +216,32 @@ export async function ${action.name}(
         switch (webhook.subscription.type) {
           case "automatic": {
             const typeName = toTitleCase(event.name);
-            const inputSpec = webhook.subscription.inputSchema;
-            if (inputSpec) {
-              inputSpec.title = `${typeName}Input`;
+            let inputSpecTitle: undefined | string = undefined;
+            let inputRef: undefined | SchemaRef = undefined;
+            if (webhook.subscription.inputSchemaRef) {
+              inputRef = webhook.subscription.inputSchemaRef;
+              const ptr = createJSONPointer(
+                webhook.subscription.inputSchemaRef
+              );
+              const inputSpec = pointer.get(service.schema, ptr);
+              if (inputSpec) {
+                inputSpecTitle = `${typeName}Input`;
+              }
             }
-            const outputSpec = event.schema;
-            outputSpec.title = `${typeName}Output`;
+
             const title = event.metadata.title;
             const functionName = toCamelCase(`${typeName}Event`);
             const friendlyName = toFriendlyTypeName(functionName);
 
-            const zodReturnSchema = parseSchema(outputSpec as any);
             const zodSchemaName = `${functionName}Schema`;
 
             const functionCode = `
-const ${zodSchemaName} = ${zodReturnSchema}
-
 ${event.metadata.description ? `/** ${event.metadata.description} */` : ""}
 function ${functionName}(
   ${
-    inputSpec
+    inputSpecTitle
       ? `/** The params for this call */
-  params: Prettify<${inputSpec.title}>`
+  params: Prettify<${inputSpecTitle}>`
       : ""
   }
 ): TriggerEvent<typeof ${zodSchemaName}> {
@@ -251,7 +255,7 @@ function ${functionName}(
         service: ["${service.service}"],
         event: ["${event.name}"],
       },
-      source: ${inputSpec ? "params" : "undefined"},
+      source: ${inputSpecTitle ? "params" : "undefined"},
     },
     schema: ${zodSchemaName},
   }; 
@@ -264,8 +268,8 @@ function ${functionName}(
               name: functionName,
               friendlyName,
               description: event.metadata.description,
-              input: inputSpec ?? undefined,
-              output: outputSpec,
+              inputRef,
+              outputRef: event.outputSchemaRef,
               functionCode,
             };
             functions[functionName] = functionData;
@@ -288,51 +292,95 @@ async function createFunctionsAndTypesFiles(
   service: Service,
   functionsData: Record<string, FunctionData>
 ) {
-  const typeSchemas = Object.values(functionsData)
-    .flatMap((f) => [f.input, f.output])
-    .filter(Boolean) as JSONSchema[];
+  const combinedSchema: JSONSchema = {
+    title: `${toFriendlyTypeName(service.service)}Types`,
+    allOf: Object.entries(functionsData).flatMap(([name, data]) => {
+      const schemas: JSONSchema[] = [];
 
-  const combinedSchema: JSONSchema = combineSchemasAndHoistReferences(
-    `${toFriendlyTypeName(service.service)}Types`,
-    typeSchemas
-  );
+      if (data.inputRef) {
+        schemas.push({
+          title: `${data.friendlyName}Input`,
+          $ref: data.inputRef,
+        });
+      }
 
-  const reffer = new AutoReffer(combinedSchema, {
-    refIfMoreThan: 4,
+      if (data.outputRef) {
+        schemas.push({
+          title: `${data.friendlyName}Output`,
+          $ref: data.outputRef,
+        });
+      }
+
+      return schemas;
+    }),
+    definitions: service.schema.definitions,
+  };
+
+  const importNames = Object.entries(functionsData).flatMap(([name, data]) => {
+    const imports: string[] = [];
+    if (data.inputRef) {
+      imports.push(`${data.friendlyName}Input`);
+    }
+    if (data.outputRef) {
+      imports.push(`${data.friendlyName}Output`);
+    }
+    return imports;
   });
-  const optimizedSchema = reffer.optimize();
 
-  //uncomment to write intermediate optimized schema to disk
+  //uncomment to write intermediate schema to disk
   await fs.mkdir(basePath, { recursive: true });
   await fs.writeFile(
     `${basePath}/schema-optimized.json`,
-    JSON.stringify(optimizedSchema, null, 2)
+    JSON.stringify(combinedSchema, null, 2)
   );
 
-  let allTypes = await getTypesFromSchema(
-    optimizedSchema,
+  let typesFileText = `import { z } from "zod";\n`;
+
+  const allTypes = await getTypesFromSchema(
+    combinedSchema,
     `${service.service}Types`
   );
 
-  allTypes += `\nexport type Prettify<T> = {
+  typesFileText += allTypes;
+
+  typesFileText += `\nexport type Prettify<T> = {
   [K in keyof T]: T[K];
 } & {};`;
 
+  //events used Zod schemas
+  const zodPromises = Object.entries(functionsData)
+    .filter(([name, data]) => data.type === "event" && data.outputRef)
+    .map(async ([name, data]) => {
+      if (!data.outputRef) throw new Error("No output ref");
+      const minimalSchema = createMinimalSchema(
+        data.outputRef,
+        service.schema.definitions
+      );
+      minimalSchema.title = `${data.friendlyName}Output`;
+      const schemaText = parseSchema(minimalSchema);
+      const schemaName = `${data.name}Schema`;
+      const code = `export const ${schemaName} = ${schemaText}`;
+      return { name: schemaName, code };
+    });
+  const zodSchemas = await Promise.all(zodPromises);
+  typesFileText += `\n${zodSchemas.map((z) => z.code).join("\n")}`;
+
   const typesFile = project.createSourceFile(
     `${basePath}/src/types.ts`,
-    allTypes,
+    typesFileText,
     {
       overwrite: true,
     }
   );
   typesFile.formatText();
 
+  //import the sdk, zod, the types and schemas
   const imports = `import { getTriggerRun } from "@trigger.dev/sdk";
   import type { TriggerEvent } from "@trigger.dev/sdk";
   import { z } from "zod";
-    import { ${typeSchemas
-      .map((t) => t && t.title)
-      .join(", ")}, Prettify } from "./types";`;
+    import { ${importNames.join(", ")}, Prettify ${
+    zodSchemas.length > 0 ? `, ${zodSchemas.map((z) => z.name).join(", ")}` : ""
+  } } from "./types";`;
 
   const functions = `${Object.values(functionsData)
     .map((f) => f.functionCode)

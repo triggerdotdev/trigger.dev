@@ -2,7 +2,7 @@ import { CacheService } from "core/cache/types";
 import { Endpoint } from "core/endpoint/types";
 import { RequestData, RequestResponse } from "core/request/types";
 import { getDisplayProperties } from "./getDisplayProperties";
-import { Action, InputSpec, Metadata, OutputSpec } from "./types";
+import { Action, Metadata } from "./types";
 import { makeInputSpec, makeOutputSpec } from "./utilities";
 
 /** Create an action where you specify the spec and action */

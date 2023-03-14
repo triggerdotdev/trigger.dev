@@ -45,10 +45,14 @@ export class SchemaRefWalker {
         const path = (object.$ref as string).replace("#", "");
 
         if (!this.refsExplored.has(path)) {
-          const ptr = pointer.get(this.spec, path);
-          if (ptr === undefined) {
-            throw new Error(`Invalid reference: ${object.$ref}`);
+          let ptr: any = undefined;
+          try {
+            ptr = pointer.get(this.spec, path);
+          } catch (e) {
+            console.log(e);
           }
+
+          if (ptr === undefined) continue;
 
           action({
             ref: object.$ref,

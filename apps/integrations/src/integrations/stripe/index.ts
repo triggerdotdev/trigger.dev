@@ -1,5 +1,7 @@
+import { IntegrationSchema } from "core/schemas/types";
 import { Service } from "core/service/types";
 import { authentication } from "./authentication";
+import spec from "./schemas/spec.json";
 import { webhooks } from "./webhooks/webhooks";
 
 export const stripe: Service = {
@@ -9,6 +11,7 @@ export const stripe: Service = {
   baseUrl: "https://api.stripe.com/v1",
   live: true,
   authentication,
+  schema: spec as IntegrationSchema,
   webhooks,
   retryableStatusCodes: [408, 429, 500, 502, 503, 504],
 };

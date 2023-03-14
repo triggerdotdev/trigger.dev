@@ -4,7 +4,7 @@ import {
 } from "core/authentication/types";
 import { requestEndpoint } from "core/request/requestEndpoint";
 import { HTTPResponse } from "core/request/types";
-import { JSONSchema } from "core/schemas/types";
+import { JSONSchema, SchemaRef } from "core/schemas/types";
 import {
   Webhook,
   WebhookEvent,
@@ -27,7 +27,7 @@ export function makeWebhook(input: {
     | {
         type: "automatic";
         requiresSecret: boolean;
-        inputSchema: JSONSchema | null;
+        inputSchemaRef?: SchemaRef;
         /** take the raw data and turn it into the appropriate input for the subscribe request */
         preSubscribe: (input: {
           webhookId: string;
@@ -105,7 +105,7 @@ export function makeWebhook(input: {
 
       subscription = {
         type: "automatic",
-        inputSchema: input.subscription.inputSchema,
+        inputSchemaRef: input.subscription.inputSchemaRef,
         requiresSecret: input.subscription.requiresSecret,
         subscribe: subscribe,
       };

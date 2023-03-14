@@ -2,7 +2,6 @@ import { Command } from "commander";
 import { promises as fs } from "node:fs";
 import * as tsj from "ts-json-schema-generator";
 import $RefParser from "@apidevtools/json-schema-ref-parser";
-type JSONSchema7Definition = NonNullable<tsj.Schema["definitions"]>[number];
 
 const program = new Command();
 

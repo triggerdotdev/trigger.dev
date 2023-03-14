@@ -46,6 +46,7 @@ importers:
       '@types/eslint': ^8.4.6
       '@types/express': ^4.17.13
       '@types/json-pointer': ^1.0.31
+      '@types/json-schema': ^7.0.11
       '@types/morgan': ^1.9.3
       '@types/node': ^18.13.0
       '@types/qs': ^6.9.7
@@ -65,6 +66,7 @@ importers:
       express-async-errors: ^3.1.1
       graphile-worker: ^0.13.0
       json-pointer: ^0.6.2
+      json-schema: ^0.4.0
       json-schema-deref-sync: ^0.14.0
       json-schema-to-typescript: ^11.0.3
       json-schema-to-zod: ^0.6.3
@@ -99,6 +101,7 @@ importers:
       express-async-errors: 3.1.1_express@4.18.2
       graphile-worker: 0.13.0
       json-pointer: 0.6.2
+      json-schema: 0.4.0
       json-schema-deref-sync: 0.14.0
       json-schema-to-typescript: 11.0.4
       loglevel: 1.8.1
@@ -114,6 +117,7 @@ importers:
       '@types/eslint': 8.4.10
       '@types/express': 4.17.15
       '@types/json-pointer': 1.0.31
+      '@types/json-schema': 7.0.11
       '@types/morgan': 1.9.4
       '@types/node': 18.14.0
       '@types/qs': 6.9.7
@@ -13010,7 +13014,6 @@ packages:
 
   /json-schema/0.4.0:
     resolution: {integrity: sha512-es94M3nTIfsEPisRafak+HDLfHXnKBhV3vU5eqPcS3flIWqcxJWgXHXiey3YrpaNsanY5ei1VoYEbOzijuq9BA==}
-    dev: true
 
   /json-stable-stringify-without-jsonify/1.0.1:
     resolution: {integrity: sha512-Bdboy+l7tA3OGW6FjyFHWkP5LuByj1Tk33Ljyq0axyzdk9//JSi2u3fP1QSmd1KNwq6VOKYGlAu87CisVir6Pw==}

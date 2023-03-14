@@ -28,7 +28,7 @@ const webhook = makeWebhook({
   subscription: {
     type: "automatic",
     requiresSecret: true,
-    inputSchema: null,
+    inputSchemaRef: undefined,
     preSubscribe: (input) => {
       return {
         body: {

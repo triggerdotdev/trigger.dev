@@ -1,119 +1,68 @@
-import { EndpointSpec } from "core/endpoint/types";
 import { JSONSchema } from "core/schemas/types";
-import { expect, test } from "vitest";
-import { createInputSchema } from "./combineSchemas";
+import { describe, expect, test } from "vitest";
+import { createMinimalSchema } from "./combineSchemas";
 
-test("create input schema when only a body schema", async () => {
-  try {
-    const schema: JSONSchema = {
-      type: "object",
-      required: ["channel"],
-      properties: {
-        as_user: {
-          type: "string",
-          description:
-            "Pass true to post the message as the authed user, instead of as a bot. Defaults to false. See [authorship](#authorship) below.",
+describe("combine schemas", async () => {
+  test("create minimal schema", async () => {
+    const definitions: Record<string, JSONSchema> = {
+      basic: {
+        type: "object",
+        properties: {
+          something: {
+            $ref: "#/definitions/something",
+            description: "Something",
+          },
         },
-        attachments: {
-          type: "string",
-          description:
-            "A JSON-based array of structured attachments, presented as a URL-encoded string.",
+        required: ["something"],
+      },
+      something: {
+        type: "object",
+        properties: {
+          another: {
+            $ref: "#/definitions/another",
+          },
         },
-        channel: {
-          type: "string",
-          description:
-            "Channel, private group, or IM channel to send message to. Can be an encoded ID, or a name. See [below](#channels) for more details.",
-        },
+      },
+      another: {
+        type: "number",
+      },
+      extra: {
+        title: "Extra",
+        type: "string",
       },
     };
 
-    const inputSchema = createInputSchema({ body: schema });
-    expect(inputSchema).toEqual({
-      allOf: [schema],
-    });
-  } catch (e: any) {
-    console.error(JSON.stringify(e.errors, null, 2));
-    expect(e).toEqual(null);
-  }
-});
+    const minimalSchema = createMinimalSchema(
+      "#/definitions/basic",
+      definitions
+    );
 
-test("combine input body and parameters into a schema", async () => {
-  try {
-    const bodySchema: JSONSchema = {
-      type: "object",
-      required: ["channel"],
-      properties: {
-        as_user: {
-          type: "string",
-          description:
-            "Pass true to post the message as the authed user, instead of as a bot. Defaults to false. See [authorship](#authorship) below.",
-        },
-        attachments: {
-          type: "string",
-          description:
-            "A JSON-based array of structured attachments, presented as a URL-encoded string.",
-        },
-        channel: {
-          type: "string",
-          description:
-            "Channel, private group, or IM channel to send message to. Can be an encoded ID, or a name. See [below](#channels) for more details.",
-        },
-      },
-    };
-    const parameters: EndpointSpec["parameters"] = [
+    expect(minimalSchema).toMatchInlineSnapshot(`
       {
-        name: "limit",
-        description: "The maximum number of items to return.",
-        in: "path",
-        required: true,
-        schema: {
-          type: "integer",
-          description: "The maximum number of items to return.",
-        },
-      },
-    ];
-
-    const inputSchema = createInputSchema({ body: bodySchema, parameters });
-    expect(inputSchema).toMatchInlineSnapshot(`
-      {
-        "allOf": [
-          {
+        "definitions": {
+          "another": {
+            "type": "number",
+          },
+          "something": {
             "properties": {
-              "limit": {
-                "description": "The maximum number of items to return.",
-                "type": "integer",
+              "another": {
+                "$ref": "#/definitions/another",
               },
             },
-            "required": [
-              "limit",
-            ],
             "type": "object",
           },
-          {
-            "properties": {
-              "as_user": {
-                "description": "Pass true to post the message as the authed user, instead of as a bot. Defaults to false. See [authorship](#authorship) below.",
-                "type": "string",
-              },
-              "attachments": {
-                "description": "A JSON-based array of structured attachments, presented as a URL-encoded string.",
-                "type": "string",
-              },
-              "channel": {
-                "description": "Channel, private group, or IM channel to send message to. Can be an encoded ID, or a name. See [below](#channels) for more details.",
-                "type": "string",
-              },
-            },
-            "required": [
-              "channel",
-            ],
-            "type": "object",
+        },
+        "properties": {
+          "something": {
+            "$ref": "#/definitions/something",
+            "description": "Something",
           },
+        },
+        "required": [
+          "something",
         ],
+        "type": "object",
       }
     `);
-  } catch (e: any) {
-    console.error(JSON.stringify(e.errors, null, 2));
-    expect(e).toEqual(null);
-  }
+  });
 });

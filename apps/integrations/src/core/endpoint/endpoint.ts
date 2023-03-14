@@ -1,6 +1,6 @@
 import { IntegrationAuthentication } from "core/authentication/types";
 import { requestEndpoint } from "core/request/requestEndpoint";
-import { RequestData, RequestResponse, RequestSpec } from "core/request/types";
+import { RequestData, RequestSpec } from "core/request/types";
 import { Endpoint, EndpointSpec } from "./types";
 
 export const makeEndpoint = (spec: RequestSpec) => {

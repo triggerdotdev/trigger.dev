@@ -5,7 +5,7 @@ import {
 } from "core/authentication/types";
 import { EndpointSpec } from "core/endpoint/types";
 import { HTTPMethod, HTTPResponse } from "core/request/types";
-import { JSONSchema } from "core/schemas/types";
+import { SchemaRef } from "core/schemas/types";
 
 export type WebhookResultSuccess = {
   success: true;
@@ -37,7 +37,7 @@ export type WebhookSubscription =
 export type WebhookSubscriptionAutomatic = {
   type: "automatic";
   requiresSecret: boolean;
-  inputSchema: JSONSchema | null;
+  inputSchemaRef?: SchemaRef;
   subscribe: (
     data: WebhookSubscriptionRequest
   ) => Promise<WebhookSubscriptionResult>;
@@ -124,7 +124,7 @@ export type WebhookIncomingRequest = {
 export type WebhookEvent = {
   name: string;
   metadata: WebhookEventMetadata;
-  schema: JSONSchema;
+  outputSchemaRef: SchemaRef;
   instructions: (inputData: Record<string, any>) => string;
   examples: any[];
   /** This will be used to identify this event, you should use template language but inside a double quoted string */

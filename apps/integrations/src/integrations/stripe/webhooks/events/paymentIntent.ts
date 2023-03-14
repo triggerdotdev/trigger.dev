@@ -1,14 +1,8 @@
-import { schemaFromRef } from "core/schemas/makeSchema";
-import { JSONSchema } from "core/schemas/types";
 import { WebhookEvent, WebhookReceiveRequest } from "core/webhook/types";
-import { spec } from "integrations/stripe/schemas/spec";
 import { checkoutCompletedSuccess } from "./checkoutSession.examples";
-import { instructions, wrapEventWithWebhookData } from "./utilities";
+import { instructions } from "./utilities";
 
-export const paymentIntentEventSchema: JSONSchema = wrapEventWithWebhookData(
-  "Payment intent",
-  schemaFromRef("#/components/schemas/payment_intent", spec)
-);
+const outputSchemaRef = "#/definitions/payment_intent";
 
 export const paymentIntentSucceeded: WebhookEvent = {
   name: "payment_intent.succeeded",
@@ -18,7 +12,7 @@ export const paymentIntentSucceeded: WebhookEvent = {
       "Occurs when a PaymentIntent has successfully completed payment.",
     tags: ["payment intent"],
   },
-  schema: paymentIntentEventSchema,
+  outputSchemaRef,
   instructions: (data) => instructions("payment intent succeeded"),
   examples: [checkoutCompletedSuccess],
   key: "payment_intent.succeeded",

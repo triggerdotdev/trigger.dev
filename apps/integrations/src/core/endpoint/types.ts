@@ -1,11 +1,10 @@
-import { JSONPointer } from "core/common/pointer";
 import {
   HTTPMethod,
   RequestData,
   RequestResponse,
   RequestSpec,
 } from "core/request/types";
-import { JSONSchema } from "core/schemas/types";
+import { SchemaRef } from "core/schemas/types";
 
 export type Endpoint = {
   spec: RequestSpec;
@@ -26,7 +25,7 @@ export type EndpointSpecParameter = {
   name: string;
   description: string;
   required?: boolean;
-  schema: JSONSchema;
+  schema: SchemaRef;
 } & (EndpointSpecParameterUrl | EndpointSpecParameterHeader);
 
 type EndpointSpecParameterUrl = {
@@ -41,7 +40,7 @@ interface EndpointSpecRequest {
   headers?: Record<string, string>;
   body?: {
     format?: BodyFormat;
-    schema: JSONSchema;
+    schema: SchemaRef;
   };
 }
 
@@ -75,7 +74,7 @@ export interface EndpointSpecResponse {
   success: boolean;
   name: string;
   description?: string;
-  schema?: JSONSchema;
+  schema?: SchemaRef;
 }
 
 export interface EndpointSpecMetadata {

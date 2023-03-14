@@ -1,4 +1,4 @@
-import { JSONSchema } from "core/schemas/types";
+import { SchemaRef } from "core/schemas/types";
 
 export type FunctionData = {
   type: "action" | "event";
@@ -6,7 +6,7 @@ export type FunctionData = {
   name: string;
   friendlyName: string;
   description: string;
-  input?: JSONSchema;
-  output?: JSONSchema;
+  inputRef?: SchemaRef;
+  outputRef?: SchemaRef;
   functionCode: string;
 };
