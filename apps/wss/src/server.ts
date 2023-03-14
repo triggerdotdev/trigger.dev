@@ -442,7 +442,9 @@ export class TriggerServer {
           subscription: `websocketserver-${this.#workflowId}-${this.#apiKey}`,
           subscriptionType: "Shared",
           subscriptionInitialPosition: "Latest",
+          nAckRedeliverTimeoutMs: 5000,
         },
+        maxRedeliveries: 8,
         filter: {
           "x-workflow-id": this.#workflowId,
           "x-api-key": this.#apiKey,

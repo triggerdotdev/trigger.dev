@@ -41,6 +41,7 @@ export type ZodSubscriberOptions<
   schema: SubscriberSchema;
   handlers: ZodSubscriberHandlers<SubscriberSchema>;
   filter?: Record<string, string>;
+  maxRedeliveries?: number;
 };
 
 export class ZodSubscriber<SubscriberSchema extends MessageCatalogSchema> {
@@ -48,6 +49,7 @@ export class ZodSubscriber<SubscriberSchema extends MessageCatalogSchema> {
   #schema: SubscriberSchema;
   #handlers: ZodSubscriberHandlers<SubscriberSchema>;
   #filter?: Record<string, string>;
+  #maxRedeliveries?: number;
 
   #subscriber?: PulsarConsumer;
   #client: PulsarClient;
@@ -61,6 +63,7 @@ export class ZodSubscriber<SubscriberSchema extends MessageCatalogSchema> {
     this.#handlers = options.handlers;
     this.#client = options.client;
     this.#filter = options.filter;
+    this.#maxRedeliveries = options.maxRedeliveries;
     this.#logger = new Logger("trigger.dev subscriber");
   }
 
@@ -180,8 +183,34 @@ export class ZodSubscriber<SubscriberSchema extends MessageCatalogSchema> {
         this.#logger.error("[ZodSubscriber] Error handling message", e);
       }
 
-      // TODO: Add support for dead letter queue
-      await consumer.acknowledge(msg);
+      if (!this.#maxRedeliveries || redeliveryCount > this.#maxRedeliveries) {
+        this.#logger.debug(
+          "Could not handle message, acking to stop it from being redelivered",
+          {
+            messageId,
+            publishedTimestamp,
+            eventTimestamp,
+            redeliveryCount,
+            error: e,
+          }
+        );
+
+        await consumer.acknowledge(msg);
+      } else {
+        this.#logger.debug(
+          "Could not handle message, negative acknowledging to redelivery it",
+          {
+            messageId,
+            publishedTimestamp,
+            eventTimestamp,
+            redeliveryCount,
+            error: e,
+            maxRedeliveries: this.#maxRedeliveries,
+          }
+        );
+
+        consumer.negativeAcknowledge(msg);
+      }
     }
   }
 

@@ -62,7 +62,9 @@ export class WorkflowRunController {
         subscription: `websocketserver-run-${this.#runId}`,
         subscriptionType: "Exclusive",
         subscriptionInitialPosition: "Latest",
+        nAckRedeliverTimeoutMs: 1000,
       },
+      maxRedeliveries: 8,
       filter: {
         "x-workflow-run-id": this.#runId,
       },

@@ -207,7 +207,9 @@ function createCommandSubscriber() {
       subscription: "webapp-commands",
       subscriptionType: "KeyShared",
       subscriptionInitialPosition: "Earliest",
+      nAckRedeliverTimeoutMs: 1000,
     },
+    maxRedeliveries: 8,
     schema: commandCatalog,
     handlers: {
       LOG_MESSAGE: async (id, data, properties) => {
@@ -661,10 +663,12 @@ function createTaskQueue() {
     subscriberConfig: {
       subscription: "webapp-queue",
       subscriptionType: "Shared",
+      nAckRedeliverTimeoutMs: 1000,
     },
     publisherConfig: {
       sendTimeoutMs: 1000,
     },
+    maxRedeliveries: 5,
     schema: taskQueueCatalog,
     handlers: {
       RESOLVE_DELAY: async (id, data, properties) => {
