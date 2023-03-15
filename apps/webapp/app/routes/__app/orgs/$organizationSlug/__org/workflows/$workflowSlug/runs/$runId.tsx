@@ -776,7 +776,11 @@ function KVGetStep({ step }: { step: StepType<Step, "KV_GET"> }) {
       {step.output && (
         <>
           <Header4>Output</Header4>
-          <CodeBlock code={stringifyCode(step.output)} align="top" />
+          <CodeBlock
+            code={stringifyCode(step.output)}
+            align="top"
+            maxHeight="200px"
+          />
         </>
       )}
     </>
@@ -811,7 +815,11 @@ function KVSetStep({ step }: { step: StepType<Step, "KV_SET"> }) {
       {step.input.value && (
         <>
           <Header4>Value</Header4>
-          <CodeBlock code={stringifyCode(step.input.value)} align="top" />
+          <CodeBlock
+            code={stringifyCode(step.input.value)}
+            align="top"
+            maxHeight="200px"
+          />
         </>
       )}
     </>
