@@ -296,6 +296,13 @@ const workflowNodeDelayClasses =
   "flex rounded-md bg-[#0F172A] pl-4 p-3 font-mono";
 
 function TriggerStep({ trigger }: { trigger: Trigger }) {
+  const { run } = useTypedLoaderData<typeof loader>();
+  const [lastRefreshed] = useState(new Date());
+
+  const reload = useCallback(() => {
+    document.location.reload();
+  }, []);
+
   return (
     <>
       <Panel className="mt-4">
@@ -324,7 +331,31 @@ function TriggerStep({ trigger }: { trigger: Trigger }) {
           />
         )}
       </Panel>
-      <div className="ml-[10px] -mr-[10px] h-3 w-full border-l border-slate-700"></div>
+      {run.status === "PENDING" && (
+        <div className="flex w-full items-stretch">
+          <div className="relative ml-2.5 flex w-5 border-l border-dashed border-slate-700">
+            <div className="absolute top-[13px] -left-[13px] rounded-full bg-slate-850 p-1">
+              {runStatusIcon("RUNNING", "small")}
+            </div>
+          </div>
+
+          <Body
+            size="small"
+            className={classNames("my-4 ml-0 font-mono text-slate-400")}
+          >
+            <span className="flex items-center gap-2">
+              Last refreshed {timeFormatter.format(lastRefreshed)}.{" "}
+              <TertiaryButton
+                onClick={() => reload()}
+                className="underline decoration-green-500 underline-offset-4"
+              >
+                <ArrowPathIcon className="h-4 w-4 text-slate-400" />
+                Refresh
+              </TertiaryButton>
+            </span>
+          </Body>
+        </div>
+      )}
     </>
   );
 }

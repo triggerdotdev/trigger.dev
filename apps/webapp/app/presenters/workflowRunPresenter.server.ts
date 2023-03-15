@@ -1,8 +1,8 @@
+import type { SecureString } from "@trigger.dev/common-schemas";
 import {
   KVDeleteSchema,
   KVGetSchema,
   KVSetSchema,
-  SecureString,
 } from "@trigger.dev/common-schemas";
 import {
   CustomEventSchema,
