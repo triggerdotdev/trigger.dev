@@ -1,11 +1,9 @@
 import {
   ArrowTopRightOnSquareIcon,
-  ClockIcon,
   CloudArrowUpIcon,
   CloudIcon,
-  CubeTransparentIcon,
   ExclamationTriangleIcon,
-} from "@heroicons/react/24/outline";
+} from "@heroicons/react/24/solid";
 import { Form, useRevalidator } from "@remix-run/react";
 import type { ActionArgs, LoaderArgs } from "@remix-run/server-runtime";
 import classNames from "classnames";
