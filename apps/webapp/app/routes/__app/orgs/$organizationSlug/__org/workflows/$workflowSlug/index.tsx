@@ -34,7 +34,10 @@ import { DEV_ENVIRONMENT } from "~/consts";
 import { useConnectionSlots } from "~/hooks/useConnectionSlots";
 import { useCurrentEnvironment } from "~/hooks/useEnvironments";
 import { useCurrentOrganization } from "~/hooks/useOrganizations";
-import { useCurrentWorkflow } from "~/hooks/useWorkflows";
+import {
+  CurrentWorkflowEventRule,
+  useCurrentWorkflow,
+} from "~/hooks/useWorkflows";
 import type { RuntimeEnvironment } from "~/models/runtimeEnvironment.server";
 import { getRuntimeEnvironmentFromRequest } from "~/models/runtimeEnvironment.server";
 import { WorkflowRunListPresenter } from "~/presenters/workflowRunListPresenter.server";
@@ -393,30 +396,7 @@ export default function Page() {
                       />
                     </div>
                   </Disclosure.Button>
-                  <Disclosure.Panel className="p-6">
-                    <div className="mb-1 flex items-baseline gap-2">
-                      <SubTitle className="text-slate-300">
-                        Trigger your workflow for real
-                      </SubTitle>
-                      <span className="relative -top-0.5 rounded-full bg-blue-700 px-2 pt-1 pb-0.5 text-[0.6rem] font-medium uppercase tracking-wider text-blue-200">
-                        Recommended
-                      </span>
-                    </div>
-                    <ol className="flex list-inside list-decimal flex-col gap-1.5 border-b border-slate-800 pb-4 pl-2 text-slate-400">
-                      <li>{howToText(eventRule)}</li>
-                      <li>Return here to view the new workflow run.</li>
-                    </ol>
-                    <SubTitle className="mt-4 mb-3 text-slate-300">
-                      Trigger your workflow from a test
-                    </SubTitle>
-                    <SecondaryLink
-                      to="test"
-                      className="!bg-slate-800/50 ring-slate-800 hover:!bg-slate-800/30"
-                    >
-                      <BeakerIcon className="-ml-1 h-4 w-4 text-slate-300" />
-                      Test your workflow
-                    </SecondaryLink>
-                  </Disclosure.Panel>
+                  <HowToRunWorkflow eventRule={eventRule} />
                 </div>
               )}
             </Disclosure>
@@ -462,6 +442,93 @@ export default function Page() {
         </>
       )}
     </>
+  );
+}
+
+function HowToRunWorkflow({
+  eventRule,
+}: {
+  eventRule: CurrentWorkflowEventRule;
+}) {
+  switch (eventRule.trigger.type) {
+    case "SCHEDULE": {
+      return <HowToRunScheduleWorkflow eventRule={eventRule} />;
+    }
+    default: {
+      return <HowToRunWorkflowGeneric eventRule={eventRule} />;
+    }
+  }
+}
+
+function HowToRunScheduleWorkflow({
+  eventRule,
+}: {
+  eventRule: CurrentWorkflowEventRule;
+}) {
+  return (
+    <Disclosure.Panel className="p-6">
+      <div className="mb-1 flex items-baseline gap-2">
+        <SubTitle className="text-slate-300">
+          Trigger your workflow from a test
+        </SubTitle>
+        <span className="relative -top-0.5 rounded-full bg-blue-700 px-2 pt-1 pb-0.5 text-[0.6rem] font-medium uppercase tracking-wider text-blue-200">
+          Recommended
+        </span>
+      </div>
+      <ol className="flex list-inside list-decimal flex-col gap-1.5 pb-4 pl-2 text-slate-400">
+        {eventRule.enabled ? (
+          <>
+            <li>{howToText(eventRule)}</li>
+            <li>Return here to view the new workflow run.</li>
+          </>
+        ) : (
+          <>
+            <li>Scheduled events are disabled in this environment</li>
+            <li>To trigger this workflow, you'll need to run a test below</li>
+          </>
+        )}
+      </ol>
+      <SecondaryLink
+        to="test"
+        className="!bg-slate-800/50 ring-slate-800 hover:!bg-slate-800/30"
+      >
+        <BeakerIcon className="-ml-1 h-4 w-4 text-slate-300" />
+        Test your workflow
+      </SecondaryLink>
+    </Disclosure.Panel>
+  );
+}
+
+function HowToRunWorkflowGeneric({
+  eventRule,
+}: {
+  eventRule: CurrentWorkflowEventRule;
+}) {
+  return (
+    <Disclosure.Panel className="p-6">
+      <div className="mb-1 flex items-baseline gap-2">
+        <SubTitle className="text-slate-300">
+          Trigger your workflow for real
+        </SubTitle>
+        <span className="relative -top-0.5 rounded-full bg-blue-700 px-2 pt-1 pb-0.5 text-[0.6rem] font-medium uppercase tracking-wider text-blue-200">
+          Recommended
+        </span>
+      </div>
+      <ol className="flex list-inside list-decimal flex-col gap-1.5 border-b border-slate-800 pb-4 pl-2 text-slate-400">
+        <li>{howToText(eventRule)}</li>
+        <li>Return here to view the new workflow run.</li>
+      </ol>
+      <SubTitle className="mt-4 mb-3 text-slate-300">
+        Trigger your workflow from a test
+      </SubTitle>
+      <SecondaryLink
+        to="test"
+        className="!bg-slate-800/50 ring-slate-800 hover:!bg-slate-800/30"
+      >
+        <BeakerIcon className="-ml-1 h-4 w-4 text-slate-300" />
+        Test your workflow
+      </SecondaryLink>
+    </Disclosure.Panel>
   );
 }
 

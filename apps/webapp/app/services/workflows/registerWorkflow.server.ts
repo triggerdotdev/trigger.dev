@@ -2,6 +2,7 @@ import * as github from "@trigger.dev/github/internal";
 import type { RegisteredWorkflow } from "internal-platform";
 import { RegisteredWorkflowSchema } from "internal-platform";
 import crypto from "node:crypto";
+import { DEV_ENVIRONMENT } from "~/consts";
 import type { PrismaClient } from "~/db.server";
 import { prisma } from "~/db.server";
 import type { Organization } from "~/models/organization.server";
@@ -96,6 +97,11 @@ export class RegisterWorkflow {
     organization: Organization,
     environment: RuntimeEnvironment
   ) {
+    // when payload.trigger.type === "SCHEDULE" and environment.slug == DEV_ENVIRONMENT, the event rule should be disabled
+    const isDisabled =
+      payload.trigger.type === "SCHEDULE" &&
+      environment.slug === DEV_ENVIRONMENT;
+
     return this.#prismaClient.eventRule.upsert({
       where: {
         workflowId_environmentId: {
@@ -114,6 +120,7 @@ export class RegisterWorkflow {
         filter: "filter" in payload.trigger ? payload.trigger.filter : {},
         type: payload.trigger.type,
         trigger: payload.trigger,
+        enabled: !isDisabled,
       },
     });
   }

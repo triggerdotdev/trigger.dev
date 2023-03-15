@@ -172,7 +172,7 @@ function WorkflowReadyPanel({
           method="post"
           onSubmit={(e) =>
             !confirm(
-              "Disabling this workflow will prevent any new triggers from running, but will not stop in-progress runs from completing. Are you sure you want to disable this workflow?"
+              "Disabling this workflow will prevent any new triggers from running in both the dev and live environments, but will not stop in-progress runs from completing. Are you sure you want to disable this workflow?"
             ) && e.preventDefault()
           }
         >
@@ -185,7 +185,7 @@ function WorkflowReadyPanel({
           method="post"
           onSubmit={(e) =>
             !confirm(
-              "Archiving this workflow disables it and removes it from your list of workflows. Are you sure you want to archive this workflow?"
+              "Archiving this workflow disables it in both dev and live environments, and removes it from your list of workflows. Are you sure you want to archive this workflow?"
             ) && e.preventDefault()
           }
         >

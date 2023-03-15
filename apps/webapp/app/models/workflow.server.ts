@@ -109,6 +109,7 @@ export function getWorkflowFromSlugs({
           type: true,
           trigger: true,
           environmentId: true,
+          enabled: true,
         },
       },
       organizationTemplate: {

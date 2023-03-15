@@ -34,3 +34,5 @@ export function useCurrentWorkflow() {
 }
 
 export type CurrentWorkflow = ReturnType<typeof useCurrentWorkflow>;
+export type CurrentWorkflowEventRule =
+  NonNullable<CurrentWorkflow>["rules"][number];
