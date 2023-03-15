@@ -21,54 +21,6 @@ export class WorkflowCreated {
     }
 
     await this.#sendInternalEvent(workflow.id);
-
-    const orgTemplates = await this.#prismaClient.organizationTemplate.findMany(
-      {
-        where: {
-          organizationId: workflow.organizationId,
-          template: {
-            workflowIds: {
-              has: workflow.slug,
-            },
-          },
-          status: "READY_TO_DEPLOY",
-        },
-        include: {
-          template: true,
-        },
-      }
-    );
-
-    const firstOrgTemplate = orgTemplates[0];
-
-    if (firstOrgTemplate) {
-      await this.#prismaClient.workflow.update({
-        where: { id: workflow.id },
-        data: {
-          organizationTemplateId: firstOrgTemplate.id,
-        },
-      });
-    }
-
-    for (const orgTemplate of orgTemplates) {
-      await this.#prismaClient.organizationTemplate.update({
-        where: { id: orgTemplate.id },
-        data: {
-          status: "DEPLOYED",
-        },
-      });
-
-      await appEventPublisher.publish(
-        "organization-template.updated",
-        {
-          id: orgTemplate.id,
-          status: "DEPLOYED",
-        },
-        {
-          "x-organization-template-id": orgTemplate.id,
-        }
-      );
-    }
   }
 
   async #sendInternalEvent(id: string) {

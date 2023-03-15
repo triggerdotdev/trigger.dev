@@ -1,5 +1,35 @@
 # @trigger.dev/sdk
 
+## 0.2.22
+
+### Patch Changes
+
+- ab512157: Fixed an error message
+- 1673d452: Added kv storage to persist data in between runs and between workflows
+- 0b67b51a: Fix ESM error by dynamically importing ESM packages (chalk, terminal-link, etc.)
+- f39bc44e: SDK now passes through the project ID from the env var
+
+## 0.2.22-next.0
+
+### Patch Changes
+
+- ab512157: Fixed an error message
+- 1673d452: Added kv storage to persist data in between runs and between workflows
+- 0b67b51a: Fix ESM error by dynamically importing ESM packages (chalk, terminal-link, etc.)
+- f39bc44e: SDK now passes through the project ID from the env var
+
+## 0.2.21
+
+### Patch Changes
+
+- c5084209: Fix for metadata capture when using npm/yarn
+
+## 0.2.20
+
+### Patch Changes
+
+- 5ec71980: Send additional metadata about a workflow when initializing the host
+
 ## 0.2.19
 
 ### Patch Changes

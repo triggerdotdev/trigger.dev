@@ -26,6 +26,36 @@ export function setErrorMessage(session: Session, message: string) {
   session.flash("toastMessage", { message, type: "error" } as ToastMessage);
 }
 
+export async function setRequestErrorMessage(
+  request: Request,
+  message: string
+) {
+  const session = await getSession(request.headers.get("cookie"));
+
+  setErrorMessage(session, message);
+
+  return session;
+}
+
+export async function setRequestSuccessMessage(
+  request: Request,
+  message: string
+) {
+  const session = await getSession(request.headers.get("cookie"));
+
+  setSuccessMessage(session, message);
+
+  return session;
+}
+
+export async function setToastMessageCookie(session: Session) {
+  return {
+    "Set-Cookie": await commitSession(session, {
+      expires: new Date(Date.now() + ONE_YEAR),
+    }),
+  };
+}
+
 export async function jsonWithSuccessMessage(
   data: any,
   request: Request,

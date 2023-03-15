@@ -1,16 +1,27 @@
 import { Outlet } from "@remix-run/react";
+import { AppLayoutThreeCol } from "~/components/layout/AppLayout";
 import {
-  SideMenuContainer,
-  OrganizationsSideMenu,
+  CurrentOrganizationSideMenu,
+  OrganizationSideMenuCollapsed,
 } from "~/components/navigation/SideMenu";
+import { useIsOrgChildPage } from "~/hooks/useIsOrgChildPage";
 
-export default function Layout() {
+export default function OrganizationLayout() {
+  const isOrgChildPage = useIsOrgChildPage();
+
   return (
     <>
-      <SideMenuContainer>
-        <OrganizationsSideMenu />
-        <Outlet />
-      </SideMenuContainer>
+      {isOrgChildPage ? (
+        <AppLayoutThreeCol>
+          <OrganizationSideMenuCollapsed />
+          <Outlet />
+        </AppLayoutThreeCol>
+      ) : (
+        <AppLayoutThreeCol>
+          <CurrentOrganizationSideMenu />
+          <Outlet />
+        </AppLayoutThreeCol>
+      )}
     </>
   );
 }

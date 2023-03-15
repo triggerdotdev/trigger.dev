@@ -31,6 +31,9 @@ model User {
 
   organizations           Organization[]
   gitHubAppAuthorizations GitHubAppAuthorization[]
+
+  featureCloud           Boolean @default(false)
+  isOnHostedRepoWaitlist Boolean @default(false)
 }
 
 enum AuthenticationMethod {
@@ -46,17 +49,17 @@ model Organization {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  users                   User[]
-  workflows               Workflow[]
-  environments            RuntimeEnvironment[]
-  apiConnections          APIConnection[]
-  events                  TriggerEvent[]
-  externalSources         ExternalSource[]
-  eventRules              EventRule[]
-  schedulerSources        SchedulerSource[]
-  internalSources         InternalSource[]
-  gitHubAppAuthorizations GitHubAppAuthorization[]
-  templates               OrganizationTemplate[]
+  users              User[]
+  workflows          Workflow[]
+  environments       RuntimeEnvironment[]
+  apiConnections     APIConnection[]
+  events             TriggerEvent[]
+  externalSources    ExternalSource[]
+  eventRules         EventRule[]
+  schedulerSources   SchedulerSource[]
+  internalSources    InternalSource[]
+  templates          OrganizationTemplate[]
+  repositoryProjects RepositoryProject[]
 }
 
 model APIConnection {
@@ -113,6 +116,8 @@ model RuntimeEnvironment {
   eventRules       EventRule[]
   schedulerSources SchedulerSource[]
   internalSources  InternalSource[]
+  deployments      ProjectDeployment[]
+  keyValueItems    KeyValueItem[]
 
   @@unique([organizationId, slug])
 }
@@ -123,8 +128,8 @@ model Workflow {
   title String
 
   packageJson Json?
-
-  jsonSchema Json?
+  jsonSchema  Json?
+  metadata    Json?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -155,6 +160,9 @@ model Workflow {
 
   organizationTemplate   OrganizationTemplate? @relation(fields: [organizationTemplateId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   organizationTemplateId String?
+
+  repositoryProject   RepositoryProject? @relation(fields: [repositoryProjectId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  repositoryProjectId String?
 
   @@unique([organizationId, slug])
 }
@@ -522,6 +530,24 @@ enum WorkflowRunStepType {
   DISCONNECTION
   FETCH_REQUEST
   RUN_ONCE
+  KV_GET
+  KV_SET
+  KV_DELETE
+}
+
+model KeyValueItem {
+  id String @id @default(cuid())
+
+  key   String
+  value Json
+
+  environment   RuntimeEnvironment @relation(fields: [environmentId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  environmentId String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([environmentId, key])
 }
 
 model FetchRequest {
@@ -567,10 +593,15 @@ model FetchResponse {
 }
 
 model GitHubAppAuthorizationAttempt {
-  id             String  @id @default(cuid())
-  userId         String
-  organizationId String
-  templateId     String?
+  id         String @id @default(cuid())
+  userId     String
+  redirectTo String @default("/")
+
+  authorization   GitHubAppAuthorization? @relation(fields: [authorizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  authorizationId String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
 }
 
 model GitHubAppAuthorization {
@@ -578,9 +609,6 @@ model GitHubAppAuthorization {
 
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   userId String
-
-  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  organizationId String
 
   accountType GitHubAccountType @default(USER)
   accountName String
@@ -594,16 +622,157 @@ model GitHubAppAuthorization {
   htmlUrl             String
   events              String[]
 
-  token                 String
-  tokenExpiresAt        DateTime
-  refreshToken          String
-  refreshTokenExpiresAt DateTime
+  installationAccessToken          String?
+  installationAccessTokenExpiresAt DateTime?
+
   organizationTemplates OrganizationTemplate[]
+
+  createdAt                     DateTime                        @default(now())
+  updatedAt                     DateTime                        @default(now()) @updatedAt
+  GitHubAppAuthorizationAttempt GitHubAppAuthorizationAttempt[]
+  repositoryProjects            RepositoryProject[]
 }
 
 enum GitHubAccountType {
   USER
   ORGANIZATION
+}
+
+model RepositoryProject {
+  id String @id @default(cuid())
+
+  name   String @unique
+  url    String
+  branch String @default("main")
+
+  authorization   GitHubAppAuthorization @relation(fields: [authorizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  authorizationId String
+
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  organizationId String
+
+  buildCommand String
+  startCommand String
+  autoDeploy   Boolean @default(true)
+  envVars      Json
+
+  status     RepositoryProjectStatus @default(PENDING)
+  statusText String?
+
+  currentVMIdentifier String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  deployments ProjectDeployment[] @relation("repoProject")
+
+  latestCommit Json?
+
+  currentDeployment   ProjectDeployment? @relation(fields: [currentDeploymentId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  currentDeploymentId String?
+
+  workflows Workflow[]
+}
+
+enum RepositoryProjectStatus {
+  PENDING
+  PREPARING
+  BUILDING
+  DEPLOYING
+  DEPLOYED
+  ERROR
+  DISABLED
+}
+
+model ProjectDeployment {
+  id String @id @default(cuid())
+
+  project   RepositoryProject @relation("repoProject", fields: [projectId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  projectId String
+
+  environment   RuntimeEnvironment @relation(fields: [environmentId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  environmentId String
+
+  version String
+
+  status ProjectDeploymentStatus @default(PENDING)
+
+  buildId         String    @unique
+  imageId         String?
+  vmIdentifier    String?
+  buildStartedAt  DateTime?
+  buildFinishedAt DateTime?
+  stoppedAt       DateTime?
+
+  dockerfile   String
+  dockerIgnore String
+
+  branch        String
+  commitHash    String
+  commitMessage String
+  committer     String
+
+  error Json?
+
+  createdAt DateTime            @default(now())
+  updatedAt DateTime            @updatedAt
+  projects  RepositoryProject[]
+
+  logs  DeploymentLog[]
+  polls DeploymentLogPoll[]
+
+  @@unique([projectId, version])
+}
+
+enum ProjectDeploymentStatus {
+  PENDING
+  BUILDING
+  DEPLOYING
+  DEPLOYED
+  CANCELLED
+  ERROR
+  STOPPING
+  STOPPED
+}
+
+model DeploymentLog {
+  id String @id @default(cuid())
+
+  deployment   ProjectDeployment @relation(fields: [deploymentId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  deploymentId String
+
+  logType   DeploymentLogType @default(BUILD)
+  logNumber Int               @default(0)
+
+  log       String
+  level     String
+  createdAt DateTime @default(now())
+}
+
+enum DeploymentLogType {
+  BUILD
+  MACHINE
+}
+
+model DeploymentLogPoll {
+  id String @id @default(cuid())
+
+  deployment   ProjectDeployment @relation(fields: [deploymentId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  deploymentId String
+
+  logType DeploymentLogType @default(BUILD)
+
+  from DateTime
+  to   DateTime
+
+  totalLogsCount    Int
+  filteredLogsCount Int
+
+  nextPollScheduledAt DateTime?
+
+  pollNumber Int
+
+  createdAt DateTime @default(now())
 }
 
 model Template {

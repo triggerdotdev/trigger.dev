@@ -223,7 +223,7 @@ export class HostConnection implements IConnection {
           new Date().getTime() - this.#closeUnresponsiveConnectionTimeoutMs
         ) {
           this.#logger.error(
-            "No pong received in last three minutes, closing connection to Interval and retrying..."
+            "No pong received in last three minutes, closing connection to Trigger.dev and retrying..."
           );
           if (this.#pingIntervalHandle) {
             clearInterval(this.#pingIntervalHandle);

@@ -1,6 +1,6 @@
 {
   "name": "@trigger.dev/github",
-  "version": "0.1.26",
+  "version": "0.1.28-next.0",
   "description": "The official GitHub integration for Trigger.dev",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -13,7 +13,7 @@
     "dist/index.js.map"
   ],
   "devDependencies": {
-    "@trigger.dev/sdk": "workspace:*",
+    "@trigger.dev/sdk": "workspace:^0.2.22-next.0",
     "@trigger.dev/tsconfig": "workspace:*",
     "@trigger.dev/integration-sdk": "workspace:*",
     "@types/node": "16",
@@ -21,7 +21,7 @@
     "tsup": "^6.5.0"
   },
   "peerDependencies": {
-    "@trigger.dev/sdk": "workspace:*"
+    "@trigger.dev/sdk": "workspace:^0.2.22-next.0"
   },
   "scripts": {
     "clean": "rimraf dist",

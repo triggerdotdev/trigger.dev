@@ -1,7 +1,7 @@
 import type { APIConnection } from ".prisma/client";
 import type { ServiceMetadata } from "@trigger.dev/integration-sdk";
 import type { UseDataFunctionReturn } from "remix-typedjson/dist/remix";
-import type { loader } from "~/routes/__app/orgs/$organizationSlug/workflows/$workflowSlug";
+import type { loader } from "~/routes/__app/orgs/$organizationSlug/__org/workflows/$workflowSlug";
 import { hydrateObject, useMatchesData } from "~/utils";
 
 export type ConnectionSlot = {
@@ -13,7 +13,7 @@ export type ConnectionSlot = {
 
 export function useConnectionSlots() {
   const routeMatch = useMatchesData(
-    "routes/__app/orgs/$organizationSlug/workflows/$workflowSlug"
+    "routes/__app/orgs/$organizationSlug/__org/workflows/$workflowSlug"
   );
 
   if (!routeMatch || !routeMatch.data.connectionSlots) {

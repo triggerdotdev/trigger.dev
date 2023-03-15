@@ -41,6 +41,9 @@ export async function action({ request, params }: ActionArgs) {
     case "isArchived": {
       return json({ error: "Workflow is archived" }, { status: 400 });
     }
+    case "isDisabled": {
+      return json({ error: "Workflow is disabled" }, { status: 400 });
+    }
     case "success": {
       const { workflow, environment, organization, isNew } = result.data;
 

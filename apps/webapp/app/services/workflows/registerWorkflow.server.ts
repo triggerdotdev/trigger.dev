@@ -1,7 +1,8 @@
 import * as github from "@trigger.dev/github/internal";
-import type { WorkflowMetadata } from "internal-platform";
-import { WorkflowMetadataSchema } from "internal-platform";
+import type { RegisteredWorkflow } from "internal-platform";
+import { RegisteredWorkflowSchema } from "internal-platform";
 import crypto from "node:crypto";
+import { DEV_ENVIRONMENT } from "~/consts";
 import type { PrismaClient } from "~/db.server";
 import { prisma } from "~/db.server";
 import type { Organization } from "~/models/organization.server";
@@ -22,7 +23,7 @@ export class RegisterWorkflow {
     organization: Organization,
     environment: RuntimeEnvironment
   ) {
-    const validation = WorkflowMetadataSchema.safeParse(payload);
+    const validation = RegisteredWorkflowSchema.safeParse(payload);
 
     if (!validation.success) {
       return {
@@ -40,6 +41,13 @@ export class RegisterWorkflow {
     if (workflow.isArchived) {
       return {
         status: "isArchived" as const,
+        data: { id: workflow.id },
+      };
+    }
+
+    if (workflow.status === "DISABLED") {
+      return {
+        status: "isDisabled" as const,
         data: { id: workflow.id },
       };
     }
@@ -71,6 +79,12 @@ export class RegisterWorkflow {
       environment
     );
 
+    if (isNew) {
+      await taskQueue.publish("WORKFLOW_CREATED", {
+        id: workflow.id,
+      });
+    }
+
     return {
       status: "success" as const,
       data: { workflow, environment, organization, isNew },
@@ -79,10 +93,15 @@ export class RegisterWorkflow {
 
   async #upsertEventRule(
     workflow: Workflow,
-    payload: WorkflowMetadata,
+    payload: RegisteredWorkflow,
     organization: Organization,
     environment: RuntimeEnvironment
   ) {
+    // when payload.trigger.type === "SCHEDULE" and environment.slug == DEV_ENVIRONMENT, the event rule should be disabled
+    const isDisabled =
+      payload.trigger.type === "SCHEDULE" &&
+      environment.slug === DEV_ENVIRONMENT;
+
     return this.#prismaClient.eventRule.upsert({
       where: {
         workflowId_environmentId: {
@@ -101,13 +120,14 @@ export class RegisterWorkflow {
         filter: "filter" in payload.trigger ? payload.trigger.filter : {},
         type: payload.trigger.type,
         trigger: payload.trigger,
+        enabled: !isDisabled,
       },
     });
   }
 
   async #upsertWorkflow(
     slug: string,
-    payload: WorkflowMetadata,
+    payload: RegisteredWorkflow,
     organization: Organization
   ) {
     const existingWorkflow = await this.#prismaClient.workflow.findUnique({
@@ -121,6 +141,10 @@ export class RegisterWorkflow {
         id: true,
       },
     });
+
+    const metadata = payload.metadata
+      ? JSON.parse(payload.metadata)
+      : undefined;
 
     const workflow = await this.#prismaClient.workflow.upsert({
       where: {
@@ -136,6 +160,8 @@ export class RegisterWorkflow {
         service: payload.trigger.service,
         eventNames: payload.trigger.name,
         triggerTtlInSeconds: payload.triggerTTL,
+        metadata,
+        repositoryProjectId: metadata?.env?.PROJECT_ID,
         jsonSchema:
           "schema" in payload.trigger
             ? payload.trigger.schema
@@ -153,6 +179,8 @@ export class RegisterWorkflow {
         service: payload.trigger.service,
         eventNames: payload.trigger.name,
         triggerTtlInSeconds: payload.triggerTTL,
+        metadata,
+        repositoryProjectId: metadata?.env?.PROJECT_ID,
         jsonSchema:
           "schema" in payload.trigger
             ? payload.trigger.schema
@@ -166,13 +194,6 @@ export class RegisterWorkflow {
     });
 
     if (!existingWorkflow) {
-      await taskQueue.publish("WORKFLOW_CREATED", {
-        id: workflow.id,
-      });
-      await taskQueue.publish("WORKFLOW_CREATED", {
-        id: workflow.id,
-      });
-
       return { workflow, isNew: true };
     }
 
@@ -180,7 +201,7 @@ export class RegisterWorkflow {
   }
 
   async upsertSource(
-    payload: WorkflowMetadata,
+    payload: RegisteredWorkflow,
     organization: Organization,
     workflow: Workflow,
     environment: RuntimeEnvironment
@@ -276,7 +297,7 @@ export class RegisterWorkflow {
   }
 
   async #upsertWebhookSource(
-    payload: WorkflowMetadata,
+    payload: RegisteredWorkflow,
     organization: Organization,
     workflow: Workflow
   ) {
@@ -358,7 +379,7 @@ export class RegisterWorkflow {
     }
   }
 
-  #keyForExternalSource(payload: WorkflowMetadata): string {
+  #keyForExternalSource(payload: RegisteredWorkflow): string {
     if (payload.trigger.type === "WEBHOOK") {
       switch (payload.trigger.service) {
         case "github": {

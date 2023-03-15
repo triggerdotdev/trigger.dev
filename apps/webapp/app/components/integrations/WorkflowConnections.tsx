@@ -51,7 +51,7 @@ export function WorkflowConnections({
             </div>
           </li>
         ))}
-        <li className="font-sm p-4 pl-5 text-slate-500">
+        <li className="p-4 pl-5 text-sm text-slate-500">
           You will be able to authenticate APIs on demand when your workflow
           runs. You can also{" "}
           <Link

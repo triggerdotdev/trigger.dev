@@ -3,6 +3,7 @@ import {
   FetchOutputSchema,
   JsonSchema,
   ResolveRunOnceOuputSchema,
+  SerializableJsonSchema,
 } from "@trigger.dev/common-schemas";
 
 export const HostRPCSchema = {
@@ -104,6 +105,46 @@ export const HostRPCSchema = {
       id: z.string(),
       key: z.string(),
       output: ResolveRunOnceOuputSchema,
+      meta: z.object({
+        environment: z.string(),
+        workflowId: z.string(),
+        organizationId: z.string(),
+        apiKey: z.string(),
+        runId: z.string(),
+      }),
+    }),
+    response: z.boolean(),
+  },
+  RESOLVE_KV_GET: {
+    request: z.object({
+      key: z.string(),
+      output: SerializableJsonSchema,
+      meta: z.object({
+        environment: z.string(),
+        workflowId: z.string(),
+        organizationId: z.string(),
+        apiKey: z.string(),
+        runId: z.string(),
+      }),
+    }),
+    response: z.boolean(),
+  },
+  RESOLVE_KV_SET: {
+    request: z.object({
+      key: z.string(),
+      meta: z.object({
+        environment: z.string(),
+        workflowId: z.string(),
+        organizationId: z.string(),
+        apiKey: z.string(),
+        runId: z.string(),
+      }),
+    }),
+    response: z.boolean(),
+  },
+  RESOLVE_KV_DELETE: {
+    request: z.object({
+      key: z.string(),
       meta: z.object({
         environment: z.string(),
         workflowId: z.string(),

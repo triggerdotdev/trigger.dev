@@ -1,11 +1,11 @@
-export function Footer() {
-  const linkStyle =
-    "text-xs font-medium text-slate-400 whitespace-nowrap bg-transparent text-slate-500 transition hover:text-indigo-500";
+const linkStyle =
+  "text-xs font-medium text-slate-400 whitespace-nowrap bg-transparent text-slate-500 transition hover:text-indigo-500";
 
+export function Footer() {
   return (
-    <div className="flex w-full items-center justify-between border-t border-slate-800 bg-slate-950 pl-2 pr-3 py-1 flex-row gap-0">
-      <p className="text-xs text-slate-500">
-        &copy; {new Date().getFullYear()} Trigger.dev{" "}
+    <div className="flex w-full flex-col items-center justify-between border-t border-slate-800 bg-slate-950 py-4 pl-2 pr-3 sm:flex-row sm:py-4">
+      <div className="flex gap-2 pb-4 text-xs text-slate-500 sm:pb-0">
+        <p>&copy; {new Date().getFullYear()} Trigger.dev </p>
         <span className="text-slate-600">|</span>{" "}
         <a
           className="transition hover:text-indigo-500"
@@ -20,7 +20,7 @@ export function Footer() {
         >
           Privacy
         </a>
-      </p>
+      </div>
 
       <div className="flex gap-3">
         <a

@@ -39,7 +39,7 @@ export async function createProject(
   // Rewrite the package.json file to use the new project name
   updatePackageJson(projectName, projectPath);
   // Rewrite the README.md file to use the new project name
-  updateReadme(projectName, projectPath);
+  updateReadme(projectPath);
   // Remove package-lock.json
   fs.removeSync(path.resolve(projectPath, "package-lock.json"));
   // Remove .env.example
@@ -67,7 +67,7 @@ function updatePackageJson(projectName: string, projectDir: string) {
   });
 }
 
-function updateReadme(projectName: string, projectDir: string) {
+function updateReadme(projectDir: string) {
   const existingReadme = fs.readFileSync(path.resolve(projectDir, "README.md"));
 
   fs.writeFileSync(path.resolve(projectDir, "README.md"), existingReadme);

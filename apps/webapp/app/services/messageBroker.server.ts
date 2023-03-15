@@ -1,3 +1,4 @@
+import { CakeworkApiError } from "@cakework/client/dist";
 import type { FetchOutputSchema } from "@trigger.dev/common-schemas";
 import {
   CustomEventSchema,
@@ -25,6 +26,9 @@ import { EventEmitter } from "stream";
 import { z } from "zod";
 import { prisma } from "~/db.server";
 import { env } from "~/env.server";
+import { cakework } from "~/features/ee/projects/cakework.server";
+import { CleanupProject } from "~/features/ee/projects/services/cleanupProject.server";
+import { PollDeploymentLogs } from "~/features/ee/projects/services/pollDeploymentLogs.server";
 import { findFetchRequestById } from "~/models/fetchRequest.server";
 import { findIntegrationRequestById } from "~/models/integrationRequest.server";
 import {
@@ -37,6 +41,12 @@ import {
 } from "~/models/workflowRun.server";
 import { findWorkflowStepById } from "~/models/workflowRunStep.server";
 import { omit } from "~/utils/objects";
+import { BuildComplete } from "../features/ee/projects/services/buildComplete.server";
+import { CleanupDeployment } from "../features/ee/projects/services/cleanupDeployment.server";
+import { DeploymentCreated } from "../features/ee/projects/services/deploymentCreated.server";
+import { InitialProjectDeployment } from "../features/ee/projects/services/initialProjectDeployment.server";
+import { ReceiveRepositoryPush } from "../features/ee/projects/services/receiveRepositoryPush.server";
+import { StartPendingDeployment } from "../features/ee/projects/services/startPendingDeployment.server";
 import { OrganizationCreatedEvent } from "./analyticsEvents/organizationCreated.server";
 import { WorkflowCreatedEvent } from "./analyticsEvents/workflowCreated.server";
 import { WorkflowRunCreatedEvent } from "./analyticsEvents/workflowRunCreated.server";
@@ -50,7 +60,12 @@ import { RegisterExternalSource } from "./externalSources/registerExternalSource
 import { CreateFetchRequest } from "./fetches/createFetchRequest.server";
 import { PerformFetchRequest } from "./fetches/performFetchRequest.server";
 import { StartFetchRequest } from "./fetches/startFetchRequest.server";
-import { GithubRepositoryCreated } from "./github/repositoryCreated.server";
+import {
+  KVDeleteService,
+  KVGetService,
+  KVSetService,
+} from "./kv/services.server";
+import { logger } from "./logger";
 import type { PulsarClient } from "./pulsarClient.server";
 import { createPulsarClient } from "./pulsarClient.server";
 import { CreateIntegrationRequest } from "./requests/createIntegrationRequest.server";
@@ -194,7 +209,9 @@ function createCommandSubscriber() {
       subscription: "webapp-commands",
       subscriptionType: "KeyShared",
       subscriptionInitialPosition: "Earliest",
+      nAckRedeliverTimeoutMs: 1000,
     },
+    maxRedeliveries: 8,
     schema: commandCatalog,
     handlers: {
       LOG_MESSAGE: async (id, data, properties) => {
@@ -268,6 +285,100 @@ function createCommandSubscriber() {
           properties["x-api-key"],
           properties["x-timestamp"],
           data.fetch
+        );
+
+        return true;
+      },
+      SEND_KV_GET: async (id, data, properties) => {
+        const service = new KVGetService();
+
+        const { output, environment } = await service.call(
+          data.key,
+          properties["x-workflow-run-id"],
+          properties["x-api-key"],
+          properties["x-timestamp"],
+          data.get
+        );
+
+        await commandResponsePublisher.publish(
+          "RESOLVE_KV_GET",
+          {
+            key: data.key,
+            operation: {
+              key: data.get.key,
+              namespace: data.get.namespace,
+              output,
+            },
+          },
+          {
+            "x-workflow-run-id": properties["x-workflow-run-id"],
+            "x-api-key": properties["x-api-key"],
+            "x-org-id": environment.organization.id,
+            "x-workflow-id": properties["x-workflow-id"],
+            "x-env": environment.slug,
+          }
+        );
+
+        return true;
+      },
+      SEND_KV_SET: async (id, data, properties) => {
+        const service = new KVSetService();
+
+        const environment = await service.call(
+          data.key,
+          properties["x-workflow-run-id"],
+          properties["x-api-key"],
+          properties["x-timestamp"],
+          data.set
+        );
+
+        await commandResponsePublisher.publish(
+          "RESOLVE_KV_SET",
+          {
+            key: data.key,
+            operation: {
+              key: data.set.key,
+              namespace: data.set.namespace,
+            },
+          },
+          {
+            "x-workflow-run-id": properties["x-workflow-run-id"],
+            "x-api-key": properties["x-api-key"],
+            "x-org-id": environment.organization.id,
+            "x-workflow-id": properties["x-workflow-id"],
+            "x-env": environment.slug,
+          }
+        );
+
+        return true;
+      },
+      SEND_KV_DELETE: async (id, data, properties) => {
+        const service = new KVDeleteService();
+
+        const environment = await service.call(
+          data.key,
+          properties["x-workflow-run-id"],
+          properties["x-api-key"],
+          properties["x-timestamp"],
+          data.delete
+        );
+
+        await commandResponsePublisher.publish(
+          "RESOLVE_KV_DELETE",
+          {
+            key: data.key,
+            operation: {
+              key: data.delete.key,
+              namespace: data.delete.namespace,
+            },
+          },
+          {
+            "x-workflow-run-id": properties["x-workflow-run-id"],
+            "x-api-key": properties["x-api-key"],
+            "x-org-id": environment.organization.id,
+            "x-workflow-id": properties["x-workflow-id"],
+            "x-env": environment.slug,
+          }
         );
 
         return true;
@@ -485,8 +596,8 @@ const taskQueueCatalog = {
     data: z.object({ id: z.number() }),
     properties: z.object({}),
   },
-  GITHUB_APP_REPOSITORY_CREATED: {
-    data: z.object({ id: z.number() }),
+  GITHUB_APP_INSTALLATION_CREATED: {
+    data: z.object({ id: z.string() }),
     properties: z.object({}),
   },
   ORGANIZATION_CREATED: {
@@ -505,6 +616,46 @@ const taskQueueCatalog = {
     data: z.object({ id: z.string() }),
     properties: z.object({}),
   },
+  START_INITIAL_PROJECT_DEPLOYMENT: {
+    data: z.object({ id: z.string() }),
+    properties: z.object({}),
+  },
+  DEPLOYMENT_BUILD_COMPLETE: {
+    data: z.object({ buildId: z.string(), imageId: z.string() }),
+    properties: z.object({}),
+  },
+  GITHUB_PUSH: {
+    data: z.object({
+      branch: z.string(),
+      commitSha: z.string(),
+      repository: z.string(),
+    }),
+    properties: z.object({}),
+  },
+  PROJECT_DEPLOYMENT_CREATED: {
+    data: z.object({ id: z.string() }),
+    properties: z.object({}),
+  },
+  DEPLOYMENT_DEPLOYED: {
+    data: z.object({ id: z.string(), projectId: z.string() }),
+    properties: z.object({}),
+  },
+  CLEANUP_DEPLOYMENT: {
+    data: z.object({ id: z.string() }),
+    properties: z.object({}),
+  },
+  DEPLOYMENT_LOG_POLL: {
+    data: z.object({ id: z.string(), count: z.number().default(0) }),
+    properties: z.object({}),
+  },
+  CLEANUP_PROJECT: {
+    data: z.object({ id: z.string() }),
+    properties: z.object({}),
+  },
+  STOP_VM: {
+    data: z.object({ id: z.string() }),
+    properties: z.object({}),
+  },
 };
 
 function createTaskQueue() {
@@ -514,28 +665,33 @@ function createTaskQueue() {
     subscriberConfig: {
       subscription: "webapp-queue",
       subscriptionType: "Shared",
+      nAckRedeliverTimeoutMs: 1000,
     },
     publisherConfig: {
       sendTimeoutMs: 1000,
     },
+    maxRedeliveries: 5,
     schema: taskQueueCatalog,
     handlers: {
       RESOLVE_DELAY: async (id, data, properties) => {
         const service = new ResolveDelay();
 
-        const { step } = await service.call(data.id);
+        const delay = await service.call(data.id);
 
-        commandResponsePublisher.publish(
-          "RESOLVE_DELAY",
-          { id: data.id, key: step.idempotencyKey },
-          {
-            "x-workflow-run-id": step.run.id,
-            "x-api-key": step.run.environment.apiKey,
-            "x-org-id": step.run.environment.organizationId,
-            "x-workflow-id": step.run.workflowId,
-            "x-env": step.run.environment.slug,
-          }
-        );
+        if (delay) {
+          commandResponsePublisher.publish(
+            "RESOLVE_DELAY",
+            { id: data.id, key: delay.step.idempotencyKey },
+            {
+              "x-workflow-run-id": delay.step.run.id,
+              "x-api-key": delay.step.run.environment.apiKey,
+              "x-org-id": delay.step.run.environment.organizationId,
+              "x-workflow-id": delay.step.run.workflowId,
+              "x-env": delay.step.run.environment.slug,
+            }
+          );
+        }
+
         return true;
       },
       INTEGRATION_REQUEST_CREATED: async (id, data, properties) => {
@@ -846,7 +1002,7 @@ function createTaskQueue() {
 
         return true;
       },
-      GITHUB_APP_REPOSITORY_CREATED: async (
+      GITHUB_APP_INSTALLATION_CREATED: async (
         id,
         data,
         properties,
@@ -855,10 +1011,6 @@ function createTaskQueue() {
         if (attributes.redeliveryCount >= 4) {
           return true;
         }
-
-        const service = new GithubRepositoryCreated();
-
-        await service.call(data.id);
 
         return true;
       },
@@ -895,6 +1047,107 @@ function createTaskQueue() {
 
         const service = new WorkflowRunCreatedEvent();
         return service.call(data.id);
+      },
+      START_INITIAL_PROJECT_DEPLOYMENT: async (
+        id,
+        data,
+        properties,
+        attributes
+      ) => {
+        const service = new InitialProjectDeployment();
+
+        await service.call(data.id);
+
+        return true;
+      },
+      DEPLOYMENT_BUILD_COMPLETE: async (id, data, properties, attributes) => {
+        if (attributes.redeliveryCount >= 4) {
+          return true;
+        }
+
+        const service = new BuildComplete();
+
+        return await service.call(data);
+      },
+      GITHUB_PUSH: async (id, data, properties, attributes) => {
+        if (attributes.redeliveryCount >= 4) {
+          return true;
+        }
+
+        const service = new ReceiveRepositoryPush();
+
+        await service.call(data);
+
+        return true;
+      },
+      PROJECT_DEPLOYMENT_CREATED: async (id, data, properties, attributes) => {
+        if (attributes.redeliveryCount >= 4) {
+          return true;
+        }
+
+        const service = new DeploymentCreated();
+
+        await service.call(data.id);
+
+        return true;
+      },
+      CLEANUP_DEPLOYMENT: async (id, data, properties, attributes) => {
+        if (attributes.redeliveryCount >= 4) {
+          return true;
+        }
+
+        const service = new CleanupDeployment();
+
+        return await service.call(data.id);
+      },
+      DEPLOYMENT_DEPLOYED: async (id, data, properties, attributes) => {
+        if (attributes.redeliveryCount >= 4) {
+          return true;
+        }
+
+        const service = new StartPendingDeployment();
+
+        await service.call(data.projectId);
+
+        return true;
+      },
+      DEPLOYMENT_LOG_POLL: async (id, data, properties, attributes) => {
+        const service = new PollDeploymentLogs();
+
+        await service.call(data.id, data.count);
+
+        return true;
+      },
+      CLEANUP_PROJECT: async (id, data, properties, attributes) => {
+        const service = new CleanupProject();
+
+        await service.call(data.id);
+        return true;
+      },
+      STOP_VM: async (id, data, properties, attributes) => {
+        try {
+          logger.debug("Stopping VM", { data, attributes });
+
+          await cakework.stopVm(data.id);
+          return true;
+        } catch (error) {
+          logger.debug("Error Stopping VM (must have already been stopped)", {
+            data,
+            attributes,
+            error,
+          });
+
+          // If the VM is already stopped, we can just return true
+          if (error instanceof CakeworkApiError && error.statusCode === 409) {
+            return true;
+          }
+
+          if (attributes.redeliveryCount >= 4) {
+            return true;
+          }
+
+          return false;
+        }
       },
     },
   });

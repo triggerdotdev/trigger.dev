@@ -91,7 +91,7 @@ export class AutoReffer {
     );
 
     //now flatten it to an array of pointers with name
-    let names = new Set<string>();
+    const names = new Set<string>();
     const pointers = filteredSchemaPaths.flatMap(([hash, pointers]) => {
       //the name must be unique
       const name = this.#inventName(pointers, newSchema, names);

@@ -29,6 +29,28 @@ export function PanelInfo({
   );
 }
 
+export function PanelWarning({
+  children,
+  className,
+  message,
+}: {
+  children?: React.ReactNode;
+  className?: string;
+  message?: string;
+}) {
+  return (
+    <IconPanel
+      className={className}
+      message={message}
+      icon={
+        <InformationCircleIcon className="h-6 w-6 min-w-[24px] text-yellow-500" />
+      }
+    >
+      {children}
+    </IconPanel>
+  );
+}
+
 export function PanelLoading({
   children,
   className,
@@ -62,7 +84,7 @@ export function IconPanel({
 }) {
   return (
     <div
-      className={`flex w-full justify-between gap-4 rounded-md border border-slate-600 bg-slate-400/10 py-3 pl-3 pr-4 shadow-md backdrop-blur-sm ${className}`}
+      className={`flex w-full gap-4 rounded-md border border-slate-600 bg-slate-400/10 py-3 pl-3 pr-4 shadow-md backdrop-blur-sm ${className}`}
     >
       <div className="flex items-center justify-start gap-2.5">
         {icon}

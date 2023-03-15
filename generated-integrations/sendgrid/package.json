@@ -1,6 +1,6 @@
 {
   "name": "@trigger.dev/sendgrid",
-  "version": "0.1.26",
+  "version": "0.1.28-next.0",
   "description": "The official SendGrid integration for Trigger.dev",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -13,14 +13,14 @@
     "dist/index.js.map"
   ],
   "devDependencies": {
-    "@trigger.dev/sdk": "workspace:*",
+    "@trigger.dev/sdk": "workspace:^0.2.22-next.0",
     "@types/debug": "^4.1.7",
     "@types/node": "16",
     "rimraf": "^3.0.2",
     "tsup": "^6.5.0"
   },
   "peerDependencies": {
-    "@trigger.dev/sdk": "workspace:*"
+    "@trigger.dev/sdk": "workspace:^0.2.22-next.0"
   },
   "scripts": {
     "clean": "rimraf dist",

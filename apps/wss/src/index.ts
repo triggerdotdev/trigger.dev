@@ -6,6 +6,19 @@ import { WebSocketServer } from "ws";
 import { env } from "./env";
 import { pulsarClient } from "./pulsarClient";
 import { TriggerServer } from "./server";
+import * as Sentry from "@sentry/node";
+
+if (process.env.SENTRY_DSN) {
+  Sentry.init({
+    dsn: process.env.SENTRY_DSN,
+
+    // Set tracesSampleRate to 1.0 to capture 100%
+    // of transactions for performance monitoring.
+    // We recommend adjusting this value in production
+    tracesSampleRate: process.env.NODE_ENV === "production" ? 0.1 : 1.0,
+    environment: process.env.APP_ENV ?? "development",
+  });
+}
 
 // Create an HTTP server
 const server = createServer((req, res) => {
@@ -138,6 +151,8 @@ async function main() {
   });
 }
 
-main().then(() => {
-  console.log("Started");
-});
+main()
+  .then(() => {
+    console.log("Started");
+  })
+  .catch((error) => Sentry.captureException(error));

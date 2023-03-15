@@ -207,7 +207,7 @@ async function createFunctionsAndTypesFiles(
     .filter(Boolean) as JSONSchema[];
 
   const combinedSchema: JSONSchema = makeAnyOf(
-    `${toFriendlyTypeName(service.service)}Types}`,
+    `${toFriendlyTypeName(service.service)}Types`,
     typeSchemas
   );
 
@@ -217,11 +217,11 @@ async function createFunctionsAndTypesFiles(
   const optimizedSchema = reffer.optimize();
 
   //uncomment to write intermediate optimized schema to disk
-  // await fs.mkdir(basePath, { recursive: true });
-  // await fs.writeFile(
-  //   `${basePath}/schema-optimized.json`,
-  //   JSON.stringify(optimizedSchema, null, 2)
-  // );
+  await fs.mkdir(basePath, { recursive: true });
+  await fs.writeFile(
+    `${basePath}/schema-optimized.json`,
+    JSON.stringify(optimizedSchema, null, 2)
+  );
 
   let allTypes = await getTypesFromSchema(
     optimizedSchema,

@@ -15,8 +15,13 @@ import { ContextLogger } from "./logger";
 import { Trigger, TriggerOptions } from "./trigger";
 import { TriggerContext, TriggerFetch } from "./types";
 import { generateErrorMessage, ErrorMessageOptions } from "zod-error";
-import terminalLink from "terminal-link";
-import chalk from "chalk";
+import { readFile } from "node:fs/promises";
+import {
+  ContextKeyValueStorage,
+  KvDeleteFunction,
+  KvGetFunction,
+  KvSetFunction,
+} from "./keyValueStorage";
 
 const zodErrorMessageOptions: ErrorMessageOptions = {
   delimiter: {
@@ -90,6 +95,30 @@ export class TriggerClient<TSchema extends z.ZodTypeAny> {
     }
   >();
 
+  #kvGetCallbacks = new Map<
+    string,
+    {
+      resolve: (output: any) => void;
+      reject: (err?: any) => void;
+    }
+  >();
+
+  #kvSetCallbacks = new Map<
+    string,
+    {
+      resolve: () => void;
+      reject: (err?: any) => void;
+    }
+  >();
+
+  #kvDeleteCallbacks = new Map<
+    string,
+    {
+      resolve: () => void;
+      reject: (err?: any) => void;
+    }
+  >();
+
   constructor(trigger: Trigger<TSchema>, options: TriggerOptions<TSchema>) {
     this.#trigger = trigger;
     this.#options = options;
@@ -118,6 +147,9 @@ export class TriggerClient<TSchema extends z.ZodTypeAny> {
       await this.#initializeConnection(instanceId);
       this.#initializeRPC();
       await this.#initializeHost();
+
+      // async import terminalLink to avoid ESM error
+      const terminalLink = (await import("terminal-link")).default;
 
       if (this.#registerResponse?.isNew) {
         this.#logger.logClean(
@@ -180,6 +212,8 @@ export class TriggerClient<TSchema extends z.ZodTypeAny> {
         this.#closedByUser = false;
         return;
       }
+
+      const chalk = (await import("chalk")).default;
 
       this.#logger.error(
         `${chalk.red("error")} Could not connect to trigger.dev${
@@ -381,6 +415,78 @@ export class TriggerClient<TSchema extends z.ZodTypeAny> {
 
           return true;
         },
+        RESOLVE_KV_GET: async (data) => {
+          this.#logger.debug("Handling RESOLVE_KV_GET", data);
+
+          const getCallbacks = this.#kvGetCallbacks.get(
+            messageKey(data.meta.runId, data.key)
+          );
+
+          if (!getCallbacks) {
+            this.#logger.debug(
+              `Could not find kvGet callbacks for request ID ${messageKey(
+                data.meta.runId,
+                data.key
+              )}. This can happen when a workflow run is resumed`
+            );
+
+            return true;
+          }
+
+          const { resolve } = getCallbacks;
+
+          resolve(data.output);
+
+          return true;
+        },
+        RESOLVE_KV_SET: async (data) => {
+          this.#logger.debug("Handling RESOLVE_KV_SET", data);
+
+          const setCallbacks = this.#kvSetCallbacks.get(
+            messageKey(data.meta.runId, data.key)
+          );
+
+          if (!setCallbacks) {
+            this.#logger.debug(
+              `Could not find kvSet callbacks for request ID ${messageKey(
+                data.meta.runId,
+                data.key
+              )}. This can happen when a workflow run is resumed`
+            );
+
+            return true;
+          }
+
+          const { resolve } = setCallbacks;
+
+          resolve();
+
+          return true;
+        },
+        RESOLVE_KV_DELETE: async (data) => {
+          this.#logger.debug("Handling RESOLVE_KV_DELETE", data);
+
+          const deleteCallbacks = this.#kvDeleteCallbacks.get(
+            messageKey(data.meta.runId, data.key)
+          );
+
+          if (!deleteCallbacks) {
+            this.#logger.debug(
+              `Could not find kvDelete callbacks for request ID ${messageKey(
+                data.meta.runId,
+                data.key
+              )}. This can happen when a workflow run is resumed`
+            );
+
+            return true;
+          }
+
+          const { resolve } = deleteCallbacks;
+
+          resolve();
+
+          return true;
+        },
         TRIGGER_WORKFLOW: async (data) => {
           this.#logger.debug("Handling TRIGGER_WORKFLOW", data);
 
@@ -437,12 +543,103 @@ export class TriggerClient<TSchema extends z.ZodTypeAny> {
             };
           };
 
+          const kvGetFunction: KvGetFunction = async (op) => {
+            const result = new Promise<any>((resolve, reject) => {
+              this.#kvGetCallbacks.set(messageKey(data.id, op.idempotencyKey), {
+                resolve,
+                reject,
+              });
+            });
+
+            await serverRPC.send("SEND_KV_GET", {
+              runId: data.id,
+              key: op.idempotencyKey,
+              get: {
+                namespace: op.namespace,
+                key: op.key,
+              },
+              timestamp: String(highPrecisionTimestamp()),
+            });
+
+            const output = await result;
+
+            return output;
+          };
+
+          const kvSetFunction: KvSetFunction = async (op) => {
+            const result = new Promise<void>((resolve, reject) => {
+              this.#kvSetCallbacks.set(messageKey(data.id, op.idempotencyKey), {
+                resolve,
+                reject,
+              });
+            });
+
+            await serverRPC.send("SEND_KV_SET", {
+              runId: data.id,
+              key: op.idempotencyKey,
+              set: {
+                namespace: op.namespace,
+                key: op.key,
+                value: op.value,
+              },
+              timestamp: String(highPrecisionTimestamp()),
+            });
+
+            await result;
+
+            return;
+          };
+
+          const kvDeleteFunction: KvDeleteFunction = async (op) => {
+            const result = new Promise<void>((resolve, reject) => {
+              this.#kvDeleteCallbacks.set(
+                messageKey(data.id, op.idempotencyKey),
+                {
+                  resolve,
+                  reject,
+                }
+              );
+            });
+
+            await serverRPC.send("SEND_KV_DELETE", {
+              runId: data.id,
+              key: op.idempotencyKey,
+              delete: {
+                namespace: op.namespace,
+                key: op.key,
+              },
+              timestamp: String(highPrecisionTimestamp()),
+            });
+
+            await result;
+
+            return;
+          };
+
           const ctx: TriggerContext = {
             id: data.id,
             environment: data.meta.environment,
             apiKey: data.meta.apiKey,
             organizationId: data.meta.organizationId,
             isTest: data.meta.isTest,
+            kv: new ContextKeyValueStorage(
+              `workflow:${data.meta.workflowId}`,
+              kvGetFunction,
+              kvSetFunction,
+              kvDeleteFunction
+            ),
+            globalKv: new ContextKeyValueStorage(
+              `org:${data.meta.organizationId}`,
+              kvGetFunction,
+              kvSetFunction,
+              kvDeleteFunction
+            ),
+            runKv: new ContextKeyValueStorage(
+              `run:${data.id}`,
+              kvGetFunction,
+              kvSetFunction,
+              kvDeleteFunction
+            ),
             logger: new ContextLogger(async (level, message, properties) => {
               await serverRPC.send("SEND_LOG", {
                 runId: data.id,
@@ -577,6 +774,8 @@ export class TriggerClient<TSchema extends z.ZodTypeAny> {
           const eventData = parsedEventData.data;
 
           this.#logger.debug("Parsed event data", eventData);
+
+          const terminalLink = (await import("terminal-link")).default;
 
           triggerRunLocalStorage.run(
             {
@@ -732,6 +931,13 @@ export class TriggerClient<TSchema extends z.ZodTypeAny> {
       throw new Error("Cannot initialize host without an RPC connection");
     }
 
+    const repoInfo = await safeGetRepoInfo();
+    const remoteUrl = repoInfo
+      ? await getRemoteUrl(repoInfo.commonGitDir)
+      : undefined;
+
+    const packageMetadata = await getTriggerPackageEnvVars(process.env);
+
     const response = await this.#send("INITIALIZE_HOST_V2", {
       apiKey: this.#apiKey,
       workflowId: this.#trigger.id,
@@ -740,6 +946,20 @@ export class TriggerClient<TSchema extends z.ZodTypeAny> {
       packageVersion: pkg.version,
       packageName: pkg.name,
       triggerTTL: this.#options.triggerTTL,
+      metadata: {
+        git: repoInfo
+          ? {
+              sha: repoInfo.sha,
+              branch: repoInfo.branch,
+              committer: repoInfo.committer,
+              committerDate: repoInfo.committerDate,
+              commitMessage: repoInfo.commitMessage,
+              origin: remoteUrl,
+            }
+          : undefined,
+        packageMetadata,
+        env: gatherEnvVars(process.env),
+      },
     });
 
     if (!response) {
@@ -797,4 +1017,69 @@ function highPrecisionTimestamp() {
   const [seconds, nanoseconds] = process.hrtime();
 
   return seconds * 1e9 + nanoseconds;
+}
+
+// Gets the environment variables prefixed with npm_package_triggerdotdev_ and returns them as an object
+// Alternatively, if there is a npm_package_json env var set, we can try and read the file and parse it
+async function getTriggerPackageEnvVars(
+  env: NodeJS.ProcessEnv
+): Promise<Record<string, string | number | boolean>> {
+  if (!env) {
+    return {};
+  }
+
+  // Path to the package.json file
+  if (env.npm_package_json) {
+    try {
+      const packageJson = JSON.parse(
+        await readFile(env.npm_package_json, "utf8")
+      );
+
+      if (packageJson.triggerdotdev) {
+        return packageJson.triggerdotdev;
+      }
+    } catch (err) {
+      // Ignore
+    }
+  }
+
+  const envVars = Object.entries(env)
+    .filter(([key]) => key.startsWith("npm_package_triggerdotdev_"))
+    .map(([key, value]) => [
+      key.replace("npm_package_triggerdotdev_", ""),
+      value,
+    ]);
+
+  return Object.fromEntries(envVars);
+}
+
+async function getRemoteUrl(cwd: string) {
+  try {
+    const gitRemoteOriginUrl = (await import("git-remote-origin-url")).default;
+    return await gitRemoteOriginUrl({ cwd });
+  } catch (err) {
+    return;
+  }
+}
+
+async function safeGetRepoInfo() {
+  try {
+    const gitRepoInfo = (await import("git-repo-info")).default;
+    return gitRepoInfo();
+  } catch (err) {
+    return;
+  }
+}
+
+// Get all env vars that are prefixed with TRIGGER_ (exccpt for TRIGGER_API_KEY)
+function gatherEnvVars(env: NodeJS.ProcessEnv): Record<string, string> {
+  if (!env) {
+    return {};
+  }
+
+  const envVars = Object.entries(env)
+    .filter(([key]) => key.startsWith("TRIGGER_") && key !== "TRIGGER_API_KEY")
+    .map(([key, value]) => [key.replace("TRIGGER_", ""), `${value}`]);
+
+  return Object.fromEntries(envVars);
 }

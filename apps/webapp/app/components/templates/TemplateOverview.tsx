@@ -37,7 +37,7 @@ export function TemplateOverview({
         <div className="hidden h-fit w-full transition group-hover:opacity-90 lg:block">
           <img
             src={imageUrl}
-            alt="Template hero image"
+            alt="Template hero"
             className="h-full w-full rounded-t-md object-cover"
           />
         </div>

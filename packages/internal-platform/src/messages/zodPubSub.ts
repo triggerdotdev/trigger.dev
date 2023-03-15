@@ -15,7 +15,7 @@ export type ZodPubSubOptions<TPubSubSchema extends MessageCatalogSchema> = {
   topic: string;
   publisherConfig: Omit<PulsarProducerConfig, "topic">;
   subscriberConfig: Omit<PulsarConsumerConfig, "listener" | "topic">;
-
+  maxRedeliveries?: number;
   handlers: ZodSubscriberHandlers<TPubSubSchema>;
 };
 
@@ -39,6 +39,7 @@ export class ZodPubSub<TPubSubSchema extends MessageCatalogSchema> {
       client: options.client,
       config: { ...options.subscriberConfig, topic: options.topic },
       schema: options.schema,
+      maxRedeliveries: options.maxRedeliveries,
       handlers: options.handlers,
     });
 

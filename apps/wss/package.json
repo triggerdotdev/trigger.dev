@@ -14,23 +14,25 @@
   "keywords": [],
   "author": "",
   "dependencies": {
+    "@sentry/node": "^7.38.0",
+    "@sentry/tracing": "^7.43.0",
     "evt": "^2.4.13",
+    "pulsar-client": "1.7.0",
     "uuid": "^9.0.0",
     "ws": "^8.11.0",
-    "zod": "^3.20.2",
-    "pulsar-client": "1.7.0"
+    "zod": "^3.20.2"
   },
   "devDependencies": {
-    "@trigger.dev/tsconfig": "workspace:*",
-    "internal-bridge": "workspace:*",
-    "internal-platform": "workspace:*",
-    "internal-pulsar": "workspace:*",
     "@trigger.dev/common-schemas": "workspace:*",
+    "@trigger.dev/tsconfig": "workspace:*",
     "@types/debug": "^4.1.7",
     "@types/node": "16",
     "@types/uuid": "^9.0.0",
     "@types/ws": "^8.5.3",
     "dotenv": "^16.0.3",
+    "internal-bridge": "workspace:*",
+    "internal-platform": "workspace:*",
+    "internal-pulsar": "workspace:*",
     "rimraf": "^3.0.2",
     "tsup": "^6.5.0",
     "typescript": "^4.9.4"

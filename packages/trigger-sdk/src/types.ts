@@ -58,6 +58,12 @@ export type TriggerFetch = <TBodySchema extends z.ZodTypeAny = z.ZodTypeAny>(
 
 export type TriggerRunOnceCallback = (idempotencyKey: string) => Promise<any>;
 
+export interface TriggerKeyValueStorage {
+  get<T>(key: string): Promise<T | undefined>;
+  set<T>(key: string, value: T): Promise<void>;
+  delete(key: string): Promise<void>;
+}
+
 export interface TriggerContext {
   id: string;
   environment: string;
@@ -77,6 +83,9 @@ export interface TriggerContext {
     callback: T
   ): Promise<Awaited<ReturnType<T>>>;
   fetch: TriggerFetch;
+  kv: TriggerKeyValueStorage;
+  globalKv: TriggerKeyValueStorage;
+  runKv: TriggerKeyValueStorage;
 }
 
 export interface TriggerLogger {

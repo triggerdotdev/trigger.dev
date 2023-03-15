@@ -8,6 +8,8 @@ import {
 import {
   CommandCatalog,
   InternalApiClient,
+  InternalResponseError,
+  RegisterWorkflowResponse,
   TriggerCatalog,
   triggerCatalog,
   ZodPublisher,
@@ -21,6 +23,9 @@ import { TriggerServerConnection } from "./connection";
 import { env } from "./env";
 import { pulsarClient } from "./pulsarClient";
 import { WorkflowRunController } from "./runController";
+
+const MAX_RETRY_ATTEMPTS = 4;
+const RETRY_DELAY_MS = 888;
 
 export class TriggerServer {
   #connection?: TriggerServerConnection;
@@ -169,6 +174,51 @@ export class TriggerServer {
 
           return !!response;
         },
+        SEND_KV_GET: async (request) => {
+          const runController = this.#runControllers.get(request.runId);
+
+          if (!runController) {
+            // TODO: need to recover from this issue by trying to reconnect
+            return false;
+          }
+
+          const response = await runController.publish("SEND_KV_GET", {
+            key: request.key,
+            get: request.get,
+          });
+
+          return !!response;
+        },
+        SEND_KV_SET: async (request) => {
+          const runController = this.#runControllers.get(request.runId);
+
+          if (!runController) {
+            // TODO: need to recover from this issue by trying to reconnect
+            return false;
+          }
+
+          const response = await runController.publish("SEND_KV_SET", {
+            key: request.key,
+            set: request.set,
+          });
+
+          return !!response;
+        },
+        SEND_KV_DELETE: async (request) => {
+          const runController = this.#runControllers.get(request.runId);
+
+          if (!runController) {
+            // TODO: need to recover from this issue by trying to reconnect
+            return false;
+          }
+
+          const response = await runController.publish("SEND_KV_DELETE", {
+            key: request.key,
+            delete: request.delete,
+          });
+
+          return !!response;
+        },
         INITIALIZE_RUN_ONCE: async (request) => {
           const runController = this.#runControllers.get(request.runId);
 
@@ -279,6 +329,19 @@ export class TriggerServer {
             }
           );
 
+          try {
+            // Unsubscribe from the run controller
+            await runController.cleanup();
+            // Remove the run controller
+            this.#runControllers.delete(request.runId);
+          } catch (error) {
+            this.#logger.debug("Failed to cleanup run controller", {
+              runId: request.runId,
+              request,
+              meta: runController.metadata,
+            });
+          }
+
           return !!response;
         },
         INITIALIZE_HOST: async (data) => {
@@ -378,16 +441,7 @@ export class TriggerServer {
 
     try {
       // register the workflow with the platform
-      const response = await this.#apiClient.registerWorkflow({
-        id: data.workflowId,
-        name: data.workflowName,
-        trigger: data.trigger,
-        package: {
-          name: data.packageName,
-          version: data.packageVersion,
-        },
-        triggerTTL: data.triggerTTL,
-      });
+      const response = await this.#registerWorkflow(data);
 
       this.#workflowId = response.workflow.id;
 
@@ -401,21 +455,15 @@ export class TriggerServer {
           subscription: `websocketserver-${this.#workflowId}-${this.#apiKey}`,
           subscriptionType: "Shared",
           subscriptionInitialPosition: "Latest",
+          nAckRedeliverTimeoutMs: 5000,
+        },
+        maxRedeliveries: 8,
+        filter: {
+          "x-workflow-id": this.#workflowId,
+          "x-api-key": this.#apiKey,
         },
         handlers: {
           TRIGGER_WORKFLOW: async (id, data, properties, messageAttributes) => {
-            // If the API keys don't match, then we should ignore it
-            // This ensures the workflow is triggered for the correct environment
-            if (properties["x-api-key"] !== this.#apiKey) {
-              return true;
-            }
-
-            // If the workflow id is not the same as the workflow id
-            // that we are listening for, then we should ignore it
-            if (properties["x-workflow-id"] !== this.#workflowId) {
-              return true;
-            }
-
             if (!this.#serverRPC) {
               throw new Error(
                 "Cannot trigger workflow without an RPC connection"
@@ -497,7 +545,17 @@ export class TriggerServer {
             );
 
             if (!result) {
-              this.#runControllers.delete(data.id);
+              try {
+                await runController.cleanup();
+                this.#runControllers.delete(data.id);
+              } catch (error) {
+                this.#logger.debug(
+                  "Failed to cleanup run controller after initialization failed",
+                  {
+                    data,
+                  }
+                );
+              }
             }
 
             return result;
@@ -533,6 +591,41 @@ export class TriggerServer {
       }
 
       return false;
+    }
+  }
+
+  async #registerWorkflow(
+    data: z.infer<(typeof ServerRPCSchema)["INITIALIZE_HOST_V2"]["request"]>,
+    attempt: number = 0
+  ): Promise<RegisterWorkflowResponse> {
+    try {
+      return await this.#apiClient.registerWorkflow({
+        id: data.workflowId,
+        name: data.workflowName,
+        trigger: data.trigger,
+        package: {
+          name: data.packageName,
+          version: data.packageVersion,
+        },
+        triggerTTL: data.triggerTTL,
+        metadata: data.metadata ? JSON.stringify(data.metadata) : undefined,
+      });
+    } catch (error) {
+      if (error instanceof InternalResponseError && error.retryable) {
+        // If error.status is a retryable status code, and we haven't exceeded the max number of attempts, retry
+        if (attempt < MAX_RETRY_ATTEMPTS) {
+          this.#logger.debug(
+            `Failed to register workflow, retrying in ${RETRY_DELAY_MS}ms...`,
+            error
+          );
+
+          await sleep(RETRY_DELAY_MS);
+
+          return this.#registerWorkflow(data, attempt + 1);
+        }
+      }
+
+      throw error;
     }
   }
 

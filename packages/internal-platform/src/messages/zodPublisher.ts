@@ -2,6 +2,7 @@ import type {
   Client as PulsarClient,
   Producer as PulsarProducer,
   ProducerConfig as PulsarProducerConfig,
+  ProducerMessage,
 } from "pulsar-client";
 import { Logger } from "../logger";
 import { MessageCatalogSchema } from "./messageCatalogSchema";
@@ -166,7 +167,7 @@ export class ZodPublisher<PublisherSchema extends MessageCatalogSchema> {
     }
 
     try {
-      return this.#handlePublish(type, data, properties, options);
+      return await this.#handlePublish(type, data, properties, options);
     } catch (e) {
       if (e instanceof ZodError) {
         this.#logger.error(
@@ -176,7 +177,12 @@ export class ZodPublisher<PublisherSchema extends MessageCatalogSchema> {
           generateErrorMessage(e.issues)
         );
       } else {
-        this.#logger.error("[ZodPublisher] Error handling message", e);
+        this.#logger.error("[ZodPublisher] Error handling message", {
+          e,
+          data,
+          properties,
+          options,
+        });
       }
     }
   }
@@ -206,22 +212,53 @@ export class ZodPublisher<PublisherSchema extends MessageCatalogSchema> {
     const parsedData = messageSchema.data.parse(data);
     const parsedProperties = messageSchema.properties.parse(properties ?? {});
 
-    const message = JSON.stringify({
-      id,
-      type,
-      data: parsedData,
-    });
+    return this.#sendToProducerWithRetry(
+      {
+        properties: parsedProperties,
+        deliverAfter: options?.deliverAfter,
+        deliverAt: options?.deliverAt,
+        partitionKey: options?.partitionKey,
+        orderingKey: options?.orderingKey,
+        eventTimestamp: options?.eventTimestamp,
+      },
+      {
+        id,
+        type,
+        data: parsedData,
+      }
+    );
+  }
 
-    const response = await this.#producer!.send({
-      data: Buffer.from(message),
-      properties: parsedProperties,
-      deliverAfter: options?.deliverAfter,
-      deliverAt: options?.deliverAt,
-      partitionKey: options?.partitionKey,
-      orderingKey: options?.orderingKey,
-      eventTimestamp: options?.eventTimestamp,
-    });
+  async #sendToProducerWithRetry(
+    message: Omit<ProducerMessage, "data">,
+    data: any,
+    attempts = 0
+  ): Promise<string> {
+    try {
+      const messageWithData = {
+        ...message,
+        data: Buffer.from(JSON.stringify(data)),
+      };
 
-    return response.toString();
+      const response = await this.#producer!.send(messageWithData);
+
+      return response.toString();
+    } catch (error) {
+      this.#logger.debug("Error sending message to producer", {
+        error,
+        attempts,
+        message,
+        data,
+      });
+
+      if (attempts >= 5) {
+        throw error;
+      }
+
+      // Wait for a second before trying again
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+
+      return this.#sendToProducerWithRetry(message, data, attempts + 1);
+    }
   }
 }

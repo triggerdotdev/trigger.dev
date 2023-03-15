@@ -4,6 +4,7 @@ import {
   FetchRequestSchema,
   InitializeRunOnceSchema,
   RetrySchema,
+  SerializableJsonSchema,
   TriggerMetadataSchema,
   WaitSchema,
 } from "@trigger.dev/common-schemas";
@@ -95,6 +96,7 @@ export const ServerRPCSchema = {
       packageVersion: z.string(),
       packageName: z.string(),
       triggerTTL: z.number().optional(),
+      metadata: SerializableJsonSchema.optional(),
     }),
     response: z
       .discriminatedUnion("type", [
@@ -166,6 +168,43 @@ export const ServerRPCSchema = {
       key: z.string(),
       timestamp: z.string(),
       runOnce: CompleteRunOnceSchema,
+    }),
+    response: z.boolean(),
+  },
+  SEND_KV_GET: {
+    request: z.object({
+      runId: z.string(),
+      key: z.string(),
+      timestamp: z.string(),
+      get: z.object({
+        namespace: z.string(),
+        key: z.string(),
+      }),
+    }),
+    response: z.boolean(),
+  },
+  SEND_KV_SET: {
+    request: z.object({
+      runId: z.string(),
+      key: z.string(),
+      timestamp: z.string(),
+      set: z.object({
+        namespace: z.string(),
+        key: z.string(),
+        value: SerializableJsonSchema,
+      }),
+    }),
+    response: z.boolean(),
+  },
+  SEND_KV_DELETE: {
+    request: z.object({
+      runId: z.string(),
+      key: z.string(),
+      timestamp: z.string(),
+      delete: z.object({
+        namespace: z.string(),
+        key: z.string(),
+      }),
     }),
     response: z.boolean(),
   },

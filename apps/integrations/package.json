@@ -7,7 +7,7 @@
   "scripts": {
     "build": "tsup",
     "start": "node dist/index.js",
-    "dev": "concurrently \"tsup --watch\" \"nodemon -r dotenv/config -q dist/index.js\"",
+    "dev": "node -r dotenv/config dist/index.js",
     "test": "vitest",
     "typecheck": "tsc -b",
     "lint": "eslint --no-error-on-unmatched-pattern src/**",

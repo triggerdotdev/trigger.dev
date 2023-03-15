@@ -40,12 +40,16 @@ export type ZodSubscriberOptions<
   config: Omit<PulsarConsumerConfig, "listener">;
   schema: SubscriberSchema;
   handlers: ZodSubscriberHandlers<SubscriberSchema>;
+  filter?: Record<string, string>;
+  maxRedeliveries?: number;
 };
 
 export class ZodSubscriber<SubscriberSchema extends MessageCatalogSchema> {
   #config: Omit<PulsarConsumerConfig, "listener">;
   #schema: SubscriberSchema;
   #handlers: ZodSubscriberHandlers<SubscriberSchema>;
+  #filter?: Record<string, string>;
+  #maxRedeliveries?: number;
 
   #subscriber?: PulsarConsumer;
   #client: PulsarClient;
@@ -58,6 +62,8 @@ export class ZodSubscriber<SubscriberSchema extends MessageCatalogSchema> {
     this.#schema = options.schema;
     this.#handlers = options.handlers;
     this.#client = options.client;
+    this.#filter = options.filter;
+    this.#maxRedeliveries = options.maxRedeliveries;
     this.#logger = new Logger("trigger.dev subscriber");
   }
 
@@ -97,6 +103,13 @@ export class ZodSubscriber<SubscriberSchema extends MessageCatalogSchema> {
     }
   }
 
+  public async unsubscribe() {
+    if (this.#subscriber && this.#subscriber.isConnected()) {
+      await this.#subscriber.unsubscribe();
+      this.#subscriber = undefined;
+    }
+  }
+
   #getRawProperties(msg: PulsarMessage): Record<string, string> {
     const properties = msg.getProperties();
 
@@ -122,6 +135,34 @@ export class ZodSubscriber<SubscriberSchema extends MessageCatalogSchema> {
     const publishedTimestamp = msg.getPublishTimestamp();
     const eventTimestamp = msg.getEventTimestamp();
     const redeliveryCount = msg.getRedeliveryCount();
+
+    const filter = this.#filter;
+
+    // Return if the filter exists and doesn't match
+    if (filter) {
+      const filterKeys = Object.keys(filter);
+
+      if (
+        filterKeys.some((key) => {
+          return properties[key] !== filter[key];
+        })
+      ) {
+        try {
+          await consumer.acknowledge(msg);
+        } catch (error) {
+          this.#logger.debug("Error acknowledging filtered message", {
+            error,
+            messageId,
+            properties,
+            publishedTimestamp,
+            eventTimestamp,
+            redeliveryCount,
+          });
+        }
+
+        return;
+      }
+    }
 
     this.#logger.debug("#onMessage", {
       messageId,
@@ -150,18 +191,50 @@ export class ZodSubscriber<SubscriberSchema extends MessageCatalogSchema> {
       }
     } catch (e) {
       if (e instanceof ZodError) {
-        this.#logger.error(
+        this.#logger.debug(
           "[ZodSubscriber] Received invalid message data or properties",
-          messageData,
-          properties,
-          generateErrorMessage(e.issues)
+          {
+            messageData,
+            properties,
+            errorMessage: generateErrorMessage(e.issues),
+          }
         );
       } else {
-        this.#logger.error("[ZodSubscriber] Error handling message", e);
+        this.#logger.debug("[ZodSubscriber] Error handling message", {
+          error: e,
+          messageData,
+          properties,
+        });
       }
 
-      // TODO: Add support for dead letter queue
-      await consumer.acknowledge(msg);
+      if (!this.#maxRedeliveries || redeliveryCount > this.#maxRedeliveries) {
+        this.#logger.debug(
+          "Could not handle message, acking to stop it from being redelivered",
+          {
+            messageId,
+            publishedTimestamp,
+            eventTimestamp,
+            redeliveryCount,
+            error: e,
+          }
+        );
+
+        await consumer.acknowledge(msg);
+      } else {
+        this.#logger.debug(
+          "Could not handle message, negative acknowledging to redelivery it",
+          {
+            messageId,
+            publishedTimestamp,
+            eventTimestamp,
+            redeliveryCount,
+            error: e,
+            maxRedeliveries: this.#maxRedeliveries,
+          }
+        );
+
+        consumer.negativeAcknowledge(msg);
+      }
     }
   }
 

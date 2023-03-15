@@ -1,6 +1,8 @@
-This template contains a [customEvent](https://docs.trigger.dev/triggers/custom-events) Trigger that will send an example drip email campaign using [Resend.com](https://resend.com/) and [react.email](https://react.email/)
+## ✨ Trigger.dev Welcome Drip Campaign with Resend.com
 
-> Resend.com is currently in private beta, but if you signup for their waitlist, give us a shout on [our Discord](https://discord.gg/CzBqJnYq9r) and we'll help you get in.
+This repo contains a [customEvent](https://docs.trigger.dev/triggers/custom-events) Trigger that will send an example drip email campaign using [Resend.com](https://resend.com/) and [react.email](https://react.email/)
+
+> Sign up to Resend using our [special queue jump link](https://resend.com/secret?ref=trigger) ✨
 
 ```ts
 new Trigger({
@@ -20,7 +22,7 @@ new Trigger({
       from: FROM_EMAIL,
       replyTo: REPLY_TO_EMAIL,
       to: event.email,
-      subject: "Welcome to Acme.dev!",
+      subject: "Welcome to Acme!",
       react: <WelcomeEmail name={event.name} />,
     });
 
@@ -32,7 +34,7 @@ new Trigger({
       from: FROM_EMAIL,
       replyTo: REPLY_TO_EMAIL,
       to: event.email,
-      subject: "3 tips to get the most out of Acme.dev",
+      subject: "3 tips to get the most out of Acme",
       react: <TipsEmail name={event.name} />,
     });
 
@@ -79,7 +81,7 @@ You can also make your drip campaigns smarter by connecting to your own database
 
 ## 📺 Go Live
 
-After you are happy with your campaign and deploy it live to Render.com (or some other hosting service), you can send custom events that Trigger your workflow using the [sendEvent](https://docs.trigger.dev/reference/send-event) function from the `@trigger.dev/sdk`, or simply by making requests to our [`events`](https://docs.trigger.dev/api-reference/events/sendEvent) API endpoint.
+Once you are happy with your campaign you can deploy it live to Render.com (or another hosting service). You can then send custom events that trigger your workflow using the [sendEvent](https://docs.trigger.dev/reference/send-event) function from the `@trigger.dev/sdk`, or simply by making requests to our [`events`](https://docs.trigger.dev/api-reference/events/sendEvent) API endpoint.
 
 Here is an example of sending the custom event to trigger the workflow contained in this repo using `fetch`:
 

@@ -145,7 +145,7 @@ export const getBotInfo: EndpointSpec = {
     },
     externalDocs: {
       description: "API method documentation",
-      url: "https://developers.notion.com/reference/get-users",
+      url: "https://developers.notion.com/reference/get-self",
     },
     tags: ["users"],
   },

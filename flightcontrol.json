@@ -173,7 +173,11 @@
               "fromParameterStore": "/Prod/Pulsar/wss/Role"
             },
             "PLATFORM_API_URL": "https://app.trigger.dev",
-            "TRIGGER_LOG_LEVEL": "debug"
+            "TRIGGER_LOG_LEVEL": "debug",
+            "SENTRY_DSN": {
+              "fromParameterStore": "/wss/SENTRY_DSN"
+            },
+            "APP_ENV": "production"
           }
         },
         {
@@ -264,9 +268,9 @@
           "buildType": "docker",
           "dockerfilePath": "./apps/webapp/Dockerfile",
           "dockerContext": ".",
-          "cpu": 0.5,
+          "cpu": 1,
           "memory": 2,
-          "minInstances": 1,
+          "minInstances": 2,
           "maxInstances": 2,
           "domain": "app-staging.trigger.dev",
           "port": 3000,
@@ -363,7 +367,11 @@
             "INTEGRATIONS_API_KEY": {
               "fromParameterStore": "/Staging/integrations/API_TOKEN"
             },
-            "INTEGRATIONS_API_ORIGIN": "https://integrations-staging.trigger.dev"
+            "INTEGRATIONS_API_ORIGIN": "https://integrations-staging.trigger.dev",
+            "CAKEWORK_API_KEY": {
+              "fromParameterStore": "/Staging/webapp/CAKEWORK_API_KEY"
+            },
+            "TRIGGER_WSS_URL": "wss://wss-staging.trigger.dev/ws"
           }
         },
         {
@@ -373,9 +381,9 @@
           "buildType": "docker",
           "dockerfilePath": "./apps/wss/Dockerfile",
           "dockerContext": ".",
-          "cpu": 1,
-          "memory": 2,
-          "minInstances": 1,
+          "cpu": 0.5,
+          "memory": 1,
+          "minInstances": 2,
           "maxInstances": 2,
           "domain": "wss-staging.trigger.dev",
           "port": 8889,
@@ -402,7 +410,11 @@
               "fromParameterStore": "/Staging/Pulsar/wss/Role"
             },
             "PLATFORM_API_URL": "https://app-staging.trigger.dev",
-            "TRIGGER_LOG_LEVEL": "debug"
+            "TRIGGER_LOG_LEVEL": "debug",
+            "SENTRY_DSN": {
+              "fromParameterStore": "/wss/SENTRY_DSN"
+            },
+            "APP_ENV": "staging"
           }
         },
         {

@@ -35,7 +35,7 @@ export class WorkflowRunController {
   #hostRPC: ZodRPC<typeof HostRPCSchema, typeof ServerRPCSchema>;
   #publisher: ZodPublisher<CommandCatalog>;
   #commandResponseSubscriber: ZodSubscriber<CommandResponseCatalog>;
-  #metadata: {
+  metadata: {
     workflowId: string;
     environment: string;
     apiKey: string;
@@ -51,7 +51,7 @@ export class WorkflowRunController {
     this.#runId = options.runId;
     this.#hostRPC = options.hostRPC;
     this.#publisher = options.publisher;
-    this.#metadata = options.metadata;
+    this.metadata = options.metadata;
     this.#logger = new Logger(`trigger.dev [run=${this.#runId}]`);
 
     this.#commandResponseSubscriber = new ZodSubscriber({
@@ -62,13 +62,14 @@ export class WorkflowRunController {
         subscription: `websocketserver-run-${this.#runId}`,
         subscriptionType: "Exclusive",
         subscriptionInitialPosition: "Latest",
+        nAckRedeliverTimeoutMs: 1000,
+      },
+      maxRedeliveries: 8,
+      filter: {
+        "x-workflow-run-id": this.#runId,
       },
       handlers: {
         RESOLVE_DELAY: async (id, data, properties) => {
-          if (properties["x-workflow-run-id"] !== this.#runId) {
-            return true;
-          }
-
           this.#logger.debug(
             "Received resolve delay request",
             id,
@@ -91,10 +92,6 @@ export class WorkflowRunController {
           return success;
         },
         RESOLVE_INTEGRATION_REQUEST: async (id, data, properties) => {
-          if (properties["x-workflow-run-id"] !== this.#runId) {
-            return true;
-          }
-
           this.#logger.debug(
             "Received resolve integration request",
             id,
@@ -118,10 +115,6 @@ export class WorkflowRunController {
           return success;
         },
         RESOLVE_RUN_ONCE: async (id, data, properties) => {
-          if (properties["x-workflow-run-id"] !== this.#runId) {
-            return true;
-          }
-
           this.#logger.debug("Received resolve runOnce", id, data, properties);
 
           const success = await this.#hostRPC.send("RESOLVE_RUN_ONCE", {
@@ -140,10 +133,6 @@ export class WorkflowRunController {
           return success;
         },
         REJECT_INTEGRATION_REQUEST: async (id, data, properties) => {
-          if (properties["x-workflow-run-id"] !== this.#runId) {
-            return true;
-          }
-
           this.#logger.debug(
             "Received reject integration request",
             id,
@@ -167,10 +156,6 @@ export class WorkflowRunController {
           return success;
         },
         RESOLVE_FETCH_REQUEST: async (id, data, properties) => {
-          if (properties["x-workflow-run-id"] !== this.#runId) {
-            return true;
-          }
-
           this.#logger.debug(
             "Received resolve fetch request",
             id,
@@ -194,10 +179,6 @@ export class WorkflowRunController {
           return success;
         },
         REJECT_FETCH_REQUEST: async (id, data, properties) => {
-          if (properties["x-workflow-run-id"] !== this.#runId) {
-            return true;
-          }
-
           this.#logger.debug(
             "Received reject fetch request",
             id,
@@ -220,6 +201,70 @@ export class WorkflowRunController {
 
           return success;
         },
+        RESOLVE_KV_GET: async (id, data, properties) => {
+          this.#logger.debug(
+            "Received RESOLVE_KV_GET request",
+            id,
+            data,
+            properties
+          );
+
+          const success = await this.#hostRPC.send("RESOLVE_KV_GET", {
+            output: data.operation.output,
+            key: data.key,
+            meta: {
+              workflowId: properties["x-workflow-id"],
+              organizationId: properties["x-org-id"],
+              environment: properties["x-env"],
+              apiKey: properties["x-api-key"],
+              runId: properties["x-workflow-run-id"],
+            },
+          });
+
+          return success;
+        },
+        RESOLVE_KV_SET: async (id, data, properties) => {
+          this.#logger.debug(
+            "Received RESOLVE_KV_SET request",
+            id,
+            data,
+            properties
+          );
+
+          const success = await this.#hostRPC.send("RESOLVE_KV_SET", {
+            key: data.key,
+            meta: {
+              workflowId: properties["x-workflow-id"],
+              organizationId: properties["x-org-id"],
+              environment: properties["x-env"],
+              apiKey: properties["x-api-key"],
+              runId: properties["x-workflow-run-id"],
+            },
+          });
+
+          return success;
+        },
+        RESOLVE_KV_DELETE: async (id, data, properties) => {
+          this.#logger.debug(
+            "Received RESOLVE_KV_DELETE request",
+            id,
+            data,
+            properties
+          );
+
+          const success = await this.#hostRPC.send("RESOLVE_KV_DELETE", {
+            key: data.key,
+            meta: {
+              workflowId: properties["x-workflow-id"],
+              organizationId: properties["x-org-id"],
+              environment: properties["x-env"],
+              apiKey: properties["x-api-key"],
+              runId: properties["x-workflow-run-id"],
+            },
+          });
+
+          return success;
+        },
       },
     });
   }
@@ -230,7 +275,16 @@ export class WorkflowRunController {
     return this.#hostRPC.send("TRIGGER_WORKFLOW", {
       id: this.#runId,
       trigger: { input, context },
-      meta: this.#metadata,
+      meta: this.metadata,
+    });
+  }
+
+  async cleanup() {
+    await this.#commandResponseSubscriber.unsubscribe();
+
+    this.#logger.debug("Workflow run unsubscribed", {
+      runId: this.#runId,
+      meta: this.metadata,
     });
   }
 
@@ -264,8 +318,8 @@ export class WorkflowRunController {
 
   get #publishProperties() {
     return {
-      "x-workflow-id": this.#metadata.workflowId,
-      "x-api-key": this.#metadata.apiKey,
+      "x-workflow-id": this.metadata.workflowId,
+      "x-api-key": this.metadata.apiKey,
       "x-workflow-run-id": this.#runId,
     };
   }

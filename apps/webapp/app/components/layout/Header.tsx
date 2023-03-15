@@ -1,46 +1,37 @@
-import { DocumentTextIcon } from "@heroicons/react/24/outline";
-import { Link } from "@remix-run/react";
-import { useOptionalUser } from "~/hooks/useUser";
+import {
+  ArrowTopRightOnSquareIcon,
+  ChatBubbleLeftRightIcon,
+} from "@heroicons/react/24/outline";
+import { ProjectMenu } from "~/features/ee/projects/components/ProjectMenu";
 import { Logo } from "../Logo";
-import { EnvironmentMenu } from "../../routes/resources/environment";
 import { OrganizationMenu } from "../navigation/OrganizationMenu";
 import { WorkflowMenu } from "../navigation/WorkflowMenu";
-import { TertiaryA } from "../primitives/Buttons";
-import { UserProfileMenu } from "../UserProfileMenu";
+import { SecondaryA, SecondaryButton } from "../primitives/Buttons";
 
 type HeaderProps = {
   children?: React.ReactNode;
+  context: "workflows" | "projects";
 };
 
-export function Header({ children }: HeaderProps) {
-  const user = useOptionalUser();
-
+export function Header({ children, context }: HeaderProps) {
   return (
-    <div className="flex w-full gap-2 items-center border-b border-slate-800 bg-slate-950 py-1 pl-4 pr-3">
-      <Link to="/" aria-label="Trigger" className="flex shrink-0 mr-2 w-28">
-        <Logo className="" />
-      </Link>
-      <OrganizationMenu />
-      <WorkflowMenu />
-      <EnvironmentMenu />
-
+    <div className="z-50 flex h-[3.6rem] w-full items-center gap-2 border-b border-slate-800 bg-slate-950 py-1 pl-2 pr-2.5">
+      <div className="hidden items-center lg:flex">
+        <OrganizationMenu />
+        {context === "workflows" ? <WorkflowMenu /> : <ProjectMenu />}
+      </div>
+      <Logo className="ml-1 w-36 lg:hidden" />
       <div className="flex flex-1 justify-center">{children}</div>
-
-      <div className="flex items-center gap-4">
-        <TertiaryA href="https://docs.trigger.dev" target="_blank">
-          <DocumentTextIcon className="h-5 w-5" />
-          Docs
-        </TertiaryA>
-        {user ? (
-          <UserProfileMenu user={user} />
-        ) : (
-          <Link
-            to="/login"
-            className="text-gray-700 transition hover:text-black"
-          >
-            Login
-          </Link>
-        )}
+      <div className="flex items-center gap-2">
+        <SecondaryA href="https://docs.trigger.dev" target="_blank">
+          <ArrowTopRightOnSquareIcon className="-ml-1 h-4 w-4" />
+          Doc<span className="-ml-2 hidden lg:block">umentation</span>
+          <span className="-ml-2 lg:hidden">s</span>
+        </SecondaryA>
+        <SecondaryButton data-attr="posthog-feedback-button">
+          <ChatBubbleLeftRightIcon className="-ml-1 h-4 w-4" />
+          Send <span className="-mx-1 hidden lg:block">us</span> feedback
+        </SecondaryButton>
       </div>
     </div>
   );

@@ -8,7 +8,7 @@ export function ImpersonationBanner({
   impersonationId: string;
 }) {
   return (
-    <div className="grid grid-cols-3 items-center bg-gradient-to-r from-amber-500 via-amber-400 to-amber-500 px-4 text-center">
+    <div className="grid h-8 grid-cols-3 items-center bg-gradient-to-r from-amber-500 via-amber-400 to-amber-500 px-4 text-center">
       <span></span>
       <Body size="small" className="text-slate-800">
         You are impersonating{" "}
@@ -22,7 +22,7 @@ export function ImpersonationBanner({
       >
         <TertiaryButton
           type="submit"
-          className="text-slate-700 hover:!text-slate-900"
+          className="!text-slate-700 transition hover:!text-slate-900"
         >
           Stop impersonating
         </TertiaryButton>
