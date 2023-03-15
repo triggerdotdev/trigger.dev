@@ -103,6 +103,13 @@ export class ZodSubscriber<SubscriberSchema extends MessageCatalogSchema> {
     }
   }
 
+  public async unsubscribe() {
+    if (this.#subscriber && this.#subscriber.isConnected()) {
+      await this.#subscriber.unsubscribe();
+      this.#subscriber = undefined;
+    }
+  }
+
   #getRawProperties(msg: PulsarMessage): Record<string, string> {
     const properties = msg.getProperties();
 

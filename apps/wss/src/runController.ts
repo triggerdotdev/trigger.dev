@@ -35,7 +35,7 @@ export class WorkflowRunController {
   #hostRPC: ZodRPC<typeof HostRPCSchema, typeof ServerRPCSchema>;
   #publisher: ZodPublisher<CommandCatalog>;
   #commandResponseSubscriber: ZodSubscriber<CommandResponseCatalog>;
-  #metadata: {
+  metadata: {
     workflowId: string;
     environment: string;
     apiKey: string;
@@ -51,7 +51,7 @@ export class WorkflowRunController {
     this.#runId = options.runId;
     this.#hostRPC = options.hostRPC;
     this.#publisher = options.publisher;
-    this.#metadata = options.metadata;
+    this.metadata = options.metadata;
     this.#logger = new Logger(`trigger.dev [run=${this.#runId}]`);
 
     this.#commandResponseSubscriber = new ZodSubscriber({
@@ -275,7 +275,16 @@ export class WorkflowRunController {
     return this.#hostRPC.send("TRIGGER_WORKFLOW", {
       id: this.#runId,
       trigger: { input, context },
-      meta: this.#metadata,
+      meta: this.metadata,
+    });
+  }
+
+  async cleanup() {
+    await this.#commandResponseSubscriber.unsubscribe();
+
+    this.#logger.debug("Workflow run unsubscribed", {
+      runId: this.#runId,
+      meta: this.metadata,
     });
   }
 
@@ -309,8 +318,8 @@ export class WorkflowRunController {
 
   get #publishProperties() {
     return {
-      "x-workflow-id": this.#metadata.workflowId,
-      "x-api-key": this.#metadata.apiKey,
+      "x-workflow-id": this.metadata.workflowId,
+      "x-api-key": this.metadata.apiKey,
       "x-workflow-run-id": this.#runId,
     };
   }

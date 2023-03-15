@@ -329,6 +329,19 @@ export class TriggerServer {
             }
           );
 
+          try {
+            // Unsubscribe from the run controller
+            await runController.cleanup();
+            // Remove the run controller
+            this.#runControllers.delete(request.runId);
+          } catch (error) {
+            this.#logger.debug("Failed to cleanup run controller", {
+              runId: request.runId,
+              request,
+              meta: runController.metadata,
+            });
+          }
+
           return !!response;
         },
         INITIALIZE_HOST: async (data) => {
@@ -532,7 +545,17 @@ export class TriggerServer {
             );
 
             if (!result) {
-              this.#runControllers.delete(data.id);
+              try {
+                await runController.cleanup();
+                this.#runControllers.delete(data.id);
+              } catch (error) {
+                this.#logger.debug(
+                  "Failed to cleanup run controller after initialization failed",
+                  {
+                    data,
+                  }
+                );
+              }
             }
 
             return result;
