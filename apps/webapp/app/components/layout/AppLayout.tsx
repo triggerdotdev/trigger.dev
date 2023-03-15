@@ -22,7 +22,12 @@ export function AppBody({
   className?: string;
 }) {
   return (
-    <div className={classNames("h-full overflow-y-auto", className)}>
+    <div
+      className={classNames(
+        "grid h-full grid-rows-[3.6rem_auto] overflow-hidden",
+        className
+      )}
+    >
       {children}
     </div>
   );
@@ -38,7 +43,7 @@ export function PublicAppLayout({ children }: { children: React.ReactNode }) {
 
 export function LoggedInAppLayout({ children }: { children: React.ReactNode }) {
   return (
-    <div className="grid h-full w-full grid-rows-[2rem_auto] overflow-y-auto">
+    <div className="grid h-full w-full grid-rows-[3.6rem_auto] overflow-hidden">
       {children}
     </div>
   );

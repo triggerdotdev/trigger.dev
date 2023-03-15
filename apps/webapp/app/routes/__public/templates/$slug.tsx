@@ -23,15 +23,17 @@ export default function TemplateSlugPage() {
   }
 
   return (
-    <div className="mx-auto max-w-[1188px]">
-      <Link
-        to="/templates"
-        className="mb-4 ml-4 flex w-max items-center justify-start gap-2 text-sm text-slate-500 transition hover:text-slate-300 lg:-ml-1"
-      >
-        <ArrowLeftIcon className="h-3 w-3" />
-        Choose a different Template
-      </Link>
-      <TemplateOverview template={template} className="-ml-4" />
+    <div className="w-full overflow-y-auto bg-slate-850">
+      <div className="mx-auto mt-10 max-w-[1188px]">
+        <Link
+          to="/templates"
+          className="mb-4 ml-4 flex items-center justify-start gap-2 text-sm text-slate-500 transition hover:text-slate-300 lg:-ml-1"
+        >
+          <ArrowLeftIcon className="h-3 w-3" />
+          Choose a different Template
+        </Link>
+        <TemplateOverview template={template} className="-ml-4" />
+      </div>
     </div>
   );
 }

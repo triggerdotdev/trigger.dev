@@ -43,21 +43,12 @@ export default function Public() {
 
   return (
     <LayoutComponent>
-      {/* <ProductHuntBanner /> */}
       {loaderData.userId ? (
         <Header context={"workflows"} />
       ) : (
         <MarketingHeader />
       )}
-      {loaderData.userId ? (
-        <AppBody>
-          <Outlet />
-        </AppBody>
-      ) : (
-        <PublicAppBody>
-          <Outlet />
-        </PublicAppBody>
-      )}
+      <Outlet />
     </LayoutComponent>
   );
 }

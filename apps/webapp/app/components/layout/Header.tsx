@@ -15,7 +15,7 @@ type HeaderProps = {
 
 export function Header({ children, context }: HeaderProps) {
   return (
-    <div className="sticky top-0 z-50 flex h-[3.6rem] w-full items-center gap-2 border-b border-slate-800 bg-slate-950 py-1 pl-2 pr-2.5">
+    <div className="z-50 flex h-[3.6rem] w-full items-center gap-2 border-b border-slate-800 bg-slate-950 py-1 pl-2 pr-2.5">
       <div className="hidden items-center lg:flex">
         <OrganizationMenu />
         {context === "workflows" ? <WorkflowMenu /> : <ProjectMenu />}

@@ -26,7 +26,7 @@ export function TemplateOverview({
         "grid w-full grid-cols-1 gap-8 rounded-lg bg-slate-850 pl-8 text-left lg:grid-cols-[24rem_minmax(0,_1fr)]"
       )}
     >
-      <div className="flex h-max flex-col rounded-r lg:sticky lg:top-[5.5rem]">
+      <div className="flex h-max flex-col rounded-r lg:sticky lg:top-4">
         <TemplateDetails
           template={template}
           commandFlags={commandFlags}
@@ -37,7 +37,7 @@ export function TemplateOverview({
         <div className="hidden h-fit w-full transition group-hover:opacity-90 lg:block">
           <img
             src={imageUrl}
-            alt="Template hero image"
+            alt="Template hero"
             className="h-full w-full rounded-t-md object-cover"
           />
         </div>
