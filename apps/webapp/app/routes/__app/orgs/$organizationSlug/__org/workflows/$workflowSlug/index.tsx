@@ -132,6 +132,12 @@ export default function Page() {
             </span>
             {workflow.slug}
           </Body>
+          <Body size="small" className="text-slate-400">
+            <span className="mr-1.5 text-xs tracking-wide text-slate-500">
+              uid
+            </span>
+            {workflow.id}
+          </Body>
         </div>
       </div>
 
