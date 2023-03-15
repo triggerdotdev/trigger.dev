@@ -147,7 +147,18 @@ export class ZodSubscriber<SubscriberSchema extends MessageCatalogSchema> {
           return properties[key] !== filter[key];
         })
       ) {
-        await consumer.acknowledge(msg);
+        try {
+          await consumer.acknowledge(msg);
+        } catch (error) {
+          this.#logger.debug("Error acknowledging filtered message", {
+            error,
+            messageId,
+            properties,
+            publishedTimestamp,
+            eventTimestamp,
+            redeliveryCount,
+          });
+        }
 
         return;
       }
@@ -180,14 +191,20 @@ export class ZodSubscriber<SubscriberSchema extends MessageCatalogSchema> {
       }
     } catch (e) {
       if (e instanceof ZodError) {
-        this.#logger.error(
+        this.#logger.debug(
           "[ZodSubscriber] Received invalid message data or properties",
-          messageData,
-          properties,
-          generateErrorMessage(e.issues)
+          {
+            messageData,
+            properties,
+            errorMessage: generateErrorMessage(e.issues),
+          }
         );
       } else {
-        this.#logger.error("[ZodSubscriber] Error handling message", e);
+        this.#logger.debug("[ZodSubscriber] Error handling message", {
+          error: e,
+          messageData,
+          properties,
+        });
       }
 
       if (!this.#maxRedeliveries || redeliveryCount > this.#maxRedeliveries) {
