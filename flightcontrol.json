@@ -134,7 +134,11 @@
             "INTEGRATIONS_API_KEY": {
               "fromParameterStore": "/Prod/integrations/API_TOKEN"
             },
-            "INTEGRATIONS_API_ORIGIN": "https://integrations.trigger.dev"
+            "INTEGRATIONS_API_ORIGIN": "https://integrations.trigger.dev",
+            "CAKEWORK_API_KEY": {
+              "fromParameterStore": "/Prod/webapp/CAKEWORK_API_KEY"
+            },
+            "TRIGGER_WSS_URL": "wss://wss.trigger.dev/ws"
           }
         },
         {
