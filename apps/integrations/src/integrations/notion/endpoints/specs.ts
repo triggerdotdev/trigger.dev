@@ -56,7 +56,7 @@ const errorResponse: EndpointSpecResponse = {
   success: false,
   name: "Error",
   description: "Error response",
-  schema: {},
+  schema: undefined,
 };
 
 export const getUser: EndpointSpec = {
@@ -82,9 +82,7 @@ export const getUser: EndpointSpec = {
       name: "user_id",
       in: "path",
       description: "ID of the user you would like info about",
-      schema: {
-        type: "string",
-      },
+      schema: "#/definitions/user_id_path",
       required: true,
     },
     VersionHeaderParam,
@@ -96,7 +94,7 @@ export const getUser: EndpointSpec = {
       success: true,
       name: "Success",
       description: "Typical success response",
-      schema: GetUserResponse,
+      schema: "#/definitions/get_user_response",
     },
     errorResponse,
   ],
@@ -128,7 +126,7 @@ export const listUsers: EndpointSpec = {
       success: true,
       name: "Success",
       description: "Typical success response",
-      schema: ListUsersResponse,
+      schema: "#/definitions/list_users_response",
     },
     errorResponse,
   ],
@@ -160,7 +158,7 @@ export const getBotInfo: EndpointSpec = {
       success: true,
       name: "Success",
       description: "Typical success response",
-      schema: GetSelfResponse,
+      schema: "#/definitions/get_bot_info_response",
     },
     errorResponse,
   ],
@@ -191,13 +189,7 @@ export const getPage: EndpointSpec = {
       name: "filter_properties",
       in: "query",
       description: "The properties to filter by",
-      schema: {
-        type: "array",
-        items: {
-          description: "The property to filter by",
-          type: "string",
-        },
-      },
+      schema: "#/definitions/filter_properties_path",
       required: false,
     },
   ],
@@ -208,7 +200,7 @@ export const getPage: EndpointSpec = {
       success: true,
       name: "Success",
       description: "Typical success response",
-      schema: GetPageResponse,
+      schema: "#/definitions/get_page_response",
     },
     errorResponse,
   ],
@@ -239,7 +231,7 @@ export const createPage: EndpointSpec = {
       "Content-Type": "application/json",
     },
     body: {
-      schema: CreatePageParameters,
+      schema: "#/definitions/create_page_request_body",
     },
   },
   responses: [
@@ -248,7 +240,7 @@ export const createPage: EndpointSpec = {
       success: true,
       name: "Success",
       description: "Typical success response",
-      schema: CreatePageResponse,
+      schema: "#/definitions/create_page_response",
     },
     errorResponse,
   ],
@@ -279,7 +271,7 @@ export const updatePage: EndpointSpec = {
       "Content-Type": "application/json",
     },
     body: {
-      schema: UpdatePageBodyParameters,
+      schema: "#/definitions/update_page_request_body",
     },
   },
   responses: [
@@ -288,7 +280,7 @@ export const updatePage: EndpointSpec = {
       success: true,
       name: "Success",
       description: "Typical success response",
-      schema: UpdatePageResponse,
+      schema: "#/definitions/update_page_response",
     },
     errorResponse,
   ],
@@ -320,7 +312,7 @@ export const getBlock: EndpointSpec = {
       success: true,
       name: "Success",
       description: "Typical success response",
-      schema: GetBlockResponse,
+      schema: "#/definitions/get_block_response",
     },
     errorResponse,
   ],
@@ -351,7 +343,7 @@ export const updateBlock: EndpointSpec = {
       "Content-Type": "application/json",
     },
     body: {
-      schema: UpdateBlockBodyParameters,
+      schema: "#/definitions/update_block_request_body",
     },
   },
   responses: [
@@ -360,7 +352,7 @@ export const updateBlock: EndpointSpec = {
       success: true,
       name: "Success",
       description: "Typical success response",
-      schema: UpdateBlockResponse,
+      schema: "#/definitions/update_block_response",
     },
     errorResponse,
   ],
@@ -397,7 +389,7 @@ export const getBlockChildren: EndpointSpec = {
       success: true,
       name: "Success",
       description: "Typical success response",
-      schema: ListBlockChildrenResponse,
+      schema: "#/definitions/get_block_children_response",
     },
     errorResponse,
   ],
@@ -427,7 +419,7 @@ export const appendBlockChildren: EndpointSpec = {
       "Content-Type": "application/json",
     },
     body: {
-      schema: AppendBlockChildrenBodyParameters,
+      schema: "#/definitions/append_block_children_request_body",
     },
   },
   responses: [
@@ -436,7 +428,7 @@ export const appendBlockChildren: EndpointSpec = {
       success: true,
       name: "Success",
       description: "Typical success response",
-      schema: AppendBlockChildrenResponse,
+      schema: "#/definitions/append_block_children_response",
     },
     errorResponse,
   ],
@@ -468,7 +460,7 @@ export const deleteBlock: EndpointSpec = {
       success: true,
       name: "Success",
       description: "Typical success response",
-      schema: DeleteBlockResponse,
+      schema: "#/definitions/delete_block_response",
     },
     errorResponse,
   ],
@@ -500,7 +492,7 @@ export const getDatabase: EndpointSpec = {
       success: true,
       name: "Success",
       description: "Typical success response",
-      schema: GetDatabaseResponse,
+      schema: "#/definitions/get_database_response",
     },
     errorResponse,
   ],
@@ -532,12 +524,7 @@ export const queryDatabase: EndpointSpec = {
       in: "query",
       description:
         "The list of database properties you want to receive back in the responses – you need to provide ids",
-      schema: {
-        type: "array",
-        items: {
-          type: "string",
-        },
-      },
+      schema: "#/definitions/filter_properties_query",
     },
   ],
   request: {
@@ -545,7 +532,7 @@ export const queryDatabase: EndpointSpec = {
       "Content-Type": "application/json",
     },
     body: {
-      schema: QueryDatabaseBodyParameters,
+      schema: "#/definitions/query_database_request_body",
     },
   },
   responses: [
@@ -554,7 +541,7 @@ export const queryDatabase: EndpointSpec = {
       success: true,
       name: "Success",
       description: "Typical success response",
-      schema: QueryDatabaseResponse,
+      schema: "#/definitions/query_database_response",
     },
     errorResponse,
   ],
@@ -584,7 +571,7 @@ export const createDatabase: EndpointSpec = {
       "Content-Type": "application/json",
     },
     body: {
-      schema: CreateDatabaseBodyParameters,
+      schema: "#/definitions/create_database_request_body",
     },
   },
   responses: [
@@ -593,7 +580,7 @@ export const createDatabase: EndpointSpec = {
       success: true,
       name: "Success",
       description: "Typical success response",
-      schema: CreateDatabaseResponse,
+      schema: "#/definitions/create_database_response",
     },
     errorResponse,
   ],
@@ -623,7 +610,7 @@ export const updateDatabase: EndpointSpec = {
       "Content-Type": "application/json",
     },
     body: {
-      schema: UpdateDatabaseBodyParameters,
+      schema: "#/definitions/update_database_request_body",
     },
   },
   responses: [
@@ -632,7 +619,7 @@ export const updateDatabase: EndpointSpec = {
       success: true,
       name: "Success",
       description: "Typical success response",
-      schema: UpdateDatabaseResponse,
+      schema: "#/definitions/update_database_response",
     },
     errorResponse,
   ],
@@ -661,9 +648,7 @@ export const getComments: EndpointSpec = {
       name: "block_id",
       in: "query",
       description: "ID of the block",
-      schema: {
-        type: "string",
-      },
+      schema: "#/definitions/block_id_query",
       required: true,
     },
     StartCursorParam,
@@ -677,7 +662,7 @@ export const getComments: EndpointSpec = {
       success: true,
       name: "Success",
       description: "Typical success response",
-      schema: ListCommentsResponse,
+      schema: "#/definitions/get_comments_response",
     },
     errorResponse,
   ],
@@ -707,7 +692,7 @@ export const createComment: EndpointSpec = {
       "Content-Type": "application/json",
     },
     body: {
-      schema: CreateCommentBodyParameters,
+      schema: "#/definitions/create_comment_request_body",
     },
   },
   responses: [
@@ -716,7 +701,7 @@ export const createComment: EndpointSpec = {
       success: true,
       name: "Success",
       description: "Typical success response",
-      schema: CreateCommentResponse,
+      schema: "#/definitions/create_comment_response",
     },
     errorResponse,
   ],
@@ -743,7 +728,7 @@ export const search: EndpointSpec = {
   parameters: [VersionHeaderParam],
   request: {
     body: {
-      schema: SearchParameters,
+      schema: "#/definitions/search_request_body",
     },
   },
   responses: [
@@ -752,7 +737,7 @@ export const search: EndpointSpec = {
       success: true,
       name: "Success",
       description: "Typical success response",
-      schema: SearchResponse,
+      schema: "#/definitions/search_response",
     },
     errorResponse,
   ],
