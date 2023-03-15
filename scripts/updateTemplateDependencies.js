@@ -2,6 +2,7 @@ const { exec } = require("child_process");
 const fs = require("fs");
 const path = require("path");
 const fetch = require("node-fetch");
+const readline = require("node:readline");
 
 const templatesDir = process.argv[2];
 if (!templatesDir) {
@@ -13,10 +14,37 @@ async function updateTemplate(templateName) {
   const templateDir = path.join(templatesDir, templateName);
 
   if (fs.statSync(templateDir).isDirectory()) {
-    console.log(`Updating dependencies for template '${templateName}'`);
+    const currentBranch = (
+      await execAsync(`cd ${templateDir} && git rev-parse --abbrev-ref HEAD`)
+    ).trim();
+
+    console.log(
+      `Updating dependencies for template '${templateName}' in current branch '${currentBranch}'`
+    );
+
+    // Ask the user if they want to update the template (default to yes)
+    const updateTemplate = await new Promise((resolve) => {
+      const rl = readline.createInterface({
+        input: process.stdin,
+        output: process.stdout,
+      });
+
+      rl.question(
+        `Update dependencies for template '${templateName}' in branch ${currentBranch}? [Y/n] `,
+        (answer) => {
+          rl.close();
+          resolve(answer.toLowerCase() !== "n");
+        }
+      );
+    });
+
+    if (!updateTemplate) {
+      console.log(`Skipping '${templateName}'`);
+      return;
+    }
 
     // Make sure we're on the main branch and there are no uncommitted changes
-    await execAsync(`cd ${templateDir} && git checkout main`);
+    await execAsync(`cd ${templateDir} && git checkout ${currentBranch}`);
 
     // Make sure there are no uncommitted changes
     const preStatus = await execAsync(`cd ${templateDir} && git status`);
@@ -29,7 +57,7 @@ async function updateTemplate(templateName) {
     }
 
     // Make sure we're up to date with the remote
-    await execAsync(`cd ${templateDir} && git pull origin main`);
+    await execAsync(`cd ${templateDir} && git pull origin ${currentBranch}`);
 
     // Find all the dependencies that start with @trigger.dev/
     const packageJson = JSON.parse(
@@ -75,7 +103,7 @@ async function updateTemplate(templateName) {
     );
 
     // Push to remote
-    await execAsync(`cd ${templateDir} && git push origin main`);
+    await execAsync(`cd ${templateDir} && git push origin ${currentBranch}`);
 
     console.log(`Updated dependencies for template '${templateName}'`);
   } else {
@@ -84,6 +112,8 @@ async function updateTemplate(templateName) {
 }
 
 async function execAsync(command) {
+  console.log(`Executing command: ${command}`);
+
   return new Promise((resolve, reject) => {
     exec(command, (error, stdout, stderr) => {
       if (error) {
