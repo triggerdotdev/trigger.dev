@@ -10,6 +10,7 @@ import { taskQueue } from "~/services/messageBroker.server";
 import type { GitHubAppAuthorizationWithValidToken } from "../github/refreshInstallationAccessToken.server";
 import type { GitHubCommit } from "../github/githubApp.server";
 import { getNextDeploymentVersion } from "../models/repositoryProject.server";
+import { projectLogger } from "~/services/logger";
 
 export type CreateProjectDeploymentOptions = {
   project: RepositoryProject;
@@ -59,27 +60,33 @@ export class CreateProjectDeployment {
       render.yaml
     `);
 
-    console.log(
-      `[${version}][attempt=${retryCount + 1}] Building image for ${
-        project.name
-      } with token ${authorization.installationAccessToken}`
-    );
-
-    const build = await cakework.buildImageFromGithub({
-      dockerfile: dockerfile,
-      dockerignore: dockerIgnore,
-      token: authorization.installationAccessToken,
-      repository: project.name,
-      branch: project.branch,
-    });
-
-    console.log(
-      `[${version}][attempt=${retryCount + 1}] Build started for ${
-        project.name
-      } with id ${build.buildId}`
-    );
-
     try {
+      projectLogger.debug("Starting to build image from github", {
+        dockerfile,
+        dockerignore: dockerIgnore,
+        token: authorization.installationAccessToken,
+        project,
+        retryCount,
+        version,
+      });
+
+      const build = await cakework.buildImageFromGithub({
+        dockerfile: dockerfile,
+        dockerignore: dockerIgnore,
+        token: authorization.installationAccessToken,
+        repository: project.name,
+        branch: project.branch,
+      });
+
+      projectLogger.debug("Build started from github", {
+        dockerfile,
+        dockerignore: dockerIgnore,
+        token: authorization.installationAccessToken,
+        project,
+        retryCount,
+        version,
+        build,
+      });
       // Create the deployment
       // Setting the buildStartAt because even though this is a PENDING deployment,
       // we have already started to build it with Cakework (it can still end up not getting deployed if this deployment is cancelled)
@@ -108,15 +115,26 @@ export class CreateProjectDeployment {
         },
       });
 
+      projectLogger.debug("deployment created", {
+        project,
+        retryCount,
+        version,
+        build,
+        deployment,
+      });
+
       await taskQueue.publish("PROJECT_DEPLOYMENT_CREATED", {
         id: deployment.id,
       });
 
       return deployment;
     } catch (error) {
-      console.error(
-        `[${version}] Error creating deployment for ${project.name}: ${error}`
-      );
+      projectLogger.debug("error creating deployment", {
+        project,
+        retryCount,
+        version,
+        error,
+      });
 
       if (typeof error === "object" && error !== null) {
         if ("code" in error && error.code === "P2002") {

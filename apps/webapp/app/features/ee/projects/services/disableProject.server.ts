@@ -1,5 +1,6 @@
 import type { PrismaClient } from "~/db.server";
 import { prisma } from "~/db.server";
+import { projectLogger } from "~/services/logger";
 import { taskQueue } from "~/services/messageBroker.server";
 
 export class DisableProjectService {
@@ -22,6 +23,8 @@ export class DisableProjectService {
         id: project.id,
       });
     }
+
+    projectLogger.debug("Disabling project", { project });
 
     await this.#prismaClient.repositoryProject.update({
       where: {

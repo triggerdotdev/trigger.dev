@@ -7,12 +7,24 @@ const logLevels: Array<LogLevel> = ["log", "error", "warn", "info", "debug"];
 export class Logger {
   #name: string;
   readonly #level: number;
+  #filteredKeys: string[] = [];
 
-  constructor(name: string, level: LogLevel = "info") {
+  constructor(
+    name: string,
+    level: LogLevel = "info",
+    filteredKeys: string[] = []
+  ) {
     this.#name = name;
     this.#level = logLevels.indexOf(
       (process.env.TRIGGER_LOG_LEVEL ?? level) as LogLevel
     );
+    this.#filteredKeys = filteredKeys;
+  }
+
+  // Return a new Logger instance with the same name and a new log level
+  // but filter out the keys from the log messages (at any level)
+  filter(...keys: string[]) {
+    return new Logger(this.#name, logLevels[this.#level], keys);
   }
 
   log(...args: any[]) {
@@ -39,14 +51,14 @@ export class Logger {
     console.info(`[${formattedDateTime()}] [${this.#name}] `, ...args);
   }
 
-  debug(message: string, ...args: any[]) {
+  debug(message: string, ...args: Array<Record<string, unknown>>) {
     if (this.#level < 4) return;
 
     const structuredLog = {
       timestamp: formattedDateTime(),
       name: this.#name,
       message,
-      args: structureArgs(args),
+      args: structureArgs(args, this.#filteredKeys),
     };
 
     console.debug(JSON.stringify(structuredLog));
@@ -76,14 +88,40 @@ function formattedDateTime() {
 }
 
 // If args is has a single item that is an object, return that object
-function structureArgs(args: any[]) {
+function structureArgs(
+  args: Array<Record<string, unknown>>,
+  filteredKeys: string[] = []
+) {
   if (args.length === 0) {
     return;
   }
 
   if (args.length === 1 && typeof args[0] === "object") {
-    return args[0];
+    return filterKeys(JSON.parse(JSON.stringify(args[0])), filteredKeys);
   }
 
   return args;
+}
+
+// Recursively filter out keys from an object, including nested objects, and arrays
+function filterKeys(obj: unknown, keys: string[]): any {
+  if (typeof obj !== "object" || obj === null) {
+    return obj;
+  }
+
+  if (Array.isArray(obj)) {
+    return obj.map((item) => filterKeys(item, keys));
+  }
+
+  const filteredObj: any = {};
+
+  for (const [key, value] of Object.entries(obj)) {
+    if (keys.includes(key)) {
+      continue;
+    }
+
+    filteredObj[key] = filterKeys(value, keys);
+  }
+
+  return filteredObj;
 }

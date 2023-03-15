@@ -1,3 +1,4 @@
+import { CakeworkApiError } from "@cakework/client/dist";
 import type { FetchOutputSchema } from "@trigger.dev/common-schemas";
 import {
   CustomEventSchema,
@@ -64,6 +65,7 @@ import {
   KVGetService,
   KVSetService,
 } from "./kv/services.server";
+import { logger } from "./logger";
 import type { PulsarClient } from "./pulsarClient.server";
 import { createPulsarClient } from "./pulsarClient.server";
 import { CreateIntegrationRequest } from "./requests/createIntegrationRequest.server";
@@ -1124,9 +1126,22 @@ function createTaskQueue() {
       },
       STOP_VM: async (id, data, properties, attributes) => {
         try {
+          logger.debug("Stopping VM", { data, attributes });
+
           await cakework.stopVm(data.id);
           return true;
         } catch (error) {
+          logger.debug("Error Stopping VM (must have already been stopped)", {
+            data,
+            attributes,
+            error,
+          });
+
+          // If the VM is already stopped, we can just return true
+          if (error instanceof CakeworkApiError && error.statusCode === 409) {
+            return true;
+          }
+
           if (attributes.redeliveryCount >= 4) {
             return true;
           }

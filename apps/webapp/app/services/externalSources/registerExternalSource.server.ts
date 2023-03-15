@@ -9,6 +9,7 @@ import {
   findExternalSourceById,
 } from "~/models/externalSource.server";
 import { getAccessInfo } from "../accessInfo.server";
+import { logger } from "../logger";
 
 export class RegisterExternalSource {
   #prismaClient: PrismaClient;
@@ -41,7 +42,7 @@ export class RegisterExternalSource {
       return true;
     }
 
-    console.log("[RegisterExternalSource] registering external source", {
+    logger.debug("[RegisterExternalSource] registering external source", {
       externalSource,
     });
 

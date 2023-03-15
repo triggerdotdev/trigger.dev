@@ -6,6 +6,7 @@ import { z } from "zod";
 import { env } from "~/env.server";
 import type { EmitterWebhookEventName } from "@octokit/webhooks";
 import { taskQueue } from "../../../../services/messageBroker.server";
+import { logger } from "~/services/logger";
 
 export async function verifyAndReceiveWebhook(request: Request) {
   if (!env.GITHUB_APP_WEBHOOK_SECRET) {
@@ -14,8 +15,6 @@ export async function verifyAndReceiveWebhook(request: Request) {
 
   const payload = await request.text();
   const headers = Object.fromEntries(request.headers.entries());
-
-  console.log(headers);
 
   const id = headers["x-github-delivery"];
   const hookName = headers["x-github-event"];
@@ -28,7 +27,7 @@ export async function verifyAndReceiveWebhook(request: Request) {
   );
 
   if (!results) {
-    console.error(`[webhooks.github] Invalid signature`, {
+    logger.debug(`[webhooks.github] Invalid signature`, {
       id,
       hookName,
       signature,
@@ -43,10 +42,9 @@ export async function verifyAndReceiveWebhook(request: Request) {
     parsedPayload.action ? `${hookName}.${parsedPayload.action}` : hookName
   ) as EmitterWebhookEventName;
 
-  console.log(`[webhooks.github] Received event`, {
+  logger.debug(`[webhooks.github] Received event`, {
     id,
     name,
-    payload: parsedPayload,
   });
 
   await handleGithubEvent({

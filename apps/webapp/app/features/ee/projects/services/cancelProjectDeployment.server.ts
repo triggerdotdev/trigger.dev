@@ -1,5 +1,6 @@
 import type { PrismaClient } from "~/db.server";
 import { prisma } from "~/db.server";
+import { projectLogger } from "~/services/logger";
 
 export class CancelProjectDeployment {
   #prismaClient: PrismaClient;
@@ -25,6 +26,8 @@ export class CancelProjectDeployment {
     if (deployment.status !== "PENDING") {
       return true;
     }
+
+    projectLogger.debug("Cancelling deployment", { deployment });
 
     await this.#prismaClient.projectDeployment.update({
       where: {

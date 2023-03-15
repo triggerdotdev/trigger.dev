@@ -1,5 +1,6 @@
 import { LIVE_ENVIRONMENT } from "~/consts";
 import { findProjectById } from "~/features/ee/projects/models/repositoryProject.server";
+import { projectLogger } from "~/services/logger";
 import { getCommit } from "../github/githubApp.server";
 import { refreshInstallationAccessToken } from "../github/refreshInstallationAccessToken.server";
 import { CreateProjectDeployment } from "./createProjectDeployment.server";
@@ -38,9 +39,10 @@ export class InitialProjectDeployment {
       project.branch
     );
 
-    console.log(
-      `Creating deployment for latest commit for ${project.name}: ${latestCommit.sha}`
-    );
+    projectLogger.debug("Creating deployment for latest commit", {
+      project,
+      latestCommit,
+    });
 
     return await this.#createProjectDeployment.call({
       project,

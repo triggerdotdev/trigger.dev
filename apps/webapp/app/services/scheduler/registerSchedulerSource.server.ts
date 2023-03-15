@@ -1,6 +1,7 @@
 import type { SchedulerSource } from ".prisma/client";
 import type { PrismaClient } from "~/db.server";
 import { prisma } from "~/db.server";
+import { logger } from "../logger";
 import { ScheduleNextEvent } from "../scheduler/scheduleNextEvent.server";
 
 export class RegisterSchedulerSource {
@@ -27,7 +28,7 @@ export class RegisterSchedulerSource {
       return true;
     }
 
-    console.log("[RegisterSchedulerSource] registering external source", {
+    logger.debug("[RegisterSchedulerSource] registering scheduler source", {
       schedulerSource,
     });
 

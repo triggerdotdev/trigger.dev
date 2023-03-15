@@ -1,5 +1,6 @@
 import type { PrismaClient } from "~/db.server";
 import { prisma } from "~/db.server";
+import { projectLogger } from "~/services/logger";
 import { StartDeployment } from "./startDeployment.server";
 
 export class StartPendingDeployment {
@@ -45,6 +46,8 @@ export class StartPendingDeployment {
     if (!deployment) {
       return;
     }
+
+    projectLogger.debug("Starting pending deployment", { deployment });
 
     return await this.#startDeployment.call({
       deployment,

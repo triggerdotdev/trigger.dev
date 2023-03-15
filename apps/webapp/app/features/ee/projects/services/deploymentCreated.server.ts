@@ -1,6 +1,7 @@
 import type { PrismaClient } from "~/db.server";
 import { prisma } from "~/db.server";
 import { statusTextForBuilding } from "~/features/ee/projects/models/repositoryProject.server";
+import { logger, projectLogger } from "~/services/logger";
 import { taskQueue } from "~/services/messageBroker.server";
 
 export class DeploymentCreated {
@@ -40,9 +41,7 @@ export class DeploymentCreated {
       case "ERROR": {
         // Set the project as "building"
         // will transition to "deploying" when the build is complete (see: buildComplete.server.ts)
-        console.log(
-          `Setting project ${deployment.project.id} and deployment ${deployment.id} to BUILDING`
-        );
+        projectLogger.debug(`Setting project to BUILDING`, { deployment });
 
         await this.#prismaClient.repositoryProject.update({
           where: {

@@ -1,4 +1,5 @@
 import { prisma, PrismaClient } from "~/db.server";
+import { projectLogger } from "~/services/logger";
 import { taskQueue } from "~/services/messageBroker.server";
 
 export class CleanupProject {
@@ -21,6 +22,8 @@ export class CleanupProject {
         },
       },
     });
+
+    projectLogger.debug("Stopping VMs", { deployments });
 
     for (const deployment of deployments) {
       if (deployment.vmIdentifier) {

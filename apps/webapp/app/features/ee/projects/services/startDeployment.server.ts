@@ -10,6 +10,7 @@ import {
   statusTextForDeployed,
   statusTextForDeploying,
 } from "~/features/ee/projects/models/repositoryProject.server";
+import { projectLogger } from "~/services/logger";
 import { taskQueue } from "~/services/messageBroker.server";
 import { cakework } from "../cakework.server";
 
@@ -35,7 +36,11 @@ export class StartDeployment {
       return true;
     }
 
-    console.log(`Starting deployment ${deployment.id} for ${project.id}`);
+    projectLogger.debug("Starting deployment", {
+      deployment,
+      project,
+      environment,
+    });
 
     // Update the project and deployment status to deploying
     await this.#prismaClient.repositoryProject.update({
@@ -61,11 +66,7 @@ export class StartDeployment {
 
     const envVars = buildEnvVars(deployment, project, environment);
 
-    console.log(
-      `Starting VM for ${deployment.id} with envVars: ${JSON.stringify(
-        envVars
-      )}`
-    );
+    projectLogger.debug("Starting VM with env vars", { deployment, envVars });
 
     try {
       const vm = await cakework.startVm({
@@ -77,9 +78,11 @@ export class StartDeployment {
 
       const vmEnd = performance.now();
 
-      console.log(
-        `Started VM for ${deployment.id} in ${(vmEnd - vmStart).toFixed(2)}ms`
-      );
+      projectLogger.debug("Started VM", {
+        deployment,
+        duration: vmEnd - vmStart,
+        vm,
+      });
 
       // Update the deployment with the VM
       await this.#prismaClient.projectDeployment.update({
@@ -118,6 +121,8 @@ export class StartDeployment {
         });
       }
     } catch (error) {
+      projectLogger.debug("Error Starting VM", { deployment, error });
+
       // Update the deployment to be errored
       await this.#prismaClient.projectDeployment.update({
         where: {

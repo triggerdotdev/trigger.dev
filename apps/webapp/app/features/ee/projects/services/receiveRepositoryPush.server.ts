@@ -4,6 +4,7 @@ import {
   findProjectByRepo,
   repositoryCanDeploy,
 } from "~/features/ee/projects/models/repositoryProject.server";
+import { projectLogger } from "~/services/logger";
 import { getCommit } from "../github/githubApp.server";
 import { refreshInstallationAccessToken } from "../github/refreshInstallationAccessToken.server";
 import { CreateProjectDeployment } from "./createProjectDeployment.server";
@@ -21,10 +22,6 @@ export class ReceiveRepositoryPush {
     commitSha: string;
     repository: string;
   }) {
-    console.log(
-      `Received push for ${data.repository} on ${data.branch}: ${data.commitSha}`
-    );
-
     const project = await findProjectByRepo(data.repository);
 
     if (!project) {
@@ -34,6 +31,8 @@ export class ReceiveRepositoryPush {
     if (project.branch !== data.branch) {
       return;
     }
+
+    projectLogger.debug("Received push for project", { project, data });
 
     // Retrieve the latest commit from the "main" branch in the repo
     const appAuthorization = await refreshInstallationAccessToken(
@@ -46,7 +45,7 @@ export class ReceiveRepositoryPush {
       data.commitSha
     );
 
-    console.log(`Received commit for ${project.name}: ${commit.sha}`);
+    projectLogger.debug("Received commit for project", { project, commit });
 
     await this.#prismaClient.repositoryProject.update({
       where: { id: project.id },

@@ -1,6 +1,7 @@
 import { CakeworkApiError } from "@cakework/client/dist";
 import type { PrismaClient } from "~/db.server";
 import { prisma } from "~/db.server";
+import { projectLogger } from "~/services/logger";
 import { cakework } from "../cakework.server";
 
 export class CleanupDeployment {
@@ -37,9 +38,7 @@ export class CleanupDeployment {
     }
 
     try {
-      console.log(
-        `Stopping VM: ${deployment.vmIdentifier} for deployment ${id}`
-      );
+      projectLogger.debug("Stopping VM for deployment", { deployment });
 
       await this.#prismaClient.projectDeployment.update({
         where: {
@@ -62,9 +61,7 @@ export class CleanupDeployment {
 
       await cakework.stopVm(deployment.vmIdentifier);
 
-      console.log(
-        `Stopped VM: ${deployment.vmIdentifier} for deployment ${id}`
-      );
+      projectLogger.debug("Stopped VM for deployment", { deployment });
 
       await this.#prismaClient.projectDeployment.update({
         where: {
@@ -88,9 +85,10 @@ export class CleanupDeployment {
       return true;
     } catch (error) {
       if (error instanceof CakeworkApiError) {
-        console.log(
-          `Failed to stop VM: ${deployment.vmIdentifier} for deployment ${id}: ${error.statusCode} ${error.message}`
-        );
+        projectLogger.debug("Error Stopping VM for deployment", {
+          deployment,
+          error,
+        });
 
         return false;
       }

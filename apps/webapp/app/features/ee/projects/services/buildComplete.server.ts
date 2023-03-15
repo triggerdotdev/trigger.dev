@@ -1,6 +1,7 @@
 import { z } from "zod";
 import type { PrismaClient } from "~/db.server";
 import { prisma } from "~/db.server";
+import { projectLogger } from "~/services/logger";
 import { StartDeployment } from "./startDeployment.server";
 
 const PayloadSchema = z.object({
@@ -31,6 +32,8 @@ export class BuildComplete {
     if (!deployment) {
       return true;
     }
+
+    projectLogger.debug("Deployment build complete", { deployment });
 
     // Only continue if this deployment is building or pending
     if (deployment.status !== "BUILDING") {
