@@ -6,6 +6,7 @@ import * as github from "@trigger.dev/github";
 import * as slack from "@trigger.dev/slack";
 
 // Change "triggerdotdev/github-issues-to-slack" to the repo you want to track e.g. "yourorg/yourrepo"
+//NB: GitHub org / usernames are case sensitive.
 const repo =
   process.env.GITHUB_REPOSITORY ?? "triggerdotdev/github-issues-to-slack";
 
