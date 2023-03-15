@@ -26,51 +26,53 @@ export default function AppLayout() {
     <>
       <AppBody>
         <Header context="workflows" />
-        <div className="flex h-80 w-full items-center justify-center bg-slate-900/50">
-          <h1 className="relative bottom-6 text-4xl text-slate-400">
-            Your Organizations
-          </h1>
-        </div>
-        <div className="mb-12 flex items-center justify-center">
-          <ul className="-mt-24 grid max-w-7xl grid-cols-2 gap-2 lg:grid-cols-3">
-            {organizations ? (
-              <OrganizationGrid organizations={organizations} />
-            ) : (
+        <div className="w-full overflow-y-auto">
+          <div className="flex h-80 w-full items-center justify-center bg-slate-900/50">
+            <h1 className="relative bottom-6 text-4xl text-slate-400">
+              Your Organizations
+            </h1>
+          </div>
+          <div className="mb-12 flex items-center justify-center">
+            <ul className="-mt-24 grid max-w-7xl grid-cols-2 gap-2 lg:grid-cols-3">
+              {organizations ? (
+                <OrganizationGrid organizations={organizations} />
+              ) : (
+                <li>
+                  <Body>No organizations</Body>
+                </li>
+              )}
               <li>
-                <Body>No organizations</Body>
+                <Link
+                  to="orgs/new"
+                  className={classNames(
+                    "h-full border border-slate-700 hover:border-transparent hover:bg-[rgb(38,51,71)] hover:shadow-md",
+                    boxClasses
+                  )}
+                >
+                  <PlusIcon className="h-10 w-10 text-green-500" />
+                  <Header4 size="small" className="mb-10">
+                    New Organization
+                  </Header4>
+                </Link>
               </li>
-            )}
-            <li>
-              <Link
-                to="orgs/new"
-                className={classNames(
-                  "h-full border border-slate-700 hover:border-transparent hover:bg-[rgb(38,51,71)] hover:shadow-md",
-                  boxClasses
-                )}
-              >
-                <PlusIcon className="h-10 w-10 text-green-500" />
-                <Header4 size="small" className="mb-10">
-                  New Organization
-                </Header4>
-              </Link>
-            </li>
-          </ul>
-        </div>
-        <div className="absolute bottom-0 left-2">
-          <MenuTitleToolTip
-            text={
-              user
-                ? `Logout ${user.displayName ? user.displayName : user.email}`
-                : "Logout"
-            }
-          >
-            <a
-              href={`/logout`}
-              className="mb-2 rounded p-2 transition hover:bg-slate-600/50"
+            </ul>
+          </div>
+          <div className="absolute bottom-0 left-2">
+            <MenuTitleToolTip
+              text={
+                user
+                  ? `Logout ${user.displayName ? user.displayName : user.email}`
+                  : "Logout"
+              }
             >
-              <ArrowLeftOnRectangleIcon className="h-6 w-6 text-slate-300" />
-            </a>
-          </MenuTitleToolTip>
+              <a
+                href={`/logout`}
+                className="mb-2 rounded p-2 transition hover:bg-slate-600/50"
+              >
+                <ArrowLeftOnRectangleIcon className="h-6 w-6 text-slate-300" />
+              </a>
+            </MenuTitleToolTip>
+          </div>
         </div>
       </AppBody>
     </>
