@@ -3,6 +3,7 @@ import { Form, useTransition } from "@remix-run/react";
 import { ActionArgs } from "@remix-run/server-runtime";
 import { redirect, typedjson, useTypedActionData } from "remix-typedjson";
 import { z } from "zod";
+import { CopyTextButton, CopyTextPanel } from "~/components/CopyTextButton";
 import { Panel } from "~/components/layout/Panel";
 import { PanelWarning } from "~/components/layout/PanelInfo";
 import { DangerButton, PrimaryButton } from "~/components/primitives/Buttons";
@@ -11,6 +12,7 @@ import { Input } from "~/components/primitives/Input";
 import { InputGroup } from "~/components/primitives/InputGroup";
 import { Label } from "~/components/primitives/Label";
 import { Select } from "~/components/primitives/Select";
+import { Body } from "~/components/primitives/text/Body";
 import { Header1 } from "~/components/primitives/text/Headers";
 import { SubTitle } from "~/components/primitives/text/SubTitle";
 import { useLiveEnvironment } from "~/hooks/useEnvironments";
@@ -149,23 +151,30 @@ export default function ProjectSettingsPage() {
           className="mb-6"
         ></PanelWarning>
       )}
-      <SubTitle>Build and deploy</SubTitle>
+      <SubTitle>Environment variables</SubTitle>
+      <Panel className="mb-6 py-4 px-4">
+        {env && (
+          <div className="grid w-full grid-cols-[1fr_auto] items-end gap-2">
+            <div className="w-full">
+              <Body size="small" className="mb-1 text-slate-400">
+                TRIGGER_API_KEY
+              </Body>
+              <Input
+                id="TRIGGER_API_KEY"
+                spellCheck={false}
+                disabled={true}
+                value={env.apiKey}
+                className="w-full"
+              />
+            </div>
+            <CopyTextButton value={env.apiKey} className="mb-0.5" />
+          </div>
+        )}
+      </Panel>
+      <SubTitle>Configure build and deploy settings</SubTitle>
       <Panel className="px-4 py-4">
         <Form method="post">
           <>
-            <SubTitle>Environment variables</SubTitle>
-            {env && (
-              <InputGroup>
-                <Label htmlFor="TRIGGER_API_KEY">TRIGGER_API_KEY</Label>
-
-                <Input
-                  id="TRIGGER_API_KEY"
-                  spellCheck={false}
-                  disabled={true}
-                  value={env.apiKey}
-                />
-              </InputGroup>
-            )}
             {envVars.length > 0 && (
               <div className="mb-3 grid grid-cols-1 gap-4">
                 {envVars.map((envVar) => (
