@@ -3,7 +3,6 @@ import {
   ArrowRightIcon,
   ArrowTopRightOnSquareIcon,
   CheckIcon,
-  ChevronRightIcon,
   CloudArrowUpIcon,
   LockClosedIcon,
   LockOpenIcon,
@@ -14,7 +13,6 @@ import {
   CloudIcon,
   RocketLaunchIcon,
   SunIcon,
-  XCircleIcon,
 } from "@heroicons/react/24/solid";
 import {
   Await,
@@ -39,14 +37,13 @@ import { OrganizationsSideMenu } from "~/components/navigation/SideMenu";
 import {
   PrimaryButton,
   PrimaryLink,
-  SecondaryButton,
   SecondaryLink,
   TertiaryLink,
 } from "~/components/primitives/Buttons";
 import { StyledDialog } from "~/components/primitives/Dialog";
 import { Spinner } from "~/components/primitives/Spinner";
 import { Body } from "~/components/primitives/text/Body";
-import { Header3, Header4 } from "~/components/primitives/text/Headers";
+import { Header4 } from "~/components/primitives/text/Headers";
 import { SubTitle } from "~/components/primitives/text/SubTitle";
 import { Title } from "~/components/primitives/text/Title";
 import { Tooltip } from "~/components/primitives/Tooltip";
@@ -107,10 +104,6 @@ export default function NewProjectPage() {
 
   const currentOrganization = useCurrentOrganization();
 
-  if (currentOrganization === undefined) {
-    return <></>;
-  }
-
   const user = useUser();
 
   const actionData = useTypedActionData<typeof action>();
@@ -132,6 +125,10 @@ export default function NewProjectPage() {
       setTechnologyPreviewIsOpen(false);
     }
   }, [fetcher.state, setTechnologyPreviewIsOpen]);
+
+  if (currentOrganization === undefined) {
+    return <></>;
+  }
 
   return (
     <>
