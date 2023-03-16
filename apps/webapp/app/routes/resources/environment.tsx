@@ -76,8 +76,8 @@ export function EnvironmentMenu() {
               <Popover.Button
                 className={classNames(
                   currentEnvironment.slug === "live"
-                    ? "bg-amber-500/20 hover:bg-amber-500/30"
-                    : "bg-green-500/20 hover:bg-green-500/30",
+                    ? `bg-liveEnv-500/20 hover:bg-liveEnv-500/30`
+                    : `bg-devEnv-500/20 hover:bg-devEnv-500/30`,
                   "flex w-full items-center justify-between gap-2 rounded py-2 pl-3.5 pr-2 text-base text-slate-300 transition focus:outline-none"
                 )}
               >
@@ -154,14 +154,14 @@ export function EnvironmentIcon({
   slug: string;
   className?: string;
 }) {
-  let color = "bg-green-500";
+  let color = "bg-devEnv-500";
   if (slug === "live") {
-    color = "bg-amber-500";
+    color = "bg-liveEnv-500";
   }
   return (
     <span
       className={classNames(
-        "block  h-[0.35rem] w-[0.35rem] rounded-full",
+        "block h-[0.35rem] w-[0.35rem] rounded-full",
         color,
         className
       )}

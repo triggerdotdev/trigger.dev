@@ -1,5 +1,6 @@
 /** @type {import('tailwindcss').Config} */
 const parentConfig = require("@trigger.dev/tailwind-config/tailwind.config");
+const colors = require('tailwindcss/colors')
 
 module.exports = {
   ...parentConfig,
@@ -30,6 +31,8 @@ module.exports = {
           500: "#41FF54",
           600: "#00FFA3",
         },
+        devEnv: colors.pink,
+        liveEnv: colors.green,
       },
       backgroundImage: {
         "gradient-radial": "radial-gradient(var(--tw-gradient-stops))",

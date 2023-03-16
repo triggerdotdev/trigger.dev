@@ -1,6 +1,7 @@
 import classNames from "classnames";
 import invariant from "tiny-invariant";
 import { useCurrentEnvironment } from "~/hooks/useEnvironments";
+import { Body } from "./primitives/text/Body";
 
 export function EnvironmentBanner() {
   const environment = useCurrentEnvironment();
@@ -8,15 +9,31 @@ export function EnvironmentBanner() {
 
   return (
     <>
-      <div className="group absolute top-[3.7rem] left-0 z-50 h-6 w-full bg-transparent">
-        <div
-          className={classNames(
-            environment.slug === "live"
-              ? "border-amber-500 before:top-[3px] before:text-amber-100 hover:bg-amber-500/30 hover:before:content-['Live_environment']"
-              : "border-green-500 before:top-[3px] before:text-green-200 hover:bg-green-500/30 hover:before:content-['Development_environment']",
-            "absolute top-[0rem] right-0 h-1 w-full overflow-hidden border-t-2 transition-[height] duration-500 ease-in-out before:absolute before:left-[calc(50%-5rem)] before:text-xs before:transition hover:backdrop-blur-sm group-hover:h-6"
+      <div
+        className={classNames(
+          environment.slug === "live"
+            ? `border-liveEnv-500`
+            : `border-devEnv-500`,
+          "group absolute top-[3.6rem] left-0 z-50 w-full border-t-2 bg-transparent"
+        )}
+      >
+        <div className="absolute top-0 flex w-full items-center justify-center uppercase opacity-0 transition-opacity duration-500 group-hover:opacity-100">
+          {environment.slug === "live" ? (
+            <Body
+              size="extra-small"
+              className="rounded-b bg-liveEnv-500 px-3 py-1.5 font-semibold tracking-wide text-liveEnv-900"
+            >
+              Live environment
+            </Body>
+          ) : (
+            <Body
+              size="extra-small"
+              className="rounded-b bg-devEnv-500  px-3 py-1.5 font-semibold tracking-wide text-devEnv-900"
+            >
+              Development environment
+            </Body>
           )}
-        />
+        </div>
       </div>
     </>
   );
