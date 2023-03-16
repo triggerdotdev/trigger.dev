@@ -540,9 +540,9 @@ function ConnectToLiveInstructions({
   return (
     <>
       <EnvironmentBanner />
-      <Header2>Deploying your workflow to Live</Header2>
-      <div className="mt-4 flex flex-col gap-2">
-        <Body>
+      <SubTitle>Deploying your workflow to Live</SubTitle>
+      <Panel className="px-4 py-4">
+        <Body className="mb-4 text-slate-300">
           Deploying your code to a server is different for each hosting
           provider. We have a quick start guide for{" "}
           <a
@@ -551,24 +551,24 @@ function ConnectToLiveInstructions({
           >
             how to do this with Render
           </a>
-          , but you can use any hosting provider.
+          , but you can use any hosting provider. When you fill in the
+          environment variables for your server(s) use the following settings:
         </Body>
-
-        <Body>
-          When you fill in the environment variables for your server(s) use the
-          following settings:
-        </Body>
-        <div className="flex w-full items-stretch justify-items-stretch gap-2">
-          <div className="flex-grow">
-            <Body className="font-bold">Key</Body>
+        <div className="flex w-full gap-2">
+          <div className="grow">
+            <Body size="small" className="uppercase text-slate-400">
+              Key
+            </Body>
             <CodeBlock
               code="TRIGGER_API_KEY"
               showLineNumbers={false}
               align="top"
             />
           </div>
-          <div className="flex-grow">
-            <Body className="font-bold">Value</Body>
+          <div className="grow">
+            <Body size="small" className="uppercase text-slate-400">
+              Value
+            </Body>
             <CodeBlock
               code={environment.apiKey}
               showLineNumbers={false}
@@ -576,7 +576,7 @@ function ConnectToLiveInstructions({
             />
           </div>
         </div>
-      </div>
+      </Panel>
     </>
   );
 }
