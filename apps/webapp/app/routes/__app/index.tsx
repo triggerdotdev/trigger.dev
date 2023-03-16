@@ -6,17 +6,15 @@ import {
 } from "@heroicons/react/24/outline";
 import { Link } from "@remix-run/react";
 import classNames from "classnames";
-import { CopyTextPanel } from "~/components/CopyTextButton";
 import { AppBody } from "~/components/layout/AppLayout";
 import { Header } from "~/components/layout/Header";
 import { MenuTitleToolTip } from "~/components/primitives/MenuTitleToolTip";
 import { Body } from "~/components/primitives/text/Body";
 import { Header4 } from "~/components/primitives/text/Headers";
-import { Tooltip } from "~/components/primitives/Tooltip";
 import type { MatchedOrganization } from "~/hooks/useOrganizations";
 import { useOrganizations } from "~/hooks/useOrganizations";
 import { useOptionalUser } from "~/hooks/useUser";
-import { environmentShortName } from "~/utils";
+import banner from "../../assets/images/org-banner.png";
 
 export default function AppLayout() {
   const organizations = useOrganizations();
@@ -26,37 +24,45 @@ export default function AppLayout() {
     <>
       <AppBody>
         <Header context="workflows" />
-        <div className="w-full overflow-y-auto">
-          <div className="flex h-80 w-full items-center justify-center bg-slate-900/50">
-            <h1 className="relative bottom-6 text-4xl text-slate-400">
+        <div className="w-full overflow-auto">
+          <div className="mt-28 flex flex-col items-center justify-center">
+            <div className="fixed top-[3.6rem] h-80 w-full overflow-hidden bg-slate-900/50">
+              <img
+                src={banner}
+                alt="Organization banner"
+                className="h-full w-full object-cover opacity-30"
+              />
+            </div>
+            <h1 className="z-10 mb-20 text-4xl text-slate-400">
               Your Organizations
             </h1>
-          </div>
-          <div className="mb-12 flex items-center justify-center">
-            <ul className="-mt-24 grid max-w-7xl grid-cols-2 gap-2 lg:grid-cols-3">
-              {organizations ? (
-                <OrganizationGrid organizations={organizations} />
-              ) : (
+            <div className="z-10 mb-12 flex items-center justify-center">
+              <ul className="grid max-w-7xl grid-cols-2 gap-2 lg:grid-cols-3">
+                {organizations ? (
+                  <OrganizationGrid organizations={organizations} />
+                ) : (
+                  <li>
+                    <Body>No organizations</Body>
+                  </li>
+                )}
                 <li>
-                  <Body>No organizations</Body>
+                  <Link
+                    to="orgs/new"
+                    className={classNames(
+                      "h-full border border-slate-700 hover:border-transparent hover:bg-[rgb(38,51,71)] hover:shadow-md",
+                      boxClasses
+                    )}
+                  >
+                    <PlusIcon className="h-10 w-10 text-green-500" />
+                    <Header4 size="small" className="mb-10">
+                      New Organization
+                    </Header4>
+                  </Link>
                 </li>
-              )}
-              <li>
-                <Link
-                  to="orgs/new"
-                  className={classNames(
-                    "h-full border border-slate-700 hover:border-transparent hover:bg-[rgb(38,51,71)] hover:shadow-md",
-                    boxClasses
-                  )}
-                >
-                  <PlusIcon className="h-10 w-10 text-green-500" />
-                  <Header4 size="small" className="mb-10">
-                    New Organization
-                  </Header4>
-                </Link>
-              </li>
-            </ul>
+              </ul>
+            </div>
           </div>
+
           <div className="absolute bottom-0 left-2">
             <MenuTitleToolTip
               text={
@@ -118,37 +124,13 @@ function OrganizationGridItem({
             aria-hidden="true"
           />
         )}
-        <Header4 size="large" className="mb-10 text-slate-300">
+        <Header4 size="large" className="mb-16 text-slate-300">
           {organization.title}
         </Header4>
-
-        <div className="grid w-full grid-cols-2 gap-2">
-          {organization.environments.map((environment) => (
-            <div key={environment.id} className="flex w-full items-center">
-              <div className="w-full">
-                <Tooltip
-                  key={environment.id}
-                  text={
-                    environment.slug === "live"
-                      ? "Use in live / production"
-                      : "Use in dev / local"
-                  }
-                >
-                  <CopyTextPanel
-                    value={environment.apiKey}
-                    text={`${environmentShortName(environment.slug)} API Key`}
-                    variant="slate"
-                    className=" text-slate-500"
-                  />
-                </Tooltip>
-              </div>
-            </div>
-          ))}
-        </div>
       </Link>
     </li>
   );
 }
 
 const boxClasses =
-  "flex flex-col gap-4 w-80 text-center shadow-md items-center justify-center rounded-lg px-2 pb-2 pt-14 min-h-full transition";
+  "flex flex-col gap-4 w-80 text-center shadow-md items-center justify-center rounded-lg px-2 pb-2 pt-16 min-h-full transition";
