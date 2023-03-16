@@ -1,4 +1,3 @@
-import { EyeIcon, EyeSlashIcon } from "@heroicons/react/20/solid";
 import {
   ArrowLeftOnRectangleIcon,
   ArrowsRightLeftIcon,
@@ -9,14 +8,14 @@ import {
   Cog6ToothIcon,
   ForwardIcon,
   HomeIcon,
+  KeyIcon,
   QueueListIcon,
   Squares2X2Icon,
   SquaresPlusIcon,
 } from "@heroicons/react/24/outline";
 import { Link, NavLink, useLocation } from "@remix-run/react";
-import { useState } from "react";
 import invariant from "tiny-invariant";
-import { CurrentProject } from "~/features/ee/projects/routes/projects/$projectP";
+import type { CurrentProject } from "~/features/ee/projects/routes/projects/$projectP";
 import { useCurrentEnvironment } from "~/hooks/useEnvironments";
 import { useIsOrgChildPage } from "~/hooks/useIsOrgChildPage";
 import {
@@ -25,14 +24,8 @@ import {
 } from "~/hooks/useOrganizations";
 import { useOptionalUser } from "~/hooks/useUser";
 import { useCurrentWorkflow } from "~/hooks/useWorkflows";
-import {
-  EnvironmentIcon,
-  EnvironmentMenu,
-} from "~/routes/resources/environment";
-import { titleCase } from "~/utils";
-import { CopyTextPanel } from "../CopyTextButton";
+import { EnvironmentMenu } from "~/routes/resources/environment";
 import { LogoIcon } from "../LogoIcon";
-import { TertiaryButton } from "../primitives/Buttons";
 import { MenuTitleToolTip } from "../primitives/MenuTitleToolTip";
 import { Body } from "../primitives/text/Body";
 import { Header1 } from "../primitives/text/Headers";
@@ -264,6 +257,11 @@ export function WorkflowsSideMenu() {
       to: `integrations`,
     },
     {
+      name: "API Keys",
+      icon: <KeyIcon className={iconStyle} />,
+      to: `environments`,
+    },
+    {
       name: "Settings",
       icon: <Cog6ToothIcon className={iconStyle} />,
       to: `settings`,
@@ -349,8 +347,6 @@ function SideMenu({
 
   const isOrgChildPage = useIsOrgChildPage();
 
-  const [isShowingKeys, setIsShowingKeys] = useState(false);
-
   return (
     <div className="flex min-h-0 flex-1 flex-col border-r border-slate-800 bg-slate-950">
       <div className="flex flex-1 flex-col overflow-y-auto pb-4">
@@ -413,71 +409,6 @@ function SideMenu({
               )}
             </div>
           </div>
-          <div className="flex flex-col gap-6">
-            <ul className="ml-3 mr-2 flex flex-col gap-2">
-              <li className="flex w-full items-center justify-between">
-                <Body
-                  size="extra-small"
-                  className={`overflow-hidden text-slate-300 transition group-hover:text-slate-400 ${menuSmallTitleStyle}`}
-                >
-                  API keys
-                </Body>
-                {!isShowingKeys ? (
-                  <TertiaryButton
-                    onClick={() => setIsShowingKeys(true)}
-                    className="group mr-1.5 transition before:text-xs before:text-slate-400 hover:before:content-['Show_keys']"
-                  >
-                    <EyeIcon className="h-4 w-4 text-slate-500 transition group-hover:text-slate-400" />
-                  </TertiaryButton>
-                ) : (
-                  <TertiaryButton
-                    onClick={() => setIsShowingKeys(false)}
-                    className="group mr-1.5 transition before:text-xs before:text-slate-400 hover:before:content-['Hide_keys']"
-                  >
-                    <EyeSlashIcon className="h-4 w-4 text-slate-500 transition group-hover:text-slate-400" />
-                  </TertiaryButton>
-                )}
-              </li>
-              {organization.environments.map((environment) => {
-                return (
-                  <li
-                    key={environment.id}
-                    className="flex w-full flex-col justify-between"
-                  >
-                    <div className="relative flex items-center">
-                      <EnvironmentIcon
-                        slug={environment.slug}
-                        className="absolute top-4 left-2"
-                      />
-                      <CopyTextPanel
-                        value={environment.apiKey}
-                        text={
-                          isShowingKeys
-                            ? environment.apiKey
-                            : `${titleCase(environment.slug)}`
-                        }
-                        variant="slate"
-                        className="pl-6 text-slate-300 hover:text-slate-300"
-                      />
-                    </div>
-                  </li>
-                );
-              })}
-              <Body size="extra-small" className="mt-1 text-slate-500">
-                Copy these keys into your workflow code. Use the Live key for
-                production and Development key for local. Learn more about API
-                keys{" "}
-                <a
-                  href="https://docs.trigger.dev/guides/environments"
-                  target="_blank"
-                  className="underline underline-offset-2 transition hover:text-slate-200"
-                >
-                  here
-                </a>
-                .
-              </Body>
-            </ul>
-          </div>
         </nav>
       </div>
     </div>
@@ -507,5 +438,3 @@ function WorkflowsNavLink({
     </Link>
   );
 }
-
-const menuSmallTitleStyle = "uppercase text-slate-500 tracking-wide";
