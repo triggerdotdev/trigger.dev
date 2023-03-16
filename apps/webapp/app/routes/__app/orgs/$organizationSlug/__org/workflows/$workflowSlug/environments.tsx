@@ -2,6 +2,7 @@ import { EyeIcon, EyeSlashIcon } from "@heroicons/react/20/solid";
 import { useState } from "react";
 import invariant from "tiny-invariant";
 import { CopyTextPanel } from "~/components/CopyTextButton";
+import { EnvironmentBanner } from "~/components/EnvironmentBanner";
 import { Panel } from "~/components/layout/Panel";
 import { TertiaryButton } from "~/components/primitives/Buttons";
 import { Body } from "~/components/primitives/text/Body";
@@ -18,6 +19,7 @@ export default function Page() {
 
   return (
     <>
+      <EnvironmentBanner />
       <Title>API Keys</Title>
       <SubTitle>Copy these API keys into your workflow code</SubTitle>
       <Panel>
