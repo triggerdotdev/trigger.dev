@@ -211,7 +211,38 @@ export default function NewProjectPage() {
               {appAuthorizations.length === 0 ? (
                 <></>
               ) : (
-                <>
+                <div className="flex items-center gap-2">
+                  <Suspense fallback={<Spinner />}>
+                    <Await
+                      errorElement={<p>Error loading repositories</p>}
+                      resolve={repositories}
+                    >
+                      {(resolvedPromise) => {
+                        const reposWithAuth = resolvedPromise.find(
+                          (resolved) => resolved.authorization
+                        );
+
+                        if (reposWithAuth) {
+                          return (
+                            <SecondaryLink
+                              to={`/apps/github?redirectTo=${encodeURIComponent(
+                                redirectTo
+                              )}&authorizationId=${
+                                reposWithAuth.authorization.id
+                              }`}
+                              reloadDocument
+                            >
+                              Configure connected accounts
+                              <ArrowTopRightOnSquareIcon className="h-4 w-4 text-slate-500" />
+                            </SecondaryLink>
+                          );
+                        } else {
+                          return null;
+                        }
+                      }}
+                    </Await>
+                  </Suspense>
+
                   <PrimaryLink
                     to={`/apps/github?redirectTo=${encodeURIComponent(
                       redirectTo
@@ -220,7 +251,7 @@ export default function NewProjectPage() {
                     <OctoKitty className="-ml-1 h-5 w-5" />
                     Connect another GitHub account
                   </PrimaryLink>
-                </>
+                </div>
               )}
             </div>
             {appAuthorizations.length === 0 ? (
@@ -265,18 +296,6 @@ export default function NewProjectPage() {
                                   {reposWithAuth.authorization.accountName}
                                 </SubTitle>
                               </div>
-                              <TertiaryLink
-                                to={`/apps/github?redirectTo=${encodeURIComponent(
-                                  redirectTo
-                                )}&authorizationId=${
-                                  reposWithAuth.authorization.id
-                                }`}
-                                reloadDocument
-                              >
-                                Configure{" "}
-                                {reposWithAuth.authorization.accountName}
-                                <ArrowTopRightOnSquareIcon className="h-4 w-4 text-slate-500" />
-                              </TertiaryLink>
                             </div>
                             <List className="mb-6">
                               {reposWithAuth.repositories.map((repo) => (
