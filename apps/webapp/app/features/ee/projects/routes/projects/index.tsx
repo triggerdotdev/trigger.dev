@@ -197,7 +197,7 @@ function ConnectToGithub({ redirectTo }: { redirectTo: string }) {
             to={`/apps/github?redirectTo=${encodeURIComponent(redirectTo)}`}
           >
             <OctoKitty className="mr-1 h-5 w-5" />
-            Grant access
+            Grant repo access
           </PrimaryLink>
           <Body size="small" className="flex items-center text-slate-400">
             To deploy a repository you need to authorize our GitHub app.{" "}
