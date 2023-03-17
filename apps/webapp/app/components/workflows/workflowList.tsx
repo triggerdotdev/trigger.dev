@@ -1,3 +1,4 @@
+import { CloudIcon } from "@heroicons/react/20/solid";
 import {
   ChevronRightIcon,
   ExclamationTriangleIcon,
@@ -13,6 +14,7 @@ import { formatDateTime } from "~/utils";
 import { ApiLogoIcon } from "../code/ApiLogoIcon";
 import { List } from "../layout/List";
 import { Header2, Header3 } from "../primitives/text/Headers";
+import { Tooltip } from "../primitives/Tooltip";
 import { runStatusLabel } from "../runs/runStatus";
 import { TriggerTypeIcon } from "../triggers/TriggerIcons";
 
@@ -83,8 +85,9 @@ export function WorkflowList({
                       >
                         {workflow.title}
                       </Header2>
-                      <div className="flex items-baseline gap-2">
+                      <div className="flex items-center gap-2">
                         <PillLabel label={workflow.trigger.typeTitle} />
+                        <CloudLabel label="Deployed" />
                         <Header3
                           size="extra-small"
                           className="truncate text-slate-400"
@@ -173,6 +176,15 @@ function lastRunDescription(lastRun: WorkflowListItem["lastRun"]) {
 function PillLabel({ label }: { label: string }) {
   return (
     <span className="rounded bg-slate-700 px-1.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+      {label}
+    </span>
+  );
+}
+
+function CloudLabel({ label }: { label: string }) {
+  return (
+    <span className="flex items-center gap-1 rounded bg-slate-700 px-1.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-blue-400">
+      <CloudIcon className="h-3.5 w-3.5 text-blue-500" />
       {label}
     </span>
   );
