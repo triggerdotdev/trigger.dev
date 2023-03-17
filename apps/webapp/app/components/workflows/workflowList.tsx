@@ -1,17 +1,20 @@
 import {
-  ExclamationTriangleIcon,
   ChevronRightIcon,
+  ExclamationTriangleIcon,
 } from "@heroicons/react/24/outline";
 import { Link } from "@remix-run/react";
-import { Body } from "~/components/primitives/text/Body";
 import classNames from "classnames";
+import invariant from "tiny-invariant";
+import { Body } from "~/components/primitives/text/Body";
+import { useCurrentEnvironment } from "~/hooks/useEnvironments";
+import type { WorkflowListItem } from "~/presenters/workflowsPresenter.server";
+import { EnvironmentIcon } from "~/routes/resources/environment";
 import { formatDateTime } from "~/utils";
 import { ApiLogoIcon } from "../code/ApiLogoIcon";
 import { List } from "../layout/List";
 import { Header2, Header3 } from "../primitives/text/Headers";
 import { runStatusLabel } from "../runs/runStatus";
 import { TriggerTypeIcon } from "../triggers/TriggerIcons";
-import type { WorkflowListItem } from "~/presenters/workflowsPresenter.server";
 
 export function WorkflowList({
   workflows,
@@ -22,6 +25,9 @@ export function WorkflowList({
   currentOrganizationSlug: string;
   className?: string;
 }) {
+  const environment = useCurrentEnvironment();
+  invariant(environment, "Environment not found");
+
   return (
     <List className={className}>
       {workflows.map((workflow) => {
@@ -30,18 +36,36 @@ export function WorkflowList({
             <Link
               to={`/orgs/${currentOrganizationSlug}/workflows/${workflow.slug}`}
               className={classNames(
-                "relative block overflow-hidden transition hover:bg-slate-850/40",
+                "group relative block transition hover:bg-slate-850/40",
                 workflow.status === "DISABLED" ? workflowDisabled : ""
               )}
             >
               {workflow.lastRun === undefined && (
-                <div className="absolute top-2 -right-8 rotate-45 bg-green-700 px-8 py-0.5 text-xs font-semibold uppercase tracking-wide text-green-200 shadow-md">
-                  New
+                <div className="absolute top-[9px] -right-12 flex rotate-45">
+                  <div className="relative -right-7 inline-block h-5 w-12 overflow-hidden">
+                    <div className="absolute bottom-0 h-[28px] w-[28px] origin-bottom-left rotate-45 transform bg-green-700" />
+                  </div>
+                  <Body className="z-10 bg-green-700 px-1 py-0.5 text-xs font-semibold uppercase tracking-wide text-green-200">
+                    New
+                  </Body>
+                  <div className="relative right-5 inline-block h-5 w-12 overflow-hidden">
+                    <div className="absolute bottom-0 h-[28px] w-[28px] origin-bottom-left rotate-45 transform bg-green-700" />
+                  </div>
                 </div>
               )}
 
               <div className="flex flex-col flex-wrap justify-between py-4 pl-4 pr-4 lg:flex-row lg:flex-nowrap lg:items-center">
                 <div className="flex flex-1 items-center justify-between">
+                  <div className="absolute -left-[26px] flex flex-col items-center gap-y-3.5 rounded-l bg-slate-800 pt-5 pb-3 transition group-hover:bg-slate-800/60">
+                    <Body
+                      size="extra-small"
+                      className="-rotate-90 font-semibold uppercase tracking-wider text-slate-400"
+                    >
+                      Live
+                    </Body>
+                    <EnvironmentIcon slug="live" />
+                  </div>
+
                   <div className="relative flex items-center">
                     {workflow.status === "CREATED" && (
                       <ExclamationTriangleIcon className="absolute -top-1.5 -left-1.5 h-6 w-6 text-amber-400" />
