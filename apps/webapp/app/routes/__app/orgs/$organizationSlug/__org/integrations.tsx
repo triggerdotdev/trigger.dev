@@ -1,8 +1,4 @@
-import {
-  ArrowsRightLeftIcon,
-  CursorArrowRaysIcon,
-  EnvelopeIcon,
-} from "@heroicons/react/24/outline";
+import { CursorArrowRaysIcon } from "@heroicons/react/24/outline";
 import { PlusCircleIcon } from "@heroicons/react/24/solid";
 import type { LoaderArgs } from "@remix-run/server-runtime";
 import type { ServiceMetadata } from "@trigger.dev/integration-sdk";
@@ -17,7 +13,6 @@ import { Header } from "~/components/layout/Header";
 import { List } from "~/components/layout/List";
 import { OrganizationsSideMenu } from "~/components/navigation/SideMenu";
 import {
-  PrimaryA,
   PrimaryButton,
   SecondaryButton,
 } from "~/components/primitives/Buttons";

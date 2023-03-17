@@ -87,6 +87,12 @@ export function OrganizationsSideMenu() {
         to: `/orgs/${currentOrganization.slug}/integrations`,
         end: false,
       },
+      {
+        name: "API Keys",
+        icon: <KeyIcon className={iconStyle} />,
+        to: `/orgs/${currentOrganization.slug}/environments`,
+        end: false,
+      },
     ];
   }
 
@@ -264,11 +270,6 @@ export function WorkflowsSideMenu() {
       name: "Connected APIs",
       icon: <Squares2X2Icon className={iconStyle} />,
       to: `integrations`,
-    },
-    {
-      name: "API Keys",
-      icon: <KeyIcon className={iconStyle} />,
-      to: `environments`,
     },
     {
       name: "Settings",
