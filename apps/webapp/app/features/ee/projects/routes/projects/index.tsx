@@ -32,10 +32,8 @@ import { Header2 } from "~/components/primitives/text/Headers";
 import { SubTitle } from "~/components/primitives/text/SubTitle";
 import { Title } from "~/components/primitives/text/Title";
 import { requireUser } from "~/services/session.server";
-import {
-  ProjectListItem,
-  ProjectListPresenter,
-} from "../../presenters/projectListPresenter.server";
+import type { ProjectListItem } from "../../presenters/projectListPresenter.server";
+import { ProjectListPresenter } from "../../presenters/projectListPresenter.server";
 
 export async function loader({ params, request }: LoaderArgs) {
   const { organizationSlug } = z

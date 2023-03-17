@@ -3,6 +3,8 @@ import { BeakerIcon, CheckCircleIcon } from "@heroicons/react/20/solid";
 import {
   ArrowsRightLeftIcon,
   ChevronDownIcon,
+  CloudArrowUpIcon,
+  CloudIcon,
   Cog6ToothIcon,
 } from "@heroicons/react/24/outline";
 import type { LoaderArgs } from "@remix-run/server-runtime";
@@ -20,7 +22,11 @@ import { Panel } from "~/components/layout/Panel";
 import { PanelHeader } from "~/components/layout/PanelHeader";
 import { PanelInfo } from "~/components/layout/PanelInfo";
 import { PanelWarning } from "~/components/layout/PanelWarning";
-import { SecondaryLink, TertiaryLink } from "~/components/primitives/Buttons";
+import {
+  PrimaryLink,
+  SecondaryLink,
+  TertiaryLink,
+} from "~/components/primitives/Buttons";
 import { Input } from "~/components/primitives/Input";
 import { Body } from "~/components/primitives/text/Body";
 import { Header2 } from "~/components/primitives/text/Headers";
@@ -31,9 +37,14 @@ import { TriggerBody } from "~/components/triggers/Trigger";
 import { TriggerTypeIcon } from "~/components/triggers/TriggerIcons";
 import { triggerLabel } from "~/components/triggers/triggerLabel";
 import { DEV_ENVIRONMENT } from "~/consts";
+import { ProjectListItem } from "~/features/ee/projects/presenters/projectListPresenter.server";
+import { useCurrentProject } from "~/features/ee/projects/routes/projects/$projectP";
 import { useConnectionSlots } from "~/hooks/useConnectionSlots";
 import { useCurrentEnvironment } from "~/hooks/useEnvironments";
-import { useCurrentOrganization } from "~/hooks/useOrganizations";
+import {
+  useCurrentOrganization,
+  useOrganizations,
+} from "~/hooks/useOrganizations";
 import {
   CurrentWorkflowEventRule,
   useCurrentWorkflow,
@@ -158,12 +169,7 @@ export default function Page() {
 
       {eventRule && (
         <>
-          <div className="flex items-end justify-between">
-            <SubTitle>Your workflow</SubTitle>
-            <SecondaryLink to="test" className="mb-2">
-              Test workflow
-            </SecondaryLink>
-          </div>
+          <SubTitle>Your Workflow</SubTitle>
           <Panel className="rounded-b-none">
             <PanelHeader
               icon={
@@ -378,11 +384,11 @@ export default function Page() {
               )}
             <Disclosure defaultOpen={totalRealRuns === 0}>
               {({ open }) => (
-                <div className="rounded-b-md bg-slate-700/80">
+                <div className="bg-slate-700/80">
                   <Disclosure.Button className="flex w-full items-center justify-between bg-slate-800/70 py-4 px-4 transition hover:bg-slate-800/50">
                     <div className="flex items-center gap-2">
                       <ArrowsRightLeftIcon className="h-6 w-6 text-green-500" />
-                      <Body>How to run your workflow</Body>
+                      <Body>How to run your Workflow</Body>
                     </div>
                     <div className="flex items-center gap-2">
                       <Body size="small" className="text-slate-400">
@@ -401,6 +407,30 @@ export default function Page() {
               )}
             </Disclosure>
           </div>
+          <Disclosure defaultOpen={totalRealRuns > 0}>
+            {({ open }) => (
+              <div className="rounded-b-md border-t border-slate-900/50 bg-slate-700/80">
+                <Disclosure.Button className="flex w-full items-center justify-between bg-slate-800/70 py-4 px-4 transition hover:bg-slate-800/50">
+                  <div className="flex items-center gap-2">
+                    <CloudArrowUpIcon className="h-6 w-6 text-blue-500" />
+                    <Body>How to deploy your Workflow to the Cloud</Body>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Body size="small" className="text-slate-400">
+                      {open ? "Close" : "Open"}
+                    </Body>
+                    <ChevronDownIcon
+                      className={classNames(
+                        open ? "rotate-180 transform" : "",
+                        "h-5 w-5 text-slate-400 transition"
+                      )}
+                    />
+                  </div>
+                </Disclosure.Button>
+                <HowToDeployToCloud eventRule={eventRule} />
+              </div>
+            )}
+          </Disclosure>
         </>
       )}
       {apiConnectionCount > 0 && (
@@ -483,7 +513,9 @@ function HowToRunScheduleWorkflow({
           </>
         ) : (
           <>
-            <li>Scheduled events are disabled in this environment</li>
+            <li>
+              Scheduled events are disabled in this Development environment
+            </li>
             <li>To trigger this workflow, you'll need to run a test below</li>
           </>
         )}
@@ -519,15 +551,53 @@ function HowToRunWorkflowGeneric({
         <li>Return here to view the new workflow run.</li>
       </ol>
       <SubTitle className="mt-4 mb-3 text-slate-300">
-        Trigger your workflow from a test
+        Trigger your Workflow from a test
       </SubTitle>
       <SecondaryLink
         to="test"
         className="!bg-slate-800/50 ring-slate-800 hover:!bg-slate-800/30"
       >
         <BeakerIcon className="-ml-1 h-4 w-4 text-slate-300" />
-        Test your workflow
+        Test your Workflow
       </SecondaryLink>
+    </Disclosure.Panel>
+  );
+}
+
+function HowToDeployToCloud({
+  eventRule,
+}: {
+  eventRule: CurrentWorkflowEventRule;
+}) {
+  const currentOrganization = useCurrentOrganization();
+  const organizations = useOrganizations();
+  if (organizations === undefined || currentOrganization === undefined) {
+    return null;
+  }
+  return (
+    <Disclosure.Panel className="flex gap-6 p-6">
+      <div className="grid place-items-center rounded-lg border-2 border-slate-500/10 bg-slate-500/5 p-10">
+        <CloudArrowUpIcon className="h-20 w-20 text-blue-500" />
+      </div>
+      <div className="">
+        <div className="mb-1 flex items-baseline gap-2">
+          <SubTitle className="text-slate-300">
+            Deploy your Workflow to the Cloud
+          </SubTitle>
+        </div>
+        <ol className="flex list-inside list-decimal flex-col gap-1.5 pb-4 pl-2 text-slate-400">
+          <li>Repo name:</li>
+          <li>Follow the steps to </li>
+        </ol>
+
+        <PrimaryLink
+          to={`/orgs/${currentOrganization.slug}/projects/new`}
+          className=""
+        >
+          <CloudArrowUpIcon className="-ml-1 h-5 w-5 text-slate-300" />
+          Deploy your Workflow
+        </PrimaryLink>
+      </div>
     </Disclosure.Panel>
   );
 }
