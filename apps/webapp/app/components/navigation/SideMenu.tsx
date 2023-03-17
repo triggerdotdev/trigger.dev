@@ -1,3 +1,4 @@
+import { Switch } from "@headlessui/react";
 import {
   ArrowLeftOnRectangleIcon,
   ArrowsRightLeftIcon,
@@ -9,14 +10,20 @@ import {
   ForwardIcon,
   HomeIcon,
   KeyIcon,
+  PowerIcon,
   QueueListIcon,
   Squares2X2Icon,
   SquaresPlusIcon,
 } from "@heroicons/react/24/outline";
 import { Link, NavLink, useLocation } from "@remix-run/react";
+import classNames from "classnames";
+import { useState } from "react";
 import invariant from "tiny-invariant";
 import type { CurrentProject } from "~/features/ee/projects/routes/projects/$projectP";
-import { useCurrentEnvironment } from "~/hooks/useEnvironments";
+import {
+  useCurrentEnvironment,
+  useEnvironments,
+} from "~/hooks/useEnvironments";
 import { useIsOrgChildPage } from "~/hooks/useIsOrgChildPage";
 import {
   useCurrentOrganization,
@@ -25,6 +32,7 @@ import {
 import { useOptionalUser } from "~/hooks/useUser";
 import { useCurrentWorkflow } from "~/hooks/useWorkflows";
 import { EnvironmentMenu } from "~/routes/resources/environment";
+import EnvironmentSwitch from "../EnvironmentSwitch";
 import { LogoIcon } from "../LogoIcon";
 import { MenuTitleToolTip } from "../primitives/MenuTitleToolTip";
 import { Body } from "../primitives/text/Body";
@@ -89,6 +97,7 @@ export function OrganizationsSideMenu() {
       items={items}
       backPath="/"
       environmentSwitcher={false}
+      environmentDisableSwitcher={false}
     />
   );
 }
@@ -275,6 +284,7 @@ export function WorkflowsSideMenu() {
       items={items}
       backPath={`/orgs/${organization.slug}`}
       environmentSwitcher={true}
+      environmentDisableSwitcher={true}
     />
   );
 }
@@ -321,6 +331,7 @@ export function ProjectSideMenu({
       items={items}
       backPath={backPath}
       environmentSwitcher={false}
+      environmentDisableSwitcher={false}
     />
   );
 }
@@ -335,17 +346,24 @@ function SideMenu({
   title,
   subtitle,
   environmentSwitcher,
+  environmentDisableSwitcher,
 }: {
   title: string;
   items: SideMenuItem[];
   backPath: string;
   subtitle: string;
   environmentSwitcher: boolean;
+  environmentDisableSwitcher: boolean;
 }) {
   const organization = useCurrentOrganization();
   invariant(organization, "Organization must be defined");
 
   const isOrgChildPage = useIsOrgChildPage();
+  const environments = useEnvironments();
+  const currentEnvironment = useCurrentEnvironment();
+  if (environments === undefined || currentEnvironment === undefined) {
+    return <></>;
+  }
 
   return (
     <div className="flex min-h-0 flex-1 flex-col border-r border-slate-800 bg-slate-950">
@@ -397,7 +415,7 @@ function SideMenu({
                 ))}
               </div>
               {environmentSwitcher && (
-                <div className="mt-2">
+                <div className="mt-2 mb-4">
                   <Body
                     size="small"
                     className="py-3 pl-1 uppercase tracking-wider text-slate-400"
@@ -407,6 +425,7 @@ function SideMenu({
                   <EnvironmentMenu />
                 </div>
               )}
+              {environmentDisableSwitcher && <EnvironmentSwitch />}
             </div>
           </div>
         </nav>

@@ -58,7 +58,6 @@ export function EnvironmentMenu() {
   const fetcher = useFetcher();
   const environments = useEnvironments();
   const currentEnvironment = useCurrentEnvironment();
-
   if (environments === undefined || currentEnvironment === undefined) {
     return <></>;
   }
@@ -76,13 +75,25 @@ export function EnvironmentMenu() {
               <Popover.Button
                 className={classNames(
                   currentEnvironment.slug === "live"
-                    ? `bg-liveEnv-500/20 hover:bg-liveEnv-500/30`
-                    : `bg-devEnv-500/20 hover:bg-devEnv-500/30`,
+                    ? `hover:bg-liveEnv-500/30`
+                    : `hover:bg-devEnv-500/30`,
                   "flex w-full items-center justify-between gap-2 rounded py-2 pl-3.5 pr-2 text-base text-slate-300 transition focus:outline-none"
                 )}
               >
                 <div className="flex items-center gap-2">
-                  <EnvironmentIcon slug={currentEnvironment.slug} />
+                  <div
+                    className={classNames(
+                      currentEnvironment.slug === "live"
+                        ? `border-liveEnv-500`
+                        : `border-devEnv-500`,
+                      "grid h-[22px] w-[22px] place-items-center rounded-full border-2"
+                    )}
+                  >
+                    <EnvironmentIcon
+                      slug={currentEnvironment.slug}
+                      className="animate-pulse"
+                    />
+                  </div>
                   <span className="transition">
                     {currentEnvironment ? (
                       <span>{titleCase(currentEnvironment.slug)}</span>
