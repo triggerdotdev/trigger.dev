@@ -15,7 +15,7 @@ import {
   SecondaryButton,
   SecondaryLink,
 } from "../primitives/Buttons";
-import { MobileNavIcon, MobileNavLink } from "../primitives/NavLink";
+import { MobileNavIcon } from "../primitives/NavLink";
 
 type HeaderProps = {
   children?: React.ReactNode;
