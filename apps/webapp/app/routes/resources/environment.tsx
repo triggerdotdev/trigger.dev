@@ -89,10 +89,7 @@ export function EnvironmentMenu() {
                       "grid h-[22px] w-[22px] place-items-center rounded-full border-2"
                     )}
                   >
-                    <EnvironmentIcon
-                      slug={currentEnvironment.slug}
-                      className="animate-pulse"
-                    />
+                    <EnvironmentIcon slug={currentEnvironment.slug} />
                   </div>
                   <span className="transition">
                     {currentEnvironment ? (
