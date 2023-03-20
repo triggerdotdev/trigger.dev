@@ -251,14 +251,11 @@ export class ZodPublisher<PublisherSchema extends MessageCatalogSchema> {
         data,
       });
 
-      if (attempts >= 5) {
-        throw error;
-      }
+      throw error;
 
       // Wait for a second before trying again
-      await new Promise((resolve) => setTimeout(resolve, 1000));
-
-      return this.#sendToProducerWithRetry(message, data, attempts + 1);
+      // await new Promise((resolve) => setTimeout(resolve, 1000));
+      // return this.#sendToProducerWithRetry(message, data, attempts + 1);
     }
   }
 }
