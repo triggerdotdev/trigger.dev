@@ -14,7 +14,6 @@ import { formatDateTime } from "~/utils";
 import { ApiLogoIcon } from "../code/ApiLogoIcon";
 import { List } from "../layout/List";
 import { Header2, Header3 } from "../primitives/text/Headers";
-import { Tooltip } from "../primitives/Tooltip";
 import { runStatusLabel } from "../runs/runStatus";
 import { TriggerTypeIcon } from "../triggers/TriggerIcons";
 
