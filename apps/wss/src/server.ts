@@ -498,16 +498,6 @@ export class TriggerServer {
                   properties,
                 });
 
-                await this.#commandPublisher.publish(
-                  "WORKFLOW_RUN_TRIGGER_TIMEOUT",
-                  {
-                    id: data.id,
-                    ttl,
-                    elapsedSeconds,
-                  },
-                  { ...properties, "x-timestamp": String(Date.now()) }
-                );
-
                 return true;
               }
             }
