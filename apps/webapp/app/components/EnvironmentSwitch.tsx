@@ -24,8 +24,20 @@ export default function EnvironmentSwitch() {
     <div className="group ">
       <div className="mb-4 flex items-center justify-between pl-3">
         <div className="flex items-center gap-2">
-          <PowerIcon className="h-6 w-6" />
-          <Body>Enabled in {environment.slug === "live" ? "Live" : "Dev"}</Body>
+          <PowerIcon
+            className={classNames(
+              enabled ? "text-slate-300" : "text-slate-500",
+              "h-6 w-6 transition"
+            )}
+          />
+          <Body
+            className={classNames(
+              enabled ? "text-slate-300" : "text-slate-500",
+              "transition"
+            )}
+          >
+            Enabled in {environment.slug === "live" ? "Live" : "Dev"}
+          </Body>
         </div>
         <Switch
           checked={enabled}
