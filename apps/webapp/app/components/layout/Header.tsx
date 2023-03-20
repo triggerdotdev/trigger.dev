@@ -1,12 +1,21 @@
+import { Popover, Transition } from "@headlessui/react";
 import {
   ArrowTopRightOnSquareIcon,
   ChatBubbleLeftRightIcon,
 } from "@heroicons/react/24/outline";
+import { Fragment } from "react";
 import { ProjectMenu } from "~/features/ee/projects/components/ProjectMenu";
 import { Logo } from "../Logo";
 import { OrganizationMenu } from "../navigation/OrganizationMenu";
 import { WorkflowMenu } from "../navigation/WorkflowMenu";
-import { SecondaryA, SecondaryButton } from "../primitives/Buttons";
+import {
+  PrimaryA,
+  PrimaryButton,
+  SecondaryA,
+  SecondaryButton,
+  SecondaryLink,
+} from "../primitives/Buttons";
+import { MobileNavIcon, MobileNavLink } from "../primitives/NavLink";
 
 type HeaderProps = {
   children?: React.ReactNode;
@@ -22,15 +31,15 @@ export function Header({ children, context }: HeaderProps) {
       </div>
       <Logo className="ml-1 w-36 lg:hidden" />
       <div className="flex flex-1 justify-center">{children}</div>
-      <div className="flex items-center gap-2">
+      <MobileDropdownMenu />
+      <div className="hidden items-center gap-2 sm:flex">
         <SecondaryA href="https://docs.trigger.dev" target="_blank">
           <ArrowTopRightOnSquareIcon className="-ml-1 h-4 w-4" />
-          Doc<span className="-ml-2 hidden lg:block">umentation</span>
-          <span className="-ml-2 lg:hidden">s</span>
+          Documentation
         </SecondaryA>
         <SecondaryButton data-attr="posthog-feedback-button">
           <ChatBubbleLeftRightIcon className="-ml-1 h-4 w-4" />
-          Send <span className="-mx-1 hidden lg:block">us</span> feedback
+          Send us feedback
         </SecondaryButton>
       </div>
     </div>
@@ -56,5 +65,64 @@ export function BreadcrumbDivider() {
         strokeLinecap="round"
       />
     </svg>
+  );
+}
+
+function MobileDropdownMenu() {
+  return (
+    <Popover className="block sm:hidden">
+      <Popover.Button
+        className="bg-slate-70 relative z-10 flex h-8 w-8 items-center justify-center rounded border-none bg-opacity-50 focus-visible:border-none focus-visible:outline-none"
+        aria-label="Toggle Navigation"
+      >
+        {({ open }) => <MobileNavIcon open={open} />}
+      </Popover.Button>
+      <Transition.Root>
+        <Transition.Child
+          as={Fragment}
+          enter="duration-150 ease-out"
+          enterFrom="opacity-0"
+          enterTo="opacity-100"
+          leave="duration-150 ease-in"
+          leaveFrom="opacity-100"
+          leaveTo="opacity-0"
+        >
+          <Popover.Overlay className="absolute top-0 left-0 h-full w-full origin-top bg-slate-1000/80" />
+        </Transition.Child>
+        <Transition.Child
+          as={Fragment}
+          enter="duration-150 ease-out"
+          enterFrom="opacity-0 scale-95"
+          enterTo="opacity-100 scale-100"
+          leave="duration-100 ease-in"
+          leaveFrom="opacity-100 scale-100"
+          leaveTo="opacity-0 scale-95"
+        >
+          <Popover.Panel
+            as="div"
+            className="absolute inset-x-6 top-0 mt-20 flex origin-top flex-col gap-4 rounded-md bg-slate-800 p-4 text-lg tracking-tight text-slate-900 shadow-xl ring-1 ring-slate-700"
+          >
+            <PrimaryA
+              href="https://docs.trigger.dev"
+              target="_blank"
+              className="max-w-full"
+            >
+              <ArrowTopRightOnSquareIcon className="-ml-1 h-4 w-4" />
+              Documentation
+            </PrimaryA>
+            <PrimaryButton
+              data-attr="posthog-feedback-button"
+              className="max-w-full"
+            >
+              <ChatBubbleLeftRightIcon className="-ml-1 h-4 w-4" />
+              Send us feedback
+            </PrimaryButton>
+            <SecondaryLink to="/logout" className="max-w-full">
+              Logout
+            </SecondaryLink>
+          </Popover.Panel>
+        </Transition.Child>
+      </Transition.Root>
+    </Popover>
   );
 }
