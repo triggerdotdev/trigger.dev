@@ -55,13 +55,21 @@ export class Logger {
     if (this.#level < 4) return;
 
     const structuredLog = {
-      timestamp: formattedDateTime(),
+      timestamp: new Date(),
       name: this.#name,
       message,
-      args: structureArgs(args, this.#filteredKeys),
+      args: structureArgs(safeJsonClone(args), this.#filteredKeys),
     };
 
     console.debug(JSON.stringify(structuredLog));
+  }
+}
+
+function safeJsonClone(obj: unknown) {
+  try {
+    return JSON.parse(JSON.stringify(obj));
+  } catch (e) {
+    return obj;
   }
 }
 

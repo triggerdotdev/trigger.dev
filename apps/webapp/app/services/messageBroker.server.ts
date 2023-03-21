@@ -960,7 +960,12 @@ function createTaskQueue() {
         await sendEmail(data);
         return true;
       },
-      DELIVER_SCHEDULED_EVENT: async (id, data, properties) => {
+      DELIVER_SCHEDULED_EVENT: async (id, data, properties, attributes) => {
+        // If this is a retry, we don't want to deliver the event again
+        if (attributes.redeliveryCount > 0) {
+          return true;
+        }
+
         const service = new DeliverScheduledEvent();
 
         return service.call(data.externalSourceId, data.payload);
