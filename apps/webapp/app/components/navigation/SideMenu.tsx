@@ -70,6 +70,12 @@ export function OrganizationsSideMenu() {
       to: `/orgs/${currentOrganization.slug}`,
       end: true,
     },
+    {
+      name: "API Keys",
+      icon: <KeyIcon className={iconStyle} />,
+      to: `/orgs/${currentOrganization.slug}/environments`,
+      end: false,
+    },
   ];
 
   if (currentOrganization.workflows.length > 0) {
@@ -85,12 +91,6 @@ export function OrganizationsSideMenu() {
         name: "API Integrations",
         icon: <SquaresPlusIcon className={iconStyle} />,
         to: `/orgs/${currentOrganization.slug}/integrations`,
-        end: false,
-      },
-      {
-        name: "API Keys",
-        icon: <KeyIcon className={iconStyle} />,
-        to: `/orgs/${currentOrganization.slug}/environments`,
         end: false,
       },
     ];
