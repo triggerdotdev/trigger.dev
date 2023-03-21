@@ -223,16 +223,16 @@ export class PollDeploymentLogs {
       pagination: paginationToken,
     });
 
-    if (logsResponse.pagination) {
-      return this.#gatherLogs(
-        deployment,
-        logType,
-        fromDate,
-        toDate,
-        logsResponse.pagination,
-        logs.concat(logsResponse.lines)
-      );
-    }
+    // if (logsResponse.pagination) {
+    //   return this.#gatherLogs(
+    //     deployment,
+    //     logType,
+    //     fromDate,
+    //     toDate,
+    //     logsResponse.pagination,
+    //     logs.concat(logsResponse.lines)
+    //   );
+    // }
 
     return logs.concat(logsResponse.lines);
   }
