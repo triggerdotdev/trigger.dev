@@ -75,9 +75,9 @@ export class ZodSubscriber<SubscriberSchema extends MessageCatalogSchema> {
     this.#status = "initializing";
 
     try {
-      this.#logger.debug(
-        `Initializing subscriber with config ${JSON.stringify(this.#config)}`
-      );
+      this.#logger.debug(`Initializing subscriber with config`, {
+        config: this.#config,
+      });
 
       this.#subscriber = await this.#client.subscribe({
         ...this.#config,
@@ -163,13 +163,6 @@ export class ZodSubscriber<SubscriberSchema extends MessageCatalogSchema> {
         return;
       }
     }
-
-    this.#logger.debug("#onMessage", {
-      messageId,
-      publishedTimestamp,
-      eventTimestamp,
-      redeliveryCount,
-    });
 
     const messageAttributes = {
       eventTimestamp:
@@ -263,6 +256,7 @@ export class ZodSubscriber<SubscriberSchema extends MessageCatalogSchema> {
       type: rawMessage.type,
       message,
       properties,
+      messageAttributes,
     });
 
     const handler = this.#handlers[typeName];

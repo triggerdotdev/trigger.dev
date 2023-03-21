@@ -176,13 +176,6 @@ export class ZodPublisher<PublisherSchema extends MessageCatalogSchema> {
           properties,
           generateErrorMessage(e.issues)
         );
-      } else {
-        this.#logger.error("[ZodPublisher] Error handling message", {
-          e,
-          data,
-          properties,
-          options,
-        });
       }
     }
   }
