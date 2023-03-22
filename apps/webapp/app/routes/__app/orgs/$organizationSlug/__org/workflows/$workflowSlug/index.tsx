@@ -4,7 +4,6 @@ import {
   ArrowsRightLeftIcon,
   ChevronDownIcon,
   CloudArrowUpIcon,
-  CloudIcon,
   Cog6ToothIcon,
 } from "@heroicons/react/24/outline";
 import type { LoaderArgs } from "@remix-run/server-runtime";
@@ -37,14 +36,13 @@ import { TriggerBody } from "~/components/triggers/Trigger";
 import { TriggerTypeIcon } from "~/components/triggers/TriggerIcons";
 import { triggerLabel } from "~/components/triggers/triggerLabel";
 import { DEV_ENVIRONMENT } from "~/consts";
-import { ProjectListItem } from "~/features/ee/projects/presenters/projectListPresenter.server";
-import { useCurrentProject } from "~/features/ee/projects/routes/projects/$projectP";
 import { useConnectionSlots } from "~/hooks/useConnectionSlots";
 import { useCurrentEnvironment } from "~/hooks/useEnvironments";
 import {
   useCurrentOrganization,
   useOrganizations,
 } from "~/hooks/useOrganizations";
+import { useUser } from "~/hooks/useUser";
 import {
   CurrentWorkflowEventRule,
   useCurrentWorkflow,
@@ -94,6 +92,8 @@ export default function Page() {
   invariant(workflow, "Workflow not found");
   const environment = useCurrentEnvironment();
   invariant(environment, "Environment not found");
+  const currentUser = useUser();
+  invariant(currentUser, "User not found");
 
   const eventRule = workflow.rules.find(
     (r) => r.environmentId === environment.id
@@ -407,30 +407,32 @@ export default function Page() {
               )}
             </Disclosure>
           </div>
-          <Disclosure defaultOpen={totalRealRuns > 0}>
-            {({ open }) => (
-              <div className="rounded-b-md border-t border-slate-900/50 bg-slate-700/80">
-                <Disclosure.Button className="flex w-full items-center justify-between bg-slate-800/70 py-4 px-4 transition hover:bg-slate-800/50">
-                  <div className="flex items-center gap-2">
-                    <CloudArrowUpIcon className="h-6 w-6 text-blue-500" />
-                    <Body>How to deploy your Workflow to the Cloud</Body>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Body size="small" className="text-slate-400">
-                      {open ? "Close" : "Open"}
-                    </Body>
-                    <ChevronDownIcon
-                      className={classNames(
-                        open ? "rotate-180 transform" : "",
-                        "h-5 w-5 text-slate-400 transition"
-                      )}
-                    />
-                  </div>
-                </Disclosure.Button>
-                <HowToDeployToCloud eventRule={eventRule} />
-              </div>
-            )}
-          </Disclosure>
+          {currentUser.featureCloud && (
+            <Disclosure defaultOpen={totalRealRuns > 0}>
+              {({ open }) => (
+                <div className="rounded-b-md border-t border-slate-900/50 bg-slate-700/80">
+                  <Disclosure.Button className="flex w-full items-center justify-between bg-slate-800/70 py-4 px-4 transition hover:bg-slate-800/50">
+                    <div className="flex items-center gap-2">
+                      <CloudArrowUpIcon className="h-6 w-6 text-blue-500" />
+                      <Body>How to deploy your Workflow to the Cloud</Body>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Body size="small" className="text-slate-400">
+                        {open ? "Close" : "Open"}
+                      </Body>
+                      <ChevronDownIcon
+                        className={classNames(
+                          open ? "rotate-180 transform" : "",
+                          "h-5 w-5 text-slate-400 transition"
+                        )}
+                      />
+                    </div>
+                  </Disclosure.Button>
+                  <HowToDeployToCloud eventRule={eventRule} />
+                </div>
+              )}
+            </Disclosure>
+          )}
         </>
       )}
       {apiConnectionCount > 0 && (
