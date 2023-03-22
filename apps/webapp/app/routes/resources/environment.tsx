@@ -115,9 +115,9 @@ export function EnvironmentMenu() {
               <Popover.Button
                 className={classNames(
                   currentEnvironment.slug === "live"
-                    ? `hover:bg-liveEnv-500/30`
-                    : `hover:bg-devEnv-500/30`,
-                  "flex w-full items-center justify-between gap-2 rounded py-2 pl-3.5 pr-2 text-base text-slate-300 transition focus:outline-none"
+                    ? `hover:bg-liveEnv-500/10`
+                    : `hover:bg-devEnv-500/10`,
+                  "flex w-full items-center justify-between gap-2 rounded py-2 pl-3 pr-2 text-base text-slate-300 transition focus:outline-none"
                 )}
               >
                 <div className="flex items-center gap-2">
@@ -126,7 +126,7 @@ export function EnvironmentMenu() {
                       currentEnvironment.slug === "live"
                         ? `border-liveEnv-500`
                         : `border-devEnv-500`,
-                      "grid h-[22px] w-[22px] place-items-center rounded-full border-2"
+                      "grid h-[24px] w-[24px] place-items-center rounded-lg border-2"
                     )}
                   >
                     <EnvironmentIcon slug={currentEnvironment.slug} />
