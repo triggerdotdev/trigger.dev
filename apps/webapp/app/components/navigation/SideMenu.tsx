@@ -261,16 +261,16 @@ export function WorkflowsSideMenu() {
       items={items}
       backPath={`/orgs/${organization.slug}`}
     >
-      <div className="mt-2 mb-2">
+      <div className="mt-2">
         <Body
           size="small"
-          className="py-3 pl-1 uppercase tracking-wider text-slate-400"
+          className="mb-1 py-3 pl-1 uppercase tracking-wider text-slate-400"
         >
           Environment
         </Body>
         <EnvironmentMenu />
+        <EventRuleSwitch />
       </div>
-      <EventRuleSwitch />
     </SideMenu>
   );
 }

@@ -7,11 +7,9 @@ import {
 } from "@heroicons/react/24/outline";
 import classNames from "classnames";
 import { useCallback, useState } from "react";
-import { EnvironmentIcon } from "~/routes/resources/environment";
 import { CopyText } from "./CopyText";
 import { TertiaryButton } from "./primitives/Buttons";
 import { Body } from "./primitives/text/Body";
-import { Tooltip } from "./primitives/Tooltip";
 
 const variantStyle = {
   slate:
@@ -118,9 +116,14 @@ export function CopyTextPanel({
 export type CopyTextSideMenuProps = {
   value: string;
   text?: string;
+  className?: string;
 };
 
-export function CopyTextSideMenu({ value, text }: CopyTextPanelProps) {
+export function CopyTextSideMenu({
+  value,
+  text,
+  className,
+}: CopyTextPanelProps) {
   const [copied, setCopied] = useState(false);
   const [isShowingKeys, setIsShowingKeys] = useState(false);
   const onCopied = useCallback(() => {
@@ -130,11 +133,17 @@ export function CopyTextSideMenu({ value, text }: CopyTextPanelProps) {
     }, 1500);
   }, [setCopied]);
   return (
-    <CopyText value={value} onCopied={onCopied} className="w-full">
+    <CopyText
+      value={value}
+      onCopied={onCopied}
+      className={classNames(className, "w-full")}
+    >
       {copied ? (
         <div className={classNames(copyTextSideMenuStyles)}>
           {isShowingKeys ? (
-            <Body className="truncate font-mono text-xs">{value}</Body>
+            <span className="truncate font-mono text-sm text-green-500 transition">
+              {value}
+            </span>
           ) : (
             <div className="flex items-center gap-2 truncate">
               <KeyIcon className="h-6 w-6 min-w-[1.5rem]" />
@@ -172,7 +181,7 @@ export function CopyTextSideMenu({ value, text }: CopyTextPanelProps) {
         <div className={classNames(copyTextSideMenuStyles)}>
           <div className="flex items-center gap-2 truncate">
             {isShowingKeys ? (
-              <Body className="truncate font-mono text-xs">{value}</Body>
+              <span className="truncate font-mono text-sm">{value}</span>
             ) : (
               <div className="flex items-center gap-2 truncate">
                 <KeyIcon className="h-6 w-6 min-w-[1.5rem]" />
