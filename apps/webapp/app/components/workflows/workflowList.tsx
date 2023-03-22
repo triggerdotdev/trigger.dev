@@ -57,16 +57,6 @@ export function WorkflowList({
 
               <div className="flex flex-col flex-wrap justify-between py-4 pl-4 pr-4 lg:flex-row lg:flex-nowrap lg:items-center">
                 <div className="flex flex-1 items-center justify-between">
-                  <div className="absolute -left-[26px] flex flex-col items-center gap-y-3.5 rounded-l bg-slate-800 pt-5 pb-3 transition group-hover:bg-slate-800/60">
-                    <Body
-                      size="extra-small"
-                      className="-rotate-90 font-semibold uppercase tracking-wider text-slate-400"
-                    >
-                      Live
-                    </Body>
-                    <EnvironmentIcon slug="live" />
-                  </div>
-
                   <div className="relative flex items-center">
                     {workflow.status === "CREATED" && (
                       <ExclamationTriangleIcon className="absolute -top-1.5 -left-1.5 h-6 w-6 text-amber-400" />
@@ -86,7 +76,6 @@ export function WorkflowList({
                       </Header2>
                       <div className="flex items-center gap-2">
                         <PillLabel label={workflow.trigger.typeTitle} />
-                        <CloudLabel label="Deployed" />
                         <Header3
                           size="extra-small"
                           className="truncate text-slate-400"
