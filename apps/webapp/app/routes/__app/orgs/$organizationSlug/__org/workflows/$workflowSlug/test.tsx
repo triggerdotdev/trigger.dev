@@ -16,6 +16,7 @@ import { useCurrentOrganization } from "~/hooks/useOrganizations";
 import { CurrentWorkflow, useCurrentWorkflow } from "~/hooks/useWorkflows";
 import { WorkflowTestPresenter } from "~/presenters/testPresenter.server";
 import { requireUserId } from "~/services/session.server";
+import { useCurrentEventRule } from "../$workflowSlug";
 
 export const loader = async ({ request, params }: LoaderArgs) => {
   const userId = await requireUserId(request);
@@ -43,6 +44,8 @@ export default function Page() {
   const workflow = useCurrentWorkflow();
   invariant(workflow, "Workflow not found");
 
+  const eventRule = useCurrentEventRule();
+
   return (
     <>
       <Title>Test</Title>
@@ -64,19 +67,24 @@ export default function Page() {
         </PanelInfo>
       ) : (
         <>
-          <SubTitle>{workflowType(workflow)}</SubTitle>
-          <Panel>
-            <Tester
-              organizationSlug={organization.slug}
-              workflowSlug={workflow.slug}
-              eventNames={workflow.eventNames}
-              initialValue={JSON.stringify(payload, null, 2)}
-            />
-          </Panel>
-          <Panel className="px-4 py-4">
-            Connect this workflow to the Live environment using your Live API
-            Key to enable testing.
-          </Panel>
+          {eventRule ? (
+            <>
+              <SubTitle>{workflowType(workflow)}</SubTitle>
+              <Panel>
+                <Tester
+                  organizationSlug={organization.slug}
+                  workflowSlug={workflow.slug}
+                  eventNames={workflow.eventNames}
+                  initialValue={JSON.stringify(payload, null, 2)}
+                />
+              </Panel>
+            </>
+          ) : (
+            <Panel className="px-4 py-4">
+              Connect this workflow to the Live environment using your Live API
+              Key to enable testing.
+            </Panel>
+          )}
         </>
       )}
     </>
