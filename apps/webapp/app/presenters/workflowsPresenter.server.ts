@@ -24,12 +24,8 @@ export class WorkflowsPresenter {
     this.#prismaClient = prismaClient;
   }
 
-  async data(whereInput: Prisma.WorkflowWhereInput, environmentId: string) {
-    const workflows = await getWorkflows(
-      this.#prismaClient,
-      whereInput,
-      environmentId
-    );
+  async data(whereInput: Prisma.WorkflowWhereInput) {
+    const workflows = await getWorkflows(this.#prismaClient, whereInput);
     const serviceMetadatas = await getServiceMetadatas(true);
 
     return workflows.map((workflow) => {
@@ -68,8 +64,7 @@ export class WorkflowsPresenter {
 
 function getWorkflows(
   prismaClient: PrismaClient,
-  whereInput: Prisma.WorkflowWhereInput,
-  environmentId: string
+  whereInput: Prisma.WorkflowWhereInput
 ) {
   return prismaClient.workflow.findMany({
     where: whereInput,
@@ -90,7 +85,9 @@ function getWorkflows(
           schedule: true,
         },
         where: {
-          environmentId,
+          environment: {
+            slug: "development",
+          },
         },
         orderBy: { createdAt: "desc" },
         take: 1,
@@ -101,7 +98,9 @@ function getWorkflows(
           type: true,
         },
         where: {
-          environmentId,
+          environment: {
+            slug: "development",
+          },
         },
         orderBy: { createdAt: "desc" },
         take: 1,

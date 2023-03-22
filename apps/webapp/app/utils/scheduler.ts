@@ -1,22 +1,21 @@
 import type {
   ScheduleSource,
-  ScheduleSourceRate,
   ScheduleSourceCron,
-  ScheduledEventPayload,
+  ScheduleSourceRate,
 } from "@trigger.dev/common-schemas";
 
 import { parseExpression } from "cron-parser";
 
 export function calculateNextScheduledEvent(
   source: ScheduleSource,
-  previousPayload?: ScheduledEventPayload
+  lastRunAt?: Date
 ): Date {
   if ("rateOf" in source) {
-    return calculateNextRateOfEvent(source, previousPayload);
+    return calculateNextRateOfEvent(source, lastRunAt);
   }
 
   if ("cron" in source) {
-    return calculateNextCronEvent(source, previousPayload);
+    return calculateNextCronEvent(source, lastRunAt);
   }
 
   throw new Error("Invalid schedule source");
@@ -24,17 +23,15 @@ export function calculateNextScheduledEvent(
 
 function calculateNextRateOfEvent(
   source: ScheduleSourceRate,
-  previousPayload?: ScheduledEventPayload
+  lastRunAt?: Date
 ): Date {
   const now = new Date();
 
-  if (!previousPayload) {
+  if (!lastRunAt) {
     return new Date(now.getTime() + calculateDurationInMs(source));
   }
 
-  return new Date(
-    previousPayload.scheduledTime.getTime() + calculateDurationInMs(source)
-  );
+  return new Date(lastRunAt.getTime() + calculateDurationInMs(source));
 }
 
 function calculateDurationInMs(source: ScheduleSourceRate): number {
@@ -55,11 +52,11 @@ function calculateDurationInMs(source: ScheduleSourceRate): number {
 
 function calculateNextCronEvent(
   source: ScheduleSourceCron,
-  previousPayload?: ScheduledEventPayload
+  lastRunAt?: Date
 ): Date {
   const now = new Date();
 
-  if (!previousPayload) {
+  if (!lastRunAt) {
     return parseExpression(source.cron, {
       currentDate: now,
     })
@@ -68,7 +65,7 @@ function calculateNextCronEvent(
   }
 
   return parseExpression(source.cron, {
-    currentDate: previousPayload.scheduledTime,
+    currentDate: lastRunAt,
   })
     .next()
     .toDate();

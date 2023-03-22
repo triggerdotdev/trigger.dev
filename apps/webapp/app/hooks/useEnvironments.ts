@@ -35,21 +35,6 @@ export function useEnvironments(): RuntimeEnvironment[] | undefined {
   return routeMatch.data.organization.environments;
 }
 
-export function useCurrentEnvironment(): RuntimeEnvironment | undefined {
-  const environments = useEnvironments();
-  const routeMatch = useMatchesData("routes/__app/orgs/$organizationSlug");
-
-  const currentEnvironmentSlug = routeMatch?.data.currentEnvironmentSlug;
-  if (!currentEnvironmentSlug || !environments) {
-    return undefined;
-  }
-
-  const currentEnvironment = environments?.find(
-    (e) => e.slug === currentEnvironmentSlug
-  );
-  return currentEnvironment;
-}
-
 export function useDevEnvironment(): RuntimeEnvironment | undefined {
   const routeMatch = useMatchesData("routes/__app/orgs/$organizationSlug");
 

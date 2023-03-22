@@ -7,8 +7,8 @@ import {
 } from "~/models/message.server";
 import { getOrganizationFromSlug } from "~/models/organization.server";
 import {
+  getCurrentRuntimeEnvironment,
   getRuntimeEnvironment,
-  getRuntimeEnvironmentFromRequest,
 } from "~/models/runtimeEnvironment.server";
 import { getWorkflowFromSlugs } from "~/models/workflow.server";
 import { CreateWorkflowTestRun } from "~/services/runs/createTestRun.server";
@@ -63,12 +63,11 @@ export const action = async ({ request, params }: ActionArgs) => {
     });
     invariant(organization, "organization is required");
 
-    const environmentSlug = await getRuntimeEnvironmentFromRequest(request);
-    const environment = await getRuntimeEnvironment({
-      organizationId: organization.id,
-      slug: environmentSlug,
-    });
-    invariant(environment, "environment is required");
+    const currentEnvironment = await getCurrentRuntimeEnvironment(
+      organizationSlug,
+      workflow.currentEnvironments[0]?.environment,
+      "development"
+    );
 
     //todo choose event name from form dropdown
     const createTestRunService = new CreateWorkflowTestRun();
@@ -76,7 +75,7 @@ export const action = async ({ request, params }: ActionArgs) => {
       payload: jsonPayload,
       eventName,
       workflow,
-      environment,
+      environment: currentEnvironment,
       organization,
     });
 

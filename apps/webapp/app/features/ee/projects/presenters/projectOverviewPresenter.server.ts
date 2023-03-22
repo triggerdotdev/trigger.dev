@@ -12,25 +12,13 @@ export class ProjectOverviewPresenter {
   }
 
   async data(organizationSlug: string, projectId: string) {
-    const liveEnvironment = await getEnvironmentForOrganization(
-      organizationSlug,
-      LIVE_ENVIRONMENT
-    );
-
-    if (!liveEnvironment) {
-      throw new Error("No live environment found");
-    }
-
     const workflowsPresenter = new WorkflowsPresenter(this.#prismaClient);
 
-    const workflows = await workflowsPresenter.data(
-      {
-        repositoryProject: {
-          id: projectId,
-        },
+    const workflows = await workflowsPresenter.data({
+      repositoryProject: {
+        id: projectId,
       },
-      liveEnvironment.id
-    );
+    });
 
     const deployments = await this.#prismaClient.projectDeployment.findMany({
       where: {

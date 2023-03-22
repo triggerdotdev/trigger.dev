@@ -16,10 +16,7 @@ import {
 import { Link, NavLink, useLocation } from "@remix-run/react";
 import invariant from "tiny-invariant";
 import type { CurrentProject } from "~/features/ee/projects/routes/projects/$projectP";
-import {
-  useCurrentEnvironment,
-  useEnvironments,
-} from "~/hooks/useEnvironments";
+import { useEnvironments } from "~/hooks/useEnvironments";
 import { useIsOrgChildPage } from "~/hooks/useIsOrgChildPage";
 import {
   useCurrentOrganization,
@@ -27,9 +24,11 @@ import {
 } from "~/hooks/useOrganizations";
 import { useOptionalUser } from "~/hooks/useUser";
 import { useCurrentWorkflow } from "~/hooks/useWorkflows";
-import { EnvironmentMenu } from "~/routes/resources/environment";
+import {
+  EnvironmentMenu,
+  EventRuleSwitch,
+} from "~/routes/resources/environment";
 import { CopyTextSideMenu } from "../CopyTextButton";
-import EnvironmentSwitch from "../EnvironmentSwitch";
 import { LogoIcon } from "../LogoIcon";
 import { MenuTitleToolTip } from "../primitives/MenuTitleToolTip";
 import { Body } from "../primitives/text/Body";
@@ -223,19 +222,10 @@ const activeCollapsedStyle =
 export function WorkflowsSideMenu() {
   const currentWorkflow = useCurrentWorkflow();
   const organization = useCurrentOrganization();
-  const environment = useCurrentEnvironment();
 
-  if (
-    currentWorkflow === undefined ||
-    organization === undefined ||
-    environment === undefined
-  ) {
+  if (currentWorkflow === undefined || organization === undefined) {
     return null;
   }
-
-  const workflowEventRule = currentWorkflow.rules.find(
-    (rule) => rule.environmentId === environment.id
-  );
 
   let items: SideMenuItem[] = [
     {
@@ -244,26 +234,16 @@ export function WorkflowsSideMenu() {
       to: ``,
       end: true,
     },
-  ];
-
-  if (workflowEventRule) {
-    items = [
-      ...items,
-      {
-        name: "Test",
-        icon: <BeakerIcon className={iconStyle} />,
-        to: `test`,
-      },
-      {
-        name: "Runs",
-        icon: <ForwardIcon className={iconStyle} />,
-        to: `runs`,
-      },
-    ];
-  }
-
-  items = [
-    ...items,
+    {
+      name: "Test",
+      icon: <BeakerIcon className={iconStyle} />,
+      to: `test`,
+    },
+    {
+      name: "Runs",
+      icon: <ForwardIcon className={iconStyle} />,
+      to: `runs`,
+    },
     {
       name: "Connected APIs",
       icon: <Squares2X2Icon className={iconStyle} />,
@@ -363,8 +343,7 @@ function SideMenu({
 
   const isOrgChildPage = useIsOrgChildPage();
   const environments = useEnvironments();
-  const currentOrganization = useCurrentOrganization();
-  if (environments === undefined || currentOrganization === undefined) {
+  if (environments === undefined) {
     return <></>;
   }
 
@@ -437,7 +416,7 @@ function SideMenu({
                   />
                 </div>
               )}
-              {environmentDisableSwitcher && <EnvironmentSwitch />}
+              {environmentDisableSwitcher && <EventRuleSwitch />}
             </div>
           </div>
         </nav>

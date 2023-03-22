@@ -14,23 +14,20 @@ import { SubTitle } from "~/components/primitives/text/SubTitle";
 import { Title } from "~/components/primitives/text/Title";
 import { useCurrentOrganization } from "~/hooks/useOrganizations";
 import { CurrentWorkflow, useCurrentWorkflow } from "~/hooks/useWorkflows";
-import { getRuntimeEnvironmentFromRequest } from "~/models/runtimeEnvironment.server";
 import { WorkflowTestPresenter } from "~/presenters/testPresenter.server";
 import { requireUserId } from "~/services/session.server";
 
 export const loader = async ({ request, params }: LoaderArgs) => {
-  await requireUserId(request);
+  const userId = await requireUserId(request);
   const { workflowSlug, organizationSlug } = params;
   invariant(workflowSlug, "workflowSlug is required");
   invariant(organizationSlug, "organizationSlug is required");
-
-  const environmentSlug = await getRuntimeEnvironmentFromRequest(request);
 
   try {
     const presenter = new WorkflowTestPresenter();
 
     return typedjson(
-      await presenter.data({ workflowSlug, organizationSlug, environmentSlug })
+      await presenter.data({ workflowSlug, organizationSlug, userId })
     );
   } catch (error: any) {
     console.error(error);

@@ -2,7 +2,10 @@ import { z } from "zod";
 import type { PrismaClient } from "~/db.server";
 import { prisma } from "~/db.server";
 import type { Organization } from "../models/organization.server";
-import type { RuntimeEnvironment } from "../models/runtimeEnvironment.server";
+import {
+  getCurrentRuntimeEnvironment,
+  RuntimeEnvironment,
+} from "../models/runtimeEnvironment.server";
 import type { User } from "../models/user.server";
 import type { Workflow } from "../models/workflow.server";
 import { allStatuses } from "../models/workflowRunStatus";
@@ -35,19 +38,49 @@ export class WorkflowRunListPresenter {
     userId,
     organizationSlug,
     workflowSlug,
-    environmentSlug,
     pageSize = 20,
     searchParams,
   }: {
     userId: User["id"];
     organizationSlug: Organization["slug"];
     workflowSlug: Workflow["slug"];
-    environmentSlug: RuntimeEnvironment["slug"];
     pageSize?: number;
     searchParams: URLSearchParams;
   }) {
     const searchEntries = Object.fromEntries(searchParams.entries());
     const { page, statuses } = SearchParamsSchema.parse(searchEntries);
+
+    const organization =
+      await this.#prismaClient.organization.findUniqueOrThrow({
+        where: {
+          slug: organizationSlug,
+        },
+      });
+
+    const workflow = await this.#prismaClient.workflow.findUniqueOrThrow({
+      where: {
+        organizationId_slug: {
+          organizationId: organization.id,
+          slug: workflowSlug,
+        },
+      },
+      include: {
+        currentEnvironments: {
+          where: {
+            userId,
+          },
+          include: {
+            environment: true,
+          },
+        },
+      },
+    });
+
+    const currentEnvironment = await getCurrentRuntimeEnvironment(
+      organizationSlug,
+      workflow.currentEnvironments[0]?.environment,
+      "development"
+    );
 
     const offset = (page - 1) * pageSize;
     const total = await this.#prismaClient.workflowRun.count({
@@ -63,9 +96,7 @@ export class WorkflowRunListPresenter {
             },
           },
         },
-        environment: {
-          slug: environmentSlug,
-        },
+        environmentId: currentEnvironment.id,
         status: {
           in: statuses,
         },
@@ -86,9 +117,7 @@ export class WorkflowRunListPresenter {
             },
           },
         },
-        environment: {
-          slug: environmentSlug,
-        },
+        environmentId: currentEnvironment.id,
         status: {
           in: statuses,
         },
@@ -107,9 +136,7 @@ export class WorkflowRunListPresenter {
         status: {
           in: statuses,
         },
-        environment: {
-          slug: environmentSlug,
-        },
+        environmentId: currentEnvironment.id,
         workflow: {
           slug: workflowSlug,
           organization: {

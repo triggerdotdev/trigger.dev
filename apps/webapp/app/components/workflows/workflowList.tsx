@@ -5,9 +5,7 @@ import {
 } from "@heroicons/react/24/outline";
 import { Link } from "@remix-run/react";
 import classNames from "classnames";
-import invariant from "tiny-invariant";
 import { Body } from "~/components/primitives/text/Body";
-import { useCurrentEnvironment } from "~/hooks/useEnvironments";
 import type { WorkflowListItem } from "~/presenters/workflowsPresenter.server";
 import { EnvironmentIcon } from "~/routes/resources/environment";
 import { formatDateTime } from "~/utils";
@@ -26,9 +24,6 @@ export function WorkflowList({
   currentOrganizationSlug: string;
   className?: string;
 }) {
-  const environment = useCurrentEnvironment();
-  invariant(environment, "Environment not found");
-
   return (
     <List className={className}>
       {workflows.map((workflow) => {

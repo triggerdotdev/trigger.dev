@@ -1,5 +1,5 @@
-import { Popover, Transition } from "@headlessui/react";
-import { ChevronUpDownIcon } from "@heroicons/react/24/outline";
+import { Popover, Switch, Transition } from "@headlessui/react";
+import { ChevronUpDownIcon, PowerIcon } from "@heroicons/react/24/outline";
 import { CheckIcon } from "@heroicons/react/24/solid";
 import { useFetcher } from "@remix-run/react";
 import type { ActionArgs } from "@remix-run/server-runtime";
@@ -7,19 +7,40 @@ import { json } from "@remix-run/server-runtime";
 import classNames from "classnames";
 import { Fragment } from "react";
 import { z } from "zod";
+import { Body } from "~/components/primitives/text/Body";
+import { prisma } from "~/db.server";
+import { useEnvironments } from "~/hooks/useEnvironments";
+import { useCurrentWorkflow } from "~/hooks/useWorkflows";
+import { requireUserId } from "~/services/session.server";
+import { DisableEventRule } from "~/services/workflows/disableEventRule.server";
+import { EnableEventRule } from "~/services/workflows/enableEventRule.server";
+import { titleCase } from "~/utils";
 import {
   useCurrentEnvironment,
-  useEnvironments,
-} from "~/hooks/useEnvironments";
-import { commitSession, getSession } from "~/models/runtimeEnvironment.server";
-import { requireUserId } from "~/services/session.server";
-import { titleCase } from "~/utils";
+  useCurrentEventRule,
+} from "../__app/orgs/$organizationSlug/__org/workflows/$workflowSlug";
 
-const requestSchema = z.object({
-  environment: z.string().min(1),
+const SwitchEnvironmentFormSchema = z.object({
+  action: z.literal("switch"),
+  environmentId: z.string(),
+  workflowId: z.string(),
 });
 
-const ONE_YEAR = 1000 * 60 * 60 * 24 * 365;
+const DisableWorkflowFormSchema = z.object({
+  action: z.literal("disable"),
+  eventRuleId: z.string(),
+});
+
+const EnableWorkflowFormSchema = z.object({
+  action: z.literal("enable"),
+  eventRuleId: z.string(),
+});
+
+const FormSchema = z.discriminatedUnion("action", [
+  SwitchEnvironmentFormSchema,
+  DisableWorkflowFormSchema,
+  EnableWorkflowFormSchema,
+]);
 
 export const action = async ({ request }: ActionArgs) => {
   const userId = await requireUserId(request);
@@ -32,23 +53,39 @@ export const action = async ({ request }: ActionArgs) => {
   }
 
   try {
-    const formData = await request.formData();
-    const body = Object.fromEntries(formData.entries());
-    const { environment } = requestSchema.parse(body);
+    const rawFormData = Object.fromEntries(await request.formData());
+    const formData = FormSchema.parse(rawFormData);
 
-    const session = await getSession(request.headers.get("cookie"));
-    session.set("environment", environment);
+    switch (formData.action) {
+      case "switch": {
+        const { workflowId, environmentId } = formData;
+        const environment = await prisma.currentEnvironment.upsert({
+          where: { workflowId_userId: { workflowId, userId } },
+          update: { environmentId },
+          create: { environmentId, workflowId, userId },
+        });
 
-    return json(
-      { success: true },
-      {
-        headers: {
-          "Set-Cookie": await commitSession(session, {
-            expires: new Date(Date.now() + ONE_YEAR),
-          }),
-        },
+        return json(environment);
       }
-    );
+      case "enable": {
+        const { eventRuleId } = formData;
+
+        const service = new EnableEventRule();
+
+        await service.call(eventRuleId);
+
+        return json({ enabled: true });
+      }
+      case "disable": {
+        const { eventRuleId } = formData;
+
+        const service = new DisableEventRule();
+
+        await service.call(eventRuleId);
+
+        return json({ enabled: true });
+      }
+    }
   } catch (error: any) {
     throw new Response(error.message, { status: 400 });
   }
@@ -58,7 +95,8 @@ export function EnvironmentMenu() {
   const fetcher = useFetcher();
   const environments = useEnvironments();
   const currentEnvironment = useCurrentEnvironment();
-  if (environments === undefined || currentEnvironment === undefined) {
+  const currentWorkflow = useCurrentWorkflow();
+  if (!environments || !currentWorkflow) {
     return <></>;
   }
 
@@ -69,6 +107,8 @@ export function EnvironmentMenu() {
         action="/resources/environment"
         method="post"
       >
+        <input type="hidden" name="action" value="switch" />
+        <input type="hidden" name="workflowId" value={currentWorkflow.id} />
         <Popover className="relative">
           {({ open }) => (
             <>
@@ -123,8 +163,8 @@ export function EnvironmentMenu() {
                             key={environment.id}
                             as="button"
                             type="submit"
-                            name="environment"
-                            value={environment.slug}
+                            name="environmentId"
+                            value={environment.id}
                             className={classNames(
                               "mx-1 flex items-center justify-between gap-1.5 rounded px-3 py-2 text-white transition hover:bg-slate-800",
                               environment.slug === currentEnvironment?.slug &&
@@ -174,5 +214,140 @@ export function EnvironmentIcon({
         className
       )}
     />
+  );
+}
+
+export function EventRuleSwitch() {
+  const fetcher = useFetcher();
+  const environment = useCurrentEnvironment();
+  const eventRule = useCurrentEventRule();
+
+  let isEnabled = eventRule ? eventRule.enabled : false;
+
+  if (fetcher.submission) {
+    const action = fetcher.submission.formData.get("action");
+
+    if (action === "enable") {
+      isEnabled = true;
+    }
+    if (action === "disable") {
+      isEnabled = false;
+    }
+  }
+
+  const highlightColorClass = isEnabled
+    ? environment.slug === "live"
+      ? "bg-liveEnv-500"
+      : "bg-devEnv-500"
+    : "bg-slate-800";
+
+  const prettyEnvironmentName =
+    environment.slug === "live" ? "Live" : "Development";
+
+  const enabledName = isEnabled ? "enabled" : "disabled";
+
+  let hoverMessage = eventRule
+    ? `This workflow is ${enabledName} in the ${prettyEnvironmentName} environment.`
+    : `This workflow has not been connected to the ${prettyEnvironmentName} environment.`;
+
+  return (
+    <div className="group ">
+      <div className="mb-4 flex items-center justify-between pl-3">
+        <div className="flex items-center gap-2">
+          <PowerIcon
+            className={classNames(
+              isEnabled ? "text-slate-300" : "text-slate-500",
+              "h-6 w-6 transition"
+            )}
+          />
+          <Body
+            className={classNames(
+              isEnabled ? "text-slate-300" : "text-slate-500",
+              "transition"
+            )}
+          >
+            Enabled in {environment.slug === "live" ? "Live" : "Dev"}
+          </Body>
+        </div>
+        <Switch
+          checked={isEnabled}
+          disabled={!eventRule}
+          onChange={(newIsEnabled) => {
+            eventRule &&
+              fetcher.submit(
+                {
+                  action: newIsEnabled ? "enable" : "disable",
+                  eventRuleId: eventRule.id,
+                },
+                { method: "post", action: "/resources/environment" }
+              );
+          }}
+          className={classNames(
+            highlightColorClass,
+            "relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-600 focus-visible:ring-offset-2"
+          )}
+        >
+          <span className="sr-only">Toggle enable in Live</span>
+          <span
+            className={classNames(
+              isEnabled ? "translate-x-5" : "translate-x-0",
+              "pointer-events-none relative inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out"
+            )}
+          >
+            <span
+              className={classNames(
+                isEnabled
+                  ? "opacity-0 duration-100 ease-out"
+                  : "opacity-100 duration-200 ease-in",
+                "absolute inset-0 flex h-full w-full items-center justify-center transition-opacity"
+              )}
+              aria-hidden="true"
+            >
+              <svg
+                className="h-3 w-3 text-gray-400"
+                fill="none"
+                viewBox="0 0 12 12"
+              >
+                <path
+                  d="M4 8l2-2m0 0l2-2M6 6L4 4m2 2l2 2"
+                  stroke="currentColor"
+                  strokeWidth={2}
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </svg>
+            </span>
+            <span
+              className={classNames(
+                isEnabled
+                  ? "opacity-100 duration-200 ease-in"
+                  : "opacity-0 duration-100 ease-out",
+                "absolute inset-0 flex h-full w-full items-center justify-center transition-opacity"
+              )}
+              aria-hidden="true"
+            >
+              <svg
+                className={classNames(
+                  "h-3 w-3",
+                  environment.slug === "live"
+                    ? "text-liveEnv-500"
+                    : "text-devEnv-500"
+                )}
+                fill="currentColor"
+                viewBox="0 0 12 12"
+              >
+                <path d="M3.707 5.293a1 1 0 00-1.414 1.414l1.414-1.414zM5 8l-.707.707a1 1 0 001.414 0L5 8zm4.707-3.293a1 1 0 00-1.414-1.414l1.414 1.414zm-7.414 2l2 2 1.414-1.414-2-2-1.414 1.414zm3.414 2l4-4-1.414-1.414-4 4 1.414 1.414z" />
+              </svg>
+            </span>
+          </span>
+        </Switch>
+      </div>
+      <div className="relative rounded border border-slate-800 bg-slate-900 py-2 px-3 opacity-0 transition duration-300 group-hover:opacity-100">
+        <div className="absolute -top-2 right-3 h-4 w-4 rotate-45 border-t border-l border-slate-800 bg-slate-900" />
+        <Body size="small" className="text-slate-500">
+          {hoverMessage}
+        </Body>
+      </div>
+    </div>
   );
 }

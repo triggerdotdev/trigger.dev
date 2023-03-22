@@ -237,7 +237,7 @@ export default function NewProjectPage() {
                             </SecondaryLink>
                           );
                         } else {
-                          return null;
+                          return <></>;
                         }
                       }}
                     </Await>

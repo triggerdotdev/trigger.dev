@@ -1,9 +1,8 @@
 import { useState } from "react";
 import { Switch } from "@headlessui/react";
-import { useCurrentEnvironment } from "~/hooks/useEnvironments";
-import invariant from "tiny-invariant";
 import { Body } from "./primitives/text/Body";
 import { PowerIcon } from "@heroicons/react/24/outline";
+import { useCurrentEnvironment } from "~/routes/__app/orgs/$organizationSlug/__org/workflows/$workflowSlug";
 
 function classNames(...classes: string[]) {
   return classes.filter(Boolean).join(" ");
@@ -11,7 +10,6 @@ function classNames(...classes: string[]) {
 
 export default function EnvironmentSwitch() {
   const environment = useCurrentEnvironment();
-  invariant(environment, "Environment not found");
   const [enabled, setEnabled] = useState(false);
 
   const highlightColorClass = enabled

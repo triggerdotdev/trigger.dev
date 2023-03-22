@@ -42,24 +42,6 @@ export async function getEnvironmentForOrganization(
   return environment;
 }
 
-export const { commitSession, getSession } = createCookieSessionStorage({
-  cookie: {
-    name: "__environment",
-    path: "/",
-    httpOnly: true,
-    sameSite: "lax",
-    secrets: [env.SESSION_SECRET],
-    secure: env.NODE_ENV === "production",
-  },
-});
-
-export async function getRuntimeEnvironmentFromRequest(
-  request: Request
-): Promise<string> {
-  const environmentSession = await getSession(request.headers.get("cookie"));
-  return environmentSession.get("environment") ?? "development";
-}
-
 export async function getRuntimeEnvironment({
   organizationId,
   slug,
@@ -72,6 +54,35 @@ export async function getRuntimeEnvironment({
       organizationId_slug: {
         organizationId,
         slug,
+      },
+    },
+  });
+}
+
+export async function getCurrentRuntimeEnvironment(
+  organizationSlug: string,
+  environment?: RuntimeEnvironment,
+  defaultEnvironment?: string
+) {
+  if (environment) {
+    return environment;
+  }
+
+  const organization = await prisma.organization.findUnique({
+    where: {
+      slug: organizationSlug,
+    },
+  });
+
+  if (!organization) {
+    throw new Response("Not Found", { status: 404 });
+  }
+
+  return await prisma.runtimeEnvironment.findUniqueOrThrow({
+    where: {
+      organizationId_slug: {
+        organizationId: organization.id,
+        slug: defaultEnvironment ?? "development",
       },
     },
   });

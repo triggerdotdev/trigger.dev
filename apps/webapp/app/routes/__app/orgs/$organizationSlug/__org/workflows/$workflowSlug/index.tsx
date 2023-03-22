@@ -14,7 +14,6 @@ import { ApiLogoIcon } from "~/components/code/ApiLogoIcon";
 import CodeBlock from "~/components/code/CodeBlock";
 import { CopyTextButton } from "~/components/CopyTextButton";
 import { EnvironmentBanner } from "~/components/EnvironmentBanner";
-import { OctoKitty } from "~/components/GitHubLoginButton";
 import { ConnectionSelector } from "~/components/integrations/ConnectionSelector";
 import { WorkflowConnections } from "~/components/integrations/WorkflowConnections";
 import { Panel } from "~/components/layout/Panel";
@@ -37,7 +36,6 @@ import { TriggerTypeIcon } from "~/components/triggers/TriggerIcons";
 import { triggerLabel } from "~/components/triggers/triggerLabel";
 import { DEV_ENVIRONMENT } from "~/consts";
 import { useConnectionSlots } from "~/hooks/useConnectionSlots";
-import { useCurrentEnvironment } from "~/hooks/useEnvironments";
 import {
   useCurrentOrganization,
   useOrganizations,
@@ -47,10 +45,10 @@ import {
   CurrentWorkflowEventRule,
   useCurrentWorkflow,
 } from "~/hooks/useWorkflows";
-import type { RuntimeEnvironment } from "~/models/runtimeEnvironment.server";
-import { getRuntimeEnvironmentFromRequest } from "~/models/runtimeEnvironment.server";
+import { RuntimeEnvironment } from "~/models/runtimeEnvironment.server";
 import { WorkflowRunListPresenter } from "~/presenters/workflowRunListPresenter.server";
 import { requireUserId } from "~/services/session.server";
+import { useCurrentEnvironment } from "../$workflowSlug";
 
 const pageSize = 10;
 
@@ -63,13 +61,11 @@ export const loader = async ({ request, params }: LoaderArgs) => {
   const searchParams = new URLSearchParams();
 
   try {
-    const environmentSlug = await getRuntimeEnvironmentFromRequest(request);
     const presenter = new WorkflowRunListPresenter();
     const result = await presenter.data({
       userId,
       organizationSlug,
       workflowSlug,
-      environmentSlug,
       searchParams,
       pageSize,
     });
@@ -91,7 +87,6 @@ export default function Page() {
   const workflow = useCurrentWorkflow();
   invariant(workflow, "Workflow not found");
   const environment = useCurrentEnvironment();
-  invariant(environment, "Environment not found");
   const currentUser = useUser();
   invariant(currentUser, "User not found");
 
@@ -126,20 +121,6 @@ export default function Page() {
       <div className="flex items-baseline justify-between">
         <Title>Overview</Title>
         <div className="flex items-center gap-4">
-          {workflow.organizationTemplate && (
-            <a
-              href={workflow.organizationTemplate.repositoryUrl}
-              className="flex items-center gap-1 text-sm text-slate-400 transition hover:text-slate-200"
-              target="_blank"
-              rel="noreferrer"
-            >
-              <OctoKitty className="mr-0.5 h-4 w-4" />
-              {workflow.organizationTemplate.repositoryUrl.replace(
-                "https://github.com/",
-                ""
-              )}
-            </a>
-          )}
           <Body size="small" className="text-slate-400">
             <span className="mr-1.5 text-xs tracking-wide text-slate-500">
               ID
