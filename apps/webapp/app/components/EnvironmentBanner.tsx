@@ -19,14 +19,14 @@ export function EnvironmentBanner() {
           {environment.slug === "live" ? (
             <Body
               size="extra-small"
-              className="rounded-b bg-liveEnv-500 px-3 py-1.5 font-semibold tracking-wide text-liveEnv-900"
+              className="rounded-b bg-liveEnv-500 px-1.5 py-0.5 font-semibold tracking-wide text-liveEnv-900"
             >
               Live
             </Body>
           ) : (
             <Body
               size="extra-small"
-              className="rounded-b bg-devEnv-500  px-3 py-1.5 font-semibold tracking-wide text-devEnv-900"
+              className="rounded-b bg-devEnv-500  px-1.5 py-0.5 font-semibold tracking-wide text-devEnv-900"
             >
               Development
             </Body>
