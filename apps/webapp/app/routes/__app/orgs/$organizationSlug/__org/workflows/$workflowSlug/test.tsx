@@ -73,6 +73,10 @@ export default function Page() {
               initialValue={JSON.stringify(payload, null, 2)}
             />
           </Panel>
+          <Panel className="px-4 py-4">
+            Connect this workflow to the Live environment using your Live API
+            Key to enable testing.
+          </Panel>
         </>
       )}
     </>
