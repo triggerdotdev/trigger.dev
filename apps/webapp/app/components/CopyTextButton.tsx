@@ -146,8 +146,10 @@ export function CopyTextSideMenu({
             </span>
           ) : (
             <div className="flex items-center gap-2 truncate">
-              <KeyIcon className="h-6 w-6 min-w-[1.5rem]" />
-              <Body className="truncate">{text ?? value}</Body>
+              <KeyIcon className="h-6 w-6 min-w-[1.5rem] text-green-500" />
+              <Body className="truncate text-green-500">
+                {text ?? value} copied
+              </Body>
             </div>
           )}
           <div className="flex items-center gap-1">

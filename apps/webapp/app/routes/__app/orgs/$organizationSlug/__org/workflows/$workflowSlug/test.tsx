@@ -50,6 +50,7 @@ export default function Page() {
 
   return (
     <>
+      <EnvironmentBanner />
       <Title>Test</Title>
       {status === "CREATED" && (
         <PanelWarning
