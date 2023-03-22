@@ -1,3 +1,4 @@
+import { BeakerIcon } from "@heroicons/react/24/outline";
 import { useFetcher } from "@remix-run/react";
 import type { LoaderArgs } from "@remix-run/server-runtime";
 import { useCallback, useState } from "react";
@@ -10,6 +11,7 @@ import { PanelInfo } from "~/components/layout/PanelInfo";
 import { PanelWarning } from "~/components/layout/PanelWarning";
 import { PrimaryButton, TertiaryLink } from "~/components/primitives/Buttons";
 import { Select } from "~/components/primitives/Select";
+import { Body } from "~/components/primitives/text/Body";
 import { SubTitle } from "~/components/primitives/text/SubTitle";
 import { Title } from "~/components/primitives/text/Title";
 import { useCurrentOrganization } from "~/hooks/useOrganizations";
@@ -80,10 +82,15 @@ export default function Page() {
               </Panel>
             </>
           ) : (
-            <Panel className="px-4 py-4">
-              Connect this workflow to the Live environment using your Live API
-              Key to enable testing.
-            </Panel>
+            <div className="mx-auto -mt-10 grid h-full max-w-md place-content-center">
+              <Panel className="flex h-max flex-col items-center gap-y-6 px-10 py-10">
+                <BeakerIcon className="h-14 w-14 text-blue-500" />
+                <Body className="text-center text-slate-400">
+                  Connect this workflow to the Live environment using your Live
+                  API Key to enable testing.
+                </Body>
+              </Panel>
+            </div>
           )}
         </>
       )}
