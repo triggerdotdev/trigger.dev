@@ -1,4 +1,4 @@
-import { Outlet } from "@remix-run/react";
+import { Outlet, ShouldRevalidateFunction } from "@remix-run/react";
 import type { LoaderArgs } from "@remix-run/server-runtime";
 import { typedjson } from "remix-typedjson";
 import invariant from "tiny-invariant";

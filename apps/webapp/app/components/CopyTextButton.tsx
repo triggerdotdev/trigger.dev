@@ -133,8 +133,8 @@ export function CopyTextSideMenu({ value, text }: CopyTextPanelProps) {
     <CopyText value={value} onCopied={onCopied} className="w-full">
       {copied ? (
         <div className={classNames(copyTextSideMenuStyles)}>
-          {isShowingKeys === true ? (
-            <Body className="truncate font-mono text-sm">{text ?? value}</Body>
+          {isShowingKeys ? (
+            <Body className="truncate font-mono text-xs">{value}</Body>
           ) : (
             <div className="flex items-center gap-2 truncate">
               <KeyIcon className="h-6 w-6 min-w-[1.5rem]" />
@@ -145,14 +145,20 @@ export function CopyTextSideMenu({ value, text }: CopyTextPanelProps) {
             <div className="flex items-center rounded p-1.5 opacity-0 transition hover:bg-slate-800 group-hover:opacity-100">
               {!isShowingKeys ? (
                 <TertiaryButton
-                  onClick={() => setIsShowingKeys(true)}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setIsShowingKeys(true);
+                  }}
                   className="group transition"
                 >
                   <EyeIcon className="h-4 w-4 text-slate-500 transition group-hover:text-slate-400" />
                 </TertiaryButton>
               ) : (
                 <TertiaryButton
-                  onClick={() => setIsShowingKeys(false)}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setIsShowingKeys(false);
+                  }}
                   className="group transition"
                 >
                   <EyeSlashIcon className="h-4 w-4 text-slate-500 transition group-hover:text-slate-400" />
@@ -165,21 +171,33 @@ export function CopyTextSideMenu({ value, text }: CopyTextPanelProps) {
       ) : (
         <div className={classNames(copyTextSideMenuStyles)}>
           <div className="flex items-center gap-2 truncate">
-            <KeyIcon className="h-6 w-6 min-w-[1.5rem]" />
-            <Body className="truncate">{text ?? value}</Body>
+            {isShowingKeys ? (
+              <Body className="truncate font-mono text-xs">{value}</Body>
+            ) : (
+              <div className="flex items-center gap-2 truncate">
+                <KeyIcon className="h-6 w-6 min-w-[1.5rem]" />
+                <Body className="truncate">{text ?? value}</Body>
+              </div>
+            )}
           </div>
           <div className="flex items-center gap-1">
             <div className="flex items-center rounded p-1.5 opacity-0 transition hover:bg-slate-800 group-hover:opacity-100">
               {!isShowingKeys ? (
                 <TertiaryButton
-                  onClick={() => setIsShowingKeys(true)}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setIsShowingKeys(true);
+                  }}
                   className="group transition"
                 >
                   <EyeIcon className="h-4 w-4 text-slate-400 transition group-hover:text-slate-300" />
                 </TertiaryButton>
               ) : (
                 <TertiaryButton
-                  onClick={() => setIsShowingKeys(false)}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setIsShowingKeys(false);
+                  }}
                   className="group transition"
                 >
                   <EyeSlashIcon className="h-4 w-4 text-slate-400 transition group-hover:text-slate-300" />

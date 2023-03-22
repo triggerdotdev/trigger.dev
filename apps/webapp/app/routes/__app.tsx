@@ -1,4 +1,4 @@
-import { Outlet } from "@remix-run/react";
+import { Outlet, ShouldRevalidateFunction } from "@remix-run/react";
 import type { LoaderArgs } from "@remix-run/server-runtime";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { ImpersonationBanner } from "~/components/ImpersonationBanner";
@@ -35,6 +35,10 @@ export const loader = async ({ request }: LoaderArgs) => {
       ],
     }
   );
+};
+
+export const shouldRevalidate: ShouldRevalidateFunction = (options) => {
+  return false;
 };
 
 export default function App() {

@@ -1,7 +1,7 @@
 import type { LoaderArgs } from "@remix-run/server-runtime";
 import invariant from "tiny-invariant";
 import { requireUserId } from "~/services/session.server";
-import { Outlet } from "@remix-run/react";
+import { Outlet, ShouldRevalidateFunction } from "@remix-run/react";
 import { getOrganizationFromSlug } from "~/models/organization.server";
 import { typedjson } from "remix-typedjson";
 import {
@@ -47,3 +47,11 @@ export default function Organization() {
     </>
   );
 }
+
+export const shouldRevalidate: ShouldRevalidateFunction = (options) => {
+  if (options.formAction === "/resources/environment") {
+    return false;
+  }
+
+  return true;
+};

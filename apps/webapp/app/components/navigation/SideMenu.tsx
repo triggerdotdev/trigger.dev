@@ -28,6 +28,7 @@ import {
   EnvironmentMenu,
   EventRuleSwitch,
 } from "~/routes/resources/environment";
+import { useCurrentEnvironment } from "~/routes/__app/orgs/$organizationSlug/__org/workflows/$workflowSlug";
 import { CopyTextSideMenu } from "../CopyTextButton";
 import { LogoIcon } from "../LogoIcon";
 import { MenuTitleToolTip } from "../primitives/MenuTitleToolTip";
@@ -98,9 +99,6 @@ export function OrganizationsSideMenu() {
       title={currentOrganization.title}
       items={items}
       backPath="/"
-      environmentSwitcher={false}
-      environmentDisableSwitcher={false}
-      environmentKey={false}
     />
   );
 }
@@ -262,10 +260,18 @@ export function WorkflowsSideMenu() {
       title={currentWorkflow.title}
       items={items}
       backPath={`/orgs/${organization.slug}`}
-      environmentSwitcher={true}
-      environmentDisableSwitcher={true}
-      environmentKey={true}
-    />
+    >
+      <div className="mt-2 mb-2">
+        <Body
+          size="small"
+          className="py-3 pl-1 uppercase tracking-wider text-slate-400"
+        >
+          Environment
+        </Body>
+        <EnvironmentMenu />
+      </div>
+      <EventRuleSwitch />
+    </SideMenu>
   );
 }
 
@@ -310,9 +316,6 @@ export function ProjectSideMenu({
       title={project.name}
       items={items}
       backPath={backPath}
-      environmentSwitcher={false}
-      environmentDisableSwitcher={false}
-      environmentKey={false}
     />
   );
 }
@@ -326,17 +329,13 @@ function SideMenu({
   items,
   title,
   subtitle,
-  environmentSwitcher,
-  environmentDisableSwitcher,
-  environmentKey,
+  children,
 }: {
   title: string;
   items: SideMenuItem[];
   backPath: string;
   subtitle: string;
-  environmentSwitcher: boolean;
-  environmentDisableSwitcher: boolean;
-  environmentKey: boolean;
+  children?: React.ReactNode;
 }) {
   const organization = useCurrentOrganization();
   invariant(organization, "Organization must be defined");
@@ -396,27 +395,7 @@ function SideMenu({
                   </NavLink>
                 ))}
               </div>
-              {environmentSwitcher && (
-                <div className="mt-2 mb-2">
-                  <Body
-                    size="small"
-                    className="py-3 pl-1 uppercase tracking-wider text-slate-400"
-                  >
-                    Environment
-                  </Body>
-                  <EnvironmentMenu />
-                </div>
-              )}
-              {environmentKey && (
-                <div className="mb-4 flex w-full flex-col justify-between">
-                  <CopyTextSideMenu
-                    value="Dev API Key"
-                    text="Dev API Key"
-                    className="pt-3 pb-3 pl-7 text-slate-300 hover:text-slate-300"
-                  />
-                </div>
-              )}
-              {environmentDisableSwitcher && <EventRuleSwitch />}
+              {children}
             </div>
           </div>
         </nav>

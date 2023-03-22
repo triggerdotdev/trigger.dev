@@ -7,6 +7,7 @@ import { json } from "@remix-run/server-runtime";
 import classNames from "classnames";
 import { Fragment } from "react";
 import { z } from "zod";
+import { CopyTextSideMenu } from "~/components/CopyTextButton";
 import { Body } from "~/components/primitives/text/Body";
 import { prisma } from "~/db.server";
 import { useEnvironments } from "~/hooks/useEnvironments";
@@ -94,11 +95,24 @@ export const action = async ({ request }: ActionArgs) => {
 export function EnvironmentMenu() {
   const fetcher = useFetcher();
   const environments = useEnvironments();
-  const currentEnvironment = useCurrentEnvironment();
+  let currentEnvironment = useCurrentEnvironment();
   const currentWorkflow = useCurrentWorkflow();
   if (!environments || !currentWorkflow) {
     return <></>;
   }
+
+  if (fetcher.submission) {
+    const environmentId = fetcher.submission.formData.get("environmentId");
+
+    if (environmentId) {
+      currentEnvironment = environments.find(
+        (env) => env.id === environmentId
+      )!;
+    }
+  }
+
+  const currentEnv = currentEnvironment.slug;
+  const currentApiKey = currentEnvironment.apiKey;
 
   return (
     <>
@@ -114,7 +128,7 @@ export function EnvironmentMenu() {
             <>
               <Popover.Button
                 className={classNames(
-                  currentEnvironment.slug === "live"
+                  currentEnv === "live"
                     ? `hover:bg-liveEnv-500/10`
                     : `hover:bg-devEnv-500/10`,
                   "flex w-full items-center justify-between gap-2 rounded py-2 pl-3 pr-2 text-base text-slate-300 transition focus:outline-none"
@@ -123,17 +137,17 @@ export function EnvironmentMenu() {
                 <div className="flex items-center gap-2">
                   <div
                     className={classNames(
-                      currentEnvironment.slug === "live"
+                      currentEnv === "live"
                         ? `border-liveEnv-500`
                         : `border-devEnv-500`,
                       "grid h-[24px] w-[24px] place-items-center rounded-lg border-2"
                     )}
                   >
-                    <EnvironmentIcon slug={currentEnvironment.slug} />
+                    <EnvironmentIcon slug={currentEnv} />
                   </div>
                   <span className="transition">
                     {currentEnvironment ? (
-                      <span>{titleCase(currentEnvironment.slug)}</span>
+                      <span>{titleCase(currentEnv)}</span>
                     ) : (
                       <span className="">Select environment</span>
                     )}
@@ -167,8 +181,7 @@ export function EnvironmentMenu() {
                             value={environment.id}
                             className={classNames(
                               "mx-1 flex items-center justify-between gap-1.5 rounded px-3 py-2 text-white transition hover:bg-slate-800",
-                              environment.slug === currentEnvironment?.slug &&
-                                "!bg-slate-800"
+                              environment.slug === currentEnv && "!bg-slate-800"
                             )}
                           >
                             <div className="flex items-center gap-2">
@@ -177,7 +190,7 @@ export function EnvironmentMenu() {
                                 {titleCase(environment.slug)}
                               </span>
                             </div>
-                            {environment.slug === currentEnvironment?.slug && (
+                            {environment.slug === currentEnv && (
                               <CheckIcon className="h-5 w-5 text-blue-600" />
                             )}
                           </Popover.Button>
@@ -191,6 +204,11 @@ export function EnvironmentMenu() {
           )}
         </Popover>
       </fetcher.Form>
+      <CopyTextSideMenu
+        value={currentApiKey}
+        text="API Key"
+        className="pt-3 pb-3 pl-7 text-slate-300 hover:text-slate-300"
+      />
     </>
   );
 }
