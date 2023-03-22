@@ -248,7 +248,7 @@ export function EventRuleSwitch() {
 
   let hoverMessage = eventRule
     ? `This workflow is ${enabledName} in the ${prettyEnvironmentName} environment.`
-    : `This workflow has not been connected to the ${prettyEnvironmentName} environment.`;
+    : `Connect this workflow to the ${prettyEnvironmentName} environment to enable.`;
 
   return (
     <div className="group ">
@@ -284,6 +284,7 @@ export function EventRuleSwitch() {
           }}
           className={classNames(
             highlightColorClass,
+            !eventRule && "cursor-not-allowed opacity-50",
             "relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-600 focus-visible:ring-offset-2"
           )}
         >
