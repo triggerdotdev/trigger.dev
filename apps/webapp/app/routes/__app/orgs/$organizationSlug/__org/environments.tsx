@@ -2,7 +2,6 @@ import { EyeIcon, EyeSlashIcon } from "@heroicons/react/20/solid";
 import { useState } from "react";
 import invariant from "tiny-invariant";
 import { CopyTextPanel } from "~/components/CopyTextButton";
-import { EnvironmentBanner } from "~/components/EnvironmentBanner";
 import { AppBody, AppLayoutTwoCol } from "~/components/layout/AppLayout";
 import { Container } from "~/components/layout/Container";
 import { Header } from "~/components/layout/Header";

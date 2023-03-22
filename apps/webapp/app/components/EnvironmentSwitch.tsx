@@ -22,7 +22,7 @@ export default function EnvironmentSwitch() {
 
   return (
     <div className="group ">
-      <div className="mb-4 flex items-center justify-between pl-3">
+      <div className="mb-4 flex items-center justify-between pl-3 pr-2.5">
         <div className="flex items-center gap-2">
           <PowerIcon
             className={classNames(
@@ -103,7 +103,7 @@ export default function EnvironmentSwitch() {
         </Switch>
       </div>
       <div className="relative rounded border border-slate-800 bg-slate-900 py-2 px-3 opacity-0 transition duration-300 group-hover:opacity-100">
-        <div className="absolute -top-2 right-3 h-4 w-4 rotate-45 border-t border-l border-slate-800 bg-slate-900" />
+        <div className="absolute -top-2 right-6 h-4 w-4 rotate-45 border-t border-l border-slate-800 bg-slate-900" />
         <Body size="small" className="text-slate-500">
           This Workflow is {enabled === true ? "enabled" : "disabled"} in the{" "}
           {environment.slug === "live" ? "Live" : "Development"} environment.
