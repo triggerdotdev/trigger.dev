@@ -34,6 +34,8 @@ model User {
 
   featureCloud           Boolean @default(false)
   isOnHostedRepoWaitlist Boolean @default(false)
+
+  currentEnvironments CurrentEnvironment[]
 }
 
 enum AuthenticationMethod {
@@ -111,13 +113,14 @@ model RuntimeEnvironment {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  events           TriggerEvent[]
-  runs             WorkflowRun[]
-  eventRules       EventRule[]
-  schedulerSources SchedulerSource[]
-  internalSources  InternalSource[]
-  deployments      ProjectDeployment[]
-  keyValueItems    KeyValueItem[]
+  events              TriggerEvent[]
+  runs                WorkflowRun[]
+  eventRules          EventRule[]
+  schedulerSources    SchedulerSource[]
+  internalSources     InternalSource[]
+  deployments         ProjectDeployment[]
+  keyValueItems       KeyValueItem[]
+  currentEnvironments CurrentEnvironment[]
 
   @@unique([organizationId, slug])
 }
@@ -163,6 +166,8 @@ model Workflow {
 
   repositoryProject   RepositoryProject? @relation(fields: [repositoryProjectId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   repositoryProjectId String?
+
+  currentEnvironments CurrentEnvironment[]
 
   @@unique([organizationId, slug])
 }
@@ -829,4 +834,21 @@ enum OrganizationTemplateStatus {
   CREATED
   READY_TO_DEPLOY
   DEPLOYED
+}
+
+model CurrentEnvironment {
+  id         String   @id @default(cuid())
+  workflow   Workflow @relation(fields: [workflowId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  workflowId String
+
+  environment   RuntimeEnvironment @relation(fields: [environmentId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  environmentId String
+
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  userId String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([workflowId, userId])
 }

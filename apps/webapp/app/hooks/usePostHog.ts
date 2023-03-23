@@ -1,7 +1,7 @@
 import { useLocation } from "@remix-run/react";
 import posthog from "posthog-js";
 import { useEffect, useRef } from "react";
-import { useCurrentEnvironment } from "./useEnvironments";
+import { useOptionalCurrentEnvironment } from "~/routes/__app/orgs/$organizationSlug/__org/workflows/$workflowSlug";
 import { useCurrentOrganization } from "./useOrganizations";
 import { useOptionalUser } from "./useUser";
 import { useCurrentWorkflow } from "./useWorkflows";
@@ -14,7 +14,7 @@ export const usePostHog = (apiKey?: string, logging = false): void => {
   const currentOrganizationId = currentOrganization?.id;
   const currentWorkflow = useCurrentWorkflow();
   const currentWorkflowId = currentWorkflow?.id;
-  const currentEnvironment = useCurrentEnvironment();
+  const currentEnvironment = useOptionalCurrentEnvironment();
   const currentEnvironmentId = currentEnvironment?.id;
 
   //start PostHog once

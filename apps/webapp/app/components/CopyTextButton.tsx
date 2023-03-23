@@ -1,8 +1,15 @@
-import { CheckIcon, ClipboardIcon } from "@heroicons/react/24/outline";
+import {
+  CheckIcon,
+  ClipboardIcon,
+  EyeIcon,
+  EyeSlashIcon,
+  KeyIcon,
+} from "@heroicons/react/24/outline";
 import classNames from "classnames";
 import { useCallback, useState } from "react";
-import { EnvironmentIcon } from "~/routes/resources/environment";
 import { CopyText } from "./CopyText";
+import { TertiaryButton } from "./primitives/Buttons";
+import { Body } from "./primitives/text/Body";
 
 const variantStyle = {
   slate:
@@ -65,7 +72,7 @@ const panelVariantStyle = {
   primary:
     "truncate text-indigo-100 bg-indigo-700/50 pl-3.5 pr-2 py-3 rounded border border-indigo-600 flex items-center justify-between gap-2 hover:cursor-pointer hover:bg-indigo-600/50 hover:border-indigo-600 transition",
   slate:
-    "flex w-full items-center justify-between gap-2 truncate rounded bg-slate-850 py-2 pl-2.5 pr-1 transition hover:cursor-pointer hover:bg-slate-800 hover:text-slate-300",
+    "flex w-full items-center justify-between gap-2 truncate rounded bg-slate-850 py-2 pl-2.5 pr-1 transition hover:cursor-pointer hover:bg-slate-850/70 hover:text-slate-300",
   text: "flex w-full items-center justify-between gap-2 truncate rounded bg-transparent py-2 pl-2.5 pr-1 transition hover:cursor-pointer hover:border-slate-700/50 hover:bg-slate-700/50",
 };
 
@@ -105,3 +112,116 @@ export function CopyTextPanel({
     </CopyText>
   );
 }
+
+export type CopyTextSideMenuProps = {
+  value: string;
+  text?: string;
+  className?: string;
+};
+
+export function CopyTextSideMenu({
+  value,
+  text,
+  className,
+}: CopyTextPanelProps) {
+  const [copied, setCopied] = useState(false);
+  const [isShowingKeys, setIsShowingKeys] = useState(false);
+  const onCopied = useCallback(() => {
+    setCopied(true);
+    setTimeout(() => {
+      setCopied(false);
+    }, 1500);
+  }, [setCopied]);
+  return (
+    <CopyText
+      value={value}
+      onCopied={onCopied}
+      className={classNames(className, "w-full")}
+    >
+      {copied ? (
+        <div className={classNames(copyTextSideMenuStyles)}>
+          {isShowingKeys ? (
+            <span className="truncate font-mono text-sm text-green-500 transition">
+              {value}
+            </span>
+          ) : (
+            <div className="flex items-center gap-2 truncate">
+              <KeyIcon className="h-6 w-6 min-w-[1.5rem] text-green-500" />
+              <Body className="truncate text-green-500">
+                {text ?? value} copied
+              </Body>
+            </div>
+          )}
+          <div className="flex items-center gap-1">
+            <div className="flex items-center rounded p-1.5 opacity-0 transition hover:bg-slate-800 group-hover:opacity-100">
+              {!isShowingKeys ? (
+                <TertiaryButton
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setIsShowingKeys(true);
+                  }}
+                  className="group transition"
+                >
+                  <EyeIcon className="h-4 w-4 text-slate-500 transition group-hover:text-slate-400" />
+                </TertiaryButton>
+              ) : (
+                <TertiaryButton
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setIsShowingKeys(false);
+                  }}
+                  className="group transition"
+                >
+                  <EyeSlashIcon className="h-4 w-4 text-slate-500 transition group-hover:text-slate-400" />
+                </TertiaryButton>
+              )}
+            </div>
+            <CheckIcon className="h-4 w-4 text-green-500" />
+          </div>
+        </div>
+      ) : (
+        <div className={classNames(copyTextSideMenuStyles)}>
+          <div className="flex items-center gap-2 truncate">
+            {isShowingKeys ? (
+              <span className="truncate font-mono text-sm">{value}</span>
+            ) : (
+              <div className="flex items-center gap-2 truncate">
+                <KeyIcon className="h-6 w-6 min-w-[1.5rem]" />
+                <Body className="truncate">{text ?? value}</Body>
+              </div>
+            )}
+          </div>
+          <div className="flex items-center gap-1">
+            <div className="flex items-center rounded p-1.5 opacity-0 transition hover:bg-slate-800 group-hover:opacity-100">
+              {!isShowingKeys ? (
+                <TertiaryButton
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setIsShowingKeys(true);
+                  }}
+                  className="group transition"
+                >
+                  <EyeIcon className="h-4 w-4 text-slate-400 transition group-hover:text-slate-300" />
+                </TertiaryButton>
+              ) : (
+                <TertiaryButton
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setIsShowingKeys(false);
+                  }}
+                  className="group transition"
+                >
+                  <EyeSlashIcon className="h-4 w-4 text-slate-400 transition group-hover:text-slate-300" />
+                </TertiaryButton>
+              )}
+            </div>
+            <ClipboardIcon className="h-4 w-4" />
+          </div>
+        </div>
+      )}
+    </CopyText>
+  );
+}
+
+const copyTextSideMenuStyles =
+  "group flex w-full items-center text-slate-300 justify-between truncate rounded py-1.5 pl-3 pr-2.5 transition hover:cursor-pointer hover:bg-slate-850";

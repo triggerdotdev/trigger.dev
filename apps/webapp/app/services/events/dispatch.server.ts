@@ -6,6 +6,7 @@ import type { RuntimeEnvironment } from "~/models/runtimeEnvironment.server";
 import type { Workflow } from "~/models/workflow.server";
 import { taskQueue } from "../messageBroker.server";
 import { generateErrorMessage } from "zod-error";
+import { logger } from "../logger";
 
 export class DispatchEvent {
   #prismaClient: PrismaClient;
@@ -25,9 +26,9 @@ export class DispatchEvent {
       throw new Error(`Event not found: ${id}`);
     }
 
-    console.log(
-      `Dispatching event ${event.id}, type = ${event.type}, name = ${event.name}, service = ${event.service}, environment = ${event.environmentId}`
-    );
+    logger.debug("Dispatching event", {
+      event,
+    });
 
     const eventRules = await this.#prismaClient.eventRule.findMany({
       where: {
@@ -42,23 +43,22 @@ export class DispatchEvent {
       },
     });
 
-    console.log(
-      `Found ${eventRules.length} event rules to check for event ${
-        event.id
-      }: ${eventRules.map((eventRule) => eventRule.id).join(", ")}`
-    );
+    logger.debug("Found event rules to check for event", {
+      eventRules,
+      event,
+    });
 
     const matcher = new EventMatcher(event);
-
-    console.log(`Matching event rules for event`, matcher.json);
 
     const matchingEventRules = eventRules.filter((eventRule) => {
       return matcher.matches(eventRule);
     });
 
-    console.log(
-      `Found ${matchingEventRules.length} matching event rules for event ${event.id}`
-    );
+    logger.debug("Found matching event rules for event", {
+      eventRules,
+      matchingEventRules,
+      event,
+    });
 
     const dispatchWorkflowRun = new DispatchWorkflowRun();
 

@@ -112,9 +112,12 @@ export function getWorkflowFromSlugs({
           enabled: true,
         },
       },
-      organizationTemplate: {
-        select: {
-          repositoryUrl: true,
+      currentEnvironments: {
+        where: {
+          userId,
+        },
+        include: {
+          environment: true,
         },
       },
     },

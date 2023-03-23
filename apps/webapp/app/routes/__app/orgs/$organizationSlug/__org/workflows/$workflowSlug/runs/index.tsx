@@ -20,7 +20,6 @@ import {
   runStatusTitle,
 } from "~/components/runs/runStatus";
 import { useCurrentWorkflow } from "~/hooks/useWorkflows";
-import { getRuntimeEnvironmentFromRequest } from "~/models/runtimeEnvironment.server";
 import type { WorkflowRunStatus } from "~/models/workflowRun.server";
 import { WorkflowRunListPresenter } from "~/presenters/workflowRunListPresenter.server";
 import { allStatuses } from "~/models/workflowRunStatus";
@@ -37,13 +36,11 @@ export const loader = async ({ request, params }: LoaderArgs) => {
   const searchParams = new URLSearchParams(url.search);
 
   try {
-    const environmentSlug = await getRuntimeEnvironmentFromRequest(request);
     const presenter = new WorkflowRunListPresenter();
     const result = await presenter.data({
       userId,
       organizationSlug,
       workflowSlug,
-      environmentSlug,
       searchParams,
     });
     return typedjson(result);

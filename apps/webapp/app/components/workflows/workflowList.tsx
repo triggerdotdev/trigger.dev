@@ -1,17 +1,19 @@
+import { CloudIcon } from "@heroicons/react/20/solid";
 import {
-  ExclamationTriangleIcon,
   ChevronRightIcon,
+  ExclamationTriangleIcon,
 } from "@heroicons/react/24/outline";
 import { Link } from "@remix-run/react";
-import { Body } from "~/components/primitives/text/Body";
 import classNames from "classnames";
+import { Body } from "~/components/primitives/text/Body";
+import type { WorkflowListItem } from "~/presenters/workflowsPresenter.server";
+import { EnvironmentIcon } from "~/routes/resources/environment";
 import { formatDateTime } from "~/utils";
 import { ApiLogoIcon } from "../code/ApiLogoIcon";
 import { List } from "../layout/List";
 import { Header2, Header3 } from "../primitives/text/Headers";
 import { runStatusLabel } from "../runs/runStatus";
 import { TriggerTypeIcon } from "../triggers/TriggerIcons";
-import type { WorkflowListItem } from "~/presenters/workflowsPresenter.server";
 
 export function WorkflowList({
   workflows,
@@ -30,13 +32,21 @@ export function WorkflowList({
             <Link
               to={`/orgs/${currentOrganizationSlug}/workflows/${workflow.slug}`}
               className={classNames(
-                "relative block overflow-hidden transition hover:bg-slate-850/40",
+                "group relative block transition hover:bg-slate-850/40",
                 workflow.status === "DISABLED" ? workflowDisabled : ""
               )}
             >
               {workflow.lastRun === undefined && (
-                <div className="absolute top-2 -right-8 rotate-45 bg-green-700 px-8 py-0.5 text-xs font-semibold uppercase tracking-wide text-green-200 shadow-md">
-                  New
+                <div className="absolute top-[9px] -right-12 flex rotate-45">
+                  <div className="relative -right-7 inline-block h-5 w-12 overflow-hidden">
+                    <div className="absolute bottom-0 h-[28px] w-[28px] origin-bottom-left rotate-45 transform bg-green-700" />
+                  </div>
+                  <Body className="z-10 bg-green-700 px-1 py-0.5 text-xs font-semibold uppercase tracking-wide text-green-200">
+                    New
+                  </Body>
+                  <div className="relative right-5 inline-block h-5 w-12 overflow-hidden">
+                    <div className="absolute bottom-0 h-[28px] w-[28px] origin-bottom-left rotate-45 transform bg-green-700" />
+                  </div>
                 </div>
               )}
 
@@ -59,7 +69,7 @@ export function WorkflowList({
                       >
                         {workflow.title}
                       </Header2>
-                      <div className="flex items-baseline gap-2">
+                      <div className="flex items-center gap-2">
                         <PillLabel label={workflow.trigger.typeTitle} />
                         <Header3
                           size="extra-small"
@@ -149,6 +159,15 @@ function lastRunDescription(lastRun: WorkflowListItem["lastRun"]) {
 function PillLabel({ label }: { label: string }) {
   return (
     <span className="rounded bg-slate-700 px-1.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+      {label}
+    </span>
+  );
+}
+
+function CloudLabel({ label }: { label: string }) {
+  return (
+    <span className="flex items-center gap-1 rounded bg-slate-700 px-1.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-blue-400">
+      <CloudIcon className="h-3.5 w-3.5 text-blue-500" />
       {label}
     </span>
   );

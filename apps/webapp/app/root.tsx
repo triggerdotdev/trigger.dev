@@ -8,6 +8,7 @@ import {
   ScrollRestoration,
   useCatch,
 } from "@remix-run/react";
+import type { ShouldRevalidateFunction } from "@remix-run/react";
 import tailwindStylesheetUrl from "./styles/tailwind.css";
 import prismStylesheetUrl from "./styles/prism.css";
 import prismThemeStylesheetUrl from "./styles/prism-trigger-theme.css";
@@ -50,6 +51,14 @@ export const loader = async ({ request }: LoaderArgs) => {
     },
     { headers: { "Set-Cookie": await commitSession(session) } }
   );
+};
+
+export const shouldRevalidate: ShouldRevalidateFunction = (options) => {
+  if (options.formAction === "/resources/environment") {
+    return false;
+  }
+
+  return true;
 };
 
 export function CatchBoundary() {

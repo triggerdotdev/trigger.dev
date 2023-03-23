@@ -3,6 +3,7 @@ import { TriggerMetadataSchema } from "@trigger.dev/common-schemas";
 import { JSONSchemaFaker } from "json-schema-faker";
 import type { PrismaClient } from "~/db.server";
 import { prisma } from "~/db.server";
+import { getCurrentRuntimeEnvironment } from "~/models/runtimeEnvironment.server";
 import type { EventRule } from "~/models/workflow.server";
 import { WebhookExamplesPresenter } from "./webhookExamplePresenter.server";
 
@@ -16,12 +17,45 @@ export class WorkflowTestPresenter {
   async data({
     organizationSlug,
     workflowSlug,
-    environmentSlug,
+    userId,
   }: {
     organizationSlug: string;
     workflowSlug: string;
-    environmentSlug: string;
+    userId: string;
   }) {
+    const organization =
+      await this.#prismaClient.organization.findUniqueOrThrow({
+        where: {
+          slug: organizationSlug,
+        },
+      });
+
+    const workflowWithCurrentEnvironment =
+      await this.#prismaClient.workflow.findUniqueOrThrow({
+        where: {
+          organizationId_slug: {
+            organizationId: organization.id,
+            slug: workflowSlug,
+          },
+        },
+        include: {
+          currentEnvironments: {
+            where: {
+              userId,
+            },
+            include: {
+              environment: true,
+            },
+          },
+        },
+      });
+
+    const currentEnvironment = await getCurrentRuntimeEnvironment(
+      organizationSlug,
+      workflowWithCurrentEnvironment.currentEnvironments[0]?.environment,
+      "development"
+    );
+
     const workflow = await this.#prismaClient.workflow.findFirst({
       where: {
         slug: workflowSlug,
@@ -32,16 +66,12 @@ export class WorkflowTestPresenter {
       include: {
         rules: {
           where: {
-            environment: {
-              slug: environmentSlug,
-            },
+            environmentId: currentEnvironment.id,
           },
         },
         runs: {
           where: {
-            environment: {
-              slug: environmentSlug,
-            },
+            environmentId: currentEnvironment.id,
           },
           include: {
             event: true,

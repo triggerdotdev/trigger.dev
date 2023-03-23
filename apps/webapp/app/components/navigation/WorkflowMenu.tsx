@@ -14,6 +14,8 @@ import { Fragment } from "react";
 import { useCurrentOrganization } from "~/hooks/useOrganizations";
 import { useCurrentWorkflow, useWorkflows } from "~/hooks/useWorkflows";
 import { BreadcrumbDivider } from "../layout/Header";
+import { PrimaryLink } from "../primitives/Buttons";
+import { MobileNavIcon, MobileNavLink } from "../primitives/NavLink";
 
 const dimmedClassNames = "text-slate-500";
 
@@ -40,10 +42,10 @@ export function WorkflowMenu() {
               <Popover.Button
                 className={`
                 ${open ? "" : ""}
-                inline-flex justify-between items-center rounded text-white bg-transparent pl-2.5 pr-2 py-2 text-sm hover:bg-slate-800 focus:outline-none`}
+                inline-flex items-center justify-between rounded bg-transparent py-2 pl-2.5 pr-2 text-sm text-white hover:bg-slate-800 focus:outline-none`}
               >
                 <ArrowsRightLeftIcon
-                  className={`h-5 w-5 mr-2 ${dimmedClassNames}`}
+                  className={`mr-2 h-5 w-5 ${dimmedClassNames}`}
                   aria-hidden="true"
                 />
                 <span className="transition">
@@ -68,9 +70,9 @@ export function WorkflowMenu() {
                 leaveFrom="opacity-100 translate-y-0"
                 leaveTo="opacity-0 translate-y-1"
               >
-                <Popover.Panel className="absolute left-0 z-30 mt-3 rounded-lg w-screen min-w-max max-w-xs max-h-[70vh] overflow-hidden overflow-y-auto translate-x-0 transform px-4 sm:px-0">
+                <Popover.Panel className="absolute left-0 z-30 mt-3 max-h-[70vh] w-screen min-w-max max-w-xs translate-x-0 transform overflow-hidden overflow-y-auto rounded-lg px-4 sm:px-0">
                   <div className="overflow-hidden rounded-lg shadow-lg ring-1 ring-black ring-opacity-5">
-                    <div className="relative grid gap-y-1 py-1 bg-slate-700 grid-cols-1">
+                    <div className="relative grid grid-cols-1 gap-y-1 bg-slate-700 py-1">
                       {workflows.map((workflow) => {
                         return (
                           <Popover.Button
@@ -78,7 +80,7 @@ export function WorkflowMenu() {
                             as={Link}
                             to={`/orgs/${currentOrganization.slug}/workflows/${workflow.slug}`}
                             className={classNames(
-                              "flex items-center justify-between gap-1.5 mx-1 px-3 py-2 text-white rounded hover:bg-slate-800 transition",
+                              "mx-1 flex items-center justify-between gap-1.5 rounded px-3 py-2 text-white transition hover:bg-slate-800",
                               workflow.slug === currentWorkflow?.slug &&
                                 "!bg-slate-800",
                               workflow.status === "DISABLED" && "opacity-50"
@@ -89,7 +91,7 @@ export function WorkflowMenu() {
                                 <ExclamationTriangleIcon className="absolute -top-1.5 -left-2.5 h-3.5 w-3.5 text-amber-500" />
                               )}
                               <ArrowsRightLeftIcon
-                                className="h-5 w-5 z-100"
+                                className="z-100 h-5 w-5"
                                 aria-hidden="true"
                               />
                               <span className="block truncate">
@@ -106,7 +108,7 @@ export function WorkflowMenu() {
                         as={Link}
                         to={`/orgs/${currentOrganization.slug}/workflows/new`}
                       >
-                        <div className="flex items-center gap-2 mx-1 pl-2.5 py-2 rounded hover:bg-slate-800 transition">
+                        <div className="mx-1 flex items-center gap-2 rounded py-2 pl-2.5 transition hover:bg-slate-800">
                           <PlusIcon
                             className="h-5 w-5 text-green-500"
                             aria-hidden="true"

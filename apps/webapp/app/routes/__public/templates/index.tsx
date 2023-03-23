@@ -13,7 +13,7 @@ export default function TemplateList() {
   const { templates } = useTypedLoaderData<typeof loader>();
 
   return (
-    <div className="flex w-full flex-col overflow-y-auto bg-slate-850">
+    <div className="flex w-full flex-col overflow-y-auto bg-slate-850 px-4">
       <div className="mx-auto mt-6 mb-10 max-w-6xl lg:mt-10">
         <h1 className="mb-6 text-center font-title text-5xl font-semibold text-slate-200">
           Choose a template

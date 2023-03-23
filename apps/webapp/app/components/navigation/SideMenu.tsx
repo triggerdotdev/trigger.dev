@@ -1,4 +1,3 @@
-import { EyeIcon, EyeSlashIcon } from "@heroicons/react/20/solid";
 import {
   ArrowLeftOnRectangleIcon,
   ArrowsRightLeftIcon,
@@ -9,15 +8,15 @@ import {
   Cog6ToothIcon,
   ForwardIcon,
   HomeIcon,
+  KeyIcon,
   QueueListIcon,
   Squares2X2Icon,
   SquaresPlusIcon,
 } from "@heroicons/react/24/outline";
 import { Link, NavLink, useLocation } from "@remix-run/react";
-import { useState } from "react";
 import invariant from "tiny-invariant";
-import { CurrentProject } from "~/features/ee/projects/routes/projects/$projectP";
-import { useCurrentEnvironment } from "~/hooks/useEnvironments";
+import type { CurrentProject } from "~/features/ee/projects/routes/projects/$projectP";
+import { useEnvironments } from "~/hooks/useEnvironments";
 import { useIsOrgChildPage } from "~/hooks/useIsOrgChildPage";
 import {
   useCurrentOrganization,
@@ -26,13 +25,12 @@ import {
 import { useOptionalUser } from "~/hooks/useUser";
 import { useCurrentWorkflow } from "~/hooks/useWorkflows";
 import {
-  EnvironmentIcon,
   EnvironmentMenu,
+  EventRuleSwitch,
 } from "~/routes/resources/environment";
-import { titleCase } from "~/utils";
-import { CopyTextPanel } from "../CopyTextButton";
+import { useCurrentEnvironment } from "~/routes/__app/orgs/$organizationSlug/__org/workflows/$workflowSlug";
+import { CopyTextSideMenu } from "../CopyTextButton";
 import { LogoIcon } from "../LogoIcon";
-import { TertiaryButton } from "../primitives/Buttons";
 import { MenuTitleToolTip } from "../primitives/MenuTitleToolTip";
 import { Body } from "../primitives/text/Body";
 import { Header1 } from "../primitives/text/Headers";
@@ -69,6 +67,12 @@ export function OrganizationsSideMenu() {
       to: `/orgs/${currentOrganization.slug}`,
       end: true,
     },
+    {
+      name: "API Keys",
+      icon: <KeyIcon className={iconStyle} />,
+      to: `/orgs/${currentOrganization.slug}/environments`,
+      end: false,
+    },
   ];
 
   if (currentOrganization.workflows.length > 0) {
@@ -95,7 +99,6 @@ export function OrganizationsSideMenu() {
       title={currentOrganization.title}
       items={items}
       backPath="/"
-      environmentSwitcher={false}
     />
   );
 }
@@ -217,19 +220,10 @@ const activeCollapsedStyle =
 export function WorkflowsSideMenu() {
   const currentWorkflow = useCurrentWorkflow();
   const organization = useCurrentOrganization();
-  const environment = useCurrentEnvironment();
 
-  if (
-    currentWorkflow === undefined ||
-    organization === undefined ||
-    environment === undefined
-  ) {
+  if (currentWorkflow === undefined || organization === undefined) {
     return null;
   }
-
-  const workflowEventRule = currentWorkflow.rules.find(
-    (rule) => rule.environmentId === environment.id
-  );
 
   let items: SideMenuItem[] = [
     {
@@ -238,26 +232,16 @@ export function WorkflowsSideMenu() {
       to: ``,
       end: true,
     },
-  ];
-
-  if (workflowEventRule) {
-    items = [
-      ...items,
-      {
-        name: "Test",
-        icon: <BeakerIcon className={iconStyle} />,
-        to: `test`,
-      },
-      {
-        name: "Runs",
-        icon: <ForwardIcon className={iconStyle} />,
-        to: `runs`,
-      },
-    ];
-  }
-
-  items = [
-    ...items,
+    {
+      name: "Test",
+      icon: <BeakerIcon className={iconStyle} />,
+      to: `test`,
+    },
+    {
+      name: "Runs",
+      icon: <ForwardIcon className={iconStyle} />,
+      to: `runs`,
+    },
     {
       name: "Connected APIs",
       icon: <Squares2X2Icon className={iconStyle} />,
@@ -276,8 +260,18 @@ export function WorkflowsSideMenu() {
       title={currentWorkflow.title}
       items={items}
       backPath={`/orgs/${organization.slug}`}
-      environmentSwitcher={true}
-    />
+    >
+      <div className="mt-2">
+        <Body
+          size="small"
+          className="mb-1 py-3 pl-1 uppercase tracking-wider text-slate-400"
+        >
+          Environment
+        </Body>
+        <EnvironmentMenu />
+        <EventRuleSwitch />
+      </div>
+    </SideMenu>
   );
 }
 
@@ -322,7 +316,6 @@ export function ProjectSideMenu({
       title={project.name}
       items={items}
       backPath={backPath}
-      environmentSwitcher={false}
     />
   );
 }
@@ -336,20 +329,22 @@ function SideMenu({
   items,
   title,
   subtitle,
-  environmentSwitcher,
+  children,
 }: {
   title: string;
   items: SideMenuItem[];
   backPath: string;
   subtitle: string;
-  environmentSwitcher: boolean;
+  children?: React.ReactNode;
 }) {
   const organization = useCurrentOrganization();
   invariant(organization, "Organization must be defined");
 
   const isOrgChildPage = useIsOrgChildPage();
-
-  const [isShowingKeys, setIsShowingKeys] = useState(false);
+  const environments = useEnvironments();
+  if (environments === undefined) {
+    return <></>;
+  }
 
   return (
     <div className="flex min-h-0 flex-1 flex-col border-r border-slate-800 bg-slate-950">
@@ -400,83 +395,8 @@ function SideMenu({
                   </NavLink>
                 ))}
               </div>
-              {environmentSwitcher && (
-                <div className="mt-2">
-                  <Body
-                    size="small"
-                    className="py-3 pl-1 uppercase tracking-wider text-slate-400"
-                  >
-                    Environment
-                  </Body>
-                  <EnvironmentMenu />
-                </div>
-              )}
+              {children}
             </div>
-          </div>
-          <div className="flex flex-col gap-6">
-            <ul className="ml-3 mr-2 flex flex-col gap-2">
-              <li className="flex w-full items-center justify-between">
-                <Body
-                  size="extra-small"
-                  className={`overflow-hidden text-slate-300 transition group-hover:text-slate-400 ${menuSmallTitleStyle}`}
-                >
-                  API keys
-                </Body>
-                {!isShowingKeys ? (
-                  <TertiaryButton
-                    onClick={() => setIsShowingKeys(true)}
-                    className="group mr-1.5 transition before:text-xs before:text-slate-400 hover:before:content-['Show_keys']"
-                  >
-                    <EyeIcon className="h-4 w-4 text-slate-500 transition group-hover:text-slate-400" />
-                  </TertiaryButton>
-                ) : (
-                  <TertiaryButton
-                    onClick={() => setIsShowingKeys(false)}
-                    className="group mr-1.5 transition before:text-xs before:text-slate-400 hover:before:content-['Hide_keys']"
-                  >
-                    <EyeSlashIcon className="h-4 w-4 text-slate-500 transition group-hover:text-slate-400" />
-                  </TertiaryButton>
-                )}
-              </li>
-              {organization.environments.map((environment) => {
-                return (
-                  <li
-                    key={environment.id}
-                    className="flex w-full flex-col justify-between"
-                  >
-                    <div className="relative flex items-center">
-                      <EnvironmentIcon
-                        slug={environment.slug}
-                        className="absolute top-4 left-2"
-                      />
-                      <CopyTextPanel
-                        value={environment.apiKey}
-                        text={
-                          isShowingKeys
-                            ? environment.apiKey
-                            : `${titleCase(environment.slug)}`
-                        }
-                        variant="slate"
-                        className="pl-6 text-slate-300 hover:text-slate-300"
-                      />
-                    </div>
-                  </li>
-                );
-              })}
-              <Body size="extra-small" className="mt-1 text-slate-500">
-                Copy these keys into your workflow code. Use the Live key for
-                production and Development key for local. Learn more about API
-                keys{" "}
-                <a
-                  href="https://docs.trigger.dev/guides/environments"
-                  target="_blank"
-                  className="underline underline-offset-2 transition hover:text-slate-200"
-                >
-                  here
-                </a>
-                .
-              </Body>
-            </ul>
           </div>
         </nav>
       </div>
@@ -507,5 +427,3 @@ function WorkflowsNavLink({
     </Link>
   );
 }
-
-const menuSmallTitleStyle = "uppercase text-slate-500 tracking-wide";

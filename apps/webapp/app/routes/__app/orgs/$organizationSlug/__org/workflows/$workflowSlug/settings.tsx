@@ -22,8 +22,8 @@ import {
 } from "~/models/message.server";
 import { requireUserId } from "~/services/session.server";
 import { ArchiveWorkflow } from "~/services/workflows/archiveWorkflow.server";
-import { DisableWorkflow } from "~/services/workflows/disableWorkflow.server";
-import { EnableWorkflow } from "~/services/workflows/enableWorkflow.server";
+import { DisableEventRule } from "~/services/workflows/disableEventRule.server";
+import { EnableEventRule } from "~/services/workflows/enableEventRule.server";
 import { UnarchiveWorkflow } from "~/services/workflows/unarchiveWorkflow.server";
 
 const ActionSchema = z.enum(["disable", "enable", "archive", "unarchive"]);
@@ -43,53 +43,11 @@ export async function action({ params, request }: ActionArgs) {
   const { organizationSlug, workflowSlug } = ParamsSchema.parse(params);
 
   switch (action) {
-    case "disable":
-      return disableAction(userId, organizationSlug, workflowSlug, request);
-    case "enable":
-      return enableAction(userId, organizationSlug, workflowSlug, request);
     case "archive":
       return archiveAction(userId, organizationSlug, workflowSlug, request);
     case "unarchive":
       return unarchiveAction(userId, organizationSlug, workflowSlug, request);
   }
-}
-
-async function disableAction(
-  userId: string,
-  organizationSlug: string,
-  workflowSlug: string,
-  request: Request
-) {
-  const service = new DisableWorkflow();
-  const result = await service.call(userId, organizationSlug, workflowSlug);
-
-  if (result.status === "error") {
-    return redirectBackWithErrorMessage(request, result.message);
-  }
-
-  return redirectBackWithSuccessMessage(
-    request,
-    "Workflow successfully disabled. No new events will run."
-  );
-}
-
-async function enableAction(
-  userId: string,
-  organizationSlug: string,
-  workflowSlug: string,
-  request: Request
-) {
-  const service = new EnableWorkflow();
-  const result = await service.call(userId, organizationSlug, workflowSlug);
-
-  if (result.status === "error") {
-    return redirectBackWithErrorMessage(request, result.message);
-  }
-
-  return redirectBackWithSuccessMessage(
-    request,
-    "Workflow successfully enabled. New events will resume."
-  );
 }
 
 async function archiveAction(
@@ -135,14 +93,11 @@ export default function Page() {
   const workflow = useCurrentWorkflow();
   invariant(workflow, "Workflow not found");
 
-  const panel =
-    workflow.status === "READY" || workflow.status === "CREATED" ? (
-      <WorkflowReadyPanel workflow={workflow} />
-    ) : workflow.isArchived ? (
-      <WorkflowArchivedPanel workflow={workflow} />
-    ) : workflow.status === "DISABLED" ? (
-      <WorkflowDisabledPanel workflow={workflow} />
-    ) : null;
+  const panel = !workflow.isArchived ? (
+    <WorkflowReadyPanel workflow={workflow} />
+  ) : workflow.isArchived ? (
+    <WorkflowArchivedPanel workflow={workflow} />
+  ) : null;
 
   return (
     <>
@@ -172,64 +127,7 @@ function WorkflowReadyPanel({
           method="post"
           onSubmit={(e) =>
             !confirm(
-              "Disabling this workflow will prevent any new triggers from running in both the dev and live environments, but will not stop in-progress runs from completing. Are you sure you want to disable this workflow?"
-            ) && e.preventDefault()
-          }
-        >
-          <SecondaryButton name="action" value="disable" type="submit">
-            Disable
-          </SecondaryButton>
-        </Form>
-
-        <Form
-          method="post"
-          onSubmit={(e) =>
-            !confirm(
               "Archiving this workflow disables it in both dev and live environments, and removes it from your list of workflows. Are you sure you want to archive this workflow?"
-            ) && e.preventDefault()
-          }
-        >
-          <DangerButton name="action" value="archive" type="submit">
-            Archive
-          </DangerButton>
-        </Form>
-      </div>
-    </Panel>
-  );
-}
-
-function WorkflowDisabledPanel({
-  workflow,
-}: {
-  workflow: NonNullable<CurrentWorkflow>;
-}) {
-  return (
-    <Panel className="flex items-center justify-between !p-4">
-      <div className="flex items-center gap-4">
-        <ApiLogoIcon size="regular" />
-        <Header3 size="small" className="text-slate-300">
-          {workflow.title} <span className="text-amber-300">is disabled.</span>
-        </Header3>
-      </div>
-      <div className="flex gap-3">
-        <Form
-          method="post"
-          onSubmit={(e) =>
-            !confirm(
-              "Enabling this workflow will resume triggering workflows from new events. Are you sure you want to enable this workflow?"
-            ) && e.preventDefault()
-          }
-        >
-          <PrimaryButton name="action" value="enable" type="submit">
-            Enable
-          </PrimaryButton>
-        </Form>
-
-        <Form
-          method="post"
-          onSubmit={(e) =>
-            !confirm(
-              "Archiving this workflow will remove it from your list of workflows. Are you sure you want to archive this workflow?"
             ) && e.preventDefault()
           }
         >

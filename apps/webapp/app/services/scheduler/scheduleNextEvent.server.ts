@@ -4,28 +4,26 @@ import {
   ScheduleSourceSchema,
 } from "@trigger.dev/common-schemas";
 import { calculateNextScheduledEvent } from "~/utils/scheduler";
+import { logger } from "../logger";
 import { taskQueue } from "../messageBroker.server";
 
 export class ScheduleNextEvent {
   async call(
     schedulerSource: SchedulerSource,
-    fromEvent?: TriggerEvent
+    lastRunAt?: Date
   ): Promise<boolean> {
+    // Just double checking that the scheduler source is not cancelled
     if (schedulerSource.status === "CANCELLED") {
-      console.log(
-        "[ScheduleNextEvent] unable to schedule next event because the scheduler source has been cancelled"
+      logger.debug(
+        "[ScheduleNextEvent] unable to schedule next event because the scheduler source has been cancelled",
+        { schedulerSource, lastRunAt }
       );
       return false;
     }
 
     const source = ScheduleSourceSchema.parse(schedulerSource.schedule);
 
-    const scheduledTime = calculateNextScheduledEvent(
-      source,
-      fromEvent
-        ? ScheduledEventPayloadSchema.parse(fromEvent.payload)
-        : undefined
-    );
+    const scheduledTime = calculateNextScheduledEvent(source, lastRunAt);
 
     const messageId = await taskQueue.publish(
       "DELIVER_SCHEDULED_EVENT",
@@ -33,7 +31,7 @@ export class ScheduleNextEvent {
         externalSourceId: schedulerSource.id,
         payload: {
           scheduledTime,
-          lastRunAt: fromEvent ? fromEvent.createdAt : undefined,
+          lastRunAt,
         },
       },
       {},

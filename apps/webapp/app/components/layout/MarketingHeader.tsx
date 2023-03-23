@@ -1,5 +1,5 @@
 import { Popover, Transition } from "@headlessui/react";
-import { Link, NavLink } from "@remix-run/react";
+import { NavLink } from "@remix-run/react";
 import { Fragment } from "react";
 import { Logo } from "../Logo";
 import { PrimaryLink, ToxicLink } from "../primitives/Buttons";
@@ -24,7 +24,7 @@ function MobileNavigation() {
           leaveFrom="opacity-100"
           leaveTo="opacity-0"
         >
-          <Popover.Overlay className="absolute inset-x-6 top-full mt-4 flex origin-top flex-col gap-2 rounded-2xl bg-slate-600 p-6 text-lg tracking-tight text-slate-900 shadow-xl ring-1 ring-slate-900/5" />
+          <Popover.Overlay className="absolute top-0 left-0 h-full w-full origin-top bg-slate-1000/80" />
         </Transition.Child>
         <Transition.Child
           as={Fragment}
@@ -37,7 +37,7 @@ function MobileNavigation() {
         >
           <Popover.Panel
             as="div"
-            className="absolute inset-x-6 top-full mt-4 flex origin-top flex-col gap-4 rounded-2xl bg-slate-800 p-6 text-lg tracking-tight text-slate-900 shadow-xl ring-1 ring-slate-700"
+            className="absolute inset-x-6 top-0 mt-10 flex origin-top flex-col gap-4 rounded-2xl bg-slate-800 p-6 text-lg tracking-tight text-slate-900 shadow-xl ring-1 ring-slate-700"
           >
             <PrimaryLink
               className="w-full !max-w-none whitespace-nowrap text-base"

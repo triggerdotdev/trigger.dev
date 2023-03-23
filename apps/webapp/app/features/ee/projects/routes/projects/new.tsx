@@ -3,7 +3,6 @@ import {
   ArrowRightIcon,
   ArrowTopRightOnSquareIcon,
   CheckIcon,
-  ChevronRightIcon,
   CloudArrowUpIcon,
   LockClosedIcon,
   LockOpenIcon,
@@ -12,9 +11,9 @@ import {
 } from "@heroicons/react/24/outline";
 import {
   CloudIcon,
+  AdjustmentsHorizontalIcon,
   RocketLaunchIcon,
   SunIcon,
-  XCircleIcon,
 } from "@heroicons/react/24/solid";
 import {
   Await,
@@ -39,14 +38,12 @@ import { OrganizationsSideMenu } from "~/components/navigation/SideMenu";
 import {
   PrimaryButton,
   PrimaryLink,
-  SecondaryButton,
   SecondaryLink,
-  TertiaryLink,
 } from "~/components/primitives/Buttons";
 import { StyledDialog } from "~/components/primitives/Dialog";
 import { Spinner } from "~/components/primitives/Spinner";
 import { Body } from "~/components/primitives/text/Body";
-import { Header3, Header4 } from "~/components/primitives/text/Headers";
+import { Header4 } from "~/components/primitives/text/Headers";
 import { SubTitle } from "~/components/primitives/text/SubTitle";
 import { Title } from "~/components/primitives/text/Title";
 import { Tooltip } from "~/components/primitives/Tooltip";
@@ -107,10 +104,6 @@ export default function NewProjectPage() {
 
   const currentOrganization = useCurrentOrganization();
 
-  if (currentOrganization === undefined) {
-    return <></>;
-  }
-
   const user = useUser();
 
   const actionData = useTypedActionData<typeof action>();
@@ -132,6 +125,10 @@ export default function NewProjectPage() {
       setTechnologyPreviewIsOpen(false);
     }
   }, [fetcher.state, setTechnologyPreviewIsOpen]);
+
+  if (currentOrganization === undefined) {
+    return <></>;
+  }
 
   return (
     <>
@@ -214,7 +211,15 @@ export default function NewProjectPage() {
               {appAuthorizations.length === 0 ? (
                 <></>
               ) : (
-                <>
+                <div className="flex items-center gap-2">
+                  <SecondaryLink
+                    to={`/apps/github?redirectTo=${encodeURIComponent(
+                      redirectTo
+                    )}`}
+                  >
+                    <AdjustmentsHorizontalIcon className="-ml-1 h-5 w-5" />
+                    Configure connected accounts
+                  </SecondaryLink>
                   <PrimaryLink
                     to={`/apps/github?redirectTo=${encodeURIComponent(
                       redirectTo
@@ -223,7 +228,7 @@ export default function NewProjectPage() {
                     <OctoKitty className="-ml-1 h-5 w-5" />
                     Connect another GitHub account
                   </PrimaryLink>
-                </>
+                </div>
               )}
             </div>
             {appAuthorizations.length === 0 ? (
@@ -268,18 +273,6 @@ export default function NewProjectPage() {
                                   {reposWithAuth.authorization.accountName}
                                 </SubTitle>
                               </div>
-                              <TertiaryLink
-                                to={`/apps/github?redirectTo=${encodeURIComponent(
-                                  redirectTo
-                                )}&authorizationId=${
-                                  reposWithAuth.authorization.id
-                                }`}
-                                reloadDocument
-                              >
-                                Configure{" "}
-                                {reposWithAuth.authorization.accountName}
-                                <ArrowTopRightOnSquareIcon className="h-4 w-4 text-slate-500" />
-                              </TertiaryLink>
                             </div>
                             <List className="mb-6">
                               {reposWithAuth.repositories.map((repo) => (
@@ -425,7 +418,7 @@ function ConnectToGithub({ redirectTo }: { redirectTo: string }) {
           to={`/apps/github?redirectTo=${encodeURIComponent(redirectTo)}`}
         >
           <OctoKitty className="mr-1 h-5 w-5" />
-          Grant access
+          Grant repo access
         </PrimaryLink>
         <Body size="small" className="flex items-center text-slate-400">
           To deploy a new project you need to authorize our GitHub app.{" "}

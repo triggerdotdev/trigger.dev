@@ -1,3 +1,4 @@
+import { BeakerIcon } from "@heroicons/react/24/outline";
 import { useFetcher } from "@remix-run/react";
 import type { LoaderArgs } from "@remix-run/server-runtime";
 import { useCallback, useState } from "react";
@@ -10,27 +11,26 @@ import { PanelInfo } from "~/components/layout/PanelInfo";
 import { PanelWarning } from "~/components/layout/PanelWarning";
 import { PrimaryButton, TertiaryLink } from "~/components/primitives/Buttons";
 import { Select } from "~/components/primitives/Select";
+import { Body } from "~/components/primitives/text/Body";
 import { SubTitle } from "~/components/primitives/text/SubTitle";
 import { Title } from "~/components/primitives/text/Title";
 import { useCurrentOrganization } from "~/hooks/useOrganizations";
 import { CurrentWorkflow, useCurrentWorkflow } from "~/hooks/useWorkflows";
-import { getRuntimeEnvironmentFromRequest } from "~/models/runtimeEnvironment.server";
 import { WorkflowTestPresenter } from "~/presenters/testPresenter.server";
 import { requireUserId } from "~/services/session.server";
+import { useCurrentEventRule } from "../$workflowSlug";
 
 export const loader = async ({ request, params }: LoaderArgs) => {
-  await requireUserId(request);
+  const userId = await requireUserId(request);
   const { workflowSlug, organizationSlug } = params;
   invariant(workflowSlug, "workflowSlug is required");
   invariant(organizationSlug, "organizationSlug is required");
-
-  const environmentSlug = await getRuntimeEnvironmentFromRequest(request);
 
   try {
     const presenter = new WorkflowTestPresenter();
 
     return typedjson(
-      await presenter.data({ workflowSlug, organizationSlug, environmentSlug })
+      await presenter.data({ workflowSlug, organizationSlug, userId })
     );
   } catch (error: any) {
     console.error(error);
@@ -46,8 +46,11 @@ export default function Page() {
   const workflow = useCurrentWorkflow();
   invariant(workflow, "Workflow not found");
 
+  const eventRule = useCurrentEventRule();
+
   return (
     <>
+      <EnvironmentBanner />
       <Title>Test</Title>
       {status === "CREATED" && (
         <PanelWarning
@@ -67,15 +70,29 @@ export default function Page() {
         </PanelInfo>
       ) : (
         <>
-          <SubTitle>{workflowType(workflow)}</SubTitle>
-          <Panel>
-            <Tester
-              organizationSlug={organization.slug}
-              workflowSlug={workflow.slug}
-              eventNames={workflow.eventNames}
-              initialValue={JSON.stringify(payload, null, 2)}
-            />
-          </Panel>
+          {eventRule ? (
+            <>
+              <SubTitle>{workflowType(workflow)}</SubTitle>
+              <Panel>
+                <Tester
+                  organizationSlug={organization.slug}
+                  workflowSlug={workflow.slug}
+                  eventNames={workflow.eventNames}
+                  initialValue={JSON.stringify(payload, null, 2)}
+                />
+              </Panel>
+            </>
+          ) : (
+            <div className="mx-auto -mt-10 grid h-full max-w-md place-content-center">
+              <Panel className="flex h-max flex-col items-center gap-y-6 px-10 py-10">
+                <BeakerIcon className="h-14 w-14 text-blue-500" />
+                <Body className="text-center text-slate-400">
+                  Connect this workflow to the Live environment using your Live
+                  API Key to enable testing.
+                </Body>
+              </Panel>
+            </div>
+          )}
         </>
       )}
     </>

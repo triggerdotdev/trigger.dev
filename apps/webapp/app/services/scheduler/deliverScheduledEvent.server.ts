@@ -31,6 +31,7 @@ export class DeliverScheduledEvent {
       }
     );
 
+    // CANCELLED scheduler sources NEVER run again
     if (!schedulerSource || schedulerSource.status === "CANCELLED") {
       return true;
     }
@@ -52,7 +53,11 @@ export class DeliverScheduledEvent {
       return true;
     }
 
+    // Disabled event rules ONLY prevent runs from being created,
+    // but they still schedule the next event
     if (!eventRule.enabled) {
+      await this.#scheduleNextEventService.call(schedulerSource, new Date());
+
       return true;
     }
 
@@ -80,7 +85,10 @@ export class DeliverScheduledEvent {
     );
 
     // 3. Schedule next event
-    await this.#scheduleNextEventService.call(schedulerSource, triggerEvent);
+    await this.#scheduleNextEventService.call(
+      schedulerSource,
+      triggerEvent.createdAt
+    );
 
     return true;
   }

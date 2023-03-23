@@ -3,8 +3,10 @@ import { BeakerIcon, CheckCircleIcon } from "@heroicons/react/20/solid";
 import {
   ArrowsRightLeftIcon,
   ChevronDownIcon,
+  CloudArrowUpIcon,
   Cog6ToothIcon,
 } from "@heroicons/react/24/outline";
+import { ShouldRevalidateFunction } from "@remix-run/react";
 import type { LoaderArgs } from "@remix-run/server-runtime";
 import classNames from "classnames";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
@@ -13,14 +15,17 @@ import { ApiLogoIcon } from "~/components/code/ApiLogoIcon";
 import CodeBlock from "~/components/code/CodeBlock";
 import { CopyTextButton } from "~/components/CopyTextButton";
 import { EnvironmentBanner } from "~/components/EnvironmentBanner";
-import { OctoKitty } from "~/components/GitHubLoginButton";
 import { ConnectionSelector } from "~/components/integrations/ConnectionSelector";
 import { WorkflowConnections } from "~/components/integrations/WorkflowConnections";
 import { Panel } from "~/components/layout/Panel";
 import { PanelHeader } from "~/components/layout/PanelHeader";
 import { PanelInfo } from "~/components/layout/PanelInfo";
 import { PanelWarning } from "~/components/layout/PanelWarning";
-import { SecondaryLink, TertiaryLink } from "~/components/primitives/Buttons";
+import {
+  PrimaryLink,
+  SecondaryLink,
+  TertiaryLink,
+} from "~/components/primitives/Buttons";
 import { Input } from "~/components/primitives/Input";
 import { Body } from "~/components/primitives/text/Body";
 import { Header2 } from "~/components/primitives/text/Headers";
@@ -32,16 +37,19 @@ import { TriggerTypeIcon } from "~/components/triggers/TriggerIcons";
 import { triggerLabel } from "~/components/triggers/triggerLabel";
 import { DEV_ENVIRONMENT } from "~/consts";
 import { useConnectionSlots } from "~/hooks/useConnectionSlots";
-import { useCurrentEnvironment } from "~/hooks/useEnvironments";
-import { useCurrentOrganization } from "~/hooks/useOrganizations";
+import {
+  useCurrentOrganization,
+  useOrganizations,
+} from "~/hooks/useOrganizations";
+import { useUser } from "~/hooks/useUser";
 import {
   CurrentWorkflowEventRule,
   useCurrentWorkflow,
 } from "~/hooks/useWorkflows";
-import type { RuntimeEnvironment } from "~/models/runtimeEnvironment.server";
-import { getRuntimeEnvironmentFromRequest } from "~/models/runtimeEnvironment.server";
+import { RuntimeEnvironment } from "~/models/runtimeEnvironment.server";
 import { WorkflowRunListPresenter } from "~/presenters/workflowRunListPresenter.server";
 import { requireUserId } from "~/services/session.server";
+import { useCurrentEnvironment } from "../$workflowSlug";
 
 const pageSize = 10;
 
@@ -54,13 +62,11 @@ export const loader = async ({ request, params }: LoaderArgs) => {
   const searchParams = new URLSearchParams();
 
   try {
-    const environmentSlug = await getRuntimeEnvironmentFromRequest(request);
     const presenter = new WorkflowRunListPresenter();
     const result = await presenter.data({
       userId,
       organizationSlug,
       workflowSlug,
-      environmentSlug,
       searchParams,
       pageSize,
     });
@@ -82,7 +88,8 @@ export default function Page() {
   const workflow = useCurrentWorkflow();
   invariant(workflow, "Workflow not found");
   const environment = useCurrentEnvironment();
-  invariant(environment, "Environment not found");
+  const currentUser = useUser();
+  invariant(currentUser, "User not found");
 
   const eventRule = workflow.rules.find(
     (r) => r.environmentId === environment.id
@@ -115,20 +122,6 @@ export default function Page() {
       <div className="flex items-baseline justify-between">
         <Title>Overview</Title>
         <div className="flex items-center gap-4">
-          {workflow.organizationTemplate && (
-            <a
-              href={workflow.organizationTemplate.repositoryUrl}
-              className="flex items-center gap-1 text-sm text-slate-400 transition hover:text-slate-200"
-              target="_blank"
-              rel="noreferrer"
-            >
-              <OctoKitty className="mr-0.5 h-4 w-4" />
-              {workflow.organizationTemplate.repositoryUrl.replace(
-                "https://github.com/",
-                ""
-              )}
-            </a>
-          )}
           <Body size="small" className="text-slate-400">
             <span className="mr-1.5 text-xs tracking-wide text-slate-500">
               ID
@@ -158,12 +151,7 @@ export default function Page() {
 
       {eventRule && (
         <>
-          <div className="flex items-end justify-between">
-            <SubTitle>Your workflow</SubTitle>
-            <SecondaryLink to="test" className="mb-2">
-              Test workflow
-            </SecondaryLink>
-          </div>
+          <SubTitle>Your Workflow</SubTitle>
           <Panel className="rounded-b-none">
             <PanelHeader
               icon={
@@ -378,11 +366,11 @@ export default function Page() {
               )}
             <Disclosure defaultOpen={totalRealRuns === 0}>
               {({ open }) => (
-                <div className="rounded-b-md bg-slate-700/80">
+                <div className="bg-slate-700/80">
                   <Disclosure.Button className="flex w-full items-center justify-between bg-slate-800/70 py-4 px-4 transition hover:bg-slate-800/50">
                     <div className="flex items-center gap-2">
                       <ArrowsRightLeftIcon className="h-6 w-6 text-green-500" />
-                      <Body>How to run your workflow</Body>
+                      <Body>How to run your Workflow</Body>
                     </div>
                     <div className="flex items-center gap-2">
                       <Body size="small" className="text-slate-400">
@@ -401,6 +389,32 @@ export default function Page() {
               )}
             </Disclosure>
           </div>
+          {currentUser.featureCloud && (
+            <Disclosure defaultOpen={totalRealRuns > 0}>
+              {({ open }) => (
+                <div className="rounded-b-md border-t border-slate-900/50 bg-slate-700/80">
+                  <Disclosure.Button className="flex w-full items-center justify-between bg-slate-800/70 py-4 px-4 transition hover:bg-slate-800/50">
+                    <div className="flex items-center gap-2">
+                      <CloudArrowUpIcon className="h-6 w-6 text-blue-500" />
+                      <Body>How to deploy your Workflow to the Cloud</Body>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Body size="small" className="text-slate-400">
+                        {open ? "Close" : "Open"}
+                      </Body>
+                      <ChevronDownIcon
+                        className={classNames(
+                          open ? "rotate-180 transform" : "",
+                          "h-5 w-5 text-slate-400 transition"
+                        )}
+                      />
+                    </div>
+                  </Disclosure.Button>
+                  <HowToDeployToCloud eventRule={eventRule} />
+                </div>
+              )}
+            </Disclosure>
+          )}
         </>
       )}
       {apiConnectionCount > 0 && (
@@ -483,7 +497,9 @@ function HowToRunScheduleWorkflow({
           </>
         ) : (
           <>
-            <li>Scheduled events are disabled in this environment</li>
+            <li>
+              Scheduled events are disabled in this Development environment
+            </li>
             <li>To trigger this workflow, you'll need to run a test below</li>
           </>
         )}
@@ -519,15 +535,53 @@ function HowToRunWorkflowGeneric({
         <li>Return here to view the new workflow run.</li>
       </ol>
       <SubTitle className="mt-4 mb-3 text-slate-300">
-        Trigger your workflow from a test
+        Trigger your Workflow from a test
       </SubTitle>
       <SecondaryLink
         to="test"
         className="!bg-slate-800/50 ring-slate-800 hover:!bg-slate-800/30"
       >
         <BeakerIcon className="-ml-1 h-4 w-4 text-slate-300" />
-        Test your workflow
+        Test your Workflow
       </SecondaryLink>
+    </Disclosure.Panel>
+  );
+}
+
+function HowToDeployToCloud({
+  eventRule,
+}: {
+  eventRule: CurrentWorkflowEventRule;
+}) {
+  const currentOrganization = useCurrentOrganization();
+  const organizations = useOrganizations();
+  if (organizations === undefined || currentOrganization === undefined) {
+    return null;
+  }
+  return (
+    <Disclosure.Panel className="flex gap-6 p-6">
+      <div className="grid place-items-center rounded-lg border-2 border-slate-500/10 bg-slate-500/5 p-10">
+        <CloudArrowUpIcon className="h-20 w-20 text-blue-500" />
+      </div>
+      <div className="">
+        <div className="mb-1 flex items-baseline gap-2">
+          <SubTitle className="text-slate-300">
+            Deploy your Workflow to the Cloud
+          </SubTitle>
+        </div>
+        <ol className="flex list-inside list-decimal flex-col gap-1.5 pb-4 pl-2 text-slate-400">
+          <li>Repo name:</li>
+          <li>Follow the steps to </li>
+        </ol>
+
+        <PrimaryLink
+          to={`/orgs/${currentOrganization.slug}/projects/new`}
+          className=""
+        >
+          <CloudArrowUpIcon className="-ml-1 h-5 w-5 text-slate-300" />
+          Deploy your Workflow
+        </PrimaryLink>
+      </div>
     </Disclosure.Panel>
   );
 }
@@ -540,9 +594,9 @@ function ConnectToLiveInstructions({
   return (
     <>
       <EnvironmentBanner />
-      <Header2>Deploying your workflow to Live</Header2>
-      <div className="mt-4 flex flex-col gap-2">
-        <Body>
+      <SubTitle>Deploying your workflow to Live</SubTitle>
+      <Panel className="px-4 py-4">
+        <Body className="mb-4 text-slate-300">
           Deploying your code to a server is different for each hosting
           provider. We have a quick start guide for{" "}
           <a
@@ -551,24 +605,24 @@ function ConnectToLiveInstructions({
           >
             how to do this with Render
           </a>
-          , but you can use any hosting provider.
+          , but you can use any hosting provider. When you fill in the
+          environment variables for your server(s) use the following settings:
         </Body>
-
-        <Body>
-          When you fill in the environment variables for your server(s) use the
-          following settings:
-        </Body>
-        <div className="flex w-full items-stretch justify-items-stretch gap-2">
-          <div className="flex-grow">
-            <Body className="font-bold">Key</Body>
+        <div className="flex w-full gap-2">
+          <div className="grow">
+            <Body size="small" className="uppercase text-slate-400">
+              Key
+            </Body>
             <CodeBlock
               code="TRIGGER_API_KEY"
               showLineNumbers={false}
               align="top"
             />
           </div>
-          <div className="flex-grow">
-            <Body className="font-bold">Value</Body>
+          <div className="grow">
+            <Body size="small" className="uppercase text-slate-400">
+              Value
+            </Body>
             <CodeBlock
               code={environment.apiKey}
               showLineNumbers={false}
@@ -576,7 +630,7 @@ function ConnectToLiveInstructions({
             />
           </div>
         </div>
-      </div>
+      </Panel>
     </>
   );
 }

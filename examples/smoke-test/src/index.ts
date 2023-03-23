@@ -12,10 +12,10 @@ const userCreatedEvent = z.object({
   id: z.string(),
 });
 
-const trigger = new Trigger({
+new Trigger({
   id: "my-workflow",
   name: "My workflow",
-  // apiKey: "<enter your API key here>",
+  apiKey: "trigger_development_cMYVGTvv3gyx",
   endpoint: "ws://localhost:8889/ws",
   logLevel: "debug",
   triggerTTL: 60 * 60 * 24,
@@ -40,9 +40,41 @@ const trigger = new Trigger({
 
     return { foo: "bar" };
   },
-});
+}).listen();
 
-trigger.listen();
+new Trigger({
+  id: "my-other-workflow",
+  name: "My other workflow",
+  apiKey: "trigger_development_cMYVGTvv3gyx",
+  endpoint: "ws://localhost:8889/ws",
+  logLevel: "debug",
+  triggerTTL: 60 * 60 * 24,
+  on: customEvent({ name: "smoke.test2" }),
+  run: async (event, ctx) => {
+    await ctx.logger.info("Inside the smoke test 2 workflow, received event", {
+      event,
+      myDate: new Date(),
+    });
+  },
+}).listen();
+
+new Trigger({
+  id: "my-scheduled-workflow",
+  name: "My scheduled workflow",
+  apiKey: "trigger_development_cMYVGTvv3gyx",
+  endpoint: "ws://localhost:8889/ws",
+  logLevel: "debug",
+  triggerTTL: 60 * 60 * 24,
+  on: scheduleEvent({
+    rateOf: { minutes: 1 },
+  }),
+  run: async (event, ctx) => {
+    await ctx.logger.info("Inside the smoke test 2 workflow, received event", {
+      event,
+      myDate: new Date(),
+    });
+  },
+}).listen();
 
 // new Trigger({
 //   id: "smoke-test",

@@ -1,6 +1,6 @@
 import type { PrismaClient } from "~/db.server";
 import { prisma } from "~/db.server";
-import { DisableWorkflow } from "./disableWorkflow.server";
+import { DisableEventRule } from "./disableEventRule.server";
 
 export class ArchiveWorkflow {
   #prismaClient: PrismaClient;
@@ -51,8 +51,25 @@ export class ArchiveWorkflow {
       };
     }
 
-    const disableService = new DisableWorkflow();
-    await disableService.call(userId, organizationSlug, slug);
+    // Disable event rules
+    await this.#prismaClient.eventRule.updateMany({
+      where: {
+        workflowId: workflow.id,
+      },
+      data: {
+        enabled: false,
+      },
+    });
+
+    // cancel scheduled sources
+    await this.#prismaClient.schedulerSource.updateMany({
+      where: {
+        workflowId: workflow.id,
+      },
+      data: {
+        status: "CANCELLED",
+      },
+    });
 
     await this.#prismaClient.workflow.update({
       where: {
