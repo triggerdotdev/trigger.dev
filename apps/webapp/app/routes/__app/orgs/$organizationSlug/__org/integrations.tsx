@@ -25,6 +25,8 @@ import { getConnectedApiConnectionsForOrganizationSlug } from "~/models/apiConne
 import { getServiceMetadatas } from "~/models/integrations.server";
 import { requireUser } from "~/services/session.server";
 import { formatDateTime } from "~/utils";
+import { PopupButton, SliderButton } from "@typeform/embed-react";
+import { Sidetab } from "@typeform/embed-react";
 
 export const loader = async ({ request, params }: LoaderArgs) => {
   const user = await requireUser(request);
@@ -56,32 +58,8 @@ export default function Integrations() {
           <div className="flex items-start justify-between">
             <Title>API Integrations</Title>
             <div className="flex items-center gap-2">
-              <script src="//embed.typeform.com/next/embed.js"></script>
-              <SecondaryButton
-                data-tf-slider="Rffdj2Ma"
-                data-tf-position="right"
-                data-tf-opacity="100"
-                data-tf-iframe-props="title=Trigger.dev workflow request"
-                data-tf-transitive-search-params
-                data-tf-medium="snippet"
-                data-tf-hidden="source="
-              >
-                <CursorArrowRaysIcon className="-ml-1 h-5 w-5" />
-                Request a Workflow
-              </SecondaryButton>
-              <PrimaryButton
-                data-tf-slider="VwblgGDZ"
-                data-tf-position="right"
-                data-tf-opacity="100"
-                data-tf-iframe-props="title=Request an integration"
-                data-tf-transitive-search-params
-                data-tf-medium="snippet"
-                data-tf-hidden="apponboarding=,eventlog1="
-              >
-                <CursorArrowRaysIcon className="-ml-1 h-5 w-5" />
-                Request an Integration
-              </PrimaryButton>
-              <script src="//embed.typeform.com/next/embed.js"></script>
+              <TypeformRequestWorkflow />
+              <TypeformRequestIntegration />
             </div>
           </div>
           <div>
@@ -184,3 +162,25 @@ function AddButtonContent({
     </>
   );
 }
+
+const TypeformRequestWorkflow = () => {
+  return (
+    <SliderButton id="Rffdj2Ma">
+      <SecondaryButton>
+        <CursorArrowRaysIcon className="-ml-1 h-5 w-5" />
+        Request a Workflow
+      </SecondaryButton>
+    </SliderButton>
+  );
+};
+
+const TypeformRequestIntegration = () => {
+  return (
+    <SliderButton id="VwblgGDZ">
+      <PrimaryButton>
+        <CursorArrowRaysIcon className="-ml-1 h-5 w-5" />
+        Request an Integration
+      </PrimaryButton>
+    </SliderButton>
+  );
+};
