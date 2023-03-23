@@ -15,9 +15,8 @@ import zodToJsonSchema from "zod-to-json-schema";
 
 export type EventRule = z.infer<typeof EventFilterSchema>;
 
-export type TriggerEvent<TSchema extends z.ZodTypeAny> = {
+export type TriggerEvent<TEventType = any> = {
   metadata: z.infer<typeof TriggerMetadataSchema>;
-  schema: TSchema;
 };
 
 export type TriggerCustomEventOptions<TSchema extends z.ZodTypeAny> = {
@@ -56,7 +55,6 @@ export function scheduleEvent(
       name: "scheduled-event",
       source: options,
     },
-    schema: ScheduledEventPayloadSchema,
   };
 }
 
