@@ -27,7 +27,9 @@ export default function Page() {
         <Header context="workflows" />
         <Container>
           <Title>API Keys</Title>
-          <SubTitle>Copy these API keys into your workflow code</SubTitle>
+          <SubTitle>
+            Use the following API keys to connect to authenticate to trigger.dev
+          </SubTitle>
           <Panel>
             <div className="mb-1">
               {!isShowingKeys ? (
@@ -78,7 +80,7 @@ export default function Page() {
           </Panel>
           <Body size="small" className="mt-3 text-slate-500">
             Use the Live key for production and the Development key for local.
-            Learn more about API keys{" "}
+            Learn more about environments and API keys{" "}
             <a
               href="https://docs.trigger.dev/guides/environments"
               target="_blank"
