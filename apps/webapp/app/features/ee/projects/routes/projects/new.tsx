@@ -11,6 +11,7 @@ import {
 } from "@heroicons/react/24/outline";
 import {
   CloudIcon,
+  AdjustmentsHorizontalIcon,
   RocketLaunchIcon,
   SunIcon,
 } from "@heroicons/react/24/solid";
@@ -38,7 +39,6 @@ import {
   PrimaryButton,
   PrimaryLink,
   SecondaryLink,
-  TertiaryLink,
 } from "~/components/primitives/Buttons";
 import { StyledDialog } from "~/components/primitives/Dialog";
 import { Spinner } from "~/components/primitives/Spinner";
@@ -212,37 +212,14 @@ export default function NewProjectPage() {
                 <></>
               ) : (
                 <div className="flex items-center gap-2">
-                  <Suspense fallback={<Spinner />}>
-                    <Await
-                      errorElement={<p>Error loading repositories</p>}
-                      resolve={repositories}
-                    >
-                      {(resolvedPromise) => {
-                        const reposWithAuth = resolvedPromise.find(
-                          (resolved) => resolved.authorization
-                        );
-
-                        if (reposWithAuth) {
-                          return (
-                            <SecondaryLink
-                              to={`/apps/github?redirectTo=${encodeURIComponent(
-                                redirectTo
-                              )}&authorizationId=${
-                                reposWithAuth.authorization.id
-                              }`}
-                              reloadDocument
-                            >
-                              Configure connected accounts
-                              <ArrowTopRightOnSquareIcon className="h-4 w-4 text-slate-500" />
-                            </SecondaryLink>
-                          );
-                        } else {
-                          return <></>;
-                        }
-                      }}
-                    </Await>
-                  </Suspense>
-
+                  <SecondaryLink
+                    to={`/apps/github?redirectTo=${encodeURIComponent(
+                      redirectTo
+                    )}`}
+                  >
+                    <AdjustmentsHorizontalIcon className="-ml-1 h-5 w-5" />
+                    Configure connected accounts
+                  </SecondaryLink>
                   <PrimaryLink
                     to={`/apps/github?redirectTo=${encodeURIComponent(
                       redirectTo
