@@ -261,7 +261,9 @@ export function EventRuleSwitch() {
   const enabledName = isEnabled ? "enabled" : "disabled";
 
   let hoverMessage = eventRule
-    ? `This workflow is ${enabledName} in the ${prettyEnvironmentName} environment.`
+    ? `This workflow is ${enabledName} in the ${prettyEnvironmentName} environment.${
+        isEnabled ? " " : " Test events will still trigger this workflow."
+      }`
     : `Connect this workflow to the ${prettyEnvironmentName} environment to enable it.`;
 
   return (
