@@ -64,7 +64,7 @@ Trigger.dev is an open source platform that makes it easy for developers to crea
 
 ## **Example workflows**
 
-<details open><summary> Post to Slack when a GitHub issue is created or modified
+<details open><summary> Post to Slack when a GitHub repository is starred
 </summary>
 
 _Integrations required: Slack, GitHub_
