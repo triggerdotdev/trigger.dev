@@ -1,4 +1,10 @@
-import type { SecureString } from "@trigger.dev/internal";
+import type {
+  ApiEventLog,
+  RawEvent,
+  SecureString,
+  SendEvent,
+  SendEventOptions,
+} from "@trigger.dev/internal";
 
 export type { SecureString };
 
@@ -11,8 +17,12 @@ export interface TriggerContext {
   isTest: boolean;
   logger: TaskLogger;
   signal: AbortSignal;
-  wait(key: string, seconds: number): Promise<void>;
-  // sendEvent(key: string, event: TriggerCustomEvent): Promise<void>;
+  wait(key: string | any[], seconds: number): Promise<void>;
+  sendEvent(
+    key: string | any[],
+    event: SendEvent,
+    options?: SendEventOptions
+  ): Promise<ApiEventLog>;
   // waitUntil(key: string, date: Date): Promise<void>;
   // runOnce<T extends TriggerRunOnceCallback>(
   //   key: string,

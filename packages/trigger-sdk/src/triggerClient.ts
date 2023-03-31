@@ -315,6 +315,18 @@ export class TriggerClient {
           async (task) => {}
         );
       },
+      sendEvent: async (key, event, options) => {
+        return await io.runTask(
+          key,
+          {
+            name: "sendEvent",
+            params: { event, options },
+          },
+          async (task) => {
+            return await this.#client.sendEvent(event, options);
+          }
+        );
+      },
     };
   }
 }

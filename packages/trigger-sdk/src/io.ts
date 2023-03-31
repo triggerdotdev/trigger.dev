@@ -3,6 +3,7 @@ import {
   IOTask,
   Logger,
   LogLevel,
+  SerializableJson,
   ServerTask,
 } from "@trigger.dev/internal";
 import { webcrypto } from "node:crypto";
@@ -40,7 +41,7 @@ export class IO {
     }
   }
 
-  async runTask<T = void>(
+  async runTask<T extends SerializableJson | void = void>(
     key: string | any[],
     options: IOTask,
     callback: (task: ServerTask) => Promise<T>
@@ -94,14 +95,23 @@ export class IO {
       throw new ResumeWithTask(task);
     }
 
-    const result = await callback(task);
+    try {
+      const result = await callback(task);
 
-    this.#logger.debug("Using task output", {
-      idempotencyKey,
-      task,
-    });
+      this.#logger.debug("Completing using output", {
+        idempotencyKey,
+        task,
+      });
 
-    return result;
+      await this.#apiClient.completeTask(this.#id, task.id, {
+        output: result ?? undefined,
+      });
+
+      return result;
+    } catch (error) {
+      // TODO: implement this
+      throw error;
+    }
   }
 
   #addToCachedTasks(task: ServerTask) {

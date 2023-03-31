@@ -28,13 +28,14 @@ export const GetJobsResponseSchema = z.object({
 export const RawEventSchema = z.object({
   id: z.string().default(() => ulid()),
   name: z.string(),
-  source: z.string(),
+  source: z.string().default("trigger.dev"),
   payload: DeserializedJsonSchema,
   context: DeserializedJsonSchema.optional(),
   timestamp: z.string().datetime().optional(),
 });
 
 export type RawEvent = z.infer<typeof RawEventSchema>;
+export type SendEvent = z.input<typeof RawEventSchema>;
 
 export const ApiEventLogSchema = z.object({
   id: z.string(),
@@ -154,3 +155,18 @@ export const RunTaskBodyOutputSchema = RunTaskBodyInputSchema.extend({
 });
 
 export type RunTaskBodyOutput = z.infer<typeof RunTaskBodyOutputSchema>;
+
+export const CompleteTaskBodyInputSchema = RunTaskBodyInputSchema.pick({
+  displayProperties: true,
+  description: true,
+  params: true,
+}).extend({
+  output: SerializableJsonSchema.optional().transform((v) =>
+    DeserializedJsonSchema.parse(JSON.parse(JSON.stringify(v)))
+  ),
+});
+
+export type CompleteTaskBodyInput = z.input<typeof CompleteTaskBodyInputSchema>;
+export type CompleteTaskBodyOutput = z.infer<
+  typeof CompleteTaskBodyInputSchema
+>;

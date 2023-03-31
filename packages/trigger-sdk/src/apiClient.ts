@@ -1,8 +1,11 @@
 import type {
   ApiEventLog,
+  CompleteTaskBodyInput,
   CreateExecutionBody,
   LogMessage,
   RunTaskBodyInput,
+  SendEvent,
+  SendEventOptions,
   ServerTask,
 } from "@trigger.dev/internal";
 import { Logger, LogLevel } from "@trigger.dev/internal";
@@ -168,6 +171,78 @@ export class ApiClient {
         body: JSON.stringify(task),
       }
     );
+
+    if (response.status >= 400 && response.status < 500) {
+      const body = await response.json();
+
+      throw new Error(body.error);
+    }
+
+    if (response.status !== 200) {
+      throw new Error(
+        `Failed to create execution, got status code ${response.status}`
+      );
+    }
+
+    return await response.json();
+  }
+
+  async completeTask(
+    executionId: string,
+    id: string,
+    task: CompleteTaskBodyInput
+  ): Promise<ServerTask> {
+    const apiKey = await this.#apiKey();
+
+    this.#logger.debug("Complete Task", {
+      task,
+    });
+
+    const response = await fetch(
+      `${this.#apiUrl}/api/v3/executions/${executionId}/tasks/${id}/complete`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify(task),
+      }
+    );
+
+    if (response.status >= 400 && response.status < 500) {
+      const body = await response.json();
+
+      throw new Error(body.error);
+    }
+
+    if (response.status !== 200) {
+      throw new Error(
+        `Failed to create execution, got status code ${response.status}`
+      );
+    }
+
+    return await response.json();
+  }
+
+  async sendEvent(
+    event: SendEvent,
+    options: SendEventOptions = {}
+  ): Promise<ApiEventLog> {
+    const apiKey = await this.#apiKey();
+
+    this.#logger.debug("Sending event", {
+      event,
+    });
+
+    const response = await fetch(`${this.#apiUrl}/api/v3/events`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({ event, options }),
+    });
 
     if (response.status >= 400 && response.status < 500) {
       const body = await response.json();

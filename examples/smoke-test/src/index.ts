@@ -32,7 +32,23 @@ new Job({
       myDate: new Date(),
     });
 
+    await ctx.sendEvent("Event 1", {
+      name: "smoke.test",
+      payload: { foo: "bar" },
+      source: "smoke-test",
+    });
+
     await ctx.wait("⏲⏲", 10);
+
+    await ctx.sendEvent(
+      "Event 2",
+      {
+        name: "smoke.test.delayed",
+        payload: { foo: "bar", delayed: true },
+        source: "smoke-test",
+      },
+      { deliverAfter: 30 }
+    );
 
     return { foo: "bar" };
   },
