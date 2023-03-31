@@ -21,7 +21,6 @@ export type TaskStatus = z.infer<typeof TaskStatusSchema>;
 export const TaskSchema = z.object({
   id: z.string(),
   name: z.string(),
-  ts: z.string(),
   noop: z.boolean().default(false),
   startedAt: z.coerce.date().optional().nullable(),
   completedAt: z.coerce.date().optional().nullable(),
@@ -49,7 +48,6 @@ export const ServerTaskSchema = TaskSchema.extend({
 export const CachedTaskSchema = z.object({
   id: z.string(),
   idempotencyKey: z.string(),
-  ts: z.string(),
   status: TaskStatusSchema,
   noop: z.boolean().default(false),
   output: DeserializedJsonSchema.optional().nullable(),

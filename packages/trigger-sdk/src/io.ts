@@ -63,7 +63,6 @@ export class IO {
       idempotencyKey,
       noop: false,
       ...options,
-      ts: options.ts ?? String(Date.now()),
     });
 
     if (task.status === "COMPLETED") {

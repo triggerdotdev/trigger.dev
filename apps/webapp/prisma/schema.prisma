@@ -992,10 +992,9 @@ enum ExecutionStatus {
 }
 
 model Task {
-  id             String @id @default(cuid())
+  id             String @id
   idempotencyKey String
   name           String
-  ts             String
 
   status     TaskStatus @default(PENDING)
   delayUntil DateTime?

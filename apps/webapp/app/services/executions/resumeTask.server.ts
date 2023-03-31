@@ -46,6 +46,7 @@ export class ResumeTaskService {
       },
       data: {
         status: task.noop ? "COMPLETED" : "RUNNING",
+        completedAt: task.noop ? new Date() : undefined,
       },
     });
 

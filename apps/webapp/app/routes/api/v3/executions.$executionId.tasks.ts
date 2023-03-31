@@ -1,4 +1,4 @@
-import type { ActionArgs } from "@remix-run/server-runtime";
+import type { ActionArgs, LoaderArgs } from "@remix-run/server-runtime";
 import { json } from "@remix-run/server-runtime";
 import type { RunTaskBodyOutput } from "@trigger.dev/internal";
 import { RunTaskBodyOutputSchema } from "@trigger.dev/internal";
@@ -7,6 +7,7 @@ import type { PrismaClient } from "~/db.server";
 import { prisma } from "~/db.server";
 import { authenticateApiRequest } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger";
+import { ulid } from "~/services/ulid.server";
 
 const ParamsSchema = z.object({
   executionId: z.string(),
@@ -15,6 +16,61 @@ const ParamsSchema = z.object({
 const HeadersSchema = z.object({
   "idempotency-key": z.string(),
 });
+
+const SearchQuerySchema = z.object({
+  cursor: z.string().optional(),
+  take: z.coerce.number().default(50),
+});
+
+export async function loader({ request, params }: LoaderArgs) {
+  // Next authenticate the request
+  const authenticatedEnv = await authenticateApiRequest(request);
+
+  if (!authenticatedEnv) {
+    return json({ error: "Invalid or Missing API key" }, { status: 401 });
+  }
+
+  const { executionId } = ParamsSchema.parse(params);
+
+  const url = new URL(request.url);
+  const query = SearchQuerySchema.parse(Object.fromEntries(url.searchParams));
+
+  const execution = await prisma.execution.findUnique({
+    where: {
+      id: executionId,
+    },
+    include: {
+      tasks: {
+        orderBy: {
+          id: "asc",
+        },
+        take: query.take,
+        skip: query.cursor ? 1 : 0,
+        cursor: query.cursor
+          ? {
+              id: query.cursor,
+            }
+          : undefined,
+      },
+    },
+  });
+
+  if (!execution) {
+    return json({ error: "Execution not found" }, { status: 404 });
+  }
+
+  if (execution.environmentId !== authenticatedEnv.id) {
+    return json({ error: "Execution not found" }, { status: 404 });
+  }
+
+  return json({
+    data: execution.tasks,
+    nextCursor:
+      execution.tasks.length > 0
+        ? execution.tasks[execution.tasks.length - 1]?.id
+        : undefined,
+  });
+}
 
 export async function action({ request, params }: ActionArgs) {
   // Ensure this is a POST request
@@ -116,6 +172,7 @@ export class RunExecutionTaskService {
 
       const task = await prisma.task.create({
         data: {
+          id: ulid(),
           idempotencyKey,
           execution: {
             connect: {
@@ -125,7 +182,8 @@ export class RunExecutionTaskService {
           name: taskBody.name,
           description: taskBody.description,
           status,
-          ts: taskBody.ts,
+          startedAt: new Date(),
+          completedAt: status === "COMPLETED" ? new Date() : undefined,
           noop: taskBody.noop,
           delayUntil: taskBody.delayUntil,
           params: taskBody.params ?? undefined,

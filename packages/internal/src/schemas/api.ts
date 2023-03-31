@@ -127,7 +127,6 @@ export type CachedTask = z.infer<typeof CachedTaskSchema>;
 
 export const IOTaskSchema = z.object({
   name: z.string(),
-  ts: z.string().default(() => String(Date.now())),
   noop: z.boolean().default(false),
   delayUntil: z.coerce.date().optional(),
   description: z.string().optional(),
