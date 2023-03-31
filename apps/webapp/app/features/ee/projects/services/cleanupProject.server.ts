@@ -1,6 +1,7 @@
-import { prisma, PrismaClient } from "~/db.server";
+import type { PrismaClient } from "~/db.server";
+import { prisma } from "~/db.server";
 import { projectLogger } from "~/services/logger";
-import { taskQueue } from "~/services/messageBroker.server";
+import { workerQueue } from "~/services/worker.server";
 
 export class CleanupProject {
   #prismaClient: PrismaClient;
@@ -27,7 +28,7 @@ export class CleanupProject {
 
     for (const deployment of deployments) {
       if (deployment.vmIdentifier) {
-        await taskQueue.publish("STOP_VM", {
+        await workerQueue.enqueue("stopVM", {
           id: deployment.vmIdentifier,
         });
       }

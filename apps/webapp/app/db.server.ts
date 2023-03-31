@@ -1,5 +1,6 @@
 import { PrismaClient, Prisma } from ".prisma/client";
 import invariant from "tiny-invariant";
+import { z } from "zod";
 import { env } from "./env.server";
 
 export { Prisma };
@@ -77,3 +78,7 @@ function getClient() {
 
 export { prisma };
 export type { PrismaClient } from ".prisma/client";
+
+export const PrismaErrorSchema = z.object({
+  code: z.string(),
+});

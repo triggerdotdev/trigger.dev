@@ -11,7 +11,6 @@ import {
   statusTextForDeploying,
 } from "~/features/ee/projects/models/repositoryProject.server";
 import { projectLogger } from "~/services/logger";
-import { taskQueue } from "~/services/messageBroker.server";
 import { cakework } from "../cakework.server";
 
 export type StartDeploymentOptions = {
@@ -109,16 +108,16 @@ export class StartDeployment {
       });
 
       // If there are any pending deployments, we can start them now
-      await taskQueue.publish("DEPLOYMENT_DEPLOYED", {
-        id: deployment.id,
-        projectId: project.id,
-      });
+      // await taskQueue.publish("DEPLOYMENT_DEPLOYED", {
+      //   id: deployment.id,
+      //   projectId: project.id,
+      // });
 
       // Make sure to stop the previous deployment
       if (project.currentDeploymentId) {
-        await taskQueue.publish("CLEANUP_DEPLOYMENT", {
-          id: project.currentDeploymentId,
-        });
+        // await taskQueue.publish("CLEANUP_DEPLOYMENT", {
+        //   id: project.currentDeploymentId,
+        // });
       }
     } catch (error) {
       projectLogger.debug("Error Starting VM", { deployment, error });

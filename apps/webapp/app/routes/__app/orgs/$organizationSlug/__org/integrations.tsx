@@ -2,6 +2,7 @@ import { CursorArrowRaysIcon } from "@heroicons/react/24/outline";
 import { PlusCircleIcon } from "@heroicons/react/24/solid";
 import type { LoaderArgs } from "@remix-run/server-runtime";
 import type { ServiceMetadata } from "@trigger.dev/integration-sdk";
+import { SliderButton } from "@typeform/embed-react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import invariant from "tiny-invariant";
 import { ApiLogoIcon } from "~/components/code/ApiLogoIcon";
@@ -22,11 +23,8 @@ import { SubTitle } from "~/components/primitives/text/SubTitle";
 import { Title } from "~/components/primitives/text/Title";
 import { useCurrentOrganization } from "~/hooks/useOrganizations";
 import { getConnectedApiConnectionsForOrganizationSlug } from "~/models/apiConnection.server";
-import { getServiceMetadatas } from "~/models/integrations.server";
 import { requireUser } from "~/services/session.server";
 import { formatDateTime } from "~/utils";
-import { PopupButton, SliderButton } from "@typeform/embed-react";
-import { Sidetab } from "@typeform/embed-react";
 
 export const loader = async ({ request, params }: LoaderArgs) => {
   const user = await requireUser(request);
@@ -40,12 +38,11 @@ export const loader = async ({ request, params }: LoaderArgs) => {
 
   return typedjson({
     connections,
-    services: await getServiceMetadatas(user.admin),
   });
 };
 
 export default function Integrations() {
-  const { connections, services } = useTypedLoaderData<typeof loader>();
+  const { connections } = useTypedLoaderData<typeof loader>();
   const organization = useCurrentOrganization();
   invariant(organization, "Organization not found");
 
@@ -77,7 +74,7 @@ export default function Integrations() {
                       <li key={connection.id}>
                         <div className="flex items-center gap-4 px-4 py-4">
                           <ApiLogoIcon
-                            integration={services[connection.apiIdentifier]}
+                            integration={{ icon: "github", name: "GitHub" }}
                             size="regular"
                           />
                           <div className="flex flex-col gap-2">
@@ -100,29 +97,6 @@ export default function Integrations() {
                 </List>
               </>
             )}
-          </div>
-
-          <div>
-            <SubTitle>Add an API integration</SubTitle>
-            <div className="flex w-full flex-wrap gap-2">
-              {Object.values(services)
-                .sort((a, b) => a.name.localeCompare(b.name))
-                .map((integration) => (
-                  <ConnectButton
-                    key={integration.service}
-                    integration={integration}
-                    organizationId={organization.id}
-                    className="group flex max-w-[160px] flex-col items-center gap-4 overflow-hidden rounded-md border border-slate-800 bg-slate-800 text-sm text-slate-200 shadow-md transition hover:bg-slate-800/30 disabled:opacity-50"
-                  >
-                    {(status) => (
-                      <AddButtonContent
-                        integration={integration}
-                        status={status}
-                      />
-                    )}
-                  </ConnectButton>
-                ))}
-            </div>
           </div>
         </Container>
       </AppBody>

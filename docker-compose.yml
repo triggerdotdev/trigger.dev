@@ -20,14 +20,6 @@ services:
       - database:/var/lib/postgresql/data
     networks:
       - app_network
-  redis:
-    image: redis:latest
-    container_name: redis
-    restart: always
-    ports:
-      - "6379:6379"
-    networks:
-      - app_network
   pizzly-server:
     image: nangohq/nango-server:0.8.10
     container_name: trigger-pizzly-server

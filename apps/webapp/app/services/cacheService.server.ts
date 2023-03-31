@@ -1,18 +1,17 @@
 import type { CacheService } from "@trigger.dev/integration-sdk";
-import { redis } from "./redis.server";
 
 export class RedisCacheService implements CacheService {
   constructor(private readonly namespace: string) {}
 
   async get(key: string) {
-    return redis.get(`${this.namespace}:${key}`);
+    return null;
   }
 
   async set(key: string, value: string, ttl?: number): Promise<void> {
-    if (ttl) {
-      await redis.set(`${this.namespace}:${key}`, value, "EX", ttl);
-    } else {
-      await redis.set(`${this.namespace}:${key}`, value);
-    }
+    // if (ttl) {
+    //   await redis.set(`${this.namespace}:${key}`, value, "EX", ttl);
+    // } else {
+    //   await redis.set(`${this.namespace}:${key}`, value);
+    // }
   }
 }

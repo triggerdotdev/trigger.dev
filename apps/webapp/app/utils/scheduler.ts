@@ -2,7 +2,7 @@ import type {
   ScheduleSource,
   ScheduleSourceCron,
   ScheduleSourceRate,
-} from "@trigger.dev/common-schemas";
+} from "@trigger.dev/internal";
 
 import { parseExpression } from "cron-parser";
 

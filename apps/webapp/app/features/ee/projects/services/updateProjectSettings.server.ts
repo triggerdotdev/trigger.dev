@@ -5,7 +5,6 @@ import {
   parseEnvVars,
   repositoryProjectReadyToDeploy,
 } from "~/features/ee/projects/models/repositoryProject.server";
-import { taskQueue } from "~/services/messageBroker.server";
 
 const ValueSchema = z
   .string()
@@ -98,9 +97,9 @@ export class UpdateProjectSettings {
         },
       });
 
-      await taskQueue.publish("START_INITIAL_PROJECT_DEPLOYMENT", {
-        id: projectId,
-      });
+      // await taskQueue.publish("START_INITIAL_PROJECT_DEPLOYMENT", {
+      //   id: projectId,
+      // });
 
       shouldDeploy = true;
     }

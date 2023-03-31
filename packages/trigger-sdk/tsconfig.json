@@ -5,10 +5,8 @@
     "experimentalDecorators": true,
     "emitDecoratorMetadata": true,
     "paths": {
-      "internal-bridge/*": ["../internal-bridge/src/*"],
-      "internal-bridge": ["../internal-bridge/src/index"],
-      "@trigger.dev/common-schemas/*": ["../common-schemas/src/*"],
-      "@trigger.dev/common-schemas": ["../common-schemas/src/index"]
+      "@trigger.dev/internal/*": ["../common-schemas/src/*"],
+      "@trigger.dev/internal": ["../common-schemas/src/index"]
     },
     "lib": ["DOM", "DOM.Iterable"]
   },

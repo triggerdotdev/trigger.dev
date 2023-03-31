@@ -1,7 +1,6 @@
 import type { GitHubAppAuthorization } from ".prisma/client";
 import type { PrismaClient } from "~/db.server";
 import { prisma } from "~/db.server";
-import { getRepositoryFromMetadata } from "~/models/workflow.server";
 import type { CreateInstallationAccessTokenResponse } from "~/features/ee/projects/github/githubApp.server";
 import { getInstallationRepositories } from "~/features/ee/projects/github/githubApp.server";
 import { refreshInstallationAccessToken } from "~/features/ee/projects/github/refreshInstallationAccessToken.server";
@@ -56,15 +55,9 @@ export class NewProjectPresenter {
       },
     });
 
-    const relevantRepositories =
-      await this.#gatherRepositoriesFromWorkflowsInOrganization(
-        organizationSlug
-      );
-
     const repositories = this.#findRepositoriesForAuthorizations(
       appAuthorizations,
-      projects,
-      relevantRepositories
+      projects
     );
 
     return {
@@ -156,24 +149,5 @@ export class NewProjectPresenter {
 
       return bRelevant - aRelevant;
     });
-  }
-
-  async #gatherRepositoriesFromWorkflowsInOrganization(
-    organizationSlug: string
-  ) {
-    const workflows = await this.#prismaClient.workflow.findMany({
-      where: {
-        organization: {
-          slug: organizationSlug,
-        },
-      },
-      select: {
-        metadata: true,
-      },
-    });
-
-    return workflows
-      .map((workflow) => getRepositoryFromMetadata(workflow.metadata))
-      .filter(Boolean);
   }
 }

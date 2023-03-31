@@ -3,8 +3,8 @@ import { prisma } from "~/db.server";
 import slug from "slug";
 import { customAlphabet } from "nanoid";
 import { generateTwoRandomWords } from "~/utils/randomWords";
-import { taskQueue } from "~/services/messageBroker.server";
 import { DEV_ENVIRONMENT, LIVE_ENVIRONMENT } from "~/consts";
+import { workerQueue } from "~/services/worker.server";
 
 export type { Organization } from ".prisma/client";
 
@@ -153,7 +153,7 @@ export async function createOrganization({
     await createEnvironment(organization, DEV_ENVIRONMENT);
     await createEnvironment(organization, LIVE_ENVIRONMENT);
 
-    await taskQueue.publish("ORGANIZATION_CREATED", {
+    await workerQueue.enqueue("organizationCreated", {
       id: organization.id,
     });
 

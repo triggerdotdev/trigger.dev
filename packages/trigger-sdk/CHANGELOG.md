@@ -174,7 +174,7 @@
 
 ### Patch Changes
 
-- 0b17912: Updated dependency to @trigger.dev/common-schemas@0.1.0
+- 0b17912: Updated dependency to @trigger.dev/internal@0.1.0
 
 ## 0.2.3
 

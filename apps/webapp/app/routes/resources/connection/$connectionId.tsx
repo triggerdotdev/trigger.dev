@@ -2,9 +2,6 @@ import type { ActionArgs } from "@remix-run/server-runtime";
 import { json } from "@remix-run/server-runtime";
 import { z } from "zod";
 import { setConnectedAPIConnection } from "~/models/apiConnection.server";
-import { connectExternalService } from "~/models/externalService.server";
-import { connectExternalSource } from "~/models/externalSource.server";
-import { taskQueue } from "~/services/messageBroker.server";
 import { requireUserId } from "~/services/session.server";
 
 const requestSchema = z.object({
@@ -38,16 +35,12 @@ export const action = async ({ request, params }: ActionArgs) => {
     });
 
     if (sourceId !== undefined) {
-      await connectExternalSource({ sourceId, connectionId });
-      await taskQueue.publish("EXTERNAL_SOURCE_UPSERTED", {
-        id: sourceId,
-      });
+      // Implement this
+      // await connectExternalSource({ sourceId, connectionId });
     }
     if (serviceId !== undefined) {
-      await connectExternalService({ serviceId, connectionId });
-      await taskQueue.publish("EXTERNAL_SERVICE_UPSERTED", {
-        id: serviceId,
-      });
+      // Implement this
+      // await connectExternalService({ serviceId, connectionId });
     }
 
     return json({

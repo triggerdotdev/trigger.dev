@@ -1,8 +1,5 @@
-import { LIVE_ENVIRONMENT } from "~/consts";
 import type { PrismaClient } from "~/db.server";
 import { prisma } from "~/db.server";
-import { getEnvironmentForOrganization } from "~/models/runtimeEnvironment.server";
-import { WorkflowsPresenter } from "~/presenters/workflowsPresenter.server";
 
 export class ProjectOverviewPresenter {
   #prismaClient: PrismaClient;
@@ -12,14 +9,6 @@ export class ProjectOverviewPresenter {
   }
 
   async data(organizationSlug: string, projectId: string) {
-    const workflowsPresenter = new WorkflowsPresenter(this.#prismaClient);
-
-    const workflows = await workflowsPresenter.data({
-      repositoryProject: {
-        id: projectId,
-      },
-    });
-
     const deployments = await this.#prismaClient.projectDeployment.findMany({
       where: {
         projectId,
@@ -31,7 +20,7 @@ export class ProjectOverviewPresenter {
     });
 
     return {
-      workflows,
+      workflows: [] as any[],
       organizationSlug,
       deployments,
     };

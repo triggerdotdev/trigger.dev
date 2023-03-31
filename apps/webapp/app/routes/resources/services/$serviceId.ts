@@ -3,8 +3,6 @@ import { json } from "@remix-run/server-runtime";
 import { typedjson } from "remix-typedjson";
 import invariant from "tiny-invariant";
 import { z } from "zod";
-import { connectExternalService } from "~/models/externalService.server";
-import { taskQueue } from "~/services/messageBroker.server";
 import { requireUserId } from "~/services/session.server";
 
 const requestSchema = z.object({
@@ -28,11 +26,8 @@ export async function action({ request, params }: ActionArgs) {
     const formData = await request.formData();
     const formObject = Object.fromEntries(formData.entries());
     const { connectionId } = requestSchema.parse(formObject);
-    await connectExternalService({ serviceId, connectionId });
-
-    await taskQueue.publish("EXTERNAL_SERVICE_UPSERTED", {
-      id: serviceId,
-    });
+    // TODO: implement this
+    // await connectExternalService({ serviceId, connectionId });
 
     return typedjson({ success: true });
   } catch (error: any) {

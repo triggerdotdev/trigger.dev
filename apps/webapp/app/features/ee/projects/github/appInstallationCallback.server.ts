@@ -1,7 +1,7 @@
 import type { PrismaClient } from "~/db.server";
 import { prisma } from "~/db.server";
 import { getAppInstallation } from "~/features/ee/projects/github/githubApp.server";
-import { taskQueue } from "../../../../services/messageBroker.server";
+import { workerQueue } from "~/services/worker.server";
 
 export class AppInstallationCallback {
   #prismaClient: PrismaClient;
@@ -98,7 +98,7 @@ export class AppInstallationCallback {
       },
     });
 
-    await taskQueue.publish("GITHUB_APP_INSTALLATION_CREATED", {
+    await workerQueue.enqueue("githubAppInstallationCreated", {
       id: authorization.id,
     });
 

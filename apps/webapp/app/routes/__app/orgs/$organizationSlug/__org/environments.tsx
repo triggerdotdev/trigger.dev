@@ -1,4 +1,5 @@
 import { EyeIcon, EyeSlashIcon } from "@heroicons/react/20/solid";
+import classNames from "classnames";
 import { useState } from "react";
 import invariant from "tiny-invariant";
 import { CopyTextPanel } from "~/components/CopyTextButton";
@@ -12,8 +13,29 @@ import { Body } from "~/components/primitives/text/Body";
 import { SubTitle } from "~/components/primitives/text/SubTitle";
 import { Title } from "~/components/primitives/text/Title";
 import { useCurrentOrganization } from "~/hooks/useOrganizations";
-import { EnvironmentIcon } from "~/routes/resources/environment";
 import { titleCase } from "~/utils";
+
+export function EnvironmentIcon({
+  slug,
+  className,
+}: {
+  slug: string;
+  className?: string;
+}) {
+  let color = "bg-devEnv-500";
+  if (slug === "live") {
+    color = "bg-liveEnv-500";
+  }
+  return (
+    <span
+      className={classNames(
+        "block h-[0.35rem] w-[0.35rem] rounded-full",
+        color,
+        className
+      )}
+    />
+  );
+}
 
 export default function Page() {
   const organization = useCurrentOrganization();

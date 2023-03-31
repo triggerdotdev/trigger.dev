@@ -1,8 +1,8 @@
-export * from "./events";
-export * from "./trigger";
+export * from "./triggers";
+export * from "./job";
 export * from "./customEvents";
 export * from "./fetch";
-export * from "./entryPoint";
+export * from "./triggerClient";
 
 import { triggerRunLocalStorage } from "./localStorage";
 import { SecureString } from "./types";

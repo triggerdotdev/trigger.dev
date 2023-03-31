@@ -5,8 +5,8 @@ import { sign as signJWT } from "jsonwebtoken";
 import { z } from "zod";
 import { env } from "~/env.server";
 import type { EmitterWebhookEventName } from "@octokit/webhooks";
-import { taskQueue } from "../../../../services/messageBroker.server";
 import { logger } from "~/services/logger";
+import { workerQueue } from "~/services/worker.server";
 
 export async function verifyAndReceiveWebhook(request: Request) {
   if (!env.GITHUB_APP_WEBHOOK_SECRET) {
@@ -67,7 +67,7 @@ async function handleGithubEvent<TName extends EmitterWebhookEventName>({
 }) {
   switch (name) {
     case "installation.deleted": {
-      await taskQueue.publish("GITHUB_APP_INSTALLATION_DELETED", {
+      await workerQueue.enqueue("githubAppInstallationDeleted", {
         id: payload.installation.id,
       });
       break;
@@ -82,7 +82,7 @@ async function handleGithubEvent<TName extends EmitterWebhookEventName>({
 
       const branch = push.ref.replace("refs/heads/", "");
 
-      await taskQueue.publish("GITHUB_PUSH", {
+      await workerQueue.enqueue("githubPush", {
         branch: branch,
         commitSha: push.after,
         repository: push.repository.full_name,

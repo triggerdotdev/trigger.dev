@@ -25,7 +25,6 @@ import { Spinner } from "~/components/primitives/Spinner";
 import { Body } from "~/components/primitives/text/Body";
 import { SubTitle } from "~/components/primitives/text/SubTitle";
 import { Title } from "~/components/primitives/text/Title";
-import { WorkflowList } from "~/components/workflows/workflowList";
 import { ProjectOverviewPresenter } from "~/features/ee/projects/presenters/projectOverviewPresenter.server";
 import { redirectWithErrorMessage } from "~/models/message.server";
 import { useCurrentProject } from "../$projectP";
@@ -212,17 +211,10 @@ export default function ProjectOverviewPage() {
         )}
       </div>
       <div className="relative rounded-lg bg-slate-850">
-        <SubTitle>Workflows</SubTitle>
-        {workflows.length === 0 ? (
-          <Body className="text-slate-500">
-            No workflows have connected in this repo yet
-          </Body>
-        ) : (
-          <WorkflowList
-            workflows={workflows}
-            currentOrganizationSlug={organizationSlug}
-          />
-        )}
+        <SubTitle>Jobs</SubTitle>
+        <Body className="text-slate-500">
+          No jobs have connected in this repo yet
+        </Body>
       </div>
     </>
   );
