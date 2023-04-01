@@ -44,8 +44,7 @@ export async function loader({ request, params }: LoaderArgs) {
         orderBy: {
           id: "asc",
         },
-        take: query.take,
-        skip: query.cursor ? 1 : 0,
+        take: query.take + 1,
         cursor: query.cursor
           ? {
               id: query.cursor,
@@ -63,12 +62,12 @@ export async function loader({ request, params }: LoaderArgs) {
     return json({ error: "Execution not found" }, { status: 404 });
   }
 
+  const tasks = execution.tasks.slice(0, query.take);
+  const nextTask = execution.tasks[query.take];
+
   return json({
-    data: execution.tasks,
-    nextCursor:
-      execution.tasks.length > 0
-        ? execution.tasks[execution.tasks.length - 1]?.id
-        : undefined,
+    data: tasks,
+    nextCursor: nextTask ? nextTask.id : undefined,
   });
 }
 
