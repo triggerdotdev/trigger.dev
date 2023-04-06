@@ -1,13 +1,9 @@
 {
-  "extends": "@trigger.dev/tsconfig/node16.json",
+  "extends": "@trigger.dev/tsconfig/node18.json",
   "include": ["src/globals.d.ts", "./src/**/*.ts"],
   "compilerOptions": {
     "experimentalDecorators": true,
-    "emitDecoratorMetadata": true,
-    "paths": {
-      "@trigger.dev/internal": ["../common-schemas/src/index"],
-      "@trigger.dev/internal/*": ["../common-schemas/src/*"]
-    }
+    "emitDecoratorMetadata": true
   },
   "exclude": ["node_modules"]
 }

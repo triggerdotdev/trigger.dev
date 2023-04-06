@@ -5,6 +5,8 @@ import {
   NormalizedRequest,
 } from "@trigger.dev/sdk";
 import express from "express";
+import { github } from "@trigger.dev/github";
+import { z } from "zod";
 
 export const client = new TriggerClient("smoke-test", {
   apiKey: "trigger_development_cu7JBXifLr4j",
@@ -19,7 +21,7 @@ new Job({
   version: "0.0.1",
   logLevel: "debug",
   trigger: customEvent({ name: "smoke.text" }),
-  run: async (event, ctx) => {
+  run: async (event, io, ctx) => {
     await ctx.logger.debug("Inside the smoke test workflow, received event", {
       event,
       myDate: new Date(),
@@ -53,6 +55,88 @@ new Job({
     return { foo: "bar" };
   },
 }).registerWith(client);
+
+new Job({
+  id: "get-github-stars",
+  name: "Get GitHub Stars",
+  version: "0.0.1",
+  logLevel: "debug",
+  trigger: customEvent({
+    name: "get.github.stars",
+    schema: z.object({
+      owner: z.string(),
+      repo: z.string(),
+    }),
+  }),
+  connections: {
+    gh: github,
+  },
+  run: async (event, io, ctx) => {
+    await ctx.logger.debug("Inside the github stars job", {
+      event,
+    });
+
+    const repo = await io.gh.getRepo("Get Repo", {
+      repo: `${event.owner}/${event.repo}`,
+    });
+
+    await ctx.logger.debug("Got response from GitHub", {
+      repo,
+    });
+
+    return repo.stargazers_count;
+  },
+}).registerWith(client);
+
+// new Job({
+//   id: "comment-on-new-issues",
+//   name: "Comment on New GitHub issues",
+//   version: "0.0.1",
+//   logLevel: "debug",
+//   connections: {
+//     gh: github,
+//   },
+//   // issueEvent is a helper function that creates a trigger for a GitHub issue event webhook
+//   trigger: github.onIssueOpened({
+//     repo: "triggerdotdev/trigger.dev",
+//   }),
+//   run: async (event, io, ctx) => {
+//     // event is a GitHubIssueEvent
+//     const comment = await io.gh.createIssueComment("📝", {
+//       repo: event.repository.full_name,
+//       issueNumber: event.issue.number,
+//       body: "Hello from Trigger!",
+//     });
+
+//     const reaction = await io.runTask(
+//       "Add 🚀",
+//       {
+//         icon: "github",
+//         name: "addReaction",
+//         elements: [
+//           { label: "reaction", text: "🚀" },
+//           {
+//             label: "issue",
+//             text: event.issue.title,
+//             url: event.issue.html_url,
+//           },
+//         ],
+//         delayUntil: new Date(Date.now() + 1000 * 30), // 30 seconds from now
+//       },
+//       async (task) =>
+//         io.gh.client.rest.reactions
+//           .createForIssueComment({
+//             owner: event.repository.owner.login,
+//             repo: event.repository.name,
+//             comment_id: comment.id,
+//             content: "rocket",
+//           })
+//           .then((res) => res.data)
+//     );
+
+//     return reaction;
+//   },
+// }).registerWith(client);
 
 // Create an express app and listen on port 3007
 const app = express();

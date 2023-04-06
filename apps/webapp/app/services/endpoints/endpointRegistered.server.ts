@@ -2,8 +2,11 @@ import type {
   Endpoint,
   Organization,
   RuntimeEnvironment,
+  Job,
+  JobInstance,
+  JobConnection,
 } from ".prisma/client";
-import type { ApiJob } from "@trigger.dev/internal";
+import type { ApiJob, ConnectionMetadata } from "@trigger.dev/internal";
 import type { PrismaClient } from "~/db.server";
 import { prisma } from "~/db.server";
 import { ClientApi } from "../clientApi.server";
@@ -73,10 +76,13 @@ export class EndpointRegisteredService {
       update: {
         title: apiJob.name,
       },
+      include: {
+        connections: true,
+      },
     });
 
     // Upsert the JobInstance
-    await this.#prismaClient.jobInstance.upsert({
+    const jobInstance = await this.#prismaClient.jobInstance.upsert({
       where: {
         jobId_version_endpointId: {
           jobId: job.id,
@@ -110,6 +116,108 @@ export class EndpointRegisteredService {
       },
       update: {
         trigger: apiJob.trigger,
+      },
+      include: {
+        connections: true,
+      },
+    });
+
+    if (apiJob.trigger.connection) {
+      await this.#upsertJobConnection(
+        job,
+        jobInstance,
+        "__trigger",
+        apiJob.trigger.connection
+      );
+    }
+
+    // Upsert the connections
+    for (const connection of apiJob.connections) {
+      await this.#upsertJobConnection(
+        job,
+        jobInstance,
+        connection.key,
+        connection.metadata
+      );
+    }
+  }
+
+  async #upsertJobConnection(
+    job: Job & { connections: JobConnection[] },
+    jobInstance: JobInstance & { connections: JobConnection[] },
+    key: string,
+    metadata: ConnectionMetadata
+  ): Promise<JobConnection> {
+    // Find existing connection in the job instance
+    const existingInstanceConnection = jobInstance.connections.find(
+      (connection) => connection.key === key
+    );
+
+    if (existingInstanceConnection) {
+      return existingInstanceConnection;
+    }
+
+    // Find existing connection in the job
+    const existingJobConnection = job.connections.find(
+      (connection) => connection.key === key
+    );
+
+    if (existingJobConnection) {
+      return this.#prismaClient.jobConnection.create({
+        data: {
+          jobInstance: {
+            connect: {
+              id: jobInstance.id,
+            },
+          },
+          job: {
+            connect: {
+              id: job.id,
+            },
+          },
+          key,
+          connectionMetadata: existingJobConnection.connectionMetadata ?? {},
+          apiConnection: existingJobConnection.apiConnectionId
+            ? {
+                connect: {
+                  id: existingJobConnection.apiConnectionId,
+                },
+              }
+            : undefined,
+        },
+      });
+    }
+
+    // Find existing APIConnection in the org
+    const existingApiConnection =
+      await this.#prismaClient.aPIConnection.findFirst({
+        where: {
+          apiIdentifier: metadata.id,
+          organizationId: job.organizationId,
+        },
+      });
+
+    return this.#prismaClient.jobConnection.create({
+      data: {
+        jobInstance: {
+          connect: {
+            id: jobInstance.id,
+          },
+        },
+        job: {
+          connect: {
+            id: job.id,
+          },
+        },
+        key,
+        connectionMetadata: metadata,
+        apiConnection: existingApiConnection
+          ? {
+              connect: {
+                id: existingApiConnection.id,
+              },
+            }
+          : undefined,
       },
     });
   }

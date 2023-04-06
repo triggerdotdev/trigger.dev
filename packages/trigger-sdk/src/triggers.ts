@@ -3,18 +3,22 @@ import type {
   EventFilter,
   TriggerMetadata,
 } from "@trigger.dev/internal";
+import { DisplayElement } from "@trigger.dev/internal";
 import { z } from "zod";
 import zodToJsonSchema from "zod-to-json-schema";
 import { EventMatcher } from "./eventMatcher";
+import { AnyExternalSource } from "./externalSource";
+import { TriggerClient } from "./triggerClient";
 
 export interface Trigger<TEventType = any> {
   matches(event: ApiEventLog): boolean;
+  eventElements(event: ApiEventLog): DisplayElement[];
   toJSON(): TriggerMetadata;
+  registerWith(client: TriggerClient): void;
 }
 
 export type CustomEventTriggerOptions<TSchema extends z.ZodTypeAny> = {
   name: string;
-  source?: string;
   schema?: TSchema;
   filter?: EventFilter;
 };
@@ -28,17 +32,20 @@ export class CustomEventTrigger<TSchema extends z.ZodTypeAny>
     this.#options = options;
   }
 
+  eventElements(event: ApiEventLog): DisplayElement[] {
+    return [];
+  }
+
   matches(event: ApiEventLog): boolean {
     if (event.name !== this.#options.name) {
       return false;
     }
 
-    if (this.#options.filter || this.#options.source) {
+    if (this.#options.filter) {
       const eventMatcher = new EventMatcher(event);
 
       return eventMatcher.matches({
         name: [this.#options.name],
-        source: this.#options.source ? [this.#options.source] : [],
         payload: this.#options.filter ?? {},
       });
     }
@@ -46,24 +53,51 @@ export class CustomEventTrigger<TSchema extends z.ZodTypeAny>
     return true;
   }
 
-  get source(): string {
-    return this.#options.source ?? "any";
-  }
-
   toJSON(): TriggerMetadata {
     return {
       title: "Custom Event",
-      source: this.source,
-      displayProperties: [{ label: "on", value: this.#options.name }],
+      elements: [{ label: "on", text: this.#options.name }],
       schema: this.#options.schema
         ? zodToJsonSchema(this.#options.schema)
         : undefined,
     };
   }
+
+  registerWith(client: TriggerClient) {}
 }
 
 export function customEvent<TSchema extends z.ZodTypeAny>(
   options: CustomEventTriggerOptions<TSchema>
-): Trigger<TSchema> {
+): Trigger<z.infer<TSchema>> {
   return new CustomEventTrigger(options);
+}
+
+export type ExteralSourceEventTriggerOptions<TEvent> = {
+  title: string;
+  elements: DisplayElement[];
+  source: AnyExternalSource;
+};
+
+export class ExternalSourceEventTrigger<TEvent> implements Trigger<TEvent> {
+  constructor(private options: ExteralSourceEventTriggerOptions<TEvent>) {}
+
+  eventElements(event: ApiEventLog): DisplayElement[] {
+    return this.options.source.eventElements(event);
+  }
+
+  matches(event: ApiEventLog): boolean {
+    return this.options.source.matches(event);
+  }
+
+  toJSON(): TriggerMetadata {
+    return {
+      title: this.options.title,
+      elements: this.options.elements,
+      connection: this.options.source.connection,
+    };
+  }
+
+  registerWith(client: TriggerClient) {
+    client.register(this.options.source);
+  }
 }

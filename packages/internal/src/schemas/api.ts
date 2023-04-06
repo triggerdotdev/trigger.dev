@@ -3,6 +3,8 @@ import { DeserializedJsonSchema, SerializableJsonSchema } from "./json";
 import { CachedTaskSchema, ServerTaskSchema, TaskSchema } from "./tasks";
 import { TriggerMetadataSchema } from "./triggers";
 import { ulid } from "ulid";
+import { DisplayElementSchema } from "./elements";
+import { ConnectionAuthSchema, ConnectionMetadataSchema } from "./connections";
 
 export const PongResponseSchema = z.object({
   message: z.literal("PONG"),
@@ -13,6 +15,12 @@ export const JobSchema = z.object({
   name: z.string(),
   version: z.string(),
   trigger: TriggerMetadataSchema,
+  connections: z.array(
+    z.object({
+      key: z.string(),
+      metadata: ConnectionMetadataSchema,
+    })
+  ),
 });
 
 export type ApiJob = z.infer<typeof JobSchema>;
@@ -40,7 +48,6 @@ export type SendEvent = z.input<typeof RawEventSchema>;
 export const ApiEventLogSchema = z.object({
   id: z.string(),
   name: z.string(),
-  source: z.string(),
   payload: DeserializedJsonSchema,
   context: DeserializedJsonSchema.optional().nullable(),
   timestamp: z.coerce.date(),
@@ -84,6 +91,7 @@ export const ExecuteJobBodySchema = z.object({
     startedAt: z.coerce.date(),
   }),
   tasks: z.array(CachedTaskSchema).optional(),
+  connections: z.record(ConnectionAuthSchema).optional(),
 });
 
 export type ExecuteJobBody = z.infer<typeof ExecuteJobBodySchema>;
@@ -101,6 +109,7 @@ export const CreateExecutionBodySchema = z.object({
   client: z.string(),
   job: JobSchema,
   event: ApiEventLogSchema,
+  elements: z.array(DisplayElementSchema).optional(),
 });
 
 export type CreateExecutionBody = z.infer<typeof CreateExecutionBodySchema>;
@@ -127,17 +136,12 @@ export type CachedTask = z.infer<typeof CachedTaskSchema>;
 
 export const IOTaskSchema = z.object({
   name: z.string(),
+  icon: z.string().optional(),
+  displayKey: z.string().optional(),
   noop: z.boolean().default(false),
   delayUntil: z.coerce.date().optional(),
   description: z.string().optional(),
-  displayProperties: z
-    .array(
-      z.object({
-        label: z.string(),
-        value: z.string(),
-      })
-    )
-    .optional(),
+  elements: z.array(DisplayElementSchema).optional(),
   params: SerializableJsonSchema.optional(),
 });
 
@@ -156,7 +160,7 @@ export const RunTaskBodyOutputSchema = RunTaskBodyInputSchema.extend({
 export type RunTaskBodyOutput = z.infer<typeof RunTaskBodyOutputSchema>;
 
 export const CompleteTaskBodyInputSchema = RunTaskBodyInputSchema.pick({
-  displayProperties: true,
+  elements: true,
   description: true,
   params: true,
 }).extend({

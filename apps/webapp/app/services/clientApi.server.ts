@@ -1,6 +1,7 @@
 import type {
   ApiEventLog,
   CachedTask,
+  ExecuteJobBody,
   ServerTask,
 } from "@trigger.dev/internal";
 import { ErrorWithStackSchema } from "@trigger.dev/internal";
@@ -122,19 +123,7 @@ export class ClientApi {
     return DeliverEventResponseSchema.parse(anyBody);
   }
 
-  async executeJob(options: {
-    event: ApiEventLog;
-    job: { id: string; version: string };
-    context: {
-      id: string;
-      environment: string;
-      organization: string;
-      isTest: boolean;
-      version: string;
-      startedAt: Date;
-    };
-    tasks?: Array<CachedTask>;
-  }) {
+  async executeJob(options: ExecuteJobBody) {
     const response = await safeFetch(this.#url, {
       method: "POST",
       headers: {

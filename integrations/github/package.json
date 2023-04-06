@@ -1,0 +1,33 @@
+{
+  "name": "@trigger.dev/github",
+  "version": "0.2.0",
+  "description": "The official GitHub integration for Trigger.dev",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "publishConfig": {
+    "access": "public"
+  },
+  "files": [
+    "dist/index.js",
+    "dist/index.d.ts",
+    "dist/index.js.map"
+  ],
+  "devDependencies": {
+    "@octokit/webhooks-types": "^6.10.0",
+    "@trigger.dev/tsconfig": "workspace:*",
+    "@types/node": "18",
+    "rimraf": "^3.0.2",
+    "tsup": "^6.5.0"
+  },
+  "scripts": {
+    "clean": "rimraf dist",
+    "build": "npm run clean && npm run build:tsup",
+    "build:tsup": "tsup"
+  },
+  "dependencies": {
+    "@octokit/webhooks": "^10.4.0",
+    "@trigger.dev/sdk": "workspace:^1.0.0",
+    "octokit": "^2.0.14",
+    "zod": "^3.20.2"
+  }
+}

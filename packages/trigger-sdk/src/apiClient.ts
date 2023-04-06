@@ -9,7 +9,6 @@ import type {
   ServerTask,
 } from "@trigger.dev/internal";
 import { Logger, LogLevel } from "@trigger.dev/internal";
-import { webcrypto } from "node:crypto";
 
 export type ApiClientOptions = {
   apiKey?: string;
@@ -21,6 +20,16 @@ export type EndpointRecord = {
   id: string;
   name: string;
   url: string;
+};
+
+export type HttpSourceRecord = {
+  id: string;
+  key: string;
+  managed: boolean;
+  url: string;
+  status: "PENDING" | "ACTIVE" | "INACTIVE";
+  secret?: string;
+  data?: any;
 };
 
 export type ExecutionRecord = {
@@ -77,6 +86,77 @@ export class ApiClient {
     if (response.status !== 200) {
       throw new Error(
         `Failed to register entry point, got status code ${response.status}`
+      );
+    }
+
+    return await response.json();
+  }
+
+  async registerHttpSource(options: {
+    key: string;
+    managed: boolean;
+  }): Promise<HttpSourceRecord> {
+    const apiKey = await this.#apiKey();
+
+    this.#logger.debug("Registering http source", {
+      options,
+    });
+
+    const response = await fetch(`${this.#apiUrl}/api/v3/sources/http`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify(options),
+    });
+
+    if (response.status >= 400 && response.status < 500) {
+      const body = await response.json();
+
+      throw new Error(body.error);
+    }
+
+    if (response.status !== 200) {
+      throw new Error(
+        `Failed to register http source, got status code ${response.status}`
+      );
+    }
+
+    return await response.json();
+  }
+
+  async activateHttpSource(
+    id: string,
+    options: {
+      secret: string;
+      data?: any;
+    }
+  ): Promise<HttpSourceRecord> {
+    const apiKey = await this.#apiKey();
+
+    this.#logger.debug("Activating http source", {
+      options,
+    });
+
+    const response = await fetch(`${this.#apiUrl}/api/v3/sources/http/${id}`, {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify(options),
+    });
+
+    if (response.status >= 400 && response.status < 500) {
+      const body = await response.json();
+
+      throw new Error(body.error);
+    }
+
+    if (response.status !== 200) {
+      throw new Error(
+        `Failed to activate http source, got status code ${response.status}`
       );
     }
 

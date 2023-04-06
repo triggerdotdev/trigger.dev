@@ -29,30 +29,6 @@
       ],
       "@trigger.dev/github/*": [
         "../../integrations/github/src/*"
-      ],
-      "@trigger.dev/slack": [
-        "../../integrations/slack/src/index"
-      ],
-      "@trigger.dev/slack/*": [
-        "../../integrations/slack/src/*"
-      ],
-      "@trigger.dev/resend": [
-        "../../integrations/resend/src/index"
-      ],
-      "@trigger.dev/resend/*": [
-        "../../integrations/resend/src/*"
-      ],
-      "@trigger.dev/shopify": [
-        "../../integrations/shopify/src/index"
-      ],
-      "@trigger.dev/shopify/*": [
-        "../../integrations/shopify/src/*"
-      ],
-      "@trigger.dev/whatsapp": [
-        "../../integrations/whatsapp/src/index"
-      ],
-      "@trigger.dev/whatsapp/*": [
-        "../../integrations/whatsapp/src/*"
       ]
     }
   }

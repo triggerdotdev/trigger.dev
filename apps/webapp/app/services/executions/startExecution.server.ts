@@ -1,6 +1,8 @@
-import { ApiEventLogSchema } from "@trigger.dev/internal";
+import { APIConnection, JobConnection } from ".prisma/client";
+import { ApiEventLogSchema, ConnectionAuth } from "@trigger.dev/internal";
 import type { PrismaClient } from "~/db.server";
 import { prisma } from "~/db.server";
+import { getConnectionAuth } from "../connectionAuth.server";
 import { ClientApi, ClientApiError } from "../clientApi.server";
 import { workerQueue } from "../worker.server";
 
@@ -19,6 +21,14 @@ export class StartExecutionService {
           include: {
             endpoint: true,
             job: true,
+            connections: {
+              include: {
+                apiConnection: true,
+              },
+              where: {
+                key: { not: "__trigger" },
+              },
+            },
           },
         },
         environment: true,
@@ -26,6 +36,16 @@ export class StartExecutionService {
         organization: true,
       },
     });
+
+    // If any of the connections are missing, we can't start the execution
+    const connections = execution.jobInstance.connections.filter(
+      (c) => c.apiConnection != null
+    ) as Array<JobConnection & { apiConnection: APIConnection }>;
+
+    if (connections.length !== execution.jobInstance.connections.length) {
+      // TODO: We should probably mark the execution as failed here or do something else
+      return;
+    }
 
     const client = new ClientApi(
       execution.environment.apiKey,
@@ -59,6 +79,7 @@ export class StartExecutionService {
           version: execution.jobInstance.version,
           startedAt,
         },
+        connections: await getConnectionAuths(connections),
       });
 
       if (results.completed) {
@@ -96,4 +117,23 @@ export class StartExecutionService {
       }
     }
   }
+}
+
+async function getConnectionAuths(
+  connections: Array<JobConnection & { apiConnection: APIConnection }>
+): Promise<Record<string, ConnectionAuth>> {
+  return await connections.reduce(
+    async (accP: Promise<Record<string, ConnectionAuth>>, connection) => {
+      const acc = await accP;
+
+      const connectionAuth = await getConnectionAuth(connection.apiConnection);
+
+      if (connectionAuth) {
+        acc[connection.key] = connectionAuth;
+      }
+
+      return acc;
+    },
+    Promise.resolve({})
+  );
 }

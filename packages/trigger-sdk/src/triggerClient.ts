@@ -12,6 +12,12 @@ import type { LogLevel, ApiEventLog } from "@trigger.dev/internal";
 import { TriggerContext } from "./types";
 import { ContextLogger } from "./logger";
 import { IO, ResumeWithTask } from "./io";
+import { AnyExternalSource } from "./externalSource";
+import {
+  AuthenticatedTask,
+  Connection,
+  IOWithConnections,
+} from "./connections";
 
 export type TriggerClientOptions = {
   apiKey?: string;
@@ -35,7 +41,8 @@ export type NormalizedRequest = {
 
 export class TriggerClient {
   #options: TriggerClientOptions;
-  #registeredJobs: Record<string, Job> = {};
+  #registeredJobs: Record<string, Job<{}, any>> = {};
+  #registeredSources = new Map<string, AnyExternalSource>();
   #client: ApiClient;
   #logger: Logger;
   name: string;
@@ -175,8 +182,16 @@ export class TriggerClient {
     }
   }
 
-  register(job: Job) {
-    this.#registeredJobs[job.id] = job;
+  register(thing: AnyExternalSource): void;
+  register(thing: Job<{}, any>): void;
+  register(thing: Job<{}, any> | AnyExternalSource): void {
+    if (thing instanceof Job) {
+      this.#registeredJobs[thing.id] = thing;
+
+      thing.trigger.registerWith(this);
+    } else {
+      this.#registeredSources.set(thing.id, thing);
+    }
   }
 
   authorized(apiKey: string) {
@@ -207,7 +222,7 @@ export class TriggerClient {
     return executions;
   }
 
-  async #createExecution(job: Job, event: ApiEventLog) {
+  async #createExecution(job: Job<{}, any>, event: ApiEventLog) {
     this.#logger.debug("creating execution", { event, job: job.toJSON() });
 
     // Create a new job execution
@@ -215,12 +230,13 @@ export class TriggerClient {
       client: this.name,
       job: job.toJSON(),
       event,
+      elements: job.trigger.eventElements(event),
     });
 
     return execution;
   }
 
-  async #executeJob(execution: ExecuteJobBody, job: Job) {
+  async #executeJob(execution: ExecuteJobBody, job: Job<{}, any>) {
     this.#logger.debug("executing job", { execution, job: job.toJSON() });
 
     const abortController = new AbortController();
@@ -232,9 +248,16 @@ export class TriggerClient {
       logger: this.#logger,
     });
 
+    const ioWithConnections = await this.#createIOWithConnections(
+      io,
+      execution,
+      job
+    );
+
     try {
       const output = await job.options.run(
-        execution.event.payload,
+        execution.event.payload ?? {},
+        ioWithConnections,
         this.#createJobContext(execution, io, abortController.signal)
       );
 
@@ -261,6 +284,75 @@ export class TriggerClient {
         error: { message: "Unknown error" },
       };
     }
+  }
+
+  #createIOWithConnections<
+    TConnections extends Record<string, Connection<any, any, any>>
+  >(
+    io: IO,
+    execution: ExecuteJobBody,
+    job: Job<{}, TConnections>
+  ): IOWithConnections<TConnections> {
+    if (!execution.connections) {
+      return io as IOWithConnections<TConnections>;
+    }
+
+    const jobConnections = job.options.connections;
+
+    if (!jobConnections) {
+      return io as IOWithConnections<TConnections>;
+    }
+
+    const connections = Object.entries(execution.connections).reduce(
+      (acc, [key, connection]) => {
+        const jobConnection = jobConnections[key];
+        const client = jobConnection.clientFactory(connection);
+
+        const ioConnection = {
+          client,
+        } as any;
+
+        if (jobConnection.tasks) {
+          const tasks: Record<
+            string,
+            AuthenticatedTask<any, any, any>
+          > = jobConnection.tasks;
+
+          Object.keys(tasks).forEach((taskName) => {
+            const authenticatedTask = tasks[taskName];
+
+            ioConnection[taskName] = async (
+              key: string | string[],
+              params: any
+            ) => {
+              return await io.runTask(
+                key,
+                authenticatedTask.init(params),
+                async (ioTask) => {
+                  return authenticatedTask.run(params, client, ioTask);
+                }
+              );
+            };
+          });
+        }
+
+        acc[key] = ioConnection;
+
+        return acc;
+      },
+      {} as any
+    );
+
+    return new Proxy(io, {
+      get(target, prop) {
+        if (prop in connections) {
+          return connections[prop];
+        }
+
+        // @ts-ignore
+        return target[prop];
+      },
+    }) as IOWithConnections<TConnections>;
   }
 
   #createJobContext(
@@ -295,9 +387,10 @@ export class TriggerClient {
           [message, level],
           {
             name: "log",
+            icon: "log",
             description: message,
             params: data,
-            displayProperties: [{ label: "Level", value: level }],
+            elements: [{ label: "Level", text: level }],
             noop: true,
           },
           async (task) => {}
@@ -308,6 +401,7 @@ export class TriggerClient {
           id,
           {
             name: "wait",
+            icon: "clock",
             params: { seconds },
             noop: true,
             delayUntil: new Date(Date.now() + seconds * 1000),

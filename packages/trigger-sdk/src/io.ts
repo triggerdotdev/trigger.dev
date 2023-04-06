@@ -61,6 +61,7 @@ export class IO {
 
     const task = await this.#apiClient.runTask(this.#id, {
       idempotencyKey,
+      displayKey: typeof key === "string" ? key : undefined,
       noop: false,
       ...options,
     });

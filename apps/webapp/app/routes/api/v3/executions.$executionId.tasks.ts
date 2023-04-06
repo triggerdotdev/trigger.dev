@@ -55,11 +55,11 @@ export async function loader({ request, params }: LoaderArgs) {
   });
 
   if (!execution) {
-    return json({ error: "Execution not found" }, { status: 404 });
+    return json({ message: "Execution not found" }, { status: 404 });
   }
 
   if (execution.environmentId !== authenticatedEnv.id) {
-    return json({ error: "Execution not found" }, { status: 404 });
+    return json({ message: "Execution not found" }, { status: 404 });
   }
 
   const tasks = execution.tasks.slice(0, query.take);
@@ -173,6 +173,8 @@ export class RunExecutionTaskService {
         data: {
           id: ulid(),
           idempotencyKey,
+          displayKey: taskBody.displayKey,
+          icon: taskBody.icon,
           execution: {
             connect: {
               id: executionId,
@@ -186,7 +188,7 @@ export class RunExecutionTaskService {
           noop: taskBody.noop,
           delayUntil: taskBody.delayUntil,
           params: taskBody.params ?? undefined,
-          displayProperties: taskBody.displayProperties ?? undefined,
+          elements: taskBody.elements ?? undefined,
         },
       });
 

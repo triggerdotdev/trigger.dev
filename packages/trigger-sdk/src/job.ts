@@ -1,22 +1,34 @@
-import { Trigger } from "./triggers";
-import { TriggerClient } from "./triggerClient";
-import type { TriggerContext } from "./types";
 import { LogLevel } from "@trigger.dev/internal";
+import { Connection, IOWithConnections } from "./connections";
+import { TriggerClient } from "./triggerClient";
+import { Trigger } from "./triggers";
+import type { TriggerContext } from "./types";
 
-export type JobOptions<TEventType = any> = {
+export type JobOptions<
+  TEventType extends object = {},
+  TConnections extends Record<string, Connection<any, any, any>> = {}
+> = {
   id: string;
   name: string;
   version: string;
   trigger: Trigger<TEventType>;
   logLevel?: LogLevel;
+  connections?: TConnections;
 
-  run: (event: TEventType, ctx: TriggerContext) => Promise<any>;
+  run: (
+    event: TEventType,
+    io: IOWithConnections<TConnections>,
+    ctx: TriggerContext
+  ) => Promise<any>;
 };
 
-export class Job<TEventType = any> {
-  options: JobOptions<TEventType>;
+export class Job<
+  TEventType extends object,
+  TConnections extends Record<string, Connection<any, any, any>>
+> {
+  readonly options: JobOptions<TEventType, TConnections>;
 
-  constructor(options: JobOptions<TEventType>) {
+  constructor(options: JobOptions<TEventType, TConnections>) {
     this.options = options;
     this.#validate();
   }
@@ -37,8 +49,14 @@ export class Job<TEventType = any> {
     return this.options.version;
   }
 
+  get connections() {
+    return Object.keys(this.options.connections ?? {}).map((key) => {
+      return { key, metadata: this.options.connections![key].metadata };
+    });
+  }
+
   registerWith(client: TriggerClient) {
-    client.register(this);
+    client.register(this as unknown as Job<{}, any>);
   }
 
   toJSON() {
@@ -47,6 +65,7 @@ export class Job<TEventType = any> {
       name: this.name,
       version: this.version,
       trigger: this.trigger.toJSON(),
+      connections: this.connections,
     };
   }
 

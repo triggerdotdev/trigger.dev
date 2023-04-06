@@ -90,6 +90,7 @@ model APIConnection {
 
   externalSources  ExternalSource[]
   externalServices ExternalService[]
+  jobConnections   JobConnection[]
 }
 
 enum APIAuthenticationMethod {
@@ -879,7 +880,7 @@ model Endpoint {
   updatedAt DateTime @updatedAt
 
   jobInstances JobInstance[]
-  Execution    Execution[]
+  executions   Execution[]
 
   @@unique([environmentId, slug])
 }
@@ -892,8 +893,9 @@ model Job {
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   organizationId String
 
-  instances JobInstance[]
-  Execution Execution[]
+  instances   JobInstance[]
+  executions  Execution[]
+  connections JobConnection[]
 
   @@unique([organizationId, slug])
 }
@@ -915,16 +917,38 @@ model JobInstance {
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   organizationId String
 
-  createdAt DateTime    @default(now())
-  updatedAt DateTime    @updatedAt
-  Execution Execution[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  executions  Execution[]
+  connections JobConnection[]
 
   @@unique([jobId, version, endpointId])
 }
 
+model JobConnection {
+  id  String @id @default(cuid())
+  key String
+
+  jobInstance   JobInstance @relation(fields: [jobInstanceId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  jobInstanceId String
+
+  job   Job    @relation(fields: [jobId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  jobId String
+
+  connectionMetadata Json
+
+  apiConnection   APIConnection? @relation(fields: [apiConnectionId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  apiConnectionId String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([jobInstanceId, key])
+}
+
 model EventLog {
   id        String   @id @default(cuid())
-  source    String
   name      String
   timestamp DateTime @default(now())
   payload   Json
@@ -972,6 +996,8 @@ model Execution {
   startedAt   DateTime?
   completedAt DateTime?
 
+  elements Json?
+
   status ExecutionStatus @default(PENDING)
   output Json?
 
@@ -992,19 +1018,21 @@ enum ExecutionStatus {
 }
 
 model Task {
-  id             String @id
+  id             String  @id
   idempotencyKey String
+  displayKey     String?
   name           String
+  icon           String?
 
   status     TaskStatus @default(PENDING)
   delayUntil DateTime?
   noop       Boolean    @default(false)
 
-  description       String?
-  displayProperties Json?
-  params            Json?
-  output            Json?
-  error             String?
+  description String?
+  elements    Json?
+  params      Json?
+  output      Json?
+  error       String?
 
   startedAt   DateTime?
   completedAt DateTime?
