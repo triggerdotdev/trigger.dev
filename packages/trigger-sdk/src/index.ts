@@ -1,7 +1,6 @@
 export * from "./triggers";
 export * from "./job";
 export * from "./customEvents";
-export * from "./fetch";
 export * from "./triggerClient";
 export * from "./connections";
 export * from "./externalSource";
