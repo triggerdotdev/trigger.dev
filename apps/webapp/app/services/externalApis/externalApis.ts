@@ -1,7 +1,7 @@
 import type { ExternalAPI } from "./types";
 
 const slack: ExternalAPI = {
-  service: "slack",
+  identifier: "slack",
   name: "Slack",
   authenticationMethods: [
     {
@@ -101,4 +101,4 @@ const slack: ExternalAPI = {
   ],
 };
 
-export { slack };
+export const apis: Record<string, ExternalAPI> = { slack };

@@ -1,17 +1,10 @@
 export type ExternalAPI = {
   /** Used to uniquely identify an API */
-  service: string;
+  identifier: string;
   /** The name of the API */
   name: string;
   /** The possible authentication methods we support for this API  */
   authenticationMethods?: APIAuthenticationMethod[];
-};
-
-export type Scope = {
-  /** The name of the scope */
-  name: string;
-  /** The param name of the scope, default is just "scope". Slack has "user" scopes that are a different query param */
-  paramName?: string;
 };
 
 /** An authentication method that can be used */
@@ -58,7 +51,23 @@ export type APIAuthenticationMethodOAuth2 = {
     };
   };
   /** Additional fields that are needed, e.g. Shopify requires a store name */
-  additionalFields?: Record<string, string>;
+  additionalFields?: AdditionalField[];
   /** The possible scopes this auth method supports */
   scopes: Scope[];
+};
+
+type AdditionalField = {
+  /** The name of the field */
+  name: string;
+  /** The key of the field, should be unique */
+  key: string;
+  /** The type of the field */
+  type: "text" | "password";
+};
+
+type Scope = {
+  /** The name of the scope */
+  name: string;
+  /** The param name of the scope, default is just "scope". Slack has "user" scopes that are a different query param */
+  paramName?: string;
 };
