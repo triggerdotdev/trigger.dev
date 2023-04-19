@@ -1,4 +1,4 @@
-import { apis } from "./externalApis";
+import { apis } from "./apiCatalog";
 
 /** Used to get External APIs */
 class APIStore {
