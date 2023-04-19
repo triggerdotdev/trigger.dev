@@ -1,13 +1,20 @@
 import { apis } from "./apiCatalog";
+import type { ExternalAPI } from "./types";
 
 /** Used to get External APIs */
-class APIStore {
+export class APIStore {
+  #apis: Record<string, ExternalAPI>;
+
+  constructor(apis: Record<string, ExternalAPI>) {
+    this.#apis = apis;
+  }
+
   public getApis() {
-    return apis;
+    return this.#apis;
   }
 
   public getApi(identifier: string) {
-    const api = apis[identifier];
+    const api = this.#apis[identifier];
     if (!api) {
       return undefined;
     }
@@ -15,4 +22,4 @@ class APIStore {
   }
 }
 
-export const apiStore = new APIStore();
+export const apiStore = new APIStore(apis);

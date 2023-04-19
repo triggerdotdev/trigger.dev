@@ -4,7 +4,7 @@ export type ExternalAPI = {
   /** The name of the API */
   name: string;
   /** The possible authentication methods we support for this API  */
-  authenticationMethods?: APIAuthenticationMethod[];
+  authenticationMethods: Record<string, APIAuthenticationMethod>;
 };
 
 /** An authentication method that can be used */
@@ -12,8 +12,6 @@ export type APIAuthenticationMethod = APIAuthenticationMethodOAuth2;
 
 //A useful reference is the Simple OAuth2 npm library: https://github.com/lelylan/simple-oauth2/blob/HEAD/API.md#options
 export type APIAuthenticationMethodOAuth2 = {
-  /** The unique key for the authentication method */
-  key: string;
   /** The displayable name of the authentication method */
   name: string;
   /** The type of authentication method */

@@ -3,9 +3,8 @@ import type { ExternalAPI } from "./types";
 const slack: ExternalAPI = {
   identifier: "slack",
   name: "Slack",
-  authenticationMethods: [
-    {
-      key: "oauth2",
+  authenticationMethods: {
+    oauth2: {
       name: "OAuth2",
       type: "oauth2",
       client: {
@@ -98,7 +97,7 @@ const slack: ExternalAPI = {
         { name: "workflow.steps:execute" },
       ],
     },
-  ],
+  },
 };
 
 export const apis: Record<string, ExternalAPI> = { slack };

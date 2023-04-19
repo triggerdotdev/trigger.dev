@@ -103,6 +103,7 @@ importers:
       '@types/react': ^18.0.21
       '@types/react-date-range': ^1.4.3
       '@types/react-dom': ^18.0.6
+      '@types/simple-oauth2': ^5.0.4
       '@types/slug': ^5.0.3
       '@types/tar': ^6.1.4
       '@uiw/react-codemirror': ^4.13.2
@@ -228,6 +229,7 @@ importers:
       '@tanstack/react-table': 8.7.6_biqbaboplfbrettd7655fr4n2y
       '@trigger.dev/internal': link:../../packages/internal
       '@typeform/embed-react': 2.14.1_react@18.2.0
+      '@types/simple-oauth2': 5.0.4
       '@uiw/react-codemirror': 4.19.5_aguurb4bmecpxzejz52amioxne
       bcryptjs: 2.4.3
       classnames: 2.3.2
@@ -6027,6 +6029,10 @@ packages:
     dependencies:
       '@types/node': 18.14.0
     dev: true
+
+  /@types/simple-oauth2/5.0.4:
+    resolution: {integrity: sha512-4SvTfmAa1fGUa1d07j9vIiC4o92bGh0ihPXmtS05udMMmNwVIaU2nZ706cC4wI8cJxOlHD4P/d5tzqvWYd+KxA==}
+    dev: false
 
   /@types/sinonjs__fake-timers/8.1.1:
     resolution: {integrity: sha512-0kSuKjAS0TrGLJ0M/+8MaFkGsQhZpB6pxOmvS3K8FYI72K//YmdfoW9X2qPsAKh1mkwxGD5zib9s1FIFed6E8g==}
