@@ -18,6 +18,7 @@
     "baseUrl": ".",
     "paths": {
       "~/*": ["./app/*"],
+      "@/*": ["./*"],
       "@trigger.dev/internal": ["../../packages/internal/src/index"],
       "@trigger.dev/internal/*": ["../../packages/internal/src/*"],
       "emails": ["../../packages/emails/src/index"],

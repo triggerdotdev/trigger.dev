@@ -1,3 +1,4 @@
+import { createOAuth2Url, grantOAuth2Token } from "./oauth2.server";
 import type { ExternalAPI } from "./types";
 
 const slack: ExternalAPI = {
@@ -18,10 +19,47 @@ const slack: ExternalAPI = {
       config: {
         authorization: {
           url: "https://slack.com/oauth/v2/authorize",
+          scopeSeparator: " ",
+          createUrl: ({
+            authorizationUrl,
+            clientId,
+            clientSecret,
+            key,
+            callbackUrl,
+            scopes,
+            scopeSeparator,
+          }) => {
+            return createOAuth2Url({
+              authorizationUrl,
+              clientId,
+              clientSecret,
+              key,
+              callbackUrl,
+              scopes,
+              scopeSeparator,
+            });
+          },
         },
         token: {
           url: "https://slack.com/api/oauth.v2.access",
-          grantType: "authorization_code",
+          grantToken: ({
+            tokenUrl,
+            clientId,
+            clientSecret,
+            code,
+            callbackUrl,
+            scopes,
+          }) => {
+            return grantOAuth2Token({
+              tokenUrl,
+              clientId,
+              clientSecret,
+              code,
+              callbackUrl,
+              scopes,
+              scopeSeparator: " ",
+            });
+          },
         },
         refresh: {
           url: "https://slack.com/api/oauth.v2.access",

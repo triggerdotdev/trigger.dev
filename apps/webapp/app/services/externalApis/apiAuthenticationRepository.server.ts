@@ -2,10 +2,11 @@ import type { APIConnection } from ".prisma/client";
 import { z } from "zod";
 import type { PrismaClient } from "~/db.server";
 import { prisma } from "~/db.server";
-import type { APIStore } from "./apiStore.server";
-import { apiStore as apis } from "./apiStore.server";
-import type { APIAuthenticationMethodOAuth2, ExternalAPI } from "./types";
-import simpleOauth2 from "simple-oauth2";
+import type { APIStore } from "./apiStore";
+import { apiStore as apis } from "./apiStore";
+import type { ExternalAPI } from "./types";
+import { createOAuth2Url, getClientConfigFromEnv } from "./oauth2.server";
+import { env } from "~/env.server";
 
 const ConnectionMetadataSchema = z.object({
   account: z.string().optional(),
@@ -13,7 +14,7 @@ const ConnectionMetadataSchema = z.object({
 
 type ConnectionMetadata = z.infer<typeof ConnectionMetadataSchema>;
 
-class APIAuthenticationRepository {
+export class APIAuthenticationRepository {
   #organizationId: string;
   #apiStore: APIStore;
   #prismaClient: PrismaClient;
@@ -69,16 +70,73 @@ class APIAuthenticationRepository {
     return connections.map((c) => this.#enrichConnection(c));
   }
 
-  /** Get credentials for the given api and id */
-  async createCredential(
-    apiIdentifier: ExternalAPI,
-    authenticationMethod: string
-  ) {
-    //todo create connection attempt
-    //check the required environment variables exist
-    //use the simple oauth client to redirect to the auth
-    //return the info to start the redirect?
-    //we need to come back afterwards
+  async createConnectionAttempt({
+    organizationId,
+    apiIdentifier,
+    authenticationMethodKey,
+    scopes,
+  }: {
+    organizationId: string;
+    apiIdentifier: string;
+    authenticationMethodKey: string;
+    scopes: string[];
+  }) {
+    const api = this.#apiStore.getApi(apiIdentifier);
+    if (!api) {
+      throw new Error(`API ${apiIdentifier} not found`);
+    }
+
+    const authenticationMethod =
+      api.authenticationMethods[authenticationMethodKey];
+    if (!authenticationMethod) {
+      throw new Error(
+        `API authentication method ${authenticationMethodKey} not found for API ${apiIdentifier}`
+      );
+    }
+
+    switch (authenticationMethod.type) {
+      case "oauth2": {
+        //create a connection attempt
+        const connectionAttempt =
+          await this.#prismaClient.aPIConnectionAttempt.create({
+            data: {
+              organizationId,
+              apiIdentifier,
+              authenticationMethodKey,
+              scopes,
+            },
+          });
+
+        //create a url for the oauth2 flow
+        const getClientConfig = getClientConfigFromEnv(
+          authenticationMethod.client.id.envName,
+          authenticationMethod.client.secret.envName
+        );
+        const createAuthorizationParams = {
+          authorizationUrl: authenticationMethod.config.authorization.url,
+          clientId: getClientConfig.id,
+          clientSecret: getClientConfig.secret,
+          key: connectionAttempt.id,
+          callbackUrl: `${env.APP_ORIGIN}/api/v3/oauth2/callback`,
+          scopes,
+          scopeSeparator:
+            authenticationMethod.config.authorization.scopeSeparator,
+        };
+
+        const authorizationUrl = await (authenticationMethod.config
+          .authorization.createUrl
+          ? authenticationMethod.config.authorization.createUrl(
+              createAuthorizationParams
+            )
+          : createOAuth2Url(createAuthorizationParams));
+        console.log(authorizationUrl);
+      }
+      default: {
+        throw new Error(
+          `Authentication method type ${authenticationMethod.type} not supported`
+        );
+      }
+    }
   }
 
   /** Get credentials for the given api and id */
@@ -138,80 +196,5 @@ class APIAuthenticationRepository {
         possibleScopes: authenticationMethod.scopes,
       },
     };
-  }
-}
-
-class OAuth2Client {
-  #config: APIAuthenticationMethodOAuth2;
-  //todo load the client id and secret from the environment
-  constructor(config: APIAuthenticationMethodOAuth2) {
-    this.#config = config;
-  }
-
-  createOAuthUrl({
-    key,
-    callbackUrl,
-    scopes,
-  }: {
-    key: string;
-    callbackUrl: string;
-    scopes: string[];
-  }) {
-    //get the client id and secret from env vars
-    const idEnvName = this.#config.client.id.envName;
-    const clientId = process.env[idEnvName];
-    if (!clientId) {
-      throw new Error(`Client id environment variable not found: ${idEnvName}`);
-    }
-    const secretEnvName = this.#config.client.secret.envName;
-    const clientSecret = process.env[secretEnvName];
-    if (!clientSecret) {
-      throw new Error(
-        `Client secret environment variable not found: ${secretEnvName}`
-      );
-    }
-
-    //for now we only support the "authorization_code" grantType
-    if (this.#config.config.token.grantType !== "authorization_code") {
-      throw new Error(
-        `Unsupported grantType: ${this.#config.config.token.grantType}`
-      );
-    }
-
-    //create the oauth2 client
-    const authUrl = new URL(this.#config.config.authorization.url);
-    const tokenUrl = new URL(this.#config.config.token.url);
-    const refreshUrl = new URL(this.#config.config.refresh.url);
-    const scopeSeparator =
-      this.#config.config.authorization.scopeSeparator ?? " ";
-
-    const clientConfig = {
-      client: {
-        id: clientId,
-        idParamName: this.#config.client.id.paramName,
-        secret: clientSecret,
-        secretParamName: this.#config.client.secret.paramName,
-      },
-      auth: {
-        authorizeHost: authUrl.host,
-        authorizePath: authUrl.pathname,
-        tokenHost: tokenUrl.host,
-        tokenPath: tokenUrl.pathname,
-        refreshPath: refreshUrl.pathname,
-      },
-      options: {
-        scopeSeparator: scopeSeparator,
-      },
-    };
-
-    const simpleOAuthClient = new simpleOauth2.AuthorizationCode(clientConfig);
-
-    //create the authorization url
-    const authorizationUri = simpleOAuthClient.authorizeURL({
-      redirect_uri: callbackUrl,
-      scope: scopes.join(scopeSeparator),
-      state: key,
-      ...additionalAuthParams,
-    });
   }
 }

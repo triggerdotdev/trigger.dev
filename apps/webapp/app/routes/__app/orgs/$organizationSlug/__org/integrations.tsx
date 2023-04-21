@@ -1,12 +1,13 @@
-import { CursorArrowRaysIcon } from "@heroicons/react/24/outline";
-import { PlusCircleIcon } from "@heroicons/react/24/solid";
+import {
+  CursorArrowRaysIcon,
+  PlusCircleIcon,
+} from "@heroicons/react/24/outline";
 import type { LoaderArgs } from "@remix-run/server-runtime";
-import type { ServiceMetadata } from "@trigger.dev/integration-sdk";
 import { SliderButton } from "@typeform/embed-react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import invariant from "tiny-invariant";
+import { NamedIcon } from "~/components/Icon";
 import { ApiLogoIcon } from "~/components/code/ApiLogoIcon";
-import type { Status } from "~/components/integrations/ConnectButton";
 import { ConnectButton } from "~/components/integrations/ConnectButton";
 import { AppBody, AppLayoutTwoCol } from "~/components/layout/AppLayout";
 import { Container } from "~/components/layout/Container";
@@ -22,27 +23,36 @@ import { Header3 } from "~/components/primitives/text/Headers";
 import { SubTitle } from "~/components/primitives/text/SubTitle";
 import { Title } from "~/components/primitives/text/Title";
 import { useCurrentOrganization } from "~/hooks/useOrganizations";
-import { getConnectedApiConnectionsForOrganizationSlug } from "~/models/apiConnection.server";
+import { getOrganizationFromSlug } from "~/models/organization.server";
+import { APIAuthenticationRepository } from "~/services/externalApis/apiAuthenticationRepository.server";
+import { apiStore } from "~/services/externalApis/apiStore";
+import { ExternalAPI } from "~/services/externalApis/types";
 import { requireUser } from "~/services/session.server";
 import { formatDateTime } from "~/utils";
 
 export const loader = async ({ request, params }: LoaderArgs) => {
   const user = await requireUser(request);
-
   const { organizationSlug } = params;
   invariant(organizationSlug, "organizationSlug not found");
-
-  const connections = await getConnectedApiConnectionsForOrganizationSlug({
+  const organization = await getOrganizationFromSlug({
+    userId: user.id,
     slug: organizationSlug,
   });
+  invariant(organization, "Organization not found");
+
+  const authRepository = new APIAuthenticationRepository(organization.id);
+  const connections = await authRepository.getAllConnections();
+
+  const apis = apiStore.getApis();
 
   return typedjson({
     connections,
+    apis,
   });
 };
 
 export default function Integrations() {
-  const { connections } = useTypedLoaderData<typeof loader>();
+  const { connections, apis } = useTypedLoaderData<typeof loader>();
   const organization = useCurrentOrganization();
   invariant(organization, "Organization not found");
 
@@ -98,41 +108,38 @@ export default function Integrations() {
               </>
             )}
           </div>
+          <div className="mt-8">
+            {Object.values(apis).map((api) => (
+              <ConnectButton
+                key={api.identifier}
+                api={api}
+                organizationId={organization.id}
+              >
+                <AddApiConnection api={api} />
+              </ConnectButton>
+            ))}
+          </div>
         </Container>
       </AppBody>
     </AppLayoutTwoCol>
   );
 }
 
-function AddButtonContent({
-  integration,
-  status,
-}: {
-  integration: ServiceMetadata;
-  status: Status;
-}) {
+function AddApiConnection({ api }: { api: ExternalAPI }) {
   return (
     <>
       <div className="relative flex w-full items-center justify-center border-b border-slate-800 bg-black/20 py-6 px-10">
         <PlusCircleIcon className="absolute top-[6px] right-[6px] z-10 h-7 w-7 text-green-600 shadow-md" />
-        <img
-          src={integration.icon}
-          alt={integration.name}
+        <NamedIcon
+          name={api.identifier}
           className="h-20 transition group-hover:opacity-80"
         />
       </div>
 
-      {status === "loading" ? (
-        <div className="flex animate-pulse flex-col px-3 pb-4 leading-relaxed text-green-500">
-          <span>Connecting to</span>
-          <span className="text-base text-slate-200">{integration.name}</span>
-        </div>
-      ) : (
-        <div className="flex flex-col px-3 pb-4">
-          <span className="text-slate-400">Connect to</span>
-          <span className="text-base text-slate-200">{integration.name}</span>
-        </div>
-      )}
+      <div className="flex flex-col px-3 pb-4">
+        <span className="text-slate-400">Connect to</span>
+        <span className="text-base text-slate-200">{api.name}</span>
+      </div>
     </>
   );
 }

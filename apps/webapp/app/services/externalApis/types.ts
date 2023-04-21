@@ -32,16 +32,33 @@ export type APIAuthenticationMethodOAuth2 = {
     };
   };
   config: {
-    /** Authorization is how a token is initially created */
+    /** Authorization is used to generate an OAuth url for the user to do */
     authorization: {
       url: string;
-      /** The separate for scopes, default to a space " " */
-      scopeSeparator?: string;
+      scopeSeparator: string;
+      /** Some APIs have strange urls, this allows total control to deal with that */
+      createUrl?: (config: {
+        authorizationUrl: string;
+        clientId: string;
+        clientSecret: string;
+        key: string;
+        callbackUrl: string;
+        scopes: string[];
+        scopeSeparator: string;
+      }) => Promise<string>;
     };
     /** Token is how a token is obtained */
     token: {
       url: string;
-      grantType: "authorization_code";
+      /** Some APIs have strange granting logic, this allows total control to deal with that */
+      grantToken?: (config: {
+        tokenUrl: string;
+        clientId: string;
+        clientSecret: string;
+        code: string;
+        callbackUrl: string;
+        scopes: string[];
+      }) => Promise<AccessToken>;
     };
     /** Refresh is how a token is refreshed */
     refresh: {
@@ -68,4 +85,12 @@ type Scope = {
   name: string;
   /** The param name of the scope, default is just "scope". Slack has "user" scopes that are a different query param */
   paramName?: string;
+};
+
+export type AccessToken = OAuth2AccessToken;
+
+type OAuth2AccessToken = {
+  type: "oauth2";
+  access_token: string;
+  scopes?: string[];
 };
