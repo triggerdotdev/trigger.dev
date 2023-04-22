@@ -40,6 +40,7 @@ export async function createOAuth2Url({
 }): Promise<string> {
   //create the oauth2 client
   const authUrl = new URL(authorizationUrl);
+  const authHost = `${authUrl.protocol}//${authUrl.host}`;
 
   const clientConfig = {
     client: {
@@ -47,9 +48,9 @@ export async function createOAuth2Url({
       secret: clientSecret,
     },
     auth: {
-      authorizeHost: authUrl.host,
+      authorizeHost: authHost,
       authorizePath: authUrl.pathname,
-      tokenHost: authUrl.host,
+      tokenHost: authHost,
     },
     options: {
       scopeSeparator,
@@ -97,7 +98,7 @@ export async function grantOAuth2Token({
       secret: clientSecret,
     },
     auth: {
-      tokenHost: tokenUrlObj.host,
+      tokenHost: `${tokenUrlObj.protocol}//${tokenUrlObj.host}`,
       tokenPath: tokenUrlObj.pathname,
     },
   };

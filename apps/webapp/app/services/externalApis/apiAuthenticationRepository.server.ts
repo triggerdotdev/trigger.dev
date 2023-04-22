@@ -129,7 +129,8 @@ export class APIAuthenticationRepository {
               createAuthorizationParams
             )
           : createOAuth2Url(createAuthorizationParams));
-        console.log(authorizationUrl);
+
+        return authorizationUrl;
       }
       default: {
         throw new Error(

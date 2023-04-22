@@ -8,6 +8,9 @@ import {
   SheetTitle,
   SheetTrigger,
 } from "../primitives/Sheet";
+import { PrimaryButton } from "../primitives/Buttons";
+import { Form } from "@remix-run/react";
+import { Header3 } from "../primitives/text/Headers";
 
 export type Status = "loading" | "idle";
 
@@ -25,14 +28,49 @@ export function ConnectButton({
   return (
     <Sheet>
       <SheetTrigger>{children}</SheetTrigger>
-      <SheetContent>
+      <SheetContent className="flex flex-col">
         <SheetHeader>
-          <SheetTitle>Are you sure absolutely sure?</SheetTitle>
+          <SheetTitle>Select the scopes for {api.name}</SheetTitle>
           <SheetDescription>
-            This action cannot be undone. This will permanently delete your
-            account and remove your data from our servers.
+            <p>
+              Select the scopes you want to grant to {api.name} to access your
+              data. If you try and perform an action in a Job that requires a
+              scope you haven't granted, that task will fail.
+            </p>
           </SheetDescription>
         </SheetHeader>
+        <Form
+          method="post"
+          action="/api/v3/oauth2"
+          className="flex flex-grow flex-col"
+        >
+          <Header3>Select scopes</Header3>
+          <div className="flex-grow overflow-y-auto">
+            <input type="hidden" name="organizationId" value={organizationId} />
+            <input type="hidden" name="api" value={api.identifier} />
+            <input
+              type="hidden"
+              name="authenticationMethodKey"
+              value={Object.keys(api.authenticationMethods)[0]}
+            />
+            {Object.values(api.authenticationMethods)[0].scopes.map((s) => (
+              <div key={s.name} className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  name={`scopes[${s.name}]`}
+                  defaultChecked={true}
+                />
+                <label htmlFor={`scopes[${s.name}]`}>{s.name}</label>
+              </div>
+            ))}
+          </div>
+          <div>
+            <PrimaryButton type="submit" className="flex gap-2">
+              <NamedIcon name={api.identifier} className="h-4 w-4" />{" "}
+              <span>Connect to {api.name}</span>
+            </PrimaryButton>
+          </div>
+        </Form>
       </SheetContent>
     </Sheet>
   );
