@@ -2,7 +2,7 @@ import { APIConnection, JobConnection } from ".prisma/client";
 import { ApiEventLogSchema, ConnectionAuth } from "@trigger.dev/internal";
 import type { PrismaClient } from "~/db.server";
 import { prisma } from "~/db.server";
-import { getConnectionAuth } from "../connectionAuth.server";
+import { getConnectionAuths } from "../connectionAuth.server";
 import { ClientApi, ClientApiError } from "../clientApi.server";
 import { workerQueue } from "../worker.server";
 
@@ -39,8 +39,8 @@ export class StartExecutionService {
 
     // If any of the connections are missing, we can't start the execution
     const connections = execution.jobInstance.connections.filter(
-      (c) => c.apiConnection != null
-    ) as Array<JobConnection & { apiConnection: APIConnection }>;
+      (c) => c.apiConnection != null || c.usesLocalAuth
+    ) as Array<JobConnection & { apiConnection?: APIConnection }>;
 
     if (connections.length !== execution.jobInstance.connections.length) {
       // TODO: We should probably mark the execution as failed here or do something else
@@ -117,23 +117,4 @@ export class StartExecutionService {
       }
     }
   }
-}
-
-async function getConnectionAuths(
-  connections: Array<JobConnection & { apiConnection: APIConnection }>
-): Promise<Record<string, ConnectionAuth>> {
-  return await connections.reduce(
-    async (accP: Promise<Record<string, ConnectionAuth>>, connection) => {
-      const acc = await accP;
-
-      const connectionAuth = await getConnectionAuth(connection.apiConnection);
-
-      if (connectionAuth) {
-        acc[connection.key] = connectionAuth;
-      }
-
-      return acc;
-    },
-    Promise.resolve({})
-  );
 }

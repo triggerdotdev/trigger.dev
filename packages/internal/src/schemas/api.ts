@@ -6,6 +6,67 @@ import { ulid } from "ulid";
 import { DisplayElementSchema } from "./elements";
 import { ConnectionAuthSchema, ConnectionMetadataSchema } from "./connections";
 
+export const RegisterHttpEventSourceBodySchema = z.object({
+  key: z.string(),
+  connectionId: z.string().optional(),
+});
+
+export type RegisterHttpEventSourceBody = z.infer<
+  typeof RegisterHttpEventSourceBodySchema
+>;
+
+export const UpdateHttpEventSourceBodySchema =
+  RegisterHttpEventSourceBodySchema.omit({ key: true }).extend({
+    secret: z.string().optional(),
+    data: SerializableJsonSchema.optional(),
+    active: z.boolean().optional(),
+  });
+
+export type UpdateHttpEventSourceBody = z.infer<
+  typeof UpdateHttpEventSourceBodySchema
+>;
+
+export const HttpEventSourceSchema = UpdateHttpEventSourceBodySchema.extend({
+  id: z.string(),
+  active: z.boolean(),
+  url: z.string().url(),
+});
+
+export type HttpEventSource = z.infer<typeof HttpEventSourceSchema>;
+
+export const HttpSourceRequestSchema = z.object({
+  url: z.string().url(),
+  method: z.string(),
+  headers: z.record(z.string()),
+  rawBody: z.instanceof(Buffer).optional().nullable(),
+});
+
+export type HttpSourceRequest = z.infer<typeof HttpSourceRequestSchema>;
+
+// "x-trigger-key": options.key,
+// "x-trigger-auth": JSON.stringify(options.auth),
+// "x-trigger-url": options.request.url,
+// "x-trigger-method": options.request.method,
+// "x-trigger-headers": JSON.stringify(options.request.headers),
+// ...(options.secret ? { "x-trigger-secret": options.secret } : {}),
+export const HttpSourceRequestHeadersSchema = z.object({
+  "x-trigger-key": z.string(),
+  "x-trigger-auth": z
+    .string()
+    .optional()
+    .transform((s) => (s ? ConnectionAuthSchema.parse(s) : undefined)),
+  "x-trigger-url": z.string(),
+  "x-trigger-method": z.string(),
+  "x-trigger-headers": z
+    .string()
+    .transform((s) => z.record(z.string()).parse(JSON.parse(s))),
+  "x-trigger-secret": z.string().optional(),
+});
+
+export type HttpSourceRequestHeaders = z.output<
+  typeof HttpSourceRequestHeadersSchema
+>;
+
 export const PongResponseSchema = z.object({
   message: z.literal("PONG"),
 });
@@ -19,8 +80,10 @@ export const JobSchema = z.object({
     z.object({
       key: z.string(),
       metadata: ConnectionMetadataSchema,
+      hasLocalAuth: z.boolean().default(false),
     })
   ),
+  supportsPreparation: z.boolean(),
 });
 
 export type ApiJob = z.infer<typeof JobSchema>;
@@ -120,6 +183,24 @@ export const SecureStringSchema = z.object({
   interpolations: z.array(z.string()),
 });
 
+export const PrepareForJobExecutionBodySchema = z.object({
+  id: z.string(),
+  version: z.string(),
+  connections: z.record(ConnectionAuthSchema),
+});
+
+export type PrepareForJobExecutionBody = z.infer<
+  typeof PrepareForJobExecutionBodySchema
+>;
+
+export const PrepareForJobExecutionResponseSchema = z.object({
+  ok: z.boolean(),
+});
+
+export type PrepareForJobExecutionResponse = z.infer<
+  typeof PrepareForJobExecutionResponseSchema
+>;
+
 export type SecureString = z.infer<typeof SecureStringSchema>;
 
 export const LogMessageSchema = z.object({
@@ -173,3 +254,26 @@ export type CompleteTaskBodyInput = z.input<typeof CompleteTaskBodyInputSchema>;
 export type CompleteTaskBodyOutput = z.infer<
   typeof CompleteTaskBodyInputSchema
 >;
+
+export const NormalizedRequestSchema = z.object({
+  headers: z.record(z.string()),
+  method: z.string(),
+  query: z.record(z.string()),
+  url: z.string(),
+  body: z.any(),
+});
+
+export type NormalizedRequest = z.infer<typeof NormalizedRequestSchema>;
+
+export const NormalizedResponseSchema = z.object({
+  status: z.number(),
+  body: z.any(),
+  headers: z.record(z.string()).optional(),
+});
+
+export type NormalizedResponse = z.infer<typeof NormalizedResponseSchema>;
+
+export const HttpSourceResponseSchema = z.object({
+  response: NormalizedResponseSchema,
+  events: z.array(RawEventSchema),
+});

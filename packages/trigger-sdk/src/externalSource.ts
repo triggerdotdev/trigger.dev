@@ -3,18 +3,15 @@ import {
   ConnectionAuth,
   ConnectionMetadata,
   DisplayElement,
+  NormalizedRequest,
+  NormalizedResponse,
+  SendEvent,
 } from "@trigger.dev/internal";
-import { ClientFactory } from "./connections";
-import { NormalizedRequest } from "./triggerClient";
-
-export type RegisterSourceFunction<
-  TClientType,
-  TChannel extends ChannelNames,
-  TOptions extends ExternalSourceChannelMap[TChannel]["registerOptions"]
-> = (client: TClientType, options: TOptions) => Promise<any>;
+import { TriggerClient } from "./triggerClient";
 
 export type HttpSourceEvent = {
   request: NormalizedRequest;
+  secret?: string;
 };
 
 export type SmtpSourceEvent = {
@@ -31,39 +28,34 @@ export type SqsSourceEvent = {
 type ExternalSourceChannelMap = {
   http: {
     event: HttpSourceEvent;
-    registerOptions: { url: string };
   };
   smtp: {
     event: SmtpSourceEvent;
-    registerOptions: { email: string };
   };
   sqs: {
     event: SqsSourceEvent;
-    registerOptions: { queueUrl: string };
   };
 };
 
 export type ChannelNames = keyof ExternalSourceChannelMap;
 
 export type HandlerFunction<
-  TClientType,
   TChannel extends ChannelNames,
   TSourceEvent extends ExternalSourceChannelMap[TChannel]["event"]
-> = (client: TClientType, event: TSourceEvent) => Promise<ApiEventLog[]>;
+> = (
+  triggerClient: TriggerClient,
+  event: TSourceEvent,
+  auth?: ConnectionAuth
+) => Promise<{ response: NormalizedResponse; events: SendEvent[] }>;
 
-export type ExternalSourceOptions<
-  TClientType,
-  TChannel extends ChannelNames
-> = {
-  id: string;
-  clientFactory: ClientFactory<TClientType>;
-  register: RegisterSourceFunction<
-    TClientType,
-    TChannel,
-    ExternalSourceChannelMap[TChannel]["registerOptions"]
-  >;
+export type ExternalSourceOptions<TChannel extends ChannelNames> = {
+  key: string;
+  localAuth?: ConnectionAuth;
+  register: (
+    triggerClient: TriggerClient,
+    auth?: ConnectionAuth
+  ) => Promise<any>;
   handler: HandlerFunction<
-    TClientType,
     TChannel,
     ExternalSourceChannelMap[TChannel]["event"]
   >;
@@ -71,16 +63,23 @@ export type ExternalSourceOptions<
 };
 
 export interface AnyExternalSource {
-  id: string;
+  key: string;
+  hasLocalAuth: boolean;
   connection: ConnectionMetadata;
   channel: ChannelNames;
-  register: (auth: ConnectionAuth, options: any) => Promise<any>;
-  handler: (auth: ConnectionAuth, event: any) => Promise<ApiEventLog[]>;
+  handler: (
+    triggerClient: TriggerClient,
+    event: any,
+    auth?: ConnectionAuth
+  ) => Promise<{ response: NormalizedResponse; events: SendEvent[] }>;
   eventElements: (event: ApiEventLog) => DisplayElement[];
-  matches: (event: ApiEventLog) => boolean;
+  prepareForExecution: (
+    client: TriggerClient,
+    auth?: ConnectionAuth
+  ) => Promise<void>;
 }
 
-export class ExternalSource<TChannel extends ChannelNames, TClientType>
+export class ExternalSource<TChannel extends ChannelNames>
   implements AnyExternalSource
 {
   channel: TChannel;
@@ -89,36 +88,37 @@ export class ExternalSource<TChannel extends ChannelNames, TClientType>
   constructor(
     channel: TChannel,
     connection: ConnectionMetadata,
-    private options: ExternalSourceOptions<TClientType, TChannel>
+    private options: ExternalSourceOptions<TChannel>
   ) {
     this.channel = channel;
     this.connection = connection;
   }
 
-  get id() {
-    return this.options.id;
+  get key() {
+    return this.options.key;
   }
 
-  async register(
-    auth: ConnectionAuth,
-    options: ExternalSourceChannelMap[TChannel]["registerOptions"]
-  ) {
-    return this.options.register(this.options.clientFactory(auth), options);
+  get hasLocalAuth() {
+    return typeof this.options.localAuth !== "undefined";
+  }
+
+  async prepareForExecution(client: TriggerClient, auth?: ConnectionAuth) {
+    return this.options.register(client, auth ?? this.options.localAuth);
   }
 
   async handler(
-    auth: ConnectionAuth,
-    event: ExternalSourceChannelMap[TChannel]["event"]
+    triggerClient: TriggerClient,
+    event: ExternalSourceChannelMap[TChannel]["event"],
+    auth?: ConnectionAuth
   ) {
-    const client = this.options.clientFactory(auth);
-    return this.options.handler(client, event);
+    return this.options.handler(
+      triggerClient,
+      event,
+      auth ?? this.options.localAuth
+    );
   }
 
   eventElements(event: ApiEventLog) {
     return this.options.eventElements?.(event) ?? [];
-  }
-
-  matches(event: ApiEventLog) {
-    return true;
   }
 }

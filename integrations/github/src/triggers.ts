@@ -13,7 +13,10 @@ export function onIssueOpened(params: {
         text: params.repo,
       },
     ],
-    source: repositoryWebhookSource({ repo: params.repo, events: ["issues"] }),
+    source: repositoryWebhookSource({
+      repo: params.repo,
+      events: ["issues"],
+    }),
   });
 }
 

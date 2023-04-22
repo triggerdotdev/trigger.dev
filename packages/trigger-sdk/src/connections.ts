@@ -15,6 +15,7 @@ export type Connection<
   TTriggers extends Record<string, Trigger<any>>,
   TTasks extends Record<string, AuthenticatedTask<TClientType, any, any>>
 > = {
+  hasLocalAuth: boolean;
   metadata: ConnectionMetadata;
   clientFactory: ClientFactory<TClientType>;
   triggers?: TTriggers;

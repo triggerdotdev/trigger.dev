@@ -83,19 +83,17 @@ export class ZodWorker<TMessageCatalog extends MessageCatalogSchema> {
 
     const task = this.#tasks[identifier];
 
-    const job = await this.#runner.addJob(identifier as string, payload, {
-      priority: task.priority,
-      maxAttempts: task.maxAttempts,
-      flags: task.flags,
-      ...options,
-      queueName: task.queueName,
-      jobKeyMode: task.jobKeyMode,
-    });
+    const opts = {
+      ...(options || {}),
+      ...task,
+    };
+
+    const job = await this.#runner.addJob(identifier as string, payload, opts);
 
     logger.debug("Enqueued worker task", {
       identifier,
       payload,
-      options,
+      opts,
       job,
     });
 

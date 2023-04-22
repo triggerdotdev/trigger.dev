@@ -12,7 +12,12 @@ export const TriggerMetadataSchema = z.object({
     })
   ),
   schema: DeserializedJsonSchema.optional(),
-  connection: ConnectionMetadataSchema.optional(),
+  connection: z
+    .object({
+      metadata: ConnectionMetadataSchema,
+      hasLocalAuth: z.boolean().default(false),
+    })
+    .optional(),
 });
 
 export type TriggerMetadata = z.infer<typeof TriggerMetadataSchema>;

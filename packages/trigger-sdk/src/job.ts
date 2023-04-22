@@ -1,4 +1,4 @@
-import { LogLevel } from "@trigger.dev/internal";
+import { ConnectionAuth, LogLevel } from "@trigger.dev/internal";
 import { Connection, IOWithConnections } from "./connections";
 import { TriggerClient } from "./triggerClient";
 import { Trigger } from "./triggers";
@@ -51,7 +51,13 @@ export class Job<
 
   get connections() {
     return Object.keys(this.options.connections ?? {}).map((key) => {
-      return { key, metadata: this.options.connections![key].metadata };
+      const connection = this.options.connections![key];
+
+      return {
+        key,
+        metadata: connection.metadata,
+        hasLocalAuth: connection.hasLocalAuth,
+      };
     });
   }
 
@@ -66,7 +72,15 @@ export class Job<
       version: this.version,
       trigger: this.trigger.toJSON(),
       connections: this.connections,
+      supportsPreparation: this.trigger.supportsPreparation,
     };
+  }
+
+  async prepareForExecution(
+    client: TriggerClient,
+    connections: Record<string, ConnectionAuth>
+  ) {
+    await this.trigger.prepareForExecution(client, connections.__trigger);
   }
 
   // Make sure the id is valid (must only contain alphanumeric characters and dashes)

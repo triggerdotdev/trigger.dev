@@ -1,21 +1,30 @@
 import type { ActionArgs } from "@remix-run/server-runtime";
 import { json } from "@remix-run/server-runtime";
+import { UpdateHttpEventSourceBodySchema } from "@trigger.dev/internal";
 import { z } from "zod";
 import { authenticateApiRequest } from "~/services/apiAuth.server";
-import { CreateEndpointService } from "~/services/endpoints/createEndpoint.server";
 import { logger } from "~/services/logger";
+import { UpdateHttpSourceService } from "~/services/sources/updateHttpSource.server";
 
-const BodySchema = z.object({
-  url: z.string(),
-  name: z.string(),
+const ParamsSchema = z.object({
+  endpointSlug: z.string(),
+  id: z.string(),
 });
 
-export async function action({ request }: ActionArgs) {
-  logger.info("Creating endpoint", { url: request.url });
+export async function action({ request, params }: ActionArgs) {
+  logger.info("Updating http source", { url: request.url });
 
   // Ensure this is a POST request
-  if (request.method.toUpperCase() !== "POST") {
+  if (request.method.toUpperCase() !== "PUT") {
     return { status: 405, body: "Method Not Allowed" };
+  }
+
+  const parsedParams = ParamsSchema.safeParse(params);
+
+  if (!parsedParams.success) {
+    logger.info("Invalid params", { params });
+
+    return json({ error: "Invalid params" }, { status: 400 });
   }
 
   // Next authenticate the request
@@ -30,26 +39,25 @@ export async function action({ request }: ActionArgs) {
   // Now parse the request body
   const anyBody = await request.json();
 
-  const body = BodySchema.safeParse(anyBody);
+  const body = UpdateHttpEventSourceBodySchema.safeParse(anyBody);
 
   if (!body.success) {
     return json({ error: "Invalid request body" }, { status: 400 });
   }
 
-  const service = new CreateEndpointService();
+  const service = new UpdateHttpSourceService();
 
   try {
     const endpoint = await service.call({
       environment: authenticatedEnv,
-      organization: authenticatedEnv.organization,
-      url: body.data.url,
-      name: body.data.name,
+      payload: body.data,
+      id: parsedParams.data.id,
     });
 
     return json(endpoint);
   } catch (error) {
     if (error instanceof Error) {
-      logger.error("Error creating endpoint", {
+      logger.error("Error activating http source", {
         url: request.url,
         error: error.message,
       });

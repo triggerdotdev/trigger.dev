@@ -1,5 +1,6 @@
 import type {
   ApiEventLog,
+  ConnectionAuth,
   EventFilter,
   TriggerMetadata,
 } from "@trigger.dev/internal";
@@ -15,6 +16,11 @@ export interface Trigger<TEventType = any> {
   eventElements(event: ApiEventLog): DisplayElement[];
   toJSON(): TriggerMetadata;
   registerWith(client: TriggerClient): void;
+  prepareForExecution(
+    client: TriggerClient,
+    auth?: ConnectionAuth
+  ): Promise<void>;
+  supportsPreparation: boolean;
 }
 
 export type CustomEventTriggerOptions<TSchema extends z.ZodTypeAny> = {
@@ -63,7 +69,12 @@ export class CustomEventTrigger<TSchema extends z.ZodTypeAny>
     };
   }
 
+  get supportsPreparation() {
+    return false;
+  }
+
   registerWith(client: TriggerClient) {}
+  async prepareForExecution(client: TriggerClient, auth?: ConnectionAuth) {}
 }
 
 export function customEvent<TSchema extends z.ZodTypeAny>(
@@ -74,6 +85,7 @@ export function customEvent<TSchema extends z.ZodTypeAny>(
 
 export type ExteralSourceEventTriggerOptions<TEvent> = {
   title: string;
+  filter: EventFilter;
   elements: DisplayElement[];
   source: AnyExternalSource;
 };
@@ -86,18 +98,31 @@ export class ExternalSourceEventTrigger<TEvent> implements Trigger<TEvent> {
   }
 
   matches(event: ApiEventLog): boolean {
-    return this.options.source.matches(event);
+    const eventMatcher = new EventMatcher(event);
+
+    return eventMatcher.matches(this.options.filter);
   }
 
   toJSON(): TriggerMetadata {
     return {
       title: this.options.title,
       elements: this.options.elements,
-      connection: this.options.source.connection,
+      connection: {
+        metadata: this.options.source.connection,
+        hasLocalAuth: this.options.source.hasLocalAuth,
+      },
     };
   }
 
   registerWith(client: TriggerClient) {
     client.register(this.options.source);
+  }
+
+  get supportsPreparation() {
+    return true;
+  }
+
+  async prepareForExecution(client: TriggerClient, auth?: ConnectionAuth) {
+    return this.options.source.prepareForExecution(client, auth);
   }
 }

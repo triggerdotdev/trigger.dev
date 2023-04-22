@@ -8,27 +8,29 @@ export const ConnectionMetadataSchema = z.object({
 
 export type ConnectionMetadata = z.infer<typeof ConnectionMetadataSchema>;
 
-export const ApiKeyConnectionAuthSchema = z.object({
+const BaseConnectionAuthSchema = z.object({
+  additionalFields: z.record(z.string()).optional(),
+  connectionId: z.string().optional(),
+});
+
+export const ApiKeyConnectionAuthSchema = BaseConnectionAuthSchema.extend({
   type: z.literal("apiKey"),
   apiKey: z.string(),
-  additionalFields: z.record(z.string()).optional(),
 });
 
 export type ApiKeyConnectionAuth = z.infer<typeof ApiKeyConnectionAuthSchema>;
 
-export const OAuthConnectionAuthSchema = z.object({
+export const OAuthConnectionAuthSchema = BaseConnectionAuthSchema.extend({
   type: z.literal("oauth"),
   accessToken: z.string(),
-  additionalFields: z.record(z.string()).optional(),
 });
 
 export type OAuthConnectionAuth = z.infer<typeof OAuthConnectionAuthSchema>;
 
-export const BasicAuthConnectionAuthSchema = z.object({
+export const BasicAuthConnectionAuthSchema = BaseConnectionAuthSchema.extend({
   type: z.literal("basicAuth"),
   username: z.string(),
   password: z.string(),
-  additionalFields: z.record(z.string()).optional(),
 });
 
 export type BasicAuthConnectionAuth = z.infer<

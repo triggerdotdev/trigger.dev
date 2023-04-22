@@ -7,9 +7,11 @@ import {
 import express from "express";
 import { github } from "@trigger.dev/github";
 import { z } from "zod";
+import bodyParser from "body-parser";
+
+const gh = github({ token: process.env.GITHUB_TOKEN! });
 
 export const client = new TriggerClient("smoke-test", {
-  apiKey: "trigger_development_cu7JBXifLr4j",
   apiUrl: "http://localhost:3000",
   endpoint: "http://localhost:3007/__trigger/entry",
   logLevel: "debug",
@@ -69,7 +71,7 @@ new Job({
     }),
   }),
   connections: {
-    gh: github,
+    gh,
   },
   run: async (event, io, ctx) => {
     await ctx.logger.debug("Inside the github stars job", {
@@ -88,60 +90,78 @@ new Job({
   },
 }).registerWith(client);
 
-// new Job({
-//   id: "comment-on-new-issues",
-//   name: "Comment on New GitHub issues",
-//   version: "0.0.1",
-//   logLevel: "debug",
-//   connections: {
-//     gh: github,
-//   },
-//   // issueEvent is a helper function that creates a trigger for a GitHub issue event webhook
-//   trigger: github.onIssueOpened({
-//     repo: "triggerdotdev/trigger.dev",
-//   }),
-//   run: async (event, io, ctx) => {
-//     // event is a GitHubIssueEvent
-//     const comment = await io.gh.createIssueComment("📝", {
-//       repo: event.repository.full_name,
-//       issueNumber: event.issue.number,
-//       body: "Hello from Trigger!",
-//     });
+new Job({
+  id: "comment-on-new-issues",
+  name: "Comment on New GitHub issues",
+  version: "0.1.1",
+  logLevel: "debug",
+  connections: {
+    gh,
+  },
+  // issueEvent is a helper function that creates a trigger for a GitHub issue event webhook
+  trigger: gh.onIssueOpened({
+    repo: "ericallam/basic-starter-100k",
+  }),
+  run: async (event, io, ctx) => {
+    // event is a GitHubIssueEvent
+    const comment = await io.gh.createIssueComment("📝", {
+      repo: event.repository.full_name,
+      issueNumber: event.issue.number,
+      body: "Hello from Trigger!",
+    });
 
-//     const reaction = await io.runTask(
-//       "Add 🚀",
-//       {
-//         icon: "github",
-//         name: "addReaction",
-//         elements: [
-//           { label: "reaction", text: "🚀" },
-//           {
-//             label: "issue",
-//             text: event.issue.title,
-//             url: event.issue.html_url,
-//           },
-//         ],
-//         delayUntil: new Date(Date.now() + 1000 * 30), // 30 seconds from now
-//       },
-//       async (task) =>
-//         io.gh.client.rest.reactions
-//           .createForIssueComment({
-//             owner: event.repository.owner.login,
-//             repo: event.repository.name,
-//             comment_id: comment.id,
-//             content: "rocket",
-//           })
-//           .then((res) => res.data)
-//     );
+    // const token = await ctx.auth.gh
 
-//     return reaction;
-//   },
-// }).registerWith(client);
+    const reaction = await io.runTask(
+      "Add 🚀",
+      {
+        icon: "github",
+        name: "addReaction",
+        elements: [
+          { label: "reaction", text: "🚀" },
+          {
+            label: "issue",
+            text: event.issue.title,
+            url: event.issue.html_url,
+          },
+        ],
+        delayUntil: new Date(Date.now() + 1000 * 30), // 30 seconds from now
+      },
+      async (task) =>
+        io.gh.client.rest.reactions
+          .createForIssueComment({
+            owner: event.repository.owner.login,
+            repo: event.repository.name,
+            comment_id: comment.id,
+            content: "rocket",
+          })
+          .then((res) => res.data)
+    );
+
+    return reaction;
+  },
+}).registerWith(client);
+
+new Job({
+  id: "do-stuff-on-issue-comment",
+  name: "Doing something on GitHub issue comment",
+  version: "0.1.1",
+  logLevel: "debug",
+  connections: {
+    gh,
+  },
+  // issueEvent is a helper function that creates a trigger for a GitHub issue event webhook
+  trigger: gh.onIssueComment({
+    repo: "ericallam/basic-starter-100k",
+  }),
+  run: async (event, io, ctx) => {},
+}).registerWith(client);
 
 // Create an express app and listen on port 3007
 const app = express();
 
 app.use(express.json());
+app.use(bodyParser.raw({ type: "application/octet-stream" }));
 
 app.get("/__trigger/entry", expressHandler);
 app.post("/__trigger/entry", expressHandler);

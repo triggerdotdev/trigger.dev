@@ -10,6 +10,8 @@ import type { ApiJob, ConnectionMetadata } from "@trigger.dev/internal";
 import type { PrismaClient } from "~/db.server";
 import { prisma } from "~/db.server";
 import { ClientApi } from "../clientApi.server";
+import { workerQueue } from "../worker.server";
+import semver from "semver";
 
 export class EndpointRegisteredService {
   #prismaClient: PrismaClient;
@@ -48,6 +50,10 @@ export class EndpointRegisteredService {
         )
       )
     );
+
+    await workerQueue.enqueue("prepareForJobExecution", {
+      id: endpoint.id,
+    });
   }
 
   async #upsertJob(
@@ -78,8 +84,30 @@ export class EndpointRegisteredService {
       },
       include: {
         connections: true,
+        instances: {
+          where: {
+            endpointId: endpoint.id,
+          },
+          orderBy: { version: "desc" },
+          take: 1,
+        },
       },
     });
+
+    const latestInstance = job.instances[0];
+
+    let ready = false;
+
+    if (typeof latestInstance === "undefined") {
+      ready = !apiJob.supportsPreparation;
+    } else {
+      if (latestInstance.ready) {
+        // Only carry over the ready state if the it's a PATCH or EQUAL update
+        ready = ["PATCH", "EQUAL"].includes(
+          getSemverUpdate(latestInstance.version, apiJob.version)
+        );
+      }
+    }
 
     // Upsert the JobInstance
     const jobInstance = await this.#prismaClient.jobInstance.upsert({
@@ -113,6 +141,7 @@ export class EndpointRegisteredService {
         },
         version: apiJob.version,
         trigger: apiJob.trigger,
+        ready,
       },
       update: {
         trigger: apiJob.trigger,
@@ -122,31 +151,50 @@ export class EndpointRegisteredService {
       },
     });
 
+    const existingConnectionKeys = [];
+
     if (apiJob.trigger.connection) {
+      existingConnectionKeys.push("__trigger");
+
       await this.#upsertJobConnection(
         job,
         jobInstance,
         "__trigger",
-        apiJob.trigger.connection
+        apiJob.trigger.connection.metadata,
+        apiJob.trigger.connection.hasLocalAuth
       );
     }
 
     // Upsert the connections
     for (const connection of apiJob.connections) {
+      existingConnectionKeys.push(connection.key);
+
       await this.#upsertJobConnection(
         job,
         jobInstance,
         connection.key,
-        connection.metadata
+        connection.metadata,
+        connection.hasLocalAuth
       );
     }
+
+    // Delete any connections that are no longer in the job
+    await this.#prismaClient.jobConnection.deleteMany({
+      where: {
+        jobInstanceId: jobInstance.id,
+        key: {
+          notIn: existingConnectionKeys,
+        },
+      },
+    });
   }
 
   async #upsertJobConnection(
     job: Job & { connections: JobConnection[] },
     jobInstance: JobInstance & { connections: JobConnection[] },
     key: string,
-    metadata: ConnectionMetadata
+    metadata: ConnectionMetadata,
+    usesLocalAuth: boolean
   ): Promise<JobConnection> {
     // Find existing connection in the job instance
     const existingInstanceConnection = jobInstance.connections.find(
@@ -154,6 +202,19 @@ export class EndpointRegisteredService {
     );
 
     if (existingInstanceConnection) {
+      if (usesLocalAuth && existingInstanceConnection.apiConnectionId) {
+        // If the connection uses local auth, we need to delete the existing APIConnection
+        return await this.#prismaClient.jobConnection.update({
+          where: {
+            id: existingInstanceConnection.id,
+          },
+          data: {
+            apiConnectionId: null,
+            usesLocalAuth: true,
+          },
+        });
+      }
+
       return existingInstanceConnection;
     }
 
@@ -177,13 +238,15 @@ export class EndpointRegisteredService {
           },
           key,
           connectionMetadata: existingJobConnection.connectionMetadata ?? {},
-          apiConnection: existingJobConnection.apiConnectionId
-            ? {
-                connect: {
-                  id: existingJobConnection.apiConnectionId,
-                },
-              }
-            : undefined,
+          apiConnection:
+            existingJobConnection.apiConnectionId && !usesLocalAuth
+              ? {
+                  connect: {
+                    id: existingJobConnection.apiConnectionId,
+                  },
+                }
+              : undefined,
+          usesLocalAuth,
         },
       });
     }
@@ -211,14 +274,47 @@ export class EndpointRegisteredService {
         },
         key,
         connectionMetadata: metadata,
-        apiConnection: existingApiConnection
-          ? {
-              connect: {
-                id: existingApiConnection.id,
-              },
-            }
-          : undefined,
+        apiConnection:
+          existingApiConnection && !usesLocalAuth
+            ? {
+                connect: {
+                  id: existingApiConnection.id,
+                },
+              }
+            : undefined,
+        usesLocalAuth,
       },
     });
   }
+}
+
+// Compares two semver strings and returns the type of update, either EQUAL, PATCH, MINOR, or MAJOR
+function getSemverUpdate(
+  latestVersion: string | undefined,
+  newVersion: string | undefined
+) {
+  const latest = semver.coerce(latestVersion);
+  const newV = semver.coerce(newVersion);
+
+  if (!latest || !newV) {
+    return "EQUAL";
+  }
+
+  if (semver.eq(latest, newV)) {
+    return "EQUAL";
+  }
+
+  if (semver.lt(latest, newV)) {
+    if (semver.major(latest) === semver.major(newV)) {
+      if (semver.minor(latest) === semver.minor(newV)) {
+        return "PATCH";
+      }
+
+      return "MINOR";
+    }
+
+    return "MAJOR";
+  }
+
+  return "EQUAL";
 }

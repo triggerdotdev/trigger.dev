@@ -2,9 +2,12 @@ import { z } from "zod";
 import { env } from "~/env.server";
 import { ZodWorker } from "~/platform/zodWorker.server";
 import { EndpointRegisteredService } from "./endpoints/endpointRegistered.server";
+import { PrepareForJobExecutionService } from "./endpoints/prepareForJobExecution.server";
+import { PrepareJobInstanceService } from "./endpoints/prepareJobInstance.server";
 import { DeliverEventService } from "./events/deliverEvent.server";
 import { ResumeTaskService } from "./executions/resumeTask.server";
 import { StartExecutionService } from "./executions/startExecution.server";
+import { DeliverHttpSourceRequestService } from "./sources/deliverHttpSourceRequest.server";
 
 const workerCatalog = {
   organizationCreated: z.object({ id: z.string() }),
@@ -25,6 +28,9 @@ const workerCatalog = {
   startInitialProjectDeployment: z.object({ id: z.string() }),
   startExecution: z.object({ id: z.string() }),
   resumeTask: z.object({ id: z.string() }),
+  prepareForJobExecution: z.object({ id: z.string() }),
+  prepareJobInstance: z.object({ id: z.string() }),
+  deliverHttpSourceRequest: z.object({ id: z.string() }),
 };
 
 let workerQueue: ZodWorker<typeof workerCatalog>;
@@ -60,6 +66,31 @@ function getWorkerQueue() {
     },
     schema: workerCatalog,
     tasks: {
+      deliverHttpSourceRequest: {
+        maxAttempts: 5,
+        handler: async (payload, job) => {
+          const service = new DeliverHttpSourceRequestService();
+
+          await service.call(payload.id);
+        },
+      },
+      prepareJobInstance: {
+        maxAttempts: 3,
+        handler: async (payload, job) => {
+          const service = new PrepareJobInstanceService();
+
+          await service.call(payload.id);
+        },
+      },
+      prepareForJobExecution: {
+        queueName: "internal-queue",
+        maxAttempts: 8,
+        handler: async (payload, job) => {
+          const service = new PrepareForJobExecutionService();
+
+          await service.call(payload.id);
+        },
+      },
       startExecution: {
         queueName: "executions",
         maxAttempts: 13,

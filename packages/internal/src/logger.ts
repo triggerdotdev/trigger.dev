@@ -53,7 +53,7 @@ export class Logger {
     console.info(`[${formattedDateTime()}] [${this.#name}] `, ...args);
   }
 
-  debug(message: string, ...args: Array<SerializableJson>) {
+  debug(message: string, ...args: Array<Record<string, unknown> | undefined>) {
     if (this.#level < 4) return;
 
     const structuredLog = {

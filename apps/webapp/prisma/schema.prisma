@@ -67,20 +67,21 @@ model Organization {
   JobInstance        JobInstance[]
   EventLog           EventLog[]
   Execution          Execution[]
+  httpSources        HttpSource[]
 }
 
 model APIConnection {
-  id    String @id @default(cuid())
+  id String @id @default(cuid())
 
-  title String
+  title         String
   apiIdentifier String
 
   authenticationMethodKey String
-  scopes String[]
-  metadata Json
+  scopes                  String[]
+  metadata                Json
 
-  dataReference SecretReference @relation(fields: [dataReferenceId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  dataReferenceId String @unique
+  dataReference   SecretReference @relation(fields: [dataReferenceId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  dataReferenceId String          @unique
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -92,16 +93,18 @@ model APIConnection {
 
   externalSources  ExternalSource[]
   externalServices ExternalService[]
-  jobConnections   JobConnection[]
+
+  jobConnections JobConnection[]
+  httpSources    HttpSource[]
 }
 
 model APIConnectionAttempt {
-  id  String @id @default(cuid())
-  
-  organizationId  String
-  apiIdentifier String
+  id String @id @default(cuid())
+
+  organizationId          String
+  apiIdentifier           String
   authenticationMethodKey String
-  scopes String[]
+  scopes                  String[]
 
   redirectTo String @default("/")
 
@@ -132,10 +135,12 @@ model RuntimeEnvironment {
   keyValueItems       KeyValueItem[]
   currentEnvironments CurrentEnvironment[]
 
-  endpoints   Endpoint[]
-  JobInstance JobInstance[]
-  EventLog    EventLog[]
-  Execution   Execution[]
+  endpoints                 Endpoint[]
+  JobInstance               JobInstance[]
+  EventLog                  EventLog[]
+  Execution                 Execution[]
+  httpSources               HttpSource[]
+  HttpSourceRequestDelivery HttpSourceRequestDelivery[]
 
   @@unique([organizationId, slug])
 }
@@ -883,8 +888,10 @@ model Endpoint {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  jobInstances JobInstance[]
-  executions   Execution[]
+  jobInstances              JobInstance[]
+  executions                Execution[]
+  httpSources               HttpSource[]
+  HttpSourceRequestDelivery HttpSourceRequestDelivery[]
 
   @@unique([environmentId, slug])
 }
@@ -921,6 +928,8 @@ model JobInstance {
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   organizationId String
 
+  ready Boolean @default(false)
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -941,6 +950,8 @@ model JobConnection {
   jobId String
 
   connectionMetadata Json
+
+  usesLocalAuth Boolean @default(false)
 
   apiConnection   APIConnection? @relation(fields: [apiConnectionId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   apiConnectionId String?
@@ -1059,8 +1070,8 @@ enum TaskStatus {
 }
 
 model SecretReference {
-  id   String @id @default(cuid())
-  key String
+  id       String @id @default(cuid())
+  key      String
   provider String
 
   apiConnection APIConnection?
@@ -1071,9 +1082,60 @@ model SecretReference {
 
 /// Used when the provider = "database". Not recommended outside of local development. */
 model SecretStore {
-  key String @unique 
+  key   String @unique
   value Json
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+model HttpSource {
+  id String @id @default(cuid())
+
+  key    String
+  secret String?
+  data   Json?
+
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  organizationId String
+
+  environment   RuntimeEnvironment @relation(fields: [environmentId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  environmentId String
+
+  endpoint   Endpoint @relation(fields: [endpointId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  endpointId String
+
+  connection   APIConnection? @relation(fields: [connectionId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  connectionId String?
+
+  active      Boolean @default(false)
+  interactive Boolean @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  requests HttpSourceRequestDelivery[]
+
+  @@unique([key, endpointId])
+}
+
+model HttpSourceRequestDelivery {
+  id      String @id @default(cuid())
+  url     String
+  method  String
+  headers Json
+  body    Bytes?
+
+  source   HttpSource @relation(fields: [sourceId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  sourceId String
+
+  endpoint   Endpoint @relation(fields: [endpointId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  endpointId String
+
+  environment   RuntimeEnvironment @relation(fields: [environmentId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  environmentId String
+
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deliveredAt DateTime?
 }

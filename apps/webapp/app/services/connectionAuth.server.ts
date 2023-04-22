@@ -1,12 +1,16 @@
-import type { APIConnection } from ".prisma/client";
+import type { APIConnection, JobConnection } from ".prisma/client";
 import { ConnectionAuth } from "@trigger.dev/internal";
 import { apiKeyConfigSchema } from "~/models/apiConnection.server";
 import { logger } from "./logger";
 import { nango } from "./pizzly.server";
 
 export async function getConnectionAuth(
-  connection: APIConnection
+  connection?: APIConnection | null
 ): Promise<ConnectionAuth | undefined> {
+  if (!connection) {
+    return;
+  }
+
   switch (connection.authenticationMethod) {
     case "OAUTH": {
       try {
@@ -27,6 +31,7 @@ export async function getConnectionAuth(
         return {
           type: "oauth",
           accessToken,
+          connectionId: connection.id,
         };
       } catch (e) {
         console.error(e);
@@ -46,6 +51,7 @@ export async function getConnectionAuth(
         type: "apiKey",
         apiKey: parsed.data.api_key,
         additionalFields: parsed.data.additionalFields,
+        connectionId: connection.id,
       };
     }
     default: {
@@ -64,4 +70,27 @@ async function getNangoToken(
     // TODO: remove this once we have a better way to handle this
     return process.env.TEST_GITHUB_TOKEN;
   }
+}
+
+export async function getConnectionAuths(
+  connections: Array<JobConnection & { apiConnection?: APIConnection | null }>
+): Promise<Record<string, ConnectionAuth>> {
+  return await connections.reduce(
+    async (accP: Promise<Record<string, ConnectionAuth>>, connection) => {
+      const acc = await accP;
+
+      if (connection.usesLocalAuth) {
+        return acc;
+      }
+
+      const connectionAuth = await getConnectionAuth(connection.apiConnection!);
+
+      if (connectionAuth) {
+        acc[connection.key] = connectionAuth;
+      }
+
+      return acc;
+    },
+    Promise.resolve({})
+  );
 }

@@ -1,7 +1,12 @@
-import type {
+import {
   ApiEventLog,
   CachedTask,
+  ConnectionAuth,
   ExecuteJobBody,
+  HttpSourceRequest,
+  HttpSourceResponseSchema,
+  PrepareForJobExecutionBody,
+  PrepareForJobExecutionResponseSchema,
   ServerTask,
 } from "@trigger.dev/internal";
 import { ErrorWithStackSchema } from "@trigger.dev/internal";
@@ -162,6 +167,92 @@ export class ClientApi {
     });
 
     return ExecuteJobResponseSchema.parse(anyBody);
+  }
+
+  async prepareForJobExecution(payload: PrepareForJobExecutionBody) {
+    const response = await safeFetch(this.#url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-trigger-api-key": this.#apiKey,
+        "x-trigger-action": "PREPARE_FOR_JOB_EXECUTION",
+      },
+      body: JSON.stringify(payload),
+    });
+
+    if (!response) {
+      throw new Error(`Could not connect to endpoint ${this.#url}`);
+    }
+
+    if (!response.ok) {
+      // Attempt to parse the error message
+      const anyBody = await response.json();
+
+      const error = ErrorWithStackSchema.safeParse(anyBody);
+
+      if (error.success) {
+        throw new ClientApiError(error.data.message, error.data.stack);
+      }
+
+      throw new Error(
+        `Could not connect to endpoint ${this.#url}. Status code: ${
+          response.status
+        }`
+      );
+    }
+
+    const anyBody = await response.json();
+
+    logger.debug("prepareForJobExecution() response from endpoint", {
+      body: anyBody,
+    });
+
+    return PrepareForJobExecutionResponseSchema.parse(anyBody);
+  }
+
+  async deliverHttpSourceRequest(options: {
+    key: string;
+    secret?: string;
+    auth?: ConnectionAuth;
+    request: HttpSourceRequest;
+  }) {
+    const response = await safeFetch(this.#url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/octet-stream",
+        "x-trigger-api-key": this.#apiKey,
+        "x-trigger-action": "DELIVER_HTTP_SOURCE_REQUEST",
+        "x-trigger-key": options.key,
+        "x-trigger-url": options.request.url,
+        "x-trigger-method": options.request.method,
+        "x-trigger-headers": JSON.stringify(options.request.headers),
+        ...(options.secret ? { "x-trigger-secret": options.secret } : {}),
+        ...(options.auth
+          ? { "x-trigger-auth": JSON.stringify(options.auth) }
+          : {}),
+      },
+      body: options.request.rawBody,
+    });
+
+    if (!response) {
+      throw new Error(`Could not connect to endpoint ${this.#url}`);
+    }
+
+    if (!response.ok) {
+      throw new Error(
+        `Could not connect to endpoint ${this.#url}. Status code: ${
+          response.status
+        }`
+      );
+    }
+
+    const anyBody = await response.json();
+
+    logger.debug("deliverHttpSourceRequest() response from endpoint", {
+      body: anyBody,
+    });
+
+    return HttpSourceResponseSchema.parse(anyBody);
   }
 }
 
