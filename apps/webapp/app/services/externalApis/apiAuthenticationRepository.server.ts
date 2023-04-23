@@ -5,7 +5,11 @@ import { prisma } from "~/db.server";
 import type { APIStore } from "./apiStore";
 import { apiStore as apis } from "./apiStore";
 import type { ExternalAPI } from "./types";
-import { createOAuth2Url, getClientConfigFromEnv } from "./oauth2.server";
+import {
+  createOAuth2Url,
+  getClientConfigFromEnv,
+  grantOAuth2Token,
+} from "./oauth2.server";
 import { env } from "~/env.server";
 
 const ConnectionMetadataSchema = z.object({
@@ -71,15 +75,17 @@ export class APIAuthenticationRepository {
   }
 
   async createConnectionAttempt({
-    organizationId,
     apiIdentifier,
     authenticationMethodKey,
     scopes,
+    title,
+    redirectTo,
   }: {
-    organizationId: string;
     apiIdentifier: string;
     authenticationMethodKey: string;
     scopes: string[];
+    title: string;
+    redirectTo: string;
   }) {
     const api = this.#apiStore.getApi(apiIdentifier);
     if (!api) {
@@ -100,10 +106,12 @@ export class APIAuthenticationRepository {
         const connectionAttempt =
           await this.#prismaClient.aPIConnectionAttempt.create({
             data: {
-              organizationId,
+              organizationId: this.#organizationId,
               apiIdentifier,
               authenticationMethodKey,
               scopes,
+              title,
+              redirectTo,
             },
           });
 
@@ -112,12 +120,16 @@ export class APIAuthenticationRepository {
           authenticationMethod.client.id.envName,
           authenticationMethod.client.secret.envName
         );
+        const callbackHostName = authenticationMethod.config.appHostEnvName
+          ? process.env[authenticationMethod.config.appHostEnvName]
+          : env.APP_ORIGIN;
+
         const createAuthorizationParams = {
           authorizationUrl: authenticationMethod.config.authorization.url,
           clientId: getClientConfig.id,
           clientSecret: getClientConfig.secret,
           key: connectionAttempt.id,
-          callbackUrl: `${env.APP_ORIGIN}/api/v3/oauth2/callback`,
+          callbackUrl: `${callbackHostName}/resources/connection/oauth2/callback`,
           scopes,
           scopeSeparator:
             authenticationMethod.config.authorization.scopeSeparator,
@@ -136,6 +148,74 @@ export class APIAuthenticationRepository {
         throw new Error(
           `Authentication method type ${authenticationMethod.type} not supported`
         );
+      }
+    }
+  }
+
+  async createConnection({
+    apiIdentifier,
+    authenticationMethodKey,
+    scopes,
+    code,
+    title,
+  }: {
+    apiIdentifier: string;
+    authenticationMethodKey: string;
+    scopes: string[];
+    code: string;
+    title: string;
+  }) {
+    const api = this.#apiStore.getApi(apiIdentifier);
+    if (!api) {
+      throw new Error(`API ${apiIdentifier} not found`);
+    }
+
+    const authenticationMethod =
+      api.authenticationMethods[authenticationMethodKey];
+    if (!authenticationMethod) {
+      throw new Error(
+        `API authentication method ${authenticationMethodKey} not found for API ${apiIdentifier}`
+      );
+    }
+
+    switch (authenticationMethod.type) {
+      case "oauth2": {
+        //create a url for the oauth2 flow
+        const getClientConfig = getClientConfigFromEnv(
+          authenticationMethod.client.id.envName,
+          authenticationMethod.client.secret.envName
+        );
+        const callbackHostName = authenticationMethod.config.appHostEnvName
+          ? process.env[authenticationMethod.config.appHostEnvName]
+          : env.APP_ORIGIN;
+
+        const token = grantOAuth2Token({
+          tokenUrl: authenticationMethod.config.token.url,
+          clientId: getClientConfig.id,
+          clientSecret: getClientConfig.secret,
+          code,
+          callbackUrl: `${callbackHostName}/resources/connection/oauth2/callback`,
+          scopes,
+          scopeSeparator:
+            authenticationMethod.config.authorization.scopeSeparator,
+        });
+
+        console.log("token", token);
+
+        //todo store secret using store
+        //todo create secret reference
+        //todo create connection
+        // const connection = this.#prismaClient.aPIConnection.create({
+        //   data: {
+        //     organizationId: this.#organizationId,
+        //     apiIdentifier,
+        //     authenticationMethodKey,
+        //     metadata: {},
+        //     title,
+        //   },
+        // });
+
+        return token;
       }
     }
   }

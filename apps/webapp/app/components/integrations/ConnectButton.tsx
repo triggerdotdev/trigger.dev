@@ -1,5 +1,10 @@
+import { useLocation, useTransition } from "@remix-run/react";
+import classNames from "classnames";
+import { useTypedFetcher } from "remix-typedjson";
+import type { action } from "~/routes/resources/connection/oauth2";
 import type { ExternalAPI } from "~/services/externalApis/types";
 import { NamedIcon } from "../Icon";
+import { PrimaryButton } from "../primitives/Buttons";
 import {
   Sheet,
   SheetContent,
@@ -8,9 +13,8 @@ import {
   SheetTitle,
   SheetTrigger,
 } from "../primitives/Sheet";
-import { PrimaryButton } from "../primitives/Buttons";
-import { Form } from "@remix-run/react";
 import { Header3 } from "../primitives/text/Headers";
+import { Input } from "../primitives/Input";
 
 export type Status = "loading" | "idle";
 
@@ -25,52 +29,94 @@ export function ConnectButton({
   children: React.ReactNode;
   className?: string;
 }) {
+  const transition = useTransition();
+  const fetcher = useTypedFetcher<typeof action>();
+  const apiAuthmethodKey = Object.keys(api.authenticationMethods)[0];
+  const apiAuthmethod = Object.values(api.authenticationMethods)[0];
+  const location = useLocation();
+
   return (
     <Sheet>
       <SheetTrigger>{children}</SheetTrigger>
-      <SheetContent className="flex flex-col">
-        <SheetHeader>
-          <SheetTitle>Select the scopes for {api.name}</SheetTitle>
-          <SheetDescription>
-            <p>
+      <SheetContent className="h-full">
+        <fetcher.Form
+          method="post"
+          action="/resources/connection/oauth2"
+          className="flex h-full flex-grow flex-col"
+        >
+          <SheetHeader>
+            <SheetTitle>Select the scopes for {api.name}</SheetTitle>
+            <SheetDescription>
               Select the scopes you want to grant to {api.name} to access your
               data. If you try and perform an action in a Job that requires a
               scope you haven't granted, that task will fail.
-            </p>
-          </SheetDescription>
-        </SheetHeader>
-        <Form
-          method="post"
-          action="/api/v3/oauth2"
-          className="flex flex-grow flex-col"
-        >
-          <Header3>Select scopes</Header3>
-          <div className="flex-grow overflow-y-auto">
-            <input type="hidden" name="organizationId" value={organizationId} />
-            <input type="hidden" name="api" value={api.identifier} />
-            <input
-              type="hidden"
-              name="authenticationMethodKey"
-              value={Object.keys(api.authenticationMethods)[0]}
-            />
-            {Object.values(api.authenticationMethods)[0].scopes.map((s) => (
-              <div key={s.name} className="flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  name={`scopes[${s.name}]`}
-                  defaultChecked={true}
-                />
-                <label htmlFor={`scopes[${s.name}]`}>{s.name}</label>
-              </div>
-            ))}
+            </SheetDescription>
+          </SheetHeader>
+
+          <div
+            className={classNames(
+              "overflow-y-auto",
+              transition.state !== "idle" && "opacity-50"
+            )}
+          >
+            <div className="flex-grow overflow-y-auto">
+              <input
+                type="hidden"
+                name="organizationId"
+                value={organizationId}
+              />
+              <input type="hidden" name="api" value={api.identifier} />
+              <input
+                type="hidden"
+                name="authenticationMethodKey"
+                value={apiAuthmethodKey}
+              />
+              <input
+                type="hidden"
+                name="redirectTo"
+                value={location.pathname}
+              />
+
+              <label htmlFor="title">Connection title</label>
+              <Input
+                type="text"
+                name="title"
+                id="title"
+                defaultValue={api.name}
+              />
+
+              <Header3>Select scopes</Header3>
+              {apiAuthmethod.scopes.map((s) => {
+                const fieldName = `scopes[${s.name}]`;
+                return (
+                  <fieldset key={s.name} className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      name={fieldName}
+                      id={fieldName}
+                      defaultChecked={false}
+                    />
+                    <label htmlFor={fieldName}>{s.name}</label>
+                  </fieldset>
+                );
+              })}
+            </div>
           </div>
-          <div>
-            <PrimaryButton type="submit" className="flex gap-2">
+
+          <div className="pt-4">
+            {fetcher.data?.error ? (
+              <p className="text-rose-500">{fetcher.data.error}</p>
+            ) : null}
+            <PrimaryButton
+              type="submit"
+              className="flex gap-2"
+              disabled={transition.state !== "idle"}
+            >
               <NamedIcon name={api.identifier} className="h-4 w-4" />{" "}
               <span>Connect to {api.name}</span>
             </PrimaryButton>
           </div>
-        </Form>
+        </fetcher.Form>
       </SheetContent>
     </Sheet>
   );

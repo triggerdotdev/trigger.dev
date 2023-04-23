@@ -64,6 +64,8 @@ export type APIAuthenticationMethodOAuth2 = {
     refresh: {
       url: string;
     };
+    /** The ENV var to get the app hostname from, defaults to APP_ORIGIN */
+    appHostEnvName?: string;
   };
   /** Additional fields that are needed, e.g. Shopify requires a store name */
   additionalFields?: AdditionalField[];

@@ -17,6 +17,8 @@ import { OrganizationsSideMenu } from "~/components/navigation/SideMenu";
 import {
   PrimaryButton,
   SecondaryButton,
+  primaryClasses,
+  secondaryClasses,
 } from "~/components/primitives/Buttons";
 import { Body } from "~/components/primitives/text/Body";
 import { Header3 } from "~/components/primitives/text/Headers";
@@ -65,8 +67,8 @@ export default function Integrations() {
           <div className="flex items-start justify-between">
             <Title>API Integrations</Title>
             <div className="flex items-center gap-2">
-              <TypeformRequestWorkflow />
-              <TypeformRequestIntegration />
+              {/* <TypeformRequestWorkflow />
+              <TypeformRequestIntegration /> */}
             </div>
           </div>
           <div>
@@ -146,22 +148,18 @@ function AddApiConnection({ api }: { api: ExternalAPI }) {
 
 const TypeformRequestWorkflow = () => {
   return (
-    <SliderButton id="Rffdj2Ma">
-      <SecondaryButton>
-        <CursorArrowRaysIcon className="-ml-1 h-5 w-5" />
-        Request a Workflow
-      </SecondaryButton>
+    <SliderButton id="Rffdj2Ma" className={secondaryClasses}>
+      <CursorArrowRaysIcon className="-ml-1 h-5 w-5" />
+      Request a Workflow
     </SliderButton>
   );
 };
 
 const TypeformRequestIntegration = () => {
   return (
-    <SliderButton id="VwblgGDZ">
-      <PrimaryButton>
-        <CursorArrowRaysIcon className="-ml-1 h-5 w-5" />
-        Request an Integration
-      </PrimaryButton>
+    <SliderButton id="VwblgGDZ" className={primaryClasses}>
+      <CursorArrowRaysIcon className="-ml-1 h-5 w-5" />
+      Request an Integration
     </SliderButton>
   );
 };

@@ -64,6 +64,7 @@ const slack: ExternalAPI = {
         refresh: {
           url: "https://slack.com/api/oauth.v2.access",
         },
+        appHostEnvName: "EXTERNAL_SLACK_APP_HOST",
       },
       scopes: [
         { name: "admin" },

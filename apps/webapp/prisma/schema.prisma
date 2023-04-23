@@ -99,10 +99,11 @@ model APIConnection {
 }
 
 model APIConnectionAttempt {
-  id String @id @default(cuid())
-
-  organizationId          String
-  apiIdentifier           String
+  id  String @id @default(cuid())
+  
+  title String
+  organizationId  String
+  apiIdentifier String
   authenticationMethodKey String
   scopes                  String[]
 
