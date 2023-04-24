@@ -83,9 +83,9 @@ export default function Integrations() {
                     return (
                       <li key={connection.id}>
                         <div className="flex items-center gap-4 px-4 py-4">
-                          <ApiLogoIcon
-                            integration={{ icon: "github", name: "GitHub" }}
-                            size="regular"
+                          <NamedIcon
+                            name={connection.apiIdentifier}
+                            className="h-10 w-10 p-2"
                           />
                           <div className="flex flex-col gap-2">
                             <div>
