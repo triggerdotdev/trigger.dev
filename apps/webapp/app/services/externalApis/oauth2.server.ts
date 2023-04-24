@@ -121,8 +121,6 @@ export async function grantOAuth2Token({
     actualScopes = token.token.scope.split(scopeSeparator);
   }
 
-  console.log("token", token);
-
   const accessToken: AccessToken = {
     type: "oauth2",
     access_token: token.token.access_token,

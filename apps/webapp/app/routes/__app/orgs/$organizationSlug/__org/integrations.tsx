@@ -15,8 +15,6 @@ import { Header } from "~/components/layout/Header";
 import { List } from "~/components/layout/List";
 import { OrganizationsSideMenu } from "~/components/navigation/SideMenu";
 import {
-  PrimaryButton,
-  SecondaryButton,
   primaryClasses,
   secondaryClasses,
 } from "~/components/primitives/Buttons";
@@ -28,7 +26,7 @@ import { useCurrentOrganization } from "~/hooks/useOrganizations";
 import { getOrganizationFromSlug } from "~/models/organization.server";
 import { APIAuthenticationRepository } from "~/services/externalApis/apiAuthenticationRepository.server";
 import { apiStore } from "~/services/externalApis/apiStore";
-import { ExternalAPI } from "~/services/externalApis/types";
+import type { ExternalAPI } from "~/services/externalApis/types";
 import { requireUser } from "~/services/session.server";
 import { formatDateTime } from "~/utils";
 

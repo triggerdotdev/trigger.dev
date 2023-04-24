@@ -11,6 +11,8 @@ import {
   grantOAuth2Token,
 } from "./oauth2.server";
 import { env } from "~/env.server";
+import { nanoid } from "nanoid";
+import { SecretStore } from "../secrets/secretStore.server";
 
 const ConnectionMetadataSchema = z.object({
   account: z.string().optional(),
@@ -189,7 +191,7 @@ export class APIAuthenticationRepository {
           ? process.env[authenticationMethod.config.appHostEnvName]
           : env.APP_ORIGIN;
 
-        const token = grantOAuth2Token({
+        const token = await grantOAuth2Token({
           tokenUrl: authenticationMethod.config.token.url,
           clientId: getClientConfig.id,
           clientSecret: getClientConfig.secret,
@@ -202,20 +204,32 @@ export class APIAuthenticationRepository {
 
         console.log("token", token);
 
-        //todo store secret using store
-        //todo create secret reference
-        //todo create connection
-        // const connection = this.#prismaClient.aPIConnection.create({
-        //   data: {
-        //     organizationId: this.#organizationId,
-        //     apiIdentifier,
-        //     authenticationMethodKey,
-        //     metadata: {},
-        //     title,
-        //   },
-        // });
+        const secretReference = await this.#prismaClient.secretReference.create(
+          {
+            data: {
+              key: `${
+                this.#organizationId
+              }-${apiIdentifier}-${authenticationMethodKey}-${nanoid()}`,
+              provider: env.SECRET_STORE,
+            },
+          }
+        );
 
-        return token;
+        const secretStore = new SecretStore(env.SECRET_STORE);
+        await secretStore.setSecret(secretReference.key, token);
+
+        const connection = this.#prismaClient.aPIConnection.create({
+          data: {
+            organizationId: this.#organizationId,
+            apiIdentifier,
+            authenticationMethodKey,
+            metadata: {},
+            title,
+            dataReferenceId: secretReference.id,
+          },
+        });
+
+        return connection;
       }
     }
   }

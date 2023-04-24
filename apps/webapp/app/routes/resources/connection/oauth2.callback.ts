@@ -30,7 +30,7 @@ export async function loader({ request }: LoaderArgs) {
 
   try {
     const apiAuthRepo = new APIAuthenticationRepository(attempt.organizationId);
-    apiAuthRepo.createConnection({
+    await apiAuthRepo.createConnection({
       apiIdentifier: attempt.apiIdentifier,
       authenticationMethodKey: attempt.authenticationMethodKey,
       scopes: attempt.scopes,
