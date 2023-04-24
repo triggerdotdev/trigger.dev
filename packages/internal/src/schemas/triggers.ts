@@ -15,7 +15,7 @@ export const TriggerMetadataSchema = z.object({
   connection: z
     .object({
       metadata: ConnectionMetadataSchema,
-      hasLocalAuth: z.boolean().default(false),
+      usesLocalAuth: z.boolean().default(false),
     })
     .optional(),
 });

@@ -35,7 +35,11 @@ export async function action({ request }: ActionArgs) {
       body.data
     );
 
-    return json({ id: execution.id });
+    if (!execution) {
+      return json({ ok: false, error: "Failed to create execution" });
+    }
+
+    return json({ ok: true, data: execution });
   } catch (error) {
     if (error instanceof Error) {
       return json({ error: error.message }, { status: 400 });

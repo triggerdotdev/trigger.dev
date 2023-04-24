@@ -1,7 +1,8 @@
-import type {
+import {
   ApiEventLog,
   CompleteTaskBodyInput,
   CreateExecutionBody,
+  CreateExecutionResponseBodySchema,
   HttpEventSource,
   LogMessage,
   RegisterHttpEventSourceBody,
@@ -95,7 +96,7 @@ export class ApiClient {
     return await response.json();
   }
 
-  async createExecution(params: CreateExecutionBody): Promise<{ id: string }> {
+  async createExecution(params: CreateExecutionBody) {
     const apiKey = await this.#apiKey();
 
     this.#logger.debug("Creating execution", {
@@ -123,7 +124,9 @@ export class ApiClient {
       );
     }
 
-    return await response.json();
+    const body = await response.json();
+
+    return CreateExecutionResponseBodySchema.parse(body);
   }
 
   async createLog(executionId: string, logMessage: LogMessage) {
@@ -350,39 +353,42 @@ export class ApiClient {
     const apiKey = getApiKey(this.#options.apiKey);
 
     if (apiKey.status === "invalid") {
-      const chalk = (await import("chalk")).default;
-      const terminalLink = (await import("terminal-link")).default;
+      throw new Error("Invalid API key");
 
-      throw new Error(
-        `${chalk.red("Trigger.dev error")}: Invalid API key ("${chalk.italic(
-          apiKey.apiKey
-        )}"), please set the TRIGGER_API_KEY environment variable or pass the apiKey option to a valid value. ${terminalLink(
-          "Get your API key here",
-          "https://app.trigger.dev",
-          {
-            fallback(text, url) {
-              return `${text} 👉 ${url}`;
-            },
-          }
-        )}`
-      );
+      // const chalk = (await import("chalk")).default;
+      // const terminalLink = (await import("terminal-link")).default;
+
+      // throw new Error(
+      //   `${chalk.red("Trigger.dev error")}: Invalid API key ("${chalk.italic(
+      //     apiKey.apiKey
+      //   )}"), please set the TRIGGER_API_KEY environment variable or pass the apiKey option to a valid value. ${terminalLink(
+      //     "Get your API key here",
+      //     "https://app.trigger.dev",
+      //     {
+      //       fallback(text, url) {
+      //         return `${text} 👉 ${url}`;
+      //       },
+      //     }
+      //   )}`
+      // );
     } else if (apiKey.status === "missing") {
-      const chalk = (await import("chalk")).default;
-      const terminalLink = (await import("terminal-link")).default;
+      throw new Error("Missing API key");
+      // const chalk = (await import("chalk")).default;
+      // const terminalLink = (await import("terminal-link")).default;
 
-      throw new Error(
-        `${chalk.red(
-          "Trigger.dev error"
-        )}: Missing an API key, please set the TRIGGER_API_KEY environment variable or pass the apiKey option to the Trigger constructor. ${terminalLink(
-          "Get your API key here",
-          "https://app.trigger.dev",
-          {
-            fallback(text, url) {
-              return `${text} 👉 ${url}`;
-            },
-          }
-        )}`
-      );
+      // throw new Error(
+      //   `${chalk.red(
+      //     "Trigger.dev error"
+      //   )}: Missing an API key, please set the TRIGGER_API_KEY environment variable or pass the apiKey option to the Trigger constructor. ${terminalLink(
+      //     "Get your API key here",
+      //     "https://app.trigger.dev",
+      //     {
+      //       fallback(text, url) {
+      //         return `${text} 👉 ${url}`;
+      //       },
+      //     }
+      //   )}`
+      // );
     }
 
     return apiKey.apiKey;

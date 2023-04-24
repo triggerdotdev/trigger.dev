@@ -64,7 +64,7 @@ export type ExternalSourceOptions<TChannel extends ChannelNames> = {
 
 export interface AnyExternalSource {
   key: string;
-  hasLocalAuth: boolean;
+  usesLocalAuth: boolean;
   connection: ConnectionMetadata;
   channel: ChannelNames;
   handler: (
@@ -98,7 +98,7 @@ export class ExternalSource<TChannel extends ChannelNames>
     return this.options.key;
   }
 
-  get hasLocalAuth() {
+  get usesLocalAuth() {
     return typeof this.options.localAuth !== "undefined";
   }
 

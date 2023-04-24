@@ -3,5 +3,4 @@ packages:
   - "packages/*"
   - "integrations/*"
   - "apps/**"
-  - "examples/*"
-  - "generated-integrations/*"
+  - "examples/**"

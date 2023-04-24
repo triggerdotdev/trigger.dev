@@ -12,6 +12,7 @@ import { prisma } from "~/db.server";
 import { ClientApi } from "../clientApi.server";
 import { workerQueue } from "../worker.server";
 import semver from "semver";
+import { logger } from "../logger";
 
 export class EndpointRegisteredService {
   #prismaClient: PrismaClient;
@@ -62,6 +63,12 @@ export class EndpointRegisteredService {
     organization: Organization,
     apiJob: ApiJob
   ): Promise<void> {
+    logger.debug("Upserting job", {
+      endpoint,
+      organizationId: organization.id,
+      apiJob,
+    });
+
     // Upsert the Job
     const job = await this.#prismaClient.job.upsert({
       where: {
@@ -161,7 +168,7 @@ export class EndpointRegisteredService {
         jobInstance,
         "__trigger",
         apiJob.trigger.connection.metadata,
-        apiJob.trigger.connection.hasLocalAuth
+        apiJob.trigger.connection.usesLocalAuth
       );
     }
 
@@ -174,7 +181,7 @@ export class EndpointRegisteredService {
         jobInstance,
         connection.key,
         connection.metadata,
-        connection.hasLocalAuth
+        connection.usesLocalAuth
       );
     }
 

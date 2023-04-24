@@ -2,7 +2,6 @@ import {
   IssueCommentEvent,
   IssuesEvent,
   IssuesOpenedEvent,
-  PushEvent,
 } from "@octokit/webhooks-types";
 import type { EventFilter } from "@trigger.dev/sdk";
 import { ExternalSourceEventTrigger, Trigger } from "@trigger.dev/sdk/triggers";
@@ -25,7 +24,7 @@ export const github = (options?: { token: string }) => {
   return {
     metadata,
     tasks,
-    hasLocalAuth: typeof options?.token === "string",
+    usesLocalAuth: typeof options?.token === "string",
     clientFactory,
     onIssue: buildRepoWebhookTrigger<IssuesEvent>(
       "On Issue",

@@ -5,6 +5,7 @@ import { prisma } from "~/db.server";
 import { getConnectionAuths } from "../connectionAuth.server";
 import { ClientApi, ClientApiError } from "../clientApi.server";
 import { workerQueue } from "../worker.server";
+import { logger } from "../logger";
 
 export class StartExecutionService {
   #prismaClient: PrismaClient;
@@ -41,11 +42,6 @@ export class StartExecutionService {
     const connections = execution.jobInstance.connections.filter(
       (c) => c.apiConnection != null || c.usesLocalAuth
     ) as Array<JobConnection & { apiConnection?: APIConnection }>;
-
-    if (connections.length !== execution.jobInstance.connections.length) {
-      // TODO: We should probably mark the execution as failed here or do something else
-      return;
-    }
 
     const client = new ClientApi(
       execution.environment.apiKey,

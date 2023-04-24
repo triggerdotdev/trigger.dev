@@ -109,7 +109,7 @@ export class ExternalSourceEventTrigger<TEvent> implements Trigger<TEvent> {
       elements: this.options.elements,
       connection: {
         metadata: this.options.source.connection,
-        hasLocalAuth: this.options.source.hasLocalAuth,
+        usesLocalAuth: this.options.source.usesLocalAuth,
       },
     };
   }

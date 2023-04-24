@@ -117,6 +117,16 @@ export class TriggerClient {
       const action = request.headers["x-trigger-action"];
 
       switch (action) {
+        case "INITIALIZE": {
+          await this.listen();
+
+          return {
+            status: 200,
+            body: {
+              message: "Initialized",
+            },
+          };
+        }
         case "DELIVER_EVENT": {
           const eventLog = ApiEventLogSchema.safeParse(request.body);
 

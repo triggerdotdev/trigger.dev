@@ -80,7 +80,7 @@ export const JobSchema = z.object({
     z.object({
       key: z.string(),
       metadata: ConnectionMetadataSchema,
-      hasLocalAuth: z.boolean().default(false),
+      usesLocalAuth: z.boolean().default(false),
     })
   ),
   supportsPreparation: z.boolean(),
@@ -176,6 +176,27 @@ export const CreateExecutionBodySchema = z.object({
 });
 
 export type CreateExecutionBody = z.infer<typeof CreateExecutionBodySchema>;
+
+const CreateExecutionResponseOkSchema = z.object({
+  ok: z.literal(true),
+  data: z.object({
+    id: z.string(),
+  }),
+});
+
+const CreateExecutionResponseErrorSchema = z.object({
+  ok: z.literal(false),
+  error: z.string(),
+});
+
+export const CreateExecutionResponseBodySchema = z.discriminatedUnion("ok", [
+  CreateExecutionResponseOkSchema,
+  CreateExecutionResponseErrorSchema,
+]);
+
+export type CreateExecutionResponseBody = z.infer<
+  typeof CreateExecutionResponseBodySchema
+>;
 
 export const SecureStringSchema = z.object({
   __secureString: z.literal(true),

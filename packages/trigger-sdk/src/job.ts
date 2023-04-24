@@ -56,7 +56,7 @@ export class Job<
       return {
         key,
         metadata: connection.metadata,
-        hasLocalAuth: connection.hasLocalAuth,
+        usesLocalAuth: connection.usesLocalAuth,
       };
     });
   }
