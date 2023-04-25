@@ -20,46 +20,9 @@ const slack: ExternalAPI = {
         authorization: {
           url: "https://slack.com/oauth/v2/authorize",
           scopeSeparator: " ",
-          createUrl: ({
-            authorizationUrl,
-            clientId,
-            clientSecret,
-            key,
-            callbackUrl,
-            scopes,
-            scopeSeparator,
-          }) => {
-            return createOAuth2Url({
-              authorizationUrl,
-              clientId,
-              clientSecret,
-              key,
-              callbackUrl,
-              scopes,
-              scopeSeparator,
-            });
-          },
         },
         token: {
           url: "https://slack.com/api/oauth.v2.access",
-          grantToken: ({
-            tokenUrl,
-            clientId,
-            clientSecret,
-            code,
-            callbackUrl,
-            requestedScopes,
-          }) => {
-            return grantOAuth2Token({
-              tokenUrl,
-              clientId,
-              clientSecret,
-              code,
-              callbackUrl,
-              requestedScopes,
-              scopeSeparator: " ",
-            });
-          },
         },
         refresh: {
           url: "https://slack.com/api/oauth.v2.access",

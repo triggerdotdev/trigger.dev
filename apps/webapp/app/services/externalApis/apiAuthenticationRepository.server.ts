@@ -205,8 +205,6 @@ export class APIAuthenticationRepository {
           ? authenticationMethod.config.token.grantToken(params)
           : grantOAuth2Token(params));
 
-        console.log("token", token);
-
         const secretReference = await this.#prismaClient.secretReference.create(
           {
             data: {
