@@ -18,7 +18,7 @@ const slack: ExternalAPI = {
       config: {
         authorization: {
           url: "https://slack.com/oauth/v2/authorize",
-          scopeSeparator: " ",
+          scopeSeparator: ",",
         },
         token: {
           url: "https://slack.com/api/oauth.v2.access",
