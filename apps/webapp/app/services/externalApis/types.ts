@@ -87,6 +87,10 @@ type AdditionalField = {
 type Scope = {
   /** The name of the scope */
   name: string;
+  /** Description */
+  description?: string;
+  /** Default state of the checkbox. If unspecified it's false */
+  defaultChecked?: boolean;
   /** The param name of the scope, default is just "scope". Slack has "user" scopes that are a different query param */
   paramName?: string;
 };
@@ -94,7 +98,7 @@ type Scope = {
 const OAuth2AccessTokenSchema = z.object({
   type: z.literal("oauth2"),
   accessToken: z.string(),
-  expiresAt: z.string().optional(),
+  expiresIn: z.number().optional(),
   refreshToken: z.string().optional(),
   scopes: z.array(z.string()).optional(),
   raw: z.any(),

@@ -82,7 +82,7 @@ export async function grantOAuth2Token({
   scopeSeparator,
   accessTokenKey = "access_token",
   refreshTokenKey = "refresh_token",
-  expiresAtKey = "expires_at",
+  expiresInKey = "expires_at",
   scopeKey = "scope",
 }: {
   tokenUrl: string;
@@ -94,7 +94,7 @@ export async function grantOAuth2Token({
   scopeSeparator: string;
   accessTokenKey?: string;
   refreshTokenKey?: string;
-  expiresAtKey?: string;
+  expiresInKey?: string;
   scopeKey?: string;
 }): Promise<AccessToken> {
   //create the oauth2 client
@@ -131,13 +131,13 @@ export async function grantOAuth2Token({
   }
 
   const refreshToken = token.token[refreshTokenKey] as string | undefined;
-  const expiresAt = token.token[expiresAtKey] as string | undefined;
+  const expiresIn = token.token[expiresInKey] as number | undefined;
 
   const accessToken: AccessToken = {
     type: "oauth2",
     accessToken: accessTokenValue,
     refreshToken,
-    expiresAt,
+    expiresIn,
     scopes: actualScopes,
     raw: token.token,
   };

@@ -89,14 +89,20 @@ export function ConnectButton({
               {apiAuthmethod.scopes.map((s) => {
                 const fieldName = `scopes[${s.name}]`;
                 return (
-                  <fieldset key={s.name} className="flex items-center gap-2">
+                  <fieldset key={s.name} className="flex items-start gap-2">
                     <input
                       type="checkbox"
                       name={fieldName}
                       id={fieldName}
-                      defaultChecked={false}
+                      defaultChecked={s.defaultChecked ?? false}
+                      className="mt-1"
                     />
-                    <label htmlFor={fieldName}>{s.name}</label>
+                    <div>
+                      <label htmlFor={fieldName}>{s.name}</label>
+                      {s.description && (
+                        <p className="text-slate-300">{s.description}</p>
+                      )}
+                    </div>
                   </fieldset>
                 );
               })}
