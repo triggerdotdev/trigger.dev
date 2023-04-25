@@ -48,7 +48,7 @@ const slack: ExternalAPI = {
             clientSecret,
             code,
             callbackUrl,
-            scopes,
+            requestedScopes,
           }) => {
             return grantOAuth2Token({
               tokenUrl,
@@ -56,7 +56,7 @@ const slack: ExternalAPI = {
               clientSecret,
               code,
               callbackUrl,
-              scopes,
+              requestedScopes,
               scopeSeparator: " ",
             });
           },

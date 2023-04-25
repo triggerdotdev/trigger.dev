@@ -191,16 +191,19 @@ export class APIAuthenticationRepository {
           ? process.env[authenticationMethod.config.appHostEnvName]
           : env.APP_ORIGIN;
 
-        const token = await grantOAuth2Token({
+        const params = {
           tokenUrl: authenticationMethod.config.token.url,
           clientId: getClientConfig.id,
           clientSecret: getClientConfig.secret,
           code,
           callbackUrl: `${callbackHostName}/resources/connection/oauth2/callback`,
-          scopes,
+          requestedScopes: scopes,
           scopeSeparator:
             authenticationMethod.config.authorization.scopeSeparator,
-        });
+        };
+        const token = await (authenticationMethod.config.token.grantToken
+          ? authenticationMethod.config.token.grantToken(params)
+          : grantOAuth2Token(params));
 
         console.log("token", token);
 

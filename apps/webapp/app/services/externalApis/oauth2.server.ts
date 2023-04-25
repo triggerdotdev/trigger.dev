@@ -78,16 +78,24 @@ export async function grantOAuth2Token({
   clientSecret,
   code,
   callbackUrl,
-  scopes,
+  requestedScopes,
   scopeSeparator,
+  accessTokenKey = "access_token",
+  refreshTokenKey = "refresh_token",
+  expiresAtKey = "expires_at",
+  scopeKey = "scope",
 }: {
   tokenUrl: string;
   clientId: string;
   clientSecret: string;
   code: string;
   callbackUrl: string;
-  scopes: string[];
+  requestedScopes: string[];
   scopeSeparator: string;
+  accessTokenKey?: string;
+  refreshTokenKey?: string;
+  expiresAtKey?: string;
+  scopeKey?: string;
 }): Promise<AccessToken> {
   //create the oauth2 client
   const tokenUrlObj = new URL(tokenUrl);
@@ -109,22 +117,29 @@ export async function grantOAuth2Token({
   const token = await simpleOAuthClient.getToken({
     code,
     redirect_uri: callbackUrl,
-    scope: scopes.join(scopeSeparator),
+    scope: requestedScopes.join(scopeSeparator),
   });
 
-  if (typeof token.token.access_token !== "string") {
+  const accessTokenValue = token.token[accessTokenKey];
+  if (typeof accessTokenValue !== "string") {
     throw new Error("Invalid access token");
   }
 
-  let actualScopes = scopes;
-  if (typeof token.token.scope === "string") {
-    actualScopes = token.token.scope.split(scopeSeparator);
+  let actualScopes = requestedScopes;
+  if (typeof token.token[scopeKey] === "string") {
+    actualScopes = (token.token[scopeKey] as string).split(scopeSeparator);
   }
+
+  const refreshToken = token.token[refreshTokenKey] as string | undefined;
+  const expiresAt = token.token[expiresAtKey] as string | undefined;
 
   const accessToken: AccessToken = {
     type: "oauth2",
-    access_token: token.token.access_token,
+    accessToken: accessTokenValue,
+    refreshToken,
+    expiresAt,
     scopes: actualScopes,
+    raw: token.token,
   };
 
   return accessToken;

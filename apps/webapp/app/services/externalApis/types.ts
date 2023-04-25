@@ -1,3 +1,5 @@
+import { z } from "zod";
+
 export type ExternalAPI = {
   /** Used to uniquely identify an API */
   identifier: string;
@@ -57,7 +59,7 @@ export type APIAuthenticationMethodOAuth2 = {
         clientSecret: string;
         code: string;
         callbackUrl: string;
-        scopes: string[];
+        requestedScopes: string[];
       }) => Promise<AccessToken>;
     };
     /** Refresh is how a token is refreshed */
@@ -89,10 +91,14 @@ type Scope = {
   paramName?: string;
 };
 
-export type AccessToken = OAuth2AccessToken;
+const OAuth2AccessTokenSchema = z.object({
+  type: z.literal("oauth2"),
+  accessToken: z.string(),
+  expiresAt: z.string().optional(),
+  refreshToken: z.string().optional(),
+  scopes: z.array(z.string()).optional(),
+  raw: z.any(),
+});
 
-type OAuth2AccessToken = {
-  type: "oauth2";
-  access_token: string;
-  scopes?: string[];
-};
+export const AccessTokenSchema = OAuth2AccessTokenSchema;
+export type AccessToken = z.infer<typeof AccessTokenSchema>;
