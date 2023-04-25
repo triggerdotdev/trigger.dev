@@ -82,7 +82,7 @@ export async function grantOAuth2Token({
   scopeSeparator,
   accessTokenKey = "access_token",
   refreshTokenKey = "refresh_token",
-  expiresInKey = "expires_at",
+  expiresInKey = "expires_in",
   scopeKey = "scope",
 }: {
   tokenUrl: string;
