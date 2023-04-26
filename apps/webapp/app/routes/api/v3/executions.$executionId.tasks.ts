@@ -163,7 +163,8 @@ export class RunExecutionTaskService {
 
       // If task.delayUntil is set and is in the future, we'll set the task's status to "WAITING", else set it to RUNNING
       const status =
-        taskBody.delayUntil && taskBody.delayUntil.getTime() > Date.now()
+        (taskBody.delayUntil && taskBody.delayUntil.getTime() > Date.now()) ||
+        taskBody.trigger
           ? "WAITING"
           : taskBody.noop
           ? "COMPLETED"
@@ -190,7 +191,41 @@ export class RunExecutionTaskService {
           params: taskBody.params ?? undefined,
           elements: taskBody.elements ?? undefined,
         },
+        include: {
+          execution: true,
+        },
       });
+
+      if (taskBody.trigger) {
+        // Create an eventrule for the task
+        await prisma.jobEventRule.upsert({
+          where: {
+            jobInstanceId_actionIdentifier: {
+              jobInstanceId: task.execution.jobInstanceId,
+              actionIdentifier: task.id,
+            },
+          },
+          create: {
+            action: "RESUME_TASK",
+            actionIdentifier: task.id,
+            jobId: task.execution.jobId,
+            jobInstanceId: task.execution.jobInstanceId,
+            environmentId: task.execution.environmentId,
+            organizationId: task.execution.organizationId,
+            event: taskBody.trigger.eventRule.event,
+            source: taskBody.trigger.eventRule.source,
+            payloadFilter: taskBody.trigger.eventRule.payload ?? {},
+            contextFilter: taskBody.trigger.eventRule.context ?? {},
+            enabled: true,
+          },
+          update: {
+            event: taskBody.trigger.eventRule.event,
+            source: taskBody.trigger.eventRule.source,
+            payloadFilter: taskBody.trigger.eventRule.payload ?? {},
+            contextFilter: taskBody.trigger.eventRule.context ?? {},
+          },
+        });
+      }
 
       return task;
     });

@@ -8,6 +8,7 @@ import {
 } from "@trigger.dev/internal";
 import { webcrypto } from "node:crypto";
 import { ApiClient } from "./apiClient";
+import { Trigger } from "./triggers";
 
 export class ResumeWithTask {
   constructor(public task: ServerTask) {}
@@ -39,6 +40,26 @@ export class IO {
         this.#cachedTasks.set(task.id, task);
       });
     }
+  }
+
+  // TODO: finish implementing this (needs to support registering and preparing)
+  async on<T extends SerializableJson | void = void>(
+    key: string | any[],
+    trigger: Trigger<T>
+  ) {
+    const metadata = trigger.toJSON();
+
+    return this.runTask<T>(
+      key,
+      {
+        name: metadata.title,
+        elements: metadata.elements,
+        trigger: trigger.toJSON(),
+      },
+      async (task) => {
+        return task.output as T;
+      }
+    );
   }
 
   async runTask<T extends SerializableJson | void = void>(

@@ -98,6 +98,7 @@ export class IngestSendEvent {
           timestamp: event.timestamp ?? new Date(),
           payload: event.payload ?? {},
           context: event.context ?? {},
+          source: event.source ?? "trigger.dev",
           deliverAt: deliverAt,
         },
       });

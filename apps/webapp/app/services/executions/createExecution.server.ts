@@ -1,14 +1,13 @@
 import type {
+  EventLog,
+  Job,
+  JobInstance,
   Organization,
   RuntimeEnvironment,
-  JobConnection,
 } from ".prisma/client";
-import type { CreateExecutionBody } from "@trigger.dev/internal";
 import type { PrismaClient } from "~/db.server";
 import { prisma } from "~/db.server";
-import { APIConnection } from "~/models/apiConnection.server";
 import { workerQueue } from "~/services/worker.server";
-import { logger } from "../logger";
 
 export class CreateExecutionService {
   #prismaClient: PrismaClient;
@@ -17,64 +16,24 @@ export class CreateExecutionService {
     this.#prismaClient = prismaClient;
   }
 
-  public async call(
-    environment: RuntimeEnvironment,
-    organization: Organization,
-    data: CreateExecutionBody
-  ) {
+  public async call({
+    environment,
+    eventId,
+    organization,
+    job,
+    jobInstance,
+  }: {
+    environment: RuntimeEnvironment;
+    organization: Organization;
+    eventId: string;
+    job: Job;
+    jobInstance: JobInstance;
+  }) {
     const endpoint = await this.#prismaClient.endpoint.findUniqueOrThrow({
       where: {
-        environmentId_slug: {
-          environmentId: environment.id,
-          slug: data.client,
-        },
+        id: jobInstance.endpointId,
       },
     });
-
-    const job = await this.#prismaClient.job.findUniqueOrThrow({
-      where: {
-        organizationId_slug: {
-          organizationId: organization.id,
-          slug: data.job.id,
-        },
-      },
-    });
-
-    const jobInstance = await this.#prismaClient.jobInstance.findUniqueOrThrow({
-      where: {
-        jobId_version_endpointId: {
-          jobId: job.id,
-          version: data.job.version,
-          endpointId: endpoint.id,
-        },
-      },
-      include: {
-        connections: {
-          include: {
-            apiConnection: true,
-          },
-          where: {
-            key: { not: "__trigger" },
-          },
-        },
-      },
-    });
-
-    const connections = jobInstance.connections.filter(
-      (c) => c.apiConnection != null || c.usesLocalAuth
-    ) as Array<JobConnection & { apiConnection?: APIConnection }>;
-
-    if (connections.length !== jobInstance.connections.length) {
-      logger.debug(
-        "Not all connections are available, not creating an execution",
-        {
-          connections: jobInstance.connections,
-          connectionsWithApi: connections,
-        }
-      );
-
-      return;
-    }
 
     const execution = await this.#prismaClient.$transaction(async (prisma) => {
       // Get the current max number for the given jobId
@@ -92,7 +51,7 @@ export class CreateExecutionService {
           number: newNumber,
           job: { connect: { id: job.id } },
           jobInstance: { connect: { id: jobInstance.id } },
-          eventLog: { connect: { id: data.event.id } },
+          eventLog: { connect: { id: eventId } },
           environment: { connect: { id: environment.id } },
           organization: { connect: { id: organization.id } },
           endpoint: { connect: { id: endpoint.id } },

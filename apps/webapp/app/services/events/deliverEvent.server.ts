@@ -1,10 +1,15 @@
-import { ApiEventLogSchema } from "@trigger.dev/internal";
+import type { EventLog, JobEventRule } from ".prisma/client";
+import { EventFilter, EventFilterSchema } from "@trigger.dev/internal";
 import type { PrismaClient } from "~/db.server";
 import { prisma } from "~/db.server";
-import { ClientApi } from "../clientApi.server";
+import { CreateExecutionService } from "../executions/createExecution.server";
+import { ResumeTaskService } from "../executions/resumeTask.server";
+import { logger } from "../logger";
 
 export class DeliverEventService {
   #prismaClient: PrismaClient;
+  #createExecutionService = new CreateExecutionService();
+  #resumeTaskService = new ResumeTaskService();
 
   constructor(prismaClient: PrismaClient = prisma) {
     this.#prismaClient = prismaClient;
@@ -21,18 +26,78 @@ export class DeliverEventService {
       },
     });
 
-    const endpoint = await this.#prismaClient.endpoint.findFirstOrThrow({
+    const possibleEventRules = await this.#prismaClient.jobEventRule.findMany({
       where: {
-        organizationId: eventLog.organizationId,
         environmentId: eventLog.environmentId,
+        event: eventLog.name,
+        source: eventLog.source,
+        enabled: true,
+        jobInstance: {
+          aliases: {
+            some: {
+              name: "latest",
+            },
+          },
+        },
+      },
+      include: {
+        job: true,
+        jobInstance: true,
       },
     });
 
-    const apiEventLog = ApiEventLogSchema.parse(eventLog);
+    logger.debug("Found possible event rules", {
+      possibleEventRules,
+      eventLog,
+    });
 
-    const client = new ClientApi(eventLog.environment.apiKey, endpoint.url);
+    const matchingEventRules = possibleEventRules.filter((eventRule) =>
+      this.#evaluateEventRule(eventRule, eventLog)
+    );
 
-    await client.deliverEvent(apiEventLog);
+    if (matchingEventRules.length === 0) {
+      logger.debug("No matching event rules", {
+        eventLog,
+      });
+
+      return;
+    }
+
+    logger.debug("Found matching event rules", {
+      matchingEventRules,
+      eventLog,
+    });
+
+    for (const eventRule of matchingEventRules) {
+      switch (eventRule.action) {
+        case "CREATE_EXECUTION": {
+          await this.#createExecutionService.call({
+            eventId: eventLog.id,
+            job: eventRule.job,
+            jobInstance: eventRule.jobInstance,
+            environment: eventLog.environment,
+            organization: eventLog.organization,
+          });
+
+          break;
+        }
+        case "RESUME_TASK": {
+          await this.#resumeTaskService.call(
+            eventRule.actionIdentifier,
+            eventLog.payload
+          );
+
+          // Now we need to delete this event rule
+          await this.#prismaClient.jobEventRule.delete({
+            where: {
+              id: eventRule.id,
+            },
+          });
+
+          break;
+        }
+      }
+    }
 
     await this.#prismaClient.eventLog.update({
       where: {
@@ -43,4 +108,68 @@ export class DeliverEventService {
       },
     });
   }
+
+  #evaluateEventRule(eventRule: JobEventRule, eventLog: EventLog): boolean {
+    if (!eventRule.payloadFilter && !eventRule.contextFilter) {
+      return true;
+    }
+
+    const payloadFilter = EventFilterSchema.safeParse(
+      eventRule.payloadFilter ?? {}
+    );
+
+    const contextFilter = EventFilterSchema.safeParse(
+      eventRule.contextFilter ?? {}
+    );
+
+    if (!payloadFilter.success || !contextFilter.success) {
+      logger.error("Invalid event filter", {
+        payloadFilter,
+        contextFilter,
+      });
+      return false;
+    }
+
+    const eventMatcher = new EventMatcher(eventLog);
+
+    return eventMatcher.matches({
+      payload: payloadFilter.data,
+      context: contextFilter.data,
+    });
+  }
+}
+
+export class EventMatcher {
+  event: EventLog;
+
+  constructor(event: EventLog) {
+    this.event = event;
+  }
+
+  public matches(filter: EventFilter) {
+    return patternMatches(this.event, filter);
+  }
+}
+
+function patternMatches(payload: any, pattern: any): boolean {
+  for (const [patternKey, patternValue] of Object.entries(pattern)) {
+    const payloadValue = payload[patternKey];
+
+    if (Array.isArray(patternValue)) {
+      if (patternValue.length > 0 && !patternValue.includes(payloadValue)) {
+        return false;
+      }
+    } else if (typeof patternValue === "object") {
+      if (Array.isArray(payloadValue)) {
+        if (!payloadValue.some((item) => patternMatches(item, patternValue))) {
+          return false;
+        }
+      } else {
+        if (!patternMatches(payloadValue, patternValue)) {
+          return false;
+        }
+      }
+    }
+  }
+  return true;
 }

@@ -1,6 +1,12 @@
-import { Job, NormalizedRequest, TriggerClient } from "@trigger.dev/sdk";
+import {
+  customEvent,
+  Job,
+  NormalizedRequest,
+  TriggerClient,
+} from "@trigger.dev/sdk";
 import { github } from "@trigger.dev/github";
 import type { NextApiRequest, NextApiResponse } from "next";
+import { z } from "zod";
 const gh = github({ token: process.env.GITHUB_TOKEN! });
 
 const client = new TriggerClient("nextjs", {
@@ -62,11 +68,36 @@ new Job({
   },
 }).registerWith(client);
 
-// export const config = {
-//   api: {
-//     bodyParser: false,
-//   },
-// };
+new Job({
+  id: "wait-for-event-in-job",
+  name: "Wait for event in job",
+  version: "0.1.1",
+  logLevel: "debug",
+  trigger: customEvent({
+    name: "my-custom-event",
+    source: "my-source",
+    filter: {
+      foo: ["bar"],
+    },
+    schema: z.object({
+      foo: z.string(),
+    }),
+  }),
+  run: async (event, io, ctx) => {
+    const payload = await io.on(
+      "Wait for another event",
+      customEvent({
+        name: "my-custom-event-2",
+        source: "my-source",
+        schema: z.object({
+          foo: z.string(),
+        }),
+      })
+    );
+
+    return payload;
+  },
+}).registerWith(client);
 
 export default async function handler(
   req: NextApiRequest,

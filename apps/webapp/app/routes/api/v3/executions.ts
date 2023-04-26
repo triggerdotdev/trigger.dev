@@ -2,7 +2,7 @@ import type { ActionArgs } from "@remix-run/server-runtime";
 import { json } from "@remix-run/server-runtime";
 import { CreateExecutionBodySchema } from "@trigger.dev/internal";
 import { authenticateApiRequest } from "~/services/apiAuth.server";
-import { CreateExecutionService } from "~/services/executions/createExecution.server";
+import { PostExecutionService } from "~/services/executions/postExecution.server";
 
 export async function action({ request }: ActionArgs) {
   // Ensure this is a POST request
@@ -26,7 +26,7 @@ export async function action({ request }: ActionArgs) {
     return json({ error: "Invalid request body" }, { status: 400 });
   }
 
-  const service = new CreateExecutionService();
+  const service = new PostExecutionService();
 
   try {
     const execution = await service.call(

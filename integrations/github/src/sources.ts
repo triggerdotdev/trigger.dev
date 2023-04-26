@@ -1,6 +1,5 @@
 import { Webhooks } from "@octokit/webhooks";
 import { ExternalSource } from "@trigger.dev/sdk/externalSource";
-import { getCrypto } from "@trigger.dev/sdk";
 import { clientFactory } from "./client";
 import { metadata } from "./metadata";
 
@@ -189,6 +188,7 @@ export function repositoryWebhookSource(
         events: [
           {
             id: [hookId, deliveryId].join(":"),
+            source: "github.com",
             payload,
             name,
             context,

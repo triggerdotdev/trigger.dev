@@ -99,7 +99,7 @@ export const GetJobsResponseSchema = z.object({
 export const RawEventSchema = z.object({
   id: z.string().default(() => ulid()),
   name: z.string(),
-  source: z.string().default("trigger.dev"),
+  source: z.string().optional(),
   payload: DeserializedJsonSchema,
   context: DeserializedJsonSchema.optional(),
   timestamp: z.string().datetime().optional(),
@@ -245,6 +245,7 @@ export const IOTaskSchema = z.object({
   description: z.string().optional(),
   elements: z.array(DisplayElementSchema).optional(),
   params: SerializableJsonSchema.optional(),
+  trigger: TriggerMetadataSchema.optional(),
 });
 
 export type IOTask = z.input<typeof IOTaskSchema>;

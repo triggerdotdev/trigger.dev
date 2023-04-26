@@ -68,6 +68,7 @@ model Organization {
   EventLog           EventLog[]
   Execution          Execution[]
   httpSources        HttpSource[]
+  JobEventRule       JobEventRule[]
 }
 
 model APIConnection {
@@ -143,6 +144,8 @@ model RuntimeEnvironment {
   Execution                 Execution[]
   httpSources               HttpSource[]
   HttpSourceRequestDelivery HttpSourceRequestDelivery[]
+  JobEventRule              JobEventRule[]
+  JobAlias                  JobAlias[]
 
   @@unique([organizationId, slug])
 }
@@ -909,6 +912,8 @@ model Job {
   instances   JobInstance[]
   executions  Execution[]
   connections JobConnection[]
+  eventRules  JobEventRule[]
+  aliases     JobAlias[]
 
   @@unique([organizationId, slug])
 }
@@ -930,15 +935,35 @@ model JobInstance {
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   organizationId String
 
-  ready Boolean @default(false)
+  ready  Boolean @default(false)
+  latest Boolean @default(false)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   executions  Execution[]
   connections JobConnection[]
+  eventRules  JobEventRule[]
+  aliases     JobAlias[]
 
   @@unique([jobId, version, endpointId])
+}
+
+model JobAlias {
+  id      String @id @default(cuid())
+  name    String @default("latest")
+  version String
+
+  jobInstance   JobInstance @relation(fields: [jobInstanceId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  jobInstanceId String
+
+  job   Job    @relation(fields: [jobId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  jobId String
+
+  environment   RuntimeEnvironment @relation(fields: [environmentId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  environmentId String
+
+  @@unique([jobId, environmentId, name])
 }
 
 model JobConnection {
@@ -970,6 +995,8 @@ model EventLog {
   timestamp DateTime @default(now())
   payload   Json
   context   Json?
+
+  source String @default("trigger.dev")
 
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   organizationId String
@@ -1140,4 +1167,39 @@ model HttpSourceRequestDelivery {
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
   deliveredAt DateTime?
+}
+
+model JobEventRule {
+  id            String @id @default(cuid())
+  event         String
+  source        String
+  payloadFilter Json?
+  contextFilter Json?
+
+  action           JobEventAction @default(CREATE_EXECUTION)
+  actionIdentifier String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  enabled Boolean @default(true)
+
+  job   Job    @relation(fields: [jobId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  jobId String
+
+  jobInstance   JobInstance @relation(fields: [jobInstanceId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  jobInstanceId String
+
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  organizationId String
+
+  environment   RuntimeEnvironment @relation(fields: [environmentId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  environmentId String
+
+  @@unique([jobInstanceId, actionIdentifier])
+}
+
+enum JobEventAction {
+  CREATE_EXECUTION
+  RESUME_TASK
 }

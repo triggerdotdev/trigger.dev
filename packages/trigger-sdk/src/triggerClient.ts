@@ -127,27 +127,6 @@ export class TriggerClient {
             },
           };
         }
-        case "DELIVER_EVENT": {
-          const eventLog = ApiEventLogSchema.safeParse(request.body);
-
-          if (!eventLog.success) {
-            return {
-              status: 400,
-              body: {
-                message: "Invalid event log",
-              },
-            };
-          }
-
-          await this.#dispatchEventToJobs(eventLog.data);
-
-          return {
-            status: 200,
-            body: {
-              deliveredAt: new Date().toISOString(),
-            },
-          };
-        }
         case "EXECUTE_JOB": {
           const execution = ExecuteJobBodySchema.safeParse(request.body);
 
@@ -355,22 +334,6 @@ export class TriggerClient {
     }
 
     return await source.handler(this, { request: sourceRequest, secret }, auth);
-  }
-
-  async #dispatchEventToJobs(event: ApiEventLog) {
-    this.#logger.debug("dispatching event to jobs", { event });
-
-    // For each job, we check if the event matches the job's trigger
-    const matchingJobs = Object.values(this.#registeredJobs).filter((job) =>
-      job.trigger.matches(event)
-    );
-
-    // For each matching job, we need to create a new job execution with the event, and then run the job
-    const executions = await Promise.all(
-      matchingJobs.map((job) => this.#createExecution(job, event))
-    );
-
-    return executions;
   }
 
   async #createExecution(job: Job<{}, any>, event: ApiEventLog) {

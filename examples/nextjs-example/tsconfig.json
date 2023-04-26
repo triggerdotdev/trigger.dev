@@ -18,6 +18,8 @@
       "@/*": ["./src/*"],
       "@trigger.dev/sdk": ["../../packages/trigger-sdk/src/index"],
       "@trigger.dev/sdk/*": ["../../packages/trigger-sdk/src/*"],
+      "@trigger.dev/internal": ["../../packages/internal/src/index"],
+      "@trigger.dev/internal/*": ["../../packages/internal/src/*"],
       "@trigger.dev/github": ["../../integrations/github/src/index"],
       "@trigger.dev/github/*": ["../../integrations/github/src/*"]
     }

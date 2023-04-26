@@ -11,7 +11,7 @@ export class ResumeTaskService {
     this.#prismaClient = prismaClient;
   }
 
-  public async call(id: string) {
+  public async call(id: string, output?: any) {
     const task = await this.#prismaClient.task.findUniqueOrThrow({
       where: { id },
       include: {
@@ -45,8 +45,9 @@ export class ResumeTaskService {
         id: task.id,
       },
       data: {
-        status: task.noop ? "COMPLETED" : "RUNNING",
+        status: task.noop || output ? "COMPLETED" : "RUNNING",
         completedAt: task.noop ? new Date() : undefined,
+        output: task.noop ? undefined : output,
       },
     });
 

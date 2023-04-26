@@ -2,17 +2,16 @@ import type {
   ApiEventLog,
   ConnectionAuth,
   EventFilter,
+  EventRule,
   TriggerMetadata,
 } from "@trigger.dev/internal";
 import { DisplayElement } from "@trigger.dev/internal";
 import { z } from "zod";
 import zodToJsonSchema from "zod-to-json-schema";
-import { EventMatcher } from "./eventMatcher";
 import { AnyExternalSource } from "./externalSource";
 import { TriggerClient } from "./triggerClient";
 
 export interface Trigger<TEventType = any> {
-  matches(event: ApiEventLog): boolean;
   eventElements(event: ApiEventLog): DisplayElement[];
   toJSON(): TriggerMetadata;
   registerWith(client: TriggerClient): void;
@@ -25,6 +24,7 @@ export interface Trigger<TEventType = any> {
 
 export type CustomEventTriggerOptions<TSchema extends z.ZodTypeAny> = {
   name: string;
+  source?: string;
   schema?: TSchema;
   filter?: EventFilter;
 };
@@ -42,23 +42,6 @@ export class CustomEventTrigger<TSchema extends z.ZodTypeAny>
     return [];
   }
 
-  matches(event: ApiEventLog): boolean {
-    if (event.name !== this.#options.name) {
-      return false;
-    }
-
-    if (this.#options.filter) {
-      const eventMatcher = new EventMatcher(event);
-
-      return eventMatcher.matches({
-        name: [this.#options.name],
-        payload: this.#options.filter ?? {},
-      });
-    }
-
-    return true;
-  }
-
   toJSON(): TriggerMetadata {
     return {
       title: "Custom Event",
@@ -66,6 +49,11 @@ export class CustomEventTrigger<TSchema extends z.ZodTypeAny>
       schema: this.#options.schema
         ? zodToJsonSchema(this.#options.schema)
         : undefined,
+      eventRule: {
+        event: this.#options.name,
+        source: this.#options.source ?? "trigger.dev",
+        payload: this.#options.filter ?? {},
+      },
     };
   }
 
@@ -85,7 +73,7 @@ export function customEvent<TSchema extends z.ZodTypeAny>(
 
 export type ExteralSourceEventTriggerOptions<TEvent> = {
   title: string;
-  filter: EventFilter;
+  eventRule: EventRule;
   elements: DisplayElement[];
   source: AnyExternalSource;
 };
@@ -97,12 +85,6 @@ export class ExternalSourceEventTrigger<TEvent> implements Trigger<TEvent> {
     return this.options.source.eventElements(event);
   }
 
-  matches(event: ApiEventLog): boolean {
-    const eventMatcher = new EventMatcher(event);
-
-    return eventMatcher.matches(this.options.filter);
-  }
-
   toJSON(): TriggerMetadata {
     return {
       title: this.options.title,
@@ -111,6 +93,7 @@ export class ExternalSourceEventTrigger<TEvent> implements Trigger<TEvent> {
         metadata: this.options.source.connection,
         usesLocalAuth: this.options.source.usesLocalAuth,
       },
+      eventRule: this.options.eventRule,
     };
   }
 

@@ -28,12 +28,12 @@ export const github = (options?: { token: string }) => {
     clientFactory,
     onIssue: buildRepoWebhookTrigger<IssuesEvent>(
       "On Issue",
-      ["issues"],
+      "issues",
       options
     ),
     onIssueOpened: buildRepoWebhookTrigger<IssuesOpenedEvent>(
       "On Issue Opened",
-      ["issues"],
+      "issues",
       options,
       {
         action: ["opened"],
@@ -41,7 +41,7 @@ export const github = (options?: { token: string }) => {
     ),
     onIssueComment: buildRepoWebhookTrigger<IssueCommentEvent>(
       "On Issue Comment",
-      ["issue_comment"],
+      "issue_comment",
       options
     ),
   };
@@ -49,7 +49,7 @@ export const github = (options?: { token: string }) => {
 
 function buildRepoWebhookTrigger<TEventType>(
   title: string,
-  events: string[],
+  event: string,
   options?: { token: string },
   filter?: EventFilter
 ): (params: { repo: string }) => Trigger<TEventType> {
@@ -61,16 +61,21 @@ function buildRepoWebhookTrigger<TEventType>(
           label: "Repo",
           text: params.repo,
         },
+        {
+          label: "Event",
+          text: event,
+        },
       ],
       source: repositoryWebhookSource(
         {
           repo: params.repo,
-          events,
+          events: [event],
         },
         { token: options?.token }
       ),
-      filter: {
-        name: events,
+      eventRule: {
+        event,
+        source: "github.com",
         payload: filter ?? {},
       },
     });

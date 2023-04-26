@@ -404,6 +404,7 @@ importers:
       ts-loader: ^9.4.2
       typescript: 5.0.4
       webpack: ^5.0.0
+      zod: ^3.20.2
     dependencies:
       '@trigger.dev/sdk': link:../../packages/trigger-sdk
       '@types/node': 18.15.13
@@ -413,6 +414,7 @@ importers:
       react: 18.2.0
       react-dom: 18.2.0_react@18.2.0
       typescript: 5.0.4
+      zod: 3.20.2
     devDependencies:
       ts-loader: 9.4.2_dmnk2hichoesbonenkf5yk7fmy
       webpack: 5.80.0

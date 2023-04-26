@@ -13,6 +13,7 @@ import { ClientApi } from "../clientApi.server";
 import { workerQueue } from "../worker.server";
 import semver from "semver";
 import { logger } from "../logger";
+import { allConnectionsReady } from "../jobs/utils.server";
 
 export class EndpointRegisteredService {
   #prismaClient: PrismaClient;
@@ -158,30 +159,30 @@ export class EndpointRegisteredService {
       },
     });
 
-    const existingConnectionKeys = [];
+    const upsertedConnections: Array<JobConnection> = [];
 
     if (apiJob.trigger.connection) {
-      existingConnectionKeys.push("__trigger");
-
-      await this.#upsertJobConnection(
-        job,
-        jobInstance,
-        "__trigger",
-        apiJob.trigger.connection.metadata,
-        apiJob.trigger.connection.usesLocalAuth
+      upsertedConnections.push(
+        await this.#upsertJobConnection(
+          job,
+          jobInstance,
+          "__trigger",
+          apiJob.trigger.connection.metadata,
+          apiJob.trigger.connection.usesLocalAuth
+        )
       );
     }
 
     // Upsert the connections
     for (const connection of apiJob.connections) {
-      existingConnectionKeys.push(connection.key);
-
-      await this.#upsertJobConnection(
-        job,
-        jobInstance,
-        connection.key,
-        connection.metadata,
-        connection.usesLocalAuth
+      upsertedConnections.push(
+        await this.#upsertJobConnection(
+          job,
+          jobInstance,
+          connection.key,
+          connection.metadata,
+          connection.usesLocalAuth
+        )
       );
     }
 
@@ -189,9 +190,77 @@ export class EndpointRegisteredService {
     await this.#prismaClient.jobConnection.deleteMany({
       where: {
         jobInstanceId: jobInstance.id,
-        key: {
-          notIn: existingConnectionKeys,
+        id: {
+          notIn: upsertedConnections.map((c) => c.id),
         },
+      },
+    });
+
+    // Count the number of job instances that have higher version numbers
+    const laterJobInstanceCount = await this.#prismaClient.jobInstance.count({
+      where: {
+        jobId: job.id,
+        version: {
+          gt: apiJob.version,
+        },
+        environmentId: environment.id,
+      },
+    });
+
+    // If there are no later job instances, then we can upsert the latest jobalias
+    if (laterJobInstanceCount === 0) {
+      // upsert the latest jobalias
+      await this.#prismaClient.jobAlias.upsert({
+        where: {
+          jobId_environmentId_name: {
+            jobId: job.id,
+            environmentId: environment.id,
+            name: "latest",
+          },
+        },
+        create: {
+          jobId: job.id,
+          jobInstanceId: jobInstance.id,
+          environmentId: environment.id,
+          name: "latest",
+          version: jobInstance.version,
+        },
+        update: {
+          jobInstanceId: jobInstance.id,
+          version: jobInstance.version,
+        },
+      });
+    }
+
+    const connectionsReady = await allConnectionsReady(upsertedConnections);
+
+    // upsert the eventrule
+    // The event rule should only be enabled if all the external connections are ready
+    await this.#prismaClient.jobEventRule.upsert({
+      where: {
+        jobInstanceId_actionIdentifier: {
+          jobInstanceId: jobInstance.id,
+          actionIdentifier: "__trigger",
+        },
+      },
+      create: {
+        event: apiJob.trigger.eventRule.event,
+        source: apiJob.trigger.eventRule.source,
+        payloadFilter: apiJob.trigger.eventRule.payload,
+        contextFilter: apiJob.trigger.eventRule.context,
+        jobId: job.id,
+        jobInstanceId: jobInstance.id,
+        environmentId: environment.id,
+        organizationId: organization.id,
+        enabled: connectionsReady,
+        actionIdentifier: "__trigger",
+      },
+      update: {
+        event: apiJob.trigger.eventRule.event,
+        source: apiJob.trigger.eventRule.source,
+        payloadFilter: apiJob.trigger.eventRule.payload,
+        contextFilter: apiJob.trigger.eventRule.context,
+        enabled: connectionsReady,
       },
     });
   }
