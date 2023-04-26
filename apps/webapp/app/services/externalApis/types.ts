@@ -53,6 +53,11 @@ export type APIAuthenticationMethodOAuth2 = {
     /** Token is how a token is obtained */
     token: {
       url: string;
+      /** How to fetch the metadata from the token */
+      metadata: {
+        /** JSONPointer to the owner info in the raw token response */
+        accountPointer?: string;
+      };
       /** Some APIs have strange granting logic, this allows total control to deal with that */
       grantToken?: (config: {
         tokenUrl: string;
@@ -105,8 +110,14 @@ const OAuth2AccessTokenSchema = z.object({
   expiresIn: z.number().optional(),
   refreshToken: z.string().optional(),
   scopes: z.array(z.string()).optional(),
-  raw: z.any(),
+  raw: z.record(z.any()),
 });
 
 export const AccessTokenSchema = OAuth2AccessTokenSchema;
 export type AccessToken = z.infer<typeof AccessTokenSchema>;
+
+export const ConnectionMetadataSchema = z.object({
+  account: z.string().optional(),
+});
+
+export type ConnectionMetadata = z.infer<typeof ConnectionMetadataSchema>;

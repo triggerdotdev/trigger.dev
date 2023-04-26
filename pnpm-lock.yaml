@@ -144,6 +144,7 @@ importers:
       json-query: ^2.2.2
       json-schema-faker: 0.5.0-rcv.46
       jsonata: ^1.8.6
+      jsonpointer: ^5.0.1
       jsonschema: ^1.4.1
       jsonwebtoken: ^9.0.0
       keyv: ^4.3.2
@@ -261,6 +262,7 @@ importers:
       json-query: 2.2.2
       json-schema-faker: 0.5.0-rcv.46
       jsonata: 1.8.6
+      jsonpointer: 5.0.1
       jsonschema: 1.4.1
       jsonwebtoken: 9.0.0
       keyv: 4.5.2
@@ -12238,6 +12240,11 @@ packages:
   /jsonpath-plus/5.1.0:
     resolution: {integrity: sha512-890w2Pjtj0iswAxalRlt2kHthi6HKrXEfZcn+ZNZptv7F3rUGIeDuZo+C+h4vXBHLEsVjJrHeCm35nYeZLzSBQ==}
     engines: {node: '>=10.0.0'}
+    dev: false
+
+  /jsonpointer/5.0.1:
+    resolution: {integrity: sha512-p/nXbhSEcu3pZRdkW1OfJhpsVtW1gd4Wa1fnQc9YLiTfAjn0312eMKimbdIQzuZl9aa9xUGaRlP9T/CJE/ditQ==}
+    engines: {node: '>=0.10.0'}
     dev: false
 
   /jsonschema/1.4.1:

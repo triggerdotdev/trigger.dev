@@ -1,25 +1,23 @@
 import type { APIConnection } from ".prisma/client";
-import { z } from "zod";
+import jsonpointer from "jsonpointer";
+import { nanoid } from "nanoid";
 import * as crypto from "node:crypto";
 import type { PrismaClient } from "~/db.server";
 import { prisma } from "~/db.server";
+import { env } from "~/env.server";
+import { SecretStore } from "../secrets/secretStore.server";
 import type { APIStore } from "./apiStore";
 import { apiStore as apis } from "./apiStore";
-import type { ExternalAPI } from "./types";
 import {
   createOAuth2Url,
   getClientConfigFromEnv,
   grantOAuth2Token,
 } from "./oauth2.server";
-import { env } from "~/env.server";
-import { nanoid } from "nanoid";
-import { SecretStore } from "../secrets/secretStore.server";
-
-const ConnectionMetadataSchema = z.object({
-  account: z.string().optional(),
-});
-
-type ConnectionMetadata = z.infer<typeof ConnectionMetadataSchema>;
+import {
+  ConnectionMetadata,
+  ConnectionMetadataSchema,
+  ExternalAPI,
+} from "./types";
 
 export class APIAuthenticationRepository {
   #organizationId: string;
@@ -50,6 +48,7 @@ export class APIAuthenticationRepository {
         metadata: true,
         createdAt: true,
         updatedAt: true,
+        scopes: true,
       },
     });
 
@@ -230,14 +229,27 @@ export class APIAuthenticationRepository {
         const secretStore = new SecretStore(env.SECRET_STORE);
         await secretStore.setSecret(secretReference.key, token);
 
+        //get metadata from the raw token
+        const metadata: ConnectionMetadata = {};
+        if (authenticationMethod.config.token.metadata.accountPointer) {
+          const accountPointer = jsonpointer.compile(
+            authenticationMethod.config.token.metadata.accountPointer
+          );
+          const account = accountPointer.get(token.raw);
+          if (typeof account === "string") {
+            metadata.account = account;
+          }
+        }
+
         const connection = this.#prismaClient.aPIConnection.create({
           data: {
             organizationId: this.#organizationId,
             apiIdentifier,
             authenticationMethodKey,
-            metadata: {},
+            metadata,
             title,
             dataReferenceId: secretReference.id,
+            scopes: token.scopes,
           },
         });
 
@@ -263,6 +275,7 @@ export class APIAuthenticationRepository {
       | "metadata"
       | "createdAt"
       | "updatedAt"
+      | "scopes"
     >
   ) {
     //parse the metadata into the desired format, fallback if needed
@@ -270,9 +283,14 @@ export class APIAuthenticationRepository {
       connection.metadata
     );
     let metadata: ConnectionMetadata = {};
-    if (!parsedMetadata.success) {
-      console.error(parsedMetadata.error.format());
-      metadata = {};
+    if (parsedMetadata.success) {
+      metadata = parsedMetadata.data;
+    } else {
+      console.warn(
+        `Connection ${
+          connection.id
+        } has invalid metadata, falling back to empty metadata.\n${parsedMetadata.error.format()}`
+      );
     }
 
     //add details about the API and authentication method

@@ -22,6 +22,9 @@ const slack: ExternalAPI = {
         },
         token: {
           url: "https://slack.com/api/oauth.v2.access",
+          metadata: {
+            accountPointer: "/team/name",
+          },
         },
         refresh: {
           url: "https://slack.com/api/oauth.v2.access",

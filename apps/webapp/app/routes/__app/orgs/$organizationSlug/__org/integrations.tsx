@@ -65,7 +65,8 @@ export default function Integrations() {
           <div className="flex items-start justify-between">
             <Title>API Integrations</Title>
             <div className="flex items-center gap-2">
-              {/* <TypeformRequestWorkflow />
+              {/* these caused a lot of React hydration errors in the console
+               <TypeformRequestWorkflow />
               <TypeformRequestIntegration /> */}
             </div>
           </div>
@@ -82,24 +83,33 @@ export default function Integrations() {
                   {connections.map((connection) => {
                     return (
                       <li key={connection.id}>
-                        <div className="flex items-center gap-4 px-4 py-4">
+                        <div className="flex items-start gap-2 px-3 py-3">
                           <NamedIcon
                             name={connection.apiIdentifier}
-                            className="h-10 w-10 p-2"
+                            className="h-6 w-6"
                           />
-                          <div className="flex flex-col gap-2">
-                            <div>
-                              <Header3
-                                size="extra-small"
-                                className="truncate font-medium"
-                              >
+                          <div className="flex-grow">
+                            <div className="flex flex-col gap-0.5">
+                              <Header3 size="small" className="truncate">
                                 {connection.title}
                               </Header3>
+                              {connection.metadata.account && (
+                                <Body size="small" className="text-slate-400">
+                                  Account: {connection.metadata.account}
+                                </Body>
+                              )}
+                              {connection.scopes && (
+                                <Body size="small" className="text-slate-400">
+                                  <span>Scopes:</span>{" "}
+                                  {connection.scopes.join(", ")}
+                                </Body>
+                              )}
                               <Body size="small" className="text-slate-400">
-                                Added {formatDateTime(connection.createdAt)}
+                                Added: {formatDateTime(connection.createdAt)}
                               </Body>
                             </div>
                           </div>
+                          <div></div>
                         </div>
                       </li>
                     );
