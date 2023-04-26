@@ -7,7 +7,6 @@ import { SliderButton } from "@typeform/embed-react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import invariant from "tiny-invariant";
 import { NamedIcon } from "~/components/Icon";
-import { ApiLogoIcon } from "~/components/code/ApiLogoIcon";
 import { ConnectButton } from "~/components/integrations/ConnectButton";
 import { AppBody, AppLayoutTwoCol } from "~/components/layout/AppLayout";
 import { Container } from "~/components/layout/Container";
@@ -55,6 +54,10 @@ export default function Integrations() {
   const { connections, apis } = useTypedLoaderData<typeof loader>();
   const organization = useCurrentOrganization();
   invariant(organization, "Organization not found");
+
+  const orderedApis = Object.values(apis).sort((a, b) =>
+    a.name.localeCompare(b.name)
+  );
 
   return (
     <AppLayoutTwoCol>
@@ -119,7 +122,7 @@ export default function Integrations() {
             )}
           </div>
           <div className="mt-8">
-            {Object.values(apis).map((api) => (
+            {orderedApis.map((api) => (
               <ConnectButton
                 key={api.identifier}
                 api={api}

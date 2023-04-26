@@ -13,11 +13,8 @@ import {
   getClientConfigFromEnv,
   grantOAuth2Token,
 } from "./oauth2.server";
-import {
-  ConnectionMetadata,
-  ConnectionMetadataSchema,
-  ExternalAPI,
-} from "./types";
+import type { ConnectionMetadata, ExternalAPI } from "./types";
+import { ConnectionMetadataSchema } from "./types";
 
 export class APIAuthenticationRepository {
   #organizationId: string;
@@ -50,6 +47,9 @@ export class APIAuthenticationRepository {
         updatedAt: true,
         scopes: true,
       },
+      orderBy: {
+        title: "asc",
+      },
     });
 
     return connections.map((c) => this.#enrichConnection(c));
@@ -70,6 +70,7 @@ export class APIAuthenticationRepository {
         metadata: true,
         createdAt: true,
         updatedAt: true,
+        scopes: true,
       },
     });
 
@@ -142,6 +143,11 @@ export class APIAuthenticationRepository {
           scopeSeparator:
             authenticationMethod.config.authorization.scopeSeparator,
           pkceCode,
+          authorizationLocation:
+            authenticationMethod.config.authorization.authorizationLocation ??
+            "body",
+          extraParameters:
+            authenticationMethod.config.authorization.extraParameters,
         };
 
         const authorizationUrl = await (authenticationMethod.config

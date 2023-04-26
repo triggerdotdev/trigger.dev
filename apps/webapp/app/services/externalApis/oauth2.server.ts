@@ -1,6 +1,10 @@
 import simpleOauth2 from "simple-oauth2";
 import * as crypto from "node:crypto";
-import type { AccessToken } from "./types";
+import type {
+  AccessToken,
+  AuthorizationLocation,
+  CreateUrlParams,
+} from "./types";
 
 export function getClientConfigFromEnv(idName: string, secretName: string) {
   //get the client id and secret from env vars
@@ -31,16 +35,9 @@ export async function createOAuth2Url({
   scopes,
   scopeSeparator,
   pkceCode,
-}: {
-  authorizationUrl: string;
-  clientId: string;
-  clientSecret: string;
-  key: string;
-  callbackUrl: string;
-  scopes: string[];
-  scopeSeparator: string;
-  pkceCode?: string;
-}) {
+  authorizationLocation,
+  extraParameters,
+}: CreateUrlParams) {
   //create the oauth2 client
   const authUrl = new URL(authorizationUrl);
   const authHost = `${authUrl.protocol}//${authUrl.host}`;
@@ -57,6 +54,7 @@ export async function createOAuth2Url({
     },
     options: {
       scopeSeparator,
+      authorizationMethod: authorizationLocation,
     },
   };
 
@@ -84,6 +82,7 @@ export async function createOAuth2Url({
     scope: scopes.join(scopeSeparator),
     state: key,
     ...pkceParams,
+    ...extraParameters,
   });
 
   return authorizeUrl;

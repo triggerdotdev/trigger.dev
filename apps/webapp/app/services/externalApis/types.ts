@@ -12,6 +12,21 @@ export type ExternalAPI = {
 /** An authentication method that can be used */
 export type APIAuthenticationMethod = APIAuthenticationMethodOAuth2;
 
+export type AuthorizationLocation = "header" | "body";
+
+export type CreateUrlParams = {
+  authorizationUrl: string;
+  clientId: string;
+  clientSecret: string;
+  key: string;
+  callbackUrl: string;
+  scopes: string[];
+  scopeSeparator: string;
+  pkceCode?: string;
+  authorizationLocation: AuthorizationLocation;
+  extraParameters?: Record<string, string>;
+};
+
 //A useful reference is the Simple OAuth2 npm library: https://github.com/lelylan/simple-oauth2/blob/HEAD/API.md#options
 export type APIAuthenticationMethodOAuth2 = {
   /** The displayable name of the authentication method */
@@ -37,18 +52,14 @@ export type APIAuthenticationMethodOAuth2 = {
     /** Authorization is used to generate an OAuth url for the user to do */
     authorization: {
       url: string;
+      /** The string that is used to separate the scopes, usually a space or comma */
       scopeSeparator: string;
+      /** The location of the authorization header, default is "body" */
+      authorizationLocation?: AuthorizationLocation;
+      /** Additional parameters to send to the authorization url */
+      extraParameters?: Record<string, string>;
       /** Some APIs have strange urls, this allows total control to deal with that */
-      createUrl?: (config: {
-        authorizationUrl: string;
-        clientId: string;
-        clientSecret: string;
-        key: string;
-        callbackUrl: string;
-        scopes: string[];
-        scopeSeparator: string;
-        pkceCode?: string;
-      }) => Promise<string>;
+      createUrl?: (config: CreateUrlParams) => Promise<string>;
     };
     /** Token is how a token is obtained */
     token: {

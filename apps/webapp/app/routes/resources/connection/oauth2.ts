@@ -1,3 +1,4 @@
+import { Response } from "@remix-run/node";
 import type { ActionArgs } from "@remix-run/server-runtime";
 import { redirect, typedjson } from "remix-typedjson";
 import z from "zod";
@@ -76,6 +77,7 @@ export async function action({ request }: ActionArgs) {
   }
 
   const repository = new APIAuthenticationRepository(organizationId);
+
   const redirectUrl = await repository.createConnectionAttempt({
     apiIdentifier: api,
     authenticationMethodKey,
