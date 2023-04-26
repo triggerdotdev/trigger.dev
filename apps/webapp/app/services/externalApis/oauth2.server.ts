@@ -1,4 +1,5 @@
 import simpleOauth2 from "simple-oauth2";
+import * as crypto from "node:crypto";
 import type { AccessToken } from "./types";
 
 export function getClientConfigFromEnv(idName: string, secretName: string) {
@@ -29,6 +30,7 @@ export async function createOAuth2Url({
   callbackUrl,
   scopes,
   scopeSeparator,
+  pkceCode,
 }: {
   authorizationUrl: string;
   clientId: string;
@@ -37,7 +39,8 @@ export async function createOAuth2Url({
   callbackUrl: string;
   scopes: string[];
   scopeSeparator: string;
-}): Promise<string> {
+  pkceCode?: string;
+}) {
   //create the oauth2 client
   const authUrl = new URL(authorizationUrl);
   const authHost = `${authUrl.protocol}//${authUrl.host}`;
@@ -59,14 +62,28 @@ export async function createOAuth2Url({
 
   const simpleOAuthClient = new simpleOauth2.AuthorizationCode(clientConfig);
 
-  //todo add security, i.e. PKCE.
-  //some providers don't support this so it needs to be optional, default on
+  //PKCE
+  let codeChallenge: string | undefined = undefined;
+  if (pkceCode) {
+    codeChallenge = crypto
+      .createHash("sha256")
+      .update(pkceCode)
+      .digest("base64")
+      .replace(/\+/g, "-")
+      .replace(/\//g, "_")
+      .replace(/=+$/, "");
+  }
+  const pkceParams = {
+    code_challenge: codeChallenge ?? undefined,
+    code_challenge_method: codeChallenge ? "S256" : undefined,
+  };
 
   //create the authorization url
   const authorizeUrl = simpleOAuthClient.authorizeURL({
     redirect_uri: callbackUrl,
     scope: scopes.join(scopeSeparator),
     state: key,
+    ...pkceParams,
   });
 
   return authorizeUrl;
@@ -84,6 +101,7 @@ export async function grantOAuth2Token({
   refreshTokenKey = "refresh_token",
   expiresInKey = "expires_in",
   scopeKey = "scope",
+  pkceCode,
 }: {
   tokenUrl: string;
   clientId: string;
@@ -96,6 +114,7 @@ export async function grantOAuth2Token({
   refreshTokenKey?: string;
   expiresInKey?: string;
   scopeKey?: string;
+  pkceCode?: string;
 }): Promise<AccessToken> {
   //create the oauth2 client
   const tokenUrlObj = new URL(tokenUrl);
@@ -113,11 +132,20 @@ export async function grantOAuth2Token({
 
   const simpleOAuthClient = new simpleOauth2.AuthorizationCode(clientConfig);
 
+  let codeVerifier: string | undefined = undefined;
+  if (pkceCode) {
+    codeVerifier = pkceCode;
+  }
+  const pkceParams = {
+    code_verifier: codeVerifier ?? undefined,
+  };
+
   //create the authorization url
   const token = await simpleOAuthClient.getToken({
     code,
     redirect_uri: callbackUrl,
     scope: requestedScopes.join(scopeSeparator),
+    ...pkceParams,
   });
 
   const accessTokenValue = token.token[accessTokenKey];

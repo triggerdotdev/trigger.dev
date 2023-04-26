@@ -36,6 +36,7 @@ export async function loader({ request }: LoaderArgs) {
       scopes: attempt.scopes,
       code: parsedParams.code,
       title: attempt.title,
+      pkceCode: attempt.securityCode ?? undefined,
     });
 
     return redirect(attempt.redirectTo);

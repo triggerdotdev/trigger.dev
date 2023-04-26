@@ -106,6 +106,7 @@ model APIConnectionAttempt {
   apiIdentifier String
   authenticationMethodKey String
   scopes                  String[]
+  securityCode String?
 
   redirectTo String @default("/")
 

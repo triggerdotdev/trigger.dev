@@ -1,5 +1,6 @@
 import type { APIConnection } from ".prisma/client";
 import { z } from "zod";
+import * as crypto from "node:crypto";
 import type { PrismaClient } from "~/db.server";
 import { prisma } from "~/db.server";
 import type { APIStore } from "./apiStore";
@@ -104,6 +105,11 @@ export class APIAuthenticationRepository {
 
     switch (authenticationMethod.type) {
       case "oauth2": {
+        let pkceCode: string | undefined = undefined;
+        if (authenticationMethod.config.pkce !== false) {
+          pkceCode = crypto.randomBytes(24).toString("hex");
+        }
+
         //create a connection attempt
         const connectionAttempt =
           await this.#prismaClient.aPIConnectionAttempt.create({
@@ -114,6 +120,7 @@ export class APIAuthenticationRepository {
               scopes,
               title,
               redirectTo,
+              securityCode: pkceCode,
             },
           });
 
@@ -135,6 +142,7 @@ export class APIAuthenticationRepository {
           scopes,
           scopeSeparator:
             authenticationMethod.config.authorization.scopeSeparator,
+          pkceCode,
         };
 
         const authorizationUrl = await (authenticationMethod.config
@@ -160,12 +168,14 @@ export class APIAuthenticationRepository {
     scopes,
     code,
     title,
+    pkceCode,
   }: {
     apiIdentifier: string;
     authenticationMethodKey: string;
     scopes: string[];
     code: string;
     title: string;
+    pkceCode?: string;
   }) {
     const api = this.#apiStore.getApi(apiIdentifier);
     if (!api) {
@@ -200,6 +210,7 @@ export class APIAuthenticationRepository {
           requestedScopes: scopes,
           scopeSeparator:
             authenticationMethod.config.authorization.scopeSeparator,
+          pkceCode,
         };
         const token = await (authenticationMethod.config.token.grantToken
           ? authenticationMethod.config.token.grantToken(params)

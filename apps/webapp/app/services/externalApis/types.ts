@@ -47,6 +47,7 @@ export type APIAuthenticationMethodOAuth2 = {
         callbackUrl: string;
         scopes: string[];
         scopeSeparator: string;
+        pkceCode?: string;
       }) => Promise<string>;
     };
     /** Token is how a token is obtained */
@@ -60,12 +61,15 @@ export type APIAuthenticationMethodOAuth2 = {
         code: string;
         callbackUrl: string;
         requestedScopes: string[];
+        pkceCode?: string;
       }) => Promise<AccessToken>;
     };
     /** Refresh is how a token is refreshed */
     refresh: {
       url: string;
     };
+    /** Proof Key of Code Exchange (PKCE) is an extension of the standard authorization code grant OAuth flow. Defaults to true */
+    pkce?: boolean;
     /** The ENV var to get the app hostname from, defaults to APP_ORIGIN */
     appHostEnvName?: string;
   };
