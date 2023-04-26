@@ -247,6 +247,12 @@ export class APIAuthenticationRepository {
           }
         }
 
+        //if there's an expiry, we want to add it to the connection so we can easily run a background job against it
+        let expiresAt: Date | undefined = undefined;
+        if (token.expiresIn) {
+          expiresAt = new Date(new Date().getTime() + token.expiresIn * 1000);
+        }
+
         const connection = this.#prismaClient.aPIConnection.create({
           data: {
             organizationId: this.#organizationId,
@@ -256,6 +262,7 @@ export class APIAuthenticationRepository {
             title,
             dataReferenceId: secretReference.id,
             scopes: token.scopes,
+            expiresAt,
           },
         });
 
