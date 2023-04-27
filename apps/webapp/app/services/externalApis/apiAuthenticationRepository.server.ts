@@ -1,4 +1,4 @@
-import type { APIConnection } from ".prisma/client";
+import type { APIConnection, SecretReference } from ".prisma/client";
 import jsonpointer from "jsonpointer";
 import { nanoid } from "nanoid";
 import * as crypto from "node:crypto";
@@ -25,6 +25,13 @@ import type {
   RefreshTokenParams,
 } from "./types";
 import { AccessTokenSchema, ConnectionMetadataSchema } from "./types";
+
+export type APIConnectionWithSecretReference = APIConnection & {
+  dataReference: SecretReference;
+};
+
+/** How many seconds before expiry we should refresh the token  */
+const tokenRefreshThreshold = 5 * 60;
 
 export class APIAuthenticationRepository {
   #organizationId: string;
@@ -378,7 +385,7 @@ export class APIAuthenticationRepository {
         });
 
         const expiresAt = this.#getExpiresAtFromToken({ token });
-        await this.#prismaClient.aPIConnection.update({
+        const newConnection = await this.#prismaClient.aPIConnection.update({
           where: {
             id: connectionId,
           },
@@ -387,18 +394,38 @@ export class APIAuthenticationRepository {
             scopes: token.scopes,
             expiresAt,
           },
+          include: {
+            dataReference: true,
+          },
         });
 
         await this.#scheduleRefresh(expiresAt, connection);
+        return newConnection;
       }
     }
   }
 
-  /** Get credentials for the given api and id */
-  async getCredentials(api: ExternalAPI, connectionId: string) {
-    //todo Prisma query for credentials for the given api and id
-    //todo retrieve the credential from secret storage and the security provider
-    //todo refresh the credential if needed
+  /** Get credentials for the APIConnection */
+  async getCredentials(connection: APIConnectionWithSecretReference) {
+    //refresh the token if the expiry is in the past (or about to be)
+    if (connection.expiresAt) {
+      const refreshBy = new Date(
+        connection.expiresAt.getTime() - tokenRefreshThreshold * 1000
+      );
+      if (refreshBy < new Date()) {
+        connection = await this.refreshConnection({
+          connectionId: connection.id,
+        });
+      }
+    }
+
+    const secretStore = new SecretStore(
+      connection.dataReference.provider as SecretStoreProvider
+    );
+    return secretStore.getSecret(
+      AccessTokenSchema,
+      connection.dataReference.key
+    );
   }
 
   #enrichConnection(
@@ -506,7 +533,7 @@ export class APIAuthenticationRepository {
         },
         {
           //attempt refreshing 5 minutes before the token expires
-          runAt: new Date(expiresAt.getTime() - 5 * 60 * 1000),
+          runAt: new Date(expiresAt.getTime() - tokenRefreshThreshold * 1000),
         }
       );
     }
