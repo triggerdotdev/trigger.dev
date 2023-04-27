@@ -8,6 +8,7 @@ import { DeliverEventService } from "./events/deliverEvent.server";
 import { ResumeTaskService } from "./executions/resumeTask.server";
 import { StartExecutionService } from "./executions/startExecution.server";
 import { DeliverHttpSourceRequestService } from "./sources/deliverHttpSourceRequest.server";
+import { APIAuthenticationRepository } from "./externalApis/apiAuthenticationRepository.server";
 
 const workerCatalog = {
   organizationCreated: z.object({ id: z.string() }),
@@ -31,6 +32,10 @@ const workerCatalog = {
   prepareForJobExecution: z.object({ id: z.string() }),
   prepareJobInstance: z.object({ id: z.string() }),
   deliverHttpSourceRequest: z.object({ id: z.string() }),
+  refreshOAuthToken: z.object({
+    organizationId: z.string(),
+    connectionId: z.string(),
+  }),
 };
 
 let workerQueue: ZodWorker<typeof workerCatalog>;
@@ -171,6 +176,17 @@ function getWorkerQueue() {
           const service = new DeliverEventService();
 
           await service.call(payload.id);
+        },
+      },
+      refreshOAuthToken: {
+        queueName: "internal-queue",
+        handler: async (payload, job) => {
+          const authRepository = new APIAuthenticationRepository(
+            payload.organizationId
+          );
+          await authRepository.refreshConnection({
+            connectionId: payload.connectionId,
+          });
         },
       },
     },

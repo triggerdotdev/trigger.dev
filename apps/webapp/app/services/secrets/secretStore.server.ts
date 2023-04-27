@@ -13,7 +13,7 @@ export const SecretStoreProviderSchema = z.union([
   z.literal("aws_param_store"),
   z.literal("database"),
 ]);
-type SecretStoreProvider = z.infer<typeof SecretStoreProviderSchema>;
+export type SecretStoreProvider = z.infer<typeof SecretStoreProviderSchema>;
 
 export class SecretStore implements ASecretStore {
   #provider: ASecretStore;
@@ -61,10 +61,16 @@ class DatabaseSecretStore implements ASecretStore {
   }
 
   async setSecret<T extends object>(key: string, value: T): Promise<void> {
-    await prisma.secretStore.create({
-      data: {
+    await prisma.secretStore.upsert({
+      create: {
         key,
         value,
+      },
+      update: {
+        value,
+      },
+      where: {
+        key,
       },
     });
   }

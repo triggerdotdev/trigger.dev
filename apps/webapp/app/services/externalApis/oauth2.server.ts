@@ -2,8 +2,9 @@ import simpleOauth2 from "simple-oauth2";
 import * as crypto from "node:crypto";
 import type {
   AccessToken,
-  AuthorizationLocation,
   CreateUrlParams,
+  GrantTokenParams,
+  RefreshTokenParams,
 } from "./types";
 
 export function getClientConfigFromEnv(idName: string, secretName: string) {
@@ -96,25 +97,12 @@ export async function grantOAuth2Token({
   callbackUrl,
   requestedScopes,
   scopeSeparator,
-  accessTokenKey = "access_token",
-  refreshTokenKey = "refresh_token",
-  expiresInKey = "expires_in",
-  scopeKey = "scope",
+  accessTokenKey,
+  refreshTokenKey,
+  expiresInKey,
+  scopeKey,
   pkceCode,
-}: {
-  tokenUrl: string;
-  clientId: string;
-  clientSecret: string;
-  code: string;
-  callbackUrl: string;
-  requestedScopes: string[];
-  scopeSeparator: string;
-  accessTokenKey?: string;
-  refreshTokenKey?: string;
-  expiresInKey?: string;
-  scopeKey?: string;
-  pkceCode?: string;
-}): Promise<AccessToken> {
+}: GrantTokenParams): Promise<AccessToken> {
   //create the oauth2 client
   const tokenUrlObj = new URL(tokenUrl);
 
@@ -147,6 +135,86 @@ export async function grantOAuth2Token({
     ...pkceParams,
   });
 
+  return convertToken({
+    token,
+    scopeSeparator,
+    requestedScopes,
+    scopeKey,
+    accessTokenKey,
+    refreshTokenKey,
+    expiresInKey,
+  });
+}
+
+export async function refreshOAuth2Token({
+  refreshUrl,
+  clientId,
+  clientSecret,
+  callbackUrl,
+  requestedScopes,
+  scopeSeparator,
+  token: { accessToken, refreshToken, expiresAt },
+  accessTokenKey,
+  refreshTokenKey,
+  expiresInKey,
+  scopeKey,
+}: RefreshTokenParams) {
+  //create the oauth2 client
+  const tokenUrlObj = new URL(refreshUrl);
+
+  const clientConfig = {
+    client: {
+      id: clientId,
+      secret: clientSecret,
+    },
+    auth: {
+      tokenHost: `${tokenUrlObj.protocol}//${tokenUrlObj.host}`,
+      tokenPath: tokenUrlObj.pathname,
+      refreshPath: tokenUrlObj.pathname,
+    },
+  };
+
+  const simpleOAuthClient = new simpleOauth2.AuthorizationCode(clientConfig);
+
+  //get the old token
+  const oldToken = simpleOAuthClient.createToken({
+    access_token: accessToken,
+    expires_at: expiresAt,
+    refresh_token: refreshToken,
+  });
+
+  const newToken = await oldToken.refresh({
+    scope: requestedScopes.join(scopeSeparator),
+  });
+
+  return convertToken({
+    token: newToken,
+    scopeSeparator,
+    requestedScopes,
+    scopeKey,
+    accessTokenKey,
+    refreshTokenKey,
+    expiresInKey,
+  });
+}
+
+function convertToken({
+  token,
+  accessTokenKey,
+  refreshTokenKey,
+  expiresInKey,
+  scopeKey,
+  requestedScopes,
+  scopeSeparator,
+}: {
+  token: simpleOauth2.AccessToken;
+  accessTokenKey: string;
+  refreshTokenKey: string;
+  expiresInKey: string;
+  scopeKey: string;
+  requestedScopes: string[];
+  scopeSeparator: string;
+}) {
   const accessTokenValue = token.token[accessTokenKey];
   if (typeof accessTokenValue !== "string") {
     throw new Error("Invalid access token");

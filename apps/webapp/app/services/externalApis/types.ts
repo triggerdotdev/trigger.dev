@@ -27,6 +27,35 @@ export type CreateUrlParams = {
   extraParameters?: Record<string, string>;
 };
 
+export type GrantTokenParams = {
+  tokenUrl: string;
+  clientId: string;
+  clientSecret: string;
+  code: string;
+  callbackUrl: string;
+  requestedScopes: string[];
+  scopeSeparator: string;
+  accessTokenKey: string;
+  refreshTokenKey: string;
+  expiresInKey: string;
+  scopeKey: string;
+  pkceCode?: string;
+};
+
+export type RefreshTokenParams = {
+  refreshUrl: string;
+  clientId: string;
+  clientSecret: string;
+  callbackUrl: string;
+  requestedScopes: string[];
+  scopeSeparator: string;
+  token: { accessToken: string; refreshToken: string; expiresAt: Date };
+  accessTokenKey: string;
+  refreshTokenKey: string;
+  expiresInKey: string;
+  scopeKey: string;
+};
+
 //A useful reference is the Simple OAuth2 npm library: https://github.com/lelylan/simple-oauth2/blob/HEAD/API.md#options
 export type APIAuthenticationMethodOAuth2 = {
   /** The displayable name of the authentication method */
@@ -69,20 +98,22 @@ export type APIAuthenticationMethodOAuth2 = {
         /** JSONPointer to the owner info in the raw token response */
         accountPointer?: string;
       };
+      /** The access_token key in the token. Default to "access_token" */
+      accessTokenKey?: string;
+      /** The refresh_token key in the token. Default to "refresh_token" */
+      refreshTokenKey?: string;
+      /** The expires_in key in the token. Default to "expires_in" */
+      expiresInKey?: string;
+      /** The scope key in the token. Default to "scope" */
+      scopeKey?: string;
       /** Some APIs have strange granting logic, this allows total control to deal with that */
-      grantToken?: (config: {
-        tokenUrl: string;
-        clientId: string;
-        clientSecret: string;
-        code: string;
-        callbackUrl: string;
-        requestedScopes: string[];
-        pkceCode?: string;
-      }) => Promise<AccessToken>;
+      grantToken?: (config: GrantTokenParams) => Promise<AccessToken>;
     };
     /** Refresh is how a token is refreshed */
     refresh: {
       url: string;
+      /** Some APIs have strange refreshing logic, this allows total control to deal with that */
+      refreshToken?: (config: RefreshTokenParams) => Promise<AccessToken>;
     };
     /** Proof Key of Code Exchange (PKCE) is an extension of the standard authorization code grant OAuth flow. Defaults to true */
     pkce?: boolean;

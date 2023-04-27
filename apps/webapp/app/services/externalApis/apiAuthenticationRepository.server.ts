@@ -5,6 +5,8 @@ import * as crypto from "node:crypto";
 import type { PrismaClient } from "~/db.server";
 import { prisma } from "~/db.server";
 import { env } from "~/env.server";
+import { workerQueue } from "~/services/worker.server";
+import type { SecretStoreProvider } from "../secrets/secretStore.server";
 import { SecretStore } from "../secrets/secretStore.server";
 import type { APIStore } from "./apiStore";
 import { apiStore as apis } from "./apiStore";
@@ -12,9 +14,17 @@ import {
   createOAuth2Url,
   getClientConfigFromEnv,
   grantOAuth2Token,
+  refreshOAuth2Token,
 } from "./oauth2.server";
-import type { ConnectionMetadata, ExternalAPI } from "./types";
-import { ConnectionMetadataSchema } from "./types";
+import type {
+  APIAuthenticationMethodOAuth2,
+  AccessToken,
+  ConnectionMetadata,
+  ExternalAPI,
+  GrantTokenParams,
+  RefreshTokenParams,
+} from "./types";
+import { AccessTokenSchema, ConnectionMetadataSchema } from "./types";
 
 export class APIAuthenticationRepository {
   #organizationId: string;
@@ -129,9 +139,7 @@ export class APIAuthenticationRepository {
           authenticationMethod.client.id.envName,
           authenticationMethod.client.secret.envName
         );
-        const callbackHostName = authenticationMethod.config.appHostEnvName
-          ? process.env[authenticationMethod.config.appHostEnvName]
-          : env.APP_ORIGIN;
+        const callbackHostName = this.#callbackUrl(authenticationMethod);
 
         const createAuthorizationParams = {
           authorizationUrl: authenticationMethod.config.authorization.url,
@@ -197,16 +205,13 @@ export class APIAuthenticationRepository {
 
     switch (authenticationMethod.type) {
       case "oauth2": {
-        //create a url for the oauth2 flow
         const getClientConfig = getClientConfigFromEnv(
           authenticationMethod.client.id.envName,
           authenticationMethod.client.secret.envName
         );
-        const callbackHostName = authenticationMethod.config.appHostEnvName
-          ? process.env[authenticationMethod.config.appHostEnvName]
-          : env.APP_ORIGIN;
+        const callbackHostName = this.#callbackUrl(authenticationMethod);
 
-        const params = {
+        const params: GrantTokenParams = {
           tokenUrl: authenticationMethod.config.token.url,
           clientId: getClientConfig.id,
           clientSecret: getClientConfig.secret,
@@ -216,6 +221,14 @@ export class APIAuthenticationRepository {
           scopeSeparator:
             authenticationMethod.config.authorization.scopeSeparator,
           pkceCode,
+          accessTokenKey:
+            authenticationMethod.config.token.accessTokenKey ?? "access_token",
+          refreshTokenKey:
+            authenticationMethod.config.token.refreshTokenKey ??
+            "refresh_token",
+          expiresInKey:
+            authenticationMethod.config.token.expiresInKey ?? "expires_in",
+          scopeKey: authenticationMethod.config.token.scopeKey ?? "scope",
         };
         const token = await (authenticationMethod.config.token.grantToken
           ? authenticationMethod.config.token.grantToken(params)
@@ -235,25 +248,15 @@ export class APIAuthenticationRepository {
         const secretStore = new SecretStore(env.SECRET_STORE);
         await secretStore.setSecret(secretReference.key, token);
 
-        //get metadata from the raw token
-        const metadata: ConnectionMetadata = {};
-        if (authenticationMethod.config.token.metadata.accountPointer) {
-          const accountPointer = jsonpointer.compile(
-            authenticationMethod.config.token.metadata.accountPointer
-          );
-          const account = accountPointer.get(token.raw);
-          if (typeof account === "string") {
-            metadata.account = account;
-          }
-        }
+        const metadata = this.#getMetadataFromToken({
+          token,
+          authenticationMethod,
+        });
 
         //if there's an expiry, we want to add it to the connection so we can easily run a background job against it
-        let expiresAt: Date | undefined = undefined;
-        if (token.expiresIn) {
-          expiresAt = new Date(new Date().getTime() + token.expiresIn * 1000);
-        }
+        const expiresAt = this.#getExpiresAtFromToken({ token });
 
-        const connection = this.#prismaClient.aPIConnection.create({
+        const connection = await this.#prismaClient.aPIConnection.create({
           data: {
             organizationId: this.#organizationId,
             apiIdentifier,
@@ -266,7 +269,127 @@ export class APIAuthenticationRepository {
           },
         });
 
+        //schedule refreshing the token
+        await this.#scheduleRefresh(expiresAt, connection);
+
         return connection;
+      }
+    }
+  }
+
+  async refreshConnection({ connectionId }: { connectionId: string }) {
+    const connection = await this.#prismaClient.aPIConnection.findUnique({
+      where: {
+        id: connectionId,
+      },
+      include: {
+        dataReference: true,
+      },
+    });
+
+    if (!connection) {
+      throw new Error(`Connection ${connectionId} not found`);
+    }
+
+    const api = this.#apiStore.getApi(connection.apiIdentifier);
+    if (!api) {
+      throw new Error(`API ${connection.apiIdentifier} not found`);
+    }
+
+    const authenticationMethod =
+      api.authenticationMethods[connection.authenticationMethodKey];
+    if (!authenticationMethod) {
+      throw new Error(
+        `API authentication method ${connection.authenticationMethodKey} not found for API ${connection.apiIdentifier}`
+      );
+    }
+
+    switch (authenticationMethod.type) {
+      case "oauth2": {
+        const getClientConfig = getClientConfigFromEnv(
+          authenticationMethod.client.id.envName,
+          authenticationMethod.client.secret.envName
+        );
+        const callbackHostName = this.#callbackUrl(authenticationMethod);
+
+        const secretStore = new SecretStore(
+          connection.dataReference.provider as SecretStoreProvider
+        );
+        const accessToken = await secretStore.getSecret(
+          AccessTokenSchema,
+          connection.dataReference.key
+        );
+
+        if (!accessToken) {
+          throw new Error(
+            `Access token not found for connection ${connectionId} with key ${connection.dataReference.key}`
+          );
+        }
+
+        if (!accessToken.refreshToken) {
+          throw new Error(
+            `Refresh token not found for connection ${connectionId} with key ${connection.dataReference.key}`
+          );
+        }
+
+        if (!accessToken.expiresIn) {
+          throw new Error(
+            `Expires in not found for connection ${connectionId} with key ${connection.dataReference.key}`
+          );
+        }
+
+        const params: RefreshTokenParams = {
+          refreshUrl: authenticationMethod.config.refresh.url,
+          clientId: getClientConfig.id,
+          clientSecret: getClientConfig.secret,
+          callbackUrl: `${callbackHostName}/resources/connection/oauth2/callback`,
+          requestedScopes: connection.scopes,
+          scopeSeparator:
+            authenticationMethod.config.authorization.scopeSeparator,
+          token: {
+            accessToken: accessToken.accessToken,
+            refreshToken: accessToken.refreshToken,
+            expiresAt: new Date(
+              connection.updatedAt.getTime() + accessToken.expiresIn * 1000
+            ),
+          },
+          accessTokenKey:
+            authenticationMethod.config.token.accessTokenKey ?? "access_token",
+          refreshTokenKey:
+            authenticationMethod.config.token.refreshTokenKey ??
+            "refresh_token",
+          expiresInKey:
+            authenticationMethod.config.token.expiresInKey ?? "expires_in",
+          scopeKey: authenticationMethod.config.token.scopeKey ?? "scope",
+        };
+
+        //todo do we need pkce here?
+        const token = await (authenticationMethod.config.refresh.refreshToken
+          ? authenticationMethod.config.refresh.refreshToken(params)
+          : refreshOAuth2Token(params));
+
+        //update the secret
+        await secretStore.setSecret(connection.dataReference.key, token);
+
+        //update the connection
+        const metadata = this.#getMetadataFromToken({
+          token,
+          authenticationMethod,
+        });
+
+        const expiresAt = this.#getExpiresAtFromToken({ token });
+        await this.#prismaClient.aPIConnection.update({
+          where: {
+            id: connectionId,
+          },
+          data: {
+            metadata,
+            scopes: token.scopes,
+            expiresAt,
+          },
+        });
+
+        await this.#scheduleRefresh(expiresAt, connection);
       }
     }
   }
@@ -334,5 +457,58 @@ export class APIAuthenticationRepository {
         possibleScopes: authenticationMethod.scopes,
       },
     };
+  }
+
+  #callbackUrl(authenticationMethod: APIAuthenticationMethodOAuth2) {
+    return authenticationMethod.config.appHostEnvName
+      ? process.env[authenticationMethod.config.appHostEnvName]
+      : env.APP_ORIGIN;
+  }
+
+  #getMetadataFromToken({
+    authenticationMethod,
+    token,
+  }: {
+    authenticationMethod: APIAuthenticationMethodOAuth2;
+    token: AccessToken;
+  }) {
+    const metadata: ConnectionMetadata = {};
+    if (authenticationMethod.config.token.metadata.accountPointer) {
+      const accountPointer = jsonpointer.compile(
+        authenticationMethod.config.token.metadata.accountPointer
+      );
+      const account = accountPointer.get(token.raw);
+      if (typeof account === "string") {
+        metadata.account = account;
+      }
+    }
+
+    return metadata;
+  }
+
+  #getExpiresAtFromToken({ token }: { token: AccessToken }) {
+    if (token.expiresIn) {
+      return new Date(new Date().getTime() + token.expiresIn * 1000);
+    }
+    return undefined;
+  }
+
+  async #scheduleRefresh(
+    expiresAt: Date | undefined,
+    connection: APIConnection
+  ) {
+    if (expiresAt) {
+      await workerQueue.enqueue(
+        "refreshOAuthToken",
+        {
+          organizationId: this.#organizationId,
+          connectionId: connection.id,
+        },
+        {
+          //attempt refreshing 5 minutes before the token expires
+          runAt: new Date(expiresAt.getTime() - 5 * 60 * 1000),
+        }
+      );
+    }
   }
 }
