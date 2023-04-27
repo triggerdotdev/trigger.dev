@@ -181,6 +181,9 @@ export class RunTaskService {
               id: runId,
             },
           },
+          parent: taskBody.parentId
+            ? { connect: { id: taskBody.parentId } }
+            : undefined,
           name: taskBody.name,
           description: taskBody.description,
           status,

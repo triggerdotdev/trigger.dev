@@ -441,7 +441,7 @@ export class TriggerClient {
                 key,
                 authenticatedTask.init(params),
                 async (ioTask) => {
-                  return authenticatedTask.run(params, client, ioTask);
+                  return authenticatedTask.run(params, client, ioTask, io);
                 }
               );
             };

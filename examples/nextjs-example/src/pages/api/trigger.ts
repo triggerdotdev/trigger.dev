@@ -17,6 +17,59 @@ const client = new TriggerClient("nextjs", {
   logLevel: "debug",
 });
 
+// new Job({
+//   id: "comment-on-new-issues",
+//   name: "Comment on New GitHub issues",
+//   version: "0.1.1",
+//   logLevel: "debug",
+//   connections: {
+//     gh,
+//   },
+//   // issueEvent is a helper function that creates a trigger for a GitHub issue event webhook
+//   trigger: gh.onIssueOpened({
+//     repo: "ericallam/basic-starter-100k",
+//   }),
+
+//   run: async (event, io, ctx) => {
+//     // event is a GitHubIssueEvent
+//     const comment = await io.gh.createIssueComment("📝", {
+//       repo: event.repository.full_name,
+//       issueNumber: event.issue.number,
+//       body: "Hello from Trigger!",
+//     });
+
+//     // const token = await ctx.auth.gh
+
+//     const reaction = await io.runTask(
+//       "Add 🚀",
+//       {
+//         icon: "github",
+//         name: "addReaction",
+//         elements: [
+//           { label: "reaction", text: "🚀" },
+//           {
+//             label: "issue",
+//             text: event.issue.title,
+//             url: event.issue.html_url,
+//           },
+//         ],
+//         delayUntil: new Date(Date.now() + 1000 * 30), // 30 seconds from now
+//       },
+//       async (task) =>
+//         io.gh.client.rest.reactions
+//           .createForIssueComment({
+//             owner: event.repository.owner.login,
+//             repo: event.repository.name,
+//             comment_id: comment.id,
+//             content: "rocket",
+//           })
+//           .then((res) => res.data)
+//     );
+
+//     return reaction;
+//   },
+// }).registerWith(client);
+
 new Job({
   id: "comment-on-new-issues",
   name: "Comment on New GitHub issues",
@@ -31,42 +84,48 @@ new Job({
   }),
 
   run: async (event, io, ctx) => {
-    // event is a GitHubIssueEvent
-    const comment = await io.gh.createIssueComment("📝", {
-      repo: event.repository.full_name,
-      issueNumber: event.issue.number,
-      body: "Hello from Trigger!",
-    });
+    await io.runTask(
+      "Comment on Issue with a reaction",
+      { name: "Parent Task" },
+      async (task) => {
+        const comment = await io.runTask(
+          "Comment on issue",
+          { name: "Comment on Issue" },
+          async (t) => {
+            return io.gh.client.rest.issues
+              .createComment({
+                owner: event.repository.owner.login,
+                repo: event.repository.name,
+                issue_number: event.issue.number,
+                body: "Hello from Trigger!",
+              })
+              .then((res) => res.data);
+          }
+        );
 
-    // const token = await ctx.auth.gh
+        await io.runTask(
+          "Add react to comment",
+          { name: "Add reaction to comment" },
+          async (t) => {
+            return io.gh.client.rest.reactions.createForIssueComment({
+              owner: event.repository.owner.login,
+              repo: event.repository.name,
+              comment_id: comment.id,
+              content: "rocket",
+            });
+          }
+        );
 
-    const reaction = await io.runTask(
-      "Add 🚀",
-      {
-        icon: "github",
-        name: "addReaction",
-        elements: [
-          { label: "reaction", text: "🚀" },
-          {
-            label: "issue",
-            text: event.issue.title,
-            url: event.issue.html_url,
-          },
-        ],
-        delayUntil: new Date(Date.now() + 1000 * 30), // 30 seconds from now
-      },
-      async (task) =>
-        io.gh.client.rest.reactions
-          .createForIssueComment({
-            owner: event.repository.owner.login,
-            repo: event.repository.name,
-            comment_id: comment.id,
-            content: "rocket",
-          })
-          .then((res) => res.data)
+        return comment;
+      }
     );
 
-    return reaction;
+    await io.gh.createIssueCommentWithReaction("📝", {
+      repo: `${event.repository.owner.login}/${event.repository.name}`,
+      issueNumber: event.issue.number,
+      body: "Hello from Trigger!",
+      reaction: "rocket",
+    });
   },
 }).registerWith(client);
 

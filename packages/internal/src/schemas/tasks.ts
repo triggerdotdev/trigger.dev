@@ -26,6 +26,7 @@ export const TaskSchema = z.object({
   params: DeserializedJsonSchema.optional().nullable(),
   output: DeserializedJsonSchema.optional().nullable(),
   error: z.string().optional().nullable(),
+  parentId: z.string().optional().nullable(),
 });
 
 export const ServerTaskSchema = TaskSchema.extend({
@@ -38,4 +39,5 @@ export const CachedTaskSchema = z.object({
   status: TaskStatusSchema,
   noop: z.boolean().default(false),
   output: DeserializedJsonSchema.optional().nullable(),
+  parentId: z.string().optional().nullable(),
 });

@@ -234,7 +234,7 @@ export type ClientTask = z.infer<typeof TaskSchema>;
 export type ServerTask = z.infer<typeof ServerTaskSchema>;
 export type CachedTask = z.infer<typeof CachedTaskSchema>;
 
-export const IOTaskSchema = z.object({
+export const RunTaskOptionsSchema = z.object({
   name: z.string(),
   icon: z.string().optional(),
   displayKey: z.string().optional(),
@@ -246,10 +246,11 @@ export const IOTaskSchema = z.object({
   trigger: TriggerMetadataSchema.optional(),
 });
 
-export type IOTask = z.input<typeof IOTaskSchema>;
+export type RunTaskOptions = z.input<typeof RunTaskOptionsSchema>;
 
-export const RunTaskBodyInputSchema = IOTaskSchema.extend({
+export const RunTaskBodyInputSchema = RunTaskOptionsSchema.extend({
   idempotencyKey: z.string(),
+  parentId: z.string().optional(),
 });
 
 export type RunTaskBodyInput = z.infer<typeof RunTaskBodyInputSchema>;

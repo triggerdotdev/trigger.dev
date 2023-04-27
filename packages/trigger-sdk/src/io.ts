@@ -1,11 +1,13 @@
 import {
   CachedTask,
-  IOTask,
+  RunTaskOptions,
   Logger,
   LogLevel,
   SerializableJson,
   ServerTask,
+  DeserializedJson,
 } from "@trigger.dev/internal";
+import { AsyncLocalStorage } from "node:async_hooks";
 import { webcrypto } from "node:crypto";
 import { ApiClient } from "./apiClient";
 import { Trigger } from "./triggers";
@@ -13,6 +15,8 @@ import { Trigger } from "./triggers";
 export class ResumeWithTask {
   constructor(public task: ServerTask) {}
 }
+
+export type IOTask = ServerTask;
 
 export type IOOptions = {
   id: string;
@@ -27,6 +31,7 @@ export class IO {
   #apiClient: ApiClient;
   #logger: Logger;
   #cachedTasks: Map<string, CachedTask>;
+  #taskStorage: AsyncLocalStorage<{ taskId: string }>;
 
   constructor(options: IOOptions) {
     this.#id = options.id;
@@ -40,6 +45,8 @@ export class IO {
         this.#cachedTasks.set(task.id, task);
       });
     }
+
+    this.#taskStorage = new AsyncLocalStorage();
   }
 
   // TODO: finish implementing this (needs to support registering and preparing)
@@ -64,10 +71,22 @@ export class IO {
 
   async runTask<T extends SerializableJson | void = void>(
     key: string | any[],
-    options: IOTask,
-    callback: (task: ServerTask) => Promise<T>
+    options: RunTaskOptions,
+    callback: (task: IOTask, io: IO) => Promise<T>
   ): Promise<T> {
-    const idempotencyKey = await generateIdempotencyKey([this.#id, key].flat());
+    const parentId = this.#taskStorage.getStore()?.taskId;
+
+    if (parentId) {
+      this.#logger.debug("Using parent task", {
+        parentId,
+        key,
+        options,
+      });
+    }
+
+    const idempotencyKey = await generateIdempotencyKey(
+      [this.#id, parentId ?? "", key].flat()
+    );
 
     const cachedTask = this.#cachedTasks.get(idempotencyKey);
 
@@ -85,6 +104,7 @@ export class IO {
       displayKey: typeof key === "string" ? key : undefined,
       noop: false,
       ...options,
+      parentId,
     });
 
     if (task.status === "COMPLETED") {
@@ -116,23 +136,27 @@ export class IO {
       throw new ResumeWithTask(task);
     }
 
-    try {
-      const result = await callback(task);
+    const executeTask = async () => {
+      try {
+        const result = await callback(task, this);
 
-      this.#logger.debug("Completing using output", {
-        idempotencyKey,
-        task,
-      });
+        this.#logger.debug("Completing using output", {
+          idempotencyKey,
+          task,
+        });
 
-      await this.#apiClient.completeTask(this.#id, task.id, {
-        output: result ?? undefined,
-      });
+        await this.#apiClient.completeTask(this.#id, task.id, {
+          output: result ?? undefined,
+        });
 
-      return result;
-    } catch (error) {
-      // TODO: implement this
-      throw error;
-    }
+        return result;
+      } catch (error) {
+        // TODO: implement this
+        throw error;
+      }
+    };
+
+    return this.#taskStorage.run({ taskId: task.id }, executeTask);
   }
 
   #addToCachedTasks(task: ServerTask) {

@@ -93,3 +93,145 @@ export const getRepo = authenticatedTask({
     };
   },
 });
+
+type ReactionContent =
+  | "+1"
+  | "-1"
+  | "laugh"
+  | "confused"
+  | "heart"
+  | "hooray"
+  | "rocket"
+  | "eyes";
+
+export const addIssueCommentReaction = authenticatedTask({
+  clientFactory,
+  run: async (
+    params: {
+      repo: string;
+      commentId: number;
+      content: ReactionContent;
+    },
+    client,
+    task
+  ) => {
+    const [owner, repo] = params.repo.split("/");
+
+    return client.rest.reactions
+      .createForIssueComment({
+        owner,
+        repo,
+        comment_id: params.commentId,
+        content: params.content,
+      })
+      .then((res) => res.data);
+  },
+  init: (params) => {
+    let emoji = "";
+
+    switch (params.content) {
+      case "+1":
+        emoji = "👍";
+        break;
+      case "-1":
+        emoji = "👎";
+        break;
+      case "laugh":
+        emoji = "😄";
+        break;
+      case "confused":
+        emoji = "😕";
+        break;
+      case "heart":
+        emoji = "❤️";
+        break;
+      case "hooray":
+        emoji = "🎉";
+        break;
+      case "rocket":
+        emoji = "🚀";
+        break;
+      case "eyes":
+        emoji = "👀";
+        break;
+    }
+
+    return {
+      name: "Add Issue Reaction",
+      params,
+      elements: [
+        {
+          label: "Repo",
+          text: params.repo,
+        },
+        {
+          label: "Comment",
+          text: `#${params.commentId}`,
+        },
+        { label: "reaction", text: emoji },
+      ],
+    };
+  },
+});
+
+export const createIssueCommentWithReaction = authenticatedTask({
+  clientFactory,
+  run: async (
+    params: {
+      body: string;
+      repo: string;
+      issueNumber: number;
+      reaction: ReactionContent;
+    },
+    client,
+    task,
+    io
+  ) => {
+    const comment = await io.runTask(
+      `Comment on Issue #${params.issueNumber}`,
+      createIssueComment.init(params),
+      async (t) => {
+        return createIssueComment.run(params, client, t, io);
+      }
+    );
+
+    await io.runTask(
+      `React with ${params.reaction}`,
+      addIssueCommentReaction.init({
+        repo: params.repo,
+        commentId: comment.id,
+        content: params.reaction,
+      }),
+      async (t) => {
+        return addIssueCommentReaction.run(
+          {
+            repo: params.repo,
+            commentId: comment.id,
+            content: params.reaction,
+          },
+          client,
+          t,
+          io
+        );
+      }
+    );
+
+    return comment;
+  },
+  init: (params) => {
+    return {
+      name: "Create Issue Comment",
+      params,
+      elements: [
+        {
+          label: "Repo",
+          text: params.repo,
+        },
+        {
+          label: "Issue",
+          text: `#${params.issueNumber}`,
+        },
+      ],
+    };
+  },
+});

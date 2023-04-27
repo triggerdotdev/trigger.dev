@@ -1,7 +1,7 @@
 import {
   ConnectionAuth,
   ConnectionMetadata,
-  IOTask,
+  RunTaskOptions,
   ServerTask,
 } from "@trigger.dev/internal";
 import { IO } from "./io";
@@ -32,9 +32,10 @@ export type AuthenticatedTask<TClientType, TParams, TResult> = {
   run: (
     params: TParams,
     client: TClientType,
-    task: ServerTask
+    task: ServerTask,
+    io: IO
   ) => Promise<TResult>;
-  init: (params: TParams) => IOTask;
+  init: (params: TParams) => RunTaskOptions;
 };
 
 export function authenticatedTask<TClientType, TParams, TResult>(options: {
@@ -42,9 +43,10 @@ export function authenticatedTask<TClientType, TParams, TResult>(options: {
   run: (
     params: TParams,
     client: TClientType,
-    task: ServerTask
+    task: ServerTask,
+    io: IO
   ) => Promise<TResult>;
-  init: (params: TParams) => IOTask;
+  init: (params: TParams) => RunTaskOptions;
 }): AuthenticatedTask<TClientType, TParams, TResult> {
   return options;
 }

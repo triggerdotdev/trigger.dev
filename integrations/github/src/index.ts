@@ -8,12 +8,18 @@ import { ExternalSourceEventTrigger, Trigger } from "@trigger.dev/sdk/triggers";
 import { clientFactory as cf } from "./client";
 import { metadata } from "./metadata";
 import { repositoryWebhookSource } from "./sources";
-import { createIssue, createIssueComment, getRepo } from "./tasks";
+import {
+  createIssue,
+  createIssueComment,
+  createIssueCommentWithReaction,
+  getRepo,
+} from "./tasks";
 
 const tasks = {
   createIssue,
   createIssueComment,
   getRepo,
+  createIssueCommentWithReaction,
 };
 
 export const github = (options?: { token: string }) => {

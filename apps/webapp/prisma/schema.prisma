@@ -80,7 +80,7 @@ model APIConnection {
 
   authenticationMethodKey String
   scopes                  String[]
-  expiresAt DateTime?
+  expiresAt               DateTime?
   metadata                Json
 
   dataReference   SecretReference @relation(fields: [dataReferenceId], references: [id], onDelete: Cascade, onUpdate: Cascade)
@@ -1161,6 +1161,11 @@ model Task {
 
   run   JobRun @relation(fields: [runId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   runId String
+
+  parent   Task?   @relation("TaskParent", fields: [parentId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  parentId String?
+
+  children Task[] @relation("TaskParent")
 
   @@unique([runId, idempotencyKey])
 }
