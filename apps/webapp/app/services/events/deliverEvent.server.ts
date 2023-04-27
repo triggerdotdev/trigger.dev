@@ -2,13 +2,13 @@ import type { EventLog, JobEventRule } from ".prisma/client";
 import { EventFilter, EventFilterSchema } from "@trigger.dev/internal";
 import type { PrismaClient } from "~/db.server";
 import { prisma } from "~/db.server";
-import { CreateExecutionService } from "../executions/createExecution.server";
-import { ResumeTaskService } from "../executions/resumeTask.server";
+import { CreateRunService } from "../runs/createRun.server";
+import { ResumeTaskService } from "../runs/resumeTask.server";
 import { logger } from "../logger";
 
 export class DeliverEventService {
   #prismaClient: PrismaClient;
-  #createExecutionService = new CreateExecutionService();
+  #createExecutionService = new CreateRunService();
   #resumeTaskService = new ResumeTaskService();
 
   constructor(prismaClient: PrismaClient = prisma) {
@@ -21,8 +21,12 @@ export class DeliverEventService {
         id,
       },
       include: {
-        environment: true,
-        organization: true,
+        environment: {
+          include: {
+            organization: true,
+            project: true,
+          },
+        },
       },
     });
 
@@ -76,7 +80,6 @@ export class DeliverEventService {
             job: eventRule.job,
             jobInstance: eventRule.jobInstance,
             environment: eventLog.environment,
-            organization: eventLog.organization,
           });
 
           break;

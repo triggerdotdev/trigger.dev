@@ -29,13 +29,13 @@ model User {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  organizations           Organization[]
   gitHubAppAuthorizations GitHubAppAuthorization[]
 
   featureCloud           Boolean @default(false)
   isOnHostedRepoWaitlist Boolean @default(false)
 
   currentEnvironments CurrentEnvironment[]
+  orgMemberships      OrgMember[]
 }
 
 enum AuthenticationMethod {
@@ -51,7 +51,6 @@ model Organization {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  users              User[]
   workflows          Workflow[]
   environments       RuntimeEnvironment[]
   apiConnections     APIConnection[]
@@ -63,12 +62,14 @@ model Organization {
   templates          OrganizationTemplate[]
   repositoryProjects RepositoryProject[]
   endpoints          Endpoint[]
-  Job                Job[]
-  JobInstance        JobInstance[]
-  EventLog           EventLog[]
-  Execution          Execution[]
+  jobs               Job[]
+  jobInstances       JobInstance[]
+  eventLogs          EventLog[]
+  jobRuns            JobRun[]
   httpSources        HttpSource[]
-  JobEventRule       JobEventRule[]
+  jobEventRule       JobEventRule[]
+  projects           Project[]
+  members            OrgMember[]
 }
 
 model APIConnection {
@@ -101,14 +102,14 @@ model APIConnection {
 }
 
 model APIConnectionAttempt {
-  id  String @id @default(cuid())
-  
-  title String
-  organizationId  String
-  apiIdentifier String
+  id String @id @default(cuid())
+
+  title                   String
+  organizationId          String
+  apiIdentifier           String
   authenticationMethodKey String
   scopes                  String[]
-  securityCode String?
+  securityCode            String?
 
   redirectTo String @default("/")
 
@@ -119,13 +120,44 @@ model APIConnectionAttempt {
   updatedAt DateTime @default(now()) @updatedAt
 }
 
+model OrgMember {
+  id String @id @default(cuid())
+
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  organizationId String
+
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  userId String
+
+  role OrgMemberRole @default(MEMBER)
+
+  createdAt    DateTime             @default(now())
+  updatedAt    DateTime             @updatedAt
+  environments RuntimeEnvironment[]
+
+  @@unique([organizationId, userId])
+}
+
+enum OrgMemberRole {
+  ADMIN
+  MEMBER
+}
+
 model RuntimeEnvironment {
   id     String @id @default(cuid())
   slug   String
   apiKey String @unique
 
+  type RuntimeEnvironmentType @default(DEVELOPMENT)
+
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   organizationId String
+
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  projectId String
+
+  orgMember   OrgMember? @relation(fields: [orgMemberId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  orgMemberId String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -139,16 +171,23 @@ model RuntimeEnvironment {
   keyValueItems       KeyValueItem[]
   currentEnvironments CurrentEnvironment[]
 
-  endpoints                 Endpoint[]
-  JobInstance               JobInstance[]
-  EventLog                  EventLog[]
-  Execution                 Execution[]
-  httpSources               HttpSource[]
-  HttpSourceRequestDelivery HttpSourceRequestDelivery[]
-  JobEventRule              JobEventRule[]
-  JobAlias                  JobAlias[]
+  endpoints         Endpoint[]
+  jobInstances      JobInstance[]
+  eventLogs         EventLog[]
+  jobRuns           JobRun[]
+  httpSources       HttpSource[]
+  requestDeliveries HttpSourceRequestDelivery[]
+  jobEventRules     JobEventRule[]
+  jobAliases        JobAlias[]
 
-  @@unique([organizationId, slug])
+  @@unique([projectId, slug, orgMemberId])
+}
+
+enum RuntimeEnvironmentType {
+  PRODUCTION
+  STAGING
+  DEVELOPMENT
+  PREVIEW
 }
 
 model Workflow {
@@ -880,6 +919,26 @@ model CurrentEnvironment {
 }
 
 // ========= SERVERLESS ===========
+model Project {
+  id   String @id @default(cuid())
+  name String
+
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  organizationId String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  environments RuntimeEnvironment[]
+  endpoints    Endpoint[]
+  jobs         Job[]
+  jobInstances JobInstance[]
+  events       EventLog[]
+  runs         JobRun[]
+  httpSources  HttpSource[]
+  eventRules   JobEventRule[]
+}
+
 model Endpoint {
   id   String @id @default(cuid())
   slug String
@@ -891,11 +950,14 @@ model Endpoint {
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   organizationId String
 
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  projectId String
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   jobInstances              JobInstance[]
-  executions                Execution[]
+  jobRuns                   JobRun[]
   httpSources               HttpSource[]
   HttpSourceRequestDelivery HttpSourceRequestDelivery[]
 
@@ -910,13 +972,16 @@ model Job {
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   organizationId String
 
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  projectId String
+
   instances   JobInstance[]
-  executions  Execution[]
+  runs        JobRun[]
   connections JobConnection[]
   eventRules  JobEventRule[]
   aliases     JobAlias[]
 
-  @@unique([organizationId, slug])
+  @@unique([projectId, slug])
 }
 
 model JobInstance {
@@ -936,13 +1001,16 @@ model JobInstance {
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   organizationId String
 
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  projectId String
+
   ready  Boolean @default(false)
   latest Boolean @default(false)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  executions  Execution[]
+  runs        JobRun[]
   connections JobConnection[]
   eventRules  JobEventRule[]
   aliases     JobAlias[]
@@ -1005,16 +1073,19 @@ model EventLog {
   environment   RuntimeEnvironment @relation(fields: [environmentId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   environmentId String
 
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  projectId String
+
   deliverAt   DateTime  @default(now())
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
   deliveredAt DateTime?
 
-  isTest    Boolean     @default(false)
-  Execution Execution[]
+  isTest Boolean  @default(false)
+  runs   JobRun[]
 }
 
-model Execution {
+model JobRun {
   id     String @id @default(cuid())
   number Int
 
@@ -1036,6 +1107,9 @@ model Execution {
   environment   RuntimeEnvironment @relation(fields: [environmentId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   environmentId String
 
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  projectId String
+
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
   startedAt   DateTime?
@@ -1043,7 +1117,7 @@ model Execution {
 
   elements Json?
 
-  status ExecutionStatus @default(PENDING)
+  status JobRunStatus @default(PENDING)
   output Json?
 
   timedOutAt     DateTime?
@@ -1054,7 +1128,7 @@ model Execution {
   tasks Task[]
 }
 
-enum ExecutionStatus {
+enum JobRunStatus {
   PENDING
   STARTED
   SUCCESS
@@ -1085,10 +1159,10 @@ model Task {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  execution   Execution @relation(fields: [executionId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  executionId String
+  run   JobRun @relation(fields: [runId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  runId String
 
-  @@unique([executionId, idempotencyKey])
+  @@unique([runId, idempotencyKey])
 }
 
 enum TaskStatus {
@@ -1134,6 +1208,9 @@ model HttpSource {
 
   endpoint   Endpoint @relation(fields: [endpointId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   endpointId String
+
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  projectId String
 
   connection   APIConnection? @relation(fields: [connectionId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   connectionId String?
@@ -1196,6 +1273,9 @@ model JobEventRule {
 
   environment   RuntimeEnvironment @relation(fields: [environmentId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   environmentId String
+
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  projectId String
 
   @@unique([jobInstanceId, actionIdentifier])
 }

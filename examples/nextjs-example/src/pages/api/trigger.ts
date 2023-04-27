@@ -7,6 +7,7 @@ import {
 import { github } from "@trigger.dev/github";
 import type { NextApiRequest, NextApiResponse } from "next";
 import { z } from "zod";
+
 const gh = github({ token: process.env.GITHUB_TOKEN! });
 
 const client = new TriggerClient("nextjs", {
@@ -28,6 +29,7 @@ new Job({
   trigger: gh.onIssueOpened({
     repo: "ericallam/basic-starter-100k",
   }),
+
   run: async (event, io, ctx) => {
     // event is a GitHubIssueEvent
     const comment = await io.gh.createIssueComment("📝", {
@@ -67,6 +69,13 @@ new Job({
     return reaction;
   },
 }).registerWith(client);
+
+// TODO: Support parameterized jobs
+// Example:
+// const job = new Job({});
+// await job.registerWith(client, { params: { foo: "bar" } });
+// And registering as a specific user:
+// await job.registerWith(client, { params: { foo: "bar" } }, { userId: "..." });
 
 new Job({
   id: "wait-for-event-in-job",

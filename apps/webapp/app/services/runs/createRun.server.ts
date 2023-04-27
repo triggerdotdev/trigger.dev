@@ -1,15 +1,10 @@
-import type {
-  EventLog,
-  Job,
-  JobInstance,
-  Organization,
-  RuntimeEnvironment,
-} from ".prisma/client";
+import type { Job, JobInstance } from ".prisma/client";
 import type { PrismaClient } from "~/db.server";
 import { prisma } from "~/db.server";
 import { workerQueue } from "~/services/worker.server";
+import { AuthenticatedEnvironment } from "../apiAuth.server";
 
-export class CreateExecutionService {
+export class CreateRunService {
   #prismaClient: PrismaClient;
 
   constructor(prismaClient: PrismaClient = prisma) {
@@ -19,12 +14,10 @@ export class CreateExecutionService {
   public async call({
     environment,
     eventId,
-    organization,
     job,
     jobInstance,
   }: {
-    environment: RuntimeEnvironment;
-    organization: Organization;
+    environment: AuthenticatedEnvironment;
     eventId: string;
     job: Job;
     jobInstance: JobInstance;
@@ -37,7 +30,7 @@ export class CreateExecutionService {
 
     const execution = await this.#prismaClient.$transaction(async (prisma) => {
       // Get the current max number for the given jobId
-      const currentMaxNumber = await prisma.execution.aggregate({
+      const currentMaxNumber = await prisma.jobRun.aggregate({
         where: { jobId: job.id },
         _max: { number: true },
       });
@@ -46,20 +39,21 @@ export class CreateExecutionService {
       const newNumber = (currentMaxNumber._max.number ?? 0) + 1;
 
       // Create the new execution with the incremented number
-      return prisma.execution.create({
+      return prisma.jobRun.create({
         data: {
           number: newNumber,
           job: { connect: { id: job.id } },
           jobInstance: { connect: { id: jobInstance.id } },
           eventLog: { connect: { id: eventId } },
           environment: { connect: { id: environment.id } },
-          organization: { connect: { id: organization.id } },
+          organization: { connect: { id: environment.organizationId } },
+          project: { connect: { id: environment.projectId } },
           endpoint: { connect: { id: endpoint.id } },
         },
       });
     });
 
-    await workerQueue.enqueue("startExecution", {
+    await workerQueue.enqueue("startRun", {
       id: execution.id,
     });
 

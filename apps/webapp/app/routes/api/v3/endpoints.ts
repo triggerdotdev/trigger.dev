@@ -41,7 +41,6 @@ export async function action({ request }: ActionArgs) {
   try {
     const endpoint = await service.call({
       environment: authenticatedEnv,
-      organization: authenticatedEnv.organization,
       url: body.data.url,
       name: body.data.name,
     });

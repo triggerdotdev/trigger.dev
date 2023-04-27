@@ -1,13 +1,14 @@
 import type { ActionArgs } from "@remix-run/server-runtime";
 import { json } from "@remix-run/server-runtime";
-import { authenticateApiRequest } from "~/services/apiAuth.server";
-import { generateErrorMessage } from "zod-error";
-import type { PrismaClient } from "~/db.server";
-import { PrismaErrorSchema } from "~/db.server";
 import type { RawEvent, SendEventOptions } from "@trigger.dev/internal";
 import { SendEventBodySchema } from "@trigger.dev/internal";
-import type { Organization, RuntimeEnvironment } from ".prisma/client";
-import { prisma } from "~/db.server";
+import { generateErrorMessage } from "zod-error";
+import type { PrismaClient } from "~/db.server";
+import { prisma, PrismaErrorSchema } from "~/db.server";
+import {
+  authenticateApiRequest,
+  AuthenticatedEnvironment,
+} from "~/services/apiAuth.server";
 import { workerQueue } from "~/services/worker.server";
 
 export async function action({ request }: ActionArgs) {
@@ -39,7 +40,6 @@ export async function action({ request }: ActionArgs) {
 
   const event = await service.call(
     authenticatedEnv,
-    authenticatedEnv.organization,
     body.data.event,
     body.data.options
   );
@@ -73,8 +73,7 @@ export class IngestSendEvent {
   }
 
   public async call(
-    environment: RuntimeEnvironment,
-    organization: Organization,
+    environment: AuthenticatedEnvironment,
     event: RawEvent,
     options?: SendEventOptions
   ) {
@@ -85,7 +84,12 @@ export class IngestSendEvent {
         data: {
           organization: {
             connect: {
-              id: organization.id,
+              id: environment.organizationId,
+            },
+          },
+          project: {
+            connect: {
+              id: environment.projectId,
             },
           },
           environment: {

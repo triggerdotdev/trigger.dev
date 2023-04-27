@@ -1,8 +1,8 @@
 import type { ActionArgs } from "@remix-run/server-runtime";
 import { json } from "@remix-run/server-runtime";
-import { CreateExecutionBodySchema } from "@trigger.dev/internal";
+import { CreateRunBodySchema } from "@trigger.dev/internal";
 import { authenticateApiRequest } from "~/services/apiAuth.server";
-import { PostExecutionService } from "~/services/executions/postExecution.server";
+import { PostRunService } from "~/services/runs/postRun.server";
 
 export async function action({ request }: ActionArgs) {
   // Ensure this is a POST request
@@ -20,20 +20,16 @@ export async function action({ request }: ActionArgs) {
   // Now parse the request body
   const anyBody = await request.json();
 
-  const body = CreateExecutionBodySchema.safeParse(anyBody);
+  const body = CreateRunBodySchema.safeParse(anyBody);
 
   if (!body.success) {
     return json({ error: "Invalid request body" }, { status: 400 });
   }
 
-  const service = new PostExecutionService();
+  const service = new PostRunService();
 
   try {
-    const execution = await service.call(
-      authenticatedEnv,
-      authenticatedEnv.organization,
-      body.data
-    );
+    const execution = await service.call(authenticatedEnv, body.data);
 
     if (!execution) {
       return json({ ok: false, error: "Failed to create execution" });

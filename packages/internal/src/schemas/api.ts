@@ -168,35 +168,33 @@ export const ExecuteJobResponseSchema = z.object({
 
 export type ExecuteJobResponse = z.infer<typeof ExecuteJobResponseSchema>;
 
-export const CreateExecutionBodySchema = z.object({
+export const CreateRunBodySchema = z.object({
   client: z.string(),
   job: JobSchema,
   event: ApiEventLogSchema,
   elements: z.array(DisplayElementSchema).optional(),
 });
 
-export type CreateExecutionBody = z.infer<typeof CreateExecutionBodySchema>;
+export type CreateRunBody = z.infer<typeof CreateRunBodySchema>;
 
-const CreateExecutionResponseOkSchema = z.object({
+const CreateRunResponseOkSchema = z.object({
   ok: z.literal(true),
   data: z.object({
     id: z.string(),
   }),
 });
 
-const CreateExecutionResponseErrorSchema = z.object({
+const CreateRunResponseErrorSchema = z.object({
   ok: z.literal(false),
   error: z.string(),
 });
 
-export const CreateExecutionResponseBodySchema = z.discriminatedUnion("ok", [
-  CreateExecutionResponseOkSchema,
-  CreateExecutionResponseErrorSchema,
+export const CreateRunResponseBodySchema = z.discriminatedUnion("ok", [
+  CreateRunResponseOkSchema,
+  CreateRunResponseErrorSchema,
 ]);
 
-export type CreateExecutionResponseBody = z.infer<
-  typeof CreateExecutionResponseBodySchema
->;
+export type CreateRunResponseBody = z.infer<typeof CreateRunResponseBodySchema>;
 
 export const SecureStringSchema = z.object({
   __secureString: z.literal(true),

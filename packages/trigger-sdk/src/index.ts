@@ -4,12 +4,7 @@ export * from "./triggerClient";
 export * from "./connections";
 export * from "./externalSource";
 
-import { triggerRunLocalStorage } from "./localStorage";
 import { SecureString } from "./types";
-
-export function getTriggerRun() {
-  return triggerRunLocalStorage.getStore();
-}
 
 export type { NormalizedRequest, EventFilter } from "@trigger.dev/internal";
 

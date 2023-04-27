@@ -5,10 +5,11 @@
     "lib": ["DOM", "DOM.Iterable", "ES2019"],
     "paths": {
       "@trigger.dev/sdk/*": ["../../packages/trigger-sdk/src/*"],
-      "@trigger.dev/sdk": ["../../packages/trigger-sdk/src/index"]
+      "@trigger.dev/sdk": ["../../packages/trigger-sdk/src/index"],
     },
     "declaration": false,
-    "declarationMap": false
+    "declarationMap": false,
+    "baseUrl": "."
   },
   "exclude": ["node_modules"]
 }

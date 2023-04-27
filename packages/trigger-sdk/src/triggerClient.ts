@@ -340,7 +340,7 @@ export class TriggerClient {
     this.#logger.debug("creating execution", { event, job: job.toJSON() });
 
     // Create a new job execution
-    const execution = await this.#client.createExecution({
+    const execution = await this.#client.createRun({
       client: this.name,
       job: job.toJSON(),
       event,

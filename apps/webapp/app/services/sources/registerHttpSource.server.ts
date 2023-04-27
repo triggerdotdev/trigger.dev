@@ -47,6 +47,7 @@ export class RegisterHttpSourceService {
         organizationId: organization.id,
         environmentId: environment.id,
         connectionId: payload.connectionId,
+        projectId: environment.projectId,
       },
       update: {
         connectionId: payload.connectionId,

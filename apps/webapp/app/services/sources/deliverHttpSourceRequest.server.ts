@@ -20,6 +20,7 @@ export class DeliverHttpSourceRequestService {
           environment: {
             include: {
               organization: true,
+              project: true,
             },
           },
           source: {
@@ -65,11 +66,7 @@ export class DeliverHttpSourceRequestService {
     const ingestService = new IngestSendEvent();
 
     for (const event of events) {
-      await ingestService.call(
-        httpSourceRequest.environment,
-        httpSourceRequest.environment.organization,
-        event
-      );
+      await ingestService.call(httpSourceRequest.environment, event);
     }
 
     return response;

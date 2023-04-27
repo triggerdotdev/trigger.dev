@@ -15,7 +15,7 @@ export class ResumeTaskService {
     const task = await this.#prismaClient.task.findUniqueOrThrow({
       where: { id },
       include: {
-        execution: {
+        run: {
           include: {
             jobInstance: {
               include: {
@@ -38,7 +38,7 @@ export class ResumeTaskService {
       },
     });
 
-    const { execution } = task;
+    const { run } = task;
 
     const updatedTask = await this.#prismaClient.task.update({
       where: {
@@ -52,35 +52,35 @@ export class ResumeTaskService {
     });
 
     const client = new ClientApi(
-      execution.environment.apiKey,
-      execution.jobInstance.endpoint.url
+      run.environment.apiKey,
+      run.jobInstance.endpoint.url
     );
 
-    const event = ApiEventLogSchema.parse(execution.eventLog);
+    const event = ApiEventLogSchema.parse(run.eventLog);
 
     try {
       const results = await client.executeJob({
         event,
         job: {
-          id: execution.jobInstance.job.slug,
-          version: execution.jobInstance.version,
+          id: run.jobInstance.job.slug,
+          version: run.jobInstance.version,
         },
         context: {
-          id: execution.id,
-          environment: execution.environment.slug,
-          organization: execution.organization.slug,
-          isTest: execution.isTest,
-          version: execution.jobInstance.version,
-          startedAt: execution.startedAt ?? new Date(),
+          id: run.id,
+          environment: run.environment.slug,
+          organization: run.organization.slug,
+          isTest: run.isTest,
+          version: run.jobInstance.version,
+          startedAt: run.startedAt ?? new Date(),
         },
-        tasks: [execution.tasks, updatedTask]
+        tasks: [run.tasks, updatedTask]
           .flat()
           .map((t) => CachedTaskSchema.parse(t)),
       });
 
       if (results.completed) {
-        await this.#prismaClient.execution.update({
-          where: { id: execution.id },
+        await this.#prismaClient.jobRun.update({
+          where: { id: run.id },
           data: {
             completedAt: new Date(),
             status: "SUCCESS",
@@ -102,7 +102,7 @@ export class ResumeTaskService {
       }
     } catch (error) {
       if (error instanceof ClientApiError) {
-        await this.#prismaClient.execution.update({
+        await this.#prismaClient.jobRun.update({
           where: { id },
           data: {
             completedAt: new Date(),

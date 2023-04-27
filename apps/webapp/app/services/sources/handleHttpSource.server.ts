@@ -10,13 +10,17 @@ export class HandleHttpSourceService {
   }
 
   public async call(id: string, request: Request) {
-    const httpSource = await this.#prismaClient.httpSource.findUniqueOrThrow({
+    const httpSource = await this.#prismaClient.httpSource.findUnique({
       where: { id },
       include: {
         endpoint: true,
         environment: true,
       },
     });
+
+    if (!httpSource) {
+      return { status: 404 };
+    }
 
     if (!httpSource.active) {
       return { status: 200 };

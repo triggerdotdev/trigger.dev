@@ -10,7 +10,7 @@ import { logger } from "~/services/logger";
 import { ulid } from "~/services/ulid.server";
 
 const ParamsSchema = z.object({
-  executionId: z.string(),
+  runId: z.string(),
 });
 
 const HeadersSchema = z.object({
@@ -30,14 +30,14 @@ export async function loader({ request, params }: LoaderArgs) {
     return json({ error: "Invalid or Missing API key" }, { status: 401 });
   }
 
-  const { executionId } = ParamsSchema.parse(params);
+  const { runId } = ParamsSchema.parse(params);
 
   const url = new URL(request.url);
   const query = SearchQuerySchema.parse(Object.fromEntries(url.searchParams));
 
-  const execution = await prisma.execution.findUnique({
+  const jobRun = await prisma.jobRun.findUnique({
     where: {
-      id: executionId,
+      id: runId,
     },
     include: {
       tasks: {
@@ -54,16 +54,16 @@ export async function loader({ request, params }: LoaderArgs) {
     },
   });
 
-  if (!execution) {
-    return json({ message: "Execution not found" }, { status: 404 });
+  if (!jobRun) {
+    return json({ message: "Run not found" }, { status: 404 });
   }
 
-  if (execution.environmentId !== authenticatedEnv.id) {
-    return json({ message: "Execution not found" }, { status: 404 });
+  if (jobRun.environmentId !== authenticatedEnv.id) {
+    return json({ message: "Run not found" }, { status: 404 });
   }
 
-  const tasks = execution.tasks.slice(0, query.take);
-  const nextTask = execution.tasks[query.take];
+  const tasks = jobRun.tasks.slice(0, query.take);
+  const nextTask = jobRun.tasks[query.take];
 
   return json({
     data: tasks,
@@ -95,14 +95,14 @@ export async function action({ request, params }: ActionArgs) {
 
   const { "idempotency-key": idempotencyKey } = headers.data;
 
-  const { executionId } = ParamsSchema.parse(params);
+  const { runId } = ParamsSchema.parse(params);
 
   // Now parse the request body
   const anyBody = await request.json();
 
-  logger.debug("RunExecutionTaskService.call() request body", {
+  logger.debug("RunTaskService.call() request body", {
     body: anyBody,
-    executionId,
+    runId,
     idempotencyKey,
   });
 
@@ -112,13 +112,13 @@ export async function action({ request, params }: ActionArgs) {
     return json({ error: "Invalid request body" }, { status: 400 });
   }
 
-  const service = new RunExecutionTaskService();
+  const service = new RunTaskService();
 
   try {
-    const task = await service.call(executionId, idempotencyKey, body.data);
+    const task = await service.call(runId, idempotencyKey, body.data);
 
-    logger.debug("RunExecutionTaskService.call() response body", {
-      executionId,
+    logger.debug("RunTaskService.call() response body", {
+      runId,
       idempotencyKey,
       task,
     });
@@ -133,7 +133,7 @@ export async function action({ request, params }: ActionArgs) {
   }
 }
 
-export class RunExecutionTaskService {
+export class RunTaskService {
   #prismaClient: PrismaClient;
 
   constructor(prismaClient: PrismaClient = prisma) {
@@ -141,7 +141,7 @@ export class RunExecutionTaskService {
   }
 
   public async call(
-    executionId: string,
+    runId: string,
     idempotencyKey: string,
     taskBody: RunTaskBodyOutput
   ) {
@@ -150,8 +150,8 @@ export class RunExecutionTaskService {
     const task = await this.#prismaClient.$transaction(async (prisma) => {
       const existingTask = await prisma.task.findUnique({
         where: {
-          executionId_idempotencyKey: {
-            executionId,
+          runId_idempotencyKey: {
+            runId,
             idempotencyKey,
           },
         },
@@ -176,9 +176,9 @@ export class RunExecutionTaskService {
           idempotencyKey,
           displayKey: taskBody.displayKey,
           icon: taskBody.icon,
-          execution: {
+          run: {
             connect: {
-              id: executionId,
+              id: runId,
             },
           },
           name: taskBody.name,
@@ -192,7 +192,7 @@ export class RunExecutionTaskService {
           elements: taskBody.elements ?? undefined,
         },
         include: {
-          execution: true,
+          run: true,
         },
       });
 
@@ -201,17 +201,18 @@ export class RunExecutionTaskService {
         await prisma.jobEventRule.upsert({
           where: {
             jobInstanceId_actionIdentifier: {
-              jobInstanceId: task.execution.jobInstanceId,
+              jobInstanceId: task.run.jobInstanceId,
               actionIdentifier: task.id,
             },
           },
           create: {
             action: "RESUME_TASK",
             actionIdentifier: task.id,
-            jobId: task.execution.jobId,
-            jobInstanceId: task.execution.jobInstanceId,
-            environmentId: task.execution.environmentId,
-            organizationId: task.execution.organizationId,
+            jobId: task.run.jobId,
+            jobInstanceId: task.run.jobInstanceId,
+            environmentId: task.run.environmentId,
+            organizationId: task.run.organizationId,
+            projectId: task.run.projectId,
             event: taskBody.trigger.eventRule.event,
             source: taskBody.trigger.eventRule.source,
             payloadFilter: taskBody.trigger.eventRule.payload ?? {},

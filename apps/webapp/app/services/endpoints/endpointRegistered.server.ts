@@ -1,19 +1,13 @@
-import type {
-  Endpoint,
-  Organization,
-  RuntimeEnvironment,
-  Job,
-  JobInstance,
-  JobConnection,
-} from ".prisma/client";
+import type { Endpoint, Job, JobConnection, JobInstance } from ".prisma/client";
 import type { ApiJob, ConnectionMetadata } from "@trigger.dev/internal";
+import semver from "semver";
 import type { PrismaClient } from "~/db.server";
 import { prisma } from "~/db.server";
+import { AuthenticatedEnvironment } from "../apiAuth.server";
 import { ClientApi } from "../clientApi.server";
-import { workerQueue } from "../worker.server";
-import semver from "semver";
-import { logger } from "../logger";
 import { allConnectionsReady } from "../jobs/utils.server";
+import { logger } from "../logger";
+import { workerQueue } from "../worker.server";
 
 export class EndpointRegisteredService {
   #prismaClient: PrismaClient;
@@ -30,6 +24,7 @@ export class EndpointRegisteredService {
       include: {
         environment: {
           include: {
+            project: true,
             organization: true,
           },
         },
@@ -43,14 +38,7 @@ export class EndpointRegisteredService {
 
     // Upsert the jobs into the database
     await Promise.all(
-      jobs.map((job) =>
-        this.#upsertJob(
-          endpoint,
-          endpoint.environment,
-          endpoint.environment.organization,
-          job
-        )
-      )
+      jobs.map((job) => this.#upsertJob(endpoint, endpoint.environment, job))
     );
 
     await workerQueue.enqueue("prepareForJobExecution", {
@@ -60,28 +48,32 @@ export class EndpointRegisteredService {
 
   async #upsertJob(
     endpoint: Endpoint,
-    environment: RuntimeEnvironment,
-    organization: Organization,
+    environment: AuthenticatedEnvironment,
     apiJob: ApiJob
   ): Promise<void> {
     logger.debug("Upserting job", {
       endpoint,
-      organizationId: organization.id,
+      organizationId: environment.organizationId,
       apiJob,
     });
 
     // Upsert the Job
     const job = await this.#prismaClient.job.upsert({
       where: {
-        organizationId_slug: {
-          organizationId: organization.id,
+        projectId_slug: {
+          projectId: environment.projectId,
           slug: apiJob.id,
         },
       },
       create: {
         organization: {
           connect: {
-            id: organization.id,
+            id: environment.organizationId,
+          },
+        },
+        project: {
+          connect: {
+            id: environment.projectId,
           },
         },
         slug: apiJob.id,
@@ -144,7 +136,12 @@ export class EndpointRegisteredService {
         },
         organization: {
           connect: {
-            id: organization.id,
+            id: environment.organizationId,
+          },
+        },
+        project: {
+          connect: {
+            id: environment.projectId,
           },
         },
         version: apiJob.version,
@@ -251,7 +248,8 @@ export class EndpointRegisteredService {
         jobId: job.id,
         jobInstanceId: jobInstance.id,
         environmentId: environment.id,
-        organizationId: organization.id,
+        organizationId: environment.organizationId,
+        projectId: environment.projectId,
         enabled: connectionsReady,
         actionIdentifier: "__trigger",
       },

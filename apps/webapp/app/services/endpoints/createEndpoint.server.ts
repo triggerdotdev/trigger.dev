@@ -1,6 +1,7 @@
 import type { Organization, RuntimeEnvironment } from ".prisma/client";
 import type { PrismaClient } from "~/db.server";
 import { prisma } from "~/db.server";
+import { AuthenticatedEnvironment } from "../apiAuth.server";
 import { ClientApi } from "../clientApi.server";
 import { workerQueue } from "../worker.server";
 
@@ -13,12 +14,10 @@ export class CreateEndpointService {
 
   public async call({
     environment,
-    organization,
     url,
     name,
   }: {
-    environment: RuntimeEnvironment;
-    organization: Organization;
+    environment: AuthenticatedEnvironment;
     url: string;
     name: string;
   }) {
@@ -40,7 +39,12 @@ export class CreateEndpointService {
         },
         organization: {
           connect: {
-            id: organization.id,
+            id: environment.organizationId,
+          },
+        },
+        project: {
+          connect: {
+            id: environment.projectId,
           },
         },
         slug: name,

@@ -6,11 +6,14 @@ import { LogMessageSchema } from "@trigger.dev/internal";
 import { z } from "zod";
 import type { PrismaClient } from "~/db.server";
 import { prisma } from "~/db.server";
-import { authenticateApiRequest } from "~/services/apiAuth.server";
+import {
+  authenticateApiRequest,
+  AuthenticatedEnvironment,
+} from "~/services/apiAuth.server";
 import { logger } from "~/services/logger";
 
 const ParamsSchema = z.object({
-  executionId: z.string(),
+  runId: z.string(),
 });
 
 export async function action({ request, params }: ActionArgs) {
@@ -26,7 +29,7 @@ export async function action({ request, params }: ActionArgs) {
     return json({ error: "Invalid or Missing API key" }, { status: 401 });
   }
 
-  const { executionId } = ParamsSchema.parse(params);
+  const { runId } = ParamsSchema.parse(params);
 
   // Now parse the request body
   const anyBody = await request.json();
@@ -37,15 +40,10 @@ export async function action({ request, params }: ActionArgs) {
     return json({ error: "Invalid request body" }, { status: 400 });
   }
 
-  const service = new CreateExecutionLogService();
+  const service = new CreateRunLogService();
 
   try {
-    const log = await service.call(
-      authenticatedEnv,
-      authenticatedEnv.organization,
-      executionId,
-      body.data
-    );
+    const log = await service.call(authenticatedEnv, runId, body.data);
 
     return json(log);
   } catch (error) {
@@ -57,7 +55,7 @@ export async function action({ request, params }: ActionArgs) {
   }
 }
 
-export class CreateExecutionLogService {
+export class CreateRunLogService {
   #prismaClient: PrismaClient;
 
   constructor(prismaClient: PrismaClient = prisma) {
@@ -65,11 +63,11 @@ export class CreateExecutionLogService {
   }
 
   public async call(
-    environment: RuntimeEnvironment,
-    organization: Organization,
-    executionId: string,
+    environment: AuthenticatedEnvironment,
+    runId: string,
     logMessage: LogMessage
   ) {
+    // @ts-ignore
     logger.debug(logMessage.message, logMessage.data ?? {});
 
     return logMessage;

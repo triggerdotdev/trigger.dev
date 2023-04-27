@@ -1,21 +1,20 @@
-import type { Organization, RuntimeEnvironment } from ".prisma/client";
-import type { CreateExecutionBody } from "@trigger.dev/internal";
+import type { CreateRunBody } from "@trigger.dev/internal";
 import type { PrismaClient } from "~/db.server";
 import { prisma } from "~/db.server";
-import { CreateExecutionService } from "./createExecution.server";
+import { AuthenticatedEnvironment } from "../apiAuth.server";
+import { CreateRunService } from "./createRun.server";
 
-export class PostExecutionService {
+export class PostRunService {
   #prismaClient: PrismaClient;
-  #createExecutionService = new CreateExecutionService();
+  #createExecutionService = new CreateRunService();
 
   constructor(prismaClient: PrismaClient = prisma) {
     this.#prismaClient = prismaClient;
   }
 
   public async call(
-    environment: RuntimeEnvironment,
-    organization: Organization,
-    data: CreateExecutionBody
+    environment: AuthenticatedEnvironment,
+    data: CreateRunBody
   ) {
     const endpoint = await this.#prismaClient.endpoint.findUniqueOrThrow({
       where: {
@@ -28,8 +27,8 @@ export class PostExecutionService {
 
     const job = await this.#prismaClient.job.findUniqueOrThrow({
       where: {
-        organizationId_slug: {
-          organizationId: organization.id,
+        projectId_slug: {
+          projectId: environment.projectId,
           slug: data.job.id,
         },
       },
@@ -47,7 +46,6 @@ export class PostExecutionService {
 
     return this.#createExecutionService.call({
       environment,
-      organization,
       job,
       jobInstance,
       eventId: data.event.id,

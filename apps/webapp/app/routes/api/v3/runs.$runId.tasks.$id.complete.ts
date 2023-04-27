@@ -2,20 +2,20 @@ import { RuntimeEnvironment } from ".prisma/client";
 import type { ActionArgs } from "@remix-run/server-runtime";
 import { json } from "@remix-run/server-runtime";
 import {
-  CompleteTaskBodyInput,
   CompleteTaskBodyInputSchema,
   CompleteTaskBodyOutput,
-  RunTaskBodyOutput,
 } from "@trigger.dev/internal";
-import { RunTaskBodyOutputSchema } from "@trigger.dev/internal";
 import { z } from "zod";
 import type { PrismaClient } from "~/db.server";
 import { prisma } from "~/db.server";
-import { authenticateApiRequest } from "~/services/apiAuth.server";
+import {
+  authenticateApiRequest,
+  AuthenticatedEnvironment,
+} from "~/services/apiAuth.server";
 import { logger } from "~/services/logger";
 
 const ParamsSchema = z.object({
-  executionId: z.string(),
+  runId: z.string(),
   id: z.string(),
 });
 
@@ -32,14 +32,14 @@ export async function action({ request, params }: ActionArgs) {
     return json({ error: "Invalid or Missing API key" }, { status: 401 });
   }
 
-  const { executionId, id } = ParamsSchema.parse(params);
+  const { runId, id } = ParamsSchema.parse(params);
 
   // Now parse the request body
   const anyBody = await request.json();
 
   logger.debug("CompleteExecutionTaskService.call() request body", {
     body: anyBody,
-    executionId,
+    runId,
     id,
   });
 
@@ -49,18 +49,13 @@ export async function action({ request, params }: ActionArgs) {
     return json({ error: "Invalid request body" }, { status: 400 });
   }
 
-  const service = new CompleteExecutionTaskService();
+  const service = new CompleteRunTaskService();
 
   try {
-    const task = await service.call(
-      authenticatedEnv,
-      executionId,
-      id,
-      body.data
-    );
+    const task = await service.call(authenticatedEnv, runId, id, body.data);
 
-    logger.debug("CompleteExecutionTaskService.call() response body", {
-      executionId,
+    logger.debug("CompleteRunTaskService.call() response body", {
+      runId,
       id,
       task,
     });
@@ -79,7 +74,7 @@ export async function action({ request, params }: ActionArgs) {
   }
 }
 
-export class CompleteExecutionTaskService {
+export class CompleteRunTaskService {
   #prismaClient: PrismaClient;
 
   constructor(prismaClient: PrismaClient = prisma) {
@@ -87,8 +82,8 @@ export class CompleteExecutionTaskService {
   }
 
   public async call(
-    environment: RuntimeEnvironment,
-    executionId: string,
+    environment: AuthenticatedEnvironment,
+    runId: string,
     id: string,
     taskBody: CompleteTaskBodyOutput
   ) {
@@ -100,7 +95,7 @@ export class CompleteExecutionTaskService {
           id,
         },
         include: {
-          execution: true,
+          run: true,
         },
       });
 
@@ -108,11 +103,11 @@ export class CompleteExecutionTaskService {
         return;
       }
 
-      if (existingTask.executionId !== executionId) {
+      if (existingTask.runId !== runId) {
         return;
       }
 
-      if (existingTask.execution.environmentId !== environment.id) {
+      if (existingTask.run.environmentId !== environment.id) {
         return;
       }
 

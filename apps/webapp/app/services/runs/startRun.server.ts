@@ -7,7 +7,7 @@ import { ClientApi, ClientApiError } from "../clientApi.server";
 import { workerQueue } from "../worker.server";
 import { logger } from "../logger";
 
-export class StartExecutionService {
+export class StartRunService {
   #prismaClient: PrismaClient;
 
   constructor(prismaClient: PrismaClient = prisma) {
@@ -15,7 +15,7 @@ export class StartExecutionService {
   }
 
   public async call(id: string) {
-    const execution = await this.#prismaClient.execution.findUniqueOrThrow({
+    const run = await this.#prismaClient.jobRun.findUniqueOrThrow({
       where: { id },
       include: {
         jobInstance: {
@@ -39,18 +39,18 @@ export class StartExecutionService {
     });
 
     // If any of the connections are missing, we can't start the execution
-    const connections = execution.jobInstance.connections.filter(
+    const connections = run.jobInstance.connections.filter(
       (c) => c.apiConnection != null || c.usesLocalAuth
     ) as Array<JobConnection & { apiConnection?: APIConnection }>;
 
     const client = new ClientApi(
-      execution.environment.apiKey,
-      execution.jobInstance.endpoint.url
+      run.environment.apiKey,
+      run.jobInstance.endpoint.url
     );
 
-    const startedAt = execution.startedAt ?? new Date();
+    const startedAt = run.startedAt ?? new Date();
 
-    await this.#prismaClient.execution.update({
+    await this.#prismaClient.jobRun.update({
       where: { id },
       data: {
         startedAt,
@@ -58,28 +58,28 @@ export class StartExecutionService {
       },
     });
 
-    const event = ApiEventLogSchema.parse(execution.eventLog);
+    const event = ApiEventLogSchema.parse(run.eventLog);
 
     try {
       const results = await client.executeJob({
         event,
         job: {
-          id: execution.jobInstance.job.slug,
-          version: execution.jobInstance.version,
+          id: run.jobInstance.job.slug,
+          version: run.jobInstance.version,
         },
         context: {
-          id: execution.id,
-          environment: execution.environment.slug,
-          organization: execution.organization.slug,
-          isTest: execution.isTest,
-          version: execution.jobInstance.version,
+          id: run.id,
+          environment: run.environment.slug,
+          organization: run.organization.slug,
+          isTest: run.isTest,
+          version: run.jobInstance.version,
           startedAt,
         },
         connections: await getConnectionAuths(connections),
       });
 
       if (results.completed) {
-        await this.#prismaClient.execution.update({
+        await this.#prismaClient.jobRun.update({
           where: { id },
           data: {
             completedAt: new Date(),
@@ -102,7 +102,7 @@ export class StartExecutionService {
       }
     } catch (error) {
       if (error instanceof ClientApiError) {
-        await this.#prismaClient.execution.update({
+        await this.#prismaClient.jobRun.update({
           where: { id },
           data: {
             completedAt: new Date(),

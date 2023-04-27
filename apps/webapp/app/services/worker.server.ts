@@ -5,8 +5,8 @@ import { EndpointRegisteredService } from "./endpoints/endpointRegistered.server
 import { PrepareForJobExecutionService } from "./endpoints/prepareForJobExecution.server";
 import { PrepareJobInstanceService } from "./endpoints/prepareJobInstance.server";
 import { DeliverEventService } from "./events/deliverEvent.server";
-import { ResumeTaskService } from "./executions/resumeTask.server";
-import { StartExecutionService } from "./executions/startExecution.server";
+import { ResumeTaskService } from "./runs/resumeTask.server";
+import { StartRunService } from "./runs/startRun.server";
 import { DeliverHttpSourceRequestService } from "./sources/deliverHttpSourceRequest.server";
 import { APIAuthenticationRepository } from "./externalApis/apiAuthenticationRepository.server";
 
@@ -27,7 +27,7 @@ const workerCatalog = {
   }),
   stopVM: z.object({ id: z.string() }),
   startInitialProjectDeployment: z.object({ id: z.string() }),
-  startExecution: z.object({ id: z.string() }),
+  startRun: z.object({ id: z.string() }),
   resumeTask: z.object({ id: z.string() }),
   prepareForJobExecution: z.object({ id: z.string() }),
   prepareJobInstance: z.object({ id: z.string() }),
@@ -96,11 +96,11 @@ function getWorkerQueue() {
           await service.call(payload.id);
         },
       },
-      startExecution: {
+      startRun: {
         queueName: "executions",
         maxAttempts: 13,
         handler: async (payload, job) => {
-          const service = new StartExecutionService();
+          const service = new StartRunService();
 
           await service.call(payload.id);
         },

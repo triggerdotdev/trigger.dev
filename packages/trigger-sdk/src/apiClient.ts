@@ -1,8 +1,8 @@
 import {
   ApiEventLog,
   CompleteTaskBodyInput,
-  CreateExecutionBody,
-  CreateExecutionResponseBodySchema,
+  CreateRunBody,
+  CreateRunResponseBodySchema,
   HttpEventSource,
   LogMessage,
   RegisterHttpEventSourceBody,
@@ -36,7 +36,7 @@ export type HttpSourceRecord = {
   data?: any;
 };
 
-export type ExecutionRecord = {
+export type RunRecord = {
   id: string;
   jobId: string;
   callbackUrl: string;
@@ -96,14 +96,14 @@ export class ApiClient {
     return await response.json();
   }
 
-  async createExecution(params: CreateExecutionBody) {
+  async createRun(params: CreateRunBody) {
     const apiKey = await this.#apiKey();
 
-    this.#logger.debug("Creating execution", {
+    this.#logger.debug("Creating run", {
       params,
     });
 
-    const response = await fetch(`${this.#apiUrl}/api/v3/executions`, {
+    const response = await fetch(`${this.#apiUrl}/api/v3/runs`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -120,34 +120,31 @@ export class ApiClient {
 
     if (response.status !== 200) {
       throw new Error(
-        `Failed to create execution, got status code ${response.status}`
+        `Failed to create run, got status code ${response.status}`
       );
     }
 
     const body = await response.json();
 
-    return CreateExecutionResponseBodySchema.parse(body);
+    return CreateRunResponseBodySchema.parse(body);
   }
 
-  async createLog(executionId: string, logMessage: LogMessage) {
+  async createLog(runId: string, logMessage: LogMessage) {
     const apiKey = await this.#apiKey();
 
     this.#logger.debug("Creating log", {
-      executionId,
+      runId,
       logMessage,
     });
 
-    const response = await fetch(
-      `${this.#apiUrl}/api/v3/executions/${executionId}/logs`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${apiKey}`,
-        },
-        body: JSON.stringify(logMessage),
-      }
-    );
+    const response = await fetch(`${this.#apiUrl}/api/v3/runs/${runId}/logs`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify(logMessage),
+    });
 
     if (response.status >= 400 && response.status < 500) {
       const body = await response.json();
@@ -157,35 +154,29 @@ export class ApiClient {
 
     if (response.status !== 200) {
       throw new Error(
-        `Failed to create execution, got status code ${response.status}`
+        `Failed to create run log, got status code ${response.status}`
       );
     }
 
     return await response.json();
   }
 
-  async runTask(
-    executionId: string,
-    task: RunTaskBodyInput
-  ): Promise<ServerTask> {
+  async runTask(runId: string, task: RunTaskBodyInput): Promise<ServerTask> {
     const apiKey = await this.#apiKey();
 
     this.#logger.debug("Running Task", {
       task,
     });
 
-    const response = await fetch(
-      `${this.#apiUrl}/api/v3/executions/${executionId}/tasks`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${apiKey}`,
-          "Idempotency-Key": task.idempotencyKey,
-        },
-        body: JSON.stringify(task),
-      }
-    );
+    const response = await fetch(`${this.#apiUrl}/api/v3/runs/${runId}/tasks`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${apiKey}`,
+        "Idempotency-Key": task.idempotencyKey,
+      },
+      body: JSON.stringify(task),
+    });
 
     if (response.status >= 400 && response.status < 500) {
       const body = await response.json();
@@ -194,16 +185,14 @@ export class ApiClient {
     }
 
     if (response.status !== 200) {
-      throw new Error(
-        `Failed to create execution, got status code ${response.status}`
-      );
+      throw new Error(`Failed to run task, got status code ${response.status}`);
     }
 
     return await response.json();
   }
 
   async completeTask(
-    executionId: string,
+    runId: string,
     id: string,
     task: CompleteTaskBodyInput
   ): Promise<ServerTask> {
@@ -214,7 +203,7 @@ export class ApiClient {
     });
 
     const response = await fetch(
-      `${this.#apiUrl}/api/v3/executions/${executionId}/tasks/${id}/complete`,
+      `${this.#apiUrl}/api/v3/runs/${runId}/tasks/${id}/complete`,
       {
         method: "POST",
         headers: {
@@ -233,7 +222,7 @@ export class ApiClient {
 
     if (response.status !== 200) {
       throw new Error(
-        `Failed to create execution, got status code ${response.status}`
+        `Failed to complete task, got status code ${response.status}`
       );
     }
 
@@ -267,7 +256,7 @@ export class ApiClient {
 
     if (response.status !== 200) {
       throw new Error(
-        `Failed to create execution, got status code ${response.status}`
+        `Failed to send event, got status code ${response.status}`
       );
     }
 
@@ -402,8 +391,8 @@ function getApiKey(key?: string) {
     return { status: "missing" as const };
   }
 
-  // Validate the api_key format (should be trigger_{env}_XXXXX)
-  const isValid = apiKey.match(/^trigger_[a-z]+_[a-zA-Z0-9]+$/);
+  // Validate the api_key format (should be tr_{env}_XXXXX)
+  const isValid = apiKey.match(/^tr_[a-z]+_[a-zA-Z0-9]+$/);
 
   if (!isValid) {
     return { status: "invalid" as const, apiKey };
