@@ -468,6 +468,8 @@ export const slack: ExternalAPI = {
           metadata: {
             accountPointer: "/team/name",
           },
+          accessTokenPointer: "/authed_user/access_token",
+          scopePointer: "/authed_user/scope",
         },
         refresh: {
           url: "https://slack.com/api/oauth.v2.access",
@@ -751,18 +753,8 @@ export const slack: ExternalAPI = {
           name: "groups:read",
           description:
             "View basic information about private channels that your slack app has been added to",
-        },
-        {
-          name: "groups:read",
-          description:
-            "View basic information about private channels that your slack app has been added to",
 
           annotations: [userAnnotation],
-        },
-        {
-          name: "groups:write",
-          description:
-            "Manage private channels that your slack app has been added to and create new ones",
         },
         {
           name: "groups:write",

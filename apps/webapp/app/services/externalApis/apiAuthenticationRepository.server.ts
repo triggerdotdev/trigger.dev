@@ -133,6 +133,8 @@ export class APIAuthenticationRepository {
           clientSecret: getClientConfig.secret,
           key: connectionAttempt.id,
           callbackUrl: `${callbackHostName}/resources/connection/oauth2/callback`,
+          scopeParamName:
+            authenticationMethod.config.authorization.scopeParamName ?? "scope",
           scopes,
           scopeSeparator:
             authenticationMethod.config.authorization.scopeSeparator,
@@ -209,14 +211,16 @@ export class APIAuthenticationRepository {
           scopeSeparator:
             authenticationMethod.config.authorization.scopeSeparator,
           pkceCode,
-          accessTokenKey:
-            authenticationMethod.config.token.accessTokenKey ?? "access_token",
-          refreshTokenKey:
-            authenticationMethod.config.token.refreshTokenKey ??
-            "refresh_token",
-          expiresInKey:
-            authenticationMethod.config.token.expiresInKey ?? "expires_in",
-          scopeKey: authenticationMethod.config.token.scopeKey ?? "scope",
+          accessTokenPointer:
+            authenticationMethod.config.token.accessTokenPointer ??
+            "/access_token",
+          refreshTokenPointer:
+            authenticationMethod.config.token.refreshTokenPointer ??
+            "/refresh_token",
+          expiresInPointer:
+            authenticationMethod.config.token.expiresInPointer ?? "/expires_in",
+          scopePointer:
+            authenticationMethod.config.token.scopePointer ?? "/scope",
         };
         const token = await (authenticationMethod.config.token.grantToken
           ? authenticationMethod.config.token.grantToken(params)
@@ -398,14 +402,16 @@ export class APIAuthenticationRepository {
               connection.updatedAt.getTime() + accessToken.expiresIn * 1000
             ),
           },
-          accessTokenKey:
-            authenticationMethod.config.token.accessTokenKey ?? "access_token",
-          refreshTokenKey:
-            authenticationMethod.config.token.refreshTokenKey ??
-            "refresh_token",
-          expiresInKey:
-            authenticationMethod.config.token.expiresInKey ?? "expires_in",
-          scopeKey: authenticationMethod.config.token.scopeKey ?? "scope",
+          accessTokenPointer:
+            authenticationMethod.config.token.accessTokenPointer ??
+            "/access_token",
+          refreshTokenPointer:
+            authenticationMethod.config.token.refreshTokenPointer ??
+            "/refresh_token",
+          expiresInPointer:
+            authenticationMethod.config.token.expiresInPointer ?? "/expires_in",
+          scopePointer:
+            authenticationMethod.config.token.scopePointer ?? "/scope",
         };
 
         //todo do we need pkce here?

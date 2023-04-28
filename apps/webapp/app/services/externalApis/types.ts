@@ -20,6 +20,7 @@ export type CreateUrlParams = {
   clientSecret: string;
   key: string;
   callbackUrl: string;
+  scopeParamName: string;
   scopes: string[];
   scopeSeparator: string;
   pkceCode?: string;
@@ -35,10 +36,10 @@ export type GrantTokenParams = {
   callbackUrl: string;
   requestedScopes: string[];
   scopeSeparator: string;
-  accessTokenKey: string;
-  refreshTokenKey: string;
-  expiresInKey: string;
-  scopeKey: string;
+  accessTokenPointer: string;
+  refreshTokenPointer: string;
+  expiresInPointer: string;
+  scopePointer: string;
   pkceCode?: string;
 };
 
@@ -50,10 +51,10 @@ export type RefreshTokenParams = {
   requestedScopes: string[];
   scopeSeparator: string;
   token: { accessToken: string; refreshToken: string; expiresAt: Date };
-  accessTokenKey: string;
-  refreshTokenKey: string;
-  expiresInKey: string;
-  scopeKey: string;
+  accessTokenPointer: string;
+  refreshTokenPointer: string;
+  expiresInPointer: string;
+  scopePointer: string;
 };
 
 //A useful reference is the Simple OAuth2 npm library: https://github.com/lelylan/simple-oauth2/blob/HEAD/API.md#options

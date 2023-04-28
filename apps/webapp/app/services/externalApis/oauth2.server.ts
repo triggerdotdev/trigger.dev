@@ -6,6 +6,7 @@ import type {
   GrantTokenParams,
   RefreshTokenParams,
 } from "./types";
+import jsonpointer from "jsonpointer";
 
 export function getClientConfigFromEnv(idName: string, secretName: string) {
   //get the client id and secret from env vars
@@ -33,6 +34,7 @@ export async function createOAuth2Url({
   clientSecret,
   key,
   callbackUrl,
+  scopeParamName,
   scopes,
   scopeSeparator,
   pkceCode,
@@ -77,13 +79,16 @@ export async function createOAuth2Url({
     code_challenge_method: codeChallenge ? "S256" : undefined,
   };
 
+  const scopeParams: Record<string, string> = {};
+  scopeParams[scopeParamName] = scopes.join(scopeSeparator);
+
   //create the authorization url
   const authorizeUrl = simpleOAuthClient.authorizeURL({
     redirect_uri: callbackUrl,
-    scope: scopes.join(scopeSeparator),
     state: key,
     ...pkceParams,
     ...extraParameters,
+    ...scopeParams,
   });
 
   return authorizeUrl;
@@ -97,10 +102,10 @@ export async function grantOAuth2Token({
   callbackUrl,
   requestedScopes,
   scopeSeparator,
-  accessTokenKey,
-  refreshTokenKey,
-  expiresInKey,
-  scopeKey,
+  accessTokenPointer,
+  refreshTokenPointer,
+  expiresInPointer,
+  scopePointer,
   pkceCode,
 }: GrantTokenParams): Promise<AccessToken> {
   //create the oauth2 client
@@ -139,10 +144,10 @@ export async function grantOAuth2Token({
     token,
     scopeSeparator,
     requestedScopes,
-    scopeKey,
-    accessTokenKey,
-    refreshTokenKey,
-    expiresInKey,
+    scopePointer,
+    accessTokenPointer,
+    refreshTokenPointer,
+    expiresInPointer,
   });
 }
 
@@ -154,10 +159,10 @@ export async function refreshOAuth2Token({
   requestedScopes,
   scopeSeparator,
   token: { accessToken, refreshToken, expiresAt },
-  accessTokenKey,
-  refreshTokenKey,
-  expiresInKey,
-  scopeKey,
+  accessTokenPointer,
+  refreshTokenPointer,
+  expiresInPointer,
+  scopePointer,
 }: RefreshTokenParams) {
   //create the oauth2 client
   const tokenUrlObj = new URL(refreshUrl);
@@ -191,42 +196,48 @@ export async function refreshOAuth2Token({
     token: newToken,
     scopeSeparator,
     requestedScopes,
-    scopeKey,
-    accessTokenKey,
-    refreshTokenKey,
-    expiresInKey,
+    scopePointer,
+    accessTokenPointer,
+    refreshTokenPointer,
+    expiresInPointer,
   });
 }
 
 function convertToken({
   token,
-  accessTokenKey,
-  refreshTokenKey,
-  expiresInKey,
-  scopeKey,
+  accessTokenPointer,
+  refreshTokenPointer,
+  expiresInPointer,
+  scopePointer,
   requestedScopes,
   scopeSeparator,
 }: {
   token: simpleOauth2.AccessToken;
-  accessTokenKey: string;
-  refreshTokenKey: string;
-  expiresInKey: string;
-  scopeKey: string;
+  accessTokenPointer: string;
+  refreshTokenPointer: string;
+  expiresInPointer: string;
+  scopePointer: string;
   requestedScopes: string[];
   scopeSeparator: string;
 }) {
-  const accessTokenValue = token.token[accessTokenKey];
+  const accessTokenPtr = jsonpointer.compile(accessTokenPointer);
+  const accessTokenValue = accessTokenPtr.get(token.token);
   if (typeof accessTokenValue !== "string") {
     throw new Error("Invalid access token");
   }
 
   let actualScopes = requestedScopes;
-  if (typeof token.token[scopeKey] === "string") {
-    actualScopes = (token.token[scopeKey] as string).split(scopeSeparator);
+  const scopesPtr = jsonpointer.compile(scopePointer);
+  const scopesValue = scopesPtr.get(token.token);
+  if (typeof scopesValue === "string") {
+    actualScopes = (scopesValue as string).split(scopeSeparator);
   }
 
-  const refreshToken = token.token[refreshTokenKey] as string | undefined;
-  const expiresIn = token.token[expiresInKey] as number | undefined;
+  const refreshTokenPtr = jsonpointer.compile(refreshTokenPointer);
+  const refreshToken = refreshTokenPtr.get(token.token) as string | undefined;
+
+  const expiresInPtr = jsonpointer.compile(expiresInPointer);
+  const expiresIn = expiresInPtr.get(token.token) as number | undefined;
 
   const accessToken: AccessToken = {
     type: "oauth2",
