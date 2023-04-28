@@ -1,9 +1,12 @@
 import { authenticatedTask } from "@trigger.dev/sdk";
-import { clientFactory } from "./client";
+import { Octokit } from "octokit";
 
 export const createIssue = authenticatedTask({
-  clientFactory,
-  run: async (params: { title: string; repo: string }, client, task) => {
+  run: async (
+    params: { title: string; repo: string },
+    client: InstanceType<typeof Octokit>,
+    task
+  ) => {
     const [owner, repo] = params.repo.split("/");
 
     return client.rest.issues
@@ -33,10 +36,9 @@ export const createIssue = authenticatedTask({
 });
 
 export const createIssueComment = authenticatedTask({
-  clientFactory,
   run: async (
     params: { body: string; repo: string; issueNumber: number },
-    client,
+    client: InstanceType<typeof Octokit>,
     task
   ) => {
     const [owner, repo] = params.repo.split("/");
@@ -69,8 +71,11 @@ export const createIssueComment = authenticatedTask({
 });
 
 export const getRepo = authenticatedTask({
-  clientFactory,
-  run: async (params: { repo: string }, client, task) => {
+  run: async (
+    params: { repo: string },
+    client: InstanceType<typeof Octokit>,
+    task
+  ) => {
     const [owner, repo] = params.repo.split("/");
 
     const response = await client.rest.repos.get({
@@ -105,14 +110,13 @@ type ReactionContent =
   | "eyes";
 
 export const addIssueCommentReaction = authenticatedTask({
-  clientFactory,
   run: async (
     params: {
       repo: string;
       commentId: number;
       content: ReactionContent;
     },
-    client,
+    client: InstanceType<typeof Octokit>,
     task
   ) => {
     const [owner, repo] = params.repo.split("/");
@@ -175,7 +179,6 @@ export const addIssueCommentReaction = authenticatedTask({
 });
 
 export const createIssueCommentWithReaction = authenticatedTask({
-  clientFactory,
   run: async (
     params: {
       body: string;
@@ -183,7 +186,7 @@ export const createIssueCommentWithReaction = authenticatedTask({
       issueNumber: number;
       reaction: ReactionContent;
     },
-    client,
+    client: InstanceType<typeof Octokit>,
     task,
     io
   ) => {

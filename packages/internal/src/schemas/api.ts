@@ -81,6 +81,7 @@ export const JobSchema = z.object({
       key: z.string(),
       metadata: ConnectionMetadataSchema,
       usesLocalAuth: z.boolean().default(false),
+      id: z.string().optional(),
     })
   ),
   supportsPreparation: z.boolean(),

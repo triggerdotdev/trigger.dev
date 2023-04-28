@@ -1,6 +1,7 @@
 import type { PrismaClient } from "~/db.server";
 import { prisma } from "~/db.server";
 import { ClientApi } from "../clientApi.server";
+import { resolveJobConnections } from "~/models/jobConnection.server";
 
 export class PrepareJobInstanceService {
   #prismaClient: PrismaClient;
@@ -15,7 +16,15 @@ export class PrepareJobInstanceService {
         id,
       },
       include: {
-        connections: true,
+        connections: {
+          include: {
+            apiConnection: {
+              include: {
+                dataReference: true,
+              },
+            },
+          },
+        },
         job: true,
         endpoint: {
           include: {
@@ -33,7 +42,7 @@ export class PrepareJobInstanceService {
     const response = await client.prepareForJobExecution({
       id: jobInstance.job.slug,
       version: jobInstance.version,
-      connections: {}, // TODO: connections
+      connections: await resolveJobConnections(jobInstance.connections),
     });
 
     if (!response.ok) {

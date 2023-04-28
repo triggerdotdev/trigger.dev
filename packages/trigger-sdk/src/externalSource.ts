@@ -50,7 +50,7 @@ export type HandlerFunction<
 
 export type ExternalSourceOptions<TChannel extends ChannelNames> = {
   key: string;
-  localAuth?: ConnectionAuth;
+  usesLocalAuth: boolean;
   register: (
     triggerClient: TriggerClient,
     auth?: ConnectionAuth
@@ -99,11 +99,11 @@ export class ExternalSource<TChannel extends ChannelNames>
   }
 
   get usesLocalAuth() {
-    return typeof this.options.localAuth !== "undefined";
+    return this.options.usesLocalAuth;
   }
 
   async prepareForExecution(client: TriggerClient, auth?: ConnectionAuth) {
-    return this.options.register(client, auth ?? this.options.localAuth);
+    return this.options.register(client, auth);
   }
 
   async handler(
@@ -111,11 +111,7 @@ export class ExternalSource<TChannel extends ChannelNames>
     event: ExternalSourceChannelMap[TChannel]["event"],
     auth?: ConnectionAuth
   ) {
-    return this.options.handler(
-      triggerClient,
-      event,
-      auth ?? this.options.localAuth
-    );
+    return this.options.handler(triggerClient, event, auth);
   }
 
   eventElements(event: ApiEventLog) {

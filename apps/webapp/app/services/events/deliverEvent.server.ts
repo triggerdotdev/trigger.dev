@@ -1,5 +1,6 @@
 import type { EventLog, JobEventRule } from ".prisma/client";
-import { EventFilter, EventFilterSchema } from "@trigger.dev/internal";
+import type { EventFilter } from "@trigger.dev/internal";
+import { EventFilterSchema } from "@trigger.dev/internal";
 import type { PrismaClient } from "~/db.server";
 import { prisma } from "~/db.server";
 import { CreateRunService } from "../runs/createRun.server";

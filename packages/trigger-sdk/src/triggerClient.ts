@@ -1,6 +1,5 @@
 import {
   ApiEventLog,
-  ApiEventLogSchema,
   ConnectionAuth,
   ErrorWithMessage,
   ErrorWithStackSchema,
@@ -418,7 +417,12 @@ export class TriggerClient {
     const connections = Object.entries(jobConnections).reduce(
       (acc, [key, jobConnection]) => {
         const connection = executionConnections[key];
-        const client = jobConnection.clientFactory(connection);
+        const client =
+          jobConnection.client ?? jobConnection.clientFactory?.(connection);
+
+        if (!client) {
+          return acc;
+        }
 
         const ioConnection = {
           client,

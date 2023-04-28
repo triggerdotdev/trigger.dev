@@ -1,0 +1,31 @@
+{
+  "name": "@trigger.dev/slack",
+  "version": "0.2.0",
+  "description": "The official Slack integration for Trigger.dev",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "publishConfig": {
+    "access": "public"
+  },
+  "files": [
+    "dist/index.js",
+    "dist/index.d.ts",
+    "dist/index.js.map"
+  ],
+  "devDependencies": {
+    "@trigger.dev/tsconfig": "workspace:*",
+    "@types/node": "18",
+    "rimraf": "^3.0.2",
+    "tsup": "^6.5.0"
+  },
+  "scripts": {
+    "clean": "rimraf dist",
+    "build": "npm run clean && npm run build:tsup",
+    "build:tsup": "tsup"
+  },
+  "dependencies": {
+    "@slack/web-api": "^6.8.1",
+    "@trigger.dev/sdk": "workspace:^1.0.0",
+    "zod": "^3.20.2"
+  }
+}

@@ -6,7 +6,7 @@ import type { TriggerContext } from "./types";
 
 export type JobOptions<
   TEventType extends object = {},
-  TConnections extends Record<string, Connection<any, any, any>> = {}
+  TConnections extends Record<string, Connection<any, any>> = {}
 > = {
   id: string;
   name: string;
@@ -24,7 +24,7 @@ export type JobOptions<
 
 export class Job<
   TEventType extends object,
-  TConnections extends Record<string, Connection<any, any, any>>
+  TConnections extends Record<string, Connection<any, any>>
 > {
   readonly options: JobOptions<TEventType, TConnections>;
 
@@ -57,6 +57,7 @@ export class Job<
         key,
         metadata: connection.metadata,
         usesLocalAuth: connection.usesLocalAuth,
+        id: connection.id,
       };
     });
   }

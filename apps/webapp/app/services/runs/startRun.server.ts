@@ -1,7 +1,8 @@
-import type { ApiConnection, JobConnection } from ".prisma/client";
 import { ApiEventLogSchema } from "@trigger.dev/internal";
 import type { PrismaClient } from "~/db.server";
 import { prisma } from "~/db.server";
+import type { JobConnectionWithApiConnection } from "~/models/jobConnection.server";
+import { resolveJobConnections } from "~/models/jobConnection.server";
 import { ClientApi, ClientApiError } from "../clientApi.server";
 import { workerQueue } from "../worker.server";
 
@@ -22,7 +23,11 @@ export class StartRunService {
             job: true,
             connections: {
               include: {
-                apiConnection: true,
+                apiConnection: {
+                  include: {
+                    dataReference: true,
+                  },
+                },
               },
               where: {
                 key: { not: "__trigger" },
@@ -37,9 +42,10 @@ export class StartRunService {
     });
 
     // If any of the connections are missing, we can't start the execution
-    const connections = run.jobInstance.connections.filter(
-      (c) => c.apiConnection != null || c.usesLocalAuth
-    ) as Array<JobConnection & { apiConnection?: ApiConnection }>;
+    const connections: Array<JobConnectionWithApiConnection> =
+      run.jobInstance.connections.filter(
+        (c) => c.apiConnection != null || c.usesLocalAuth
+      );
 
     const client = new ClientApi(
       run.environment.apiKey,
@@ -73,7 +79,7 @@ export class StartRunService {
           version: run.jobInstance.version,
           startedAt,
         },
-        connections: {}, // TODO: connections
+        connections: await resolveJobConnections(connections),
       });
 
       if (results.completed) {

@@ -1,20 +1,18 @@
-import {
+import type {
   ApiEventLog,
-  CachedTask,
   ConnectionAuth,
   ExecuteJobBody,
   HttpSourceRequest,
-  HttpSourceResponseSchema,
   PrepareForJobExecutionBody,
-  PrepareForJobExecutionResponseSchema,
-  ServerTask,
 } from "@trigger.dev/internal";
-import { ErrorWithStackSchema } from "@trigger.dev/internal";
 import {
   DeliverEventResponseSchema,
+  ErrorWithStackSchema,
   ExecuteJobResponseSchema,
   GetJobsResponseSchema,
+  HttpSourceResponseSchema,
   PongResponseSchema,
+  PrepareForJobExecutionResponseSchema,
 } from "@trigger.dev/internal";
 import { logger } from "./logger";
 

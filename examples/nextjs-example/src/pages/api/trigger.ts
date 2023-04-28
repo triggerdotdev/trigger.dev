@@ -5,10 +5,12 @@ import {
   TriggerClient,
 } from "@trigger.dev/sdk";
 import { github } from "@trigger.dev/github";
+import { slack } from "@trigger.dev/slack";
 import type { NextApiRequest, NextApiResponse } from "next";
 import { z } from "zod";
 
 const gh = github({ token: process.env.GITHUB_TOKEN! });
+const sl = slack({ id: "my-slack-new" });
 
 const client = new TriggerClient("nextjs", {
   apiKey: process.env.TRIGGER_API_KEY,
@@ -17,59 +19,6 @@ const client = new TriggerClient("nextjs", {
   logLevel: "debug",
 });
 
-// new Job({
-//   id: "comment-on-new-issues",
-//   name: "Comment on New GitHub issues",
-//   version: "0.1.1",
-//   logLevel: "debug",
-//   connections: {
-//     gh,
-//   },
-//   // issueEvent is a helper function that creates a trigger for a GitHub issue event webhook
-//   trigger: gh.onIssueOpened({
-//     repo: "ericallam/basic-starter-100k",
-//   }),
-
-//   run: async (event, io, ctx) => {
-//     // event is a GitHubIssueEvent
-//     const comment = await io.gh.createIssueComment("📝", {
-//       repo: event.repository.full_name,
-//       issueNumber: event.issue.number,
-//       body: "Hello from Trigger!",
-//     });
-
-//     // const token = await ctx.auth.gh
-
-//     const reaction = await io.runTask(
-//       "Add 🚀",
-//       {
-//         icon: "github",
-//         name: "addReaction",
-//         elements: [
-//           { label: "reaction", text: "🚀" },
-//           {
-//             label: "issue",
-//             text: event.issue.title,
-//             url: event.issue.html_url,
-//           },
-//         ],
-//         delayUntil: new Date(Date.now() + 1000 * 30), // 30 seconds from now
-//       },
-//       async (task) =>
-//         io.gh.client.rest.reactions
-//           .createForIssueComment({
-//             owner: event.repository.owner.login,
-//             repo: event.repository.name,
-//             comment_id: comment.id,
-//             content: "rocket",
-//           })
-//           .then((res) => res.data)
-//     );
-
-//     return reaction;
-//   },
-// }).registerWith(client);
-
 new Job({
   id: "comment-on-new-issues",
   name: "Comment on New GitHub issues",
@@ -77,13 +26,17 @@ new Job({
   logLevel: "debug",
   connections: {
     gh,
+    sl,
   },
-  // issueEvent is a helper function that creates a trigger for a GitHub issue event webhook
-  trigger: gh.onIssueOpened({
+  trigger: gh.triggers.onIssueOpened({
     repo: "ericallam/basic-starter-100k",
   }),
-
   run: async (event, io, ctx) => {
+    await io.sl.postMessage("Slack 📝", {
+      text: `New Issue opened: ${event.issue.html_url}`,
+      channel: "C04GWUTDC3W",
+    });
+
     await io.runTask(
       "Comment on Issue with a reaction",
       { name: "Parent Task" },

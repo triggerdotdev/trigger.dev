@@ -12,14 +12,15 @@ export type ClientFactory<TClientType> = (auth: ConnectionAuth) => TClientType;
 
 export type Connection<
   TClientType,
-  TTriggers extends Record<string, Trigger<any>>,
   TTasks extends Record<string, AuthenticatedTask<TClientType, any, any>>
 > = {
   usesLocalAuth: boolean;
   metadata: ConnectionMetadata;
-  clientFactory: ClientFactory<TClientType>;
-  triggers?: TTriggers;
+  clientFactory?: ClientFactory<TClientType>;
+  client?: TClientType;
   tasks?: TTasks;
+  id?: string;
+  [key: string]: any;
 };
 
 export type ConnectionEvent<TParams, TEvent> = {
@@ -28,7 +29,6 @@ export type ConnectionEvent<TParams, TEvent> = {
 };
 
 export type AuthenticatedTask<TClientType, TParams, TResult> = {
-  clientFactory: ClientFactory<TClientType>;
   run: (
     params: TParams,
     client: TClientType,
@@ -39,7 +39,6 @@ export type AuthenticatedTask<TClientType, TParams, TResult> = {
 };
 
 export function authenticatedTask<TClientType, TParams, TResult>(options: {
-  clientFactory: ClientFactory<TClientType>;
   run: (
     params: TParams,
     client: TClientType,
@@ -65,20 +64,26 @@ type ExtractTasks<
   [key in keyof TTasks]: ExtractRunFunction<TTasks[key]>;
 };
 
-type ExtractClient<TClientFactory extends ClientFactory<any>> = {
-  client: ReturnType<TClientFactory>;
-};
+type ExtractClient<
+  TClientFactory extends ClientFactory<any> | undefined,
+  TClient extends any | undefined
+> = TClientFactory extends ClientFactory<infer TClientType>
+  ? { client: TClientType }
+  : TClient extends any
+  ? { client: TClient }
+  : never;
 
-type ExtractConnection<TConnection extends Connection<any, any, any>> =
-  ExtractTasks<TConnection["tasks"]> &
-    ExtractClient<TConnection["clientFactory"]>;
+type ExtractConnection<TConnection extends Connection<any, any>> = ExtractTasks<
+  TConnection["tasks"]
+> &
+  ExtractClient<TConnection["clientFactory"], TConnection["client"]>;
 
 type ExtractConnections<
-  TConnections extends Record<string, Connection<any, any, any>>
+  TConnections extends Record<string, Connection<any, any>>
 > = {
   [key in keyof TConnections]: ExtractConnection<TConnections[key]>;
 };
 
 export type IOWithConnections<
-  TConnections extends Record<string, Connection<any, any, any>>
+  TConnections extends Record<string, Connection<any, any>>
 > = IO & ExtractConnections<TConnections>;

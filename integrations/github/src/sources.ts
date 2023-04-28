@@ -1,6 +1,6 @@
 import { Webhooks } from "@octokit/webhooks";
 import { ExternalSource } from "@trigger.dev/sdk/externalSource";
-import { clientFactory } from "./client";
+import { Octokit } from "octokit";
 import { metadata } from "./metadata";
 
 type WebhookData = {
@@ -27,24 +27,21 @@ export function repositoryWebhookSource(
     events: string[];
     secret?: string;
   },
-  { token }: { token?: string } = {}
+  client: Octokit
 ) {
   // Create a stable key for this source so we only register it once
   const key = `github.repo.${params.repo}.webhook`;
 
   return new ExternalSource("http", metadata, {
+    usesLocalAuth: true,
     key,
-    localAuth: token ? { type: "apiKey", apiKey: token } : undefined,
     register: async (triggerClient, auth) => {
       if (!auth) {
         throw new Error("No auth provided");
       }
 
-      const client = clientFactory(auth);
-
       const httpSource = await triggerClient.registerHttpSource({
         key,
-        connectionId: auth.connectionId,
       });
 
       const [owner, repo] = params.repo.split("/");

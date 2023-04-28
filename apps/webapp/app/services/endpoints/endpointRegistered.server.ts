@@ -1,9 +1,15 @@
-import type { Endpoint, Job, JobConnection, JobInstance } from ".prisma/client";
+import type {
+  Endpoint,
+  Job,
+  JobConnection,
+  JobInstance,
+  ApiConnection,
+} from ".prisma/client";
 import type { ApiJob, ConnectionMetadata } from "@trigger.dev/internal";
 import semver from "semver";
 import type { PrismaClient } from "~/db.server";
 import { prisma } from "~/db.server";
-import { AuthenticatedEnvironment } from "../apiAuth.server";
+import type { AuthenticatedEnvironment } from "../apiAuth.server";
 import { ClientApi } from "../clientApi.server";
 import { allConnectionsReady } from "../jobs/utils.server";
 import { logger } from "../logger";
@@ -83,7 +89,11 @@ export class EndpointRegisteredService {
         title: apiJob.name,
       },
       include: {
-        connections: true,
+        connections: {
+          include: {
+            apiConnection: true,
+          },
+        },
         instances: {
           where: {
             endpointId: endpoint.id,
@@ -152,7 +162,11 @@ export class EndpointRegisteredService {
         trigger: apiJob.trigger,
       },
       include: {
-        connections: true,
+        connections: {
+          include: {
+            apiConnection: true,
+          },
+        },
       },
     });
 
@@ -165,7 +179,8 @@ export class EndpointRegisteredService {
           jobInstance,
           "__trigger",
           apiJob.trigger.connection.metadata,
-          apiJob.trigger.connection.usesLocalAuth
+          apiJob.trigger.connection.usesLocalAuth,
+          apiJob.trigger.connection.id
         )
       );
     }
@@ -178,7 +193,8 @@ export class EndpointRegisteredService {
           jobInstance,
           connection.key,
           connection.metadata,
-          connection.usesLocalAuth
+          connection.usesLocalAuth,
+          connection.id
         )
       );
     }
@@ -264,31 +280,152 @@ export class EndpointRegisteredService {
   }
 
   async #upsertJobConnection(
-    job: Job & { connections: JobConnection[] },
-    jobInstance: JobInstance & { connections: JobConnection[] },
+    job: Job & {
+      connections: Array<
+        JobConnection & { apiConnection: ApiConnection | null }
+      >;
+    },
+    jobInstance: JobInstance & {
+      connections: Array<
+        JobConnection & { apiConnection: ApiConnection | null }
+      >;
+    },
     key: string,
     metadata: ConnectionMetadata,
-    usesLocalAuth: boolean
+    usesLocalAuth: boolean,
+    id?: string
   ): Promise<JobConnection> {
+    if (usesLocalAuth) {
+      return this.#upsertLocalAuthConnection(job, jobInstance, key, metadata);
+    }
+
+    if (!id) {
+      logger.debug("Missing connection id", {
+        key,
+        metadata,
+        usesLocalAuth,
+        job,
+      });
+
+      throw new Error("Missing connection id");
+    }
+
+    const apiConnection =
+      await this.#prismaClient.apiConnection.findUniqueOrThrow({
+        where: {
+          organizationId_slug: {
+            organizationId: job.organizationId,
+            slug: id,
+          },
+        },
+      });
+
     // Find existing connection in the job instance
     const existingInstanceConnection = jobInstance.connections.find(
       (connection) => connection.key === key
     );
 
     if (existingInstanceConnection) {
-      if (usesLocalAuth && existingInstanceConnection.apiConnectionId) {
-        // If the connection uses local auth, we need to delete the existing ApiConnection
-        return await this.#prismaClient.jobConnection.update({
-          where: {
-            id: existingInstanceConnection.id,
-          },
-          data: {
-            apiConnectionId: null,
-            usesLocalAuth: true,
-          },
-        });
-      }
+      return await this.#prismaClient.jobConnection.update({
+        where: {
+          id: existingInstanceConnection.id,
+        },
+        data: {
+          apiConnectionId: apiConnection.id,
+          usesLocalAuth: false,
+        },
+      });
+    }
 
+    // Find existing connection in the job
+    const existingJobConnection = job.connections.find(
+      (connection) => connection.key === key
+    );
+
+    if (existingJobConnection) {
+      return this.#prismaClient.jobConnection.create({
+        data: {
+          jobInstance: {
+            connect: {
+              id: jobInstance.id,
+            },
+          },
+          job: {
+            connect: {
+              id: job.id,
+            },
+          },
+          key,
+          connectionMetadata: existingJobConnection.connectionMetadata ?? {},
+          apiConnection: {
+            connect: {
+              id: apiConnection.id,
+            },
+          },
+          usesLocalAuth: false,
+        },
+      });
+    }
+
+    return this.#prismaClient.jobConnection.create({
+      data: {
+        jobInstance: {
+          connect: {
+            id: jobInstance.id,
+          },
+        },
+        job: {
+          connect: {
+            id: job.id,
+          },
+        },
+        key,
+        connectionMetadata: metadata,
+        apiConnection: {
+          connect: {
+            id: apiConnection.id,
+          },
+        },
+        usesLocalAuth,
+      },
+    });
+  }
+
+  async #upsertLocalAuthConnection(
+    job: Job & {
+      connections: Array<
+        JobConnection & { apiConnection: ApiConnection | null }
+      >;
+    },
+    jobInstance: JobInstance & {
+      connections: Array<
+        JobConnection & { apiConnection: ApiConnection | null }
+      >;
+    },
+    key: string,
+    metadata: ConnectionMetadata
+  ): Promise<JobConnection> {
+    // Find existing connection in the job instance
+    const existingInstanceConnection = jobInstance.connections.find(
+      (connection) => connection.key === key
+    );
+
+    if (
+      existingInstanceConnection &&
+      existingInstanceConnection.apiConnectionId
+    ) {
+      return await this.#prismaClient.jobConnection.update({
+        where: {
+          id: existingInstanceConnection.id,
+        },
+        data: {
+          apiConnectionId: null,
+          usesLocalAuth: true,
+        },
+      });
+    }
+
+    if (existingInstanceConnection) {
       return existingInstanceConnection;
     }
 
@@ -312,27 +449,10 @@ export class EndpointRegisteredService {
           },
           key,
           connectionMetadata: existingJobConnection.connectionMetadata ?? {},
-          apiConnection:
-            existingJobConnection.apiConnectionId && !usesLocalAuth
-              ? {
-                  connect: {
-                    id: existingJobConnection.apiConnectionId,
-                  },
-                }
-              : undefined,
-          usesLocalAuth,
+          usesLocalAuth: true,
         },
       });
     }
-
-    // Find existing ApiConnection in the org
-    const existingApiConnection =
-      await this.#prismaClient.apiConnection.findFirst({
-        where: {
-          apiIdentifier: metadata.id,
-          organizationId: job.organizationId,
-        },
-      });
 
     return this.#prismaClient.jobConnection.create({
       data: {
@@ -348,15 +468,7 @@ export class EndpointRegisteredService {
         },
         key,
         connectionMetadata: metadata,
-        apiConnection:
-          existingApiConnection && !usesLocalAuth
-            ? {
-                connect: {
-                  id: existingApiConnection.id,
-                },
-              }
-            : undefined,
-        usesLocalAuth,
+        usesLocalAuth: true,
       },
     });
   }

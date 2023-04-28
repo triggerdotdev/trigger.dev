@@ -3,6 +3,7 @@ export * from "./job";
 export * from "./triggerClient";
 export * from "./connections";
 export * from "./externalSource";
+export * from "./io";
 
 import { SecureString } from "./types";
 
