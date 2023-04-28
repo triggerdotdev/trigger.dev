@@ -15,6 +15,7 @@ import {
 } from "../primitives/Sheet";
 import { Header3 } from "../primitives/text/Headers";
 import { Input } from "../primitives/Input";
+import { Badge } from "../primitives/Badge";
 
 export type Status = "loading" | "idle";
 
@@ -86,26 +87,40 @@ export function ConnectButton({
               />
 
               <Header3>Select scopes</Header3>
-              {apiAuthmethod.scopes.map((s) => {
-                const fieldName = `scopes[${s.name}]`;
-                return (
-                  <fieldset key={s.name} className="flex items-start gap-2">
-                    <input
-                      type="checkbox"
-                      name={fieldName}
-                      id={fieldName}
-                      defaultChecked={s.defaultChecked ?? false}
-                      className="mt-1"
-                    />
-                    <div>
-                      <label htmlFor={fieldName}>{s.name}</label>
-                      {s.description && (
-                        <p className="text-slate-300">{s.description}</p>
-                      )}
-                    </div>
-                  </fieldset>
-                );
-              })}
+              <div className="flex flex-col gap-2">
+                {apiAuthmethod.scopes.map((s) => {
+                  const fieldName = `scopes[${s.name}]`;
+                  return (
+                    <fieldset key={s.name} className="flex items-start gap-2">
+                      <input
+                        type="checkbox"
+                        name={fieldName}
+                        id={fieldName}
+                        defaultChecked={s.defaultChecked ?? false}
+                        className="mt-1"
+                      />
+                      <div>
+                        <div className="flex gap-2">
+                          <label htmlFor={fieldName}>{s.name}</label>
+                          {s.annotations &&
+                            s.annotations.map((a) => (
+                              <Badge
+                                key={a.label}
+                                className="py-0.5 px-1.5 text-xs"
+                                style={{ backgroundColor: a.color }}
+                              >
+                                {a.label}
+                              </Badge>
+                            ))}
+                        </div>
+                        {s.description && (
+                          <p className="text-slate-300">{s.description}</p>
+                        )}
+                      </div>
+                    </fieldset>
+                  );
+                })}
+              </div>
             </div>
           </div>
 
