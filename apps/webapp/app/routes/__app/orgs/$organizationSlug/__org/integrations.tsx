@@ -14,6 +14,7 @@ import { Container } from "~/components/layout/Container";
 import { Header } from "~/components/layout/Header";
 import { List } from "~/components/layout/List";
 import { OrganizationsSideMenu } from "~/components/navigation/SideMenu";
+import { Badge } from "~/components/primitives/Badge";
 import {
   SecondaryButton,
   primaryClasses,
@@ -25,7 +26,7 @@ import {
   PopoverTrigger,
 } from "~/components/primitives/Popover";
 import { Body } from "~/components/primitives/text/Body";
-import { Header3 } from "~/components/primitives/text/Headers";
+import { Header3, Header4 } from "~/components/primitives/text/Headers";
 import { SubTitle } from "~/components/primitives/text/SubTitle";
 import { Title } from "~/components/primitives/text/Title";
 import { useCurrentOrganization } from "~/hooks/useOrganizations";
@@ -101,9 +102,13 @@ export default function Integrations() {
                           />
                           <div className="flex-grow">
                             <div className="flex flex-col gap-0.5">
-                              <Header3 size="small" className="truncate">
-                                {connection.title} - {connection.slug}
+                              <Header3 size="small" className="flex gap-2">
+                                <span>{connection.title}</span>
+                                <Badge variant="secondary">
+                                  {connection.authenticationMethod.name}
+                                </Badge>
                               </Header3>
+
                               {connection.metadata.account && (
                                 <Body size="small" className="text-slate-400">
                                   Account: {connection.metadata.account}

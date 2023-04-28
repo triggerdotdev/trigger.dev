@@ -513,6 +513,7 @@ export class APIAuthenticationRepository {
       },
       authenticationMethod: {
         type: authenticationMethod.type,
+        name: authenticationMethod.name,
         possibleScopes: authenticationMethod.scopes,
       },
     };
