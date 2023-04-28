@@ -15,6 +15,7 @@ export const SecretStoreProviderSchema = z.union([
 ]);
 export type SecretStoreProvider = z.infer<typeof SecretStoreProviderSchema>;
 
+/** The SecretStore will use the passed in provider. We do NOT recommend using "database" outside of localhost. */
 export class SecretStore implements ASecretStore {
   #provider: ASecretStore;
 
@@ -42,6 +43,7 @@ export class SecretStore implements ASecretStore {
   }
 }
 
+/** This stores secrets in the Postgres Database, in plain text. NOT recommended outside of localhost. */
 class DatabaseSecretStore implements ASecretStore {
   async getSecret<TSchema extends z.ZodFirstPartySchemaTypes>(
     schema: TSchema,
