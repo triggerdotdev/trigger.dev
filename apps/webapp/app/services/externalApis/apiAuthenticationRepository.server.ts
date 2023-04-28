@@ -222,22 +222,47 @@ export class APIAuthenticationRepository {
           ? authenticationMethod.config.token.grantToken(params)
           : grantOAuth2Token(params));
 
-        const secretReference = await this.#prismaClient.secretReference.create(
-          {
-            data: {
-              key: `${organizationId}-${apiIdentifier}-${authenticationMethodKey}-${nanoid()}`,
-              provider: env.SECRET_STORE,
-            },
-          }
-        );
-
-        const secretStore = new SecretStore(env.SECRET_STORE);
-        await secretStore.setSecret(secretReference.key, token);
+        //this key is used to store in the relevant SecretStore
+        const hashedAccessToken = crypto
+          .createHash("sha256")
+          .update(token.accessToken)
+          .digest("base64");
+        const key = `${apiIdentifier}-${hashedAccessToken}`;
 
         const metadata = this.#getMetadataFromToken({
           token,
           authenticationMethod,
         });
+
+        let secretReference =
+          await this.#prismaClient.secretReference.findUnique({
+            where: {
+              key,
+            },
+          });
+
+        if (secretReference) {
+          //if the secret reference already exists, update existing connections with the new scopes information
+          await this.#prismaClient.apiConnection.updateMany({
+            where: {
+              dataReferenceId: secretReference.id,
+            },
+            data: {
+              scopes: token.scopes,
+              metadata,
+            },
+          });
+        } else {
+          secretReference = await this.#prismaClient.secretReference.create({
+            data: {
+              key,
+              provider: env.SECRET_STORE,
+            },
+          });
+        }
+
+        const secretStore = new SecretStore(env.SECRET_STORE);
+        await secretStore.setSecret(key, token);
 
         //if there's an expiry, we want to add it to the connection so we can easily run a background job against it
         const expiresAt = this.#getExpiresAtFromToken({ token });
@@ -250,6 +275,12 @@ export class APIAuthenticationRepository {
 
           if (appendRandom) {
             slug = `${slug}-${randomGenerator()}`;
+          }
+
+          if (!secretReference) {
+            throw new Error(
+              `Unable to create secret reference for key ${key} and provider ${env.SECRET_STORE}`
+            );
           }
 
           try {
