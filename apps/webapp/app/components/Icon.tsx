@@ -4,19 +4,17 @@ import {
   InformationCircleIcon,
   StopIcon,
 } from "@heroicons/react/20/solid";
-import classNames from "classnames";
+import { cn } from "~/utils/cn";
 
 const icons = {
   warning: (className: string) => (
-    <ExclamationTriangleIcon
-      className={classNames(className, "text-yellow-500")}
-    />
+    <ExclamationTriangleIcon className={cn(className, "text-yellow-500")} />
   ),
   error: (className: string) => (
-    <ExclamationCircleIcon className={classNames(className, "text-rose-500")} />
+    <ExclamationCircleIcon className={cn(className, "text-rose-500")} />
   ),
   info: (className: string) => (
-    <InformationCircleIcon className={classNames(className, "text-blue-500")} />
+    <InformationCircleIcon className={cn(className, "text-blue-500")} />
   ),
   slack: (className: string) => (
     <img src={`/integrations/slack.png`} className={className} alt="Slack" />
@@ -51,4 +49,22 @@ export function NamedIcon({
 
   //default fallback icon
   return <StopIcon className={className} />;
+}
+
+export function NamedIconInBox({
+  name,
+  className,
+  fallback,
+}: {
+  name: string;
+  className?: string;
+  fallback?: JSX.Element;
+}) {
+  return (
+    <div
+      className={cn("rounded-sm border-slate-850 bg-slate-900 p-2", className)}
+    >
+      <NamedIcon name={name} fallback={fallback} className="h-5 w-5" />
+    </div>
+  );
 }

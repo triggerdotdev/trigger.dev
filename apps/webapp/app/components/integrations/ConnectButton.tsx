@@ -21,24 +21,25 @@ export type Status = "loading" | "idle";
 
 export function ConnectButton({
   api,
+  authMethodKey,
   organizationId,
   children,
   className,
 }: {
   api: ExternalAPI;
+  authMethodKey: string;
   organizationId: string;
   children: React.ReactNode;
   className?: string;
 }) {
   const transition = useTransition();
   const fetcher = useTypedFetcher<typeof action>();
-  const apiAuthmethodKey = Object.keys(api.authenticationMethods)[0];
-  const apiAuthmethod = Object.values(api.authenticationMethods)[0];
+  const apiAuthmethod = api.authenticationMethods[authMethodKey];
   const location = useLocation();
 
   return (
     <Sheet>
-      <SheetTrigger>{children}</SheetTrigger>
+      <SheetTrigger className={className}>{children}</SheetTrigger>
       <SheetContent className="h-full">
         <fetcher.Form
           method="post"
@@ -70,7 +71,7 @@ export function ConnectButton({
               <input
                 type="hidden"
                 name="authenticationMethodKey"
-                value={apiAuthmethodKey}
+                value={authMethodKey}
               />
               <input
                 type="hidden"
@@ -145,14 +146,17 @@ export function ConnectButton({
 
 export function BasicConnectButton({
   api,
+  authMethodKey,
   organizationId,
 }: {
   api: ExternalAPI;
+  authMethodKey: string;
   organizationId: string;
 }) {
   return (
     <ConnectButton
       api={api}
+      authMethodKey={authMethodKey}
       organizationId={organizationId}
       className="flex items-center gap-3 rounded bg-indigo-700 py-2 pl-3 pr-4 text-sm text-white shadow-md transition hover:bg-indigo-600 disabled:opacity-50"
     >

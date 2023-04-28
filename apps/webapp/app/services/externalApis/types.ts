@@ -83,6 +83,8 @@ export type APIAuthenticationMethodOAuth2 = {
       url: string;
       /** The string that is used to separate the scopes, usually a space or comma */
       scopeSeparator: string;
+      /** The param name of the scope, default is just "scope". Slack has "user" scopes that are a different query param */
+      scopeParamName?: string;
       /** The location of the authorization header, default is "body" */
       authorizationLocation?: AuthorizationLocation;
       /** Additional parameters to send to the authorization url */
@@ -98,14 +100,14 @@ export type APIAuthenticationMethodOAuth2 = {
         /** JSONPointer to the owner info in the raw token response */
         accountPointer?: string;
       };
-      /** The access_token key in the token. Default to "access_token" */
-      accessTokenKey?: string;
-      /** The refresh_token key in the token. Default to "refresh_token" */
-      refreshTokenKey?: string;
-      /** The expires_in key in the token. Default to "expires_in" */
-      expiresInKey?: string;
-      /** The scope key in the token. Default to "scope" */
-      scopeKey?: string;
+      /** The access_token key in the token. Default to "/access_token" */
+      accessTokenPointer?: string;
+      /** The refresh_token key in the token. Default to "/refresh_token" */
+      refreshTokenPointer?: string;
+      /** The expires_in key in the token. Default to "/expires_in" */
+      expiresInPointer?: string;
+      /** The scope key in the token. Default to "/scope" */
+      scopePointer?: string;
       /** Some APIs have strange granting logic, this allows total control to deal with that */
       grantToken?: (config: GrantTokenParams) => Promise<AccessToken>;
     };
@@ -142,8 +144,6 @@ type Scope = {
   description?: string;
   /** Default state of the checkbox. If unspecified it's false */
   defaultChecked?: boolean;
-  /** The param name of the scope, default is just "scope". Slack has "user" scopes that are a different query param */
-  paramName?: string;
   /** Optional annotation that can appear next to the option  */
   annotations?: ScopeAnnotation[];
 };

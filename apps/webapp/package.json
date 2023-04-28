@@ -65,6 +65,7 @@
     "@octokit/webhooks-methods": "^3.0.2",
     "@prisma/client": "^4.3.0",
     "@radix-ui/react-dialog": "^1.0.3",
+    "@radix-ui/react-popover": "^1.0.5",
     "@react-email/head": "^0.0.2",
     "@remix-run/express": "v1.11.0",
     "@remix-run/node": "v1.11.0",
