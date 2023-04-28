@@ -53,7 +53,7 @@ model Organization {
 
   workflows          Workflow[]
   environments       RuntimeEnvironment[]
-  apiConnections     APIConnection[]
+  apiConnections     ApiConnection[]
   events             TriggerEvent[]
   externalSources    ExternalSource[]
   eventRules         EventRule[]
@@ -72,9 +72,10 @@ model Organization {
   members            OrgMember[]
 }
 
-model APIConnection {
+model ApiConnection {
   id String @id @default(cuid())
 
+  slug          String
   title         String
   apiIdentifier String
 
@@ -92,16 +93,17 @@ model APIConnection {
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   organizationId String
 
-  apiConnectionAttempt APIConnectionAttempt[]
-
+  attempts         ApiConnectionAttempt[]
   externalSources  ExternalSource[]
   externalServices ExternalService[]
 
   jobConnections JobConnection[]
   httpSources    HttpSource[]
+
+  @@unique([organizationId, slug])
 }
 
-model APIConnectionAttempt {
+model ApiConnectionAttempt {
   id String @id @default(cuid())
 
   title                   String
@@ -113,7 +115,7 @@ model APIConnectionAttempt {
 
   redirectTo String @default("/")
 
-  apiConnection   APIConnection? @relation(fields: [apiConnectionId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  apiConnection   ApiConnection? @relation(fields: [apiConnectionId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   apiConnectionId String?
 
   createdAt DateTime @default(now())
@@ -301,7 +303,7 @@ model ExternalSource {
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
 
-  connection   APIConnection? @relation(fields: [connectionId], references: [id], onDelete: SetNull)
+  connection   ApiConnection? @relation(fields: [connectionId], references: [id], onDelete: SetNull)
   connectionId String?
 
   @@unique([organizationId, key])
@@ -391,7 +393,7 @@ model ExternalService {
   workflow   Workflow @relation(fields: [workflowId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   workflowId String
 
-  connection   APIConnection? @relation(fields: [connectionId], references: [id], onDelete: SetNull)
+  connection   ApiConnection? @relation(fields: [connectionId], references: [id], onDelete: SetNull)
   connectionId String?
 
   type   ExternalServiceType
@@ -1049,7 +1051,7 @@ model JobConnection {
 
   usesLocalAuth Boolean @default(false)
 
-  apiConnection   APIConnection? @relation(fields: [apiConnectionId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  apiConnection   ApiConnection? @relation(fields: [apiConnectionId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   apiConnectionId String?
 
   createdAt DateTime @default(now())
@@ -1183,7 +1185,7 @@ model SecretReference {
   key      String
   provider String
 
-  apiConnection APIConnection?
+  apiConnection ApiConnection?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1217,7 +1219,7 @@ model HttpSource {
   project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   projectId String
 
-  connection   APIConnection? @relation(fields: [connectionId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  connection   ApiConnection? @relation(fields: [connectionId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   connectionId String?
 
   active      Boolean @default(false)

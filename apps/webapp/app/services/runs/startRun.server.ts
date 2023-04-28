@@ -1,11 +1,9 @@
-import { APIConnection, JobConnection } from ".prisma/client";
-import { ApiEventLogSchema, ConnectionAuth } from "@trigger.dev/internal";
+import type { ApiConnection, JobConnection } from ".prisma/client";
+import { ApiEventLogSchema } from "@trigger.dev/internal";
 import type { PrismaClient } from "~/db.server";
 import { prisma } from "~/db.server";
-import { getConnectionAuths } from "../connectionAuth.server";
 import { ClientApi, ClientApiError } from "../clientApi.server";
 import { workerQueue } from "../worker.server";
-import { logger } from "../logger";
 
 export class StartRunService {
   #prismaClient: PrismaClient;
@@ -41,7 +39,7 @@ export class StartRunService {
     // If any of the connections are missing, we can't start the execution
     const connections = run.jobInstance.connections.filter(
       (c) => c.apiConnection != null || c.usesLocalAuth
-    ) as Array<JobConnection & { apiConnection?: APIConnection }>;
+    ) as Array<JobConnection & { apiConnection?: ApiConnection }>;
 
     const client = new ClientApi(
       run.environment.apiKey,
@@ -75,7 +73,7 @@ export class StartRunService {
           version: run.jobInstance.version,
           startedAt,
         },
-        connections: await getConnectionAuths(connections),
+        connections: {}, // TODO: connections
       });
 
       if (results.completed) {

@@ -277,7 +277,7 @@ export class EndpointRegisteredService {
 
     if (existingInstanceConnection) {
       if (usesLocalAuth && existingInstanceConnection.apiConnectionId) {
-        // If the connection uses local auth, we need to delete the existing APIConnection
+        // If the connection uses local auth, we need to delete the existing ApiConnection
         return await this.#prismaClient.jobConnection.update({
           where: {
             id: existingInstanceConnection.id,
@@ -325,9 +325,9 @@ export class EndpointRegisteredService {
       });
     }
 
-    // Find existing APIConnection in the org
+    // Find existing ApiConnection in the org
     const existingApiConnection =
-      await this.#prismaClient.aPIConnection.findFirst({
+      await this.#prismaClient.apiConnection.findFirst({
         where: {
           apiIdentifier: metadata.id,
           organizationId: job.organizationId,

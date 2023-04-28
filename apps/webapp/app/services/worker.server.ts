@@ -5,10 +5,10 @@ import { EndpointRegisteredService } from "./endpoints/endpointRegistered.server
 import { PrepareForJobExecutionService } from "./endpoints/prepareForJobExecution.server";
 import { PrepareJobInstanceService } from "./endpoints/prepareJobInstance.server";
 import { DeliverEventService } from "./events/deliverEvent.server";
+import { apiConnectionRepository } from "./externalApis/apiAuthenticationRepository.server";
 import { ResumeTaskService } from "./runs/resumeTask.server";
 import { StartRunService } from "./runs/startRun.server";
 import { DeliverHttpSourceRequestService } from "./sources/deliverHttpSourceRequest.server";
-import { APIAuthenticationRepository } from "./externalApis/apiAuthenticationRepository.server";
 
 const workerCatalog = {
   organizationCreated: z.object({ id: z.string() }),
@@ -181,10 +181,7 @@ function getWorkerQueue() {
       refreshOAuthToken: {
         queueName: "internal-queue",
         handler: async (payload, job) => {
-          const authRepository = new APIAuthenticationRepository(
-            payload.organizationId
-          );
-          await authRepository.refreshConnection({
+          await apiConnectionRepository.refreshConnection({
             connectionId: payload.connectionId,
           });
         },

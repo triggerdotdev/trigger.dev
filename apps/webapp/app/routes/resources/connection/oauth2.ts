@@ -2,7 +2,7 @@ import type { ActionArgs } from "@remix-run/server-runtime";
 import { redirect, typedjson } from "remix-typedjson";
 import z from "zod";
 import { prisma } from "~/db.server";
-import { APIAuthenticationRepository } from "~/services/externalApis/apiAuthenticationRepository.server";
+import { apiConnectionRepository } from "~/services/externalApis/apiAuthenticationRepository.server";
 
 const FormSchema = z
   .object({
@@ -43,7 +43,7 @@ export async function action({ request }: ActionArgs) {
     parsed.data;
 
   //check if there's an existing connection with the same title
-  const existingConnection = await prisma.aPIConnection.findFirst({
+  const existingConnection = await prisma.apiConnection.findFirst({
     where: {
       organizationId,
       title,
@@ -75,9 +75,8 @@ export async function action({ request }: ActionArgs) {
     );
   }
 
-  const repository = new APIAuthenticationRepository(organizationId);
-
-  const redirectUrl = await repository.createConnectionAttempt({
+  const redirectUrl = await apiConnectionRepository.createConnectionAttempt({
+    organizationId,
     apiIdentifier: api,
     authenticationMethodKey,
     scopes,

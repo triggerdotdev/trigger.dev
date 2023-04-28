@@ -23,7 +23,7 @@ import { SubTitle } from "~/components/primitives/text/SubTitle";
 import { Title } from "~/components/primitives/text/Title";
 import { useCurrentOrganization } from "~/hooks/useOrganizations";
 import { getOrganizationFromSlug } from "~/models/organization.server";
-import { APIAuthenticationRepository } from "~/services/externalApis/apiAuthenticationRepository.server";
+import { apiConnectionRepository } from "~/services/externalApis/apiAuthenticationRepository.server";
 import { apiStore } from "~/services/externalApis/apiStore";
 import type { ExternalAPI } from "~/services/externalApis/types";
 import { requireUser } from "~/services/session.server";
@@ -39,8 +39,9 @@ export const loader = async ({ request, params }: LoaderArgs) => {
   });
   invariant(organization, "Organization not found");
 
-  const authRepository = new APIAuthenticationRepository(organization.id);
-  const connections = await authRepository.getAllConnections();
+  const connections = await apiConnectionRepository.getAllConnections(
+    organization.id
+  );
 
   const apis = apiStore.getApis();
 
@@ -94,7 +95,7 @@ export default function Integrations() {
                           <div className="flex-grow">
                             <div className="flex flex-col gap-0.5">
                               <Header3 size="small" className="truncate">
-                                {connection.title}
+                                {connection.title} - {connection.slug}
                               </Header3>
                               {connection.metadata.account && (
                                 <Body size="small" className="text-slate-400">

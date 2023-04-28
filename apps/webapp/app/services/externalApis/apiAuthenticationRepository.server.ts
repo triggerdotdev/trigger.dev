@@ -1,7 +1,8 @@
-import type { APIConnection, SecretReference } from ".prisma/client";
+import type { ApiConnection, SecretReference } from ".prisma/client";
 import jsonpointer from "jsonpointer";
-import { nanoid } from "nanoid";
+import { customAlphabet, nanoid } from "nanoid";
 import * as crypto from "node:crypto";
+import createSlug from "slug";
 import type { PrismaClient } from "~/db.server";
 import { prisma } from "~/db.server";
 import { env } from "~/env.server";
@@ -17,8 +18,8 @@ import {
   refreshOAuth2Token,
 } from "./oauth2.server";
 import type {
-  APIAuthenticationMethodOAuth2,
   AccessToken,
+  APIAuthenticationMethodOAuth2,
   ConnectionMetadata,
   ExternalAPI,
   GrantTokenParams,
@@ -26,43 +27,29 @@ import type {
 } from "./types";
 import { AccessTokenSchema, ConnectionMetadataSchema } from "./types";
 
-export type APIConnectionWithSecretReference = APIConnection & {
+export type ApiConnectionWithSecretReference = ApiConnection & {
   dataReference: SecretReference;
 };
+
+const randomGenerator = customAlphabet("1234567890abcdef", 3);
 
 /** How many seconds before expiry we should refresh the token  */
 const tokenRefreshThreshold = 5 * 60;
 
 export class APIAuthenticationRepository {
-  #organizationId: string;
   #apiStore: APIStore;
   #prismaClient: PrismaClient;
 
-  constructor(
-    organizationId: string,
-    apiStore: APIStore = apis,
-    prismaClient: PrismaClient = prisma
-  ) {
-    this.#organizationId = organizationId;
+  constructor(apiStore: APIStore = apis, prismaClient: PrismaClient = prisma) {
     this.#apiStore = apiStore;
     this.#prismaClient = prismaClient;
   }
 
   /** Get all API connections for the organization */
-  async getAllConnections() {
-    const connections = await this.#prismaClient.aPIConnection.findMany({
+  async getAllConnections(organizationId: string) {
+    const connections = await this.#prismaClient.apiConnection.findMany({
       where: {
-        organizationId: this.#organizationId,
-      },
-      select: {
-        id: true,
-        title: true,
-        apiIdentifier: true,
-        authenticationMethodKey: true,
-        metadata: true,
-        createdAt: true,
-        updatedAt: true,
-        scopes: true,
+        organizationId: organizationId,
       },
       orderBy: {
         title: "asc",
@@ -73,21 +60,11 @@ export class APIAuthenticationRepository {
   }
 
   /** Get all API connections for the organization, for a specific API */
-  async getConnectionsForApi(api: ExternalAPI) {
-    const connections = await this.#prismaClient.aPIConnection.findMany({
+  async getConnectionsForApi(organizationId: string, api: ExternalAPI) {
+    const connections = await this.#prismaClient.apiConnection.findMany({
       where: {
-        organizationId: this.#organizationId,
+        organizationId: organizationId,
         apiIdentifier: api.identifier,
-      },
-      select: {
-        id: true,
-        title: true,
-        apiIdentifier: true,
-        authenticationMethodKey: true,
-        metadata: true,
-        createdAt: true,
-        updatedAt: true,
-        scopes: true,
       },
     });
 
@@ -95,12 +72,14 @@ export class APIAuthenticationRepository {
   }
 
   async createConnectionAttempt({
+    organizationId,
     apiIdentifier,
     authenticationMethodKey,
     scopes,
     title,
     redirectTo,
   }: {
+    organizationId: string;
     apiIdentifier: string;
     authenticationMethodKey: string;
     scopes: string[];
@@ -129,9 +108,9 @@ export class APIAuthenticationRepository {
 
         //create a connection attempt
         const connectionAttempt =
-          await this.#prismaClient.aPIConnectionAttempt.create({
+          await this.#prismaClient.apiConnectionAttempt.create({
             data: {
-              organizationId: this.#organizationId,
+              organizationId: organizationId,
               apiIdentifier,
               authenticationMethodKey,
               scopes,
@@ -183,6 +162,7 @@ export class APIAuthenticationRepository {
   }
 
   async createConnection({
+    organizationId,
     apiIdentifier,
     authenticationMethodKey,
     scopes,
@@ -190,6 +170,7 @@ export class APIAuthenticationRepository {
     title,
     pkceCode,
   }: {
+    organizationId: string;
     apiIdentifier: string;
     authenticationMethodKey: string;
     scopes: string[];
@@ -244,9 +225,7 @@ export class APIAuthenticationRepository {
         const secretReference = await this.#prismaClient.secretReference.create(
           {
             data: {
-              key: `${
-                this.#organizationId
-              }-${apiIdentifier}-${authenticationMethodKey}-${nanoid()}`,
+              key: `${organizationId}-${apiIdentifier}-${authenticationMethodKey}-${nanoid()}`,
               provider: env.SECRET_STORE,
             },
           }
@@ -263,18 +242,46 @@ export class APIAuthenticationRepository {
         //if there's an expiry, we want to add it to the connection so we can easily run a background job against it
         const expiresAt = this.#getExpiresAtFromToken({ token });
 
-        const connection = await this.#prismaClient.aPIConnection.create({
-          data: {
-            organizationId: this.#organizationId,
-            apiIdentifier,
-            authenticationMethodKey,
-            metadata,
-            title,
-            dataReferenceId: secretReference.id,
-            scopes: token.scopes,
-            expiresAt,
-          },
-        });
+        const createConnectionWithSlug = async (
+          appendRandom = false,
+          attempt = 0
+        ): Promise<ApiConnection> => {
+          let slug = createSlug(title);
+
+          if (appendRandom) {
+            slug = `${slug}-${randomGenerator()}`;
+          }
+
+          try {
+            return await this.#prismaClient.apiConnection.create({
+              data: {
+                organizationId: organizationId,
+                apiIdentifier,
+                authenticationMethodKey,
+                metadata,
+                title,
+                dataReferenceId: secretReference.id,
+                scopes: token.scopes,
+                expiresAt,
+                slug,
+              },
+            });
+          } catch (error) {
+            if (
+              error &&
+              typeof error === "object" &&
+              "code" in error &&
+              error.code === "P2002" &&
+              attempt < 24
+            ) {
+              return await createConnectionWithSlug(true, attempt + 1);
+            }
+
+            throw error;
+          }
+        };
+
+        const connection = await createConnectionWithSlug();
 
         //schedule refreshing the token
         await this.#scheduleRefresh(expiresAt, connection);
@@ -285,7 +292,7 @@ export class APIAuthenticationRepository {
   }
 
   async refreshConnection({ connectionId }: { connectionId: string }) {
-    const connection = await this.#prismaClient.aPIConnection.findUnique({
+    const connection = await this.#prismaClient.apiConnection.findUnique({
       where: {
         id: connectionId,
       },
@@ -385,7 +392,7 @@ export class APIAuthenticationRepository {
         });
 
         const expiresAt = this.#getExpiresAtFromToken({ token });
-        const newConnection = await this.#prismaClient.aPIConnection.update({
+        const newConnection = await this.#prismaClient.apiConnection.update({
           where: {
             id: connectionId,
           },
@@ -405,8 +412,8 @@ export class APIAuthenticationRepository {
     }
   }
 
-  /** Get credentials for the APIConnection */
-  async getCredentials(connection: APIConnectionWithSecretReference) {
+  /** Get credentials for the ApiConnection */
+  async getCredentials(connection: ApiConnectionWithSecretReference) {
     //refresh the token if the expiry is in the past (or about to be)
     if (connection.expiresAt) {
       const refreshBy = new Date(
@@ -428,19 +435,7 @@ export class APIAuthenticationRepository {
     );
   }
 
-  #enrichConnection(
-    connection: Pick<
-      APIConnection,
-      | "id"
-      | "title"
-      | "apiIdentifier"
-      | "authenticationMethodKey"
-      | "metadata"
-      | "createdAt"
-      | "updatedAt"
-      | "scopes"
-    >
-  ) {
+  #enrichConnection(connection: ApiConnection) {
     //parse the metadata into the desired format, fallback if needed
     const parsedMetadata = ConnectionMetadataSchema.safeParse(
       connection.metadata
@@ -522,13 +517,13 @@ export class APIAuthenticationRepository {
 
   async #scheduleRefresh(
     expiresAt: Date | undefined,
-    connection: APIConnection
+    connection: ApiConnection
   ) {
     if (expiresAt) {
       await workerQueue.enqueue(
         "refreshOAuthToken",
         {
-          organizationId: this.#organizationId,
+          organizationId: connection.organizationId,
           connectionId: connection.id,
         },
         {
@@ -539,3 +534,5 @@ export class APIAuthenticationRepository {
     }
   }
 }
+
+export const apiConnectionRepository = new APIAuthenticationRepository();

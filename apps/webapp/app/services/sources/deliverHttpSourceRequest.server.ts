@@ -2,7 +2,6 @@ import type { PrismaClient } from "~/db.server";
 import { prisma } from "~/db.server";
 import { IngestSendEvent } from "~/routes/api/v3/events";
 import { ClientApi } from "../clientApi.server";
-import { getConnectionAuth } from "../connectionAuth.server";
 
 export class DeliverHttpSourceRequestService {
   #prismaClient: PrismaClient;
@@ -35,7 +34,8 @@ export class DeliverHttpSourceRequestService {
       return;
     }
 
-    const auth = await getConnectionAuth(httpSourceRequest.source.connection);
+    // TODO: auth
+    // const auth = await getConnectionAuth(httpSourceRequest.source.connection);
 
     const clientApi = new ClientApi(
       httpSourceRequest.environment.apiKey,
@@ -45,7 +45,7 @@ export class DeliverHttpSourceRequestService {
     const { response, events } = await clientApi.deliverHttpSourceRequest({
       key: httpSourceRequest.source.key,
       secret: httpSourceRequest.source.secret ?? undefined,
-      auth,
+      auth: undefined, // TODO: auth
       request: {
         url: httpSourceRequest.url,
         method: httpSourceRequest.method,

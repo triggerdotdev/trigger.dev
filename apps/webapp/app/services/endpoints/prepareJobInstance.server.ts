@@ -1,7 +1,6 @@
 import type { PrismaClient } from "~/db.server";
 import { prisma } from "~/db.server";
 import { ClientApi } from "../clientApi.server";
-import { getConnectionAuths } from "../connectionAuth.server";
 
 export class PrepareJobInstanceService {
   #prismaClient: PrismaClient;
@@ -34,7 +33,7 @@ export class PrepareJobInstanceService {
     const response = await client.prepareForJobExecution({
       id: jobInstance.job.slug,
       version: jobInstance.version,
-      connections: await getConnectionAuths(jobInstance.connections),
+      connections: {}, // TODO: connections
     });
 
     if (!response.ok) {
