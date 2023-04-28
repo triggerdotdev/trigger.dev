@@ -41,6 +41,28 @@ export async function loader({ request, params }: LoaderArgs) {
     },
     include: {
       tasks: {
+        where: {
+          parentId: null,
+        },
+        include: {
+          children: {
+            include: {
+              children: {
+                include: {
+                  children: {
+                    include: {
+                      children: {
+                        include: {
+                          children: true,
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
         orderBy: {
           id: "asc",
         },
