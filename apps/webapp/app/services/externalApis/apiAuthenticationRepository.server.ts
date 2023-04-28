@@ -1,6 +1,6 @@
 import type { ApiConnection, SecretReference } from ".prisma/client";
 import jsonpointer from "jsonpointer";
-import { customAlphabet, nanoid } from "nanoid";
+import { customAlphabet } from "nanoid";
 import * as crypto from "node:crypto";
 import createSlug from "slug";
 import type { PrismaClient } from "~/db.server";

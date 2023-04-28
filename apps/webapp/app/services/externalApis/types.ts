@@ -144,6 +144,13 @@ type Scope = {
   defaultChecked?: boolean;
   /** The param name of the scope, default is just "scope". Slack has "user" scopes that are a different query param */
   paramName?: string;
+  /** Optional annotation that can appear next to the option  */
+  annotations?: ScopeAnnotation[];
+};
+
+export type ScopeAnnotation = {
+  label: string;
+  color: string;
 };
 
 const OAuth2AccessTokenSchema = z.object({
