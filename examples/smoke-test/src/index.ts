@@ -99,7 +99,7 @@ new Job({
     gh,
   },
   // issueEvent is a helper function that creates a trigger for a GitHub issue event webhook
-  trigger: gh.onIssueOpened({
+  trigger: gh.triggers.onIssueOpened({
     repo: "ericallam/basic-starter-100k",
   }),
   run: async (event, io, ctx) => {
@@ -150,7 +150,7 @@ new Job({
     gh,
   },
   // issueEvent is a helper function that creates a trigger for a GitHub issue event webhook
-  trigger: gh.onIssueComment({
+  trigger: gh.triggers.onIssueComment({
     repo: "ericallam/basic-starter-100k",
   }),
   run: async (event, io, ctx) => {},

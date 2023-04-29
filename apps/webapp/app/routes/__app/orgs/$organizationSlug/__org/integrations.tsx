@@ -1,8 +1,4 @@
-import {
-  CursorArrowRaysIcon,
-  PlusCircleIcon,
-  PlusIcon,
-} from "@heroicons/react/24/outline";
+import { CursorArrowRaysIcon, PlusIcon } from "@heroicons/react/24/outline";
 import type { LoaderArgs } from "@remix-run/server-runtime";
 import { SliderButton } from "@typeform/embed-react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
@@ -16,7 +12,6 @@ import { List } from "~/components/layout/List";
 import { OrganizationsSideMenu } from "~/components/navigation/SideMenu";
 import { Badge } from "~/components/primitives/Badge";
 import {
-  SecondaryButton,
   primaryClasses,
   secondaryClasses,
 } from "~/components/primitives/Buttons";
@@ -26,14 +21,14 @@ import {
   PopoverTrigger,
 } from "~/components/primitives/Popover";
 import { Body } from "~/components/primitives/text/Body";
-import { Header3, Header4 } from "~/components/primitives/text/Headers";
+import { Header3 } from "~/components/primitives/text/Headers";
 import { SubTitle } from "~/components/primitives/text/SubTitle";
 import { Title } from "~/components/primitives/text/Title";
 import { useCurrentOrganization } from "~/hooks/useOrganizations";
 import { getOrganizationFromSlug } from "~/models/organization.server";
 import { apiConnectionRepository } from "~/services/externalApis/apiAuthenticationRepository.server";
-import { apiStore } from "~/services/externalApis/apiStore";
-import type { ExternalAPI } from "~/services/externalApis/types";
+import { apiCatalog } from "~/services/externalApis/apiCatalog.server";
+import type { ExternalApi } from "~/services/externalApis/types";
 import { requireUser } from "~/services/session.server";
 import { formatDateTime } from "~/utils";
 
@@ -51,11 +46,9 @@ export const loader = async ({ request, params }: LoaderArgs) => {
     organization.id
   );
 
-  const apis = apiStore.getApis();
-
   return typedjson({
     connections,
-    apis,
+    apis: apiCatalog.getApis(),
   });
 };
 
@@ -187,7 +180,7 @@ export default function Integrations() {
   );
 }
 
-function AddApiConnection({ api }: { api: ExternalAPI }) {
+function AddApiConnection({ api }: { api: ExternalApi }) {
   return (
     <div className="flex h-20 w-full items-center justify-between gap-2 px-10">
       <NamedIconInBox

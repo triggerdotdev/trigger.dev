@@ -9,8 +9,8 @@ import { env } from "~/env.server";
 import { workerQueue } from "~/services/worker.server";
 import type { SecretStoreProvider } from "../secrets/secretStore.server";
 import { SecretStore } from "../secrets/secretStore.server";
-import type { APIStore } from "./apiStore";
-import { apiStore as apis } from "./apiStore";
+import type { ApiCatalog } from "./apiCatalog.server";
+import { apiCatalog } from "./apiCatalog.server";
 import {
   createOAuth2Url,
   getClientConfigFromEnv,
@@ -19,9 +19,9 @@ import {
 } from "./oauth2.server";
 import type {
   AccessToken,
-  APIAuthenticationMethodOAuth2,
+  ApiAuthenticationMethodOAuth2,
   ConnectionMetadata,
-  ExternalAPI,
+  ExternalApi,
   GrantTokenParams,
   RefreshTokenParams,
 } from "./types";
@@ -37,11 +37,14 @@ const randomGenerator = customAlphabet("1234567890abcdef", 3);
 const tokenRefreshThreshold = 5 * 60;
 
 export class APIAuthenticationRepository {
-  #apiStore: APIStore;
+  apiCatalog: ApiCatalog;
   #prismaClient: PrismaClient;
 
-  constructor(apiStore: APIStore = apis, prismaClient: PrismaClient = prisma) {
-    this.#apiStore = apiStore;
+  constructor(
+    catalog: ApiCatalog = apiCatalog,
+    prismaClient: PrismaClient = prisma
+  ) {
+    this.apiCatalog = catalog;
     this.#prismaClient = prismaClient;
   }
 
@@ -60,7 +63,7 @@ export class APIAuthenticationRepository {
   }
 
   /** Get all API connections for the organization, for a specific API */
-  async getConnectionsForApi(organizationId: string, api: ExternalAPI) {
+  async getConnectionsForApi(organizationId: string, api: ExternalApi) {
     const connections = await this.#prismaClient.apiConnection.findMany({
       where: {
         organizationId: organizationId,
@@ -86,7 +89,7 @@ export class APIAuthenticationRepository {
     title: string;
     redirectTo: string;
   }) {
-    const api = this.#apiStore.getApi(apiIdentifier);
+    const api = this.apiCatalog.getApi(apiIdentifier);
     if (!api) {
       throw new Error(`API ${apiIdentifier} not found`);
     }
@@ -180,7 +183,7 @@ export class APIAuthenticationRepository {
     title: string;
     pkceCode?: string;
   }) {
-    const api = this.#apiStore.getApi(apiIdentifier);
+    const api = this.apiCatalog.getApi(apiIdentifier);
     if (!api) {
       throw new Error(`API ${apiIdentifier} not found`);
     }
@@ -340,7 +343,7 @@ export class APIAuthenticationRepository {
       throw new Error(`Connection ${connectionId} not found`);
     }
 
-    const api = this.#apiStore.getApi(connection.apiIdentifier);
+    const api = this.apiCatalog.getApi(connection.apiIdentifier);
     if (!api) {
       throw new Error(`API ${connection.apiIdentifier} not found`);
     }
@@ -489,7 +492,7 @@ export class APIAuthenticationRepository {
     }
 
     //add details about the API and authentication method
-    const api = this.#apiStore.getApi(connection.apiIdentifier);
+    const api = this.apiCatalog.getApi(connection.apiIdentifier);
     if (!api) {
       throw new Error(
         `API ${connection.apiIdentifier} not found for connection ${connection.id}`
@@ -519,7 +522,7 @@ export class APIAuthenticationRepository {
     };
   }
 
-  #callbackUrl(authenticationMethod: APIAuthenticationMethodOAuth2) {
+  #callbackUrl(authenticationMethod: ApiAuthenticationMethodOAuth2) {
     return authenticationMethod.config.appHostEnvName
       ? process.env[authenticationMethod.config.appHostEnvName]
       : env.APP_ORIGIN;
@@ -529,7 +532,7 @@ export class APIAuthenticationRepository {
     authenticationMethod,
     token,
   }: {
-    authenticationMethod: APIAuthenticationMethodOAuth2;
+    authenticationMethod: ApiAuthenticationMethodOAuth2;
     token: AccessToken;
   }) {
     const metadata: ConnectionMetadata = {};

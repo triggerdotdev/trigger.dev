@@ -1,4 +1,4 @@
-import type { ExternalAPI, ScopeAnnotation } from "../types";
+import type { ExternalApi, ScopeAnnotation } from "../types";
 
 const userAnnotation: ScopeAnnotation = {
   label: "User",
@@ -10,7 +10,7 @@ const botAnnotation: ScopeAnnotation = {
   color: "#FFF067",
 };
 
-export const slack: ExternalAPI = {
+export const slack: ExternalApi = {
   identifier: "slack",
   name: "Slack",
   authenticationMethods: {

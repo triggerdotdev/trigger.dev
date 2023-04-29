@@ -2,7 +2,7 @@ import { useLocation, useTransition } from "@remix-run/react";
 import classNames from "classnames";
 import { useTypedFetcher } from "remix-typedjson";
 import type { action } from "~/routes/resources/connection/oauth2";
-import type { ExternalAPI } from "~/services/externalApis/types";
+import type { ExternalApi } from "~/services/externalApis/types";
 import { NamedIcon } from "../Icon";
 import { PrimaryButton } from "../primitives/Buttons";
 import {
@@ -26,7 +26,7 @@ export function ConnectButton({
   children,
   className,
 }: {
-  api: ExternalAPI;
+  api: ExternalApi;
   authMethodKey: string;
   organizationId: string;
   children: React.ReactNode;
@@ -149,7 +149,7 @@ export function BasicConnectButton({
   authMethodKey,
   organizationId,
 }: {
-  api: ExternalAPI;
+  api: ExternalApi;
   authMethodKey: string;
   organizationId: string;
 }) {

@@ -1,16 +1,16 @@
 import { z } from "zod";
 
-export type ExternalAPI = {
+export type ExternalApi = {
   /** Used to uniquely identify an API */
   identifier: string;
   /** The name of the API */
   name: string;
   /** The possible authentication methods we support for this API  */
-  authenticationMethods: Record<string, APIAuthenticationMethod>;
+  authenticationMethods: Record<string, ApiAuthenticationMethod>;
 };
 
 /** An authentication method that can be used */
-export type APIAuthenticationMethod = APIAuthenticationMethodOAuth2;
+export type ApiAuthenticationMethod = ApiAuthenticationMethodOAuth2;
 
 export type AuthorizationLocation = "header" | "body";
 
@@ -58,7 +58,7 @@ export type RefreshTokenParams = {
 };
 
 //A useful reference is the Simple OAuth2 npm library: https://github.com/lelylan/simple-oauth2/blob/HEAD/API.md#options
-export type APIAuthenticationMethodOAuth2 = {
+export type ApiAuthenticationMethodOAuth2 = {
   /** The displayable name of the authentication method */
   name: string;
   /** The type of authentication method */
