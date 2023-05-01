@@ -1,0 +1,7 @@
+{
+  "version": 3,
+  "sources": ["global-externals:@storybook/addons", "../../../../../node_modules/.pnpm/storybook-addon-variants@0.2.0_@storybook+addons@6.5.16_@storybook+api@6.5.16_@storybook+comp_advpabewaczupbabf2nbczhg5m/node_modules/storybook-addon-variants/dist/esm/constants.js", "../../../../../node_modules/.pnpm/storybook-addon-variants@0.2.0_@storybook+addons@6.5.16_@storybook+api@6.5.16_@storybook+comp_advpabewaczupbabf2nbczhg5m/node_modules/storybook-addon-variants/dist/esm/preset/manager.js"],
+  "sourcesContent": ["export default __STORYBOOKADDONS__;\nconst { addons, types, mockChannel } = __STORYBOOKADDONS__;\nexport { addons, types, mockChannel };", "export var ADDON_ID = \"storybook/variants-addon\";", "import { addons } from \"@storybook/addons\";\nimport { ADDON_ID } from \"../constants\";\naddons.register(ADDON_ID, function () {});"],
+  "mappings": ";AAAA,IAAOA,EAAQ,oBACT,CAAE,OAAAC,EAAQ,MAAAC,EAAO,YAAAC,CAAY,EAAI,oBCDhC,IAAIC,EAAW,2BCEtBC,EAAO,SAASC,EAAU,UAAY,CAAC,CAAC",
+  "names": ["addons_default", "addons", "types", "mockChannel", "ADDON_ID", "addons", "ADDON_ID"]
+}
