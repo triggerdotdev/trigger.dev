@@ -75,6 +75,8 @@ export async function action({ request }: ActionArgs) {
     );
   }
 
+  const url = new URL(request.url);
+
   const redirectUrl = await apiConnectionRepository.createConnectionAttempt({
     organizationId,
     apiIdentifier: api,
@@ -82,6 +84,7 @@ export async function action({ request }: ActionArgs) {
     scopes,
     title,
     redirectTo,
+    url,
   });
 
   return redirect(redirectUrl);

@@ -13,15 +13,23 @@ export type ClientFactory<TClientType> = (auth: ConnectionAuth) => TClientType;
 export type Connection<
   TClientType,
   TTasks extends Record<string, AuthenticatedTask<TClientType, any, any>>
-> = {
-  usesLocalAuth: boolean;
-  metadata: ConnectionMetadata;
-  clientFactory?: ClientFactory<TClientType>;
-  client?: TClientType;
-  tasks?: TTasks;
-  id?: string;
-  [key: string]: any;
-};
+> =
+  | {
+      usesLocalAuth: true;
+      metadata: ConnectionMetadata;
+      client: TClientType;
+      tasks?: TTasks;
+      id?: string;
+      [key: string]: any;
+    }
+  | {
+      usesLocalAuth: false;
+      metadata: ConnectionMetadata;
+      clientFactory: ClientFactory<TClientType>;
+      tasks?: TTasks;
+      id?: string;
+      [key: string]: any;
+    };
 
 export type ConnectionEvent<TParams, TEvent> = {
   trigger: (params: TParams) => Trigger<TEvent>;
@@ -64,19 +72,23 @@ type ExtractTasks<
   [key in keyof TTasks]: ExtractRunFunction<TTasks[key]>;
 };
 
-type ExtractClient<
-  TClientFactory extends ClientFactory<any> | undefined,
-  TClient extends any | undefined
-> = TClientFactory extends ClientFactory<infer TClientType>
-  ? { client: TClientType }
-  : TClient extends any
-  ? { client: TClient }
-  : never;
+type ExtractClient<TConnection extends Connection<any, any>> =
+  TConnection extends {
+    usesLocalAuth: true;
+    client: infer TClient;
+  }
+    ? { client: TClient }
+    : TConnection extends {
+        usesLocalAuth: false;
+        clientFactory: ClientFactory<infer TClientType>;
+      }
+    ? { client: TClientType }
+    : never;
 
 type ExtractConnection<TConnection extends Connection<any, any>> = ExtractTasks<
   TConnection["tasks"]
 > &
-  ExtractClient<TConnection["clientFactory"], TConnection["client"]>;
+  ExtractClient<TConnection>;
 
 type ExtractConnections<
   TConnections extends Record<string, Connection<any, any>>

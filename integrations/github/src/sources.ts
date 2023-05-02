@@ -1,7 +1,7 @@
 import { Webhooks } from "@octokit/webhooks";
 import { ExternalSource } from "@trigger.dev/sdk/externalSource";
-import { Octokit } from "octokit";
 import { metadata } from "./metadata";
+import { ClientOptions } from "./types";
 
 type WebhookData = {
   id: number;
@@ -27,18 +27,24 @@ export function repositoryWebhookSource(
     events: string[];
     secret?: string;
   },
-  client: Octokit
+  client: ClientOptions,
+  id?: string
 ) {
   // Create a stable key for this source so we only register it once
   const key = `github.repo.${params.repo}.webhook`;
 
   return new ExternalSource("http", metadata, {
-    usesLocalAuth: true,
+    id,
+    usesLocalAuth: client.usesLocalAuth,
     key,
     register: async (triggerClient, auth) => {
       if (!auth) {
         throw new Error("No auth provided");
       }
+
+      const octokit = client.usesLocalAuth
+        ? client.octokit
+        : client.clientFactory(auth);
 
       const httpSource = await triggerClient.registerHttpSource({
         key,
@@ -65,7 +71,7 @@ export function repositoryWebhookSource(
         if (missingEvents.length > 0) {
           // We need to update the webhook to add the new events and then return
           const { data: newWebhookData } =
-            await client.rest.repos.updateWebhook({
+            await octokit.rest.repos.updateWebhook({
               owner,
               repo,
               hook_id: existingData.id,
@@ -85,7 +91,7 @@ export function repositoryWebhookSource(
         return;
       }
 
-      const { data: webhooks } = await client.rest.repos.listWebhooks({
+      const { data: webhooks } = await octokit.rest.repos.listWebhooks({
         owner,
         repo,
       });
@@ -97,7 +103,7 @@ export function repositoryWebhookSource(
       const secret = params.secret || Math.random().toString(36).slice(2);
 
       if (existingWebhook && existingWebhook.active) {
-        await client.rest.repos.updateWebhook({
+        await octokit.rest.repos.updateWebhook({
           owner,
           repo,
           hook_id: existingWebhook.id,
@@ -125,7 +131,7 @@ export function repositoryWebhookSource(
         );
       }
 
-      const { data: webhook } = await client.rest.repos.createWebhook({
+      const { data: webhook } = await octokit.rest.repos.createWebhook({
         owner,
         repo,
         events: params.events,

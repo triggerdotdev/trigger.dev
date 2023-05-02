@@ -47,7 +47,6 @@ export type RefreshTokenParams = {
   refreshUrl: string;
   clientId: string;
   clientSecret: string;
-  callbackUrl: string;
   requestedScopes: string[];
   scopeSeparator: string;
   token: { accessToken: string; refreshToken: string; expiresAt: Date };

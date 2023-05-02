@@ -1,4 +1,5 @@
 import { airtable } from "./apis/airtable";
+import { github } from "./apis/github";
 import { slack } from "./apis/slack";
 import type { ExternalApi } from "./types";
 
@@ -22,4 +23,4 @@ export class ApiCatalog {
   }
 }
 
-export const apiCatalog = new ApiCatalog({ slack, airtable });
+export const apiCatalog = new ApiCatalog({ slack, airtable, github });

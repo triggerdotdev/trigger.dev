@@ -26,6 +26,9 @@ const icons = {
       alt="Airtable"
     />
   ),
+  github: (className: string) => (
+    <img src={`/integrations/github.png`} className={className} alt="GitHub" />
+  ),
 };
 
 export type IconNames = keyof typeof icons;

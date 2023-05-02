@@ -81,6 +81,7 @@ export class APIAuthenticationRepository {
     scopes,
     title,
     redirectTo,
+    url,
   }: {
     organizationId: string;
     apiIdentifier: string;
@@ -88,6 +89,7 @@ export class APIAuthenticationRepository {
     scopes: string[];
     title: string;
     redirectTo: string;
+    url: URL;
   }) {
     const api = this.apiCatalog.getApi(apiIdentifier);
     if (!api) {
@@ -128,14 +130,14 @@ export class APIAuthenticationRepository {
           authenticationMethod.client.id.envName,
           authenticationMethod.client.secret.envName
         );
-        const callbackHostName = this.#callbackUrl(authenticationMethod);
+        const callbackUrl = this.#buildCallbackUrl(authenticationMethod, url);
 
         const createAuthorizationParams = {
           authorizationUrl: authenticationMethod.config.authorization.url,
           clientId: getClientConfig.id,
           clientSecret: getClientConfig.secret,
           key: connectionAttempt.id,
-          callbackUrl: `${callbackHostName}/resources/connection/oauth2/callback`,
+          callbackUrl,
           scopeParamName:
             authenticationMethod.config.authorization.scopeParamName ?? "scope",
           scopes,
@@ -174,6 +176,7 @@ export class APIAuthenticationRepository {
     code,
     title,
     pkceCode,
+    url,
   }: {
     organizationId: string;
     apiIdentifier: string;
@@ -182,6 +185,7 @@ export class APIAuthenticationRepository {
     code: string;
     title: string;
     pkceCode?: string;
+    url: URL;
   }) {
     const api = this.apiCatalog.getApi(apiIdentifier);
     if (!api) {
@@ -202,14 +206,14 @@ export class APIAuthenticationRepository {
           authenticationMethod.client.id.envName,
           authenticationMethod.client.secret.envName
         );
-        const callbackHostName = this.#callbackUrl(authenticationMethod);
+        const callbackUrl = this.#buildCallbackUrl(authenticationMethod, url);
 
         const params: GrantTokenParams = {
           tokenUrl: authenticationMethod.config.token.url,
           clientId: getClientConfig.id,
           clientSecret: getClientConfig.secret,
           code,
-          callbackUrl: `${callbackHostName}/resources/connection/oauth2/callback`,
+          callbackUrl,
           requestedScopes: scopes,
           scopeSeparator:
             authenticationMethod.config.authorization.scopeSeparator,
@@ -362,7 +366,6 @@ export class APIAuthenticationRepository {
           authenticationMethod.client.id.envName,
           authenticationMethod.client.secret.envName
         );
-        const callbackHostName = this.#callbackUrl(authenticationMethod);
 
         const secretStore = new SecretStore(
           connection.dataReference.provider as SecretStoreProvider
@@ -394,7 +397,6 @@ export class APIAuthenticationRepository {
           refreshUrl: authenticationMethod.config.refresh.url,
           clientId: getClientConfig.id,
           clientSecret: getClientConfig.secret,
-          callbackUrl: `${callbackHostName}/resources/connection/oauth2/callback`,
           requestedScopes: connection.scopes,
           scopeSeparator:
             authenticationMethod.config.authorization.scopeSeparator,
@@ -522,10 +524,16 @@ export class APIAuthenticationRepository {
     };
   }
 
-  #callbackUrl(authenticationMethod: ApiAuthenticationMethodOAuth2) {
-    return authenticationMethod.config.appHostEnvName
-      ? process.env[authenticationMethod.config.appHostEnvName]
-      : env.APP_ORIGIN;
+  #buildCallbackUrl(
+    authenticationMethod: ApiAuthenticationMethodOAuth2,
+    url: URL
+  ) {
+    return new URL(
+      `/resources/connection/oauth2/callback`,
+      authenticationMethod.config.appHostEnvName
+        ? process.env[authenticationMethod.config.appHostEnvName]
+        : url
+    ).href;
   }
 
   #getMetadataFromToken({

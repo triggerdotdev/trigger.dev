@@ -9,7 +9,7 @@ import { slack } from "@trigger.dev/slack";
 import type { NextApiRequest, NextApiResponse } from "next";
 import { z } from "zod";
 
-const gh = github({ token: process.env.GITHUB_TOKEN! });
+const gh = github({ id: "github" });
 const sl = slack({ id: "my-slack-new" });
 
 const client = new TriggerClient("nextjs", {
@@ -32,7 +32,7 @@ new Job({
     repo: "ericallam/basic-starter-100k",
   }),
   run: async (event, io, ctx) => {
-    await io.sl.postMessage("Slack 📝", {
+    const slackMessage = await io.sl.postMessage("Slack 📝", {
       text: `New Issue opened: ${event.issue.html_url}`,
       channel: "C04GWUTDC3W",
     });
@@ -78,6 +78,26 @@ new Job({
       issueNumber: event.issue.number,
       body: "Hello from Trigger!",
       reaction: "rocket",
+    });
+  },
+}).registerWith(client);
+
+new Job({
+  id: "notify-slack-on-new-comments",
+  name: "Notify Slack on new GitHub comments",
+  version: "0.1.1",
+  logLevel: "debug",
+  connections: {
+    gh,
+    sl,
+  },
+  trigger: gh.triggers.onIssueComment({
+    repo: "ericallam/basic-starter-100k",
+  }),
+  run: async (event, io, ctx) => {
+    await io.sl.postMessage("Slack 📝", {
+      text: `New Comment on Issue: ${event.comment.html_url}`,
+      channel: "C04GWUTDC3W",
     });
   },
 }).registerWith(client);

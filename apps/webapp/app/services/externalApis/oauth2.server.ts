@@ -155,7 +155,6 @@ export async function refreshOAuth2Token({
   refreshUrl,
   clientId,
   clientSecret,
-  callbackUrl,
   requestedScopes,
   scopeSeparator,
   token: { accessToken, refreshToken, expiresAt },

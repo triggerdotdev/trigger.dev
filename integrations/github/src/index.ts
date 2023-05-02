@@ -6,6 +6,7 @@ import {
 import type { Connection, EventFilter } from "@trigger.dev/sdk";
 import { ExternalSourceEventTrigger, Trigger } from "@trigger.dev/sdk/triggers";
 import { Octokit } from "octokit";
+import { clientFactory } from "./clientFactory";
 import { metadata } from "./metadata";
 import { repositoryWebhookSource } from "./sources";
 import {
@@ -14,6 +15,7 @@ import {
   createIssueCommentWithReaction,
   getRepo,
 } from "./tasks";
+import { ClientOptions } from "./types";
 
 const tasks = {
   createIssue,
@@ -22,13 +24,55 @@ const tasks = {
   createIssueCommentWithReaction,
 };
 
-function createTriggers(client: Octokit) {
+export type GitHubConnectionOptions =
+  | {
+      token: string;
+    }
+  | {
+      id: string;
+    };
+
+export const github = (options: GitHubConnectionOptions) => {
+  if ("token" in options) {
+    const client = new Octokit({
+      auth: options.token,
+    });
+
+    return {
+      metadata,
+      tasks,
+      usesLocalAuth: true,
+      client,
+      triggers: createTriggers({ usesLocalAuth: true, octokit: client }),
+    } satisfies Connection<Octokit, typeof tasks>;
+  }
+
   return {
-    onIssue: buildRepoWebhookTrigger<IssuesEvent>("On Issue", "issues", client),
+    id: options.id,
+    metadata,
+    tasks,
+    usesLocalAuth: false,
+    clientFactory,
+    triggers: createTriggers(
+      { usesLocalAuth: false, clientFactory },
+      options.id
+    ),
+  } satisfies Connection<Octokit, typeof tasks>;
+};
+0;
+function createTriggers(client: ClientOptions, id?: string) {
+  return {
+    onIssue: buildRepoWebhookTrigger<IssuesEvent>(
+      "On Issue",
+      "issues",
+      client,
+      id
+    ),
     onIssueOpened: buildRepoWebhookTrigger<IssuesOpenedEvent>(
       "On Issue Opened",
       "issues",
       client,
+      id,
       {
         action: ["opened"],
       }
@@ -36,29 +80,17 @@ function createTriggers(client: Octokit) {
     onIssueComment: buildRepoWebhookTrigger<IssueCommentEvent>(
       "On Issue Comment",
       "issue_comment",
-      client
+      client,
+      id
     ),
   };
 }
 
-export const github = (options: { token: string }) => {
-  const client = new Octokit({
-    auth: options.token,
-  });
-
-  return {
-    metadata,
-    tasks,
-    usesLocalAuth: true,
-    client,
-    triggers: createTriggers(client),
-  } satisfies Connection<Octokit, typeof tasks>;
-};
-
 function buildRepoWebhookTrigger<TEventType>(
   title: string,
   event: string,
-  client: Octokit,
+  client: ClientOptions,
+  id?: string,
   filter?: EventFilter
 ): (params: { repo: string }) => Trigger<TEventType> {
   return (params: { repo: string }) =>
@@ -79,7 +111,8 @@ function buildRepoWebhookTrigger<TEventType>(
           repo: params.repo,
           events: [event],
         },
-        client
+        client,
+        id
       ),
       eventRule: {
         event,

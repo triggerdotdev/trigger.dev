@@ -51,6 +51,7 @@ export type HandlerFunction<
 export type ExternalSourceOptions<TChannel extends ChannelNames> = {
   key: string;
   usesLocalAuth: boolean;
+  id?: string;
   register: (
     triggerClient: TriggerClient,
     auth?: ConnectionAuth
@@ -65,6 +66,7 @@ export type ExternalSourceOptions<TChannel extends ChannelNames> = {
 export interface AnyExternalSource {
   key: string;
   usesLocalAuth: boolean;
+  id?: string;
   connection: ConnectionMetadata;
   channel: ChannelNames;
   handler: (
@@ -92,6 +94,10 @@ export class ExternalSource<TChannel extends ChannelNames>
   ) {
     this.channel = channel;
     this.connection = connection;
+  }
+
+  get id() {
+    return this.options.id;
   }
 
   get key() {
