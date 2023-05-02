@@ -400,7 +400,7 @@ export class TriggerClient {
   }
 
   #createIOWithConnections<
-    TConnections extends Record<string, Connection<any, any, any>>
+    TConnections extends Record<string, Connection<any, any>>
   >(
     io: IO,
     execution: ExecuteJobBody,
