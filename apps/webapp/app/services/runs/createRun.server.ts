@@ -2,7 +2,7 @@ import type { Job, JobInstance } from ".prisma/client";
 import type { PrismaClient } from "~/db.server";
 import { prisma } from "~/db.server";
 import { workerQueue } from "~/services/worker.server";
-import { AuthenticatedEnvironment } from "../apiAuth.server";
+import type { AuthenticatedEnvironment } from "../apiAuth.server";
 
 export class CreateRunService {
   #prismaClient: PrismaClient;

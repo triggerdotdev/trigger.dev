@@ -1,34 +1,41 @@
-import { ConnectionAuth, LogLevel } from "@trigger.dev/internal";
+import {
+  ConnectionAuth,
+  ConnectionConfig,
+  JobMetadata,
+  LogLevel,
+} from "@trigger.dev/internal";
 import { Connection, IOWithConnections } from "./connections";
 import { TriggerClient } from "./triggerClient";
-import { Trigger } from "./triggers";
+import { Trigger, TriggerEventType } from "./triggers";
 import type { TriggerContext } from "./types";
 
 export type JobOptions<
-  TEventType extends object = {},
+  TTrigger extends Trigger<any>,
   TConnections extends Record<string, Connection<any, any>> = {}
 > = {
   id: string;
   name: string;
   version: string;
-  trigger: Trigger<TEventType>;
+  trigger: TTrigger;
   logLevel?: LogLevel;
   connections?: TConnections;
 
   run: (
-    event: TEventType,
+    event: TriggerEventType<TTrigger>,
     io: IOWithConnections<TConnections>,
     ctx: TriggerContext
   ) => Promise<any>;
 };
 
 export class Job<
-  TEventType extends object,
+  TTrigger extends Trigger<any>,
   TConnections extends Record<string, Connection<any, any>>
 > {
-  readonly options: JobOptions<TEventType, TConnections>;
+  readonly options: JobOptions<TTrigger, TConnections>;
 
-  constructor(options: JobOptions<TEventType, TConnections>) {
+  client?: TriggerClient;
+
+  constructor(options: JobOptions<TTrigger, TConnections>) {
     this.options = options;
     this.#validate();
   }
@@ -49,31 +56,60 @@ export class Job<
     return this.options.version;
   }
 
-  get connections() {
+  get connections(): Array<ConnectionConfig> {
     return Object.keys(this.options.connections ?? {}).map((key) => {
       const connection = this.options.connections![key];
 
-      return {
-        key,
-        metadata: connection.metadata,
-        usesLocalAuth: connection.usesLocalAuth,
-        id: connection.id,
-      };
+      if (connection.usesLocalAuth) {
+        return {
+          auth: "local",
+          key,
+          metadata: connection.metadata,
+        };
+      } else {
+        return {
+          auth: "hosted",
+          key,
+          metadata: connection.metadata,
+          id: connection.id!,
+        };
+      }
     });
   }
 
   registerWith(client: TriggerClient) {
-    client.register(this as unknown as Job<{}, any>);
+    if (this.client) {
+      throw new Error(
+        `Job "${this.id}" has already been registered with a client.`
+      );
+    }
+
+    this.client = client;
+
+    client.register(this);
+
+    return this;
   }
 
-  toJSON() {
+  addTriggerVariant(id: string, trigger: TTrigger) {
+    if (!this.client) {
+      throw new Error(
+        `Job "${this.id}" has not been registered with a client.`
+      );
+    }
+
+    this.client.addTriggerVariant(this, id, trigger);
+
+    return this;
+  }
+
+  toJSON(): JobMetadata {
     return {
       id: this.id,
       name: this.name,
       version: this.version,
       trigger: this.trigger.toJSON(),
       connections: this.connections,
-      supportsPreparation: this.trigger.supportsPreparation,
     };
   }
 
@@ -81,7 +117,7 @@ export class Job<
     client: TriggerClient,
     connections: Record<string, ConnectionAuth>
   ) {
-    await this.trigger.prepareForExecution(client, connections.__trigger);
+    await this.trigger.prepare(client, connections.__trigger);
   }
 
   // Make sure the id is valid (must only contain alphanumeric characters and dashes)

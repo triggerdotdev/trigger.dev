@@ -4,15 +4,19 @@ import {
   CreateRunBody,
   CreateRunResponseBodySchema,
   HttpEventSource,
+  LogLevel,
   LogMessage,
+  Logger,
   RegisterHttpEventSourceBody,
   RunTaskBodyInput,
   SendEvent,
   SendEventOptions,
   ServerTask,
+  TriggerVariantResponseBody,
+  TriggerVariantConfig,
+  TriggerVariantResponseBodySchema,
   UpdateHttpEventSourceBody,
 } from "@trigger.dev/internal";
-import { Logger, LogLevel } from "@trigger.dev/internal";
 
 export type ApiClientOptions = {
   apiKey?: string;
@@ -261,6 +265,56 @@ export class ApiClient {
     }
 
     return await response.json();
+  }
+
+  async addTriggerVariant(
+    client: string,
+    jobId: string,
+    jobVersion: string,
+    config: TriggerVariantConfig
+  ): Promise<TriggerVariantResponseBody> {
+    const apiKey = await this.#apiKey();
+
+    this.#logger.debug("Adding Trigger Variant", {
+      client,
+      jobId,
+      jobVersion,
+      config,
+    });
+
+    const response = await fetch(
+      `${this.#apiUrl}/api/v3/${client}/jobs/${jobId}/${jobVersion}/variants`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify(config),
+      }
+    );
+
+    if (response.status === 404) {
+      throw new Error(
+        `Failed to add trigger variant, got status code ${response.status}`
+      );
+    }
+
+    if (response.status >= 400 && response.status < 500) {
+      const body = await response.json();
+
+      throw new Error(body.error);
+    }
+
+    if (response.status !== 200) {
+      throw new Error(
+        `Failed to add trigger variant, got status code ${response.status}`
+      );
+    }
+
+    const anyBody = await response.json();
+
+    return TriggerVariantResponseBodySchema.parse(anyBody);
   }
 
   async registerHttpSource(

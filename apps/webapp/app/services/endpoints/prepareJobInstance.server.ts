@@ -1,7 +1,8 @@
 import type { PrismaClient } from "~/db.server";
 import { prisma } from "~/db.server";
+import { resolveJobConnection } from "~/models/jobConnection.server";
 import { ClientApi } from "../clientApi.server";
-import { resolveJobConnections } from "~/models/jobConnection.server";
+import { workerQueue } from "../worker.server";
 
 export class PrepareJobInstanceService {
   #prismaClient: PrismaClient;
@@ -24,6 +25,9 @@ export class PrepareJobInstanceService {
               },
             },
           },
+          where: {
+            key: "__trigger",
+          },
         },
         job: true,
         endpoint: {
@@ -31,6 +35,7 @@ export class PrepareJobInstanceService {
             environment: true,
           },
         },
+        triggerVariants: true,
       },
     });
 
@@ -39,10 +44,14 @@ export class PrepareJobInstanceService {
       jobInstance.endpoint.url
     );
 
-    const response = await client.prepareForJobExecution({
+    const connection = jobInstance.connections[0];
+
+    const response = await client.prepareJobTrigger({
       id: jobInstance.job.slug,
       version: jobInstance.version,
-      connections: await resolveJobConnections(jobInstance.connections),
+      connection: connection
+        ? await resolveJobConnection(connection)
+        : undefined,
     });
 
     if (!response.ok) {
@@ -57,5 +66,21 @@ export class PrepareJobInstanceService {
         ready: true,
       },
     });
+
+    for (const variant of jobInstance.triggerVariants) {
+      if (variant.ready) {
+        continue;
+      }
+
+      await workerQueue.enqueue(
+        "prepareTriggerVariant",
+        {
+          id: variant.id,
+        },
+        {
+          queueName: `endpoint-${jobInstance.endpoint.id}`,
+        }
+      );
+    }
   }
 }

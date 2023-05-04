@@ -12,8 +12,6 @@ export async function authenticateApiRequest(
 ): Promise<AuthenticatedEnvironment | null | undefined> {
   const rawAuthorization = request.headers.get("Authorization");
 
-  console.log(rawAuthorization);
-
   const authorization = AuthorizationHeaderSchema.safeParse(rawAuthorization);
 
   if (!authorization.success) {

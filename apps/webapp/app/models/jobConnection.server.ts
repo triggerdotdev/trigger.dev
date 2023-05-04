@@ -13,30 +13,56 @@ export async function resolveJobConnections(
   const result: Record<string, ConnectionAuth> = {};
 
   for (const connection of connections) {
-    if (!connection.apiConnection) {
+    const auth = await resolveJobConnection(connection);
+
+    if (!auth) {
       continue;
     }
 
-    const response = await apiConnectionRepository.getCredentials(
-      connection.apiConnection
-    );
-
-    if (!response) {
-      continue;
-    }
-
-    if (result[connection.key]) {
-      throw new Error(
-        `Duplicate connection key ${connection.key} in job instance ${connection.jobInstanceId}`
-      );
-    }
-
-    result[connection.key] = {
-      type: "oauth2",
-      scopes: response.scopes,
-      accessToken: response.accessToken,
-    };
+    result[connection.key] = auth;
   }
 
   return result;
+}
+
+export async function resolveJobConnection(
+  connection: JobConnectionWithApiConnection
+): Promise<ConnectionAuth | undefined> {
+  if (!connection.apiConnection) {
+    return;
+  }
+
+  const response = await apiConnectionRepository.getCredentials(
+    connection.apiConnection
+  );
+
+  if (!response) {
+    return;
+  }
+
+  return {
+    type: "oauth2",
+    scopes: response.scopes,
+    accessToken: response.accessToken,
+  };
+}
+
+export async function resolveApiConnection(
+  connection?: ApiConnectionWithSecretReference
+): Promise<ConnectionAuth | undefined> {
+  if (!connection) {
+    return;
+  }
+
+  const response = await apiConnectionRepository.getCredentials(connection);
+
+  if (!response) {
+    return;
+  }
+
+  return {
+    type: "oauth2",
+    scopes: response.scopes,
+    accessToken: response.accessToken,
+  };
 }

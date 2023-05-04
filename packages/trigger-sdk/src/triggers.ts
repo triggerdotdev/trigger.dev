@@ -1,6 +1,7 @@
 import type {
   ApiEventLog,
   ConnectionAuth,
+  ConnectionConfig,
   EventFilter,
   EventRule,
   TriggerMetadata,
@@ -11,15 +12,15 @@ import zodToJsonSchema from "zod-to-json-schema";
 import { AnyExternalSource } from "./externalSource";
 import { TriggerClient } from "./triggerClient";
 
+export type TriggerEventType<TTrigger extends Trigger<any>> =
+  TTrigger extends Trigger<infer TEventType> ? TEventType : never;
+
 export interface Trigger<TEventType = any> {
   eventElements(event: ApiEventLog): DisplayElement[];
   toJSON(): TriggerMetadata;
   registerWith(client: TriggerClient): void;
-  prepareForExecution(
-    client: TriggerClient,
-    auth?: ConnectionAuth
-  ): Promise<void>;
-  supportsPreparation: boolean;
+  prepare(client: TriggerClient, auth?: ConnectionAuth): Promise<void>;
+  parsePayload(payload: unknown): TEventType;
 }
 
 export type CustomEventTriggerOptions<TSchema extends z.ZodTypeAny> = {
@@ -54,15 +55,20 @@ export class CustomEventTrigger<TSchema extends z.ZodTypeAny>
         source: this.#options.source ?? "trigger.dev",
         payload: this.#options.filter ?? {},
       },
+      supportsPreparation: false,
     };
   }
 
-  get supportsPreparation() {
-    return false;
+  parsePayload(payload: unknown): z.infer<TSchema> {
+    if (!this.#options.schema) {
+      return payload;
+    }
+
+    return this.#options.schema.parse(payload);
   }
 
   registerWith(client: TriggerClient) {}
-  async prepareForExecution(client: TriggerClient, auth?: ConnectionAuth) {}
+  async prepare(client: TriggerClient, auth?: ConnectionAuth) {}
 }
 
 export function customEvent<TSchema extends z.ZodTypeAny>(
@@ -85,16 +91,17 @@ export class ExternalSourceEventTrigger<TEvent> implements Trigger<TEvent> {
     return this.options.source.eventElements(event);
   }
 
+  parsePayload(payload: unknown): TEvent {
+    return payload as TEvent;
+  }
+
   toJSON(): TriggerMetadata {
     return {
       title: this.options.title,
       elements: this.options.elements,
-      connection: {
-        metadata: this.options.source.connection,
-        usesLocalAuth: this.options.source.usesLocalAuth,
-        id: this.options.source.id,
-      },
+      connection: this.connection,
       eventRule: this.options.eventRule,
+      supportsPreparation: true,
     };
   }
 
@@ -102,11 +109,22 @@ export class ExternalSourceEventTrigger<TEvent> implements Trigger<TEvent> {
     client.register(this.options.source);
   }
 
-  get supportsPreparation() {
-    return true;
+  async prepare(client: TriggerClient, auth?: ConnectionAuth) {
+    return this.options.source.prepare(client, auth);
   }
 
-  async prepareForExecution(client: TriggerClient, auth?: ConnectionAuth) {
-    return this.options.source.prepareForExecution(client, auth);
+  get connection(): ConnectionConfig {
+    if (this.options.source.usesLocalAuth) {
+      return {
+        auth: "local",
+        metadata: this.options.source.connection,
+      };
+    } else {
+      return {
+        auth: "hosted",
+        metadata: this.options.source.connection,
+        id: this.options.source.id!,
+      };
+    }
   }
 }

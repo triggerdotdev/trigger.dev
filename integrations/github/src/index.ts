@@ -92,7 +92,7 @@ function buildRepoWebhookTrigger<TEventType>(
   client: ClientOptions,
   id?: string,
   filter?: EventFilter
-): (params: { repo: string }) => Trigger<TEventType> {
+): (params: { repo: string }) => ExternalSourceEventTrigger<TEventType> {
   return (params: { repo: string }) =>
     new ExternalSourceEventTrigger<TEventType>({
       title,

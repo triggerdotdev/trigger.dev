@@ -3,7 +3,7 @@ import type {
   ConnectionAuth,
   ExecuteJobBody,
   HttpSourceRequest,
-  PrepareForJobExecutionBody,
+  PrepareJobTriggerBody,
 } from "@trigger.dev/internal";
 import {
   DeliverEventResponseSchema,
@@ -167,13 +167,13 @@ export class ClientApi {
     return ExecuteJobResponseSchema.parse(anyBody);
   }
 
-  async prepareForJobExecution(payload: PrepareForJobExecutionBody) {
+  async prepareJobTrigger(payload: PrepareJobTriggerBody) {
     const response = await safeFetch(this.#url, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         "x-trigger-api-key": this.#apiKey,
-        "x-trigger-action": "PREPARE_FOR_JOB_EXECUTION",
+        "x-trigger-action": "PREPARE_JOB_TRIGGER",
       },
       body: JSON.stringify(payload),
     });

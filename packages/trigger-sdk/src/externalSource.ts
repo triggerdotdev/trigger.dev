@@ -75,10 +75,7 @@ export interface AnyExternalSource {
     auth?: ConnectionAuth
   ) => Promise<{ response: NormalizedResponse; events: SendEvent[] }>;
   eventElements: (event: ApiEventLog) => DisplayElement[];
-  prepareForExecution: (
-    client: TriggerClient,
-    auth?: ConnectionAuth
-  ) => Promise<void>;
+  prepare: (client: TriggerClient, auth?: ConnectionAuth) => Promise<void>;
 }
 
 export class ExternalSource<TChannel extends ChannelNames>
@@ -108,7 +105,7 @@ export class ExternalSource<TChannel extends ChannelNames>
     return this.options.usesLocalAuth;
   }
 
-  async prepareForExecution(client: TriggerClient, auth?: ConnectionAuth) {
+  async prepare(client: TriggerClient, auth?: ConnectionAuth) {
     return this.options.register(client, auth);
   }
 

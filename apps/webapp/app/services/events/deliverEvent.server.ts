@@ -9,7 +9,7 @@ import { logger } from "../logger";
 
 export class DeliverEventService {
   #prismaClient: PrismaClient;
-  #createExecutionService = new CreateRunService();
+  #createRunService = new CreateRunService();
   #resumeTaskService = new ResumeTaskService();
 
   constructor(prismaClient: PrismaClient = prisma) {
@@ -75,8 +75,8 @@ export class DeliverEventService {
 
     for (const eventRule of matchingEventRules) {
       switch (eventRule.action) {
-        case "CREATE_EXECUTION": {
-          await this.#createExecutionService.call({
+        case "CREATE_RUN": {
+          await this.#createRunService.call({
             eventId: eventLog.id,
             job: eventRule.job,
             jobInstance: eventRule.jobInstance,

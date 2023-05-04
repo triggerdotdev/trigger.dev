@@ -1,14 +1,16 @@
+import { GetJobResponseSchema } from "@/../../packages/internal/src";
 import { z } from "zod";
 import { env } from "~/env.server";
 import { ZodWorker } from "~/platform/zodWorker.server";
 import { EndpointRegisteredService } from "./endpoints/endpointRegistered.server";
-import { PrepareForJobExecutionService } from "./endpoints/prepareForJobExecution.server";
 import { PrepareJobInstanceService } from "./endpoints/prepareJobInstance.server";
 import { DeliverEventService } from "./events/deliverEvent.server";
 import { apiConnectionRepository } from "./externalApis/apiAuthenticationRepository.server";
+import { RegisterJobService } from "./jobs/registerJob.server";
 import { ResumeTaskService } from "./runs/resumeTask.server";
 import { StartRunService } from "./runs/startRun.server";
 import { DeliverHttpSourceRequestService } from "./sources/deliverHttpSourceRequest.server";
+import { PrepareTriggerVariantService } from "./endpoints/prepareTriggerVariant.server";
 
 const workerCatalog = {
   organizationCreated: z.object({ id: z.string() }),
@@ -29,12 +31,16 @@ const workerCatalog = {
   startInitialProjectDeployment: z.object({ id: z.string() }),
   startRun: z.object({ id: z.string() }),
   resumeTask: z.object({ id: z.string() }),
-  prepareForJobExecution: z.object({ id: z.string() }),
   prepareJobInstance: z.object({ id: z.string() }),
+  prepareTriggerVariant: z.object({ id: z.string() }),
   deliverHttpSourceRequest: z.object({ id: z.string() }),
   refreshOAuthToken: z.object({
     organizationId: z.string(),
     connectionId: z.string(),
+  }),
+  registerJob: z.object({
+    endpointId: z.string(),
+    job: GetJobResponseSchema,
   }),
 };
 
@@ -71,6 +77,14 @@ function getWorkerQueue() {
     },
     schema: workerCatalog,
     tasks: {
+      registerJob: {
+        maxAttempts: 3,
+        handler: async (payload, job) => {
+          const service = new RegisterJobService();
+
+          await service.call(payload.endpointId, payload.job);
+        },
+      },
       deliverHttpSourceRequest: {
         maxAttempts: 5,
         handler: async (payload, job) => {
@@ -87,11 +101,10 @@ function getWorkerQueue() {
           await service.call(payload.id);
         },
       },
-      prepareForJobExecution: {
-        queueName: "internal-queue",
-        maxAttempts: 8,
+      prepareTriggerVariant: {
+        maxAttempts: 3,
         handler: async (payload, job) => {
-          const service = new PrepareForJobExecutionService();
+          const service = new PrepareTriggerVariantService();
 
           await service.call(payload.id);
         },

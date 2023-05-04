@@ -1,7 +1,7 @@
 import { z } from "zod";
-import { ConnectionMetadataSchema } from "./connections";
 import { EventRuleSchema } from "./eventFilter";
 import { DeserializedJsonSchema } from "./json";
+import { ConnectionAuthSchema, ConnectionConfigSchema } from "./connections";
 
 export const TriggerMetadataSchema = z.object({
   title: z.string(),
@@ -14,13 +14,15 @@ export const TriggerMetadataSchema = z.object({
   ),
   eventRule: EventRuleSchema,
   schema: DeserializedJsonSchema.optional(),
-  connection: z
-    .object({
-      metadata: ConnectionMetadataSchema,
-      usesLocalAuth: z.boolean(),
-      id: z.string().optional(),
-    })
-    .optional(),
+  connection: ConnectionConfigSchema.optional(),
+  supportsPreparation: z.boolean(),
 });
 
 export type TriggerMetadata = z.infer<typeof TriggerMetadataSchema>;
+
+export const TriggerVariantConfigSchema = z.object({
+  id: z.string(),
+  trigger: TriggerMetadataSchema,
+});
+
+export type TriggerVariantConfig = z.infer<typeof TriggerVariantConfigSchema>;

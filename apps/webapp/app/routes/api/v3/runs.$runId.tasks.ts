@@ -221,6 +221,7 @@ export class RunTaskService {
         },
       });
 
+      // todo: do this client side instead of adding an option to taskBody
       if (taskBody.trigger) {
         // Create an eventrule for the task
         await prisma.jobEventRule.upsert({

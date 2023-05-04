@@ -82,7 +82,7 @@ new Job({
   },
 }).registerWith(client);
 
-new Job({
+const notifySlackONNewCommentsJob = new Job({
   id: "notify-slack-on-new-comments",
   name: "Notify Slack on new GitHub comments",
   version: "0.1.1",
@@ -100,16 +100,42 @@ new Job({
       channel: "C04GWUTDC3W",
     });
   },
-}).registerWith(client);
-
-// TODO: Support parameterized jobs
-// Example:
-// const job = new Job({});
-// await job.registerWith(client, { params: { foo: "bar" } });
-// And registering as a specific user:
-// await job.registerWith(client, { params: { foo: "bar" } }, { userId: "..." });
+})
+  .registerWith(client)
+  .addTriggerVariant(
+    "ericallam/hello-world",
+    gh.triggers.onIssueComment({
+      repo: "ericallam/hello-world",
+    })
+  );
 
 new Job({
+  id: "initialize-github-repo",
+  name: "Initialize GitHub Repo",
+  version: "0.1.1",
+  logLevel: "debug",
+  connections: {
+    gh,
+    sl,
+  },
+  trigger: customEvent({
+    name: "repo.created",
+    schema: z.object({
+      repo: z.string(),
+    }),
+  }),
+  run: async (event, io, ctx) => {
+    await io.addTriggerVariant(
+      notifySlackONNewCommentsJob,
+      event.repo,
+      gh.triggers.onIssueComment({
+        repo: event.repo,
+      })
+    );
+  },
+}).registerWith(client);
+
+const waitForEventInJob = new Job({
   id: "wait-for-event-in-job",
   name: "Wait for event in job",
   version: "0.1.1",
@@ -140,6 +166,18 @@ new Job({
   },
 }).registerWith(client);
 
+client.addTriggerVariant(
+  waitForEventInJob,
+  "custom-event-3",
+  customEvent({
+    name: "my-custom-event-3",
+    source: "my-source",
+    schema: z.object({
+      foo: z.string(),
+    }),
+  })
+);
+
 export default async function handler(
   req: NextApiRequest,
   res: NextApiResponse
@@ -150,13 +188,12 @@ export default async function handler(
 
   if (!response) {
     res.status(404).json({ error: "Not found" });
+
     return;
   }
 
   res.status(response.status).json(response.body);
 }
-
-client.listen().catch(console.error);
 
 function normalizeRequest(req: NextApiRequest): NormalizedRequest {
   const normalizedHeaders = Object.entries(req.headers).reduce(

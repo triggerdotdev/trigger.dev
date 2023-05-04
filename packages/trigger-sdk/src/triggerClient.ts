@@ -11,7 +11,7 @@ import {
   LogLevel,
   NormalizedRequest,
   NormalizedResponse,
-  PrepareForJobExecutionBodySchema,
+  PrepareJobTriggerBodySchema,
   RegisterHttpEventSourceBody,
   SendEvent,
   UpdateHttpEventSourceBody,
@@ -26,6 +26,7 @@ import { AnyExternalSource } from "./externalSource";
 import { IO, ResumeWithTask } from "./io";
 import { Job } from "./job";
 import { ContextLogger } from "./logger";
+import { Trigger } from "./triggers";
 import { TriggerContext } from "./types";
 
 export type TriggerClientOptions = {
@@ -42,7 +43,11 @@ export type ListenOptions = {
 
 export class TriggerClient {
   #options: TriggerClientOptions;
-  #registeredJobs: Record<string, Job<{}, any>> = {};
+  #registeredJobs: Record<string, Job<Trigger<any>, any>> = {};
+  #registeredTriggerVariants: Record<
+    string,
+    Array<{ trigger: Trigger<any>; id: string }>
+  > = {};
   #registeredSources = new Map<string, AnyExternalSource>();
   #client: ApiClient;
   #logger: Logger;
@@ -96,9 +101,17 @@ export class TriggerClient {
           };
         }
 
+        const triggerVariants = this.#registeredTriggerVariants[job.id] ?? [];
+
         return {
           status: 200,
-          body: job.toJSON(),
+          body: {
+            metadata: job.toJSON(),
+            triggerVariants: triggerVariants.map(({ trigger, id }) => ({
+              id,
+              trigger: trigger.toJSON(),
+            })),
+          },
         };
       }
 
@@ -106,7 +119,12 @@ export class TriggerClient {
       return {
         status: 200,
         body: {
-          jobs: Object.values(this.#registeredJobs).map((job) => job.toJSON()),
+          jobs: Object.values(this.#registeredJobs).map((job) => ({
+            metadata: job.toJSON(),
+            triggerVariants: (
+              this.#registeredTriggerVariants[job.id] ?? []
+            ).map(({ id, trigger }) => ({ id, trigger: trigger.toJSON() })),
+          })),
         },
       };
     }
@@ -168,10 +186,8 @@ export class TriggerClient {
             },
           };
         }
-        case "PREPARE_FOR_JOB_EXECUTION": {
-          const payload = PrepareForJobExecutionBodySchema.safeParse(
-            request.body
-          );
+        case "PREPARE_JOB_TRIGGER": {
+          const payload = PrepareJobTriggerBodySchema.safeParse(request.body);
 
           if (!payload.success) {
             return {
@@ -193,7 +209,7 @@ export class TriggerClient {
             };
           }
 
-          await this.#prepareJobForExecution(registeredJob, payload.data);
+          await this.#prepareJobTrigger(registeredJob, payload.data);
 
           return {
             status: 200,
@@ -254,8 +270,8 @@ export class TriggerClient {
   }
 
   register(thing: AnyExternalSource): void;
-  register(thing: Job<{}, any>): void;
-  register(thing: Job<{}, any> | AnyExternalSource): void {
+  register(thing: Job<Trigger<any>, any>): void;
+  register(thing: Job<Trigger<any>, any> | AnyExternalSource): void {
     if (thing instanceof Job) {
       this.#registeredJobs[thing.id] = thing;
 
@@ -263,6 +279,18 @@ export class TriggerClient {
     } else {
       this.#registeredSources.set(thing.key, thing);
     }
+  }
+
+  addTriggerVariant<TTrigger extends Trigger<any>>(
+    job: Job<TTrigger, any>,
+    id: string,
+    trigger: TTrigger
+  ) {
+    const jobTriggerVariants = this.#registeredTriggerVariants[job.id] ?? [];
+    jobTriggerVariants.push({ trigger, id });
+    this.#registeredTriggerVariants[job.id] = jobTriggerVariants;
+
+    trigger.registerWith(this);
   }
 
   authorized(apiKey: string) {
@@ -295,21 +323,34 @@ export class TriggerClient {
     return await this.#client.updateHttpSource(this.name, id, source);
   }
 
-  async #prepareJobForExecution(
-    job: Job<{}, any>,
+  async #prepareJobTrigger(
+    job: Job<Trigger<any>, any>,
     preparationData: {
       id: string;
       version: string;
-      connections: Record<string, ConnectionAuth>;
+      connection?: ConnectionAuth;
+      variantId?: string;
     }
   ): Promise<void> {
-    this.#logger.debug("preparing job for execution", { job: job.toJSON() });
+    this.#logger.debug("preparing job trigger", { job: job.toJSON() });
 
     if (job.version !== preparationData.version) {
       return;
     }
 
-    await job.prepareForExecution(this, preparationData.connections);
+    if (preparationData.variantId) {
+      const variant = this.#registeredTriggerVariants[job.id].find(
+        (v) => v.id === preparationData.variantId
+      );
+
+      if (!variant) {
+        return;
+      }
+
+      await variant.trigger.prepare(this, preparationData.connection);
+    } else {
+      await job.trigger.prepare(this, preparationData.connection);
+    }
   }
 
   async #handleHttpSourceRequest(
@@ -335,21 +376,7 @@ export class TriggerClient {
     return await source.handler(this, { request: sourceRequest, secret }, auth);
   }
 
-  async #createExecution(job: Job<{}, any>, event: ApiEventLog) {
-    this.#logger.debug("creating execution", { event, job: job.toJSON() });
-
-    // Create a new job execution
-    const execution = await this.#client.createRun({
-      client: this.name,
-      job: job.toJSON(),
-      event,
-      elements: job.trigger.eventElements(event),
-    });
-
-    return execution;
-  }
-
-  async #executeJob(execution: ExecuteJobBody, job: Job<{}, any>) {
+  async #executeJob(execution: ExecuteJobBody, job: Job<Trigger<any>, any>) {
     this.#logger.debug("executing job", { execution, job: job.toJSON() });
 
     const abortController = new AbortController();
@@ -359,17 +386,14 @@ export class TriggerClient {
       cachedTasks: execution.tasks,
       apiClient: this.#client,
       logger: this.#logger,
+      client: this,
     });
 
-    const ioWithConnections = await this.#createIOWithConnections(
-      io,
-      execution,
-      job
-    );
+    const ioWithConnections = this.#createIOWithConnections(io, execution, job);
 
     try {
       const output = await job.options.run(
-        execution.event.payload ?? {},
+        job.trigger.parsePayload(execution.event.payload ?? {}), // todo: actually parse the payload through the trigger
         ioWithConnections,
         this.#createJobContext(execution, io, abortController.signal)
       );
@@ -404,7 +428,7 @@ export class TriggerClient {
   >(
     io: IO,
     execution: ExecuteJobBody,
-    job: Job<{}, TConnections>
+    job: Job<Trigger<any>, TConnections>
   ): IOWithConnections<TConnections> {
     const jobConnections = job.options.connections;
 

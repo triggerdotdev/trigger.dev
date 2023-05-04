@@ -1,10 +1,10 @@
+import { ulid } from "ulid";
 import { z } from "zod";
+import { ConnectionAuthSchema, ConnectionConfigSchema } from "./connections";
+import { DisplayElementSchema } from "./elements";
 import { DeserializedJsonSchema, SerializableJsonSchema } from "./json";
 import { CachedTaskSchema, ServerTaskSchema, TaskSchema } from "./tasks";
 import { TriggerMetadataSchema } from "./triggers";
-import { ulid } from "ulid";
-import { DisplayElementSchema } from "./elements";
-import { ConnectionAuthSchema, ConnectionMetadataSchema } from "./connections";
 
 export const RegisterHttpEventSourceBodySchema = z.object({
   key: z.string(),
@@ -76,25 +76,25 @@ export const JobSchema = z.object({
   name: z.string(),
   version: z.string(),
   trigger: TriggerMetadataSchema,
-  connections: z.array(
-    z.object({
-      key: z.string(),
-      metadata: ConnectionMetadataSchema,
-      usesLocalAuth: z.boolean().default(false),
-      id: z.string().optional(),
-    })
-  ),
-  supportsPreparation: z.boolean(),
+  connections: z.array(ConnectionConfigSchema),
 });
 
-export type ApiJob = z.infer<typeof JobSchema>;
+export type JobMetadata = z.infer<typeof JobSchema>;
 
 export const GetJobResponseSchema = z.object({
-  job: JobSchema,
+  metadata: JobSchema,
+  triggerVariants: z.array(
+    z.object({
+      id: z.string(),
+      trigger: TriggerMetadataSchema,
+    })
+  ),
 });
 
+export type GetJobResponse = z.infer<typeof GetJobResponseSchema>;
+
 export const GetJobsResponseSchema = z.object({
-  jobs: z.array(JobSchema),
+  jobs: z.array(GetJobResponseSchema),
 });
 
 export const RawEventSchema = z.object({
@@ -203,15 +203,14 @@ export const SecureStringSchema = z.object({
   interpolations: z.array(z.string()),
 });
 
-export const PrepareForJobExecutionBodySchema = z.object({
+export const PrepareJobTriggerBodySchema = z.object({
   id: z.string(),
   version: z.string(),
-  connections: z.record(ConnectionAuthSchema),
+  connection: ConnectionAuthSchema.optional(),
+  variantId: z.string().optional(),
 });
 
-export type PrepareForJobExecutionBody = z.infer<
-  typeof PrepareForJobExecutionBodySchema
->;
+export type PrepareJobTriggerBody = z.infer<typeof PrepareJobTriggerBodySchema>;
 
 export const PrepareForJobExecutionResponseSchema = z.object({
   ok: z.boolean(),
@@ -299,3 +298,15 @@ export const HttpSourceResponseSchema = z.object({
   response: NormalizedResponseSchema,
   events: z.array(RawEventSchema),
 });
+
+export const TriggerVariantResponseBodySchema = z.object({
+  id: z.string(),
+  slug: z.string(),
+  data: TriggerMetadataSchema,
+  ready: z.boolean(),
+  auth: ConnectionAuthSchema.optional(),
+});
+
+export type TriggerVariantResponseBody = z.infer<
+  typeof TriggerVariantResponseBodySchema
+>;

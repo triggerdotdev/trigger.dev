@@ -11,6 +11,8 @@ import { AsyncLocalStorage } from "node:async_hooks";
 import { webcrypto } from "node:crypto";
 import { ApiClient } from "./apiClient";
 import { Trigger } from "./triggers";
+import { Job } from "./job";
+import { TriggerClient } from "./triggerClient";
 
 export class ResumeWithTask {
   constructor(public task: ServerTask) {}
@@ -21,6 +23,7 @@ export type IOTask = ServerTask;
 export type IOOptions = {
   id: string;
   apiClient: ApiClient;
+  client: TriggerClient;
   logger?: Logger;
   logLevel?: LogLevel;
   cachedTasks?: Array<CachedTask>;
@@ -29,6 +32,7 @@ export type IOOptions = {
 export class IO {
   #id: string;
   #apiClient: ApiClient;
+  #client: TriggerClient;
   #logger: Logger;
   #cachedTasks: Map<string, CachedTask>;
   #taskStorage: AsyncLocalStorage<{ taskId: string }>;
@@ -36,6 +40,7 @@ export class IO {
   constructor(options: IOOptions) {
     this.#id = options.id;
     this.#apiClient = options.apiClient;
+    this.#client = options.client;
     this.#logger =
       options.logger ?? new Logger("trigger.dev", options.logLevel);
     this.#cachedTasks = new Map();
@@ -65,6 +70,72 @@ export class IO {
       },
       async (task) => {
         return task.output as T;
+      }
+    );
+  }
+
+  async addTriggerVariant<TTrigger extends Trigger<any>>(
+    job: Job<TTrigger, any>,
+    id: string,
+    trigger: TTrigger
+  ) {
+    const metadata = trigger.toJSON();
+
+    const response = await this.runTask(
+      id,
+      {
+        name: `Add trigger to job`,
+        description: `Add trigger ${metadata.title} to job ${job.id}`,
+        elements: metadata.elements,
+      },
+      async (task) => {
+        const subResponse1 = await this.runTask(
+          "register-trigger-variant",
+          {
+            name: `Register trigger variant`,
+            description: `Register trigger variant ${metadata.title} to job ${job.id}`,
+            elements: metadata.elements,
+          },
+          async (task) => {
+            return await this.#apiClient.addTriggerVariant(
+              this.#client.name,
+              job.id,
+              job.version,
+              {
+                id,
+                trigger: metadata,
+              }
+            );
+          }
+        );
+
+        if (subResponse1.ready) {
+          return subResponse1;
+        }
+
+        await this.runTask(
+          "prepare-trigger-variant",
+          {
+            name: "Prepare trigger variant",
+            description: `Prepare trigger variant ${metadata.title} to job ${job.id}`,
+            elements: metadata.elements,
+          },
+          async (task) => {
+            // todo: trigger.prepare should take the io as an argument and everything inside there should happen within subtasks
+            // the way we can do this is by reusing the job system when running the trigger.prepare function, using something like "Shadow Jobs"
+            // that are used internally by the trigger.dev system, but are not exposed to the user
+            // Each trigger that needs to be prepared will have a shadow job that is run in the background
+            // so instead of writing custom code for each thing trigger needs to do internally, we can just use the job system
+            // this will make our internal code much more reliable, and it will also allow us to do stuff like registering a trigger
+            // both at "static" time and at "runtime", for example when listening for a webhook in the middle of a job
+            // or registering a trigger variant when a job is running
+            // This is crucial because if we have a trigger.prepare function that makes many different API calls, we might start running into function timeout issues
+            // We could also explore showing these to the user, under something like "internal jobs" so we can surface more information to the user about what the system is doing
+            return await trigger.prepare(this.#client, subResponse1.auth);
+          }
+        );
+
+        return { ok: true };
       }
     );
   }
