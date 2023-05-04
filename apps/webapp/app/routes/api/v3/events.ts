@@ -5,10 +5,8 @@ import { SendEventBodySchema } from "@trigger.dev/internal";
 import { generateErrorMessage } from "zod-error";
 import type { PrismaClient } from "~/db.server";
 import { prisma, PrismaErrorSchema } from "~/db.server";
-import {
-  authenticateApiRequest,
-  AuthenticatedEnvironment,
-} from "~/services/apiAuth.server";
+import type { AuthenticatedEnvironment } from "~/services/apiAuth.server";
+import { authenticateApiRequest } from "~/services/apiAuth.server";
 import { workerQueue } from "~/services/worker.server";
 
 export async function action({ request }: ActionArgs) {

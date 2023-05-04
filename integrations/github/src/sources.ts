@@ -1,7 +1,7 @@
 import { Webhooks } from "@octokit/webhooks";
-import { ExternalSource } from "@trigger.dev/sdk/externalSource";
-import { metadata } from "./metadata";
-import { ClientOptions } from "./types";
+import { Connection, ExternalSource } from "@trigger.dev/sdk";
+import { Octokit } from "octokit";
+import { tasks } from "./tasks";
 
 type WebhookData = {
   id: number;
@@ -21,36 +21,25 @@ function webhookData(data: any): data is WebhookData {
   );
 }
 
-export function repositoryWebhookSource(
+export function repositoryWebhookSource<TEventType>(
   params: {
     repo: string;
     events: string[];
     secret?: string;
   },
-  client: ClientOptions,
-  id?: string
+  connection: Connection<Octokit, typeof tasks>,
+  parsePayload: (payload: any) => TEventType
 ) {
   // Create a stable key for this source so we only register it once
   const key = `github.repo.${params.repo}.webhook`;
 
-  return new ExternalSource("http", metadata, {
-    id,
-    usesLocalAuth: client.usesLocalAuth,
-    key,
-    register: async (triggerClient, auth) => {
-      if (!auth) {
-        throw new Error("No auth provided");
-      }
-
-      const octokit = client.usesLocalAuth
-        ? client.octokit
-        : client.clientFactory(auth);
-
-      const httpSource = await triggerClient.registerHttpSource({
+  return new ExternalSource("http", {
+    parsePayload,
+    connection,
+    register: async (io, ctx) => {
+      const httpSource = await io.registerHttpSource("register-http-source", {
         key,
       });
-
-      const [owner, repo] = params.repo.split("/");
 
       if (
         httpSource.active &&
@@ -70,20 +59,19 @@ export function repositoryWebhookSource(
 
         if (missingEvents.length > 0) {
           // We need to update the webhook to add the new events and then return
-          const { data: newWebhookData } =
-            await octokit.rest.repos.updateWebhook({
-              owner,
-              repo,
-              hook_id: existingData.id,
-              config: {
-                content_type: "json",
-                url: httpSource.url,
-                secret: httpSource.secret,
-              },
-              add_events: missingEvents,
-            });
+          const newWebhookData = await io.client.updateWebhook(
+            "update-webhook",
+            {
+              repo: params.repo,
+              hookId: existingData.id,
+              url: httpSource.url,
+              secret: httpSource.secret,
+              addEvents: missingEvents,
+            }
+          );
 
-          await triggerClient.updateHttpSource(httpSource.id, {
+          await io.updateHttpSource("update-http-source", {
+            id: httpSource.id,
             data: newWebhookData,
           });
         }
@@ -91,9 +79,8 @@ export function repositoryWebhookSource(
         return;
       }
 
-      const { data: webhooks } = await octokit.rest.repos.listWebhooks({
-        owner,
-        repo,
+      const webhooks = await io.client.listWebhooks("list-webhooks", {
+        repo: params.repo,
       });
 
       const existingWebhook = webhooks.find(
@@ -103,18 +90,15 @@ export function repositoryWebhookSource(
       const secret = params.secret || Math.random().toString(36).slice(2);
 
       if (existingWebhook && existingWebhook.active) {
-        await octokit.rest.repos.updateWebhook({
-          owner,
-          repo,
-          hook_id: existingWebhook.id,
-          config: {
-            content_type: "json",
-            url: httpSource.url,
-            secret,
-          },
+        await io.client.updateWebhook("update-webhook", {
+          repo: params.repo,
+          hookId: existingWebhook.id,
+          url: httpSource.url,
+          secret,
         });
 
-        await triggerClient.updateHttpSource(httpSource.id, {
+        await io.updateHttpSource("update-http-source", {
+          id: httpSource.id,
           secret,
           data: existingWebhook,
           active: true,
@@ -123,42 +107,31 @@ export function repositoryWebhookSource(
         return;
       }
 
-      // Generate secret
-
-      if (!owner || !repo) {
-        throw new Error(
-          'Invalid repo, should be in format "owner/repo". For example: "triggerdotdev/trigger.dev"'
-        );
-      }
-
-      const { data: webhook } = await octokit.rest.repos.createWebhook({
-        owner,
-        repo,
+      const webhook = await io.client.createWebhook("create-webhook", {
+        repo: params.repo,
         events: params.events,
-        config: {
-          url: httpSource.url,
-          content_type: "json",
-          secret,
-        },
+        url: httpSource.url,
+        secret,
       });
 
-      await triggerClient.updateHttpSource(httpSource.id, {
+      await io.updateHttpSource("update-http-source", {
+        id: httpSource.id,
         secret,
         data: webhook,
         active: true,
       });
     },
-    handler: async (client, source, auth) => {
-      const deliveryId = source.request.headers["x-github-delivery"];
-      const hookId = source.request.headers["x-github-hook-id"];
-      const signature = source.request.headers["x-hub-signature-256"];
+    handler: async (event, io, ctx) => {
+      const deliveryId = event.request.headers["x-github-delivery"];
+      const hookId = event.request.headers["x-github-hook-id"];
+      const signature = event.request.headers["x-hub-signature-256"];
 
-      if (source.secret && signature) {
+      if (event.secret && signature) {
         const githubWebhooks = new Webhooks({
-          secret: source.secret,
+          secret: event.secret,
         });
 
-        if (!githubWebhooks.verify(source.request.body, signature)) {
+        if (!githubWebhooks.verify(event.request.body, signature)) {
           return {
             events: [],
             response: {
@@ -171,9 +144,9 @@ export function repositoryWebhookSource(
         }
       }
 
-      const name = source.request.headers["x-github-event"];
+      const name = event.request.headers["x-github-event"];
 
-      const context = omit(source.request.headers, [
+      const context = omit(event.request.headers, [
         "x-github-event",
         "x-github-delivery",
         "x-hub-signature-256",
@@ -185,7 +158,7 @@ export function repositoryWebhookSource(
         "x-forwarded-proto",
       ]);
 
-      const payload = parseBody(source.request.body);
+      const payload = parseBody(event.request.body);
 
       return {
         events: [

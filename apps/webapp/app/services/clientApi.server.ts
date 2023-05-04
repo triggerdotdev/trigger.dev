@@ -1,14 +1,14 @@
 import type {
   ApiEventLog,
   ConnectionAuth,
-  ExecuteJobBody,
+  RunJobBody,
   HttpSourceRequest,
   PrepareJobTriggerBody,
 } from "@trigger.dev/internal";
 import {
   DeliverEventResponseSchema,
   ErrorWithStackSchema,
-  ExecuteJobResponseSchema,
+  RunJobResponseSchema,
   GetJobsResponseSchema,
   HttpSourceResponseSchema,
   PongResponseSchema,
@@ -126,7 +126,7 @@ export class ClientApi {
     return DeliverEventResponseSchema.parse(anyBody);
   }
 
-  async executeJob(options: ExecuteJobBody) {
+  async executeJob(options: RunJobBody) {
     const response = await safeFetch(this.#url, {
       method: "POST",
       headers: {
@@ -164,7 +164,7 @@ export class ClientApi {
       body: anyBody,
     });
 
-    return ExecuteJobResponseSchema.parse(anyBody);
+    return RunJobResponseSchema.parse(anyBody);
   }
 
   async prepareJobTrigger(payload: PrepareJobTriggerBody) {

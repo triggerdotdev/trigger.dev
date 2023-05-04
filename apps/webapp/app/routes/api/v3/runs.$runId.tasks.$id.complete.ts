@@ -1,17 +1,12 @@
-import { RuntimeEnvironment } from ".prisma/client";
 import type { ActionArgs } from "@remix-run/server-runtime";
 import { json } from "@remix-run/server-runtime";
-import {
-  CompleteTaskBodyInputSchema,
-  CompleteTaskBodyOutput,
-} from "@trigger.dev/internal";
+import type { CompleteTaskBodyOutput } from "@trigger.dev/internal";
+import { CompleteTaskBodyInputSchema } from "@trigger.dev/internal";
 import { z } from "zod";
 import type { PrismaClient } from "~/db.server";
 import { prisma } from "~/db.server";
-import {
-  authenticateApiRequest,
-  AuthenticatedEnvironment,
-} from "~/services/apiAuth.server";
+import type { AuthenticatedEnvironment } from "~/services/apiAuth.server";
+import { authenticateApiRequest } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger";
 
 const ParamsSchema = z.object({
@@ -37,7 +32,7 @@ export async function action({ request, params }: ActionArgs) {
   // Now parse the request body
   const anyBody = await request.json();
 
-  logger.debug("CompleteExecutionTaskService.call() request body", {
+  logger.debug("CompleteRunTaskService.call() request body", {
     body: anyBody,
     runId,
     id,
@@ -115,6 +110,10 @@ export class CompleteRunTaskService {
         existingTask.status === "COMPLETED" ||
         existingTask.status === "ERRORED"
       ) {
+        logger.debug("Task already completed", {
+          existingTask,
+        });
+
         return existingTask;
       }
 

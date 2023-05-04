@@ -1,19 +1,13 @@
 import {
-  ApiEventLog,
-  ConnectionAuth,
   ErrorWithMessage,
   ErrorWithStackSchema,
-  ExecuteJobBody,
-  ExecuteJobBodySchema,
-  HttpSourceRequest,
-  HttpSourceRequestHeadersSchema,
-  Logger,
   LogLevel,
+  Logger,
   NormalizedRequest,
   NormalizedResponse,
-  PrepareJobTriggerBodySchema,
   RegisterHttpEventSourceBody,
-  SendEvent,
+  RunJobBody,
+  RunJobBodySchema,
   UpdateHttpEventSourceBody,
 } from "@trigger.dev/internal";
 import { ApiClient } from "./apiClient";
@@ -22,12 +16,10 @@ import {
   Connection,
   IOWithConnections,
 } from "./connections";
-import { AnyExternalSource } from "./externalSource";
 import { IO, ResumeWithTask } from "./io";
 import { Job } from "./job";
 import { ContextLogger } from "./logger";
-import { Trigger } from "./triggers";
-import { TriggerContext } from "./types";
+import type { Trigger, TriggerContext } from "./types";
 
 export type TriggerClientOptions = {
   apiKey?: string;
@@ -48,7 +40,6 @@ export class TriggerClient {
     string,
     Array<{ trigger: Trigger<any>; id: string }>
   > = {};
-  #registeredSources = new Map<string, AnyExternalSource>();
   #client: ApiClient;
   #logger: Logger;
   name: string;
@@ -145,7 +136,7 @@ export class TriggerClient {
           };
         }
         case "EXECUTE_JOB": {
-          const execution = ExecuteJobBodySchema.safeParse(request.body);
+          const execution = RunJobBodySchema.safeParse(request.body);
 
           if (!execution.success) {
             return {
@@ -186,78 +177,6 @@ export class TriggerClient {
             },
           };
         }
-        case "PREPARE_JOB_TRIGGER": {
-          const payload = PrepareJobTriggerBodySchema.safeParse(request.body);
-
-          if (!payload.success) {
-            return {
-              status: 400,
-              body: {
-                message: "Invalid payload",
-              },
-            };
-          }
-
-          const registeredJob = this.#registeredJobs[payload.data.id];
-
-          if (!registeredJob) {
-            return {
-              status: 404,
-              body: {
-                message: "Job not found",
-              },
-            };
-          }
-
-          await this.#prepareJobTrigger(registeredJob, payload.data);
-
-          return {
-            status: 200,
-            body: {
-              ok: true,
-            },
-          };
-        }
-        case "DELIVER_HTTP_SOURCE_REQUEST": {
-          const headers = HttpSourceRequestHeadersSchema.safeParse(
-            request.headers
-          );
-
-          if (!headers.success) {
-            return {
-              status: 400,
-              body: {
-                message: "Invalid headers",
-              },
-            };
-          }
-
-          const sourceRequest = {
-            url: headers.data["x-trigger-url"],
-            method: headers.data["x-trigger-method"],
-            headers: headers.data["x-trigger-headers"],
-            body: request.body,
-          };
-
-          const auth = headers.data["x-trigger-auth"];
-          const key = headers.data["x-trigger-key"];
-          const secret = headers.data["x-trigger-secret"];
-
-          const { response, events } = await this.#handleHttpSourceRequest(
-            key,
-            sourceRequest,
-            secret,
-            auth
-          );
-
-          return {
-            status: 200,
-            body: {
-              events,
-              response,
-            },
-          };
-        }
       }
     }
 
@@ -269,19 +188,13 @@ export class TriggerClient {
     };
   }
 
-  register(thing: AnyExternalSource): void;
-  register(thing: Job<Trigger<any>, any>): void;
-  register(thing: Job<Trigger<any>, any> | AnyExternalSource): void {
-    if (thing instanceof Job) {
-      this.#registeredJobs[thing.id] = thing;
+  attach(job: Job<Trigger<any>, any>): void {
+    this.#registeredJobs[job.id] = job;
 
-      thing.trigger.registerWith(this);
-    } else {
-      this.#registeredSources.set(thing.key, thing);
-    }
+    job.trigger.attach(this, job);
   }
 
-  addTriggerVariant<TTrigger extends Trigger<any>>(
+  attachVariant<TTrigger extends Trigger<any>>(
     job: Job<TTrigger, any>,
     id: string,
     trigger: TTrigger
@@ -290,7 +203,7 @@ export class TriggerClient {
     jobTriggerVariants.push({ trigger, id });
     this.#registeredTriggerVariants[job.id] = jobTriggerVariants;
 
-    trigger.registerWith(this);
+    trigger.attach(this, job, id);
   }
 
   authorized(apiKey: string) {
@@ -323,60 +236,7 @@ export class TriggerClient {
     return await this.#client.updateHttpSource(this.name, id, source);
   }
 
-  async #prepareJobTrigger(
-    job: Job<Trigger<any>, any>,
-    preparationData: {
-      id: string;
-      version: string;
-      connection?: ConnectionAuth;
-      variantId?: string;
-    }
-  ): Promise<void> {
-    this.#logger.debug("preparing job trigger", { job: job.toJSON() });
-
-    if (job.version !== preparationData.version) {
-      return;
-    }
-
-    if (preparationData.variantId) {
-      const variant = this.#registeredTriggerVariants[job.id].find(
-        (v) => v.id === preparationData.variantId
-      );
-
-      if (!variant) {
-        return;
-      }
-
-      await variant.trigger.prepare(this, preparationData.connection);
-    } else {
-      await job.trigger.prepare(this, preparationData.connection);
-    }
-  }
-
-  async #handleHttpSourceRequest(
-    key: string,
-    sourceRequest: HttpSourceRequest,
-    secret?: string,
-    auth?: ConnectionAuth
-  ): Promise<{ response: NormalizedResponse; events: SendEvent[] }> {
-    const source = this.#registeredSources.get(key);
-
-    if (!source) {
-      return {
-        response: {
-          status: 200,
-          body: {
-            ok: true,
-          },
-        },
-        events: [],
-      };
-    }
-
-    return await source.handler(this, { request: sourceRequest, secret }, auth);
-  }
-
-  async #executeJob(execution: ExecuteJobBody, job: Job<Trigger<any>, any>) {
+  async #executeJob(execution: RunJobBody, job: Job<Trigger<any>, any>) {
     this.#logger.debug("executing job", { execution, job: job.toJSON() });
 
     const abortController = new AbortController();
@@ -393,7 +253,7 @@ export class TriggerClient {
 
     try {
       const output = await job.options.run(
-        job.trigger.parsePayload(execution.event.payload ?? {}), // todo: actually parse the payload through the trigger
+        job.trigger.parsePayload(execution.event.payload ?? {}),
         ioWithConnections,
         this.#createJobContext(execution, io, abortController.signal)
       );
@@ -427,7 +287,7 @@ export class TriggerClient {
     TConnections extends Record<string, Connection<any, any>>
   >(
     io: IO,
-    execution: ExecuteJobBody,
+    run: RunJobBody,
     job: Job<Trigger<any>, TConnections>
   ): IOWithConnections<TConnections> {
     const jobConnections = job.options.connections;
@@ -436,11 +296,11 @@ export class TriggerClient {
       return io as IOWithConnections<TConnections>;
     }
 
-    const executionConnections = execution.connections ?? {};
+    const runConnections = run.connections ?? {};
 
     const connections = Object.entries(jobConnections).reduce(
       (acc, [key, jobConnection]) => {
-        const connection = executionConnections[key];
+        const connection = runConnections[key];
         const client =
           jobConnection.client ?? jobConnection.clientFactory?.(connection);
 
@@ -496,7 +356,7 @@ export class TriggerClient {
   }
 
   #createJobContext(
-    execution: ExecuteJobBody,
+    execution: RunJobBody,
     io: IO,
     signal: AbortSignal
   ): TriggerContext {

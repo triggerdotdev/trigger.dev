@@ -1,13 +1,7 @@
-import {
-  ConnectionAuth,
-  ConnectionConfig,
-  JobMetadata,
-  LogLevel,
-} from "@trigger.dev/internal";
+import { ConnectionConfig, JobMetadata, LogLevel } from "@trigger.dev/internal";
 import { Connection, IOWithConnections } from "./connections";
 import { TriggerClient } from "./triggerClient";
-import { Trigger, TriggerEventType } from "./triggers";
-import type { TriggerContext } from "./types";
+import type { TriggerContext, Trigger, TriggerEventType } from "./types";
 
 export type JobOptions<
   TTrigger extends Trigger<any>,
@@ -56,28 +50,31 @@ export class Job<
     return this.options.version;
   }
 
-  get connections(): Array<ConnectionConfig> {
-    return Object.keys(this.options.connections ?? {}).map((key) => {
-      const connection = this.options.connections![key];
+  get connections(): Record<string, ConnectionConfig> {
+    return Object.keys(this.options.connections ?? {}).reduce(
+      (acc: Record<string, ConnectionConfig>, key) => {
+        const connection = this.options.connections![key];
 
-      if (connection.usesLocalAuth) {
-        return {
-          auth: "local",
-          key,
-          metadata: connection.metadata,
-        };
-      } else {
-        return {
-          auth: "hosted",
-          key,
-          metadata: connection.metadata,
-          id: connection.id!,
-        };
-      }
-    });
+        if (connection.usesLocalAuth) {
+          acc[key] = {
+            auth: "local",
+            metadata: connection.metadata,
+          };
+        } else {
+          acc[key] = {
+            auth: "hosted",
+            metadata: connection.metadata,
+            id: connection.id!,
+          };
+        }
+
+        return acc;
+      },
+      {}
+    );
   }
 
-  registerWith(client: TriggerClient) {
+  attachTo(client: TriggerClient) {
     if (this.client) {
       throw new Error(
         `Job "${this.id}" has already been registered with a client.`
@@ -86,38 +83,35 @@ export class Job<
 
     this.client = client;
 
-    client.register(this);
+    client.attach(this);
 
     return this;
   }
 
-  addTriggerVariant(id: string, trigger: TTrigger) {
+  attachVariant(id: string, trigger: TTrigger) {
     if (!this.client) {
       throw new Error(
         `Job "${this.id}" has not been registered with a client.`
       );
     }
 
-    this.client.addTriggerVariant(this, id, trigger);
+    this.client.attachVariant(this, id, trigger);
 
     return this;
   }
 
   toJSON(): JobMetadata {
+    // @ts-ignore
+    const internal = this.options.__internal as JobMetadata["internal"];
+
     return {
       id: this.id,
       name: this.name,
       version: this.version,
       trigger: this.trigger.toJSON(),
       connections: this.connections,
+      internal,
     };
-  }
-
-  async prepareForExecution(
-    client: TriggerClient,
-    connections: Record<string, ConnectionAuth>
-  ) {
-    await this.trigger.prepare(client, connections.__trigger);
   }
 
   // Make sure the id is valid (must only contain alphanumeric characters and dashes)

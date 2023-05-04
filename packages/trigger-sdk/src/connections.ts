@@ -6,7 +6,7 @@ import {
 } from "@trigger.dev/internal";
 import { IO } from "./io";
 import { TriggerClient } from "./triggerClient";
-import { Trigger } from "./triggers";
+import { Trigger } from "./types";
 
 export type ClientFactory<TClientType> = (auth: ConnectionAuth) => TClientType;
 

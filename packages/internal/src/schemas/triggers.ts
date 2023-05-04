@@ -1,7 +1,6 @@
 import { z } from "zod";
 import { EventRuleSchema } from "./eventFilter";
 import { DeserializedJsonSchema } from "./json";
-import { ConnectionAuthSchema, ConnectionConfigSchema } from "./connections";
 
 export const TriggerMetadataSchema = z.object({
   title: z.string(),
@@ -14,8 +13,6 @@ export const TriggerMetadataSchema = z.object({
   ),
   eventRule: EventRuleSchema,
   schema: DeserializedJsonSchema.optional(),
-  connection: ConnectionConfigSchema.optional(),
-  supportsPreparation: z.boolean(),
 });
 
 export type TriggerMetadata = z.infer<typeof TriggerMetadataSchema>;

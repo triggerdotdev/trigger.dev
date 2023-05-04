@@ -1,18 +1,19 @@
 import {
   CachedTask,
-  RunTaskOptions,
-  Logger,
   LogLevel,
+  Logger,
+  RegisterHttpEventSourceBody,
+  RunTaskOptions,
   SerializableJson,
   ServerTask,
-  DeserializedJson,
+  UpdateHttpEventSourceBody,
 } from "@trigger.dev/internal";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { webcrypto } from "node:crypto";
 import { ApiClient } from "./apiClient";
-import { Trigger } from "./triggers";
 import { Job } from "./job";
 import { TriggerClient } from "./triggerClient";
+import { Trigger } from "./types";
 
 export class ResumeWithTask {
   constructor(public task: ServerTask) {}
@@ -54,7 +55,64 @@ export class IO {
     this.#taskStorage = new AsyncLocalStorage();
   }
 
-  // TODO: finish implementing this (needs to support registering and preparing)
+  async registerHttpSource(
+    key: string | any[],
+    options: RegisterHttpEventSourceBody
+  ) {
+    return this.runTask(
+      key,
+      {
+        name: "Register HTTP Source",
+        description: `Register HTTP Source ${options.key}`,
+        elements: [
+          {
+            label: "Key",
+            text: options.key,
+          },
+        ],
+        redact: {
+          paths: ["secret"],
+        },
+      },
+      async (task) => {
+        return await this.#apiClient.registerHttpSource(
+          this.#client.name,
+          options
+        );
+      }
+    );
+  }
+
+  async updateHttpSource(
+    key: string | any[],
+    options: { id: string } & UpdateHttpEventSourceBody
+  ) {
+    return this.runTask(
+      key,
+      {
+        name: "Update HTTP Source",
+        description: `Update HTTP Source ${options.id}`,
+        elements: [
+          {
+            label: "id",
+            text: options.id,
+          },
+        ],
+        redact: {
+          paths: ["secret"],
+        },
+      },
+      async (task) => {
+        return await this.#apiClient.updateHttpSource(
+          this.#client.name,
+          options.id,
+          options
+        );
+      }
+    );
+  }
+
+  // TODO: use internal job system for this
   async on<T extends SerializableJson | void = void>(
     key: string | any[],
     trigger: Trigger<T>
@@ -121,7 +179,7 @@ export class IO {
             elements: metadata.elements,
           },
           async (task) => {
-            // todo: trigger.prepare should take the io as an argument and everything inside there should happen within subtasks
+            // TODO: trigger.prepare should take the io as an argument and everything inside there should happen within subtasks
             // the way we can do this is by reusing the job system when running the trigger.prepare function, using something like "Shadow Jobs"
             // that are used internally by the trigger.dev system, but are not exposed to the user
             // Each trigger that needs to be prepared will have a shadow job that is run in the background
@@ -131,7 +189,8 @@ export class IO {
             // or registering a trigger variant when a job is running
             // This is crucial because if we have a trigger.prepare function that makes many different API calls, we might start running into function timeout issues
             // We could also explore showing these to the user, under something like "internal jobs" so we can surface more information to the user about what the system is doing
-            return await trigger.prepare(this.#client, subResponse1.auth);
+            // We need to make a new "child IO" here that is used for preparing the trigger which does not have access to other connections or auth in the context
+            // return await trigger.prepare(this.#client, subResponse1.auth);
           }
         );
 

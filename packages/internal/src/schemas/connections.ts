@@ -18,7 +18,6 @@ export const ConnectionAuthSchema = z.object({
 export type ConnectionAuth = z.infer<typeof ConnectionAuthSchema>;
 
 const CommonConnectionConfigSchema = z.object({
-  key: z.string().optional(),
   metadata: ConnectionMetadataSchema,
 });
 

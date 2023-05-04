@@ -215,13 +215,14 @@ export class RunTaskService {
           delayUntil: taskBody.delayUntil,
           params: taskBody.params ?? undefined,
           elements: taskBody.elements ?? undefined,
+          redact: taskBody.redact ?? undefined,
         },
         include: {
           run: true,
         },
       });
 
-      // todo: do this client side instead of adding an option to taskBody
+      // TODO: do this client side instead of adding an option to taskBody
       if (taskBody.trigger) {
         // Create an eventrule for the task
         await prisma.jobEventRule.upsert({

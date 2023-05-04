@@ -238,3 +238,135 @@ export const createIssueCommentWithReaction = authenticatedTask({
     };
   },
 });
+
+export const updateWebhook = authenticatedTask({
+  run: async (
+    params: {
+      repo: string;
+      hookId: number;
+      url: string;
+      secret: string;
+      addEvents?: string[];
+    },
+    client: InstanceType<typeof Octokit>,
+    task
+  ) => {
+    const [owner, repo] = params.repo.split("/");
+
+    return client.rest.repos
+      .updateWebhook({
+        owner,
+        repo,
+        hook_id: params.hookId,
+        config: {
+          content_type: "json",
+          url: params.url,
+          secret: params.secret,
+        },
+        add_events: params.addEvents,
+      })
+      .then((response) => response.data);
+  },
+  init: (params) => {
+    return {
+      name: "Update Webhook",
+      params,
+      elements: [
+        {
+          label: "Repo",
+          text: params.repo,
+        },
+        {
+          label: "Hook ID",
+          text: String(params.hookId),
+        },
+      ],
+    };
+  },
+});
+
+export const createWebhook = authenticatedTask({
+  run: async (
+    params: {
+      repo: string;
+      url: string;
+      secret: string;
+      events: string[];
+    },
+    client: InstanceType<typeof Octokit>,
+    task
+  ) => {
+    const [owner, repo] = params.repo.split("/");
+
+    return client.rest.repos
+      .createWebhook({
+        owner,
+        repo,
+        config: {
+          content_type: "json",
+          url: params.url,
+          secret: params.secret,
+        },
+        events: params.events,
+      })
+      .then((response) => response.data);
+  },
+  init: (params) => {
+    return {
+      name: "Create Webhook",
+      params,
+      elements: [
+        {
+          label: "Repo",
+          text: params.repo,
+        },
+        {
+          label: "Events",
+          text: params.events.join(", "),
+        },
+      ],
+    };
+  },
+});
+
+export const listWebhooks = authenticatedTask({
+  run: async (
+    params: {
+      repo: string;
+    },
+    client: InstanceType<typeof Octokit>,
+    task
+  ) => {
+    const [owner, repo] = params.repo.split("/");
+
+    return client.rest.repos
+      .listWebhooks({
+        owner,
+        repo,
+      })
+      .then((response) => response.data);
+  },
+  init: (params) => {
+    return {
+      name: "List Webhooks",
+      params,
+      elements: [
+        {
+          label: "Repo",
+          text: params.repo,
+        },
+      ],
+    };
+  },
+});
+
+export const tasks = {
+  createIssue,
+  createIssueComment,
+  getRepo,
+  createIssueCommentWithReaction,
+  addIssueCommentReaction,
+  updateWebhook,
+  createWebhook,
+  listWebhooks,
+};

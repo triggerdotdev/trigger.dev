@@ -1,9 +1,10 @@
-export * from "./triggers";
 export * from "./job";
 export * from "./triggerClient";
 export * from "./connections";
-export * from "./externalSource";
+export * from "./triggers/customEvent";
+export * from "./triggers/externalSource";
 export * from "./io";
+export * from "./types";
 
 import { SecureString } from "./types";
 

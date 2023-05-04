@@ -34,41 +34,41 @@ export class DeliverHttpSourceRequestService {
       return;
     }
 
-    // TODO: auth
+    // TODO: deliver the raw source event through the new internal job system
     // const auth = await getConnectionAuth(httpSourceRequest.source.connection);
 
-    const clientApi = new ClientApi(
-      httpSourceRequest.environment.apiKey,
-      httpSourceRequest.endpoint.url
-    );
+    // const clientApi = new ClientApi(
+    //   httpSourceRequest.environment.apiKey,
+    //   httpSourceRequest.endpoint.url
+    // );
 
-    const { response, events } = await clientApi.deliverHttpSourceRequest({
-      key: httpSourceRequest.source.key,
-      secret: httpSourceRequest.source.secret ?? undefined,
-      auth: undefined, // TODO: auth
-      request: {
-        url: httpSourceRequest.url,
-        method: httpSourceRequest.method,
-        headers: httpSourceRequest.headers as Record<string, string>,
-        rawBody: httpSourceRequest.body,
-      },
-    });
+    // const { response, events } = await clientApi.deliverHttpSourceRequest({
+    //   key: httpSourceRequest.source.key,
+    //   secret: httpSourceRequest.source.secret ?? undefined,
+    //   auth: undefined, // TODO: auth
+    //   request: {
+    //     url: httpSourceRequest.url,
+    //     method: httpSourceRequest.method,
+    //     headers: httpSourceRequest.headers as Record<string, string>,
+    //     rawBody: httpSourceRequest.body,
+    //   },
+    // });
 
-    await this.#prismaClient.httpSourceRequestDelivery.update({
-      where: {
-        id,
-      },
-      data: {
-        deliveredAt: new Date(),
-      },
-    });
+    // await this.#prismaClient.httpSourceRequestDelivery.update({
+    //   where: {
+    //     id,
+    //   },
+    //   data: {
+    //     deliveredAt: new Date(),
+    //   },
+    // });
 
-    const ingestService = new IngestSendEvent();
+    // const ingestService = new IngestSendEvent();
 
-    for (const event of events) {
-      await ingestService.call(httpSourceRequest.environment, event);
-    }
+    // for (const event of events) {
+    //   await ingestService.call(httpSourceRequest.environment, event);
+    // }
 
-    return response;
+    // return response;
   }
 }

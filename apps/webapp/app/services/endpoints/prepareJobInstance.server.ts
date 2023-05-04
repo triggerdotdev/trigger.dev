@@ -1,8 +1,7 @@
 import type { PrismaClient } from "~/db.server";
 import { prisma } from "~/db.server";
-import { resolveJobConnection } from "~/models/jobConnection.server";
-import { ClientApi } from "../clientApi.server";
-import { workerQueue } from "../worker.server";
+import { IngestSendEvent } from "~/routes/api/v3/events";
+import semver from "semver";
 
 export class PrepareJobInstanceService {
   #prismaClient: PrismaClient;
@@ -17,70 +16,55 @@ export class PrepareJobInstanceService {
         id,
       },
       include: {
-        connections: {
-          include: {
-            apiConnection: {
-              include: {
-                dataReference: true,
-              },
-            },
-          },
-          where: {
-            key: "__trigger",
-          },
-        },
         job: true,
-        endpoint: {
+        environment: {
           include: {
-            environment: true,
+            organization: true,
+            project: true,
           },
         },
         triggerVariants: true,
       },
     });
 
-    const client = new ClientApi(
-      jobInstance.endpoint.environment.apiKey,
-      jobInstance.endpoint.url
-    );
+    const service = new IngestSendEvent();
 
-    const connection = jobInstance.connections[0];
-
-    const response = await client.prepareJobTrigger({
-      id: jobInstance.job.slug,
-      version: jobInstance.version,
-      connection: connection
-        ? await resolveJobConnection(connection)
-        : undefined,
-    });
-
-    if (!response.ok) {
-      throw new Error("Something went wrong when preparing a job instance");
-    }
-
-    await this.#prismaClient.jobInstance.update({
-      where: {
-        id,
-      },
-      data: {
-        ready: true,
+    await service.call(jobInstance.environment, {
+      id: `${jobInstance.id}:prepare:${versionScopedToMinor(
+        jobInstance.version
+      )}`,
+      name: "internal.trigger.prepare",
+      source: "trigger.dev",
+      payload: {
+        jobId: jobInstance.job.slug,
+        jobVersion: jobInstance.version,
       },
     });
 
     for (const variant of jobInstance.triggerVariants) {
-      if (variant.ready) {
-        continue;
-      }
-
-      await workerQueue.enqueue(
-        "prepareTriggerVariant",
-        {
-          id: variant.id,
+      await service.call(jobInstance.environment, {
+        id: `${jobInstance.id}:prepare:${versionScopedToMinor(
+          jobInstance.version
+        )}:${variant.id}`,
+        name: "internal.trigger.prepare",
+        source: "trigger.dev",
+        payload: {
+          jobId: jobInstance.job.slug,
+          jobVersion: jobInstance.version,
+          variantId: variant.slug,
         },
-        {
-          queueName: `endpoint-${jobInstance.endpoint.id}`,
-        }
-      );
+      });
     }
   }
+}
+
+// Take a version string (e.g. 1.2.3) and return a version string that is scoped to the minor version (e.g. 1.2)
+function versionScopedToMinor(version: string) {
+  const parsed = semver.parse(version);
+
+  if (!parsed) {
+    throw new Error(`Invalid version: ${version}`);
+  }
+
+  return `${parsed.major}.${parsed.minor}`;
 }

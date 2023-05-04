@@ -5,8 +5,6 @@ import type {
 import type { PrismaClient } from "~/db.server";
 import { prisma } from "~/db.server";
 import type { AuthenticatedEnvironment } from "../apiAuth.server";
-import type { ApiConnectionWithSecretReference } from "../externalApis/apiAuthenticationRepository.server";
-import { resolveApiConnection } from "~/models/jobConnection.server";
 
 export class RegisterJobVariantService {
   #prismaClient: PrismaClient;
@@ -47,22 +45,6 @@ export class RegisterJobVariantService {
       },
     });
 
-    let apiConnection: ApiConnectionWithSecretReference | undefined;
-
-    if (trigger.connection && trigger.connection.auth === "hosted") {
-      apiConnection = await this.#prismaClient.apiConnection.findUniqueOrThrow({
-        where: {
-          organizationId_slug: {
-            organizationId: endpoint.organizationId,
-            slug: trigger.connection.id,
-          },
-        },
-        include: {
-          dataReference: true,
-        },
-      });
-    }
-
     const triggerVariant = await this.#prismaClient.jobTriggerVariant.upsert({
       where: {
         jobInstanceId_slug: {
@@ -78,7 +60,6 @@ export class RegisterJobVariantService {
         },
         slug: id,
         data: trigger,
-        ready: !trigger.supportsPreparation,
         eventRule: {
           create: {
             event: trigger.eventRule.event,
@@ -100,12 +81,13 @@ export class RegisterJobVariantService {
       },
     });
 
+    // TODO: fire event to prepare trigger variant
+
     return {
       id: triggerVariant.id,
       slug: triggerVariant.slug,
       data: trigger,
       ready: triggerVariant.ready,
-      auth: await resolveApiConnection(apiConnection),
     };
   }
 }

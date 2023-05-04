@@ -76,7 +76,8 @@ export const JobSchema = z.object({
   name: z.string(),
   version: z.string(),
   trigger: TriggerMetadataSchema,
-  connections: z.array(ConnectionConfigSchema),
+  connections: z.record(ConnectionConfigSchema),
+  internal: z.boolean().default(false),
 });
 
 export type JobMetadata = z.infer<typeof JobSchema>;
@@ -140,7 +141,7 @@ export const DeliverEventResponseSchema = z.object({
 
 export type DeliverEventResponse = z.infer<typeof DeliverEventResponseSchema>;
 
-export const ExecuteJobBodySchema = z.object({
+export const RunJobBodySchema = z.object({
   event: ApiEventLogSchema,
   job: z.object({
     id: z.string(),
@@ -158,16 +159,16 @@ export const ExecuteJobBodySchema = z.object({
   connections: z.record(ConnectionAuthSchema).optional(),
 });
 
-export type ExecuteJobBody = z.infer<typeof ExecuteJobBodySchema>;
+export type RunJobBody = z.infer<typeof RunJobBodySchema>;
 
-export const ExecuteJobResponseSchema = z.object({
+export const RunJobResponseSchema = z.object({
   executionId: z.string(),
   completed: z.boolean(),
   output: DeserializedJsonSchema.optional(),
   task: TaskSchema.optional(),
 });
 
-export type ExecuteJobResponse = z.infer<typeof ExecuteJobResponseSchema>;
+export type RunJobResponse = z.infer<typeof RunJobResponseSchema>;
 
 export const CreateRunBodySchema = z.object({
   client: z.string(),
@@ -234,6 +235,10 @@ export type ClientTask = z.infer<typeof TaskSchema>;
 export type ServerTask = z.infer<typeof ServerTaskSchema>;
 export type CachedTask = z.infer<typeof CachedTaskSchema>;
 
+export const RedactSchema = z.object({
+  paths: z.array(z.string()),
+});
+
 export const RunTaskOptionsSchema = z.object({
   name: z.string(),
   icon: z.string().optional(),
@@ -244,6 +249,7 @@ export const RunTaskOptionsSchema = z.object({
   elements: z.array(DisplayElementSchema).optional(),
   params: SerializableJsonSchema.optional(),
   trigger: TriggerMetadataSchema.optional(),
+  redact: RedactSchema.optional(),
 });
 
 export type RunTaskOptions = z.input<typeof RunTaskOptionsSchema>;

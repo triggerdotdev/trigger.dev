@@ -967,9 +967,10 @@ model Endpoint {
 }
 
 model Job {
-  id    String @id @default(cuid())
-  slug  String
-  title String
+  id       String  @id @default(cuid())
+  slug     String
+  title    String
+  internal Boolean @default(false)
 
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   organizationId String
@@ -1213,6 +1214,7 @@ model Task {
   params      Json?
   output      Json?
   error       String?
+  redact      Json?
 
   startedAt   DateTime?
   completedAt DateTime?
