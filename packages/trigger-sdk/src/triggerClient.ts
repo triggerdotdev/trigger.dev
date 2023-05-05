@@ -5,10 +5,8 @@ import {
   Logger,
   NormalizedRequest,
   NormalizedResponse,
-  RegisterHttpEventSourceBody,
   RunJobBody,
   RunJobBodySchema,
-  UpdateHttpEventSourceBody,
 } from "@trigger.dev/internal";
 import { ApiClient } from "./apiClient";
 import {
@@ -226,14 +224,6 @@ export class TriggerClient {
       url: this.endpoint,
       name: this.name,
     });
-  }
-
-  async registerHttpSource(source: RegisterHttpEventSourceBody) {
-    return await this.#client.registerHttpSource(this.name, source);
-  }
-
-  async updateHttpSource(id: string, source: UpdateHttpEventSourceBody) {
-    return await this.#client.updateHttpSource(this.name, id, source);
   }
 
   async #executeJob(execution: RunJobBody, job: Job<Trigger<any>, any>) {

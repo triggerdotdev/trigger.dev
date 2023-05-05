@@ -1,7 +1,6 @@
 import type { PrismaClient } from "~/db.server";
 import { prisma } from "~/db.server";
 import { IngestSendEvent } from "~/routes/api/v3/events";
-import { ClientApi } from "../clientApi.server";
 
 export class DeliverHttpSourceRequestService {
   #prismaClient: PrismaClient;
@@ -34,41 +33,28 @@ export class DeliverHttpSourceRequestService {
       return;
     }
 
-    // TODO: deliver the raw source event through the new internal job system
-    // const auth = await getConnectionAuth(httpSourceRequest.source.connection);
+    const service = new IngestSendEvent();
 
-    // const clientApi = new ClientApi(
-    //   httpSourceRequest.environment.apiKey,
-    //   httpSourceRequest.endpoint.url
-    // );
-
-    // const { response, events } = await clientApi.deliverHttpSourceRequest({
-    //   key: httpSourceRequest.source.key,
-    //   secret: httpSourceRequest.source.secret ?? undefined,
-    //   auth: undefined, // TODO: auth
-    //   request: {
-    //     url: httpSourceRequest.url,
-    //     method: httpSourceRequest.method,
-    //     headers: httpSourceRequest.headers as Record<string, string>,
-    //     rawBody: httpSourceRequest.body,
-    //   },
-    // });
-
-    // await this.#prismaClient.httpSourceRequestDelivery.update({
-    //   where: {
-    //     id,
-    //   },
-    //   data: {
-    //     deliveredAt: new Date(),
-    //   },
-    // });
-
-    // const ingestService = new IngestSendEvent();
-
-    // for (const event of events) {
-    //   await ingestService.call(httpSourceRequest.environment, event);
-    // }
-
-    // return response;
+    await service.call(httpSourceRequest.environment, {
+      id: httpSourceRequest.id,
+      name: "internal.trigger.handle-raw-source-event",
+      source: "trigger.dev",
+      payload: {
+        source: {
+          key: httpSourceRequest.source.key,
+          secret: httpSourceRequest.source.secret,
+          data: httpSourceRequest.source.data as any,
+        },
+        rawEvent: {
+          url: httpSourceRequest.url,
+          method: httpSourceRequest.method,
+          headers: httpSourceRequest.headers as any,
+          // Convert httpSourceRequest.body from a Buffer to a string
+          rawBody: httpSourceRequest.body
+            ? httpSourceRequest.body.toString("utf-8")
+            : null,
+        },
+      },
+    });
   }
 }

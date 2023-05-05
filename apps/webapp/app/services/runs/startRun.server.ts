@@ -159,9 +159,11 @@ export class StartRunService {
           },
         });
 
-        await workerQueue.enqueue("startQueuedRuns", {
-          id: run.queueId,
+        await workerQueue.enqueue("runFinished", {
+          id: run.id,
         });
+
+        return;
       }
 
       if (results.task) {
@@ -213,8 +215,8 @@ export class StartRunService {
         });
       }
 
-      await workerQueue.enqueue("startQueuedRuns", {
-        id: run.queueId,
+      await workerQueue.enqueue("runFinished", {
+        id: run.id,
       });
     }
   }

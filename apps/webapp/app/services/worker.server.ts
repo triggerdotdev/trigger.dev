@@ -12,6 +12,7 @@ import { StartRunService } from "./runs/startRun.server";
 import { DeliverHttpSourceRequestService } from "./sources/deliverHttpSourceRequest.server";
 import { PrepareTriggerVariantService } from "./endpoints/prepareTriggerVariant.server";
 import { StartQueuedRunsService } from "./runs/startQueuedRuns.server";
+import { RunFinishedService } from "./runs/runFinished.server";
 
 const workerCatalog = {
   organizationCreated: z.object({ id: z.string() }),
@@ -31,6 +32,7 @@ const workerCatalog = {
   stopVM: z.object({ id: z.string() }),
   startInitialProjectDeployment: z.object({ id: z.string() }),
   startRun: z.object({ id: z.string() }),
+  runFinished: z.object({ id: z.string() }),
   resumeTask: z.object({ id: z.string() }),
   prepareJobInstance: z.object({ id: z.string() }),
   prepareTriggerVariant: z.object({ id: z.string() }),
@@ -79,6 +81,14 @@ function getWorkerQueue() {
     },
     schema: workerCatalog,
     tasks: {
+      runFinished: {
+        maxAttempts: 3,
+        handler: async (payload, job) => {
+          const service = new RunFinishedService();
+
+          await service.call(payload.id);
+        },
+      },
       startQueuedRuns: {
         maxAttempts: 3,
         queueName: (payload) => `queue:${payload.id}`,

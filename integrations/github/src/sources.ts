@@ -33,7 +33,7 @@ export function repositoryWebhookSource<TEventType>(
   // Create a stable key for this source so we only register it once
   const key = `github.repo.${params.repo}.webhook`;
 
-  return new ExternalSource("http", {
+  return new ExternalSource("http", key, "0.1.1", {
     parsePayload,
     connection,
     register: async (io, ctx) => {
@@ -121,32 +121,30 @@ export function repositoryWebhookSource<TEventType>(
         active: true,
       });
     },
-    handler: async (event, io, ctx) => {
-      const deliveryId = event.request.headers["x-github-delivery"];
-      const hookId = event.request.headers["x-github-hook-id"];
-      const signature = event.request.headers["x-hub-signature-256"];
+    handler: async ({ rawEvent: request, source }, io, ctx) => {
+      if (!request.rawBody) {
+        return { events: [] };
+      }
 
-      if (event.secret && signature) {
+      const deliveryId = request.headers["x-github-delivery"];
+      const hookId = request.headers["x-github-hook-id"];
+      const signature = request.headers["x-hub-signature-256"];
+
+      if (source.secret && signature) {
         const githubWebhooks = new Webhooks({
-          secret: event.secret,
+          secret: source.secret,
         });
 
-        if (!githubWebhooks.verify(event.request.body, signature)) {
+        if (!githubWebhooks.verify(request.rawBody, signature)) {
           return {
             events: [],
-            response: {
-              status: 401,
-              body: {
-                message: "Invalid signature",
-              },
-            },
           };
         }
       }
 
-      const name = event.request.headers["x-github-event"];
+      const name = request.headers["x-github-event"];
 
-      const context = omit(event.request.headers, [
+      const context = omit(request.headers, [
         "x-github-event",
         "x-github-delivery",
         "x-hub-signature-256",
@@ -158,7 +156,13 @@ export function repositoryWebhookSource<TEventType>(
         "x-forwarded-proto",
       ]);
 
-      const payload = parseBody(event.request.body);
+      const payload = parseBody(request.rawBody);
+
+      if (!payload) {
+        return {
+          events: [],
+        };
+      }
 
       return {
         events: [
@@ -170,12 +174,6 @@ export function repositoryWebhookSource<TEventType>(
             context,
           },
         ],
-        response: {
-          status: 200,
-          body: {
-            ok: true,
-          },
-        },
       };
     },
   });
@@ -185,14 +183,22 @@ export function repositoryWebhookSource<TEventType>(
 // If it's a Buffer, it will be parsed as JSON
 function parseBody(body: any) {
   if (Buffer.isBuffer(body)) {
-    return JSON.parse(body.toString());
+    return safeJsonParse(body.toString());
   }
 
   if (typeof body === "string") {
-    return JSON.parse(body);
+    return safeJsonParse(body);
   }
 
   return body;
+}
+
+function safeJsonParse(data: string) {
+  try {
+    return JSON.parse(data);
+  } catch (e) {
+    return null;
+  }
 }
 
 function omit<T extends Record<string, unknown>, K extends keyof T>(

@@ -41,7 +41,7 @@ export class Job<
   }
 
   get id() {
-    return this.options.id;
+    return slugifyId(this.options.id);
   }
 
   get name() {
@@ -124,16 +124,23 @@ export class Job<
   // Make sure the id is valid (must only contain alphanumeric characters and dashes)
   // Make sure the version is valid (must be a valid semver version)
   #validate() {
-    if (!this.id.match(/^[a-zA-Z0-9-]+$/)) {
-      throw new Error(
-        `Invalid job id: "${this.id}". Job ids must only contain alphanumeric characters and dashes.`
-      );
-    }
-
     if (!this.version.match(/^(\d+)\.(\d+)\.(\d+)$/)) {
       throw new Error(
         `Invalid job version: "${this.version}". Job versions must be valid semver versions.`
       );
     }
   }
+}
+
+function slugifyId(input: string): string {
+  // Replace any number of spaces with a single dash
+  const replaceSpacesWithDash = input.toLowerCase().replace(/\s+/g, "-");
+
+  // Remove any non-URL-safe characters
+  const removeNonUrlSafeChars = replaceSpacesWithDash.replace(
+    /[^a-zA-Z0-9-._~]/g,
+    ""
+  );
+
+  return removeNonUrlSafeChars;
 }

@@ -6,19 +6,17 @@ import type {
 import { DisplayElement } from "@trigger.dev/internal";
 import { z } from "zod";
 
-import {
-  NormalizedRequest,
-  NormalizedResponse,
-  SendEvent,
-} from "@trigger.dev/internal";
+import { SendEvent } from "@trigger.dev/internal";
 import { Connection, IOWithConnections } from "../connections";
 import { Job } from "../job";
 import { TriggerClient } from "../triggerClient";
 import type { Trigger, TriggerContext } from "../types";
 
 type HttpSourceEvent = {
-  request: NormalizedRequest;
-  secret?: string;
+  url: string;
+  method: string;
+  headers: Record<string, string>;
+  rawBody?: string | null;
 };
 
 type SmtpSourceEvent = {
@@ -52,13 +50,13 @@ type RegisterFunction<TConnection extends Connection<any, any>> = (
 ) => Promise<void>;
 
 type HandlerFunction<
-  TEvent extends any,
+  TChannel extends ChannelNames,
   TConnection extends Connection<any, any>
 > = (
-  event: TEvent,
+  event: RawSourceTriggerEvent<TChannel>,
   io: IOWithConnections<{ client: TConnection }>,
   ctx: TriggerContext
-) => Promise<{ response: NormalizedResponse; events: SendEvent[] }>;
+) => Promise<{ events: SendEvent[] }>;
 
 type ExternalSourceOptions<
   TEvent extends any,
@@ -67,10 +65,7 @@ type ExternalSourceOptions<
 > = {
   connection: TConnection;
   register: RegisterFunction<TConnection>;
-  handler: HandlerFunction<
-    ExternalSourceChannelMap[TChannel]["event"],
-    TConnection
-  >;
+  handler: HandlerFunction<TChannel, TConnection>;
   parsePayload: (payload: unknown) => TEvent;
 };
 
@@ -80,12 +75,18 @@ export class ExternalSource<
   TConnection extends Connection<any, any>
 > {
   channel: TChannel;
+  key: string;
+  version: string;
 
   constructor(
     channel: TChannel,
+    key: string,
+    version: string,
     private options: ExternalSourceOptions<TEvent, TChannel, TConnection>
   ) {
+    this.key = key;
     this.channel = channel;
+    this.version = version;
   }
 
   async register(
@@ -96,7 +97,7 @@ export class ExternalSource<
   }
 
   async handle(
-    event: ExternalSourceChannelMap[TChannel]["event"],
+    event: RawSourceTriggerEvent<TChannel>,
     io: IOWithConnections<{ client: TConnection }>,
     ctx: TriggerContext
   ) {
@@ -179,24 +180,20 @@ export class ExternalSourceEventTrigger<
 
     triggerClient.attach(
       new Job({
-        id: `${job.id}-handle-external-trigger${
-          variantId ? `-${variantId}` : ""
-        }`,
-        name: `Handle ${this.options.title}`,
-        version: job.version,
-        trigger: rawSourceTrigger(this.options.source.channel, job, variantId),
+        id: `handle-${this.options.source.key}`,
+        name: `Handle ${this.options.source.key}`,
+        version: this.options.source.version,
+        trigger: rawSourceTrigger(
+          this.options.source.channel,
+          this.options.source.key
+        ),
         connections: {
           client: this.options.source.connection,
         },
         run: async (event, io, ctx) => {
-          const { response, events } = await this.options.source.handle(
-            event,
-            io,
-            ctx
-          );
+          const { events } = await this.options.source.handle(event, io, ctx);
 
           return {
-            response,
             events,
           };
         },
@@ -207,27 +204,22 @@ export class ExternalSourceEventTrigger<
   }
 }
 
-function rawSourceTrigger<
-  TChannel extends ChannelNames,
-  TEvent extends ExternalSourceChannelMap[TChannel]["event"]
->(
+type RawSourceTriggerEvent<TChannel extends ChannelNames> = {
+  rawEvent: ExternalSourceChannelMap[TChannel]["event"];
+  source: { key: string; secret: string; data: any };
+};
+
+function rawSourceTrigger<TChannel extends ChannelNames>(
   channel: TChannel,
-  job: Job<Trigger<any>, any>,
-  variantId?: string
-): Trigger<TEvent> {
-  return new RawSourceEventTrigger(channel, job, variantId);
+  key: string
+): Trigger<RawSourceTriggerEvent<TChannel>> {
+  return new RawSourceEventTrigger(channel, key);
 }
 
-class RawSourceEventTrigger<
-  TChannel extends ChannelNames,
-  TEvent extends ExternalSourceChannelMap[TChannel]["event"]
-> implements Trigger<TEvent>
+class RawSourceEventTrigger<TChannel extends ChannelNames>
+  implements Trigger<RawSourceTriggerEvent<TChannel>>
 {
-  constructor(
-    private channel: TChannel,
-    private job: Job<Trigger<any>, any>,
-    private variantId?: string
-  ) {}
+  constructor(private channel: TChannel, private key: string) {}
 
   eventElements(event: ApiEventLog): DisplayElement[] {
     return [];
@@ -236,29 +228,24 @@ class RawSourceEventTrigger<
   toJSON(): TriggerMetadata {
     return {
       title: "Handle Raw Source Event",
-      elements: [
-        { label: "id", text: this.job.id },
-        { label: "version", text: this.job.version },
-      ],
+      elements: [{ label: "sourceKey", text: this.key }],
       eventRule: {
         event: "internal.trigger.handle-raw-source-event",
         source: "trigger.dev",
         payload: {
-          jobId: [this.job.id],
-          jobVersion: [this.job.version],
-          variantId: this.variantId ? [this.variantId] : [],
+          source: { key: [this.key] },
         },
       },
     };
   }
 
-  parsePayload(payload: unknown): TEvent {
-    return payload as TEvent;
+  parsePayload(payload: unknown): RawSourceTriggerEvent<TChannel> {
+    return payload as RawSourceTriggerEvent<TChannel>;
   }
 
   attach(
     triggerClient: TriggerClient,
-    job: Job<Trigger<TEvent>, any>,
+    job: Job<Trigger<RawSourceTriggerEvent<TChannel>>, any>,
     variantId?: string
   ): void {}
 }
