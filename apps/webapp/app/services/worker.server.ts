@@ -11,6 +11,7 @@ import { ResumeTaskService } from "./runs/resumeTask.server";
 import { StartRunService } from "./runs/startRun.server";
 import { DeliverHttpSourceRequestService } from "./sources/deliverHttpSourceRequest.server";
 import { PrepareTriggerVariantService } from "./endpoints/prepareTriggerVariant.server";
+import { StartQueuedRunsService } from "./runs/startQueuedRuns.server";
 
 const workerCatalog = {
   organizationCreated: z.object({ id: z.string() }),
@@ -42,6 +43,7 @@ const workerCatalog = {
     endpointId: z.string(),
     job: GetJobResponseSchema,
   }),
+  startQueuedRuns: z.object({ id: z.string() }),
 };
 
 let workerQueue: ZodWorker<typeof workerCatalog>;
@@ -77,6 +79,15 @@ function getWorkerQueue() {
     },
     schema: workerCatalog,
     tasks: {
+      startQueuedRuns: {
+        maxAttempts: 3,
+        queueName: (payload) => `queue:${payload.id}`,
+        handler: async (payload, job) => {
+          const service = new StartQueuedRunsService();
+
+          await service.call(payload.id);
+        },
+      },
       registerJob: {
         maxAttempts: 3,
         handler: async (payload, job) => {

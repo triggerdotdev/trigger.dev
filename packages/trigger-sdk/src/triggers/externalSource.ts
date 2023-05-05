@@ -92,7 +92,7 @@ export class ExternalSource<
     io: IOWithConnections<{ client: TConnection }>,
     ctx: TriggerContext
   ) {
-    await this.options.register(io, ctx);
+    return await this.options.register(io, ctx);
   }
 
   async handle(
@@ -164,6 +164,10 @@ export class ExternalSourceEventTrigger<
         trigger: internalPrepareTrigger(job, variantId),
         connections: {
           client: this.options.source.connection,
+        },
+        queue: {
+          name: `internal:${triggerClient.name}`,
+          maxConcurrent: 1,
         },
         run: async (event, io, ctx) => {
           return await this.options.source.register(io, ctx);

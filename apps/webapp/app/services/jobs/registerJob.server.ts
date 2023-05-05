@@ -11,6 +11,7 @@ import type {
   LocalAuthConnectionConfig,
   TriggerMetadata,
 } from "@trigger.dev/internal";
+import { DEFAULT_MAX_CONCURRENT_RUNS } from "~/consts";
 import type { PrismaClient } from "~/db.server";
 import { prisma } from "~/db.server";
 import type { AuthenticatedEnvironment } from "../apiAuth.server";
@@ -44,8 +45,6 @@ export class RegisterJobService {
       endpoint.environment,
       jobResponse
     );
-
-    // TODO: deliver internal event that will prepare the main trigger
 
     await workerQueue.enqueue(
       "prepareJobInstance",
@@ -140,6 +139,41 @@ export class RegisterJobService {
       },
     });
 
+    // Upsert the JobQueue
+    const queueName =
+      typeof metadata.queue === "string"
+        ? metadata.queue
+        : typeof metadata.queue === "object"
+        ? metadata.queue.name
+        : "default";
+
+    const jobQueue = await this.#prismaClient.jobQueue.upsert({
+      where: {
+        environmentId_name: {
+          environmentId: environment.id,
+          name: queueName,
+        },
+      },
+      create: {
+        environment: {
+          connect: {
+            id: environment.id,
+          },
+        },
+        name: queueName,
+        maxJobs:
+          typeof metadata.queue === "object"
+            ? metadata.queue.maxConcurrent || DEFAULT_MAX_CONCURRENT_RUNS
+            : DEFAULT_MAX_CONCURRENT_RUNS,
+      },
+      update: {
+        maxJobs:
+          typeof metadata.queue === "object"
+            ? metadata.queue.maxConcurrent || DEFAULT_MAX_CONCURRENT_RUNS
+            : DEFAULT_MAX_CONCURRENT_RUNS,
+      },
+    });
+
     // Upsert the JobInstance
     const jobInstance = await this.#prismaClient.jobInstance.upsert({
       where: {
@@ -175,11 +209,21 @@ export class RegisterJobService {
             id: environment.projectId,
           },
         },
+        queue: {
+          connect: {
+            id: jobQueue.id,
+          },
+        },
         version: metadata.version,
         trigger: metadata.trigger,
       },
       update: {
         trigger: metadata.trigger,
+        queue: {
+          connect: {
+            id: jobQueue.id,
+          },
+        },
       },
       include: {
         connections: {

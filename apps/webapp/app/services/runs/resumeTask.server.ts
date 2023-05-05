@@ -33,6 +33,7 @@ export class ResumeTaskService {
                 },
               },
             },
+            queue: true,
           },
         },
       },
@@ -85,7 +86,18 @@ export class ResumeTaskService {
             completedAt: new Date(),
             status: "SUCCESS",
             output: results.output ?? undefined,
+            queue: {
+              update: {
+                jobCount: {
+                  decrement: 1,
+                },
+              },
+            },
           },
+        });
+
+        await workerQueue.enqueue("startQueuedRuns", {
+          id: run.queueId,
         });
       }
 
@@ -108,9 +120,39 @@ export class ResumeTaskService {
             completedAt: new Date(),
             status: "FAILURE",
             output: { message: error.message, stack: error.stack },
+            queue: {
+              update: {
+                jobCount: {
+                  decrement: 1,
+                },
+              },
+            },
+          },
+        });
+      } else {
+        await this.#prismaClient.jobRun.update({
+          where: { id },
+          data: {
+            completedAt: new Date(),
+            status: "FAILURE",
+            output: {
+              message: error instanceof Error ? error.message : "Unknown Error",
+              stack: error instanceof Error ? error.stack : undefined,
+            },
+            queue: {
+              update: {
+                jobCount: {
+                  decrement: 1,
+                },
+              },
+            },
           },
         });
       }
+
+      await workerQueue.enqueue("startQueuedRuns", {
+        id: run.queueId,
+      });
     }
   }
 }

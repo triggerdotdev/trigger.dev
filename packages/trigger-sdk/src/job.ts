@@ -1,4 +1,9 @@
-import { ConnectionConfig, JobMetadata, LogLevel } from "@trigger.dev/internal";
+import {
+  ConnectionConfig,
+  JobMetadata,
+  LogLevel,
+  QueueOptions,
+} from "@trigger.dev/internal";
 import { Connection, IOWithConnections } from "./connections";
 import { TriggerClient } from "./triggerClient";
 import type { TriggerContext, Trigger, TriggerEventType } from "./types";
@@ -13,6 +18,7 @@ export type JobOptions<
   trigger: TTrigger;
   logLevel?: LogLevel;
   connections?: TConnections;
+  queue?: QueueOptions | string;
 
   run: (
     event: TriggerEventType<TTrigger>,
@@ -110,6 +116,7 @@ export class Job<
       version: this.version,
       trigger: this.trigger.toJSON(),
       connections: this.connections,
+      queue: this.options.queue,
       internal,
     };
   }

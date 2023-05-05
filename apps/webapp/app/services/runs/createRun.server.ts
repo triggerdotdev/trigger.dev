@@ -28,7 +28,13 @@ export class CreateRunService {
       },
     });
 
-    const execution = await this.#prismaClient.$transaction(async (prisma) => {
+    const jobQueue = await this.#prismaClient.jobQueue.findUniqueOrThrow({
+      where: {
+        id: jobInstance.queueId,
+      },
+    });
+
+    const run = await this.#prismaClient.$transaction(async (prisma) => {
       // Get the current max number for the given jobId
       const currentMaxNumber = await prisma.jobRun.aggregate({
         where: { jobId: job.id },
@@ -49,14 +55,15 @@ export class CreateRunService {
           organization: { connect: { id: environment.organizationId } },
           project: { connect: { id: environment.projectId } },
           endpoint: { connect: { id: endpoint.id } },
+          queue: { connect: { id: jobQueue.id } },
         },
       });
     });
 
     await workerQueue.enqueue("startRun", {
-      id: execution.id,
+      id: run.id,
     });
 
-    return execution;
+    return run;
   }
 }

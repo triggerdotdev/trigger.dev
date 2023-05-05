@@ -5,12 +5,12 @@ import {
   TriggerClient,
 } from "@trigger.dev/sdk";
 import { github } from "@trigger.dev/github";
-import { slack } from "@trigger.dev/slack";
+import { slack as slackConnection } from "@trigger.dev/slack";
 import type { NextApiRequest, NextApiResponse } from "next";
 import { z } from "zod";
 
 const gh = github({ id: "github" });
-const sl = slack({ id: "my-slack-new" });
+const slack = slackConnection({ id: "my-slack-new" });
 
 const client = new TriggerClient("nextjs", {
   apiKey: process.env.TRIGGER_API_KEY,
@@ -20,22 +20,41 @@ const client = new TriggerClient("nextjs", {
 });
 
 new Job({
-  id: "comment-on-new-issues",
-  name: "Comment on New GitHub issues",
+  id: "alert-on-new-github-issues",
+  name: "Alert on new GitHub issues",
   version: "0.1.1",
-  logLevel: "debug",
   connections: {
-    sl,
+    slack,
   },
   trigger: gh.triggers.onIssueOpened({
     repo: "ericallam/basic-starter-100k",
   }),
   run: async (event, io, ctx) => {
-    await io.sl.postMessage("Slack 📝", {
+    await io.slack.postMessage("Slack 📝", {
       text: `New Issue opened: ${event.issue.html_url}`,
       channel: "C04GWUTDC3W",
     });
   },
+}).attachTo(client);
+
+new Job({
+  id: "alert-on-new-github-issues-2",
+  name: "Alert on new GitHub issues 2",
+  version: "0.1.1",
+  trigger: gh.triggers.onIssueOpened({
+    repo: "ericallam/basic-starter-100k",
+  }),
+  run: async (event, io, ctx) => {},
+}).attachTo(client);
+
+new Job({
+  id: "alert-on-new-github-stars",
+  name: "Alert on new GitHub stars",
+  version: "0.1.1",
+  trigger: gh.triggers.onStar({
+    repo: "ericallam/basic-starter-100k",
+  }),
+  run: async (event, io, ctx) => {},
 }).attachTo(client);
 
 // const notifySlackONNewCommentsJob = new Job({

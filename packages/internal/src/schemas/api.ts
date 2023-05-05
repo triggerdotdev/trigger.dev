@@ -71,6 +71,13 @@ export const PongResponseSchema = z.object({
   message: z.literal("PONG"),
 });
 
+export const QueueOptionsSchema = z.object({
+  name: z.string(),
+  maxConcurrent: z.number().optional(),
+});
+
+export type QueueOptions = z.infer<typeof QueueOptionsSchema>;
+
 export const JobSchema = z.object({
   id: z.string(),
   name: z.string(),
@@ -78,6 +85,7 @@ export const JobSchema = z.object({
   trigger: TriggerMetadataSchema,
   connections: z.record(ConnectionConfigSchema),
   internal: z.boolean().default(false),
+  queue: z.union([QueueOptionsSchema, z.string()]).optional(),
 });
 
 export type JobMetadata = z.infer<typeof JobSchema>;

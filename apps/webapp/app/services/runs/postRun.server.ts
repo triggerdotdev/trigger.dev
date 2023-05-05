@@ -1,12 +1,12 @@
 import type { CreateRunBody } from "@trigger.dev/internal";
 import type { PrismaClient } from "~/db.server";
 import { prisma } from "~/db.server";
-import { AuthenticatedEnvironment } from "../apiAuth.server";
+import type { AuthenticatedEnvironment } from "../apiAuth.server";
 import { CreateRunService } from "./createRun.server";
 
 export class PostRunService {
   #prismaClient: PrismaClient;
-  #createExecutionService = new CreateRunService();
+  #createRunService = new CreateRunService();
 
   constructor(prismaClient: PrismaClient = prisma) {
     this.#prismaClient = prismaClient;
@@ -44,7 +44,7 @@ export class PostRunService {
       },
     });
 
-    return this.#createExecutionService.call({
+    return this.#createRunService.call({
       environment,
       job,
       jobInstance,

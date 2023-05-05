@@ -2,6 +2,7 @@ import {
   IssueCommentEvent,
   IssuesEvent,
   IssuesOpenedEvent,
+  StarEvent,
 } from "@octokit/webhooks-types";
 import {
   Connection,
@@ -71,11 +72,7 @@ function createTriggers(connection: Connection<Octokit, typeof tasks>) {
         action: ["opened"],
       }
     ),
-    onIssueComment: buildRepoWebhookTrigger<IssueCommentEvent>(
-      "On Issue Comment",
-      "issue_comment",
-      connection
-    ),
+    onStar: buildRepoWebhookTrigger<StarEvent>("On Star", "star", connection),
   };
 }
 

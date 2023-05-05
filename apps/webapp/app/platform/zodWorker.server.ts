@@ -15,7 +15,7 @@ import { logger } from "~/services/logger";
 
 export type ZodTasks<TConsumerSchema extends MessageCatalogSchema> = {
   [K in keyof TConsumerSchema]: {
-    queueName?: string;
+    queueName?: string | ((payload: z.infer<TConsumerSchema[K]>) => string);
     priority?: number;
     maxAttempts?: number;
     jobKeyMode?: "replace" | "preserve_run_at" | "unsafe_dedupe";
@@ -87,6 +87,10 @@ export class ZodWorker<TMessageCatalog extends MessageCatalogSchema> {
       ...(options || {}),
       ...task,
     };
+
+    if (typeof task.queueName === "function") {
+      opts.queueName = task.queueName(payload);
+    }
 
     const job = await this.#runner.addJob(identifier as string, payload, opts);
 
