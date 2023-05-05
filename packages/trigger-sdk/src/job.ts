@@ -34,6 +34,7 @@ export class Job<
   readonly options: JobOptions<TTrigger, TConnections>;
 
   client?: TriggerClient;
+  #pendingVariants: Array<{ id: string; trigger: TTrigger }> = [];
 
   constructor(options: JobOptions<TTrigger, TConnections>) {
     this.options = options;
@@ -91,17 +92,21 @@ export class Job<
 
     client.attach(this);
 
+    if (this.#pendingVariants.length > 0) {
+      this.#pendingVariants.forEach(({ id, trigger }) => {
+        client.attachVariant(this, id, trigger);
+      });
+    }
+
     return this;
   }
 
   attachVariant(id: string, trigger: TTrigger) {
     if (!this.client) {
-      throw new Error(
-        `Job "${this.id}" has not been registered with a client.`
-      );
+      this.#pendingVariants.push({ id, trigger });
+    } else {
+      this.client.attachVariant(this, id, trigger);
     }
-
-    this.client.attachVariant(this, id, trigger);
 
     return this;
   }

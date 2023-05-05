@@ -35,7 +35,14 @@ new Job({
       channel: "C04GWUTDC3W",
     });
   },
-}).attachTo(client);
+})
+  .attachTo(client)
+  .attachVariant(
+    "ericallam/hello-world",
+    gh.triggers.onIssueOpened({
+      repo: "ericallam/hello-world",
+    })
+  );
 
 new Job({
   id: "alert-on-new-github-issues-2",

@@ -106,7 +106,13 @@ function buildRepoWebhookTrigger<TEvent>(
       eventRule: {
         event,
         source: "github.com",
-        payload: filter ?? {},
+        payload: {
+          ...(filter ?? {}),
+          repository: {
+            ...filter?.repository,
+            full_name: [params.repo],
+          },
+        },
       },
     });
 }

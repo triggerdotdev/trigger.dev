@@ -383,6 +383,14 @@ export class RegisterJobService {
       },
       update: {
         data: trigger,
+        eventRule: {
+          update: {
+            event: trigger.eventRule.event,
+            source: trigger.eventRule.source,
+            payloadFilter: trigger.eventRule.payload,
+            contextFilter: trigger.eventRule.context,
+          },
+        },
       },
     });
   }
