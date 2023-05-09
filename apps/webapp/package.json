@@ -34,7 +34,6 @@
     "clean:sourcemaps": "run-s clean:sourcemaps:*",
     "clean:sourcemaps:public": "rimraf ./build/**/*.map",
     "clean:sourcemaps:build": "rimraf ./public/build/**/*.map",
-    "idev": "infisical run -- run-p dev:*",
     "storybook": "storybook dev -p 6006",
     "build-storybook": "storybook build",
     "chromatic": "npx chromatic --project-token=d561c6b7dbcc"

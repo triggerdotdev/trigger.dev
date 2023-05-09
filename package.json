@@ -43,7 +43,8 @@
     "changeset:next": "changeset pre enter next",
     "changeset:normal": "changeset pre exit",
     "sentry-upload": "turbo run sentry-upload",
-    "clean:sourcemaps": "turbo run clean:sourcemaps"
+    "clean:sourcemaps": "turbo run clean:sourcemaps",
+    "storybook": "turbo run storybook"
   },
   "devDependencies": {
     "@manypkg/cli": "^0.19.2",
