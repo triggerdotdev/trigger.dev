@@ -1,32 +1,24 @@
-import classNames from "classnames";
+import * as React from "react";
+import { cn } from "~/utils/cn";
 
-const roundedStyles = {
-  roundedLeft: "rounded-l -mr-1",
-  roundedRight: "rounded-r -ml-1",
-  roundedFull: "rounded",
-};
+export interface InputProps
+  extends React.InputHTMLAttributes<HTMLInputElement> {}
 
-type InputProps = JSX.IntrinsicElements["input"] & {
-  roundedEdges?: "roundedLeft" | "roundedRight" | "roundedFull";
-};
+const Input = React.forwardRef<HTMLInputElement, InputProps>(
+  ({ className, type, ...props }, ref) => {
+    return (
+      <input
+        type={type}
+        className={cn(
+          "flex h-10 w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50",
+          className
+        )}
+        ref={ref}
+        {...props}
+      />
+    );
+  }
+);
+Input.displayName = "Input";
 
-export function Input({
-  children,
-  className,
-  roundedEdges = "roundedFull",
-  ...props
-}: InputProps) {
-  const classes = classNames(roundedStyles[roundedEdges], className);
-
-  return (
-    <input
-      {...props}
-      className={classNames(
-        `flex grow py-2 pl-4 pr-1 text-slate-200 rounded border-none bg-black/20 group-focus:border-indigo-500 placeholder:text-slate-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500`,
-        classes
-      )}
-    >
-      {children}
-    </input>
-  );
-}
+export { Input };

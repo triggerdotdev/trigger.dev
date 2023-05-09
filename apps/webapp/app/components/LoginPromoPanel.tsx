@@ -10,7 +10,7 @@ import type { TemplateListItem } from "~/presenters/templateListPresenter.server
 import { ApiLogoIcon } from "./code/ApiLogoIcon";
 import { Panel } from "./layout/Panel";
 import { Body } from "./primitives/text/Body";
-import { Header1, Header3 } from "./primitives/text/Headers";
+import { Header1, Header3 } from "./primitives/Headers";
 
 export function LoginPromoPanel({ template }: { template?: TemplateListItem }) {
   return (

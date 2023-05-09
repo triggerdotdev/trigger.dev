@@ -30,7 +30,7 @@ import invariant from "tiny-invariant";
 import { OctoKitty } from "~/components/GitHubLoginButton";
 import { AppBody, AppLayoutTwoCol } from "~/components/layout/AppLayout";
 import { Container } from "~/components/layout/Container";
-import { Header } from "~/components/layout/Header";
+import { Header } from "~/components/navigation/NavBar";
 import { List } from "~/components/layout/List";
 import { Panel } from "~/components/layout/Panel";
 import { PanelWarning } from "~/components/layout/PanelWarning";
@@ -43,7 +43,7 @@ import {
 import { StyledDialog } from "~/components/primitives/Dialog";
 import { Spinner } from "~/components/primitives/Spinner";
 import { Body } from "~/components/primitives/text/Body";
-import { Header4 } from "~/components/primitives/text/Headers";
+import { Header4 } from "~/components/primitives/Headers";
 import { SubTitle } from "~/components/primitives/text/SubTitle";
 import { Title } from "~/components/primitives/text/Title";
 import { Tooltip } from "~/components/primitives/Tooltip";

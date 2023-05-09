@@ -1,6 +1,5 @@
 import { Popover, Transition } from "@headlessui/react";
 import {
-  BookmarkIcon,
   BuildingOffice2Icon,
   ChevronUpDownIcon,
   UserIcon,
@@ -14,12 +13,13 @@ import {
   useIsNewOrganizationPage,
   useOrganizations,
 } from "~/hooks/useOrganizations";
-import { BreadcrumbDivider } from "../layout/Header";
 
 const actionClassNames = "text-white";
 const dimmedClassNames = "text-slate-500";
 
-export function OrganizationMenu() {
+//todo change to projects
+//todo change to use popover
+export function ProjectsMenu() {
   const organizations = useOrganizations();
   const currentOrganization = useCurrentOrganization();
   const isNewPage = useIsNewOrganizationPage();

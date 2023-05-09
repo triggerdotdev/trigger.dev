@@ -5,7 +5,7 @@ import invariant from "tiny-invariant";
 import { CopyTextPanel } from "~/components/CopyTextButton";
 import { AppBody, AppLayoutTwoCol } from "~/components/layout/AppLayout";
 import { Container } from "~/components/layout/Container";
-import { Header } from "~/components/layout/Header";
+import { Header } from "~/components/navigation/NavBar";
 import { Panel } from "~/components/layout/Panel";
 import { OrganizationsSideMenu } from "~/components/navigation/SideMenu";
 import { TertiaryButton } from "~/components/primitives/Buttons";

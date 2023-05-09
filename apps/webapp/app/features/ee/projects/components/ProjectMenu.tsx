@@ -7,7 +7,7 @@ import { PlusIcon } from "@heroicons/react/24/solid";
 import { Link } from "@remix-run/react";
 import { Fragment } from "react";
 import invariant from "tiny-invariant";
-import { BreadcrumbDivider } from "~/components/layout/Header";
+import { BreadcrumbDivider } from "~/components/navigation/NavBar";
 import { useCurrentOrganization } from "~/hooks/useOrganizations";
 
 const dimmedClassNames = "text-slate-500";

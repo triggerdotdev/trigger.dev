@@ -6,7 +6,7 @@ import { ApiLogoIcon } from "../code/ApiLogoIcon";
 import { CopyTextPanel } from "../CopyTextButton";
 import { SecondaryA } from "../primitives/Buttons";
 import { Body } from "../primitives/text/Body";
-import { Header1 } from "../primitives/text/Headers";
+import { Header1 } from "../primitives/Headers";
 
 export function TemplateOverview({
   template,

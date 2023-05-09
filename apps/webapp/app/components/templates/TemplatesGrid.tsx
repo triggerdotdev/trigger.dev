@@ -5,7 +5,7 @@ import { Fragment, useState } from "react";
 import type { TemplateListItem } from "~/presenters/templateListPresenter.server";
 import { CopyTextPanel } from "../CopyTextButton";
 import { StyledDialog } from "../primitives/Dialog";
-import { Header1 } from "../primitives/text/Headers";
+import { Header1 } from "../primitives/Headers";
 import { TemplateOverview } from "./TemplateOverview";
 
 export function TemplatesGrid({

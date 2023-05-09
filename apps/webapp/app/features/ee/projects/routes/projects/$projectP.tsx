@@ -4,7 +4,7 @@ import type { UseDataFunctionReturn } from "remix-typedjson";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import invariant from "tiny-invariant";
 import { Container } from "~/components/layout/Container";
-import { Header } from "~/components/layout/Header";
+import { Header } from "~/components/navigation/NavBar";
 import {
   ProjectSideMenu,
   SideMenuContainer,

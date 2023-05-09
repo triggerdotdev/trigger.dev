@@ -8,7 +8,7 @@ import type {
   WebhookEventTrigger,
 } from "@trigger.dev/internal";
 import { Body } from "../primitives/text/Body";
-import { Header2 } from "../primitives/text/Headers";
+import { Header2 } from "../primitives/Headers";
 import cronstrue from "cronstrue";
 
 export function TriggerBody({ trigger }: { trigger: TriggerMetadata }) {

@@ -1,7 +1,7 @@
 import { Popover, Transition } from "@headlessui/react";
 import {
-  ChevronUpDownIcon,
   ArrowsRightLeftIcon,
+  ChevronUpDownIcon,
 } from "@heroicons/react/24/outline";
 import {
   CheckIcon,
@@ -13,13 +13,13 @@ import classNames from "classnames";
 import { Fragment } from "react";
 import { useCurrentOrganization } from "~/hooks/useOrganizations";
 import { useCurrentWorkflow, useWorkflows } from "~/hooks/useWorkflows";
-import { BreadcrumbDivider } from "../layout/Header";
-import { PrimaryLink } from "../primitives/Buttons";
-import { MobileNavIcon, MobileNavLink } from "../primitives/NavLink";
+import { BreadcrumbDivider } from "./NavBar";
 
 const dimmedClassNames = "text-slate-500";
 
-export function WorkflowMenu() {
+//todo change to jobs
+//todo change to use popover
+export function JobsMenu() {
   const workflows = useWorkflows();
   const currentWorkflow = useCurrentWorkflow();
   const currentOrganization = useCurrentOrganization();

@@ -7,7 +7,7 @@ import {
   PublicAppBody,
   PublicAppLayout,
 } from "~/components/layout/AppLayout";
-import { Header } from "~/components/layout/Header";
+import { Header } from "~/components/navigation/NavBar";
 import { MarketingHeader } from "~/components/layout/MarketingHeader";
 import { getOrganizations } from "~/models/organization.server";
 import { getImpersonationId } from "~/services/impersonation.server";

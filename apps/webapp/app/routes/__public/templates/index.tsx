@@ -1,5 +1,5 @@
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
-import { Header2 } from "~/components/primitives/text/Headers";
+import { Header2 } from "~/components/primitives/Headers";
 import { TemplatesGrid } from "~/components/templates/TemplatesGrid";
 import { TemplateListPresenter } from "~/presenters/templateListPresenter.server";
 

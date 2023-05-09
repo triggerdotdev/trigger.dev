@@ -7,7 +7,7 @@ import { NamedIcon, NamedIconInBox } from "~/components/Icon";
 import { ConnectButton } from "~/components/integrations/ConnectButton";
 import { AppBody, AppLayoutTwoCol } from "~/components/layout/AppLayout";
 import { Container } from "~/components/layout/Container";
-import { Header } from "~/components/layout/Header";
+import { Header } from "~/components/navigation/NavBar";
 import { List } from "~/components/layout/List";
 import { OrganizationsSideMenu } from "~/components/navigation/SideMenu";
 import { Badge } from "~/components/primitives/Badge";
@@ -21,7 +21,7 @@ import {
   PopoverTrigger,
 } from "~/components/primitives/Popover";
 import { Body } from "~/components/primitives/text/Body";
-import { Header3 } from "~/components/primitives/text/Headers";
+import { Header3 } from "~/components/primitives/Headers";
 import { SubTitle } from "~/components/primitives/text/SubTitle";
 import { Title } from "~/components/primitives/text/Title";
 import { useCurrentOrganization } from "~/hooks/useOrganizations";

@@ -23,8 +23,9 @@ import { useOptionalUser } from "~/hooks/useUser";
 import { LogoIcon } from "../LogoIcon";
 import { MenuTitleToolTip } from "../primitives/MenuTitleToolTip";
 import { Body } from "../primitives/text/Body";
-import { Header1 } from "../primitives/text/Headers";
+import { Header1 } from "../primitives/Headers";
 
+//todo change to the new collapsible side menu
 export function SideMenuContainer({ children }: { children: React.ReactNode }) {
   return (
     <div className="grid h-full grid-cols-[16rem_auto] overflow-hidden">

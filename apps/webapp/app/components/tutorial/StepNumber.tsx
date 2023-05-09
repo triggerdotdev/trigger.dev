@@ -1,4 +1,4 @@
-export function StepNumber({
+export function TutorialStep({
   stepNumber,
   drawLine,
   active = false,

@@ -1,7 +1,7 @@
 import type { Meta, StoryObj } from "@storybook/react";
 import { withDesign } from "storybook-addon-designs";
 
-import { StyledDialog } from "../primitives/Dialog";
+import { StyledDialog } from "../Dialog";
 
 const meta: Meta<typeof StyledDialog> = {
   title: "Primitives/Dialog",

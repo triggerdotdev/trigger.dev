@@ -13,7 +13,7 @@ import { InputGroup } from "~/components/primitives/InputGroup";
 import { Label } from "~/components/primitives/Label";
 import { Select } from "~/components/primitives/Select";
 import { Body } from "~/components/primitives/text/Body";
-import { Header1 } from "~/components/primitives/text/Headers";
+import { Header1 } from "~/components/primitives/Headers";
 import { SubTitle } from "~/components/primitives/text/SubTitle";
 import { useLiveEnvironment } from "~/hooks/useEnvironments";
 import {

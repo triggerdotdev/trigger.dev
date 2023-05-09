@@ -2,7 +2,7 @@ import classNames from "classnames";
 import type { TemplateListItem } from "~/presenters/templateListPresenter.server";
 import { ApiLogoIcon } from "../code/ApiLogoIcon";
 import { Body } from "../primitives/text/Body";
-import { Header1 } from "../primitives/text/Headers";
+import { Header1 } from "../primitives/Headers";
 
 export function TemplateCard({
   template,

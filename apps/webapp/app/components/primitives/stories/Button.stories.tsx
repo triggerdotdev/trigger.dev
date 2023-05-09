@@ -1,23 +1,23 @@
 import type { Meta, StoryObj } from "@storybook/react";
 import { withDesign } from "storybook-addon-designs";
+import { Button } from "../Buttons";
 
-import { TertiaryButton } from "../primitives/Buttons";
-
-const meta: Meta<typeof TertiaryButton> = {
-  title: "Primitives/TertiaryButton",
-  component: TertiaryButton,
+const meta: Meta<typeof Button> = {
+  title: "Primitives/Button",
+  component: Button,
   decorators: [withDesign],
 };
 
 export default meta;
 
-type Story = StoryObj<typeof TertiaryButton>;
+type Story = StoryObj<typeof Button>;
 
 export const Basic: Story = {
   args: {
-    children: "Tertiary Button",
+    text: "Action text",
   },
-  render: (args) => <TertiaryButton {...args} />,
+
+  render: (args) => <Button {...args} />,
 };
 
 Basic.parameters = {

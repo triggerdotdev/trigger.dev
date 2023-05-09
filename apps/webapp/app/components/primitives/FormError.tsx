@@ -1,5 +1,6 @@
 import type { z } from "zod";
 
+//todo use a new Input Field Error component
 export function FormError({
   errors,
   path,
@@ -20,7 +21,7 @@ export function FormError({
   }
 
   return (
-    <div className="mt-2 text-sm text-red-600 col-span-full">
+    <div className="col-span-full mt-2 text-sm text-red-600">
       {relevantErrors.map((error, index) => (
         <p key={index}>{error.message}</p>
       ))}

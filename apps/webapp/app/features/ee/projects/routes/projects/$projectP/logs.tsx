@@ -8,7 +8,7 @@ import { PanelWarning } from "~/components/layout/PanelInfo";
 import { TertiaryLink } from "~/components/primitives/Buttons";
 import { Spinner } from "~/components/primitives/Spinner";
 import { Body } from "~/components/primitives/text/Body";
-import { Header1, Header4 } from "~/components/primitives/text/Headers";
+import { Header1, Header4 } from "~/components/primitives/Headers";
 import { SubTitle } from "~/components/primitives/text/SubTitle";
 import { useCurrentProject } from "../$projectP";
 import { LogOutput } from "../../../components/LogOutput";

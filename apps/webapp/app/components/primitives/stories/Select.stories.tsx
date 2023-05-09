@@ -1,7 +1,13 @@
 import type { Meta, StoryObj } from "@storybook/react";
 import { withDesign } from "storybook-addon-designs";
 
-import { Select } from "../primitives/Select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "../Select";
 
 const meta: Meta<typeof Select> = {
   title: "Primitives/Select",
@@ -19,9 +25,14 @@ export const Basic: Story = {
   },
   render: (args) => (
     <Select>
-      <option>Option One</option>
-      <option>Option Two </option>
-      <option>Option Three</option>
+      <SelectTrigger className="w-[180px]">
+        <SelectValue placeholder="Theme" />
+      </SelectTrigger>
+      <SelectContent>
+        <SelectItem value="light">Light</SelectItem>
+        <SelectItem value="dark">Dark</SelectItem>
+        <SelectItem value="system">System</SelectItem>
+      </SelectContent>
     </Select>
   ),
 };

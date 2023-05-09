@@ -13,7 +13,7 @@ import {
   SheetTitle,
   SheetTrigger,
 } from "../primitives/Sheet";
-import { Header3 } from "../primitives/text/Headers";
+import { Header3 } from "../primitives/Headers";
 import { Input } from "../primitives/Input";
 import { Badge } from "../primitives/Badge";
 

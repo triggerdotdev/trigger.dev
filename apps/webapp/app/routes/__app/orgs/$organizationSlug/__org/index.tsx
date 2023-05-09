@@ -1,6 +1,6 @@
 import { AppBody, AppLayoutTwoCol } from "~/components/layout/AppLayout";
 import { Container } from "~/components/layout/Container";
-import { Header } from "~/components/layout/Header";
+import { Header } from "~/components/navigation/NavBar";
 import { OrganizationsSideMenu } from "~/components/navigation/SideMenu";
 import { Title } from "~/components/primitives/text/Title";
 import { useDevEnvironment } from "~/hooks/useEnvironments";

@@ -1,290 +1,151 @@
+import type { LinkProps } from "@remix-run/react";
 import { Link } from "@remix-run/react";
-import classnames from "classnames";
+import React from "react";
+import { cn } from "~/utils/cn";
 
-type Size = "regular" | "large";
+const sizes = {
+  small: "h-[24px] px-2 text-xs",
+  medium: "h-[32px] px-2.5 text-sm",
+  large: "h-[40px] px-3 text-base",
+};
 
-const commonClasses =
-  "inline-flex items-center justify-center max-w-max rounded transition whitespace-nowrap";
-export const primaryClasses = classnames(
-  commonClasses,
-  "px-4 py-2 bg-indigo-700 text-white hover:bg-indigo-600 focus-visible:ring-indigo-800 gap-2 disabled:opacity-50 disabled:cursor-not-allowed disabled:bg-slate-700 disabled:text-slate-400"
-);
-export const secondaryClasses = classnames(
-  commonClasses,
-  "px-4 py-2 bg-transparent ring-1 ring-slate-700 ring-inset text-white hover:bg-white/5 hover:border-slate-700 focus-visible:ring-slate-300 gap-2"
-);
-export const tertiaryClasses = classnames(
-  commonClasses,
-  "text-slate-300/70 hover:text-white gap-1"
-);
-export const dangerClasses = classnames(
-  commonClasses,
-  "px-4 py-2 bg-rose-700 text-white hover:bg-rose-600 focus-visible:ring-rose-800 gap-2"
-);
-export const toxicClasses = classnames(
-  commonClasses,
-  "hover:cursor-pointer px-3 py-1 transition bg-gradient-to-r from-acid-500 to-toxic-500 text-slate-1000 !text-base font-bold hover:from-acid-600 hover:to-toxic-600 focus-visible:ring-slate-300"
-);
+const themes = {
+  primary:
+    "text-slate-900 bg-gradient-primary overflow-hidden hover:opacity-90",
+  secondary:
+    "text-slate-200 bg-gradient-secondary transition duration-500 hover:opacity-90",
+  secondaryOutline:
+    "text-indigo-400 hover:text-indigo-300 border border-indigo-500  focus:ring-indigo-400 py-1/2 hover:border-indigo-400",
+};
 
-function getSizeClassName(size: Size) {
-  switch (size) {
-    case "large":
-      return "text-lg";
-    case "regular":
-    default:
-      return "text-sm";
+const btnVariants = {
+  $all: "text-center font-semibold font-sans justify-center items-center shrink-0 transition-all duration-300 leading-tight rounded select-none group-focus:outline-none group-disabled:opacity-75 group-disabled:pointer-events-none",
+  size: sizes,
+  theme: themes,
+};
+
+const iconVariants = {
+  size: {
+    // ExtraSmall: "h-3",
+    small: "h-4",
+    medium: "h-4",
+    large: "h-5",
+    // ExtraLarge: "h-6",
+  },
+  theme: {
+    primary: "text-slate-900",
+    secondary: "text-slate-200",
+    secondaryOutline: "text-indigo-400",
+  },
+};
+
+type ButtonContentPropsType = {
+  text?: string | React.ReactNode;
+  LeadingIcon?: React.ComponentType<any>;
+  TrailingIcon?: React.ComponentType<any>;
+  fullWidth?: boolean;
+  className?: string;
+  size: keyof typeof sizes;
+  theme: keyof typeof themes;
+};
+
+function ButtonContent(props: ButtonContentPropsType) {
+  const { text, LeadingIcon, TrailingIcon, fullWidth, className } = props;
+
+  // Based on the size prop, we'll use the corresponding variant classnames
+  const btnClassName = `${btnVariants.$all} ${btnVariants.size[props.size]} ${
+    btnVariants.theme[props.theme]
+  }`;
+  const iconClassName = `${iconVariants.size[props.size]} ${
+    iconVariants.theme[props.theme]
+  }`;
+  return (
+    <div
+      className={cn(
+        className,
+        fullWidth ? "flex" : "inline-flex",
+        btnClassName
+      )}
+    >
+      <div className="flex w-full items-center gap-x-1">
+        {LeadingIcon && (
+          <LeadingIcon
+            className={cn(iconClassName, "shrink-0 justify-start")}
+          />
+        )}
+
+        {text && <span className="mx-auto self-center truncate">{text}</span>}
+
+        {TrailingIcon && (
+          <TrailingIcon className={cn(iconClassName, "shrink-0 justify-end")} />
+        )}
+      </div>
+    </div>
+  );
+}
+
+type ButtonPropsType = Pick<
+  JSX.IntrinsicElements["button"],
+  "type" | "disabled" | "onClick" | "name" | "value"
+> &
+  React.ComponentProps<typeof ButtonContent>;
+export const Button = ({
+  type,
+  disabled,
+  onClick,
+  ...props
+}: ButtonPropsType) => {
+  return (
+    <button
+      className={cn("group outline-none", props.fullWidth ? "w-full" : "")}
+      type={type}
+      disabled={disabled}
+      onClick={onClick}
+      name={props.name}
+      value={props.value}
+    >
+      <ButtonContent {...props} />
+    </button>
+  );
+};
+
+type LinkPropsType = Pick<LinkProps, "to"> &
+  React.ComponentProps<typeof ButtonContent>;
+export const LinkButton = ({ to, ...props }: LinkPropsType) => {
+  if (to.toString().startsWith("http")) {
+    return (
+      <ExtLink
+        href={to.toString()}
+        className={cn("group outline-none", props.fullWidth ? "w-full" : "")}
+      >
+        <ButtonContent {...props} />
+      </ExtLink>
+    );
+  } else {
+    return (
+      <Link
+        to={to}
+        className={cn("group outline-none", props.fullWidth ? "w-full" : "")}
+      >
+        <ButtonContent {...props} />
+      </Link>
+    );
   }
-}
-
-type ButtonProps = React.DetailedHTMLProps<
-  React.ButtonHTMLAttributes<HTMLButtonElement>,
-  HTMLButtonElement
-> & {
-  size?: Size;
 };
 
-type LinkProps = Parameters<typeof Link>[0] & {
-  size?: Size;
+type ExtLinkProps = JSX.IntrinsicElements["a"] & {
+  children: React.ReactNode;
+  className?: string;
+  href: string;
 };
 
-type AProps = React.DetailedHTMLProps<
-  React.AnchorHTMLAttributes<HTMLAnchorElement>,
-  HTMLAnchorElement
-> & {
-  size?: Size;
-};
-
-export function PrimaryButton({
-  children,
-  size = "regular",
-  className,
-  ...props
-}: ButtonProps) {
-  return (
-    <button
-      className={classnames(primaryClasses, getSizeClassName(size), className)}
-      {...props}
-    >
-      {children}
-    </button>
-  );
-}
-
-export function SecondaryButton({
-  children,
-  size = "regular",
-  className,
-  ...props
-}: ButtonProps) {
-  return (
-    <button
-      className={classnames(
-        secondaryClasses,
-        getSizeClassName(size),
-        className
-      )}
-      {...props}
-    >
-      {children}
-    </button>
-  );
-}
-
-export function TertiaryButton({
-  children,
-  size = "regular",
-  className,
-  ...props
-}: ButtonProps) {
-  return (
-    <button
-      className={classnames(tertiaryClasses, getSizeClassName(size), className)}
-      {...props}
-    >
-      {children}
-    </button>
-  );
-}
-
-export function DangerButton({
-  children,
-  size = "regular",
-  className,
-  ...props
-}: ButtonProps) {
-  return (
-    <button
-      className={classnames(dangerClasses, getSizeClassName(size), className)}
-      {...props}
-    >
-      {children}
-    </button>
-  );
-}
-
-export function PrimaryLink({
-  children,
-  size = "regular",
-  className,
-  to,
-  ...props
-}: LinkProps) {
-  return (
-    <Link
-      to={to}
-      className={classnames(primaryClasses, getSizeClassName(size), className)}
-      {...props}
-    >
-      {children}
-    </Link>
-  );
-}
-
-export function SecondaryLink({
-  children,
-  className,
-  size = "regular",
-  to,
-  ...props
-}: LinkProps) {
-  return (
-    <Link
-      to={to}
-      className={classnames(
-        secondaryClasses,
-        getSizeClassName(size),
-        className
-      )}
-      {...props}
-    >
-      {children}
-    </Link>
-  );
-}
-
-export function TertiaryLink({
-  children,
-  className,
-  size = "regular",
-  to,
-  ...props
-}: LinkProps) {
-  return (
-    <Link
-      to={to}
-      className={classnames(tertiaryClasses, getSizeClassName(size), className)}
-      {...props}
-    >
-      {children}
-    </Link>
-  );
-}
-
-export function DangerLink({
-  children,
-  className,
-  size = "regular",
-  to,
-  ...props
-}: LinkProps) {
-  return (
-    <Link
-      to={to}
-      className={classnames(dangerClasses, getSizeClassName(size), className)}
-      {...props}
-    >
-      {children}
-    </Link>
-  );
-}
-
-export function ToxicLink({
-  children,
-  className,
-  size = "regular",
-  to,
-  ...props
-}: LinkProps) {
-  return (
-    <Link
-      to={to}
-      className={classnames(toxicClasses, getSizeClassName(size), className)}
-      {...props}
-    >
-      {children}
-    </Link>
-  );
-}
-
-export function PrimaryA({
-  children,
-  className,
-  size = "regular",
-  href,
-  ...props
-}: AProps) {
+function ExtLink({ className, href, children, ...props }: ExtLinkProps) {
   return (
     <a
+      className={cn(className)}
+      target="_blank"
+      rel="noopener noreferrer"
       href={href}
-      className={classnames(primaryClasses, getSizeClassName(size), className)}
-      {...props}
-    >
-      {children}
-    </a>
-  );
-}
-
-export function SecondaryA({
-  children,
-  className,
-  size = "regular",
-  href,
-  ...props
-}: AProps) {
-  return (
-    <a
-      href={href}
-      className={classnames(
-        secondaryClasses,
-        getSizeClassName(size),
-        className
-      )}
-      {...props}
-    >
-      {children}
-    </a>
-  );
-}
-
-export function TertiaryA({
-  children,
-  className,
-  size = "regular",
-  href,
-  ...props
-}: AProps) {
-  return (
-    <a
-      href={href}
-      className={classnames(tertiaryClasses, getSizeClassName(size), className)}
-      {...props}
-    >
-      {children}
-    </a>
-  );
-}
-
-export function ToxicA({
-  children,
-  className,
-  size = "regular",
-  href,
-  ...props
-}: AProps) {
-  return (
-    <a
-      href={href}
-      className={classnames(toxicClasses, getSizeClassName(size), className)}
       {...props}
     >
       {children}

@@ -1,10 +1,10 @@
 import { CloudIcon } from "@heroicons/react/24/outline";
 import { AppBody, AppLayoutTwoCol } from "~/components/layout/AppLayout";
 import { Container } from "~/components/layout/Container";
-import { Header } from "~/components/layout/Header";
+import { Header } from "~/components/navigation/NavBar";
 import { OrganizationsSideMenu } from "~/components/navigation/SideMenu";
 import { Body } from "~/components/primitives/text/Body";
-import { Header1 } from "~/components/primitives/text/Headers";
+import { Header1 } from "~/components/primitives/Headers";
 
 export default function ComingSoonPage() {
   return (

@@ -7,10 +7,10 @@ import {
 import { Link } from "@remix-run/react";
 import classNames from "classnames";
 import { AppBody } from "~/components/layout/AppLayout";
-import { Header } from "~/components/layout/Header";
+import { Header } from "~/components/navigation/NavBar";
 import { MenuTitleToolTip } from "~/components/primitives/MenuTitleToolTip";
 import { Body } from "~/components/primitives/text/Body";
-import { Header4 } from "~/components/primitives/text/Headers";
+import { Header4 } from "~/components/primitives/Headers";
 import type { MatchedOrganization } from "~/hooks/useOrganizations";
 import { useOrganizations } from "~/hooks/useOrganizations";
 import { useOptionalUser } from "~/hooks/useUser";

@@ -22,6 +22,7 @@ type CodeBlockProps = {
   className?: string;
 };
 
+//todo change to use CodeHike
 export default function CodeBlock({
   code,
   language = "typescript",

@@ -3,7 +3,7 @@ import type { LoaderArgs } from "@remix-run/server-runtime";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
 import { SecondaryLink } from "~/components/primitives/Buttons";
-import { Header1 } from "~/components/primitives/text/Headers";
+import { Header1 } from "~/components/primitives/Headers";
 import { SubTitle } from "~/components/primitives/text/SubTitle";
 import { DeploymentBuildLogsPresenter } from "~/features/ee/projects/presenters/deploymentBuildLogsPresenter.server";
 import { LogOutput } from "../../../../components/LogOutput";

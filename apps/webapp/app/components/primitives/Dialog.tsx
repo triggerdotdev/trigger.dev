@@ -5,6 +5,7 @@ type DialogProps = Parameters<typeof HeadlessDialog>[0] & {
   children: React.ReactNode;
 };
 
+//todo change to use ShadCn
 function Dialog({ onClose, children, ...props }: DialogProps) {
   return (
     <Transition {...props}>

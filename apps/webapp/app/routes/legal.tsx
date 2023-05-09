@@ -1,6 +1,6 @@
 import { BookOpenIcon } from "@heroicons/react/24/solid";
 import { Link, Outlet } from "@remix-run/react";
-import { Header } from "~/components/layout/Header";
+import { Header } from "~/components/navigation/NavBar";
 
 const pages = [
   {

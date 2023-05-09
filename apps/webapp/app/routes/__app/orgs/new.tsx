@@ -3,9 +3,9 @@ import type { ActionFunction } from "@remix-run/node";
 import { json, redirect } from "@remix-run/node";
 import { Form, useActionData } from "@remix-run/react";
 import * as React from "react";
-import { Header } from "~/components/layout/Header";
+import { Header } from "~/components/navigation/NavBar";
 import { PrimaryButton, SecondaryLink } from "~/components/primitives/Buttons";
-import { Header1 } from "~/components/primitives/text/Headers";
+import { Header1 } from "~/components/primitives/Headers";
 import { createOrganization } from "~/models/organization.server";
 import { requireUserId } from "~/services/session.server";
 
