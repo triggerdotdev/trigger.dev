@@ -1,6 +1,6 @@
 import { PrismaClient, Prisma } from ".prisma/client";
 import invariant from "tiny-invariant";
-import { env } from "./env.server";
+import { z } from "zod";
 
 export { Prisma };
 
@@ -14,7 +14,7 @@ declare global {
 // the server with every change, but we want to make sure we don't
 // create a new connection to the DB with every change either.
 // in production we'll have a single connection to the DB.
-if (env.NODE_ENV === "production") {
+if (process.env.NODE_ENV === "production") {
   prisma = getClient();
 } else {
   if (!global.__db__) {
@@ -24,7 +24,7 @@ if (env.NODE_ENV === "production") {
 }
 
 function getClient() {
-  const { DATABASE_URL } = env;
+  const { DATABASE_URL } = process.env;
   invariant(typeof DATABASE_URL === "string", "DATABASE_URL env var not set");
 
   // Remove the username:password in the url and print that to the console
@@ -77,3 +77,7 @@ function getClient() {
 
 export { prisma };
 export type { PrismaClient } from ".prisma/client";
+
+export const PrismaErrorSchema = z.object({
+  code: z.string(),
+});

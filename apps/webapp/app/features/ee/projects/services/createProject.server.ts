@@ -6,13 +6,9 @@ import {
   repositoryProjectReadyToDeploy,
   serviceDefinitionFromRepository,
 } from "~/features/ee/projects/models/repositoryProject.server";
-import { taskQueue } from "~/services/messageBroker.server";
-import {
-  getCommit,
-  getRepo,
-  GetRepoResponse,
-  GitHubCommit,
-} from "../github/githubApp.server";
+import { workerQueue } from "~/services/worker.server";
+import type { GetRepoResponse, GitHubCommit } from "../github/githubApp.server";
+import { getCommit, getRepo } from "../github/githubApp.server";
 import { refreshInstallationAccessToken } from "../github/refreshInstallationAccessToken.server";
 
 const FormSchema = z.object({
@@ -98,7 +94,7 @@ export class CreateProjectService {
           },
         });
 
-        await taskQueue.publish("START_INITIAL_PROJECT_DEPLOYMENT", {
+        await workerQueue.enqueue("startInitialProjectDeployment", {
           id: project.id,
         });
       }

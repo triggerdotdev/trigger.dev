@@ -1,5 +1,5 @@
-import * as MessageBroker from "~/services/messageBroker.server";
 import * as Sentry from "~/services/sentry.server";
+import * as Worker from "~/services/worker.server";
 import { PassThrough } from "stream";
 import { renderToPipeableStream } from "react-dom/server";
 import { RemixServer } from "@remix-run/react";
@@ -126,4 +126,4 @@ function serveBrowsers(
 }
 
 Sentry.init();
-MessageBroker.init();
+Worker.init().catch(console.error);

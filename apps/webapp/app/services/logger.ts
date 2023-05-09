@@ -1,4 +1,5 @@
-import { Logger, LogLevel } from "internal-platform";
+import type { LogLevel } from "@trigger.dev/internal";
+import { Logger } from "@trigger.dev/internal";
 
 export const logger = new Logger(
   "webapp",

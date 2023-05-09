@@ -1,53 +1,65 @@
-import { CursorArrowRaysIcon } from "@heroicons/react/24/outline";
-import { PlusCircleIcon } from "@heroicons/react/24/solid";
+import { CursorArrowRaysIcon, PlusIcon } from "@heroicons/react/24/outline";
 import type { LoaderArgs } from "@remix-run/server-runtime";
-import type { ServiceMetadata } from "@trigger.dev/integration-sdk";
+import { SliderButton } from "@typeform/embed-react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import invariant from "tiny-invariant";
-import { ApiLogoIcon } from "~/components/code/ApiLogoIcon";
-import type { Status } from "~/components/integrations/ConnectButton";
+import { NamedIcon, NamedIconInBox } from "~/components/Icon";
 import { ConnectButton } from "~/components/integrations/ConnectButton";
 import { AppBody, AppLayoutTwoCol } from "~/components/layout/AppLayout";
 import { Container } from "~/components/layout/Container";
 import { Header } from "~/components/layout/Header";
 import { List } from "~/components/layout/List";
 import { OrganizationsSideMenu } from "~/components/navigation/SideMenu";
+import { Badge } from "~/components/primitives/Badge";
 import {
-  PrimaryButton,
-  SecondaryButton,
+  primaryClasses,
+  secondaryClasses,
 } from "~/components/primitives/Buttons";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "~/components/primitives/Popover";
 import { Body } from "~/components/primitives/text/Body";
 import { Header3 } from "~/components/primitives/text/Headers";
 import { SubTitle } from "~/components/primitives/text/SubTitle";
 import { Title } from "~/components/primitives/text/Title";
 import { useCurrentOrganization } from "~/hooks/useOrganizations";
-import { getConnectedApiConnectionsForOrganizationSlug } from "~/models/apiConnection.server";
-import { getServiceMetadatas } from "~/models/integrations.server";
+import { getOrganizationFromSlug } from "~/models/organization.server";
+import { apiConnectionRepository } from "~/services/externalApis/apiAuthenticationRepository.server";
+import { apiCatalog } from "~/services/externalApis/apiCatalog.server";
+import type { ExternalApi } from "~/services/externalApis/types";
 import { requireUser } from "~/services/session.server";
 import { formatDateTime } from "~/utils";
-import { PopupButton, SliderButton } from "@typeform/embed-react";
-import { Sidetab } from "@typeform/embed-react";
 
 export const loader = async ({ request, params }: LoaderArgs) => {
   const user = await requireUser(request);
-
   const { organizationSlug } = params;
   invariant(organizationSlug, "organizationSlug not found");
-
-  const connections = await getConnectedApiConnectionsForOrganizationSlug({
+  const organization = await getOrganizationFromSlug({
+    userId: user.id,
     slug: organizationSlug,
   });
+  invariant(organization, "Organization not found");
+
+  const connections = await apiConnectionRepository.getAllConnections(
+    organization.id
+  );
 
   return typedjson({
     connections,
-    services: await getServiceMetadatas(user.admin),
+    apis: apiCatalog.getApis(),
   });
 };
 
 export default function Integrations() {
-  const { connections, services } = useTypedLoaderData<typeof loader>();
+  const { connections, apis } = useTypedLoaderData<typeof loader>();
   const organization = useCurrentOrganization();
   invariant(organization, "Organization not found");
+
+  const orderedApis = Object.values(apis).sort((a, b) =>
+    a.name.localeCompare(b.name)
+  );
 
   return (
     <AppLayoutTwoCol>
@@ -58,8 +70,9 @@ export default function Integrations() {
           <div className="flex items-start justify-between">
             <Title>API Integrations</Title>
             <div className="flex items-center gap-2">
-              <TypeformRequestWorkflow />
-              <TypeformRequestIntegration />
+              {/* these caused a lot of React hydration errors in the console
+               <TypeformRequestWorkflow />
+              <TypeformRequestIntegration /> */}
             </div>
           </div>
           <div>
@@ -75,24 +88,37 @@ export default function Integrations() {
                   {connections.map((connection) => {
                     return (
                       <li key={connection.id}>
-                        <div className="flex items-center gap-4 px-4 py-4">
-                          <ApiLogoIcon
-                            integration={services[connection.apiIdentifier]}
-                            size="regular"
+                        <div className="flex items-start gap-2 px-3 py-3">
+                          <NamedIcon
+                            name={connection.apiIdentifier}
+                            className="h-6 w-6"
                           />
-                          <div className="flex flex-col gap-2">
-                            <div>
-                              <Header3
-                                size="extra-small"
-                                className="truncate font-medium"
-                              >
-                                {connection.title}
+                          <div className="flex-grow">
+                            <div className="flex flex-col gap-0.5">
+                              <Header3 size="small" className="flex gap-2">
+                                <span>{connection.title}</span>
+                                <Badge variant="secondary">
+                                  {connection.authenticationMethod.name}
+                                </Badge>
                               </Header3>
+
+                              {connection.metadata.account && (
+                                <Body size="small" className="text-slate-400">
+                                  Account: {connection.metadata.account}
+                                </Body>
+                              )}
+                              {connection.scopes && (
+                                <Body size="small" className="text-slate-400">
+                                  <span>Scopes:</span>{" "}
+                                  {connection.scopes.join(", ")}
+                                </Body>
+                              )}
                               <Body size="small" className="text-slate-400">
-                                Added {formatDateTime(connection.createdAt)}
+                                Added: {formatDateTime(connection.createdAt)}
                               </Body>
                             </div>
                           </div>
+                          <div></div>
                         </div>
                       </li>
                     );
@@ -101,28 +127,52 @@ export default function Integrations() {
               </>
             )}
           </div>
-
-          <div>
-            <SubTitle>Add an API integration</SubTitle>
-            <div className="flex w-full flex-wrap gap-2">
-              {Object.values(services)
-                .sort((a, b) => a.name.localeCompare(b.name))
-                .map((integration) => (
+          <div className="mt-8">
+            {orderedApis.map((api) => {
+              const authMethods = Object.entries(api.authenticationMethods);
+              if (authMethods.length === 1) {
+                return (
                   <ConnectButton
-                    key={integration.service}
-                    integration={integration}
+                    key={api.identifier}
+                    api={api}
+                    authMethodKey={Object.keys(api.authenticationMethods)[0]}
                     organizationId={organization.id}
-                    className="group flex max-w-[160px] flex-col items-center gap-4 overflow-hidden rounded-md border border-slate-800 bg-slate-800 text-sm text-slate-200 shadow-md transition hover:bg-slate-800/30 disabled:opacity-50"
                   >
-                    {(status) => (
-                      <AddButtonContent
-                        integration={integration}
-                        status={status}
-                      />
-                    )}
+                    <AddApiConnection api={api} />
                   </ConnectButton>
-                ))}
-            </div>
+                );
+              }
+
+              return (
+                <Popover key={api.identifier}>
+                  <PopoverTrigger>
+                    <AddApiConnection api={api} />
+                  </PopoverTrigger>
+                  <PopoverContent className="w-80">
+                    <div className="grid gap-4">
+                      <div className="space-y-2">
+                        <h4 className="font-medium leading-none">
+                          Select your authentication method
+                        </h4>
+                      </div>
+                      <div className="grid gap-2">
+                        {authMethods.map(([key, method]) => (
+                          <ConnectButton
+                            key={key}
+                            api={api}
+                            authMethodKey={key}
+                            organizationId={organization.id}
+                            className={secondaryClasses}
+                          >
+                            {method.name}
+                          </ConnectButton>
+                        ))}
+                      </div>
+                    </div>
+                  </PopoverContent>
+                </Popover>
+              );
+            })}
           </div>
         </Container>
       </AppBody>
@@ -130,57 +180,33 @@ export default function Integrations() {
   );
 }
 
-function AddButtonContent({
-  integration,
-  status,
-}: {
-  integration: ServiceMetadata;
-  status: Status;
-}) {
+function AddApiConnection({ api }: { api: ExternalApi }) {
   return (
-    <>
-      <div className="relative flex w-full items-center justify-center border-b border-slate-800 bg-black/20 py-6 px-10">
-        <PlusCircleIcon className="absolute top-[6px] right-[6px] z-10 h-7 w-7 text-green-600 shadow-md" />
-        <img
-          src={integration.icon}
-          alt={integration.name}
-          className="h-20 transition group-hover:opacity-80"
-        />
-      </div>
-
-      {status === "loading" ? (
-        <div className="flex animate-pulse flex-col px-3 pb-4 leading-relaxed text-green-500">
-          <span>Connecting to</span>
-          <span className="text-base text-slate-200">{integration.name}</span>
-        </div>
-      ) : (
-        <div className="flex flex-col px-3 pb-4">
-          <span className="text-slate-400">Connect to</span>
-          <span className="text-base text-slate-200">{integration.name}</span>
-        </div>
-      )}
-    </>
+    <div className="flex h-20 w-full items-center justify-between gap-2 px-10">
+      <NamedIconInBox
+        name={api.identifier}
+        className="h-9 w-9 transition group-hover:opacity-80"
+      />
+      <span className="text-base text-slate-200">{api.name}</span>
+      <PlusIcon className="h-4 w-4 text-slate-600" />
+    </div>
   );
 }
 
 const TypeformRequestWorkflow = () => {
   return (
-    <SliderButton id="Rffdj2Ma">
-      <SecondaryButton>
-        <CursorArrowRaysIcon className="-ml-1 h-5 w-5" />
-        Request a Workflow
-      </SecondaryButton>
+    <SliderButton id="Rffdj2Ma" className={secondaryClasses}>
+      <CursorArrowRaysIcon className="-ml-1 h-5 w-5" />
+      Request a Workflow
     </SliderButton>
   );
 };
 
 const TypeformRequestIntegration = () => {
   return (
-    <SliderButton id="VwblgGDZ">
-      <PrimaryButton>
-        <CursorArrowRaysIcon className="-ml-1 h-5 w-5" />
-        Request an Integration
-      </PrimaryButton>
+    <SliderButton id="VwblgGDZ" className={primaryClasses}>
+      <CursorArrowRaysIcon className="-ml-1 h-5 w-5" />
+      Request an Integration
     </SliderButton>
   );
 };

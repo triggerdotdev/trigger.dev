@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { SecretStoreProviderSchema } from "./services/secrets/secretStore.server";
 
 const EnvironmentSchema = z.object({
   NODE_ENV: z.union([
@@ -25,6 +26,7 @@ const EnvironmentSchema = z.object({
       z.literal("staging"),
     ])
     .default(process.env.NODE_ENV),
+  SECRET_STORE: SecretStoreProviderSchema.default("database"),
   POSTHOG_PROJECT_KEY: z.string().optional(),
   MAGIC_LINK_SECRET: z.string(),
   GITHUB_CLIENT_ID: z.string(),
@@ -62,5 +64,4 @@ const EnvironmentSchema = z.object({
 });
 
 export type Environment = z.infer<typeof EnvironmentSchema>;
-
 export const env = EnvironmentSchema.parse(process.env);

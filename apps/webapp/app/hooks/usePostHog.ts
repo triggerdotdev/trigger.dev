@@ -1,10 +1,8 @@
 import { useLocation } from "@remix-run/react";
 import posthog from "posthog-js";
 import { useEffect, useRef } from "react";
-import { useOptionalCurrentEnvironment } from "~/routes/__app/orgs/$organizationSlug/__org/workflows/$workflowSlug";
 import { useCurrentOrganization } from "./useOrganizations";
 import { useOptionalUser } from "./useUser";
-import { useCurrentWorkflow } from "./useWorkflows";
 
 export const usePostHog = (apiKey?: string, logging = false): void => {
   const postHogInitialized = useRef(false);
@@ -12,10 +10,6 @@ export const usePostHog = (apiKey?: string, logging = false): void => {
   const user = useOptionalUser();
   const currentOrganization = useCurrentOrganization();
   const currentOrganizationId = currentOrganization?.id;
-  const currentWorkflow = useCurrentWorkflow();
-  const currentWorkflowId = currentWorkflow?.id;
-  const currentEnvironment = useOptionalCurrentEnvironment();
-  const currentEnvironmentId = currentEnvironment?.id;
 
   //start PostHog once
   useEffect(() => {
@@ -56,24 +50,6 @@ export const usePostHog = (apiKey?: string, logging = false): void => {
       posthog.group("organization", currentOrganizationId);
     }
   }, [currentOrganizationId, logging]);
-
-  //identify the workflow
-  useEffect(() => {
-    if (postHogInitialized.current === false) return;
-    if (currentWorkflowId !== undefined) {
-      if (logging) console.log("posthog.workflow", currentWorkflowId);
-      posthog.group("workflow", currentWorkflowId);
-    }
-  }, [currentWorkflowId, logging]);
-
-  //identify the environment
-  useEffect(() => {
-    if (postHogInitialized.current === false) return;
-    if (currentEnvironmentId !== undefined) {
-      if (logging) console.log("posthog.environment", currentEnvironmentId);
-      posthog.group("environment", currentEnvironmentId);
-    }
-  }, [currentEnvironmentId, logging]);
 
   //page view
   useEffect(() => {

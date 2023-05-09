@@ -18,36 +18,11 @@
     "baseUrl": ".",
     "paths": {
       "~/*": ["./app/*"],
-      "internal-platform": ["../../packages/internal-platform/src/index"],
-      "internal-platform/*": ["../../packages/internal-platform/src/*"],
-      "internal-bridge": ["../../packages/internal-bridge/src/index"],
-      "internal-bridge/*": ["../../packages/internal-bridge/src/*"],
-      "@trigger.dev/common-schemas": [
-        "../../packages/common-schemas/src/index"
-      ],
-      "@trigger.dev/common-schemas/*": ["../../packages/common-schemas/src/*"],
+      "@/*": ["./*"],
+      "@trigger.dev/internal": ["../../packages/internal/src/index"],
+      "@trigger.dev/internal/*": ["../../packages/internal/src/*"],
       "emails": ["../../packages/emails/src/index"],
-      "emails/*": ["../../packages/emails/src/*"],
-      "internal-pulsar": ["../../packages/internal-pulsar/src/index"],
-      "internal-pulsar/*": ["../../packages/internal-pulsar/src/*"],
-      "@trigger.dev/integration-sdk": [
-        "../../packages/integration-sdk/src/index"
-      ],
-      "@trigger.dev/integration-sdk/*": [
-        "../../packages/integration-sdk/src/*"
-      ],
-      "@trigger.dev/github": ["../../integrations/github/src/index"],
-      "@trigger.dev/github/*": ["../../integrations/github/src/*"],
-      "@trigger.dev/slack": ["../../integrations/slack/src/index"],
-      "@trigger.dev/slack/*": ["../../integrations/slack/src/*"],
-      "@trigger.dev/resend": ["../../integrations/resend/src/index"],
-      "@trigger.dev/resend/*": ["../../integrations/resend/src/*"],
-      "@trigger.dev/shopify": ["../../integrations/shopify/src/index"],
-      "@trigger.dev/shopify/*": ["../../integrations/shopify/src/*"],
-      "@trigger.dev/whatsapp": ["../../integrations/whatsapp/src/index"],
-      "@trigger.dev/whatsapp/*": ["../../integrations/whatsapp/src/*"],
-      "integration-catalog": ["../../packages/integration-catalog/src/index"],
-      "integration-catalog/*": ["../../packages/integration-catalog/src/*"]
+      "emails/*": ["../../packages/emails/src/*"]
     },
     "noEmit": true
   }

@@ -6,7 +6,6 @@ import type {
 import type { PrismaClient } from "~/db.server";
 import { prisma } from "~/db.server";
 import { cakework } from "../cakework.server";
-import { taskQueue } from "~/services/messageBroker.server";
 import type { GitHubAppAuthorizationWithValidToken } from "../github/refreshInstallationAccessToken.server";
 import type { GitHubCommit } from "../github/githubApp.server";
 import { getNextDeploymentVersion } from "../models/repositoryProject.server";
@@ -123,9 +122,10 @@ export class CreateProjectDeployment {
         deployment,
       });
 
-      await taskQueue.publish("PROJECT_DEPLOYMENT_CREATED", {
-        id: deployment.id,
-      });
+      // TODO: implement this with workerQueue
+      // await taskQueue.publish("PROJECT_DEPLOYMENT_CREATED", {
+      //   id: deployment.id,
+      // });
 
       return deployment;
     } catch (error) {

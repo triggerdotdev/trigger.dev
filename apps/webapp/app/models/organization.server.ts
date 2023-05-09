@@ -1,10 +1,15 @@
-import type { User, Organization } from ".prisma/client";
-import { prisma } from "~/db.server";
-import slug from "slug";
+import type {
+  Organization,
+  OrgMember,
+  Project,
+  RuntimeEnvironment,
+  User,
+} from ".prisma/client";
 import { customAlphabet } from "nanoid";
+import slug from "slug";
+import { prisma } from "~/db.server";
+import { workerQueue } from "~/services/worker.server";
 import { generateTwoRandomWords } from "~/utils/randomWords";
-import { taskQueue } from "~/services/messageBroker.server";
-import { DEV_ENVIRONMENT, LIVE_ENVIRONMENT } from "~/consts";
 
 export type { Organization } from ".prisma/client";
 
@@ -38,35 +43,13 @@ export function getOrganizationFromSlug({
       },
       environments: true,
     },
-    where: { slug, users: { some: { id: userId } } },
-  });
-}
-
-export function getWorkflowsCreatedSinceDate(
-  userId: string,
-  slug: string,
-  since: Date
-) {
-  return prisma.workflow.findMany({
-    where: {
-      organization: {
-        users: {
-          some: {
-            id: userId,
-          },
-        },
-        slug,
-      },
-      createdAt: {
-        gte: since,
-      },
-    },
+    where: { slug, members: { some: { userId } } },
   });
 }
 
 export function getOrganizations({ userId }: { userId: User["id"] }) {
   return prisma.organization.findMany({
-    where: { users: { some: { id: userId } } },
+    where: { members: { some: { userId } } },
     orderBy: { createdAt: "desc" },
     include: {
       environments: {
@@ -84,14 +67,17 @@ export async function createFirstOrganization(user: User) {
   });
 }
 
-export async function createOrganization({
-  title,
-  userId,
-  desiredSlug,
-}: Pick<Organization, "title"> & {
-  userId: User["id"];
-  desiredSlug?: string;
-}) {
+export async function createOrganization(
+  {
+    title,
+    userId,
+    desiredSlug,
+  }: Pick<Organization, "title"> & {
+    userId: User["id"];
+    desiredSlug?: string;
+  },
+  attemptCount = 0
+): Promise<Organization> {
   if (desiredSlug === undefined) {
     desiredSlug = slug(title);
   }
@@ -102,72 +88,72 @@ export async function createOrganization({
     where: { slug: uniqueSlug },
   });
 
-  let organization: Organization | undefined = undefined;
+  if (attemptCount > 100) {
+    throw new Error(
+      `Unable to create organization with slug ${uniqueSlug} after 100 attempts`
+    );
+  }
 
-  if (withSameSlug == null) {
-    organization = await prisma.organization.create({
-      data: {
+  if (withSameSlug) {
+    return createOrganization(
+      {
         title,
-        slug: uniqueSlug,
-        users: {
-          connect: {
-            id: userId,
-          },
+        userId,
+        desiredSlug,
+      },
+      attemptCount + 1
+    );
+  }
+
+  const organization = await prisma.organization.create({
+    data: {
+      title,
+      slug: uniqueSlug,
+      members: {
+        create: {
+          userId: userId,
+          role: "ADMIN",
         },
       },
-    });
-  } else {
-    const organizationsWithMatchingSlugs =
-      await getOrganizationsWithMatchingSlug({
-        slug: uniqueSlug,
-      });
-
-    for (let i = 1; i < 100; i++) {
-      const alternativeSlug = `${desiredSlug}-${nanoid(4)}`;
-      if (
-        organizationsWithMatchingSlugs.find(
-          (organization) => organization.slug === alternativeSlug
-        )
-      ) {
-        continue;
-      }
-
-      organization = await prisma.organization.create({
-        data: {
-          title,
-          slug: alternativeSlug,
-          users: {
-            connect: {
-              id: userId,
-            },
-          },
+      projects: {
+        create: {
+          name: "My Project",
         },
-      });
+      },
+    },
+    include: {
+      members: true,
+      projects: true,
+    },
+  });
 
-      break;
-    }
-  }
+  const adminMember = organization.members[0];
+  const defaultProject = organization.projects[0];
 
-  if (organization) {
-    // Create the dev and prod environments
-    await createEnvironment(organization, DEV_ENVIRONMENT);
-    await createEnvironment(organization, LIVE_ENVIRONMENT);
+  // Create the dev and prod environments
+  await createEnvironment(organization, defaultProject, "PRODUCTION");
+  await createEnvironment(
+    organization,
+    defaultProject,
+    "DEVELOPMENT",
+    adminMember
+  );
 
-    await taskQueue.publish("ORGANIZATION_CREATED", {
-      id: organization.id,
-    });
+  await workerQueue.enqueue("organizationCreated", {
+    id: organization.id,
+  });
 
-    return organization;
-  }
-
-  throw new Error("Could not create organization with a unique slug");
+  return organization;
 }
 
 export async function createEnvironment(
   organization: Organization,
-  slug: string
+  project: Project,
+  type: RuntimeEnvironment["type"],
+  member?: OrgMember
 ) {
-  const apiKey = createApiKeyForEnv(slug);
+  const slug = envSlug(type);
+  const apiKey = createApiKeyForEnv(type);
 
   return await prisma.runtimeEnvironment.create({
     data: {
@@ -178,22 +164,34 @@ export async function createEnvironment(
           id: organization.id,
         },
       },
-    },
-  });
-}
-
-function createApiKeyForEnv(envSlug: string) {
-  return `trigger_${envSlug}_${apiKeyId(12)}`;
-}
-
-function getOrganizationsWithMatchingSlug({ slug }: { slug: string }) {
-  return prisma.organization.findMany({
-    where: {
-      slug: {
-        startsWith: slug,
+      project: {
+        connect: {
+          id: project.id,
+        },
       },
+      orgMember: member ? { connect: { id: member.id } } : undefined,
+      type,
     },
-    select: { slug: true },
-    orderBy: { slug: "desc" },
   });
+}
+
+function createApiKeyForEnv(envType: RuntimeEnvironment["type"]) {
+  return `tr_${envSlug(envType)}_${apiKeyId(12)}`;
+}
+
+function envSlug(environmentType: RuntimeEnvironment["type"]) {
+  switch (environmentType) {
+    case "DEVELOPMENT": {
+      return "dev";
+    }
+    case "PRODUCTION": {
+      return "prod";
+    }
+    case "STAGING": {
+      return "staging";
+    }
+    case "PREVIEW": {
+      return "preview";
+    }
+  }
 }

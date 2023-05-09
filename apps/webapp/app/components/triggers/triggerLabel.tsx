@@ -1,6 +1,9 @@
-import type { Workflow } from "~/models/workflow.server";
-
-type TriggerType = Workflow["type"];
+type TriggerType =
+  | "CUSTOM_EVENT"
+  | "HTTP_ENDPOINT"
+  | "SCHEDULE"
+  | "WEBHOOK"
+  | "SLACK_INTERACTION";
 
 export function triggerLabel(type: TriggerType) {
   switch (type) {

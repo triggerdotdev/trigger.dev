@@ -3,13 +3,13 @@ import { findEnvironmentByApiKey } from "~/models/runtimeEnvironment.server";
 
 const AuthorizationHeaderSchema = z.string().regex(/^Bearer .+$/);
 
-type AuthenticateApiRequestResponse = Awaited<
-  ReturnType<typeof findEnvironmentByApiKey>
+export type AuthenticatedEnvironment = NonNullable<
+  Awaited<ReturnType<typeof findEnvironmentByApiKey>>
 >;
 
 export async function authenticateApiRequest(
   request: Request
-): Promise<AuthenticateApiRequestResponse | undefined> {
+): Promise<AuthenticatedEnvironment | null | undefined> {
   const rawAuthorization = request.headers.get("Authorization");
 
   const authorization = AuthorizationHeaderSchema.safeParse(rawAuthorization);

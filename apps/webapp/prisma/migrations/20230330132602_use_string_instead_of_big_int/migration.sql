@@ -1,0 +1,2 @@
+-- AlterTable
+ALTER TABLE "Task" ALTER COLUMN "ts" SET DATA TYPE TEXT;

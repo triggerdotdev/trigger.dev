@@ -1,96 +1,57 @@
-import {
-  SerializableCustomEventSchema,
-  SerializableJsonSchema,
+import type {
+  ApiEventLog,
+  RawEvent,
   SecureString,
-} from "@trigger.dev/common-schemas";
-import { z } from "zod";
+  SendEvent,
+  SendEventOptions,
+  TriggerMetadata,
+} from "@trigger.dev/internal";
+import { DisplayElement } from "@trigger.dev/internal";
+import { Job } from "./job";
+import { TriggerClient } from "./triggerClient";
 
 export type { SecureString };
 
-export type TriggerCustomEvent = z.infer<typeof SerializableCustomEventSchema>;
-
-export type WaitForOptions = {
-  seconds?: number;
-  minutes?: number;
-  hours?: number;
-  days?: number;
-};
-
-export type FetchOptions<
-  TResponseBodySchema extends z.ZodTypeAny = z.ZodTypeAny
-> = {
-  method?:
-    | "GET"
-    | "POST"
-    | "PUT"
-    | "DELETE"
-    | "PATCH"
-    | "HEAD"
-    | "OPTIONS"
-    | "TRACE";
-  body?: z.infer<typeof SerializableJsonSchema>;
-  headers?: Record<string, string | SecureString>;
-  responseSchema?: TResponseBodySchema;
-  retry?: {
-    enabled?: boolean;
-    factor?: number;
-    maxTimeout?: number;
-    minTimeout?: number;
-    maxAttempts?: number;
-    statusCodes?: number[];
-  };
-};
-
-export type FetchResponse<
-  TResponseBodySchema extends z.ZodTypeAny = z.ZodTypeAny
-> = {
-  ok: boolean;
-  body?: z.infer<TResponseBodySchema>;
-  headers: Record<string, string>;
-  status: number;
-};
-
-export type TriggerFetch = <TBodySchema extends z.ZodTypeAny = z.ZodTypeAny>(
-  key: string,
-  url: string | URL,
-  options: FetchOptions<TBodySchema>
-) => Promise<FetchResponse<TBodySchema>>;
-
-export type TriggerRunOnceCallback = (idempotencyKey: string) => Promise<any>;
-
-export interface TriggerKeyValueStorage {
-  get<T>(key: string): Promise<T | undefined>;
-  set<T>(key: string, value: T): Promise<void>;
-  delete(key: string): Promise<void>;
-}
-
 export interface TriggerContext {
   id: string;
+  version: string;
   environment: string;
-  apiKey: string;
-  organizationId: string;
-  logger: TriggerLogger;
+  organization: string;
+  startedAt: Date;
   isTest: boolean;
-  sendEvent(key: string, event: TriggerCustomEvent): Promise<void>;
-  waitFor(key: string, options: WaitForOptions): Promise<void>;
-  waitUntil(key: string, date: Date): Promise<void>;
-  runOnce<T extends TriggerRunOnceCallback>(
-    key: string,
-    callback: T
-  ): Promise<Awaited<ReturnType<T>>>;
-  runOnceLocalOnly<T extends TriggerRunOnceCallback>(
-    key: string,
-    callback: T
-  ): Promise<Awaited<ReturnType<T>>>;
-  fetch: TriggerFetch;
-  kv: TriggerKeyValueStorage;
-  globalKv: TriggerKeyValueStorage;
-  runKv: TriggerKeyValueStorage;
+  signal: AbortSignal;
+  // TODO: move this to io
+  logger: TaskLogger;
+  // TODO: move this to io
+  wait(key: string | any[], seconds: number): Promise<void>;
+  // TODO: move this to io
+  sendEvent(
+    key: string | any[],
+    event: SendEvent,
+    options?: SendEventOptions
+  ): Promise<ApiEventLog>;
 }
 
-export interface TriggerLogger {
+export interface TaskLogger {
   debug(message: string, properties?: Record<string, any>): Promise<void>;
   info(message: string, properties?: Record<string, any>): Promise<void>;
   warn(message: string, properties?: Record<string, any>): Promise<void>;
   error(message: string, properties?: Record<string, any>): Promise<void>;
+}
+
+export type TriggerEventType<TTrigger extends Trigger<any>> =
+  TTrigger extends Trigger<infer TEventType> ? TEventType : never;
+
+export interface Trigger<TEventType = any> {
+  eventElements(event: ApiEventLog): DisplayElement[];
+  toJSON(): TriggerMetadata;
+  parsePayload(payload: unknown): TEventType;
+
+  // Attach this trigger to the job and the trigger client
+  // Gives different triggers the ability to do things like register internal jobs
+  attach(
+    triggerClient: TriggerClient,
+    job: Job<Trigger<TEventType>, any>,
+    variantId?: string
+  ): void;
 }

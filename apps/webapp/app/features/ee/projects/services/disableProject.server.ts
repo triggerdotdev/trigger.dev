@@ -1,7 +1,6 @@
 import type { PrismaClient } from "~/db.server";
 import { prisma } from "~/db.server";
 import { projectLogger } from "~/services/logger";
-import { taskQueue } from "~/services/messageBroker.server";
 
 export class DisableProjectService {
   #prismaClient: PrismaClient;
@@ -19,9 +18,10 @@ export class DisableProjectService {
       });
 
     if (project.status !== "PENDING") {
-      await taskQueue.publish("CLEANUP_PROJECT", {
-        id: project.id,
-      });
+      // TODO: implement this
+      // await taskQueue.publish("CLEANUP_PROJECT", {
+      //   id: project.id,
+      // });
     }
 
     projectLogger.debug("Disabling project", { project });

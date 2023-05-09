@@ -6,7 +6,7 @@ import type {
   SlackInteractionEventTrigger,
   TriggerMetadata,
   WebhookEventTrigger,
-} from "@trigger.dev/common-schemas";
+} from "@trigger.dev/internal";
 import { Body } from "../primitives/text/Body";
 import { Header2 } from "../primitives/text/Headers";
 import cronstrue from "cronstrue";
@@ -38,40 +38,40 @@ function SlackInteraction({
 }) {
   return (
     <div className="flex flex-col">
-      <div className="flex gap-2 items-baseline">
+      <div className="flex items-baseline gap-2">
         <Body size="extra-small" className={workflowNodeUppercaseClasses}>
           Name
         </Body>
-        <Header2 size="small" className="text-slate-300 mb-2">
+        <Header2 size="small" className="mb-2 text-slate-300">
           {trigger.name}
         </Header2>
       </div>
       {trigger.source.type === "block_action" && (
-        <div className="flex gap-2 items-baseline">
+        <div className="flex items-baseline gap-2">
           <Body size="extra-small" className={workflowNodeUppercaseClasses}>
             Block
           </Body>
-          <Header2 size="small" className="text-slate-300 mb-2">
+          <Header2 size="small" className="mb-2 text-slate-300">
             {trigger.source.blockId}
           </Header2>
         </div>
       )}
       {trigger.source.type === "block_action" && (
-        <div className="flex gap-2 items-baseline">
+        <div className="flex items-baseline gap-2">
           <Body size="extra-small" className={workflowNodeUppercaseClasses}>
             Action
           </Body>
-          <Header2 size="small" className="text-slate-300 mb-2">
+          <Header2 size="small" className="mb-2 text-slate-300">
             {trigger.source.actionIds.join(", ")}
           </Header2>
         </div>
       )}
       {trigger.source.type === "view_submission" && (
-        <div className="flex gap-2 items-baseline">
+        <div className="flex items-baseline gap-2">
           <Body size="extra-small" className={workflowNodeUppercaseClasses}>
             Callback IDs
           </Body>
-          <Header2 size="small" className="text-slate-300 mb-2">
+          <Header2 size="small" className="mb-2 text-slate-300">
             {trigger.source.callbackIds.join(", ")}
           </Header2>
         </div>
@@ -85,14 +85,14 @@ function SlackInteraction({
 function Webhook({ webhook }: { webhook: WebhookEventTrigger }) {
   return (
     <>
-      <Header2 size="small" className="text-slate-300 mb-2">
+      <Header2 size="small" className="mb-2 text-slate-300">
         {webhook.name}
       </Header2>
       <div className="flex flex-col gap-1">
         {webhook.source &&
           !webhook.manualRegistration &&
           Object.entries(webhook.source).map(([key, value]) => (
-            <div key={key} className="flex gap-2 items-baseline">
+            <div key={key} className="flex items-baseline gap-2">
               <Body size="extra-small" className={workflowNodeUppercaseClasses}>
                 {key}
               </Body>
@@ -110,7 +110,7 @@ function CustomEvent({ event }: { event: CustomEventTrigger }) {
       <Body size="extra-small" className={workflowNodeUppercaseClasses}>
         Name
       </Body>
-      <Header2 size="small" className="text-slate-300 mb-2">
+      <Header2 size="small" className="mb-2 text-slate-300">
         {event.name}
       </Header2>
     </>
@@ -153,11 +153,11 @@ function RateOfScheduled({ source }: { source: ScheduleSourceRate }) {
       : source.rateOf.days;
 
   return (
-    <div className="flex gap-2 items-baseline">
+    <div className="flex items-baseline gap-2">
       <Body size="extra-small" className={workflowNodeUppercaseClasses}>
         Runs
       </Body>
-      <Body size="small" className="text-slate-300 normal-case tracking-normal">
+      <Body size="small" className="normal-case tracking-normal text-slate-300">
         Every {value} {unit}
       </Body>
     </div>
@@ -173,7 +173,7 @@ function AtScheduled({ source }: { source: ScheduleSourceCron }) {
         </Body>
         <Body
           size="small"
-          className="text-slate-300 normal-case tracking-normal"
+          className="normal-case tracking-normal text-slate-300"
         >
           {cronstrue.toString(source.cron, {
             throwExceptionOnParseError: false,
@@ -188,7 +188,7 @@ function AtScheduled({ source }: { source: ScheduleSourceCron }) {
         </Body>
         <Body
           size="small"
-          className="text-slate-300 normal-case tracking-normal"
+          className="normal-case tracking-normal text-slate-300"
         >
           {source.cron}
         </Body>

@@ -2,7 +2,7 @@ import { createFirstOrganization } from "~/models/organization.server";
 import type { User } from "~/models/user.server";
 import * as emailProvider from "~/services/email.server";
 import { analytics } from "./analytics.server";
-import { taskQueue } from "./messageBroker.server";
+import { workerQueue } from "./worker.server";
 
 export async function postAuthentication({
   user,
@@ -17,7 +17,7 @@ export async function postAuthentication({
     await createFirstOrganization(user);
     await emailProvider.scheduleWelcomeEmail(user);
 
-    await taskQueue.publish("SEND_INTERNAL_EVENT", {
+    await workerQueue.enqueue("sendInternalEvent", {
       id: user.id,
       name: "user.created",
       payload: {

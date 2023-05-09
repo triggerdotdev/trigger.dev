@@ -1,4 +1,3 @@
-import type { Workflow } from "~/models/workflow.server";
 import { ApiLogoIcon } from "../code/ApiLogoIcon";
 import CustomEvent from "../../assets/images/triggers/custom-event.png";
 import HttpEndpoint from "../../assets/images/triggers/http-endpoint.png";
@@ -7,7 +6,12 @@ import Webhook from "../../assets/images/triggers/webhook.png";
 import SlackInteraction from "../../assets/images/triggers/slack-interaction.png";
 import { triggerLabel } from "./triggerLabel";
 
-type TriggerType = Workflow["type"];
+type TriggerType =
+  | "CUSTOM_EVENT"
+  | "HTTP_ENDPOINT"
+  | "SCHEDULE"
+  | "WEBHOOK"
+  | "SLACK_INTERACTION";
 
 const iconClasses = "h-full w-full";
 

@@ -1,14 +1,15 @@
+import type { ShouldRevalidateFunction } from "@remix-run/react";
+import { Outlet } from "@remix-run/react";
 import type { LoaderArgs } from "@remix-run/server-runtime";
-import invariant from "tiny-invariant";
-import { requireUserId } from "~/services/session.server";
-import { Outlet, ShouldRevalidateFunction } from "@remix-run/react";
-import { getOrganizationFromSlug } from "~/models/organization.server";
 import { typedjson } from "remix-typedjson";
+import invariant from "tiny-invariant";
+import { getOrganizationFromSlug } from "~/models/organization.server";
+import { analytics } from "~/services/analytics.server";
 import {
   commitCurrentOrgSession,
   setCurrentOrg,
 } from "~/services/currentOrganization.server";
-import { analytics } from "~/services/analytics.server";
+import { requireUserId } from "~/services/session.server";
 
 export const loader = async ({ request, params }: LoaderArgs) => {
   const userId = await requireUserId(request);

@@ -29,13 +29,13 @@ model User {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  organizations           Organization[]
   gitHubAppAuthorizations GitHubAppAuthorization[]
 
   featureCloud           Boolean @default(false)
   isOnHostedRepoWaitlist Boolean @default(false)
 
   currentEnvironments CurrentEnvironment[]
+  orgMemberships      OrgMember[]
 }
 
 enum AuthenticationMethod {
@@ -51,10 +51,9 @@ model Organization {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  users              User[]
   workflows          Workflow[]
   environments       RuntimeEnvironment[]
-  apiConnections     APIConnection[]
+  apiConnections     ApiConnection[]
   events             TriggerEvent[]
   externalSources    ExternalSource[]
   eventRules         EventRule[]
@@ -62,20 +61,31 @@ model Organization {
   internalSources    InternalSource[]
   templates          OrganizationTemplate[]
   repositoryProjects RepositoryProject[]
+  endpoints          Endpoint[]
+  jobs               Job[]
+  jobInstances       JobInstance[]
+  eventLogs          EventLog[]
+  jobRuns            JobRun[]
+  httpSources        HttpSource[]
+  jobEventRule       JobEventRule[]
+  projects           Project[]
+  members            OrgMember[]
 }
 
-model APIConnection {
-  id    String @id @default(cuid())
-  title String
+model ApiConnection {
+  id String @id @default(cuid())
 
+  slug          String
+  title         String
   apiIdentifier String
-  status        APIConnectionStatus @default(CREATED)
-  scopes        String[]
 
-  authenticationMethod APIAuthenticationMethod @default(OAUTH)
-  authenticationConfig Json?
+  authenticationMethodKey String
+  scopes                  String[]
+  expiresAt               DateTime?
+  metadata                Json
 
-  type APIConnectionType
+  dataReference   SecretReference @relation(fields: [dataReferenceId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  dataReferenceId String
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -83,23 +93,56 @@ model APIConnection {
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   organizationId String
 
+  attempts         ApiConnectionAttempt[]
   externalSources  ExternalSource[]
   externalServices ExternalService[]
+
+  jobConnections JobConnection[]
+  httpSources    HttpSource[]
+
+  @@unique([organizationId, slug])
 }
 
-enum APIAuthenticationMethod {
-  OAUTH
-  API_KEY
+model ApiConnectionAttempt {
+  id String @id @default(cuid())
+
+  title                   String
+  organizationId          String
+  apiIdentifier           String
+  authenticationMethodKey String
+  scopes                  String[]
+  securityCode            String?
+
+  redirectTo String @default("/")
+
+  apiConnection   ApiConnection? @relation(fields: [apiConnectionId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  apiConnectionId String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
 }
 
-enum APIConnectionType {
-  HTTP
-  GRAPHQL
+model OrgMember {
+  id String @id @default(cuid())
+
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  organizationId String
+
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  userId String
+
+  role OrgMemberRole @default(MEMBER)
+
+  createdAt    DateTime             @default(now())
+  updatedAt    DateTime             @updatedAt
+  environments RuntimeEnvironment[]
+
+  @@unique([organizationId, userId])
 }
 
-enum APIConnectionStatus {
-  CREATED
-  CONNECTED
+enum OrgMemberRole {
+  ADMIN
+  MEMBER
 }
 
 model RuntimeEnvironment {
@@ -107,8 +150,16 @@ model RuntimeEnvironment {
   slug   String
   apiKey String @unique
 
+  type RuntimeEnvironmentType @default(DEVELOPMENT)
+
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   organizationId String
+
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  projectId String
+
+  orgMember   OrgMember? @relation(fields: [orgMemberId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  orgMemberId String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -122,7 +173,24 @@ model RuntimeEnvironment {
   keyValueItems       KeyValueItem[]
   currentEnvironments CurrentEnvironment[]
 
-  @@unique([organizationId, slug])
+  endpoints         Endpoint[]
+  jobInstances      JobInstance[]
+  eventLogs         EventLog[]
+  jobRuns           JobRun[]
+  httpSources       HttpSource[]
+  requestDeliveries HttpSourceRequestDelivery[]
+  jobEventRules     JobEventRule[]
+  jobAliases        JobAlias[]
+  JobQueue          JobQueue[]
+
+  @@unique([projectId, slug, orgMemberId])
+}
+
+enum RuntimeEnvironmentType {
+  PRODUCTION
+  STAGING
+  DEVELOPMENT
+  PREVIEW
 }
 
 model Workflow {
@@ -236,7 +304,7 @@ model ExternalSource {
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
 
-  connection   APIConnection? @relation(fields: [connectionId], references: [id], onDelete: SetNull)
+  connection   ApiConnection? @relation(fields: [connectionId], references: [id], onDelete: SetNull)
   connectionId String?
 
   @@unique([organizationId, key])
@@ -326,7 +394,7 @@ model ExternalService {
   workflow   Workflow @relation(fields: [workflowId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   workflowId String
 
-  connection   APIConnection? @relation(fields: [connectionId], references: [id], onDelete: SetNull)
+  connection   ApiConnection? @relation(fields: [connectionId], references: [id], onDelete: SetNull)
   connectionId String?
 
   type   ExternalServiceType
@@ -851,4 +919,426 @@ model CurrentEnvironment {
   updatedAt DateTime @updatedAt
 
   @@unique([workflowId, userId])
+}
+
+// ========= SERVERLESS ===========
+model Project {
+  id   String @id @default(cuid())
+  name String
+
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  organizationId String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  environments RuntimeEnvironment[]
+  endpoints    Endpoint[]
+  jobs         Job[]
+  jobInstances JobInstance[]
+  events       EventLog[]
+  runs         JobRun[]
+  httpSources  HttpSource[]
+  eventRules   JobEventRule[]
+}
+
+model Endpoint {
+  id   String @id @default(cuid())
+  slug String
+  url  String
+
+  environment   RuntimeEnvironment @relation(fields: [environmentId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  environmentId String
+
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  organizationId String
+
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  projectId String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  jobInstances              JobInstance[]
+  jobRuns                   JobRun[]
+  httpSources               HttpSource[]
+  HttpSourceRequestDelivery HttpSourceRequestDelivery[]
+
+  @@unique([environmentId, slug])
+}
+
+model Job {
+  id       String  @id @default(cuid())
+  slug     String
+  title    String
+  internal Boolean @default(false)
+
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  organizationId String
+
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  projectId String
+
+  instances   JobInstance[]
+  runs        JobRun[]
+  connections JobConnection[]
+  eventRules  JobEventRule[]
+  aliases     JobAlias[]
+
+  @@unique([projectId, slug])
+}
+
+model JobInstance {
+  id      String @id @default(cuid())
+  version String
+  trigger Json
+
+  job   Job    @relation(fields: [jobId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  jobId String
+
+  endpoint   Endpoint @relation(fields: [endpointId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  endpointId String
+
+  environment   RuntimeEnvironment @relation(fields: [environmentId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  environmentId String
+
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  organizationId String
+
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  projectId String
+
+  queue   JobQueue @relation(fields: [queueId], references: [id])
+  queueId String
+
+  ready  Boolean @default(false)
+  latest Boolean @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  runs            JobRun[]
+  connections     JobConnection[]
+  eventRules      JobEventRule[]
+  aliases         JobAlias[]
+  triggerVariants JobTriggerVariant[]
+
+  @@unique([jobId, version, endpointId])
+}
+
+model JobQueue {
+  id   String @id @default(cuid())
+  name String
+
+  environment   RuntimeEnvironment @relation(fields: [environmentId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  environmentId String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  jobCount Int @default(0)
+  maxJobs  Int @default(100)
+
+  runs      JobRun[]
+  instances JobInstance[]
+
+  @@unique([environmentId, name])
+}
+
+model JobTriggerVariant {
+  id    String  @id @default(cuid())
+  slug  String
+  data  Json
+  ready Boolean @default(false)
+
+  jobInstance   JobInstance @relation(fields: [jobInstanceId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  jobInstanceId String
+
+  eventRule   JobEventRule @relation(fields: [eventRuleId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  eventRuleId String       @unique
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([jobInstanceId, slug])
+}
+
+model JobAlias {
+  id      String @id @default(cuid())
+  name    String @default("latest")
+  version String
+
+  jobInstance   JobInstance @relation(fields: [jobInstanceId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  jobInstanceId String
+
+  job   Job    @relation(fields: [jobId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  jobId String
+
+  environment   RuntimeEnvironment @relation(fields: [environmentId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  environmentId String
+
+  @@unique([jobId, environmentId, name])
+}
+
+model JobConnection {
+  id  String @id @default(cuid())
+  key String
+
+  jobInstance   JobInstance @relation(fields: [jobInstanceId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  jobInstanceId String
+
+  job   Job    @relation(fields: [jobId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  jobId String
+
+  connectionMetadata Json
+
+  usesLocalAuth Boolean @default(false)
+
+  apiConnection   ApiConnection? @relation(fields: [apiConnectionId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  apiConnectionId String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([jobInstanceId, key])
+}
+
+model JobEventRule {
+  id            String @id @default(cuid())
+  event         String
+  source        String
+  payloadFilter Json?
+  contextFilter Json?
+
+  action           JobEventAction @default(CREATE_RUN)
+  actionIdentifier String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  enabled Boolean @default(true)
+
+  job   Job    @relation(fields: [jobId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  jobId String
+
+  jobInstance   JobInstance @relation(fields: [jobInstanceId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  jobInstanceId String
+
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  organizationId String
+
+  environment   RuntimeEnvironment @relation(fields: [environmentId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  environmentId String
+
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  projectId String
+
+  triggerVariant JobTriggerVariant?
+
+  @@unique([jobInstanceId, actionIdentifier])
+}
+
+enum JobEventAction {
+  CREATE_RUN
+  RESUME_TASK
+}
+
+model EventLog {
+  id        String   @id @default(cuid())
+  name      String
+  timestamp DateTime @default(now())
+  payload   Json
+  context   Json?
+
+  source String @default("trigger.dev")
+
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  organizationId String
+
+  environment   RuntimeEnvironment @relation(fields: [environmentId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  environmentId String
+
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  projectId String
+
+  deliverAt   DateTime  @default(now())
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deliveredAt DateTime?
+
+  isTest Boolean  @default(false)
+  runs   JobRun[]
+}
+
+model JobRun {
+  id     String @id @default(cuid())
+  number Int
+
+  job   Job    @relation(fields: [jobId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  jobId String
+
+  jobInstance   JobInstance @relation(fields: [jobInstanceId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  jobInstanceId String
+
+  eventLog   EventLog @relation(fields: [eventLogId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  eventLogId String
+
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  organizationId String
+
+  endpoint   Endpoint @relation(fields: [endpointId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  endpointId String
+
+  environment   RuntimeEnvironment @relation(fields: [environmentId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  environmentId String
+
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  projectId String
+
+  queue   JobQueue @relation(fields: [queueId], references: [id])
+  queueId String
+
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  queuedAt    DateTime?
+  startedAt   DateTime?
+  completedAt DateTime?
+
+  elements Json?
+
+  status JobRunStatus @default(PENDING)
+  output Json?
+
+  timedOutAt     DateTime?
+  timedOutReason String?
+
+  isTest Boolean @default(false)
+
+  tasks Task[]
+}
+
+enum JobRunStatus {
+  PENDING
+  QUEUED
+  STARTED
+  SUCCESS
+  FAILURE
+  TIMED_OUT
+}
+
+model Task {
+  id             String  @id
+  idempotencyKey String
+  displayKey     String?
+  name           String
+  icon           String?
+
+  status     TaskStatus @default(PENDING)
+  delayUntil DateTime?
+  noop       Boolean    @default(false)
+
+  description String?
+  elements    Json?
+  params      Json?
+  output      Json?
+  error       String?
+  redact      Json?
+
+  startedAt   DateTime?
+  completedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  run   JobRun @relation(fields: [runId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  runId String
+
+  parent   Task?   @relation("TaskParent", fields: [parentId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  parentId String?
+
+  children Task[] @relation("TaskParent")
+
+  @@unique([runId, idempotencyKey])
+}
+
+enum TaskStatus {
+  PENDING
+  WAITING
+  RUNNING
+  COMPLETED
+  ERRORED
+}
+
+model SecretReference {
+  id       String @id @default(cuid())
+  key      String @unique
+  provider String
+
+  apiConnection ApiConnection[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+/// Used when the provider = "database". Not recommended outside of local development. */
+model SecretStore {
+  key   String @unique
+  value Json
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model HttpSource {
+  id String @id @default(cuid())
+
+  key    String
+  secret String?
+  data   Json?
+
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  organizationId String
+
+  environment   RuntimeEnvironment @relation(fields: [environmentId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  environmentId String
+
+  endpoint   Endpoint @relation(fields: [endpointId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  endpointId String
+
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  projectId String
+
+  connection   ApiConnection? @relation(fields: [connectionId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  connectionId String?
+
+  active      Boolean @default(false)
+  interactive Boolean @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  requests HttpSourceRequestDelivery[]
+
+  @@unique([key, endpointId])
+}
+
+model HttpSourceRequestDelivery {
+  id      String @id @default(cuid())
+  url     String
+  method  String
+  headers Json
+  body    Bytes?
+
+  source   HttpSource @relation(fields: [sourceId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  sourceId String
+
+  endpoint   Endpoint @relation(fields: [endpointId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  endpointId String
+
+  environment   RuntimeEnvironment @relation(fields: [environmentId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  environmentId String
+
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deliveredAt DateTime?
 }

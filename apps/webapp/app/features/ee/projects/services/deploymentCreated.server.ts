@@ -1,8 +1,7 @@
 import type { PrismaClient } from "~/db.server";
 import { prisma } from "~/db.server";
 import { statusTextForBuilding } from "~/features/ee/projects/models/repositoryProject.server";
-import { logger, projectLogger } from "~/services/logger";
-import { taskQueue } from "~/services/messageBroker.server";
+import { projectLogger } from "~/services/logger";
 
 export class DeploymentCreated {
   #prismaClient: PrismaClient;
@@ -65,10 +64,11 @@ export class DeploymentCreated {
     }
 
     // Start polling for logs for this project deployment
-    await taskQueue.publish("DEPLOYMENT_LOG_POLL", {
-      id: deployment.id,
-      count: 0,
-    });
+    // TODO: implement this in the new worker
+    // await taskQueue.publish("DEPLOYMENT_LOG_POLL", {
+    //   id: deployment.id,
+    //   count: 0,
+    // });
 
     // We also need to check if there are any other PENDING deployments for this project
     // and if so we should cancel them (because we have a newer push)

@@ -4,7 +4,7 @@ import type { SendEmailOptions } from "remix-auth-email-link";
 import { env } from "~/env.server";
 import type { User } from "~/models/user.server";
 import type { AuthUser } from "./authUser";
-import { taskQueue } from "./messageBroker.server";
+import { workerQueue } from "./worker.server";
 
 const client = new EmailClient({
   apikey: env.RESEND_API_KEY,
@@ -28,15 +28,14 @@ export async function scheduleWelcomeEmail(user: User) {
   const delay =
     process.env.NODE_ENV === "development" ? 1000 * 60 : 1000 * 60 * 22;
 
-  await taskQueue.publish(
-    "DELIVER_EMAIL",
+  await workerQueue.enqueue(
+    "deliverEmail",
     {
       email: "welcome",
       to: user.email,
       name: user.name ?? undefined,
     },
-    {},
-    { deliverAfter: delay }
+    { runAt: new Date(Date.now() + delay) }
   );
 }
 

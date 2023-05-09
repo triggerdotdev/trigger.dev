@@ -1,4 +1,4 @@
-import { TriggerLogger } from "./types";
+import { TaskLogger } from "./types";
 
 type CallbackFunction = (
   level: "DEBUG" | "INFO" | "WARN" | "ERROR",
@@ -6,7 +6,7 @@ type CallbackFunction = (
   properties?: Record<string, any>
 ) => Promise<void>;
 
-export class ContextLogger implements TriggerLogger {
+export class ContextLogger implements TaskLogger {
   constructor(private callback: CallbackFunction) {}
 
   debug(message: string, properties?: Record<string, any>): Promise<void> {

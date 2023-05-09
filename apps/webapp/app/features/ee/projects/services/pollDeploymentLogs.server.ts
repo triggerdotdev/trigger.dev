@@ -2,7 +2,6 @@ import type { DeploymentLogPoll, ProjectDeployment } from ".prisma/client";
 import { createHash } from "node:crypto";
 import type { PrismaClient } from "~/db.server";
 import { prisma } from "~/db.server";
-import { taskQueue } from "~/services/messageBroker.server";
 import type {
   GetLogsOptions,
   GetLogsResponse,
@@ -66,12 +65,13 @@ export class PollDeploymentLogs {
       return;
     }
 
-    await taskQueue.publish(
-      "DEPLOYMENT_LOG_POLL",
-      { id: deployment.id, count: poll.pollNumber },
-      {},
-      { deliverAt: poll.nextPollScheduledAt.getTime() }
-    );
+    // TODO: implement this
+    // await taskQueue.publish(
+    //   "DEPLOYMENT_LOG_POLL",
+    //   { id: deployment.id, count: poll.pollNumber },
+    //   {},
+    //   { deliverAt: poll.nextPollScheduledAt.getTime() }
+    // );
   }
 
   async #calculateNextPollScheduledAt(

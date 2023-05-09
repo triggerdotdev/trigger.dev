@@ -1,16 +1,13 @@
 import {
   ArrowLeftOnRectangleIcon,
   ArrowsRightLeftIcon,
-  BeakerIcon,
   BuildingOffice2Icon,
   CloudArrowUpIcon,
   CloudIcon,
   Cog6ToothIcon,
-  ForwardIcon,
   HomeIcon,
   KeyIcon,
   QueueListIcon,
-  Squares2X2Icon,
   SquaresPlusIcon,
 } from "@heroicons/react/24/outline";
 import { Link, NavLink, useLocation } from "@remix-run/react";
@@ -23,13 +20,6 @@ import {
   useOrganizations,
 } from "~/hooks/useOrganizations";
 import { useOptionalUser } from "~/hooks/useUser";
-import { useCurrentWorkflow } from "~/hooks/useWorkflows";
-import {
-  EnvironmentMenu,
-  EventRuleSwitch,
-} from "~/routes/resources/environment";
-import { useCurrentEnvironment } from "~/routes/__app/orgs/$organizationSlug/__org/workflows/$workflowSlug";
-import { CopyTextSideMenu } from "../CopyTextButton";
 import { LogoIcon } from "../LogoIcon";
 import { MenuTitleToolTip } from "../primitives/MenuTitleToolTip";
 import { Body } from "../primitives/text/Body";
@@ -216,64 +206,6 @@ export function OrganizationSideMenuCollapsed() {
 const defaultCollapsedStyle = "rounded p-2 transition hover:bg-slate-800";
 const activeCollapsedStyle =
   "rounded p-2 transition bg-slate-800 hover:bg-slate-600/50";
-
-export function WorkflowsSideMenu() {
-  const currentWorkflow = useCurrentWorkflow();
-  const organization = useCurrentOrganization();
-
-  if (currentWorkflow === undefined || organization === undefined) {
-    return null;
-  }
-
-  let items: SideMenuItem[] = [
-    {
-      name: "Overview",
-      icon: <HomeIcon className={iconStyle} />,
-      to: ``,
-      end: true,
-    },
-    {
-      name: "Test",
-      icon: <BeakerIcon className={iconStyle} />,
-      to: `test`,
-    },
-    {
-      name: "Runs",
-      icon: <ForwardIcon className={iconStyle} />,
-      to: `runs`,
-    },
-    {
-      name: "Connected APIs",
-      icon: <Squares2X2Icon className={iconStyle} />,
-      to: `integrations`,
-    },
-    {
-      name: "Settings",
-      icon: <Cog6ToothIcon className={iconStyle} />,
-      to: `settings`,
-    },
-  ];
-
-  return (
-    <SideMenu
-      subtitle="Workflow"
-      title={currentWorkflow.title}
-      items={items}
-      backPath={`/orgs/${organization.slug}`}
-    >
-      <div className="mt-2">
-        <Body
-          size="small"
-          className="mb-1 py-3 pl-1 uppercase tracking-wider text-slate-400"
-        >
-          Environment
-        </Body>
-        <EnvironmentMenu />
-        <EventRuleSwitch />
-      </div>
-    </SideMenu>
-  );
-}
 
 export function ProjectSideMenu({
   project,
