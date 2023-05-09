@@ -1,7 +1,7 @@
 import type { StorybookConfig } from "@storybook/react-webpack5";
 import path from "path";
 
-const root = path.resolve(__dirname, "../app/");
+const root = path.resolve(__dirname, "../app");
 console.log("storybook root", root);
 
 const config: StorybookConfig = {
@@ -12,7 +12,7 @@ const config: StorybookConfig = {
         ...config.resolve,
         alias: {
           ...(config.resolve?.alias ?? {}),
-          "~/": root,
+          "~": root,
         },
         extensions: [
           ...(config.resolve?.extensions ?? []),
