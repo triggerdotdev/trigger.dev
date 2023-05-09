@@ -8,3 +8,11 @@ node_modules
 /cypress/videos
 
 /app/styles/tailwind.css
+
+
+
+# Storybook build outputs
+build-storybook.log
+.out
+.storybook-out
+storybook-static
