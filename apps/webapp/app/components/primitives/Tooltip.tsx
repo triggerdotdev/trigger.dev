@@ -1,21 +1,29 @@
-import classNames from "classnames";
-import React, { memo } from "react";
+"use client";
 
-export type TooltipProps = {
-  children: React.ReactNode;
-  text: string;
-  className?: string;
-};
+import * as React from "react";
+import * as TooltipPrimitive from "@radix-ui/react-tooltip";
+import { cn } from "~/utils/cn";
 
-export const Tooltip: React.FC<TooltipProps> = memo((props) => {
-  return (
-    <span className={classNames("group relative z-50 flex", props.className)}>
-      <span className="pointer-events-none absolute -top-10 left-1/2 flex -translate-x-1/2 items-center justify-center whitespace-nowrap rounded bg-slate-1000 px-2 py-1 text-xs text-slate-400 opacity-0 transition delay-300 duration-200 ease-in-out before:absolute before:left-1/2 before:top-full before:-translate-x-1/2 before:border-4 before:border-transparent before:border-t-black before:content-[''] group-hover:opacity-100">
-        {props.text}
-      </span>
-      {props.children}
-    </span>
-  );
-});
+const TooltipProvider = TooltipPrimitive.Provider;
 
-Tooltip.displayName = "Tooltip";
+const Tooltip = TooltipPrimitive.Root;
+
+const TooltipTrigger = TooltipPrimitive.Trigger;
+
+const TooltipContent = React.forwardRef<
+  React.ElementRef<typeof TooltipPrimitive.Content>,
+  React.ComponentPropsWithoutRef<typeof TooltipPrimitive.Content>
+>(({ className, sideOffset = 4, ...props }, ref) => (
+  <TooltipPrimitive.Content
+    ref={ref}
+    sideOffset={sideOffset}
+    className={cn(
+      "data-[side=bottom]:slide-in-from-top-1 data-[side=left]:slide-in-from-right-1 data-[side=right]:slide-in-from-left-1 data-[side=top]:slide-in-from-bottom-1 z-50 overflow-hidden rounded-md border bg-popover px-3 py-1.5 text-sm text-popover-foreground shadow-md animate-in fade-in-50",
+      className
+    )}
+    {...props}
+  />
+));
+TooltipContent.displayName = TooltipPrimitive.Content.displayName;
+
+export { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider };

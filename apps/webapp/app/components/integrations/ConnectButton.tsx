@@ -3,7 +3,7 @@ import classNames from "classnames";
 import { useTypedFetcher } from "remix-typedjson";
 import type { action } from "~/routes/resources/connection/oauth2";
 import type { ExternalApi } from "~/services/externalApis/types";
-import { NamedIcon } from "../Icon";
+import { NamedIcon } from "../primitives/NamedIcon";
 import { PrimaryButton } from "../primitives/Buttons";
 import {
   Sheet,

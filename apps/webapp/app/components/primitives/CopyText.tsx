@@ -14,7 +14,7 @@ export function CopyText({
   onCopied,
 }: CopyTextProps) {
   const onClick = useCallback(
-    (event: React.MouseEvent<HTMLDivElement>) => {
+    (event: React.MouseEvent<HTMLButtonElement>) => {
       event.preventDefault();
       event.stopPropagation();
       navigator.clipboard.writeText(value);
@@ -26,8 +26,8 @@ export function CopyText({
   );
 
   return (
-    <div onClick={onClick} className={`${className}`}>
+    <button onClick={onClick} className={`${className}`}>
       {children}
-    </div>
+    </button>
   );
 }

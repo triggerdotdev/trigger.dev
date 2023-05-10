@@ -1,131 +1,54 @@
-import { Tab as HeadlessTab } from "@headlessui/react";
-import classNames from "classnames";
-import classnames from "classnames";
+"use client";
 
-type HeadlessTabProps = Parameters<typeof HeadlessTab>[0];
-type HeadlessTabListProps = Parameters<typeof HeadlessTab.List>[0];
+import * as React from "react";
+import * as TabsPrimitive from "@radix-ui/react-tabs";
+import { cn } from "~/utils/cn";
 
-export function ClassicList({ children, ...props }: HeadlessTabListProps) {
-  return (
-    <HeadlessTab.List className={"-mb-px flex bg-slate-50"} {...props}>
-      {children}
-    </HeadlessTab.List>
-  );
-}
+const Tabs = TabsPrimitive.Root;
 
-export function Classic({ children, ...props }: HeadlessTabProps) {
-  return (
-    <HeadlessTab
-      className={({ selected }: { selected: boolean }) =>
-        classnames(
-          selected
-            ? "border-t border-slate-200 bg-white text-slate-600"
-            : "border-b border-t border-slate-200 bg-slate-50 text-slate-700 hover:border-slate-200 hover:text-slate-800",
-          "flex whitespace-nowrap border-r  py-3 px-3 text-xs focus:outline-none"
-        )
-      }
-      {...props}
-    >
-      {children}
-    </HeadlessTab>
-  );
-}
+const TabsList = React.forwardRef<
+  React.ElementRef<typeof TabsPrimitive.List>,
+  React.ComponentPropsWithoutRef<typeof TabsPrimitive.List>
+>(({ className, ...props }, ref) => (
+  <TabsPrimitive.List
+    ref={ref}
+    className={cn(
+      "inline-flex h-10 items-center justify-center rounded-md bg-muted p-1 text-muted-foreground",
+      className
+    )}
+    {...props}
+  />
+));
+TabsList.displayName = TabsPrimitive.List.displayName;
 
-export function UnderlinedList({ children, ...props }: HeadlessTabListProps) {
-  return (
-    <HeadlessTab.List
-      className={"-mb-px flex space-x-4 border-b border-slate-700"}
-      {...props}
-    >
-      {children}
-    </HeadlessTab.List>
-  );
-}
+const TabsTrigger = React.forwardRef<
+  React.ElementRef<typeof TabsPrimitive.Trigger>,
+  React.ComponentPropsWithoutRef<typeof TabsPrimitive.Trigger>
+>(({ className, ...props }, ref) => (
+  <TabsPrimitive.Trigger
+    ref={ref}
+    className={cn(
+      "data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm inline-flex items-center justify-center whitespace-nowrap rounded-sm px-3 py-1.5 text-sm font-medium ring-offset-background transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50",
+      className
+    )}
+    {...props}
+  />
+));
+TabsTrigger.displayName = TabsPrimitive.Trigger.displayName;
 
-export function Underlined({ children, ...props }: HeadlessTabProps) {
-  return (
-    <HeadlessTab
-      className={({ selected }: { selected: boolean }) =>
-        classnames(
-          selected
-            ? "border-slate-300 text-slate-300 outline-none"
-            : "border-transparent text-slate-400 hover:border-slate-200 hover:text-slate-200",
-          "disabled:text-slate-300 disabled:hover:border-transparent",
-          "flex whitespace-nowrap border-b-2 py-2 px-4 text-base font-medium transition"
-        )
-      }
-      {...props}
-    >
-      {children}
-    </HeadlessTab>
-  );
-}
+const TabsContent = React.forwardRef<
+  React.ElementRef<typeof TabsPrimitive.Content>,
+  React.ComponentPropsWithoutRef<typeof TabsPrimitive.Content>
+>(({ className, ...props }, ref) => (
+  <TabsPrimitive.Content
+    ref={ref}
+    className={cn(
+      "mt-2 ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+      className
+    )}
+    {...props}
+  />
+));
+TabsContent.displayName = TabsPrimitive.Content.displayName;
 
-export function SegmentedList({
-  children,
-  className,
-  ...props
-}: HeadlessTabListProps) {
-  return (
-    <HeadlessTab.List
-      className={classNames(
-        "flex max-w-fit gap-0.5 rounded-md bg-slate-800 p-1",
-        className
-      )}
-      {...props}
-    >
-      {children}
-    </HeadlessTab.List>
-  );
-}
-
-export function Segmented({ children, ...props }: HeadlessTabProps) {
-  return (
-    <HeadlessTab
-      className={({ selected }: { selected: boolean }) =>
-        classnames(
-          selected
-            ? "rounded bg-indigo-600 text-white shadow outline-none"
-            : "rounded text-slate-300 transition hover:bg-slate-700 hover:text-slate-300 hover:shadow-none",
-          "flex whitespace-nowrap py-2 px-4 text-xs font-medium"
-        )
-      }
-      {...props}
-    >
-      {children}
-    </HeadlessTab>
-  );
-}
-
-export function LargeBoxList({
-  children,
-  className,
-  ...props
-}: HeadlessTabListProps) {
-  return (
-    <HeadlessTab.List
-      className={classNames("grid grid-cols-carousel gap-2", className)}
-      {...props}
-    >
-      {children}
-    </HeadlessTab.List>
-  );
-}
-
-export function LargeBox({ children, ...props }: HeadlessTabProps) {
-  return (
-    <HeadlessTab
-      className={({ selected }: { selected: boolean }) =>
-        classnames(
-          selected
-            ? "bg-slate-800 text-white shadow outline-none"
-            : "text-slate-300 transition hover:bg-slate-800/50 hover:text-slate-300 hover:shadow-none",
-          "flex flex-col items-center justify-center gap-4 rounded border border-slate-700 py-6 px-4 text-base font-medium"
-        )
-      }
-      {...props}
-    >
-      {children}
-    </HeadlessTab>
-  );
-}
+export { Tabs, TabsList, TabsTrigger, TabsContent };

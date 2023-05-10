@@ -26,11 +26,11 @@ const btnVariants = {
 
 const iconVariants = {
   size: {
-    // ExtraSmall: "h-3",
+    // extraSmall: "h-3",
     small: "h-4",
     medium: "h-4",
     large: "h-5",
-    // ExtraLarge: "h-6",
+    // extraLarge: "h-6",
   },
   theme: {
     primary: "text-slate-900",

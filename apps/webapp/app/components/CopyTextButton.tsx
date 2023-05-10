@@ -7,7 +7,7 @@ import {
 } from "@heroicons/react/24/outline";
 import classNames from "classnames";
 import { useCallback, useState } from "react";
-import { CopyText } from "./CopyText";
+import { CopyText } from "./primitives/CopyText";
 import { TertiaryButton } from "./primitives/Buttons";
 import { Body } from "./primitives/text/Body";
 

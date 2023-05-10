@@ -4,10 +4,9 @@ import {
   CheckCircleIcon,
   ExclamationTriangleIcon,
 } from "@heroicons/react/24/solid";
-import classNames from "classnames";
 import type { ReactNode } from "react";
-import type { WorkflowRunStatus } from "~/models/workflowRun.server";
 import { Spinner } from "../primitives/Spinner";
+import { cn } from "~/utils/cn";
 
 export function runStatusTitle(status: WorkflowRunStatus): string {
   switch (status) {
@@ -53,7 +52,7 @@ export function runStatusIcon(
     case "SUCCESS":
       return (
         <CheckCircleIcon
-          className={classNames(
+          className={cn(
             iconSize === "small" ? smallClasses : largeClasses,
             "relative text-green-500"
           )}
@@ -62,7 +61,7 @@ export function runStatusIcon(
     case "PENDING":
       return (
         <ClockIcon
-          className={classNames(
+          className={cn(
             iconSize === "small" ? smallClasses : largeClasses,
             "relative text-slate-500"
           )}
@@ -71,16 +70,16 @@ export function runStatusIcon(
     case "RUNNING":
       return (
         <Spinner
-          className={classNames(
+          className={cn(
             iconSize === "small" ? smallClasses : largeClasses,
-            "relative text-blue-500 ml-[1px]"
+            "relative ml-[1px] text-blue-500"
           )}
         />
       );
     case "DISCONNECTED":
       return (
         <ExclamationTriangleIcon
-          className={classNames(
+          className={cn(
             iconSize === "small" ? smallClasses : largeClasses,
             "relative text-amber-300"
           )}
@@ -89,7 +88,7 @@ export function runStatusIcon(
     case "ERROR":
       return (
         <XCircleIcon
-          className={classNames(
+          className={cn(
             iconSize === "small" ? smallClasses : largeClasses,
             "relative text-rose-500"
           )}
@@ -98,7 +97,7 @@ export function runStatusIcon(
     case "TIMED_OUT":
       return (
         <ExclamationTriangleIcon
-          className={classNames(
+          className={cn(
             iconSize === "small" ? smallClasses : largeClasses,
             "relative text-amber-300"
           )}

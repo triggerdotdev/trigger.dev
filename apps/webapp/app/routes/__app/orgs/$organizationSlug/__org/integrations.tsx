@@ -3,7 +3,7 @@ import type { LoaderArgs } from "@remix-run/server-runtime";
 import { SliderButton } from "@typeform/embed-react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import invariant from "tiny-invariant";
-import { NamedIcon, NamedIconInBox } from "~/components/Icon";
+import { NamedIcon, NamedIconInBox } from "~/components/primitives/NamedIcon";
 import { ConnectButton } from "~/components/integrations/ConnectButton";
 import { AppBody, AppLayoutTwoCol } from "~/components/layout/AppLayout";
 import { Container } from "~/components/layout/Container";
