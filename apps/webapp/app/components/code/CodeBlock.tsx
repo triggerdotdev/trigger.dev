@@ -1,15 +1,17 @@
-import { ClipboardIcon } from "@heroicons/react/20/solid";
 import type { Language, PrismTheme } from "prism-react-renderer";
 import Highlight, { defaultProps } from "prism-react-renderer";
 import { forwardRef, useCallback, useState } from "react";
 import { cn } from "~/utils/cn";
 import {
   Tooltip,
-  TooltipArrow,
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
 } from "../primitives/Tooltip";
+import {
+  ClipboardDocumentCheckIcon,
+  ClipboardIcon,
+} from "@heroicons/react/24/solid";
 
 //This is a fork of https://github.com/mantinedev/mantine/blob/master/src/mantine-prism/src/Prism/Prism.tsx
 //it didn't support highlighting lines by dimming the rest of the code, or animations on the highlighting
@@ -35,9 +37,13 @@ type CodeBlockProps = {
 
   /** Add/override code theme */
   theme?: PrismTheme;
+
+  /** Max lines */
+  maxLines?: number;
 };
 
 const dimAmount = 0.5;
+const extraLinesWhenClipping = 0.35;
 
 const defaultTheme: PrismTheme = {
   plain: {
@@ -153,10 +159,12 @@ export const CodeBlock = forwardRef<HTMLDivElement, CodeBlockProps>(
       className,
       language = "typescript",
       theme = defaultTheme,
+      maxLines,
       ...props
     }: CodeBlockProps,
     ref
   ) => {
+    const [mouseOver, setMouseOver] = useState(false);
     const [copied, setCopied] = useState(false);
     const onCopied = useCallback(
       (event: React.MouseEvent<HTMLButtonElement>) => {
@@ -172,7 +180,14 @@ export const CodeBlock = forwardRef<HTMLDivElement, CodeBlockProps>(
     );
 
     code = code.trim();
-    const maxLineSize = code.split("\n").length.toString().length;
+    const lineCount = code.split("\n").length;
+    const maxLineWidth = lineCount.toString().length;
+    let maxHeight: string | undefined = undefined;
+    if (maxLines && lineCount > maxLines) {
+      maxHeight = `calc(${
+        (maxLines + extraLinesWhenClipping) * 0.75 * 1.625
+      }rem + 1.5rem )`;
+    }
 
     return (
       <div
@@ -189,19 +204,25 @@ export const CodeBlock = forwardRef<HTMLDivElement, CodeBlockProps>(
       >
         {showCopyButton && (
           <TooltipProvider>
-            <Tooltip>
+            <Tooltip open={copied || mouseOver}>
               <TooltipTrigger
                 onClick={onCopied}
+                onMouseEnter={() => setMouseOver(true)}
+                onMouseLeave={() => setMouseOver(false)}
                 className={cn(
-                  "absolute top-3 right-3 z-50 transition-colors duration-500 hover:cursor-pointer",
+                  "absolute top-3 right-3 z-50 transition-colors duration-100 hover:cursor-pointer",
                   copied
                     ? "text-emerald-500"
                     : "text-slate-500 hover:text-slate-300"
                 )}
               >
-                <ClipboardIcon className="h-5 w-4" />
+                {copied ? (
+                  <ClipboardDocumentCheckIcon className="h-5 w-4" />
+                ) : (
+                  <ClipboardIcon className="h-5 w-4" />
+                )}
               </TooltipTrigger>
-              <TooltipContent side="left">
+              <TooltipContent side="left" className="text-xs">
                 {copied ? "Copied" : "Copy"}
               </TooltipContent>
             </Tooltip>
@@ -224,11 +245,9 @@ export const CodeBlock = forwardRef<HTMLDivElement, CodeBlockProps>(
             <div
               dir="ltr"
               className="overflow-auto py-3 px-2 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-slate-700"
-              style={
-                {
-                  // maxHeight: "100px",
-                }
-              }
+              style={{
+                maxHeight,
+              }}
             >
               <pre
                 className={cn(
@@ -282,7 +301,7 @@ export const CodeBlock = forwardRef<HTMLDivElement, CodeBlockProps>(
                               "mr-2 flex-none select-none text-right text-slate-500 transition-opacity duration-500"
                             }
                             style={{
-                              width: `calc(8 * ${maxLineSize / 16}rem)`,
+                              width: `calc(8 * ${maxLineWidth / 16}rem)`,
                             }}
                           >
                             {lineNumber}
