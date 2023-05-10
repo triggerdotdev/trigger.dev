@@ -12,7 +12,7 @@ export default meta;
 
 type Story = StoryObj<typeof CodeBlock>;
 
-export const Basic: Story = {
+export const Block: Story = {
   args: {
     code: `export const client = new TriggerClient("smoke-test", {
   apiUrl: "http://localhost:3000",
@@ -38,9 +38,18 @@ export const Basic: Story = {
   render: (args) => <CodeBlock {...args} />,
 };
 
-Basic.parameters = {
+Block.parameters = {
   design: {
     type: "figma",
     url: "https://www.figma.com/file/LKQ4FJ4bTnCSjedbRpk931/Sample-File",
   },
+};
+
+export const OneLiner: Story = {
+  args: {
+    code: `{ id: "my-first-job" }`,
+    showLineNumbers: false,
+  },
+
+  render: (args) => <CodeBlock {...args} />,
 };
