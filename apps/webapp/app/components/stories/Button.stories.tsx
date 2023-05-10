@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from "@storybook/react";
 import { withDesign } from "storybook-addon-designs";
-import { Button } from "../Buttons";
+import { Button } from "../primitives/Buttons";
 
 const meta: Meta<typeof Button> = {
   title: "Primitives/Button",

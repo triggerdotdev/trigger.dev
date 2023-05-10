@@ -7,7 +7,7 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "../Select";
+} from "../primitives/Select";
 
 const meta: Meta<typeof Select> = {
   title: "Primitives/Select",
