@@ -11,11 +11,11 @@ const preview: Preview = {
       },
     },
     backgrounds: {
-      default: "Dark",
+      default: "App background",
       values: [
         {
-          name: "Dark",
-          value: "#030713",
+          name: "App background",
+          value: "#0B1018",
         },
       ],
     },
