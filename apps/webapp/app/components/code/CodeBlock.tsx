@@ -1,10 +1,11 @@
 import { ClipboardIcon } from "@heroicons/react/20/solid";
 import type { Language, PrismTheme } from "prism-react-renderer";
 import Highlight, { defaultProps } from "prism-react-renderer";
-import { forwardRef } from "react";
+import { forwardRef, useCallback, useState } from "react";
 import { cn } from "~/utils/cn";
 import {
   Tooltip,
+  TooltipArrow,
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
@@ -156,16 +157,32 @@ export const CodeBlock = forwardRef<HTMLDivElement, CodeBlockProps>(
     }: CodeBlockProps,
     ref
   ) => {
+    const [copied, setCopied] = useState(false);
+    const onCopied = useCallback(
+      (event: React.MouseEvent<HTMLButtonElement>) => {
+        event.preventDefault();
+        event.stopPropagation();
+        navigator.clipboard.writeText(code);
+        setCopied(true);
+        setTimeout(() => {
+          setCopied(false);
+        }, 1500);
+      },
+      [code]
+    );
+
     code = code.trim();
     const maxLineSize = code.split("\n").length.toString().length;
 
     return (
       <div
         className={cn(
-          "relative overflow-hidden rounded-md border border-slate-800 ",
+          "relative overflow-hidden rounded-md border border-slate-800",
           className
         )}
-        style={{ backgroundColor: theme.plain.backgroundColor }}
+        style={{
+          backgroundColor: theme.plain.backgroundColor,
+        }}
         ref={ref}
         {...props}
         translate="no"
@@ -173,10 +190,20 @@ export const CodeBlock = forwardRef<HTMLDivElement, CodeBlockProps>(
         {showCopyButton && (
           <TooltipProvider>
             <Tooltip>
-              <TooltipTrigger className="absolute top-1 right-1 z-50">
-                <ClipboardIcon className="h-5 w-4 text-slate-500" />
+              <TooltipTrigger
+                onClick={onCopied}
+                className={cn(
+                  "absolute top-3 right-3 z-50 transition-colors duration-500 hover:cursor-pointer",
+                  copied
+                    ? "text-emerald-500"
+                    : "text-slate-500 hover:text-slate-300"
+                )}
+              >
+                <ClipboardIcon className="h-5 w-4" />
               </TooltipTrigger>
-              <TooltipContent>Copy</TooltipContent>
+              <TooltipContent side="left">
+                {copied ? "Copied" : "Copy"}
+              </TooltipContent>
             </Tooltip>
           </TooltipProvider>
         )}
@@ -196,7 +223,12 @@ export const CodeBlock = forwardRef<HTMLDivElement, CodeBlockProps>(
           }) => (
             <div
               dir="ltr"
-              className="overflow-auto py-1 px-2 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-slate-700"
+              className="overflow-auto py-3 px-2 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-slate-700"
+              style={
+                {
+                  // maxHeight: "100px",
+                }
+              }
             >
               <pre
                 className={cn(

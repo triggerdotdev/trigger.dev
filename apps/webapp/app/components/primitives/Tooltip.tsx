@@ -6,7 +6,21 @@ import { cn } from "~/utils/cn";
 
 const TooltipProvider = TooltipPrimitive.Provider;
 
-const Tooltip = TooltipPrimitive.Root;
+const TooltipArrow = React.forwardRef<
+  React.ElementRef<typeof TooltipPrimitive.Arrow>,
+  React.ComponentPropsWithoutRef<typeof TooltipPrimitive.Arrow>
+>(({ ...props }, ref) => (
+  <TooltipPrimitive.Arrow className="z-50 fill-popover" {...props} />
+));
+TooltipArrow.displayName = TooltipPrimitive.Arrow.displayName;
+
+const Tooltip = React.forwardRef<
+  React.ElementRef<typeof TooltipPrimitive.Root>,
+  React.ComponentPropsWithoutRef<typeof TooltipPrimitive.Root>
+>(({ delayDuration = 0, ...props }, ref) => (
+  <TooltipPrimitive.Root delayDuration={delayDuration} {...props} />
+));
+Tooltip.displayName = TooltipPrimitive.Root.displayName;
 
 const TooltipTrigger = TooltipPrimitive.Trigger;
 
@@ -26,4 +40,10 @@ const TooltipContent = React.forwardRef<
 ));
 TooltipContent.displayName = TooltipPrimitive.Content.displayName;
 
-export { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider };
+export {
+  Tooltip,
+  TooltipTrigger,
+  TooltipContent,
+  TooltipProvider,
+  TooltipArrow,
+};
