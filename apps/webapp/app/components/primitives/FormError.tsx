@@ -1,7 +1,15 @@
 import type { z } from "zod";
+import { Paragraph } from "./Paragraph";
 
-//todo use a new Input Field Error component
-export function FormError({
+export function FormError({ children }: { children: React.ReactNode }) {
+  return (
+    <Paragraph variant="small" className="text-red-500">
+      {children}
+    </Paragraph>
+  );
+}
+
+export function ZodFormErrors({
   errors,
   path,
 }: {
@@ -23,7 +31,7 @@ export function FormError({
   return (
     <div className="col-span-full mt-2 text-sm text-red-600">
       {relevantErrors.map((error, index) => (
-        <p key={index}>{error.message}</p>
+        <FormError key={index}>{error.message}</FormError>
       ))}
     </div>
   );

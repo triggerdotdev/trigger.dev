@@ -7,7 +7,7 @@ import { CopyTextButton, CopyTextPanel } from "~/components/CopyTextButton";
 import { Panel } from "~/components/layout/Panel";
 import { PanelWarning } from "~/components/layout/PanelInfo";
 import { DangerButton, PrimaryButton } from "~/components/primitives/Buttons";
-import { FormError } from "~/components/primitives/FormError";
+import { ZodFormError } from "~/components/primitives/FormError";
 import { Input } from "~/components/primitives/Input";
 import { InputGroup } from "~/components/primitives/InputGroup";
 import { Label } from "~/components/primitives/Label";
@@ -193,7 +193,7 @@ export default function ProjectSettingsPage() {
 
                     {!isSubmittingOrLoading &&
                       actionData?.type === "validationError" && (
-                        <FormError
+                        <ZodFormError
                           errors={actionData.errors}
                           path={[envVar.key]}
                         />
@@ -235,7 +235,7 @@ export default function ProjectSettingsPage() {
 
               {!isSubmittingOrLoading &&
                 actionData?.type === "validationError" && (
-                  <FormError errors={actionData.errors} path={["branch"]} />
+                  <ZodFormError errors={actionData.errors} path={["branch"]} />
                 )}
             </InputGroup>
           </div>
@@ -254,7 +254,7 @@ export default function ProjectSettingsPage() {
 
               {!isSubmittingOrLoading &&
                 actionData?.type === "validationError" && (
-                  <FormError
+                  <ZodFormError
                     errors={actionData.errors}
                     path={["buildCommand"]}
                   />
@@ -275,7 +275,7 @@ export default function ProjectSettingsPage() {
 
               {!isSubmittingOrLoading &&
                 actionData?.type === "validationError" && (
-                  <FormError
+                  <ZodFormError
                     errors={actionData.errors}
                     path={["startCommand"]}
                   />
