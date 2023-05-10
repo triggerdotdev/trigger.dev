@@ -16,8 +16,9 @@ import {
 type CodeBlockProps = {
   /** Code which will be highlighted */
   code: string;
+
   /** Programming language that should be highlighted */
-  language: Language;
+  language?: Language;
 
   /** Show copy to clipboard button */
   showCopyButton?: boolean;
@@ -149,7 +150,7 @@ export const CodeBlock = forwardRef<HTMLDivElement, CodeBlockProps>(
       highlightLines,
       code,
       className,
-      language,
+      language = "typescript",
       theme = defaultTheme,
       ...props
     }: CodeBlockProps,
