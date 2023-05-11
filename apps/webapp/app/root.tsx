@@ -10,8 +10,6 @@ import {
 } from "@remix-run/react";
 import type { ShouldRevalidateFunction } from "@remix-run/react";
 import tailwindStylesheetUrl from "./styles/tailwind.css";
-import prismStylesheetUrl from "./styles/prism.css";
-import prismThemeStylesheetUrl from "./styles/prism-trigger-theme.css";
 import { getUser } from "./services/session.server";
 import { Toaster, toast } from "react-hot-toast";
 import type { ToastMessage } from "~/models/message.server";
@@ -25,11 +23,7 @@ import { LinkButton } from "./components/primitives/Buttons";
 import { Paragraph } from "./components/primitives/Paragraph";
 
 export const links: LinksFunction = () => {
-  return [
-    { rel: "stylesheet", href: tailwindStylesheetUrl },
-    { rel: "stylesheet", href: prismStylesheetUrl },
-    { rel: "stylesheet", href: prismThemeStylesheetUrl },
-  ];
+  return [{ rel: "stylesheet", href: tailwindStylesheetUrl }];
 };
 
 export const meta: MetaFunction = () => ({
