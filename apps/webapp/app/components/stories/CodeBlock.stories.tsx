@@ -32,7 +32,10 @@ export const Block: Story = {
     console.info(log);
   },
 });`,
-    highlightLines: [2],
+    highlightedRanges: [
+      [6, 8],
+      [12, 14],
+    ],
   },
 
   render: (args) => <CodeBlock {...args} />,

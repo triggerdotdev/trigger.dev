@@ -30,7 +30,7 @@ type CodeBlockProps = {
   showLineNumbers?: boolean;
 
   /** Highlight line at given line number with color from theme.colors */
-  highlightLines?: number[];
+  highlightedRanges?: [number, number][];
 
   /** Add/override classes on the overall element */
   className?: string;
@@ -154,7 +154,7 @@ export const CodeBlock = forwardRef<HTMLDivElement, CodeBlockProps>(
     {
       showCopyButton = true,
       showLineNumbers = true,
-      highlightLines,
+      highlightedRanges,
       code,
       className,
       language = "typescript",
@@ -188,6 +188,10 @@ export const CodeBlock = forwardRef<HTMLDivElement, CodeBlockProps>(
         (maxLines + extraLinesWhenClipping) * 0.75 * 1.625
       }rem + 1.5rem )`;
     }
+
+    const highlightLines = highlightedRanges?.flatMap(([start, end]) =>
+      Array.from({ length: end - start + 1 }, (_, i) => start + i)
+    );
 
     return (
       <div
