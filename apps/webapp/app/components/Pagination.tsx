@@ -1,8 +1,8 @@
 import { ChevronRightIcon } from "@heroicons/react/24/outline";
 import { ChevronLeftIcon } from "@heroicons/react/24/solid";
 import { Link, useLocation } from "@remix-run/react";
-import classNames from "classnames";
 import { LinkDisabled } from "./LinkWithDisabled";
+import { cn } from "~/utils/cn";
 
 export function PaginationControls({
   currentPage,
@@ -116,7 +116,7 @@ function PageLinkComponent({
       return (
         <Link
           to={pageUrl(location, page.page)}
-          className={classNames(baseClass, selectedClass)}
+          className={cn(baseClass, selectedClass)}
         >
           {page.page}
         </Link>
@@ -125,7 +125,7 @@ function PageLinkComponent({
       return (
         <Link
           to={pageUrl(location, page.page)}
-          className={classNames(baseClass, unselectedClass)}
+          className={cn(baseClass, unselectedClass)}
         >
           {page.page}
         </Link>

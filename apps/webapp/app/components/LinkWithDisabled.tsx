@@ -1,5 +1,5 @@
 import { Link } from "@remix-run/react";
-import classNames from "classnames";
+import { cn } from "~/utils/cn";
 
 type Props = Parameters<typeof Link>[0] & {
   disabled?: boolean;
@@ -13,10 +13,7 @@ export function LinkDisabled({
 }: Props) {
   if (disabled) {
     return (
-      <span
-        {...props}
-        className={classNames(props.className, disabledClassName)}
-      >
+      <span {...props} className={cn(props.className, disabledClassName)}>
         {props.children}
       </span>
     );
