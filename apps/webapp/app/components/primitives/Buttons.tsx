@@ -10,8 +10,7 @@ const sizes = {
 };
 
 const themes = {
-  primary:
-    "text-slate-900 bg-gradient-primary overflow-hidden hover:opacity-90",
+  primary: "text-slate-200 bg-indigo-500 hover:opacity-90",
   secondary:
     "text-slate-200 bg-gradient-secondary transition duration-500 hover:opacity-90",
   secondaryOutline:
