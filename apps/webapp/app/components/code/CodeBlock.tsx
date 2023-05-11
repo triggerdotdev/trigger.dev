@@ -40,6 +40,12 @@ type CodeBlockProps = {
 
   /** Max lines */
   maxLines?: number;
+
+  /** Whether to show the chrome, if you provide a string it will be used as the title, */
+  showChrome?: boolean;
+
+  /** filename */
+  fileName?: string;
 };
 
 const dimAmount = 0.5;
@@ -160,6 +166,8 @@ export const CodeBlock = forwardRef<HTMLDivElement, CodeBlockProps>(
       language = "typescript",
       theme = defaultTheme,
       maxLines,
+      showChrome = false,
+      fileName,
       ...props
     }: CodeBlockProps,
     ref
@@ -206,6 +214,7 @@ export const CodeBlock = forwardRef<HTMLDivElement, CodeBlockProps>(
         {...props}
         translate="no"
       >
+        {showChrome && <Chrome title={fileName} />}
         {showCopyButton && (
           <TooltipProvider>
             <Tooltip open={copied || mouseOver}>
@@ -214,7 +223,8 @@ export const CodeBlock = forwardRef<HTMLDivElement, CodeBlockProps>(
                 onMouseEnter={() => setMouseOver(true)}
                 onMouseLeave={() => setMouseOver(false)}
                 className={cn(
-                  "absolute top-3 right-3 z-50 transition-colors duration-100 hover:cursor-pointer",
+                  "absolute  right-3 z-50 transition-colors duration-100 hover:cursor-pointer",
+                  showChrome ? "top-10" : "top-3",
                   copied
                     ? "text-emerald-500"
                     : "text-slate-500 hover:text-slate-300"
@@ -342,3 +352,26 @@ export const CodeBlock = forwardRef<HTMLDivElement, CodeBlockProps>(
 );
 
 CodeBlock.displayName = "CodeBlock";
+
+function Chrome({ title }: { title?: string }) {
+  return (
+    <div className="grid h-7 grid-cols-[100px_auto_100px] border-b border-slate-800 bg-slate-900">
+      <div className="ml-2 flex items-center gap-2">
+        <div className="h-3 w-3 rounded-full bg-slate-700" />
+        <div className="h-3 w-3 rounded-full bg-slate-700" />
+        <div className="h-3 w-3 rounded-full bg-slate-700" />
+      </div>
+      <div className="flex items-center justify-center">
+        <div
+          className={cn(
+            "rounded-sm px-3 py-0.5 text-xs text-slate-500",
+            title && "bg-slate-1000"
+          )}
+        >
+          {title}
+        </div>
+      </div>
+      <div></div>
+    </div>
+  );
+}
