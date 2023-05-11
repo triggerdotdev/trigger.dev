@@ -1,4 +1,4 @@
-import { z } from "zod";
+import type { z } from "zod";
 
 export interface MessageCatalogSchema {
   [key: string]: z.ZodFirstPartySchemaTypes | z.ZodDiscriminatedUnion<any, any>;
