@@ -9,7 +9,7 @@ import {
   useCatch,
 } from "@remix-run/react";
 import type { ShouldRevalidateFunction } from "@remix-run/react";
-import tailwindStylesheetUrl from "./styles/tailwind.css";
+import tailwindStylesheetUrl from "~/tailwind.css";
 import { getUser } from "./services/session.server";
 import { Toaster, toast } from "react-hot-toast";
 import type { ToastMessage } from "~/models/message.server";

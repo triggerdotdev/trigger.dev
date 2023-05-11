@@ -1,5 +1,4 @@
 /** @type {import('tailwindcss').Config} */
-const parentConfig = require("@trigger.dev/tailwind-config/tailwind.config");
 const colors = require("tailwindcss/colors");
 
 const background = "hsl(224 71% 4%)";
@@ -34,9 +33,12 @@ const ring = "hsl(216 34% 17%)";
 const radius = "0.5rem";
 
 module.exports = {
-  ...parentConfig,
+  content: [
+    "./app/**/*.{ts,jsx,tsx}",
+    // include packages if not transpiling
+    "../../packages/**/*.{ts,tsx}",
+  ],
   theme: {
-    ...parentConfig.theme,
     container: {
       center: true,
       padding: "2rem",
@@ -45,18 +47,19 @@ module.exports = {
       },
     },
     extend: {
-      ...parentConfig.extend,
       fontFamily: {
         sans: ["Inter", "sans-serif"],
-        title: ["Poppins", "sans-serif"],
         mono: ["Roboto Mono", "monospace"],
       },
       fontSize: {
-        'xxs': ['0.5rem', {
-          lineHeight: '0.75rem',
-          letterSpacing: '-0.01em',
-          fontWeight: '500',
-        }],
+        xxs: [
+          "0.5rem",
+          {
+            lineHeight: "0.75rem",
+            letterSpacing: "-0.01em",
+            fontWeight: "500",
+          },
+        ],
       },
       colors: {
         border,

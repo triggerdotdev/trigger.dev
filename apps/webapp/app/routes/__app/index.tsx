@@ -5,15 +5,13 @@ import {
   UserIcon,
 } from "@heroicons/react/24/outline";
 import { Link } from "@remix-run/react";
-import { AppBody } from "~/components/layout/AppLayout";
 import type { MatchedOrganization } from "~/hooks/useOrganizations";
 import { useOrganizations } from "~/hooks/useOrganizations";
 import { useOptionalUser } from "~/hooks/useUser";
-import banner from "../../assets/images/org-banner.png";
 import { cn } from "~/utils/cn";
 import { Paragraph } from "~/components/primitives/Paragraph";
-import { Header3 } from "~/components/primitives/Headers";
-import { SimpleTooltip, Tooltip } from "~/components/primitives/Tooltip";
+import { Header1, Header3 } from "~/components/primitives/Headers";
+import { SimpleTooltip } from "~/components/primitives/Tooltip";
 
 export default function AppLayout() {
   const organizations = useOrganizations();
@@ -21,20 +19,11 @@ export default function AppLayout() {
 
   return (
     <>
-      <Paragraph>
+      <div>
         {/* <Header1 context="workflows" /> */}
         <div className="w-full overflow-auto">
           <div className="mt-28 flex flex-col items-center justify-center">
-            <div className="fixed top-[3.6rem] h-80 w-full overflow-hidden bg-slate-900/50">
-              <img
-                src={banner}
-                alt="Organization banner"
-                className="h-full w-full object-cover opacity-30"
-              />
-            </div>
-            <h1 className="z-10 mb-20 text-4xl text-slate-400">
-              Your Organizations
-            </h1>
+            <Header1>Your Organizations</Header1>
             <div className="z-10 mb-12 flex items-center justify-center">
               <ul className="grid max-w-7xl grid-cols-2 gap-2 lg:grid-cols-3">
                 {organizations ? (
@@ -78,7 +67,7 @@ export default function AppLayout() {
             />
           </div>
         </div>
-      </Paragraph>
+      </div>
     </>
   );
 }
