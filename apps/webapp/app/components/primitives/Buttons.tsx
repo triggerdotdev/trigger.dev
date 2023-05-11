@@ -3,39 +3,68 @@ import { Link } from "@remix-run/react";
 import React from "react";
 import { cn } from "~/utils/cn";
 
-const sizes = {
-  small: "h-[24px] px-2 text-xs",
-  medium: "h-[32px] px-2.5 text-sm",
-  large: "h-[40px] px-3 text-base",
-};
-
-const themes = {
-  primary: "text-slate-200 bg-indigo-500 hover:opacity-90",
-  secondary:
-    "text-slate-200 bg-gradient-secondary transition duration-500 hover:opacity-90",
-  secondaryOutline:
-    "text-indigo-400 hover:text-indigo-300 border border-indigo-500  focus:ring-indigo-400 py-1/2 hover:border-indigo-400",
-};
-
-const btnVariants = {
-  $all: "text-center font-semibold font-sans justify-center items-center shrink-0 transition-all duration-300 leading-tight rounded select-none group-focus:outline-none group-disabled:opacity-75 group-disabled:pointer-events-none",
-  size: sizes,
-  theme: themes,
-};
-
-const iconVariants = {
-  size: {
-    // extraSmall: "h-3",
-    small: "h-4",
-    medium: "h-4",
-    large: "h-5",
-    // extraLarge: "h-6",
+const variant = {
+  "primary/small": {
+    button:
+      "h-[24px] px-2 text-xs text-bright bg-indigo-600 hover:bg-indigo-500/90 hover:text-white disabled:opacity-50",
+    icon: "h-3.5 text-bright",
+    shortcut:
+      "text-xxs font-medium py-0.25 rounded-[2px] px-0.5 -mr-0.5 ml-0.5 border border-bright/50 text-bright/80",
   },
-  theme: {
-    primary: "text-slate-900",
-    secondary: "text-slate-200",
-    secondaryOutline: "text-indigo-400",
+  "secondary/small": {
+    button:
+      "h-[24px] px-2 text-xs text-dimmed bg-slate-800 hover:bg-slate-700/70 hover:text-bright disabled:opacity-50",
+    icon: "h-3.5 text-dimmed group-hover:text-bright transition",
+    shortcut:
+      "text-xxs font-medium py-0.25 rounded-[2px] px-0.5 -mr-0.5 ml-0.5 border border-bright/50 text-bright/80",
   },
+  "tertiary/small": {
+    button:
+      "h-[24px] px-2 text-xs text-dimmed bg-transparent hover:bg-slate-850 hover:text-bright disabled:opacity-50",
+    icon: "h-3.5 text-dimmed group-hover:text-bright transition",
+    shortcut:
+      "text-xxs font-medium py-0.25 rounded-[2px] px-0.5 -mr-0.5 ml-0.5 border border-bright/50 text-bright/80",
+  },
+  "danger/small": {
+    button:
+      "h-[24px] px-2 text-xs text-bright bg-rose-600 hover:bg-rose-500 hover:text-white disabled:opacity-50",
+    icon: "h-3.5 text-bright",
+    shortcut:
+      "text-xxs font-medium py-0.25 rounded-[2px] px-0.5 -mr-0.5 ml-0.5 border border-bright/50 text-bright/80",
+  },
+  "primary/medium": {
+    button:
+      "h-[32px] px-3 text-sm text-bright bg-indigo-600 hover:bg-indigo-500/90 hover:text-white disabled:opacity-50",
+    icon: "h-4 text-bright",
+    shortcut:
+      "text-xs py-0.5 px-1 rounded-[3px] -mr-1.5 ml-1.5 border border-bright/50 text-bright/80",
+  },
+  "secondary/medium": {
+    button:
+      "h-[32px] px-3 text-sm text-dimmed bg-slate-800 hover:bg-slate-700/70 hover:text-bright disabled:opacity-50",
+    icon: "h-4 text-bright text-dimmed group-hover:text-bright transition",
+    shortcut:
+      "text-xs py-0.5 px-1 rounded-[3px] -mr-1.5 ml-1.5 border border-bright/50 text-bright/80",
+  },
+  "tertiary/medium": {
+    button:
+      "h-[32px] px-3 text-sm text-dimmed bg-transparent hover:bg-slate-850 hover:text-bright disabled:opacity-50",
+    icon: "h-4 text-bright text-dimmed group-hover:text-bright transition",
+    shortcut:
+      "text-xs py-0.5 px-1 rounded-[3px] -mr-1.5 ml-1.5 border border-bright/50 text-bright/80",
+  },
+  "danger/medium": {
+    button:
+      "h-[32px] px-3 text-sm text-bright bg-rose-600 hover:bg-rose-500 hover:text-white disabled:opacity-50",
+    icon: "h-4 text-bright",
+    shortcut:
+      "text-xs py-0.5 px-1 rounded-[3px] -mr-1.5 ml-1.5 border border-bright/50 text-bright/80",
+  },
+};
+
+const allVariants = {
+  $all: "font-normal text-center font-sans justify-center items-center shrink-0 transition duration-150 rounded-[3px] select-none group-focus:outline-none group-disabled:opacity-75 group-disabled:pointer-events-none",
+  variant: variant,
 };
 
 type ButtonContentPropsType = {
@@ -44,20 +73,21 @@ type ButtonContentPropsType = {
   TrailingIcon?: React.ComponentType<any>;
   fullWidth?: boolean;
   className?: string;
-  size: keyof typeof sizes;
-  theme: keyof typeof themes;
+  shortcut?: string;
+  variant: keyof typeof variant;
 };
 
 function ButtonContent(props: ButtonContentPropsType) {
-  const { text, LeadingIcon, TrailingIcon, fullWidth, className } = props;
+  const { text, LeadingIcon, TrailingIcon, shortcut, fullWidth, className } =
+    props;
 
   // Based on the size prop, we'll use the corresponding variant classnames
-  const btnClassName = `${btnVariants.$all} ${btnVariants.size[props.size]} ${
-    btnVariants.theme[props.theme]
-  }`;
-  const iconClassName = `${iconVariants.size[props.size]} ${
-    iconVariants.theme[props.theme]
-  }`;
+  const btnClassName = cn(
+    allVariants.$all,
+    allVariants.variant[props.variant].button
+  );
+  const iconClassName = allVariants.variant[props.variant].icon;
+  const shortcutClassName = allVariants.variant[props.variant].shortcut;
   return (
     <div
       className={cn(
@@ -77,6 +107,9 @@ function ButtonContent(props: ButtonContentPropsType) {
 
         {TrailingIcon && (
           <TrailingIcon className={cn(iconClassName, "shrink-0 justify-end")} />
+        )}
+        {shortcut && (
+          <span className={cn(shortcutClassName, "")}>{shortcut}</span>
         )}
       </div>
     </div>
