@@ -2,13 +2,12 @@ import { cn } from "~/utils/cn";
 
 const header1Styles = "font-sans text-xl leading-7 font-semibold";
 const header2Styles =
-  "font-sans text-base leading-6 font-semibold text-slate-200 mb-1";
-const header3Styles =
-  "font-sans text-sm leading-5 font-semibold text-slate-200";
+  "font-sans text-base leading-6 font-semibold text-bright mb-1";
+const header3Styles = "font-sans text-sm leading-5 font-semibold text-bright";
 
 const header1Variants = {
-  default: "text-slate-200",
-  dimmed: "text-slate-400",
+  default: "text-bright",
+  dimmed: "text-dimmed",
 };
 
 type HeaderProps = {
