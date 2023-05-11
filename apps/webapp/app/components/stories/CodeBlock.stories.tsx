@@ -3,7 +3,7 @@ import { withDesign } from "storybook-addon-designs";
 import { CodeBlock } from "../code/CodeBlock";
 
 const meta: Meta<typeof CodeBlock> = {
-  title: "CodeBlock",
+  title: "code/CodeBlock",
   component: CodeBlock,
   decorators: [withDesign],
 };
