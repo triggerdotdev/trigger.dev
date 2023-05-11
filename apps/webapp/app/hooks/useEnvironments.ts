@@ -36,29 +36,18 @@ export function useEnvironments(): RuntimeEnvironment[] | undefined {
 }
 
 export function useDevEnvironment(): RuntimeEnvironment | undefined {
-  const routeMatch = useMatchesData("routes/__app/orgs/$organizationSlug");
+  const environments = useEnvironments();
+  if (!environments) return;
 
-  if (
-    !routeMatch ||
-    !isRuntimeEnvironments(routeMatch.data.organization.environments)
-  ) {
-    return undefined;
-  }
-  return routeMatch.data.organization.environments.find(
+  return environments.find(
     (environment: any) => environment.slug === DEV_ENVIRONMENT
   );
 }
 
 export function useLiveEnvironment(): RuntimeEnvironment | undefined {
-  const routeMatch = useMatchesData("routes/__app/orgs/$organizationSlug");
-
-  if (
-    !routeMatch ||
-    !isRuntimeEnvironments(routeMatch.data.organization.environments)
-  ) {
-    return undefined;
-  }
-  return routeMatch.data.organization.environments.find(
+  const environments = useEnvironments();
+  if (!environments) return;
+  return environments.find(
     (environment: any) => environment.slug === LIVE_ENVIRONMENT
   );
 }
