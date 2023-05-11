@@ -1,4 +1,4 @@
-import classNames from "classnames";
+import { cn } from "~/utils/cn";
 
 type GitHubLoginButtonProps = {
   label?: string;
@@ -13,8 +13,8 @@ export function GitHubLoginButton({
 }: GitHubLoginButtonProps) {
   return (
     <button
-      className={classNames(
-        "flex items-center justify-center gap-2 rounded-md bg-indigo-800 py-3 pl-5 pr-6 text-lg font-medium text-white hover:bg-indigo-700 transition",
+      className={cn(
+        "flex items-center justify-center gap-2 rounded-md bg-indigo-800 py-3 pl-5 pr-6 text-lg font-medium text-white transition hover:bg-indigo-700",
         className
       )}
       onClick={onClick}
