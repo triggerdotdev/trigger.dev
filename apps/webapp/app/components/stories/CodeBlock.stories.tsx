@@ -1,7 +1,7 @@
 import type { Meta, StoryObj } from "@storybook/react";
 import { withDesign } from "storybook-addon-designs";
 import { CodeBlock } from "../code/CodeBlock";
-import { useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { cn } from "~/utils/cn";
 
 const meta: Meta<typeof CodeBlock> = {
@@ -116,7 +116,24 @@ const code = `export const client = new TriggerClient("smoke-test", {
 
 function AnimatedHighlight() {
   const firstRange = highlightedRegions.findIndex((region) => region.range);
-  const [highlighted, setHighlighted] = useState<number>(firstRange!);
+  const [highlighted, setHighlighted] = useState<number>(firstRange);
+  const [shouldAnimate, setShouldAnimate] = useState<boolean>(true);
+  const interval = useRef<NodeJS.Timer>();
+
+  useEffect(() => {
+    clearInterval(interval.current);
+    interval.current = setInterval(() => {
+      if (shouldAnimate) {
+        let nextIndex = highlightedRegions.findIndex((v, i) => {
+          return i > highlighted && v.range;
+        });
+        if (nextIndex === -1) {
+          nextIndex = highlightedRegions.findIndex((region) => region.range);
+        }
+        setHighlighted(nextIndex);
+      }
+    }, 2000);
+  }, [highlighted, shouldAnimate]);
 
   const highlightedRanges = highlightedRegions[highlighted]?.range
     ? highlightedRegions[highlighted].range!
@@ -128,10 +145,16 @@ function AnimatedHighlight() {
         {highlightedRegions.map((region, index) => (
           <span
             key={index}
-            onClick={() => {
+            onMouseEnter={() => {
               if (region.range) {
                 setHighlighted(index);
+                setShouldAnimate(false);
               }
+              setShouldAnimate(false);
+            }}
+            onMouseLeave={() => {
+              setShouldAnimate(true);
+              interval.current?.refresh();
             }}
             className={cn(
               "transition-bg text-xl transition-colors duration-300",
@@ -145,7 +168,20 @@ function AnimatedHighlight() {
           </span>
         ))}
       </p>
-      <CodeBlock code={code} highlightedRanges={highlightedRanges} />
+      <div
+        onMouseEnter={() => {
+          setHighlighted(-1);
+          setShouldAnimate(false);
+        }}
+        onMouseLeave={() => {
+          setShouldAnimate(true);
+          setHighlighted(
+            highlightedRegions.findIndex((region) => region.range)
+          );
+        }}
+      >
+        <CodeBlock code={code} highlightedRanges={highlightedRanges} />
+      </div>
     </div>
   );
 }
