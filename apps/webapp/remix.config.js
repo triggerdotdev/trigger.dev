@@ -1,14 +1,16 @@
 /** @type {import('@remix-run/dev').AppConfig} */
 module.exports = {
+  future: {
+    unstable_tailwind: true,
+    // v2_routeConvention: true,
+    // v2_meta: true,
+  },
   cacheDirectory: "./node_modules/.cache/remix",
   ignoredRouteFiles: ["**/.*"],
   devServerPort: 8002,
   serverDependenciesToBundle: [
     "pretty-bytes",
     "marked",
-    "@cfworker/json-schema",
-    "@nangohq/frontend",
-    "@nangohq/node",
     "axios",
     "@trigger.dev/internal",
     "emails",

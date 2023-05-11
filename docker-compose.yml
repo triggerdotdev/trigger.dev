@@ -20,26 +20,6 @@ services:
       - database:/var/lib/postgresql/data
     networks:
       - app_network
-  pizzly-server:
-    image: nangohq/nango-server:0.8.10
-    container_name: trigger-pizzly-server
-    restart: always
-    env_file:
-      - .docker/pizzly-server.env
-    environment:
-      - SERVER_PORT=3004
-      - NODE_ENV=development
-      - NANGO_SERVER_URL=http://localhost:3004
-      - NANGO_DB_HOST=db
-      - NANGO_DB_USER=postgres
-      - NANGO_DB_PASSWORD=postgres
-      - NANGO_DB_NAME=postgres
-    ports:
-      - "3004:3004"
-    depends_on:
-      - db
-    networks:
-      - app_network
 
 networks:
   app_network:
