@@ -90,15 +90,7 @@ export const JobSchema = z.object({
 
 export type JobMetadata = z.infer<typeof JobSchema>;
 
-export const GetJobResponseSchema = z.object({
-  metadata: JobSchema,
-  triggerVariants: z.array(
-    z.object({
-      id: z.string(),
-      trigger: TriggerMetadataSchema,
-    })
-  ),
-});
+export const GetJobResponseSchema = JobSchema;
 
 export type GetJobResponse = z.infer<typeof GetJobResponseSchema>;
 

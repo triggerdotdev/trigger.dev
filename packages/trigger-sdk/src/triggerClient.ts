@@ -34,10 +34,6 @@ export type ListenOptions = {
 export class TriggerClient {
   #options: TriggerClientOptions;
   #registeredJobs: Record<string, Job<Trigger<any>, any>> = {};
-  #registeredTriggerVariants: Record<
-    string,
-    Array<{ trigger: Trigger<any>; id: string }>
-  > = {};
   #client: ApiClient;
   #logger: Logger;
   name: string;
@@ -90,17 +86,9 @@ export class TriggerClient {
           };
         }
 
-        const triggerVariants = this.#registeredTriggerVariants[job.id] ?? [];
-
         return {
           status: 200,
-          body: {
-            metadata: job.toJSON(),
-            triggerVariants: triggerVariants.map(({ trigger, id }) => ({
-              id,
-              trigger: trigger.toJSON(),
-            })),
-          },
+          body: job.toJSON(),
         };
       }
 
@@ -108,12 +96,7 @@ export class TriggerClient {
       return {
         status: 200,
         body: {
-          jobs: Object.values(this.#registeredJobs).map((job) => ({
-            metadata: job.toJSON(),
-            triggerVariants: (
-              this.#registeredTriggerVariants[job.id] ?? []
-            ).map(({ id, trigger }) => ({ id, trigger: trigger.toJSON() })),
-          })),
+          jobs: Object.values(this.#registeredJobs).map((job) => job.toJSON()),
         },
       };
     }
@@ -190,18 +173,6 @@ export class TriggerClient {
     this.#registeredJobs[job.id] = job;
 
     job.trigger.attach(this, job);
-  }
-
-  attachVariant<TTrigger extends Trigger<any>>(
-    job: Job<TTrigger, any>,
-    id: string,
-    trigger: TTrigger
-  ) {
-    const jobTriggerVariants = this.#registeredTriggerVariants[job.id] ?? [];
-    jobTriggerVariants.push({ trigger, id });
-    this.#registeredTriggerVariants[job.id] = jobTriggerVariants;
-
-    trigger.attach(this, job, id);
   }
 
   authorized(apiKey: string) {

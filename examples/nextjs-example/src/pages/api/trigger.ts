@@ -19,7 +19,13 @@ const client = new TriggerClient("nextjs", {
   logLevel: "debug",
 });
 
-new Job({
+// const dynamicOnIssueOpenedTrigger = new DynamicTrigger(client, {
+//   id: "github-issue-opened",
+//   event: events.onIssueOpened,
+//   connection: gh,
+// });
+
+new Job(client, {
   id: "alert-on-new-github-issues",
   name: "Alert on new GitHub issues",
   version: "0.1.1",
@@ -35,16 +41,9 @@ new Job({
       channel: "C04GWUTDC3W",
     });
   },
-})
-  .attachTo(client)
-  .attachVariant(
-    "ericallam/hello-world",
-    gh.triggers.onIssueOpened({
-      repo: "ericallam/hello-world",
-    })
-  );
+});
 
-new Job({
+new Job(client, {
   id: "alert-on-new-github-issues-2",
   name: "Alert on new GitHub issues 2",
   version: "0.1.1",
@@ -52,9 +51,9 @@ new Job({
     repo: "ericallam/basic-starter-100k",
   }),
   run: async (event, io, ctx) => {},
-}).attachTo(client);
+});
 
-new Job({
+new Job(client, {
   id: "alert-on-new-github-stars",
   name: "Alert on new GitHub stars",
   version: "0.1.1",
@@ -62,7 +61,7 @@ new Job({
     repo: "ericallam/basic-starter-100k",
   }),
   run: async (event, io, ctx) => {},
-}).attachTo(client);
+});
 
 // const notifySlackONNewCommentsJob = new Job({
 //   id: "notify-slack-on-new-comments",

@@ -155,52 +155,26 @@ export class ExternalSourceEventTrigger<
     job: Job<Trigger<TEventType>, any>,
     variantId?: string
   ): void {
-    triggerClient.attach(
-      new Job({
-        id: `${job.id}-prepare-external-trigger${
-          variantId ? `-${variantId}` : ""
-        }`,
-        name: `Prepare ${this.options.title}`,
-        version: job.version,
-        trigger: internalPrepareTrigger(job, variantId),
-        connections: {
-          client: this.options.source.connection,
-        },
-        queue: {
-          name: `internal:${triggerClient.name}`,
-          maxConcurrent: 1,
-        },
-        run: async (event, io, ctx) => {
-          return await this.options.source.register(io, ctx);
-        },
-        // @ts-ignore
-        __internal: true,
-      })
-    );
-
-    triggerClient.attach(
-      new Job({
-        id: `handle-${this.options.source.key}`,
-        name: `Handle ${this.options.source.key}`,
-        version: this.options.source.version,
-        trigger: rawSourceTrigger(
-          this.options.source.channel,
-          this.options.source.key
-        ),
-        connections: {
-          client: this.options.source.connection,
-        },
-        run: async (event, io, ctx) => {
-          const { events } = await this.options.source.handle(event, io, ctx);
-
-          return {
-            events,
-          };
-        },
-        // @ts-ignore
-        __internal: true,
-      })
-    );
+    new Job(triggerClient, {
+      id: `${job.id}-prepare-external-trigger${
+        variantId ? `-${variantId}` : ""
+      }`,
+      name: `Prepare ${this.options.title}`,
+      version: job.version,
+      trigger: internalPrepareTrigger(job, variantId),
+      connections: {
+        client: this.options.source.connection,
+      },
+      queue: {
+        name: `internal:${triggerClient.name}`,
+        maxConcurrent: 1,
+      },
+      run: async (event, io, ctx) => {
+        return await this.options.source.register(io, ctx);
+      },
+      // @ts-ignore
+      __internal: true,
+    });
   }
 }
 

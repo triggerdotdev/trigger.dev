@@ -33,12 +33,17 @@ export class Job<
 > {
   readonly options: JobOptions<TTrigger, TConnections>;
 
-  client?: TriggerClient;
-  #pendingVariants: Array<{ id: string; trigger: TTrigger }> = [];
+  client: TriggerClient;
 
-  constructor(options: JobOptions<TTrigger, TConnections>) {
+  constructor(
+    client: TriggerClient,
+    options: JobOptions<TTrigger, TConnections>
+  ) {
+    this.client = client;
     this.options = options;
     this.#validate();
+
+    client.attach(this);
   }
 
   get id() {
@@ -79,36 +84,6 @@ export class Job<
       },
       {}
     );
-  }
-
-  attachTo(client: TriggerClient) {
-    if (this.client) {
-      throw new Error(
-        `Job "${this.id}" has already been registered with a client.`
-      );
-    }
-
-    this.client = client;
-
-    client.attach(this);
-
-    if (this.#pendingVariants.length > 0) {
-      this.#pendingVariants.forEach(({ id, trigger }) => {
-        client.attachVariant(this, id, trigger);
-      });
-    }
-
-    return this;
-  }
-
-  attachVariant(id: string, trigger: TTrigger) {
-    if (!this.client) {
-      this.#pendingVariants.push({ id, trigger });
-    } else {
-      this.client.attachVariant(this, id, trigger);
-    }
-
-    return this;
   }
 
   toJSON(): JobMetadata {

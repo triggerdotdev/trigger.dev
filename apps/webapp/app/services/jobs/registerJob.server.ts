@@ -9,7 +9,6 @@ import type {
   ConnectionConfig,
   GetJobResponse,
   LocalAuthConnectionConfig,
-  TriggerMetadata,
 } from "@trigger.dev/internal";
 import { DEFAULT_MAX_CONCURRENT_RUNS } from "~/consts";
 import type { PrismaClient } from "~/db.server";
@@ -56,15 +55,12 @@ export class RegisterJobService {
   async #upsertJob(
     endpoint: Endpoint,
     environment: AuthenticatedEnvironment,
-    jobResponse: GetJobResponse
+    metadata: GetJobResponse
   ): Promise<JobInstance> {
-    const { metadata, triggerVariants } = jobResponse;
-
     logger.debug("Upserting job", {
       endpoint,
       organizationId: environment.organizationId,
       metadata,
-      triggerVariants,
     });
 
     // Make sure all the hosted connections exist before we upsert the job
@@ -285,20 +281,6 @@ export class RegisterJobService {
       });
     }
 
-    if (triggerVariants) {
-      for (const triggerVariant of triggerVariants) {
-        await this.#upsertTriggerVariant(
-          job,
-          jobInstance,
-          environment,
-          triggerVariant.id,
-          triggerVariant.trigger
-        );
-      }
-
-      // TODO: deliver internal event that will prepare the trigger variants
-    }
-
     // Delete any connections that are no longer in the job
     // It's import this runs after the trigger variant upserts
     await this.#prismaClient.jobConnection.deleteMany({
@@ -341,58 +323,6 @@ export class RegisterJobService {
     });
 
     return jobInstance;
-  }
-
-  async #upsertTriggerVariant(
-    job: Job,
-    jobInstance: JobInstance,
-    environment: AuthenticatedEnvironment,
-    id: string,
-    trigger: TriggerMetadata
-  ) {
-    await this.#prismaClient.jobTriggerVariant.upsert({
-      where: {
-        jobInstanceId_slug: {
-          jobInstanceId: jobInstance.id,
-          slug: id,
-        },
-      },
-      create: {
-        jobInstance: {
-          connect: {
-            id: jobInstance.id,
-          },
-        },
-        slug: id,
-        data: trigger,
-        eventRule: {
-          create: {
-            event: trigger.eventRule.event,
-            source: trigger.eventRule.source,
-            payloadFilter: trigger.eventRule.payload,
-            contextFilter: trigger.eventRule.context,
-            jobId: job.id,
-            jobInstanceId: jobInstance.id,
-            environmentId: environment.id,
-            organizationId: environment.organizationId,
-            projectId: environment.projectId,
-            enabled: true,
-            actionIdentifier: `__trigger_${id}`,
-          },
-        },
-      },
-      update: {
-        data: trigger,
-        eventRule: {
-          update: {
-            event: trigger.eventRule.event,
-            source: trigger.eventRule.source,
-            payloadFilter: trigger.eventRule.payload,
-            contextFilter: trigger.eventRule.context,
-          },
-        },
-      },
-    });
   }
 
   async #upsertJobConnection(

@@ -10,7 +10,6 @@ import { RegisterJobService } from "./jobs/registerJob.server";
 import { ResumeTaskService } from "./runs/resumeTask.server";
 import { StartRunService } from "./runs/startRun.server";
 import { DeliverHttpSourceRequestService } from "./sources/deliverHttpSourceRequest.server";
-import { PrepareTriggerVariantService } from "./endpoints/prepareTriggerVariant.server";
 import { StartQueuedRunsService } from "./runs/startQueuedRuns.server";
 import { RunFinishedService } from "./runs/runFinished.server";
 
@@ -35,7 +34,6 @@ const workerCatalog = {
   runFinished: z.object({ id: z.string() }),
   resumeTask: z.object({ id: z.string() }),
   prepareJobInstance: z.object({ id: z.string() }),
-  prepareTriggerVariant: z.object({ id: z.string() }),
   deliverHttpSourceRequest: z.object({ id: z.string() }),
   refreshOAuthToken: z.object({
     organizationId: z.string(),
@@ -118,14 +116,6 @@ function getWorkerQueue() {
         maxAttempts: 3,
         handler: async (payload, job) => {
           const service = new PrepareJobInstanceService();
-
-          await service.call(payload.id);
-        },
-      },
-      prepareTriggerVariant: {
-        maxAttempts: 3,
-        handler: async (payload, job) => {
-          const service = new PrepareTriggerVariantService();
 
           await service.call(payload.id);
         },

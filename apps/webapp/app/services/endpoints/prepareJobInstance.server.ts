@@ -23,7 +23,6 @@ export class PrepareJobInstanceService {
             project: true,
           },
         },
-        triggerVariants: true,
       },
     });
 
@@ -40,21 +39,6 @@ export class PrepareJobInstanceService {
         jobVersion: jobInstance.version,
       },
     });
-
-    for (const variant of jobInstance.triggerVariants) {
-      await service.call(jobInstance.environment, {
-        id: `${jobInstance.id}:prepare:${versionScopedToMinor(
-          jobInstance.version
-        )}:${variant.id}`,
-        name: "internal.trigger.prepare",
-        source: "trigger.dev",
-        payload: {
-          jobId: jobInstance.job.slug,
-          jobVersion: jobInstance.version,
-          variantId: variant.slug,
-        },
-      });
-    }
   }
 }
 
