@@ -32,6 +32,9 @@ const ring = "hsl(216 34% 17%)";
 
 const radius = "0.5rem";
 
+const bright = colors.slate[200];
+const dimmed = colors.slate[400];
+
 module.exports = {
   content: [
     "./app/**/*.{ts,jsx,tsx}",
@@ -62,10 +65,12 @@ module.exports = {
         ],
       },
       colors: {
+        background,
+        bright,
+        dimmed,
         border,
         input,
         ring,
-        background,
         foreground,
         primary: {
           DEFAULT: primary,
