@@ -217,9 +217,9 @@ export const CodeBlock = forwardRef<HTMLDivElement, CodeBlockProps>(
                 )}
               >
                 {copied ? (
-                  <ClipboardDocumentCheckIcon className="h-5 w-4" />
+                  <ClipboardDocumentCheckIcon className="h-5 w-5" />
                 ) : (
-                  <ClipboardIcon className="h-5 w-4" />
+                  <ClipboardIcon className="h-5 w-5" />
                 )}
               </TooltipTrigger>
               <TooltipContent side="left" className="text-xs">
