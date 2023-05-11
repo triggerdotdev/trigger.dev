@@ -24,7 +24,7 @@ function isRuntimeEnvironments(
 }
 
 export function useEnvironments(): RuntimeEnvironment[] | undefined {
-  const routeMatch = useMatchesData("routes/__app/orgs/$organizationSlug");
+  const routeMatch = useMatchesData("routes/_app.orgs.$organizationSlug");
 
   if (
     !routeMatch ||

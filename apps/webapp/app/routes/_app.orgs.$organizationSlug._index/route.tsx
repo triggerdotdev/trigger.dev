@@ -1,24 +1,20 @@
-import { Outlet } from "@remix-run/react";
-import { AppLayoutThreeCol } from "~/components/layout/AppLayout";
+import { AppBody } from "~/components/layout/AppLayout";
+import { useDevEnvironment } from "~/hooks/useEnvironments";
+import { useCurrentOrganization } from "~/hooks/useOrganizations";
 
-import { useIsOrgChildPage } from "~/hooks/useIsOrgChildPage";
+export default function Page() {
+  const currentOrganization = useCurrentOrganization();
+  const currentEnv = useDevEnvironment();
 
-export default function OrganizationLayout() {
-  const isOrgChildPage = useIsOrgChildPage();
+  return <AppBody>You have no projects</AppBody>;
 
-  return (
-    <>
-      {isOrgChildPage ? (
-        <AppLayoutThreeCol>
-          {/* <OrganizationSideMenuCollapsed /> */}
-          <Outlet />
-        </AppLayoutThreeCol>
-      ) : (
-        <AppLayoutThreeCol>
-          {/* <CurrentOrganizationSideMenu /> */}
-          <Outlet />
-        </AppLayoutThreeCol>
-      )}
-    </>
-  );
+  if (currentOrganization === undefined) {
+    return <></>;
+  }
+
+  if (currentEnv === undefined) {
+    return <></>;
+  }
+
+  return <AppBody>You have no projects</AppBody>;
 }

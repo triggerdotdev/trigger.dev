@@ -38,6 +38,8 @@ export function useMatchesData(
 ): RouteMatch | undefined {
   const matchingRoutes = useMatches();
 
+  console.log("matchingRoutes", matchingRoutes);
+
   if (debug) {
     console.log("matchingRoutes", matchingRoutes);
   }

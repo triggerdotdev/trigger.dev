@@ -34,33 +34,7 @@ const EnvironmentSchema = z.object({
   FROM_EMAIL: z.string(),
   REPLY_TO_EMAIL: z.string(),
   RESEND_API_KEY: z.string(),
-  PRIMARY_REGION: z.string().optional(),
-  FLY_REGION: z.string().optional(),
   SESSION_SECRET: z.string(),
-  PIZZLY_HOST: z.string(),
-  PIZZLY_SECRET_KEY: z.string().optional(),
-  PULSAR_SERVICE_URL: z.string().default("pulsar://localhost:6650"),
-  PULSAR_ENABLED: z
-    .string()
-    .default("0")
-    .transform((v) => v === "1"),
-  REDIS_URL: z.string().default("redis://localhost:6379"),
-  PULSAR_CLIENT_ID: z.string().optional(),
-  PULSAR_CLIENT_SECRET: z.string().optional(),
-  PULSAR_ISSUER_URL: z.string().optional(),
-  PULSAR_AUDIENCE: z.string().optional(),
-  PULSAR_DEBUG: z.string().optional(),
-  INTERNAL_TRIGGER_API_KEY: z.string().optional(),
-  GITHUB_APP_NAME: z.string().optional(),
-  GITHUB_APP_ID: z.string().optional(),
-  GITHUB_APP_CLIENT_ID: z.string().optional(),
-  GITHUB_APP_CLIENT_SECRET: z.string().optional(),
-  GITHUB_APP_PRIVATE_KEY: z.string().optional(),
-  GITHUB_APP_WEBHOOK_SECRET: z.string().optional(),
-  INTEGRATIONS_API_KEY: z.string(),
-  INTEGRATIONS_API_ORIGIN: z.string(),
-  CAKEWORK_API_KEY: z.string(),
-  TRIGGER_WSS_URL: z.string().default("wss://wss.trigger.dev/ws"),
 });
 
 export type Environment = z.infer<typeof EnvironmentSchema>;

@@ -8,11 +8,11 @@ export type MatchedOrganization = UseDataFunctionReturn<
 >["organizations"][number];
 
 export function useOrganizations() {
-  return useOrganizationsFromMatchesData(["routes/__app", "routes/__public"]);
+  return useOrganizationsFromMatchesData(["routes/_app"]);
 }
 
 export function useCurrentOrganization() {
-  const routeMatch = useMatchesData("routes/__app/orgs/$organizationSlug");
+  const routeMatch = useMatchesData("routes/_app.orgs.$organizationSlug");
 
   if (!routeMatch || !routeMatch.data.organization) {
     return undefined;
@@ -31,7 +31,7 @@ export function useCurrentOrganization() {
 }
 
 export function useIsNewOrganizationPage(): boolean {
-  const routeMatch = useMatchesData("routes/__app/orgs/new");
+  const routeMatch = useMatchesData("routes/_app.orgs.new");
   return !!routeMatch;
 }
 

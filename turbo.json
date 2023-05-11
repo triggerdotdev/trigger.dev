@@ -88,8 +88,6 @@
   "globalEnv": [
     "NODE_ENV",
     "REMIX_APP_PORT",
-    "FLY_REGION",
-    "PRIMARY_REGION",
     "CI",
     "DATABASE_URL",
     "SESSION_SECRET",
@@ -103,7 +101,6 @@
     "FROM_EMAIL",
     "REPLY_TO_EMAIL",
     "RESEND_API_KEY",
-    "PIZZLY_HOST",
     "DEBUG",
     "TRIGGER_LOG_LEVEL",
     "TRIGGER_API_KEY",
