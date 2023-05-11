@@ -42,10 +42,10 @@ export function runStatusLabel(status: WorkflowRunStatus): ReactNode {
   }
 }
 
-export function runStatusIcon(
+export function RunStatusIcon(
   status: WorkflowRunStatus,
   iconSize: "small" | "large"
-): ReactNode {
+) {
   const largeClasses = "relative h-7 w-7";
   const smallClasses = "relative h-4 w-4";
   switch (status) {

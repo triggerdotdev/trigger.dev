@@ -5,7 +5,7 @@ import { useEffect } from "react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { useEventSource } from "remix-utils";
 import { z } from "zod";
-import { IntlDate } from "~/components/IntlDate";
+import { DateTime } from "~/components/primitives/DateTime";
 import { Panel } from "~/components/layout/Panel";
 import {
   SecondaryButton,
@@ -189,7 +189,7 @@ export default function DeploymentPage() {
               Started
             </Body>
             <Body className={deploySummaryValueStyles}>
-              <IntlDate date={deployment.createdAt} />
+              <DateTime date={deployment.createdAt} />
             </Body>
           </li>
           <li className={deploySummaryGridStyles}>

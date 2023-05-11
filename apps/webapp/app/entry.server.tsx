@@ -7,7 +7,7 @@ import { Response } from "@remix-run/node"; // or cloudflare/deno
 import type { EntryContext, Headers } from "@remix-run/node"; // or cloudflare/deno
 import { parseAcceptLanguage } from "intl-parse-accept-language";
 import isbot from "isbot";
-import { LocaleContextProvider } from "./components/LocaleProvider";
+import { LocaleContextProvider } from "./components/primitives/LocaleProvider";
 
 const ABORT_DELAY = 30000;
 

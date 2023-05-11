@@ -1,7 +1,7 @@
 import type { ProjectDeployment } from ".prisma/client";
 import { ChevronRightIcon } from "@heroicons/react/24/outline";
 import { Link } from "@remix-run/react";
-import { IntlDate } from "~/components/IntlDate";
+import { DateTime } from "~/components/primitives/DateTime";
 import { Body } from "~/components/primitives/text/Body";
 import {
   deploymentStatusDot,
@@ -63,7 +63,7 @@ export function DeploymentListItem({
                   </Body>
                 </div>
                 <div className="text-xs font-medium text-slate-500">
-                  <IntlDate date={timestamp} timeZone="UTC" />
+                  <DateTime date={timestamp} timeZone="UTC" />
                 </div>
               </div>
               <ChevronRightIcon className="h-4 w-4 text-slate-400" />

@@ -18,7 +18,7 @@ import type { LoaderArgs } from "@remix-run/server-runtime";
 import { redirect, typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
 import { OctoKitty } from "~/components/GitHubLoginButton";
-import { IntlDate } from "~/components/IntlDate";
+import { DateTime } from "~/components/primitives/DateTime";
 import { AppBody, AppLayoutTwoCol } from "~/components/layout/AppLayout";
 import { Container } from "~/components/layout/Container";
 import { Header } from "~/components/navigation/NavBar";
@@ -168,7 +168,7 @@ export function ProjectListItemView({ project }: { project: ProjectListItem }) {
                 </Body>
               </div>
               <Body size="small" className="text-slate-400">
-                <IntlDate date={project.createdAt} timeZone="UTC" />
+                <DateTime date={project.createdAt} timeZone="UTC" />
               </Body>
             </div>
             <ChevronRightIcon

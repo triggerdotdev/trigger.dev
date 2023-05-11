@@ -11,7 +11,7 @@ import { useEffect } from "react";
 import { redirect, typedjson, useTypedLoaderData } from "remix-typedjson";
 import { useEventSource } from "remix-utils";
 import { z } from "zod";
-import { IntlDate } from "~/components/IntlDate";
+import { DateTime } from "~/components/primitives/DateTime";
 import { List } from "~/components/layout/List";
 import { Panel } from "~/components/layout/Panel";
 import { PanelWarning } from "~/components/layout/PanelInfo";
@@ -177,7 +177,7 @@ export default function ProjectOverviewPage() {
             {latestCommit.commit.author?.name}{" "}
             {latestCommit.commit.committer?.date && (
               <>
-                at <IntlDate date={latestCommit.commit.committer?.date} />
+                at <DateTime date={latestCommit.commit.committer?.date} />
               </>
             )}
           </Body>

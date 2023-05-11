@@ -1,16 +1,16 @@
 import { BeakerIcon } from "@heroicons/react/24/outline";
 import { Link } from "@remix-run/react";
-import classNames from "classnames";
 import humanizeDuration from "humanize-duration";
 import type { ReactNode } from "react";
 import type { WorkflowRunListPresenter } from "~/presenters/workflowRunListPresenter.server";
 import { dateDifference, formatDateTime } from "~/utils";
 import { PanelWarning } from "../layout/PanelWarning";
 import { Spinner } from "../primitives/Spinner";
-import { runStatusIcon, runStatusLabel } from "./runStatus";
+import { RunStatusIcon, runStatusLabel } from "./RunStatus";
+import { cn } from "~/utils/cn";
 
 const headerCell = "px-4 py-5 text-left text-base font-semibold text-slate-300";
-const headerCellRightAlign = classNames(headerCell, "text-right");
+const headerCellRightAlign = cn(headerCell, "text-right");
 
 export function RunsTable({
   total,
@@ -71,7 +71,7 @@ export function RunsTable({
                 </Cell>
                 <Cell to={path} alignment="left">
                   <span className="flex items-center gap-1">
-                    {runStatusIcon(run.status, "small")}
+                    {RunStatusIcon(run.status, "small")}
                     {runStatusLabel(run.status)}
                   </span>
                 </Cell>
@@ -112,8 +112,8 @@ export function RunsTable({
 }
 
 const cell = "flex whitespace-nowrap text-sm text-slate-300";
-const cellLeftAligned = classNames(cell, "justify-start");
-const cellRightAligned = classNames(cell, "justify-end");
+const cellLeftAligned = cn(cell, "justify-start");
+const cellRightAligned = cn(cell, "justify-end");
 
 function Cell({
   children,
@@ -128,7 +128,7 @@ function Cell({
     <td className="cursor-pointer transition group-hover:bg-slate-850/50">
       <Link
         to={to}
-        className={classNames(
+        className={cn(
           "w-full py-3 px-4",
           alignment === "right" ? cellRightAligned : cellLeftAligned
         )}

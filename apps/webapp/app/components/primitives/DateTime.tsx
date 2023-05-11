@@ -1,11 +1,11 @@
 import { useLocales } from "./LocaleProvider";
 
-type IntlDateProps = {
+type DateTimeProps = {
   date: Date | string;
   timeZone?: string;
 };
 
-export const IntlDate = ({ date, timeZone }: IntlDateProps) => {
+export const DateTime = ({ date, timeZone }: DateTimeProps) => {
   const realDate = typeof date === "string" ? new Date(date) : date;
 
   const locales = useLocales();
@@ -30,7 +30,7 @@ export const IntlDate = ({ date, timeZone }: IntlDateProps) => {
   );
 };
 
-export const LogDate = ({ date, timeZone }: IntlDateProps) => {
+export const DateTimeAccurate = ({ date, timeZone }: DateTimeProps) => {
   const realDate = typeof date === "string" ? new Date(date) : date;
 
   const locales = useLocales();

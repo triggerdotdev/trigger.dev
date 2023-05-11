@@ -1,6 +1,6 @@
 import { UserCircleIcon } from "@heroicons/react/24/solid";
-import classNames from "classnames";
 import type { User } from "~/models/user.server";
+import { cn } from "~/utils/cn";
 
 export function UserProfilePhoto({
   user,
@@ -11,11 +11,11 @@ export function UserProfilePhoto({
 }) {
   return user.avatarUrl ? (
     <img
-      className={classNames("rounded-full", className)}
+      className={cn("rounded-full", className)}
       src={user.avatarUrl}
       alt={user.name ?? user.displayName ?? "User"}
     />
   ) : (
-    <UserCircleIcon className={classNames("text-gray-400", className)} />
+    <UserCircleIcon className={cn("text-gray-400", className)} />
   );
 }

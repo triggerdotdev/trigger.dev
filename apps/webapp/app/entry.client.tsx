@@ -3,7 +3,7 @@ import { hydrateRoot } from "react-dom/client";
 import * as Sentry from "@sentry/remix";
 import { useEffect } from "react";
 import posthog from "posthog-js";
-import { LocaleContextProvider } from "./components/LocaleProvider";
+import { LocaleContextProvider } from "./components/primitives/LocaleProvider";
 
 hydrateRoot(
   document,
