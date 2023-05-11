@@ -55,6 +55,8 @@ function Typography({ header1, header2, header3, paragraph }: TypographyProps) {
       <Paragraph variant="extra-small/dimmed/mono">{paragraph}</Paragraph>
       <Paragraph variant="extra-small/caps">{paragraph}</Paragraph>
       <Paragraph variant="extra-small/dimmed/caps">{paragraph}</Paragraph>
+      <Paragraph variant="extra-extra-small">{paragraph}</Paragraph>
+      <Paragraph variant="extra-extra-small/dimmed">{paragraph}</Paragraph>
       <Paragraph variant="extra-extra-small/caps">{paragraph}</Paragraph>
       <Paragraph variant="extra-extra-small/dimmed/caps">{paragraph}</Paragraph>
     </div>
