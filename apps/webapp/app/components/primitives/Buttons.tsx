@@ -109,7 +109,7 @@ export const Button = ({
   );
 };
 
-type LinkPropsType = Pick<LinkProps, "to"> &
+type LinkPropsType = Pick<LinkProps, "to" | "target"> &
   React.ComponentProps<typeof ButtonContent>;
 export const LinkButton = ({ to, ...props }: LinkPropsType) => {
   if (to.toString().startsWith("http")) {

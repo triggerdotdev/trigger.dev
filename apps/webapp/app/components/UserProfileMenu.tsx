@@ -1,8 +1,8 @@
 import { Menu, Transition } from "@headlessui/react";
-import classnames from "classnames";
 import type { User } from "~/models/user.server";
-import { Body } from "./primitives/text/Body";
 import { UserProfilePhoto } from "./UserProfilePhoto";
+import { Paragraph } from "./primitives/Paragraph";
+import { cn } from "~/utils/cn";
 
 const userNavigation = [{ name: "Logout", href: "/logout" }];
 
@@ -23,18 +23,15 @@ export function UserProfileMenu({ user }: { user: User }) {
         leaveFrom="transform opacity-100 scale-100"
         leaveTo="transform opacity-0 scale-95"
       >
-        <Menu.Items className="absolute right-0 mt-2 w-48 origin-top-right rounded-md overflow-hidden bg-slate-700 pb-1 pt-1 shadow-lg ring-1 ring-black ring-opacity-5 focus:outline-none">
+        <Menu.Items className="absolute right-0 mt-2 w-48 origin-top-right overflow-hidden rounded-md bg-slate-700 pb-1 pt-1 shadow-lg ring-1 ring-black ring-opacity-5 focus:outline-none">
           {user.name ? (
-            <Body
-              size="small"
-              className="mb-1 block border-b border-slate-800 py-2 pl-4 pr-1 font-semibold"
-            >
+            <Paragraph className="mb-1 block border-b border-slate-800 py-2 pl-4 pr-1 font-semibold">
               {user.name}
-            </Body>
+            </Paragraph>
           ) : (
-            <Body className="mb-1 block border-b border-slate-800 py-2 pl-4 pr-1 font-semibold">
+            <Paragraph className="mb-1 block border-b border-slate-800 py-2 pl-4 pr-1 font-semibold">
               {user.email}
-            </Body>
+            </Paragraph>
           )}
 
           {userNavigation.map((item) => (
@@ -42,7 +39,7 @@ export function UserProfileMenu({ user }: { user: User }) {
               {({ active }) => (
                 <a
                   href={item.href}
-                  className={classnames(
+                  className={cn(
                     active ? "bg-rose-200 text-rose-700" : "",
                     "mx-1 block rounded p-2 pl-3 text-sm text-slate-300"
                   )}
