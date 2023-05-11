@@ -4,10 +4,11 @@ import {
   ChatBubbleLeftRightIcon,
 } from "@heroicons/react/24/outline";
 import { Fragment } from "react";
-import { Logo } from "../Logo";
 import { ProjectsMenu } from "./ProjectsMenu";
 import { JobsMenu } from "./JobsMenu";
-import { Button, LinkButton } from "../primitives";
+import { LogoIcon } from "../LogoIcon";
+import { Button, LinkButton } from "../primitives/Buttons";
+import { cn } from "~/utils/cn";
 
 export function NavBar() {
   return (
@@ -16,7 +17,7 @@ export function NavBar() {
         <ProjectsMenu />
         <JobsMenu />
       </div>
-      <Logo className="ml-1 w-36 lg:hidden" />
+      <LogoIcon className="ml-1" />
       <MobileDropdownMenu />
       <div className="hidden items-center gap-2 sm:flex">
         <LinkButton
@@ -94,7 +95,7 @@ function MobileDropdownMenu() {
             as="div"
             className="absolute inset-x-6 top-0 mt-20 flex origin-top flex-col gap-4 rounded-md bg-slate-800 p-4 text-lg tracking-tight text-slate-900 shadow-xl ring-1 ring-slate-700"
           >
-            <PrimaryA
+            {/* <PrimaryA
               href="https://docs.trigger.dev"
               target="_blank"
               className="max-w-full"
@@ -111,7 +112,7 @@ function MobileDropdownMenu() {
             </PrimaryButton>
             <SecondaryLink to="/logout" className="max-w-full">
               Logout
-            </SecondaryLink>
+            </SecondaryLink> */}
           </Popover.Panel>
         </Transition.Child>
       </Transition.Root>
@@ -130,14 +131,11 @@ function MobileNavIcon({ open }: { open: boolean }) {
     >
       <path
         d="M0 1H14M0 7H14M0 13H14"
-        className={classnames(
-          "origin-center transition",
-          open && "scale-90 opacity-0"
-        )}
+        className={cn("origin-center transition", open && "scale-90 opacity-0")}
       />
       <path
         d="M2 2L12 12M12 2L2 12"
-        className={classnames(
+        className={cn(
           "origin-center transition",
           !open && "scale-90 opacity-0"
         )}

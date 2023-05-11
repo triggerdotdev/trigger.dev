@@ -1,8 +1,5 @@
 import { AppBody, AppLayoutTwoCol } from "~/components/layout/AppLayout";
-import { Container } from "~/components/layout/Container";
-import { Header } from "~/components/navigation/NavBar";
 import { OrganizationsSideMenu } from "~/components/navigation/SideMenu";
-import { Title } from "~/components/primitives/text/Title";
 import { useDevEnvironment } from "~/hooks/useEnvironments";
 import { useCurrentOrganization } from "~/hooks/useOrganizations";
 
@@ -21,12 +18,7 @@ export default function Page() {
   return (
     <AppLayoutTwoCol>
       <OrganizationsSideMenu />
-      <AppBody>
-        <Header context="workflows" />
-        <Container>
-          <Title>Blank State Coming Soon</Title>
-        </Container>
-      </AppBody>
+      <AppBody>{/*TODO show new project button  */}</AppBody>
     </AppLayoutTwoCol>
   );
 }

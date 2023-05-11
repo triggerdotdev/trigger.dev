@@ -6,7 +6,6 @@ import {
 } from "@heroicons/react/24/outline";
 import { Link } from "@remix-run/react";
 import { AppBody } from "~/components/layout/AppLayout";
-import { Header } from "~/components/navigation/NavBar";
 import type { MatchedOrganization } from "~/hooks/useOrganizations";
 import { useOrganizations } from "~/hooks/useOrganizations";
 import { useOptionalUser } from "~/hooks/useUser";
@@ -23,7 +22,7 @@ export default function AppLayout() {
   return (
     <>
       <Paragraph>
-        <Header context="workflows" />
+        {/* <Header1 context="workflows" /> */}
         <div className="w-full overflow-auto">
           <div className="mt-28 flex flex-col items-center justify-center">
             <div className="fixed top-[3.6rem] h-80 w-full overflow-hidden bg-slate-900/50">
@@ -123,9 +122,7 @@ function OrganizationGridItem({
             aria-hidden="true"
           />
         )}
-        <Header3 size="large" className="mb-16 text-slate-300">
-          {organization.title}
-        </Header3>
+        <Header3 className="mb-16 text-slate-300">{organization.title}</Header3>
       </Link>
     </li>
   );

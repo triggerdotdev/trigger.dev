@@ -3,8 +3,7 @@ import type { ActionFunction } from "@remix-run/node";
 import { json, redirect } from "@remix-run/node";
 import { Form, useActionData } from "@remix-run/react";
 import * as React from "react";
-import { Header } from "~/components/navigation/NavBar";
-import { PrimaryButton, SecondaryLink } from "~/components/primitives/Buttons";
+import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { Header1 } from "~/components/primitives/Headers";
 import { createOrganization } from "~/models/organization.server";
 import { requireUserId } from "~/services/session.server";
@@ -51,12 +50,10 @@ export default function NewOrganizationPage() {
 
   return (
     <div className="grid h-full grid-rows-[3rem_auto] bg-slate-850">
-      <Header context={"workflows"} />
+      {/* <Header context={"workflows"} /> */}
       <main className="flex h-full w-full items-center justify-center">
         <div className="flex min-w-[400px] flex-col gap-y-3.5 rounded-md border border-slate-800 bg-slate-800 p-10 shadow-md">
-          <Header1 size="large" className="">
-            Create a new Organization
-          </Header1>
+          <Header1 className="">Create a new Organization</Header1>
           <Form
             method="post"
             style={{
@@ -80,7 +77,7 @@ export default function NewOrganizationPage() {
                     name="title"
                     autoFocus
                     placeholder="e.g. Company name"
-                    className="relative w-full rounded bg-slate-850 py-2 pl-10 pr-3 placeholder:text-slate-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 group-focus:border-indigo-500"
+                    className="relative w-full rounded bg-slate-850 py-2 pl-10 pr-3 placeholder:text-slate-600 group-focus:border-indigo-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
                     aria-invalid={actionData?.errors?.title ? true : undefined}
                     aria-errormessage={
                       actionData?.errors?.title ? "title-error" : undefined
@@ -96,12 +93,21 @@ export default function NewOrganizationPage() {
             </div>
 
             <div className="flex justify-between">
-              <SecondaryLink to="/" className="rounded py-2 px-4">
-                Cancel
-              </SecondaryLink>
-              <PrimaryButton type="submit" className="rounded py-2 px-4">
-                Create Organization
-              </PrimaryButton>
+              <LinkButton
+                to="/"
+                className="rounded py-2 px-4"
+                text="Cancel"
+                size={"small"}
+                theme={"primary"}
+              />
+
+              <Button
+                type="submit"
+                className="rounded py-2 px-4"
+                text="Create Organization"
+                size={"small"}
+                theme={"primary"}
+              />
             </div>
           </Form>
         </div>

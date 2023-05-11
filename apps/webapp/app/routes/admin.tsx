@@ -3,11 +3,11 @@ import { HomeIcon, XMarkIcon } from "@heroicons/react/24/outline";
 import { UserCircleIcon } from "@heroicons/react/24/solid";
 import { Outlet } from "@remix-run/react";
 import type { LoaderArgs } from "@remix-run/server-runtime";
-import classNames from "classnames";
 import { Fragment, useState } from "react";
 import { redirect, typedjson, useTypedLoaderData } from "remix-typedjson";
 import type { User } from "~/models/user.server";
 import { getUser, requireUserId } from "~/services/session.server";
+import { cn } from "~/utils/cn";
 
 const navigation = [{ name: "Home", href: "/admin", icon: HomeIcon }];
 
@@ -200,11 +200,11 @@ function UserProfilePhoto({
 }) {
   return user.avatarUrl ? (
     <img
-      className={classNames("rounded-full", className)}
+      className={cn("rounded-full", className)}
       src={user.avatarUrl}
       alt={user.name ?? user.displayName ?? "User"}
     />
   ) : (
-    <UserCircleIcon className={classNames("text-gray-400", className)} />
+    <UserCircleIcon className={cn("text-gray-400", className)} />
   );
 }

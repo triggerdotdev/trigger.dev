@@ -6,13 +6,13 @@ import {
 } from "@heroicons/react/24/outline";
 import { CheckIcon, PlusIcon } from "@heroicons/react/24/solid";
 import { Link } from "@remix-run/react";
-import classNames from "classnames";
 import { Fragment } from "react";
 import {
   useCurrentOrganization,
   useIsNewOrganizationPage,
   useOrganizations,
 } from "~/hooks/useOrganizations";
+import { cn } from "~/utils/cn";
 
 const actionClassNames = "text-white";
 const dimmedClassNames = "text-slate-500";
@@ -80,7 +80,7 @@ export function ProjectsMenu() {
                             key={organization.id}
                             as={Link}
                             to={`/orgs/${organization.slug}`}
-                            className={classNames(
+                            className={cn(
                               "mx-1 flex items-center justify-between gap-1.5 rounded px-3 py-2 text-white transition hover:bg-slate-800",
                               organization.slug === currentOrganization?.slug &&
                                 "!bg-slate-800"

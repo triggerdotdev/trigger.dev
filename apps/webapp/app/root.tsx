@@ -20,9 +20,9 @@ import { useEffect } from "react";
 import { withSentry } from "@sentry/remix";
 import { env } from "./env.server";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
-import { PrimaryLink } from "./components/primitives/Buttons";
-import { Body } from "./components/primitives/text/Body";
 import { usePostHog } from "./hooks/usePostHog";
+import { LinkButton } from "./components/primitives/Buttons";
+import { Paragraph } from "./components/primitives/Paragraph";
 
 export const links: LinksFunction = () => {
   return [
@@ -76,9 +76,12 @@ export function CatchBoundary() {
             <h1>
               {caught.status} {caught.statusText}
             </h1>
-            <PrimaryLink to="/" className="">
-              Back home
-            </PrimaryLink>
+            <LinkButton
+              to="/"
+              text="Back home"
+              size={"small"}
+              theme={"primary"}
+            />
           </div>
           <Scripts />
         </div>
@@ -100,10 +103,13 @@ export function ErrorBoundary({ error }: { error: any }) {
         <div className="flex h-screen w-screen items-center justify-center">
           <div className="flex flex-col items-center justify-center space-y-4">
             <h1>Oh no!</h1>
-            <Body size="small">{JSON.stringify(error)}</Body>
-            <PrimaryLink to="/" className="">
-              Back home
-            </PrimaryLink>
+            <Paragraph>{JSON.stringify(error)}</Paragraph>
+            <LinkButton
+              to="/"
+              text="Back home"
+              size={"small"}
+              theme={"primary"}
+            />
           </div>
           <Scripts />
         </div>

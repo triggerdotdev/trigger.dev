@@ -6,24 +6,16 @@ import invariant from "tiny-invariant";
 import { NamedIcon, NamedIconInBox } from "~/components/primitives/NamedIcon";
 import { ConnectButton } from "~/components/integrations/ConnectButton";
 import { AppBody, AppLayoutTwoCol } from "~/components/layout/AppLayout";
-import { Container } from "~/components/layout/Container";
-import { Header } from "~/components/navigation/NavBar";
-import { List } from "~/components/layout/List";
+import { PageContainer } from "~/components/layout/PageContainer";
 import { OrganizationsSideMenu } from "~/components/navigation/SideMenu";
 import { Badge } from "~/components/primitives/Badge";
-import {
-  primaryClasses,
-  secondaryClasses,
-} from "~/components/primitives/Buttons";
+
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
 } from "~/components/primitives/Popover";
-import { Body } from "~/components/primitives/text/Body";
-import { Header3 } from "~/components/primitives/Headers";
-import { SubTitle } from "~/components/primitives/text/SubTitle";
-import { Title } from "~/components/primitives/text/Title";
+import { Header1, Header3 } from "~/components/primitives/Headers";
 import { useCurrentOrganization } from "~/hooks/useOrganizations";
 import { getOrganizationFromSlug } from "~/models/organization.server";
 import { apiConnectionRepository } from "~/services/externalApis/apiAuthenticationRepository.server";
@@ -31,6 +23,7 @@ import { apiCatalog } from "~/services/externalApis/apiCatalog.server";
 import type { ExternalApi } from "~/services/externalApis/types";
 import { requireUser } from "~/services/session.server";
 import { formatDateTime } from "~/utils";
+import { Paragraph } from "~/components/primitives/Paragraph";
 
 export const loader = async ({ request, params }: LoaderArgs) => {
   const user = await requireUser(request);
@@ -65,26 +58,21 @@ export default function Integrations() {
     <AppLayoutTwoCol>
       <OrganizationsSideMenu />
       <AppBody>
-        <Header context="workflows" />
-        <Container>
+        {/* <Header context="workflows" /> */}
+        <PageContainer>
           <div className="flex items-start justify-between">
-            <Title>API Integrations</Title>
-            <div className="flex items-center gap-2">
-              {/* these caused a lot of React hydration errors in the console
-               <TypeformRequestWorkflow />
-              <TypeformRequestIntegration /> */}
-            </div>
+            <Header1>API Integrations</Header1>
           </div>
           <div>
             {connections.length === 0 ? (
               <></>
             ) : (
               <>
-                <SubTitle>
+                <Header3>
                   {connections.length} connected API
                   {connections.length > 1 ? "s" : ""}
-                </SubTitle>
-                <List>
+                </Header3>
+                <div>
                   {connections.map((connection) => {
                     return (
                       <li key={connection.id}>
@@ -95,7 +83,7 @@ export default function Integrations() {
                           />
                           <div className="flex-grow">
                             <div className="flex flex-col gap-0.5">
-                              <Header3 size="small" className="flex gap-2">
+                              <Header3 className="flex gap-2">
                                 <span>{connection.title}</span>
                                 <Badge variant="secondary">
                                   {connection.authenticationMethod.name}
@@ -103,19 +91,19 @@ export default function Integrations() {
                               </Header3>
 
                               {connection.metadata.account && (
-                                <Body size="small" className="text-slate-400">
+                                <Paragraph className="text-slate-400">
                                   Account: {connection.metadata.account}
-                                </Body>
+                                </Paragraph>
                               )}
                               {connection.scopes && (
-                                <Body size="small" className="text-slate-400">
+                                <Paragraph className="text-slate-400">
                                   <span>Scopes:</span>{" "}
                                   {connection.scopes.join(", ")}
-                                </Body>
+                                </Paragraph>
                               )}
-                              <Body size="small" className="text-slate-400">
+                              <Paragraph className="text-slate-400">
                                 Added: {formatDateTime(connection.createdAt)}
-                              </Body>
+                              </Paragraph>
                             </div>
                           </div>
                           <div></div>
@@ -123,7 +111,7 @@ export default function Integrations() {
                       </li>
                     );
                   })}
-                </List>
+                </div>
               </>
             )}
           </div>
@@ -162,7 +150,9 @@ export default function Integrations() {
                             api={api}
                             authMethodKey={key}
                             organizationId={organization.id}
-                            className={secondaryClasses}
+                            className={
+                              "overflow-hidden bg-indigo-500 text-white hover:opacity-90"
+                            }
                           >
                             {method.name}
                           </ConnectButton>
@@ -174,7 +164,7 @@ export default function Integrations() {
               );
             })}
           </div>
-        </Container>
+        </PageContainer>
       </AppBody>
     </AppLayoutTwoCol>
   );
@@ -192,21 +182,3 @@ function AddApiConnection({ api }: { api: ExternalApi }) {
     </div>
   );
 }
-
-const TypeformRequestWorkflow = () => {
-  return (
-    <SliderButton id="Rffdj2Ma" className={secondaryClasses}>
-      <CursorArrowRaysIcon className="-ml-1 h-5 w-5" />
-      Request a Workflow
-    </SliderButton>
-  );
-};
-
-const TypeformRequestIntegration = () => {
-  return (
-    <SliderButton id="VwblgGDZ" className={primaryClasses}>
-      <CursorArrowRaysIcon className="-ml-1 h-5 w-5" />
-      Request an Integration
-    </SliderButton>
-  );
-};

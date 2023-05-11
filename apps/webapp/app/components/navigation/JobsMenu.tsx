@@ -9,11 +9,11 @@ import {
   PlusIcon,
 } from "@heroicons/react/24/solid";
 import { Link } from "@remix-run/react";
-import classNames from "classnames";
 import { Fragment } from "react";
 import { useCurrentOrganization } from "~/hooks/useOrganizations";
 import { useCurrentWorkflow, useWorkflows } from "~/hooks/useWorkflows";
 import { BreadcrumbDivider } from "./NavBar";
+import { cn } from "~/utils/cn";
 
 const dimmedClassNames = "text-slate-500";
 
@@ -79,7 +79,7 @@ export function JobsMenu() {
                             key={workflow.id}
                             as={Link}
                             to={`/orgs/${currentOrganization.slug}/workflows/${workflow.slug}`}
-                            className={classNames(
+                            className={cn(
                               "mx-1 flex items-center justify-between gap-1.5 rounded px-3 py-2 text-white transition hover:bg-slate-800",
                               workflow.slug === currentWorkflow?.slug &&
                                 "!bg-slate-800",

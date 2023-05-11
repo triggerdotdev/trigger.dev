@@ -3,10 +3,8 @@ import type { LoaderArgs, MetaFunction } from "@remix-run/node";
 import { Form, Link } from "@remix-run/react";
 import { redirect, typedjson, useTypedLoaderData } from "remix-typedjson";
 import { GitHubLoginButton } from "~/components/GitHubLoginButton";
-import { LoginPromoPanel } from "~/components/LoginPromoPanel";
-import { LogoSvg } from "~/components/Logo";
-import { TemplatePresenter } from "~/presenters/templatePresenter.server";
-import { getCurrentTemplate } from "~/services/currentTemplate.server";
+import { LogoIcon } from "~/components/LogoIcon";
+
 import { commitSession, setRedirectTo } from "~/services/redirectTo.server";
 import { getUserId } from "~/services/session.server";
 
@@ -17,17 +15,11 @@ export async function loader({ request }: LoaderArgs) {
   const url = new URL(request.url);
   const redirectTo = url.searchParams.get("redirectTo");
 
-  const templateId = await getCurrentTemplate(request);
-
-  const templateData = templateId
-    ? await new TemplatePresenter().data({ id: templateId })
-    : null;
-
   if (redirectTo) {
     const session = await setRedirectTo(request, redirectTo);
 
     return typedjson(
-      { redirectTo, template: templateData?.template },
+      { redirectTo },
       {
         headers: {
           "Set-Cookie": await commitSession(session),
@@ -35,7 +27,7 @@ export async function loader({ request }: LoaderArgs) {
       }
     );
   } else {
-    return typedjson({ template: templateData?.template, redirectTo: null });
+    return typedjson({ redirectTo: null });
   }
 }
 
@@ -50,7 +42,6 @@ export default function LoginPage() {
 
   return (
     <div className="flex h-screen w-screen justify-between overflow-y-scroll bg-slate-900">
-      <LoginPromoPanel template={data.template} />
       <div className="flex h-full w-full grow items-center justify-center p-4">
         <div className="flex min-h-[430px] w-full max-w-xl flex-col justify-between rounded-lg bg-slate-850 shadow-md">
           <Form
@@ -64,7 +55,7 @@ export default function LoginPage() {
               href="https://trigger.dev"
               className="mt-12 flex w-full justify-center px-4"
             >
-              <LogoSvg className="h-14" />
+              <LogoIcon className="h-14" />
             </a>
             <div className="flex flex-grow flex-col items-center justify-between px-10 pt-8 pb-12 text-center">
               <p className="text-base lg:text-lg">

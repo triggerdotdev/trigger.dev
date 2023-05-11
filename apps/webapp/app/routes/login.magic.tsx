@@ -5,13 +5,10 @@ import { redirect } from "@remix-run/node";
 import { Form, Link, useTransition } from "@remix-run/react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
-import { LoginPromoPanel } from "~/components/LoginPromoPanel";
-import { LogoSvg } from "~/components/Logo";
-import { PrimaryButton } from "~/components/primitives/Buttons";
+import { LogoIcon } from "~/components/LogoIcon";
+import { Button } from "~/components/primitives/Buttons";
 import { Input } from "~/components/primitives/Input";
-import { TemplatePresenter } from "~/presenters/templatePresenter.server";
 import { authenticator } from "~/services/auth.server";
-import { getCurrentTemplate } from "~/services/currentTemplate.server";
 import {
   commitSession,
   getUserSession,
@@ -24,15 +21,8 @@ export async function loader({ request }: LoaderArgs) {
 
   const session = await getUserSession(request);
 
-  const templateId = await getCurrentTemplate(request);
-
-  const templateData = templateId
-    ? await new TemplatePresenter().data({ id: templateId })
-    : null;
-
   return typedjson({
     magicLinkSent: session.has("triggerdotdev:magiclink"),
-    template: templateData?.template,
   });
 }
 
@@ -71,12 +61,11 @@ export const meta: MetaFunction = () => {
 };
 
 export default function LoginMagicLinkPage() {
-  const { magicLinkSent, template } = useTypedLoaderData<typeof loader>();
+  const { magicLinkSent } = useTypedLoaderData<typeof loader>();
   const transition = useTransition();
 
   return (
     <div className="flex h-screen w-screen justify-between overflow-y-scroll bg-slate-900">
-      <LoginPromoPanel template={template} />
       <div className="bg-gradient-background flex h-full w-full grow items-center justify-center p-4">
         <div className="flex min-h-[430px] w-full max-w-xl flex-col justify-between rounded-lg bg-slate-850 shadow-md">
           <Form className="flex h-full flex-grow flex-col" method="post">
@@ -84,7 +73,7 @@ export default function LoginMagicLinkPage() {
               href="https://trigger.dev"
               className="mt-12 flex w-full justify-center"
             >
-              <LogoSvg className="h-10 lg:h-14" />
+              <LogoIcon className="h-10 lg:h-14" />
             </a>
             <div className="flex flex-grow flex-col items-center justify-between px-4 pt-8 pb-12 text-center">
               {magicLinkSent ? (
@@ -132,23 +121,25 @@ export default function LoginMagicLinkPage() {
                     {transition.state === "submitting" &&
                     transition.type === "actionSubmission" &&
                     transition.submission.formData.get("action") === "send" ? (
-                      <PrimaryButton
+                      <Button
                         className="mt-2 flex w-full !max-w-full py-3"
                         name="action"
                         value="send"
                         type="submit"
-                      >
-                        Sending...
-                      </PrimaryButton>
+                        text="Sending..."
+                        size={"small"}
+                        theme={"primary"}
+                      />
                     ) : (
-                      <PrimaryButton
+                      <Button
                         className="mt-2 flex w-full !max-w-full py-3"
                         name="action"
                         value="send"
                         type="submit"
-                      >
-                        Send a magic link
-                      </PrimaryButton>
+                        text="Send a magic link"
+                        size={"small"}
+                        theme={"secondary"}
+                      />
                     )}
                   </div>
                   <Link

@@ -1,10 +1,8 @@
 import { useLocation, useTransition } from "@remix-run/react";
-import classNames from "classnames";
 import { useTypedFetcher } from "remix-typedjson";
 import type { action } from "~/routes/resources/connection/oauth2";
 import type { ExternalApi } from "~/services/externalApis/types";
 import { NamedIcon } from "../primitives/NamedIcon";
-import { PrimaryButton } from "../primitives/Buttons";
 import {
   Sheet,
   SheetContent,
@@ -16,6 +14,8 @@ import {
 import { Header3 } from "../primitives/Headers";
 import { Input } from "../primitives/Input";
 import { Badge } from "../primitives/Badge";
+import { cn } from "~/utils/cn";
+import { Button } from "../primitives/Buttons";
 
 export type Status = "loading" | "idle";
 
@@ -56,7 +56,7 @@ export function ConnectButton({
           </SheetHeader>
 
           <div
-            className={classNames(
+            className={cn(
               "overflow-y-auto",
               transition.state !== "idle" && "opacity-50"
             )}
@@ -129,14 +129,19 @@ export function ConnectButton({
             {fetcher.data?.error ? (
               <p className="text-rose-500">{fetcher.data.error}</p>
             ) : null}
-            <PrimaryButton
+            <Button
               type="submit"
               className="flex gap-2"
               disabled={transition.state !== "idle"}
-            >
-              <NamedIcon name={api.identifier} className="h-4 w-4" />{" "}
-              <span>Connect to {api.name}</span>
-            </PrimaryButton>
+              text={
+                <>
+                  <NamedIcon name={api.identifier} className={"h-4 w-4"} />
+                  Connect to ${api.name}
+                </>
+              }
+              size={"medium"}
+              theme={"primary"}
+            />
           </div>
         </fetcher.Form>
       </SheetContent>

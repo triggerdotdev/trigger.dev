@@ -1,6 +1,6 @@
 import { BookOpenIcon } from "@heroicons/react/24/solid";
 import { Link, Outlet } from "@remix-run/react";
-import { Header } from "~/components/navigation/NavBar";
+import { Header1 } from "~/components/primitives/Headers";
 
 const pages = [
   {
@@ -21,7 +21,7 @@ export default function Legal() {
   return (
     <div className="flex h-screen flex-col overflow-auto">
       <div className="flex-shrink-0">
-        <Header context="workflows">Dashboard</Header>
+        <Header1>Dashboard</Header1>
       </div>
       <div className="flex flex-shrink flex-grow items-center justify-between bg-slate-50">
         <ul className="h-full basis-80 bg-white p-6">

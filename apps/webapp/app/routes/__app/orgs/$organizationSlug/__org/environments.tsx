@@ -1,19 +1,11 @@
 import { EyeIcon, EyeSlashIcon } from "@heroicons/react/20/solid";
-import classNames from "classnames";
 import { useState } from "react";
 import invariant from "tiny-invariant";
-import { CopyTextPanel } from "~/components/CopyTextButton";
 import { AppBody, AppLayoutTwoCol } from "~/components/layout/AppLayout";
-import { Container } from "~/components/layout/Container";
-import { Header } from "~/components/navigation/NavBar";
-import { Panel } from "~/components/layout/Panel";
 import { OrganizationsSideMenu } from "~/components/navigation/SideMenu";
-import { TertiaryButton } from "~/components/primitives/Buttons";
-import { Body } from "~/components/primitives/text/Body";
-import { SubTitle } from "~/components/primitives/text/SubTitle";
-import { Title } from "~/components/primitives/text/Title";
 import { useCurrentOrganization } from "~/hooks/useOrganizations";
 import { titleCase } from "~/utils";
+import { cn } from "~/utils/cn";
 
 export function EnvironmentIcon({
   slug,
@@ -28,7 +20,7 @@ export function EnvironmentIcon({
   }
   return (
     <span
-      className={classNames(
+      className={cn(
         "block h-[0.35rem] w-[0.35rem] rounded-full",
         color,
         className
@@ -45,7 +37,7 @@ export default function Page() {
   return (
     <AppLayoutTwoCol>
       <OrganizationsSideMenu />
-      <AppBody>
+      {/* <AppBody>
         <Header context="workflows" />
         <Container>
           <Title>API Keys</Title>
@@ -114,7 +106,7 @@ export default function Page() {
             .
           </Body>
         </Container>
-      </AppBody>
+      </AppBody> */}
     </AppLayoutTwoCol>
   );
 }

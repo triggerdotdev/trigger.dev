@@ -3,7 +3,7 @@ import type { ActionArgs } from "@remix-run/server-runtime";
 import { redirect } from "@remix-run/server-runtime";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
-import { PrimaryButton } from "~/components/primitives/Buttons";
+import { Button } from "~/components/primitives/Buttons";
 import { adminGetUsers } from "~/models/admin.server";
 import {
   commitImpersonationSession,
@@ -99,14 +99,15 @@ export default function AdminDashboardRoute() {
                     <Form method="post" reloadDocument>
                       <input type="hidden" name="id" value={user.id} />
 
-                      <PrimaryButton
+                      <Button
                         type="submit"
                         name="action"
                         value="impersonate"
                         className="mr-2"
-                      >
-                        Impersonate
-                      </PrimaryButton>
+                        text="Impersonate"
+                        size={"small"}
+                        theme={"primary"}
+                      />
                     </Form>
                   </td>
                 </tr>
