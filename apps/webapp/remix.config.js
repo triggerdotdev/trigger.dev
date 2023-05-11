@@ -1,10 +1,10 @@
 /** @type {import('@remix-run/dev').AppConfig} */
 module.exports = {
   future: {
-    unstable_tailwind: true,
-    // v2_routeConvention: true,
+    v2_routeConvention: true,
     // v2_meta: true,
   },
+  tailwind: true,
   cacheDirectory: "./node_modules/.cache/remix",
   ignoredRouteFiles: ["**/.*"],
   devServerPort: 8002,

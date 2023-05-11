@@ -1,5 +1,5 @@
 import type { UseDataFunctionReturn } from "remix-typedjson/dist/remix";
-import type { loader as orgLoader } from "~/routes/__app/orgs/$organizationSlug";
+import type { loader as orgLoader } from "~/routes/_app.orgs.$organizationSlug/route";
 import type { loader as workflowLoader } from "~/routes/__app/orgs/$organizationSlug/__org/workflows/$workflowSlug";
 import { hydrateObject, useMatchesData } from "~/utils";
 

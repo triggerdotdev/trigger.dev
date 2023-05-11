@@ -1,6 +1,6 @@
 import type { PrismaClient } from "~/db.server";
 import { prisma } from "~/db.server";
-import { IngestSendEvent } from "~/routes/api/v3/events";
+import { IngestSendEvent } from "~/routes/api.v3.events";
 import semver from "semver";
 
 export class PrepareJobInstanceService {

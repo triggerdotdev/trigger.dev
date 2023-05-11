@@ -1,6 +1,6 @@
 import type { LoaderFunction } from "@remix-run/node";
 import { authenticator } from "~/services/auth.server";
-import { redirectCookie } from "./github";
+import { redirectCookie } from "./auth.github";
 
 export let loader: LoaderFunction = async ({ request }) => {
   const cookie = request.headers.get("Cookie");

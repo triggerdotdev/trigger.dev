@@ -6,7 +6,6 @@ import {
   Outlet,
   Scripts,
   ScrollRestoration,
-  useCatch,
 } from "@remix-run/react";
 import type { ShouldRevalidateFunction } from "@remix-run/react";
 import tailwindStylesheetUrl from "~/tailwind.css";
@@ -54,35 +53,6 @@ export const shouldRevalidate: ShouldRevalidateFunction = (options) => {
 
   return true;
 };
-
-export function CatchBoundary() {
-  const caught = useCatch();
-  return (
-    <html>
-      <head>
-        <title>Oops!</title>
-        <Meta />
-        <Links />
-      </head>
-      <body className="bg-slate-850">
-        <div className="flex h-screen w-screen items-center justify-center">
-          <div className="flex flex-col items-center justify-center space-y-4">
-            <h1>
-              {caught.status} {caught.statusText}
-            </h1>
-            <LinkButton
-              to="/"
-              text="Back home"
-              size={"small"}
-              theme={"primary"}
-            />
-          </div>
-          <Scripts />
-        </div>
-      </body>
-    </html>
-  );
-}
 
 export function ErrorBoundary({ error }: { error: any }) {
   console.error(error);

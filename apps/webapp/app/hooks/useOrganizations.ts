@@ -1,6 +1,6 @@
 import type { UseDataFunctionReturn } from "remix-typedjson";
-import type { loader as appLoader } from "~/routes/__app";
-import type { loader as orgLoader } from "~/routes/__app/orgs/$organizationSlug";
+import type { loader as appLoader } from "~/routes/_app/route";
+import type { loader as orgLoader } from "~/routes/_app.orgs.$organizationSlug/route";
 import { hydrateObject, useMatchesData } from "~/utils";
 
 export type MatchedOrganization = UseDataFunctionReturn<

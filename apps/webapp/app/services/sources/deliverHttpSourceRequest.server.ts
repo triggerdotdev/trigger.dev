@@ -1,6 +1,6 @@
 import type { PrismaClient } from "~/db.server";
 import { prisma } from "~/db.server";
-import { IngestSendEvent } from "~/routes/api/v3/events";
+import { IngestSendEvent } from "~/routes/api.v3.events";
 
 export class DeliverHttpSourceRequestService {
   #prismaClient: PrismaClient;
