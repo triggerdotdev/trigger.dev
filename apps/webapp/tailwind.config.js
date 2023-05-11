@@ -51,6 +51,13 @@ module.exports = {
         title: ["Poppins", "sans-serif"],
         mono: ["Roboto Mono", "monospace"],
       },
+      fontSize: {
+        'xxs': ['0.5rem', {
+          lineHeight: '0.75rem',
+          letterSpacing: '-0.01em',
+          fontWeight: '500',
+        }],
+      },
       colors: {
         border,
         input,
