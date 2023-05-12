@@ -11,10 +11,11 @@ export function BreadcrumbIcon({ className }: { className?: string }) {
       xmlns="http://www.w3.org/2000/svg"
     >
       <line
-        x1="8.32382"
-        y1="0.6286"
-        x2="0.6286"
-        y2="24.6762"
+        x1="9"
+        y1="0.7"
+        x2="0.7"
+        y2="25"
+        strokeWidth={1.4}
         stroke="currentColor"
         strokeLinecap="round"
       />
