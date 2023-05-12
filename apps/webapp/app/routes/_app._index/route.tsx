@@ -1,75 +1,72 @@
 import {
-  ArrowLeftOnRectangleIcon,
   BuildingOffice2Icon,
   PlusIcon,
   UserIcon,
 } from "@heroicons/react/24/outline";
 import { Link } from "@remix-run/react";
+import { MainContainer } from "~/components/layout/AppLayout";
+import { Button, LinkButton } from "~/components/primitives/Buttons";
+import { Header3 } from "~/components/primitives/Headers";
+import {
+  PageButtons,
+  PageHeader,
+  PageTitle,
+  PageTitleRow,
+} from "~/components/primitives/PageHeader";
+import { Paragraph } from "~/components/primitives/Paragraph";
 import type { MatchedOrganization } from "~/hooks/useOrganizations";
 import { useOrganizations } from "~/hooks/useOrganizations";
 import { useOptionalUser } from "~/hooks/useUser";
 import { cn } from "~/utils/cn";
-import { Paragraph } from "~/components/primitives/Paragraph";
-import { Header1, Header3 } from "~/components/primitives/Headers";
-import { SimpleTooltip } from "~/components/primitives/Tooltip";
 import { newOrganizationPath, organizationPath } from "~/utils/pathBuilder";
-import { MainContainer } from "~/components/layout/AppLayout";
 
 export default function AppLayout() {
   const organizations = useOrganizations();
   const user = useOptionalUser();
 
   return (
-    <>
-      <MainContainer>
-        <div className="w-full overflow-auto">
-          <div className="mt-28 flex flex-col items-center justify-center">
-            <Header1>Your Organizations</Header1>
-            <div className="z-10 mb-12 flex items-center justify-center">
-              <ul className="grid max-w-7xl grid-cols-2 gap-2 lg:grid-cols-3">
-                {organizations ? (
-                  <OrganizationGrid organizations={organizations} />
-                ) : (
-                  <li>
-                    <Paragraph>No organizations</Paragraph>
-                  </li>
-                )}
-                <li>
-                  <Link
-                    to={newOrganizationPath()}
-                    className={cn(
-                      "h-full border border-slate-700 hover:border-transparent hover:bg-[rgb(38,51,71)] hover:shadow-md",
-                      boxClasses
-                    )}
-                  >
-                    <PlusIcon className="h-10 w-10 text-green-500" />
-                    <Header3 className="mb-10">New Organization</Header3>
-                  </Link>
-                </li>
-              </ul>
-            </div>
-          </div>
-
-          <div className="absolute bottom-0 left-2">
-            <SimpleTooltip
-              button={
-                <a
-                  href={`/logout`}
-                  className="mb-2 rounded p-2 transition hover:bg-slate-600/50"
-                >
-                  <ArrowLeftOnRectangleIcon className="h-6 w-6 text-slate-300" />
-                </a>
-              }
-              content={
-                user
-                  ? `Logout ${user.displayName ? user.displayName : user.email}`
-                  : "Logout"
-              }
+    <MainContainer>
+      <PageHeader>
+        <PageTitleRow>
+          <PageTitle
+            title="Your Organizations"
+            backButton={{ to: "/", text: "Orgs" }}
+          />
+          <PageButtons>
+            <LinkButton
+              to={newOrganizationPath()}
+              size="medium"
+              theme="secondaryOutline"
+              text="Create a new Organization"
             />
-          </div>
-        </div>
-      </MainContainer>
-    </>
+          </PageButtons>
+        </PageTitleRow>
+      </PageHeader>
+
+      <div className="z-10 mb-12 flex items-center justify-center">
+        <ul className="grid max-w-7xl grid-cols-2 gap-2 lg:grid-cols-3">
+          {organizations ? (
+            <OrganizationGrid organizations={organizations} />
+          ) : (
+            <li>
+              <Paragraph>No organizations</Paragraph>
+            </li>
+          )}
+          <li>
+            <Link
+              to={newOrganizationPath()}
+              className={cn(
+                "h-full border border-slate-700 hover:border-transparent hover:bg-[rgb(38,51,71)] hover:shadow-md",
+                boxClasses
+              )}
+            >
+              <PlusIcon className="h-10 w-10 text-green-500" />
+              <Header3 className="mb-10">New Organization</Header3>
+            </Link>
+          </li>
+        </ul>
+      </div>
+    </MainContainer>
   );
 }
 
