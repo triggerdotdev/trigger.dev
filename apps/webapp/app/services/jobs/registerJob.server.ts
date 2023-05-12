@@ -1,15 +1,11 @@
 import type {
-  ApiConnection,
   Endpoint,
   Job,
   JobConnection,
-  JobInstance,
+  JobVersion,
+  ApiConnectionClient,
 } from ".prisma/client";
-import type {
-  ConnectionConfig,
-  GetJobResponse,
-  LocalAuthConnectionConfig,
-} from "@trigger.dev/internal";
+import type { ConnectionConfig, JobMetadata } from "@trigger.dev/internal";
 import { DEFAULT_MAX_CONCURRENT_RUNS } from "~/consts";
 import type { PrismaClient } from "~/db.server";
 import { prisma } from "~/db.server";
@@ -24,7 +20,7 @@ export class RegisterJobService {
     this.#prismaClient = prismaClient;
   }
 
-  public async call(endpointId: string, jobResponse: GetJobResponse) {
+  public async call(endpointId: string, jobResponse: JobMetadata) {
     const endpoint = await this.#prismaClient.endpoint.findUniqueOrThrow({
       where: {
         id: endpointId,
@@ -39,15 +35,15 @@ export class RegisterJobService {
       },
     });
 
-    const jobInstance = await this.#upsertJob(
+    const jobVersion = await this.#upsertJob(
       endpoint,
       endpoint.environment,
       jobResponse
     );
 
     await workerQueue.enqueue(
-      "prepareJobInstance",
-      { id: jobInstance.id },
+      "prepareJobVersion",
+      { id: jobVersion.id },
       { queueName: `endpoint-${endpoint.id}` }
     );
   }
@@ -55,8 +51,8 @@ export class RegisterJobService {
   async #upsertJob(
     endpoint: Endpoint,
     environment: AuthenticatedEnvironment,
-    metadata: GetJobResponse
-  ): Promise<JobInstance> {
+    metadata: JobMetadata
+  ): Promise<JobVersion> {
     logger.debug("Upserting job", {
       endpoint,
       organizationId: environment.organizationId,
@@ -72,32 +68,31 @@ export class RegisterJobService {
 
     if (metadata.connections) {
       for (const connection of Object.values(metadata.connections)) {
-        if (connection.auth === "hosted") {
-          connectionSlugs.add(connection.id);
-        }
+        connectionSlugs.add(connection.id);
       }
     }
 
-    const apiConnections = new Map<string, ApiConnection>();
+    const apiConnectionClients = new Map<string, ApiConnectionClient>();
 
     for (const connectionSlug of connectionSlugs) {
-      const apiConnection = await this.#prismaClient.apiConnection.findUnique({
-        where: {
-          organizationId_slug: {
-            organizationId: environment.organizationId,
-            slug: connectionSlug,
+      const apiConnectionClient =
+        await this.#prismaClient.apiConnectionClient.findUnique({
+          where: {
+            organizationId_slug: {
+              organizationId: environment.organizationId,
+              slug: connectionSlug,
+            },
           },
-        },
-      });
+        });
 
-      if (!apiConnection) {
+      if (!apiConnectionClient) {
         // TODO: find a better way to handle and message the user about this issue
         throw new Error(
-          `Could not find ApiConnection with slug ${connectionSlug}`
+          `Could not find ApiConnectionClient with slug ${connectionSlug}`
         );
       }
 
-      apiConnections.set(connectionSlug, apiConnection);
+      apiConnectionClients.set(connectionSlug, apiConnectionClient);
     }
 
     // Upsert the Job
@@ -129,7 +124,7 @@ export class RegisterJobService {
       include: {
         connections: {
           include: {
-            apiConnection: true,
+            apiConnectionClient: true,
           },
         },
       },
@@ -170,8 +165,8 @@ export class RegisterJobService {
       },
     });
 
-    // Upsert the JobInstance
-    const jobInstance = await this.#prismaClient.jobInstance.upsert({
+    // Upsert the JobVersion
+    const jobVersion = await this.#prismaClient.jobVersion.upsert({
       where: {
         jobId_version_endpointId: {
           jobId: job.id,
@@ -211,10 +206,10 @@ export class RegisterJobService {
           },
         },
         version: metadata.version,
-        trigger: metadata.trigger,
+        eventSpecification: metadata.event,
       },
       update: {
-        trigger: metadata.trigger,
+        eventSpecification: metadata.event,
         queue: {
           connect: {
             id: jobQueue.id,
@@ -224,7 +219,7 @@ export class RegisterJobService {
       include: {
         connections: {
           include: {
-            apiConnection: true,
+            apiConnectionClient: true,
           },
         },
       },
@@ -236,9 +231,9 @@ export class RegisterJobService {
     for (const [key, connection] of Object.entries(metadata.connections)) {
       const jobConnection = await this.#upsertJobConnection(
         job,
-        jobInstance,
+        jobVersion,
         connection,
-        apiConnections,
+        apiConnectionClients,
         key
       );
 
@@ -246,7 +241,7 @@ export class RegisterJobService {
     }
 
     // Count the number of job instances that have higher version numbers
-    const laterJobInstanceCount = await this.#prismaClient.jobInstance.count({
+    const laterJobVersionCount = await this.#prismaClient.jobVersion.count({
       where: {
         jobId: job.id,
         version: {
@@ -257,7 +252,7 @@ export class RegisterJobService {
     });
 
     // If there are no later job instances, then we can upsert the latest jobalias
-    if (laterJobInstanceCount === 0) {
+    if (laterJobVersionCount === 0) {
       // upsert the latest jobalias
       await this.#prismaClient.jobAlias.upsert({
         where: {
@@ -269,14 +264,14 @@ export class RegisterJobService {
         },
         create: {
           jobId: job.id,
-          jobInstanceId: jobInstance.id,
+          versionId: jobVersion.id,
           environmentId: environment.id,
           name: "latest",
-          version: jobInstance.version,
+          value: jobVersion.version,
         },
         update: {
-          jobInstanceId: jobInstance.id,
-          version: jobInstance.version,
+          versionId: jobVersion.id,
+          value: jobVersion.version,
         },
       });
     }
@@ -285,75 +280,72 @@ export class RegisterJobService {
     // It's import this runs after the trigger variant upserts
     await this.#prismaClient.jobConnection.deleteMany({
       where: {
-        jobInstanceId: jobInstance.id,
+        versionId: jobVersion.id,
         id: {
           notIn: Array.from(jobConnections),
         },
       },
     });
 
-    // upsert the eventrule
-    // The event rule should only be enabled if all the external connections are ready
-    await this.#prismaClient.jobEventRule.upsert({
-      where: {
-        jobInstanceId_actionIdentifier: {
-          jobInstanceId: jobInstance.id,
-          actionIdentifier: "__trigger",
-        },
-      },
-      create: {
-        event: metadata.trigger.eventRule.event,
-        source: metadata.trigger.eventRule.source,
-        payloadFilter: metadata.trigger.eventRule.payload,
-        contextFilter: metadata.trigger.eventRule.context,
-        jobId: job.id,
-        jobInstanceId: jobInstance.id,
-        environmentId: environment.id,
-        organizationId: environment.organizationId,
-        projectId: environment.projectId,
-        enabled: true,
-        actionIdentifier: "__trigger",
-      },
-      update: {
-        event: metadata.trigger.eventRule.event,
-        source: metadata.trigger.eventRule.source,
-        payloadFilter: metadata.trigger.eventRule.payload,
-        contextFilter: metadata.trigger.eventRule.context,
-      },
-    });
+    // This is where we upsert the triggers if there are any
+    // // upsert the eventrule
+    // // The event rule should only be enabled if all the external connections are ready
+    // await this.#prismaClient.jobEventRule.upsert({
+    //   where: {
+    //     jobVersionId_actionIdentifier: {
+    //       jobVersionId: jobVersion.id,
+    //       actionIdentifier: "__trigger",
+    //     },
+    //   },
+    //   create: {
+    //     event: metadata.trigger.eventRule.event,
+    //     source: metadata.trigger.eventRule.source,
+    //     payloadFilter: metadata.trigger.eventRule.payload,
+    //     contextFilter: metadata.trigger.eventRule.context,
+    //     jobId: job.id,
+    //     jobVersionId: jobVersion.id,
+    //     environmentId: environment.id,
+    //     organizationId: environment.organizationId,
+    //     projectId: environment.projectId,
+    //     enabled: true,
+    //     actionIdentifier: "__trigger",
+    //   },
+    //   update: {
+    //     event: metadata.trigger.eventRule.event,
+    //     source: metadata.trigger.eventRule.source,
+    //     payloadFilter: metadata.trigger.eventRule.payload,
+    //     contextFilter: metadata.trigger.eventRule.context,
+    //   },
+    // });
 
-    return jobInstance;
+    return jobVersion;
   }
 
   async #upsertJobConnection(
     job: Job & {
       connections: Array<
-        JobConnection & { apiConnection: ApiConnection | null }
+        JobConnection & { apiConnectionClient: ApiConnectionClient | null }
       >;
     },
-    jobInstance: JobInstance & {
+    jobVersion: JobVersion & {
       connections: Array<
-        JobConnection & { apiConnection: ApiConnection | null }
+        JobConnection & { apiConnectionClient: ApiConnectionClient | null }
       >;
     },
     config: ConnectionConfig,
-    apiConnections: Map<string, ApiConnection>,
+    apiConnectionClients: Map<string, ApiConnectionClient>,
     key: string
   ): Promise<JobConnection> {
-    if (config.auth === "local") {
-      return this.#upsertLocalAuthConnection(job, jobInstance, config, key);
-    }
+    const apiConnectionClient = apiConnectionClients.get(config.id);
 
-    const apiConnection = apiConnections.get(config.id);
-
-    if (!apiConnection) {
+    if (!apiConnectionClient) {
       throw new Error(
-        `Could not find api connection with id ${config.id} for job ${job.id}`
+        `Could not find api connection client with id ${config.id} for job ${job.id}`
       );
     }
 
     // Find existing connection in the job instance
-    const existingInstanceConnection = jobInstance.connections.find(
+    const existingInstanceConnection = jobVersion.connections.find(
       (connection) => connection.key === key
     );
 
@@ -363,8 +355,7 @@ export class RegisterJobService {
           id: existingInstanceConnection.id,
         },
         data: {
-          apiConnectionId: apiConnection.id,
-          usesLocalAuth: false,
+          apiConnectionClientId: apiConnectionClient.id,
         },
       });
     }
@@ -378,14 +369,14 @@ export class RegisterJobService {
       logger.debug("Creating new job connection from existing", {
         existingJobConnection,
         key,
-        jobInstanceId: jobInstance.id,
+        jobVersionId: jobVersion.id,
       });
 
       return this.#prismaClient.jobConnection.create({
         data: {
-          jobInstance: {
+          version: {
             connect: {
-              id: jobInstance.id,
+              id: jobVersion.id,
             },
           },
           job: {
@@ -395,27 +386,26 @@ export class RegisterJobService {
           },
           key,
           connectionMetadata: existingJobConnection.connectionMetadata ?? {},
-          apiConnection: {
+          apiConnectionClient: {
             connect: {
-              id: apiConnection.id,
+              id: apiConnectionClient.id,
             },
           },
-          usesLocalAuth: false,
         },
       });
     }
 
     logger.debug("Creating new job connection", {
       key,
-      jobInstanceId: jobInstance.id,
+      jobVersionId: jobVersion.id,
       config,
     });
 
     return this.#prismaClient.jobConnection.create({
       data: {
-        jobInstance: {
+        version: {
           connect: {
-            id: jobInstance.id,
+            id: jobVersion.id,
           },
         },
         job: {
@@ -425,94 +415,11 @@ export class RegisterJobService {
         },
         key,
         connectionMetadata: config.metadata,
-        apiConnection: {
+        apiConnectionClient: {
           connect: {
-            id: apiConnection.id,
+            id: apiConnectionClient.id,
           },
         },
-        usesLocalAuth: false,
-      },
-    });
-  }
-
-  async #upsertLocalAuthConnection(
-    job: Job & {
-      connections: Array<
-        JobConnection & { apiConnection: ApiConnection | null }
-      >;
-    },
-    jobInstance: JobInstance & {
-      connections: Array<
-        JobConnection & { apiConnection: ApiConnection | null }
-      >;
-    },
-    config: LocalAuthConnectionConfig,
-    key: string
-  ): Promise<JobConnection> {
-    // Find existing connection in the job instance
-    const existingInstanceConnection = jobInstance.connections.find(
-      (connection) => connection.key === key
-    );
-
-    if (
-      existingInstanceConnection &&
-      existingInstanceConnection.apiConnectionId
-    ) {
-      return await this.#prismaClient.jobConnection.update({
-        where: {
-          id: existingInstanceConnection.id,
-        },
-        data: {
-          apiConnectionId: null,
-          usesLocalAuth: true,
-        },
-      });
-    }
-
-    if (existingInstanceConnection) {
-      return existingInstanceConnection;
-    }
-
-    // Find existing connection in the job
-    const existingJobConnection = job.connections.find(
-      (connection) => connection.key === key
-    );
-
-    if (existingJobConnection) {
-      return this.#prismaClient.jobConnection.create({
-        data: {
-          jobInstance: {
-            connect: {
-              id: jobInstance.id,
-            },
-          },
-          job: {
-            connect: {
-              id: job.id,
-            },
-          },
-          key,
-          connectionMetadata: existingJobConnection.connectionMetadata ?? {},
-          usesLocalAuth: true,
-        },
-      });
-    }
-
-    return this.#prismaClient.jobConnection.create({
-      data: {
-        jobInstance: {
-          connect: {
-            id: jobInstance.id,
-          },
-        },
-        job: {
-          connect: {
-            id: job.id,
-          },
-        },
-        key,
-        connectionMetadata: config.metadata,
-        usesLocalAuth: true,
       },
     });
   }

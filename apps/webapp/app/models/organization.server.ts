@@ -27,20 +27,6 @@ export function getOrganizationFromSlug({
 }) {
   return prisma.organization.findFirst({
     include: {
-      workflows: {
-        include: {
-          externalServices: {
-            select: {
-              service: true,
-            },
-          },
-        },
-        where: { isArchived: false },
-        orderBy: [
-          { disabledAt: { sort: "asc", nulls: "first" } },
-          { title: "asc" },
-        ],
-      },
       environments: true,
     },
     where: { slug, members: { some: { userId } } },

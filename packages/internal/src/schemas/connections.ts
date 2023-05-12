@@ -17,28 +17,9 @@ export const ConnectionAuthSchema = z.object({
 
 export type ConnectionAuth = z.infer<typeof ConnectionAuthSchema>;
 
-const CommonConnectionConfigSchema = z.object({
+export const ConnectionConfigSchema = z.object({
+  id: z.string(),
   metadata: ConnectionMetadataSchema,
 });
 
-const LocalAuthConnectionConfigSchema = CommonConnectionConfigSchema.extend({
-  auth: z.literal("local"),
-});
-
-const HostedAuthConnectionConfigSchema = CommonConnectionConfigSchema.extend({
-  auth: z.literal("hosted"),
-  id: z.string(),
-});
-
-export const ConnectionConfigSchema = z.discriminatedUnion("auth", [
-  LocalAuthConnectionConfigSchema,
-  HostedAuthConnectionConfigSchema,
-]);
-
 export type ConnectionConfig = z.infer<typeof ConnectionConfigSchema>;
-export type LocalAuthConnectionConfig = z.infer<
-  typeof LocalAuthConnectionConfigSchema
->;
-export type HostedAuthConnectionConfig = z.infer<
-  typeof HostedAuthConnectionConfigSchema
->;

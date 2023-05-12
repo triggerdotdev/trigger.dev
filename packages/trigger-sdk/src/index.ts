@@ -1,8 +1,10 @@
 export * from "./job";
 export * from "./triggerClient";
 export * from "./connections";
-export * from "./triggers/customEvent";
+export * from "./triggers/customTrigger";
+export * from "./triggers/comboTrigger";
 export * from "./triggers/externalSource";
+export * from "./triggers/dynamic";
 export * from "./io";
 export * from "./types";
 

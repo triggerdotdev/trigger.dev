@@ -1,5 +1,6 @@
 import type {
   ApiEventLog,
+  EventFilter,
   RawEvent,
   SecureString,
   SendEvent,
@@ -9,6 +10,8 @@ import type {
 import { DisplayElement } from "@trigger.dev/internal";
 import { Job } from "./job";
 import { TriggerClient } from "./triggerClient";
+import { AnExternalSource } from "./triggers/externalSource";
+import { Connection } from "./connections";
 
 export type { SecureString };
 
@@ -40,18 +43,32 @@ export interface TaskLogger {
 }
 
 export type TriggerEventType<TTrigger extends Trigger<any>> =
-  TTrigger extends Trigger<infer TEventType> ? TEventType : never;
+  TTrigger extends Trigger<infer TEventSpec>
+    ? ReturnType<TEventSpec["parsePayload"]>
+    : never;
 
-export interface Trigger<TEventType = any> {
-  eventElements(event: ApiEventLog): DisplayElement[];
-  toJSON(): TriggerMetadata;
-  parsePayload(payload: unknown): TEventType;
-
+export interface Trigger<TEventSpec extends EventSpecification<any>> {
+  event: TEventSpec;
+  toJSON(): Array<TriggerMetadata>;
   // Attach this trigger to the job and the trigger client
   // Gives different triggers the ability to do things like register internal jobs
-  attach(
+  attachToJob(
     triggerClient: TriggerClient,
-    job: Job<Trigger<TEventType>, any>,
-    variantId?: string
+    job: Job<Trigger<TEventSpec>, any>
   ): void;
 }
+
+export interface EventSpecification<TEvent extends any> {
+  name: string;
+  title: string;
+  source: string;
+  elements?: DisplayElement[];
+  schema?: any;
+  examples?: Array<TEvent>;
+  filter?: EventFilter;
+  parsePayload: (payload: unknown) => TEvent;
+}
+
+export type EventTypeFromSpecification<
+  TEventSpec extends EventSpecification<any>
+> = TEventSpec extends EventSpecification<infer TEvent> ? TEvent : never;

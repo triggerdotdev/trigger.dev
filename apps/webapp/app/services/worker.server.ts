@@ -1,9 +1,8 @@
-import { GetJobResponseSchema } from "@/../../packages/internal/src";
 import { z } from "zod";
 import { env } from "~/env.server";
 import { ZodWorker } from "~/platform/zodWorker.server";
 import { EndpointRegisteredService } from "./endpoints/endpointRegistered.server";
-import { PrepareJobInstanceService } from "./endpoints/prepareJobInstance.server";
+import { PrepareJobVersionService } from "./endpoints/prepareJobVersion.server";
 import { DeliverEventService } from "./events/deliverEvent.server";
 import { apiConnectionRepository } from "./externalApis/apiAuthenticationRepository.server";
 import { RegisterJobService } from "./jobs/registerJob.server";
@@ -12,6 +11,7 @@ import { StartRunService } from "./runs/startRun.server";
 import { DeliverHttpSourceRequestService } from "./sources/deliverHttpSourceRequest.server";
 import { StartQueuedRunsService } from "./runs/startQueuedRuns.server";
 import { RunFinishedService } from "./runs/runFinished.server";
+import { JobMetadataSchema } from "@trigger.dev/internal";
 
 const workerCatalog = {
   organizationCreated: z.object({ id: z.string() }),
@@ -33,7 +33,7 @@ const workerCatalog = {
   startRun: z.object({ id: z.string() }),
   runFinished: z.object({ id: z.string() }),
   resumeTask: z.object({ id: z.string() }),
-  prepareJobInstance: z.object({ id: z.string() }),
+  prepareJobVersion: z.object({ id: z.string() }),
   deliverHttpSourceRequest: z.object({ id: z.string() }),
   refreshOAuthToken: z.object({
     organizationId: z.string(),
@@ -41,7 +41,7 @@ const workerCatalog = {
   }),
   registerJob: z.object({
     endpointId: z.string(),
-    job: GetJobResponseSchema,
+    job: JobMetadataSchema,
   }),
   startQueuedRuns: z.object({ id: z.string() }),
 };
@@ -112,10 +112,10 @@ function getWorkerQueue() {
           await service.call(payload.id);
         },
       },
-      prepareJobInstance: {
+      prepareJobVersion: {
         maxAttempts: 3,
         handler: async (payload, job) => {
-          const service = new PrepareJobInstanceService();
+          const service = new PrepareJobVersionService();
 
           await service.call(payload.id);
         },

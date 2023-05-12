@@ -3,7 +3,7 @@ import { prisma } from "~/db.server";
 import { IngestSendEvent } from "~/routes/api.v3.events";
 import semver from "semver";
 
-export class PrepareJobInstanceService {
+export class PrepareJobVersionService {
   #prismaClient: PrismaClient;
 
   constructor(prismaClient: PrismaClient = prisma) {
@@ -11,7 +11,7 @@ export class PrepareJobInstanceService {
   }
 
   public async call(id: string) {
-    const jobInstance = await this.#prismaClient.jobInstance.findUniqueOrThrow({
+    const jobInstance = await this.#prismaClient.jobVersion.findUniqueOrThrow({
       where: {
         id,
       },

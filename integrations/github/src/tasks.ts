@@ -285,6 +285,49 @@ export const updateWebhook = authenticatedTask({
   },
 });
 
+export const updateOrgWebhook = authenticatedTask({
+  run: async (
+    params: {
+      org: string;
+      hookId: number;
+      url: string;
+      secret: string;
+      addEvents?: string[];
+    },
+    client: InstanceType<typeof Octokit>,
+    task
+  ) => {
+    return client.rest.orgs
+      .updateWebhook({
+        org: params.org,
+        hook_id: params.hookId,
+        config: {
+          content_type: "json",
+          url: params.url,
+          secret: params.secret,
+        },
+        add_events: params.addEvents,
+      })
+      .then((response) => response.data);
+  },
+  init: (params) => {
+    return {
+      name: "Update Org Webhook",
+      params,
+      elements: [
+        {
+          label: "Org",
+          text: params.org,
+        },
+        {
+          label: "Hook ID",
+          text: String(params.hookId),
+        },
+      ],
+    };
+  },
+});
+
 export const createWebhook = authenticatedTask({
   run: async (
     params: {
@@ -329,6 +372,48 @@ export const createWebhook = authenticatedTask({
   },
 });
 
+export const createOrgWebhook = authenticatedTask({
+  run: async (
+    params: {
+      org: string;
+      url: string;
+      secret: string;
+      events: string[];
+    },
+    client: InstanceType<typeof Octokit>,
+    task
+  ) => {
+    return client.rest.orgs
+      .createWebhook({
+        org: params.org,
+        name: "web",
+        config: {
+          content_type: "json",
+          url: params.url,
+          secret: params.secret,
+        },
+        events: params.events,
+      })
+      .then((response) => response.data);
+  },
+  init: (params) => {
+    return {
+      name: "Create Org Webhook",
+      params,
+      elements: [
+        {
+          label: "Org",
+          text: params.org,
+        },
+        {
+          label: "Events",
+          text: params.events.join(", "),
+        },
+      ],
+    };
+  },
+});
+
 export const listWebhooks = authenticatedTask({
   run: async (
     params: {
@@ -360,6 +445,34 @@ export const listWebhooks = authenticatedTask({
   },
 });
 
+export const listOrgWebhooks = authenticatedTask({
+  run: async (
+    params: {
+      org: string;
+    },
+    client: InstanceType<typeof Octokit>,
+    task
+  ) => {
+    return client.rest.orgs
+      .listWebhooks({
+        org: params.org,
+      })
+      .then((response) => response.data);
+  },
+  init: (params) => {
+    return {
+      name: "List Org Webhooks",
+      params,
+      elements: [
+        {
+          label: "Org",
+          text: params.org,
+        },
+      ],
+    };
+  },
+});
+
 export const tasks = {
   createIssue,
   createIssueComment,
@@ -369,4 +482,7 @@ export const tasks = {
   updateWebhook,
   createWebhook,
   listWebhooks,
+  updateOrgWebhook,
+  createOrgWebhook,
+  listOrgWebhooks,
 };

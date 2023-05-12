@@ -1,25 +1,32 @@
 import { z } from "zod";
-import { EventRuleSchema } from "./eventFilter";
-import { DeserializedJsonSchema } from "./json";
+import { EventFilterSchema, EventRuleSchema } from "./eventFilter";
+import { DisplayElementSchema } from "./elements";
 
-export const TriggerMetadataSchema = z.object({
+export const EventSpecificationSchema = z.object({
+  name: z.string(),
   title: z.string(),
-  elements: z.array(
-    z.object({
-      label: z.string(),
-      text: z.string(),
-      url: z.string().optional(),
-    })
-  ),
-  eventRule: EventRuleSchema,
-  schema: DeserializedJsonSchema.optional(),
+  source: z.string(),
+  filter: EventFilterSchema.optional(),
+  elements: z.array(DisplayElementSchema).optional(),
+  schema: z.any().optional(),
+  examples: z.array(z.any()).optional(),
 });
+
+export const DynamicTriggerMetadataSchema = z.object({
+  type: z.literal("dynamic"),
+  id: z.string(),
+});
+
+export const StaticTriggerMetadataSchema = z.object({
+  type: z.literal("static"),
+  title: z.string(),
+  elements: z.array(DisplayElementSchema).optional(),
+  rule: EventRuleSchema,
+});
+
+export const TriggerMetadataSchema = z.discriminatedUnion("type", [
+  DynamicTriggerMetadataSchema,
+  StaticTriggerMetadataSchema,
+]);
 
 export type TriggerMetadata = z.infer<typeof TriggerMetadataSchema>;
-
-export const TriggerVariantConfigSchema = z.object({
-  id: z.string(),
-  trigger: TriggerMetadataSchema,
-});
-
-export type TriggerVariantConfig = z.infer<typeof TriggerVariantConfigSchema>;

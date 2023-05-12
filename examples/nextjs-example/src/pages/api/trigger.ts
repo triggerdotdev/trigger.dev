@@ -1,10 +1,13 @@
 import {
+  comboTrigger,
   customEvent,
+  customTrigger,
+  DynamicTrigger,
   Job,
   NormalizedRequest,
   TriggerClient,
 } from "@trigger.dev/sdk";
-import { github } from "@trigger.dev/github";
+import { github, events } from "@trigger.dev/github";
 import { slack as slackConnection } from "@trigger.dev/slack";
 import type { NextApiRequest, NextApiResponse } from "next";
 import { z } from "zod";
@@ -19,11 +22,25 @@ const client = new TriggerClient("nextjs", {
   logLevel: "debug",
 });
 
-// const dynamicOnIssueOpenedTrigger = new DynamicTrigger(client, {
-//   id: "github-issue-opened",
-//   event: events.onIssueOpened,
-//   connection: gh,
-// });
+const dynamicOnIssueOpenedTrigger = new DynamicTrigger(client, {
+  id: "github-issue-opened",
+  event: events.onIssueOpened,
+  source: gh.sources.repo,
+});
+
+const dynamicOnIssueOpenedTriggerOrg = new DynamicTrigger(client, {
+  id: "github-issue-opened-org",
+  event: events.onIssueOpened,
+  source: gh.sources.org,
+});
+
+dynamicOnIssueOpenedTrigger.register({
+  repo: "ericallam/basic-starter-100k",
+});
+
+dynamicOnIssueOpenedTriggerOrg.register({
+  org: "triggerdotdev",
+});
 
 new Job(client, {
   id: "alert-on-new-github-issues",
@@ -32,7 +49,8 @@ new Job(client, {
   connections: {
     slack,
   },
-  trigger: gh.triggers.onIssueOpened({
+  trigger: gh.triggers.repo({
+    event: events.onIssueOpened,
     repo: "ericallam/basic-starter-100k",
   }),
   run: async (event, io, ctx) => {
@@ -44,12 +62,10 @@ new Job(client, {
 });
 
 new Job(client, {
-  id: "alert-on-new-github-issues-2",
-  name: "Alert on new GitHub issues 2",
+  id: "alert-on-new-github-issues-dynamic",
+  name: "Alert on new GitHub issues Dynamic",
   version: "0.1.1",
-  trigger: gh.triggers.onIssueOpened({
-    repo: "ericallam/basic-starter-100k",
-  }),
+  trigger: dynamicOnIssueOpenedTrigger,
   run: async (event, io, ctx) => {},
 });
 
@@ -57,11 +73,87 @@ new Job(client, {
   id: "alert-on-new-github-stars",
   name: "Alert on new GitHub stars",
   version: "0.1.1",
-  trigger: gh.triggers.onStar({
+  trigger: gh.triggers.repo({
+    event: events.onNewStar,
     repo: "ericallam/basic-starter-100k",
   }),
   run: async (event, io, ctx) => {},
 });
+
+new Job(client, {
+  id: "alert-on-new-github-stars-in-org",
+  name: "Alert on new GitHub stars in Org",
+  version: "0.1.1",
+  trigger: gh.triggers.org({
+    event: events.onNewStar,
+    org: "triggerdotdev",
+  }),
+  run: async (event, io, ctx) => {},
+});
+
+new Job(client, {
+  id: "alert-on-new-github-stars-in-org",
+  name: "Alert on new GitHub stars in Org",
+  version: "0.1.1",
+  trigger: comboTrigger({
+    event: events.onNewStar,
+    triggers: [
+      gh.triggers.org({
+        event: events.onNewStar,
+        org: "triggerdotdev",
+      }),
+      gh.triggers.org({
+        event: events.onNewStar,
+        org: "jsonheroio",
+      }),
+    ],
+  }),
+  run: async (event, io, ctx) => {},
+});
+
+new Job(client, {
+  id: "custom-event-example",
+  name: "Custom Event Example",
+  version: "0.1.1",
+  trigger: customTrigger({
+    name: "my.custom.trigger",
+    event: customEvent({ schema: z.object({ id: z.string() }) }),
+  }),
+  run: async (event, io, ctx) => {},
+});
+
+new Job(client, {
+  id: "custom-github-event-example",
+  name: "Custom Github Event Example",
+  version: "0.1.1",
+  trigger: customTrigger({
+    name: "my.custom.trigger",
+    event: events.onNewStar,
+  }),
+  run: async (event, io, ctx) => {},
+});
+
+// new Job(client, {
+//   id: "alert-on-new-github-stars",
+//   name: "Alert on new GitHub stars",
+//   version: "0.1.1",
+//   trigger: customTrigger({
+//     name: "my.custom.trigger",
+//     event: events.onNewStar,
+//   }),
+//   run: async (event, io, ctx) => {},
+// });
+
+// new Job(client, {
+//   id: "alert-on-new-github-stars",
+//   name: "Alert on new GitHub stars",
+//   version: "0.1.1",
+//   trigger: customTrigger({
+//     name: "other.custom.trigger",
+//     event: eventFromZodSchema(z.object({ id: z.string() })),
+//   }),
+//   run: async (event, io, ctx) => {},
+// });
 
 // const notifySlackONNewCommentsJob = new Job({
 //   id: "notify-slack-on-new-comments",

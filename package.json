@@ -18,6 +18,7 @@
     "db:migrate:dev": "turbo run db:migrate:dev",
     "db:push": "turbo run db:push",
     "db:seed": "turbo run db:seed --no-cache",
+    "i-db:seed": "infisical run -- turbo run db:seed --no-cache",
     "db:migrate:force": "turbo run db:migrate:force --no-cache",
     "dev": "turbo run dev --parallel",
     "i-dev": "infisical run -- turbo run dev --parallel",

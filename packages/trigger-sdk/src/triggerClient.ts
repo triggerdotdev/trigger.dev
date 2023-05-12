@@ -1,6 +1,7 @@
 import {
   ErrorWithMessage,
   ErrorWithStackSchema,
+  GetEndpointDataResponse,
   LogLevel,
   Logger,
   NormalizedRequest,
@@ -17,7 +18,7 @@ import {
 import { IO, ResumeWithTask } from "./io";
 import { Job } from "./job";
 import { ContextLogger } from "./logger";
-import type { Trigger, TriggerContext } from "./types";
+import type { EventSpecification, Trigger, TriggerContext } from "./types";
 
 export type TriggerClientOptions = {
   apiKey?: string;
@@ -33,7 +34,8 @@ export type ListenOptions = {
 
 export class TriggerClient {
   #options: TriggerClientOptions;
-  #registeredJobs: Record<string, Job<Trigger<any>, any>> = {};
+  #registeredJobs: Record<string, Job<Trigger<EventSpecification<any>>, any>> =
+    {};
   #client: ApiClient;
   #logger: Logger;
   name: string;
@@ -92,12 +94,15 @@ export class TriggerClient {
         };
       }
 
+      const body: GetEndpointDataResponse = {
+        jobs: Object.values(this.#registeredJobs).map((job) => job.toJSON()),
+        dynamicTriggers: [],
+      };
+
       // if the x-trigger-job-id header is not set, we return all jobs
       return {
         status: 200,
-        body: {
-          jobs: Object.values(this.#registeredJobs).map((job) => job.toJSON()),
-        },
+        body,
       };
     }
 
@@ -172,7 +177,7 @@ export class TriggerClient {
   attach(job: Job<Trigger<any>, any>): void {
     this.#registeredJobs[job.id] = job;
 
-    job.trigger.attach(this, job);
+    job.trigger.attachToJob(this, job);
   }
 
   authorized(apiKey: string) {
@@ -214,7 +219,7 @@ export class TriggerClient {
 
     try {
       const output = await job.options.run(
-        job.trigger.parsePayload(execution.event.payload ?? {}),
+        job.trigger.event.parsePayload(execution.event.payload ?? {}),
         ioWithConnections,
         this.#createJobContext(execution, io, abortController.signal)
       );

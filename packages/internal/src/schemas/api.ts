@@ -4,7 +4,11 @@ import { ConnectionAuthSchema, ConnectionConfigSchema } from "./connections";
 import { DisplayElementSchema } from "./elements";
 import { DeserializedJsonSchema, SerializableJsonSchema } from "./json";
 import { CachedTaskSchema, ServerTaskSchema, TaskSchema } from "./tasks";
-import { TriggerMetadataSchema } from "./triggers";
+import {
+  DynamicTriggerMetadataSchema,
+  EventSpecificationSchema,
+  TriggerMetadataSchema,
+} from "./triggers";
 
 export const RegisterHttpEventSourceBodySchema = z.object({
   key: z.string(),
@@ -78,25 +82,27 @@ export const QueueOptionsSchema = z.object({
 
 export type QueueOptions = z.infer<typeof QueueOptionsSchema>;
 
-export const JobSchema = z.object({
+export const JobMetadataSchema = z.object({
   id: z.string(),
   name: z.string(),
   version: z.string(),
-  trigger: TriggerMetadataSchema,
+  event: EventSpecificationSchema,
+  triggers: z.array(TriggerMetadataSchema),
   connections: z.record(ConnectionConfigSchema),
   internal: z.boolean().default(false),
   queue: z.union([QueueOptionsSchema, z.string()]).optional(),
 });
 
-export type JobMetadata = z.infer<typeof JobSchema>;
+export type JobMetadata = z.infer<typeof JobMetadataSchema>;
 
-export const GetJobResponseSchema = JobSchema;
-
-export type GetJobResponse = z.infer<typeof GetJobResponseSchema>;
-
-export const GetJobsResponseSchema = z.object({
-  jobs: z.array(GetJobResponseSchema),
+export const GetEndpointDataResponseSchema = z.object({
+  jobs: z.array(JobMetadataSchema),
+  dynamicTriggers: z.array(DynamicTriggerMetadataSchema),
 });
+
+export type GetEndpointDataResponse = z.infer<
+  typeof GetEndpointDataResponseSchema
+>;
 
 export const RawEventSchema = z.object({
   id: z.string().default(() => ulid()),
@@ -172,7 +178,7 @@ export type RunJobResponse = z.infer<typeof RunJobResponseSchema>;
 
 export const CreateRunBodySchema = z.object({
   client: z.string(),
-  job: JobSchema,
+  job: JobMetadataSchema,
   event: ApiEventLogSchema,
   elements: z.array(DisplayElementSchema).optional(),
 });

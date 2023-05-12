@@ -6,10 +6,15 @@ import {
 } from "@trigger.dev/internal";
 import { Connection, IOWithConnections } from "./connections";
 import { TriggerClient } from "./triggerClient";
-import type { TriggerContext, Trigger, TriggerEventType } from "./types";
+import type {
+  TriggerContext,
+  Trigger,
+  TriggerEventType,
+  EventSpecification,
+} from "./types";
 
 export type JobOptions<
-  TTrigger extends Trigger<any>,
+  TTrigger extends Trigger<EventSpecification<any>>,
   TConnections extends Record<string, Connection<any, any>> = {}
 > = {
   id: string;
@@ -28,7 +33,7 @@ export type JobOptions<
 };
 
 export class Job<
-  TTrigger extends Trigger<any>,
+  TTrigger extends Trigger<EventSpecification<any>>,
   TConnections extends Record<string, Connection<any, any>>
 > {
   readonly options: JobOptions<TTrigger, TConnections>;
@@ -67,14 +72,8 @@ export class Job<
       (acc: Record<string, ConnectionConfig>, key) => {
         const connection = this.options.connections![key];
 
-        if (connection.usesLocalAuth) {
+        if (!connection.usesLocalAuth) {
           acc[key] = {
-            auth: "local",
-            metadata: connection.metadata,
-          };
-        } else {
-          acc[key] = {
-            auth: "hosted",
             metadata: connection.metadata,
             id: connection.id!,
           };
@@ -94,7 +93,8 @@ export class Job<
       id: this.id,
       name: this.name,
       version: this.version,
-      trigger: this.trigger.toJSON(),
+      event: this.trigger.event,
+      triggers: this.trigger.toJSON(),
       connections: this.connections,
       queue: this.options.queue,
       internal,

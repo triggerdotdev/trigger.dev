@@ -9,7 +9,7 @@ import {
   DeliverEventResponseSchema,
   ErrorWithStackSchema,
   RunJobResponseSchema,
-  GetJobsResponseSchema,
+  GetEndpointDataResponseSchema,
   HttpSourceResponseSchema,
   PongResponseSchema,
   PrepareForJobExecutionResponseSchema,
@@ -64,7 +64,7 @@ export class ClientApi {
     return PongResponseSchema.parse(anyBody);
   }
 
-  async getJobs() {
+  async getEndpointData() {
     const response = await safeFetch(this.#url, {
       method: "GET",
       headers: {
@@ -91,7 +91,7 @@ export class ClientApi {
       body: anyBody,
     });
 
-    return GetJobsResponseSchema.parse(anyBody);
+    return GetEndpointDataResponseSchema.parse(anyBody);
   }
 
   async deliverEvent(event: ApiEventLog) {

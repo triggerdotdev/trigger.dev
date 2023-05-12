@@ -1,6 +1,7 @@
 import { Webhooks } from "@octokit/webhooks";
 import { Connection, ExternalSource } from "@trigger.dev/sdk";
 import { Octokit } from "octokit";
+import { z } from "zod";
 import { tasks } from "./tasks";
 
 type WebhookData = {
@@ -21,22 +22,15 @@ function webhookData(data: any): data is WebhookData {
   );
 }
 
-export function repositoryWebhookSource<TEventType>(
-  params: {
-    repo: string;
-    events: string[];
-    secret?: string;
-  },
-  connection: Connection<Octokit, typeof tasks>,
-  parsePayload: (payload: any) => TEventType
+export function createRepoEventSource(
+  connection: Connection<Octokit, typeof tasks>
 ) {
-  // Create a stable key for this source so we only register it once
-  const key = `github.repo.${params.repo}.webhook`;
-
-  return new ExternalSource("http", key, "0.1.1", {
-    parsePayload,
+  return new ExternalSource("http", "0.1.1", {
+    schema: z.object({ repo: z.string() }),
     connection,
-    register: async (io, ctx) => {
+    register: async (params, spec, io, ctx) => {
+      const key = `github.repo.${params.repo}.webhook`;
+
       const httpSource = await io.registerHttpSource("register-http-source", {
         key,
       });
@@ -48,7 +42,7 @@ export function repositoryWebhookSource<TEventType>(
       ) {
         const existingData = httpSource.data;
 
-        const sourceEvents = new Set(params.events);
+        const sourceEvents = new Set([spec.name]);
         const existingEvents = new Set(existingData.events);
 
         const missingEvents = Array.from(
@@ -87,7 +81,7 @@ export function repositoryWebhookSource<TEventType>(
         (w) => w.config.url === httpSource.url
       );
 
-      const secret = params.secret || Math.random().toString(36).slice(2);
+      const secret = Math.random().toString(36).slice(2);
 
       if (existingWebhook && existingWebhook.active) {
         await io.client.updateWebhook("update-webhook", {
@@ -109,7 +103,158 @@ export function repositoryWebhookSource<TEventType>(
 
       const webhook = await io.client.createWebhook("create-webhook", {
         repo: params.repo,
-        events: params.events,
+        events: [spec.name],
+        url: httpSource.url,
+        secret,
+      });
+
+      await io.updateHttpSource("update-http-source", {
+        id: httpSource.id,
+        secret,
+        data: webhook,
+        active: true,
+      });
+    },
+    handler: async ({ rawEvent: request, source }, io, ctx) => {
+      if (!request.rawBody) {
+        return { events: [] };
+      }
+
+      const deliveryId = request.headers["x-github-delivery"];
+      const hookId = request.headers["x-github-hook-id"];
+      const signature = request.headers["x-hub-signature-256"];
+
+      if (source.secret && signature) {
+        const githubWebhooks = new Webhooks({
+          secret: source.secret,
+        });
+
+        if (!githubWebhooks.verify(request.rawBody, signature)) {
+          return {
+            events: [],
+          };
+        }
+      }
+
+      const name = request.headers["x-github-event"];
+
+      const context = omit(request.headers, [
+        "x-github-event",
+        "x-github-delivery",
+        "x-hub-signature-256",
+        "x-hub-signature",
+        "content-type",
+        "content-length",
+        "accept",
+        "accept-encoding",
+        "x-forwarded-proto",
+      ]);
+
+      const payload = parseBody(request.rawBody);
+
+      if (!payload) {
+        return {
+          events: [],
+        };
+      }
+
+      return {
+        events: [
+          {
+            id: [hookId, deliveryId].join(":"),
+            source: "github.com",
+            payload,
+            name,
+            context,
+          },
+        ],
+      };
+    },
+  });
+}
+
+export function createOrgEventSource(
+  connection: Connection<Octokit, typeof tasks>
+) {
+  return new ExternalSource("http", "0.1.1", {
+    schema: z.object({ org: z.string() }),
+    connection,
+    register: async (params, spec, io, ctx) => {
+      const key = `github.org.${params.org}.webhook`;
+
+      const httpSource = await io.registerHttpSource("register-http-source", {
+        key,
+      });
+
+      if (
+        httpSource.active &&
+        webhookData(httpSource.data) &&
+        httpSource.secret
+      ) {
+        const existingData = httpSource.data;
+
+        const sourceEvents = new Set([spec.name]);
+        const existingEvents = new Set(existingData.events);
+
+        const missingEvents = Array.from(
+          new Set(
+            Array.from(sourceEvents).filter((x) => !existingEvents.has(x))
+          )
+        );
+
+        if (missingEvents.length > 0) {
+          // We need to update the webhook to add the new events and then return
+          const newWebhookData = await io.client.updateOrgWebhook(
+            "update-webhook",
+            {
+              org: params.org,
+              hookId: existingData.id,
+              url: httpSource.url,
+              secret: httpSource.secret,
+              addEvents: missingEvents,
+            }
+          );
+
+          await io.updateHttpSource("update-http-source", {
+            id: httpSource.id,
+            data: newWebhookData,
+          });
+        }
+
+        return;
+      }
+
+      const webhooks = await io.client.listOrgWebhooks("list-webhooks", {
+        org: params.org,
+      });
+
+      const existingWebhook = webhooks.find(
+        (w) => w.config.url === httpSource.url
+      );
+
+      const secret = Math.random().toString(36).slice(2);
+
+      if (existingWebhook && existingWebhook.active) {
+        await io.client.updateOrgWebhook("update-webhook", {
+          org: params.org,
+          hookId: existingWebhook.id,
+          url: httpSource.url,
+          secret,
+        });
+
+        await io.updateHttpSource("update-http-source", {
+          id: httpSource.id,
+          secret,
+          data: existingWebhook,
+          active: true,
+        });
+
+        return;
+      }
+
+      const webhook = await io.client.createOrgWebhook("create-webhook", {
+        org: params.org,
+        events: [spec.name],
         url: httpSource.url,
         secret,
       });
