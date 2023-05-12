@@ -1,22 +1,20 @@
 import { Popover, Transition } from "@headlessui/react";
-import {
-  ArrowTopRightOnSquareIcon,
-  ChatBubbleLeftRightIcon,
-} from "@heroicons/react/24/outline";
-import { Fragment } from "react";
-import { ProjectsMenu } from "./ProjectsMenu";
-import { LogoIcon } from "../LogoIcon";
-import { Button, LinkButton } from "../primitives/Buttons";
-import { cn } from "~/utils/cn";
+import { BookOpenIcon } from "@heroicons/react/20/solid";
+import { ChatBubbleLeftRightIcon } from "@heroicons/react/24/solid";
 import { Link } from "@remix-run/react";
+import { Fragment } from "react";
 import { useCurrentOrganization } from "~/hooks/useOrganizations";
+import { cn } from "~/utils/cn";
+import { LogoIcon } from "../LogoIcon";
 import { BreadcrumbIcon } from "../primitives/BreadcrumbIcon";
+import { Button, LinkButton } from "../primitives/Buttons";
+import { ProjectsMenu } from "./ProjectsMenu";
 
 export function NavBar() {
   const currentOrganization = useCurrentOrganization();
 
   return (
-    <div className="z-50 flex w-full items-center justify-between gap-2 border-b border-slate-800 bg-slate-950 py-1 pl-2 pr-2.5">
+    <div className="z-50 flex w-full items-center justify-between gap-2 border-b border-divide bg-darkBackground py-1 pl-2 pr-2.5">
       <div className="flex gap-0.5">
         <Link to="/" className="p-2">
           <LogoIcon className="h-5 w-5" />
@@ -24,7 +22,7 @@ export function NavBar() {
         <div className="hidden items-center md:flex">
           {currentOrganization && (
             <>
-              <BreadcrumbIcon className="h-3" />
+              <BreadcrumbIcon className="h-3.5" />
               <ProjectsMenu />
             </>
           )}
@@ -34,15 +32,16 @@ export function NavBar() {
       <div className="hidden items-center gap-2 sm:flex">
         <LinkButton
           to="https://docs.trigger.dev"
-          variant="secondary/medium"
-          LeadingIcon={ArrowTopRightOnSquareIcon}
+          variant="secondary/small"
+          LeadingIcon={BookOpenIcon}
         >
           Documentation
         </LinkButton>
         <Button
-          variant="secondary/medium"
+          variant="secondary/small"
           data-attr="posthog-feedback-button"
           LeadingIcon={ChatBubbleLeftRightIcon}
+          shortcut="F"
         >
           Send us feedback
         </Button>
