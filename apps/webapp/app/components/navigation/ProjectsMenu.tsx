@@ -1,12 +1,18 @@
+import { Link } from "@remix-run/react";
+import { useState } from "react";
 import {
   useCurrentOrganization,
-  useIsNewOrganizationPage,
   useOrganizations,
 } from "~/hooks/useOrganizations";
-import { Popover, PopoverContent, PopoverTrigger } from "../primitives/Popover";
-import { Link } from "@remix-run/react";
+import {
+  Popover,
+  PopoverArrowTrigger,
+  PopoverContent,
+  PopoverSectionHeader,
+} from "../primitives/Popover";
 
 export function ProjectsMenu() {
+  const [isOpen, setIsOpen] = useState(false);
   const organizations = useOrganizations();
   const currentOrganization = useCurrentOrganization();
 
@@ -16,14 +22,15 @@ export function ProjectsMenu() {
 
   return (
     <>
-      <Popover>
-        <PopoverTrigger className="px-2 text-white">
+      <Popover onOpenChange={(open) => setIsOpen(open)}>
+        <PopoverArrowTrigger isOpen={isOpen}>
           {currentOrganization?.title ?? "Select an organization"}
-        </PopoverTrigger>
-        <PopoverContent className="w-80">
+        </PopoverArrowTrigger>
+        <PopoverContent className="w-80 p-0">
           {organizations.map((organization) => (
             <div key={organization.id}>
-              <div>{organization.title}</div>
+              <PopoverSectionHeader title={organization.title} />
+
               <div>
                 {organization.projects.map((project) => (
                   <Link
