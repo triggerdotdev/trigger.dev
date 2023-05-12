@@ -14,6 +14,7 @@ import {
 import { LinkButton } from "../primitives/Buttons";
 import { FolderIcon, PlusIcon } from "@heroicons/react/24/solid";
 
+//todo useCurrentProject and have a ticked state on a current one (if there is a current one)
 export function ProjectsMenu() {
   const [isOpen, setIsOpen] = useState(false);
   const organizations = useOrganizations();
