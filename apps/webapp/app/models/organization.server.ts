@@ -57,6 +57,18 @@ export function getOrganizations({ userId }: { userId: User["id"] }) {
       },
       projects: {
         orderBy: { name: "asc" },
+        include: {
+          _count: {
+            select: {
+              jobs: true,
+            },
+          },
+        },
+      },
+      _count: {
+        select: {
+          members: true,
+        },
       },
     },
   });

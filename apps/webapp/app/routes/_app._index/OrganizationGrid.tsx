@@ -1,11 +1,12 @@
-import { BuildingOffice2Icon } from "@heroicons/react/24/solid";
+import { BuildingOffice2Icon, PlusIcon } from "@heroicons/react/24/solid";
 import { Link } from "@remix-run/react";
+import { Badge } from "~/components/primitives/Badge";
 import { LinkButton } from "~/components/primitives/Buttons";
 import { Header2 } from "~/components/primitives/Headers";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import type { MatchedOrganization } from "~/hooks/useOrganizations";
 import { cn } from "~/utils/cn";
-import { projectPath } from "~/utils/pathBuilder";
+import { newProjectPath, projectPath } from "~/utils/pathBuilder";
 
 export function OrganizationGridItem({
   organization,
@@ -26,21 +27,40 @@ export function OrganizationGridItem({
           />
           <div className="flex-1">
             <Header2 className="">{organization.title}</Header2>
-            <Paragraph variant="extra-small">1 team member</Paragraph>
+            <Paragraph variant="extra-small">
+              {organization._count.members} team member
+            </Paragraph>
           </div>
         </div>
-        <div className="pt-4">
-          <Paragraph variant="extra-small/bright/caps">Projects</Paragraph>
+        <div className="py-4">
+          <Paragraph className="mb-2 px-2" variant="extra-small/bright/caps">
+            Projects
+          </Paragraph>
           <div>
             {organization.projects.map((project) => (
               <LinkButton
                 variant="menu-item"
                 to={projectPath(organization, project)}
                 key={project.id}
+                LeadingIcon="folder"
+                fullWidth
+                textAlignLeft
               >
-                {project.name}
+                <span className="flex grow items-center justify-between pl-1">
+                  <span className="grow text-left">{project.name}</span>
+                  <Badge>{project._count.jobs} jobs</Badge>
+                </span>
               </LinkButton>
             ))}
+            <LinkButton
+              to={newProjectPath(organization)}
+              variant="menuItem"
+              LeadingIcon="plus"
+              fullWidth
+              textAlignLeft
+            >
+              New Project
+            </LinkButton>
           </div>
         </div>
       </div>

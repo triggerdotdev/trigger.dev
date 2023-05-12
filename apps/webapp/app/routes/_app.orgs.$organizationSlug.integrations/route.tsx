@@ -81,7 +81,7 @@ export default function Integrations() {
                             <div className="flex flex-col gap-0.5">
                               <Header3 className="flex gap-2">
                                 <span>{connection.title}</span>
-                                <Badge variant="secondary">
+                                <Badge>
                                   {connection.authenticationMethod.name}
                                 </Badge>
                               </Header3>

@@ -17,6 +17,8 @@ export default function AppLayout() {
   const organizations = useOrganizations();
   const user = useOptionalUser();
 
+  console.log("organizations", organizations);
+
   return (
     <MainContainer>
       <PageHeader>
@@ -37,14 +39,40 @@ export default function AppLayout() {
         </PageDescription>
       </PageHeader>
       <PageBody>
-        <ul className="grid grid-flow-row auto-rows-max">
+        <ul className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           {organizations ? (
-            organizations.map((organization) => (
-              <OrganizationGridItem
-                key={organization.id}
-                organization={organization}
-              />
-            ))
+            <>
+              {organizations.map((organization) => (
+                <OrganizationGridItem
+                  key={organization.id}
+                  organization={organization}
+                />
+              ))}
+              {organizations.map((organization) => (
+                <OrganizationGridItem
+                  key={organization.id}
+                  organization={organization}
+                />
+              ))}
+              {organizations.map((organization) => (
+                <OrganizationGridItem
+                  key={organization.id}
+                  organization={organization}
+                />
+              ))}
+              {organizations.map((organization) => (
+                <OrganizationGridItem
+                  key={organization.id}
+                  organization={organization}
+                />
+              ))}
+              {organizations.map((organization) => (
+                <OrganizationGridItem
+                  key={organization.id}
+                  organization={organization}
+                />
+              ))}
+            </>
           ) : (
             <li>
               <LinkButton to={newOrganizationPath()} variant="primary/small">
