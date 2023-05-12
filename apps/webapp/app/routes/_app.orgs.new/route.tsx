@@ -7,6 +7,7 @@ import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { Header1 } from "~/components/primitives/Headers";
 import { createOrganization } from "~/models/organization.server";
 import { requireUserId } from "~/services/session.server";
+import { organizationPath } from "~/utils/pathBuilder";
 
 type ActionData = {
   errors?: {
@@ -29,7 +30,7 @@ export const action: ActionFunction = async ({ request }) => {
 
   try {
     const organization = await createOrganization({ title, userId });
-    return redirect(`/orgs/${organization.slug}`);
+    return redirect(organizationPath(organization));
   } catch (error: any) {
     return json<ActionData>(
       { errors: { body: error.message } },

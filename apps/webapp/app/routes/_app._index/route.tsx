@@ -12,6 +12,7 @@ import { cn } from "~/utils/cn";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { Header1, Header3 } from "~/components/primitives/Headers";
 import { SimpleTooltip } from "~/components/primitives/Tooltip";
+import { newOrganizationPath, organizationPath } from "~/utils/pathBuilder";
 
 export default function AppLayout() {
   const organizations = useOrganizations();
@@ -35,7 +36,7 @@ export default function AppLayout() {
                 )}
                 <li>
                   <Link
-                    to="orgs/new"
+                    to={newOrganizationPath()}
                     className={cn(
                       "h-full border border-slate-700 hover:border-transparent hover:bg-[rgb(38,51,71)] hover:shadow-md",
                       boxClasses
@@ -97,7 +98,7 @@ function OrganizationGridItem({
   return (
     <li key={organization.id} className="h-full w-full">
       <Link
-        to={`orgs/${organization.slug}`}
+        to={organizationPath(organization)}
         className={cn(
           "border border-slate-700 bg-slate-800 hover:bg-[rgb(38,51,71)]",
           boxClasses

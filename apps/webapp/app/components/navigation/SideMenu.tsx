@@ -1,7 +1,5 @@
 import {
   ArrowsRightLeftIcon,
-  CloudIcon,
-  KeyIcon,
   SquaresPlusIcon,
 } from "@heroicons/react/24/outline";
 import { NavLink } from "@remix-run/react";
@@ -12,6 +10,10 @@ import {
   useCurrentOrganization,
   useOrganizations,
 } from "~/hooks/useOrganizations";
+import {
+  organizationIntegrationsPath,
+  organizationPath,
+} from "~/utils/pathBuilder";
 import { Header1 } from "../primitives/Headers";
 import { Paragraph } from "../primitives/Paragraph";
 
@@ -45,13 +47,13 @@ export function OrganizationsSideMenu() {
     {
       name: "Jobs",
       icon: <ArrowsRightLeftIcon className={iconStyle} />,
-      to: `/orgs/${currentOrganization.slug}`,
+      to: organizationPath(currentOrganization),
       end: true,
     },
     {
       name: "API Integrations",
       icon: <SquaresPlusIcon className={iconStyle} />,
-      to: `/orgs/${currentOrganization.slug}/integrations`,
+      to: organizationIntegrationsPath(currentOrganization),
       end: false,
     },
   ];

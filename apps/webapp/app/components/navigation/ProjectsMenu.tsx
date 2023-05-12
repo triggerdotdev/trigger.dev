@@ -13,6 +13,11 @@ import {
 } from "../primitives/Popover";
 import { LinkButton } from "../primitives/Buttons";
 import { FolderIcon, PlusIcon } from "@heroicons/react/24/solid";
+import {
+  newOrganizationPath,
+  newProjectPath,
+  projectPath,
+} from "~/utils/pathBuilder";
 
 //todo useCurrentProject and have a ticked state on a current one (if there is a current one)
 export function ProjectsMenu() {
@@ -41,7 +46,7 @@ export function ProjectsMenu() {
                   //todo change to use "folder" named icon and the new variant
                   <LinkButton
                     key={project.id}
-                    to={`/orgs/${organization.slug}/project/${project.id}`}
+                    to={projectPath(organization, project)}
                     text={project.name}
                     size={"medium"}
                     theme={"secondary"}
@@ -49,7 +54,7 @@ export function ProjectsMenu() {
                   />
                 ))}
                 <LinkButton
-                  to={`/orgs/${organization.slug}/project/new`}
+                  to={newProjectPath(organization)}
                   text="New Project"
                   size={"medium"}
                   theme={"secondary"}
@@ -60,7 +65,7 @@ export function ProjectsMenu() {
           ))}
           <div className="border-t border-slate-700">
             <LinkButton
-              to={`/orgs/new`}
+              to={newOrganizationPath()}
               text="New Organization"
               size={"medium"}
               theme={"secondary"}
