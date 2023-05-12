@@ -2,7 +2,6 @@ import type { StorybookConfig } from "@storybook/react-webpack5";
 import path from "path";
 
 const root = path.resolve(__dirname, "../app");
-console.log("storybook root", root);
 
 const config: StorybookConfig = {
   webpackFinal: async (config) => {

@@ -9,6 +9,7 @@ import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { Header3 } from "~/components/primitives/Headers";
 import {
   PageButtons,
+  PageDescription,
   PageHeader,
   PageTitle,
   PageTitleRow,
@@ -42,6 +43,9 @@ export default function AppLayout() {
             </LinkButton>
           </PageButtons>
         </PageTitleRow>
+        <PageDescription>
+          Create new Organizations and new Projects to help organize your Jobs.
+        </PageDescription>
       </PageHeader>
 
       <div className="z-10 mb-12 flex items-center justify-center">

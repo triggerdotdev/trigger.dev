@@ -1,7 +1,8 @@
 import { Link } from "@remix-run/react";
-import { Header1, Header3 } from "./Headers";
+import { Header1 } from "./Headers";
 import { BreadcrumbIcon } from "./BreadcrumbIcon";
 import { ChevronLeftIcon } from "@heroicons/react/24/solid";
+import { Paragraph } from "./Paragraph";
 
 type WithChildren = {
   children: React.ReactNode;
@@ -47,4 +48,8 @@ export function PageTitle({ title, backButton }: PageTitleProps) {
 
 export function PageButtons({ children }: WithChildren) {
   return <div className="flex gap-2">{children}</div>;
+}
+
+export function PageDescription({ children }: WithChildren) {
+  return <Paragraph variant="small">{children}</Paragraph>;
 }

@@ -6,7 +6,6 @@ import invariant from "tiny-invariant";
 import { NamedIcon, NamedIconInBox } from "~/components/primitives/NamedIcon";
 import { ConnectButton } from "~/components/integrations/ConnectButton";
 import { AppBody, AppLayoutTwoCol } from "~/components/layout/AppLayout";
-import { PageContainer } from "~/components/layout/PageContainer";
 import { OrganizationsSideMenu } from "~/components/navigation/SideMenu";
 import { Badge } from "~/components/primitives/Badge";
 
@@ -59,7 +58,7 @@ export default function Integrations() {
       <OrganizationsSideMenu />
       <AppBody>
         {/* <Header context="workflows" /> */}
-        <PageContainer>
+        <div>
           <div className="flex items-start justify-between">
             <Header1>API Integrations</Header1>
           </div>
@@ -164,7 +163,7 @@ export default function Integrations() {
               );
             })}
           </div>
-        </PageContainer>
+        </div>
       </AppBody>
     </AppLayoutTwoCol>
   );
