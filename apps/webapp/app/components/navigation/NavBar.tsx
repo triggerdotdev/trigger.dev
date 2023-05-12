@@ -34,13 +34,13 @@ export function NavBar() {
       <div className="hidden items-center gap-2 sm:flex">
         <LinkButton
           to="https://docs.trigger.dev"
-          text="Documentation"
+          children="Documentation"
           size="medium"
           theme="secondary"
           LeadingIcon={ArrowTopRightOnSquareIcon}
         />
         <Button
-          text="Send us feedback"
+          children="Send us feedback"
           size="medium"
           theme="secondary"
           data-attr="posthog-feedback-button"

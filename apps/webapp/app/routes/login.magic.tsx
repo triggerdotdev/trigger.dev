@@ -126,7 +126,7 @@ export default function LoginMagicLinkPage() {
                         name="action"
                         value="send"
                         type="submit"
-                        text="Sending..."
+                        children="Sending..."
                         size={"small"}
                         theme={"primary"}
                       />
@@ -136,7 +136,7 @@ export default function LoginMagicLinkPage() {
                         name="action"
                         value="send"
                         type="submit"
-                        text="Send a magic link"
+                        children="Send a magic link"
                         size={"small"}
                         theme={"secondary"}
                       />

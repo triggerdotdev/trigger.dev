@@ -17,7 +17,7 @@ export function ProductHuntBanner() {
         className="!text-white underline underline-offset-2 transition hover:decoration-slate-100 hover:decoration-2"
         size="small"
         theme="secondaryOutline"
-        text="Vote for us today only!"
+        children="Vote for us today only!"
       />
     </div>
   );

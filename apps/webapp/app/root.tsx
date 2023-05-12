@@ -70,7 +70,7 @@ export function ErrorBoundary({ error }: { error: any }) {
             <Paragraph>{JSON.stringify(error)}</Paragraph>
             <LinkButton
               to="/"
-              text="Back home"
+              children="Back home"
               size={"small"}
               theme={"primary"}
             />

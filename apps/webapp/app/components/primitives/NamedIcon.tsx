@@ -8,13 +8,13 @@ import { cn } from "~/utils/cn";
 
 const icons = {
   warning: (className: string) => (
-    <ExclamationTriangleIcon className={cn(className, "text-yellow-500")} />
+    <ExclamationTriangleIcon className={cn("text-yellow-500", className)} />
   ),
   error: (className: string) => (
-    <ExclamationCircleIcon className={cn(className, "text-rose-500")} />
+    <ExclamationCircleIcon className={cn("text-rose-500", className)} />
   ),
   info: (className: string) => (
-    <InformationCircleIcon className={cn(className, "text-blue-500")} />
+    <InformationCircleIcon className={cn("text-blue-500", className)} />
   ),
   slack: (className: string) => (
     <img src={`/integrations/slack.png`} className={className} alt="Slack" />

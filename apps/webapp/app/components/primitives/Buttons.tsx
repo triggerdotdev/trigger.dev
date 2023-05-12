@@ -2,64 +2,65 @@ import type { LinkProps } from "@remix-run/react";
 import { Link } from "@remix-run/react";
 import React from "react";
 import { cn } from "~/utils/cn";
-import { IconNames, NamedIcon } from "./NamedIcon";
+import type { IconNames } from "./NamedIcon";
+import { NamedIcon } from "./NamedIcon";
 
 const variant = {
   "primary/small": {
     button:
-      "h-[24px] px-2 text-xs text-bright bg-indigo-600 hover:bg-indigo-500/90 hover:text-white disabled:opacity-50",
+      "h-[24px] px-[5px] text-xs text-bright bg-indigo-600 hover:bg-indigo-500/90 hover:text-white disabled:opacity-50",
     icon: "h-3.5 text-bright",
     shortcut:
-      "text-xxs font-medium py-0.25 rounded-[2px] px-0.5 -mr-0.5 ml-0.5 border border-bright/50 text-bright/80",
+      "text-xxs font-medium py-0.25 rounded-[2px] px-0.5 ml-1 border border-bright/40 text-bright group-hover:border-bright/60 transition",
   },
   "secondary/small": {
     button:
-      "h-[24px] px-2 text-xs text-dimmed bg-slate-800 hover:bg-slate-700/70 hover:text-bright disabled:opacity-50",
+      "h-[24px] px-[5px] text-xs text-dimmed bg-slate-800 hover:bg-slate-700/70 hover:text-bright disabled:opacity-50",
     icon: "h-3.5 text-dimmed group-hover:text-bright transition",
     shortcut:
-      "text-xxs font-medium py-0.25 rounded-[2px] px-0.5 -mr-0.5 ml-0.5 border border-bright/50 text-bright/80",
+      "text-xxs font-medium py-0.25 rounded-[2px] px-0.5 ml-1 border border-dimmed/40 text-dimmed group-hover:border-dimmed group-hover:text-bright transition",
   },
   "tertiary/small": {
     button:
-      "h-[24px] px-2 text-xs text-dimmed bg-transparent hover:bg-slate-850 hover:text-bright disabled:opacity-50",
+      "h-[24px] px-[5px] text-xs text-dimmed bg-transparent hover:bg-slate-850 hover:text-bright disabled:opacity-50",
     icon: "h-3.5 text-dimmed group-hover:text-bright transition",
     shortcut:
-      "text-xxs font-medium py-0.25 rounded-[2px] px-0.5 -mr-0.5 ml-0.5 border border-bright/50 text-bright/80",
+      "text-xxs font-medium py-0.25 rounded-[2px] px-0.5 ml-1 border border-bright/40 text-dimmed group-hover:border-bright/60 group-hover:text-bright transition",
   },
   "danger/small": {
     button:
-      "h-[24px] px-2 text-xs text-bright bg-rose-600 hover:bg-rose-500 hover:text-white disabled:opacity-50",
+      "h-[24px] px-[5px] text-xs text-bright bg-rose-600 hover:bg-rose-500 hover:text-white disabled:opacity-50",
     icon: "h-3.5 text-bright",
     shortcut:
-      "text-xxs font-medium py-0.25 rounded-[2px] px-0.5 -mr-0.5 ml-0.5 border border-bright/50 text-bright/80",
+      "text-xxs font-medium py-0.25 rounded-[2px] px-0.5 ml-1 border border-bright/40 text-bright group-hover:border-bright/60 transition",
   },
   "primary/medium": {
     button:
-      "h-[32px] px-3 text-sm text-bright bg-indigo-600 hover:bg-indigo-500/90 hover:text-white disabled:opacity-50",
+      "h-[32px] px-2 text-sm text-bright bg-indigo-600 hover:bg-indigo-500/90 hover:text-white disabled:opacity-50",
     icon: "h-4 text-bright",
     shortcut:
-      "text-xs py-0.5 px-1 rounded-[3px] -mr-1.5 ml-1.5 border border-bright/50 text-bright/80",
+      "text-xs py-0.5 px-1 rounded-[3px] ml-1.5 border border-bright/40 text-bright group-hover:border-bright/60 transition",
   },
   "secondary/medium": {
     button:
-      "h-[32px] px-3 text-sm text-dimmed bg-slate-800 hover:bg-slate-700/70 hover:text-bright disabled:opacity-50",
+      "h-[32px] px-2 text-sm text-dimmed bg-slate-800 hover:bg-slate-700/70 hover:text-bright disabled:opacity-50",
     icon: "h-4 text-bright text-dimmed group-hover:text-bright transition",
     shortcut:
-      "text-xs py-0.5 px-1 rounded-[3px] -mr-1.5 ml-1.5 border border-bright/50 text-bright/80",
+      "text-xs py-0.5 px-1 rounded-[3px] ml-1.5 border border-dimmed/40 text-dimmed group-hover:border-dimmed group-hover:text-bright transition",
   },
   "tertiary/medium": {
     button:
-      "h-[32px] px-3 text-sm text-dimmed bg-transparent hover:bg-slate-850 hover:text-bright disabled:opacity-50",
+      "h-[32px] px-2 text-sm text-dimmed bg-transparent hover:bg-slate-850 hover:text-bright disabled:opacity-50",
     icon: "h-4 text-bright text-dimmed group-hover:text-bright transition",
     shortcut:
-      "text-xs py-0.5 px-1 rounded-[3px] -mr-1.5 ml-1.5 border border-bright/50 text-bright/80",
+      "text-xs py-0.5 px-1 rounded-[3px] ml-1.5 border border-bright/40 text-dimmed group-hover:border-bright/60 group-hover:text-bright transition",
   },
   "danger/medium": {
     button:
-      "h-[32px] px-3 text-sm text-bright bg-rose-600 hover:bg-rose-500 hover:text-white disabled:opacity-50",
+      "h-[32px] px-2 text-sm text-bright bg-rose-600 hover:bg-rose-500 hover:text-white disabled:opacity-50",
     icon: "h-4 text-bright",
     shortcut:
-      "text-xs py-0.5 px-1 rounded-[3px] -mr-1.5 ml-1.5 border border-bright/50 text-bright/80",
+      "text-xs py-0.5 px-1 rounded-[3px] ml-1.5 border border-bright/40 text-bright group-hover:border-bright/60 transition",
   },
 };
 
@@ -69,9 +70,11 @@ const allVariants = {
 };
 
 type ButtonContentPropsType = {
-  text?: string | React.ReactNode;
+  children?: React.ReactNode;
   LeadingIcon?: React.ComponentType<any> | IconNames;
   TrailingIcon?: React.ComponentType<any> | IconNames;
+  trailingIconClassName?: string;
+  leadingIconClassName?: string;
   fullWidth?: boolean;
   className?: string;
   shortcut?: string;
@@ -79,8 +82,16 @@ type ButtonContentPropsType = {
 };
 
 function ButtonContent(props: ButtonContentPropsType) {
-  const { text, LeadingIcon, TrailingIcon, shortcut, fullWidth, className } =
-    props;
+  const {
+    children: text,
+    LeadingIcon,
+    TrailingIcon,
+    trailingIconClassName,
+    leadingIconClassName,
+    shortcut,
+    fullWidth,
+    className,
+  } = props;
 
   // Based on the size prop, we'll use the corresponding variant classnames
   const btnClassName = cn(
@@ -97,35 +108,54 @@ function ButtonContent(props: ButtonContentPropsType) {
         btnClassName
       )}
     >
-      <div className="flex w-full items-center gap-x-1">
+      <div className="flex w-full items-center gap-x-0.5">
         {LeadingIcon &&
           (typeof LeadingIcon === "string" ? (
             <NamedIcon
               name={LeadingIcon}
-              className={cn(iconClassName, "shrink-0 justify-start")}
+              className={cn(
+                iconClassName,
+                leadingIconClassName,
+                "shrink-0 justify-start"
+              )}
             />
           ) : (
             <LeadingIcon
-              className={cn(iconClassName, "shrink-0 justify-start")}
+              className={cn(
+                iconClassName,
+                leadingIconClassName,
+                "shrink-0 justify-start"
+              )}
             />
           ))}
 
-        {text && <span className="mx-auto self-center truncate">{text}</span>}
+        {text &&
+          (typeof text === "string" ? (
+            <span className="mx-auto self-center truncate px-0.5">{text}</span>
+          ) : (
+            <>{text}</>
+          ))}
 
         {TrailingIcon &&
           (typeof TrailingIcon === "string" ? (
             <NamedIcon
               name={TrailingIcon}
-              className={cn(iconClassName, "shrink-0 justify-end")}
+              className={cn(
+                iconClassName,
+                trailingIconClassName,
+                "shrink-0 justify-end"
+              )}
             />
           ) : (
             <TrailingIcon
-              className={cn(iconClassName, "shrink-0 justify-end")}
+              className={cn(
+                iconClassName,
+                trailingIconClassName,
+                "shrink-0 justify-end"
+              )}
             />
           ))}
-        {shortcut && (
-          <span className={cn(shortcutClassName, "")}>{shortcut}</span>
-        )}
+        {shortcut && <span className={cn(shortcutClassName)}>{shortcut}</span>}
       </div>
     </div>
   );

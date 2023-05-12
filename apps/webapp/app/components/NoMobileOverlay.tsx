@@ -15,7 +15,7 @@ export function NoMobileOverlay() {
           </Paragraph>
           <LinkButton
             to="https://trigger.dev"
-            text="Back Home"
+            children="Back Home"
             size="medium"
             theme="primary"
           />
