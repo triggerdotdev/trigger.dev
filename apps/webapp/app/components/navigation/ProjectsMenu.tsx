@@ -26,7 +26,11 @@ export function ProjectsMenu() {
   const currentOrganization = useCurrentOrganization();
   const isNewOrgPage = useIsNewOrganizationPage();
 
-  if (organizations === undefined || isNewOrgPage) {
+  if (
+    organizations === undefined ||
+    isNewOrgPage ||
+    currentOrganization === undefined
+  ) {
     return null;
   }
 
