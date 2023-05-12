@@ -1,7 +1,6 @@
 /** @type {import('tailwindcss').Config} */
 const colors = require("tailwindcss/colors");
 
-const background = "hsl(224 71% 4%)";
 const foreground = "hsl(213 31% 91%)";
 
 const muted = "hsl(223 47% 11%)";
@@ -32,6 +31,8 @@ const ring = "hsl(216 34% 17%)";
 
 const radius = "0.5rem";
 
+const background = colors.slate[1000];
+const divide = colors.slate[850];
 const bright = colors.slate[200];
 const dimmed = colors.slate[400];
 
@@ -66,6 +67,7 @@ module.exports = {
       },
       colors: {
         background,
+        divide,
         bright,
         dimmed,
         border,
