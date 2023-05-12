@@ -197,6 +197,17 @@ function ButtonList({ primary }: { primary: string }) {
           />
         </div>
       </div>
+      <Header1 className="mb-2 mt-6">Menu item</Header1>
+      <div className="grid grid-cols-1">
+        <div className="flex flex-col items-start gap-2">
+          <Button variant="menuItem" fullWidth={true}>
+            Primary button
+          </Button>
+          <Button variant="menuItem">Secondary button</Button>
+          <Button variant="menuItem">Tertiary button</Button>
+          <Button variant="menuItem">Danger button</Button>
+        </div>
+      </div>
     </div>
   );
 }
