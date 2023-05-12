@@ -4,6 +4,7 @@ import { Button } from "../primitives/Buttons";
 import { ArrowLeftIcon } from "@heroicons/react/20/solid";
 import { ArrowRightIcon } from "@heroicons/react/20/solid";
 import { Header1 } from "../primitives/Headers";
+import { NamedIcon } from "../primitives/NamedIcon";
 
 const meta: Meta<typeof ButtonList> = {
   title: "Primitives/Buttons",
@@ -119,6 +120,19 @@ function ButtonList({ primary }: { primary: string }) {
           shortcut="⌘S"
         />
         <Button variant="danger/medium" text="Danger button" shortcut="⌘S" />
+      </div>
+      <div className="flex flex-col items-start gap-2">
+        <Header1 className="mb-1">Small size, shortcut</Header1>
+        <Button
+          className="flex gap-2"
+          text={
+            <>
+              <NamedIcon name="slack" className={"h-4 w-4"} />
+              Connect to Slack
+            </>
+          }
+          variant="primary/small"
+        />
       </div>
     </div>
   );
