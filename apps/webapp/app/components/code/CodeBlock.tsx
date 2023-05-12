@@ -12,6 +12,7 @@ import {
   ClipboardDocumentCheckIcon,
   ClipboardIcon,
 } from "@heroicons/react/24/solid";
+import { Clipboard, ClipboardCheck, ClipboardCheckIcon } from "lucide-react";
 
 //This is a fork of https://github.com/mantinedev/mantine/blob/master/src/mantine-prism/src/Prism/Prism.tsx
 //it didn't support highlighting lines by dimming the rest of the code, or animations on the highlighting
@@ -231,9 +232,9 @@ export const CodeBlock = forwardRef<HTMLDivElement, CodeBlockProps>(
                 )}
               >
                 {copied ? (
-                  <ClipboardDocumentCheckIcon className="h-5 w-5" />
+                  <ClipboardCheck className="h-5 w-5" />
                 ) : (
-                  <ClipboardIcon className="h-5 w-5" />
+                  <Clipboard className="h-5 w-5" />
                 )}
               </TooltipTrigger>
               <TooltipContent side="left" className="text-xs">
