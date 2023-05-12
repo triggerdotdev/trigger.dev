@@ -9,7 +9,7 @@ type WithChildren = {
 };
 
 export function PageHeader({ children }: WithChildren) {
-  return <div>{children}</div>;
+  return <div className="pb-4">{children}</div>;
 }
 
 export function PageTitleRow({ children }: WithChildren) {
@@ -51,5 +51,9 @@ export function PageButtons({ children }: WithChildren) {
 }
 
 export function PageDescription({ children }: WithChildren) {
-  return <Paragraph variant="small">{children}</Paragraph>;
+  return (
+    <Paragraph variant="small" className="mt-2 mb-0">
+      {children}
+    </Paragraph>
+  );
 }

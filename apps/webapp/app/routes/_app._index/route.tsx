@@ -7,6 +7,7 @@ import { Link } from "@remix-run/react";
 import { MainContainer } from "~/components/layout/AppLayout";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { Header3 } from "~/components/primitives/Headers";
+import { PageBody } from "~/components/primitives/PageBody";
 import {
   PageButtons,
   PageDescription,
@@ -29,10 +30,7 @@ export default function AppLayout() {
     <MainContainer>
       <PageHeader>
         <PageTitleRow>
-          <PageTitle
-            title="Your Organizations"
-            backButton={{ to: "/", text: "Orgs" }}
-          />
+          <PageTitle title="Your Organizations" />
           <PageButtons>
             <LinkButton
               to={newOrganizationPath()}
@@ -47,30 +45,31 @@ export default function AppLayout() {
           Create new Organizations and new Projects to help organize your Jobs.
         </PageDescription>
       </PageHeader>
-
-      <div className="z-10 mb-12 flex items-center justify-center">
-        <ul className="grid max-w-7xl grid-cols-2 gap-2 lg:grid-cols-3">
-          {organizations ? (
-            <OrganizationGrid organizations={organizations} />
-          ) : (
+      <PageBody>
+        <div className="z-10 mb-12 flex items-center justify-center">
+          <ul className="grid max-w-7xl grid-cols-2 gap-2 lg:grid-cols-3">
+            {organizations ? (
+              <OrganizationGrid organizations={organizations} />
+            ) : (
+              <li>
+                <Paragraph>No organizations</Paragraph>
+              </li>
+            )}
             <li>
-              <Paragraph>No organizations</Paragraph>
+              <Link
+                to={newOrganizationPath()}
+                className={cn(
+                  "h-full border border-slate-700 hover:border-transparent hover:bg-[rgb(38,51,71)] hover:shadow-md",
+                  boxClasses
+                )}
+              >
+                <PlusIcon className="h-10 w-10 text-green-500" />
+                <Header3 className="mb-10">New Organization</Header3>
+              </Link>
             </li>
-          )}
-          <li>
-            <Link
-              to={newOrganizationPath()}
-              className={cn(
-                "h-full border border-slate-700 hover:border-transparent hover:bg-[rgb(38,51,71)] hover:shadow-md",
-                boxClasses
-              )}
-            >
-              <PlusIcon className="h-10 w-10 text-green-500" />
-              <Header3 className="mb-10">New Organization</Header3>
-            </Link>
-          </li>
-        </ul>
-      </div>
+          </ul>
+        </div>
+      </PageBody>
     </MainContainer>
   );
 }

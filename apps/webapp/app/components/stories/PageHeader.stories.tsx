@@ -38,8 +38,24 @@ Basic.parameters = {
 
 function PageHeaders() {
   return (
-    <div className="flex flex-col gap-4">
-      <MainContainer>
+    <div className="flex flex-col gap-4 bg-slate-800 p-4">
+      <div className="bg-[#0B1018]">
+        <PageHeader>
+          <PageTitleRow>
+            <PageTitle title="Organizations" />
+            <PageButtons>
+              <LinkButton to={""} variant="primary/small" shortcut="N">
+                Create a new Organization
+              </LinkButton>
+            </PageButtons>
+          </PageTitleRow>
+          <PageDescription>
+            Create new Organizations and new Projects to help organize your
+            Jobs.
+          </PageDescription>
+        </PageHeader>
+      </div>
+      <div className="bg-[#0B1018]">
         <PageHeader>
           <PageTitleRow>
             <PageTitle
@@ -52,12 +68,8 @@ function PageHeaders() {
               </LinkButton>
             </PageButtons>
           </PageTitleRow>
-          <PageDescription>
-            Create new Organizations and new Projects to help organize your
-            Jobs.
-          </PageDescription>
         </PageHeader>
-      </MainContainer>
+      </div>
     </div>
   );
 }
