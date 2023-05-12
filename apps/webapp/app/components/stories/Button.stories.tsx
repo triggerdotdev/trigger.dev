@@ -7,7 +7,11 @@ import {
 } from "@heroicons/react/20/solid";
 import { ArrowRightIcon } from "@heroicons/react/20/solid";
 import { Header1, Header3 } from "../primitives/Headers";
-import { LightBulbIcon, ServerIcon } from "@heroicons/react/24/solid";
+import {
+  ArrowUturnLeftIcon,
+  LightBulbIcon,
+  ServerIcon,
+} from "@heroicons/react/24/solid";
 
 const meta: Meta<typeof ButtonList> = {
   title: "Primitives/Buttons",
@@ -197,15 +201,45 @@ function ButtonList({ primary }: { primary: string }) {
           />
         </div>
       </div>
-      <Header1 className="mb-2 mt-6">Menu item</Header1>
+      <Header1 className="mb-2 mt-6">Menu items</Header1>
       <div className="grid grid-cols-1">
-        <div className="flex flex-col items-start gap-2">
-          <Button variant="menuItem" fullWidth={true}>
-            Primary button
+        <div className="flex flex-col items-start gap-2 rounded border border-slate-800 bg-slate-850 p-1">
+          <Button
+            variant="menuItem"
+            fullWidth
+            textAlignLeft
+            LeadingIcon="folder"
+          >
+            Acme Inc.
           </Button>
-          <Button variant="menuItem">Secondary button</Button>
-          <Button variant="menuItem">Tertiary button</Button>
-          <Button variant="menuItem">Danger button</Button>
+          <Button variant="menuItem" fullWidth textAlignLeft LeadingIcon="plus">
+            New Project
+          </Button>
+          <Button
+            variant="menuItem"
+            fullWidth
+            textAlignLeft
+            LeadingIcon="globe"
+          >
+            OAuth2 as a Bot
+          </Button>
+          <Button
+            variant="menuItem"
+            fullWidth
+            textAlignLeft
+            LeadingIcon="slack"
+          >
+            When a Stripe payment fails re-engage the customer
+          </Button>
+          <Button
+            variant="menuItem"
+            fullWidth
+            textAlignLeft
+            LeadingIcon={ArrowUturnLeftIcon}
+            textColor="text-dimmed"
+          >
+            Latest run payload
+          </Button>
         </div>
       </div>
     </div>

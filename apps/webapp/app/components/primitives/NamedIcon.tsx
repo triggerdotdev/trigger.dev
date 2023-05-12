@@ -4,7 +4,12 @@ import {
   InformationCircleIcon,
   StopIcon,
 } from "@heroicons/react/20/solid";
-import { FolderIcon } from "@heroicons/react/24/solid";
+import {
+  FolderIcon,
+  GlobeAltIcon,
+  PlusIcon,
+  PlusSmallIcon,
+} from "@heroicons/react/24/solid";
 import { cn } from "~/utils/cn";
 
 const icons = {
@@ -20,8 +25,14 @@ const icons = {
   folder: (className: string) => (
     <FolderIcon className={cn("text-indigo-600", className)} />
   ),
-  plusLarge: (className: string) => (
-    <FolderIcon className={cn("text-green-600", className)} />
+  plus: (className: string) => (
+    <PlusIcon className={cn("text-green-600", className)} />
+  ),
+  plusSmall: (className: string) => (
+    <PlusSmallIcon className={cn("text-green-600", className)} />
+  ),
+  globe: (className: string) => (
+    <GlobeAltIcon className={cn("text-fuchsia-500", className)} />
   ),
   slack: (className: string) => (
     <img src={`/integrations/slack.png`} className={className} alt="Slack" />

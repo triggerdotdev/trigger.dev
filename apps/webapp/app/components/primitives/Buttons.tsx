@@ -71,10 +71,9 @@ const variant = {
       "text-[0.6rem] leading-[1.13rem] min-w-[20px] px-1 rounded-[3px] ml-1.5 -mr-0.5 border border-bright/40 text-bright group-hover:border-bright/60 transition",
   },
   menuItem: {
-    textColor: "text-dimmed group-hover:text-bright transition",
-    button:
-      "flex h-6 px-[5px] text-xs bg-transparent hover:bg-slate-850 disabled:opacity-50",
-    icon: "h-3.5",
+    textColor: "text-bright",
+    button: "h-9 px-[5px] text-sm bg-transparent hover:bg-slate-800 transition",
+    icon: "h-5",
     shortcut:
       "text-xxs font-medium py-0.25 min-w-[14px] rounded-[2px] px-0.5 ml-1 border border-bright/40 text-dimmed group-hover:border-bright/60 group-hover:text-bright transition",
   },
@@ -92,6 +91,7 @@ type ButtonContentPropsType = {
   trailingIconClassName?: string;
   leadingIconClassName?: string;
   fullWidth?: boolean;
+  textAlignLeft?: boolean;
   className?: string;
   shortcut?: string;
   variant: keyof typeof variant;
@@ -106,6 +106,7 @@ function ButtonContent(props: ButtonContentPropsType) {
     leadingIconClassName,
     shortcut,
     fullWidth,
+    textAlignLeft,
     className,
   } = props;
 
@@ -151,7 +152,8 @@ function ButtonContent(props: ButtonContentPropsType) {
           (typeof text === "string" ? (
             <span
               className={cn(
-                "mx-auto self-center truncate px-1",
+                "self-center truncate px-1",
+                textAlignLeft ? "text-left" : "mx-auto",
                 textColorClassName
               )}
             >
