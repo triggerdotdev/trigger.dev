@@ -70,7 +70,23 @@ const variant = {
     shortcut:
       "text-[0.6rem] leading-[1.13rem] min-w-[20px] px-1 rounded-[3px] ml-1.5 -mr-0.5 border border-bright/40 text-bright group-hover:border-bright/60 transition",
   },
-  menuItem: {
+  "primary/large": {
+    textColor: "text-bright group-hover:text-white transition",
+    button:
+      "h-10 px-2 text-sm font-medium bg-indigo-600 hover:bg-indigo-500/90 disabled:opacity-50",
+    icon: "h-5",
+    shortcut:
+      "text-[0.6rem] leading-[1.13rem] min-w-[20px] px-1 rounded-[3px] ml-1.5 -mr-0.5 border border-bright/40 text-bright group-hover:border-bright/60 transition",
+  },
+  "secondary/large": {
+    textColor: "text-dimmed group-hover:text-bright transition",
+    button:
+      "h-10 px-2 text-sm text-dimmed hover:text-bright transition font-medium bg-slate-800 hover:bg-slate-700/70 disabled:opacity-50",
+    icon: "h-5",
+    shortcut:
+      "text-[0.6rem] leading-[1.13rem] min-w-[20px] px-1 rounded-[3px] ml-1.5 -mr-0.5 border border-dimmed/40 text-dimmed group-hover:border-dimmed group-hover:text-bright transition",
+  },
+  "menu-item": {
     textColor: "text-bright",
     button: "h-9 px-[5px] text-sm bg-transparent hover:bg-slate-800 transition",
     icon: "h-5",
@@ -126,7 +142,12 @@ function ButtonContent(props: ButtonContentPropsType) {
         btnClassName
       )}
     >
-      <div className="flex w-full items-center gap-x-0.5">
+      <div
+        className={cn(
+          textAlignLeft ? "text-left" : "justify-center",
+          "flex w-full items-center gap-x-0.5"
+        )}
+      >
         {LeadingIcon &&
           (typeof LeadingIcon === "string" ? (
             <NamedIcon
@@ -141,8 +162,8 @@ function ButtonContent(props: ButtonContentPropsType) {
             <LeadingIcon
               className={cn(
                 iconClassName,
-                leadingIconClassName,
                 textColorClassName,
+                leadingIconClassName,
                 "shrink-0 justify-start"
               )}
             />
@@ -152,8 +173,8 @@ function ButtonContent(props: ButtonContentPropsType) {
           (typeof text === "string" ? (
             <span
               className={cn(
-                "self-center truncate px-1",
-                textAlignLeft ? "text-left" : "mx-auto",
+                "mx-auto grow self-center truncate px-1",
+
                 textColorClassName
               )}
             >
@@ -177,8 +198,8 @@ function ButtonContent(props: ButtonContentPropsType) {
             <TrailingIcon
               className={cn(
                 iconClassName,
-                trailingIconClassName,
                 textColorClassName,
+                trailingIconClassName,
                 "shrink-0 justify-end"
               )}
             />

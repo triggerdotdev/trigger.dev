@@ -1,17 +1,14 @@
+import {
+  ArrowLeftIcon,
+  ArrowRightIcon,
+  ExclamationTriangleIcon,
+} from "@heroicons/react/20/solid";
+import { ArrowUturnLeftIcon, LightBulbIcon } from "@heroicons/react/24/solid";
 import type { Meta, StoryObj } from "@storybook/react";
 import { withDesign } from "storybook-addon-designs";
 import { Button } from "../primitives/Buttons";
-import {
-  ArrowLeftIcon,
-  ExclamationTriangleIcon,
-} from "@heroicons/react/20/solid";
-import { ArrowRightIcon } from "@heroicons/react/20/solid";
 import { Header1, Header3 } from "../primitives/Headers";
-import {
-  ArrowUturnLeftIcon,
-  LightBulbIcon,
-  ServerIcon,
-} from "@heroicons/react/24/solid";
+import { NamedIcon } from "../primitives/NamedIcon";
 
 const meta: Meta<typeof ButtonList> = {
   title: "Primitives/Buttons",
@@ -41,7 +38,7 @@ Basic.parameters = {
 function ButtonList({ primary }: { primary: string }) {
   return (
     <div>
-      <Header1 className="mb-2">Small size</Header1>
+      <Header1 className="mb-2">Small buttons</Header1>
       <div className="grid grid-cols-6">
         <div className="flex flex-col items-start gap-2">
           <Header3 className="mb-1 uppercase">Basic</Header3>
@@ -121,7 +118,7 @@ function ButtonList({ primary }: { primary: string }) {
           />
         </div>
       </div>
-      <Header1 className="mb-2 mt-6">Medium size</Header1>
+      <Header1 className="mb-2 mt-6">Medium buttons</Header1>
       <div className="grid grid-cols-6">
         <div className="flex flex-col items-start gap-2">
           <Header3 className="mb-1 uppercase">Basic</Header3>
@@ -201,22 +198,42 @@ function ButtonList({ primary }: { primary: string }) {
           />
         </div>
       </div>
+      <Header1 className="mb-2 mt-6">Large buttons</Header1>
+      <div className="grid grid-cols-1 gap-2">
+        <div className="flex flex-col items-start">
+          <Button variant="primary/large" fullWidth>
+            <NamedIcon name={"github"} className={"mr-2 h-5 w-5"} />
+            Continue with GitHub
+          </Button>
+        </div>
+        <div className="flex flex-col items-start">
+          <Button variant="secondary/large" fullWidth>
+            <NamedIcon name={"envelope"} className={"mr-2 h-5 w-5"} />
+            Continue with Email
+          </Button>
+        </div>
+      </div>
       <Header1 className="mb-2 mt-6">Menu items</Header1>
       <div className="grid grid-cols-1">
-        <div className="flex flex-col items-start gap-2 rounded border border-slate-800 bg-slate-850 p-1">
+        <div className="flex flex-col items-start gap-1 rounded border border-slate-800 bg-slate-850 p-1">
           <Button
-            variant="menuItem"
+            variant="menu-item"
             fullWidth
             textAlignLeft
             LeadingIcon="folder"
           >
             Acme Inc.
           </Button>
-          <Button variant="menuItem" fullWidth textAlignLeft LeadingIcon="plus">
+          <Button
+            variant="menu-item"
+            fullWidth
+            textAlignLeft
+            LeadingIcon="plus"
+          >
             New Project
           </Button>
           <Button
-            variant="menuItem"
+            variant="menu-item"
             fullWidth
             textAlignLeft
             LeadingIcon="globe"
@@ -224,7 +241,7 @@ function ButtonList({ primary }: { primary: string }) {
             OAuth2 as a Bot
           </Button>
           <Button
-            variant="menuItem"
+            variant="menu-item"
             fullWidth
             textAlignLeft
             LeadingIcon="slack"
@@ -232,11 +249,11 @@ function ButtonList({ primary }: { primary: string }) {
             When a Stripe payment fails re-engage the customer
           </Button>
           <Button
-            variant="menuItem"
+            variant="menu-item"
             fullWidth
             textAlignLeft
             LeadingIcon={ArrowUturnLeftIcon}
-            textColor="text-dimmed"
+            leadingIconClassName="text-dimmed"
           >
             Latest run payload
           </Button>

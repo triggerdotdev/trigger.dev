@@ -34,7 +34,7 @@ export function OrganizationGridItem({
           <div>
             {organization.projects.map((project) => (
               <LinkButton
-                variant="menuItem"
+                variant="menu-item"
                 to={projectPath(organization, project)}
                 key={project.id}
               >

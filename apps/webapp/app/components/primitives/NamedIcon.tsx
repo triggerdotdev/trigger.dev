@@ -5,6 +5,7 @@ import {
   StopIcon,
 } from "@heroicons/react/20/solid";
 import {
+  EnvelopeIcon,
   FolderIcon,
   GlobeAltIcon,
   PlusIcon,
@@ -33,6 +34,9 @@ const icons = {
   ),
   globe: (className: string) => (
     <GlobeAltIcon className={cn("text-fuchsia-500", className)} />
+  ),
+  envelope: (className: string) => (
+    <EnvelopeIcon className={cn("text-dimmed", className)} />
   ),
   slack: (className: string) => (
     <img src={`/integrations/slack.png`} className={className} alt="Slack" />
