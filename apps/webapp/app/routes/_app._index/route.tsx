@@ -35,10 +35,11 @@ export default function AppLayout() {
           <PageButtons>
             <LinkButton
               to={newOrganizationPath()}
-              size="medium"
-              theme="secondaryOutline"
-              text="Create a new Organization"
-            />
+              variant="primary/small"
+              shortcut="N"
+            >
+              Create a new Organization
+            </LinkButton>
           </PageButtons>
         </PageTitleRow>
       </PageHeader>
