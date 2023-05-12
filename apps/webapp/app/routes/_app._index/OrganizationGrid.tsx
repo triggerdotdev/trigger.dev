@@ -1,4 +1,5 @@
 import { BuildingOffice2Icon } from "@heroicons/react/24/solid";
+import { Link } from "@remix-run/react";
 import simplur from "simplur";
 import { Badge } from "~/components/primitives/Badge";
 import { LinkButton } from "~/components/primitives/Buttons";
@@ -6,7 +7,11 @@ import { Header2 } from "~/components/primitives/Headers";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import type { MatchedOrganization } from "~/hooks/useOrganizations";
 import { cn } from "~/utils/cn";
-import { newProjectPath, projectPath } from "~/utils/pathBuilder";
+import {
+  newProjectPath,
+  organizationPath,
+  projectPath,
+} from "~/utils/pathBuilder";
 
 export function OrganizationGridItem({
   organization,
@@ -20,7 +25,10 @@ export function OrganizationGridItem({
           "to-70% block rounded-md border border-slate-850 bg-gradient-to-b from-indigo-900/70 to-slate-950 p-2 "
         )}
       >
-        <div className="flex gap-4 border-b border-slate-850 px-2 pb-4 pt-2">
+        <Link
+          to={organizationPath(organization)}
+          className="flex gap-4 rounded-md border-b border-slate-850 px-2 pb-4 pt-2 hover:bg-slate-500/10"
+        >
           <BuildingOffice2Icon
             className="h-10 w-10 flex-none text-fuchsia-600"
             aria-hidden="true"
@@ -31,7 +39,7 @@ export function OrganizationGridItem({
               {simplur`${organization._count.members} team member[|s]`}
             </Paragraph>
           </div>
-        </div>
+        </Link>
         <div className="py-4">
           <Paragraph className="mb-2 px-2" variant="extra-small/bright/caps">
             Projects
