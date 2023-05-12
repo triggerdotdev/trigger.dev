@@ -122,15 +122,20 @@ function ButtonList({ primary }: { primary: string }) {
         <Button variant="danger/medium" text="Danger button" shortcut="⌘S" />
       </div>
       <div className="flex flex-col items-start gap-2">
-        <Header1 className="mb-1">Small size, shortcut</Header1>
+        <Header1 className="mb-1">Small size, image icon</Header1>
         <Button
-          className="flex gap-2"
-          text={
-            <>
-              <NamedIcon name="slack" className={"h-4 w-4"} />
-              Connect to Slack
-            </>
-          }
+          text="Connect to Slack"
+          LeadingIcon="airtable"
+          variant="primary/small"
+        />
+        <Button
+          text="Connect to Slack"
+          LeadingIcon="github"
+          variant="primary/small"
+        />
+        <Button
+          text="Connect to Slack"
+          TrailingIcon="github"
           variant="primary/small"
         />
       </div>

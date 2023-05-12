@@ -2,6 +2,7 @@ import type { LinkProps } from "@remix-run/react";
 import { Link } from "@remix-run/react";
 import React from "react";
 import { cn } from "~/utils/cn";
+import { IconNames, NamedIcon } from "./NamedIcon";
 
 const variant = {
   "primary/small": {
@@ -69,8 +70,8 @@ const allVariants = {
 
 type ButtonContentPropsType = {
   text?: string | React.ReactNode;
-  LeadingIcon?: React.ComponentType<any>;
-  TrailingIcon?: React.ComponentType<any>;
+  LeadingIcon?: React.ComponentType<any> | IconNames;
+  TrailingIcon?: React.ComponentType<any> | IconNames;
   fullWidth?: boolean;
   className?: string;
   shortcut?: string;
@@ -97,17 +98,31 @@ function ButtonContent(props: ButtonContentPropsType) {
       )}
     >
       <div className="flex w-full items-center gap-x-1">
-        {LeadingIcon && (
-          <LeadingIcon
-            className={cn(iconClassName, "shrink-0 justify-start")}
-          />
-        )}
+        {LeadingIcon &&
+          (typeof LeadingIcon === "string" ? (
+            <NamedIcon
+              name={LeadingIcon}
+              className={cn(iconClassName, "shrink-0 justify-start")}
+            />
+          ) : (
+            <LeadingIcon
+              className={cn(iconClassName, "shrink-0 justify-start")}
+            />
+          ))}
 
         {text && <span className="mx-auto self-center truncate">{text}</span>}
 
-        {TrailingIcon && (
-          <TrailingIcon className={cn(iconClassName, "shrink-0 justify-end")} />
-        )}
+        {TrailingIcon &&
+          (typeof TrailingIcon === "string" ? (
+            <NamedIcon
+              name={TrailingIcon}
+              className={cn(iconClassName, "shrink-0 justify-end")}
+            />
+          ) : (
+            <TrailingIcon
+              className={cn(iconClassName, "shrink-0 justify-end")}
+            />
+          ))}
         {shortcut && (
           <span className={cn(shortcutClassName, "")}>{shortcut}</span>
         )}
