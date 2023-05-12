@@ -129,6 +129,7 @@
     "remix-utils": "^6.0.0",
     "semver": "^7.5.0",
     "simple-oauth2": "^5.0.0",
+    "simplur": "^3.0.1",
     "slug": "^6.0.0",
     "tailwind-merge": "^1.12.0",
     "tailwind-scrollbar-hide": "^1.1.7",

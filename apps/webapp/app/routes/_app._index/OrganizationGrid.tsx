@@ -1,5 +1,5 @@
-import { BuildingOffice2Icon, PlusIcon } from "@heroicons/react/24/solid";
-import { Link } from "@remix-run/react";
+import { BuildingOffice2Icon } from "@heroicons/react/24/solid";
+import simplur from "simplur";
 import { Badge } from "~/components/primitives/Badge";
 import { LinkButton } from "~/components/primitives/Buttons";
 import { Header2 } from "~/components/primitives/Headers";
@@ -28,7 +28,7 @@ export function OrganizationGridItem({
           <div className="flex-1">
             <Header2 className="">{organization.title}</Header2>
             <Paragraph variant="extra-small">
-              {organization._count.members} team member
+              {simplur`${organization._count.members} team member[|s]`}
             </Paragraph>
           </div>
         </div>
@@ -48,7 +48,7 @@ export function OrganizationGridItem({
               >
                 <span className="flex grow items-center justify-between pl-1">
                   <span className="grow text-left">{project.name}</span>
-                  <Badge>{project._count.jobs} jobs</Badge>
+                  <Badge>{simplur`${project._count.jobs} job[|s]`}</Badge>
                 </span>
               </LinkButton>
             ))}

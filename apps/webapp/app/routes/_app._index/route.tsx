@@ -17,8 +17,6 @@ export default function AppLayout() {
   const organizations = useOrganizations();
   const user = useOptionalUser();
 
-  console.log("organizations", organizations);
-
   return (
     <MainContainer>
       <PageHeader>

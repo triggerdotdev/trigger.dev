@@ -204,6 +204,7 @@ importers:
       rimraf: ^3.0.2
       semver: ^7.5.0
       simple-oauth2: ^5.0.0
+      simplur: ^3.0.1
       slug: ^6.0.0
       start-server-and-test: ^1.14.0
       storybook: ^7.0.7
@@ -320,6 +321,7 @@ importers:
       remix-utils: 6.0.0_wsv6pb4xaizbkiyhbwkfff4jlm
       semver: 7.5.0
       simple-oauth2: 5.0.0
+      simplur: 3.0.1
       slug: 6.1.0
       tailwind-merge: 1.12.0
       tailwind-scrollbar-hide: 1.1.7
@@ -20311,6 +20313,10 @@ packages:
     dependencies:
       semver: 7.0.0
     dev: true
+
+  /simplur/3.0.1:
+    resolution: {integrity: sha512-bBAoTn75tuKh83opmZ1VoyVoQIsvLCKzSxuasAxbnKofrT8eGyOEIaXSuNfhi/hI160+fwsR7ObcbBpOyzDvXg==}
+    dev: false
 
   /sisteransi/1.0.5:
     resolution: {integrity: sha512-bLGGlR1QxBcynn2d5YmDX4MGjlZvy2MRBDRNHLJ8VI6l6+9FUiyTFNJ0IveOSP0bcXgVDPRcfGqA0pjaqUpfVg==}
