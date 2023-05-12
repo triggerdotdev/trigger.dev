@@ -44,7 +44,7 @@ const variant = {
       "h-[32px] px-2 text-sm bg-indigo-600 hover:bg-indigo-500/90 disabled:opacity-50",
     icon: "h-4",
     shortcut:
-      "text-[0.6rem] px-1 rounded-[3px] ml-1.5 -mr-0.5 border border-bright/40 text-bright group-hover:border-bright/60 transition",
+      "text-[0.6rem] leading-[1.13rem] px-1 rounded-[3px] ml-1.5 -mr-0.5 border border-bright/40 text-bright group-hover:border-bright/60 transition",
   },
   "secondary/medium": {
     textColor: "text-dimmed group-hover:text-bright transition",
@@ -52,7 +52,7 @@ const variant = {
       "h-[32px] px-2 text-sm bg-slate-800 hover:bg-slate-700/70 disabled:opacity-50",
     icon: "h-4",
     shortcut:
-      "text-[0.6rem] px-1 rounded-[3px] ml-1.5 -mr-0.5 border border-dimmed/40 text-dimmed group-hover:border-dimmed group-hover:text-bright transition",
+      "text-[0.6rem] leading-[1.13rem] px-1 rounded-[3px] ml-1.5 -mr-0.5 border border-dimmed/40 text-dimmed group-hover:border-dimmed group-hover:text-bright transition",
   },
   "tertiary/medium": {
     textColor: "text-dimmed group-hover:text-bright transition",
@@ -60,7 +60,7 @@ const variant = {
       "h-[32px] px-2 text-sm bg-transparent hover:bg-slate-850 disabled:opacity-50",
     icon: "h-4",
     shortcut:
-      "text-[0.6rem] px-1 rounded-[3px] ml-1.5 -mr-0.5 border border-bright/40 text-dimmed group-hover:border-bright/60 group-hover:text-bright transition",
+      "text-[0.6rem] leading-[1.13rem] px-1 rounded-[3px] ml-1.5 -mr-0.5 border border-bright/40 text-dimmed group-hover:border-bright/60 group-hover:text-bright transition",
   },
   "danger/medium": {
     textColor: "text-bright group-hover:text-white transition",
@@ -68,7 +68,7 @@ const variant = {
       "h-[32px] px-2 text-sm bg-rose-600 hover:bg-rose-500 disabled:opacity-50",
     icon: "h-4",
     shortcut:
-      "text-[0.6rem] px-1 rounded-[3px] ml-1.5 -mr-0.5 border border-bright/40 text-bright group-hover:border-bright/60 transition",
+      "text-[0.6rem] leading-[1.13rem] px-1 rounded-[3px] ml-1.5 -mr-0.5 border border-bright/40 text-bright group-hover:border-bright/60 transition",
   },
 };
 
