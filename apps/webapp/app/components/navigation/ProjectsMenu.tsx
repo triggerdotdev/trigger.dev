@@ -1,4 +1,3 @@
-import { Link } from "@remix-run/react";
 import { useState } from "react";
 import {
   useCurrentOrganization,
@@ -12,7 +11,7 @@ import {
   PopoverSectionHeader,
 } from "../primitives/Popover";
 import { LinkButton } from "../primitives/Buttons";
-import { FolderIcon, PlusIcon } from "@heroicons/react/24/solid";
+import { PlusIcon } from "@heroicons/react/24/solid";
 import {
   newOrganizationPath,
   newProjectPath,
@@ -47,12 +46,11 @@ export function ProjectsMenu() {
 
               <div className="flex flex-col gap-1">
                 {organization.projects.map((project) => (
-                  //todo change to use "folder" named icon and the new variant
                   <LinkButton
                     key={project.id}
                     to={projectPath(organization, project)}
                     variant="secondary/medium"
-                    LeadingIcon={FolderIcon}
+                    LeadingIcon="folder"
                   >
                     {project.name}
                   </LinkButton>

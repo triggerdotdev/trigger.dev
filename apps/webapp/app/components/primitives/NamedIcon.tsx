@@ -4,17 +4,24 @@ import {
   InformationCircleIcon,
   StopIcon,
 } from "@heroicons/react/20/solid";
+import { FolderIcon } from "@heroicons/react/24/solid";
 import { cn } from "~/utils/cn";
 
 const icons = {
   warning: (className: string) => (
-    <ExclamationTriangleIcon className={cn("text-yellow-500", className)} />
+    <ExclamationTriangleIcon className={cn("text-amber-400", className)} />
   ),
   error: (className: string) => (
     <ExclamationCircleIcon className={cn("text-rose-500", className)} />
   ),
   info: (className: string) => (
     <InformationCircleIcon className={cn("text-blue-500", className)} />
+  ),
+  folder: (className: string) => (
+    <FolderIcon className={cn("text-indigo-600", className)} />
+  ),
+  plusLarge: (className: string) => (
+    <FolderIcon className={cn("text-green-600", className)} />
   ),
   slack: (className: string) => (
     <img src={`/integrations/slack.png`} className={className} alt="Slack" />
