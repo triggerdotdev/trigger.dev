@@ -1,4 +1,3 @@
-import { AppBody } from "~/components/layout/AppLayout";
 import { useDevEnvironment } from "~/hooks/useEnvironments";
 import { useCurrentOrganization } from "~/hooks/useOrganizations";
 
@@ -6,7 +5,7 @@ export default function Page() {
   const currentOrganization = useCurrentOrganization();
   const currentEnv = useDevEnvironment();
 
-  return <AppBody>You have no projects</AppBody>;
+  return <div>You have no projects</div>;
 
   if (currentOrganization === undefined) {
     return <></>;
@@ -16,5 +15,5 @@ export default function Page() {
     return <></>;
   }
 
-  return <AppBody>You have no projects</AppBody>;
+  return <div>You have no projects</div>;
 }

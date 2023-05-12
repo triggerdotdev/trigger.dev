@@ -1,20 +1,18 @@
-import { CursorArrowRaysIcon, PlusIcon } from "@heroicons/react/24/outline";
+import { PlusIcon } from "@heroicons/react/24/outline";
 import type { LoaderArgs } from "@remix-run/server-runtime";
-import { SliderButton } from "@typeform/embed-react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import invariant from "tiny-invariant";
-import { NamedIcon, NamedIconInBox } from "~/components/primitives/NamedIcon";
 import { ConnectButton } from "~/components/integrations/ConnectButton";
-import { AppBody, AppLayoutTwoCol } from "~/components/layout/AppLayout";
 import { OrganizationsSideMenu } from "~/components/navigation/SideMenu";
 import { Badge } from "~/components/primitives/Badge";
-
+import { NamedIcon, NamedIconInBox } from "~/components/primitives/NamedIcon";
+import { Header1, Header3 } from "~/components/primitives/Headers";
+import { Paragraph } from "~/components/primitives/Paragraph";
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
 } from "~/components/primitives/Popover";
-import { Header1, Header3 } from "~/components/primitives/Headers";
 import { useCurrentOrganization } from "~/hooks/useOrganizations";
 import { getOrganizationFromSlug } from "~/models/organization.server";
 import { apiConnectionRepository } from "~/services/externalApis/apiAuthenticationRepository.server";
@@ -22,7 +20,6 @@ import { apiCatalog } from "~/services/externalApis/apiCatalog.server";
 import type { ExternalApi } from "~/services/externalApis/types";
 import { requireUser } from "~/services/session.server";
 import { formatDateTime } from "~/utils";
-import { Paragraph } from "~/components/primitives/Paragraph";
 
 export const loader = async ({ request, params }: LoaderArgs) => {
   const user = await requireUser(request);
@@ -54,9 +51,9 @@ export default function Integrations() {
   );
 
   return (
-    <AppLayoutTwoCol>
+    <div>
       <OrganizationsSideMenu />
-      <AppBody>
+      <div>
         {/* <Header context="workflows" /> */}
         <div>
           <div className="flex items-start justify-between">
@@ -164,8 +161,8 @@ export default function Integrations() {
             })}
           </div>
         </div>
-      </AppBody>
-    </AppLayoutTwoCol>
+      </div>
+    </div>
   );
 }
 

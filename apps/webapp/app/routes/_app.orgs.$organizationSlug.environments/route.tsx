@@ -1,10 +1,7 @@
-import { EyeIcon, EyeSlashIcon } from "@heroicons/react/20/solid";
 import { useState } from "react";
 import invariant from "tiny-invariant";
-import { AppBody, AppLayoutTwoCol } from "~/components/layout/AppLayout";
 import { OrganizationsSideMenu } from "~/components/navigation/SideMenu";
 import { useCurrentOrganization } from "~/hooks/useOrganizations";
-import { titleCase } from "~/utils";
 import { cn } from "~/utils/cn";
 
 export function EnvironmentIcon({
@@ -35,7 +32,7 @@ export default function Page() {
   const [isShowingKeys, setIsShowingKeys] = useState(false);
 
   return (
-    <AppLayoutTwoCol>
+    <div>
       <OrganizationsSideMenu />
       {/* <AppBody>
         <Header context="workflows" />
@@ -107,6 +104,6 @@ export default function Page() {
           </Body>
         </Container>
       </AppBody> */}
-    </AppLayoutTwoCol>
+    </div>
   );
 }
