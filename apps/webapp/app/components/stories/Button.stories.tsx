@@ -45,199 +45,143 @@ function ButtonList({ primary }: { primary: string }) {
       <div className="flex flex-col gap-8">
         <div className="flex flex-col items-start gap-2">
           <Header1 className="mb-1">Small size</Header1>
-          <Button variant="primary/small" children="Primary button" />
-          <Button variant="secondary/small" children="Secondary button" />
-          <Button variant="tertiary/small" children="Tertiary button" />
-          <Button variant="danger/small" children="Danger button" />
+          <Button variant="primary/small">Primary button</Button>
+          <Button variant="secondary/small">Secondary button</Button>
+          <Button variant="tertiary/small">Tertiary button</Button>
+          <Button variant="danger/small">Danger button</Button>
         </div>
         <div className="flex flex-col items-start gap-2">
           <Header1 className="mb-1">Small size, icon left</Header1>
-          <Button
-            variant="primary/small"
-            LeadingIcon={ArrowLeftIcon}
-            children="Primary button"
-          />
-          <Button
-            variant="secondary/small"
-            LeadingIcon={ArrowLeftIcon}
-            children="Secondary button"
-          />
-          <Button
-            variant="tertiary/small"
-            LeadingIcon={ArrowLeftIcon}
-            children="Tertiary button"
-          />
-          <Button
-            variant="danger/small"
-            LeadingIcon={ArrowLeftIcon}
-            children="Danger button"
-          />
+          <Button variant="primary/small" LeadingIcon={ArrowLeftIcon}>
+            Primary button
+          </Button>
+          <Button variant="secondary/small" LeadingIcon={ArrowLeftIcon}>
+            Secondary button
+          </Button>
+          <Button variant="tertiary/small" LeadingIcon={ArrowLeftIcon}>
+            Tertiary button
+          </Button>
+          <Button variant="danger/small" LeadingIcon={ArrowLeftIcon}>
+            Danger button
+          </Button>
         </div>
         <div className="flex flex-col items-start gap-2">
           <Header1 className="mb-1">Small size, icon right</Header1>
-          <Button
-            variant="primary/small"
-            TrailingIcon={ArrowRightIcon}
-            children="Primary button"
-          />
-          <Button
-            variant="secondary/small"
-            TrailingIcon={ArrowRightIcon}
-            children="Secondary button"
-          />
+          <Button variant="primary/small" TrailingIcon={ArrowRightIcon}>
+            Primary button
+          </Button>
+          <Button variant="secondary/small" TrailingIcon={ArrowRightIcon}>
+            Secondary button
+          </Button>
           <Button
             variant="tertiary/small"
             trailingIconClassName="text-red-500"
             TrailingIcon={ArrowRightIcon}
-            children="Tertiary button"
-          />
-          <Button
-            variant="danger/small"
-            TrailingIcon={ArrowRightIcon}
-            children="Danger button"
-          />
+          >
+            Tertiary button
+          </Button>
+          <Button variant="danger/small" TrailingIcon={ArrowRightIcon}>
+            Danger button
+          </Button>
         </div>
         <div className="flex flex-col items-start gap-2">
           <Header1 className="mb-1">Small size, shortcut</Header1>
-          <Button
-            variant="primary/small"
-            children="Primary button"
-            shortcut="⌘S"
-          />
-          <Button
-            variant="secondary/small"
-            children="Secondary button"
-            shortcut="⌘S"
-          />
-          <Button
-            variant="tertiary/small"
-            children="Tertiary button"
-            shortcut="⌘S"
-          />
-          <Button
-            variant="danger/small"
-            children="Danger button"
-            shortcut="⌘S"
-          />
+          <Button variant="primary/small" shortcut="⌘S">
+            Primary button
+          </Button>
+          <Button variant="secondary/small" shortcut="⌘S">
+            Secondary button
+          </Button>
+          <Button variant="tertiary/small" shortcut="⌘S">
+            Tertiary button
+          </Button>
+          <Button variant="danger/small" shortcut="⌘S">
+            Danger button
+          </Button>
         </div>
         <div className="flex flex-col items-start gap-2">
           <Header1 className="mb-1">Small size, image icon</Header1>
-          <Button
-            children="Connect to Slack"
-            LeadingIcon="airtable"
-            variant="primary/small"
-          />
-          <Button
-            children="Connect to Slack"
-            LeadingIcon="github"
-            variant="primary/small"
-          />
-          <Button
-            children="Connect to Slack"
-            TrailingIcon="slack"
-            variant="primary/small"
-          />
+          <Button LeadingIcon="airtable" variant="primary/small">
+            Connect to Airtable
+          </Button>
+          <Button LeadingIcon="github" variant="primary/small">
+            Connect to GitHub
+          </Button>
+          <Button TrailingIcon="slack" variant="primary/small">
+            Connect to Slack
+          </Button>
+          <Button TrailingIcon="warning" variant="primary/small">
+            Connect to Slack
+          </Button>
         </div>
       </div>
       <div className="flex flex-col gap-8">
         <div className="flex flex-col items-start gap-2">
           <Header1 className="mb-1">Medium size</Header1>
-          <Button variant="primary/medium" children="Primary button" />
-          <Button variant="secondary/medium" children="Secondary button" />
-          <Button variant="tertiary/medium" children="Tertiary button" />
-          <Button variant="danger/medium" children="Danger button" />
+          <Button variant="primary/medium">Primary button</Button>
+          <Button variant="secondary/medium">Secondary button</Button>
+          <Button variant="tertiary/medium">Tertiary button</Button>
+          <Button variant="danger/medium">Danger button</Button>
         </div>
         <div className="flex flex-col items-start gap-2">
           <Header1 className="mb-1">Medium size, icon left</Header1>
-          <Button
-            variant="primary/medium"
-            LeadingIcon={ArrowLeftIcon}
-            children="Primary button"
-          />
-          <Button
-            variant="secondary/medium"
-            LeadingIcon={ArrowLeftIcon}
-            children="Secondary button"
-          />
-          <Button
-            variant="tertiary/medium"
-            LeadingIcon={ArrowLeftIcon}
-            children="Tertiary button"
-          />
-          <Button
-            variant="danger/medium"
-            LeadingIcon={ArrowLeftIcon}
-            children="Danger button"
-          />
+          <Button variant="primary/medium" LeadingIcon={ArrowLeftIcon}>
+            Primary button
+          </Button>
+          <Button variant="secondary/medium" LeadingIcon={ArrowLeftIcon}>
+            Secondary button
+          </Button>
+          <Button variant="tertiary/medium" LeadingIcon={ArrowLeftIcon}>
+            Tertiary button
+          </Button>
+          <Button variant="danger/medium" LeadingIcon={ArrowLeftIcon}>
+            Danger button
+          </Button>
         </div>
         <div className="flex flex-col items-start gap-2">
           <Header1 className="mb-1">Medium size, icon right</Header1>
-          <Button
-            variant="primary/medium"
-            TrailingIcon={ArrowRightIcon}
-            children="Primary button"
-          />
-          <Button
-            variant="secondary/medium"
-            TrailingIcon={ArrowRightIcon}
-            children="Secondary button"
-          />
-          <Button
-            variant="tertiary/medium"
-            TrailingIcon={ArrowRightIcon}
-            children="Tertiary button"
-          />
-          <Button
-            variant="danger/medium"
-            TrailingIcon={ArrowRightIcon}
-            children="Danger button"
-          />
+          <Button variant="primary/medium" TrailingIcon={ArrowRightIcon}>
+            Primary button
+          </Button>
+          <Button variant="secondary/medium" TrailingIcon={ArrowRightIcon}>
+            Secondary button
+          </Button>
+          <Button variant="tertiary/medium" TrailingIcon={ArrowRightIcon}>
+            Tertiary button
+          </Button>
+          <Button variant="danger/medium" TrailingIcon={ArrowRightIcon}>
+            Danger button
+          </Button>
         </div>
         <div className="flex flex-col items-start gap-2">
           <Header1 className="mb-1">Medium size, shortcut</Header1>
-          <Button
-            variant="primary/medium"
-            children="Primary button"
-            shortcut="⌘S"
-          />
-          <Button
-            variant="secondary/medium"
-            children="Secondary button"
-            shortcut="⌘S"
-          />
-          <Button
-            variant="tertiary/medium"
-            children="Tertiary button"
-            shortcut="⌘S"
-          />
-          <Button
-            variant="danger/medium"
-            children="Danger button"
-            shortcut="⌘S"
-          />
+          <Button variant="primary/medium" shortcut="⌘S">
+            Primary button
+          </Button>
+          <Button variant="secondary/medium" shortcut="⌘S">
+            Secondary button
+          </Button>
+          <Button variant="tertiary/medium" shortcut="⌘S">
+            Tertiary button
+          </Button>
+          <Button variant="danger/medium" shortcut="⌘S">
+            Danger button
+          </Button>
         </div>
         <div className="flex flex-col items-start gap-2">
           <Header1 className="mb-1">Medium size, named icon</Header1>
-          <Button
-            children="Connect to Slack"
-            LeadingIcon="airtable"
-            variant="primary/medium"
-          />
-          <Button
-            children="Connect to Slack"
-            LeadingIcon="github"
-            variant="primary/medium"
-          />
-          <Button
-            children="Connect to Slack"
-            TrailingIcon="slack"
-            variant="primary/medium"
-          />
-          <Button
-            children="Connect to Slack"
-            LeadingIcon="warning"
-            variant="primary/medium"
-          />
+          <Button LeadingIcon="airtable" variant="primary/medium">
+            Connect to Airtable
+          </Button>
+          <Button LeadingIcon="github" variant="primary/medium">
+            Connect to GitHub
+          </Button>
+          <Button TrailingIcon="slack" variant="primary/medium">
+            Connect to Slack
+          </Button>
+          <Button LeadingIcon="warning" variant="primary/medium">
+            Connect to Slack
+          </Button>
         </div>
       </div>
       <div className="flex flex-col items-start gap-2">
