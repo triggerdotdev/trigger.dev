@@ -2,6 +2,7 @@ import { Link } from "@remix-run/react";
 import { useState } from "react";
 import {
   useCurrentOrganization,
+  useIsNewOrganizationPage,
   useOrganizations,
 } from "~/hooks/useOrganizations";
 import {
@@ -10,13 +11,16 @@ import {
   PopoverContent,
   PopoverSectionHeader,
 } from "../primitives/Popover";
+import { LinkButton } from "../primitives/Buttons";
+import { FolderIcon, PlusIcon } from "@heroicons/react/24/solid";
 
 export function ProjectsMenu() {
   const [isOpen, setIsOpen] = useState(false);
   const organizations = useOrganizations();
   const currentOrganization = useCurrentOrganization();
+  const isNewOrgPage = useIsNewOrganizationPage();
 
-  if (organizations === undefined) {
+  if (organizations === undefined || isNewOrgPage) {
     return null;
   }
 
@@ -31,18 +35,37 @@ export function ProjectsMenu() {
             <div key={organization.id}>
               <PopoverSectionHeader title={organization.title} />
 
-              <div>
+              <div className="flex flex-col gap-1">
                 {organization.projects.map((project) => (
-                  <Link
+                  //todo change to use "folder" named icon and the new variant
+                  <LinkButton
                     key={project.id}
                     to={`/orgs/${organization.slug}/project/${project.id}`}
-                  >
-                    {project.name}
-                  </Link>
+                    text={project.name}
+                    size={"medium"}
+                    theme={"secondary"}
+                    LeadingIcon={FolderIcon}
+                  />
                 ))}
+                <LinkButton
+                  to={`/orgs/${organization.slug}/project/new`}
+                  text="New Project"
+                  size={"medium"}
+                  theme={"secondary"}
+                  LeadingIcon={PlusIcon}
+                />
               </div>
             </div>
           ))}
+          <div className="border-t border-slate-700">
+            <LinkButton
+              to={`/orgs/new`}
+              text="New Organization"
+              size={"medium"}
+              theme={"secondary"}
+              LeadingIcon={PlusIcon}
+            />
+          </div>
         </PopoverContent>
       </Popover>
     </>
