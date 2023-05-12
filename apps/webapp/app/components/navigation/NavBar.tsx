@@ -9,16 +9,25 @@ import { LogoIcon } from "../LogoIcon";
 import { Button, LinkButton } from "../primitives/Buttons";
 import { cn } from "~/utils/cn";
 import { Link } from "@remix-run/react";
+import { useCurrentOrganization } from "~/hooks/useOrganizations";
+import { BreadcrumbIcon } from "../primitives/BreadcrumbIcon";
 
 export function NavBar() {
+  const currentOrganization = useCurrentOrganization();
+
   return (
     <div className="z-50 flex w-full items-center justify-between gap-2 border-b border-slate-800 bg-slate-950 py-1 pl-2 pr-2.5">
-      <div className="flex gap-2">
+      <div className="flex gap-0.5">
         <Link to="/" className="p-2">
           <LogoIcon className="h-5 w-5" />
         </Link>
         <div className="hidden items-center md:flex">
-          <ProjectsMenu />
+          {currentOrganization && (
+            <>
+              <BreadcrumbIcon className="h-3" />
+              <ProjectsMenu />
+            </>
+          )}
         </div>
         <MobileDropdownMenu />
       </div>
@@ -39,28 +48,6 @@ export function NavBar() {
         />
       </div>
     </div>
-  );
-}
-
-export function BreadcrumbDivider() {
-  return (
-    <svg
-      width="9"
-      height="20"
-      viewBox="0 0 9 26"
-      fill="none"
-      xmlns="http://www.w3.org/2000/svg"
-    >
-      <line
-        x1="8.32382"
-        y1="0.6286"
-        x2="0.6286"
-        y2="24.6762"
-        opacity={0.3}
-        stroke="white"
-        strokeLinecap="round"
-      />
-    </svg>
   );
 }
 

@@ -1,7 +1,9 @@
-export function BreadcrumbIcon() {
+import { cn } from "~/utils/cn";
+
+export function BreadcrumbIcon({ className }: { className?: string }) {
   return (
     <svg
-      className="text-slate-650"
+      className={cn("text-slate-650", className)}
       width="9"
       height="20"
       viewBox="0 0 9 26"
