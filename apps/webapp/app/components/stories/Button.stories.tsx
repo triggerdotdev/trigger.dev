@@ -6,13 +6,9 @@ import {
   ExclamationTriangleIcon,
 } from "@heroicons/react/20/solid";
 import { ArrowRightIcon } from "@heroicons/react/20/solid";
-import { Header1 } from "../primitives/Headers";
+import { Header3 } from "../primitives/Headers";
 import { NamedIcon } from "../primitives/NamedIcon";
-import {
-  ExclamationCircleIcon,
-  LightBulbIcon,
-  ServerIcon,
-} from "@heroicons/react/24/solid";
+import { LightBulbIcon, ServerIcon } from "@heroicons/react/24/solid";
 
 const meta: Meta<typeof ButtonList> = {
   title: "Primitives/Buttons",
@@ -42,16 +38,40 @@ Basic.parameters = {
 function ButtonList({ primary }: { primary: string }) {
   return (
     <div className="flex gap-24 p-8">
-      <div className="flex flex-col gap-8">
+      <div className="grid grid-rows-3">
         <div className="flex flex-col items-start gap-2">
-          <Header1 className="mb-1">Small size</Header1>
+          <Header3 className="mb-1 uppercase">Small size</Header3>
           <Button variant="primary/small">Primary button</Button>
           <Button variant="secondary/small">Secondary button</Button>
           <Button variant="tertiary/small">Tertiary button</Button>
           <Button variant="danger/small">Danger button</Button>
         </div>
         <div className="flex flex-col items-start gap-2">
-          <Header1 className="mb-1">Small size, icon left</Header1>
+          <Header3 className="mb-1 uppercase">Small size, icon left</Header3>
+          <Button variant="primary/small" LeadingIcon={ArrowLeftIcon}>
+            Primary button
+          </Button>
+          <Button variant="secondary/small" LeadingIcon={ArrowLeftIcon}>
+            Secondary button
+          </Button>
+          <Button variant="tertiary/small" LeadingIcon={ArrowLeftIcon}>
+            Tertiary button
+          </Button>
+          <Button variant="danger/small" LeadingIcon={ArrowLeftIcon}>
+            Danger button
+          </Button>
+        </div>
+      </div>
+      <div className="flex flex-col gap-8">
+        <div className="flex flex-col items-start gap-2">
+          <Header3 className="mb-1 uppercase">Small size</Header3>
+          <Button variant="primary/small">Primary button</Button>
+          <Button variant="secondary/small">Secondary button</Button>
+          <Button variant="tertiary/small">Tertiary button</Button>
+          <Button variant="danger/small">Danger button</Button>
+        </div>
+        <div className="flex flex-col items-start gap-2">
+          <Header3 className="mb-1 uppercase">Small size, icon left</Header3>
           <Button variant="primary/small" LeadingIcon={ArrowLeftIcon}>
             Primary button
           </Button>
@@ -66,18 +86,14 @@ function ButtonList({ primary }: { primary: string }) {
           </Button>
         </div>
         <div className="flex flex-col items-start gap-2">
-          <Header1 className="mb-1">Small size, icon right</Header1>
+          <Header3 className="mb-1 uppercase">Small size, icon right</Header3>
           <Button variant="primary/small" TrailingIcon={ArrowRightIcon}>
             Primary button
           </Button>
           <Button variant="secondary/small" TrailingIcon={ArrowRightIcon}>
             Secondary button
           </Button>
-          <Button
-            variant="tertiary/small"
-            trailingIconClassName="text-red-500"
-            TrailingIcon={ArrowRightIcon}
-          >
+          <Button variant="tertiary/small" TrailingIcon={ArrowRightIcon}>
             Tertiary button
           </Button>
           <Button variant="danger/small" TrailingIcon={ArrowRightIcon}>
@@ -85,7 +101,7 @@ function ButtonList({ primary }: { primary: string }) {
           </Button>
         </div>
         <div className="flex flex-col items-start gap-2">
-          <Header1 className="mb-1">Small size, shortcut</Header1>
+          <Header3 className="mb-1 uppercase">Small size, shortcut</Header3>
           <Button variant="primary/small" shortcut="⌘S">
             Primary button
           </Button>
@@ -100,7 +116,7 @@ function ButtonList({ primary }: { primary: string }) {
           </Button>
         </div>
         <div className="flex flex-col items-start gap-2">
-          <Header1 className="mb-1">Small size, image icon</Header1>
+          <Header3 className="mb-1 uppercase">Small size, image icon</Header3>
           <Button LeadingIcon="airtable" variant="primary/small">
             Connect to Airtable
           </Button>
@@ -117,14 +133,14 @@ function ButtonList({ primary }: { primary: string }) {
       </div>
       <div className="flex flex-col gap-8">
         <div className="flex flex-col items-start gap-2">
-          <Header1 className="mb-1">Medium size</Header1>
+          <Header3 className="mb-1 uppercase">Medium size</Header3>
           <Button variant="primary/medium">Primary button</Button>
           <Button variant="secondary/medium">Secondary button</Button>
           <Button variant="tertiary/medium">Tertiary button</Button>
           <Button variant="danger/medium">Danger button</Button>
         </div>
         <div className="flex flex-col items-start gap-2">
-          <Header1 className="mb-1">Medium size, icon left</Header1>
+          <Header3 className="mb-1 uppercase">Medium size, icon left</Header3>
           <Button variant="primary/medium" LeadingIcon={ArrowLeftIcon}>
             Primary button
           </Button>
@@ -139,7 +155,7 @@ function ButtonList({ primary }: { primary: string }) {
           </Button>
         </div>
         <div className="flex flex-col items-start gap-2">
-          <Header1 className="mb-1">Medium size, icon right</Header1>
+          <Header3 className="mb-1 uppercase">Medium size, icon right</Header3>
           <Button variant="primary/medium" TrailingIcon={ArrowRightIcon}>
             Primary button
           </Button>
@@ -154,7 +170,7 @@ function ButtonList({ primary }: { primary: string }) {
           </Button>
         </div>
         <div className="flex flex-col items-start gap-2">
-          <Header1 className="mb-1">Medium size, shortcut</Header1>
+          <Header3 className="mb-1 uppercase">Medium size, shortcut</Header3>
           <Button variant="primary/medium" shortcut="⌘S">
             Primary button
           </Button>
@@ -169,7 +185,7 @@ function ButtonList({ primary }: { primary: string }) {
           </Button>
         </div>
         <div className="flex flex-col items-start gap-2">
-          <Header1 className="mb-1">Medium size, named icon</Header1>
+          <Header3 className="mb-1 uppercase">Medium size, named icon</Header3>
           <Button LeadingIcon="airtable" variant="primary/medium">
             Connect to Airtable
           </Button>
@@ -180,12 +196,19 @@ function ButtonList({ primary }: { primary: string }) {
             Connect to Slack
           </Button>
           <Button LeadingIcon="warning" variant="primary/medium">
-            Connect to Slack
+            Warning button
+          </Button>
+          <Button
+            LeadingIcon="warning"
+            variant="primary/medium"
+            leadingIconClassName="text-red-500"
+          >
+            Warning button
           </Button>
         </div>
       </div>
       <div className="flex flex-col items-start gap-2">
-        <Header1 className="mb-1">Icon only</Header1>
+        <Header3 className="mb-1 uppercase">Icon only</Header3>
         <Button variant="primary/small" LeadingIcon={ArrowRightIcon} />
         <Button variant="secondary/small" LeadingIcon={LightBulbIcon} />
         <Button variant="tertiary/small" LeadingIcon={ServerIcon} />
