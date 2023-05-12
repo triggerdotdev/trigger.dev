@@ -54,7 +54,7 @@ export function OrganizationGridItem({
             ))}
             <LinkButton
               to={newProjectPath(organization)}
-              variant="menuItem"
+              variant="menu-item"
               LeadingIcon="plus"
               fullWidth
               textAlignLeft
