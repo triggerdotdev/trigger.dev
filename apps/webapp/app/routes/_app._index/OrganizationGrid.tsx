@@ -17,7 +17,7 @@ export function OrganizationGridItem({
     <li key={organization.id}>
       <div
         className={cn(
-          "to-50% block rounded-md border border-slate-850 bg-gradient-to-b from-indigo-900/50 to-slate-950 p-2 "
+          "to-70% block rounded-md border border-slate-850 bg-gradient-to-b from-indigo-900/50 to-slate-950 p-2 "
         )}
       >
         <div className="flex gap-4 border-b border-slate-850 px-2 pb-4 pt-2">
