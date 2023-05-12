@@ -55,6 +55,9 @@ export function getOrganizations({ userId }: { userId: User["id"] }) {
       environments: {
         orderBy: { slug: "asc" },
       },
+      projects: {
+        orderBy: { name: "asc" },
+      },
     },
   });
 }

@@ -1,6 +1,6 @@
-import { useLocation, useTransition } from "@remix-run/react";
+import { useLocation, useNavigation } from "@remix-run/react";
 import { useTypedFetcher } from "remix-typedjson";
-import type { action } from "~/routes/resources/connection/resources.connection.oauth2";
+import type { action } from "~/routes/resources.connection.oauth2";
 import type { ExternalApi } from "~/services/externalApis/types";
 import { NamedIcon } from "../primitives/NamedIcon";
 import {
@@ -32,7 +32,7 @@ export function ConnectButton({
   children: React.ReactNode;
   className?: string;
 }) {
-  const transition = useTransition();
+  const transition = useNavigation();
   const fetcher = useTypedFetcher<typeof action>();
   const apiAuthmethod = api.authenticationMethods[authMethodKey];
   const location = useLocation();

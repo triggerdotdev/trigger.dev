@@ -5,20 +5,23 @@ import {
 } from "@heroicons/react/24/outline";
 import { Fragment } from "react";
 import { ProjectsMenu } from "./ProjectsMenu";
-import { JobsMenu } from "./JobsMenu";
 import { LogoIcon } from "../LogoIcon";
 import { Button, LinkButton } from "../primitives/Buttons";
 import { cn } from "~/utils/cn";
+import { Link } from "@remix-run/react";
 
 export function NavBar() {
   return (
-    <div className="z-50 flex h-[3.6rem] w-full items-center gap-2 border-b border-slate-800 bg-slate-950 py-1 pl-2 pr-2.5">
-      <div className="hidden items-center lg:flex">
-        <ProjectsMenu />
-        <JobsMenu />
+    <div className="z-50 flex w-full items-center justify-between gap-2 border-b border-slate-800 bg-slate-950 py-1 pl-2 pr-2.5">
+      <div className="flex gap-2">
+        <Link to="/" className="p-2">
+          <LogoIcon className="h-5 w-5" />
+        </Link>
+        <div className="hidden items-center md:flex">
+          <ProjectsMenu />
+        </div>
+        <MobileDropdownMenu />
       </div>
-      <LogoIcon className="ml-1" />
-      <MobileDropdownMenu />
       <div className="hidden items-center gap-2 sm:flex">
         <LinkButton
           to="https://docs.trigger.dev"

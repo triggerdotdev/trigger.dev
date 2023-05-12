@@ -43,36 +43,18 @@ export function OrganizationsSideMenu() {
 
   let items: SideMenuItem[] = [
     {
-      name: "Workflows",
+      name: "Jobs",
       icon: <ArrowsRightLeftIcon className={iconStyle} />,
       to: `/orgs/${currentOrganization.slug}`,
       end: true,
     },
     {
-      name: "API Keys",
-      icon: <KeyIcon className={iconStyle} />,
-      to: `/orgs/${currentOrganization.slug}/environments`,
+      name: "API Integrations",
+      icon: <SquaresPlusIcon className={iconStyle} />,
+      to: `/orgs/${currentOrganization.slug}/integrations`,
       end: false,
     },
   ];
-
-  if (currentOrganization.workflows.length > 0) {
-    items = [
-      ...items,
-      {
-        name: "Repositories",
-        icon: <CloudIcon className={iconStyle} />,
-        to: `/orgs/${currentOrganization.slug}/projects`,
-        end: false,
-      },
-      {
-        name: "API Integrations",
-        icon: <SquaresPlusIcon className={iconStyle} />,
-        to: `/orgs/${currentOrganization.slug}/integrations`,
-        end: false,
-      },
-    ];
-  }
 
   return (
     <SideMenu

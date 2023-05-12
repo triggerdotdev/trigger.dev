@@ -1,5 +1,13 @@
 import { cn } from "~/utils/cn";
 
+export function AppContainer({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="grid h-full w-full grid-rows-[2.75rem_auto]">
+      {children}
+    </div>
+  );
+}
+
 export function AppLayoutThreeCol({ children }: { children: React.ReactNode }) {
   return (
     <div className="grid h-full w-full grid-cols-[3.5rem_auto]">{children}</div>

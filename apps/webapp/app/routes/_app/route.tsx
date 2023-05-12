@@ -4,6 +4,8 @@ import type { LoaderArgs } from "@remix-run/server-runtime";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { ImpersonationBanner } from "~/components/ImpersonationBanner";
 import { NoMobileOverlay } from "~/components/NoMobileOverlay";
+import { AppContainer } from "~/components/layout/AppLayout";
+import { NavBar } from "~/components/navigation/NavBar";
 import { Header1 } from "~/components/primitives/Headers";
 import { getOrganizations } from "~/models/organization.server";
 
@@ -36,20 +38,16 @@ export const shouldRevalidate: ShouldRevalidateFunction = (options) => {
 export default function App() {
   const { impersonationId } = useTypedLoaderData<typeof loader>();
 
-  if (impersonationId) {
-    return (
-      <>
-        <ImpersonationBanner impersonationId={impersonationId} />
-        <NoMobileOverlay />
-        <Outlet />
-      </>
-    );
-  }
-
   return (
     <>
+      {impersonationId && (
+        <ImpersonationBanner impersonationId={impersonationId} />
+      )}
       <NoMobileOverlay />
-      <Outlet />
+      <AppContainer>
+        <NavBar />
+        <Outlet />
+      </AppContainer>
     </>
   );
 }
