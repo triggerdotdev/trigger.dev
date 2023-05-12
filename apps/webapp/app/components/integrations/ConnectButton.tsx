@@ -133,15 +133,13 @@ export function ConnectButton({
               type="submit"
               className="flex gap-2"
               disabled={transition.state !== "idle"}
-              children={
-                <>
-                  <NamedIcon name={api.identifier} className={"h-4 w-4"} />
-                  Connect to ${api.name}
-                </>
-              }
-              size={"medium"}
-              theme={"primary"}
-            />
+              variant="primary/medium"
+            >
+              <>
+                <NamedIcon name={api.identifier} className={"h-4 w-4"} />
+                Connect to ${api.name}
+              </>
+            </Button>
           </div>
         </fetcher.Form>
       </SheetContent>

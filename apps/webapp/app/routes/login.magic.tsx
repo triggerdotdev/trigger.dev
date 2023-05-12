@@ -126,20 +126,20 @@ export default function LoginMagicLinkPage() {
                         name="action"
                         value="send"
                         type="submit"
-                        children="Sending..."
-                        size={"small"}
-                        theme={"primary"}
-                      />
+                        variant="primary/small"
+                      >
+                        Sending…
+                      </Button>
                     ) : (
                       <Button
                         className="mt-2 flex w-full !max-w-full py-3"
                         name="action"
                         value="send"
                         type="submit"
-                        children="Send a magic link"
-                        size={"small"}
-                        theme={"secondary"}
-                      />
+                        variant="secondary/small"
+                      >
+                        Send a magic link
+                      </Button>
                     )}
                   </div>
                   <Link

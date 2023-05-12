@@ -13,12 +13,9 @@ export function NoMobileOverlay() {
           <Paragraph>
             Trigger.dev is currently only available on desktop.
           </Paragraph>
-          <LinkButton
-            to="https://trigger.dev"
-            children="Back Home"
-            size="medium"
-            theme="primary"
-          />
+          <LinkButton to="https://trigger.dev" variant="primary/medium">
+            Back Home
+          </LinkButton>
         </div>
       </div>
     </>

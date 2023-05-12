@@ -23,10 +23,10 @@ export function ImpersonationBanner({
         <Button
           type="submit"
           className="!text-slate-700 transition hover:!text-slate-900"
-          children="Stop impersonating"
-          size="small"
-          theme="secondary"
-        />
+          variant="secondary/small"
+        >
+          Stop impersonating
+        </Button>
       </Form>
     </div>
   );

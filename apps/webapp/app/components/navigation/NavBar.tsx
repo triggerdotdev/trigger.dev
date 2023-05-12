@@ -34,18 +34,18 @@ export function NavBar() {
       <div className="hidden items-center gap-2 sm:flex">
         <LinkButton
           to="https://docs.trigger.dev"
-          children="Documentation"
-          size="medium"
-          theme="secondary"
+          variant="secondary/medium"
           LeadingIcon={ArrowTopRightOnSquareIcon}
-        />
+        >
+          Documentation
+        </LinkButton>
         <Button
-          children="Send us feedback"
-          size="medium"
-          theme="secondary"
+          variant="secondary/medium"
           data-attr="posthog-feedback-button"
           LeadingIcon={ChatBubbleLeftRightIcon}
-        />
+        >
+          Send us feedback
+        </Button>
       </div>
     </div>
   );

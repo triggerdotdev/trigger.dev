@@ -104,10 +104,10 @@ export default function AdminDashboardRoute() {
                         name="action"
                         value="impersonate"
                         className="mr-2"
-                        children="Impersonate"
-                        size={"small"}
-                        theme={"primary"}
-                      />
+                        variant="primary/small"
+                      >
+                        Impersonate
+                      </Button>
                     </Form>
                   </td>
                 </tr>

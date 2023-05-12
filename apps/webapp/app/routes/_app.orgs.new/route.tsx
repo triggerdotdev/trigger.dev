@@ -97,18 +97,18 @@ export default function NewOrganizationPage() {
               <LinkButton
                 to="/"
                 className="rounded py-2 px-4"
-                children="Cancel"
-                size={"small"}
-                theme={"primary"}
-              />
+                variant="primary/small"
+              >
+                Cancel
+              </LinkButton>
 
               <Button
                 type="submit"
                 className="rounded py-2 px-4"
-                children="Create Organization"
-                size={"small"}
-                theme={"primary"}
-              />
+                variant="primary/small"
+              >
+                Create Organization
+              </Button>
             </div>
           </Form>
         </div>

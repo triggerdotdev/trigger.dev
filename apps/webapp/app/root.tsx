@@ -68,12 +68,9 @@ export function ErrorBoundary({ error }: { error: any }) {
           <div className="flex flex-col items-center justify-center space-y-4">
             <h1>Oh no!</h1>
             <Paragraph>{JSON.stringify(error)}</Paragraph>
-            <LinkButton
-              to="/"
-              children="Back home"
-              size={"small"}
-              theme={"primary"}
-            />
+            <LinkButton to="/" variant="primary/small">
+              Back home
+            </LinkButton>
           </div>
           <Scripts />
         </div>

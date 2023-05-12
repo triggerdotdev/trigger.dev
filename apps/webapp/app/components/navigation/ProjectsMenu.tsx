@@ -51,30 +51,30 @@ export function ProjectsMenu() {
                   <LinkButton
                     key={project.id}
                     to={projectPath(organization, project)}
-                    text={project.name}
-                    size={"medium"}
-                    theme={"secondary"}
+                    variant="secondary/medium"
                     LeadingIcon={FolderIcon}
-                  />
+                  >
+                    {project.name}
+                  </LinkButton>
                 ))}
                 <LinkButton
                   to={newProjectPath(organization)}
-                  text="New Project"
-                  size={"medium"}
-                  theme={"secondary"}
+                  variant="secondary/medium"
                   LeadingIcon={PlusIcon}
-                />
+                >
+                  New Project
+                </LinkButton>
               </div>
             </div>
           ))}
           <div className="border-t border-slate-700">
             <LinkButton
               to={newOrganizationPath()}
-              text="New Organization"
-              size={"medium"}
-              theme={"secondary"}
+              variant="secondary/medium"
               LeadingIcon={PlusIcon}
-            />
+            >
+              New Organization
+            </LinkButton>
           </div>
         </PopoverContent>
       </Popover>
