@@ -13,6 +13,7 @@ import { Paragraph } from "~/components/primitives/Paragraph";
 import { Header1, Header3 } from "~/components/primitives/Headers";
 import { SimpleTooltip } from "~/components/primitives/Tooltip";
 import { newOrganizationPath, organizationPath } from "~/utils/pathBuilder";
+import { MainContainer } from "~/components/layout/AppLayout";
 
 export default function AppLayout() {
   const organizations = useOrganizations();
@@ -20,8 +21,7 @@ export default function AppLayout() {
 
   return (
     <>
-      <div>
-        {/* <Header1 context="workflows" /> */}
+      <MainContainer>
         <div className="w-full overflow-auto">
           <div className="mt-28 flex flex-col items-center justify-center">
             <Header1>Your Organizations</Header1>
@@ -68,7 +68,7 @@ export default function AppLayout() {
             />
           </div>
         </div>
-      </div>
+      </MainContainer>
     </>
   );
 }
