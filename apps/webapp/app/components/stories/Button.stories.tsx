@@ -3,7 +3,11 @@ import {
   ArrowRightIcon,
   ExclamationTriangleIcon,
 } from "@heroicons/react/20/solid";
-import { ArrowUturnLeftIcon, LightBulbIcon } from "@heroicons/react/24/solid";
+import {
+  ArrowUturnLeftIcon,
+  LightBulbIcon,
+  NoSymbolIcon,
+} from "@heroicons/react/24/solid";
 import type { Meta, StoryObj } from "@storybook/react";
 import { withDesign } from "storybook-addon-designs";
 import { Button } from "../primitives/Buttons";
@@ -40,7 +44,7 @@ function ButtonList({ primary }: { primary: string }) {
   return (
     <div>
       <Header1 className="mb-2">Small buttons</Header1>
-      <div className="grid grid-cols-6">
+      <div className="grid grid-cols-7">
         <div className="flex flex-col items-start gap-2">
           <Header3 className="mb-1 uppercase">Basic</Header3>
           <Button variant="primary/small">Primary button</Button>
@@ -109,6 +113,18 @@ function ButtonList({ primary }: { primary: string }) {
           </Button>
         </div>
         <div className="flex flex-col items-start gap-2">
+          <Header3 className="mb-1 uppercase">Loading</Header3>
+          <Button variant="primary/small" LeadingIcon="spinner" disabled>
+            Loading Primary…
+          </Button>
+          <Button variant="secondary/small" LeadingIcon="spinner" disabled>
+            Loading Secondary…
+          </Button>
+          <Button variant="tertiary/small" LeadingIcon="spinner" disabled>
+            Loading Tertiary…
+          </Button>
+        </div>
+        <div className="flex flex-col items-start gap-2">
           <Header3 className="mb-1 uppercase">Icon only</Header3>
           <Button variant="primary/small" LeadingIcon={ArrowRightIcon} />
           <Button variant="secondary/small" LeadingIcon={LightBulbIcon} />
@@ -119,8 +135,8 @@ function ButtonList({ primary }: { primary: string }) {
           />
         </div>
       </div>
-      <Header1 className="mb-2 mt-6">Medium buttons</Header1>
-      <div className="grid grid-cols-6">
+      <Header1 className="mb-2 mt-8">Medium buttons</Header1>
+      <div className="grid grid-cols-7">
         <div className="flex flex-col items-start gap-2">
           <Header3 className="mb-1 uppercase">Basic</Header3>
           <Button variant="primary/medium">Primary button</Button>
@@ -189,6 +205,18 @@ function ButtonList({ primary }: { primary: string }) {
           </Button>
         </div>
         <div className="flex flex-col items-start gap-2">
+          <Header3 className="mb-1 uppercase">Loading</Header3>
+          <Button variant="primary/medium" LeadingIcon="spinner" disabled>
+            Loading Primary…
+          </Button>
+          <Button variant="secondary/medium" LeadingIcon="spinner" disabled>
+            Loading Secondary…
+          </Button>
+          <Button variant="tertiary/medium" LeadingIcon="spinner" disabled>
+            Loading Tertiary…
+          </Button>
+        </div>
+        <div className="flex flex-col items-start gap-2">
           <Header3 className="mb-1 uppercase">Icon only</Header3>
           <Button variant="primary/medium" LeadingIcon={ArrowRightIcon} />
           <Button variant="secondary/medium" LeadingIcon={LightBulbIcon} />
@@ -199,7 +227,7 @@ function ButtonList({ primary }: { primary: string }) {
           />
         </div>
       </div>
-      <Header1 className="mb-2 mt-6">Large buttons</Header1>
+      <Header1 className="mb-2 mt-8">Large buttons</Header1>
       <div className="grid grid-cols-1 gap-2">
         <div className="flex flex-col items-start">
           <Button variant="primary/large" fullWidth>
@@ -217,7 +245,7 @@ function ButtonList({ primary }: { primary: string }) {
           </Button>
         </div>
       </div>
-      <Header1 className="mb-2 mt-6">Menu items</Header1>
+      <Header1 className="mb-2 mt-8">Menu items</Header1>
       <div className="grid grid-cols-1">
         <div className="flex flex-col items-start gap-1 rounded border border-slate-800 bg-slate-850 p-1">
           <Button
@@ -260,10 +288,28 @@ function ButtonList({ primary }: { primary: string }) {
             variant="menu-item"
             fullWidth
             textAlignLeft
+            LeadingIcon="spinner"
+          >
+            In Progress
+          </Button>
+          <Button
+            variant="menu-item"
+            fullWidth
+            textAlignLeft
             LeadingIcon={ArrowUturnLeftIcon}
             leadingIconClassName="text-dimmed"
           >
             Latest run payload
+          </Button>
+          <Button
+            variant="menu-item"
+            fullWidth
+            textAlignLeft
+            LeadingIcon={NoSymbolIcon}
+            leadingIconClassName="text-dimmed"
+            disabled
+          >
+            Disabled menu item
           </Button>
         </div>
       </div>
