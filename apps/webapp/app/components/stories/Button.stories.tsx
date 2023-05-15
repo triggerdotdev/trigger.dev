@@ -45,7 +45,7 @@ function ButtonList({ primary }: { primary: string }) {
   return (
     <div>
       <Header1 className="mb-2">Small buttons</Header1>
-      <div className="grid grid-cols-7">
+      <div className="grid grid-cols-5 gap-8 border-b border-slate-700 pb-8">
         <div className="flex flex-col items-start gap-2">
           <Header3 className="mb-1 uppercase">Basic</Header3>
           <Button variant="primary/small">Primary button</Button>
@@ -124,6 +124,24 @@ function ButtonList({ primary }: { primary: string }) {
           <Button variant="tertiary/small" LeadingIcon="spinner" disabled>
             Loading Tertiary…
           </Button>
+          <Button variant="danger/small" LeadingIcon="spinner-white" disabled>
+            Loading Danger…
+          </Button>
+        </div>
+        <div className="flex flex-col items-start gap-2">
+          <Header3 className="mb-1 uppercase">Disabled</Header3>
+          <Button variant="primary/small" disabled>
+            Primary button
+          </Button>
+          <Button variant="secondary/small" disabled>
+            Secondary button
+          </Button>
+          <Button variant="tertiary/small" disabled>
+            Tertiary button
+          </Button>
+          <Button variant="danger/small" disabled>
+            Danger button
+          </Button>
         </div>
         <div className="flex flex-col items-start gap-2">
           <Header3 className="mb-1 uppercase">Icon only</Header3>
@@ -137,7 +155,7 @@ function ButtonList({ primary }: { primary: string }) {
         </div>
       </div>
       <Header1 className="mb-2 mt-8">Medium buttons</Header1>
-      <div className="grid grid-cols-7">
+      <div className="grid grid-cols-5 gap-8 border-b border-slate-700 pb-8">
         <div className="flex flex-col items-start gap-2">
           <Header3 className="mb-1 uppercase">Basic</Header3>
           <Button variant="primary/medium">Primary button</Button>
@@ -198,10 +216,10 @@ function ButtonList({ primary }: { primary: string }) {
           <Button LeadingIcon="github" variant="primary/medium">
             Connect to GitHub
           </Button>
-          <Button TrailingIcon="slack" variant="primary/medium">
+          <Button TrailingIcon="slack" variant="secondary/medium">
             Connect to Slack
           </Button>
-          <Button LeadingIcon="warning" variant="primary/medium">
+          <Button TrailingIcon="warning" variant="secondary/medium">
             Connect to Slack
           </Button>
         </div>
@@ -216,6 +234,24 @@ function ButtonList({ primary }: { primary: string }) {
           <Button variant="tertiary/medium" LeadingIcon="spinner" disabled>
             Loading Tertiary…
           </Button>
+          <Button variant="danger/medium" LeadingIcon="spinner-white" disabled>
+            Loading Danger…
+          </Button>
+        </div>
+        <div className="flex flex-col items-start gap-2">
+          <Header3 className="mb-1 uppercase">Disabled</Header3>
+          <Button variant="primary/medium" disabled>
+            Primary button
+          </Button>
+          <Button variant="secondary/medium" disabled>
+            Secondary button
+          </Button>
+          <Button variant="tertiary/medium" disabled>
+            Tertiary button
+          </Button>
+          <Button variant="danger/medium" disabled>
+            Danger button
+          </Button>
         </div>
         <div className="flex flex-col items-start gap-2">
           <Header3 className="mb-1 uppercase">Icon only</Header3>
@@ -229,21 +265,23 @@ function ButtonList({ primary }: { primary: string }) {
         </div>
       </div>
       <Header1 className="mb-2 mt-8">Large buttons</Header1>
-      <div className="grid grid-cols-1 gap-2">
-        <div className="flex flex-col items-start">
-          <Button variant="primary/large" fullWidth>
-            <NamedIcon name={"github"} className={"mr-1.5 h-4 w-4"} />
-            Continue with GitHub
-          </Button>
-        </div>
-        <div className="flex flex-col items-start">
-          <Button variant="secondary/large" fullWidth>
-            <NamedIcon
-              name={"envelope"}
-              className={"mr-1.5 h-4 w-4 transition group-hover:text-bright"}
-            />
-            Continue with Email
-          </Button>
+      <div className="grid grid-cols-1 gap-8 border-b border-slate-700 pb-8">
+        <div className="flex flex-col gap-2">
+          <div className="flex flex-col items-start">
+            <Button variant="primary/large" fullWidth>
+              <NamedIcon name={"github"} className={"mr-1.5 h-4 w-4"} />
+              Continue with GitHub
+            </Button>
+          </div>
+          <div className="flex flex-col items-start">
+            <Button variant="secondary/large" fullWidth>
+              <NamedIcon
+                name={"envelope"}
+                className={"mr-1.5 h-4 w-4 transition group-hover:text-bright"}
+              />
+              Continue with Email
+            </Button>
+          </div>
         </div>
       </div>
       <Header1 className="mb-2 mt-8">Menu items</Header1>
