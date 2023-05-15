@@ -27,14 +27,17 @@ type ParagraphProps = {
   variant?: keyof typeof paragraphVariants;
   className?: string;
   children: React.ReactNode;
-};
+} & React.HTMLAttributes<HTMLParagraphElement>;
 
 export function Paragraph({
   variant = "base",
   className,
   children,
+  ...props
 }: ParagraphProps) {
   return (
-    <p className={cn(paragraphVariants[variant], className)}>{children}</p>
+    <p className={cn(paragraphVariants[variant], className)} {...props}>
+      {children}
+    </p>
   );
 }
