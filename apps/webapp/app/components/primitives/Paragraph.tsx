@@ -41,3 +41,20 @@ export function Paragraph({
     </p>
   );
 }
+
+type TextLinkProps = {
+  href: string;
+  children: React.ReactNode;
+} & React.HTMLAttributes<HTMLAnchorElement>;
+
+export function TextLink({ href, children, ...props }: TextLinkProps) {
+  return (
+    <a
+      href={href}
+      className="text-indigo-500 transition hover:text-indigo-400"
+      {...props}
+    >
+      {children}
+    </a>
+  );
+}

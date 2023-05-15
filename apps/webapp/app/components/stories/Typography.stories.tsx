@@ -1,7 +1,7 @@
 import type { Meta, StoryObj } from "@storybook/react";
 import { withDesign } from "storybook-addon-designs";
 import { Header1, Header2, Header3 } from "../primitives/Headers";
-import { Paragraph } from "../primitives/Paragraph";
+import { Paragraph, TextLink } from "../primitives/Paragraph";
 
 const meta: Meta<typeof Typography> = {
   title: "Primitives/Typography",
@@ -61,6 +61,19 @@ function Typography({ header1, header2, header3, paragraph }: TypographyProps) {
         <Paragraph variant="extra-extra-small/caps">{paragraph}</Paragraph>
         <Paragraph variant="extra-extra-small/bright/caps">
           {paragraph}
+        </Paragraph>
+      </div>
+      <div>
+        <Header2>Text Link</Header2>
+        <Paragraph>
+          This is an <TextLink href="#">anchor tag component</TextLink> called
+          TextLink. It takes an href and children.
+        </Paragraph>
+        <Paragraph>
+          Learn how to get started quickly using the included some example Jobs
+          which are great as a quick start project. You can check them out in
+          your project here in triggerdotdev/jobs/examples. You can also see the
+          examples in more detail in the docs.
         </Paragraph>
       </div>
       <div>
