@@ -6,12 +6,19 @@ import { NamedIcon } from "./NamedIcon";
 export function FormTitle({
   children,
   LeadingIcon,
+  divide = true,
 }: {
   children: React.ReactNode;
   LeadingIcon?: IconNames;
+  divide?: boolean;
 }) {
   return (
-    <div className="mb-4 flex items-center gap-2 border-b border-slate-800 pb-2">
+    <div
+      className={cn(
+        "mb-4 flex items-center gap-2 pb-2",
+        divide ? "border-b border-slate-800" : ""
+      )}
+    >
       {LeadingIcon && (
         <NamedIcon
           name={LeadingIcon}
