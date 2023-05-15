@@ -4,6 +4,7 @@ import simplur from "simplur";
 import { Badge } from "~/components/primitives/Badge";
 import { LinkButton } from "~/components/primitives/Buttons";
 import { Header2 } from "~/components/primitives/Headers";
+import { NamedIcon } from "~/components/primitives/NamedIcon";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import type { MatchedOrganization } from "~/hooks/useOrganizations";
 import { cn } from "~/utils/cn";
@@ -29,8 +30,9 @@ export function OrganizationGridItem({
           to={organizationPath(organization)}
           className="flex gap-4 rounded-md border-b border-slate-850 px-2 pb-4 pt-2 hover:bg-slate-500/10"
         >
-          <BuildingOffice2Icon
-            className="h-10 w-10 flex-none text-fuchsia-600"
+          <NamedIcon
+            name="organization"
+            className="h-10 w-10 flex-none"
             aria-hidden="true"
           />
           <div className="flex-1">
