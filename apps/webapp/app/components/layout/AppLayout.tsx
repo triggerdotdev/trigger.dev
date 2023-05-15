@@ -35,3 +35,15 @@ export function MainContainer({ children }: { children: React.ReactNode }) {
     </div>
   );
 }
+
+export function MainCenteredContainer({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="h-full w-full">
+      <div className="mx-auto mt-[30vh] max-w-xs">{children}</div>
+    </div>
+  );
+}

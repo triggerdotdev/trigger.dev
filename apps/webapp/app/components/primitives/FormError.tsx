@@ -1,9 +1,15 @@
 import type { z } from "zod";
 import { Paragraph } from "./Paragraph";
 
-export function FormError({ children }: { children: React.ReactNode }) {
+export function FormError({
+  children,
+  id,
+}: {
+  children: React.ReactNode;
+  id?: string;
+}) {
   return (
-    <Paragraph variant="small" className="text-red-500">
+    <Paragraph id={id} variant="small" className="text-red-500">
       {children}
     </Paragraph>
   );

@@ -6,6 +6,9 @@ import {
 } from "@heroicons/react/20/solid";
 import {
   CheckIcon,
+  ArrowLeftIcon,
+  ArrowRightIcon,
+  BuildingOffice2Icon,
   EnvelopeIcon,
   FolderIcon,
   GlobeAltIcon,
@@ -16,14 +19,14 @@ import { cn } from "~/utils/cn";
 import { Spinner } from "./Spinner";
 
 const icons = {
-  spinner: (className: string) => (
-    <Spinner className={className} color="blue" />
+  "arrow-right": (className: string) => (
+    <ArrowRightIcon className={cn("text-white", className)} />
   ),
-  spinnerWhite: (className: string) => (
-    <Spinner className={className} color="white" />
+  "arrow-left": (className: string) => (
+    <ArrowLeftIcon className={cn("text-white", className)} />
   ),
-  warning: (className: string) => (
-    <ExclamationTriangleIcon className={cn("text-amber-400", className)} />
+  check: (className: string) => (
+    <CheckIcon className={cn("text-dimmed", className)} />
   ),
   error: (className: string) => (
     <ExclamationCircleIcon className={cn("text-rose-500", className)} />
@@ -34,24 +37,31 @@ const icons = {
   folder: (className: string) => (
     <FolderIcon className={cn("text-indigo-600", className)} />
   ),
-  plus: (className: string) => (
-    <PlusIcon className={cn("text-green-600", className)} />
-  ),
-  plusSmall: (className: string) => (
-    <PlusSmallIcon className={cn("text-green-600", className)} />
+  envelope: (className: string) => (
+    <EnvelopeIcon className={cn("text-dimmed", className)} />
   ),
   globe: (className: string) => (
     <GlobeAltIcon className={cn("text-fuchsia-500", className)} />
   ),
-  envelope: (className: string) => (
-    <EnvelopeIcon className={cn("text-dimmed", className)} />
+  organization: (className: string) => (
+    <BuildingOffice2Icon className={cn("text-fuchsia-600", className)} />
   ),
-  check: (className: string) => (
-    <CheckIcon className={cn("text-dimmed", className)} />
+  spinner: (className: string) => (
+    <Spinner className={className} color="blue" />
   ),
-  slack: (className: string) => (
-    <img src={`/integrations/slack.png`} className={className} alt="Slack" />
+  "spinner-white": (className: string) => (
+    <Spinner className={className} color="white" />
   ),
+  plus: (className: string) => (
+    <PlusIcon className={cn("text-green-600", className)} />
+  ),
+  "plus-small": (className: string) => (
+    <PlusSmallIcon className={cn("text-green-600", className)} />
+  ),
+  warning: (className: string) => (
+    <ExclamationTriangleIcon className={cn("text-amber-400", className)} />
+  ),
+  //APIs
   airtable: (className: string) => (
     <img
       src={`/integrations/airtable.png`}
@@ -62,9 +72,13 @@ const icons = {
   github: (className: string) => (
     <img src={`/integrations/github.png`} className={className} alt="GitHub" />
   ),
+  slack: (className: string) => (
+    <img src={`/integrations/slack.png`} className={className} alt="Slack" />
+  ),
 };
 
 export type IconNames = keyof typeof icons;
+export const iconNames = Object.keys(icons) as IconNames[];
 
 export function NamedIcon({
   name,

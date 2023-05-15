@@ -74,25 +74,19 @@ export function getOrganizations({ userId }: { userId: User["id"] }) {
   });
 }
 
-export async function createFirstOrganization(user: User) {
-  return await createOrganization({
-    title: "Personal Workspace",
-    userId: user.id,
-    desiredSlug: generateTwoRandomWords(),
-  });
-}
-
 export async function createOrganization(
   {
     title,
     userId,
     desiredSlug,
+    projectName,
   }: Pick<Organization, "title"> & {
     userId: User["id"];
     desiredSlug?: string;
+    projectName: string;
   },
   attemptCount = 0
-): Promise<Organization> {
+): Promise<Organization & { projects: Project[] }> {
   if (desiredSlug === undefined) {
     desiredSlug = slug(title);
   }
@@ -115,6 +109,7 @@ export async function createOrganization(
         title,
         userId,
         desiredSlug,
+        projectName,
       },
       attemptCount + 1
     );
@@ -132,7 +127,7 @@ export async function createOrganization(
       },
       projects: {
         create: {
-          name: "My Project",
+          name: projectName,
         },
       },
     },
