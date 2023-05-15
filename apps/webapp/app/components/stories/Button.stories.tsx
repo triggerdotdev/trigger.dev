@@ -41,6 +41,7 @@ Basic.parameters = {
 
 function ButtonList({ primary }: { primary: string }) {
   const isSelected = true;
+  const disabled = true;
   return (
     <div>
       <Header1 className="mb-2">Small buttons</Header1>
@@ -274,7 +275,7 @@ function ButtonList({ primary }: { primary: string }) {
               isSelected ? "bg-slate-750 group-hover:bg-slate-750" : undefined
             }
           >
-            Item selected
+            Item enabled
           </Button>
           <Button
             variant="menu-item"
@@ -308,6 +309,7 @@ function ButtonList({ primary }: { primary: string }) {
             LeadingIcon={NoSymbolIcon}
             leadingIconClassName="text-dimmed"
             disabled
+            className={disabled ? "group-hover:bg-transparent" : undefined}
           >
             Disabled menu item
           </Button>
