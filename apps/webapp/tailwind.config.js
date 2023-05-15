@@ -1,13 +1,21 @@
 /** @type {import('tailwindcss').Config} */
 const colors = require("tailwindcss/colors");
 
+const extraSlates = {
+  1000: "#060F1E",
+  950: "#0A1423",
+  850: "#141D2E",
+  750: "#293649",
+  650: "#3C4B62",
+};
+
 const background = "hsl(224 71% 4%)";
 const foreground = "hsl(213 31% 91%)";
 
 const muted = "hsl(223 47% 11%)";
 const mutedForeground = "hsl(215.4 16.3% 56.9%)";
 
-const popover = "hsl(224 71% 4%)";
+const popover = extraSlates[850];
 const popoverForeground = "hsl(215 20.2% 65.1%)";
 
 const card = "hsl(0 0% 100%)";
@@ -104,13 +112,7 @@ module.exports = {
           DEFAULT: card,
           foreground: cardForeground,
         },
-        slate: {
-          1000: "#060F1E",
-          950: "#0A1423",
-          850: "#141D2E",
-          750: "#293649",
-          650: "#3C4B62",
-        },
+        slate: extraSlates,
         acid: {
           400: "#F1FF98",
           500: "#E7FF52",
