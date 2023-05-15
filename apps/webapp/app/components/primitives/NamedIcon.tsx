@@ -13,8 +13,15 @@ import {
   PlusSmallIcon,
 } from "@heroicons/react/24/solid";
 import { cn } from "~/utils/cn";
+import { Spinner } from "./Spinner";
 
 const icons = {
+  spinner: (className: string) => (
+    <Spinner className={className} color="blue" />
+  ),
+  spinnerWhite: (className: string) => (
+    <Spinner className={className} color="white" />
+  ),
   warning: (className: string) => (
     <ExclamationTriangleIcon className={cn("text-amber-400", className)} />
   ),

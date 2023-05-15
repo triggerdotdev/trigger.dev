@@ -114,7 +114,7 @@ function ButtonList({ primary }: { primary: string }) {
         </div>
         <div className="flex flex-col items-start gap-2">
           <Header3 className="mb-1 uppercase">Loading</Header3>
-          <Button variant="primary/small" LeadingIcon="spinner" disabled>
+          <Button variant="primary/small" LeadingIcon="spinnerWhite" disabled>
             Loading Primary…
           </Button>
           <Button variant="secondary/small" LeadingIcon="spinner" disabled>
@@ -206,7 +206,7 @@ function ButtonList({ primary }: { primary: string }) {
         </div>
         <div className="flex flex-col items-start gap-2">
           <Header3 className="mb-1 uppercase">Loading</Header3>
-          <Button variant="primary/medium" LeadingIcon="spinner" disabled>
+          <Button variant="primary/medium" LeadingIcon="spinnerWhite" disabled>
             Loading Primary…
           </Button>
           <Button variant="secondary/medium" LeadingIcon="spinner" disabled>
