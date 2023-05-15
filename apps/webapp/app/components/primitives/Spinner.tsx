@@ -8,7 +8,7 @@ export function Spinner({ className }: { className?: string }) {
       viewBox="0 0 20 20"
       fill="none"
       xmlns="http://www.w3.org/2000/svg"
-      className={cn("animate-spin", className)}
+      className={cn("animate-spin motion-reduce:hidden", className)}
     >
       <rect
         x="2"
