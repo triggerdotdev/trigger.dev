@@ -75,16 +75,14 @@ const variant = {
     button:
       "h-10 px-2 text-sm font-medium bg-indigo-600 hover:bg-indigo-500/90 disabled:opacity-50",
     icon: "h-5",
-    shortcut:
-      "text-[0.6rem] leading-[1.13rem] min-w-[20px] px-1 rounded-[3px] ml-1.5 -mr-0.5 border border-bright/40 text-bright group-hover:border-bright/60 transition",
+    shortcut: undefined,
   },
   "secondary/large": {
     textColor: "text-dimmed",
     button:
       "h-10 px-2 text-sm text-dimmed hover:text-bright transition font-medium bg-slate-800 hover:bg-slate-700/70 disabled:opacity-50",
     icon: "h-5",
-    shortcut:
-      "text-[0.6rem] leading-[1.13rem] min-w-[20px] px-1 rounded-[3px] ml-1.5 -mr-0.5 border border-dimmed/40 text-dimmed group-hover:border-dimmed group-hover:text-bright transition",
+    shortcut: undefined,
   },
   "menu-item": {
     textColor: "text-bright",

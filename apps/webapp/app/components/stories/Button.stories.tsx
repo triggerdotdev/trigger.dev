@@ -246,7 +246,7 @@ function ButtonList({ primary }: { primary: string }) {
               isSelected ? "bg-slate-750 group-hover:bg-slate-750" : undefined
             }
           >
-            Items selected
+            Item selected
           </Button>
           <Button
             variant="menu-item"
