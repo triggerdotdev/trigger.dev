@@ -40,7 +40,7 @@ export function ProjectsMenu() {
         <PopoverArrowTrigger isOpen={isOpen}>
           {currentProject?.name ?? "Select a project"}
         </PopoverArrowTrigger>
-        <PopoverContent className="w-80 p-0">
+        <PopoverContent className="w-80 p-0" align="start">
           {organizations.map((organization) => (
             <div key={organization.id}>
               <PopoverSectionHeader title={organization.title} />

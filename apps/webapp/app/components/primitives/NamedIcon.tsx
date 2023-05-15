@@ -14,16 +14,26 @@ import {
   GlobeAltIcon,
   PlusIcon,
   PlusSmallIcon,
+  WrenchScrewdriverIcon,
+  SquaresPlusIcon,
+  KeyIcon,
+  UserGroupIcon,
+  CreditCardIcon,
 } from "@heroicons/react/24/solid";
 import { cn } from "~/utils/cn";
 import { Spinner } from "./Spinner";
+import { UserProfilePhoto } from "../UserProfilePhoto";
 
 const icons = {
+  account: (className: string) => <UserProfilePhoto className={className} />,
   "arrow-right": (className: string) => (
     <ArrowRightIcon className={cn("text-white", className)} />
   ),
   "arrow-left": (className: string) => (
     <ArrowLeftIcon className={cn("text-white", className)} />
+  ),
+  billing: (className: string) => (
+    <CreditCardIcon className={cn("text-teal-500", className)} />
   ),
   check: (className: string) => (
     <CheckIcon className={cn("text-dimmed", className)} />
@@ -40,11 +50,26 @@ const icons = {
   envelope: (className: string) => (
     <EnvelopeIcon className={cn("text-dimmed", className)} />
   ),
+  environment: (className: string) => (
+    <KeyIcon className={cn("text-yellow-500", className)} />
+  ),
   globe: (className: string) => (
     <GlobeAltIcon className={cn("text-fuchsia-600", className)} />
   ),
+  integration: (className: string) => (
+    <SquaresPlusIcon className={cn("text-teal-500", className)} />
+  ),
+  job: (className: string) => (
+    <WrenchScrewdriverIcon className={cn("text-teal-500", className)} />
+  ),
   organization: (className: string) => (
     <BuildingOffice2Icon className={cn("text-fuchsia-600", className)} />
+  ),
+  plus: (className: string) => (
+    <PlusIcon className={cn("text-green-600", className)} />
+  ),
+  "plus-small": (className: string) => (
+    <PlusSmallIcon className={cn("text-green-600", className)} />
   ),
   spinner: (className: string) => (
     <Spinner className={className} color="blue" />
@@ -52,11 +77,8 @@ const icons = {
   "spinner-white": (className: string) => (
     <Spinner className={className} color="white" />
   ),
-  plus: (className: string) => (
-    <PlusIcon className={cn("text-green-600", className)} />
-  ),
-  "plus-small": (className: string) => (
-    <PlusSmallIcon className={cn("text-green-600", className)} />
+  team: (className: string) => (
+    <UserGroupIcon className={cn("text-blue-500", className)} />
   ),
   warning: (className: string) => (
     <ExclamationTriangleIcon className={cn("text-amber-400", className)} />

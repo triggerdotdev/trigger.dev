@@ -4,6 +4,10 @@ import type { Project } from "~/models/project.server";
 type OrgForPath = Pick<Organization, "slug">;
 type ProjectForPath = Pick<Project, "id">;
 
+export function accountPath() {
+  return `/account`;
+}
+
 export function organizationPath(organization: OrgForPath) {
   return `/orgs/${organizationParam(organization)}`;
 }
@@ -14,6 +18,14 @@ export function newOrganizationPath() {
 
 export function organizationIntegrationsPath(organization: OrgForPath) {
   return `${organizationPath(organization)}/integrations`;
+}
+
+export function organizationTeamPath(organization: OrgForPath) {
+  return `${organizationPath(organization)}/team`;
+}
+
+export function organizationBillingPath(organization: OrgForPath) {
+  return `${organizationPath(organization)}/team`;
 }
 
 export function projectPath(organization: OrgForPath, project: ProjectForPath) {

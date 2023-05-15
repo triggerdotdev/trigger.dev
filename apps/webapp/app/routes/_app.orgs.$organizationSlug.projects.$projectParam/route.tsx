@@ -5,7 +5,7 @@ import invariant from "tiny-invariant";
 import {
   ProjectSideMenu,
   SideMenuContainer,
-} from "~/components/navigation/SideMenu";
+} from "~/components/navigation/ProjectSideMenu";
 import { getProjectFromSlug } from "~/models/project.server";
 import { analytics } from "~/services/analytics.server";
 import { requireUserId } from "~/services/session.server";

@@ -1,3 +1,4 @@
+import { useLocation, useMatches } from "@remix-run/react";
 import type { UseDataFunctionReturn } from "remix-typedjson";
 import type { loader as projectLoader } from "~/routes/_app.orgs.$organizationSlug.projects.$projectParam/route";
 import { hydrateObject, useMatchesData } from "~/utils";
@@ -26,3 +27,13 @@ export function useCurrentProject() {
   if (result == null) return undefined;
   return result;
 }
+
+// export function useIsProjectImmediateChildPage() {
+//   const location = useLocation();
+
+//   location.
+
+//   return matchesData.some((matchData) => {
+//     return matchData.id.startsWith("routes/_app.orgs.$organizationSlug");
+//   });
+// }

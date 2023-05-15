@@ -31,9 +31,7 @@ export default function Page() {
             </LinkButton> */}
           </PageButtons>
         </PageTitleRow>
-        <PageDescription>
-          Create new Organizations and new Projects to help organize your Jobs.
-        </PageDescription>
+        <PageDescription>XX active Jobs</PageDescription>
       </PageHeader>
     </PageContainer>
   );
