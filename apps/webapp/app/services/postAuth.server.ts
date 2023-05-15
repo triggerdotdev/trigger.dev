@@ -1,4 +1,3 @@
-import { createFirstOrganization } from "~/models/organization.server";
 import type { User } from "~/models/user.server";
 import * as emailProvider from "~/services/email.server";
 import { analytics } from "./analytics.server";
@@ -14,7 +13,6 @@ export async function postAuthentication({
   isNewUser: boolean;
 }) {
   if (isNewUser) {
-    await createFirstOrganization(user);
     await emailProvider.scheduleWelcomeEmail(user);
 
     await workerQueue.enqueue("sendInternalEvent", {
