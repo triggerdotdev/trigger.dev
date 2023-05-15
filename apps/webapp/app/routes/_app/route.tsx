@@ -6,6 +6,7 @@ import { ImpersonationBanner } from "~/components/ImpersonationBanner";
 import { NoMobileOverlay } from "~/components/NoMobileOverlay";
 import { AppContainer } from "~/components/layout/AppLayout";
 import { NavBar } from "~/components/navigation/NavBar";
+import { useIsOrgChildPage } from "~/hooks/useIsOrgChildPage";
 import { getOrganizations } from "~/models/organization.server";
 
 import { getImpersonationId } from "~/services/impersonation.server";
@@ -36,6 +37,7 @@ export const shouldRevalidate: ShouldRevalidateFunction = (options) => {
 
 export default function App() {
   const { impersonationId } = useTypedLoaderData<typeof loader>();
+  const isOrgChildPage = useIsOrgChildPage();
 
   return (
     <>
@@ -43,7 +45,7 @@ export default function App() {
         <ImpersonationBanner impersonationId={impersonationId} />
       )}
       <NoMobileOverlay />
-      <AppContainer>
+      <AppContainer showBackgroundGradient={!isOrgChildPage}>
         <NavBar />
         <Outlet />
       </AppContainer>
