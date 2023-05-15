@@ -36,6 +36,7 @@ Basic.parameters = {
 };
 
 function ButtonList({ primary }: { primary: string }) {
+  const isSelected = true;
   return (
     <div>
       <Header1 className="mb-2">Small buttons</Header1>
@@ -202,7 +203,7 @@ function ButtonList({ primary }: { primary: string }) {
       <div className="grid grid-cols-1 gap-2">
         <div className="flex flex-col items-start">
           <Button variant="primary/large" fullWidth>
-            <NamedIcon name={"github"} className={"mr-2 h-5 w-5"} />
+            <NamedIcon name={"github"} className={"mr-1.5 h-4 w-4"} />
             Continue with GitHub
           </Button>
         </div>
@@ -210,7 +211,7 @@ function ButtonList({ primary }: { primary: string }) {
           <Button variant="secondary/large" fullWidth>
             <NamedIcon
               name={"envelope"}
-              className={"mr-2 h-5 w-5 transition group-hover:text-bright"}
+              className={"mr-1.5 h-4 w-4 transition group-hover:text-bright"}
             />
             Continue with Email
           </Button>
@@ -240,8 +241,12 @@ function ButtonList({ primary }: { primary: string }) {
             fullWidth
             textAlignLeft
             LeadingIcon="globe"
+            TrailingIcon={isSelected ? "check" : undefined}
+            className={
+              isSelected ? "bg-slate-750 group-hover:bg-slate-750" : undefined
+            }
           >
-            OAuth2 as a Bot
+            Items selected
           </Button>
           <Button
             variant="menu-item"

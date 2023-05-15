@@ -90,8 +90,7 @@ const variant = {
     textColor: "text-bright",
     button: "h-9 px-[5px] text-sm bg-transparent hover:bg-slate-800 transition",
     icon: "h-5",
-    shortcut:
-      "text-xxs font-medium py-0.25 min-w-[14px] rounded-[2px] px-0.5 ml-1 border border-bright/40 text-dimmed group-hover:border-bright/60 group-hover:text-bright transition",
+    shortcut: undefined,
   },
 };
 
@@ -137,9 +136,9 @@ function ButtonContent(props: ButtonContentPropsType) {
   return (
     <div
       className={cn(
-        className,
         fullWidth ? "flex" : "inline-flex",
-        btnClassName
+        btnClassName,
+        className
       )}
     >
       <div
