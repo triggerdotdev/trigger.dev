@@ -49,21 +49,15 @@ function PopoverArrowTrigger({
     <PopoverTrigger
       {...props}
       className={cn(
-        "group flex h-6 items-center gap-1 rounded px-2 text-dimmed transition hover:bg-slate-850 hover:text-bright",
+        "group flex h-6 items-center gap-1 rounded px-2 text-dimmed transition hover:bg-slate-850",
         className
       )}
     >
-      <Paragraph
-        variant="extra-small"
-        className="transition group-hover:text-bright"
-      >
+      <Paragraph variant="extra-small" className="transition ">
         {children}
       </Paragraph>
       <ChevronDownIcon
-        className={cn(
-          "h-3 w-3 transition group-hover:text-bright",
-          isOpen && "-rotate-180"
-        )}
+        className={cn("h-3 w-3 transition ", isOpen && "-rotate-180")}
       />
     </PopoverTrigger>
   );

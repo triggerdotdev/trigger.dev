@@ -6,6 +6,7 @@ import {
   ProjectSideMenu,
   SideMenuContainer,
 } from "~/components/navigation/ProjectSideMenu";
+import { ProjectsMenu } from "~/components/navigation/ProjectsMenu";
 import { getProjectFromSlug } from "~/models/project.server";
 import { analytics } from "~/services/analytics.server";
 import { requireUserId } from "~/services/session.server";
@@ -29,6 +30,10 @@ export const loader = async ({ request, params }: LoaderArgs) => {
   return typedjson({
     project,
   });
+};
+
+export const handle = {
+  breadcrumb: () => <ProjectsMenu />,
 };
 
 export default function Project() {

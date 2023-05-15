@@ -173,6 +173,7 @@
     "@testing-library/jest-dom": "^5.16.5",
     "@testing-library/react": "^13.4.0",
     "@testing-library/user-event": "^14.4.3",
+    "@total-typescript/ts-reset": "^0.4.2",
     "@trigger.dev/tailwind-config": "workspace:*",
     "@types/bcryptjs": "^2.4.2",
     "@types/compression": "^1.7.2",

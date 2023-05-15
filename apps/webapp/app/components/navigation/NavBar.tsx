@@ -3,15 +3,14 @@ import { BookOpenIcon } from "@heroicons/react/20/solid";
 import { ChatBubbleLeftRightIcon } from "@heroicons/react/24/solid";
 import { Link } from "@remix-run/react";
 import { Fragment } from "react";
-import { useCurrentOrganization } from "~/hooks/useOrganizations";
 import { cn } from "~/utils/cn";
 import { LogoIcon } from "../LogoIcon";
 import { BreadcrumbIcon } from "../primitives/BreadcrumbIcon";
 import { Button, LinkButton } from "../primitives/Buttons";
-import { ProjectsMenu } from "./ProjectsMenu";
+import { useBreadcrumbs } from "~/hooks/useBreadcrumbs";
 
 export function NavBar() {
-  const currentOrganization = useCurrentOrganization();
+  const breadcrumbs = useBreadcrumbs();
 
   return (
     <div className="z-50 flex w-full items-center justify-between gap-2 border-b border-divide py-1 pl-2 pr-2.5">
@@ -20,12 +19,12 @@ export function NavBar() {
           <LogoIcon className="h-5 w-5" />
         </Link>
         <div className="hidden items-center md:flex">
-          {currentOrganization && (
-            <>
+          {breadcrumbs.map((breadcrumb, index) => (
+            <Fragment key={index}>
               <BreadcrumbIcon className="h-3.5" />
-              <ProjectsMenu />
-            </>
-          )}
+              {breadcrumb()}
+            </Fragment>
+          ))}
         </div>
         <MobileDropdownMenu />
       </div>
@@ -47,6 +46,14 @@ export function NavBar() {
         </Button>
       </div>
     </div>
+  );
+}
+
+export function BreadcrumbLink({ title, to }: { title: string; to: string }) {
+  return (
+    <LinkButton to={to} variant="tertiary/small">
+      {title}
+    </LinkButton>
   );
 }
 

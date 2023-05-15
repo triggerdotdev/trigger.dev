@@ -11,7 +11,6 @@ import {
   PopoverSectionHeader,
 } from "../primitives/Popover";
 import { LinkButton } from "../primitives/Buttons";
-import { PlusIcon } from "@heroicons/react/24/solid";
 import {
   newOrganizationPath,
   newProjectPath,

@@ -1,18 +1,17 @@
-import { useLocation, useMatches } from "@remix-run/react";
 import invariant from "tiny-invariant";
 import { useCurrentJob } from "~/hooks/useJob";
+import { useCurrentOrganization } from "~/hooks/useOrganizations";
 import { useCurrentProject } from "~/hooks/useProject";
 import { cn } from "~/utils/cn";
-import { Button, LinkButton } from "../primitives/Buttons";
 import {
   accountPath,
   organizationBillingPath,
-  organizationPath,
   organizationTeamPath,
   projectPath,
 } from "~/utils/pathBuilder";
-import { useCurrentOrganization } from "~/hooks/useOrganizations";
-import { IconNames } from "../primitives/NamedIcon";
+import { LinkButton } from "../primitives/Buttons";
+import type { IconNames } from "../primitives/NamedIcon";
+import { useMatches } from "@remix-run/react";
 
 export function SideMenuContainer({ children }: { children: React.ReactNode }) {
   return <div className="flex h-full w-full">{children}</div>;

@@ -102,6 +102,7 @@ importers:
       '@testing-library/jest-dom': ^5.16.5
       '@testing-library/react': ^13.4.0
       '@testing-library/user-event': ^14.4.3
+      '@total-typescript/ts-reset': ^0.4.2
       '@trigger.dev/internal': workspace:*
       '@trigger.dev/tailwind-config': workspace:*
       '@typeform/embed-react': ^2.14.1
@@ -366,6 +367,7 @@ importers:
       '@testing-library/jest-dom': 5.16.5
       '@testing-library/react': 13.4.0_biqbaboplfbrettd7655fr4n2y
       '@testing-library/user-event': 14.4.3_ua4wuun3fnehcjqtqj2e2ldgpe
+      '@total-typescript/ts-reset': 0.4.2
       '@trigger.dev/tailwind-config': link:../../config-packages/tailwind-config
       '@types/bcryptjs': 2.4.2
       '@types/compression': 1.7.2
@@ -8798,6 +8800,10 @@ packages:
   /@tootallnate/once/1.1.2:
     resolution: {integrity: sha512-RbzJvlNzmRq5c3O09UipeuXno4tA1FE6ikOjxZK0tuxVv3412l64l5t1W5pj4+rJq9vpkm/kwiR07aZXnsKPxw==}
     engines: {node: '>= 6'}
+    dev: true
+
+  /@total-typescript/ts-reset/0.4.2:
+    resolution: {integrity: sha512-vqd7ZUDSrXFVT1n8b2kc3LnklncDQFPvR58yUS1kEP23/nHPAO9l1lMjUfnPrXYYk4Hj54rrLKMW5ipwk7k09A==}
     dev: true
 
   /@tsconfig/node10/1.0.9:

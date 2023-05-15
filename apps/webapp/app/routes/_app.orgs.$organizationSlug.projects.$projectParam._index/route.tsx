@@ -1,6 +1,6 @@
 import invariant from "tiny-invariant";
 import { PageContainer } from "~/components/layout/AppLayout";
-import { LinkButton } from "~/components/primitives/Buttons";
+import { BreadcrumbLink } from "~/components/navigation/NavBar";
 import {
   PageButtons,
   PageDescription,
@@ -10,7 +10,22 @@ import {
 } from "~/components/primitives/PageHeader";
 import { useCurrentOrganization } from "~/hooks/useOrganizations";
 import { useCurrentProject } from "~/hooks/useProject";
-import { newProjectPath } from "~/utils/pathBuilder";
+import { projectPath } from "~/utils/pathBuilder";
+
+export const handle = {
+  breadcrumb: () => {
+    // eslint-disable-next-line react-hooks/rules-of-hooks
+    const organization = useCurrentOrganization();
+    invariant(organization, "Organization must be defined");
+    // eslint-disable-next-line react-hooks/rules-of-hooks
+    const project = useCurrentProject();
+    invariant(project, "Project must be defined");
+
+    return (
+      <BreadcrumbLink to={projectPath(organization, project)} title="Jobs" />
+    );
+  },
+};
 
 export default function Page() {
   const currentProject = useCurrentProject();

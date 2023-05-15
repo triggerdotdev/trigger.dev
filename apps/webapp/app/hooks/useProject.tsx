@@ -1,4 +1,3 @@
-import { useLocation, useMatches } from "@remix-run/react";
 import type { UseDataFunctionReturn } from "remix-typedjson";
 import type { loader as projectLoader } from "~/routes/_app.orgs.$organizationSlug.projects.$projectParam/route";
 import { hydrateObject, useMatchesData } from "~/utils";
