@@ -79,7 +79,7 @@ const variant = {
       "text-[0.6rem] leading-[1.13rem] min-w-[20px] px-1 rounded-[3px] ml-1.5 -mr-0.5 border border-bright/40 text-bright group-hover:border-bright/60 transition",
   },
   "secondary/large": {
-    textColor: "text-dimmed group-hover:text-bright transition",
+    textColor: "text-dimmed",
     button:
       "h-10 px-2 text-sm text-dimmed hover:text-bright transition font-medium bg-slate-800 hover:bg-slate-700/70 disabled:opacity-50",
     icon: "h-5",

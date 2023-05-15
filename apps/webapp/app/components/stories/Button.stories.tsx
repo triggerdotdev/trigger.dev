@@ -208,7 +208,10 @@ function ButtonList({ primary }: { primary: string }) {
         </div>
         <div className="flex flex-col items-start">
           <Button variant="secondary/large" fullWidth>
-            <NamedIcon name={"envelope"} className={"mr-2 h-5 w-5"} />
+            <NamedIcon
+              name={"envelope"}
+              className={"mr-2 h-5 w-5 transition group-hover:text-bright"}
+            />
             Continue with Email
           </Button>
         </div>
