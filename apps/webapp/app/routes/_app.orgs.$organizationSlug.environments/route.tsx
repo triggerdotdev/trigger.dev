@@ -1,6 +1,5 @@
 import { useState } from "react";
 import invariant from "tiny-invariant";
-import { OrganizationsSideMenu } from "~/components/navigation/SideMenu";
 import { useCurrentOrganization } from "~/hooks/useOrganizations";
 import { cn } from "~/utils/cn";
 
@@ -29,11 +28,10 @@ export function EnvironmentIcon({
 export default function Page() {
   const organization = useCurrentOrganization();
   invariant(organization, "Organization must be defined");
-  const [isShowingKeys, setIsShowingKeys] = useState(false);
 
   return (
     <div>
-      <OrganizationsSideMenu />
+      {/* <OrganizationsSideMenu /> */}
       {/* <AppBody>
         <Header context="workflows" />
         <Container>

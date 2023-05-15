@@ -28,7 +28,7 @@ export function AppContainer({
 }
 
 /** This container should be placed around the content on a page */
-export function MainContainer({ children }: { children: React.ReactNode }) {
+export function PageContainer({ children }: { children: React.ReactNode }) {
   return (
     <div className="overflow-y-auto px-4 pt-4">
       <div className="pb-4">{children}</div>

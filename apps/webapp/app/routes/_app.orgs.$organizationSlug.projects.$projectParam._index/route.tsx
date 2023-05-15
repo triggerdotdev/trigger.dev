@@ -9,25 +9,26 @@ import {
   PageTitleRow,
 } from "~/components/primitives/PageHeader";
 import { useCurrentOrganization } from "~/hooks/useOrganizations";
+import { useCurrentProject } from "~/hooks/useProject";
 import { newProjectPath } from "~/utils/pathBuilder";
 
 export default function Page() {
-  const currentOrganization = useCurrentOrganization();
-  invariant(currentOrganization, "No current organization");
+  const currentProject = useCurrentProject();
+  invariant(currentProject, "Project must be defined");
 
   return (
     <PageContainer>
       <PageHeader>
         <PageTitleRow>
-          <PageTitle title={currentOrganization.title} />
+          <PageTitle title="Jobs" />
           <PageButtons>
-            <LinkButton
+            {/* <LinkButton
               to={newProjectPath(currentOrganization)}
               variant="primary/small"
               shortcut="N"
             >
               Create a new project
-            </LinkButton>
+            </LinkButton> */}
           </PageButtons>
         </PageTitleRow>
         <PageDescription>

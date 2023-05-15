@@ -3,7 +3,6 @@ import type { LoaderArgs } from "@remix-run/server-runtime";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import invariant from "tiny-invariant";
 import { ConnectButton } from "~/components/integrations/ConnectButton";
-import { OrganizationsSideMenu } from "~/components/navigation/SideMenu";
 import { Badge } from "~/components/primitives/Badge";
 import { NamedIcon, NamedIconInBox } from "~/components/primitives/NamedIcon";
 import { Header1, Header3 } from "~/components/primitives/Headers";
@@ -52,7 +51,7 @@ export default function Integrations() {
 
   return (
     <div>
-      <OrganizationsSideMenu />
+      {/* <OrganizationsSideMenu /> */}
       <div>
         {/* <Header context="workflows" /> */}
         <div>

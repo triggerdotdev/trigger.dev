@@ -17,13 +17,14 @@ import {
   newProjectPath,
   projectPath,
 } from "~/utils/pathBuilder";
+import { useCurrentProject } from "~/hooks/useProject";
 
-//todo useCurrentProject and have a ticked state on a current one (if there is a current one)
 export function ProjectsMenu() {
   const [isOpen, setIsOpen] = useState(false);
   const organizations = useOrganizations();
   const currentOrganization = useCurrentOrganization();
   const isNewOrgPage = useIsNewOrganizationPage();
+  const currentProject = useCurrentProject();
 
   if (
     organizations === undefined ||
@@ -37,7 +38,7 @@ export function ProjectsMenu() {
     <>
       <Popover onOpenChange={(open) => setIsOpen(open)}>
         <PopoverArrowTrigger isOpen={isOpen}>
-          {currentOrganization?.title ?? "Select an organization"}
+          {currentProject?.name ?? "Select a project"}
         </PopoverArrowTrigger>
         <PopoverContent className="w-80 p-0">
           {organizations.map((organization) => (
@@ -45,20 +46,33 @@ export function ProjectsMenu() {
               <PopoverSectionHeader title={organization.title} />
 
               <div className="flex flex-col gap-1">
-                {organization.projects.map((project) => (
-                  <LinkButton
-                    key={project.id}
-                    to={projectPath(organization, project)}
-                    variant="secondary/medium"
-                    LeadingIcon="folder"
-                  >
-                    {project.name}
-                  </LinkButton>
-                ))}
+                {organization.projects.map((project) => {
+                  const isSelected = project.id === currentProject?.id;
+                  return (
+                    <LinkButton
+                      key={project.id}
+                      to={projectPath(organization, project)}
+                      variant="menu-item"
+                      LeadingIcon="folder"
+                      fullWidth
+                      textAlignLeft
+                      TrailingIcon={isSelected ? "check" : undefined}
+                      className={
+                        isSelected
+                          ? "bg-slate-750 group-hover:bg-slate-750"
+                          : undefined
+                      }
+                    >
+                      {project.name}
+                    </LinkButton>
+                  );
+                })}
                 <LinkButton
                   to={newProjectPath(organization)}
-                  variant="secondary/medium"
-                  LeadingIcon={PlusIcon}
+                  variant="menu-item"
+                  LeadingIcon="plus"
+                  fullWidth
+                  textAlignLeft
                 >
                   New Project
                 </LinkButton>
@@ -68,8 +82,10 @@ export function ProjectsMenu() {
           <div className="border-t border-slate-700">
             <LinkButton
               to={newOrganizationPath()}
-              variant="secondary/medium"
-              LeadingIcon={PlusIcon}
+              variant="menu-item"
+              LeadingIcon="plus"
+              fullWidth
+              textAlignLeft
             >
               New Organization
             </LinkButton>

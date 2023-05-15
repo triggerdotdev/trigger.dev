@@ -1,4 +1,4 @@
-import { MainContainer } from "~/components/layout/AppLayout";
+import { PageContainer } from "~/components/layout/AppLayout";
 import { LinkButton } from "~/components/primitives/Buttons";
 import { PageBody } from "~/components/primitives/PageBody";
 import {
@@ -9,16 +9,14 @@ import {
   PageTitleRow,
 } from "~/components/primitives/PageHeader";
 import { useOrganizations } from "~/hooks/useOrganizations";
-import { useOptionalUser } from "~/hooks/useUser";
 import { newOrganizationPath } from "~/utils/pathBuilder";
 import { OrganizationGridItem } from "./OrganizationGrid";
 
 export default function AppLayout() {
   const organizations = useOrganizations();
-  const user = useOptionalUser();
 
   return (
-    <MainContainer>
+    <PageContainer>
       <PageHeader>
         <PageTitleRow>
           <PageTitle title="Your Organizations" />
@@ -56,6 +54,6 @@ export default function AppLayout() {
           )}
         </ul>
       </PageBody>
-    </MainContainer>
+    </PageContainer>
   );
 }

@@ -1,10 +1,9 @@
 import { PostHog } from "posthog-node";
 import { env } from "~/env.server";
 import type { Organization } from "~/models/organization.server";
+import type { Project } from "~/models/project.server";
 import type { RuntimeEnvironment } from "~/models/runtimeEnvironment.server";
 import type { User } from "~/models/user.server";
-import type { Workflow } from "~/models/workflow.server";
-import type { WorkflowRun } from "~/models/workflowRun.server";
 
 class BehaviouralAnalytics {
   client: PostHog | undefined = undefined;
@@ -89,122 +88,161 @@ class BehaviouralAnalytics {
     },
   };
 
-  workflow = {
-    identify: ({ workflow }: { workflow: Workflow }) => {
+  project = {
+    identify: ({ project }: { project: Project }) => {
       if (this.client === undefined) return;
       this.client.groupIdentify({
-        groupType: "workflow",
-        groupKey: workflow.id,
+        groupType: "project",
+        groupKey: project.id,
         properties: {
-          name: workflow.title,
-          slug: workflow.slug,
-          packageJson: workflow.packageJson,
-          jsonSchema: workflow.jsonSchema,
-          createdAt: workflow.createdAt,
-          updatedAt: workflow.updatedAt,
-          organizationId: workflow.organizationId,
-          type: workflow.type,
-          status: workflow.status,
-          externalSourceId: workflow.externalSourceId,
-          service: workflow.service,
-          eventNames: workflow.eventNames,
-          disabledAt: workflow.disabledAt,
-          archivedAt: workflow.archivedAt,
-          isArchived: workflow.isArchived,
-          triggerTtlInSeconds: workflow.triggerTtlInSeconds,
+          name: project.name,
+          createdAt: project.createdAt,
+          updatedAt: project.updatedAt,
         },
       });
     },
     new: ({
       userId,
       organizationId,
-      workflow,
-      workflowCount,
+      project,
     }: {
       userId: string;
       organizationId: string;
-      workflow: Workflow;
-      workflowCount: number;
+      project: Project;
     }) => {
       if (this.client === undefined) return;
       this.#capture({
         userId,
-        event: "workflow created",
-        organizationId: organizationId,
-        workflowId: workflow.id,
+        event: "project created",
+        organizationId,
         eventProperties: {
-          id: workflow.id,
-          slug: workflow.slug,
-          title: workflow.title,
-          packageJson: workflow.packageJson,
-          jsonSchema: workflow.jsonSchema,
-          createdAt: workflow.createdAt,
-          updatedAt: workflow.updatedAt,
-          organizationId: workflow.organizationId,
-          type: workflow.type,
-          status: workflow.status,
-          externalSourceId: workflow.externalSourceId,
-          service: workflow.service,
-          eventNames: workflow.eventNames,
-          disabledAt: workflow.disabledAt,
-          archivedAt: workflow.archivedAt,
-          isArchived: workflow.isArchived,
-          triggerTtlInSeconds: workflow.triggerTtlInSeconds,
-        },
-        userProperties: {
-          workflowCount: workflowCount,
+          id: project.id,
+
+          title: project.name,
+          createdAt: project.createdAt,
+          updatedAt: project.updatedAt,
         },
       });
     },
   };
 
-  workflowRun = {
-    new: ({
-      userId,
-      organizationId,
-      workflowId,
-      workflowRun,
-      environmentType,
-      runCount,
-    }: {
-      userId: string;
-      organizationId: string;
-      workflowId: string;
-      workflowRun: WorkflowRun;
-      environmentType: string;
-      runCount: number;
-    }) => {
-      if (this.client === undefined) return;
-      this.#capture({
-        userId,
-        event: "workflow run created",
-        eventProperties: {
-          id: workflowRun.id,
-          workflowId: workflowRun.workflowId,
-          environmentId: workflowRun.environmentId,
-          environmentType,
-          eventRuleId: workflowRun.eventRuleId,
-          eventId: workflowRun.eventId,
-          error: workflowRun.error,
-          status: workflowRun.status,
-          attemptCount: workflowRun.attemptCount,
-          createdAt: workflowRun.createdAt,
-          updatedAt: workflowRun.updatedAt,
-          startedAt: workflowRun.startedAt,
-          finishedAt: workflowRun.finishedAt,
-          timedOutAt: workflowRun.timedOutAt,
-          timedOutReason: workflowRun.timedOutReason,
-          isTest: workflowRun.isTest,
-        },
-        userProperties: {
-          runCount: runCount,
-        },
-        organizationId: organizationId,
-        workflowId: workflowId,
-        environmentId: workflowRun.environmentId,
-      });
-    },
-  };
+  //todo Job
+  // workflow = {
+  //   identify: ({ workflow }: { workflow: Workflow }) => {
+  //     if (this.client === undefined) return;
+  //     this.client.groupIdentify({
+  //       groupType: "workflow",
+  //       groupKey: workflow.id,
+  //       properties: {
+  //         name: workflow.title,
+  //         slug: workflow.slug,
+  //         packageJson: workflow.packageJson,
+  //         jsonSchema: workflow.jsonSchema,
+  //         createdAt: workflow.createdAt,
+  //         updatedAt: workflow.updatedAt,
+  //         organizationId: workflow.organizationId,
+  //         type: workflow.type,
+  //         status: workflow.status,
+  //         externalSourceId: workflow.externalSourceId,
+  //         service: workflow.service,
+  //         eventNames: workflow.eventNames,
+  //         disabledAt: workflow.disabledAt,
+  //         archivedAt: workflow.archivedAt,
+  //         isArchived: workflow.isArchived,
+  //         triggerTtlInSeconds: workflow.triggerTtlInSeconds,
+  //       },
+  //     });
+  //   },
+  //   new: ({
+  //     userId,
+  //     organizationId,
+  //     workflow,
+  //     workflowCount,
+  //   }: {
+  //     userId: string;
+  //     organizationId: string;
+  //     workflow: Workflow;
+  //     workflowCount: number;
+  //   }) => {
+  //     if (this.client === undefined) return;
+  //     this.#capture({
+  //       userId,
+  //       event: "workflow created",
+  //       organizationId: organizationId,
+  //       jobId: workflow.id,
+  //       eventProperties: {
+  //         id: workflow.id,
+  //         slug: workflow.slug,
+  //         title: workflow.title,
+  //         packageJson: workflow.packageJson,
+  //         jsonSchema: workflow.jsonSchema,
+  //         createdAt: workflow.createdAt,
+  //         updatedAt: workflow.updatedAt,
+  //         organizationId: workflow.organizationId,
+  //         type: workflow.type,
+  //         status: workflow.status,
+  //         externalSourceId: workflow.externalSourceId,
+  //         service: workflow.service,
+  //         eventNames: workflow.eventNames,
+  //         disabledAt: workflow.disabledAt,
+  //         archivedAt: workflow.archivedAt,
+  //         isArchived: workflow.isArchived,
+  //         triggerTtlInSeconds: workflow.triggerTtlInSeconds,
+  //       },
+  //       userProperties: {
+  //         workflowCount: workflowCount,
+  //       },
+  //     });
+  //   },
+  // };
+
+  // workflowRun = {
+  //   new: ({
+  //     userId,
+  //     organizationId,
+  //     workflowId,
+  //     workflowRun,
+  //     environmentType,
+  //     runCount,
+  //   }: {
+  //     userId: string;
+  //     organizationId: string;
+  //     workflowId: string;
+  //     workflowRun: WorkflowRun;
+  //     environmentType: string;
+  //     runCount: number;
+  //   }) => {
+  //     if (this.client === undefined) return;
+  //     this.#capture({
+  //       userId,
+  //       event: "workflow run created",
+  //       eventProperties: {
+  //         id: workflowRun.id,
+  //         workflowId: workflowRun.workflowId,
+  //         environmentId: workflowRun.environmentId,
+  //         environmentType,
+  //         eventRuleId: workflowRun.eventRuleId,
+  //         eventId: workflowRun.eventId,
+  //         error: workflowRun.error,
+  //         status: workflowRun.status,
+  //         attemptCount: workflowRun.attemptCount,
+  //         createdAt: workflowRun.createdAt,
+  //         updatedAt: workflowRun.updatedAt,
+  //         startedAt: workflowRun.startedAt,
+  //         finishedAt: workflowRun.finishedAt,
+  //         timedOutAt: workflowRun.timedOutAt,
+  //         timedOutReason: workflowRun.timedOutReason,
+  //         isTest: workflowRun.isTest,
+  //       },
+  //       userProperties: {
+  //         runCount: runCount,
+  //       },
+  //       organizationId: organizationId,
+  //       jobId: workflowId,
+  //       environmentId: workflowRun.environmentId,
+  //     });
+  //   },
+  // };
 
   environment = {
     identify: ({ environment }: { environment: RuntimeEnvironment }) => {
@@ -258,10 +296,17 @@ class BehaviouralAnalytics {
       };
     }
 
-    if (event.workflowId) {
+    if (event.projectId) {
       groups = {
         ...groups,
-        workflow: event.workflowId,
+        project: event.projectId,
+      };
+    }
+
+    if (event.jobId) {
+      groups = {
+        ...groups,
+        workflow: event.jobId,
       };
     }
 
@@ -308,7 +353,8 @@ type CaptureEvent = {
   userId: string;
   event: string;
   organizationId?: string;
-  workflowId?: string;
+  projectId?: string;
+  jobId?: string;
   environmentId?: string;
   eventProperties?: Record<string, any>;
   userProperties?: Record<string, any>;

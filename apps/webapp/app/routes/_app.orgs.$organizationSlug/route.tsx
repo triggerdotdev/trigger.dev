@@ -3,7 +3,6 @@ import { Outlet } from "@remix-run/react";
 import type { LoaderArgs } from "@remix-run/server-runtime";
 import { typedjson } from "remix-typedjson";
 import invariant from "tiny-invariant";
-import { Header1 } from "~/components/primitives/Headers";
 import { getOrganizationFromSlug } from "~/models/organization.server";
 import { analytics } from "~/services/analytics.server";
 import {
@@ -45,8 +44,6 @@ export const loader = async ({ request, params }: LoaderArgs) => {
 export default function Organization() {
   return (
     <>
-      {/* <OrganizationSideMenuCollapsed /> */}
-      <Header1>Test</Header1>
       <Outlet />
     </>
   );
