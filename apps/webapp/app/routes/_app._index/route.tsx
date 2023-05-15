@@ -46,30 +46,6 @@ export default function AppLayout() {
                   organization={organization}
                 />
               ))}
-              {organizations.map((organization) => (
-                <OrganizationGridItem
-                  key={organization.id}
-                  organization={organization}
-                />
-              ))}
-              {organizations.map((organization) => (
-                <OrganizationGridItem
-                  key={organization.id}
-                  organization={organization}
-                />
-              ))}
-              {organizations.map((organization) => (
-                <OrganizationGridItem
-                  key={organization.id}
-                  organization={organization}
-                />
-              ))}
-              {organizations.map((organization) => (
-                <OrganizationGridItem
-                  key={organization.id}
-                  organization={organization}
-                />
-              ))}
             </>
           ) : (
             <li>
