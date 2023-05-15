@@ -14,7 +14,7 @@ export function NavBar() {
   const currentOrganization = useCurrentOrganization();
 
   return (
-    <div className="z-50 flex w-full items-center justify-between gap-2 border-b border-divide bg-darkBackground py-1 pl-2 pr-2.5">
+    <div className="z-50 flex w-full items-center justify-between gap-2 border-b border-divide py-1 pl-2 pr-2.5">
       <div className="flex gap-0.5">
         <Link to="/" className="p-2">
           <LogoIcon className="h-5 w-5" />

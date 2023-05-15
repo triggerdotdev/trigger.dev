@@ -108,7 +108,7 @@ function App() {
         <Meta />
         <Links />
       </head>
-      <body className="h-full overflow-hidden">
+      <body className="h-full overflow-hidden bg-darkBackground">
         <Outlet />
         <Toaster
           position="top-right"
