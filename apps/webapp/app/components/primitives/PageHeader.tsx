@@ -28,13 +28,16 @@ export function PageTitle({ title, backButton }: PageTitleProps) {
   return (
     <div className="flex items-center gap-2">
       {backButton && (
-        <div className="flex items-center gap-2">
+        <div className="group flex items-center gap-2">
           <Link
             to={backButton.to}
-            className="flex items-center gap-1 text-slate-400 transition hover:text-white"
+            className="flex items-center gap-1 text-slate-400 transition group-hover:text-white"
           >
             <ChevronLeftIcon className="h-6" />
-            <Header1 variant="dimmed" className="transition hover:text-white">
+            <Header1
+              variant="dimmed"
+              className="transition group-hover:text-white"
+            >
               {backButton.text}
             </Header1>
           </Link>
