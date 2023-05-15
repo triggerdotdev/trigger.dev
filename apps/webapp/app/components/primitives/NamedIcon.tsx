@@ -41,7 +41,7 @@ const icons = {
     <EnvelopeIcon className={cn("text-dimmed", className)} />
   ),
   globe: (className: string) => (
-    <GlobeAltIcon className={cn("text-fuchsia-500", className)} />
+    <GlobeAltIcon className={cn("text-fuchsia-600", className)} />
   ),
   organization: (className: string) => (
     <BuildingOffice2Icon className={cn("text-fuchsia-600", className)} />
@@ -63,17 +63,13 @@ const icons = {
   ),
   //APIs
   airtable: (className: string) => (
-    <img
-      src={`/integrations/airtable.png`}
-      className={className}
-      alt="Airtable"
-    />
+    <IntegrationIcon slug="airtable" name={"Airtable"} className={className} />
   ),
   github: (className: string) => (
-    <img src={`/integrations/github.png`} className={className} alt="GitHub" />
+    <IntegrationIcon slug="github" name={"GitHub"} className={className} />
   ),
   slack: (className: string) => (
-    <img src={`/integrations/slack.png`} className={className} alt="Slack" />
+    <IntegrationIcon slug="slack" name={"Slack"} className={className} />
   ),
 };
 
@@ -115,6 +111,27 @@ export function NamedIconInBox({
       className={cn("rounded-sm border-slate-850 bg-slate-900 p-2", className)}
     >
       <NamedIcon name={name} fallback={fallback} className="h-5 w-5" />
+    </div>
+  );
+}
+
+function IntegrationIcon({
+  slug,
+  name,
+  className,
+}: {
+  slug: string;
+  name: string;
+  className: string;
+}) {
+  return (
+    <div
+      className={cn(
+        "grid aspect-square min-h-fit place-items-center",
+        className
+      )}
+    >
+      <img src={`/integrations/${slug}.png`} className="p-[8%]" alt={name} />
     </div>
   );
 }

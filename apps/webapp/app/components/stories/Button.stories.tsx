@@ -45,7 +45,7 @@ function ButtonList({ primary }: { primary: string }) {
   return (
     <div>
       <Header1 className="mb-2">Small buttons</Header1>
-      <div className="grid grid-cols-5 gap-8 border-b border-slate-700 pb-8">
+      <div className="grid grid-cols-4 gap-8 border-b border-slate-700 pb-8">
         <div className="flex flex-col items-start gap-2">
           <Header3 className="mb-1 uppercase">Basic</Header3>
           <Button variant="primary/small">Primary button</Button>
@@ -155,7 +155,7 @@ function ButtonList({ primary }: { primary: string }) {
         </div>
       </div>
       <Header1 className="mb-2 mt-8">Medium buttons</Header1>
-      <div className="grid grid-cols-5 gap-8 border-b border-slate-700 pb-8">
+      <div className="grid grid-cols-4 gap-8 border-b border-slate-700 pb-8">
         <div className="flex flex-col items-start gap-2">
           <Header3 className="mb-1 uppercase">Basic</Header3>
           <Button variant="primary/medium">Primary button</Button>
