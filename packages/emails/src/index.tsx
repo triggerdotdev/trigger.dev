@@ -59,8 +59,6 @@ export class EmailClient {
   }
 
   async send(data: DeliverEmail) {
-    console.log("Send email", data);
-
     const { subject, component } = this.#getTemplate(data);
     return this.#sendEmail({
       to: data.to,
