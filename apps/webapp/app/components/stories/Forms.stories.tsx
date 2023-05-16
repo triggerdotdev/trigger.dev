@@ -63,15 +63,20 @@ function Forms() {
                 placeholder="Your org name"
                 required={true}
                 defaultValue="Acme Inc."
+                icon="organization"
               />
               <Hint>E.g. your company name or your workspace name.</Hint>
             </InputGroup>
 
             <InputGroup>
               <Label>Project name</Label>
-              <Input placeholder="Your Project name" required={true} />
-              <Hint>Your Jobs will live inside this Project.</Hint>
+              <Input
+                placeholder="Your Project name"
+                required={true}
+                icon="folder"
+              />
               <FormError>You must enter a project name</FormError>
+              <Hint>Your Jobs will live inside this Project.</Hint>
             </InputGroup>
 
             <FormButtons
