@@ -8,16 +8,13 @@ export function accountPath() {
   return `/account`;
 }
 
+// Org
 export function organizationPath(organization: OrgForPath) {
   return `/orgs/${organizationParam(organization)}`;
 }
 
 export function newOrganizationPath() {
   return `/orgs/new`;
-}
-
-export function organizationIntegrationsPath(organization: OrgForPath) {
-  return `${organizationPath(organization)}/integrations`;
 }
 
 export function organizationTeamPath(organization: OrgForPath) {
@@ -28,20 +25,35 @@ export function organizationBillingPath(organization: OrgForPath) {
   return `${organizationPath(organization)}/team`;
 }
 
+function organizationParam(organization: OrgForPath) {
+  return organization.slug;
+}
+
+// Project
 export function projectPath(organization: OrgForPath, project: ProjectForPath) {
   return `/orgs/${organizationParam(organization)}/projects/${projectParam(
     project
   )}`;
 }
 
+export function projectIntegrationsPath(
+  organization: OrgForPath,
+  project: ProjectForPath
+) {
+  return `${projectPath(organization, project)}/integrations`;
+}
+
+export function projectEnvironmentsPath(
+  organization: OrgForPath,
+  project: ProjectForPath
+) {
+  return `${projectPath(organization, project)}/environments`;
+}
+
 export function newProjectPath(organization: OrgForPath) {
   return `${organizationPath(organization)}/projects/new`;
 }
 
-export function organizationParam(organization: OrgForPath) {
-  return organization.slug;
-}
-
-export function projectParam(project: ProjectForPath) {
+function projectParam(project: ProjectForPath) {
   return project.id;
 }
