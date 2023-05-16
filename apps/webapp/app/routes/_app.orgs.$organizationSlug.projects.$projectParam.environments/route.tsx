@@ -10,21 +10,12 @@ import {
 } from "~/components/primitives/PageHeader";
 import { useCurrentOrganization } from "~/hooks/useOrganizations";
 import { useCurrentProject } from "~/hooks/useProject";
+import { Handle } from "~/utils/handle";
 import { projectEnvironmentsPath, projectPath } from "~/utils/pathBuilder";
 
-export const handle = {
-  useBreadcrumbElement: () => {
-    const organization = useCurrentOrganization();
-    invariant(organization, "Organization must be defined");
-    const project = useCurrentProject();
-    invariant(project, "Project must be defined");
-
-    return (
-      <BreadcrumbLink
-        to={projectEnvironmentsPath(organization, project)}
-        title="Environments"
-      />
-    );
+export const handle: Handle = {
+  breadcrumb: {
+    slug: "environments",
   },
 };
 

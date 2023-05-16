@@ -1,6 +1,5 @@
 import invariant from "tiny-invariant";
 import { PageContainer } from "~/components/layout/AppLayout";
-import { BreadcrumbLink } from "~/components/navigation/NavBar";
 import {
   PageButtons,
   PageDescription,
@@ -8,20 +7,12 @@ import {
   PageTitle,
   PageTitleRow,
 } from "~/components/primitives/PageHeader";
-import { useCurrentOrganization } from "~/hooks/useOrganizations";
 import { useCurrentProject } from "~/hooks/useProject";
-import { projectPath } from "~/utils/pathBuilder";
+import { Handle } from "~/utils/handle";
 
-export const handle = {
-  useBreadcrumbElement: () => {
-    const organization = useCurrentOrganization();
-    invariant(organization, "Organization must be defined");
-    const project = useCurrentProject();
-    invariant(project, "Project must be defined");
-
-    return (
-      <BreadcrumbLink to={projectPath(organization, project)} title="Jobs" />
-    );
+export const handle: Handle = {
+  breadcrumb: {
+    slug: "jobs",
   },
 };
 

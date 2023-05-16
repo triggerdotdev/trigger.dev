@@ -10,6 +10,7 @@ import { ProjectsMenu } from "~/components/navigation/ProjectsMenu";
 import { getProjectFromSlug } from "~/models/project.server";
 import { analytics } from "~/services/analytics.server";
 import { requireUserId } from "~/services/session.server";
+import { Handle } from "~/utils/handle";
 
 export const loader = async ({ request, params }: LoaderArgs) => {
   const userId = await requireUserId(request);
@@ -32,8 +33,10 @@ export const loader = async ({ request, params }: LoaderArgs) => {
   });
 };
 
-export const handle = {
-  useBreadcrumbElement: () => <ProjectsMenu />,
+export const handle: Handle = {
+  breadcrumb: {
+    slug: "projects",
+  },
 };
 
 export default function Project() {

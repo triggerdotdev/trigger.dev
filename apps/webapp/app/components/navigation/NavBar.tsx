@@ -7,25 +7,16 @@ import { cn } from "~/utils/cn";
 import { LogoIcon } from "../LogoIcon";
 import { BreadcrumbIcon } from "../primitives/BreadcrumbIcon";
 import { Button, LinkButton } from "../primitives/Buttons";
-import { useBreadcrumbs } from "~/hooks/useBreadcrumbs";
+import { Breadcrumb } from "./Breadcrumb";
 
 export function NavBar() {
-  const breadcrumbs = useBreadcrumbs();
-
   return (
     <div className="border-divide z-50 flex w-full items-center justify-between gap-2 border-b py-1 pl-2 pr-2.5">
       <div className="flex gap-0.5">
         <Link to="/" className="p-2">
           <LogoIcon className="h-5 w-5" />
         </Link>
-        <div className="hidden items-center md:flex">
-          {breadcrumbs.map((breadcrumb, index) => (
-            <Fragment key={index}>
-              <BreadcrumbIcon className="h-3.5" />
-              {breadcrumb()}
-            </Fragment>
-          ))}
-        </div>
+        <Breadcrumb />
         <MobileDropdownMenu />
       </div>
       <div className="hidden items-center gap-2 sm:flex">
