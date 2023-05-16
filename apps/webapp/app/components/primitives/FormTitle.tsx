@@ -7,16 +7,19 @@ export function FormTitle({
   children,
   LeadingIcon,
   divide = true,
+  className,
 }: {
   children: React.ReactNode;
   LeadingIcon?: IconNames;
   divide?: boolean;
+  className?: string;
 }) {
   return (
     <div
       className={cn(
         "mb-4 flex items-center gap-2 pb-2",
-        divide ? "border-b border-slate-800" : ""
+        divide ? "border-b border-slate-800" : "",
+        className
       )}
     >
       {LeadingIcon && (

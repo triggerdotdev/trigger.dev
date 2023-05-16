@@ -6,7 +6,7 @@ export function FormButtons({
   confirmButton: React.ReactNode;
 }) {
   return (
-    <div className="flex items-center justify-between">
+    <div className="flex w-full items-center justify-between">
       {cancelButton ? cancelButton : <div />} {confirmButton}
     </div>
   );

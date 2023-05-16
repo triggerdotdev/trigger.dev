@@ -45,7 +45,7 @@ export function Paragraph({
 type TextLinkProps = {
   href: string;
   children: React.ReactNode;
-} & React.HTMLAttributes<HTMLAnchorElement>;
+} & React.AnchorHTMLAttributes<HTMLAnchorElement>;
 
 export function TextLink({ href, children, ...props }: TextLinkProps) {
   return (

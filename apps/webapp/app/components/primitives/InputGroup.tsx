@@ -7,7 +7,7 @@ type InputGroupProps = {
 
 export function InputGroup({ children, className }: InputGroupProps) {
   return (
-    <div className={cn("grid w-full max-w-sm items-center gap-1.5", className)}>
+    <div className={cn("grid w-full max-w-md items-center gap-1.5", className)}>
       {children}
     </div>
   );
