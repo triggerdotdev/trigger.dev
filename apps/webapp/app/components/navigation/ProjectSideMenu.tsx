@@ -16,6 +16,7 @@ import type { IconNames } from "../primitives/NamedIcon";
 import { useMatches } from "@remix-run/react";
 import { motion } from "framer-motion";
 import { useState } from "react";
+import { SimpleTooltip } from "../primitives/Tooltip";
 
 export function SideMenuContainer({ children }: { children: React.ReactNode }) {
   return <div className="flex h-full w-full">{children}</div>;
@@ -26,7 +27,7 @@ const menuVariants = {
     width: "11rem",
   },
   collapsed: {
-    width: "2.7rem",
+    width: "2.81rem",
   },
 };
 
@@ -124,30 +125,37 @@ function SideMenuItem({
   forceActive?: boolean;
 }) {
   return (
-    <NavLinkButton
-      variant="menu-item"
-      fullWidth
-      textAlignLeft
-      LeadingIcon={icon}
-      leadingIconClassName="text-slate-400"
-      to={to}
-      className={({ isActive, isPending }) => {
-        if (forceActive !== undefined) {
-          isActive = forceActive;
-        }
-        return cn(
-          isActive ? "bg-slate-750 group-hover:bg-slate-750" : undefined
-        );
-      }}
-    >
-      <motion.span
-        className="pl-1"
-        animate={isCollapsed ? "collapsed" : "expanded"}
-        variants={itemVariants}
-        initial={isCollapsed ? "collapsed" : "expanded"}
-      >
-        {name}
-      </motion.span>
-    </NavLinkButton>
+    <SimpleTooltip
+      button={
+        <NavLinkButton
+          variant="menu-item"
+          fullWidth
+          textAlignLeft
+          LeadingIcon={icon}
+          leadingIconClassName="text-slate-400"
+          to={to}
+          className={({ isActive, isPending }) => {
+            if (forceActive !== undefined) {
+              isActive = forceActive;
+            }
+            return cn(
+              isActive ? "bg-slate-750 group-hover:bg-slate-750" : undefined
+            );
+          }}
+        >
+          <motion.span
+            className="pl-1"
+            animate={isCollapsed ? "collapsed" : "expanded"}
+            variants={itemVariants}
+            initial={isCollapsed ? "collapsed" : "expanded"}
+          >
+            {name}
+          </motion.span>
+        </NavLinkButton>
+      }
+      content={name}
+      side="right"
+      hidden={!isCollapsed}
+    />
   );
 }

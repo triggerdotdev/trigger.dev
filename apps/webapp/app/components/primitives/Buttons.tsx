@@ -87,7 +87,7 @@ const variant = {
   "menu-item": {
     textColor: "text-bright",
     button:
-      "h-9 px-[5px] text-sm bg-transparent group-hover:bg-slate-800 transition",
+      "h-9 px-[0.475rem] text-sm bg-transparent group-hover:bg-slate-800 transition",
     icon: "h-5",
     shortcut: undefined,
   },
