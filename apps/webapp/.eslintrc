@@ -3,5 +3,15 @@
     "@remix-run/eslint-config",
     "@remix-run/eslint-config/node",
     "prettier"
-  ]
+  ],
+  "rules": {
+    "@typescript-eslint/strict-boolean-expressions": [
+      "error",
+      {
+        "allowNullableBoolean": true,
+        "allowNullableString": true,
+        "allowNullableNumber": true
+      }
+    ]
+  }
 }
