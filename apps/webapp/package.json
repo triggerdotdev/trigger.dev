@@ -88,6 +88,7 @@
     "emails": "workspace:*",
     "express": "^4.18.1",
     "fast-redact": "^3.1.2",
+    "framer-motion": "^10.12.11",
     "graphile-worker": "^0.13.0",
     "humanize-duration": "^3.27.3",
     "intl-parse-accept-language": "^1.0.0",
