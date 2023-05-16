@@ -26,13 +26,3 @@ export function useCurrentProject() {
   if (result == null) return undefined;
   return result;
 }
-
-// export function useIsProjectImmediateChildPage() {
-//   const location = useLocation();
-
-//   location.
-
-//   return matchesData.some((matchData) => {
-//     return matchData.id.startsWith("routes/_app.orgs.$organizationSlug");
-//   });
-// }
