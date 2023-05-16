@@ -29,6 +29,7 @@ import {
 } from "./components/layout/AppLayout";
 import { Header1, Header2, Header3 } from "./components/primitives/Headers";
 import { friendlyErrorDisplay } from "./utils/httpErrors";
+import { NavBar } from "./components/navigation/NavBar";
 
 export const links: LinksFunction = () => {
   return [{ rel: "stylesheet", href: tailwindStylesheetUrl }];
@@ -76,7 +77,7 @@ export function ErrorBoundary() {
       <body className="bg-darkBackground h-full overflow-hidden">
         <div className="grid h-full w-full">
           <AppContainer showBackgroundGradient={true}>
-            <div></div>
+            <NavBar />
             <MainCenteredContainer>
               <div>
                 {isRouteErrorResponse(error) ? (
