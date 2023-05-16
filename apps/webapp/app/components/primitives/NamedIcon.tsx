@@ -19,6 +19,7 @@ import {
   KeyIcon,
   UserGroupIcon,
   CreditCardIcon,
+  MagnifyingGlassIcon,
 } from "@heroicons/react/24/solid";
 import { cn } from "~/utils/cn";
 import { Spinner } from "./Spinner";
@@ -64,6 +65,9 @@ const icons = {
   ),
   organization: (className: string) => (
     <BuildingOffice2Icon className={cn("text-fuchsia-600", className)} />
+  ),
+  search: (className: string) => (
+    <MagnifyingGlassIcon className={cn("text-dimmed", className)} />
   ),
   plus: (className: string) => (
     <PlusIcon className={cn("text-green-600", className)} />
