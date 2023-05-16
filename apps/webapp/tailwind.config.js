@@ -36,7 +36,7 @@ const accentForeground = "hsl(210 40% 98%)";
 const destructive = "hsl(0 63% 31%)";
 const destructiveForeground = "hsl(210 40% 98%)";
 
-const ring = "hsl(216 34% 17%)";
+const ring = colors.indigo[500];
 
 const radius = "0.5rem";
 
