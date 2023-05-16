@@ -7,9 +7,11 @@ import {
   accountPath,
   organizationBillingPath,
   organizationTeamPath,
+  projectEnvironmentsPath,
+  projectIntegrationsPath,
   projectPath,
 } from "~/utils/pathBuilder";
-import { LinkButton } from "../primitives/Buttons";
+import { LinkButton, NavLinkButton } from "../primitives/Buttons";
 import type { IconNames } from "../primitives/NamedIcon";
 import { useMatches } from "@remix-run/react";
 
@@ -45,13 +47,13 @@ export function ProjectSideMenu() {
         <SideMenuItem
           name="Integrations"
           icon="integration"
-          to={projectPath(organization, project)}
+          to={projectIntegrationsPath(organization, project)}
           isSelected={false}
         />
         <SideMenuItem
           name="Environments"
           icon="environment"
-          to={projectPath(organization, project)}
+          to={projectEnvironmentsPath(organization, project)}
           isSelected={false}
         />
       </div>
@@ -91,18 +93,18 @@ function SideMenuItem({
   isSelected: boolean;
 }) {
   return (
-    <LinkButton
+    <NavLinkButton
       variant="menu-item"
       fullWidth
       textAlignLeft
       LeadingIcon={icon}
       leadingIconClassName="text-slate-400"
       to={to}
-      className={
-        isSelected ? "bg-slate-750 group-hover:bg-slate-750" : undefined
+      className={({ isActive, isPending }) =>
+        isActive ? "bg-slate-750 group-hover:bg-slate-750" : undefined
       }
     >
       {name}
-    </LinkButton>
+    </NavLinkButton>
   );
 }
