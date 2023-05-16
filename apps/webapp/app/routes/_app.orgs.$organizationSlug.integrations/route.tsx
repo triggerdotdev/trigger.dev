@@ -14,11 +14,10 @@ import {
 } from "~/components/primitives/Popover";
 import { useCurrentOrganization } from "~/hooks/useOrganizations";
 import { getOrganizationFromSlug } from "~/models/organization.server";
-import { apiConnectionRepository } from "~/services/externalApis/apiAuthenticationRepository.server";
-import { apiCatalog } from "~/services/externalApis/apiCatalog.server";
-import type { ExternalApi } from "~/services/externalApis/types";
+import { apiAuthenticationRepository } from "~/services/externalApis/apiAuthenticationRepository.server";
 import { requireUser } from "~/services/session.server";
 import { formatDateTime } from "~/utils";
+import { integrationCatalog } from "~/services/externalApis/integrationCatalog.server";
 
 export const loader = async ({ request, params }: LoaderArgs) => {
   const user = await requireUser(request);
@@ -30,13 +29,13 @@ export const loader = async ({ request, params }: LoaderArgs) => {
   });
   invariant(organization, "Organization not found");
 
-  const connections = await apiConnectionRepository.getAllConnections(
+  const clients = await apiAuthenticationRepository.getAllClients(
     organization.id
   );
 
   return typedjson({
-    connections,
-    apis: apiCatalog.getApis(),
+    clients,
+    integrations: integrationCatalog.getIntegrations(),
   });
 };
 

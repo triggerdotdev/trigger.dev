@@ -109,9 +109,10 @@ async function seed() {
     create: {
       organizationId: organization.id,
       slug: "my-slack-new",
-      schema: {},
       title: "My Slack",
       scopes: ["chat:write"],
+      integrationIdentifier: "slack",
+      integrationAuthMethod: "oauth2Bot",
     },
     update: {},
   });
@@ -126,9 +127,10 @@ async function seed() {
     create: {
       organizationId: organization.id,
       slug: "github",
-      schema: {},
       title: "GitHub",
       scopes: ["admin:repo_hook", "public_repo"],
+      integrationIdentifier: "github",
+      integrationAuthMethod: "oauth2",
     },
     update: {},
   });

@@ -1,7 +1,7 @@
 import type { RunConnection } from ".prisma/client";
 import type { ConnectionAuth } from "@trigger.dev/internal";
 import type { ApiConnectionWithSecretReference } from "~/services/externalApis/apiAuthenticationRepository.server";
-import { apiConnectionRepository } from "~/services/externalApis/apiAuthenticationRepository.server";
+import { apiAuthenticationRepository } from "~/services/externalApis/apiAuthenticationRepository.server";
 
 export type RunConnectionWithApiConnection = RunConnection & {
   apiConnection: ApiConnectionWithSecretReference | null;
@@ -32,7 +32,7 @@ export async function resolveRunConnection(
     return;
   }
 
-  const response = await apiConnectionRepository.getCredentials(
+  const response = await apiAuthenticationRepository.getCredentials(
     connection.apiConnection
   );
 
@@ -54,7 +54,7 @@ export async function resolveApiConnection(
     return;
   }
 
-  const response = await apiConnectionRepository.getCredentials(connection);
+  const response = await apiAuthenticationRepository.getCredentials(connection);
 
   if (!response) {
     return;

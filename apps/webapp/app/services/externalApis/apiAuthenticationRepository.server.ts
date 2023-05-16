@@ -1,4 +1,9 @@
-import type { ApiConnection, SecretReference } from ".prisma/client";
+import type {
+  ApiConnection,
+  ApiConnectionAttempt,
+  ApiConnectionClient,
+  SecretReference,
+} from ".prisma/client";
 import jsonpointer from "jsonpointer";
 import { customAlphabet } from "nanoid";
 import * as crypto from "node:crypto";
@@ -9,8 +14,8 @@ import { env } from "~/env.server";
 import { workerQueue } from "~/services/worker.server";
 import type { SecretStoreProvider } from "../secrets/secretStore.server";
 import { SecretStore } from "../secrets/secretStore.server";
-import type { ApiCatalog } from "./apiCatalog.server";
-import { apiCatalog } from "./apiCatalog.server";
+import type { IntegrationCatalog } from "./integrationCatalog.server";
+import { integrationCatalog } from "./integrationCatalog.server";
 import {
   createOAuth2Url,
   getClientConfigFromEnv,
@@ -21,11 +26,10 @@ import type {
   AccessToken,
   ApiAuthenticationMethodOAuth2,
   ConnectionMetadata,
-  ExternalApi,
   GrantTokenParams,
   RefreshTokenParams,
 } from "./types";
-import { AccessTokenSchema, ConnectionMetadataSchema } from "./types";
+import { AccessTokenSchema } from "./types";
 
 export type ApiConnectionWithSecretReference = ApiConnection & {
   dataReference: SecretReference;
@@ -37,20 +41,20 @@ const randomGenerator = customAlphabet("1234567890abcdef", 3);
 const tokenRefreshThreshold = 5 * 60;
 
 export class APIAuthenticationRepository {
-  apiCatalog: ApiCatalog;
+  #integrationCatalog: IntegrationCatalog;
   #prismaClient: PrismaClient;
 
   constructor(
-    catalog: ApiCatalog = apiCatalog,
+    catalog: IntegrationCatalog = integrationCatalog,
     prismaClient: PrismaClient = prisma
   ) {
-    this.apiCatalog = catalog;
+    this.#integrationCatalog = catalog;
     this.#prismaClient = prismaClient;
   }
 
-  /** Get all API connections for the organization */
-  async getAllConnections(organizationId: string) {
-    const connections = await this.#prismaClient.apiConnection.findMany({
+  /** Get all API clients for the organization */
+  async getAllClients(organizationId: string) {
+    const clients = await this.#prismaClient.apiConnectionClient.findMany({
       where: {
         organizationId: organizationId,
       },
@@ -59,55 +63,99 @@ export class APIAuthenticationRepository {
       },
     });
 
-    return connections.map((c) => this.#enrichConnection(c));
+    return clients.map((c) => this.#enrichClient(c));
   }
 
   /** Get all API connections for the organization, for a specific API */
-  async getConnectionsForApi(organizationId: string, api: ExternalApi) {
-    const connections = await this.#prismaClient.apiConnection.findMany({
+  async getClientsForIntegration(organizationId: string, identifier: string) {
+    const clients = await this.#prismaClient.apiConnectionClient.findMany({
       where: {
         organizationId: organizationId,
-        apiIdentifier: api.identifier,
+        integrationIdentifier: identifier,
       },
     });
 
-    return connections.map((c) => this.#enrichConnection(c));
+    return clients.map((c) => this.#enrichClient(c));
   }
 
-  async createConnectionAttempt({
+  async createConnectionClient({
     organizationId,
-    apiIdentifier,
-    authenticationMethodKey,
+    integrationIdentifier,
+    integrationAuthMethod,
     scopes,
     title,
-    redirectTo,
     url,
+    redirectTo,
   }: {
     organizationId: string;
-    apiIdentifier: string;
-    authenticationMethodKey: string;
+    integrationIdentifier: string;
+    integrationAuthMethod: string;
     scopes: string[];
     title: string;
     redirectTo: string;
     url: URL;
+  }): Promise<string> {
+    const createClientWithSlug = async (
+      appendRandom = false,
+      attemptCount = 0
+    ): Promise<ApiConnectionClient> => {
+      let slug = createSlug(title);
+
+      if (appendRandom) {
+        slug = `${slug}-${randomGenerator()}`;
+      }
+
+      try {
+        return await this.#prismaClient.apiConnectionClient.create({
+          data: {
+            organizationId,
+            scopes,
+            title,
+            slug,
+            integrationIdentifier,
+            integrationAuthMethod,
+          },
+        });
+      } catch (error) {
+        if (
+          error &&
+          typeof error === "object" &&
+          "code" in error &&
+          error.code === "P2002" &&
+          attemptCount < 24
+        ) {
+          return await createClientWithSlug(true, attemptCount + 1);
+        }
+
+        throw error;
+      }
+    };
+
+    const client = await createClientWithSlug();
+
+    return await this.createConnectionAttempt({
+      client,
+      redirectTo,
+      url,
+    });
+  }
+
+  async createConnectionAttempt({
+    client,
+    redirectTo,
+    url,
+  }: {
+    client: ApiConnectionClient;
+    redirectTo: string;
+    url: URL;
   }) {
-    const api = this.apiCatalog.getApi(apiIdentifier);
-    if (!api) {
-      throw new Error(`API ${apiIdentifier} not found`);
-    }
+    const { integration, authMethod } =
+      this.#getIntegrationAndAuthMethod(client);
 
-    const authenticationMethod =
-      api.authenticationMethods[authenticationMethodKey];
-    if (!authenticationMethod) {
-      throw new Error(
-        `API authentication method ${authenticationMethodKey} not found for API ${apiIdentifier}`
-      );
-    }
-
-    switch (authenticationMethod.type) {
+    switch (authMethod.type) {
       case "oauth2": {
         let pkceCode: string | undefined = undefined;
-        if (authenticationMethod.config.pkce !== false) {
+        if (authMethod.config.pkce !== false) {
           pkceCode = crypto.randomBytes(24).toString("hex");
         }
 
@@ -115,122 +163,92 @@ export class APIAuthenticationRepository {
         const connectionAttempt =
           await this.#prismaClient.apiConnectionAttempt.create({
             data: {
-              organizationId: organizationId,
-              apiIdentifier,
-              authenticationMethodKey,
-              scopes,
-              title,
+              clientId: client.id,
               redirectTo,
               securityCode: pkceCode,
             },
           });
 
+        // TODO: add support for the custom client config
         //create a url for the oauth2 flow
         const getClientConfig = getClientConfigFromEnv(
-          authenticationMethod.client.id.envName,
-          authenticationMethod.client.secret.envName
+          authMethod.client.id.envName,
+          authMethod.client.secret.envName
         );
-        const callbackUrl = this.#buildCallbackUrl(authenticationMethod, url);
+        const callbackUrl = this.#buildCallbackUrl(authMethod, url);
 
         const createAuthorizationParams = {
-          authorizationUrl: authenticationMethod.config.authorization.url,
+          authorizationUrl: authMethod.config.authorization.url,
           clientId: getClientConfig.id,
           clientSecret: getClientConfig.secret,
           key: connectionAttempt.id,
           callbackUrl,
           scopeParamName:
-            authenticationMethod.config.authorization.scopeParamName ?? "scope",
-          scopes,
-          scopeSeparator:
-            authenticationMethod.config.authorization.scopeSeparator,
+            authMethod.config.authorization.scopeParamName ?? "scope",
+          scopes: client.scopes,
+          scopeSeparator: authMethod.config.authorization.scopeSeparator,
           pkceCode,
           authorizationLocation:
-            authenticationMethod.config.authorization.authorizationLocation ??
-            "body",
-          extraParameters:
-            authenticationMethod.config.authorization.extraParameters,
+            authMethod.config.authorization.authorizationLocation ?? "body",
+          extraParameters: authMethod.config.authorization.extraParameters,
         };
 
-        const authorizationUrl = await (authenticationMethod.config
-          .authorization.createUrl
-          ? authenticationMethod.config.authorization.createUrl(
-              createAuthorizationParams
-            )
+        const authorizationUrl = await (authMethod.config.authorization
+          .createUrl
+          ? authMethod.config.authorization.createUrl(createAuthorizationParams)
           : createOAuth2Url(createAuthorizationParams));
 
         return authorizationUrl;
       }
       default: {
         throw new Error(
-          `Authentication method type ${authenticationMethod.type} not supported`
+          `Authentication method type ${authMethod.type} not supported`
         );
       }
     }
   }
 
-  async createConnection({
-    organizationId,
-    apiIdentifier,
-    authenticationMethodKey,
-    scopes,
+  async createConnectionFromAttempt({
+    attempt,
     code,
-    title,
-    pkceCode,
     url,
   }: {
-    organizationId: string;
-    apiIdentifier: string;
-    authenticationMethodKey: string;
-    scopes: string[];
+    attempt: ApiConnectionAttempt & { client: ApiConnectionClient };
     code: string;
-    title: string;
-    pkceCode?: string;
     url: URL;
   }) {
-    const api = this.apiCatalog.getApi(apiIdentifier);
-    if (!api) {
-      throw new Error(`API ${apiIdentifier} not found`);
-    }
+    const { integration, authMethod } = this.#getIntegrationAndAuthMethod(
+      attempt.client
+    );
 
-    const authenticationMethod =
-      api.authenticationMethods[authenticationMethodKey];
-    if (!authenticationMethod) {
-      throw new Error(
-        `API authentication method ${authenticationMethodKey} not found for API ${apiIdentifier}`
-      );
-    }
-
-    switch (authenticationMethod.type) {
+    switch (authMethod.type) {
       case "oauth2": {
         const getClientConfig = getClientConfigFromEnv(
-          authenticationMethod.client.id.envName,
-          authenticationMethod.client.secret.envName
+          authMethod.client.id.envName,
+          authMethod.client.secret.envName
         );
-        const callbackUrl = this.#buildCallbackUrl(authenticationMethod, url);
+        const callbackUrl = this.#buildCallbackUrl(authMethod, url);
 
         const params: GrantTokenParams = {
-          tokenUrl: authenticationMethod.config.token.url,
+          tokenUrl: authMethod.config.token.url,
           clientId: getClientConfig.id,
           clientSecret: getClientConfig.secret,
           code,
           callbackUrl,
-          requestedScopes: scopes,
-          scopeSeparator:
-            authenticationMethod.config.authorization.scopeSeparator,
-          pkceCode,
+          requestedScopes: attempt.client.scopes,
+          scopeSeparator: authMethod.config.authorization.scopeSeparator,
+          pkceCode: attempt.securityCode ?? undefined,
           accessTokenPointer:
-            authenticationMethod.config.token.accessTokenPointer ??
-            "/access_token",
+            authMethod.config.token.accessTokenPointer ?? "/access_token",
           refreshTokenPointer:
-            authenticationMethod.config.token.refreshTokenPointer ??
-            "/refresh_token",
+            authMethod.config.token.refreshTokenPointer ?? "/refresh_token",
           expiresInPointer:
-            authenticationMethod.config.token.expiresInPointer ?? "/expires_in",
-          scopePointer:
-            authenticationMethod.config.token.scopePointer ?? "/scope",
+            authMethod.config.token.expiresInPointer ?? "/expires_in",
+          scopePointer: authMethod.config.token.scopePointer ?? "/scope",
         };
-        const token = await (authenticationMethod.config.token.grantToken
-          ? authenticationMethod.config.token.grantToken(params)
+
+        const token = await (authMethod.config.token.grantToken
+          ? authMethod.config.token.grantToken(params)
           : grantOAuth2Token(params));
 
         //this key is used to store in the relevant SecretStore
@@ -238,11 +256,12 @@ export class APIAuthenticationRepository {
           .createHash("sha256")
           .update(token.accessToken)
           .digest("base64");
-        const key = `${apiIdentifier}-${hashedAccessToken}`;
+
+        const key = `${integration.identifier}-${hashedAccessToken}`;
 
         const metadata = this.#getMetadataFromToken({
           token,
-          authenticationMethod,
+          authenticationMethod: authMethod,
         });
 
         let secretReference =
@@ -278,52 +297,16 @@ export class APIAuthenticationRepository {
         //if there's an expiry, we want to add it to the connection so we can easily run a background job against it
         const expiresAt = this.#getExpiresAtFromToken({ token });
 
-        const createConnectionWithSlug = async (
-          appendRandom = false,
-          attempt = 0
-        ): Promise<ApiConnection> => {
-          let slug = createSlug(title);
-
-          if (appendRandom) {
-            slug = `${slug}-${randomGenerator()}`;
-          }
-
-          if (!secretReference) {
-            throw new Error(
-              `Unable to create secret reference for key ${key} and provider ${env.SECRET_STORE}`
-            );
-          }
-
-          try {
-            return await this.#prismaClient.apiConnection.create({
-              data: {
-                organizationId: organizationId,
-                apiIdentifier,
-                authenticationMethodKey,
-                metadata,
-                title,
-                dataReferenceId: secretReference.id,
-                scopes: token.scopes,
-                expiresAt,
-                slug,
-              },
-            });
-          } catch (error) {
-            if (
-              error &&
-              typeof error === "object" &&
-              "code" in error &&
-              error.code === "P2002" &&
-              attempt < 24
-            ) {
-              return await createConnectionWithSlug(true, attempt + 1);
-            }
-
-            throw error;
-          }
-        };
-
-        const connection = await createConnectionWithSlug();
+        const connection = await this.#prismaClient.apiConnection.create({
+          data: {
+            organizationId: attempt.client.organizationId,
+            clientId: attempt.client.id,
+            metadata,
+            dataReferenceId: secretReference.id,
+            scopes: token.scopes,
+            expiresAt,
+          },
+        });
 
         //schedule refreshing the token
         await this.#scheduleRefresh(expiresAt, connection);
@@ -340,6 +323,7 @@ export class APIAuthenticationRepository {
       },
       include: {
         dataReference: true,
+        client: true,
       },
     });
 
@@ -347,24 +331,13 @@ export class APIAuthenticationRepository {
       throw new Error(`Connection ${connectionId} not found`);
     }
 
-    const api = this.apiCatalog.getApi(connection.apiIdentifier);
-    if (!api) {
-      throw new Error(`API ${connection.apiIdentifier} not found`);
-    }
+    const { authMethod } = this.#getIntegrationAndAuthMethod(connection.client);
 
-    const authenticationMethod =
-      api.authenticationMethods[connection.authenticationMethodKey];
-    if (!authenticationMethod) {
-      throw new Error(
-        `API authentication method ${connection.authenticationMethodKey} not found for API ${connection.apiIdentifier}`
-      );
-    }
-
-    switch (authenticationMethod.type) {
+    switch (authMethod.type) {
       case "oauth2": {
         const getClientConfig = getClientConfigFromEnv(
-          authenticationMethod.client.id.envName,
-          authenticationMethod.client.secret.envName
+          authMethod.client.id.envName,
+          authMethod.client.secret.envName
         );
 
         const secretStore = new SecretStore(
@@ -394,12 +367,11 @@ export class APIAuthenticationRepository {
         }
 
         const params: RefreshTokenParams = {
-          refreshUrl: authenticationMethod.config.refresh.url,
+          refreshUrl: authMethod.config.refresh.url,
           clientId: getClientConfig.id,
           clientSecret: getClientConfig.secret,
-          requestedScopes: connection.scopes,
-          scopeSeparator:
-            authenticationMethod.config.authorization.scopeSeparator,
+          requestedScopes: connection.client.scopes,
+          scopeSeparator: authMethod.config.authorization.scopeSeparator,
           token: {
             accessToken: accessToken.accessToken,
             refreshToken: accessToken.refreshToken,
@@ -408,20 +380,17 @@ export class APIAuthenticationRepository {
             ),
           },
           accessTokenPointer:
-            authenticationMethod.config.token.accessTokenPointer ??
-            "/access_token",
+            authMethod.config.token.accessTokenPointer ?? "/access_token",
           refreshTokenPointer:
-            authenticationMethod.config.token.refreshTokenPointer ??
-            "/refresh_token",
+            authMethod.config.token.refreshTokenPointer ?? "/refresh_token",
           expiresInPointer:
-            authenticationMethod.config.token.expiresInPointer ?? "/expires_in",
-          scopePointer:
-            authenticationMethod.config.token.scopePointer ?? "/scope",
+            authMethod.config.token.expiresInPointer ?? "/expires_in",
+          scopePointer: authMethod.config.token.scopePointer ?? "/scope",
         };
 
         //todo do we need pkce here?
-        const token = await (authenticationMethod.config.refresh.refreshToken
-          ? authenticationMethod.config.refresh.refreshToken(params)
+        const token = await (authMethod.config.refresh.refreshToken
+          ? authMethod.config.refresh.refreshToken(params)
           : refreshOAuth2Token(params));
 
         //update the secret
@@ -430,7 +399,7 @@ export class APIAuthenticationRepository {
         //update the connection
         const metadata = this.#getMetadataFromToken({
           token,
-          authenticationMethod,
+          authenticationMethod: authMethod,
         });
 
         const expiresAt = this.#getExpiresAtFromToken({ token });
@@ -477,50 +446,46 @@ export class APIAuthenticationRepository {
     );
   }
 
-  #enrichConnection(connection: ApiConnection) {
-    //parse the metadata into the desired format, fallback if needed
-    const parsedMetadata = ConnectionMetadataSchema.safeParse(
-      connection.metadata
-    );
-    let metadata: ConnectionMetadata = {};
-    if (parsedMetadata.success) {
-      metadata = parsedMetadata.data;
-    } else {
-      console.warn(
-        `Connection ${
-          connection.id
-        } has invalid metadata, falling back to empty metadata.\n${parsedMetadata.error.format()}`
-      );
-    }
-
+  #enrichClient(client: ApiConnectionClient) {
     //add details about the API and authentication method
-    const api = this.apiCatalog.getApi(connection.apiIdentifier);
-    if (!api) {
-      throw new Error(
-        `API ${connection.apiIdentifier} not found for connection ${connection.id}`
-      );
+    const { integration, authMethod } =
+      this.#getIntegrationAndAuthMethod(client);
+
+    return {
+      ...client,
+      integration: {
+        identifier: integration.identifier,
+        name: integration.name,
+      },
+      authMethod: {
+        type: authMethod.type,
+        name: authMethod.name,
+        possibleScopes: authMethod.scopes,
+      },
+    };
+  }
+
+  #getIntegrationAndAuthMethod(client: ApiConnectionClient) {
+    const integration = this.#integrationCatalog.getIntegration(
+      client.integrationIdentifier
+    );
+
+    if (!integration) {
+      throw new Error(`Integration ${client.integrationIdentifier} not found`);
     }
 
-    const authenticationMethod =
-      api.authenticationMethods[connection.authenticationMethodKey];
-    if (!authenticationMethod) {
+    const authMethod =
+      integration.authenticationMethods[client.integrationAuthMethod];
+
+    if (!authMethod) {
       throw new Error(
-        `API authentication method ${connection.authenticationMethodKey} not found for API ${connection.apiIdentifier} for connection ${connection.id}`
+        `Integration authentication method ${client.integrationAuthMethod} not found for integration ${client.integrationIdentifier}`
       );
     }
 
     return {
-      ...connection,
-      metadata,
-      api: {
-        identifier: api.identifier,
-        name: api.name,
-      },
-      authenticationMethod: {
-        type: authenticationMethod.type,
-        name: authenticationMethod.name,
-        possibleScopes: authenticationMethod.scopes,
-      },
+      integration,
+      authMethod,
     };
   }
 
@@ -584,4 +549,4 @@ export class APIAuthenticationRepository {
   }
 }
 
-export const apiConnectionRepository = new APIAuthenticationRepository();
+export const apiAuthenticationRepository = new APIAuthenticationRepository();

@@ -2,19 +2,22 @@ import type { ActionArgs } from "@remix-run/server-runtime";
 import { redirect, typedjson } from "remix-typedjson";
 import z from "zod";
 import { prisma } from "~/db.server";
-import { apiConnectionRepository } from "~/services/externalApis/apiAuthenticationRepository.server";
+import { apiAuthenticationRepository } from "~/services/externalApis/apiAuthenticationRepository.server";
 
 const FormSchema = z
   .object({
-    organizationId: z.string(),
-    api: z.string(),
-    authenticationMethodKey: z.string(),
+    integrationIdentifier: z.string(),
+    integrationAuthMethod: z.string(),
     title: z.string().min(2),
     redirectTo: z.string(),
   })
   .passthrough();
 
-export async function action({ request }: ActionArgs) {
+const ParamsSchema = z.object({
+  organizationSlug: z.string(),
+});
+
+export async function action({ request, params }: ActionArgs) {
   if (request.method.toUpperCase() !== "POST") {
     return typedjson(
       {
@@ -24,6 +27,8 @@ export async function action({ request }: ActionArgs) {
       { status: 405 }
     );
   }
+
+  const parsedParams = ParamsSchema.parse(params);
 
   const formData = await request.formData();
   const formEntries = Object.fromEntries(formData.entries());
@@ -39,22 +44,28 @@ export async function action({ request }: ActionArgs) {
     );
   }
 
-  const { organizationId, api, authenticationMethodKey, title, redirectTo } =
+  const organization = await prisma.organization.findUniqueOrThrow({
+    where: {
+      slug: parsedParams.organizationSlug,
+    },
+  });
+
+  const { integrationAuthMethod, integrationIdentifier, title, redirectTo } =
     parsed.data;
 
-  //check if there's an existing connection with the same title
-  const existingConnection = await prisma.apiConnection.findFirst({
+  //check if there's an existing client with the same title
+  const existingClient = await prisma.apiConnectionClient.findFirst({
     where: {
-      organizationId,
+      organizationId: organization.id,
       title,
     },
   });
 
-  if (existingConnection) {
+  if (existingClient) {
     return typedjson(
       {
         type: "error" as const,
-        error: "A connection with this title already exists",
+        error: "A client with this title already exists",
       },
       { status: 400 }
     );
@@ -77,10 +88,10 @@ export async function action({ request }: ActionArgs) {
 
   const url = new URL(request.url);
 
-  const redirectUrl = await apiConnectionRepository.createConnectionAttempt({
-    organizationId,
-    apiIdentifier: api,
-    authenticationMethodKey,
+  const redirectUrl = await apiAuthenticationRepository.createConnectionClient({
+    organizationId: organization.id,
+    integrationIdentifier,
+    integrationAuthMethod,
     scopes,
     title,
     redirectTo,

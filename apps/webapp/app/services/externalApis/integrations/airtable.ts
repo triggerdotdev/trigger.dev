@@ -1,6 +1,6 @@
-import type { ExternalApi } from "../types";
+import type { Integration } from "../types";
 
-export const airtable: ExternalApi = {
+export const airtable: Integration = {
   identifier: "airtable",
   name: "Airtable",
   authenticationMethods: {

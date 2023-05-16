@@ -1,4 +1,4 @@
-import type { ExternalApi, ScopeAnnotation } from "../types";
+import type { Integration, ScopeAnnotation } from "../types";
 
 const repoAnnotation: ScopeAnnotation = {
   label: "Repo",
@@ -25,7 +25,7 @@ const userAnnotation: ScopeAnnotation = {
   color: "#FF00FF",
 };
 
-export const github: ExternalApi = {
+export const github: Integration = {
   identifier: "github",
   name: "GitHub",
   authenticationMethods: {

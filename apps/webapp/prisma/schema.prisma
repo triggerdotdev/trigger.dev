@@ -87,7 +87,8 @@ model ApiConnectionClient {
   title String
   slug  String
 
-  schema Json
+  integrationIdentifier String @default("generic")
+  integrationAuthMethod String @default("oauth2")
 
   scopes String[]
 
@@ -113,6 +114,8 @@ model ApiConnection {
 
   expiresAt DateTime?
   metadata  Json
+
+  scopes String[]
 
   dataReference   SecretReference @relation(fields: [dataReferenceId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   dataReferenceId String

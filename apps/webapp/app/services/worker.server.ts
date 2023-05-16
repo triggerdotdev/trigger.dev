@@ -3,7 +3,7 @@ import { env } from "~/env.server";
 import { ZodWorker } from "~/platform/zodWorker.server";
 import { EndpointRegisteredService } from "./endpoints/endpointRegistered.server";
 import { DeliverEventService } from "./events/deliverEvent.server";
-import { apiConnectionRepository } from "./externalApis/apiAuthenticationRepository.server";
+import { apiAuthenticationRepository } from "./externalApis/apiAuthenticationRepository.server";
 import { RegisterJobService } from "./jobs/registerJob.server";
 import { ResumeTaskService } from "./runs/resumeTask.server";
 import { StartRunService } from "./runs/startRun.server";
@@ -221,7 +221,7 @@ function getWorkerQueue() {
       refreshOAuthToken: {
         queueName: "internal-queue",
         handler: async (payload, job) => {
-          await apiConnectionRepository.refreshConnection({
+          await apiAuthenticationRepository.refreshConnection({
             connectionId: payload.connectionId,
           });
         },

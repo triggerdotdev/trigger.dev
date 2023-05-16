@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-export type ExternalApi = {
+export type Integration = {
   /** Used to uniquely identify an API */
   identifier: string;
   /** The name of the API */

@@ -2,7 +2,7 @@ import type { LoaderArgs } from "@remix-run/server-runtime";
 import { redirect } from "@remix-run/server-runtime";
 import z from "zod";
 import { prisma } from "~/db.server";
-import { apiConnectionRepository } from "~/services/externalApis/apiAuthenticationRepository.server";
+import { apiAuthenticationRepository } from "~/services/externalApis/apiAuthenticationRepository.server";
 
 const ParamsSchema = z
   .object({
@@ -40,6 +40,9 @@ export async function loader({ request }: LoaderArgs) {
     where: {
       id: parsedParams.data.state,
     },
+    include: {
+      client: true,
+    },
   });
 
   if (!attempt) {
@@ -47,14 +50,9 @@ export async function loader({ request }: LoaderArgs) {
   }
 
   try {
-    await apiConnectionRepository.createConnection({
-      organizationId: attempt.organizationId,
-      apiIdentifier: attempt.apiIdentifier,
-      authenticationMethodKey: attempt.authenticationMethodKey,
-      scopes: attempt.scopes,
+    await apiAuthenticationRepository.createConnectionFromAttempt({
+      attempt,
       code: parsedParams.data.code,
-      title: attempt.title,
-      pkceCode: attempt.securityCode ?? undefined,
       url,
     });
 
