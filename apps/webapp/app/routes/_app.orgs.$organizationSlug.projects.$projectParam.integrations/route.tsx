@@ -20,6 +20,15 @@ import { formatDateTime } from "~/utils";
 import { integrationCatalog } from "~/services/externalApis/integrationCatalog.server";
 import { Handle } from "~/utils/handle";
 import { Integration } from "~/services/externalApis/types";
+import { PageContainer } from "~/components/layout/AppLayout";
+import {
+  PageButtons,
+  PageDescription,
+  PageHeader,
+  PageTitle,
+  PageTitleRow,
+} from "~/components/primitives/PageHeader";
+import { PageBody } from "~/components/primitives/PageBody";
 
 export const loader = async ({ request, params }: LoaderArgs) => {
   const user = await requireUser(request);
@@ -57,14 +66,28 @@ export default function Integrations() {
   );
 
   return (
-    <div>
-      {/* <OrganizationsSideMenu /> */}
-      <div>
-        {/* <Header context="workflows" /> */}
+    <PageContainer>
+      <PageHeader>
+        <PageTitleRow>
+          <PageTitle title="Integrations" />
+          <PageButtons>
+            {/* <LinkButton
+              to={newProjectPath(currentOrganization)}
+              variant="primary/small"
+              shortcut="N"
+            >
+              Create a new project
+            </LinkButton> */}
+          </PageButtons>
+        </PageTitleRow>
+        <PageDescription>
+          Easily use an Integration, an existing Node.js SDK or make HTTP calls
+          from a Job.
+        </PageDescription>
+      </PageHeader>
+
+      <PageBody>
         <div>
-          <div className="flex items-start justify-between">
-            <Header1>API Integrations</Header1>
-          </div>
           {/* <div>
             {connections.length === 0 ? (
               <></>
@@ -171,8 +194,8 @@ export default function Integrations() {
             })}
           </div>
         </div>
-      </div>
-    </div>
+      </PageBody>
+    </PageContainer>
   );
 }
 
