@@ -11,6 +11,20 @@ import {
 import { useOrganizations } from "~/hooks/useOrganizations";
 import { newOrganizationPath } from "~/utils/pathBuilder";
 import { OrganizationGridItem } from "./OrganizationGrid";
+import { LoaderArgs, json } from "@remix-run/server-runtime";
+import { requireUserId } from "~/services/session.server";
+import { getOrganizations } from "~/models/organization.server";
+import { redirect } from "remix-typedjson";
+import { useUser } from "~/hooks/useUser";
+
+export const loader = async ({ request }: LoaderArgs) => {
+  const userId = await requireUserId(request);
+  const organizations = await getOrganizations({ userId });
+  if (organizations.length === 0) {
+    return redirect(newOrganizationPath());
+  }
+  return json({});
+};
 
 export default function AppLayout() {
   const organizations = useOrganizations();
