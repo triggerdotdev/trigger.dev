@@ -144,7 +144,7 @@ function SearchForm() {
         <Form>
           <Fieldset>
             <InputGroup>
-              <Label>Large search input</Label>
+              <Label>Medium search input</Label>
               <Input
                 placeholder="Search"
                 required={true}
@@ -157,8 +157,20 @@ function SearchForm() {
               <Input
                 placeholder="Search"
                 required={true}
+                variant="small"
                 icon="search"
                 shortcut="⌘K"
+                fullWidth={false}
+              />
+            </InputGroup>
+            <InputGroup>
+              <Label>Tertiary search input</Label>
+              <Input
+                placeholder="Search"
+                required={true}
+                variant="tertiary"
+                icon="search"
+                fullWidth={false}
               />
             </InputGroup>
           </Fieldset>
