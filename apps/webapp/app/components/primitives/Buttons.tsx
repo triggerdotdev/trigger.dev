@@ -7,7 +7,8 @@ import { NamedIcon } from "./NamedIcon";
 
 const variant = {
   "primary/small": {
-    textColor: "text-bright group-enabled:hover:text-white transition",
+    textColor:
+      "text-bright group-hover:text-white transition group-disabled:text-bright/80",
     button:
       "h-6 px-[5px] text-xs bg-indigo-600 hover:bg-indigo-500/90 group-disabled:opacity-50 group-disabled:pointer-events-none",
     icon: "h-3.5",
@@ -15,7 +16,8 @@ const variant = {
       "text-xxs font-medium py-0.25 min-w-[14px] rounded-[2px] px-0.5 ml-1 border border-bright/40 text-bright group-hover:border-bright/60 transition",
   },
   "secondary/small": {
-    textColor: "text-dimmed group-enabled:hover:text-bright transition",
+    textColor:
+      "text-dimmed group-hover:text-bright transition group-disabled:text-dimmed/80",
     button:
       "h-6 px-[5px] text-xs bg-slate-800 hover:bg-slate-700/70 disabled:opacity-50 group-disabled:pointer-events-none",
     icon: "h-3.5",
@@ -23,7 +25,8 @@ const variant = {
       "text-xxs font-medium py-0.25 min-w-[14px] rounded-[2px] px-0.5 ml-1 border border-dimmed/40 text-dimmed group-hover:border-dimmed group-hover:text-bright transition",
   },
   "tertiary/small": {
-    textColor: "text-dimmed group-enabled:hover:text-bright transition",
+    textColor:
+      "text-dimmed group-hover:text-bright transition group-disabled:text-dimmed/80",
     button:
       "h-6 px-[5px] text-xs bg-transparent hover:bg-slate-850 disabled:opacity-50 group-disabled:pointer-events-none",
     icon: "h-3.5",
@@ -31,7 +34,8 @@ const variant = {
       "text-xxs font-medium py-0.25 min-w-[14px] rounded-[2px] px-0.5 ml-1 border border-bright/40 text-dimmed group-hover:border-bright/60 group-hover:text-bright transition",
   },
   "danger/small": {
-    textColor: "text-bright group-enabled:hover:text-white transition",
+    textColor:
+      "text-bright group-hover:text-white transition group-disabled:text-bright/80",
     button:
       "h-6 px-[5px] text-xs bg-rose-600 hover:bg-rose-500 disabled:opacity-50 group-disabled:pointer-events-none",
     icon: "h-3.5",
@@ -39,7 +43,8 @@ const variant = {
       "text-xxs font-medium py-0.25 min-w-[14px] rounded-[2px] px-0.5 ml-1 border border-bright/40 text-bright group-hover:border-bright/60 transition",
   },
   "primary/medium": {
-    textColor: "text-bright group-enabled:hover:text-white transition",
+    textColor:
+      "text-bright group-hover:text-white transition group-disabled:text-bright/80",
     button:
       "h-8 px-2 text-sm bg-indigo-600 hover:bg-indigo-500/90 disabled:opacity-50",
     icon: "h-4",
@@ -47,7 +52,8 @@ const variant = {
       "text-[0.6rem] leading-[1.13rem] min-w-[20px] px-1 rounded-[3px] ml-1.5 -mr-0.5 border border-bright/40 text-bright group-hover:border-bright/60 transition",
   },
   "secondary/medium": {
-    textColor: "text-dimmed group-enabled:hover:text-bright transition",
+    textColor:
+      "text-dimmed group-hover:text-bright transition group-disabled:text-dimmed/80",
     button:
       "h-8 px-2 text-sm bg-slate-800 hover:bg-slate-700/70 disabled:opacity-50",
     icon: "h-4",
@@ -55,7 +61,8 @@ const variant = {
       "text-[0.6rem] leading-[1.13rem] min-w-[20px] px-1 rounded-[3px] ml-1.5 -mr-0.5 border border-dimmed/40 text-dimmed group-hover:border-dimmed group-hover:text-bright transition",
   },
   "tertiary/medium": {
-    textColor: "text-dimmed group-enabled:hover:text-bright transition",
+    textColor:
+      "text-dimmed group-hover:text-bright transition group-disabled:text-dimmed/80",
     button:
       "h-8 px-2 text-sm bg-transparent hover:bg-slate-850 disabled:opacity-50",
     icon: "h-4",
@@ -63,7 +70,8 @@ const variant = {
       "text-[0.6rem] leading-[1.13rem] min-w-[20px] px-1 rounded-[3px] ml-1.5 -mr-0.5 border border-bright/40 text-dimmed group-hover:border-bright/60 group-hover:text-bright transition",
   },
   "danger/medium": {
-    textColor: "text-bright group-enabled:hover:text-white transition",
+    textColor:
+      "text-bright group-hover:text-white transition group-disabled:text-bright/80",
     button:
       "h-8 px-2 text-sm bg-rose-600 hover:bg-rose-500 disabled:opacity-50",
     icon: "h-4",
@@ -71,7 +79,8 @@ const variant = {
       "text-[0.6rem] leading-[1.13rem] min-w-[20px] px-1 rounded-[3px] ml-1.5 -mr-0.5 border border-bright/40 text-bright group-hover:border-bright/60 transition",
   },
   "primary/large": {
-    textColor: "text-bright group-enabled:hover:text-white transition",
+    textColor:
+      "text-bright group-hover:text-white transition group-disabled:text-dimmed/80",
     button:
       "h-10 px-2 text-sm font-medium bg-indigo-600 hover:bg-indigo-500/90 disabled:opacity-50",
     icon: "h-5",
@@ -80,7 +89,7 @@ const variant = {
   "secondary/large": {
     textColor: "text-dimmed",
     button:
-      "h-10 px-2 text-sm text-dimmed group-enabled:hover:text-bright transition font-medium bg-slate-800 hover:bg-slate-700/70 disabled:opacity-50",
+      "h-10 px-2 text-sm text-dimmed group-hover:text-bright transition font-medium bg-slate-800 hover:bg-slate-700/70 disabled:opacity-50",
     icon: "h-5",
     shortcut: undefined,
   },
