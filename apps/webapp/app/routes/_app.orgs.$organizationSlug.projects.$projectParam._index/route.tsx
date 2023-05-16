@@ -13,11 +13,9 @@ import { useCurrentProject } from "~/hooks/useProject";
 import { projectPath } from "~/utils/pathBuilder";
 
 export const handle = {
-  breadcrumb: () => {
-    // eslint-disable-next-line react-hooks/rules-of-hooks
+  useBreadcrumbElement: () => {
     const organization = useCurrentOrganization();
     invariant(organization, "Organization must be defined");
-    // eslint-disable-next-line react-hooks/rules-of-hooks
     const project = useCurrentProject();
     invariant(project, "Project must be defined");
 

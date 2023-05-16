@@ -33,7 +33,7 @@ export const loader = async ({ request, params }: LoaderArgs) => {
 };
 
 export const handle = {
-  breadcrumb: () => <ProjectsMenu />,
+  useBreadcrumbElement: () => <ProjectsMenu />,
 };
 
 export default function Project() {

@@ -8,6 +8,6 @@ export function useBreadcrumbs(): BreadcrumbFn[] {
 
   return matches
     .filter((match) => match.handle)
-    .filter((match) => match.handle!.breadcrumb)
-    .map((match) => match.handle!.breadcrumb as BreadcrumbFn);
+    .filter((match) => match.handle!.useBreadcrumbElement)
+    .map((match) => match.handle!.useBreadcrumbElement as BreadcrumbFn);
 }
