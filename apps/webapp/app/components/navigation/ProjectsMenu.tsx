@@ -44,7 +44,7 @@ export function ProjectsMenu() {
             <Fragment key={organization.id}>
               <PopoverSectionHeader title={organization.title} />
 
-              <div className="flex flex-col gap-1">
+              <div className="flex flex-col gap-1 p-1">
                 {organization.projects.map((project) => {
                   const isSelected = project.id === currentProject?.id;
                   return (
@@ -66,7 +66,7 @@ export function ProjectsMenu() {
               </div>
             </Fragment>
           ))}
-          <div className="border-t border-slate-700">
+          <div className="border-t border-slate-800 p-1">
             <PopoverMenuItem
               to={newOrganizationPath()}
               title="New Organization"

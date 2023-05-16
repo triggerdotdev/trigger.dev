@@ -22,7 +22,7 @@ const PopoverContent = React.forwardRef<
       align={align}
       sideOffset={sideOffset}
       className={cn(
-        "z-50 w-72 rounded-md border bg-popover p-4 text-popover-foreground shadow-md outline-none animate-in data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2",
+        "data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 z-50 w-72 rounded-md border bg-popover p-4 text-popover-foreground shadow-md outline-none animate-in",
         className
       )}
       {...props}
@@ -33,7 +33,10 @@ PopoverContent.displayName = PopoverPrimitive.Content.displayName;
 
 function PopoverSectionHeader({ title }: { title: string }) {
   return (
-    <Paragraph variant="extra-small/bright/caps" className="bg-slate-900 p-2">
+    <Paragraph
+      variant="extra-extra-small/caps"
+      className="bg-slate-900 px-2.5 py-2"
+    >
       {title}
     </Paragraph>
   );
@@ -87,7 +90,7 @@ function PopoverArrowTrigger({
         {children}
       </Paragraph>
       <ChevronDownIcon
-        className={cn("h-3 w-3 transition ", isOpen && "-rotate-180")}
+        className={cn("h-3 w-3 transition", isOpen && "-rotate-180")}
       />
     </PopoverTrigger>
   );
