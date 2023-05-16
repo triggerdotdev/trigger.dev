@@ -1,27 +1,31 @@
 import { cn } from "~/utils/cn";
 
 const paragraphVariants = {
-  base: "font-sans text-base font-normal text-dimmed mb-2",
-  "base/bright": "font-sans text-base text-bright mb-2",
-  small: "font-sans text-sm font-normal text-dimmed mb-1.5",
-  "small/bright": "font-sans text-sm text-bright mb-1.5",
-  "extra-small": "font-sans text-xs font-normal text-dimmed",
-  "extra-small/bright": "font-sans text-xs text-bright",
-  "extra-small/mono": "font-mono text-xs text-dimmed",
-  "extra-small/bright/mono": "font-mono text-xs text-bright",
+  base: "font-sans text-base font-normal leading-normal text-dimmed mb-2",
+  "base/bright":
+    "font-sans text-base font-normal leading-normal text-bright mb-2",
+  small: "font-sans text-sm font-normal leading-normal text-dimmed mb-1.5",
+  "small/bright":
+    "font-sans text-sm font-normal leading-normal text-bright mb-1.5",
+  "extra-small": "font-sans text-xs font-normal leading-normal text-dimmed",
+  "extra-small/bright":
+    "font-sans text-xs font-normal leading-normal text-bright",
+  "extra-small/mono":
+    "font-mono text-xs font-normal leading-normal text-dimmed",
+  "extra-small/bright/mono": "font-mono text-xs leading-normal text-bright",
   "extra-small/caps":
-    "font-sans text-xs uppercase tracking-wide font-normal text-dimmed",
+    "font-sans text-xs uppercase tracking-wide font-normal leading-normal text-dimmed",
   "extra-small/bright/caps":
-    "font-sans text-xs uppercase tracking-wide font-normal text-bright",
-  "extra-extra-small": "font-sans text-xxs text-dimmed",
-  "extra-extra-small/bright": "font-sans text-xxs text-bright",
+    "font-sans text-xs uppercase tracking-wide font-normal leading-normal text-bright",
+  "extra-extra-small":
+    "font-sans text-xxs font-normal leading-normal text-dimmed",
+  "extra-extra-small/bright":
+    "font-sans text-xxs font-normal leading-normal text-bright",
   "extra-extra-small/caps":
-    "font-sans text-xxs uppercase tracking-wide font-normal text-dimmed",
+    "font-sans text-xxs uppercase tracking-wide font-normal leading-normal text-dimmed",
   "extra-extra-small/bright/caps":
-    "font-sans text-xxs uppercase tracking-wide font-normal text-bright",
+    "font-sans text-xxs uppercase tracking-wide font-normal leading-normal text-bright",
 };
-
-//Todo: And leading to the paragraph variants above.
 
 type ParagraphProps = {
   variant?: keyof typeof paragraphVariants;
