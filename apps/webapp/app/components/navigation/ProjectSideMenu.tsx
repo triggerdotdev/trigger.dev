@@ -1,3 +1,5 @@
+import { useMatches } from "@remix-run/react";
+import { motion } from "framer-motion";
 import invariant from "tiny-invariant";
 import { useCurrentJob } from "~/hooks/useJob";
 import { useCurrentOrganization } from "~/hooks/useOrganizations";
@@ -13,9 +15,6 @@ import {
 } from "~/utils/pathBuilder";
 import { NavLinkButton } from "../primitives/Buttons";
 import type { IconNames } from "../primitives/NamedIcon";
-import { useMatches } from "@remix-run/react";
-import { motion } from "framer-motion";
-import { useState } from "react";
 import { SimpleTooltip } from "../primitives/Tooltip";
 
 export function SideMenuContainer({ children }: { children: React.ReactNode }) {
@@ -39,8 +38,7 @@ export function ProjectSideMenu() {
 
   //we collapse the menu if we're in a job or an integration
   const job = useCurrentJob();
-  // const isCollapsed = job !== undefined;
-  const [isCollapsed, setIsCollapsed] = useState(false);
+  const isCollapsed = job !== undefined;
 
   const jobsActive =
     job !== undefined ||
@@ -55,7 +53,6 @@ export function ProjectSideMenu() {
       className={cn(
         "flex h-full flex-col justify-between border-r border-slate-850 p-1 transition duration-300 ease-in-out"
       )}
-      onClick={() => setIsCollapsed((c) => !c)}
     >
       <div className="flex flex-col gap-1">
         <SideMenuItem
