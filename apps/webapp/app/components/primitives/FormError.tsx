@@ -1,6 +1,7 @@
 import type { z } from "zod";
 import { Paragraph } from "./Paragraph";
 import { NamedIcon } from "./NamedIcon";
+import { motion } from "framer-motion";
 
 export function FormError({
   children,
@@ -10,12 +11,19 @@ export function FormError({
   id?: string;
 }) {
   return (
-    <div className="flex items-center gap-0.5">
-      <NamedIcon name="error" className="h-4 w-4 shrink-0 justify-start" />
-      <Paragraph id={id} variant="extra-small" className="text-rose-500">
-        {children}
-      </Paragraph>
-    </div>
+    children && (
+      <motion.div
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ duration: 0.3 }}
+        className="flex items-center gap-0.5"
+      >
+        <NamedIcon name="error" className="h-4 w-4 shrink-0 justify-start" />
+        <Paragraph id={id} variant="extra-small" className="text-rose-500">
+          {children}
+        </Paragraph>
+      </motion.div>
+    )
   );
 }
 
