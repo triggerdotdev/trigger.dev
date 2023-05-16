@@ -157,7 +157,12 @@ function IntegrationIcon({
         className
       )}
     >
-      <img src={`/integrations/${slug}.png`} className="p-[8%]" alt={name} />
+      <img
+        src={`/integrations/${slug}.png`}
+        className="p-[8%]"
+        alt={name}
+        loading="lazy"
+      />
     </div>
   );
 }
