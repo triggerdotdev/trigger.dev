@@ -1,5 +1,6 @@
 import type { z } from "zod";
 import { Paragraph } from "./Paragraph";
+import { NamedIcon } from "./NamedIcon";
 
 export function FormError({
   children,
@@ -9,9 +10,12 @@ export function FormError({
   id?: string;
 }) {
   return (
-    <Paragraph id={id} variant="small" className="text-red-500">
-      {children}
-    </Paragraph>
+    <div className="flex items-center gap-0.5">
+      <NamedIcon name="error" className="h-4 w-4 shrink-0 justify-start" />
+      <Paragraph id={id} variant="extra-small" className="text-rose-500">
+        {children}
+      </Paragraph>
+    </div>
   );
 }
 
@@ -35,7 +39,7 @@ export function ZodFormErrors({
   }
 
   return (
-    <div className="col-span-full mt-2 text-sm text-red-600">
+    <div className="col-span-full mt-1 text-sm text-rose-600">
       {relevantErrors.map((error, index) => (
         <FormError key={index}>{error.message}</FormError>
       ))}
