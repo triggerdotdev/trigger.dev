@@ -53,7 +53,7 @@ function PopoverArrowTrigger({
         className
       )}
     >
-      <Paragraph variant="extra-small" className="transition ">
+      <Paragraph variant="extra-small" className="transition">
         {children}
       </Paragraph>
       <ChevronDownIcon
