@@ -69,6 +69,15 @@ export const TriggerSourceSchema = z.object({
   key: z.string(),
 });
 
+export const HandleTriggerSourceSchema = z.object({
+  key: z.string(),
+  secret: z.string(),
+  data: z.any(),
+  params: z.any(),
+});
+
+export type HandleTriggerSource = z.infer<typeof HandleTriggerSourceSchema>;
+
 export type TriggerSource = z.infer<typeof TriggerSourceSchema>;
 
 export const HttpSourceRequestSchema = z.object({
@@ -80,24 +89,16 @@ export const HttpSourceRequestSchema = z.object({
 
 export type HttpSourceRequest = z.infer<typeof HttpSourceRequestSchema>;
 
-// "x-trigger-key": options.key,
-// "x-trigger-auth": JSON.stringify(options.auth),
-// "x-trigger-url": options.request.url,
-// "x-trigger-method": options.request.method,
-// "x-trigger-headers": JSON.stringify(options.request.headers),
-// ...(options.secret ? { "x-trigger-secret": options.secret } : {}),
 export const HttpSourceRequestHeadersSchema = z.object({
-  "x-trigger-key": z.string(),
-  "x-trigger-auth": z
-    .string()
-    .optional()
-    .transform((s) => (s ? ConnectionAuthSchema.parse(s) : undefined)),
-  "x-trigger-url": z.string(),
-  "x-trigger-method": z.string(),
-  "x-trigger-headers": z
+  "x-ts-key": z.string(),
+  "x-ts-secret": z.string(),
+  "x-ts-data": z.string().transform((s) => JSON.parse(s)),
+  "x-ts-params": z.string().transform((s) => JSON.parse(s)),
+  "x-ts-http-url": z.string(),
+  "x-ts-http-method": z.string(),
+  "x-ts-http-headers": z
     .string()
     .transform((s) => z.record(z.string()).parse(JSON.parse(s))),
-  "x-trigger-secret": z.string().optional(),
 });
 
 export type HttpSourceRequestHeaders = z.output<

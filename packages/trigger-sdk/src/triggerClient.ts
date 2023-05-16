@@ -2,6 +2,9 @@ import {
   ErrorWithMessage,
   ErrorWithStackSchema,
   GetEndpointDataResponse,
+  HandleTriggerSource,
+  HttpSourceRequest,
+  HttpSourceRequestHeadersSchema,
   LogLevel,
   Logger,
   NormalizedRequest,
@@ -10,6 +13,7 @@ import {
   RegisterSourceEventSchema,
   RunJobBody,
   RunJobBodySchema,
+  SendEvent,
   SourceMetadata,
 } from "@trigger.dev/internal";
 import { ApiClient } from "./apiClient";
@@ -22,7 +26,7 @@ import { IO, ResumeWithTask } from "./io";
 import { Job } from "./job";
 import { ContextLogger } from "./logger";
 import type { EventSpecification, Trigger, TriggerContext } from "./types";
-import { ExternalSource } from "./triggers/externalSource";
+import { ExternalSource, HttpSourceEvent } from "./triggers/externalSource";
 import { CustomTrigger } from "./triggers/customTrigger";
 
 export type TriggerClientOptions = {
@@ -42,6 +46,16 @@ export class TriggerClient {
   #registeredJobs: Record<string, Job<Trigger<EventSpecification<any>>, any>> =
     {};
   #registeredSources: Record<string, SourceMetadata> = {};
+  #registeredHttpSourceHandlers: Record<
+    string,
+    (
+      source: HandleTriggerSource,
+      request: HttpSourceEvent
+    ) => Promise<{
+      events: Array<SendEvent>;
+      response?: NormalizedResponse;
+    } | void>
+  > = {};
   #client: ApiClient;
   #logger: Logger;
   name: string;
@@ -170,6 +184,52 @@ export class TriggerClient {
             },
           };
         }
+        case "DELIVER_HTTP_SOURCE_REQUEST": {
+          const headers = HttpSourceRequestHeadersSchema.safeParse(
+            request.headers
+          );
+
+          if (!headers.success) {
+            return {
+              status: 400,
+              body: {
+                message: "Invalid headers",
+              },
+            };
+          }
+
+          const sourceRequest = {
+            url: headers.data["x-ts-http-url"],
+            method: headers.data["x-ts-http-method"],
+            headers: headers.data["x-ts-http-headers"],
+            rawBody: request.body,
+          };
+
+          const key = headers.data["x-ts-key"];
+          const secret = headers.data["x-ts-secret"];
+          const params = headers.data["x-ts-params"];
+          const data = headers.data["x-ts-data"];
+
+          const source = {
+            key,
+            secret,
+            params,
+            data,
+          };
+
+          const { response, events } = await this.#handleHttpSourceRequest(
+            source,
+            sourceRequest
+          );
+
+          return {
+            status: 200,
+            body: {
+              events,
+              response,
+            },
+          };
+        }
       }
     }
 
@@ -193,6 +253,10 @@ export class TriggerClient {
     event: EventSpecification<any>;
     params: any;
   }): void {
+    this.#registeredHttpSourceHandlers[options.key] = async (s, r) => {
+      return await options.source.handle(s, r, this.#logger);
+    };
+
     let registeredSource = this.#registeredSources[options.key];
 
     if (!registeredSource) {
@@ -462,6 +526,57 @@ export class TriggerClient {
             return await this.#client.sendEvent(event, options);
           }
         );
+      },
+    };
+  }
+
+  async #handleHttpSourceRequest(
+    source: { key: string; secret: string; data: any; params: any },
+    sourceRequest: HttpSourceRequest
+  ): Promise<{ response: NormalizedResponse; events: SendEvent[] }> {
+    this.#logger.debug("Handling HTTP source request", {
+      source,
+    });
+
+    const handler = this.#registeredHttpSourceHandlers[source.key];
+
+    if (!handler) {
+      this.#logger.debug("No handler registered for HTTP source", {
+        source,
+      });
+
+      return {
+        response: {
+          status: 200,
+          body: {
+            ok: true,
+          },
+        },
+        events: [],
+      };
+    }
+
+    const results = await handler(source, sourceRequest);
+
+    if (!results) {
+      return {
+        events: [],
+        response: {
+          status: 200,
+          body: {
+            ok: true,
+          },
+        },
+      };
+    }
+
+    return {
+      events: results.events,
+      response: results.response ?? {
+        status: 200,
+        body: {
+          ok: true,
+        },
       },
     };
   }

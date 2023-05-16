@@ -31,6 +31,82 @@ export function createRepoEventSource(
     schema: z.object({ repo: z.string() }),
     connection,
     key: (params) => params.repo,
+    handler: async (event, logger) => {
+      logger.debug("[inside github integration] Handling github repo event");
+
+      const { rawEvent: request, source } = event;
+
+      if (!request.rawBody) {
+        logger.debug("[inside github integration] No rawBody found");
+
+        return;
+      }
+
+      const deliveryId = request.headers["x-github-delivery"];
+      const hookId = request.headers["x-github-hook-id"];
+      const signature = request.headers["x-hub-signature-256"];
+
+      if (source.secret && signature) {
+        const githubWebhooks = new Webhooks({
+          secret: source.secret,
+        });
+
+        if (!githubWebhooks.verify(request.rawBody, signature)) {
+          logger.debug(
+            "[inside github integration] Unable to verify the signature of the rawBody",
+            {
+              signature,
+              secret: source.secret,
+            }
+          );
+
+          return;
+        }
+      }
+
+      const name = request.headers["x-github-event"];
+
+      const context = omit(request.headers, [
+        "x-github-event",
+        "x-github-delivery",
+        "x-hub-signature-256",
+        "x-hub-signature",
+        "content-type",
+        "content-length",
+        "accept",
+        "accept-encoding",
+        "x-forwarded-proto",
+      ]);
+
+      const payload = parseBody(request.rawBody);
+
+      if (!payload) {
+        logger.debug("[inside github integration] Unable to parse the rawBody");
+
+        return;
+      }
+
+      logger.debug(
+        "[inside github integration] Returning an event for the webhook!",
+        {
+          name,
+          payload,
+          context,
+        }
+      );
+
+      return {
+        events: [
+          {
+            id: [hookId, deliveryId].join(":"),
+            source: "github.com",
+            payload,
+            name,
+            context,
+          },
+        ],
+      };
+    },
     register: async (event, io, ctx) => {
       const { params, source: httpSource, events, missingEvents } = event;
 
@@ -102,6 +178,7 @@ export function createOrgEventSource(
     connection,
     schema: z.object({ org: z.string() }),
     key: (params) => params.org,
+    handler: async (event) => {},
     register: async (event, io, ctx) => {
       const { params, source: httpSource, events, missingEvents } = event;
 

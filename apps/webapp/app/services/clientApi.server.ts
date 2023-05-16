@@ -210,8 +210,9 @@ export class ClientApi {
 
   async deliverHttpSourceRequest(options: {
     key: string;
-    secret?: string;
-    auth?: ConnectionAuth;
+    secret: string;
+    params: any;
+    data: any;
     request: HttpSourceRequest;
   }) {
     const response = await safeFetch(this.#url, {
@@ -220,14 +221,13 @@ export class ClientApi {
         "Content-Type": "application/octet-stream",
         "x-trigger-api-key": this.#apiKey,
         "x-trigger-action": "DELIVER_HTTP_SOURCE_REQUEST",
-        "x-trigger-key": options.key,
-        "x-trigger-url": options.request.url,
-        "x-trigger-method": options.request.method,
-        "x-trigger-headers": JSON.stringify(options.request.headers),
-        ...(options.secret ? { "x-trigger-secret": options.secret } : {}),
-        ...(options.auth
-          ? { "x-trigger-auth": JSON.stringify(options.auth) }
-          : {}),
+        "x-ts-key": options.key,
+        "x-ts-secret": options.secret,
+        "x-ts-params": JSON.stringify(options.params ?? {}),
+        "x-ts-data": JSON.stringify(options.data ?? {}),
+        "x-ts-http-url": options.request.url,
+        "x-ts-http-method": options.request.method,
+        "x-ts-http-headers": JSON.stringify(options.request.headers),
       },
       body: options.request.rawBody,
     });
