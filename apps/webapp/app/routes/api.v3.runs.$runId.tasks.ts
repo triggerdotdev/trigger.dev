@@ -223,37 +223,37 @@ export class RunTaskService {
       });
 
       // TODO: do this client side instead of adding an option to taskBody
-      if (taskBody.trigger) {
-        // Create an eventrule for the task
-        await prisma.jobEventRule.upsert({
-          where: {
-            jobInstanceId_actionIdentifier: {
-              jobInstanceId: task.run.jobInstanceId,
-              actionIdentifier: task.id,
-            },
-          },
-          create: {
-            action: "RESUME_TASK",
-            actionIdentifier: task.id,
-            jobId: task.run.jobId,
-            jobInstanceId: task.run.jobInstanceId,
-            environmentId: task.run.environmentId,
-            organizationId: task.run.organizationId,
-            projectId: task.run.projectId,
-            event: taskBody.trigger.eventRule.event,
-            source: taskBody.trigger.eventRule.source,
-            payloadFilter: taskBody.trigger.eventRule.payload ?? {},
-            contextFilter: taskBody.trigger.eventRule.context ?? {},
-            enabled: true,
-          },
-          update: {
-            event: taskBody.trigger.eventRule.event,
-            source: taskBody.trigger.eventRule.source,
-            payloadFilter: taskBody.trigger.eventRule.payload ?? {},
-            contextFilter: taskBody.trigger.eventRule.context ?? {},
-          },
-        });
-      }
+      // if (taskBody.trigger) {
+      //   // Create an eventrule for the task
+      //   await prisma.jobEventRule.upsert({
+      //     where: {
+      //       jobInstanceId_actionIdentifier: {
+      //         jobInstanceId: task.run.jobInstanceId,
+      //         actionIdentifier: task.id,
+      //       },
+      //     },
+      //     create: {
+      //       action: "RESUME_TASK",
+      //       actionIdentifier: task.id,
+      //       jobId: task.run.jobId,
+      //       jobInstanceId: task.run.jobInstanceId,
+      //       environmentId: task.run.environmentId,
+      //       organizationId: task.run.organizationId,
+      //       projectId: task.run.projectId,
+      //       event: taskBody.trigger.eventRule.event,
+      //       source: taskBody.trigger.eventRule.source,
+      //       payloadFilter: taskBody.trigger.eventRule.payload ?? {},
+      //       contextFilter: taskBody.trigger.eventRule.context ?? {},
+      //       enabled: true,
+      //     },
+      //     update: {
+      //       event: taskBody.trigger.eventRule.event,
+      //       source: taskBody.trigger.eventRule.source,
+      //       payloadFilter: taskBody.trigger.eventRule.payload ?? {},
+      //       contextFilter: taskBody.trigger.eventRule.context ?? {},
+      //     },
+      //   });
+      // }
 
       return task;
     });

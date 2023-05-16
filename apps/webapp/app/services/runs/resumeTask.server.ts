@@ -3,6 +3,7 @@ import type { PrismaClient } from "~/db.server";
 import { prisma } from "~/db.server";
 import { ClientApi, ClientApiError } from "../clientApi.server";
 import { workerQueue } from "../worker.server";
+import { resolveRunConnections } from "~/models/runConnection.server";
 
 export class ResumeTaskService {
   #prismaClient: PrismaClient;
@@ -17,14 +18,14 @@ export class ResumeTaskService {
       include: {
         run: {
           include: {
-            jobInstance: {
+            version: {
               include: {
                 endpoint: true,
                 job: true,
               },
             },
             environment: true,
-            eventLog: true,
+            event: true,
             organization: true,
             tasks: {
               where: {
@@ -34,12 +35,33 @@ export class ResumeTaskService {
               },
             },
             queue: true,
+            runConnections: {
+              include: {
+                apiConnection: {
+                  include: {
+                    dataReference: true,
+                  },
+                },
+              },
+            },
           },
         },
       },
     });
 
     const { run } = task;
+
+    const connections = await resolveRunConnections(run.runConnections);
+
+    if (Object.keys(connections).length < run.runConnections.length) {
+      throw new Error(
+        `Could not resolve all connections for run ${run.id} and task ${
+          task.id
+        }, there should be ${run.runConnections.length} connections but only ${
+          Object.keys(connections).length
+        } were resolved.`
+      );
+    }
 
     const updatedTask = await this.#prismaClient.task.update({
       where: {
@@ -54,29 +76,30 @@ export class ResumeTaskService {
 
     const client = new ClientApi(
       run.environment.apiKey,
-      run.jobInstance.endpoint.url
+      run.version.endpoint.url
     );
 
-    const event = ApiEventLogSchema.parse(run.eventLog);
+    const event = ApiEventLogSchema.parse(run.event);
 
     try {
       const results = await client.executeJob({
         event,
         job: {
-          id: run.jobInstance.job.slug,
-          version: run.jobInstance.version,
+          id: run.version.job.slug,
+          version: run.version.version,
         },
         context: {
           id: run.id,
           environment: run.environment.slug,
           organization: run.organization.slug,
           isTest: run.isTest,
-          version: run.jobInstance.version,
+          version: run.version.version,
           startedAt: run.startedAt ?? new Date(),
         },
         tasks: [run.tasks, updatedTask]
           .flat()
           .map((t) => CachedTaskSchema.parse(t)),
+        connections,
       });
 
       if (results.completed) {

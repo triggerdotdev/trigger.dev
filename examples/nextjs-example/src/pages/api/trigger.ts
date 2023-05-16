@@ -13,6 +13,9 @@ import type { NextApiRequest, NextApiResponse } from "next";
 import { z } from "zod";
 
 const gh = github({ id: "github" });
+// TODO: move to this syntax
+// const gh = github({ hosted: { id: "github" } });
+// const gh2 = github({ local: { token: "my-token" } });
 const slack = slackConnection({ id: "my-slack-new" });
 
 const client = new TriggerClient("nextjs", {
@@ -26,20 +29,6 @@ const dynamicOnIssueOpenedTrigger = new DynamicTrigger(client, {
   id: "github-issue-opened",
   event: events.onIssueOpened,
   source: gh.sources.repo,
-});
-
-const dynamicOnIssueOpenedTriggerOrg = new DynamicTrigger(client, {
-  id: "github-issue-opened-org",
-  event: events.onIssueOpened,
-  source: gh.sources.org,
-});
-
-dynamicOnIssueOpenedTrigger.register({
-  repo: "ericallam/basic-starter-100k",
-});
-
-dynamicOnIssueOpenedTriggerOrg.register({
-  org: "triggerdotdev",
 });
 
 new Job(client, {
@@ -81,12 +70,12 @@ new Job(client, {
 });
 
 new Job(client, {
-  id: "alert-on-new-github-stars-in-org",
-  name: "Alert on new GitHub stars in Org",
+  id: "alert-on-new-issue-comments",
+  name: "Alert on new github issue comments",
   version: "0.1.1",
-  trigger: gh.triggers.org({
-    event: events.onNewStar,
-    org: "triggerdotdev",
+  trigger: gh.triggers.repo({
+    event: events.onIssueComment,
+    repo: "ericallam/basic-starter-100k",
   }),
   run: async (event, io, ctx) => {},
 });
@@ -98,13 +87,13 @@ new Job(client, {
   trigger: comboTrigger({
     event: events.onNewStar,
     triggers: [
-      gh.triggers.org({
+      gh.triggers.repo({
         event: events.onNewStar,
-        org: "triggerdotdev",
+        repo: "ericallam/stripe-to-email",
       }),
-      gh.triggers.org({
+      gh.triggers.repo({
         event: events.onNewStar,
-        org: "jsonheroio",
+        repo: "ericallam/supabase-to-loops-cloud",
       }),
     ],
   }),

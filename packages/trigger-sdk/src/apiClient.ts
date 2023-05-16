@@ -1,19 +1,20 @@
 import {
   ApiEventLog,
+  ApiEventLogSchema,
   CompleteTaskBodyInput,
   CreateRunBody,
   CreateRunResponseBodySchema,
-  HttpEventSource,
   LogLevel,
-  LogMessage,
   Logger,
-  RegisterHttpEventSourceBody,
   RunTaskBodyInput,
   SendEvent,
   SendEventOptions,
-  ServerTask,
-  UpdateHttpEventSourceBody,
+  ServerTaskSchema,
+  TriggerSource,
+  TriggerSourceSchema,
+  UpdateTriggerSourceBody,
 } from "@trigger.dev/internal";
+import { z } from "zod";
 
 export type ApiClientOptions = {
   apiKey?: string;
@@ -104,106 +105,51 @@ export class ApiClient {
       params,
     });
 
-    const response = await fetch(`${this.#apiUrl}/api/v3/runs`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify(params),
-    });
-
-    if (response.status >= 400 && response.status < 500) {
-      const body = await response.json();
-
-      throw new Error(body.error);
-    }
-
-    if (response.status !== 200) {
-      throw new Error(
-        `Failed to create run, got status code ${response.status}`
-      );
-    }
-
-    const body = await response.json();
-
-    return CreateRunResponseBodySchema.parse(body);
+    return await zodfetch(
+      CreateRunResponseBodySchema,
+      `${this.#apiUrl}/api/v3/runs`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify(params),
+      }
+    );
   }
 
-  async createLog(runId: string, logMessage: LogMessage) {
-    const apiKey = await this.#apiKey();
-
-    this.#logger.debug("Creating log", {
-      runId,
-      logMessage,
-    });
-
-    const response = await fetch(`${this.#apiUrl}/api/v3/runs/${runId}/logs`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify(logMessage),
-    });
-
-    if (response.status >= 400 && response.status < 500) {
-      const body = await response.json();
-
-      throw new Error(body.error);
-    }
-
-    if (response.status !== 200) {
-      throw new Error(
-        `Failed to create run log, got status code ${response.status}`
-      );
-    }
-
-    return await response.json();
-  }
-
-  async runTask(runId: string, task: RunTaskBodyInput): Promise<ServerTask> {
+  async runTask(runId: string, task: RunTaskBodyInput) {
     const apiKey = await this.#apiKey();
 
     this.#logger.debug("Running Task", {
       task,
     });
 
-    const response = await fetch(`${this.#apiUrl}/api/v3/runs/${runId}/tasks`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${apiKey}`,
-        "Idempotency-Key": task.idempotencyKey,
-      },
-      body: JSON.stringify(task),
-    });
-
-    if (response.status >= 400 && response.status < 500) {
-      const body = await response.json();
-
-      throw new Error(body.error);
-    }
-
-    if (response.status !== 200) {
-      throw new Error(`Failed to run task, got status code ${response.status}`);
-    }
-
-    return await response.json();
+    return await zodfetch(
+      ServerTaskSchema,
+      `${this.#apiUrl}/api/v3/runs/${runId}/tasks`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${apiKey}`,
+          "Idempotency-Key": task.idempotencyKey,
+        },
+        body: JSON.stringify(task),
+      }
+    );
   }
 
-  async completeTask(
-    runId: string,
-    id: string,
-    task: CompleteTaskBodyInput
-  ): Promise<ServerTask> {
+  async completeTask(runId: string, id: string, task: CompleteTaskBodyInput) {
     const apiKey = await this.#apiKey();
 
     this.#logger.debug("Complete Task", {
       task,
     });
 
-    const response = await fetch(
+    return await zodfetch(
+      ServerTaskSchema,
       `${this.#apiUrl}/api/v3/runs/${runId}/tasks/${id}/complete`,
       {
         method: "POST",
@@ -214,33 +160,16 @@ export class ApiClient {
         body: JSON.stringify(task),
       }
     );
-
-    if (response.status >= 400 && response.status < 500) {
-      const body = await response.json();
-
-      throw new Error(body.error);
-    }
-
-    if (response.status !== 200) {
-      throw new Error(
-        `Failed to complete task, got status code ${response.status}`
-      );
-    }
-
-    return await response.json();
   }
 
-  async sendEvent(
-    event: SendEvent,
-    options: SendEventOptions = {}
-  ): Promise<ApiEventLog> {
+  async sendEvent(event: SendEvent, options: SendEventOptions = {}) {
     const apiKey = await this.#apiKey();
 
     this.#logger.debug("Sending event", {
       event,
     });
 
-    const response = await fetch(`${this.#apiUrl}/api/v3/events`, {
+    return await zodfetch(ApiEventLogSchema, `${this.#apiUrl}/api/v3/events`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -248,72 +177,22 @@ export class ApiClient {
       },
       body: JSON.stringify({ event, options }),
     });
-
-    if (response.status >= 400 && response.status < 500) {
-      const body = await response.json();
-
-      throw new Error(body.error);
-    }
-
-    if (response.status !== 200) {
-      throw new Error(
-        `Failed to send event, got status code ${response.status}`
-      );
-    }
-
-    return await response.json();
   }
 
-  async registerHttpSource(
+  async updateSource(
     client: string,
-    source: RegisterHttpEventSourceBody
-  ): Promise<HttpEventSource> {
-    const apiKey = await this.#apiKey();
-
-    this.#logger.debug("Initializing http source", {
-      source,
-    });
-
-    const response = await fetch(
-      `${this.#apiUrl}/api/v3/${client}/sources/http`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${apiKey}`,
-        },
-        body: JSON.stringify(source),
-      }
-    );
-
-    if (response.status >= 400 && response.status < 500) {
-      const body = await response.json();
-
-      throw new Error(body.error);
-    }
-
-    if (response.status !== 200) {
-      throw new Error(
-        `Failed to register http source, got status code ${response.status}`
-      );
-    }
-
-    return await response.json();
-  }
-
-  async updateHttpSource(
-    client: string,
-    id: string,
-    source: UpdateHttpEventSourceBody
-  ): Promise<HttpEventSource> {
+    key: string,
+    source: UpdateTriggerSourceBody
+  ): Promise<TriggerSource> {
     const apiKey = await this.#apiKey();
 
     this.#logger.debug("activating http source", {
       source,
     });
 
-    const response = await fetch(
-      `${this.#apiUrl}/api/v3/${client}/sources/http/${id}`,
+    const response = await zodfetch(
+      TriggerSourceSchema,
+      `${this.#apiUrl}/api/v3/${client}/sources/${key}`,
       {
         method: "PUT",
         headers: {
@@ -324,19 +203,7 @@ export class ApiClient {
       }
     );
 
-    if (response.status >= 400 && response.status < 500) {
-      const body = await response.json();
-
-      throw new Error(body.error);
-    }
-
-    if (response.status !== 200) {
-      throw new Error(
-        `Failed to activate http source, got status code ${response.status}`
-      );
-    }
-
-    return await response.json();
+    return response;
   }
 
   async #apiKey() {
@@ -400,4 +267,32 @@ function getApiKey(key?: string) {
   }
 
   return { status: "valid" as const, apiKey };
+}
+
+async function zodfetch<TResponseBody extends any>(
+  schema: z.Schema<TResponseBody>,
+  url: string,
+  requestInit?: RequestInit,
+  options?: {
+    errorMessage?: string;
+  }
+): Promise<TResponseBody> {
+  const response = await fetch(url, requestInit);
+
+  if (response.status >= 400 && response.status < 500) {
+    const body = await response.json();
+
+    throw new Error(body.error);
+  }
+
+  if (response.status !== 200) {
+    throw new Error(
+      options?.errorMessage ??
+        `Failed to fetch ${url}, got status code ${response.status}`
+    );
+  }
+
+  const jsonBody = await response.json();
+
+  return schema.parse(jsonBody);
 }

@@ -1,11 +1,37 @@
 import { ApiEventLogSchema } from "@trigger.dev/internal";
 import type { PrismaClient } from "~/db.server";
 import { prisma } from "~/db.server";
-import type { JobConnectionWithApiConnection } from "~/models/jobConnection.server";
-import { resolveJobConnections } from "~/models/jobConnection.server";
+import { resolveRunConnections } from "~/models/runConnection.server";
 import { ClientApi, ClientApiError } from "../clientApi.server";
 import { workerQueue } from "../worker.server";
 import { logger } from "../logger";
+import type { ApiConnection } from ".prisma/client";
+
+const RUN_INCLUDES = {
+  queue: true,
+  event: true,
+  version: {
+    include: {
+      endpoint: true,
+      job: true,
+      environment: true,
+      organization: true,
+      connections: {
+        include: {
+          apiConnectionClient: {
+            include: {
+              connections: {
+                where: {
+                  connectionType: "DEVELOPER",
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+  },
+} as const;
 
 export class StartRunService {
   #prismaClient: PrismaClient;
@@ -15,62 +41,116 @@ export class StartRunService {
   }
 
   public async call(id: string) {
-    const run = await this.#prismaClient.$transaction(async (tx) => {
-      const run = await tx.jobRun.findUnique({
-        where: { id },
-        include: {
-          queue: true,
-        },
-      });
-
-      if (!run) {
-        return;
-      }
-
-      if (run.status !== "PENDING" && run.status !== "QUEUED") {
-        return;
-      }
-
-      // Check the JobQueue to make sure we can start the run
-      if (run.queue.jobCount >= run.queue.maxJobs) {
-        // Set the run status to QUEUED and return
-        return tx.jobRun.update({
+    const transactionResults = await this.#prismaClient.$transaction(
+      async (tx) => {
+        const run = await tx.jobRun.findUnique({
           where: { id },
-          data: {
-            status: "QUEUED",
-            queuedAt: new Date(),
-          },
-          include: {
-            eventLog: true,
-          },
+          include: RUN_INCLUDES,
         });
-      } else {
-        // Start the jobRun and increment the jobCount
-        return tx.jobRun.update({
-          where: { id },
-          data: {
-            status: "STARTED",
-            startedAt: new Date(),
-            queue: {
-              update: {
-                jobCount: {
-                  increment: 1,
+
+        if (!run) {
+          return;
+        }
+
+        if (run.status !== "PENDING" && run.status !== "QUEUED") {
+          return;
+        }
+
+        // Check the JobQueue to make sure we can start the run
+        if (run.queue.jobCount >= run.queue.maxJobs) {
+          // Set the run status to QUEUED and return
+          const updatedRun = await tx.jobRun.update({
+            where: { id },
+            data: {
+              status: "QUEUED",
+              queuedAt: new Date(),
+            },
+            include: RUN_INCLUDES,
+          });
+
+          return { run: updatedRun };
+        } else {
+          // If any of the connections are missing, we can't start the execution
+          const runConnectionsByKey = run.version.connections.reduce(
+            (acc: Record<string, ApiConnection>, connection) => {
+              if (connection.apiConnectionClient.connections.length === 0) {
+                return acc;
+              }
+
+              acc[connection.key] =
+                connection.apiConnectionClient.connections[0];
+
+              return acc;
+            },
+            {}
+          );
+
+          // Start the jobRun and increment the jobCount
+          const updatedRun = await tx.jobRun.update({
+            where: { id },
+            data: {
+              status: "STARTED",
+              startedAt: new Date(),
+              queue: {
+                update: {
+                  jobCount: {
+                    increment: 1,
+                  },
                 },
               },
+              runConnections: {
+                create: Object.entries(runConnectionsByKey).map(
+                  ([key, connection]) => ({
+                    key,
+                    apiConnectionId: connection.id,
+                  })
+                ),
+              },
             },
-          },
-          include: {
-            eventLog: true,
-          },
-        });
-      }
-    });
+            include: {
+              runConnections: {
+                include: {
+                  apiConnection: {
+                    include: {
+                      dataReference: true,
+                    },
+                  },
+                },
+              },
+              ...RUN_INCLUDES,
+            },
+          });
 
-    if (!run) {
+          const connections = await resolveRunConnections(
+            updatedRun.runConnections
+          );
+
+          if (
+            Object.keys(connections).length < updatedRun.runConnections.length
+          ) {
+            throw new Error(
+              `Could not resolve all connections for run ${
+                run.id
+              }, there should be ${
+                updatedRun.runConnections.length
+              } connections but only ${
+                Object.keys(connections).length
+              } were resolved.`
+            );
+          }
+
+          return { run: updatedRun, connections };
+        }
+      }
+    );
+
+    if (!transactionResults) {
       logger.debug(`Run ${id} not found, aborting start run`, { id });
 
       return;
     }
+
+    const { run, connections } = transactionResults;
 
     if (run.status === "QUEUED") {
       logger.debug(`Run ${id} queued, aborting start run`, { id });
@@ -82,64 +162,32 @@ export class StartRunService {
       id: run.queueId,
     });
 
-    const jobInstance = await this.#prismaClient.jobInstance.findUniqueOrThrow({
-      where: { id: run.jobInstanceId },
-      include: {
-        endpoint: true,
-        job: true,
-        environment: true,
-        organization: true,
-        connections: {
-          include: {
-            apiConnection: {
-              include: {
-                dataReference: true,
-              },
-            },
-          },
-        },
-      },
-    });
-
-    // If any of the connections are missing, we can't start the execution
-    const connections: Array<JobConnectionWithApiConnection> =
-      jobInstance.connections.filter(
-        (c) => c.apiConnection != null || c.usesLocalAuth
-      );
-
     const startedAt = run.startedAt ?? new Date();
 
-    await this.#prismaClient.jobRun.update({
-      where: { id },
-      data: {
-        startedAt,
-        status: "STARTED",
-      },
-    });
-
-    const event = ApiEventLogSchema.parse(run.eventLog);
+    const event = ApiEventLogSchema.parse(run.event);
 
     const client = new ClientApi(
-      jobInstance.environment.apiKey,
-      jobInstance.endpoint.url
+      run.version.environment.apiKey,
+      run.version.endpoint.url
     );
 
     try {
+      // TODO: update this to implement retrying
       const results = await client.executeJob({
         event,
         job: {
-          id: jobInstance.job.slug,
-          version: jobInstance.version,
+          id: run.version.job.slug,
+          version: run.version.version,
         },
         context: {
           id: run.id,
-          environment: jobInstance.environment.slug,
-          organization: jobInstance.organization.slug,
+          environment: run.version.environment.slug,
+          organization: run.version.organization.slug,
           isTest: run.isTest,
-          version: jobInstance.version,
+          version: run.version.version,
           startedAt,
         },
-        connections: await resolveJobConnections(connections),
+        connections,
       });
 
       if (results.completed) {

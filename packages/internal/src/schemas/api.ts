@@ -10,33 +10,66 @@ import {
   TriggerMetadataSchema,
 } from "./triggers";
 
-export const RegisterHttpEventSourceBodySchema = z.object({
-  key: z.string(),
-  connectionId: z.string().optional(),
+export const UpdateTriggerSourceBodySchema = z.object({
+  registeredEvents: z.array(z.string()),
+  secret: z.string().optional(),
+  data: SerializableJsonSchema.optional(),
 });
 
-export type RegisterHttpEventSourceBody = z.infer<
-  typeof RegisterHttpEventSourceBodySchema
+export type UpdateTriggerSourceBody = z.infer<
+  typeof UpdateTriggerSourceBodySchema
 >;
 
-export const UpdateHttpEventSourceBodySchema =
-  RegisterHttpEventSourceBodySchema.omit({ key: true }).extend({
-    secret: z.string().optional(),
-    data: SerializableJsonSchema.optional(),
-    active: z.boolean().optional(),
-  });
-
-export type UpdateHttpEventSourceBody = z.infer<
-  typeof UpdateHttpEventSourceBodySchema
->;
-
-export const HttpEventSourceSchema = UpdateHttpEventSourceBodySchema.extend({
+export const HttpEventSourceSchema = UpdateTriggerSourceBodySchema.extend({
   id: z.string(),
   active: z.boolean(),
   url: z.string().url(),
 });
 
-export type HttpEventSource = z.infer<typeof HttpEventSourceSchema>;
+export const RegisterHTTPTriggerSourceBodySchema = z.object({
+  type: z.literal("HTTP"),
+  url: z.string().url(),
+});
+
+export const RegisterSMTPTriggerSourceBodySchema = z.object({
+  type: z.literal("SMTP"),
+});
+
+export const RegisterSQSTriggerSourceBodySchema = z.object({
+  type: z.literal("SQS"),
+});
+
+export const RegisterSourceChannelBodySchema = z.discriminatedUnion("type", [
+  RegisterHTTPTriggerSourceBodySchema,
+  RegisterSMTPTriggerSourceBodySchema,
+  RegisterSQSTriggerSourceBodySchema,
+]);
+
+export const RegisterTriggerSourceSchema = z.object({
+  key: z.string(),
+  active: z.boolean(),
+  secret: z.string(),
+  data: DeserializedJsonSchema.optional(),
+  channel: RegisterSourceChannelBodySchema,
+});
+
+export type RegisterTriggerSource = z.infer<typeof RegisterTriggerSourceSchema>;
+
+export const RegisterSourceEventSchema = z.object({
+  source: RegisterTriggerSourceSchema,
+  events: z.array(z.string()),
+  missingEvents: z.array(z.string()),
+  orphanedEvents: z.array(z.string()),
+});
+
+export type RegisterSourceEvent = z.infer<typeof RegisterSourceEventSchema>;
+
+export const TriggerSourceSchema = z.object({
+  id: z.string(),
+  key: z.string(),
+});
+
+export type TriggerSource = z.infer<typeof TriggerSourceSchema>;
 
 export const HttpSourceRequestSchema = z.object({
   url: z.string().url(),
@@ -91,12 +124,23 @@ export const JobMetadataSchema = z.object({
   connections: z.record(ConnectionConfigSchema),
   internal: z.boolean().default(false),
   queue: z.union([QueueOptionsSchema, z.string()]).optional(),
+  startPosition: z.enum(["initial", "latest"]),
 });
 
 export type JobMetadata = z.infer<typeof JobMetadataSchema>;
 
+export const SourceMetadataSchema = z.object({
+  channel: z.enum(["HTTP", "SQS", "SMTP"]),
+  key: z.string(),
+  params: z.any(),
+  events: z.array(z.string()),
+});
+
+export type SourceMetadata = z.infer<typeof SourceMetadataSchema>;
+
 export const GetEndpointDataResponseSchema = z.object({
   jobs: z.array(JobMetadataSchema),
+  sources: z.array(SourceMetadataSchema),
   dynamicTriggers: z.array(DynamicTriggerMetadataSchema),
 });
 
@@ -238,7 +282,7 @@ export const LogMessageSchema = z.object({
 export type LogMessage = z.infer<typeof LogMessageSchema>;
 
 export type ClientTask = z.infer<typeof TaskSchema>;
-export type ServerTask = z.infer<typeof ServerTaskSchema>;
+export type ServerTask = z.output<typeof ServerTaskSchema>;
 export type CachedTask = z.infer<typeof CachedTaskSchema>;
 
 export const RedactSchema = z.object({

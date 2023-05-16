@@ -54,8 +54,10 @@ export interface Trigger<TEventSpec extends EventSpecification<any>> {
   // Gives different triggers the ability to do things like register internal jobs
   attachToJob(
     triggerClient: TriggerClient,
-    job: Job<Trigger<TEventSpec>, any>
+    job: Job<Trigger<TEventSpec>, any>,
+    index?: number
   ): void;
+  requiresPreparaton: boolean;
 }
 
 export interface EventSpecification<TEvent extends any> {

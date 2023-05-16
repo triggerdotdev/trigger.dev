@@ -3,7 +3,7 @@ import { prisma } from "~/db.server";
 import { workerQueue } from "../worker.server";
 import { z } from "zod";
 import { RawEventSchema, SendEventOptionsSchema } from "@trigger.dev/internal";
-import { IngestSendEvent } from "~/routes/api.v3.events";
+import { IngestSendEvent } from "../events/ingestSendEvent.server";
 
 const SendEventOutputSchema = z.object({
   events: z.array(RawEventSchema),

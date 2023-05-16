@@ -10,13 +10,13 @@ import {
 
 type CustomTriggerOptions<TEventSpecification extends EventSpecification<any>> =
   {
-    name: string;
     event: TEventSpecification;
+    name?: string;
     source?: string;
     filter?: EventFilter;
   };
 
-class CustomTrigger<TEventSpecification extends EventSpecification<any>>
+export class CustomTrigger<TEventSpecification extends EventSpecification<any>>
   implements Trigger<TEventSpecification>
 {
   #options: CustomTriggerOptions<TEventSpecification>;
@@ -29,9 +29,9 @@ class CustomTrigger<TEventSpecification extends EventSpecification<any>>
     return [
       {
         type: "static",
-        title: this.#options.name,
+        title: this.#options.name ?? this.#options.event.title,
         rule: {
-          event: this.#options.name,
+          event: this.#options.name ?? this.#options.event.name,
           source: this.#options.source ?? "trigger.dev",
           payload: deepMergeFilters(
             this.#options.filter ?? {},
@@ -40,6 +40,10 @@ class CustomTrigger<TEventSpecification extends EventSpecification<any>>
         },
       },
     ];
+  }
+
+  get requiresPreparaton(): boolean {
+    return false;
   }
 
   get event() {

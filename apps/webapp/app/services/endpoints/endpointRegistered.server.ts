@@ -23,11 +23,18 @@ export class EndpointRegisteredService {
     // Make a request to the endpoint to fetch a list of jobs
     const client = new ClientApi(endpoint.environment.apiKey, endpoint.url);
 
-    const { jobs, dynamicTriggers } = await client.getEndpointData();
+    const { jobs, sources } = await client.getEndpointData();
 
     for (const job of jobs) {
       await workerQueue.enqueue("registerJob", {
         job,
+        endpointId: endpoint.id,
+      });
+    }
+
+    for (const source of sources) {
+      await workerQueue.enqueue("registerSource", {
+        source,
         endpointId: endpoint.id,
       });
     }

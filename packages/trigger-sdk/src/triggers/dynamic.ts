@@ -42,11 +42,16 @@ export class DynamicTrigger<
     return this.#options.event;
   }
 
+  get requiresPreparaton(): boolean {
+    return false;
+  }
+
   // Just an example for the types
   register(params: ExternalSourceParams<TExternalSource>): void {}
 
   attachToJob(
     triggerClient: TriggerClient,
-    job: Job<Trigger<TEventSpec>, any>
+    job: Job<Trigger<TEventSpec>, any>,
+    index?: number
   ): void {}
 }

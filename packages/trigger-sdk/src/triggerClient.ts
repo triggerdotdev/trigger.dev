@@ -6,8 +6,11 @@ import {
   Logger,
   NormalizedRequest,
   NormalizedResponse,
+  RegisterSourceEvent,
+  RegisterSourceEventSchema,
   RunJobBody,
   RunJobBodySchema,
+  SourceMetadata,
 } from "@trigger.dev/internal";
 import { ApiClient } from "./apiClient";
 import {
@@ -19,6 +22,8 @@ import { IO, ResumeWithTask } from "./io";
 import { Job } from "./job";
 import { ContextLogger } from "./logger";
 import type { EventSpecification, Trigger, TriggerContext } from "./types";
+import { ExternalSource } from "./triggers/externalSource";
+import { CustomTrigger } from "./triggers/customTrigger";
 
 export type TriggerClientOptions = {
   apiKey?: string;
@@ -36,6 +41,7 @@ export class TriggerClient {
   #options: TriggerClientOptions;
   #registeredJobs: Record<string, Job<Trigger<EventSpecification<any>>, any>> =
     {};
+  #registeredSources: Record<string, SourceMetadata> = {};
   #client: ApiClient;
   #logger: Logger;
   name: string;
@@ -96,6 +102,7 @@ export class TriggerClient {
 
       const body: GetEndpointDataResponse = {
         jobs: Object.values(this.#registeredJobs).map((job) => job.toJSON()),
+        sources: Object.values(this.#registeredSources),
         dynamicTriggers: [],
       };
 
@@ -178,6 +185,75 @@ export class TriggerClient {
     this.#registeredJobs[job.id] = job;
 
     job.trigger.attachToJob(this, job);
+  }
+
+  attachSource(options: {
+    key: string;
+    source: ExternalSource<any, any>;
+    event: EventSpecification<any>;
+    params: any;
+  }): void {
+    let registeredSource = this.#registeredSources[options.key];
+
+    if (!registeredSource) {
+      registeredSource = {
+        channel: options.source.channel,
+        key: options.key,
+        params: options.params,
+        events: [],
+      };
+    }
+
+    registeredSource.events = Array.from(
+      new Set([...registeredSource.events, options.event.name])
+    );
+
+    this.#registeredSources[options.key] = registeredSource;
+
+    const registerSourceEvent: EventSpecification<RegisterSourceEvent> = {
+      name: "trigger.internal.registerSource",
+      title: "Register Source",
+      source: "internal",
+      parsePayload: RegisterSourceEventSchema.parse,
+    };
+
+    new Job(this, {
+      id: options.key,
+      name: options.key,
+      version: options.source.version,
+      trigger: new CustomTrigger({
+        event: registerSourceEvent,
+        filter: { source: { key: [options.key] } },
+      }),
+      connections: {
+        client: options.source.connection,
+      },
+      queue: {
+        name: options.key,
+        maxConcurrent: 1,
+      },
+      startPosition: "initial",
+      run: async (event, io, ctx) => {
+        const updates = await options.source.register(
+          options.params,
+          event,
+          io,
+          ctx
+        );
+
+        if (!updates) {
+          // TODO: do something here?
+          return;
+        }
+
+        return await io.updateSource("update-source", {
+          key: options.key,
+          ...updates,
+        });
+      },
+      // @ts-ignore
+      __internal: true,
+    });
   }
 
   authorized(apiKey: string) {

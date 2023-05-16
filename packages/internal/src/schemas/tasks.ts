@@ -15,8 +15,8 @@ export type TaskStatus = z.infer<typeof TaskStatusSchema>;
 export const TaskSchema = z.object({
   id: z.string(),
   name: z.string(),
-  icon: z.string().optional(),
-  noop: z.boolean().default(false),
+  icon: z.string().optional().nullable(),
+  noop: z.boolean(),
   startedAt: z.coerce.date().optional().nullable(),
   completedAt: z.coerce.date().optional().nullable(),
   delayUntil: z.coerce.date().optional().nullable(),

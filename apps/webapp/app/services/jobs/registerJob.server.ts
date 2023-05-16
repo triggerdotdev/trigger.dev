@@ -5,13 +5,17 @@ import type {
   JobVersion,
   ApiConnectionClient,
 } from ".prisma/client";
-import type { ConnectionConfig, JobMetadata } from "@trigger.dev/internal";
+import type {
+  ConnectionConfig,
+  JobMetadata,
+  TriggerMetadata,
+} from "@trigger.dev/internal";
 import { DEFAULT_MAX_CONCURRENT_RUNS } from "~/consts";
 import type { PrismaClient } from "~/db.server";
 import { prisma } from "~/db.server";
 import type { AuthenticatedEnvironment } from "../apiAuth.server";
 import { logger } from "../logger";
-import { workerQueue } from "../worker.server";
+import type { RuntimeEnvironment } from "~/models/runtimeEnvironment.server";
 
 export class RegisterJobService {
   #prismaClient: PrismaClient;
@@ -20,7 +24,7 @@ export class RegisterJobService {
     this.#prismaClient = prismaClient;
   }
 
-  public async call(endpointId: string, jobResponse: JobMetadata) {
+  public async call(endpointId: string, metadata: JobMetadata) {
     const endpoint = await this.#prismaClient.endpoint.findUniqueOrThrow({
       where: {
         id: endpointId,
@@ -35,17 +39,7 @@ export class RegisterJobService {
       },
     });
 
-    const jobVersion = await this.#upsertJob(
-      endpoint,
-      endpoint.environment,
-      jobResponse
-    );
-
-    await workerQueue.enqueue(
-      "prepareJobVersion",
-      { id: jobVersion.id },
-      { queueName: `endpoint-${endpoint.id}` }
-    );
+    await this.#upsertJob(endpoint, endpoint.environment, metadata);
   }
 
   async #upsertJob(
@@ -207,8 +201,12 @@ export class RegisterJobService {
         },
         version: metadata.version,
         eventSpecification: metadata.event,
+        startPosition:
+          metadata.startPosition === "initial" ? "INITIAL" : "LATEST",
       },
       update: {
+        startPosition:
+          metadata.startPosition === "initial" ? "INITIAL" : "LATEST",
         eventSpecification: metadata.event,
         queue: {
           connect: {
@@ -288,37 +286,86 @@ export class RegisterJobService {
     });
 
     // This is where we upsert the triggers if there are any
-    // // upsert the eventrule
-    // // The event rule should only be enabled if all the external connections are ready
-    // await this.#prismaClient.jobEventRule.upsert({
-    //   where: {
-    //     jobVersionId_actionIdentifier: {
-    //       jobVersionId: jobVersion.id,
-    //       actionIdentifier: "__trigger",
-    //     },
-    //   },
-    //   create: {
-    //     event: metadata.trigger.eventRule.event,
-    //     source: metadata.trigger.eventRule.source,
-    //     payloadFilter: metadata.trigger.eventRule.payload,
-    //     contextFilter: metadata.trigger.eventRule.context,
-    //     jobId: job.id,
-    //     jobVersionId: jobVersion.id,
-    //     environmentId: environment.id,
-    //     organizationId: environment.organizationId,
-    //     projectId: environment.projectId,
-    //     enabled: true,
-    //     actionIdentifier: "__trigger",
-    //   },
-    //   update: {
-    //     event: metadata.trigger.eventRule.event,
-    //     source: metadata.trigger.eventRule.source,
-    //     payloadFilter: metadata.trigger.eventRule.payload,
-    //     contextFilter: metadata.trigger.eventRule.context,
-    //   },
-    // });
+    // upsert the eventrule
+    // The event rule should only be enabled if all the external connections are ready
+    for (const trigger of metadata.triggers) {
+      await this.#upsertTrigger(
+        trigger,
+        jobVersion,
+        job,
+        environment,
+        endpoint
+      );
+    }
 
     return jobVersion;
+  }
+
+  async #upsertTrigger(
+    trigger: TriggerMetadata,
+    jobVersion: JobVersion,
+    job: Job,
+    environment: RuntimeEnvironment,
+    endpoint: Endpoint
+  ) {
+    if (trigger.type === "static") {
+      await this.#prismaClient.jobTrigger.upsert({
+        where: {
+          versionId_actionIdentifier: {
+            versionId: jobVersion.id,
+            actionIdentifier: "__trigger",
+          },
+        },
+        create: {
+          event: trigger.rule.event,
+          source: trigger.rule.source,
+          payloadFilter: trigger.rule.payload,
+          contextFilter: trigger.rule.context,
+          jobId: job.id,
+          versionId: jobVersion.id,
+          environmentId: environment.id,
+          organizationId: environment.organizationId,
+          projectId: environment.projectId,
+          enabled: true,
+          actionIdentifier: "__trigger",
+        },
+        update: {
+          event: trigger.rule.event,
+          source: trigger.rule.source,
+          payloadFilter: trigger.rule.payload,
+          contextFilter: trigger.rule.context,
+        },
+      });
+    } else {
+      await this.#prismaClient.dynamicTrigger.upsert({
+        where: {
+          endpointId_slug: {
+            endpointId: endpoint.id,
+            slug: trigger.id,
+          },
+        },
+        create: {
+          slug: trigger.id,
+          endpoint: {
+            connect: {
+              id: endpoint.id,
+            },
+          },
+          jobs: {
+            connect: {
+              id: job.id,
+            },
+          },
+        },
+        update: {
+          jobs: {
+            connect: {
+              id: job.id,
+            },
+          },
+        },
+      });
+    }
   }
 
   async #upsertJobConnection(

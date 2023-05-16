@@ -1,12 +1,13 @@
 import {
   ConnectionAuth,
+  ConnectionConfig,
   ConnectionMetadata,
   RunTaskOptions,
   ServerTask,
 } from "@trigger.dev/internal";
 import { IO } from "./io";
 import { TriggerClient } from "./triggerClient";
-import { Trigger } from "./types";
+import { EventSpecification, Trigger } from "./types";
 
 export type ClientFactory<TClientType> = (auth: ConnectionAuth) => TClientType;
 
@@ -31,8 +32,21 @@ export type Connection<
       [key: string]: any;
     };
 
+export function connectionConfig(
+  connection: Connection<any, any>
+): ConnectionConfig | undefined {
+  if (connection.usesLocalAuth) {
+    return;
+  }
+
+  return {
+    metadata: connection.metadata,
+    id: connection.id!,
+  };
+}
+
 export type ConnectionEvent<TParams, TEvent> = {
-  trigger: (params: TParams) => Trigger<TEvent>;
+  trigger: (params: TParams) => Trigger<EventSpecification<TEvent>>;
   register: (client: TriggerClient, params: TParams) => Promise<any>;
 };
 

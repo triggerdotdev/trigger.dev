@@ -1,4 +1,5 @@
 import {
+  IssueCommentEvent,
   IssuesEvent,
   IssuesOpenedEvent,
   StarCreatedEvent,
@@ -86,6 +87,13 @@ const onIssue: EventSpecification<IssuesEvent> = {
   parsePayload: (payload) => payload as IssuesEvent,
 };
 
+const onIssueComment: EventSpecification<IssueCommentEvent> = {
+  name: "issue_comment",
+  title: "On issue comment",
+  source: "github.com",
+  parsePayload: (payload) => payload as IssueCommentEvent,
+};
+
 const onStar: EventSpecification<StarEvent> = {
   name: "star",
   title: "On star",
@@ -106,6 +114,7 @@ const onNewStar: EventSpecification<StarCreatedEvent> = {
 export const events = {
   onIssueOpened,
   onIssue,
+  onIssueComment,
   onStar,
   onNewStar,
 };
@@ -126,10 +135,8 @@ function createRepoTrigger(source: ReturnType<typeof createRepoEventSource>) {
       params: { repo },
       source,
       filter: {
-        payload: {
-          repository: {
-            full_name: [repo],
-          },
+        repository: {
+          full_name: [repo],
         },
       },
     });
@@ -149,10 +156,8 @@ function createOrgTrigger(source: ReturnType<typeof createOrgEventSource>) {
       params: { org },
       source,
       filter: {
-        payload: {
-          organization: {
-            login: [org],
-          },
+        organization: {
+          login: [org],
         },
       },
     });

@@ -1,4 +1,4 @@
-import type { EventLog, JobEventRule } from ".prisma/client";
+import type { EventRecord, JobTrigger } from ".prisma/client";
 import type { EventFilter } from "@trigger.dev/internal";
 import { EventFilterSchema } from "@trigger.dev/internal";
 import type { PrismaClient } from "~/db.server";
@@ -17,7 +17,7 @@ export class DeliverEventService {
   }
 
   public async call(id: string) {
-    const eventLog = await this.#prismaClient.eventLog.findUniqueOrThrow({
+    const eventRecord = await this.#prismaClient.eventRecord.findUniqueOrThrow({
       where: {
         id,
       },
@@ -31,13 +31,13 @@ export class DeliverEventService {
       },
     });
 
-    const possibleEventRules = await this.#prismaClient.jobEventRule.findMany({
+    const possibleEventRules = await this.#prismaClient.jobTrigger.findMany({
       where: {
-        environmentId: eventLog.environmentId,
-        event: eventLog.name,
-        source: eventLog.source,
+        environmentId: eventRecord.environmentId,
+        event: eventRecord.name,
+        source: eventRecord.source,
         enabled: true,
-        jobInstance: {
+        version: {
           aliases: {
             some: {
               name: "latest",
@@ -47,22 +47,22 @@ export class DeliverEventService {
       },
       include: {
         job: true,
-        jobInstance: true,
+        version: true,
       },
     });
 
     logger.debug("Found possible event rules", {
       possibleEventRules,
-      eventLog,
+      eventLog: eventRecord,
     });
 
     const matchingEventRules = possibleEventRules.filter((eventRule) =>
-      this.#evaluateEventRule(eventRule, eventLog)
+      this.#evaluateEventRule(eventRule, eventRecord)
     );
 
     if (matchingEventRules.length === 0) {
       logger.debug("No matching event rules", {
-        eventLog,
+        eventLog: eventRecord,
       });
 
       return;
@@ -70,17 +70,17 @@ export class DeliverEventService {
 
     logger.debug("Found matching event rules", {
       matchingEventRules,
-      eventLog,
+      eventLog: eventRecord,
     });
 
     for (const eventRule of matchingEventRules) {
       switch (eventRule.action) {
         case "CREATE_RUN": {
           await this.#createRunService.call({
-            eventId: eventLog.id,
+            eventId: eventRecord.id,
             job: eventRule.job,
-            jobInstance: eventRule.jobInstance,
-            environment: eventLog.environment,
+            version: eventRule.version,
+            environment: eventRecord.environment,
           });
 
           break;
@@ -88,11 +88,11 @@ export class DeliverEventService {
         case "RESUME_TASK": {
           await this.#resumeTaskService.call(
             eventRule.actionIdentifier,
-            eventLog.payload
+            eventRecord.payload
           );
 
           // Now we need to delete this event rule
-          await this.#prismaClient.jobEventRule.delete({
+          await this.#prismaClient.jobTrigger.delete({
             where: {
               id: eventRule.id,
             },
@@ -103,9 +103,9 @@ export class DeliverEventService {
       }
     }
 
-    await this.#prismaClient.eventLog.update({
+    await this.#prismaClient.eventRecord.update({
       where: {
-        id: eventLog.id,
+        id: eventRecord.id,
       },
       data: {
         deliveredAt: new Date(),
@@ -113,17 +113,17 @@ export class DeliverEventService {
     });
   }
 
-  #evaluateEventRule(eventRule: JobEventRule, eventLog: EventLog): boolean {
-    if (!eventRule.payloadFilter && !eventRule.contextFilter) {
+  #evaluateEventRule(trigger: JobTrigger, eventRecord: EventRecord): boolean {
+    if (!trigger.payloadFilter && !trigger.contextFilter) {
       return true;
     }
 
     const payloadFilter = EventFilterSchema.safeParse(
-      eventRule.payloadFilter ?? {}
+      trigger.payloadFilter ?? {}
     );
 
     const contextFilter = EventFilterSchema.safeParse(
-      eventRule.contextFilter ?? {}
+      trigger.contextFilter ?? {}
     );
 
     if (!payloadFilter.success || !contextFilter.success) {
@@ -134,7 +134,7 @@ export class DeliverEventService {
       return false;
     }
 
-    const eventMatcher = new EventMatcher(eventLog);
+    const eventMatcher = new EventMatcher(eventRecord);
 
     return eventMatcher.matches({
       payload: payloadFilter.data,
@@ -144,9 +144,9 @@ export class DeliverEventService {
 }
 
 export class EventMatcher {
-  event: EventLog;
+  event: EventRecord;
 
-  constructor(event: EventLog) {
+  constructor(event: EventRecord) {
     this.event = event;
   }
 

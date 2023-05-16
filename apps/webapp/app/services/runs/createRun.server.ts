@@ -1,4 +1,4 @@
-import type { Job, JobInstance } from ".prisma/client";
+import type { Job, JobVersion } from ".prisma/client";
 import type { PrismaClient } from "~/db.server";
 import { prisma } from "~/db.server";
 import { workerQueue } from "~/services/worker.server";
@@ -15,22 +15,22 @@ export class CreateRunService {
     environment,
     eventId,
     job,
-    jobInstance,
+    version,
   }: {
     environment: AuthenticatedEnvironment;
     eventId: string;
     job: Job;
-    jobInstance: JobInstance;
+    version: JobVersion;
   }) {
     const endpoint = await this.#prismaClient.endpoint.findUniqueOrThrow({
       where: {
-        id: jobInstance.endpointId,
+        id: version.endpointId,
       },
     });
 
     const jobQueue = await this.#prismaClient.jobQueue.findUniqueOrThrow({
       where: {
-        id: jobInstance.queueId,
+        id: version.queueId,
       },
     });
 
@@ -49,8 +49,8 @@ export class CreateRunService {
         data: {
           number: newNumber,
           job: { connect: { id: job.id } },
-          jobInstance: { connect: { id: jobInstance.id } },
-          eventLog: { connect: { id: eventId } },
+          version: { connect: { id: version.id } },
+          event: { connect: { id: eventId } },
           environment: { connect: { id: environment.id } },
           organization: { connect: { id: environment.organizationId } },
           project: { connect: { id: environment.projectId } },

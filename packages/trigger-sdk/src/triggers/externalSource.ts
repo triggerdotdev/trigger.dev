@@ -2,15 +2,22 @@ import { z } from "zod";
 
 import {
   EventFilter,
+  RegisterSourceEvent,
   SendEvent,
   TriggerMetadata,
+  UpdateTriggerSourceBody,
   deepMergeFilters,
 } from "@trigger.dev/internal";
-import { Connection, IOWithConnections } from "../connections";
+import {
+  Connection,
+  IOWithConnections,
+  connectionConfig,
+} from "../connections";
 import { IO } from "../io";
 import { Job } from "../job";
 import { TriggerClient } from "../triggerClient";
 import type { EventSpecification, Trigger, TriggerContext } from "../types";
+import { slugifyId } from "../utils";
 
 type HttpSourceEvent = {
   url: string;
@@ -31,28 +38,48 @@ type SqsSourceEvent = {
 };
 
 type ExternalSourceChannelMap = {
-  http: {
+  HTTP: {
     event: HttpSourceEvent;
+    register: {
+      url: string;
+    };
   };
-  smtp: {
+  SMTP: {
     event: SmtpSourceEvent;
+    register: {};
   };
-  sqs: {
+  SQS: {
     event: SqsSourceEvent;
+    register: {};
   };
 };
 
 type ChannelNames = keyof ExternalSourceChannelMap;
 
+type RegisterFunctionEvent<
+  TChannel extends ChannelNames,
+  TParams extends any
+> = {
+  events: Array<string>;
+  missingEvents: Array<string>;
+  orphanedEvents: Array<string>;
+  source: {
+    active: boolean;
+    data?: any;
+    secret: string;
+  } & ExternalSourceChannelMap[TChannel]["register"];
+  params: TParams;
+};
+
 type RegisterFunction<
   TConnection extends Connection<any, any>,
-  TParams extends any
+  TParams extends any,
+  TChannel extends ChannelNames
 > = (
-  params: TParams,
-  eventSpecification: EventSpecification<any>,
+  event: RegisterFunctionEvent<TChannel, TParams>,
   io: IOWithConnections<{ client: TConnection }>,
   ctx: TriggerContext
-) => Promise<void>;
+) => Promise<UpdateTriggerSourceBody | undefined>;
 
 type HandlerFunction<
   TChannel extends ChannelNames,
@@ -63,67 +90,104 @@ type HandlerFunction<
   ctx: TriggerContext
 ) => Promise<{ events: SendEvent[] }>;
 
+type KeyFunction<TParams extends any> = (params: TParams) => string;
+
 type ExternalSourceOptions<
   TChannel extends ChannelNames,
   TConnection extends Connection<any, any>,
   TParams extends any
 > = {
+  id: string;
+  version: string;
   schema: z.Schema<TParams>;
   connection: TConnection;
-  register: RegisterFunction<TConnection, TParams>;
-  handler: HandlerFunction<TChannel, TConnection>;
+  register: RegisterFunction<TConnection, TParams, TChannel>;
+  key: KeyFunction<TParams>;
 };
 
 export interface AnExternalSource {
   connection: Connection<any, any>;
   register: (
     params: any,
-    spec: EventSpecification<any>,
+    event: RegisterSourceEvent,
     io: IO,
     ctx: TriggerContext
   ) => Promise<any>;
 }
 
 export class ExternalSource<
-  TChannel extends ChannelNames,
   TConnection extends Connection<any, any>,
-  TParams extends any
+  TParams extends any,
+  TChannel extends ChannelNames = ChannelNames
 > implements AnExternalSource
 {
   channel: TChannel;
-  version: string;
 
   constructor(
     channel: TChannel,
-    version: string,
     private options: ExternalSourceOptions<TChannel, TConnection, TParams>
   ) {
     this.channel = channel;
-    this.version = version;
   }
 
   async register(
     params: TParams,
-    spec: EventSpecification<any>,
+    registerEvent: RegisterSourceEvent,
     io: IO,
     ctx: TriggerContext
   ) {
-    return await this.options.register(
-      params,
-      spec,
+    const { result: event, ommited: source } = omit(registerEvent, "source");
+    const { result: sourceWithoutChannel, ommited: channel } = omit(
+      source,
+      "channel"
+    );
+    const { result: channelWithoutType } = omit(channel, "type");
+
+    const updates = await this.options.register(
+      {
+        ...event,
+        source: { ...sourceWithoutChannel, ...channelWithoutType },
+        params,
+      },
       io as IOWithConnections<{ client: TConnection }>,
       ctx
     );
+
+    return updates;
+  }
+
+  key(params: TParams): string {
+    const parts = [this.options.id, this.channel];
+
+    parts.push(this.options.key(params));
+
+    if (this.connectionConfig) {
+      parts.push(this.connectionConfig.id);
+    }
+
+    return parts.join("-");
   }
 
   get connection() {
     return this.options.connection;
   }
+
+  get connectionConfig() {
+    return connectionConfig(this.options.connection);
+  }
+
+  get id() {
+    return this.options.id;
+  }
+
+  get version() {
+    return this.options.version;
+  }
 }
 
 export type ExternalSourceParams<
   TExternalSource extends ExternalSource<any, any, any>
-> = TExternalSource extends ExternalSource<any, any, infer TParams>
+> = TExternalSource extends ExternalSource<any, infer TParams, any>
   ? TParams
   : never;
 
@@ -153,6 +217,10 @@ export class ExternalSourceTrigger<
     return this.options.event;
   }
 
+  get requiresPreparaton(): boolean {
+    return true;
+  }
+
   toJSON(): Array<TriggerMetadata> {
     return [
       {
@@ -172,9 +240,40 @@ export class ExternalSourceTrigger<
 
   attachToJob(
     triggerClient: TriggerClient,
-    job: Job<Trigger<TEventSpecification>, any>
-  ) {}
+    job: Job<Trigger<TEventSpecification>, any>,
+    index?: number
+  ) {
+    triggerClient.attachSource({
+      key: slugifyId(this.options.source.key(this.options.params)),
+      source: this.options.source,
+      event: this.options.event,
+      params: this.options.params,
+    });
+  }
 }
+
+// const PrepareTriggerEventSchema = z.object({
+//   jobId: z.string(),
+//   jobVersion: z.string(),
+// });
+
+// type PrepareTriggerEvent = z.infer<typeof PrepareTriggerEventSchema>;
+
+// const prepareTriggerSpecification: EventSpecification<PrepareTriggerEvent> = {
+//   name: "trigger.internal.prepare",
+//   title: "Prepare Trigger",
+//   source: "internal",
+//   parsePayload: PrepareTriggerEventSchema.parse,
+// };
+
+// function prepareJobTrigger(
+//   job: Job<Trigger<EventSpecification<PrepareTriggerEvent>>, any>
+// ) {
+//   return new CustomTrigger({
+//     event: prepareTriggerSpecification,
+//     filter: { jobId: [job.id], jobVersion: [job.version] },
+//   });
+// }
 
 type RawSourceTriggerEvent<TChannel extends ChannelNames> = {
   rawEvent: ExternalSourceChannelMap[TChannel]["event"];
@@ -276,3 +375,18 @@ type RawSourceTriggerEvent<TChannel extends ChannelNames> = {
 // ): Trigger<PrepareTriggerEvent> {
 //   return new PrepareTriggerInternalTrigger(job, variantId);
 // }
+
+export function omit<T extends Record<string, unknown>, K extends keyof T>(
+  obj: T,
+  key: K
+): { result: Omit<T, K>; ommited: T[K] } {
+  const result: any = {};
+
+  for (const k of Object.keys(obj)) {
+    if (k === key) continue;
+
+    result[k] = obj[k];
+  }
+
+  return { result, ommited: obj[key] };
+}

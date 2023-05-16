@@ -2,7 +2,6 @@ import { z } from "zod";
 import { env } from "~/env.server";
 import { ZodWorker } from "~/platform/zodWorker.server";
 import { EndpointRegisteredService } from "./endpoints/endpointRegistered.server";
-import { PrepareJobVersionService } from "./endpoints/prepareJobVersion.server";
 import { DeliverEventService } from "./events/deliverEvent.server";
 import { apiConnectionRepository } from "./externalApis/apiAuthenticationRepository.server";
 import { RegisterJobService } from "./jobs/registerJob.server";
@@ -11,7 +10,9 @@ import { StartRunService } from "./runs/startRun.server";
 import { DeliverHttpSourceRequestService } from "./sources/deliverHttpSourceRequest.server";
 import { StartQueuedRunsService } from "./runs/startQueuedRuns.server";
 import { RunFinishedService } from "./runs/runFinished.server";
-import { JobMetadataSchema } from "@trigger.dev/internal";
+import { JobMetadataSchema, SourceMetadataSchema } from "@trigger.dev/internal";
+import { RegisterSourceService } from "./sources/registerSource.server";
+import { ActivateSourceService } from "./sources/activateSource.server";
 
 const workerCatalog = {
   organizationCreated: z.object({ id: z.string() }),
@@ -33,7 +34,6 @@ const workerCatalog = {
   startRun: z.object({ id: z.string() }),
   runFinished: z.object({ id: z.string() }),
   resumeTask: z.object({ id: z.string() }),
-  prepareJobVersion: z.object({ id: z.string() }),
   deliverHttpSourceRequest: z.object({ id: z.string() }),
   refreshOAuthToken: z.object({
     organizationId: z.string(),
@@ -42,6 +42,14 @@ const workerCatalog = {
   registerJob: z.object({
     endpointId: z.string(),
     job: JobMetadataSchema,
+  }),
+  registerSource: z.object({
+    endpointId: z.string(),
+    source: SourceMetadataSchema,
+  }),
+  activateSource: z.object({
+    id: z.string(),
+    orphanedEvents: z.array(z.string()).optional(),
   }),
   startQueuedRuns: z.object({ id: z.string() }),
 };
@@ -104,18 +112,26 @@ function getWorkerQueue() {
           await service.call(payload.endpointId, payload.job);
         },
       },
+      registerSource: {
+        maxAttempts: 3,
+        handler: async (payload, job) => {
+          const service = new RegisterSourceService();
+
+          await service.call(payload.endpointId, payload.source);
+        },
+      },
+      activateSource: {
+        maxAttempts: 3,
+        handler: async (payload, job) => {
+          const service = new ActivateSourceService();
+
+          await service.call(payload.id, job.id, payload.orphanedEvents);
+        },
+      },
       deliverHttpSourceRequest: {
         maxAttempts: 5,
         handler: async (payload, job) => {
           const service = new DeliverHttpSourceRequestService();
-
-          await service.call(payload.id);
-        },
-      },
-      prepareJobVersion: {
-        maxAttempts: 3,
-        handler: async (payload, job) => {
-          const service = new PrepareJobVersionService();
 
           await service.call(payload.id);
         },

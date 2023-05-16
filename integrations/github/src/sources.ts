@@ -25,49 +25,33 @@ function webhookData(data: any): data is WebhookData {
 export function createRepoEventSource(
   connection: Connection<Octokit, typeof tasks>
 ) {
-  return new ExternalSource("http", "0.1.1", {
+  return new ExternalSource("HTTP", {
+    id: "github.repo",
+    version: "0.1.1",
     schema: z.object({ repo: z.string() }),
     connection,
-    register: async (params, spec, io, ctx) => {
-      const key = `github.repo.${params.repo}.webhook`;
+    key: (params) => params.repo,
+    register: async (event, io, ctx) => {
+      const { params, source: httpSource, events, missingEvents } = event;
 
-      const httpSource = await io.registerHttpSource("register-http-source", {
-        key,
-      });
-
-      if (
-        httpSource.active &&
-        webhookData(httpSource.data) &&
-        httpSource.secret
-      ) {
-        const existingData = httpSource.data;
-
-        const sourceEvents = new Set([spec.name]);
-        const existingEvents = new Set(existingData.events);
-
-        const missingEvents = Array.from(
-          new Set(
-            Array.from(sourceEvents).filter((x) => !existingEvents.has(x))
-          )
-        );
-
+      if (httpSource.active && webhookData(httpSource.data)) {
         if (missingEvents.length > 0) {
           // We need to update the webhook to add the new events and then return
           const newWebhookData = await io.client.updateWebhook(
             "update-webhook",
             {
               repo: params.repo,
-              hookId: existingData.id,
+              hookId: httpSource.data.id,
               url: httpSource.url,
               secret: httpSource.secret,
               addEvents: missingEvents,
             }
           );
 
-          await io.updateHttpSource("update-http-source", {
-            id: httpSource.id,
+          return {
             data: newWebhookData,
-          });
+            registeredEvents: newWebhookData.events,
+          };
         }
 
         return;
@@ -81,94 +65,30 @@ export function createRepoEventSource(
         (w) => w.config.url === httpSource.url
       );
 
-      const secret = Math.random().toString(36).slice(2);
-
+      // There is an existing webhook, but it's not synced with Trigger.dev, so we need to update it with the secret
       if (existingWebhook && existingWebhook.active) {
-        await io.client.updateWebhook("update-webhook", {
+        const updatedWebhook = await io.client.updateWebhook("update-webhook", {
           repo: params.repo,
           hookId: existingWebhook.id,
           url: httpSource.url,
-          secret,
+          secret: httpSource.secret,
+          addEvents: missingEvents,
         });
 
-        await io.updateHttpSource("update-http-source", {
-          id: httpSource.id,
-          secret,
-          data: existingWebhook,
-          active: true,
-        });
-
-        return;
+        return {
+          data: updatedWebhook,
+          registeredEvents: updatedWebhook.events,
+        };
       }
 
       const webhook = await io.client.createWebhook("create-webhook", {
         repo: params.repo,
-        events: [spec.name],
+        events,
         url: httpSource.url,
-        secret,
+        secret: httpSource.secret,
       });
 
-      await io.updateHttpSource("update-http-source", {
-        id: httpSource.id,
-        secret,
-        data: webhook,
-        active: true,
-      });
-    },
-    handler: async ({ rawEvent: request, source }, io, ctx) => {
-      if (!request.rawBody) {
-        return { events: [] };
-      }
-
-      const deliveryId = request.headers["x-github-delivery"];
-      const hookId = request.headers["x-github-hook-id"];
-      const signature = request.headers["x-hub-signature-256"];
-
-      if (source.secret && signature) {
-        const githubWebhooks = new Webhooks({
-          secret: source.secret,
-        });
-
-        if (!githubWebhooks.verify(request.rawBody, signature)) {
-          return {
-            events: [],
-          };
-        }
-      }
-
-      const name = request.headers["x-github-event"];
-
-      const context = omit(request.headers, [
-        "x-github-event",
-        "x-github-delivery",
-        "x-hub-signature-256",
-        "x-hub-signature",
-        "content-type",
-        "content-length",
-        "accept",
-        "accept-encoding",
-        "x-forwarded-proto",
-      ]);
-
-      const payload = parseBody(request.rawBody);
-
-      if (!payload) {
-        return {
-          events: [],
-        };
-      }
-
-      return {
-        events: [
-          {
-            id: [hookId, deliveryId].join(":"),
-            source: "github.com",
-            payload,
-            name,
-            context,
-          },
-        ],
-      };
+      return { data: webhook, registeredEvents: webhook.events };
     },
   });
 }
@@ -176,52 +96,40 @@ export function createRepoEventSource(
 export function createOrgEventSource(
   connection: Connection<Octokit, typeof tasks>
 ) {
-  return new ExternalSource("http", "0.1.1", {
-    schema: z.object({ org: z.string() }),
+  return new ExternalSource("HTTP", {
+    id: "github.org",
+    version: "0.1.1",
     connection,
-    register: async (params, spec, io, ctx) => {
-      const key = `github.org.${params.org}.webhook`;
-
-      const httpSource = await io.registerHttpSource("register-http-source", {
-        key,
-      });
+    schema: z.object({ org: z.string() }),
+    key: (params) => params.org,
+    register: async (event, io, ctx) => {
+      const { params, source: httpSource, events, missingEvents } = event;
 
       if (
         httpSource.active &&
         webhookData(httpSource.data) &&
-        httpSource.secret
+        httpSource.secret &&
+        missingEvents.length > 0
       ) {
         const existingData = httpSource.data;
 
-        const sourceEvents = new Set([spec.name]);
-        const existingEvents = new Set(existingData.events);
-
-        const missingEvents = Array.from(
-          new Set(
-            Array.from(sourceEvents).filter((x) => !existingEvents.has(x))
-          )
+        // We need to update the webhook to add the new events and then return
+        const newWebhookData = await io.client.updateOrgWebhook(
+          "update-webhook",
+          {
+            org: params.org,
+            hookId: existingData.id,
+            url: httpSource.url,
+            secret: httpSource.secret,
+            addEvents: missingEvents,
+          }
         );
 
-        if (missingEvents.length > 0) {
-          // We need to update the webhook to add the new events and then return
-          const newWebhookData = await io.client.updateOrgWebhook(
-            "update-webhook",
-            {
-              org: params.org,
-              hookId: existingData.id,
-              url: httpSource.url,
-              secret: httpSource.secret,
-              addEvents: missingEvents,
-            }
-          );
-
-          await io.updateHttpSource("update-http-source", {
-            id: httpSource.id,
-            data: newWebhookData,
-          });
-        }
-
-        return;
+        return {
+          secret: httpSource.secret,
+          data: newWebhookData,
+          registeredEvents: newWebhookData.events,
+        };
       }
 
       const webhooks = await io.client.listOrgWebhooks("list-webhooks", {
@@ -235,91 +143,31 @@ export function createOrgEventSource(
       const secret = Math.random().toString(36).slice(2);
 
       if (existingWebhook && existingWebhook.active) {
-        await io.client.updateOrgWebhook("update-webhook", {
-          org: params.org,
-          hookId: existingWebhook.id,
-          url: httpSource.url,
-          secret,
-        });
+        const updatedWebhook = await io.client.updateOrgWebhook(
+          "update-webhook",
+          {
+            org: params.org,
+            hookId: existingWebhook.id,
+            url: httpSource.url,
+            secret,
+          }
+        );
 
-        await io.updateHttpSource("update-http-source", {
-          id: httpSource.id,
+        return {
           secret,
-          data: existingWebhook,
-          active: true,
-        });
-
-        return;
+          data: updatedWebhook,
+          registeredEvents: updatedWebhook.events,
+        };
       }
 
       const webhook = await io.client.createOrgWebhook("create-webhook", {
         org: params.org,
-        events: [spec.name],
+        events,
         url: httpSource.url,
         secret,
       });
 
-      await io.updateHttpSource("update-http-source", {
-        id: httpSource.id,
-        secret,
-        data: webhook,
-        active: true,
-      });
-    },
-    handler: async ({ rawEvent: request, source }, io, ctx) => {
-      if (!request.rawBody) {
-        return { events: [] };
-      }
-
-      const deliveryId = request.headers["x-github-delivery"];
-      const hookId = request.headers["x-github-hook-id"];
-      const signature = request.headers["x-hub-signature-256"];
-
-      if (source.secret && signature) {
-        const githubWebhooks = new Webhooks({
-          secret: source.secret,
-        });
-
-        if (!githubWebhooks.verify(request.rawBody, signature)) {
-          return {
-            events: [],
-          };
-        }
-      }
-
-      const name = request.headers["x-github-event"];
-
-      const context = omit(request.headers, [
-        "x-github-event",
-        "x-github-delivery",
-        "x-hub-signature-256",
-        "x-hub-signature",
-        "content-type",
-        "content-length",
-        "accept",
-        "accept-encoding",
-        "x-forwarded-proto",
-      ]);
-
-      const payload = parseBody(request.rawBody);
-
-      if (!payload) {
-        return {
-          events: [],
-        };
-      }
-
-      return {
-        events: [
-          {
-            id: [hookId, deliveryId].join(":"),
-            source: "github.com",
-            payload,
-            name,
-            context,
-          },
-        ],
-      };
+      return { secret, data: webhook, registeredEvents: webhook.events };
     },
   });
 }

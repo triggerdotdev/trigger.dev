@@ -10,30 +10,31 @@ export class HandleHttpSourceService {
   }
 
   public async call(id: string, request: Request) {
-    const httpSource = await this.#prismaClient.httpSource.findUnique({
+    const triggerSource = await this.#prismaClient.triggerSource.findUnique({
       where: { id },
       include: {
         endpoint: true,
         environment: true,
+        secretReference: true,
       },
     });
 
-    if (!httpSource) {
+    if (!triggerSource) {
       return { status: 404 };
     }
 
-    if (!httpSource.active) {
+    if (!triggerSource.active) {
       return { status: 200 };
     }
 
-    if (!httpSource.interactive) {
+    if (!triggerSource.interactive) {
       // Create a request delivery and then enqueue it to be delivered
       const delivery =
         await this.#prismaClient.httpSourceRequestDelivery.create({
           data: {
-            sourceId: httpSource.id,
-            endpointId: httpSource.endpointId,
-            environmentId: httpSource.environmentId,
+            sourceId: triggerSource.id,
+            endpointId: triggerSource.endpointId,
+            environmentId: triggerSource.environmentId,
             url: request.url,
             method: request.method,
             headers: Object.fromEntries(request.headers),
@@ -49,7 +50,7 @@ export class HandleHttpSourceService {
           id: delivery.id,
         },
         {
-          queueName: `endpoint-${httpSource.endpointId}`,
+          queueName: `endpoint-${triggerSource.endpointId}`,
         }
       );
 

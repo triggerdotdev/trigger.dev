@@ -30,10 +30,19 @@ class ComboTrigger<
     return this.#options.event;
   }
 
+  get requiresPreparaton(): boolean {
+    return this.#options.triggers.some((trigger) => trigger.requiresPreparaton);
+  }
+
   attachToJob(
     triggerClient: TriggerClient,
-    job: Job<Trigger<TEventSpecification>, any>
-  ): void {}
+    job: Job<Trigger<TEventSpecification>, any>,
+    index?: number
+  ): void {
+    this.#options.triggers.forEach((trigger, i) =>
+      trigger.attachToJob(triggerClient, job, i)
+    );
+  }
 }
 
 export function comboTrigger<

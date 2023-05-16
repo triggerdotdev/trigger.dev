@@ -12,6 +12,7 @@ import type {
   TriggerEventType,
   EventSpecification,
 } from "./types";
+import { slugifyId } from "./utils";
 
 export type JobOptions<
   TTrigger extends Trigger<EventSpecification<any>>,
@@ -24,6 +25,7 @@ export type JobOptions<
   logLevel?: LogLevel;
   connections?: TConnections;
   queue?: QueueOptions | string;
+  startPosition?: "initial" | "latest";
 
   run: (
     event: TriggerEventType<TTrigger>,
@@ -97,6 +99,7 @@ export class Job<
       triggers: this.trigger.toJSON(),
       connections: this.connections,
       queue: this.options.queue,
+      startPosition: this.options.startPosition ?? "latest",
       internal,
     };
   }
@@ -110,17 +113,4 @@ export class Job<
       );
     }
   }
-}
-
-function slugifyId(input: string): string {
-  // Replace any number of spaces with a single dash
-  const replaceSpacesWithDash = input.toLowerCase().replace(/\s+/g, "-");
-
-  // Remove any non-URL-safe characters
-  const removeNonUrlSafeChars = replaceSpacesWithDash.replace(
-    /[^a-zA-Z0-9-._~]/g,
-    ""
-  );
-
-  return removeNonUrlSafeChars;
 }

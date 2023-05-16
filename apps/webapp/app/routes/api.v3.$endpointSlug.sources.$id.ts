@@ -1,20 +1,21 @@
 import type { ActionArgs } from "@remix-run/server-runtime";
 import { json } from "@remix-run/server-runtime";
-import { RegisterHttpEventSourceBodySchema } from "@trigger.dev/internal";
+import { UpdateTriggerSourceBodySchema } from "@trigger.dev/internal";
 import { z } from "zod";
 import { authenticateApiRequest } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger";
-import { RegisterHttpSourceService } from "~/services/sources/registerHttpSource.server";
+import { UpdateSourceService } from "~/services/sources/updateSource.server";
 
 const ParamsSchema = z.object({
   endpointSlug: z.string(),
+  id: z.string(),
 });
 
 export async function action({ request, params }: ActionArgs) {
-  logger.info("Registering http source", { url: request.url });
+  logger.info("Updating source", { url: request.url });
 
   // Ensure this is a POST request
-  if (request.method.toUpperCase() !== "POST") {
+  if (request.method.toUpperCase() !== "PUT") {
     return { status: 405, body: "Method Not Allowed" };
   }
 
@@ -38,26 +39,26 @@ export async function action({ request, params }: ActionArgs) {
   // Now parse the request body
   const anyBody = await request.json();
 
-  const body = RegisterHttpEventSourceBodySchema.safeParse(anyBody);
+  const body = UpdateTriggerSourceBodySchema.safeParse(anyBody);
 
   if (!body.success) {
     return json({ error: "Invalid request body" }, { status: 400 });
   }
 
-  const service = new RegisterHttpSourceService();
+  const service = new UpdateSourceService();
 
   try {
-    const endpoint = await service.call({
+    const source = await service.call({
       environment: authenticatedEnv,
-      organization: authenticatedEnv.organization,
       payload: body.data,
       endpointSlug: parsedParams.data.endpointSlug,
+      id: parsedParams.data.id,
     });
 
-    return json(endpoint);
+    return json(source);
   } catch (error) {
     if (error instanceof Error) {
-      logger.error("Error registering http source", {
+      logger.error("Error activating http source", {
         url: request.url,
         error: error.message,
       });
