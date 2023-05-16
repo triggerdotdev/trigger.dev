@@ -25,10 +25,14 @@ export function ProjectSideMenu() {
   invariant(organization, "Organization must be defined");
   invariant(project, "Project must be defined");
 
+  //we collapse the menu if we're in a job or an integration
   const job = useCurrentJob();
-
-  //todo also use whether there's a current integration
   const isCollapsed = job !== undefined;
+
+  const jobsActive =
+    job !== undefined ||
+    useMatches().at(-1)?.id ===
+      "routes/_app.orgs.$organizationSlug.projects.$projectParam._index";
 
   return (
     <div
@@ -42,19 +46,17 @@ export function ProjectSideMenu() {
           name="Jobs"
           icon="job"
           to={projectPath(organization, project)}
-          isSelected={false}
+          forceActive={jobsActive}
         />
         <SideMenuItem
           name="Integrations"
           icon="integration"
           to={projectIntegrationsPath(organization, project)}
-          isSelected={false}
         />
         <SideMenuItem
           name="Environments"
           icon="environment"
           to={projectEnvironmentsPath(organization, project)}
-          isSelected={false}
         />
       </div>
       <div className="flex flex-col">
@@ -62,20 +64,13 @@ export function ProjectSideMenu() {
           name="Team"
           icon="team"
           to={organizationTeamPath(organization)}
-          isSelected={false}
         />
         <SideMenuItem
           name="Billing"
           icon="billing"
           to={organizationBillingPath(organization)}
-          isSelected={false}
         />
-        <SideMenuItem
-          name="Account"
-          icon="account"
-          to={accountPath()}
-          isSelected={false}
-        />
+        <SideMenuItem name="Account" icon="account" to={accountPath()} />
       </div>
     </div>
   );
@@ -85,12 +80,12 @@ function SideMenuItem({
   icon,
   name,
   to,
-  isSelected,
+  forceActive,
 }: {
   icon: IconNames;
   name: string;
   to: string;
-  isSelected: boolean;
+  forceActive?: boolean;
 }) {
   return (
     <NavLinkButton
@@ -100,9 +95,12 @@ function SideMenuItem({
       LeadingIcon={icon}
       leadingIconClassName="text-slate-400"
       to={to}
-      className={({ isActive, isPending }) =>
-        isActive ? "bg-slate-750 group-hover:bg-slate-750" : undefined
-      }
+      className={({ isActive, isPending }) => {
+        if (forceActive !== undefined) {
+          isActive = forceActive;
+        }
+        return isActive ? "bg-slate-750 group-hover:bg-slate-750" : undefined;
+      }}
     >
       {name}
     </NavLinkButton>
