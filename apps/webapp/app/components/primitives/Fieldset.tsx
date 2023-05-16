@@ -7,14 +7,5 @@ export function Fieldset({
   children: React.ReactNode;
   className?: string;
 }) {
-  return <div className={cn("flex flex-col gap-3", className)}>{children}</div>;
-export function Fieldset({ children }: { children: React.ReactNode }) {
-  return (
-    <div
-      className="flex flex-col gap-4
-  "
-    >
-      {children}
-    </div>
-  );
+  return <div className={cn("flex flex-col gap-4", className)}>{children}</div>;
 }
