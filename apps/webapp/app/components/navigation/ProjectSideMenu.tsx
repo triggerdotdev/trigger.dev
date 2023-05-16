@@ -11,13 +11,24 @@ import {
   projectIntegrationsPath,
   projectPath,
 } from "~/utils/pathBuilder";
-import { LinkButton, NavLinkButton } from "../primitives/Buttons";
+import { NavLinkButton } from "../primitives/Buttons";
 import type { IconNames } from "../primitives/NamedIcon";
 import { useMatches } from "@remix-run/react";
+import { motion } from "framer-motion";
+import { useState } from "react";
 
 export function SideMenuContainer({ children }: { children: React.ReactNode }) {
   return <div className="flex h-full w-full">{children}</div>;
 }
+
+const menuVariants = {
+  expanded: {
+    width: "11rem",
+  },
+  collapsed: {
+    width: "2.7rem",
+  },
+};
 
 export function ProjectSideMenu() {
   const organization = useCurrentOrganization();
@@ -27,7 +38,8 @@ export function ProjectSideMenu() {
 
   //we collapse the menu if we're in a job or an integration
   const job = useCurrentJob();
-  const isCollapsed = job !== undefined;
+  // const isCollapsed = job !== undefined;
+  const [isCollapsed, setIsCollapsed] = useState(false);
 
   const jobsActive =
     job !== undefined ||
@@ -35,28 +47,34 @@ export function ProjectSideMenu() {
       "routes/_app.orgs.$organizationSlug.projects.$projectParam._index";
 
   return (
-    <div
+    <motion.div
+      animate={isCollapsed ? "collapsed" : "expanded"}
+      variants={menuVariants}
+      initial={isCollapsed ? "collapsed" : "expanded"}
       className={cn(
-        "flex h-full flex-col justify-between border-r border-slate-850 p-1 transition duration-300 ease-in-out",
-        isCollapsed ? "w-9" : "w-44"
+        "flex h-full flex-col justify-between border-r border-slate-850 p-1 transition duration-300 ease-in-out"
       )}
+      onClick={() => setIsCollapsed((c) => !c)}
     >
       <div className="flex flex-col gap-1">
         <SideMenuItem
           name="Jobs"
           icon="job"
           to={projectPath(organization, project)}
+          isCollapsed={isCollapsed}
           forceActive={jobsActive}
         />
         <SideMenuItem
           name="Integrations"
           icon="integration"
           to={projectIntegrationsPath(organization, project)}
+          isCollapsed={isCollapsed}
         />
         <SideMenuItem
           name="Environments"
           icon="environment"
           to={projectEnvironmentsPath(organization, project)}
+          isCollapsed={isCollapsed}
         />
       </div>
       <div className="flex flex-col">
@@ -64,27 +82,45 @@ export function ProjectSideMenu() {
           name="Team"
           icon="team"
           to={organizationTeamPath(organization)}
+          isCollapsed={isCollapsed}
         />
         <SideMenuItem
           name="Billing"
           icon="billing"
           to={organizationBillingPath(organization)}
+          isCollapsed={isCollapsed}
         />
-        <SideMenuItem name="Account" icon="account" to={accountPath()} />
+        <SideMenuItem
+          name="Account"
+          icon="account"
+          to={accountPath()}
+          isCollapsed={isCollapsed}
+        />
       </div>
-    </div>
+    </motion.div>
   );
 }
+
+const itemVariants = {
+  expanded: {
+    opacity: 1,
+  },
+  collapsed: {
+    opacity: 0,
+  },
+};
 
 function SideMenuItem({
   icon,
   name,
   to,
+  isCollapsed,
   forceActive,
 }: {
   icon: IconNames;
   name: string;
   to: string;
+  isCollapsed: boolean;
   forceActive?: boolean;
 }) {
   return (
@@ -99,10 +135,19 @@ function SideMenuItem({
         if (forceActive !== undefined) {
           isActive = forceActive;
         }
-        return isActive ? "bg-slate-750 group-hover:bg-slate-750" : undefined;
+        return cn(
+          isActive ? "bg-slate-750 group-hover:bg-slate-750" : undefined
+        );
       }}
     >
-      {name}
+      <motion.span
+        className="pl-1"
+        animate={isCollapsed ? "collapsed" : "expanded"}
+        variants={itemVariants}
+        initial={isCollapsed ? "collapsed" : "expanded"}
+      >
+        {name}
+      </motion.span>
     </NavLinkButton>
   );
 }

@@ -7,7 +7,7 @@ export function UserProfilePhoto({ className }: { className?: string }) {
 
   return user?.avatarUrl ? (
     <img
-      className={cn("rounded-full", className)}
+      className={cn("aspect-square rounded-full", className)}
       src={user.avatarUrl}
       alt={user.name ?? user.displayName ?? "User"}
     />
