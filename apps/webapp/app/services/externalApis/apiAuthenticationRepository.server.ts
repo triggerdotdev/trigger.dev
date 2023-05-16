@@ -84,6 +84,7 @@ export class APIAuthenticationRepository {
     integrationAuthMethod,
     scopes,
     title,
+    description,
     url,
     redirectTo,
   }: {
@@ -92,6 +93,7 @@ export class APIAuthenticationRepository {
     integrationAuthMethod: string;
     scopes: string[];
     title: string;
+    description?: string;
     redirectTo: string;
     url: URL;
   }): Promise<string> {
@@ -114,6 +116,7 @@ export class APIAuthenticationRepository {
             slug,
             integrationIdentifier,
             integrationAuthMethod,
+            description,
           },
         });
       } catch (error) {
@@ -149,8 +152,7 @@ export class APIAuthenticationRepository {
     redirectTo: string;
     url: URL;
   }) {
-    const { integration, authMethod } =
-      this.#getIntegrationAndAuthMethod(client);
+    const { authMethod } = this.#getIntegrationAndAuthMethod(client);
 
     switch (authMethod.type) {
       case "oauth2": {

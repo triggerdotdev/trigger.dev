@@ -3,21 +3,25 @@ import { redirect, typedjson } from "remix-typedjson";
 import z from "zod";
 import { prisma } from "~/db.server";
 import { apiAuthenticationRepository } from "~/services/externalApis/apiAuthenticationRepository.server";
+import { requireUserId } from "~/services/session.server";
 
 const FormSchema = z
   .object({
     integrationIdentifier: z.string(),
     integrationAuthMethod: z.string(),
     title: z.string().min(2),
+    description: z.string().optional(),
     redirectTo: z.string(),
   })
   .passthrough();
 
 const ParamsSchema = z.object({
-  organizationSlug: z.string(),
+  organizationId: z.string(),
 });
 
 export async function action({ request, params }: ActionArgs) {
+  const userId = await requireUserId(request);
+
   if (request.method.toUpperCase() !== "POST") {
     return typedjson(
       {
@@ -44,14 +48,24 @@ export async function action({ request, params }: ActionArgs) {
     );
   }
 
-  const organization = await prisma.organization.findUniqueOrThrow({
+  const organization = await prisma.organization.findFirstOrThrow({
     where: {
-      slug: parsedParams.organizationSlug,
+      id: parsedParams.organizationId,
+      members: {
+        some: {
+          userId,
+        },
+      },
     },
   });
 
-  const { integrationAuthMethod, integrationIdentifier, title, redirectTo } =
-    parsed.data;
+  const {
+    integrationAuthMethod,
+    integrationIdentifier,
+    title,
+    description,
+    redirectTo,
+  } = parsed.data;
 
   //check if there's an existing client with the same title
   const existingClient = await prisma.apiConnectionClient.findFirst({
@@ -94,6 +108,7 @@ export async function action({ request, params }: ActionArgs) {
     integrationAuthMethod,
     scopes,
     title,
+    description,
     redirectTo,
     url,
   });

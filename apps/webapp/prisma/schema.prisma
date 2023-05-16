@@ -84,8 +84,9 @@ model ExternalAccount {
 model ApiConnectionClient {
   id String @id @default(cuid())
 
-  title String
-  slug  String
+  title       String
+  slug        String
+  description String?
 
   integrationIdentifier String @default("generic")
   integrationAuthMethod String @default("oauth2")
