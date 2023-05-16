@@ -5,6 +5,8 @@ import * as PopoverPrimitive from "@radix-ui/react-popover";
 import { cn } from "~/utils/cn";
 import { Paragraph } from "./Paragraph";
 import { ChevronDownIcon } from "@heroicons/react/24/solid";
+import { LinkButton } from "./Buttons";
+import { IconNames } from "./NamedIcon";
 
 const Popover = PopoverPrimitive.Root;
 
@@ -20,7 +22,7 @@ const PopoverContent = React.forwardRef<
       align={align}
       sideOffset={sideOffset}
       className={cn(
-        "data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 z-50 w-72 rounded-md border bg-popover p-4 text-popover-foreground shadow-md outline-none animate-in",
+        "z-50 w-72 rounded-md border bg-popover p-4 text-popover-foreground shadow-md outline-none animate-in data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2",
         className
       )}
       {...props}
@@ -34,6 +36,34 @@ function PopoverSectionHeader({ title }: { title: string }) {
     <Paragraph variant="extra-small/bright/caps" className="bg-slate-900 p-2">
       {title}
     </Paragraph>
+  );
+}
+
+function PopoverMenuItem({
+  to,
+  icon,
+  title,
+  isSelected,
+}: {
+  to: string;
+  icon: IconNames;
+  title: string;
+  isSelected?: boolean;
+}) {
+  return (
+    <LinkButton
+      to={to}
+      variant="menu-item"
+      LeadingIcon={icon}
+      fullWidth
+      textAlignLeft
+      TrailingIcon={isSelected ? "check" : undefined}
+      className={
+        isSelected ? "bg-slate-750 group-hover:bg-slate-750" : undefined
+      }
+    >
+      {title}
+    </LinkButton>
   );
 }
 
@@ -69,4 +99,5 @@ export {
   PopoverContent,
   PopoverSectionHeader,
   PopoverArrowTrigger,
+  PopoverMenuItem,
 };

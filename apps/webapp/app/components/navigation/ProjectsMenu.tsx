@@ -1,22 +1,22 @@
-import { useState } from "react";
+import { Fragment, useState } from "react";
 import {
   useCurrentOrganization,
   useIsNewOrganizationPage,
   useOrganizations,
 } from "~/hooks/useOrganizations";
-import {
-  Popover,
-  PopoverArrowTrigger,
-  PopoverContent,
-  PopoverSectionHeader,
-} from "../primitives/Popover";
-import { LinkButton } from "../primitives/Buttons";
+import { useCurrentProject } from "~/hooks/useProject";
 import {
   newOrganizationPath,
   newProjectPath,
   projectPath,
 } from "~/utils/pathBuilder";
-import { useCurrentProject } from "~/hooks/useProject";
+import {
+  Popover,
+  PopoverArrowTrigger,
+  PopoverContent,
+  PopoverMenuItem,
+  PopoverSectionHeader,
+} from "../primitives/Popover";
 
 export function ProjectsMenu() {
   const [isOpen, setIsOpen] = useState(false);
@@ -41,53 +41,38 @@ export function ProjectsMenu() {
         </PopoverArrowTrigger>
         <PopoverContent className="w-80 p-0" align="start">
           {organizations.map((organization) => (
-            <div key={organization.id}>
+            <Fragment key={organization.id}>
               <PopoverSectionHeader title={organization.title} />
 
               <div className="flex flex-col gap-1">
                 {organization.projects.map((project) => {
                   const isSelected = project.id === currentProject?.id;
                   return (
-                    <LinkButton
+                    <PopoverMenuItem
                       key={project.id}
                       to={projectPath(organization, project)}
-                      variant="menu-item"
-                      LeadingIcon="folder"
-                      fullWidth
-                      textAlignLeft
-                      TrailingIcon={isSelected ? "check" : undefined}
-                      className={
-                        isSelected
-                          ? "bg-slate-750 group-hover:bg-slate-750"
-                          : undefined
-                      }
-                    >
-                      {project.name}
-                    </LinkButton>
+                      title={project.name}
+                      isSelected={isSelected}
+                      icon="folder"
+                    />
                   );
                 })}
-                <LinkButton
+                <PopoverMenuItem
                   to={newProjectPath(organization)}
-                  variant="menu-item"
-                  LeadingIcon="plus"
-                  fullWidth
-                  textAlignLeft
-                >
-                  New Project
-                </LinkButton>
+                  title="New Project"
+                  isSelected={false}
+                  icon="plus"
+                />
               </div>
-            </div>
+            </Fragment>
           ))}
           <div className="border-t border-slate-700">
-            <LinkButton
+            <PopoverMenuItem
               to={newOrganizationPath()}
-              variant="menu-item"
-              LeadingIcon="plus"
-              fullWidth
-              textAlignLeft
-            >
-              New Organization
-            </LinkButton>
+              title="New Organization"
+              isSelected={false}
+              icon="plus"
+            />
           </div>
         </PopoverContent>
       </Popover>
