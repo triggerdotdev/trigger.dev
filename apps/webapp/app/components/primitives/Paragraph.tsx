@@ -14,17 +14,17 @@ const paragraphVariants = {
     "font-mono text-xs font-normal leading-normal text-dimmed",
   "extra-small/bright/mono": "font-mono text-xs leading-normal text-bright",
   "extra-small/caps":
-    "font-sans text-xs uppercase tracking-wide font-normal leading-normal text-dimmed",
+    "font-sans text-xs uppercase tracking-wider font-normal leading-normal text-dimmed",
   "extra-small/bright/caps":
-    "font-sans text-xs uppercase tracking-wide font-normal leading-normal text-bright",
+    "font-sans text-xs uppercase tracking-wider font-normal leading-normal text-bright",
   "extra-extra-small":
     "font-sans text-xxs font-normal leading-normal text-dimmed",
   "extra-extra-small/bright":
     "font-sans text-xxs font-normal leading-normal text-bright",
   "extra-extra-small/caps":
-    "font-sans text-xxs uppercase tracking-wide font-normal leading-normal text-dimmed",
+    "font-sans text-xxs uppercase tracking-wider font-normal leading-normal text-dimmed",
   "extra-extra-small/bright/caps":
-    "font-sans text-xxs uppercase tracking-wide font-normal leading-normal text-bright",
+    "font-sans text-xxs uppercase tracking-wider font-normal leading-normal text-bright",
 };
 
 type ParagraphProps = {

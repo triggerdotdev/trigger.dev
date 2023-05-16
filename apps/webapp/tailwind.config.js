@@ -66,7 +66,7 @@ module.exports = {
       },
       fontSize: {
         xxs: [
-          "0.5rem",
+          "0.65rem",
           {
             lineHeight: "0.75rem",
             letterSpacing: "-0.01em",
