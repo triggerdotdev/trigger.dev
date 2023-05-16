@@ -1,7 +1,11 @@
 import { useMatches } from "@remix-run/react";
 import { ProjectsMenu } from "./ProjectsMenu";
 import { BreadcrumbLink } from "./NavBar";
-import { projectEnvironmentsPath, projectPath } from "~/utils/pathBuilder";
+import {
+  projectEnvironmentsPath,
+  projectIntegrationsPath,
+  projectPath,
+} from "~/utils/pathBuilder";
 import { useCurrentOrganization } from "~/hooks/useOrganizations";
 import { useCurrentProject } from "~/hooks/useProject";
 
@@ -52,6 +56,17 @@ export function Breadcrumb() {
                   key={breadcrumb.slug}
                   to={projectEnvironmentsPath(organization, project)}
                   title="Environments"
+                />
+              )
+            );
+          case "integrations":
+            return (
+              organization &&
+              project && (
+                <BreadcrumbLink
+                  key={breadcrumb.slug}
+                  to={projectIntegrationsPath(organization, project)}
+                  title="Integrations"
                 />
               )
             );

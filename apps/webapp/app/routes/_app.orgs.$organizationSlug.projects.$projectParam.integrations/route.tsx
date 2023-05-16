@@ -18,6 +18,8 @@ import { apiAuthenticationRepository } from "~/services/externalApis/apiAuthenti
 import { requireUser } from "~/services/session.server";
 import { formatDateTime } from "~/utils";
 import { integrationCatalog } from "~/services/externalApis/integrationCatalog.server";
+import { Handle } from "~/utils/handle";
+import { Integration } from "~/services/externalApis/types";
 
 export const loader = async ({ request, params }: LoaderArgs) => {
   const user = await requireUser(request);
@@ -39,12 +41,18 @@ export const loader = async ({ request, params }: LoaderArgs) => {
   });
 };
 
+export const handle: Handle = {
+  breadcrumb: {
+    slug: "integrations",
+  },
+};
+
 export default function Integrations() {
-  const { connections, apis } = useTypedLoaderData<typeof loader>();
+  const { clients, integrations } = useTypedLoaderData<typeof loader>();
   const organization = useCurrentOrganization();
   invariant(organization, "Organization not found");
 
-  const orderedApis = Object.values(apis).sort((a, b) =>
+  const orderedIntegrations = Object.values(integrations).sort((a, b) =>
     a.name.localeCompare(b.name)
   );
 
@@ -57,7 +65,7 @@ export default function Integrations() {
           <div className="flex items-start justify-between">
             <Header1>API Integrations</Header1>
           </div>
-          <div>
+          {/* <div>
             {connections.length === 0 ? (
               <></>
             ) : (
@@ -108,27 +116,31 @@ export default function Integrations() {
                 </div>
               </>
             )}
-          </div>
+          </div> */}
           <div className="mt-8">
-            {orderedApis.map((api) => {
-              const authMethods = Object.entries(api.authenticationMethods);
+            {orderedIntegrations.map((integration) => {
+              const authMethods = Object.entries(
+                integration.authenticationMethods
+              );
               if (authMethods.length === 1) {
                 return (
                   <ConnectButton
-                    key={api.identifier}
-                    api={api}
-                    authMethodKey={Object.keys(api.authenticationMethods)[0]}
+                    key={integration.identifier}
+                    api={integration}
+                    authMethodKey={
+                      Object.keys(integration.authenticationMethods)[0]
+                    }
                     organizationId={organization.id}
                   >
-                    <AddApiConnection api={api} />
+                    <AddIntegrationConnection integration={integration} />
                   </ConnectButton>
                 );
               }
 
               return (
-                <Popover key={api.identifier}>
+                <Popover key={integration.identifier}>
                   <PopoverTrigger>
-                    <AddApiConnection api={api} />
+                    <AddIntegrationConnection integration={integration} />
                   </PopoverTrigger>
                   <PopoverContent className="w-80">
                     <div className="grid gap-4">
@@ -141,7 +153,7 @@ export default function Integrations() {
                         {authMethods.map(([key, method]) => (
                           <ConnectButton
                             key={key}
-                            api={api}
+                            api={integration}
                             authMethodKey={key}
                             organizationId={organization.id}
                             className={
@@ -164,14 +176,18 @@ export default function Integrations() {
   );
 }
 
-function AddApiConnection({ api }: { api: ExternalApi }) {
+function AddIntegrationConnection({
+  integration,
+}: {
+  integration: Integration;
+}) {
   return (
     <div className="flex h-20 w-full items-center justify-between gap-2 px-10">
       <NamedIconInBox
-        name={api.identifier}
+        name={integration.identifier}
         className="h-9 w-9 transition group-hover:opacity-80"
       />
-      <span className="text-base text-slate-200">{api.name}</span>
+      <span className="text-base text-slate-200">{integration.name}</span>
       <PlusIcon className="h-4 w-4 text-slate-600" />
     </div>
   );
