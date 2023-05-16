@@ -8,6 +8,7 @@ const meta: Meta<typeof CodeBlock> = {
   title: "code/CodeBlock",
   component: CodeBlock,
   decorators: [withDesign],
+  tags: ["autodocs"],
 };
 
 export default meta;

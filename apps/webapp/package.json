@@ -155,6 +155,7 @@
     "@remix-run/eslint-config": "1.16.0",
     "@remix-run/testing": "^1.16.0",
     "@storybook/addon-backgrounds": "^7.0.7",
+    "@storybook/addon-docs": "^7.0.12",
     "@storybook/addon-essentials": "^7.0.7",
     "@storybook/addon-interactions": "^7.0.7",
     "@storybook/addon-links": "^7.0.7",

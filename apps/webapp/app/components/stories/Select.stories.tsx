@@ -8,11 +8,13 @@ import {
   SelectTrigger,
   SelectValue,
 } from "../primitives/Select";
+import { Button } from "../primitives/Buttons";
 
 const meta: Meta<typeof Select> = {
   title: "Primitives/Select",
   component: Select,
   decorators: [withDesign],
+  tags: ["autodocs"],
 };
 
 export default meta;
@@ -24,16 +26,21 @@ export const Basic: Story = {
     disabled: false,
   },
   render: (args) => (
-    <Select>
-      <SelectTrigger className="w-[180px]">
-        <SelectValue placeholder="Theme" />
-      </SelectTrigger>
-      <SelectContent>
-        <SelectItem value="light">Light</SelectItem>
-        <SelectItem value="dark">Dark</SelectItem>
-        <SelectItem value="system">System</SelectItem>
-      </SelectContent>
-    </Select>
+    <form method="GET" action="" className="flex flex-col gap-2">
+      <Select name="colorScheme" defaultValue="dark">
+        <SelectTrigger className="w-[180px]">
+          <SelectValue placeholder="Theme" />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="light">Light</SelectItem>
+          <SelectItem value="dark">Dark</SelectItem>
+          <SelectItem value="system">System</SelectItem>
+        </SelectContent>
+      </Select>
+      <Button type="submit" variant="primary/medium">
+        Submit
+      </Button>
+    </form>
   ),
 };
 

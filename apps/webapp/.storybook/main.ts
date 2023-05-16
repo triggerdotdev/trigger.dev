@@ -30,6 +30,7 @@ const config: StorybookConfig = {
     "@storybook/addon-interactions",
     "storybook-addon-variants",
     "storybook-addon-designs",
+    "@storybook/addon-docs",
     {
       name: "@storybook/addon-styling",
       options: {
