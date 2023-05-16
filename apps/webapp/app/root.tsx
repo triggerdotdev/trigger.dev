@@ -6,6 +6,8 @@ import {
   Outlet,
   Scripts,
   ScrollRestoration,
+  isRouteErrorResponse,
+  useRouteError,
 } from "@remix-run/react";
 import type { ShouldRevalidateFunction } from "@remix-run/react";
 import tailwindStylesheetUrl from "~/tailwind.css";
@@ -20,6 +22,13 @@ import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { usePostHog } from "./hooks/usePostHog";
 import { LinkButton } from "./components/primitives/Buttons";
 import { Paragraph } from "./components/primitives/Paragraph";
+import {
+  AppContainer,
+  BackgroundGradient,
+  MainCenteredContainer,
+} from "./components/layout/AppLayout";
+import { Header1, Header2, Header3 } from "./components/primitives/Headers";
+import { friendlyErrorDisplay } from "./utils/httpErrors";
 
 export const links: LinksFunction = () => {
   return [{ rel: "stylesheet", href: tailwindStylesheetUrl }];
@@ -54,8 +63,9 @@ export const shouldRevalidate: ShouldRevalidateFunction = (options) => {
   return true;
 };
 
-export function ErrorBoundary({ error }: { error: any }) {
-  console.error(error);
+export function ErrorBoundary() {
+  const error = useRouteError();
+
   return (
     <html>
       <head>
@@ -63,19 +73,47 @@ export function ErrorBoundary({ error }: { error: any }) {
         <Meta />
         <Links />
       </head>
-      <body className="bg-slate-850">
-        <div className="flex h-screen w-screen items-center justify-center">
-          <div className="flex flex-col items-center justify-center space-y-4">
-            <h1>Oh no!</h1>
-            <Paragraph>{JSON.stringify(error)}</Paragraph>
-            <LinkButton to="/" variant="primary/small">
-              Back home
-            </LinkButton>
-          </div>
-          <Scripts />
+      <body className="bg-darkBackground h-full overflow-hidden">
+        <div className="grid h-full w-full">
+          <AppContainer showBackgroundGradient={true}>
+            <div></div>
+            <MainCenteredContainer>
+              <div>
+                {isRouteErrorResponse(error) ? (
+                  <ErrorDisplay
+                    title={
+                      friendlyErrorDisplay(error.status, error.statusText).title
+                    }
+                    message={
+                      error.data.message ??
+                      friendlyErrorDisplay(error.status, error.statusText)
+                        .message
+                    }
+                  />
+                ) : error instanceof Error ? (
+                  <ErrorDisplay title={error.name} message={error.message} />
+                ) : (
+                  <ErrorDisplay title="Oops" message={JSON.stringify(error)} />
+                )}
+              </div>
+            </MainCenteredContainer>
+          </AppContainer>
         </div>
+        <Scripts />
       </body>
     </html>
+  );
+}
+
+function ErrorDisplay({ title, message }: { title: string; message?: string }) {
+  return (
+    <div className="p-4">
+      <Header1 className="mb-4 border-b border-slate-800 pb-4">{title}</Header1>
+      {message && <Header3>{message}</Header3>}
+      <LinkButton to="/" variant="primary/medium" className="mt-8">
+        Home
+      </LinkButton>
+    </div>
   );
 }
 
@@ -108,7 +146,7 @@ function App() {
         <Meta />
         <Links />
       </head>
-      <body className="h-full overflow-hidden bg-darkBackground">
+      <body className="bg-darkBackground h-full overflow-hidden">
         <Outlet />
         <Toaster
           position="top-right"

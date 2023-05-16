@@ -10,10 +10,24 @@ export function AppContainer({
   showBackgroundGradient?: boolean;
 }) {
   return (
+    <BackgroundGradient showBackgroundGradient={showBackgroundGradient}>
+      <div className={cn("grid h-full w-full grid-rows-[2.75rem_auto]")}>
+        {children}
+      </div>
+    </BackgroundGradient>
+  );
+}
+
+export function BackgroundGradient({
+  children,
+  showBackgroundGradient,
+}: {
+  children: React.ReactNode;
+  showBackgroundGradient?: boolean;
+}) {
+  return (
     <div
-      className={cn(
-        "grid h-full w-full grid-rows-[2.75rem_auto] bg-contain bg-right-top bg-no-repeat"
-      )}
+      className={cn("h-full w-full bg-contain bg-right-top bg-no-repeat")}
       style={
         showBackgroundGradient
           ? {
