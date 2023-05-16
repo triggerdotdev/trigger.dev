@@ -12,6 +12,6 @@ export function UserProfilePhoto({ className }: { className?: string }) {
       alt={user.name ?? user.displayName ?? "User"}
     />
   ) : (
-    <UserCircleIcon className={cn("text-slate-400", className)} />
+    <UserCircleIcon className={cn("aspect-square text-slate-400", className)} />
   );
 }
