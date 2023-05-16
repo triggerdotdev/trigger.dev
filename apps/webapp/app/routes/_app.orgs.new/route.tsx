@@ -73,6 +73,7 @@ export default function NewOrganizationPage() {
               <Input
                 {...conform.input(orgName, { type: "text" })}
                 placeholder="Your Organization name"
+                icon="organization"
               />
               <Hint>E.g. your company name or your workspace name.</Hint>
               <FormError id={orgName.errorId}>{orgName.error}</FormError>
@@ -82,6 +83,7 @@ export default function NewOrganizationPage() {
               <Input
                 {...conform.input(projectName, { type: "text" })}
                 placeholder="Your Project name"
+                icon="folder"
               />
               <Hint>Your Jobs will live inside this Project.</Hint>
               <FormError id={projectName.errorId}>
