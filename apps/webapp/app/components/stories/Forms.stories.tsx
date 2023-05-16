@@ -2,7 +2,6 @@ import type { Meta, StoryObj } from "@storybook/react";
 import { withDesign } from "storybook-addon-designs";
 import { Fieldset } from "../primitives/Fieldset";
 import { InputGroup } from "../primitives/InputGroup";
-import { Label } from "@radix-ui/react-label";
 import { Input } from "../primitives/Input";
 import { Hint } from "../primitives/Hint";
 import { FormError } from "../primitives/FormError";
@@ -14,6 +13,7 @@ import { Form } from "@remix-run/react";
 import { NamedIcon } from "../primitives/NamedIcon";
 import { Paragraph, TextLink } from "../primitives/Paragraph";
 import { LogoIcon } from "../LogoIcon";
+import { Label } from "../primitives/Label";
 
 const meta: Meta<typeof Forms> = {
   title: "Primitives/Forms",
@@ -46,6 +46,14 @@ export const Login: Story = {
   },
 
   render: (args) => <LoginForm />,
+};
+
+export const Search: Story = {
+  args: {
+    text: "Action text",
+  },
+
+  render: (args) => <SearchForm />,
 };
 
 function Forms() {
@@ -122,6 +130,37 @@ function LoginForm() {
               <TextLink href="#">terms</TextLink> and{" "}
               <TextLink href="#">privacy</TextLink> policies.
             </Paragraph>
+          </Fieldset>
+        </Form>
+      </div>
+    </MainCenteredContainer>
+  );
+}
+
+function SearchForm() {
+  return (
+    <MainCenteredContainer>
+      <div>
+        <Form>
+          <Fieldset>
+            <InputGroup>
+              <Label>Large search input</Label>
+              <Input
+                placeholder="Search"
+                required={true}
+                icon="search"
+                shortcut="⌘K"
+              />
+            </InputGroup>
+            <InputGroup>
+              <Label>Small search input</Label>
+              <Input
+                placeholder="Search"
+                required={true}
+                icon="search"
+                shortcut="⌘K"
+              />
+            </InputGroup>
           </Fieldset>
         </Form>
       </div>
