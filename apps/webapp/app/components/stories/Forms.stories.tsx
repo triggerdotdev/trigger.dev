@@ -97,7 +97,7 @@ function Forms() {
                   Create
                 </Button>
               }
-              cancelButton={<Button variant={"tertiary/small"}>Cancel</Button>}
+              cancelButton={<Button variant={"secondary/small"}>Cancel</Button>}
             />
           </Fieldset>
         </Form>
