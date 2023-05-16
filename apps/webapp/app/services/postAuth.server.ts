@@ -14,16 +14,6 @@ export async function postAuthentication({
 }) {
   if (isNewUser) {
     await emailProvider.scheduleWelcomeEmail(user);
-
-    await workerQueue.enqueue("sendInternalEvent", {
-      id: user.id,
-      name: "user.created",
-      payload: {
-        id: user.id,
-        source: loginMethod,
-        admin: user.admin,
-      },
-    });
   }
 
   analytics.user.identify({ user, isNewUser });
