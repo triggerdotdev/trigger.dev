@@ -74,7 +74,7 @@ export function ErrorBoundary() {
         <Meta />
         <Links />
       </head>
-      <body className="bg-darkBackground h-full overflow-hidden">
+      <body className="h-full overflow-hidden bg-darkBackground">
         <div className="grid h-full w-full">
           <AppContainer showBackgroundGradient={true}>
             <NavBar />
@@ -147,7 +147,7 @@ function App() {
         <Meta />
         <Links />
       </head>
-      <body className="bg-darkBackground h-full overflow-hidden">
+      <body className="h-full overflow-hidden bg-darkBackground">
         <Outlet />
         <Toaster
           position="top-right"

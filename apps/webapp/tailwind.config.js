@@ -9,39 +9,42 @@ const extraSlates = {
   650: "#3C4B62",
 };
 
-const background = "hsl(224 71% 4%)";
+const background = extraSlates[1000];
 const foreground = "hsl(213 31% 91%)";
 
 const muted = "hsl(223 47% 11%)";
 const mutedForeground = "hsl(215.4 16.3% 56.9%)";
 
 const popover = extraSlates[850];
-const popoverForeground = "hsl(215 20.2% 65.1%)";
+const popoverForeground = colors.slate[800];
 
 const card = "hsl(0 0% 100%)";
 const cardForeground = "hsl(222.2 47.4% 11.2%)";
 
-const border = "hsl(216 34% 17%)";
-const input = "hsl(216 34% 17%)";
+const border = extraSlates[850];
+const input = extraSlates[850];
 
-const primary = "hsl(210 40% 98%)";
-const primaryForeground = "hsl(222.2 47.4% 1.2%)";
+const primary = colors.indigo[600];
+const primaryForeground = colors.indigo[500];
 
 const secondary = "hsl(222.2 47.4% 11.2%)";
-const secondaryForeground = "hsl(210 40% 98%)";
+const secondaryForeground = extraSlates[850];
 
-const accent = "hsl(216 34% 17%)";
+const tertiary = "hsl(217 37% 7% / 0)";
+const tertiaryForeground = extraSlates[850];
+
+const accent = extraSlates[750];
 const accentForeground = "hsl(210 40% 98%)";
 
 const destructive = "hsl(0 63% 31%)";
 const destructiveForeground = "hsl(210 40% 98%)";
 
-const ring = colors.indigo[500];
+const ring = extraSlates[750];
 
 const radius = "0.5rem";
 
-const darkBackground = colors.slate[1000];
-const divide = colors.slate[850];
+const darkBackground = extraSlates[1000];
+const divide = extraSlates[850];
 const bright = colors.slate[200];
 const dimmed = colors.slate[400];
 
@@ -91,6 +94,10 @@ module.exports = {
         secondary: {
           DEFAULT: secondary,
           foreground: secondaryForeground,
+        },
+        tertiary: {
+          DEFAULT: tertiary,
+          foreground: tertiaryForeground,
         },
         destructive: {
           DEFAULT: destructive,
