@@ -18,14 +18,20 @@ import type { IconNames } from "../primitives/NamedIcon";
 import { SimpleTooltip } from "../primitives/Tooltip";
 
 export function SideMenuContainer({ children }: { children: React.ReactNode }) {
-  return <div className="flex h-full w-full">{children}</div>;
+  return (
+    <div className="flex h-full w-full justify-stretch overflow-hidden">
+      {children}
+    </div>
+  );
 }
 
 const menuVariants = {
   expanded: {
+    minWidth: "11rem",
     width: "11rem",
   },
   collapsed: {
+    minWidth: "2.81rem",
     width: "2.81rem",
   },
 };

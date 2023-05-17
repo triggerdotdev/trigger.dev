@@ -1,6 +1,5 @@
-import { PageContainer } from "~/components/layout/AppLayout";
+import { PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { LinkButton } from "~/components/primitives/Buttons";
-import { PageBody } from "~/components/primitives/PageBody";
 import {
   PageButtons,
   PageDescription,

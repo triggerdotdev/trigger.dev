@@ -21,6 +21,7 @@ import {
   CreditCardIcon,
   MagnifyingGlassIcon,
   BookOpenIcon,
+  LightBulbIcon,
 } from "@heroicons/react/24/solid";
 import { cn } from "~/utils/cn";
 import { Spinner } from "./Spinner";
@@ -66,6 +67,9 @@ const icons = {
   ),
   job: (className: string) => (
     <WrenchScrewdriverIcon className={cn("text-teal-500", className)} />
+  ),
+  lightbulb: (className: string) => (
+    <LightBulbIcon className={cn("text-amber-400", className)} />
   ),
   organization: (className: string) => (
     <BuildingOffice2Icon className={cn("text-fuchsia-600", className)} />

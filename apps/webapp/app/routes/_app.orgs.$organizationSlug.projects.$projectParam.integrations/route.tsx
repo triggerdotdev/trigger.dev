@@ -1,13 +1,12 @@
-import { PlusIcon } from "@heroicons/react/24/outline";
 import type { LoaderArgs } from "@remix-run/server-runtime";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import invariant from "tiny-invariant";
 import { ConnectButton } from "~/components/integrations/ConnectButton";
-import { PageContainer } from "~/components/layout/AppLayout";
-import { LinkButton } from "~/components/primitives/Buttons";
-import { Header2 } from "~/components/primitives/Headers";
+import { PageBody, PageContainer } from "~/components/layout/AppLayout";
+import { Badge } from "~/components/primitives/Badge";
+import { Button, LinkButton } from "~/components/primitives/Buttons";
+import { Header2, Header3 } from "~/components/primitives/Headers";
 import { NamedIcon, NamedIconInBox } from "~/components/primitives/NamedIcon";
-import { PageBody } from "~/components/primitives/PageBody";
 import {
   PageButtons,
   PageDescription,
@@ -27,6 +26,7 @@ import { apiAuthenticationRepository } from "~/services/externalApis/apiAuthenti
 import { integrationCatalog } from "~/services/externalApis/integrationCatalog.server";
 import { Integration } from "~/services/externalApis/types";
 import { requireUser } from "~/services/session.server";
+import { formatDateTime } from "~/utils";
 import { Handle } from "~/utils/handle";
 import { docsPath } from "~/utils/pathBuilder";
 
@@ -66,7 +66,7 @@ export default function Integrations() {
   );
 
   return (
-    <PageContainer>
+    <PageContainer fullHeight>
       <PageHeader>
         <PageTitleRow>
           <PageTitle title="Integrations" />
@@ -86,11 +86,11 @@ export default function Integrations() {
         </PageDescription>
       </PageHeader>
 
-      <PageBody>
-        <div className="grid grid-cols-2">
+      <PageBody fullHeight>
+        <div className="grid h-full grid-cols-2">
           <div>
             <Header2>Connect an Integration</Header2>
-            <div className="mt-2 grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-3">
+            <div className="mt-2 flex flex-wrap gap-x-8 gap-y-2">
               {orderedIntegrations.map((integration) => {
                 const authMethods = Object.entries(
                   integration.authenticationMethods
@@ -104,6 +104,7 @@ export default function Integrations() {
                         Object.keys(integration.authenticationMethods)[0]
                       }
                       organizationId={organization.id}
+                      className="min-w-[15rem] flex-shrink-0"
                     >
                       <AddIntegrationConnection integration={integration} />
                     </ConnectButton>
@@ -112,7 +113,7 @@ export default function Integrations() {
 
                 return (
                   <Popover key={integration.identifier}>
-                    <PopoverTrigger>
+                    <PopoverTrigger className="min-w-[15rem] flex-shrink-0">
                       <AddIntegrationConnection integration={integration} />
                     </PopoverTrigger>
                     <PopoverContent className="w-80">
@@ -144,58 +145,59 @@ export default function Integrations() {
               })}
             </div>
           </div>
-          {/* <div>
-            {connections.length === 0 ? (
-              <></>
-            ) : (
-              <>
-                <Header3>
-                  {connections.length} connected API
-                  {connections.length > 1 ? "s" : ""}
-                </Header3>
-                <div>
-                  {connections.map((connection) => {
-                    return (
-                      <li key={connection.id}>
-                        <div className="flex items-start gap-2 px-3 py-3">
+          <div className="ml-2 h-full border-l border-slate-600 pl-2">
+            <div className="flex items-center justify-between">
+              <Header2>Your connected Integrations</Header2>
+              <Button variant="tertiary/small" LeadingIcon="lightbulb">
+                How do I connect an Integration?
+              </Button>
+            </div>
+            <div>
+              {clients.length === 0 ? (
+                <></>
+              ) : (
+                <>
+                  <div>
+                    {clients.map((client) => {
+                      return (
+                        <div
+                          key={client.id}
+                          className="flex items-start gap-2 px-3 py-3"
+                        >
                           <NamedIcon
-                            name={connection.apiIdentifier}
+                            name={client.integrationIdentifier}
                             className="h-6 w-6"
                           />
                           <div className="flex-grow">
                             <div className="flex flex-col gap-0.5">
                               <Header3 className="flex gap-2">
-                                <span>{connection.title}</span>
-                                <Badge>
-                                  {connection.authenticationMethod.name}
-                                </Badge>
+                                <span>{client.title}</span>
+                                <Badge>{client.authMethod.name}</Badge>
                               </Header3>
 
-                              {connection.metadata.account && (
-                                <Paragraph className="text-slate-400">
-                                  Account: {connection.metadata.account}
-                                </Paragraph>
+                              {client.description && (
+                                <Paragraph>{client.description}</Paragraph>
                               )}
-                              {connection.scopes && (
+                              {client.scopes && (
                                 <Paragraph className="text-slate-400">
                                   <span>Scopes:</span>{" "}
-                                  {connection.scopes.join(", ")}
+                                  {client.scopes.join(", ")}
                                 </Paragraph>
                               )}
                               <Paragraph className="text-slate-400">
-                                Added: {formatDateTime(connection.createdAt)}
+                                Added: {formatDateTime(client.createdAt)}
                               </Paragraph>
                             </div>
                           </div>
                           <div></div>
                         </div>
-                      </li>
-                    );
-                  })}
-                </div>
-              </>
-            )}
-          </div> */}
+                      );
+                    })}
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
         </div>
       </PageBody>
     </PageContainer>
@@ -221,7 +223,7 @@ function AddIntegrationConnection({
       </Paragraph>
       <NamedIcon
         name="plus"
-        className="flex-0 h-5 w-5 text-slate-600 group-hover:text-bright"
+        className="h-5 w-5 flex-none text-slate-600 group-hover:text-bright"
       />
     </div>
   );
