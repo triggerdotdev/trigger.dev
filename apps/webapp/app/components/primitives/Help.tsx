@@ -8,24 +8,31 @@ import gradientPath from "./help-gradient.svg";
 
 type HelpContextValue = {
   open: boolean;
+  allowDismissing: boolean;
   setOpen: (open: boolean) => void;
 };
 
 const HelpContext = React.createContext<HelpContextValue>({
   open: false,
   setOpen: () => {},
+  allowDismissing: true,
 });
 
 type HelpProps = {
   defaultOpen?: boolean;
+  allowDismissing?: boolean;
   children?: React.ReactNode;
 };
 
-export function Help({ defaultOpen, children }: HelpProps) {
+export function Help({
+  defaultOpen,
+  allowDismissing = true,
+  children,
+}: HelpProps) {
   const [open, setOpen] = React.useState(defaultOpen || false);
 
   return (
-    <HelpContext.Provider value={{ open, setOpen }}>
+    <HelpContext.Provider value={{ open, setOpen, allowDismissing }}>
       {children}
     </HelpContext.Provider>
   );
@@ -55,7 +62,7 @@ export function HelpContent({
   title: string;
   children: React.ReactNode;
 }) {
-  const { open, setOpen } = React.useContext(HelpContext);
+  const { open, setOpen, allowDismissing } = React.useContext(HelpContext);
 
   return (
     <>
@@ -66,14 +73,16 @@ export function HelpContent({
               <NamedIcon name="lightbulb" className="h-4 w-4" />
               <Header2 className="m-0 p-0">{title}</Header2>
             </div>
-            <Button
-              variant="tertiary/small"
-              TrailingIcon="close"
-              trailingIconClassName="text-slate-400"
-              onClick={() => setOpen(false)}
-            >
-              Dismiss
-            </Button>
+            {allowDismissing && (
+              <Button
+                variant="tertiary/small"
+                TrailingIcon="close"
+                trailingIconClassName="text-slate-400"
+                onClick={() => setOpen(false)}
+              >
+                Dismiss
+              </Button>
+            )}
           </div>
 
           <div
