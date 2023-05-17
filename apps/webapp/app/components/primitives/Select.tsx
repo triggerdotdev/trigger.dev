@@ -41,7 +41,11 @@ const SelectTrigger = React.forwardRef<
       >
         {children}
         <SelectPrimitive.Icon asChild>
-          <ChevronDown className="h-4 w-4 text-dimmed transition group-hover:text-bright group-focus:text-bright" />
+          <ChevronDown
+            className={cn(
+              "h-4 w-4 text-dimmed transition group-hover:text-bright group-focus:text-bright"
+            )}
+          />
         </SelectPrimitive.Icon>
       </SelectPrimitive.Trigger>
     );
@@ -57,7 +61,7 @@ const SelectContent = React.forwardRef<
     <SelectPrimitive.Content
       ref={ref}
       className={cn(
-        "relative z-50 min-w-max overflow-hidden rounded-md bg-popover text-bright shadow-md animate-in fade-in-80",
+        "relative z-50 min-w-max overflow-hidden rounded-md bg-popover text-bright shadow-md animate-in fade-in-40",
         position === "popper" && "translate-y-1",
         className
       )}
@@ -100,7 +104,7 @@ const SelectItem = React.forwardRef<
   <SelectPrimitive.Item
     ref={ref}
     className={cn(
-      "data-[disabled]:pointer-events-none data-[disabled]:opacity-50 relative my-0.5 flex w-full cursor-default select-none items-center rounded-sm py-1.5 pl-2 pr-12 text-sm outline-none first-of-type:my-1 last-of-type:my-1 hover:bg-slate-750 focus:bg-slate-750/50",
+      "data-[disabled]:pointer-events-none data-[disabled]:opacity-50 relative my-0.5 flex w-full cursor-default select-none items-center rounded-sm py-1.5 pl-2 pr-12 text-sm outline-none transition first-of-type:my-1 last-of-type:my-1 hover:bg-slate-750 focus:bg-slate-750/50",
       className
     )}
     {...props}
