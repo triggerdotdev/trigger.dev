@@ -4,11 +4,14 @@ import { withDesign } from "storybook-addon-designs";
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
+  SelectLabel,
   SelectTrigger,
   SelectValue,
 } from "../primitives/Select";
-import { Button } from "../primitives/Buttons";
+import { Header1 } from "../primitives/Headers";
+import { SelectSeparator } from "@radix-ui/react-select";
 
 const meta: Meta<typeof Select> = {
   title: "Primitives/Select",
@@ -26,27 +29,33 @@ export const Basic: Story = {
     disabled: false,
   },
   render: (args) => (
-    <form method="GET" action="" className="flex flex-col gap-2">
-      <Select name="colorScheme" defaultValue="dark">
-        <SelectTrigger className="w-[180px]">
-          <SelectValue placeholder="Theme" />
-        </SelectTrigger>
-        <SelectContent>
-          <SelectItem value="light">Light</SelectItem>
-          <SelectItem value="dark">Dark</SelectItem>
-          <SelectItem value="system">System</SelectItem>
-        </SelectContent>
-      </Select>
-      <Button type="submit" variant="primary/medium">
-        Submit
-      </Button>
-    </form>
+    <div className="flex h-screen flex-col gap-4 bg-slate-1000">
+      <Header1>Select</Header1>
+      <SelectGroup>
+        <Select name="colorScheme" defaultValue="dark">
+          <SelectTrigger className="w-fit">
+            <SelectValue placeholder="Theme" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectLabel>Color Scheme</SelectLabel>
+            <SelectItem value="light">Light</SelectItem>
+            <SelectItem value="dark">Dark</SelectItem>
+            <SelectItem value="system">System</SelectItem>
+            <SelectLabel>Other themes</SelectLabel>
+            <SelectItem value="sunset">Sunset</SelectItem>
+            <SelectItem value="midnight">Midnight</SelectItem>
+            <SelectSeparator />
+            <SelectItem value="lunar">Lunar</SelectItem>
+          </SelectContent>
+        </Select>
+      </SelectGroup>
+    </div>
   ),
 };
 
 Basic.parameters = {
   design: {
     type: "figma",
-    url: "https://www.figma.com/file/LKQ4FJ4bTnCSjedbRpk931/Sample-File",
+    url: "https://www.figma.com/file/jBqUJJ2d4lU6aSeKIIOBMY/Trigger.dev?type=design&node-id=1759%3A2827&t=lP20lNML1kp3VPMQ-1",
   },
 };

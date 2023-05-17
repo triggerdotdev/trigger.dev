@@ -34,7 +34,7 @@ PopoverContent.displayName = PopoverPrimitive.Content.displayName;
 function PopoverSectionHeader({ title }: { title: string }) {
   return (
     <Paragraph
-      variant="extra-extra-small/caps"
+      variant="extra-extra-small/bright/caps"
       className="bg-slate-900 px-2.5 py-2"
     >
       {title}
