@@ -10,7 +10,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "../primitives/Select";
-import { Header1 } from "../primitives/Headers";
+import { Header1, Header2 } from "../primitives/Headers";
 import { SelectSeparator } from "@radix-ui/react-select";
 
 const meta: Meta<typeof Select> = {
@@ -29,11 +29,12 @@ export const Basic: Story = {
     disabled: false,
   },
   render: (args) => (
-    <div className="flex h-screen flex-col gap-4 bg-slate-1000">
-      <Header1>Select</Header1>
+    <div className="flex flex-col">
+      <Header1 className="mb-4">Variants</Header1>
+      <Header2 className="my-4 font-mono">size=small width=content</Header2>
       <SelectGroup>
         <Select name="colorScheme" defaultValue="dark">
-          <SelectTrigger className="w-fit">
+          <SelectTrigger size="small" width="content">
             <SelectValue placeholder="Theme" />
           </SelectTrigger>
           <SelectContent>
@@ -42,6 +43,23 @@ export const Basic: Story = {
             <SelectItem value="dark">Dark</SelectItem>
             <SelectItem value="system">System</SelectItem>
             <SelectLabel>Other themes</SelectLabel>
+            <SelectItem value="sunset">Sunset</SelectItem>
+            <SelectItem value="midnight">Midnight</SelectItem>
+            <SelectSeparator />
+            <SelectItem value="lunar">Lunar</SelectItem>
+          </SelectContent>
+        </Select>
+      </SelectGroup>
+      <Header2 className="my-4 font-mono">size=small width=full</Header2>
+      <SelectGroup>
+        <Select name="colorScheme" defaultValue="dark">
+          <SelectTrigger size="small" width="full">
+            <SelectValue placeholder="Theme" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="light">Light</SelectItem>
+            <SelectItem value="dark">Dark</SelectItem>
+            <SelectItem value="system">System</SelectItem>
             <SelectItem value="sunset">Sunset</SelectItem>
             <SelectItem value="midnight">Midnight</SelectItem>
             <SelectSeparator />

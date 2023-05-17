@@ -5,33 +5,44 @@ import * as SelectPrimitive from "@radix-ui/react-select";
 import { Check, ChevronDown } from "lucide-react";
 import { cn } from "~/utils/cn";
 
-// TODO: 100% width or fit-content width
-// TODO: medium and small variants
+const size = {
+  small: "h-6",
+  medium: "h-12",
+};
+
+export type SelectProps = {
+  size: keyof typeof size;
+  width: "content" | "full";
+};
 
 const Select = SelectPrimitive.Root;
-
 const SelectGroup = SelectPrimitive.Group;
-
 const SelectValue = SelectPrimitive.Value;
-
 const SelectTrigger = React.forwardRef<
   React.ElementRef<typeof SelectPrimitive.Trigger>,
-  React.ComponentPropsWithoutRef<typeof SelectPrimitive.Trigger>
->(({ className, children, ...props }, ref) => (
-  <SelectPrimitive.Trigger
-    ref={ref}
-    className={cn(
-      "group flex h-6 w-full items-center justify-between gap-x-2 rounded bg-tertiary px-2 text-xs text-dimmed ring-offset-background transition placeholder:text-dimmed hover:bg-tertiary-foreground hover:text-bright focus-visible:bg-tertiary-foreground focus-visible:text-bright focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring focus-visible:ring-offset-0 disabled:cursor-not-allowed disabled:opacity-50",
-      className
-    )}
-    {...props}
-  >
-    {children}
-    <SelectPrimitive.Icon asChild>
-      <ChevronDown className="h-4 w-4 text-dimmed transition group-hover:text-bright group-focus:text-bright" />
-    </SelectPrimitive.Icon>
-  </SelectPrimitive.Trigger>
-));
+  React.ComponentPropsWithoutRef<typeof SelectPrimitive.Trigger> & SelectProps
+>(
+  (
+    { className, children, width = "content", size = "small", ...props },
+    ref
+  ) => (
+    <SelectPrimitive.Trigger
+      ref={ref}
+      className={cn(
+        "group flex h-6 w-full items-center justify-between gap-x-2 rounded bg-tertiary px-2 text-xs text-dimmed ring-offset-background transition placeholder:text-dimmed hover:bg-tertiary-foreground hover:text-bright focus-visible:bg-tertiary-foreground focus-visible:text-bright focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring focus-visible:ring-offset-0 disabled:cursor-not-allowed disabled:opacity-50",
+        width === "full" ? "w-full" : "w-min",
+        size,
+        className
+      )}
+      {...props}
+    >
+      {children}
+      <SelectPrimitive.Icon asChild>
+        <ChevronDown className="h-4 w-4 text-dimmed transition group-hover:text-bright group-focus:text-bright" />
+      </SelectPrimitive.Icon>
+    </SelectPrimitive.Trigger>
+  )
+);
 SelectTrigger.displayName = SelectPrimitive.Trigger.displayName;
 
 const SelectContent = React.forwardRef<
@@ -70,7 +81,7 @@ const SelectLabel = React.forwardRef<
   <SelectPrimitive.Label
     ref={ref}
     className={cn(
-      "-ml-1 -mr-1 bg-slate-900 py-1.5 pl-2 pr-2 font-sans text-xxs font-normal uppercase leading-normal tracking-wider text-dimmed first-of-type:-mt-1",
+      "-ml-1 -mr-1 mb-1 bg-slate-900 py-1.5 pl-2 pr-2 font-sans text-xxs font-normal uppercase leading-normal tracking-wider text-dimmed first-of-type:-mt-0",
       className
     )}
     {...props}
