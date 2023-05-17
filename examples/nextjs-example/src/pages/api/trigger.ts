@@ -7,16 +7,19 @@ import {
   NormalizedRequest,
   TriggerClient,
 } from "@trigger.dev/sdk";
-import { github, events } from "@trigger.dev/github";
-import { slack as slackConnection } from "@trigger.dev/slack";
+import { Github, events } from "@trigger.dev/github";
+import { Slack } from "@trigger.dev/slack";
 import type { NextApiRequest, NextApiResponse } from "next";
 import { z } from "zod";
 
-const gh = github({ id: "github" });
-// TODO: move to this syntax
-// const gh = github({ hosted: { id: "github" } });
-// const gh2 = github({ local: { token: "my-token" } });
-const slack = slackConnection({ id: "my-slack-new" });
+const github = new Github({ id: "github" });
+
+const githubLocal = new Github({
+  id: "github-local",
+  token: process.env.GITHUB_TOKEN,
+});
+
+const slack = new Slack({ id: "my-slack-new" });
 
 const client = new TriggerClient("nextjs", {
   apiKey: process.env.TRIGGER_API_KEY,
@@ -29,17 +32,17 @@ const client = new TriggerClient("nextjs", {
 const dynamicOnIssueOpenedTrigger = new DynamicTrigger(client, {
   id: "github-issue-opened",
   event: events.onIssueOpened,
-  source: gh.sources.repo,
+  source: github.sources.repo,
 });
 
 new Job(client, {
   id: "alert-on-new-github-issues",
   name: "Alert on new GitHub issues",
   version: "0.1.1",
-  connections: {
+  integrations: {
     slack,
   },
-  trigger: gh.triggers.repo({
+  trigger: github.triggers.repo({
     event: events.onIssueOpened,
     repo: "ericallam/basic-starter-100k",
   }),
@@ -49,6 +52,20 @@ new Job(client, {
       channel: "C04GWUTDC3W",
     });
   },
+});
+
+new Job(client, {
+  id: "comment-on-new-github-issues",
+  name: "Comment on new GitHub issues",
+  version: "0.1.1",
+  integrations: {
+    githubLocal,
+  },
+  trigger: githubLocal.triggers.repo({
+    event: events.onIssueOpened,
+    repo: "ericallam/basic-starter-100k",
+  }),
+  run: async (event, io, ctx) => {},
 });
 
 new Job(client, {
@@ -63,7 +80,7 @@ new Job(client, {
   id: "alert-on-new-github-stars",
   name: "Alert on new GitHub stars",
   version: "0.1.1",
-  trigger: gh.triggers.repo({
+  trigger: github.triggers.repo({
     event: events.onNewStar,
     repo: "ericallam/basic-starter-100k",
   }),
@@ -74,7 +91,7 @@ new Job(client, {
   id: "alert-on-new-issue-comments",
   name: "Alert on new github issue comments",
   version: "0.1.1",
-  trigger: gh.triggers.repo({
+  trigger: github.triggers.repo({
     event: events.onIssueComment,
     repo: "ericallam/basic-starter-100k",
   }),
@@ -88,11 +105,11 @@ new Job(client, {
   trigger: comboTrigger({
     event: events.onNewStar,
     triggers: [
-      gh.triggers.repo({
+      github.triggers.repo({
         event: events.onNewStar,
         repo: "ericallam/stripe-to-email",
       }),
-      gh.triggers.repo({
+      github.triggers.repo({
         event: events.onNewStar,
         repo: "ericallam/supabase-to-loops-cloud",
       }),

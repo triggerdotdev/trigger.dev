@@ -12,10 +12,10 @@ import {
   deepMergeFilters,
 } from "@trigger.dev/internal";
 import {
-  Connection,
-  IOWithConnections,
-  connectionConfig,
-} from "../connections";
+  IntegrationClient,
+  IOWithIntegrations,
+  TriggerIntegration,
+} from "../integrations";
 import { IO } from "../io";
 import { Job } from "../job";
 import { TriggerClient } from "../triggerClient";
@@ -75,12 +75,12 @@ type RegisterFunctionEvent<
 };
 
 type RegisterFunction<
-  TConnection extends Connection<any, any>,
+  TIntegration extends TriggerIntegration<IntegrationClient<any, any>>,
   TParams extends any,
   TChannel extends ChannelNames
 > = (
   event: RegisterFunctionEvent<TChannel, TParams>,
-  io: IOWithConnections<{ client: TConnection }>,
+  io: IOWithIntegrations<{ integration: TIntegration }>,
   ctx: TriggerContext
 ) => Promise<UpdateTriggerSourceBody | undefined>;
 
@@ -96,39 +96,28 @@ type KeyFunction<TParams extends any> = (params: TParams) => string;
 
 type ExternalSourceOptions<
   TChannel extends ChannelNames,
-  TConnection extends Connection<any, any>,
+  TIntegration extends TriggerIntegration<IntegrationClient<any, any>>,
   TParams extends any
 > = {
   id: string;
   version: string;
   schema: z.Schema<TParams>;
-  connection: TConnection;
-  register: RegisterFunction<TConnection, TParams, TChannel>;
+  integration: TIntegration;
+  register: RegisterFunction<TIntegration, TParams, TChannel>;
   handler: HandlerFunction<TChannel, TParams>;
   key: KeyFunction<TParams>;
 };
 
-export interface AnExternalSource {
-  connection: Connection<any, any>;
-  register: (
-    params: any,
-    event: RegisterSourceEvent,
-    io: IO,
-    ctx: TriggerContext
-  ) => Promise<any>;
-}
-
 export class ExternalSource<
-  TConnection extends Connection<any, any>,
+  TIntegration extends TriggerIntegration<IntegrationClient<any, any>>,
   TParams extends any,
   TChannel extends ChannelNames = ChannelNames
-> implements AnExternalSource
-{
+> {
   channel: TChannel;
 
   constructor(
     channel: TChannel,
-    private options: ExternalSourceOptions<TChannel, TConnection, TParams>
+    private options: ExternalSourceOptions<TChannel, TIntegration, TParams>
   ) {
     this.channel = channel;
   }
@@ -166,7 +155,7 @@ export class ExternalSource<
         source: { ...sourceWithoutChannel, ...channelWithoutType },
         params,
       },
-      io as IOWithConnections<{ client: TConnection }>,
+      io as IOWithIntegrations<{ integration: TIntegration }>,
       ctx
     );
 
@@ -177,20 +166,20 @@ export class ExternalSource<
     const parts = [this.options.id, this.channel];
 
     parts.push(this.options.key(params));
-
-    if (this.connectionConfig) {
-      parts.push(this.connectionConfig.id);
-    }
+    parts.push(this.integration.id);
 
     return parts.join("-");
   }
 
-  get connection() {
-    return this.options.connection;
+  get integration() {
+    return this.options.integration;
   }
 
-  get connectionConfig() {
-    return connectionConfig(this.options.connection);
+  get integrationConfig() {
+    return {
+      id: this.integration.id,
+      metadata: this.integration.metadata,
+    };
   }
 
   get id() {

@@ -1,50 +1,60 @@
 import {
-  ConnectionConfig,
+  IntegrationConfig,
   JobMetadata,
   LogLevel,
   QueueOptions,
 } from "@trigger.dev/internal";
-import { Connection, IOWithConnections } from "./connections";
+import {
+  IOWithIntegrations,
+  IntegrationClient,
+  TriggerIntegration,
+} from "./integrations";
 import { TriggerClient } from "./triggerClient";
 import type {
-  TriggerContext,
-  Trigger,
-  TriggerEventType,
   EventSpecification,
+  Trigger,
+  TriggerContext,
+  TriggerEventType,
 } from "./types";
 import { slugifyId } from "./utils";
 
 export type JobOptions<
   TTrigger extends Trigger<EventSpecification<any>>,
-  TConnections extends Record<string, Connection<any, any>> = {}
+  TIntegrations extends Record<
+    string,
+    TriggerIntegration<IntegrationClient<any, any>>
+  > = {}
 > = {
   id: string;
   name: string;
   version: string;
   trigger: TTrigger;
   logLevel?: LogLevel;
-  connections?: TConnections;
+  integrations?: TIntegrations;
   queue?: QueueOptions | string;
   startPosition?: "initial" | "latest";
 
   run: (
     event: TriggerEventType<TTrigger>,
-    io: IOWithConnections<TConnections>,
+    io: IOWithIntegrations<TIntegrations>,
     ctx: TriggerContext
   ) => Promise<any>;
 };
 
 export class Job<
   TTrigger extends Trigger<EventSpecification<any>>,
-  TConnections extends Record<string, Connection<any, any>>
+  TIntegrations extends Record<
+    string,
+    TriggerIntegration<IntegrationClient<any, any>>
+  > = {}
 > {
-  readonly options: JobOptions<TTrigger, TConnections>;
+  readonly options: JobOptions<TTrigger, TIntegrations>;
 
   client: TriggerClient;
 
   constructor(
     client: TriggerClient,
-    options: JobOptions<TTrigger, TConnections>
+    options: JobOptions<TTrigger, TIntegrations>
   ) {
     this.client = client;
     this.options = options;
@@ -69,15 +79,15 @@ export class Job<
     return this.options.version;
   }
 
-  get connections(): Record<string, ConnectionConfig> {
-    return Object.keys(this.options.connections ?? {}).reduce(
-      (acc: Record<string, ConnectionConfig>, key) => {
-        const connection = this.options.connections![key];
+  get integrations(): Record<string, IntegrationConfig> {
+    return Object.keys(this.options.integrations ?? {}).reduce(
+      (acc: Record<string, IntegrationConfig>, key) => {
+        const integration = this.options.integrations![key];
 
-        if (!connection.usesLocalAuth) {
+        if (!integration.client.usesLocalAuth) {
           acc[key] = {
-            metadata: connection.metadata,
-            id: connection.id!,
+            id: integration.id,
+            metadata: integration.metadata,
           };
         }
 
@@ -97,7 +107,7 @@ export class Job<
       version: this.version,
       event: this.trigger.event,
       triggers: this.trigger.toJSON(),
-      connections: this.connections,
+      integrations: this.integrations,
       queue: this.options.queue,
       startPosition: this.options.startPosition ?? "latest",
       internal,

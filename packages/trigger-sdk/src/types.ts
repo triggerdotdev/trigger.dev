@@ -1,7 +1,6 @@
 import type {
   ApiEventLog,
   EventFilter,
-  RawEvent,
   SecureString,
   SendEvent,
   SendEventOptions,
@@ -10,8 +9,6 @@ import type {
 import { DisplayElement } from "@trigger.dev/internal";
 import { Job } from "./job";
 import { TriggerClient } from "./triggerClient";
-import { AnExternalSource } from "./triggers/externalSource";
-import { Connection } from "./connections";
 
 export type { SecureString };
 

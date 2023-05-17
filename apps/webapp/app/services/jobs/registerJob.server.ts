@@ -1,12 +1,12 @@
 import type {
   Endpoint,
   Job,
-  JobConnection,
+  JobIntegration,
   JobVersion,
   ApiConnectionClient,
 } from ".prisma/client";
 import type {
-  ConnectionConfig,
+  IntegrationConfig,
   JobMetadata,
   TriggerMetadata,
 } from "@trigger.dev/internal";
@@ -53,28 +53,23 @@ export class RegisterJobService {
       metadata,
     });
 
-    // Make sure all the hosted connections exist before we upsert the job
-    // Need to check for three places where a connection could be:
-    // 1. The job.connections
-    // 2. The job.trigger possible connection
-    // 3. The job.triggerVariants possible connection
-    const connectionSlugs = new Set<string>();
+    const integrationSlugs = new Set<string>();
 
-    if (metadata.connections) {
-      for (const connection of Object.values(metadata.connections)) {
-        connectionSlugs.add(connection.id);
+    if (metadata.integrations) {
+      for (const integration of Object.values(metadata.integrations)) {
+        integrationSlugs.add(integration.id);
       }
     }
 
     const apiConnectionClients = new Map<string, ApiConnectionClient>();
 
-    for (const connectionSlug of connectionSlugs) {
+    for (const integrationSlug of integrationSlugs) {
       const apiConnectionClient =
         await this.#prismaClient.apiConnectionClient.findUnique({
           where: {
             organizationId_slug: {
               organizationId: environment.organizationId,
-              slug: connectionSlug,
+              slug: integrationSlug,
             },
           },
         });
@@ -82,11 +77,11 @@ export class RegisterJobService {
       if (!apiConnectionClient) {
         // TODO: find a better way to handle and message the user about this issue
         throw new Error(
-          `Could not find ApiConnectionClient with slug ${connectionSlug}`
+          `Could not find ApiConnectionClient with slug ${integrationSlug}`
         );
       }
 
-      apiConnectionClients.set(connectionSlug, apiConnectionClient);
+      apiConnectionClients.set(integrationSlug, apiConnectionClient);
     }
 
     // Upsert the Job
@@ -116,7 +111,7 @@ export class RegisterJobService {
         title: metadata.name,
       },
       include: {
-        connections: {
+        integrations: {
           include: {
             apiConnectionClient: true,
           },
@@ -215,7 +210,7 @@ export class RegisterJobService {
         },
       },
       include: {
-        connections: {
+        integrations: {
           include: {
             apiConnectionClient: true,
           },
@@ -223,19 +218,19 @@ export class RegisterJobService {
       },
     });
 
-    const jobConnections = new Set<string>();
+    const jobIntegrations = new Set<string>();
 
-    // Upsert the job connections
-    for (const [key, connection] of Object.entries(metadata.connections)) {
-      const jobConnection = await this.#upsertJobConnection(
+    // Upsert the job integrations
+    for (const [key, integration] of Object.entries(metadata.integrations)) {
+      const jobIntegration = await this.#upsertJobIntegration(
         job,
         jobVersion,
-        connection,
+        integration,
         apiConnectionClients,
         key
       );
 
-      jobConnections.add(jobConnection.id);
+      jobIntegrations.add(jobIntegration.id);
     }
 
     // Count the number of job instances that have higher version numbers
@@ -274,20 +269,15 @@ export class RegisterJobService {
       });
     }
 
-    // Delete any connections that are no longer in the job
-    // It's import this runs after the trigger variant upserts
-    await this.#prismaClient.jobConnection.deleteMany({
+    await this.#prismaClient.jobIntegration.deleteMany({
       where: {
         versionId: jobVersion.id,
         id: {
-          notIn: Array.from(jobConnections),
+          notIn: Array.from(jobIntegrations),
         },
       },
     });
 
-    // This is where we upsert the triggers if there are any
-    // upsert the eventrule
-    // The event rule should only be enabled if all the external connections are ready
     for (const trigger of metadata.triggers) {
       await this.#upsertTrigger(
         trigger,
@@ -368,21 +358,21 @@ export class RegisterJobService {
     }
   }
 
-  async #upsertJobConnection(
+  async #upsertJobIntegration(
     job: Job & {
-      connections: Array<
-        JobConnection & { apiConnectionClient: ApiConnectionClient | null }
+      integrations: Array<
+        JobIntegration & { apiConnectionClient: ApiConnectionClient | null }
       >;
     },
     jobVersion: JobVersion & {
-      connections: Array<
-        JobConnection & { apiConnectionClient: ApiConnectionClient | null }
+      integrations: Array<
+        JobIntegration & { apiConnectionClient: ApiConnectionClient | null }
       >;
     },
-    config: ConnectionConfig,
+    config: IntegrationConfig,
     apiConnectionClients: Map<string, ApiConnectionClient>,
     key: string
-  ): Promise<JobConnection> {
+  ): Promise<JobIntegration> {
     const apiConnectionClient = apiConnectionClients.get(config.id);
 
     if (!apiConnectionClient) {
@@ -391,13 +381,13 @@ export class RegisterJobService {
       );
     }
 
-    // Find existing connection in the job instance
-    const existingInstanceConnection = jobVersion.connections.find(
-      (connection) => connection.key === key
+    // Find existing integration in the job instance
+    const existingInstanceConnection = jobVersion.integrations.find(
+      (integration) => integration.key === key
     );
 
     if (existingInstanceConnection) {
-      return await this.#prismaClient.jobConnection.update({
+      return await this.#prismaClient.jobIntegration.update({
         where: {
           id: existingInstanceConnection.id,
         },
@@ -408,18 +398,18 @@ export class RegisterJobService {
     }
 
     // Find existing connection in the job
-    const existingJobConnection = job.connections.find(
-      (connection) => connection.key === key
+    const existingJobIntegration = job.integrations.find(
+      (integration) => integration.key === key
     );
 
-    if (existingJobConnection) {
-      logger.debug("Creating new job connection from existing", {
-        existingJobConnection,
+    if (existingJobIntegration) {
+      logger.debug("Creating new job integration from existing", {
+        existingJobIntegration,
         key,
         jobVersionId: jobVersion.id,
       });
 
-      return this.#prismaClient.jobConnection.create({
+      return this.#prismaClient.jobIntegration.create({
         data: {
           version: {
             connect: {
@@ -432,7 +422,7 @@ export class RegisterJobService {
             },
           },
           key,
-          connectionMetadata: existingJobConnection.connectionMetadata ?? {},
+          metadata: existingJobIntegration.metadata ?? {},
           apiConnectionClient: {
             connect: {
               id: apiConnectionClient.id,
@@ -442,13 +432,13 @@ export class RegisterJobService {
       });
     }
 
-    logger.debug("Creating new job connection", {
+    logger.debug("Creating new job integration", {
       key,
       jobVersionId: jobVersion.id,
       config,
     });
 
-    return this.#prismaClient.jobConnection.create({
+    return this.#prismaClient.jobIntegration.create({
       data: {
         version: {
           connect: {
@@ -461,7 +451,7 @@ export class RegisterJobService {
           },
         },
         key,
-        connectionMetadata: config.metadata,
+        metadata: config.metadata,
         apiConnectionClient: {
           connect: {
             id: apiConnectionClient.id,

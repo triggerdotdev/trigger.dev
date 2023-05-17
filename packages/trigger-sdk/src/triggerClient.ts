@@ -19,9 +19,10 @@ import {
 import { ApiClient } from "./apiClient";
 import {
   AuthenticatedTask,
-  Connection,
-  IOWithConnections,
-} from "./connections";
+  IntegrationClient,
+  IOWithIntegrations,
+  TriggerIntegration,
+} from "./integrations";
 import { IO, ResumeWithTask } from "./io";
 import { Job } from "./job";
 import { ContextLogger } from "./logger";
@@ -289,8 +290,8 @@ export class TriggerClient {
         event: registerSourceEvent,
         filter: { source: { key: [options.key] } },
       }),
-      connections: {
-        client: options.source.connection,
+      integrations: {
+        integration: options.source.integration,
       },
       queue: {
         name: options.key,
@@ -355,7 +356,11 @@ export class TriggerClient {
       client: this,
     });
 
-    const ioWithConnections = this.#createIOWithConnections(io, execution, job);
+    const ioWithConnections = this.#createIOWithIntegrations(
+      io,
+      execution,
+      job
+    );
 
     try {
       const output = await job.options.run(
@@ -389,26 +394,31 @@ export class TriggerClient {
     }
   }
 
-  #createIOWithConnections<
-    TConnections extends Record<string, Connection<any, any>>
+  #createIOWithIntegrations<
+    TIntegrations extends Record<
+      string,
+      TriggerIntegration<IntegrationClient<any, any>>
+    >
   >(
     io: IO,
     run: RunJobBody,
-    job: Job<Trigger<any>, TConnections>
-  ): IOWithConnections<TConnections> {
-    const jobConnections = job.options.connections;
+    job: Job<Trigger<any>, TIntegrations>
+  ): IOWithIntegrations<TIntegrations> {
+    const jobIntegrations = job.options.integrations;
 
-    if (!jobConnections) {
-      return io as IOWithConnections<TConnections>;
+    if (!jobIntegrations) {
+      return io as IOWithIntegrations<TIntegrations>;
     }
 
     const runConnections = run.connections ?? {};
 
-    const connections = Object.entries(jobConnections).reduce(
+    const connections = Object.entries(jobIntegrations).reduce(
       (acc, [key, jobConnection]) => {
         const connection = runConnections[key];
         const client =
-          jobConnection.client ?? jobConnection.clientFactory?.(connection);
+          "client" in jobConnection.client
+            ? jobConnection.client.client
+            : jobConnection.client.clientFactory?.(connection);
 
         if (!client) {
           return acc;
@@ -418,11 +428,11 @@ export class TriggerClient {
           client,
         } as any;
 
-        if (jobConnection.tasks) {
+        if (jobConnection.client.tasks) {
           const tasks: Record<
             string,
             AuthenticatedTask<any, any, any>
-          > = jobConnection.tasks;
+          > = jobConnection.client.tasks;
 
           Object.keys(tasks).forEach((taskName) => {
             const authenticatedTask = tasks[taskName];
@@ -458,7 +468,7 @@ export class TriggerClient {
         const value = Reflect.get(target, prop, receiver);
         return typeof value == "function" ? value.bind(target) : value;
       },
-    }) as IOWithConnections<TConnections>;
+    }) as IOWithIntegrations<TIntegrations>;
   }
 
   #createJobContext(

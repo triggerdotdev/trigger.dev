@@ -1,6 +1,6 @@
 import { ulid } from "ulid";
 import { z } from "zod";
-import { ConnectionAuthSchema, ConnectionConfigSchema } from "./connections";
+import { ConnectionAuthSchema, IntegrationConfigSchema } from "./integrations";
 import { DisplayElementSchema } from "./elements";
 import { DeserializedJsonSchema, SerializableJsonSchema } from "./json";
 import { CachedTaskSchema, ServerTaskSchema, TaskSchema } from "./tasks";
@@ -122,7 +122,7 @@ export const JobMetadataSchema = z.object({
   version: z.string(),
   event: EventSpecificationSchema,
   triggers: z.array(TriggerMetadataSchema),
-  connections: z.record(ConnectionConfigSchema),
+  integrations: z.record(IntegrationConfigSchema),
   internal: z.boolean().default(false),
   queue: z.union([QueueOptionsSchema, z.string()]).optional(),
   startPosition: z.enum(["initial", "latest"]),

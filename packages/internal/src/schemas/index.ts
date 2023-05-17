@@ -5,4 +5,4 @@ export * from "./eventFilter";
 export * from "./errors";
 export * from "./tasks";
 export * from "./elements";
-export * from "./connections";
+export * from "./integrations";

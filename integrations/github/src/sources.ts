@@ -1,5 +1,9 @@
 import { Webhooks } from "@octokit/webhooks";
-import { Connection, ExternalSource } from "@trigger.dev/sdk";
+import {
+  IntegrationClient,
+  ExternalSource,
+  TriggerIntegration,
+} from "@trigger.dev/sdk";
 import { Octokit } from "octokit";
 import { z } from "zod";
 import { tasks } from "./tasks";
@@ -23,13 +27,13 @@ function webhookData(data: any): data is WebhookData {
 }
 
 export function createRepoEventSource(
-  connection: Connection<Octokit, typeof tasks>
+  integration: TriggerIntegration<IntegrationClient<Octokit, typeof tasks>>
 ) {
   return new ExternalSource("HTTP", {
     id: "github.repo",
     version: "0.1.1",
     schema: z.object({ repo: z.string() }),
-    connection,
+    integration,
     key: (params) => params.repo,
     handler: async (event, logger) => {
       logger.debug("[inside github integration] Handling github repo event");
@@ -113,7 +117,7 @@ export function createRepoEventSource(
       if (httpSource.active && webhookData(httpSource.data)) {
         if (missingEvents.length > 0) {
           // We need to update the webhook to add the new events and then return
-          const newWebhookData = await io.client.updateWebhook(
+          const newWebhookData = await io.integration.updateWebhook(
             "update-webhook",
             {
               repo: params.repo,
@@ -133,7 +137,7 @@ export function createRepoEventSource(
         return;
       }
 
-      const webhooks = await io.client.listWebhooks("list-webhooks", {
+      const webhooks = await io.integration.listWebhooks("list-webhooks", {
         repo: params.repo,
       });
 
@@ -143,13 +147,16 @@ export function createRepoEventSource(
 
       // There is an existing webhook, but it's not synced with Trigger.dev, so we need to update it with the secret
       if (existingWebhook && existingWebhook.active) {
-        const updatedWebhook = await io.client.updateWebhook("update-webhook", {
-          repo: params.repo,
-          hookId: existingWebhook.id,
-          url: httpSource.url,
-          secret: httpSource.secret,
-          addEvents: missingEvents,
-        });
+        const updatedWebhook = await io.integration.updateWebhook(
+          "update-webhook",
+          {
+            repo: params.repo,
+            hookId: existingWebhook.id,
+            url: httpSource.url,
+            secret: httpSource.secret,
+            addEvents: missingEvents,
+          }
+        );
 
         return {
           data: updatedWebhook,
@@ -157,7 +164,7 @@ export function createRepoEventSource(
         };
       }
 
-      const webhook = await io.client.createWebhook("create-webhook", {
+      const webhook = await io.integration.createWebhook("create-webhook", {
         repo: params.repo,
         events,
         url: httpSource.url,
@@ -170,12 +177,12 @@ export function createRepoEventSource(
 }
 
 export function createOrgEventSource(
-  connection: Connection<Octokit, typeof tasks>
+  integration: TriggerIntegration<IntegrationClient<Octokit, typeof tasks>>
 ) {
   return new ExternalSource("HTTP", {
     id: "github.org",
     version: "0.1.1",
-    connection,
+    integration,
     schema: z.object({ org: z.string() }),
     key: (params) => params.org,
     handler: async (event) => {},
@@ -191,7 +198,7 @@ export function createOrgEventSource(
         const existingData = httpSource.data;
 
         // We need to update the webhook to add the new events and then return
-        const newWebhookData = await io.client.updateOrgWebhook(
+        const newWebhookData = await io.integration.updateOrgWebhook(
           "update-webhook",
           {
             org: params.org,
@@ -209,7 +216,7 @@ export function createOrgEventSource(
         };
       }
 
-      const webhooks = await io.client.listOrgWebhooks("list-webhooks", {
+      const webhooks = await io.integration.listOrgWebhooks("list-webhooks", {
         org: params.org,
       });
 
@@ -220,7 +227,7 @@ export function createOrgEventSource(
       const secret = Math.random().toString(36).slice(2);
 
       if (existingWebhook && existingWebhook.active) {
-        const updatedWebhook = await io.client.updateOrgWebhook(
+        const updatedWebhook = await io.integration.updateOrgWebhook(
           "update-webhook",
           {
             org: params.org,
@@ -237,7 +244,7 @@ export function createOrgEventSource(
         };
       }
 
-      const webhook = await io.client.createOrgWebhook("create-webhook", {
+      const webhook = await io.integration.createOrgWebhook("create-webhook", {
         org: params.org,
         events,
         url: httpSource.url,

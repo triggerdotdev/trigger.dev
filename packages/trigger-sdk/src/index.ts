@@ -1,6 +1,6 @@
 export * from "./job";
 export * from "./triggerClient";
-export * from "./connections";
+export * from "./integrations";
 export * from "./triggers/customTrigger";
 export * from "./triggers/comboTrigger";
 export * from "./triggers/externalSource";

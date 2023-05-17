@@ -102,10 +102,10 @@ model ApiConnectionClient {
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   organizationId String
 
-  attempts       ApiConnectionAttempt[]
-  connections    ApiConnection[]
-  jobConnections JobConnection[]
-  sources        TriggerSource[]
+  attempts        ApiConnectionAttempt[]
+  connections     ApiConnection[]
+  jobIntegrations JobIntegration[]
+  sources         TriggerSource[]
 
   @@unique([organizationId, slug])
 }
@@ -279,7 +279,7 @@ model Job {
 
   versions        JobVersion[]
   runs            JobRun[]
-  connections     JobConnection[]
+  integrations    JobIntegration[]
   triggers        JobTrigger[]
   aliases         JobAlias[]
   dynamicTriggers DynamicTrigger[]
@@ -320,10 +320,10 @@ model JobVersion {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  runs        JobRun[]
-  connections JobConnection[]
-  triggers    JobTrigger[]
-  aliases     JobAlias[]
+  runs         JobRun[]
+  integrations JobIntegration[]
+  triggers     JobTrigger[]
+  aliases      JobAlias[]
 
   @@unique([jobId, version, endpointId])
 }
@@ -364,7 +364,7 @@ model JobAlias {
   @@unique([jobId, environmentId, name])
 }
 
-model JobConnection {
+model JobIntegration {
   id  String @id @default(cuid())
   key String
 
@@ -374,7 +374,7 @@ model JobConnection {
   job   Job    @relation(fields: [jobId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   jobId String
 
-  connectionMetadata Json
+  metadata Json
 
   apiConnectionClient   ApiConnectionClient @relation(fields: [apiConnectionClientId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   apiConnectionClientId String

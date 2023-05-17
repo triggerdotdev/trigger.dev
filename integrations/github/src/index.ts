@@ -6,67 +6,80 @@ import {
   StarEvent,
 } from "@octokit/webhooks-types";
 import {
-  Connection,
+  IntegrationClient,
   EventSpecification,
   ExternalSourceTrigger,
+  TriggerIntegration,
 } from "@trigger.dev/sdk";
 import { Octokit } from "octokit";
 import { clientFactory } from "./clientFactory";
-import { metadata } from "./metadata";
 import { createOrgEventSource, createRepoEventSource } from "./sources";
 import { tasks } from "./tasks";
 
-export type GitHubConnectionOptions =
-  | {
-      token: string;
-    }
-  | {
-      id: string;
-    };
-
-export const github = (options: GitHubConnectionOptions) => {
-  const connection = createConnectionFromOptions(options);
-
-  const repoSource = createRepoEventSource(connection);
-  const orgSource = createOrgEventSource(connection);
-  const repoTrigger = createRepoTrigger(repoSource);
-  const orgTrigger = createOrgTrigger(orgSource);
-
-  return {
-    ...connection,
-    sources: {
-      repo: repoSource,
-      org: orgSource,
-    },
-    triggers: {
-      repo: repoTrigger,
-      org: orgTrigger,
-    },
-  };
+export type GithubIntegrationOptions = {
+  id: string;
+  token?: string;
 };
 
+export class Github
+  implements TriggerIntegration<IntegrationClient<Octokit, typeof tasks>>
+{
+  client: IntegrationClient<Octokit, typeof tasks>;
+  _repoSource: ReturnType<typeof createRepoEventSource>;
+  _orgSource: ReturnType<typeof createOrgEventSource>;
+  _repoTrigger: ReturnType<typeof createRepoTrigger>;
+  _orgTrigger: ReturnType<typeof createOrgTrigger>;
+
+  constructor(private options: GithubIntegrationOptions) {
+    this.client = createConnectionFromOptions(options);
+    this._repoSource = createRepoEventSource(this);
+    this._orgSource = createOrgEventSource(this);
+    this._repoTrigger = createRepoTrigger(this._repoSource);
+    this._orgTrigger = createOrgTrigger(this._orgSource);
+  }
+
+  get id() {
+    return this.options.id;
+  }
+
+  get metadata() {
+    return { key: "github", title: "GitHub", icon: "github" };
+  }
+
+  get sources() {
+    return {
+      repo: this._repoSource,
+      org: this._orgSource,
+    };
+  }
+
+  get triggers() {
+    return {
+      repo: this._repoTrigger,
+      org: this._orgTrigger,
+    };
+  }
+}
+
 function createConnectionFromOptions(
-  options: GitHubConnectionOptions
-): Connection<Octokit, typeof tasks> {
-  if ("token" in options) {
+  options: GithubIntegrationOptions
+): IntegrationClient<Octokit, typeof tasks> {
+  if (options.token) {
     const client = new Octokit({
       auth: options.token,
     });
 
     return {
-      metadata,
-      tasks,
       usesLocalAuth: true,
       client,
+      tasks,
     };
   }
 
   return {
-    id: options.id,
-    metadata,
-    tasks,
     usesLocalAuth: false,
     clientFactory,
+    tasks,
   };
 }
 

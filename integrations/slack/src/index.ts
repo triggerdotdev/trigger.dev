@@ -1,7 +1,6 @@
 import { WebClient } from "@slack/web-api";
-import type { Connection } from "@trigger.dev/sdk";
+import type { IntegrationClient, TriggerIntegration } from "@trigger.dev/sdk";
 import { clientFactory } from "./client";
-import { metadata } from "./metadata";
 import { postMessage } from "./tasks";
 
 const tasks = {
@@ -12,12 +11,24 @@ export type SlackIntegrationOptions = {
   id: string;
 };
 
-export const slack = ({ id }: SlackIntegrationOptions) => {
-  return {
-    id,
-    metadata,
-    tasks,
-    usesLocalAuth: false,
-    clientFactory,
-  } satisfies Connection<WebClient, typeof tasks>;
-};
+export class Slack
+  implements TriggerIntegration<IntegrationClient<WebClient, typeof tasks>>
+{
+  client: IntegrationClient<WebClient, typeof tasks>;
+
+  constructor(private options: SlackIntegrationOptions) {
+    this.client = {
+      tasks,
+      usesLocalAuth: false,
+      clientFactory,
+    };
+  }
+
+  get id() {
+    return this.options.id;
+  }
+
+  get metadata() {
+    return { key: "slack", title: "Slack.com", icon: "slack" };
+  }
+}
