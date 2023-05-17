@@ -20,6 +20,7 @@ import {
   UserGroupIcon,
   CreditCardIcon,
   MagnifyingGlassIcon,
+  BookOpenIcon,
 } from "@heroicons/react/24/solid";
 import { cn } from "~/utils/cn";
 import { Spinner } from "./Spinner";
@@ -38,6 +39,9 @@ const icons = {
   ),
   check: (className: string) => (
     <CheckIcon className={cn("text-dimmed", className)} />
+  ),
+  docs: (className: string) => (
+    <BookOpenIcon className={cn("text-slate-400", className)} />
   ),
   error: (className: string) => (
     <ExclamationCircleIcon className={cn("text-rose-500", className)} />

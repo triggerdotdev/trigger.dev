@@ -44,7 +44,9 @@ export default function Project() {
     <>
       <SideMenuContainer>
         <ProjectSideMenu />
-        <Outlet />
+        <div className="flex-grow">
+          <Outlet />
+        </div>
       </SideMenuContainer>
     </>
   );

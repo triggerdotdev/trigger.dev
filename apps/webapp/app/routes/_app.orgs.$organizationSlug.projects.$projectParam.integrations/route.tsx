@@ -3,9 +3,18 @@ import type { LoaderArgs } from "@remix-run/server-runtime";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import invariant from "tiny-invariant";
 import { ConnectButton } from "~/components/integrations/ConnectButton";
-import { Badge } from "~/components/primitives/Badge";
+import { PageContainer } from "~/components/layout/AppLayout";
+import { LinkButton } from "~/components/primitives/Buttons";
+import { Header2 } from "~/components/primitives/Headers";
 import { NamedIcon, NamedIconInBox } from "~/components/primitives/NamedIcon";
-import { Header1, Header3 } from "~/components/primitives/Headers";
+import { PageBody } from "~/components/primitives/PageBody";
+import {
+  PageButtons,
+  PageDescription,
+  PageHeader,
+  PageTitle,
+  PageTitleRow,
+} from "~/components/primitives/PageHeader";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import {
   Popover,
@@ -15,20 +24,11 @@ import {
 import { useCurrentOrganization } from "~/hooks/useOrganizations";
 import { getOrganizationFromSlug } from "~/models/organization.server";
 import { apiAuthenticationRepository } from "~/services/externalApis/apiAuthenticationRepository.server";
-import { requireUser } from "~/services/session.server";
-import { formatDateTime } from "~/utils";
 import { integrationCatalog } from "~/services/externalApis/integrationCatalog.server";
-import { Handle } from "~/utils/handle";
 import { Integration } from "~/services/externalApis/types";
-import { PageContainer } from "~/components/layout/AppLayout";
-import {
-  PageButtons,
-  PageDescription,
-  PageHeader,
-  PageTitle,
-  PageTitleRow,
-} from "~/components/primitives/PageHeader";
-import { PageBody } from "~/components/primitives/PageBody";
+import { requireUser } from "~/services/session.server";
+import { Handle } from "~/utils/handle";
+import { docsPath } from "~/utils/pathBuilder";
 
 export const loader = async ({ request, params }: LoaderArgs) => {
   const user = await requireUser(request);
@@ -71,13 +71,13 @@ export default function Integrations() {
         <PageTitleRow>
           <PageTitle title="Integrations" />
           <PageButtons>
-            {/* <LinkButton
-              to={newProjectPath(currentOrganization)}
-              variant="primary/small"
-              shortcut="N"
+            <LinkButton
+              to={docsPath("/integrations/create")}
+              variant="secondary/small"
+              LeadingIcon="docs"
             >
-              Create a new project
-            </LinkButton> */}
+              Create your own Integration
+            </LinkButton>
           </PageButtons>
         </PageTitleRow>
         <PageDescription>
@@ -87,7 +87,63 @@ export default function Integrations() {
       </PageHeader>
 
       <PageBody>
-        <div>
+        <div className="grid grid-cols-2">
+          <div>
+            <Header2>Connect an Integration</Header2>
+            <div className="mt-2 grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-3">
+              {orderedIntegrations.map((integration) => {
+                const authMethods = Object.entries(
+                  integration.authenticationMethods
+                );
+                if (authMethods.length === 1) {
+                  return (
+                    <ConnectButton
+                      key={integration.identifier}
+                      api={integration}
+                      authMethodKey={
+                        Object.keys(integration.authenticationMethods)[0]
+                      }
+                      organizationId={organization.id}
+                    >
+                      <AddIntegrationConnection integration={integration} />
+                    </ConnectButton>
+                  );
+                }
+
+                return (
+                  <Popover key={integration.identifier}>
+                    <PopoverTrigger>
+                      <AddIntegrationConnection integration={integration} />
+                    </PopoverTrigger>
+                    <PopoverContent className="w-80">
+                      <div className="grid gap-4">
+                        <div className="space-y-2">
+                          <h4 className="font-medium leading-none">
+                            Select your authentication method
+                          </h4>
+                        </div>
+                        <div className="grid gap-2">
+                          {authMethods.map(([key, method]) => (
+                            <ConnectButton
+                              key={key}
+                              api={integration}
+                              authMethodKey={key}
+                              organizationId={organization.id}
+                              className={
+                                "overflow-hidden bg-indigo-500 text-white hover:opacity-90"
+                              }
+                            >
+                              {method.name}
+                            </ConnectButton>
+                          ))}
+                        </div>
+                      </div>
+                    </PopoverContent>
+                  </Popover>
+                );
+              })}
+            </div>
+          </div>
           {/* <div>
             {connections.length === 0 ? (
               <></>
@@ -140,59 +196,6 @@ export default function Integrations() {
               </>
             )}
           </div> */}
-          <div className="mt-8">
-            {orderedIntegrations.map((integration) => {
-              const authMethods = Object.entries(
-                integration.authenticationMethods
-              );
-              if (authMethods.length === 1) {
-                return (
-                  <ConnectButton
-                    key={integration.identifier}
-                    api={integration}
-                    authMethodKey={
-                      Object.keys(integration.authenticationMethods)[0]
-                    }
-                    organizationId={organization.id}
-                  >
-                    <AddIntegrationConnection integration={integration} />
-                  </ConnectButton>
-                );
-              }
-
-              return (
-                <Popover key={integration.identifier}>
-                  <PopoverTrigger>
-                    <AddIntegrationConnection integration={integration} />
-                  </PopoverTrigger>
-                  <PopoverContent className="w-80">
-                    <div className="grid gap-4">
-                      <div className="space-y-2">
-                        <h4 className="font-medium leading-none">
-                          Select your authentication method
-                        </h4>
-                      </div>
-                      <div className="grid gap-2">
-                        {authMethods.map(([key, method]) => (
-                          <ConnectButton
-                            key={key}
-                            api={integration}
-                            authMethodKey={key}
-                            organizationId={organization.id}
-                            className={
-                              "overflow-hidden bg-indigo-500 text-white hover:opacity-90"
-                            }
-                          >
-                            {method.name}
-                          </ConnectButton>
-                        ))}
-                      </div>
-                    </div>
-                  </PopoverContent>
-                </Popover>
-              );
-            })}
-          </div>
         </div>
       </PageBody>
     </PageContainer>
@@ -205,13 +208,21 @@ function AddIntegrationConnection({
   integration: Integration;
 }) {
   return (
-    <div className="flex h-20 w-full items-center justify-between gap-2 px-10">
+    <div className="flex h-10 w-full items-center gap-3 rounded-md p-1 hover:bg-slate-800">
       <NamedIconInBox
         name={integration.identifier}
-        className="h-9 w-9 transition group-hover:opacity-80"
+        className="flex-0 h-9 w-9 transition group-hover:opacity-80"
       />
-      <span className="text-base text-slate-200">{integration.name}</span>
-      <PlusIcon className="h-4 w-4 text-slate-600" />
+      <Paragraph
+        variant="base"
+        className="m-0 flex-1 text-left group-hover:text-bright"
+      >
+        {integration.name}
+      </Paragraph>
+      <NamedIcon
+        name="plus"
+        className="flex-0 h-5 w-5 text-slate-600 group-hover:text-bright"
+      />
     </div>
   );
 }

@@ -57,3 +57,9 @@ export function newProjectPath(organization: OrgForPath) {
 function projectParam(project: ProjectForPath) {
   return project.id;
 }
+
+const docsRoot = "https://docs.trigger.dev";
+
+export function docsPath(path: string) {
+  return `${docsRoot}${path}`;
+}
