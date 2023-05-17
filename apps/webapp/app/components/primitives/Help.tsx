@@ -1,50 +1,91 @@
 "use client";
 
 import * as React from "react";
-import * as HelpPrimitive from "@radix-ui/react-dialog";
-import { cn } from "~/utils/cn";
-import { XMarkIcon } from "@heroicons/react/24/solid";
 import { Header2 } from "./Headers";
 import { NamedIcon } from "./NamedIcon";
+import { Button } from "./Buttons";
+import gradientPath from "./help-gradient.svg";
 
-export const Help = HelpPrimitive.Root;
-export const HelpTrigger = HelpPrimitive.Trigger;
-
-type HelpContentProps = React.ComponentPropsWithoutRef<
-  typeof HelpPrimitive.Content
-> & {
-  title: string;
+type HelpContextValue = {
+  open: boolean;
+  setOpen: (open: boolean) => void;
 };
 
-export const HelpContent = React.forwardRef<
-  React.ElementRef<typeof HelpPrimitive.Content>,
-  HelpContentProps
->(({ title, className, children, ...props }, ref) => {
-  const contentRef = React.useRef<HTMLDivElement>(null);
+const HelpContext = React.createContext<HelpContextValue>({
+  open: false,
+  setOpen: () => {},
+});
+
+type HelpProps = {
+  defaultOpen?: boolean;
+  children?: React.ReactNode;
+};
+
+export function Help({ defaultOpen, children }: HelpProps) {
+  const [open, setOpen] = React.useState(defaultOpen || false);
 
   return (
-    <HelpPrimitive.Portal
-      className={cn(className)}
-      {...props}
-      container={contentRef.current}
-    >
-      <HelpPrimitive.Content
-        ref={contentRef}
-        className={cn("flex flex-col", className)}
-        {...props}
-      >
-        <div className="flex justify-between">
-          <div className="flex gap-1">
-            <NamedIcon name="lightbulb" className="h-3.5 w-3.5" />
-            <Header2>{title}</Header2>
-          </div>
-          <HelpPrimitive.Close className="flex gap-2">
-            <span>Dismiss</span>
-            <XMarkIcon className="h-4 w-4 text-slate-400" />
-          </HelpPrimitive.Close>
-        </div>
-        <div className="grow">{children}</div>
-      </HelpPrimitive.Content>
-    </HelpPrimitive.Portal>
+    <HelpContext.Provider value={{ open, setOpen }}>
+      {children}
+    </HelpContext.Provider>
   );
-});
+}
+
+export function HelpTrigger({ title }: { title: string }) {
+  const { open, setOpen } = React.useContext(HelpContext);
+
+  return open ? (
+    <></>
+  ) : (
+    <Button
+      variant="tertiary/small"
+      LeadingIcon="lightbulb"
+      leadingIconClassName="text-slate-400"
+      onClick={() => setOpen(true)}
+    >
+      {title}
+    </Button>
+  );
+}
+
+export function HelpContent({
+  title,
+  children,
+}: {
+  title: string;
+  children: React.ReactNode;
+}) {
+  const { open, setOpen } = React.useContext(HelpContext);
+
+  return (
+    <>
+      {open && (
+        <div className="mb-4 flex flex-col gap-2">
+          <div className="flex items-center justify-between pl-1">
+            <div className="flex items-center gap-1">
+              <NamedIcon name="lightbulb" className="h-4 w-4" />
+              <Header2 className="m-0 p-0">{title}</Header2>
+            </div>
+            <Button
+              variant="tertiary/small"
+              TrailingIcon="close"
+              trailingIconClassName="text-slate-400"
+              onClick={() => setOpen(false)}
+            >
+              Dismiss
+            </Button>
+          </div>
+
+          <div
+            className="rounded border border-slate-850 bg-slate-950 bg-contain bg-left-top bg-no-repeat p-4"
+            style={{
+              backgroundImage: `url(${gradientPath})`,
+            }}
+          >
+            {children}
+          </div>
+        </div>
+      )}
+    </>
+  );
+}

@@ -148,17 +148,13 @@ export default function Integrations() {
           </div>
           <div className="ml-2 h-full border-l border-slate-900 pl-4">
             <Help>
-              <div className="flex items-center justify-between">
-                <Header2>Your connected Integrations</Header2>
-                <HelpTrigger>
-                  <Button variant="tertiary/small" LeadingIcon="lightbulb">
-                    How do I connect an Integration?
-                  </Button>
-                </HelpTrigger>
-              </div>
               <HelpContent title="How to connect an integration">
                 <Paragraph>This is some help content</Paragraph>
               </HelpContent>
+              <div className="flex items-center justify-between">
+                <Header2 className="m-0">Your connected Integrations</Header2>
+                <HelpTrigger title="How do I connect an Integration?" />
+              </div>
               <div>
                 {clients.length === 0 ? (
                   <></>
