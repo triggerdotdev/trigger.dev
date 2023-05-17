@@ -6,6 +6,7 @@ import { PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { Badge } from "~/components/primitives/Badge";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { Header2, Header3 } from "~/components/primitives/Headers";
+import { Help, HelpContent, HelpTrigger } from "~/components/primitives/Help";
 import { NamedIcon, NamedIconInBox } from "~/components/primitives/NamedIcon";
 import {
   PageButtons,
@@ -145,58 +146,65 @@ export default function Integrations() {
               })}
             </div>
           </div>
-          <div className="ml-2 h-full border-l border-slate-600 pl-2">
-            <div className="flex items-center justify-between">
-              <Header2>Your connected Integrations</Header2>
-              <Button variant="tertiary/small" LeadingIcon="lightbulb">
-                How do I connect an Integration?
-              </Button>
-            </div>
-            <div>
-              {clients.length === 0 ? (
-                <></>
-              ) : (
-                <>
-                  <div>
-                    {clients.map((client) => {
-                      return (
-                        <div
-                          key={client.id}
-                          className="flex items-start gap-2 px-3 py-3"
-                        >
-                          <NamedIcon
-                            name={client.integrationIdentifier}
-                            className="h-6 w-6"
-                          />
-                          <div className="flex-grow">
-                            <div className="flex flex-col gap-0.5">
-                              <Header3 className="flex gap-2">
-                                <span>{client.title}</span>
-                                <Badge>{client.authMethod.name}</Badge>
-                              </Header3>
+          <div className="ml-2 h-full border-l border-slate-900 pl-4">
+            <Help>
+              <div className="flex items-center justify-between">
+                <Header2>Your connected Integrations</Header2>
+                <HelpTrigger>
+                  <Button variant="tertiary/small" LeadingIcon="lightbulb">
+                    How do I connect an Integration?
+                  </Button>
+                </HelpTrigger>
+              </div>
+              <HelpContent title="How to connect an integration">
+                <Paragraph>This is some help content</Paragraph>
+              </HelpContent>
+              <div>
+                {clients.length === 0 ? (
+                  <></>
+                ) : (
+                  <>
+                    <div>
+                      {clients.map((client) => {
+                        return (
+                          <div
+                            key={client.id}
+                            className="flex items-start gap-2 px-3 py-3"
+                          >
+                            <NamedIcon
+                              name={client.integrationIdentifier}
+                              className="h-6 w-6"
+                            />
+                            <div className="flex-grow">
+                              <div className="flex flex-col gap-0.5">
+                                <Header3 className="flex gap-2">
+                                  <span>{client.title}</span>
+                                  <Badge>{client.authMethod.name}</Badge>
+                                </Header3>
 
-                              {client.description && (
-                                <Paragraph>{client.description}</Paragraph>
-                              )}
-                              {client.scopes && (
+                                {client.description && (
+                                  <Paragraph>{client.description}</Paragraph>
+                                )}
+                                {client.scopes && (
+                                  <Paragraph className="text-slate-400">
+                                    <span>Scopes:</span>{" "}
+                                    {client.scopes.join(", ")}
+                                  </Paragraph>
+                                )}
                                 <Paragraph className="text-slate-400">
-                                  <span>Scopes:</span>{" "}
-                                  {client.scopes.join(", ")}
+                                  Added: {formatDateTime(client.createdAt)}
                                 </Paragraph>
-                              )}
-                              <Paragraph className="text-slate-400">
-                                Added: {formatDateTime(client.createdAt)}
-                              </Paragraph>
+                              </div>
                             </div>
+                            <div></div>
                           </div>
-                          <div></div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </>
-              )}
-            </div>
+                        );
+                      })}
+                    </div>
+                  </>
+                )}
+              </div>
+            </Help>
           </div>
         </div>
       </PageBody>
