@@ -53,8 +53,6 @@ export default function NewOrganizationPage() {
   const [form, { orgName, projectName }] = useForm({
     id: "create-organization",
     lastSubmission,
-
-    // Setup client validation
     onValidate({ formData }) {
       return parse(formData, { schema });
     },

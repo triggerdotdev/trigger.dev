@@ -6,6 +6,8 @@ import type { VariantProps } from "class-variance-authority";
 import { cva } from "class-variance-authority";
 import { X } from "lucide-react";
 import { cn } from "~/utils/cn";
+import { NamedIcon } from "./NamedIcon";
+import { ShortcutKey } from "./ShortcutKey";
 
 const Sheet = SheetPrimitive.Root;
 
@@ -45,7 +47,7 @@ const SheetOverlay = React.forwardRef<
 >(({ className, children, ...props }, ref) => (
   <SheetPrimitive.Overlay
     className={cn(
-      "bg-background/80 data-[state=closed]:animate-out data-[state=closed]:fade-out data-[state=open]:fade-in fixed inset-0 z-50 backdrop-blur-sm transition-all duration-100",
+      "fixed inset-0 z-50 bg-background/50 backdrop-blur-sm transition-all duration-100 data-[state=closed]:animate-out data-[state=closed]:fade-out data-[state=open]:fade-in",
       className
     )}
     {...props}
@@ -55,7 +57,7 @@ const SheetOverlay = React.forwardRef<
 SheetOverlay.displayName = SheetPrimitive.Overlay.displayName;
 
 const sheetVariants = cva(
-  "fixed z-50 scale-100 gap-4 bg-background p-6 opacity-100 shadow-lg border",
+  "fixed z-50 scale-100 gap-4 bg-slate-1000 opacity-100 shadow-lg border border-slate-900",
   {
     variants: {
       position: {
@@ -157,74 +159,42 @@ const SheetContent = React.forwardRef<
       className={cn(sheetVariants({ position, size }), className)}
       {...props}
     >
-      {children}
-      <SheetPrimitive.Close className="ring-offset-background focus:ring-ring data-[state=open]:bg-secondary absolute right-4 top-4 rounded-sm opacity-70 transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:pointer-events-none">
-        <X className="h-4 w-4" />
-        <span className="sr-only">Close</span>
-      </SheetPrimitive.Close>
+      <div className="grid h-full grid-rows-[2.75rem_1fr]">
+        <div className="flex items-center gap-2 border-b border-slate-800 p-2">
+          <SheetPrimitive.Close className="rounded-sm p-1 transition hover:bg-slate-800 disabled:pointer-events-none">
+            <NamedIcon name="close" className="h-4 w-4" />
+            <span className="sr-only">Close</span>
+          </SheetPrimitive.Close>
+          <ShortcutKey shortcut="esc" variant="medium" className="" />
+        </div>
+        <div className="overflow-hidden">{children}</div>
+      </div>
     </SheetPrimitive.Content>
   </SheetPortal>
 ));
 SheetContent.displayName = SheetPrimitive.Content.displayName;
 
-const SheetHeader = ({
+export const SheetBody = ({
   className,
   ...props
 }: React.HTMLAttributes<HTMLDivElement>) => (
   <div
     className={cn(
-      "flex flex-col space-y-2 text-center sm:text-left",
+      "grow overflow-auto p-4 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-slate-700",
       className
     )}
     {...props}
   />
 );
-SheetHeader.displayName = "SheetHeader";
 
-const SheetFooter = ({
+export const SheetFooter = ({
   className,
+  children,
   ...props
 }: React.HTMLAttributes<HTMLDivElement>) => (
-  <div
-    className={cn(
-      "flex flex-col-reverse sm:flex-row sm:justify-end sm:space-x-2",
-      className
-    )}
-    {...props}
-  />
+  <div className={cn("shrink-0 px-4", className)} {...props}>
+    <div className="border-t border-slate-800">{children}</div>
+  </div>
 );
-SheetFooter.displayName = "SheetFooter";
 
-const SheetTitle = React.forwardRef<
-  React.ElementRef<typeof SheetPrimitive.Title>,
-  React.ComponentPropsWithoutRef<typeof SheetPrimitive.Title>
->(({ className, ...props }, ref) => (
-  <SheetPrimitive.Title
-    ref={ref}
-    className={cn("text-foreground text-lg font-semibold", className)}
-    {...props}
-  />
-));
-SheetTitle.displayName = SheetPrimitive.Title.displayName;
-
-const SheetDescription = React.forwardRef<
-  React.ElementRef<typeof SheetPrimitive.Description>,
-  React.ComponentPropsWithoutRef<typeof SheetPrimitive.Description>
->(({ className, ...props }, ref) => (
-  <SheetPrimitive.Description
-    ref={ref}
-    className={cn("text-muted-foreground text-sm", className)}
-    {...props}
-  />
-));
-SheetDescription.displayName = SheetPrimitive.Description.displayName;
-
-export {
-  Sheet,
-  SheetTrigger,
-  SheetContent,
-  SheetHeader,
-  SheetFooter,
-  SheetTitle,
-  SheetDescription,
-};
+export { Sheet, SheetTrigger, SheetContent };

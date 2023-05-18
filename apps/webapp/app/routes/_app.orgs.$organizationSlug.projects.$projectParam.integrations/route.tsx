@@ -101,7 +101,7 @@ export default function Integrations() {
                   return (
                     <ConnectButton
                       key={integration.identifier}
-                      api={integration}
+                      integration={integration}
                       authMethodKey={
                         Object.keys(integration.authenticationMethods)[0]
                       }
@@ -129,7 +129,7 @@ export default function Integrations() {
                         {authMethods.map(([key, method]) => (
                           <ConnectButton
                             key={key}
-                            api={integration}
+                            integration={integration}
                             authMethodKey={key}
                             organizationId={organization.id}
                           >
