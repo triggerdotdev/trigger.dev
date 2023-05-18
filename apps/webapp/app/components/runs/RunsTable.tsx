@@ -6,7 +6,7 @@ import type { WorkflowRunListPresenter } from "~/presenters/workflowRunListPrese
 import { dateDifference, formatDateTime } from "~/utils";
 import { PanelWarning } from "../layout/PanelWarning";
 import { Spinner } from "../primitives/Spinner";
-import { RunStatusIcon, runStatusLabel } from "./RunStatus";
+import { RunStatusIcon, runStatusLabel } from "./RunStatuses";
 import { cn } from "~/utils/cn";
 
 const headerCell = "px-4 py-5 text-left text-base font-semibold text-slate-300";

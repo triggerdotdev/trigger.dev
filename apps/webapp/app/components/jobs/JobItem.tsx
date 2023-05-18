@@ -5,7 +5,7 @@ import { Header1 } from "../primitives/Headers";
 import { cn } from "~/utils/cn";
 import { Paragraph } from "../primitives/Paragraph";
 import { DateTime } from "../primitives/DateTime";
-import { runStatusClassNameColor, runStatusTitle } from "../runs/RunStatus";
+import { runStatusClassNameColor, runStatusTitle } from "../runs/RunStatuses";
 
 type JobItemProps = {
   to: string;
