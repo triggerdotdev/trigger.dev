@@ -1,9 +1,8 @@
 import { cn } from "~/utils/cn";
 
 const header1Styles = "font-sans text-xl leading-7 font-semibold";
-const header2Styles =
-  "font-sans text-base leading-6 font-semibold text-bright mb-1";
-const header3Styles = "font-sans text-sm leading-5 font-semibold text-bright";
+const header2Styles = "font-sans text-base leading-6 font-medium text-bright";
+const header3Styles = "font-sans text-sm leading-5 font-medium text-bright";
 
 const header1Variants = {
   default: "text-bright",
