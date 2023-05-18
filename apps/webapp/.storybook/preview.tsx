@@ -2,6 +2,7 @@ import type { Preview } from "@storybook/react";
 import "../app/tailwind.css";
 import { unstable_createRemixStub } from "@remix-run/testing";
 import React from "react";
+import { LocaleContextProvider } from "../app/components/primitives/LocaleProvider";
 
 const preview: Preview = {
   parameters: {
@@ -32,9 +33,9 @@ const preview: Preview = {
       ]);
 
       return (
-        <div>
+        <LocaleContextProvider locales={window.navigator.languages as string[]}>
           <RemixStub initialEntries={["/"]} />
-        </div>
+        </LocaleContextProvider>
       );
     },
   ],
