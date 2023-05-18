@@ -27,6 +27,16 @@ function Jobs() {
           title="When a Stripe payment fails re-engage the customer"
           version="3.4.6"
           trigger="When a Stripe payment fails"
+          integrations={[
+            {
+              name: "Airtable",
+              icon: "airtable",
+            },
+            {
+              name: "GitHub",
+              icon: "github",
+            },
+          ]}
           id="my-custom-job"
           lastRun={{
             status: "TIMED_OUT",
@@ -40,6 +50,16 @@ function Jobs() {
           title="Notify me of critical issues in Slack"
           version="3.4.5"
           trigger="Critical issue in GitHub"
+          integrations={[
+            {
+              name: "Airtable",
+              icon: "airtable",
+            },
+            {
+              name: "GitHub",
+              icon: "github",
+            },
+          ]}
           id="my-custom-job"
           lastRun={{
             status: "SUCCESS",
@@ -58,6 +78,16 @@ function Jobs() {
           title="Post to Slack when a new User signs up"
           version="3.4.4"
           trigger="When a new User signs up"
+          integrations={[
+            {
+              name: "Airtable",
+              icon: "airtable",
+            },
+            {
+              name: "GitHub",
+              icon: "github",
+            },
+          ]}
           id="my-custom-job"
           properties={[{ key: "Repo", value: "triggerdotdet/trigger.dev" }]}
           disabled={true}

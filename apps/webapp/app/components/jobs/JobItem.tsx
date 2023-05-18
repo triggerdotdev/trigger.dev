@@ -1,11 +1,11 @@
 import { JobRunStatus } from ".prisma/client";
 import { Link } from "@remix-run/react";
-import { NamedIcon } from "../primitives/NamedIcon";
+import { IconNames, NamedIcon } from "../primitives/NamedIcon";
 import { Header1 } from "../primitives/Headers";
 import { cn } from "~/utils/cn";
 import { Paragraph } from "../primitives/Paragraph";
 import { DateTime } from "../primitives/DateTime";
-import { runStatusClassNameColor, runStatusTitle } from "../runs/RunStatuses";
+import { runStatusTitle } from "../runs/RunStatuses";
 
 type JobItemProps = {
   to: string;
@@ -22,6 +22,10 @@ type JobItemProps = {
     key: string;
     value: string;
   }[];
+  integrations?: {
+    name: string;
+    icon: IconNames;
+  }[];
   disabled?: boolean;
 };
 
@@ -34,6 +38,7 @@ export function JobItem({
   id,
   lastRun,
   properties,
+  integrations,
   disabled = false,
 }: JobItemProps) {
   return (
@@ -67,6 +72,23 @@ export function JobItem({
           </div>
           <div className="flex flex-wrap gap-y-1 gap-x-4">
             <KeyValue name="Trigger" value={trigger} />
+            {integrations && (
+              <KeyValue
+                name="Integrations"
+                value={
+                  <div className="flex gap-1">
+                    {integrations.map((integration) => (
+                      <NamedIcon
+                        key={integration.name}
+                        name={integration.icon}
+                        className="h-3 w-3"
+                      />
+                    ))}
+                  </div>
+                }
+              />
+            )}
+
             {properties.map((property) => (
               <KeyValue
                 key={property.key}
