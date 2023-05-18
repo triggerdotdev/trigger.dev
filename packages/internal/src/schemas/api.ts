@@ -143,10 +143,19 @@ export const SourceMetadataSchema = z.object({
 
 export type SourceMetadata = z.infer<typeof SourceMetadataSchema>;
 
+export const DynamicTriggerEndpointMetadataSchema = z.object({
+  id: z.string(),
+  jobs: z.array(JobMetadataSchema.pick({ id: true, version: true })),
+});
+
+export type DynamicTriggerEndpointMetadata = z.infer<
+  typeof DynamicTriggerEndpointMetadataSchema
+>;
+
 export const GetEndpointDataResponseSchema = z.object({
   jobs: z.array(JobMetadataSchema),
   sources: z.array(SourceMetadataSchema),
-  dynamicTriggers: z.array(DynamicTriggerMetadataSchema),
+  dynamicTriggers: z.array(DynamicTriggerEndpointMetadataSchema),
 });
 
 export type GetEndpointDataResponse = z.infer<

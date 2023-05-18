@@ -1,18 +1,17 @@
 import type {
   ApiEventLog,
-  ConnectionAuth,
-  RunJobBody,
   HttpSourceRequest,
   PrepareJobTriggerBody,
+  RunJobBody,
 } from "@trigger.dev/internal";
 import {
   DeliverEventResponseSchema,
   ErrorWithStackSchema,
-  RunJobResponseSchema,
   GetEndpointDataResponseSchema,
   HttpSourceResponseSchema,
   PongResponseSchema,
   PrepareForJobExecutionResponseSchema,
+  RunJobResponseSchema,
 } from "@trigger.dev/internal";
 import { logger } from "./logger";
 
@@ -87,7 +86,7 @@ export class ClientApi {
 
     const anyBody = await response.json();
 
-    logger.debug("getJobs() response from endpoint", {
+    logger.debug("getEndpointData() response from endpoint", {
       body: anyBody,
     });
 

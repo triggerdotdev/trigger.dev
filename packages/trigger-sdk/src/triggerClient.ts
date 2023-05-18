@@ -57,6 +57,10 @@ export class TriggerClient {
     string,
     DynamicTrigger<EventSpecification<any>, ExternalSource<any, any, any>>
   > = {};
+  #jobMetadataByDynamicTriggers: Record<
+    string,
+    Array<{ id: string; version: string }>
+  > = {};
   #client: ApiClient;
   #logger: Logger;
   name: string;
@@ -118,7 +122,12 @@ export class TriggerClient {
       const body: GetEndpointDataResponse = {
         jobs: Object.values(this.#registeredJobs).map((job) => job.toJSON()),
         sources: Object.values(this.#registeredSources),
-        dynamicTriggers: [],
+        dynamicTriggers: Object.values(this.#registeredDynamicTriggers).map(
+          (trigger) => ({
+            id: trigger.id,
+            jobs: this.#jobMetadataByDynamicTriggers[trigger.id],
+          })
+        ),
       };
 
       // if the x-trigger-job-id header is not set, we return all jobs
@@ -252,6 +261,17 @@ export class TriggerClient {
 
   attachDynamicTrigger(trigger: DynamicTrigger<any, any>): void {
     this.#registeredDynamicTriggers[trigger.id] = trigger;
+  }
+
+  attachJobToDynamicTrigger(
+    job: Job<Trigger<any>, any>,
+    trigger: DynamicTrigger<any, any>
+  ): void {
+    const jobs = this.#jobMetadataByDynamicTriggers[trigger.id] ?? [];
+
+    jobs.push({ id: job.id, version: job.version });
+
+    this.#jobMetadataByDynamicTriggers[trigger.id] = jobs;
   }
 
   attachSource(options: {

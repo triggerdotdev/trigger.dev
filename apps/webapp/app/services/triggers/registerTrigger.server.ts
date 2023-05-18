@@ -49,21 +49,6 @@ export class RegisterTriggerService {
             slug: id,
           },
         },
-        include: {
-          jobs: {
-            include: {
-              aliases: {
-                where: {
-                  name: "latest",
-                },
-                include: {
-                  version: true,
-                },
-                take: 1,
-              },
-            },
-          },
-        },
       });
 
     const triggerSource = await this.#registerSource.call(
@@ -72,43 +57,36 @@ export class RegisterTriggerService {
       dynamicTrigger.id
     );
 
-    // For each job, we need to create a JobTrigger
-    for (const job of dynamicTrigger.jobs) {
-      const version = job.aliases[0] ? job.aliases[0].version : undefined;
-
-      if (!version) {
-        continue;
-      }
-
-      await this.#prismaClient.jobTrigger.upsert({
-        where: {
-          versionId_actionIdentifier: {
-            versionId: version.id,
-            actionIdentifier: triggerSource.id,
-          },
-        },
-        create: {
-          event: payload.rule.event,
-          source: payload.rule.source,
-          payloadFilter: payload.rule.payload,
-          contextFilter: payload.rule.context,
-          jobId: job.id,
-          versionId: version.id,
+    await this.#prismaClient.eventDispatcher.upsert({
+      where: {
+        dispatchableId_environmentId: {
+          dispatchableId: triggerSource.id,
           environmentId: environment.id,
-          organizationId: environment.organizationId,
-          projectId: environment.projectId,
-          dynamicTriggerId: dynamicTrigger.id,
-          enabled: true,
-          actionIdentifier: triggerSource.id,
         },
-        update: {
-          event: payload.rule.event,
-          source: payload.rule.source,
-          payloadFilter: payload.rule.payload,
-          contextFilter: payload.rule.context,
+      },
+      create: {
+        dispatchableId: triggerSource.id,
+        environmentId: environment.id,
+        event: payload.rule.event,
+        source: payload.rule.source,
+        payloadFilter: payload.rule.payload,
+        contextFilter: payload.rule.context,
+        dispatchable: {
+          type: "DYNAMIC_TRIGGER",
+          id: dynamicTrigger.id,
         },
-      });
-    }
+      },
+      update: {
+        event: payload.rule.event,
+        source: payload.rule.source,
+        payloadFilter: payload.rule.payload,
+        contextFilter: payload.rule.context,
+        dispatchable: {
+          type: "DYNAMIC_TRIGGER",
+          id: dynamicTrigger.id,
+        },
+      },
+    });
 
     const secretStore = new SecretStore(
       triggerSource.secretReference.provider as SecretStoreProvider

@@ -76,6 +76,38 @@ new Job(client, {
 });
 
 new Job(client, {
+  id: "listen-for-dynamic-trigger-2",
+  name: "Listen for dynamic trigger-2",
+  version: "0.1.1",
+  trigger: dynamicOnIssueOpenedTrigger,
+  integrations: {
+    slack,
+  },
+  run: async (payload, io, ctx) => {
+    await io.slack.postMessage("Slack 📝", {
+      text: `New Issue opened on dynamically triggered repo 2: ${payload.issue.html_url}`,
+      channel: "C04GWUTDC3W",
+    });
+  },
+});
+
+new Job(client, {
+  id: "listen-for-dynamic-trigger-3",
+  name: "Listen for dynamic trigger-3",
+  version: "0.1.1",
+  trigger: dynamicOnIssueOpenedTrigger,
+  integrations: {
+    slack,
+  },
+  run: async (payload, io, ctx) => {
+    await io.slack.postMessage("Slack 📝", {
+      text: `New Issue opened on dynamically triggered repo 3: ${payload.issue.html_url}`,
+      channel: "C04GWUTDC3W",
+    });
+  },
+});
+
+new Job(client, {
   id: "alert-on-new-github-issues",
   name: "Alert on new GitHub issues",
   version: "0.1.1",

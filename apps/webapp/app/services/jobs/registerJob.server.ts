@@ -279,31 +279,24 @@ export class RegisterJobService {
     });
 
     for (const trigger of metadata.triggers) {
-      await this.#upsertTrigger(
-        trigger,
-        jobVersion,
-        job,
-        environment,
-        endpoint
-      );
+      await this.#upsertEventDispatcher(trigger, job, jobVersion, environment);
     }
 
     return jobVersion;
   }
 
-  async #upsertTrigger(
+  async #upsertEventDispatcher(
     trigger: TriggerMetadata,
-    jobVersion: JobVersion,
     job: Job,
-    environment: RuntimeEnvironment,
-    endpoint: Endpoint
+    jobVersion: JobVersion,
+    environment: RuntimeEnvironment
   ) {
     if (trigger.type === "static") {
-      await this.#prismaClient.jobTrigger.upsert({
+      await this.#prismaClient.eventDispatcher.upsert({
         where: {
-          versionId_actionIdentifier: {
-            versionId: jobVersion.id,
-            actionIdentifier: "__trigger",
+          dispatchableId_environmentId: {
+            dispatchableId: job.id,
+            environmentId: environment.id,
           },
         },
         create: {
@@ -311,47 +304,22 @@ export class RegisterJobService {
           source: trigger.rule.source,
           payloadFilter: trigger.rule.payload,
           contextFilter: trigger.rule.context,
-          jobId: job.id,
-          versionId: jobVersion.id,
           environmentId: environment.id,
-          organizationId: environment.organizationId,
-          projectId: environment.projectId,
           enabled: true,
-          actionIdentifier: "__trigger",
+          dispatchable: {
+            type: "JOB_VERSION",
+            id: jobVersion.id,
+          },
+          dispatchableId: job.id,
         },
         update: {
           event: trigger.rule.event,
           source: trigger.rule.source,
           payloadFilter: trigger.rule.payload,
           contextFilter: trigger.rule.context,
-        },
-      });
-    } else {
-      await this.#prismaClient.dynamicTrigger.upsert({
-        where: {
-          endpointId_slug: {
-            endpointId: endpoint.id,
-            slug: trigger.id,
-          },
-        },
-        create: {
-          slug: trigger.id,
-          endpoint: {
-            connect: {
-              id: endpoint.id,
-            },
-          },
-          jobs: {
-            connect: {
-              id: job.id,
-            },
-          },
-        },
-        update: {
-          jobs: {
-            connect: {
-              id: job.id,
-            },
+          dispatchable: {
+            type: "JOB_VERSION",
+            id: jobVersion.id,
           },
         },
       });

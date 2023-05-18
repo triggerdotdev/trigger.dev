@@ -1,16 +1,13 @@
-import type { EventRecord, JobTrigger } from ".prisma/client";
+import type { EventDispatcher, EventRecord } from ".prisma/client";
 import type { EventFilter } from "@trigger.dev/internal";
 import { EventFilterSchema } from "@trigger.dev/internal";
 import type { PrismaClient } from "~/db.server";
 import { prisma } from "~/db.server";
 import { logger } from "~/services/logger";
-import { CreateRunService } from "~/services/runs/createRun.server";
-import { ResumeTaskService } from "~/services/runs/resumeTask.server";
+import { workerQueue } from "../worker.server";
 
 export class DeliverEventService {
   #prismaClient: PrismaClient;
-  #createRunService = new CreateRunService();
-  #resumeTaskService = new ResumeTaskService();
 
   constructor(prismaClient: PrismaClient = prisma) {
     this.#prismaClient = prismaClient;
@@ -31,77 +28,46 @@ export class DeliverEventService {
       },
     });
 
-    const possibleEventRules = await this.#prismaClient.jobTrigger.findMany({
-      where: {
-        environmentId: eventRecord.environmentId,
-        event: eventRecord.name,
-        source: eventRecord.source,
-        enabled: true,
-        version: {
-          aliases: {
-            some: {
-              name: "latest",
-            },
-          },
+    const possibleEventDispatchers =
+      await this.#prismaClient.eventDispatcher.findMany({
+        where: {
+          environmentId: eventRecord.environmentId,
+          event: eventRecord.name,
+          source: eventRecord.source,
+          enabled: true,
         },
-      },
-      include: {
-        job: true,
-        version: true,
-      },
+      });
+
+    logger.debug("Found possible event dispatchers", {
+      possibleEventDispatchers,
+      eventRecord: eventRecord.id,
     });
 
-    logger.debug("Found possible event rules", {
-      possibleEventRules,
-      eventLog: eventRecord,
-    });
-
-    const matchingEventRules = possibleEventRules.filter((eventRule) =>
-      this.#evaluateEventRule(eventRule, eventRecord)
+    const matchingEventDispatchers = possibleEventDispatchers.filter(
+      (eventDispatcher) => this.#evaluateEventRule(eventDispatcher, eventRecord)
     );
 
-    if (matchingEventRules.length === 0) {
-      logger.debug("No matching event rules", {
-        eventLog: eventRecord,
+    if (matchingEventDispatchers.length === 0) {
+      logger.debug("No matching event dispatchers", {
+        eventRecord: eventRecord.id,
       });
 
       return;
     }
 
-    logger.debug("Found matching event rules", {
-      matchingEventRules,
-      eventLog: eventRecord,
+    logger.debug("Found matching event dispatchers", {
+      matchingEventDispatchers,
+      eventRecord: eventRecord.id,
     });
 
-    for (const eventRule of matchingEventRules) {
-      switch (eventRule.action) {
-        case "CREATE_RUN": {
-          await this.#createRunService.call({
-            eventId: eventRecord.id,
-            job: eventRule.job,
-            version: eventRule.version,
-            environment: eventRecord.environment,
-          });
-
-          break;
-        }
-        case "RESUME_TASK": {
-          await this.#resumeTaskService.call(
-            eventRule.actionIdentifier,
-            eventRecord.payload
-          );
-
-          // Now we need to delete this event rule
-          await this.#prismaClient.jobTrigger.delete({
-            where: {
-              id: eventRule.id,
-            },
-          });
-
-          break;
-        }
-      }
-    }
+    await Promise.all(
+      matchingEventDispatchers.map((eventDispatcher) =>
+        workerQueue.enqueue("events.invokeDispatcher", {
+          id: eventDispatcher.id,
+          eventRecordId: eventRecord.id,
+        })
+      )
+    );
 
     await this.#prismaClient.eventRecord.update({
       where: {
@@ -113,17 +79,20 @@ export class DeliverEventService {
     });
   }
 
-  #evaluateEventRule(trigger: JobTrigger, eventRecord: EventRecord): boolean {
-    if (!trigger.payloadFilter && !trigger.contextFilter) {
+  #evaluateEventRule(
+    dispatcher: EventDispatcher,
+    eventRecord: EventRecord
+  ): boolean {
+    if (!dispatcher.payloadFilter && !dispatcher.contextFilter) {
       return true;
     }
 
     const payloadFilter = EventFilterSchema.safeParse(
-      trigger.payloadFilter ?? {}
+      dispatcher.payloadFilter ?? {}
     );
 
     const contextFilter = EventFilterSchema.safeParse(
-      trigger.contextFilter ?? {}
+      dispatcher.contextFilter ?? {}
     );
 
     if (!payloadFilter.success || !contextFilter.success) {

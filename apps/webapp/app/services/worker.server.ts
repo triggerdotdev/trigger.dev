@@ -9,15 +9,20 @@ import { StartRunService } from "./runs/startRun.server";
 import { DeliverHttpSourceRequestService } from "./sources/deliverHttpSourceRequest.server";
 import { StartQueuedRunsService } from "./runs/startQueuedRuns.server";
 import { RunFinishedService } from "./runs/runFinished.server";
-import { JobMetadataSchema, SourceMetadataSchema } from "@trigger.dev/internal";
+import {
+  DynamicTriggerEndpointMetadataSchema,
+  JobMetadataSchema,
+  SourceMetadataSchema,
+} from "@trigger.dev/internal";
 import { RegisterSourceService } from "./sources/registerSource.server";
 import { ActivateSourceService } from "./sources/activateSource.server";
 import { DeliverEventService } from "./events/deliverEvent.server";
+import { InvokeDispatcherService } from "./events/invokeDispatcher.server";
+import { RegisterDynamicTriggerService } from "./triggers/registerDynamicTrigger.server";
 
 const workerCatalog = {
   organizationCreated: z.object({ id: z.string() }),
   endpointRegistered: z.object({ id: z.string() }),
-  deliverEvent: z.object({ id: z.string() }),
   deliverEmail: z.object({
     email: z.string(),
     to: z.string(),
@@ -47,11 +52,20 @@ const workerCatalog = {
     endpointId: z.string(),
     source: SourceMetadataSchema,
   }),
+  registerDynamicTrigger: z.object({
+    endpointId: z.string(),
+    dynamicTrigger: DynamicTriggerEndpointMetadataSchema,
+  }),
   activateSource: z.object({
     id: z.string(),
     orphanedEvents: z.array(z.string()).optional(),
   }),
   startQueuedRuns: z.object({ id: z.string() }),
+  deliverEvent: z.object({ id: z.string() }),
+  "events.invokeDispatcher": z.object({
+    id: z.string(),
+    eventRecordId: z.string(),
+  }),
 };
 
 let workerQueue: ZodWorker<typeof workerCatalog>;
@@ -87,6 +101,14 @@ function getWorkerQueue() {
     },
     schema: workerCatalog,
     tasks: {
+      "events.invokeDispatcher": {
+        maxAttempts: 3,
+        handler: async (payload, job) => {
+          const service = new InvokeDispatcherService();
+
+          await service.call(payload.id, payload.eventRecordId);
+        },
+      },
       runFinished: {
         maxAttempts: 3,
         handler: async (payload, job) => {
@@ -118,6 +140,14 @@ function getWorkerQueue() {
           const service = new RegisterSourceService();
 
           await service.call(payload.endpointId, payload.source);
+        },
+      },
+      registerDynamicTrigger: {
+        maxAttempts: 3,
+        handler: async (payload, job) => {
+          const service = new RegisterDynamicTriggerService();
+
+          await service.call(payload.endpointId, payload.dynamicTrigger);
         },
       },
       activateSource: {

@@ -87,5 +87,7 @@ export class DynamicTrigger<
     triggerClient: TriggerClient,
     job: Job<Trigger<TEventSpec>, any>,
     index?: number
-  ): void {}
+  ): void {
+    triggerClient.attachJobToDynamicTrigger(job, this);
+  }
 }
