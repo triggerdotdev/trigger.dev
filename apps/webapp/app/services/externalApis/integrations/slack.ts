@@ -16,6 +16,7 @@ export const slack: Integration = {
   authenticationMethods: {
     oauth2Bot: {
       name: "OAuth2 (Bot)",
+      description: "Authenticate as a bot",
       type: "oauth2",
       client: {
         id: {
@@ -448,6 +449,7 @@ export const slack: Integration = {
     },
     oauth2User: {
       name: "OAuth2 (User)",
+      description: "Authenticate as a user",
       type: "oauth2",
       client: {
         id: {

@@ -4,7 +4,7 @@ import invariant from "tiny-invariant";
 import { ConnectButton } from "~/components/integrations/ConnectButton";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { Badge } from "~/components/primitives/Badge";
-import { Button, LinkButton } from "~/components/primitives/Buttons";
+import { LinkButton } from "~/components/primitives/Buttons";
 import { Header2, Header3 } from "~/components/primitives/Headers";
 import { Help, HelpContent, HelpTrigger } from "~/components/primitives/Help";
 import { NamedIcon, NamedIconInBox } from "~/components/primitives/NamedIcon";
@@ -19,6 +19,7 @@ import { Paragraph } from "~/components/primitives/Paragraph";
 import {
   Popover,
   PopoverContent,
+  PopoverSectionHeader,
   PopoverTrigger,
 } from "~/components/primitives/Popover";
 import { useCurrentOrganization } from "~/hooks/useOrganizations";
@@ -117,28 +118,36 @@ export default function Integrations() {
                     <PopoverTrigger className="min-w-[15rem] flex-shrink-0">
                       <AddIntegrationConnection integration={integration} />
                     </PopoverTrigger>
-                    <PopoverContent className="w-80">
-                      <div className="grid gap-4">
-                        <div className="space-y-2">
-                          <h4 className="font-medium leading-none">
-                            Select your authentication method
-                          </h4>
-                        </div>
-                        <div className="grid gap-2">
-                          {authMethods.map(([key, method]) => (
-                            <ConnectButton
-                              key={key}
-                              api={integration}
-                              authMethodKey={key}
-                              organizationId={organization.id}
-                              className={
-                                "overflow-hidden bg-indigo-500 text-white hover:opacity-90"
-                              }
-                            >
-                              {method.name}
-                            </ConnectButton>
-                          ))}
-                        </div>
+                    <PopoverContent
+                      className="w-80 p-0"
+                      side="bottom"
+                      align="start"
+                    >
+                      <PopoverSectionHeader title="Select your authentication method" />
+
+                      <div className="flex flex-col p-1">
+                        {authMethods.map(([key, method]) => (
+                          <ConnectButton
+                            key={key}
+                            api={integration}
+                            authMethodKey={key}
+                            organizationId={organization.id}
+                          >
+                            <div className="flex gap-2 rounded-sm p-2 hover:bg-slate-800">
+                              <NamedIcon name="globe" className="h-5 w-5" />
+                              <div className="">
+                                <Header3 className="text-left">
+                                  {method.name}
+                                </Header3>
+                                {method.description && (
+                                  <Paragraph variant="small" className="m-0">
+                                    {method.description}
+                                  </Paragraph>
+                                )}
+                              </div>
+                            </div>
+                          </ConnectButton>
+                        ))}
                       </div>
                     </PopoverContent>
                   </Popover>

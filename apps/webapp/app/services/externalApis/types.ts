@@ -60,6 +60,8 @@ export type RefreshTokenParams = {
 export type ApiAuthenticationMethodOAuth2 = {
   /** The displayable name of the authentication method */
   name: string;
+  /** The description of the authentication method, displayed in the UI to help when choosing between them */
+  description?: string;
   /** The type of authentication method */
   type: "oauth2";
   /** Client configuration */
