@@ -1,5 +1,6 @@
 import {
   CachedTask,
+  ConnectionAuth,
   LogLevel,
   Logger,
   RunTaskOptions,
@@ -11,6 +12,13 @@ import { AsyncLocalStorage } from "node:async_hooks";
 import { webcrypto } from "node:crypto";
 import { ApiClient } from "./apiClient";
 import { TriggerClient } from "./triggerClient";
+import { DynamicTrigger } from "./triggers/dynamic";
+import {
+  ExternalSource,
+  ExternalSourceParams,
+} from "./triggers/externalSource";
+import { EventSpecification, TriggerContext } from "./types";
+import { createIOWithIntegrations } from "./ioWithIntegrations";
 
 export class ResumeWithTask {
   constructor(public task: ServerTask) {}
@@ -22,6 +30,7 @@ export type IOOptions = {
   id: string;
   apiClient: ApiClient;
   client: TriggerClient;
+  context: TriggerContext;
   logger?: Logger;
   logLevel?: LogLevel;
   cachedTasks?: Array<CachedTask>;
@@ -34,6 +43,7 @@ export class IO {
   #logger: Logger;
   #cachedTasks: Map<string, CachedTask>;
   #taskStorage: AsyncLocalStorage<{ taskId: string }>;
+  #context: TriggerContext;
 
   constructor(options: IOOptions) {
     this.#id = options.id;
@@ -50,6 +60,7 @@ export class IO {
     }
 
     this.#taskStorage = new AsyncLocalStorage();
+    this.#context = options.context;
   }
 
   async updateSource(
@@ -81,92 +92,86 @@ export class IO {
     );
   }
 
-  // TODO: use internal job system for this
-  // async on<T extends SerializableJson | void = void>(
-  //   key: string | any[],
-  //   trigger: Trigger<T>
-  // ) {
-  //   const metadata = trigger.toJSON();
+  async registerTrigger<
+    TTrigger extends DynamicTrigger<
+      EventSpecification<any>,
+      ExternalSource<any, any, any>
+    >
+  >(
+    key: string | any[],
+    trigger: TTrigger,
+    id: string,
+    params: ExternalSourceParams<TTrigger["source"]>
+  ): Promise<{ id: string; key: string } | undefined> {
+    return await this.runTask(
+      key,
+      {
+        name: "register-trigger",
+        elements: [
+          { label: "trigger", text: trigger.id },
+          { label: "id", text: id },
+        ],
+        params: params as any,
+      },
+      async (task) => {
+        const registration = await this.runTask(
+          "register-source",
+          {
+            name: "register-source",
+          },
+          async (subtask1) => {
+            return trigger.register(params);
+          }
+        );
 
-  //   return this.runTask<T>(
-  //     key,
-  //     {
-  //       name: metadata.title,
-  //       elements: metadata.elements,
-  //       trigger: trigger.toJSON(),
-  //     },
-  //     async (task) => {
-  //       return task.output as T;
-  //     }
-  //   );
-  // }
+        const connection = await this.getAuth(
+          "get-auth",
+          registration.source.clientId
+        );
 
-  // async addTriggerVariant<TTrigger extends Trigger<any>>(
-  //   job: Job<TTrigger, any>,
-  //   id: string,
-  //   trigger: TTrigger
-  // ) {
-  //   const metadata = trigger.toJSON();
+        const io = createIOWithIntegrations(
+          // @ts-ignore
+          this,
+          {
+            integration: connection,
+          },
+          {
+            integration: trigger.source.integration,
+          }
+        );
 
-  //   const response = await this.runTask(
-  //     id,
-  //     {
-  //       name: `Add trigger to job`,
-  //       description: `Add trigger ${metadata.title} to job ${job.id}`,
-  //       elements: metadata.elements,
-  //     },
-  //     async (task) => {
-  //       const subResponse1 = await this.runTask(
-  //         "register-trigger-variant",
-  //         {
-  //           name: `Register trigger variant`,
-  //           description: `Register trigger variant ${metadata.title} to job ${job.id}`,
-  //           elements: metadata.elements,
-  //         },
-  //         async (task) => {
-  //           return await this.#apiClient.addTriggerVariant(
-  //             this.#client.name,
-  //             job.id,
-  //             job.version,
-  //             {
-  //               id,
-  //               trigger: metadata,
-  //             }
-  //           );
-  //         }
-  //       );
+        const updates = await trigger.source.register(
+          params,
+          registration,
+          io,
+          this.#context
+        );
 
-  //       if (subResponse1.ready) {
-  //         return subResponse1;
-  //       }
+        if (!updates) {
+          // TODO: do something here?
+          return;
+        }
 
-  //       await this.runTask(
-  //         "prepare-trigger-variant",
-  //         {
-  //           name: "Prepare trigger variant",
-  //           description: `Prepare trigger variant ${metadata.title} to job ${job.id}`,
-  //           elements: metadata.elements,
-  //         },
-  //         async (task) => {
-  //           // TODO: trigger.prepare should take the io as an argument and everything inside there should happen within subtasks
-  //           // the way we can do this is by reusing the job system when running the trigger.prepare function, using something like "Shadow Jobs"
-  //           // that are used internally by the trigger.dev system, but are not exposed to the user
-  //           // Each trigger that needs to be prepared will have a shadow job that is run in the background
-  //           // so instead of writing custom code for each thing trigger needs to do internally, we can just use the job system
-  //           // this will make our internal code much more reliable, and it will also allow us to do stuff like registering a trigger
-  //           // both at "static" time and at "runtime", for example when listening for a webhook in the middle of a job
-  //           // or registering a trigger variant when a job is running
-  //           // This is crucial because if we have a trigger.prepare function that makes many different API calls, we might start running into function timeout issues
-  //           // We could also explore showing these to the user, under something like "internal jobs" so we can surface more information to the user about what the system is doing
-  //           // We need to make a new "child IO" here that is used for preparing the trigger which does not have access to other connections or auth in the context
-  //           // return await trigger.prepare(this.#client, subResponse1.auth);
-  //         }
-  //       );
+        return await this.updateSource("update-source", {
+          key: registration.source.key,
+          ...updates,
+        });
+      }
+    );
+  }
 
-  //       return { ok: true };
-  //     }
-  //   );
-  // }
+  async getAuth(
+    key: string | any[],
+    clientId?: string
+  ): Promise<ConnectionAuth | undefined> {
+    if (!clientId) {
+      return;
+    }
+
+    return this.runTask(key, { name: "get-auth" }, async (task) => {
+      return await this.#client.getAuth(clientId);
+    });
+  }
 
   // TODO: investigate why errors from Github tasks are not being caught here
   async runTask<T extends SerializableJson | void = void>(

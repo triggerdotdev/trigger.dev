@@ -2,10 +2,14 @@ import {
   ApiEventLog,
   ApiEventLogSchema,
   CompleteTaskBodyInput,
+  ConnectionAuthSchema,
   CreateRunBody,
   CreateRunResponseBodySchema,
   LogLevel,
   Logger,
+  RegisterSourceEvent,
+  RegisterSourceEventSchema,
+  RegisterTriggerBody,
   RunTaskBodyInput,
   SendEvent,
   SendEventOptions,
@@ -206,6 +210,59 @@ export class ApiClient {
     return response;
   }
 
+  async registerTrigger(
+    client: string,
+    id: string,
+    payload: RegisterTriggerBody
+  ): Promise<RegisterSourceEvent> {
+    const apiKey = await this.#apiKey();
+
+    this.#logger.debug("registering trigger", {
+      id,
+      payload,
+    });
+
+    const response = await zodfetch(
+      RegisterSourceEventSchema,
+      `${this.#apiUrl}/api/v3/${client}/triggers/${id}`,
+      {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify(payload),
+      }
+    );
+
+    return response;
+  }
+
+  async getAuth(client: string, id: string) {
+    const apiKey = await this.#apiKey();
+
+    this.#logger.debug("getting auth", {
+      id,
+    });
+
+    const response = await zodfetch(
+      ConnectionAuthSchema,
+      `${this.#apiUrl}/api/v3/${client}/auth/${id}`,
+      {
+        method: "GET",
+        headers: {
+          Accept: "application/json",
+          Authorization: `Bearer ${apiKey}`,
+        },
+      },
+      {
+        optional: true,
+      }
+    );
+
+    return response;
+  }
+
   async #apiKey() {
     const apiKey = getApiKey(this.#options.apiKey);
 
@@ -269,15 +326,28 @@ function getApiKey(key?: string) {
   return { status: "valid" as const, apiKey };
 }
 
-async function zodfetch<TResponseBody extends any>(
+async function zodfetch<
+  TResponseBody extends any,
+  TOptional extends boolean = false
+>(
   schema: z.Schema<TResponseBody>,
   url: string,
   requestInit?: RequestInit,
   options?: {
     errorMessage?: string;
+    optional?: TOptional;
   }
-): Promise<TResponseBody> {
+): Promise<TOptional extends true ? TResponseBody | undefined : TResponseBody> {
   const response = await fetch(url, requestInit);
+
+  if (
+    (!requestInit || requestInit.method === "GET") &&
+    response.status === 404 &&
+    options?.optional
+  ) {
+    // @ts-ignore
+    return;
+  }
 
   if (response.status >= 400 && response.status < 500) {
     const body = await response.json();

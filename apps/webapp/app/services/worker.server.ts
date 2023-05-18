@@ -2,7 +2,6 @@ import { z } from "zod";
 import { env } from "~/env.server";
 import { ZodWorker } from "~/platform/zodWorker.server";
 import { EndpointRegisteredService } from "./endpoints/endpointRegistered.server";
-import { DeliverEventService } from "./events/deliverEvent.server";
 import { apiAuthenticationRepository } from "./externalApis/apiAuthenticationRepository.server";
 import { RegisterJobService } from "./jobs/registerJob.server";
 import { ResumeTaskService } from "./runs/resumeTask.server";
@@ -13,6 +12,7 @@ import { RunFinishedService } from "./runs/runFinished.server";
 import { JobMetadataSchema, SourceMetadataSchema } from "@trigger.dev/internal";
 import { RegisterSourceService } from "./sources/registerSource.server";
 import { ActivateSourceService } from "./sources/activateSource.server";
+import { DeliverEventService } from "./events/deliverEvent.server";
 
 const workerCatalog = {
   organizationCreated: z.object({ id: z.string() }),

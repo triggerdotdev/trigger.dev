@@ -408,7 +408,9 @@ model DynamicTrigger {
   endpoint   Endpoint @relation(fields: [endpointId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   endpointId String
 
-  jobs Job[]
+  jobs     Job[]
+  sources  TriggerSource[]
+  triggers JobTrigger[]
 
   @@unique([endpointId, slug])
 }
@@ -445,6 +447,9 @@ model JobTrigger {
 
   externalAccount   ExternalAccount? @relation(fields: [externalAccountId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   externalAccountId String?
+
+  dynamicTrigger   DynamicTrigger? @relation(fields: [dynamicTriggerId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  dynamicTriggerId String?
 
   @@unique([versionId, actionIdentifier])
 }
@@ -611,8 +616,7 @@ model SecretStore {
 model TriggerSource {
   id String @id @default(cuid())
 
-  key String
-
+  key    String
   params Json?
 
   channel     TriggerChannel @default(HTTP)
@@ -637,6 +641,9 @@ model TriggerSource {
 
   apiClient   ApiConnectionClient? @relation(fields: [apiClientId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   apiClientId String?
+
+  dynamicTrigger   DynamicTrigger? @relation(fields: [dynamicTriggerId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  dynamicTriggerId String?
 
   active      Boolean @default(false)
   interactive Boolean @default(false)

@@ -2,10 +2,7 @@ import { prisma } from "~/db.server";
 import { z } from "zod";
 
 export interface ASecretStore {
-  getSecret<TSchema extends z.ZodFirstPartySchemaTypes>(
-    schema: TSchema,
-    key: string
-  ): Promise<z.infer<TSchema> | undefined>;
+  getSecret<T>(schema: z.Schema<T>, key: string): Promise<T | undefined>;
   setSecret<T extends object>(key: string, value: T): Promise<void>;
 }
 
@@ -31,11 +28,18 @@ export class SecretStore implements ASecretStore {
     }
   }
 
-  getSecret<TSchema extends z.ZodFirstPartySchemaTypes>(
-    schema: TSchema,
-    key: string
-  ): Promise<z.TypeOf<TSchema> | undefined> {
+  getSecret<T>(schema: z.Schema<T>, key: string): Promise<T | undefined> {
     return this.#provider.getSecret(schema, key);
+  }
+
+  async getSecretOrThrow<T>(schema: z.Schema<T>, key: string): Promise<T> {
+    const value = await this.getSecret(schema, key);
+
+    if (!value) {
+      throw new Error(`Unable to find secret ${key} in ${this.provider}`);
+    }
+
+    return value;
   }
 
   setSecret<T extends object>(key: string, value: T): Promise<void> {
@@ -45,10 +49,7 @@ export class SecretStore implements ASecretStore {
 
 /** This stores secrets in the Postgres Database, in plain text. NOT recommended outside of localhost. */
 class DatabaseSecretStore implements ASecretStore {
-  async getSecret<TSchema extends z.ZodFirstPartySchemaTypes>(
-    schema: TSchema,
-    key: string
-  ): Promise<z.TypeOf<TSchema> | undefined> {
+  async getSecret<T>(schema: z.Schema<T>, key: string): Promise<T | undefined> {
     const secret = await prisma.secretStore.findUnique({
       where: {
         key,

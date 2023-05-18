@@ -88,13 +88,20 @@ export class ResumeTaskService {
           id: run.version.job.slug,
           version: run.version.version,
         },
-        context: {
+        run: {
           id: run.id,
-          environment: run.environment.slug,
-          organization: run.organization.slug,
           isTest: run.isTest,
-          version: run.version.version,
           startedAt: run.startedAt ?? new Date(),
+        },
+        environment: {
+          id: run.environment.id,
+          slug: run.environment.slug,
+          type: run.environment.type,
+        },
+        organization: {
+          id: run.organization.id,
+          slug: run.organization.slug,
+          title: run.organization.title,
         },
         tasks: [run.tasks, updatedTask]
           .flat()

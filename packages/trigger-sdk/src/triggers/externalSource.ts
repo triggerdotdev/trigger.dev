@@ -93,6 +93,7 @@ type HandlerFunction<TChannel extends ChannelNames, TParams extends any> = (
 ) => Promise<{ events: SendEvent[]; response?: NormalizedResponse } | void>;
 
 type KeyFunction<TParams extends any> = (params: TParams) => string;
+type FilterFunction<TParams extends any> = (params: TParams) => EventFilter;
 
 type ExternalSourceOptions<
   TChannel extends ChannelNames,
@@ -104,6 +105,7 @@ type ExternalSourceOptions<
   schema: z.Schema<TParams>;
   integration: TIntegration;
   register: RegisterFunction<TIntegration, TParams, TChannel>;
+  filter: FilterFunction<TParams>;
   handler: HandlerFunction<TChannel, TParams>;
   key: KeyFunction<TParams>;
 };
@@ -134,6 +136,10 @@ export class ExternalSource<
       },
       logger
     );
+  }
+
+  filter(params: TParams): EventFilter {
+    return this.options.filter(params);
   }
 
   async register(
@@ -204,7 +210,6 @@ export type ExternalSourceTriggerOptions<
   event: TEventSpecification;
   source: TEventSource;
   params: ExternalSourceParams<TEventSource>;
-  filter?: EventFilter;
 };
 
 export class ExternalSourceTrigger<
@@ -235,7 +240,7 @@ export class ExternalSourceTrigger<
         rule: {
           event: this.event.name,
           payload: deepMergeFilters(
-            this.options.filter ?? {},
+            this.options.source.filter(this.options.params),
             this.event.filter ?? {}
           ),
           source: this.event.source,

@@ -65,18 +65,18 @@ export function customTrigger<
 }
 
 export function customEvent<TEvent>({
-  schema,
+  payload,
   source,
 }: {
-  schema: z.Schema<TEvent>;
+  payload: z.Schema<TEvent>;
   source?: string;
 }): EventSpecification<TEvent> {
   return {
     name: "custom",
     title: "Custom Event",
     source: source ?? "trigger.dev",
-    parsePayload: (payload: any) => {
-      return schema.parse(payload);
+    parsePayload: (rawPayload: any) => {
+      return payload.parse(rawPayload);
     },
   };
 }

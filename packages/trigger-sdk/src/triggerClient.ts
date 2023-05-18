@@ -11,24 +11,20 @@ import {
   NormalizedResponse,
   RegisterSourceEvent,
   RegisterSourceEventSchema,
+  RegisterTriggerBody,
   RunJobBody,
   RunJobBodySchema,
   SendEvent,
   SourceMetadata,
 } from "@trigger.dev/internal";
 import { ApiClient } from "./apiClient";
-import {
-  AuthenticatedTask,
-  IntegrationClient,
-  IOWithIntegrations,
-  TriggerIntegration,
-} from "./integrations";
 import { IO, ResumeWithTask } from "./io";
+import { createIOWithIntegrations } from "./ioWithIntegrations";
 import { Job } from "./job";
-import { ContextLogger } from "./logger";
-import type { EventSpecification, Trigger, TriggerContext } from "./types";
-import { ExternalSource, HttpSourceEvent } from "./triggers/externalSource";
 import { CustomTrigger } from "./triggers/customTrigger";
+import { ExternalSource, HttpSourceEvent } from "./triggers/externalSource";
+import type { EventSpecification, Trigger, TriggerContext } from "./types";
+import { DynamicTrigger } from "./triggers/dynamic";
 
 export type TriggerClientOptions = {
   apiKey?: string;
@@ -56,6 +52,10 @@ export class TriggerClient {
       events: Array<SendEvent>;
       response?: NormalizedResponse;
     } | void>
+  > = {};
+  #registeredDynamicTriggers: Record<
+    string,
+    DynamicTrigger<EventSpecification<any>, ExternalSource<any, any, any>>
   > = {};
   #client: ApiClient;
   #logger: Logger;
@@ -180,7 +180,7 @@ export class TriggerClient {
             body: {
               completed: results.completed,
               output: results.output,
-              executionId: execution.data.context.id,
+              executionId: execution.data.run.id,
               task: results.task,
             },
           };
@@ -207,12 +207,14 @@ export class TriggerClient {
           };
 
           const key = headers.data["x-ts-key"];
+          const dynamicId = headers.data["x-ts-dynamic-id"];
           const secret = headers.data["x-ts-secret"];
           const params = headers.data["x-ts-params"];
           const data = headers.data["x-ts-data"];
 
           const source = {
             key,
+            dynamicId,
             secret,
             params,
             data,
@@ -248,6 +250,10 @@ export class TriggerClient {
     job.trigger.attachToJob(this, job);
   }
 
+  attachDynamicTrigger(trigger: DynamicTrigger<any, any>): void {
+    this.#registeredDynamicTriggers[trigger.id] = trigger;
+  }
+
   attachSource(options: {
     key: string;
     source: ExternalSource<any, any>;
@@ -266,6 +272,9 @@ export class TriggerClient {
         key: options.key,
         params: options.params,
         events: [],
+        clientId: !options.source.integration.usesLocalAuth
+          ? options.source.integration.id
+          : undefined,
       };
     }
 
@@ -321,6 +330,14 @@ export class TriggerClient {
     });
   }
 
+  async registerTrigger(id: string, options: RegisterTriggerBody) {
+    return this.#client.registerTrigger(this.name, id, options);
+  }
+
+  async getAuth(id: string) {
+    return this.#client.getAuth(this.name, id);
+  }
+
   authorized(apiKey: string) {
     const localApiKey = this.#options.apiKey ?? process.env.TRIGGER_API_KEY;
 
@@ -346,27 +363,28 @@ export class TriggerClient {
   async #executeJob(execution: RunJobBody, job: Job<Trigger<any>, any>) {
     this.#logger.debug("executing job", { execution, job: job.toJSON() });
 
-    const abortController = new AbortController();
+    const context = this.#createRunContext(execution);
 
     const io = new IO({
-      id: execution.context.id,
+      id: execution.run.id,
       cachedTasks: execution.tasks,
       apiClient: this.#client,
       logger: this.#logger,
       client: this,
+      context,
     });
 
-    const ioWithConnections = this.#createIOWithIntegrations(
+    const ioWithConnections = createIOWithIntegrations(
       io,
-      execution,
-      job
+      execution.connections,
+      job.options.integrations
     );
 
     try {
       const output = await job.options.run(
         job.trigger.event.parsePayload(execution.event.payload ?? {}),
         ioWithConnections,
-        this.#createJobContext(execution, io, abortController.signal)
+        context
       );
 
       return { completed: true, output };
@@ -394,159 +412,84 @@ export class TriggerClient {
     }
   }
 
-  #createIOWithIntegrations<
-    TIntegrations extends Record<
-      string,
-      TriggerIntegration<IntegrationClient<any, any>>
-    >
-  >(
-    io: IO,
-    run: RunJobBody,
-    job: Job<Trigger<any>, TIntegrations>
-  ): IOWithIntegrations<TIntegrations> {
-    const jobIntegrations = job.options.integrations;
+  #createRunContext(execution: RunJobBody): TriggerContext {
+    const { event, organization, environment, job, run } = execution;
 
-    if (!jobIntegrations) {
-      return io as IOWithIntegrations<TIntegrations>;
-    }
-
-    const runConnections = run.connections ?? {};
-
-    const connections = Object.entries(jobIntegrations).reduce(
-      (acc, [key, jobConnection]) => {
-        const connection = runConnections[key];
-        const client =
-          "client" in jobConnection.client
-            ? jobConnection.client.client
-            : jobConnection.client.clientFactory?.(connection);
-
-        if (!client) {
-          return acc;
-        }
-
-        const ioConnection = {
-          client,
-        } as any;
-
-        if (jobConnection.client.tasks) {
-          const tasks: Record<
-            string,
-            AuthenticatedTask<any, any, any>
-          > = jobConnection.client.tasks;
-
-          Object.keys(tasks).forEach((taskName) => {
-            const authenticatedTask = tasks[taskName];
-
-            ioConnection[taskName] = async (
-              key: string | string[],
-              params: any
-            ) => {
-              return await io.runTask(
-                key,
-                authenticatedTask.init(params),
-                async (ioTask) => {
-                  return authenticatedTask.run(params, client, ioTask, io);
-                }
-              );
-            };
-          });
-        }
-
-        acc[key] = ioConnection;
-
-        return acc;
-      },
-      {} as any
-    );
-
-    return new Proxy(io, {
-      get(target, prop, receiver) {
-        if (prop in connections) {
-          return connections[prop];
-        }
-
-        const value = Reflect.get(target, prop, receiver);
-        return typeof value == "function" ? value.bind(target) : value;
-      },
-    }) as IOWithIntegrations<TIntegrations>;
-  }
-
-  #createJobContext(
-    execution: RunJobBody,
-    io: IO,
-    signal: AbortSignal
-  ): TriggerContext {
     return {
-      ...execution.context,
-      signal,
-      logger: new ContextLogger(async (level, message, data) => {
-        switch (level) {
-          case "DEBUG": {
-            this.#logger.debug(message, data);
-            break;
-          }
-          case "INFO": {
-            this.#logger.info(message, data);
-            break;
-          }
-          case "WARN": {
-            this.#logger.warn(message, data);
-            break;
-          }
-          case "ERROR": {
-            this.#logger.error(message, data);
-            break;
-          }
-        }
-
-        await io.runTask(
-          [message, level],
-          {
-            name: "log",
-            icon: "log",
-            description: message,
-            params: data,
-            elements: [{ label: "Level", text: level }],
-            noop: true,
-          },
-          async (task) => {}
-        );
-      }),
-      wait: async (id, seconds) => {
-        await io.runTask(
-          id,
-          {
-            name: "wait",
-            icon: "clock",
-            params: { seconds },
-            noop: true,
-            delayUntil: new Date(Date.now() + seconds * 1000),
-          },
-          async (task) => {}
-        );
+      event: {
+        id: event.id,
+        name: event.name,
+        context: event.context,
+        timestamp: event.timestamp,
       },
-      sendEvent: async (key, event, options) => {
-        return await io.runTask(
-          key,
-          {
-            name: "sendEvent",
-            params: { event, options },
-          },
-          async (task) => {
-            return await this.#client.sendEvent(event, options);
-          }
-        );
-      },
+      organization,
+      environment,
+      job,
+      run,
     };
   }
 
   async #handleHttpSourceRequest(
-    source: { key: string; secret: string; data: any; params: any },
+    source: {
+      key: string;
+      dynamicId?: string;
+      secret: string;
+      data: any;
+      params: any;
+    },
     sourceRequest: HttpSourceRequest
   ): Promise<{ response: NormalizedResponse; events: SendEvent[] }> {
     this.#logger.debug("Handling HTTP source request", {
       source,
     });
+
+    if (source.dynamicId) {
+      const dynamicTrigger = this.#registeredDynamicTriggers[source.dynamicId];
+
+      if (!dynamicTrigger) {
+        this.#logger.debug("No dynamic trigger registered for HTTP source", {
+          source,
+        });
+
+        return {
+          response: {
+            status: 200,
+            body: {
+              ok: true,
+            },
+          },
+          events: [],
+        };
+      }
+
+      const results = await dynamicTrigger.source.handle(
+        source,
+        sourceRequest,
+        this.#logger
+      );
+
+      if (!results) {
+        return {
+          events: [],
+          response: {
+            status: 200,
+            body: {
+              ok: true,
+            },
+          },
+        };
+      }
+
+      return {
+        events: results.events,
+        response: results.response ?? {
+          status: 200,
+          body: {
+            ok: true,
+          },
+        },
+      };
+    }
 
     const handler = this.#registeredHttpSourceHandlers[source.key];
 

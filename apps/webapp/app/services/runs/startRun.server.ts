@@ -16,7 +16,7 @@ const RUN_INCLUDES = {
       job: true,
       environment: true,
       organization: true,
-      connections: {
+      integrations: {
         include: {
           apiConnectionClient: {
             include: {
@@ -71,7 +71,7 @@ export class StartRunService {
           return { run: updatedRun };
         } else {
           // If any of the connections are missing, we can't start the execution
-          const runConnectionsByKey = run.version.connections.reduce(
+          const runConnectionsByKey = run.version.integrations.reduce(
             (acc: Record<string, ApiConnection>, connection) => {
               if (connection.apiConnectionClient.connections.length === 0) {
                 return acc;
@@ -179,13 +179,20 @@ export class StartRunService {
           id: run.version.job.slug,
           version: run.version.version,
         },
-        context: {
+        run: {
           id: run.id,
-          environment: run.version.environment.slug,
-          organization: run.version.organization.slug,
           isTest: run.isTest,
-          version: run.version.version,
           startedAt,
+        },
+        environment: {
+          id: run.version.environment.id,
+          slug: run.version.environment.slug,
+          type: run.version.environment.type,
+        },
+        organization: {
+          id: run.version.organization.id,
+          slug: run.version.organization.slug,
+          title: run.version.organization.title,
         },
         connections,
       });

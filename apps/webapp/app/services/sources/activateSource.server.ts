@@ -5,13 +5,13 @@ import type {
   SecretReference,
   TriggerSourceEvent,
 } from ".prisma/client";
-import { IngestSendEvent } from "../events/ingestSendEvent.server";
 import type { AuthenticatedEnvironment } from "../apiAuth.server";
 import { env } from "~/env.server";
 import type { RegisterTriggerSource } from "@trigger.dev/internal";
 import type { SecretStoreProvider } from "../secrets/secretStore.server";
 import { SecretStore } from "../secrets/secretStore.server";
 import { z } from "zod";
+import { IngestSendEvent } from "../events/ingestSendEvent.server";
 
 export class ActivateSourceService {
   #prismaClient: PrismaClient;

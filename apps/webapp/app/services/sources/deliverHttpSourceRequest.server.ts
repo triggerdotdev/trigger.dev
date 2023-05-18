@@ -28,6 +28,7 @@ export class DeliverHttpSourceRequestService {
           source: {
             include: {
               secretReference: true,
+              dynamicTrigger: true,
             },
           },
         },
@@ -61,6 +62,7 @@ export class DeliverHttpSourceRequestService {
 
     const { response, events } = await clientApi.deliverHttpSourceRequest({
       key: httpSourceRequest.source.key,
+      dynamicId: httpSourceRequest.source.dynamicTrigger?.slug,
       secret: secret.secret,
       params: httpSourceRequest.source.params,
       data: httpSourceRequest.source.channelData,

@@ -35,6 +35,11 @@ export function createRepoEventSource(
     schema: z.object({ repo: z.string() }),
     integration,
     key: (params) => params.repo,
+    filter: (params) => ({
+      repository: {
+        full_name: [params.repo],
+      },
+    }),
     handler: async (event, logger) => {
       logger.debug("[inside github integration] Handling github repo event");
 
@@ -185,6 +190,11 @@ export function createOrgEventSource(
     integration,
     schema: z.object({ org: z.string() }),
     key: (params) => params.org,
+    filter: (params) => ({
+      organization: {
+        login: [params.org],
+      },
+    }),
     handler: async (event) => {},
     register: async (event, io, ctx) => {
       const { params, source: httpSource, events, missingEvents } = event;

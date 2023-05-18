@@ -14,7 +14,11 @@ export class RegisterSourceService {
     this.#prismaClient = prismaClient;
   }
 
-  public async call(endpointId: string, metadata: SourceMetadata) {
+  public async call(
+    endpointId: string,
+    metadata: SourceMetadata,
+    dynamicTriggerId?: string
+  ) {
     const endpoint = await this.#prismaClient.endpoint.findUniqueOrThrow({
       where: {
         id: endpointId,
@@ -29,13 +33,19 @@ export class RegisterSourceService {
       },
     });
 
-    await this.#upsertSource(endpoint, endpoint.environment, metadata);
+    return this.#upsertSource(
+      endpoint,
+      endpoint.environment,
+      metadata,
+      dynamicTriggerId
+    );
   }
 
   async #upsertSource(
     endpoint: Endpoint,
     environment: AuthenticatedEnvironment,
-    metadata: SourceMetadata
+    metadata: SourceMetadata,
+    dynamicTriggerId?: string
   ) {
     logger.debug("Upserting source", {
       endpoint,
@@ -43,18 +53,33 @@ export class RegisterSourceService {
       metadata,
     });
 
+    const key = dynamicTriggerId
+      ? `${dynamicTriggerId}:${metadata.key}`
+      : metadata.key;
+
     const { id, orphanedEvents } = await this.#prismaClient.$transaction(
       async (tx) => {
+        const apiClient = metadata.clientId
+          ? await tx.apiConnectionClient.findUnique({
+              where: {
+                organizationId_slug: {
+                  organizationId: environment.organizationId,
+                  slug: metadata.clientId,
+                },
+              },
+            })
+          : undefined;
+
         const triggerSource = await tx.triggerSource.upsert({
           where: {
             key_endpointId: {
               endpointId: endpoint.id,
-              key: metadata.key,
+              key,
             },
           },
           create: {
             params: metadata.params,
-            key: metadata.key,
+            key,
             channel: metadata.channel,
             organization: {
               connect: {
@@ -76,6 +101,16 @@ export class RegisterSourceService {
                 id: environment.id,
               },
             },
+            apiClient: apiClient
+              ? { connect: { id: apiClient.id } }
+              : undefined,
+            dynamicTrigger: dynamicTriggerId
+              ? {
+                  connect: {
+                    id: dynamicTriggerId,
+                  },
+                }
+              : undefined,
             events: {
               create: metadata.events.map((event) => ({
                 name: event,
@@ -84,10 +119,10 @@ export class RegisterSourceService {
             secretReference: {
               connectOrCreate: {
                 where: {
-                  key: `${endpoint.id}:${metadata.key}`,
+                  key: `${endpoint.id}:${key}`,
                 },
                 create: {
-                  key: `${endpoint.id}:${metadata.key}`,
+                  key: `${endpoint.id}:${key}`,
                   provider: "database",
                 },
               },
@@ -164,8 +199,14 @@ export class RegisterSourceService {
         },
         include: {
           events: true,
+          secretReference: true,
+          apiClient: true,
         },
       });
+
+    if (dynamicTriggerId) {
+      return triggerSource;
+    }
 
     const triggerIsActive = triggerSource.active;
     const triggerHasOrphanedEvents = orphanedEvents.length > 0;
@@ -184,5 +225,7 @@ export class RegisterSourceService {
         orphanedEvents: orphanedEvents,
       });
     }
+
+    return triggerSource;
   }
 }

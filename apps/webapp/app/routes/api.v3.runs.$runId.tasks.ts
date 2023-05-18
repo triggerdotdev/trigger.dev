@@ -1,6 +1,6 @@
 import type { ActionArgs, LoaderArgs } from "@remix-run/server-runtime";
 import { json } from "@remix-run/server-runtime";
-import type { RunTaskBodyOutput } from "@trigger.dev/internal";
+import { RunTaskBodyOutput, ServerTaskSchema } from "@trigger.dev/internal";
 import { RunTaskBodyOutputSchema } from "@trigger.dev/internal";
 import { z } from "zod";
 import type { PrismaClient } from "~/db.server";
@@ -145,7 +145,7 @@ export async function action({ request, params }: ActionArgs) {
       task,
     });
 
-    return json(task);
+    return json(ServerTaskSchema.parse(task));
   } catch (error) {
     if (error instanceof Error) {
       return json({ error: error.message }, { status: 400 });

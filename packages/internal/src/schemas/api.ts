@@ -9,6 +9,7 @@ import {
   EventSpecificationSchema,
   TriggerMetadataSchema,
 } from "./triggers";
+import { EventRuleSchema } from "./eventFilter";
 
 export const UpdateTriggerSourceBodySchema = z.object({
   registeredEvents: z.array(z.string()),
@@ -51,6 +52,7 @@ export const RegisterTriggerSourceSchema = z.object({
   secret: z.string(),
   data: DeserializedJsonSchema.optional(),
   channel: RegisterSourceChannelBodySchema,
+  clientId: z.string().optional(),
 });
 
 export type RegisterTriggerSource = z.infer<typeof RegisterTriggerSourceSchema>;
@@ -91,6 +93,7 @@ export type HttpSourceRequest = z.infer<typeof HttpSourceRequestSchema>;
 
 export const HttpSourceRequestHeadersSchema = z.object({
   "x-ts-key": z.string(),
+  "x-ts-dynamic-id": z.string().optional(),
   "x-ts-secret": z.string(),
   "x-ts-data": z.string().transform((s) => JSON.parse(s)),
   "x-ts-params": z.string().transform((s) => JSON.parse(s)),
@@ -135,6 +138,7 @@ export const SourceMetadataSchema = z.object({
   key: z.string(),
   params: z.any(),
   events: z.array(z.string()),
+  clientId: z.string().optional(),
 });
 
 export type SourceMetadata = z.infer<typeof SourceMetadataSchema>;
@@ -192,19 +196,37 @@ export const DeliverEventResponseSchema = z.object({
 
 export type DeliverEventResponse = z.infer<typeof DeliverEventResponseSchema>;
 
+export const RuntimeEnvironmentTypeSchema = z.enum([
+  "PRODUCTION",
+  "STAGING",
+  "DEVELOPMENT",
+  "PREVIEW",
+]);
+
+export type RuntimeEnvironmentType = z.infer<
+  typeof RuntimeEnvironmentTypeSchema
+>;
+
 export const RunJobBodySchema = z.object({
   event: ApiEventLogSchema,
   job: z.object({
     id: z.string(),
     version: z.string(),
   }),
-  context: z.object({
+  run: z.object({
     id: z.string(),
-    environment: z.string(),
-    organization: z.string(),
     isTest: z.boolean(),
-    version: z.string(),
     startedAt: z.coerce.date(),
+  }),
+  environment: z.object({
+    id: z.string(),
+    slug: z.string(),
+    type: RuntimeEnvironmentTypeSchema,
+  }),
+  organization: z.object({
+    id: z.string(),
+    title: z.string(),
+    slug: z.string(),
   }),
   tasks: z.array(CachedTaskSchema).optional(),
   connections: z.record(ConnectionAuthSchema).optional(),
@@ -324,7 +346,7 @@ export const CompleteTaskBodyInputSchema = RunTaskBodyInputSchema.pick({
   params: true,
 }).extend({
   output: SerializableJsonSchema.optional().transform((v) =>
-    DeserializedJsonSchema.parse(JSON.parse(JSON.stringify(v)))
+    v ? DeserializedJsonSchema.parse(JSON.parse(JSON.stringify(v))) : {}
   ),
 });
 
@@ -367,3 +389,10 @@ export const TriggerVariantResponseBodySchema = z.object({
 export type TriggerVariantResponseBody = z.infer<
   typeof TriggerVariantResponseBodySchema
 >;
+
+export const RegisterTriggerBodySchema = z.object({
+  rule: EventRuleSchema,
+  source: SourceMetadataSchema,
+});
+
+export type RegisterTriggerBody = z.infer<typeof RegisterTriggerBodySchema>;

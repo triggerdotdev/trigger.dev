@@ -1,6 +1,7 @@
 import type {
   ApiEventLog,
   EventFilter,
+  RuntimeEnvironmentType,
   SecureString,
   SendEvent,
   SendEventOptions,
@@ -13,23 +14,11 @@ import { TriggerClient } from "./triggerClient";
 export type { SecureString };
 
 export interface TriggerContext {
-  id: string;
-  version: string;
-  environment: string;
-  organization: string;
-  startedAt: Date;
-  isTest: boolean;
-  signal: AbortSignal;
-  // TODO: move this to io
-  logger: TaskLogger;
-  // TODO: move this to io
-  wait(key: string | any[], seconds: number): Promise<void>;
-  // TODO: move this to io
-  sendEvent(
-    key: string | any[],
-    event: SendEvent,
-    options?: SendEventOptions
-  ): Promise<ApiEventLog>;
+  job: { id: string; version: string };
+  environment: { slug: string; id: string; type: RuntimeEnvironmentType };
+  organization: { slug: string; id: string; title: string };
+  run: { id: string; isTest: boolean; startedAt: Date };
+  event: { id: string; name: string; context: any; timestamp: Date };
 }
 
 export interface TaskLogger {

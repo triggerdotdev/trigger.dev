@@ -2,6 +2,7 @@ import {
   IssueCommentEvent,
   IssuesEvent,
   IssuesOpenedEvent,
+  RepositoryCreatedEvent,
   StarCreatedEvent,
   StarEvent,
 } from "@octokit/webhooks-types";
@@ -124,12 +125,23 @@ const onNewStar: EventSpecification<StarCreatedEvent> = {
   parsePayload: (payload) => payload as StarCreatedEvent,
 };
 
+const onNewRepository: EventSpecification<RepositoryCreatedEvent> = {
+  name: "repository",
+  title: "On new repository",
+  source: "github.com",
+  filter: {
+    action: ["created"],
+  },
+  parsePayload: (payload) => payload as RepositoryCreatedEvent,
+};
+
 export const events = {
   onIssueOpened,
   onIssue,
   onIssueComment,
   onStar,
   onNewStar,
+  onNewRepository,
 };
 
 // params.event has to be a union of all the values of the exports events object
@@ -147,11 +159,6 @@ function createRepoTrigger(source: ReturnType<typeof createRepoEventSource>) {
       event,
       params: { repo },
       source,
-      filter: {
-        repository: {
-          full_name: [repo],
-        },
-      },
     });
   };
 }
@@ -168,11 +175,6 @@ function createOrgTrigger(source: ReturnType<typeof createOrgEventSource>) {
       event,
       params: { org },
       source,
-      filter: {
-        organization: {
-          login: [org],
-        },
-      },
     });
   };
 }

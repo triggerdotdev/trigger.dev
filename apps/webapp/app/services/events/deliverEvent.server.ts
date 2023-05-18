@@ -3,9 +3,9 @@ import type { EventFilter } from "@trigger.dev/internal";
 import { EventFilterSchema } from "@trigger.dev/internal";
 import type { PrismaClient } from "~/db.server";
 import { prisma } from "~/db.server";
-import { CreateRunService } from "../runs/createRun.server";
-import { ResumeTaskService } from "../runs/resumeTask.server";
-import { logger } from "../logger";
+import { logger } from "~/services/logger";
+import { CreateRunService } from "~/services/runs/createRun.server";
+import { ResumeTaskService } from "~/services/runs/resumeTask.server";
 
 export class DeliverEventService {
   #prismaClient: PrismaClient;

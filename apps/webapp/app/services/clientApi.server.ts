@@ -210,6 +210,7 @@ export class ClientApi {
 
   async deliverHttpSourceRequest(options: {
     key: string;
+    dynamicId?: string;
     secret: string;
     params: any;
     data: any;
@@ -228,6 +229,7 @@ export class ClientApi {
         "x-ts-http-url": options.request.url,
         "x-ts-http-method": options.request.method,
         "x-ts-http-headers": JSON.stringify(options.request.headers),
+        ...(options.dynamicId && { "x-ts-dynamic-id": options.dynamicId }),
       },
       body: options.request.rawBody,
     });
