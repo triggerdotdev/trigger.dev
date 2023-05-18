@@ -24,40 +24,30 @@ function Jobs() {
         <JobItem
           to={""}
           icon="airtable"
-          title={""}
-          version={""}
-          trigger={""}
-          id={""}
-          properties={[]}
+          title="When a Stripe payment fails re-engage the customer"
+          version="3.4.6"
+          trigger="When a Stripe payment fails"
+          id="my-custom-job"
+          properties={[{ key: "Repo", value: "triggerdotdet/trigger.dev" }]}
         />
         <JobItem
           to={""}
           icon="github"
-          title={""}
-          version={""}
-          trigger={""}
-          id={""}
-          properties={[]}
+          title="Notify me of critical issues in Slack"
+          version="3.4.5"
+          trigger="Critical issue in GitHub"
+          id="my-custom-job"
+          properties={[{ key: "Repo", value: "triggerdotdet/trigger.dev" }]}
         />
         <JobItem
           to={""}
           icon="slack"
-          title={""}
-          version={""}
-          trigger={""}
-          id={""}
-          properties={[]}
-          disabled={false}
-        />
-        <JobItem
-          to={""}
-          icon="webook"
-          title={""}
-          version={""}
-          trigger={""}
-          id={""}
-          properties={[]}
-          disabled={false}
+          title="Post to Slack when a new User signs up"
+          version="3.4.4"
+          trigger="When a new User signs up"
+          id="my-custom-job"
+          properties={[{ key: "Repo", value: "triggerdotdet/trigger.dev" }]}
+          disabled={true}
         />
       </JobList>
     </div>

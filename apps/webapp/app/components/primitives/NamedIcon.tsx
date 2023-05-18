@@ -23,6 +23,7 @@ import {
   BookOpenIcon,
   LightBulbIcon,
   XMarkIcon,
+  ChevronRightIcon,
 } from "@heroicons/react/24/solid";
 import { cn } from "~/utils/cn";
 import { Spinner } from "./Spinner";
@@ -41,6 +42,9 @@ const icons = {
   ),
   check: (className: string) => (
     <CheckIcon className={cn("text-dimmed", className)} />
+  ),
+  chevronRight: (className: string) => (
+    <ChevronRightIcon className={cn("text-dimmed", className)} />
   ),
   close: (className: string) => (
     <XMarkIcon className={cn("text-dimmed", className)} />
