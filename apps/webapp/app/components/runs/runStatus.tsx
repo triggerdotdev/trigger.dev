@@ -7,35 +7,53 @@ import {
 import type { ReactNode } from "react";
 import { Spinner } from "../primitives/Spinner";
 import { cn } from "~/utils/cn";
+import { JobRunStatus } from ".prisma/client";
 
-export function runStatusTitle(status: WorkflowRunStatus): string {
+export function runStatusTitle(status: JobRunStatus): string {
   switch (status) {
     case "SUCCESS":
-      return "Complete";
+      return "Completed";
     case "PENDING":
       return "Not started";
-    case "RUNNING":
+    case "STARTED":
       return "In progress";
-    case "DISCONNECTED":
-      return "Disconnected";
-    case "ERROR":
-      return "Error";
+    case "QUEUED":
+      return "Queued";
+    case "FAILURE":
+      return "Failed";
     case "TIMED_OUT":
       return "Timed out";
   }
 }
 
-export function runStatusLabel(status: WorkflowRunStatus): ReactNode {
+export function runStatusClassNameColor(status: JobRunStatus): string {
+  switch (status) {
+    case "SUCCESS":
+      return "text-green-500";
+    case "PENDING":
+      return "text-slate-500";
+    case "STARTED":
+      return "text-blue-500";
+    case "QUEUED":
+      return "text-amber-300";
+    case "FAILURE":
+      return "text-rose-500";
+    case "TIMED_OUT":
+      return "text-amber-300";
+  }
+}
+
+export function runStatusLabel(status: JobRunStatus): ReactNode {
   switch (status) {
     case "SUCCESS":
       return <span className="text-green-500">{runStatusTitle(status)}</span>;
     case "PENDING":
       return <span className="text-slate-500">{runStatusTitle(status)}</span>;
-    case "RUNNING":
+    case "STARTED":
       return <span className="text-blue-500">{runStatusTitle(status)}</span>;
-    case "DISCONNECTED":
+    case "QUEUED":
       return <span className="text-amber-300">{runStatusTitle(status)}</span>;
-    case "ERROR":
+    case "FAILURE":
       return <span className="text-rose-500">{runStatusTitle(status)}</span>;
     case "TIMED_OUT":
       return <span className="text-amber-300">{runStatusTitle(status)}</span>;
@@ -43,7 +61,7 @@ export function runStatusLabel(status: WorkflowRunStatus): ReactNode {
 }
 
 export function RunStatusIcon(
-  status: WorkflowRunStatus,
+  status: JobRunStatus,
   iconSize: "small" | "large"
 ) {
   const largeClasses = "relative h-7 w-7";
@@ -67,7 +85,16 @@ export function RunStatusIcon(
           )}
         />
       );
-    case "RUNNING":
+    case "QUEUED":
+      return (
+        <ClockIcon
+          className={cn(
+            iconSize === "small" ? smallClasses : largeClasses,
+            "relative text-slate-500"
+          )}
+        />
+      );
+    case "STARTED":
       return (
         <Spinner
           className={cn(
@@ -76,16 +103,7 @@ export function RunStatusIcon(
           )}
         />
       );
-    case "DISCONNECTED":
-      return (
-        <ExclamationTriangleIcon
-          className={cn(
-            iconSize === "small" ? smallClasses : largeClasses,
-            "relative text-amber-300"
-          )}
-        />
-      );
-    case "ERROR":
+    case "FAILURE":
       return (
         <XCircleIcon
           className={cn(

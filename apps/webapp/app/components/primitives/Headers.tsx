@@ -1,6 +1,7 @@
 import { cn } from "~/utils/cn";
 
-const header1Styles = "font-sans text-xl leading-7 font-semibold";
+const header1Styles =
+  "font-sans text-base md:text-lg lg:text-xl leading-5 md:leading-6 lg:leading-7 font-semibold";
 const header2Styles = "font-sans text-base leading-6 font-medium text-bright";
 const header3Styles = "font-sans text-sm leading-5 font-medium text-bright";
 

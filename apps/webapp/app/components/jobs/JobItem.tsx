@@ -4,6 +4,8 @@ import { NamedIcon } from "../primitives/NamedIcon";
 import { Header1 } from "../primitives/Headers";
 import { cn } from "~/utils/cn";
 import { Paragraph } from "../primitives/Paragraph";
+import { DateTime } from "../primitives/DateTime";
+import { runStatusClassNameColor, runStatusTitle } from "../runs/RunStatus";
 
 type JobItemProps = {
   to: string;
@@ -30,6 +32,7 @@ export function JobItem({
   version,
   trigger,
   id,
+  lastRun,
   properties,
   disabled = false,
 }: JobItemProps) {
@@ -46,18 +49,23 @@ export function JobItem({
           disabled
             ? "border-slate-800 group-hover:border-slate-800 group-hover:bg-slate-900"
             : "border-slate-800 group-hover:border-slate-750 group-hover:bg-slate-850",
-          "aspect-square w-fit rounded border p-1.5 transition"
+          "aspect-square h-fit w-fit rounded border p-1.5 transition"
         )}
       >
-        <NamedIcon name={icon} className="h-12 w-12" />
+        <NamedIcon
+          name={icon}
+          className="h-6 w-6 md:h-10 md:w-10 lg:h-12 lg:w-12"
+        />
       </div>
       <div className="flex w-full items-center">
-        <div className="flex w-full flex-col">
-          <div className="flex items-center gap-x-2">
+        <div className="flex w-full flex-col gap-y-1">
+          <div className="flex items-baseline justify-between gap-x-3 pr-3 md:justify-start md:pr-0">
             <Header1 className="font-medium">{title}</Header1>
-            {version && <JobVersion version={version} />}
+            {version && (
+              <JobVersion version={version} className="relative bottom-0.5" />
+            )}
           </div>
-          <div className="flex gap-x-4">
+          <div className="flex flex-wrap gap-y-1 gap-x-4">
             <KeyValue name="Trigger" value={trigger} />
             {properties.map((property) => (
               <KeyValue
@@ -67,8 +75,28 @@ export function JobItem({
               />
             ))}
           </div>
-          <div className="flex gap-x-4">
+          <div className="flex flex-wrap gap-x-4 gap-y-1">
             <KeyValue name="Id" value={id} />
+            <KeyValue
+              name="Last Run"
+              value={
+                lastRun ? (
+                  <span
+                    className={
+                      lastRun.status === "FAILURE" ||
+                      lastRun.status === "TIMED_OUT"
+                        ? "text-rose-500"
+                        : ""
+                    }
+                  >
+                    {runStatusTitle(lastRun.status)}{" "}
+                    <DateTime date={lastRun.date} />
+                  </span>
+                ) : (
+                  "Never run"
+                )
+              }
+            />
           </div>
         </div>
         <NamedIcon
@@ -80,18 +108,34 @@ export function JobItem({
   );
 }
 
-function KeyValue({ name, value }: { name: string; value: string }) {
+function KeyValue({ name, value }: { name: string; value: React.ReactNode }) {
   return (
-    <div className="flex gap-1 align-baseline">
-      <Paragraph variant="extra-extra-small/bright/caps">{name}:</Paragraph>
+    <div className="flex items-baseline gap-x-1">
+      <Paragraph
+        variant="extra-extra-small/bright/caps"
+        className="whitespace-nowrap"
+      >
+        {name}:
+      </Paragraph>
       <Paragraph variant="extra-small">{value}</Paragraph>
     </div>
   );
 }
 
-export function JobVersion({ version }: { version: string }) {
+export function JobVersion({
+  version,
+  className,
+}: {
+  version: string;
+  className?: string;
+}) {
   return (
-    <span className="rounded border border-slate-750 bg-slate-850 px-1 py-0.5 text-xs text-slate-400">
+    <span
+      className={cn(
+        className,
+        "h-fit rounded border border-slate-750 bg-slate-850 px-1 py-0.5 text-xxs text-slate-400 md:text-xs"
+      )}
+    >
       v{version}
     </span>
   );

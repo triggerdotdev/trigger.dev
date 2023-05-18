@@ -19,7 +19,7 @@ export const Job: Story = {
 
 function Jobs() {
   return (
-    <div className="h-full w-full p-48">
+    <div className="h-full w-full">
       <JobList>
         <JobItem
           to={""}
@@ -28,6 +28,10 @@ function Jobs() {
           version="3.4.6"
           trigger="When a Stripe payment fails"
           id="my-custom-job"
+          lastRun={{
+            status: "TIMED_OUT",
+            date: new Date("2021-08-12T12:00:00.000Z"),
+          }}
           properties={[{ key: "Repo", value: "triggerdotdet/trigger.dev" }]}
         />
         <JobItem
@@ -37,7 +41,16 @@ function Jobs() {
           version="3.4.5"
           trigger="Critical issue in GitHub"
           id="my-custom-job"
-          properties={[{ key: "Repo", value: "triggerdotdet/trigger.dev" }]}
+          lastRun={{
+            status: "SUCCESS",
+            date: new Date("2021-08-12T12:00:00.000Z"),
+          }}
+          properties={[
+            { key: "Repo", value: "triggerdotdet/trigger.dev" },
+            { key: "Element1", value: "7f9F*9s7df*hdhhh" },
+            { key: "Element2", value: "github/github.com" },
+            { key: "Element3", value: "FH8sdfh(*sd&*Sa8hdj" },
+          ]}
         />
         <JobItem
           to={""}
