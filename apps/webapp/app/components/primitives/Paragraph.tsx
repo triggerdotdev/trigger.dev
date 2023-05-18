@@ -1,12 +1,10 @@
 import { cn } from "~/utils/cn";
 
 const paragraphVariants = {
-  base: "font-sans text-base font-normal leading-normal text-dimmed mb-2",
-  "base/bright":
-    "font-sans text-base font-normal leading-normal text-bright mb-2",
-  small: "font-sans text-sm font-normal leading-normal text-dimmed mb-1.5",
-  "small/bright":
-    "font-sans text-sm font-normal leading-normal text-bright mb-1.5",
+  base: "font-sans text-base font-normal leading-normal text-dimmed",
+  "base/bright": "font-sans text-base font-normal leading-normal text-bright",
+  small: "font-sans text-sm font-normal leading-normal text-dimmed",
+  "small/bright": "font-sans text-sm font-normal leading-normal text-bright",
   "extra-small": "font-sans text-xs font-normal leading-normal text-dimmed",
   "extra-small/bright":
     "font-sans text-xs font-normal leading-normal text-bright",
