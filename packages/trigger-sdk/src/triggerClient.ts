@@ -15,6 +15,7 @@ import {
   RunJobBody,
   RunJobBodySchema,
   SendEvent,
+  SendEventOptions,
   SourceMetadata,
 } from "@trigger.dev/internal";
 import { ApiClient } from "./apiClient";
@@ -356,6 +357,10 @@ export class TriggerClient {
 
   async getAuth(id: string) {
     return this.#client.getAuth(this.name, id);
+  }
+
+  async sendEvent(event: SendEvent, options?: SendEventOptions) {
+    return this.#client.sendEvent(event, options);
   }
 
   authorized(apiKey: string) {

@@ -28,11 +28,33 @@ const client = new TriggerClient("nextjs", {
   logLevel: "debug",
 });
 
-// TODO: implement registering dynamic triggers
 const dynamicOnIssueOpenedTrigger = new DynamicTrigger(client, {
   id: "github-issue-opened",
   event: events.onIssueOpened,
   source: github.sources.repo,
+});
+
+new Job(client, {
+  id: "test-io-functions",
+  name: "Test IO functions",
+  version: "0.1.1",
+  trigger: customTrigger({
+    name: "test.io",
+    event: customEvent({
+      payload: z.any(),
+    }),
+  }),
+  run: async (payload, io, ctx) => {
+    await io.wait("wait", 5); // wait for 5 seconds
+    await io.logger.info("This is a log info message", {
+      payload,
+    });
+    await io.sendEvent("send-event", {
+      name: "custom.event",
+      payload,
+      context: ctx,
+    });
+  },
 });
 
 new Job(client, {

@@ -1,10 +1,7 @@
 import type {
-  ApiEventLog,
   EventFilter,
   RuntimeEnvironmentType,
   SecureString,
-  SendEvent,
-  SendEventOptions,
   TriggerMetadata,
 } from "@trigger.dev/internal";
 import { DisplayElement } from "@trigger.dev/internal";

@@ -4,6 +4,8 @@ import {
   LogLevel,
   Logger,
   RunTaskOptions,
+  SendEvent,
+  SendEventOptions,
   SerializableJson,
   ServerTask,
   UpdateTriggerSourceBody,
@@ -17,7 +19,7 @@ import {
   ExternalSource,
   ExternalSourceParams,
 } from "./triggers/externalSource";
-import { EventSpecification, TriggerContext } from "./types";
+import { EventSpecification, TaskLogger, TriggerContext } from "./types";
 import { createIOWithIntegrations } from "./ioWithIntegrations";
 
 export class ResumeWithTask {
@@ -61,6 +63,73 @@ export class IO {
 
     this.#taskStorage = new AsyncLocalStorage();
     this.#context = options.context;
+  }
+
+  get logger() {
+    return new IOLogger(async (level, message, data) => {
+      switch (level) {
+        case "DEBUG": {
+          this.#logger.debug(message, data);
+          break;
+        }
+        case "INFO": {
+          this.#logger.info(message, data);
+          break;
+        }
+        case "WARN": {
+          this.#logger.warn(message, data);
+          break;
+        }
+        case "ERROR": {
+          this.#logger.error(message, data);
+          break;
+        }
+      }
+
+      await this.runTask(
+        [message, level],
+        {
+          name: "log",
+          icon: "log",
+          description: message,
+          params: data,
+          elements: [{ label: "Level", text: level }],
+          noop: true,
+        },
+        async (task) => {}
+      );
+    });
+  }
+
+  async wait(key: string | any[], seconds: number) {
+    return await this.runTask(
+      key,
+      {
+        name: "wait",
+        icon: "clock",
+        params: { seconds },
+        noop: true,
+        delayUntil: new Date(Date.now() + seconds * 1000),
+      },
+      async (task) => {}
+    );
+  }
+
+  async sendEvent(
+    key: string | any[],
+    event: SendEvent,
+    options?: SendEventOptions
+  ) {
+    return await this.runTask(
+      key,
+      {
+        name: "sendEvent",
+        params: { event, options },
+      },
+      async (task) => {
+        return await this.#client.sendEvent(event, options);
+      }
+    );
   }
 
   async updateSource(
@@ -308,4 +377,27 @@ function stableStringify(obj: any): string {
 
   const sortedObj = sortKeys(obj);
   return JSON.stringify(sortedObj);
+}
+
+type CallbackFunction = (
+  level: "DEBUG" | "INFO" | "WARN" | "ERROR",
+  message: string,
+  properties?: Record<string, any>
+) => Promise<void>;
+
+export class IOLogger implements TaskLogger {
+  constructor(private callback: CallbackFunction) {}
+
+  debug(message: string, properties?: Record<string, any>): Promise<void> {
+    return this.callback("DEBUG", message, properties);
+  }
+  info(message: string, properties?: Record<string, any>): Promise<void> {
+    return this.callback("INFO", message, properties);
+  }
+  warn(message: string, properties?: Record<string, any>): Promise<void> {
+    return this.callback("WARN", message, properties);
+  }
+  error(message: string, properties?: Record<string, any>): Promise<void> {
+    return this.callback("ERROR", message, properties);
+  }
 }

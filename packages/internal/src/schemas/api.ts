@@ -166,8 +166,8 @@ export const RawEventSchema = z.object({
   id: z.string().default(() => ulid()),
   name: z.string(),
   source: z.string().optional(),
-  payload: DeserializedJsonSchema,
-  context: DeserializedJsonSchema.optional(),
+  payload: z.any(),
+  context: z.any().optional(),
   timestamp: z.string().datetime().optional(),
 });
 
