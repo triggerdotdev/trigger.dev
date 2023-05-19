@@ -75,7 +75,7 @@ export class ApiClient {
       name: options.name,
     });
 
-    const response = await fetch(`${this.#apiUrl}/api/v3/endpoints`, {
+    const response = await fetch(`${this.#apiUrl}/api/v1/endpoints`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -111,7 +111,7 @@ export class ApiClient {
 
     return await zodfetch(
       CreateRunResponseBodySchema,
-      `${this.#apiUrl}/api/v3/runs`,
+      `${this.#apiUrl}/api/v1/runs`,
       {
         method: "POST",
         headers: {
@@ -132,7 +132,7 @@ export class ApiClient {
 
     return await zodfetch(
       ServerTaskSchema,
-      `${this.#apiUrl}/api/v3/runs/${runId}/tasks`,
+      `${this.#apiUrl}/api/v1/runs/${runId}/tasks`,
       {
         method: "POST",
         headers: {
@@ -154,7 +154,7 @@ export class ApiClient {
 
     return await zodfetch(
       ServerTaskSchema,
-      `${this.#apiUrl}/api/v3/runs/${runId}/tasks/${id}/complete`,
+      `${this.#apiUrl}/api/v1/runs/${runId}/tasks/${id}/complete`,
       {
         method: "POST",
         headers: {
@@ -173,7 +173,7 @@ export class ApiClient {
       event,
     });
 
-    return await zodfetch(ApiEventLogSchema, `${this.#apiUrl}/api/v3/events`, {
+    return await zodfetch(ApiEventLogSchema, `${this.#apiUrl}/api/v1/events`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -196,7 +196,7 @@ export class ApiClient {
 
     const response = await zodfetch(
       TriggerSourceSchema,
-      `${this.#apiUrl}/api/v3/${client}/sources/${key}`,
+      `${this.#apiUrl}/api/v1/${client}/sources/${key}`,
       {
         method: "PUT",
         headers: {
@@ -224,7 +224,7 @@ export class ApiClient {
 
     const response = await zodfetch(
       RegisterSourceEventSchema,
-      `${this.#apiUrl}/api/v3/${client}/triggers/${id}`,
+      `${this.#apiUrl}/api/v1/${client}/triggers/${id}`,
       {
         method: "PUT",
         headers: {
@@ -247,7 +247,7 @@ export class ApiClient {
 
     const response = await zodfetch(
       ConnectionAuthSchema,
-      `${this.#apiUrl}/api/v3/${client}/auth/${id}`,
+      `${this.#apiUrl}/api/v1/${client}/auth/${id}`,
       {
         method: "GET",
         headers: {

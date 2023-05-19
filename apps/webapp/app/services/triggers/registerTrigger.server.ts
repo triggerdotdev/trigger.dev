@@ -107,7 +107,7 @@ export class RegisterTriggerService {
         data: triggerSource.channelData as any,
         channel: {
           type: "HTTP",
-          url: `${env.APP_ORIGIN}/api/v3/sources/http/${triggerSource.id}`,
+          url: `${env.APP_ORIGIN}/api/v1/sources/http/${triggerSource.id}`,
         },
         clientId: triggerSource.apiClient?.slug,
       },
