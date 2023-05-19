@@ -1,5 +1,8 @@
+import { LightBulbIcon } from "@heroicons/react/20/solid";
 import type { Meta, StoryObj } from "@storybook/react";
+import { ClipboardIcon } from "lucide-react";
 import { withDesign } from "storybook-addon-designs";
+import { Header2 } from "../primitives/Headers";
 import {
   SimpleTooltip,
   Tooltip,
@@ -7,7 +10,6 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "../primitives/Tooltip";
-import { ClipboardCopyIcon, ClipboardIcon } from "lucide-react";
 
 const meta: Meta<typeof Tooltips> = {
   title: "Primitives/Tooltips",
@@ -36,19 +38,28 @@ Basic.parameters = {
 
 function Tooltips() {
   return (
-    <div className="flex gap-8 p-8">
-      <TooltipProvider>
-        <Tooltip>
-          <TooltipTrigger>
-            <ClipboardIcon className="h-5 w-5" />
-          </TooltipTrigger>
-          <TooltipContent>Copy</TooltipContent>
-        </Tooltip>
-      </TooltipProvider>
-      <SimpleTooltip
-        button={<ClipboardCopyIcon className="h-5 w-5" />}
-        content="Copy"
-      />
+    <div className="flex flex-col gap-8 p-8">
+      <div className="flex gap-4">
+        <Header2>Rich Tooltip:</Header2>
+        <TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger>
+              <ClipboardIcon className="h-5 w-5" />
+            </TooltipTrigger>
+            <TooltipContent className="flex items-center gap-1">
+              <LightBulbIcon className="h-4 w-4 text-yellow-400" />
+              Copy
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+      </div>
+      <div className="flex gap-4">
+        <Header2>Simple Tooltip:</Header2>
+        <SimpleTooltip
+          button={<ClipboardIcon className="h-5 w-5" />}
+          content="Copy"
+        />
+      </div>
     </div>
   );
 }

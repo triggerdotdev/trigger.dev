@@ -8,6 +8,7 @@ import { Paragraph } from "../primitives/Paragraph";
 import { DateTime } from "../primitives/DateTime";
 import { runStatusTitle } from "../runs/RunStatuses";
 import {
+  SimpleTooltip,
   Tooltip,
   TooltipContent,
   TooltipProvider,
@@ -85,34 +86,19 @@ export function JobItem({
               value={
                 <div className="flex gap-1">
                   {integrations &&
-                    integrations.map((integration, index) => {
-                      const [isMouseOver, setIsMouseOver] = useState(false);
-                      return (
-                        <TooltipProvider>
-                          <Tooltip key={index} open={isMouseOver}>
-                            <TooltipTrigger
-                              onMouseEnter={() => setIsMouseOver(true)}
-                              onMouseLeave={() => setIsMouseOver(false)}
-                              className={cn(
-                                "z-50 transition-colors duration-100 hover:cursor-pointer"
-                              )}
-                            >
-                              <NamedIcon
-                                key={integration.name}
-                                name={integration.icon}
-                                className="h-4 w-4"
-                              />
-                            </TooltipTrigger>
-                            <TooltipContent
-                              side="top"
-                              className="text-xs text-bright"
-                            >
-                              {integration.name}
-                            </TooltipContent>
-                          </Tooltip>
-                        </TooltipProvider>
-                      );
-                    })}
+                    integrations.map((integration, index) => (
+                      <SimpleTooltip
+                        key={index}
+                        button={
+                          <NamedIcon
+                            key={integration.name}
+                            name={integration.icon}
+                            className="h-4 w-4"
+                          />
+                        }
+                        content={integration.name}
+                      />
+                    ))}
                 </div>
               }
             />
