@@ -1,5 +1,6 @@
 import {
   RegisterSourceEvent,
+  RegisterTriggerBody,
   TriggerMetadata,
   deepMergeFilters,
 } from "@trigger.dev/internal";
@@ -59,10 +60,10 @@ export class DynamicTrigger<
     return false;
   }
 
-  async register(
+  registeredTriggerForParams(
     params: ExternalSourceParams<TExternalSource>
-  ): Promise<RegisterSourceEvent> {
-    return this.#client.registerTrigger(this.id, {
+  ): RegisterTriggerBody {
+    return {
       rule: {
         event: this.event.name,
         source: this.event.source,
@@ -80,7 +81,16 @@ export class DynamicTrigger<
           ? this.source.integration.id
           : undefined,
       },
-    });
+    };
+  }
+
+  async register(
+    params: ExternalSourceParams<TExternalSource>
+  ): Promise<RegisterSourceEvent> {
+    return this.#client.registerTrigger(
+      this.id,
+      this.registeredTriggerForParams(params)
+    );
   }
 
   attachToJob(

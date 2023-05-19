@@ -1,7 +1,9 @@
-import type {
+import {
   ApiEventLog,
   HttpSourceRequest,
   PrepareJobTriggerBody,
+  RegisterTriggerBody,
+  RegisterTriggerBodySchema,
   RunJobBody,
 } from "@trigger.dev/internal";
 import {
@@ -17,12 +19,13 @@ import { logger } from "./logger";
 
 export class ClientApiError extends Error {
   constructor(message: string, stack?: string) {
-    super(message);
+    super(`ClientApiError: ${message}`);
     this.stack = stack;
     this.name = "ClientApiError";
   }
 }
 
+// TODO: this should work with tunnelling
 export class ClientApi {
   #apiKey: string;
   #url: string;
@@ -205,6 +208,50 @@ export class ClientApi {
     });
 
     return PrepareForJobExecutionResponseSchema.parse(anyBody);
+  }
+
+  async initializeTrigger(
+    id: string,
+    params: any
+  ): Promise<RegisterTriggerBody | undefined> {
+    const response = await safeFetch(this.#url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-trigger-api-key": this.#apiKey,
+        "x-trigger-action": "INITIALIZE_TRIGGER",
+      },
+      body: JSON.stringify({ id, params }),
+    });
+
+    if (!response) {
+      throw new Error(`Could not connect to endpoint ${this.#url}`);
+    }
+
+    if (!response.ok) {
+      // Attempt to parse the error message
+      const anyBody = await response.json();
+
+      const error = ErrorWithStackSchema.safeParse(anyBody);
+
+      if (error.success) {
+        throw new ClientApiError(error.data.message, error.data.stack);
+      }
+
+      throw new Error(
+        `Could not connect to endpoint ${this.#url}. Status code: ${
+          response.status
+        }`
+      );
+    }
+
+    const anyBody = await response.json();
+
+    logger.debug("initializeTrigger() response from endpoint", {
+      body: anyBody,
+    });
+
+    return RegisterTriggerBodySchema.parse(anyBody);
   }
 
   async deliverHttpSourceRequest(options: {

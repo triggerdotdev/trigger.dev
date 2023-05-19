@@ -13,7 +13,7 @@ import {
 import { z } from "zod";
 import { env } from "~/env.server";
 
-export class RegisterTriggerService {
+export class RegisterTriggerSourceService {
   #prismaClient: PrismaClient;
   #registerSource = new RegisterSourceService();
 
@@ -103,6 +103,7 @@ export class RegisterTriggerService {
       source: {
         key: triggerSource.key,
         active: triggerSource.active,
+        params: triggerSource.params,
         secret,
         data: triggerSource.channelData as any,
         channel: {

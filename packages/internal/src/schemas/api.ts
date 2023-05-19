@@ -48,6 +48,7 @@ export const RegisterSourceChannelBodySchema = z.discriminatedUnion("type", [
 
 export const RegisterTriggerSourceSchema = z.object({
   key: z.string(),
+  params: z.any(),
   active: z.boolean(),
   secret: z.string(),
   data: DeserializedJsonSchema.optional(),
@@ -62,6 +63,7 @@ export const RegisterSourceEventSchema = z.object({
   events: z.array(z.string()),
   missingEvents: z.array(z.string()),
   orphanedEvents: z.array(z.string()),
+  dynamicTriggerId: z.string().optional(),
 });
 
 export type RegisterSourceEvent = z.infer<typeof RegisterSourceEventSchema>;
@@ -405,3 +407,10 @@ export const RegisterTriggerBodySchema = z.object({
 });
 
 export type RegisterTriggerBody = z.infer<typeof RegisterTriggerBodySchema>;
+
+export const InitializeTriggerBodySchema = z.object({
+  id: z.string(),
+  params: z.any(),
+});
+
+export type InitializeTriggerBody = z.infer<typeof InitializeTriggerBodySchema>;

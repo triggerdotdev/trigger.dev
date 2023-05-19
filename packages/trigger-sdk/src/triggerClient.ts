@@ -5,6 +5,7 @@ import {
   HandleTriggerSource,
   HttpSourceRequest,
   HttpSourceRequestHeadersSchema,
+  InitializeTriggerBodySchema,
   LogLevel,
   Logger,
   NormalizedRequest,
@@ -26,6 +27,13 @@ import { CustomTrigger } from "./triggers/customTrigger";
 import { ExternalSource, HttpSourceEvent } from "./triggers/externalSource";
 import type { EventSpecification, Trigger, TriggerContext } from "./types";
 import { DynamicTrigger } from "./triggers/dynamic";
+
+const registerSourceEvent: EventSpecification<RegisterSourceEvent> = {
+  name: "trigger.internal.registerSource",
+  title: "Register Source",
+  source: "internal",
+  parsePayload: RegisterSourceEventSchema.parse,
+};
 
 export type TriggerClientOptions = {
   apiKey?: string;
@@ -153,6 +161,34 @@ export class TriggerClient {
             },
           };
         }
+        case "INITIALIZE_TRIGGER": {
+          const body = InitializeTriggerBodySchema.safeParse(request.body);
+
+          if (!body.success) {
+            return {
+              status: 400,
+              body: {
+                message: "Invalid trigger body",
+              },
+            };
+          }
+
+          const dynamicTrigger = this.#registeredDynamicTriggers[body.data.id];
+
+          if (!dynamicTrigger) {
+            return {
+              status: 404,
+              body: {
+                message: "Dynamic trigger not found",
+              },
+            };
+          }
+
+          return {
+            status: 200,
+            body: dynamicTrigger.registeredTriggerForParams(body.data.params),
+          };
+        }
         case "EXECUTE_JOB": {
           const execution = RunJobBodySchema.safeParse(request.body);
 
@@ -262,6 +298,39 @@ export class TriggerClient {
 
   attachDynamicTrigger(trigger: DynamicTrigger<any, any>): void {
     this.#registeredDynamicTriggers[trigger.id] = trigger;
+
+    new Job(this, {
+      id: `register-dynamic-trigger-${trigger.id}`,
+      name: `Register dynamic trigger ${trigger.id}`,
+      version: trigger.source.version,
+      trigger: new CustomTrigger({
+        event: registerSourceEvent,
+        filter: { dynamicTriggerId: [trigger.id] },
+      }),
+      integrations: {
+        integration: trigger.source.integration,
+      },
+      run: async (event, io, ctx) => {
+        const updates = await trigger.source.register(
+          event.source.params,
+          event,
+          io,
+          ctx
+        );
+
+        if (!updates) {
+          // TODO: do something here?
+          return;
+        }
+
+        return await io.updateSource("update-source", {
+          key: event.source.key,
+          ...updates,
+        });
+      },
+      // @ts-ignore
+      __internal: true,
+    });
   }
 
   attachJobToDynamicTrigger(
@@ -304,13 +373,6 @@ export class TriggerClient {
     );
 
     this.#registeredSources[options.key] = registeredSource;
-
-    const registerSourceEvent: EventSpecification<RegisterSourceEvent> = {
-      name: "trigger.internal.registerSource",
-      title: "Register Source",
-      source: "internal",
-      parsePayload: RegisterSourceEventSchema.parse,
-    };
 
     new Job(this, {
       id: options.key,

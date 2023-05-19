@@ -1,10 +1,10 @@
 import type { ActionArgs } from "@remix-run/server-runtime";
 import { json } from "@remix-run/server-runtime";
-import { RegisterTriggerBodySchema } from "@trigger.dev/internal";
+import { InitializeTriggerBodySchema } from "@trigger.dev/internal";
 import { z } from "zod";
 import { authenticateApiRequest } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger";
-import { RegisterTriggerSourceService } from "~/services/triggers/registerTriggerSource.server";
+import { InitializeTriggerService } from "~/services/triggers/initializeTrigger.server";
 
 const ParamsSchema = z.object({
   endpointSlug: z.string(),
@@ -12,10 +12,10 @@ const ParamsSchema = z.object({
 });
 
 export async function action({ request, params }: ActionArgs) {
-  logger.info("Registering trigger", { url: request.url });
+  logger.info("Initializing trigger", { url: request.url });
 
   // Ensure this is a POST request
-  if (request.method.toUpperCase() !== "PUT") {
+  if (request.method.toUpperCase() !== "POST") {
     return { status: 405, body: "Method Not Allowed" };
   }
 
@@ -39,26 +39,26 @@ export async function action({ request, params }: ActionArgs) {
   // Now parse the request body
   const anyBody = await request.json();
 
-  const body = RegisterTriggerBodySchema.safeParse(anyBody);
+  const body = InitializeTriggerBodySchema.safeParse(anyBody);
 
   if (!body.success) {
     return json({ error: "Invalid request body" }, { status: 400 });
   }
 
-  const service = new RegisterTriggerSourceService();
+  const service = new InitializeTriggerService();
 
   try {
-    const source = await service.call({
+    await service.call({
       environment: authenticatedEnv,
       payload: body.data,
       endpointSlug: parsedParams.data.endpointSlug,
       id: parsedParams.data.id,
     });
 
-    return json(source);
+    return json({ ok: true });
   } catch (error) {
     if (error instanceof Error) {
-      logger.error("Error registering trigger", {
+      logger.error("Error initializing trigger", {
         url: request.url,
         error: error.message,
       });
