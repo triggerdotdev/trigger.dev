@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { JobRunStatus } from ".prisma/client";
 import { Link } from "@remix-run/react";
 import { IconNames, NamedIcon } from "../primitives/NamedIcon";
@@ -6,6 +7,12 @@ import { cn } from "~/utils/cn";
 import { Paragraph } from "../primitives/Paragraph";
 import { DateTime } from "../primitives/DateTime";
 import { runStatusTitle } from "../runs/RunStatuses";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "../primitives/Tooltip";
 
 type JobItemProps = {
   to: string;
@@ -72,22 +79,43 @@ export function JobItem({
           </div>
           <div className="flex flex-wrap gap-y-1 gap-x-4">
             <KeyValue name="Trigger" value={trigger} />
-            {integrations && (
-              <KeyValue
-                name="Integrations"
-                value={
-                  <div className="flex gap-1">
-                    {integrations.map((integration) => (
-                      <NamedIcon
-                        key={integration.name}
-                        name={integration.icon}
-                        className="h-3 w-3"
-                      />
-                    ))}
-                  </div>
-                }
-              />
-            )}
+            <KeyValue
+              name="Integrations"
+              className="items-center"
+              value={
+                <div className="flex gap-1">
+                  {integrations &&
+                    integrations.map((integration, index) => {
+                      const [isMouseOver, setIsMouseOver] = useState(false);
+                      return (
+                        <TooltipProvider>
+                          <Tooltip key={index} open={isMouseOver}>
+                            <TooltipTrigger
+                              onMouseEnter={() => setIsMouseOver(true)}
+                              onMouseLeave={() => setIsMouseOver(false)}
+                              className={cn(
+                                "z-50 transition-colors duration-100 hover:cursor-pointer"
+                              )}
+                            >
+                              <NamedIcon
+                                key={integration.name}
+                                name={integration.icon}
+                                className="h-4 w-4"
+                              />
+                            </TooltipTrigger>
+                            <TooltipContent
+                              side="top"
+                              className="text-xs text-bright"
+                            >
+                              {integration.name}
+                            </TooltipContent>
+                          </Tooltip>
+                        </TooltipProvider>
+                      );
+                    })}
+                </div>
+              }
+            />
 
             {properties.map((property) => (
               <KeyValue
@@ -130,9 +158,17 @@ export function JobItem({
   );
 }
 
-function KeyValue({ name, value }: { name: string; value: React.ReactNode }) {
+function KeyValue({
+  name,
+  value,
+  className,
+}: {
+  name: string;
+  value: React.ReactNode;
+  className?: string;
+}) {
   return (
-    <div className="flex items-baseline gap-x-1">
+    <div className={cn("flex items-baseline gap-x-1", className)}>
       <Paragraph
         variant="extra-extra-small/bright/caps"
         className="whitespace-nowrap"

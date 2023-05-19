@@ -52,8 +52,8 @@ function Jobs() {
           trigger="Critical issue in GitHub"
           integrations={[
             {
-              name: "Airtable",
-              icon: "airtable",
+              name: "Slack",
+              icon: "slack",
             },
             {
               name: "GitHub",
@@ -67,9 +67,9 @@ function Jobs() {
           }}
           properties={[
             { key: "Repo", value: "triggerdotdet/trigger.dev" },
-            { key: "Element1", value: "7f9F*9s7df*hdhhh" },
-            { key: "Element2", value: "github/github.com" },
-            { key: "Element3", value: "FH8sdfh(*sd&*Sa8hdj" },
+            { key: "Element-1", value: "7f9F*9s7df*hdhhh" },
+            { key: "Element-2", value: "github/github.com" },
+            { key: "Element-3", value: "FH8sdfh(*sd&*Sa8hdj" },
           ]}
         />
         <JobItem
@@ -80,8 +80,8 @@ function Jobs() {
           trigger="When a new User signs up"
           integrations={[
             {
-              name: "Airtable",
-              icon: "airtable",
+              name: "Slack",
+              icon: "slack",
             },
             {
               name: "GitHub",
