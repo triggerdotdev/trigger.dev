@@ -3,6 +3,7 @@ import {
   customEvent,
   customTrigger,
   DynamicTrigger,
+  intervalTrigger,
   Job,
   NormalizedRequest,
   TriggerClient,
@@ -33,6 +34,68 @@ const dynamicOnIssueOpenedTrigger = new DynamicTrigger(client, {
   event: events.onIssueOpened,
   source: github.sources.repo,
 });
+
+// const dynamicInterval = new DynamicInterval(client, {
+//   id: "dynamic-interval",
+// });
+
+// new Job(client, {
+//   id: "register-dynamic-interval",
+//   name: "Register Dynamic Interval",
+//   version: "0.1.1",
+//   trigger: customTrigger({
+//     name: "dynamic.interval",
+//     event: customEvent({
+//       payload: z.object({
+//         id: z.string(),
+//         seconds: z.number().int().positive(),
+//       }),
+//     }),
+//   }),
+//   run: async (payload, io, ctx) => {
+//     await io.registerInterval("register", dynamicInterval, payload.id, {
+//       seconds: payload.seconds,
+//     });
+//   },
+// });
+
+// new Job(client, {
+//   id: "use-dynamic-interval",
+//   name: "Use Dynamic Interval",
+//   version: "0.1.1",
+//   trigger: dynamicInterval,
+//   run: async (payload, io, ctx) => {
+//     await io.wait("wait", 5); // wait for 5 seconds
+//     await io.logger.info("This is a log info message", {
+//       payload,
+//     });
+//     await io.sendEvent("send-event", {
+//       name: "custom.event",
+//       payload,
+//       context: ctx,
+//     });
+//   },
+// });
+
+// new Job(client, {
+//   id: "scheduled-job-1",
+//   name: "Scheduled Job 1",
+//   version: "0.1.1",
+//   trigger: cronTrigger({
+//     crontab: `* * * * *`,
+//   }),
+//   run: async (payload, io, ctx) => {
+//     await io.wait("wait", 5); // wait for 5 seconds
+//     await io.logger.info("This is a log info message", {
+//       payload,
+//     });
+//     await io.sendEvent("send-event", {
+//       name: "custom.event",
+//       payload,
+//       context: ctx,
+//     });
+//   },
+// });
 
 new Job(client, {
   id: "test-io-functions",

@@ -56,21 +56,24 @@ export class InitializeTriggerService {
       throw new Error("Could not initialize trigger");
     }
 
-    const triggerSource = await this.#registerTriggerSource.call({
+    const registration = await this.#registerTriggerSource.call({
       environment,
       payload: registerMetadata,
       id: dynamicTrigger.slug,
       endpointSlug,
+      key: payload.id,
     });
 
     await this.#sendEvent.call(environment, {
-      id: triggerSource.source.key,
+      id: registration.id,
       name: "trigger.internal.registerSource",
       source: "trigger.dev",
       payload: {
-        ...triggerSource,
+        ...registration,
         dynamicTriggerId: dynamicTrigger.slug,
       },
     });
+
+    return registration;
   }
 }

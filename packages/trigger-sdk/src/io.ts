@@ -189,7 +189,7 @@ export class IO {
             name: "register-source",
           },
           async (subtask1) => {
-            return trigger.register(params);
+            return trigger.register(id, params);
           }
         );
 

@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { SecretStoreProviderSchema } from "./services/secrets/secretStore.server";
+import { SecretStoreOptionsSchema } from "./services/secrets/secretStore.server";
 
 const EnvironmentSchema = z.object({
   NODE_ENV: z.union([
@@ -26,7 +26,7 @@ const EnvironmentSchema = z.object({
       z.literal("staging"),
     ])
     .default(process.env.NODE_ENV),
-  SECRET_STORE: SecretStoreProviderSchema.default("database"),
+  SECRET_STORE: SecretStoreOptionsSchema.default("DATABASE"),
   POSTHOG_PROJECT_KEY: z.string().optional(),
   MAGIC_LINK_SECRET: z.string(),
   GITHUB_CLIENT_ID: z.string(),

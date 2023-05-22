@@ -10,6 +10,7 @@ import {
   TriggerMetadataSchema,
 } from "./triggers";
 import { EventRuleSchema } from "./eventFilter";
+import { RegisterSchedulePayloadSchema } from "./schedules";
 
 export const UpdateTriggerSourceBodySchema = z.object({
   registeredEvents: z.array(z.string()),
@@ -59,6 +60,7 @@ export const RegisterTriggerSourceSchema = z.object({
 export type RegisterTriggerSource = z.infer<typeof RegisterTriggerSourceSchema>;
 
 export const RegisterSourceEventSchema = z.object({
+  id: z.string(),
   source: RegisterTriggerSourceSchema,
   events: z.array(z.string()),
   missingEvents: z.array(z.string()),
@@ -158,6 +160,7 @@ export const GetEndpointDataResponseSchema = z.object({
   jobs: z.array(JobMetadataSchema),
   sources: z.array(SourceMetadataSchema),
   dynamicTriggers: z.array(DynamicTriggerEndpointMetadataSchema),
+  schedules: z.array(RegisterSchedulePayloadSchema),
 });
 
 export type GetEndpointDataResponse = z.infer<

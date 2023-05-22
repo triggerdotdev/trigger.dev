@@ -15,6 +15,7 @@ import {
   RegisterTriggerBody,
   RunJobBody,
   RunJobBodySchema,
+  ScheduleMetadata,
   SendEvent,
   SendEventOptions,
   SourceMetadata,
@@ -67,6 +68,11 @@ export class TriggerClient {
     DynamicTrigger<EventSpecification<any>, ExternalSource<any, any, any>>
   > = {};
   #jobMetadataByDynamicTriggers: Record<
+    string,
+    Array<{ id: string; version: string }>
+  > = {};
+  #registeredSchedules: Record<string, ScheduleMetadata> = {};
+  #jobMetadataBySchedule: Record<
     string,
     Array<{ id: string; version: string }>
   > = {};
@@ -135,6 +141,13 @@ export class TriggerClient {
           (trigger) => ({
             id: trigger.id,
             jobs: this.#jobMetadataByDynamicTriggers[trigger.id],
+          })
+        ),
+        schedules: Object.entries(this.#registeredSchedules).map(
+          ([id, metadata]) => ({
+            id,
+            metadata,
+            jobs: this.#jobMetadataBySchedule[id],
           })
         ),
       };
@@ -413,8 +426,22 @@ export class TriggerClient {
     });
   }
 
-  async registerTrigger(id: string, options: RegisterTriggerBody) {
-    return this.#client.registerTrigger(this.name, id, options);
+  attachSchedule(
+    key: string,
+    job: Job<Trigger<any>, any>,
+    metadata: ScheduleMetadata
+  ): void {
+    this.#registeredSchedules[key] = metadata;
+
+    const jobs = this.#jobMetadataBySchedule[key] ?? [];
+
+    jobs.push({ id: job.id, version: job.version });
+
+    this.#jobMetadataBySchedule[key] = jobs;
+  }
+
+  async registerTrigger(id: string, key: string, options: RegisterTriggerBody) {
+    return this.#client.registerTrigger(this.name, id, key, options);
   }
 
   async getAuth(id: string) {

@@ -2,6 +2,30 @@ import { PrismaClient, Prisma } from ".prisma/client";
 import invariant from "tiny-invariant";
 import { z } from "zod";
 
+export type PrismaTransactionClient = Omit<
+  PrismaClient,
+  "$connect" | "$disconnect" | "$on" | "$transaction" | "$use"
+>;
+
+export type PrismaClientOrTransaction = PrismaClient | PrismaTransactionClient;
+
+function isTransactionClient(
+  prisma: PrismaClientOrTransaction
+): prisma is PrismaTransactionClient {
+  return !("$transaction" in prisma);
+}
+
+export function $transaction<R>(
+  prisma: PrismaClientOrTransaction,
+  fn: (prisma: PrismaTransactionClient) => Promise<R>
+): Promise<R> {
+  if (isTransactionClient(prisma)) {
+    return fn(prisma);
+  }
+
+  return (prisma as PrismaClient).$transaction(fn);
+}
+
 export { Prisma };
 
 let prisma: PrismaClient;

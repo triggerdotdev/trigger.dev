@@ -403,8 +403,9 @@ model DynamicTrigger {
   endpoint   Endpoint @relation(fields: [endpointId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   endpointId String
 
-  jobs    Job[]
-  sources TriggerSource[]
+  jobs          Job[]
+  sources       TriggerSource[]
+  registrations DynamicTriggerRegistration[]
 
   @@unique([endpointId, slug])
 }
@@ -426,6 +427,8 @@ model EventDispatcher {
 
   environment   RuntimeEnvironment @relation(fields: [environmentId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   environmentId String
+
+  registrations DynamicTriggerRegistration[]
 
   @@unique([dispatchableId, environmentId])
 }
@@ -563,9 +566,9 @@ enum TaskStatus {
 }
 
 model SecretReference {
-  id       String @id @default(cuid())
-  key      String @unique
-  provider String
+  id       String              @id @default(cuid())
+  key      String              @unique
+  provider SecretStoreProvider @default(DATABASE)
 
   apiConnections       ApiConnection[]
   apiConnectionClients ApiConnectionClient[]
@@ -573,6 +576,11 @@ model SecretReference {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+enum SecretStoreProvider {
+  DATABASE
+  AWS_PARAM_STORE
 }
 
 /// Used when the provider = "database". Not recommended outside of local development. */
@@ -623,6 +631,7 @@ model TriggerSource {
   updatedAt DateTime @updatedAt
 
   httpDeliveries HttpSourceRequestDelivery[]
+  registrations  DynamicTriggerRegistration[]
 
   @@unique([key, endpointId])
 }
@@ -646,6 +655,26 @@ model TriggerSourceEvent {
   registered Boolean @default(false)
 
   @@unique([name, sourceId])
+}
+
+model DynamicTriggerRegistration {
+  id String @id @default(cuid())
+
+  key String
+
+  dynamicTrigger   DynamicTrigger @relation(fields: [dynamicTriggerId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  dynamicTriggerId String
+
+  eventDispatcher   EventDispatcher @relation(fields: [eventDispatcherId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  eventDispatcherId String
+
+  source   TriggerSource @relation(fields: [sourceId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  sourceId String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([key, dynamicTriggerId])
 }
 
 model HttpSourceRequestDelivery {

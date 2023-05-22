@@ -1,6 +1,6 @@
 import type { Endpoint } from ".prisma/client";
 import type { SourceMetadata } from "@trigger.dev/internal";
-import type { PrismaClient } from "~/db.server";
+import { $transaction, PrismaClientOrTransaction } from "~/db.server";
 import { prisma } from "~/db.server";
 import type { AuthenticatedEnvironment } from "../apiAuth.server";
 import { logger } from "../logger";
@@ -8,9 +8,9 @@ import { workerQueue } from "../worker.server";
 import { generateSecret } from "./utils.server";
 
 export class RegisterSourceService {
-  #prismaClient: PrismaClient;
+  #prismaClient: PrismaClientOrTransaction;
 
-  constructor(prismaClient: PrismaClient = prisma) {
+  constructor(prismaClient: PrismaClientOrTransaction = prisma) {
     this.#prismaClient = prismaClient;
   }
 
@@ -57,8 +57,10 @@ export class RegisterSourceService {
       ? `${dynamicTriggerId}:${metadata.key}`
       : metadata.key;
 
-    const { id, orphanedEvents } = await this.#prismaClient.$transaction(
+    const { id, orphanedEvents } = await $transaction(
+      this.#prismaClient,
       async (tx) => {
+        0;
         const apiClient = metadata.clientId
           ? await tx.apiConnectionClient.findUnique({
               where: {
@@ -123,7 +125,7 @@ export class RegisterSourceService {
                 },
                 create: {
                   key: `${endpoint.id}:${key}`,
-                  provider: "database",
+                  provider: "DATABASE",
                 },
               },
             },

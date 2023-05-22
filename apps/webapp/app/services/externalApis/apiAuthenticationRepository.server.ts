@@ -12,7 +12,10 @@ import type { PrismaClient } from "~/db.server";
 import { prisma } from "~/db.server";
 import { env } from "~/env.server";
 import { workerQueue } from "~/services/worker.server";
-import type { SecretStoreProvider } from "../secrets/secretStore.server";
+import {
+  SecretStoreProvider,
+  getSecretStore,
+} from "../secrets/secretStore.server";
 import { SecretStore } from "../secrets/secretStore.server";
 import type { IntegrationCatalog } from "./integrationCatalog.server";
 import { integrationCatalog } from "./integrationCatalog.server";
@@ -293,7 +296,7 @@ export class APIAuthenticationRepository {
           });
         }
 
-        const secretStore = new SecretStore(env.SECRET_STORE);
+        const secretStore = getSecretStore(env.SECRET_STORE);
         await secretStore.setSecret(key, token);
 
         //if there's an expiry, we want to add it to the connection so we can easily run a background job against it
@@ -342,9 +345,7 @@ export class APIAuthenticationRepository {
           authMethod.client.secret.envName
         );
 
-        const secretStore = new SecretStore(
-          connection.dataReference.provider as SecretStoreProvider
-        );
+        const secretStore = getSecretStore(connection.dataReference.provider);
         const accessToken = await secretStore.getSecret(
           AccessTokenSchema,
           connection.dataReference.key
@@ -439,9 +440,7 @@ export class APIAuthenticationRepository {
       }
     }
 
-    const secretStore = new SecretStore(
-      connection.dataReference.provider as SecretStoreProvider
-    );
+    const secretStore = getSecretStore(connection.dataReference.provider);
     return secretStore.getSecret(
       AccessTokenSchema,
       connection.dataReference.key

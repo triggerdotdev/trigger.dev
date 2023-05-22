@@ -85,10 +85,12 @@ export class DynamicTrigger<
   }
 
   async register(
+    key: string,
     params: ExternalSourceParams<TExternalSource>
   ): Promise<RegisterSourceEvent> {
     return this.#client.registerTrigger(
       this.id,
+      key,
       this.registeredTriggerForParams(params)
     );
   }

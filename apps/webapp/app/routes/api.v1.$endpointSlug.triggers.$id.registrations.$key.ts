@@ -9,6 +9,7 @@ import { RegisterTriggerSourceService } from "~/services/triggers/registerTrigge
 const ParamsSchema = z.object({
   endpointSlug: z.string(),
   id: z.string(),
+  key: z.string(),
 });
 
 export async function action({ request, params }: ActionArgs) {
@@ -48,14 +49,15 @@ export async function action({ request, params }: ActionArgs) {
   const service = new RegisterTriggerSourceService();
 
   try {
-    const source = await service.call({
+    const registration = await service.call({
       environment: authenticatedEnv,
       payload: body.data,
       endpointSlug: parsedParams.data.endpointSlug,
       id: parsedParams.data.id,
+      key: parsedParams.data.key,
     });
 
-    return json(source);
+    return json(registration);
   } catch (error) {
     if (error instanceof Error) {
       logger.error("Error registering trigger", {

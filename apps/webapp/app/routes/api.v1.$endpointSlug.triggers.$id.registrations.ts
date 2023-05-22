@@ -48,14 +48,14 @@ export async function action({ request, params }: ActionArgs) {
   const service = new InitializeTriggerService();
 
   try {
-    await service.call({
+    const registration = await service.call({
       environment: authenticatedEnv,
       payload: body.data,
       endpointSlug: parsedParams.data.endpointSlug,
       id: parsedParams.data.id,
     });
 
-    return json({ ok: true });
+    return json(registration);
   } catch (error) {
     if (error instanceof Error) {
       logger.error("Error initializing trigger", {

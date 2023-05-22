@@ -8,7 +8,10 @@ import type {
 import type { AuthenticatedEnvironment } from "../apiAuth.server";
 import { env } from "~/env.server";
 import type { RegisterTriggerSource } from "@trigger.dev/internal";
-import type { SecretStoreProvider } from "../secrets/secretStore.server";
+import {
+  SecretStoreProvider,
+  getSecretStore,
+} from "../secrets/secretStore.server";
 import { SecretStore } from "../secrets/secretStore.server";
 import { z } from "zod";
 import { IngestSendEvent } from "../events/ingestSendEvent.server";
@@ -64,9 +67,7 @@ export class ActivateSourceService {
     eventId: string,
     orphanedEvents?: Array<string>
   ) {
-    const secretStore = new SecretStore(
-      secretReference.provider as SecretStoreProvider
-    );
+    const secretStore = getSecretStore(secretReference.provider);
     const httpSecret = await secretStore.getSecret(
       z.object({
         secret: z.string(),
@@ -104,6 +105,7 @@ export class ActivateSourceService {
       name: "trigger.internal.registerSource",
       source: "trigger.dev",
       payload: {
+        id: triggerSource.id,
         source,
         events: eventNames,
         missingEvents,

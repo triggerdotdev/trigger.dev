@@ -12,6 +12,7 @@ import { RunFinishedService } from "./runs/runFinished.server";
 import {
   DynamicTriggerEndpointMetadataSchema,
   JobMetadataSchema,
+  RegisterSchedulePayloadSchema,
   SourceMetadataSchema,
 } from "@trigger.dev/internal";
 import { RegisterSourceService } from "./sources/registerSource.server";
@@ -19,6 +20,7 @@ import { ActivateSourceService } from "./sources/activateSource.server";
 import { DeliverEventService } from "./events/deliverEvent.server";
 import { InvokeDispatcherService } from "./events/invokeDispatcher.server";
 import { RegisterDynamicTriggerService } from "./triggers/registerDynamicTrigger.server";
+import { RegisterScheduleService } from "./triggers/registerSchedule.server";
 
 const workerCatalog = {
   organizationCreated: z.object({ id: z.string() }),
@@ -55,6 +57,10 @@ const workerCatalog = {
   registerDynamicTrigger: z.object({
     endpointId: z.string(),
     dynamicTrigger: DynamicTriggerEndpointMetadataSchema,
+  }),
+  registerSchedule: z.object({
+    endpointId: z.string(),
+    schedule: RegisterSchedulePayloadSchema,
   }),
   activateSource: z.object({
     id: z.string(),
@@ -148,6 +154,14 @@ function getWorkerQueue() {
           const service = new RegisterDynamicTriggerService();
 
           await service.call(payload.endpointId, payload.dynamicTrigger);
+        },
+      },
+      registerSchedule: {
+        maxAttempts: 3,
+        handler: async (payload, job) => {
+          const service = new RegisterScheduleService();
+
+          await service.call(payload.endpointId, payload.schedule);
         },
       },
       activateSource: {

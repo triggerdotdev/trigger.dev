@@ -213,6 +213,7 @@ export class ApiClient {
   async registerTrigger(
     client: string,
     id: string,
+    key: string,
     payload: RegisterTriggerBody
   ): Promise<RegisterSourceEvent> {
     const apiKey = await this.#apiKey();
@@ -224,7 +225,7 @@ export class ApiClient {
 
     const response = await zodfetch(
       RegisterSourceEventSchema,
-      `${this.#apiUrl}/api/v1/${client}/triggers/${id}`,
+      `${this.#apiUrl}/api/v1/${client}/triggers/${id}/registrations/${key}`,
       {
         method: "PUT",
         headers: {

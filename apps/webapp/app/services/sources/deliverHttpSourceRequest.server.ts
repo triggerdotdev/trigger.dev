@@ -1,7 +1,10 @@
 import type { PrismaClient } from "~/db.server";
 import { prisma } from "~/db.server";
 import { ClientApi } from "../clientApi.server";
-import type { SecretStoreProvider } from "../secrets/secretStore.server";
+import {
+  SecretStoreProvider,
+  getSecretStore,
+} from "../secrets/secretStore.server";
 import { SecretStore } from "../secrets/secretStore.server";
 import { z } from "zod";
 import { IngestSendEvent } from "../events/ingestSendEvent.server";
@@ -38,8 +41,8 @@ export class DeliverHttpSourceRequestService {
       return;
     }
 
-    const secretStore = new SecretStore(
-      httpSourceRequest.source.secretReference.provider as SecretStoreProvider
+    const secretStore = getSecretStore(
+      httpSourceRequest.source.secretReference.provider
     );
 
     const secret = await secretStore.getSecret(

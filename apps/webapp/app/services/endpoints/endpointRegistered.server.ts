@@ -23,7 +23,8 @@ export class EndpointRegisteredService {
     // Make a request to the endpoint to fetch a list of jobs
     const client = new ClientApi(endpoint.environment.apiKey, endpoint.url);
 
-    const { jobs, sources, dynamicTriggers } = await client.getEndpointData();
+    const { jobs, sources, dynamicTriggers, schedules } =
+      await client.getEndpointData();
 
     const queueName = `endpoint-${endpoint.id}`;
 
@@ -58,6 +59,19 @@ export class EndpointRegisteredService {
         "registerDynamicTrigger",
         {
           dynamicTrigger,
+          endpointId: endpoint.id,
+        },
+        {
+          queueName,
+        }
+      );
+    }
+
+    for (const schedule of schedules) {
+      await workerQueue.enqueue(
+        "registerSchedule",
+        {
+          schedule,
           endpointId: endpoint.id,
         },
         {

@@ -5,8 +5,7 @@ import type {
 } from "@trigger.dev/internal";
 import type { PrismaClient } from "~/db.server";
 import { prisma } from "~/db.server";
-import type { SecretStoreProvider } from "../secrets/secretStore.server";
-import { SecretStore } from "../secrets/secretStore.server";
+import { getSecretStore } from "../secrets/secretStore.server";
 
 export class UpdateSourceService {
   #prismaClient: PrismaClient;
@@ -54,9 +53,7 @@ export class UpdateSourceService {
       },
       data: {
         active: true,
-        channelData: payload.data
-          ? JSON.parse(JSON.stringify(payload.data))
-          : undefined,
+        channelData: payload.data as any,
       },
     });
 
@@ -76,8 +73,8 @@ export class UpdateSourceService {
 
     if (payload.secret) {
       // We need to update the secret reference in the store
-      const secretStore = new SecretStore(
-        triggerSource.secretReference.provider as SecretStoreProvider
+      const secretStore = getSecretStore(
+        triggerSource.secretReference.provider
       );
 
       await secretStore.setSecret<{ secret: string }>(

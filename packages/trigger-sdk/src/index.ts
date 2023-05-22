@@ -5,6 +5,7 @@ export * from "./triggers/customTrigger";
 export * from "./triggers/comboTrigger";
 export * from "./triggers/externalSource";
 export * from "./triggers/dynamic";
+export * from "./triggers/scheduled";
 export * from "./io";
 export * from "./types";
 
