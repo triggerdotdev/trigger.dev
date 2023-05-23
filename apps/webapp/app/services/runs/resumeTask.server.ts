@@ -79,7 +79,7 @@ export class ResumeTaskService {
       run.version.endpoint.url
     );
 
-    const event = ApiEventLogSchema.parse(run.event);
+    const event = ApiEventLogSchema.parse({ ...run.event, id: run.eventId });
 
     try {
       const results = await client.executeJob({
@@ -110,24 +110,39 @@ export class ResumeTaskService {
       });
 
       if (results.completed) {
-        await this.#prismaClient.jobRun.update({
-          where: { id: run.id },
-          data: {
-            completedAt: new Date(),
-            status: "SUCCESS",
-            output: results.output ?? undefined,
-            queue: {
-              update: {
-                jobCount: {
-                  decrement: 1,
+        await this.#prismaClient.$transaction(async (tx) => {
+          await tx.jobRun.update({
+            where: { id: run.id },
+            data: {
+              completedAt: new Date(),
+              status: "SUCCESS",
+              output: results.output ?? undefined,
+              queue: {
+                update: {
+                  jobCount: {
+                    decrement: 1,
+                  },
                 },
               },
             },
-          },
-        });
+          });
 
-        await workerQueue.enqueue("runFinished", {
-          id: run.id,
+          await tx.jobQueue.update({
+            where: { id: run.queueId },
+            data: {
+              jobCount: {
+                decrement: 1,
+              },
+            },
+          });
+
+          await workerQueue.enqueue(
+            "runFinished",
+            {
+              id: run.id,
+            },
+            { tx }
+          );
         });
 
         return;
@@ -145,45 +160,47 @@ export class ResumeTaskService {
         return;
       }
     } catch (error) {
-      if (error instanceof ClientApiError) {
-        await this.#prismaClient.jobRun.update({
-          where: { id },
-          data: {
-            completedAt: new Date(),
-            status: "FAILURE",
-            output: { message: error.message, stack: error.stack },
-            queue: {
-              update: {
-                jobCount: {
-                  decrement: 1,
-                },
+      await this.#prismaClient.$transaction(async (tx) => {
+        if (error instanceof ClientApiError) {
+          await tx.jobRun.update({
+            where: { id: run.id },
+            data: {
+              completedAt: new Date(),
+              status: "FAILURE",
+              output: { message: error.message, stack: error.stack },
+            },
+          });
+        } else {
+          await tx.jobRun.update({
+            where: { id: run.id },
+            data: {
+              completedAt: new Date(),
+              status: "FAILURE",
+              output: {
+                message:
+                  error instanceof Error ? error.message : "Unknown Error",
+                stack: error instanceof Error ? error.stack : undefined,
               },
             },
-          },
-        });
-      } else {
-        await this.#prismaClient.jobRun.update({
-          where: { id },
-          data: {
-            completedAt: new Date(),
-            status: "FAILURE",
-            output: {
-              message: error instanceof Error ? error.message : "Unknown Error",
-              stack: error instanceof Error ? error.stack : undefined,
-            },
-            queue: {
-              update: {
-                jobCount: {
-                  decrement: 1,
-                },
-              },
-            },
-          },
-        });
-      }
+          });
+        }
 
-      await workerQueue.enqueue("runFinished", {
-        id: run.id,
+        await tx.jobQueue.update({
+          where: { id: run.queueId },
+          data: {
+            jobCount: {
+              decrement: 1,
+            },
+          },
+        });
+
+        await workerQueue.enqueue(
+          "runFinished",
+          {
+            id: run.id,
+          },
+          { tx }
+        );
       });
     }
   }

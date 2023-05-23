@@ -1,81 +1,87 @@
 import type { EventDispatcher, EventRecord } from ".prisma/client";
 import type { EventFilter } from "@trigger.dev/internal";
 import { EventFilterSchema } from "@trigger.dev/internal";
-import type { PrismaClient } from "~/db.server";
-import { prisma } from "~/db.server";
+import { $transaction, PrismaClientOrTransaction, prisma } from "~/db.server";
 import { logger } from "~/services/logger";
 import { workerQueue } from "../worker.server";
 
 export class DeliverEventService {
-  #prismaClient: PrismaClient;
+  #prismaClient: PrismaClientOrTransaction;
 
-  constructor(prismaClient: PrismaClient = prisma) {
+  constructor(prismaClient: PrismaClientOrTransaction = prisma) {
     this.#prismaClient = prismaClient;
   }
 
   public async call(id: string) {
-    const eventRecord = await this.#prismaClient.eventRecord.findUniqueOrThrow({
-      where: {
-        id,
-      },
-      include: {
-        environment: {
-          include: {
-            organization: true,
-            project: true,
+    await $transaction(this.#prismaClient, async (tx) => {
+      const eventRecord = await tx.eventRecord.findUniqueOrThrow({
+        where: {
+          id,
+        },
+        include: {
+          environment: {
+            include: {
+              organization: true,
+              project: true,
+            },
           },
         },
-      },
-    });
+      });
 
-    const possibleEventDispatchers =
-      await this.#prismaClient.eventDispatcher.findMany({
+      const possibleEventDispatchers = await tx.eventDispatcher.findMany({
         where: {
           environmentId: eventRecord.environmentId,
           event: eventRecord.name,
           source: eventRecord.source,
           enabled: true,
+          manual: false,
         },
       });
 
-    logger.debug("Found possible event dispatchers", {
-      possibleEventDispatchers,
-      eventRecord: eventRecord.id,
-    });
-
-    const matchingEventDispatchers = possibleEventDispatchers.filter(
-      (eventDispatcher) => this.#evaluateEventRule(eventDispatcher, eventRecord)
-    );
-
-    if (matchingEventDispatchers.length === 0) {
-      logger.debug("No matching event dispatchers", {
+      logger.debug("Found possible event dispatchers", {
+        possibleEventDispatchers,
         eventRecord: eventRecord.id,
       });
 
-      return;
-    }
+      const matchingEventDispatchers = possibleEventDispatchers.filter(
+        (eventDispatcher) =>
+          this.#evaluateEventRule(eventDispatcher, eventRecord)
+      );
 
-    logger.debug("Found matching event dispatchers", {
-      matchingEventDispatchers,
-      eventRecord: eventRecord.id,
-    });
+      if (matchingEventDispatchers.length === 0) {
+        logger.debug("No matching event dispatchers", {
+          eventRecord: eventRecord.id,
+        });
 
-    await Promise.all(
-      matchingEventDispatchers.map((eventDispatcher) =>
-        workerQueue.enqueue("events.invokeDispatcher", {
-          id: eventDispatcher.id,
-          eventRecordId: eventRecord.id,
-        })
-      )
-    );
+        return;
+      }
 
-    await this.#prismaClient.eventRecord.update({
-      where: {
-        id: eventRecord.id,
-      },
-      data: {
-        deliveredAt: new Date(),
-      },
+      logger.debug("Found matching event dispatchers", {
+        matchingEventDispatchers,
+        eventRecord: eventRecord.id,
+      });
+
+      await Promise.all(
+        matchingEventDispatchers.map((eventDispatcher) =>
+          workerQueue.enqueue(
+            "events.invokeDispatcher",
+            {
+              id: eventDispatcher.id,
+              eventRecordId: eventRecord.id,
+            },
+            { tx }
+          )
+        )
+      );
+
+      await tx.eventRecord.update({
+        where: {
+          id: eventRecord.id,
+        },
+        data: {
+          deliveredAt: new Date(),
+        },
+      });
     });
   }
 

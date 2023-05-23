@@ -13,6 +13,7 @@ import {
   DynamicTriggerEndpointMetadataSchema,
   JobMetadataSchema,
   RegisterSchedulePayloadSchema,
+  ScheduledPayloadSchema,
   SourceMetadataSchema,
 } from "@trigger.dev/internal";
 import { RegisterSourceService } from "./sources/registerSource.server";
@@ -21,6 +22,8 @@ import { DeliverEventService } from "./events/deliverEvent.server";
 import { InvokeDispatcherService } from "./events/invokeDispatcher.server";
 import { RegisterDynamicTriggerService } from "./triggers/registerDynamicTrigger.server";
 import { RegisterScheduleService } from "./triggers/registerSchedule.server";
+import { DeliverScheduledEventService } from "./schedules/deliverScheduledEvent.server";
+import { prisma } from "~/db.server";
 
 const workerCatalog = {
   organizationCreated: z.object({ id: z.string() }),
@@ -72,6 +75,10 @@ const workerCatalog = {
     id: z.string(),
     eventRecordId: z.string(),
   }),
+  "events.deliverScheduled": z.object({
+    id: z.string(),
+    payload: ScheduledPayloadSchema,
+  }),
 };
 
 let workerQueue: ZodWorker<typeof workerCatalog>;
@@ -99,6 +106,7 @@ export async function init() {
 
 function getWorkerQueue() {
   return new ZodWorker({
+    prisma,
     runnerOptions: {
       connectionString: env.DATABASE_URL,
       concurrency: 5,
@@ -113,6 +121,14 @@ function getWorkerQueue() {
           const service = new InvokeDispatcherService();
 
           await service.call(payload.id, payload.eventRecordId);
+        },
+      },
+      "events.deliverScheduled": {
+        maxAttempts: 5,
+        handler: async ({ id, payload }, job) => {
+          const service = new DeliverScheduledEventService();
+
+          await service.call(id, payload);
         },
       },
       runFinished: {

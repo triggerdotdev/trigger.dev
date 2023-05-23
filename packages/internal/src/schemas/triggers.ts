@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { EventFilterSchema, EventRuleSchema } from "./eventFilter";
 import { DisplayElementSchema } from "./elements";
+import { ScheduleMetadataSchema } from "./schedules";
 
 export const EventSpecificationSchema = z.object({
   name: z.string(),
@@ -24,9 +25,15 @@ export const StaticTriggerMetadataSchema = z.object({
   rule: EventRuleSchema,
 });
 
+export const ScheduledTriggerMetadataSchema = z.object({
+  type: z.literal("scheduled"),
+  schedule: ScheduleMetadataSchema,
+});
+
 export const TriggerMetadataSchema = z.discriminatedUnion("type", [
   DynamicTriggerMetadataSchema,
   StaticTriggerMetadataSchema,
+  ScheduledTriggerMetadataSchema,
 ]);
 
 export type TriggerMetadata = z.infer<typeof TriggerMetadataSchema>;

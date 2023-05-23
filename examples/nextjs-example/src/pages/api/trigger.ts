@@ -1,7 +1,9 @@
 import {
   comboTrigger,
+  cronTrigger,
   customEvent,
   customTrigger,
+  DynamicInterval,
   DynamicTrigger,
   intervalTrigger,
   Job,
@@ -35,72 +37,95 @@ const dynamicOnIssueOpenedTrigger = new DynamicTrigger(client, {
   source: github.sources.repo,
 });
 
-// const dynamicInterval = new DynamicInterval(client, {
-//   id: "dynamic-interval",
-// });
+const dynamicInterval = new DynamicInterval(client, {
+  id: "dynamic-interval",
+});
 
-// new Job(client, {
-//   id: "register-dynamic-interval",
-//   name: "Register Dynamic Interval",
-//   version: "0.1.1",
-//   trigger: customTrigger({
-//     name: "dynamic.interval",
-//     event: customEvent({
-//       payload: z.object({
-//         id: z.string(),
-//         seconds: z.number().int().positive(),
-//       }),
-//     }),
-//   }),
-//   run: async (payload, io, ctx) => {
-//     await io.registerInterval("register", dynamicInterval, payload.id, {
-//       seconds: payload.seconds,
-//     });
-//   },
-// });
+const enabled = true;
 
-// new Job(client, {
-//   id: "use-dynamic-interval",
-//   name: "Use Dynamic Interval",
-//   version: "0.1.1",
-//   trigger: dynamicInterval,
-//   run: async (payload, io, ctx) => {
-//     await io.wait("wait", 5); // wait for 5 seconds
-//     await io.logger.info("This is a log info message", {
-//       payload,
-//     });
-//     await io.sendEvent("send-event", {
-//       name: "custom.event",
-//       payload,
-//       context: ctx,
-//     });
-//   },
-// });
+new Job(client, {
+  id: "register-dynamic-interval",
+  name: "Register Dynamic Interval",
+  version: "0.1.1",
+  enabled,
+  trigger: customTrigger({
+    name: "dynamic.interval",
+    event: customEvent({
+      payload: z.object({
+        id: z.string(),
+        seconds: z.number().int().positive(),
+      }),
+    }),
+  }),
+  run: async (payload, io, ctx) => {
+    // await io.registerInterval("register", dynamicInterval, payload.id, {
+    //   seconds: payload.seconds,
+    // });
+  },
+});
 
-// new Job(client, {
-//   id: "scheduled-job-1",
-//   name: "Scheduled Job 1",
-//   version: "0.1.1",
-//   trigger: cronTrigger({
-//     crontab: `* * * * *`,
-//   }),
-//   run: async (payload, io, ctx) => {
-//     await io.wait("wait", 5); // wait for 5 seconds
-//     await io.logger.info("This is a log info message", {
-//       payload,
-//     });
-//     await io.sendEvent("send-event", {
-//       name: "custom.event",
-//       payload,
-//       context: ctx,
-//     });
-//   },
-// });
+new Job(client, {
+  id: "use-dynamic-interval",
+  name: "Use Dynamic Interval",
+  version: "0.1.1",
+  enabled,
+  trigger: dynamicInterval,
+  run: async (payload, io, ctx) => {
+    await io.wait("wait", 5); // wait for 5 seconds
+    await io.logger.info("This is a log info message", {
+      payload,
+    });
+    await io.sendEvent("send-event", {
+      name: "custom.event",
+      payload,
+      context: ctx,
+    });
+  },
+});
+
+new Job(client, {
+  id: "scheduled-job-1",
+  name: "Scheduled Job 1",
+  version: "0.1.1",
+  enabled: true,
+  trigger: intervalTrigger({
+    seconds: 60,
+  }),
+  run: async (payload, io, ctx) => {
+    await io.wait("wait", 5); // wait for 5 seconds
+    await io.logger.info("This is a log info message", {
+      payload,
+    });
+    await io.sendEvent("send-event", {
+      name: "custom.event",
+      payload,
+      context: ctx,
+    });
+  },
+});
+
+new Job(client, {
+  id: "scheduled-job-2",
+  name: "Scheduled Job 2",
+  version: "0.1.1",
+  enabled,
+  trigger: cronTrigger({
+    cron: "*/5 * * * *", // every 5 minutes
+  }),
+  run: async (payload, io, ctx) => {
+    await io.wait("wait", 5); // wait for 5 seconds
+    await io.logger.info("This is a log info message", {
+      payload,
+      ctx,
+    });
+  },
+});
 
 new Job(client, {
   id: "test-io-functions",
   name: "Test IO functions",
   version: "0.1.1",
+  enabled,
   trigger: customTrigger({
     name: "test.io",
     event: customEvent({
@@ -124,6 +149,7 @@ new Job(client, {
   id: "register-dynamic-trigger-on-new-repo",
   name: "Register dynamic trigger on new repo",
   version: "0.1.1",
+  enabled,
   trigger: customTrigger({
     name: "new.repo",
     event: customEvent({
@@ -146,6 +172,7 @@ new Job(client, {
   id: "listen-for-dynamic-trigger",
   name: "Listen for dynamic trigger",
   version: "0.1.1",
+  enabled,
   trigger: dynamicOnIssueOpenedTrigger,
   integrations: {
     slack,
@@ -164,6 +191,7 @@ new Job(client, {
   id: "listen-for-dynamic-trigger-2",
   name: "Listen for dynamic trigger-2",
   version: "0.1.1",
+  enabled,
   trigger: dynamicOnIssueOpenedTrigger,
   integrations: {
     slack,
@@ -180,6 +208,7 @@ new Job(client, {
   id: "listen-for-dynamic-trigger-3",
   name: "Listen for dynamic trigger-3",
   version: "0.1.1",
+  enabled,
   trigger: dynamicOnIssueOpenedTrigger,
   integrations: {
     slack,
@@ -196,6 +225,7 @@ new Job(client, {
   id: "alert-on-new-github-issues",
   name: "Alert on new GitHub issues",
   version: "0.1.1",
+  enabled,
   integrations: {
     slack,
   },
@@ -210,92 +240,6 @@ new Job(client, {
     });
   },
 });
-
-// new Job(client, {
-//   id: "comment-on-new-github-issues",
-//   name: "Comment on new GitHub issues",
-//   version: "0.1.1",
-//   integrations: {
-//     githubLocal,
-//   },
-//   trigger: githubLocal.triggers.repo({
-//     event: events.onIssueOpened,
-//     repo: "ericallam/basic-starter-100k",
-//   }),
-//   run: async (payload, io, ctx) => {},
-// });
-
-// new Job(client, {
-//   id: "alert-on-new-github-issues-dynamic",
-//   name: "Alert on new GitHub issues Dynamic",
-//   version: "0.1.1",
-//   trigger: dynamicOnIssueOpenedTrigger,
-//   run: async (payload, io, ctx) => {},
-// });
-
-// new Job(client, {
-//   id: "alert-on-new-github-stars",
-//   name: "Alert on new GitHub stars",
-//   version: "0.1.1",
-//   trigger: github.triggers.repo({
-//     event: events.onNewStar,
-//     repo: "ericallam/basic-starter-100k",
-//   }),
-//   run: async (payload, io, ctx) => {},
-// });
-
-// new Job(client, {
-//   id: "alert-on-new-issue-comments",
-//   name: "Alert on new github issue comments",
-//   version: "0.1.1",
-//   trigger: github.triggers.repo({
-//     event: events.onIssueComment,
-//     repo: "ericallam/basic-starter-100k",
-//   }),
-//   run: async (payload, io, ctx) => {},
-// });
-
-// new Job(client, {
-//   id: "alert-on-new-github-stars-in-org",
-//   name: "Alert on new GitHub stars in Org",
-//   version: "0.1.1",
-//   trigger: comboTrigger({
-//     event: events.onNewStar,
-//     triggers: [
-//       github.triggers.repo({
-//         event: events.onNewStar,
-//         repo: "ericallam/stripe-to-email",
-//       }),
-//       github.triggers.repo({
-//         event: events.onNewStar,
-//         repo: "ericallam/supabase-to-loops-cloud",
-//       }),
-//     ],
-//   }),
-//   run: async (payload, io, ctx) => {},
-// });
-
-// new Job(client, {
-//   id: "custom-event-example",
-//   name: "Custom Event Example",
-//   version: "0.1.1",
-//   trigger: customTrigger({
-//     name: "my.custom.trigger",
-//     event: customEvent({ payload: z.object({ id: z.string() }) }),
-//   }),
-//   run: async (payload, io, ctx) => {},
-// });
-
-// new Job(client, {
-//   id: "custom-github-event-example",
-//   name: "Custom Github Event Example",
-//   version: "0.1.1",
-//   trigger: customTrigger({
-//     name: "my.custom.trigger",
-//     event: events.onNewStar,
-//   }),
-//   run: async (payload, io, ctx) => {},
-// });
 
 export default async function handler(
   req: NextApiRequest,

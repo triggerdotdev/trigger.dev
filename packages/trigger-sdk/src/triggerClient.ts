@@ -71,11 +71,9 @@ export class TriggerClient {
     string,
     Array<{ id: string; version: string }>
   > = {};
-  #registeredSchedules: Record<string, ScheduleMetadata> = {};
-  #jobMetadataBySchedule: Record<
-    string,
-    Array<{ id: string; version: string }>
-  > = {};
+  #registeredSchedules: Record<string, Array<{ id: string; version: string }>> =
+    {};
+
   #client: ApiClient;
   #logger: Logger;
   name: string;
@@ -140,14 +138,13 @@ export class TriggerClient {
         dynamicTriggers: Object.values(this.#registeredDynamicTriggers).map(
           (trigger) => ({
             id: trigger.id,
-            jobs: this.#jobMetadataByDynamicTriggers[trigger.id],
+            jobs: this.#jobMetadataByDynamicTriggers[trigger.id] ?? [],
           })
         ),
         schedules: Object.entries(this.#registeredSchedules).map(
-          ([id, metadata]) => ({
+          ([id, jobs]) => ({
             id,
-            metadata,
-            jobs: this.#jobMetadataBySchedule[id],
+            jobs,
           })
         ),
       };
@@ -304,6 +301,10 @@ export class TriggerClient {
   }
 
   attach(job: Job<Trigger<any>, any>): void {
+    if (!job.enabled) {
+      return;
+    }
+
     this.#registeredJobs[job.id] = job;
 
     job.trigger.attachToJob(this, job);
@@ -426,18 +427,12 @@ export class TriggerClient {
     });
   }
 
-  attachSchedule(
-    key: string,
-    job: Job<Trigger<any>, any>,
-    metadata: ScheduleMetadata
-  ): void {
-    this.#registeredSchedules[key] = metadata;
-
-    const jobs = this.#jobMetadataBySchedule[key] ?? [];
+  attachDynamicSchedule(key: string, job: Job<Trigger<any>, any>): void {
+    const jobs = this.#registeredSchedules[key] ?? [];
 
     jobs.push({ id: job.id, version: job.version });
 
-    this.#jobMetadataBySchedule[key] = jobs;
+    this.#registeredSchedules[key] = jobs;
   }
 
   async registerTrigger(id: string, key: string, options: RegisterTriggerBody) {

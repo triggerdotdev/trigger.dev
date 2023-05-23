@@ -16,6 +16,7 @@ import { prisma } from "~/db.server";
 import type { AuthenticatedEnvironment } from "../apiAuth.server";
 import { logger } from "../logger";
 import type { RuntimeEnvironment } from "~/models/runtimeEnvironment.server";
+import { RegisterScheduleSourceService } from "../schedules/registerScheduleSource.server";
 
 export class RegisterJobService {
   #prismaClient: PrismaClient;
@@ -291,38 +292,84 @@ export class RegisterJobService {
     jobVersion: JobVersion,
     environment: RuntimeEnvironment
   ) {
-    if (trigger.type === "static") {
-      await this.#prismaClient.eventDispatcher.upsert({
-        where: {
-          dispatchableId_environmentId: {
-            dispatchableId: job.id,
+    switch (trigger.type) {
+      case "static": {
+        await this.#prismaClient.eventDispatcher.upsert({
+          where: {
+            dispatchableId_environmentId: {
+              dispatchableId: job.id,
+              environmentId: environment.id,
+            },
+          },
+          create: {
+            event: trigger.rule.event,
+            source: trigger.rule.source,
+            payloadFilter: trigger.rule.payload,
+            contextFilter: trigger.rule.context,
             environmentId: environment.id,
+            enabled: true,
+            dispatchable: {
+              type: "JOB_VERSION",
+              id: jobVersion.id,
+            },
+            dispatchableId: job.id,
           },
-        },
-        create: {
-          event: trigger.rule.event,
-          source: trigger.rule.source,
-          payloadFilter: trigger.rule.payload,
-          contextFilter: trigger.rule.context,
-          environmentId: environment.id,
-          enabled: true,
-          dispatchable: {
-            type: "JOB_VERSION",
-            id: jobVersion.id,
+          update: {
+            event: trigger.rule.event,
+            source: trigger.rule.source,
+            payloadFilter: trigger.rule.payload,
+            contextFilter: trigger.rule.context,
+            dispatchable: {
+              type: "JOB_VERSION",
+              id: jobVersion.id,
+            },
           },
-          dispatchableId: job.id,
-        },
-        update: {
-          event: trigger.rule.event,
-          source: trigger.rule.source,
-          payloadFilter: trigger.rule.payload,
-          contextFilter: trigger.rule.context,
-          dispatchable: {
-            type: "JOB_VERSION",
-            id: jobVersion.id,
-          },
-        },
-      });
+        });
+
+        break;
+      }
+      case "scheduled": {
+        const eventDispatcher = await this.#prismaClient.eventDispatcher.upsert(
+          {
+            where: {
+              dispatchableId_environmentId: {
+                dispatchableId: job.id,
+                environmentId: environment.id,
+              },
+            },
+            create: {
+              event: "internal.scheduled",
+              source: "trigger.dev",
+              payloadFilter: {},
+              contextFilter: {},
+              environmentId: environment.id,
+              enabled: true,
+              dispatchable: {
+                type: "JOB_VERSION",
+                id: jobVersion.id,
+              },
+              dispatchableId: job.id,
+              manual: true,
+            },
+            update: {
+              dispatchable: {
+                type: "JOB_VERSION",
+                id: jobVersion.id,
+              },
+            },
+          }
+        );
+
+        const service = new RegisterScheduleSourceService();
+
+        await service.call({
+          key: job.id,
+          dispatcher: eventDispatcher,
+          schedule: trigger.schedule,
+        });
+
+        break;
+      }
     }
   }
 

@@ -1,5 +1,5 @@
 import { z } from "zod";
-import type { PrismaClient } from "~/db.server";
+import type { PrismaClient, PrismaClientOrTransaction } from "~/db.server";
 import { prisma } from "~/db.server";
 import { logger } from "~/services/logger";
 import { CreateRunService } from "~/services/runs/createRun.server";
@@ -21,11 +21,9 @@ const DispatchableSchema = z.discriminatedUnion("type", [
 ]);
 
 export class InvokeDispatcherService {
-  #prismaClient: PrismaClient;
-  #createRunService = new CreateRunService();
-  #resumeTaskService = new ResumeTaskService();
+  #prismaClient: PrismaClientOrTransaction;
 
-  constructor(prismaClient: PrismaClient = prisma) {
+  constructor(prismaClient: PrismaClientOrTransaction = prisma) {
     this.#prismaClient = prismaClient;
   }
 
@@ -44,6 +42,14 @@ export class InvokeDispatcherService {
           },
         },
       });
+
+    if (!eventDispatcher.enabled) {
+      logger.debug("Event dispatcher is disabled", {
+        eventDispatcher,
+      });
+
+      return;
+    }
 
     const eventRecord = await this.#prismaClient.eventRecord.findUniqueOrThrow({
       where: {
@@ -81,7 +87,9 @@ export class InvokeDispatcherService {
             },
           });
 
-        await this.#createRunService.call({
+        const createRunService = new CreateRunService(this.#prismaClient);
+
+        await createRunService.call({
           eventId: eventRecord.id,
           job: jobVersion.job,
           version: jobVersion,
@@ -131,7 +139,9 @@ export class InvokeDispatcherService {
             continue;
           }
 
-          await this.#createRunService.call({
+          const createRunService = new CreateRunService(this.#prismaClient);
+
+          await createRunService.call({
             eventId: eventRecord.id,
             job: job,
             version: latestJobVersion,

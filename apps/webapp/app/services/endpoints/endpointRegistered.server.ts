@@ -29,6 +29,10 @@ export class EndpointRegisteredService {
     const queueName = `endpoint-${endpoint.id}`;
 
     for (const job of jobs) {
+      if (!job.enabled) {
+        continue;
+      }
+
       await workerQueue.enqueue(
         "registerJob",
         {

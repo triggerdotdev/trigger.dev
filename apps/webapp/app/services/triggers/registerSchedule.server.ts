@@ -14,5 +14,6 @@ export class RegisterScheduleService {
     // event.name is scheduled
     // the dispatchable will be type: "SCHEDULE", id: schedule.id
     // so when the schedule worker job runs, it will emit an event with { name: "scheduled", payload: { id: schedule.id, ts: new Date(), lastTimestamp: lastEvent.ts } }
+    // Now we need to use the metadata to create some kind of recurring scheduly thingy (a schedulesource?)
   }
 }

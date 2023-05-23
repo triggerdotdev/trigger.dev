@@ -1,7 +1,5 @@
 // Create a logger class that uses the debug package internally
 
-import { SerializableJson } from "./schemas";
-
 export type LogLevel = "log" | "error" | "warn" | "info" | "debug";
 
 const logLevels: Array<LogLevel> = ["log", "error", "warn", "info", "debug"];
@@ -63,13 +61,22 @@ export class Logger {
       args: structureArgs(safeJsonClone(args), this.#filteredKeys),
     };
 
-    console.debug(JSON.stringify(structuredLog));
+    console.debug(JSON.stringify(structuredLog, bigIntReplacer));
   }
+}
+
+// Replacer function for JSON.stringify that converts BigInts to strings
+function bigIntReplacer(_key: string, value: unknown) {
+  if (typeof value === "bigint") {
+    return value.toString();
+  }
+
+  return value;
 }
 
 function safeJsonClone(obj: unknown) {
   try {
-    return JSON.parse(JSON.stringify(obj));
+    return JSON.parse(JSON.stringify(obj, bigIntReplacer));
   } catch (e) {
     return obj;
   }
@@ -107,7 +114,10 @@ function structureArgs(
   }
 
   if (args.length === 1 && typeof args[0] === "object") {
-    return filterKeys(JSON.parse(JSON.stringify(args[0])), filteredKeys);
+    return filterKeys(
+      JSON.parse(JSON.stringify(args[0], bigIntReplacer)),
+      filteredKeys
+    );
   }
 
   return args;

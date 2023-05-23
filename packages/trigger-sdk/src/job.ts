@@ -33,6 +33,7 @@ export type JobOptions<
   integrations?: TIntegrations;
   queue?: QueueOptions | string;
   startPosition?: "initial" | "latest";
+  enabled?: boolean;
 
   run: (
     event: TriggerEventType<TTrigger>,
@@ -65,6 +66,12 @@ export class Job<
 
   get id() {
     return slugifyId(this.options.id);
+  }
+
+  get enabled() {
+    return typeof this.options.enabled === "boolean"
+      ? this.options.enabled
+      : true;
   }
 
   get name() {
@@ -110,6 +117,8 @@ export class Job<
       integrations: this.integrations,
       queue: this.options.queue,
       startPosition: this.options.startPosition ?? "latest",
+      enabled:
+        typeof this.options.enabled === "boolean" ? this.options.enabled : true,
       internal,
     };
   }

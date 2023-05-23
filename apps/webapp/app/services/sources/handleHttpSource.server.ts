@@ -28,9 +28,9 @@ export class HandleHttpSourceService {
     }
 
     if (!triggerSource.interactive) {
-      // Create a request delivery and then enqueue it to be delivered
-      const delivery =
-        await this.#prismaClient.httpSourceRequestDelivery.create({
+      await this.#prismaClient.$transaction(async (tx) => {
+        // Create a request delivery and then enqueue it to be delivered
+        const delivery = await tx.httpSourceRequestDelivery.create({
           data: {
             sourceId: triggerSource.id,
             endpointId: triggerSource.endpointId,
@@ -44,15 +44,17 @@ export class HandleHttpSourceService {
           },
         });
 
-      await workerQueue.enqueue(
-        "deliverHttpSourceRequest",
-        {
-          id: delivery.id,
-        },
-        {
-          queueName: `endpoint-${triggerSource.endpointId}`,
-        }
-      );
+        await workerQueue.enqueue(
+          "deliverHttpSourceRequest",
+          {
+            id: delivery.id,
+          },
+          {
+            queueName: `endpoint-${triggerSource.endpointId}`,
+            tx,
+          }
+        );
+      });
 
       return { status: 200 };
     }

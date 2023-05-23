@@ -133,6 +133,7 @@ export const JobMetadataSchema = z.object({
   internal: z.boolean().default(false),
   queue: z.union([QueueOptionsSchema, z.string()]).optional(),
   startPosition: z.enum(["initial", "latest"]),
+  enabled: z.boolean(),
 });
 
 export type JobMetadata = z.infer<typeof JobMetadataSchema>;

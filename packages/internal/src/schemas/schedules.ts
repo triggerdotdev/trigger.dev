@@ -7,23 +7,9 @@ export const ScheduledPayloadSchema = z.object({
 
 export type ScheduledPayload = z.infer<typeof ScheduledPayloadSchema>;
 
-const IntervalBySecondsSchema = z.object({
+export const IntervalOptionsSchema = z.object({
   seconds: z.number().int().positive().min(60).max(86400),
 });
-
-const IntervalByMinutesSchema = z.object({
-  minutes: z.number().int().positive().min(1).max(1440),
-});
-
-const IntervalByHoursSchema = z.object({
-  hours: z.number().int().positive().min(1).max(24),
-});
-
-export const IntervalOptionsSchema = z.union([
-  IntervalBySecondsSchema,
-  IntervalByMinutesSchema,
-  IntervalByHoursSchema,
-]);
 
 export type IntervalOptions = z.infer<typeof IntervalOptionsSchema>;
 
@@ -56,7 +42,6 @@ export type ScheduleMetadata = z.infer<typeof ScheduleMetadataSchema>;
 
 export const RegisterSchedulePayloadSchema = z.object({
   id: z.string(),
-  metadata: ScheduleMetadataSchema,
   jobs: z.array(
     z.object({
       id: z.string(),

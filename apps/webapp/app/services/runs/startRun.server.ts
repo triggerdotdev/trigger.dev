@@ -164,7 +164,10 @@ export class StartRunService {
 
     const startedAt = run.startedAt ?? new Date();
 
-    const event = ApiEventLogSchema.parse(run.event);
+    const event = ApiEventLogSchema.parse({
+      ...run.event,
+      id: run.event.eventId,
+    });
 
     const client = new ClientApi(
       run.version.environment.apiKey,

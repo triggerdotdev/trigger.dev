@@ -1,13 +1,13 @@
 import type { Job, JobVersion } from ".prisma/client";
-import type { PrismaClient } from "~/db.server";
+import { $transaction, PrismaClientOrTransaction } from "~/db.server";
 import { prisma } from "~/db.server";
 import { workerQueue } from "~/services/worker.server";
 import type { AuthenticatedEnvironment } from "../apiAuth.server";
 
 export class CreateRunService {
-  #prismaClient: PrismaClient;
+  #prismaClient: PrismaClientOrTransaction;
 
-  constructor(prismaClient: PrismaClient = prisma) {
+  constructor(prismaClient: PrismaClientOrTransaction = prisma) {
     this.#prismaClient = prismaClient;
   }
 
@@ -34,9 +34,9 @@ export class CreateRunService {
       },
     });
 
-    const run = await this.#prismaClient.$transaction(async (prisma) => {
+    return await $transaction(this.#prismaClient, async (tx) => {
       // Get the current max number for the given jobId
-      const currentMaxNumber = await prisma.jobRun.aggregate({
+      const currentMaxNumber = await tx.jobRun.aggregate({
         where: { jobId: job.id },
         _max: { number: true },
       });
@@ -45,7 +45,7 @@ export class CreateRunService {
       const newNumber = (currentMaxNumber._max.number ?? 0) + 1;
 
       // Create the new execution with the incremented number
-      return prisma.jobRun.create({
+      const run = await tx.jobRun.create({
         data: {
           number: newNumber,
           job: { connect: { id: job.id } },
@@ -58,12 +58,16 @@ export class CreateRunService {
           queue: { connect: { id: jobQueue.id } },
         },
       });
-    });
 
-    await workerQueue.enqueue("startRun", {
-      id: run.id,
-    });
+      await workerQueue.enqueue(
+        "startRun",
+        {
+          id: run.id,
+        },
+        { tx }
+      );
 
-    return run;
+      return run;
+    });
   }
 }

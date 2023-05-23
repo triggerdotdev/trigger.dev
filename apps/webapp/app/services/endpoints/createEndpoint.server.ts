@@ -1,5 +1,5 @@
 import type { Organization, RuntimeEnvironment } from ".prisma/client";
-import type { PrismaClient } from "~/db.server";
+import { $transaction, PrismaClient } from "~/db.server";
 import { prisma } from "~/db.server";
 import { AuthenticatedEnvironment } from "../apiAuth.server";
 import { ClientApi } from "../clientApi.server";
@@ -24,42 +24,48 @@ export class CreateEndpointService {
     const client = new ClientApi(environment.apiKey, url);
     await client.ping();
 
-    const endpoint = await this.#prismaClient.endpoint.upsert({
-      where: {
-        environmentId_slug: {
-          environmentId: environment.id,
+    return await $transaction(this.#prismaClient, async (tx) => {
+      const endpoint = await tx.endpoint.upsert({
+        where: {
+          environmentId_slug: {
+            environmentId: environment.id,
+            slug: name,
+          },
+        },
+        create: {
+          environment: {
+            connect: {
+              id: environment.id,
+            },
+          },
+          organization: {
+            connect: {
+              id: environment.organizationId,
+            },
+          },
+          project: {
+            connect: {
+              id: environment.projectId,
+            },
+          },
           slug: name,
+          url,
         },
-      },
-      create: {
-        environment: {
-          connect: {
-            id: environment.id,
-          },
+        update: {
+          url,
         },
-        organization: {
-          connect: {
-            id: environment.organizationId,
-          },
-        },
-        project: {
-          connect: {
-            id: environment.projectId,
-          },
-        },
-        slug: name,
-        url,
-      },
-      update: {
-        url,
-      },
-    });
+      });
 
-    // Kick off process to fetch the jobs for this endpoint
-    await workerQueue.enqueue("endpointRegistered", {
-      id: endpoint.id,
-    });
+      // Kick off process to fetch the jobs for this endpoint
+      await workerQueue.enqueue(
+        "endpointRegistered",
+        {
+          id: endpoint.id,
+        },
+        { tx }
+      );
 
-    return endpoint;
+      return endpoint;
+    });
   }
 }
