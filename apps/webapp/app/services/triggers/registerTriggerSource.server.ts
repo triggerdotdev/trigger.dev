@@ -1,18 +1,13 @@
-import { $transaction, PrismaClient } from "~/db.server";
-import { prisma } from "~/db.server";
-import { AuthenticatedEnvironment } from "../apiAuth.server";
 import {
   RegisterSourceEvent,
   RegisterTriggerBody,
 } from "@trigger.dev/internal";
-import { RegisterSourceService } from "../sources/registerSource.server";
-import {
-  SecretStore,
-  SecretStoreProvider,
-  getSecretStore,
-} from "../secrets/secretStore.server";
 import { z } from "zod";
+import { $transaction, PrismaClient, prisma } from "~/db.server";
 import { env } from "~/env.server";
+import { AuthenticatedEnvironment } from "../apiAuth.server";
+import { getSecretStore } from "../secrets/secretStore.server";
+import { RegisterSourceService } from "../sources/registerSource.server";
 
 export class RegisterTriggerSourceService {
   #prismaClient: PrismaClient;
@@ -46,9 +41,10 @@ export class RegisterTriggerSourceService {
     const dynamicTrigger =
       await this.#prismaClient.dynamicTrigger.findUniqueOrThrow({
         where: {
-          endpointId_slug: {
+          endpointId_slug_type: {
             endpointId: endpoint.id,
             slug: id,
+            type: "EVENT",
           },
         },
       });

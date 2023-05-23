@@ -7,10 +7,12 @@ import {
   CreateRunResponseBodySchema,
   LogLevel,
   Logger,
+  RegisterScheduleResponseBodySchema,
   RegisterSourceEvent,
   RegisterSourceEventSchema,
   RegisterTriggerBody,
   RunTaskBodyInput,
+  ScheduleMetadata,
   SendEvent,
   SendEventOptions,
   ServerTaskSchema,
@@ -233,6 +235,61 @@ export class ApiClient {
           Authorization: `Bearer ${apiKey}`,
         },
         body: JSON.stringify(payload),
+      }
+    );
+
+    return response;
+  }
+
+  async registerSchedule(
+    client: string,
+    id: string,
+    key: string,
+    payload: ScheduleMetadata
+  ) {
+    const apiKey = await this.#apiKey();
+
+    this.#logger.debug("registering schedule", {
+      id,
+      payload,
+    });
+
+    const response = await zodfetch(
+      RegisterScheduleResponseBodySchema,
+      `${this.#apiUrl}/api/v1/${client}/schedules/${id}/registrations`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify({ id: key, ...payload }),
+      }
+    );
+
+    return response;
+  }
+
+  async unregisterSchedule(client: string, id: string, key: string) {
+    const apiKey = await this.#apiKey();
+
+    this.#logger.debug("unregistering schedule", {
+      id,
+    });
+
+    const response = await zodfetch(
+      z.object({ ok: z.boolean() }),
+      `${
+        this.#apiUrl
+      }/api/v1/${client}/schedules/${id}/registrations/${encodeURIComponent(
+        key
+      )}`,
+      {
+        method: "DELETE",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${apiKey}`,
+        },
       }
     );
 

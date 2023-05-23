@@ -34,7 +34,7 @@ export class DeliverScheduledEventService {
         return;
       }
 
-      const eventId = `${scheduleSource.dispatcherId}:${payload.ts.getTime()}`;
+      const eventId = `${scheduleSource.id}:${payload.ts.getTime()}`;
 
       // false prevents send event from delivering the event to dispatchers
       // since we are going to control that ourselves
@@ -44,6 +44,12 @@ export class DeliverScheduledEventService {
         id: eventId,
         name: "internal.scheduled",
         payload,
+        context: {
+          source: {
+            id: scheduleSource.key,
+            metadata: scheduleSource.metadata,
+          },
+        },
       });
 
       const invokeDispatcherService = new InvokeDispatcherService(tx);

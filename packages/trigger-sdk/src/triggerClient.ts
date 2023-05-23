@@ -141,7 +141,7 @@ export class TriggerClient {
             jobs: this.#jobMetadataByDynamicTriggers[trigger.id] ?? [],
           })
         ),
-        schedules: Object.entries(this.#registeredSchedules).map(
+        dynamicSchedules: Object.entries(this.#registeredSchedules).map(
           ([id, jobs]) => ({
             id,
             jobs,
@@ -445,6 +445,14 @@ export class TriggerClient {
 
   async sendEvent(event: SendEvent, options?: SendEventOptions) {
     return this.#client.sendEvent(event, options);
+  }
+
+  async registerSchedule(id: string, key: string, schedule: ScheduleMetadata) {
+    return this.#client.registerSchedule(this.name, id, key, schedule);
+  }
+
+  async unregisterSchedule(id: string, key: string) {
+    return this.#client.unregisterSchedule(this.name, id, key);
   }
 
   authorized(apiKey: string) {

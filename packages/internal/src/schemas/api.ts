@@ -10,7 +10,13 @@ import {
   TriggerMetadataSchema,
 } from "./triggers";
 import { EventRuleSchema } from "./eventFilter";
-import { RegisterSchedulePayloadSchema } from "./schedules";
+import {
+  CronMetadataSchema,
+  IntervalMetadataSchema,
+  RegisterDynamicSchedulePayloadSchema,
+  ScheduleMetadataSchema,
+  ScheduledPayloadSchema,
+} from "./schedules";
 
 export const UpdateTriggerSourceBodySchema = z.object({
   registeredEvents: z.array(z.string()),
@@ -161,7 +167,7 @@ export const GetEndpointDataResponseSchema = z.object({
   jobs: z.array(JobMetadataSchema),
   sources: z.array(SourceMetadataSchema),
   dynamicTriggers: z.array(DynamicTriggerEndpointMetadataSchema),
-  schedules: z.array(RegisterSchedulePayloadSchema),
+  dynamicSchedules: z.array(RegisterDynamicSchedulePayloadSchema),
 });
 
 export type GetEndpointDataResponse = z.infer<
@@ -418,3 +424,43 @@ export const InitializeTriggerBodySchema = z.object({
 });
 
 export type InitializeTriggerBody = z.infer<typeof InitializeTriggerBodySchema>;
+
+export const RegisterIntervalScheduleBodySchema = z
+  .object({
+    id: z.string(),
+    metadata: z.any(),
+  })
+  .merge(IntervalMetadataSchema);
+
+export type RegisterIntervalScheduleBody = z.infer<
+  typeof RegisterIntervalScheduleBodySchema
+>;
+
+export const InitializeCronScheduleBodySchema = z
+  .object({
+    id: z.string(),
+    metadata: z.any(),
+  })
+  .merge(CronMetadataSchema);
+
+export type RegisterCronScheduleBody = z.infer<
+  typeof InitializeCronScheduleBodySchema
+>;
+
+export const RegisterScheduleBodySchema = z.discriminatedUnion("type", [
+  RegisterIntervalScheduleBodySchema,
+  InitializeCronScheduleBodySchema,
+]);
+
+export type RegisterScheduleBody = z.infer<typeof RegisterScheduleBodySchema>;
+
+export const RegisterScheduleResponseBodySchema = z.object({
+  id: z.string(),
+  schedule: ScheduleMetadataSchema,
+  metadata: z.any(),
+  active: z.boolean(),
+});
+
+export type RegisterScheduleResponseBody = z.infer<
+  typeof RegisterScheduleResponseBodySchema
+>;

@@ -12,7 +12,7 @@ import { RunFinishedService } from "./runs/runFinished.server";
 import {
   DynamicTriggerEndpointMetadataSchema,
   JobMetadataSchema,
-  RegisterSchedulePayloadSchema,
+  RegisterDynamicSchedulePayloadSchema,
   ScheduledPayloadSchema,
   SourceMetadataSchema,
 } from "@trigger.dev/internal";
@@ -21,7 +21,7 @@ import { ActivateSourceService } from "./sources/activateSource.server";
 import { DeliverEventService } from "./events/deliverEvent.server";
 import { InvokeDispatcherService } from "./events/invokeDispatcher.server";
 import { RegisterDynamicTriggerService } from "./triggers/registerDynamicTrigger.server";
-import { RegisterScheduleService } from "./triggers/registerSchedule.server";
+import { RegisterDynamicScheduleService } from "./triggers/registerDynamicSchedule.server";
 import { DeliverScheduledEventService } from "./schedules/deliverScheduledEvent.server";
 import { prisma } from "~/db.server";
 
@@ -61,9 +61,9 @@ const workerCatalog = {
     endpointId: z.string(),
     dynamicTrigger: DynamicTriggerEndpointMetadataSchema,
   }),
-  registerSchedule: z.object({
+  registerDynamicSchedule: z.object({
     endpointId: z.string(),
-    schedule: RegisterSchedulePayloadSchema,
+    dynamicSchedule: RegisterDynamicSchedulePayloadSchema,
   }),
   activateSource: z.object({
     id: z.string(),
@@ -111,7 +111,6 @@ function getWorkerQueue() {
       connectionString: env.DATABASE_URL,
       concurrency: 5,
       pollInterval: 1000,
-      noHandleSignals: false,
     },
     schema: workerCatalog,
     tasks: {
@@ -172,12 +171,12 @@ function getWorkerQueue() {
           await service.call(payload.endpointId, payload.dynamicTrigger);
         },
       },
-      registerSchedule: {
+      registerDynamicSchedule: {
         maxAttempts: 3,
         handler: async (payload, job) => {
-          const service = new RegisterScheduleService();
+          const service = new RegisterDynamicScheduleService();
 
-          await service.call(payload.endpointId, payload.schedule);
+          await service.call(payload.endpointId, payload.dynamicSchedule);
         },
       },
       activateSource: {

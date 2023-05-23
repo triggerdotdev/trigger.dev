@@ -31,11 +31,19 @@ export class RegisterScheduleSourceService {
           key,
           environmentId: dispatcher.environmentId,
           dispatcherId: dispatcher.id,
-          schedule,
+          schedule: {
+            type: schedule.type,
+            options: schedule.options,
+          },
           active: true,
+          metadata: schedule.metadata,
         },
         update: {
-          schedule,
+          schedule: {
+            type: schedule.type,
+            options: schedule.options,
+          },
+          metadata: schedule.metadata ?? {},
         },
       });
 

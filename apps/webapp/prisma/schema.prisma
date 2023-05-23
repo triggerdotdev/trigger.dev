@@ -398,7 +398,8 @@ model RunConnection {
 }
 
 model DynamicTrigger {
-  id   String @id @default(cuid())
+  id   String             @id @default(cuid())
+  type DynamicTriggerType @default(EVENT)
   slug String
 
   endpoint   Endpoint @relation(fields: [endpointId], references: [id], onDelete: Cascade, onUpdate: Cascade)
@@ -408,7 +409,12 @@ model DynamicTrigger {
   sources       TriggerSource[]
   registrations DynamicTriggerRegistration[]
 
-  @@unique([endpointId, slug])
+  @@unique([endpointId, slug, type])
+}
+
+enum DynamicTriggerType {
+  EVENT
+  SCHEDULE
 }
 
 model EventDispatcher {
@@ -721,6 +727,8 @@ model ScheduleSource {
   workerJobId String?
 
   active Boolean @default(false)
+
+  metadata Json?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

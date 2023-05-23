@@ -15,13 +15,15 @@ export class RegisterDynamicTriggerService {
   ) {
     const dynamicTrigger = await this.#prismaClient.dynamicTrigger.upsert({
       where: {
-        endpointId_slug: {
+        endpointId_slug_type: {
           endpointId: endpointId,
           slug: metadata.id,
+          type: "EVENT",
         },
       },
       create: {
         slug: metadata.id,
+        type: "EVENT",
         endpoint: {
           connect: {
             id: endpointId,

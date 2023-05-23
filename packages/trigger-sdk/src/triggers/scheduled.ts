@@ -6,6 +6,7 @@ import { Job } from "../job";
 import {
   CronOptions,
   IntervalOptions,
+  ScheduleMetadata,
   ScheduledPayload,
   ScheduledPayloadSchema,
   TriggerMetadata,
@@ -107,11 +108,15 @@ export function cronTrigger(options: CronOptions) {
 
 export type DynamicIntervalOptions = { id: string };
 
-export class DynamicInterval implements Trigger<ScheduledEventSpecification> {
+export class DynamicSchedule implements Trigger<ScheduledEventSpecification> {
   constructor(
     private client: TriggerClient,
     private options: DynamicIntervalOptions
   ) {}
+
+  get id() {
+    return this.options.id;
+  }
 
   get event() {
     return {
@@ -120,6 +125,14 @@ export class DynamicInterval implements Trigger<ScheduledEventSpecification> {
       source: "trigger.dev",
       parsePayload: ScheduledPayloadSchema.parse,
     };
+  }
+
+  async register(key: string, metadata: ScheduleMetadata) {
+    return this.client.registerSchedule(this.id, key, metadata);
+  }
+
+  async unregister(key: string) {
+    return this.client.unregisterSchedule(this.id, key);
   }
 
   attachToJob(

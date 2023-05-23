@@ -3,7 +3,7 @@ import {
   cronTrigger,
   customEvent,
   customTrigger,
-  DynamicInterval,
+  DynamicSchedule,
   DynamicTrigger,
   intervalTrigger,
   Job,
@@ -37,7 +37,7 @@ const dynamicOnIssueOpenedTrigger = new DynamicTrigger(client, {
   source: github.sources.repo,
 });
 
-const dynamicInterval = new DynamicInterval(client, {
+const dynamicSchedule = new DynamicSchedule(client, {
   id: "dynamic-interval",
 });
 
@@ -58,9 +58,38 @@ new Job(client, {
     }),
   }),
   run: async (payload, io, ctx) => {
-    // await io.registerInterval("register", dynamicInterval, payload.id, {
-    //   seconds: payload.seconds,
-    // });
+    await io.registerInterval("📆", dynamicSchedule, payload.id, {
+      seconds: payload.seconds,
+    });
+
+    await io.wait("wait", 60);
+
+    await io.unregisterInterval("❌📆", dynamicSchedule, payload.id);
+  },
+});
+
+new Job(client, {
+  id: "register-dynamic-cron",
+  name: "Register Dynamic Cron",
+  version: "0.1.1",
+  enabled,
+  trigger: customTrigger({
+    name: "dynamic.cron",
+    event: customEvent({
+      payload: z.object({
+        id: z.string(),
+        cron: z.string(),
+      }),
+    }),
+  }),
+  run: async (payload, io, ctx) => {
+    await io.registerCron("📆", dynamicSchedule, payload.id, {
+      cron: payload.cron,
+    });
+
+    await io.wait("wait", 60);
+
+    await io.unregisterCron("❌📆", dynamicSchedule, payload.id);
   },
 });
 
@@ -69,7 +98,7 @@ new Job(client, {
   name: "Use Dynamic Interval",
   version: "0.1.1",
   enabled,
-  trigger: dynamicInterval,
+  trigger: dynamicSchedule,
   run: async (payload, io, ctx) => {
     await io.wait("wait", 5); // wait for 5 seconds
     await io.logger.info("This is a log info message", {

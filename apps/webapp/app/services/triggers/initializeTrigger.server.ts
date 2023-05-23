@@ -38,9 +38,10 @@ export class InitializeTriggerService {
     const dynamicTrigger =
       await this.#prismaClient.dynamicTrigger.findUniqueOrThrow({
         where: {
-          endpointId_slug: {
+          endpointId_slug_type: {
             endpointId: endpoint.id,
             slug: id,
+            type: "EVENT",
           },
         },
       });

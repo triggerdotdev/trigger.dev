@@ -22,6 +22,7 @@ export type CronOptions = z.infer<typeof CronOptionsSchema>;
 export const CronMetadataSchema = z.object({
   type: z.literal("cron"),
   options: CronOptionsSchema,
+  metadata: z.any(),
 });
 
 export type CronMetadata = z.infer<typeof CronMetadataSchema>;
@@ -29,6 +30,7 @@ export type CronMetadata = z.infer<typeof CronMetadataSchema>;
 export const IntervalMetadataSchema = z.object({
   type: z.literal("interval"),
   options: IntervalOptionsSchema,
+  metadata: z.any(),
 });
 
 export type IntervalMetadata = z.infer<typeof IntervalMetadataSchema>;
@@ -40,7 +42,7 @@ export const ScheduleMetadataSchema = z.discriminatedUnion("type", [
 
 export type ScheduleMetadata = z.infer<typeof ScheduleMetadataSchema>;
 
-export const RegisterSchedulePayloadSchema = z.object({
+export const RegisterDynamicSchedulePayloadSchema = z.object({
   id: z.string(),
   jobs: z.array(
     z.object({
@@ -50,6 +52,6 @@ export const RegisterSchedulePayloadSchema = z.object({
   ),
 });
 
-export type RegisterSchedulePayload = z.infer<
-  typeof RegisterSchedulePayloadSchema
+export type RegisterDynamicSchedulePayload = z.infer<
+  typeof RegisterDynamicSchedulePayloadSchema
 >;

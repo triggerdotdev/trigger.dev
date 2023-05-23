@@ -1,6 +1,8 @@
 import {
   CachedTask,
   ConnectionAuth,
+  CronOptions,
+  IntervalOptions,
   LogLevel,
   Logger,
   RunTaskOptions,
@@ -21,6 +23,7 @@ import {
 } from "./triggers/externalSource";
 import { EventSpecification, TaskLogger, TriggerContext } from "./types";
 import { createIOWithIntegrations } from "./ioWithIntegrations";
+import { DynamicSchedule } from "./triggers/scheduled";
 
 export class ResumeWithTask {
   constructor(public task: ServerTask) {}
@@ -157,6 +160,98 @@ export class IO {
           options.key,
           options
         );
+      }
+    );
+  }
+
+  async registerInterval(
+    key: string | any[],
+    dynamicSchedule: DynamicSchedule,
+    id: string,
+    options: IntervalOptions
+  ) {
+    return await this.runTask(
+      key,
+      {
+        name: "register-interval",
+        elements: [
+          { label: "schedule", text: dynamicSchedule.id },
+          { label: "id", text: id },
+          { label: "seconds", text: options.seconds.toString() },
+        ],
+        params: options,
+      },
+      async (task) => {
+        return dynamicSchedule.register(id, {
+          type: "interval",
+          options,
+        });
+      }
+    );
+  }
+
+  async unregisterInterval(
+    key: string | any[],
+    dynamicSchedule: DynamicSchedule,
+    id: string
+  ) {
+    return await this.runTask(
+      key,
+      {
+        name: "unregister-interval",
+        elements: [
+          { label: "schedule", text: dynamicSchedule.id },
+          { label: "id", text: id },
+        ],
+      },
+      async (task) => {
+        return dynamicSchedule.unregister(id);
+      }
+    );
+  }
+
+  async registerCron(
+    key: string | any[],
+    dynamicSchedule: DynamicSchedule,
+    id: string,
+    options: CronOptions
+  ) {
+    return await this.runTask(
+      key,
+      {
+        name: "register-cron",
+        elements: [
+          { label: "schedule", text: dynamicSchedule.id },
+          { label: "id", text: id },
+          { label: "cron", text: options.cron },
+        ],
+        params: options,
+      },
+      async (task) => {
+        return dynamicSchedule.register(id, {
+          type: "cron",
+          options,
+        });
+      }
+    );
+  }
+
+  async unregisterCron(
+    key: string | any[],
+    dynamicSchedule: DynamicSchedule,
+    id: string
+  ) {
+    return await this.runTask(
+      key,
+      {
+        name: "unregister-cron",
+        elements: [
+          { label: "schedule", text: dynamicSchedule.id },
+          { label: "id", text: id },
+        ],
+      },
+      async (task) => {
+        return dynamicSchedule.unregister(id);
       }
     );
   }
