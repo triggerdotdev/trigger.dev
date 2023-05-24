@@ -81,7 +81,7 @@ type ExtractIntegrationClientClient<
       usesLocalAuth: false;
       clientFactory: ClientFactory<infer TClient>;
     }
-  ? TClient
+  ? { client: TClient }
   : never;
 
 type ExtractIntegrationClient<
