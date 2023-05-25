@@ -58,7 +58,10 @@ export class Logger {
       timestamp: new Date(),
       name: this.#name,
       message,
-      args: structureArgs(safeJsonClone(args), this.#filteredKeys),
+      args: structureArgs(
+        safeJsonClone(args) as Record<string, unknown>[],
+        this.#filteredKeys
+      ),
     };
 
     console.debug(JSON.stringify(structuredLog, bigIntReplacer));
