@@ -17,10 +17,10 @@ import { z } from "zod";
 
 const github = new Github({ id: "github" });
 
-const githubLocal = new Github({
-  id: "github-local",
-  token: process.env.GITHUB_TOKEN,
-});
+// const githubLocal = new Github({
+//   id: "github-local",
+//   token: process.env.GITHUB_TOKEN,
+// });
 
 const slack = new Slack({ id: "my-slack-new" });
 
