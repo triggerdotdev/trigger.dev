@@ -12,9 +12,6 @@ hydrateRoot(
   </LocaleContextProvider>
 );
 
-//hack because the type is not exported
-type SentryIntegration = (typeof Sentry.defaultIntegrations)[number];
-
 if (process.env.NODE_ENV === "production") {
   Sentry.init({
     dsn: "https://bf96820b08004fa4b2e1506f2ac74a14@o4504419574087680.ingest.sentry.io/4504419607052288",
@@ -32,7 +29,7 @@ if (process.env.NODE_ENV === "production") {
         posthog,
         "triggerdev",
         4504419607052288
-      ) as SentryIntegration,
+      ) as any,
     ],
   });
 }
