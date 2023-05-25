@@ -11,6 +11,7 @@ import {
 import { BreadcrumbIcon } from "../primitives/BreadcrumbIcon";
 import { BreadcrumbLink } from "./NavBar";
 import { ProjectsMenu } from "./ProjectsMenu";
+import { JobsMenu } from "./JobsMenu";
 
 export type Breadcrumb = {
   slug: "projects" | "jobs" | "integrations" | "environments" | "job" | "runs";
@@ -102,7 +103,7 @@ function BreadcrumbItem({
             title="Jobs"
           />
           <BreadcrumbIcon />
-          <ProjectsMenu key={breadcrumb.slug} />
+          <JobsMenu key={breadcrumb.slug} />
         </Fragment>
       );
     case "runs":
