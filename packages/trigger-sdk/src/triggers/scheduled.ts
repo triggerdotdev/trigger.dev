@@ -22,6 +22,7 @@ export class IntervalTrigger implements Trigger<ScheduledEventSpecification> {
       name: "trigger.scheduled",
       title: "Schedule",
       source: "trigger.dev",
+      icon: "schedule-interval",
       parsePayload: ScheduledPayloadSchema.parse,
       elements: [
         {
@@ -68,6 +69,7 @@ export class CronTrigger implements Trigger<ScheduledEventSpecification> {
       name: "trigger.scheduled",
       title: "Cron Schedule",
       source: "trigger.dev",
+      icon: "schedule-cron",
       parsePayload: ScheduledPayloadSchema.parse,
       elements: [
         {
@@ -123,6 +125,7 @@ export class DynamicSchedule implements Trigger<ScheduledEventSpecification> {
       name: "trigger.scheduled",
       title: "Dynamic Schedule",
       source: "trigger.dev",
+      icon: "schedule-dynamic",
       parsePayload: ScheduledPayloadSchema.parse,
     };
   }

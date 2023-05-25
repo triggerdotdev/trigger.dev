@@ -75,6 +75,7 @@ export function customEvent<TEvent>({
     name: "custom",
     title: "Custom Event",
     source: source ?? "trigger.dev",
+    icon: "custom-event",
     parsePayload: (rawPayload: any) => {
       return payload.parse(rawPayload);
     },

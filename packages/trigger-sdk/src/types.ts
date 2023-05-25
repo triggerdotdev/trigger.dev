@@ -47,6 +47,7 @@ export interface EventSpecification<TEvent extends any> {
   name: string;
   title: string;
   source: string;
+  icon: string;
   elements?: DisplayElement[];
   schema?: any;
   examples?: Array<TEvent>;

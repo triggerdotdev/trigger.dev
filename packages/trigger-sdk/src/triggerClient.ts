@@ -33,6 +33,7 @@ const registerSourceEvent: EventSpecification<RegisterSourceEvent> = {
   name: "trigger.internal.registerSource",
   title: "Register Source",
   source: "internal",
+  icon: "register-source",
   parsePayload: RegisterSourceEventSchema.parse,
 };
 
