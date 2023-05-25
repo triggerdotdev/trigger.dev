@@ -1,16 +1,19 @@
 import { useMatches } from "@remix-run/react";
-import { ProjectsMenu } from "./ProjectsMenu";
-import { BreadcrumbLink } from "./NavBar";
+import { Fragment } from "react";
+import invariant from "tiny-invariant";
+import { useCurrentOrganization } from "~/hooks/useOrganizations";
+import { useCurrentProject } from "~/hooks/useProject";
 import {
   projectEnvironmentsPath,
   projectIntegrationsPath,
   projectPath,
 } from "~/utils/pathBuilder";
-import { useCurrentOrganization } from "~/hooks/useOrganizations";
-import { useCurrentProject } from "~/hooks/useProject";
+import { BreadcrumbIcon } from "../primitives/BreadcrumbIcon";
+import { BreadcrumbLink } from "./NavBar";
+import { ProjectsMenu } from "./ProjectsMenu";
 
 export type Breadcrumb = {
-  slug: "projects" | "jobs" | "integrations" | "environments";
+  slug: "projects" | "jobs" | "integrations" | "environments" | "job" | "runs";
   link?: {
     to: string;
     title: string;
@@ -33,47 +36,86 @@ export function Breadcrumb() {
 
   return (
     <div className="hidden items-center md:flex">
-      {breadcrumbs.map((breadcrumb, index) => {
-        switch (breadcrumb.slug) {
-          case "projects":
-            return <ProjectsMenu key={breadcrumb.slug} />;
-          case "jobs":
-            return (
-              organization &&
-              project && (
-                <BreadcrumbLink
-                  key={breadcrumb.slug}
-                  to={projectPath(organization, project)}
-                  title="Jobs"
-                />
-              )
-            );
-          case "environments":
-            return (
-              organization &&
-              project && (
-                <BreadcrumbLink
-                  key={breadcrumb.slug}
-                  to={projectEnvironmentsPath(organization, project)}
-                  title="Environments"
-                />
-              )
-            );
-          case "integrations":
-            return (
-              organization &&
-              project && (
-                <BreadcrumbLink
-                  key={breadcrumb.slug}
-                  to={projectIntegrationsPath(organization, project)}
-                  title="Integrations"
-                />
-              )
-            );
-          default:
-            return <span className="text-red-500">{breadcrumb.slug}</span>;
-        }
-      })}
+      {breadcrumbs.map((breadcrumb, index) => (
+        <Fragment key={breadcrumb.slug}>
+          <BreadcrumbIcon />
+          <BreadcrumbItem
+            breadcrumb={breadcrumb}
+            organization={organization}
+            project={project}
+          />
+        </Fragment>
+      ))}
     </div>
   );
+}
+
+function BreadcrumbItem({
+  breadcrumb,
+  organization,
+  project,
+}: {
+  breadcrumb: Breadcrumb;
+  organization?: ReturnType<typeof useCurrentOrganization>;
+  project?: ReturnType<typeof useCurrentProject>;
+}) {
+  switch (breadcrumb.slug) {
+    case "projects":
+      return <ProjectsMenu key={breadcrumb.slug} />;
+    case "jobs":
+      invariant(organization, "Organization must be defined");
+      invariant(project, "Project must be defined");
+      return (
+        <BreadcrumbLink
+          key={breadcrumb.slug}
+          to={projectPath(organization, project)}
+          title="Jobs"
+        />
+      );
+    case "environments":
+      invariant(organization, "Organization must be defined");
+      invariant(project, "Project must be defined");
+      return (
+        <BreadcrumbLink
+          key={breadcrumb.slug}
+          to={projectEnvironmentsPath(organization, project)}
+          title="Environments"
+        />
+      );
+    case "integrations":
+      invariant(organization, "Organization must be defined");
+      invariant(project, "Project must be defined");
+      return (
+        <BreadcrumbLink
+          key={breadcrumb.slug}
+          to={projectIntegrationsPath(organization, project)}
+          title="Integrations"
+        />
+      );
+    case "job":
+      invariant(organization, "Organization must be defined");
+      invariant(project, "Project must be defined");
+      return (
+        <Fragment key={breadcrumb.slug}>
+          <BreadcrumbLink
+            to={projectPath(organization, project)}
+            title="Jobs"
+          />
+          <BreadcrumbIcon />
+          <ProjectsMenu key={breadcrumb.slug} />
+        </Fragment>
+      );
+    case "runs":
+      invariant(organization, "Organization must be defined");
+      invariant(project, "Project must be defined");
+      return (
+        <BreadcrumbLink
+          key={breadcrumb.slug}
+          to={projectPath(organization, project)}
+          title="Runs"
+        />
+      );
+  }
+
+  return <span className="text-red-500">{breadcrumb.slug}</span>;
 }
