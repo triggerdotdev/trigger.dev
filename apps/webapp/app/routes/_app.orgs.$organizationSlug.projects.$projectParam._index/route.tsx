@@ -1,5 +1,3 @@
-import { LoaderArgs } from "@remix-run/server-runtime";
-import { typedjson } from "remix-typedjson";
 import invariant from "tiny-invariant";
 import { JobItem, JobList } from "~/components/jobs/JobItem";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
@@ -12,19 +10,8 @@ import {
 } from "~/components/primitives/PageHeader";
 import { useCurrentOrganization } from "~/hooks/useOrganizations";
 import { useCurrentProject } from "~/hooks/useProject";
-import { requireUserId } from "~/services/session.server";
 import { Handle } from "~/utils/handle";
-import { jobPath, projectPath } from "~/utils/pathBuilder";
-
-export const loader = async ({ request, params }: LoaderArgs) => {
-  const userId = await requireUserId(request);
-  const { projectParam } = params;
-  invariant(projectParam, "projectParam not found");
-
-  return typedjson({
-    jobs: [],
-  });
-};
+import { jobPath } from "~/utils/pathBuilder";
 
 export const handle: Handle = {
   breadcrumb: {
@@ -37,6 +24,8 @@ export default function Page() {
   const project = useCurrentProject();
   invariant(project, "Project must be defined");
   invariant(organization, "Organization must be defined");
+
+  console.log(project);
 
   return (
     <PageContainer>
@@ -66,6 +55,8 @@ export default function Page() {
               trigger={job.event.title}
               id={job.slug}
               elements={job.event.elements ?? []}
+              lastRun={job.lastRun}
+              integrations={job.integrations}
             />
           ))}
         </JobList>

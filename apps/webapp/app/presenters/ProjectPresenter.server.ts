@@ -138,7 +138,8 @@ export class ProjectPresenter {
         const eventSpecification = EventSpecificationSchema.parse(
           alias.version.eventSpecification
         );
-        const lastRun = alias.version.runs.at(0);
+        const lastRun =
+          alias.version.runs[0] != null ? alias.version.runs[0] : undefined;
         const integrations = z
           .array(IntegrationMetadataSchema)
           .parse(

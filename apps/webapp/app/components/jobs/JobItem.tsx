@@ -17,7 +17,7 @@ type JobItemProps = {
   id: string;
   lastRun?: {
     status: JobRunStatus;
-    date: Date;
+    createdAt: Date;
   };
   elements: {
     label: string;
@@ -25,8 +25,8 @@ type JobItemProps = {
     url?: string | undefined;
   }[];
   integrations?: {
-    name: string;
-    icon: IconNames;
+    title: string;
+    icon: string;
   }[];
   disabled?: boolean;
 };
@@ -72,30 +72,32 @@ export function JobItem({
               <JobVersion version={version} className="relative bottom-0.5" />
             )}
           </div>
-          <div className="flex flex-wrap gap-x-4 gap-y-1">
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
             <KeyValue name="Trigger" value={trigger} />
-            <KeyValue
-              name="Integrations"
-              className="items-center"
-              value={
-                <span className="flex gap-1">
-                  {integrations &&
-                    integrations.map((integration, index) => (
-                      <SimpleTooltip
-                        key={index}
-                        button={
-                          <NamedIcon
-                            key={integration.name}
-                            name={integration.icon}
-                            className="h-4 w-4"
-                          />
-                        }
-                        content={integration.name}
-                      />
-                    ))}
-                </span>
-              }
-            />
+            {integrations?.length > 0 && (
+              <KeyValue
+                name="Integrations"
+                // className="items-center"
+                value={
+                  <p className="flex gap-1 text-xs">
+                    {integrations &&
+                      integrations.map((integration, index) => (
+                        <SimpleTooltip
+                          key={index}
+                          button={
+                            <NamedIcon
+                              key={integration.title}
+                              name={integration.icon}
+                              className="h-4 w-4"
+                            />
+                          }
+                          content={integration.title}
+                        />
+                      ))}
+                  </p>
+                }
+              />
+            )}
 
             {elements.map((property) => (
               <KeyValue
@@ -111,7 +113,8 @@ export function JobItem({
               name="Last Run"
               value={
                 lastRun ? (
-                  <span
+                  <Paragraph
+                    variant="extra-small"
                     className={
                       lastRun.status === "FAILURE" ||
                       lastRun.status === "TIMED_OUT"
@@ -120,8 +123,8 @@ export function JobItem({
                     }
                   >
                     {runStatusTitle(lastRun.status)}{" "}
-                    <DateTime date={lastRun.date} />
-                  </span>
+                    <DateTime date={lastRun.createdAt} />
+                  </Paragraph>
                 ) : (
                   "Never run"
                 )
@@ -148,14 +151,18 @@ function KeyValue({
   className?: string;
 }) {
   return (
-    <div className={cn("flex items-baseline gap-x-1", className)}>
+    <div className={cn("flex items-center gap-x-1", className)}>
       <Paragraph
         variant="extra-extra-small/bright/caps"
-        className="whitespace-nowrap"
+        className="mt-0.5 whitespace-nowrap"
       >
         {name}:
       </Paragraph>
-      <Paragraph variant="extra-small">{value}</Paragraph>
+      {typeof value === "string" ? (
+        <Paragraph variant="extra-small">{value}</Paragraph>
+      ) : (
+        value
+      )}
     </div>
   );
 }

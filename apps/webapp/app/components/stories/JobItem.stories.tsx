@@ -29,18 +29,18 @@ function Jobs() {
           trigger="When a Stripe payment fails"
           integrations={[
             {
-              name: "Airtable",
+              title: "Airtable",
               icon: "airtable",
             },
             {
-              name: "GitHub",
+              title: "GitHub",
               icon: "github",
             },
           ]}
           id="my-custom-job"
           lastRun={{
             status: "TIMED_OUT",
-            date: new Date("2021-08-12T12:00:00.000Z"),
+            createdAt: new Date("2021-08-12T12:00:00.000Z"),
           }}
           elements={[{ label: "Repo", text: "triggerdotdet/trigger.dev" }]}
         />
@@ -52,18 +52,18 @@ function Jobs() {
           trigger="Critical issue in GitHub"
           integrations={[
             {
-              name: "Slack",
+              title: "Slack",
               icon: "slack",
             },
             {
-              name: "GitHub",
+              title: "GitHub",
               icon: "github",
             },
           ]}
           id="my-custom-job"
           lastRun={{
             status: "SUCCESS",
-            date: new Date("2021-08-12T12:00:00.000Z"),
+            createdAt: new Date("2021-08-12T12:00:00.000Z"),
           }}
           elements={[
             { label: "Repo", text: "triggerdotdet/trigger.dev" },
@@ -80,11 +80,11 @@ function Jobs() {
           trigger="When a new User signs up"
           integrations={[
             {
-              name: "Slack",
+              title: "Slack",
               icon: "slack",
             },
             {
-              name: "GitHub",
+              title: "GitHub",
               icon: "github",
             },
           ]}
