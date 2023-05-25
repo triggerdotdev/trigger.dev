@@ -24,10 +24,13 @@ import {
   LightBulbIcon,
   XMarkIcon,
   ChevronRightIcon,
+  CodeBracketSquareIcon,
 } from "@heroicons/react/24/solid";
 import { cn } from "~/utils/cn";
 import { Spinner } from "./Spinner";
 import { UserProfilePhoto } from "../UserProfilePhoto";
+import { ScheduleIcon } from "~/assets/icons/ScheduleIcon";
+import { WebhookIcon } from "~/assets/icons/WebhookIcon";
 
 const icons = {
   account: (className: string) => <UserProfilePhoto className={className} />,
@@ -103,6 +106,22 @@ const icons = {
   warning: (className: string) => (
     <ExclamationTriangleIcon className={cn("text-amber-400", className)} />
   ),
+  //triggers
+  "custom-event": (className: string) => (
+    <CodeBracketSquareIcon className={cn("text-toxic-600", className)} />
+  ),
+  "schedule-interval": (className: string) => (
+    <ScheduleIcon className={cn("text-sky-500", className)} />
+  ),
+  "schedule-cron": (className: string) => (
+    <ScheduleIcon className={cn("text-sky-500", className)} />
+  ),
+  "schedule-dynamic": (className: string) => (
+    <ScheduleIcon className={cn("text-sky-500", className)} />
+  ),
+  webhook: (className: string) => (
+    <WebhookIcon className={cn("text-pink-500", className)} />
+  ),
   //APIs
   airtable: (className: string) => (
     <IntegrationIcon slug="airtable" name={"Airtable"} className={className} />
@@ -130,6 +149,8 @@ export function NamedIcon({
   if (Object.keys(icons).includes(name)) {
     return icons[name as IconNames](className);
   }
+
+  console.log(`Icon ${name} not found`);
 
   if (fallback) {
     return fallback;

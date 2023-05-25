@@ -34,7 +34,7 @@ export default function Page() {
             {/* <LinkButton
               to={newProjectPath(currentOrganization)}
               variant="primary/small"
-              shortcut="N"
+              shortcut="N" 
             >
               Create a new project
             </LinkButton> */}
