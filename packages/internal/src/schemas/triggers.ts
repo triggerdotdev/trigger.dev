@@ -7,6 +7,7 @@ export const EventSpecificationSchema = z.object({
   name: z.string(),
   title: z.string(),
   source: z.string(),
+  icon: z.string(),
   filter: EventFilterSchema.optional(),
   elements: z.array(DisplayElementSchema).optional(),
   schema: z.any().optional(),
