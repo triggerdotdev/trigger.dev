@@ -1,5 +1,9 @@
 import type { EventDispatcher } from ".prisma/client";
-import { ScheduleMetadata } from "@trigger.dev/internal";
+import {
+  CronMetadata,
+  IntervalMetadata,
+  ScheduleMetadata,
+} from "@trigger.dev/internal";
 import { $transaction, PrismaClientOrTransaction, prisma } from "~/db.server";
 import { NextScheduledEventService } from "./nextScheduledEvent.server";
 
@@ -19,6 +23,12 @@ export class RegisterScheduleSourceService {
     dispatcher: EventDispatcher;
     schedule: ScheduleMetadata;
   }) {
+    const validation = validateSchedule(schedule);
+
+    if (!validation.valid) {
+      throw new Error(validation.reason);
+    }
+
     return await $transaction(this.#prismaClient, async (tx) => {
       const scheduleSource = await this.#prismaClient.scheduleSource.upsert({
         where: {
@@ -56,4 +66,45 @@ export class RegisterScheduleSourceService {
       return scheduleSource;
     });
   }
+}
+
+type ScheduleValidationResult =
+  | {
+      valid: true;
+    }
+  | {
+      valid: false;
+      reason: string;
+    };
+
+function validateSchedule(
+  schedule: ScheduleMetadata
+): ScheduleValidationResult {
+  switch (schedule.type) {
+    case "cron":
+      return validateCron(schedule);
+    case "interval":
+      return validateInterval(schedule);
+  }
+}
+
+function validateInterval(
+  schedule: IntervalMetadata
+): ScheduleValidationResult {
+  if (schedule.options.seconds < 60) {
+    return {
+      valid: false,
+      reason: "Interval must be greater than 60 seconds",
+    };
+  }
+
+  return {
+    valid: true,
+  };
+}
+
+function validateCron(schedule: CronMetadata): ScheduleValidationResult {
+  return {
+    valid: true,
+  };
 }
