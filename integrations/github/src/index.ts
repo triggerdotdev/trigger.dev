@@ -88,6 +88,7 @@ const onIssueOpened: EventSpecification<IssuesOpenedEvent> = {
   name: "issues",
   title: "On issue opened",
   source: "github.com",
+  icon: "github",
   filter: {
     action: ["opened"],
   },
@@ -98,6 +99,7 @@ const onIssue: EventSpecification<IssuesEvent> = {
   name: "issues",
   title: "On issue",
   source: "github.com",
+  icon: "github",
   parsePayload: (payload) => payload as IssuesEvent,
 };
 
@@ -105,6 +107,7 @@ const onIssueComment: EventSpecification<IssueCommentEvent> = {
   name: "issue_comment",
   title: "On issue comment",
   source: "github.com",
+  icon: "github",
   parsePayload: (payload) => payload as IssueCommentEvent,
 };
 
@@ -112,6 +115,7 @@ const onStar: EventSpecification<StarEvent> = {
   name: "star",
   title: "On star",
   source: "github.com",
+  icon: "github",
   parsePayload: (payload) => payload as StarEvent,
 };
 
@@ -119,6 +123,7 @@ const onNewStar: EventSpecification<StarCreatedEvent> = {
   name: "star",
   title: "On new star",
   source: "github.com",
+  icon: "github",
   filter: {
     action: ["created"],
   },
@@ -129,6 +134,7 @@ const onNewRepository: EventSpecification<RepositoryCreatedEvent> = {
   name: "repository",
   title: "On new repository",
   source: "github.com",
+  icon: "github",
   filter: {
     action: ["created"],
   },
