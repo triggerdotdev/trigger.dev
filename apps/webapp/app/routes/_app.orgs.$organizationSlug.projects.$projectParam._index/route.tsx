@@ -25,8 +25,6 @@ export default function Page() {
   invariant(project, "Project must be defined");
   invariant(organization, "Organization must be defined");
 
-  console.log(project);
-
   return (
     <PageContainer>
       <PageHeader>
