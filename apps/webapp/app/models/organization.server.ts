@@ -64,37 +64,35 @@ export async function createOrganization(
   {
     title,
     userId,
-    desiredSlug,
     projectName,
   }: Pick<Organization, "title"> & {
     userId: User["id"];
-    desiredSlug?: string;
     projectName: string;
   },
   attemptCount = 0
 ): Promise<Organization & { projects: Project[] }> {
-  if (desiredSlug === undefined) {
-    desiredSlug = slug(title);
-  }
+  const uniqueOrgSlug = `${slug(title)}-${nanoid(4)}`;
+  const uniqueProjectSlug = `${slug(projectName)}-${nanoid(4)}`;
 
-  const uniqueSlug = `${desiredSlug}-${nanoid(4)}`;
+  const orgWithSameSlug = await prisma.organization.findFirst({
+    where: { slug: uniqueOrgSlug },
+  });
 
-  const withSameSlug = await prisma.organization.findFirst({
-    where: { slug: uniqueSlug },
+  const projectWithSameSlug = await prisma.project.findFirst({
+    where: { slug: uniqueProjectSlug },
   });
 
   if (attemptCount > 100) {
     throw new Error(
-      `Unable to create organization with slug ${uniqueSlug} after 100 attempts`
+      `Unable to create organization with slug ${uniqueOrgSlug} after 100 attempts`
     );
   }
 
-  if (withSameSlug) {
+  if (orgWithSameSlug || projectWithSameSlug) {
     return createOrganization(
       {
         title,
         userId,
-        desiredSlug,
         projectName,
       },
       attemptCount + 1
@@ -104,7 +102,7 @@ export async function createOrganization(
   const organization = await prisma.organization.create({
     data: {
       title,
-      slug: uniqueSlug,
+      slug: uniqueOrgSlug,
       members: {
         create: {
           userId: userId,
@@ -114,6 +112,7 @@ export async function createOrganization(
       projects: {
         create: {
           name: projectName,
+          slug: uniqueProjectSlug,
         },
       },
     },

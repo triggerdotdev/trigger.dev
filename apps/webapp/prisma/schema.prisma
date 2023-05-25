@@ -220,6 +220,7 @@ enum RuntimeEnvironmentType {
 
 model Project {
   id   String @id @default(cuid())
+  slug   String @unique
   name String
 
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
@@ -595,7 +596,7 @@ enum SecretStoreProvider {
   AWS_PARAM_STORE
 }
 
-/// Used when the provider = "database". Not recommended outside of local development. */
+/// Used when the provider = "database". Not recommended outside of local development.
 model SecretStore {
   key   String @unique
   value Json
