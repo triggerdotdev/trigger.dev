@@ -5,10 +5,10 @@ import type {
   UseCodeMirror,
 } from "@uiw/react-codemirror";
 import { useCodeMirror } from "@uiw/react-codemirror";
-import classNames from "classnames";
 import { useRef, useEffect } from "react";
 import { getEditorSetup } from "./codeMirrorSetup";
 import { darkTheme } from "./codeMirrorTheme";
+import { cn } from "~/utils/cn";
 
 export interface JSONEditorProps extends Omit<ReactCodeMirrorProps, "onBlur"> {
   content: string;
@@ -77,7 +77,7 @@ export function JSONEditor(opts: JSONEditorProps) {
 
   return (
     <div
-      className={classNames("no-scrollbar overflow-y-auto", opts.className)}
+      className={cn("no-scrollbar overflow-y-auto", opts.className)}
       ref={editor}
       onBlur={() => {
         if (!onBlur) return;
