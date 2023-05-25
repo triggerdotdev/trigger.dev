@@ -36,6 +36,7 @@ async function seed() {
       projects: {
         create: {
           name: "My Project",
+          slug: "my-project-123",
         },
       },
     },
@@ -155,7 +156,7 @@ async function seed() {
       dataReference: {
         create: {
           key: GITHUB_CONNECTION_KEY,
-          provider: "database",
+          provider: "DATABASE",
         },
       },
     },
@@ -182,7 +183,7 @@ async function seed() {
       dataReference: {
         create: {
           key: SLACK_CONNECTION_KEY,
-          provider: "database",
+          provider: "DATABASE",
         },
       },
     },
