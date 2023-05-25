@@ -6,8 +6,7 @@ import {
   ProjectSideMenu,
   SideMenuContainer,
 } from "~/components/navigation/ProjectSideMenu";
-import { ProjectsMenu } from "~/components/navigation/ProjectsMenu";
-import { getProjectFromSlug } from "~/models/project.server";
+import { ProjectPresenter } from "~/presenters/ProjectPresenter.server";
 import { analytics } from "~/services/analytics.server";
 import { requireUserId } from "~/services/session.server";
 import { Handle } from "~/utils/handle";
@@ -17,12 +16,14 @@ export const loader = async ({ request, params }: LoaderArgs) => {
   const { projectParam } = params;
   invariant(projectParam, "projectParam not found");
 
-  const project = await getProjectFromSlug({
+  const presenter = new ProjectPresenter();
+
+  const project = await presenter.call({
     userId,
-    id: projectParam,
+    slug: projectParam,
   });
 
-  if (project === null) {
+  if (!project) {
     throw new Response("Not Found", { status: 404 });
   }
 

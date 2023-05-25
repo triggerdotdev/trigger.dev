@@ -42,7 +42,7 @@ function Jobs() {
             status: "TIMED_OUT",
             date: new Date("2021-08-12T12:00:00.000Z"),
           }}
-          properties={[{ key: "Repo", value: "triggerdotdet/trigger.dev" }]}
+          elements={[{ label: "Repo", text: "triggerdotdet/trigger.dev" }]}
         />
         <JobItem
           to={""}
@@ -65,11 +65,11 @@ function Jobs() {
             status: "SUCCESS",
             date: new Date("2021-08-12T12:00:00.000Z"),
           }}
-          properties={[
-            { key: "Repo", value: "triggerdotdet/trigger.dev" },
-            { key: "Element-1", value: "7f9F*9s7df*hdhhh" },
-            { key: "Element-2", value: "github/github.com" },
-            { key: "Element-3", value: "FH8sdfh(*sd&*Sa8hdj" },
+          elements={[
+            { label: "Repo", text: "triggerdotdet/trigger.dev" },
+            { label: "Element-1", text: "7f9F*9s7df*hdhhh" },
+            { label: "Element-2", text: "github/github.com" },
+            { label: "Element-3", text: "FH8sdfh(*sd&*Sa8hdj" },
           ]}
         />
         <JobItem
@@ -89,7 +89,7 @@ function Jobs() {
             },
           ]}
           id="my-custom-job"
-          properties={[{ key: "Repo", value: "triggerdotdet/trigger.dev" }]}
+          elements={[{ label: "Repo", text: "triggerdotdet/trigger.dev" }]}
           disabled={true}
         />
       </JobList>

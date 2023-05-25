@@ -1,8 +1,10 @@
+import { Job } from "~/models/job.server";
 import type { Organization } from "~/models/organization.server";
 import type { Project } from "~/models/project.server";
 
 type OrgForPath = Pick<Organization, "slug">;
-type ProjectForPath = Pick<Project, "id">;
+type ProjectForPath = Pick<Project, "slug">;
+type JobForPath = Pick<Job, "id">;
 
 export function accountPath() {
   return `/account`;
@@ -55,9 +57,23 @@ export function newProjectPath(organization: OrgForPath) {
 }
 
 function projectParam(project: ProjectForPath) {
-  return project.id;
+  return project.slug;
 }
 
+// Job
+export function jobPath(
+  organization: OrgForPath,
+  project: ProjectForPath,
+  job: JobForPath
+) {
+  return `${projectPath(organization, project)}/jobs/${jobParam(job)}`;
+}
+
+export function jobParam(job: JobForPath) {
+  return job.id;
+}
+
+// Docs
 const docsRoot = "https://docs.trigger.dev";
 
 export function docsPath(path: string) {

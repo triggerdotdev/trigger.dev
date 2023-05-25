@@ -1,5 +1,8 @@
+import { LoaderArgs } from "@remix-run/server-runtime";
+import { typedjson } from "remix-typedjson";
 import invariant from "tiny-invariant";
-import { PageContainer } from "~/components/layout/AppLayout";
+import { JobItem, JobList } from "~/components/jobs/JobItem";
+import { PageBody, PageContainer } from "~/components/layout/AppLayout";
 import {
   PageButtons,
   PageDescription,
@@ -7,8 +10,21 @@ import {
   PageTitle,
   PageTitleRow,
 } from "~/components/primitives/PageHeader";
+import { useCurrentOrganization } from "~/hooks/useOrganizations";
 import { useCurrentProject } from "~/hooks/useProject";
+import { requireUserId } from "~/services/session.server";
 import { Handle } from "~/utils/handle";
+import { jobPath, projectPath } from "~/utils/pathBuilder";
+
+export const loader = async ({ request, params }: LoaderArgs) => {
+  const userId = await requireUserId(request);
+  const { projectParam } = params;
+  invariant(projectParam, "projectParam not found");
+
+  return typedjson({
+    jobs: [],
+  });
+};
 
 export const handle: Handle = {
   breadcrumb: {
@@ -17,8 +33,10 @@ export const handle: Handle = {
 };
 
 export default function Page() {
-  const currentProject = useCurrentProject();
-  invariant(currentProject, "Project must be defined");
+  const organization = useCurrentOrganization();
+  const project = useCurrentProject();
+  invariant(project, "Project must be defined");
+  invariant(organization, "Organization must be defined");
 
   return (
     <PageContainer>
@@ -35,8 +53,23 @@ export default function Page() {
             </LinkButton> */}
           </PageButtons>
         </PageTitleRow>
-        <PageDescription>XX active Jobs</PageDescription>
+        <PageDescription>{project.jobs.length} Jobs</PageDescription>
       </PageHeader>
+      <PageBody>
+        <JobList>
+          {project.jobs.map((job) => (
+            <JobItem
+              key={job.id}
+              to={jobPath(organization, project, job)}
+              icon={job.event.icon}
+              title={job.title}
+              trigger={job.event.title}
+              id={job.slug}
+              elements={job.event.elements ?? []}
+            />
+          ))}
+        </JobList>
+      </PageBody>
     </PageContainer>
   );
 }

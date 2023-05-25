@@ -1,19 +1,12 @@
-import { useState } from "react";
 import { JobRunStatus } from ".prisma/client";
 import { Link } from "@remix-run/react";
-import { IconNames, NamedIcon } from "../primitives/NamedIcon";
-import { Header1 } from "../primitives/Headers";
 import { cn } from "~/utils/cn";
-import { Paragraph } from "../primitives/Paragraph";
 import { DateTime } from "../primitives/DateTime";
+import { Header1 } from "../primitives/Headers";
+import { IconNames, NamedIcon } from "../primitives/NamedIcon";
+import { Paragraph } from "../primitives/Paragraph";
+import { SimpleTooltip } from "../primitives/Tooltip";
 import { runStatusTitle } from "../runs/RunStatuses";
-import {
-  SimpleTooltip,
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "../primitives/Tooltip";
 
 type JobItemProps = {
   to: string;
@@ -26,9 +19,10 @@ type JobItemProps = {
     status: JobRunStatus;
     date: Date;
   };
-  properties: {
-    key: string;
-    value: string;
+  elements: {
+    label: string;
+    text: string;
+    url?: string | undefined;
   }[];
   integrations?: {
     name: string;
@@ -45,7 +39,7 @@ export function JobItem({
   trigger,
   id,
   lastRun,
-  properties,
+  elements,
   integrations,
   disabled = false,
 }: JobItemProps) {
@@ -78,13 +72,13 @@ export function JobItem({
               <JobVersion version={version} className="relative bottom-0.5" />
             )}
           </div>
-          <div className="flex flex-wrap gap-y-1 gap-x-4">
+          <div className="flex flex-wrap gap-x-4 gap-y-1">
             <KeyValue name="Trigger" value={trigger} />
             <KeyValue
               name="Integrations"
               className="items-center"
               value={
-                <div className="flex gap-1">
+                <span className="flex gap-1">
                   {integrations &&
                     integrations.map((integration, index) => (
                       <SimpleTooltip
@@ -99,15 +93,15 @@ export function JobItem({
                         content={integration.name}
                       />
                     ))}
-                </div>
+                </span>
               }
             />
 
-            {properties.map((property) => (
+            {elements.map((property) => (
               <KeyValue
-                key={property.key}
-                name={property.key}
-                value={property.value}
+                key={property.label}
+                name={property.label}
+                value={property.text}
               />
             ))}
           </div>

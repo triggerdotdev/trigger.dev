@@ -15,10 +15,6 @@ export function useCurrentProject() {
     return undefined;
   }
 
-  if (routeMatch.data.project == null) {
-    return undefined;
-  }
-
   const result = hydrateObject<
     UseDataFunctionReturn<typeof projectLoader>["project"]
   >(routeMatch.data.project);
