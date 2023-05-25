@@ -74,7 +74,7 @@
     "@trigger.dev/internal": "workspace:*",
     "@typeform/embed-react": "^2.14.1",
     "@types/simple-oauth2": "^5.0.4",
-    "@uiw/react-codemirror": "^4.13.2",
+    "@uiw/react-codemirror": "^4.19.5",
     "bcryptjs": "^2.4.3",
     "class-variance-authority": "^0.5.2",
     "clsx": "^1.2.1",
