@@ -10,6 +10,7 @@ import type { ApiConnection } from ".prisma/client";
 const RUN_INCLUDES = {
   queue: true,
   event: true,
+  externalAccount: true,
   version: {
     include: {
       endpoint: true,
@@ -18,15 +19,7 @@ const RUN_INCLUDES = {
       organization: true,
       integrations: {
         include: {
-          apiConnectionClient: {
-            include: {
-              connections: {
-                where: {
-                  connectionType: "DEVELOPER",
-                },
-              },
-            },
-          },
+          apiConnectionClient: true,
         },
       },
     },
@@ -71,19 +64,47 @@ export class StartRunService {
           return { run: updatedRun };
         } else {
           // If any of the connections are missing, we can't start the execution
-          const runConnectionsByKey = run.version.integrations.reduce(
-            (acc: Record<string, ApiConnection>, connection) => {
-              if (connection.apiConnectionClient.connections.length === 0) {
+          const runConnectionsByKey = await run.version.integrations.reduce(
+            async (
+              accP: Promise<Record<string, ApiConnection>>,
+              integration
+            ) => {
+              const acc = await accP;
+
+              const connection = run.externalAccountId
+                ? await tx.apiConnection.findFirst({
+                    where: {
+                      clientId: integration.apiConnectionClient.id,
+                      connectionType: "EXTERNAL",
+                      externalAccountId: run.externalAccountId,
+                    },
+                  })
+                : await tx.apiConnection.findFirst({
+                    where: {
+                      clientId: integration.apiConnectionClient.id,
+                      connectionType: "DEVELOPER",
+                    },
+                  });
+
+              if (!connection) {
                 return acc;
               }
 
-              acc[connection.key] =
-                connection.apiConnectionClient.connections[0];
+              acc[integration.key] = connection;
 
               return acc;
             },
-            {}
+            Promise.resolve({})
           );
+
+          // Make sure we have all the connections we need
+          // TODO: handle this in a better way that can be retried
+          if (
+            Object.keys(runConnectionsByKey).length <
+            run.version.integrations.length
+          ) {
+            throw new Error(`Missing connections for run ${run.id}`);
+          }
 
           // Start the jobRun and increment the jobCount
           const updatedRun = await tx.jobRun.update({
@@ -197,6 +218,12 @@ export class StartRunService {
           slug: run.version.organization.slug,
           title: run.version.organization.title,
         },
+        account: run.externalAccount
+          ? {
+              id: run.externalAccount.identifier,
+              metadata: run.externalAccount.metadata,
+            }
+          : undefined,
         connections,
       });
 

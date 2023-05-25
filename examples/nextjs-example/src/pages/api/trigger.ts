@@ -16,6 +16,7 @@ import type { NextApiRequest, NextApiResponse } from "next";
 import { z } from "zod";
 
 const github = new Github({ id: "github" });
+const githubUser = new Github({ id: "github-user" });
 
 // const githubLocal = new Github({
 //   id: "github-local",
@@ -37,11 +38,70 @@ const dynamicOnIssueOpenedTrigger = new DynamicTrigger(client, {
   source: github.sources.repo,
 });
 
+const dynamicUserTrigger = new DynamicTrigger(client, {
+  id: "dynamic-user-trigger",
+  event: events.onIssueOpened,
+  source: githubUser.sources.repo,
+});
+
 const dynamicSchedule = new DynamicSchedule(client, {
   id: "dynamic-interval",
 });
 
 const enabled = true;
+
+new Job(client, {
+  id: "user-on-issue-opened",
+  name: "user on issue opened",
+  version: "0.1.1",
+  enabled,
+  trigger: dynamicUserTrigger,
+  integrations: {
+    github: githubUser,
+  },
+  run: async (payload, io, ctx) => {
+    return await io.github.getRepo("get.repo", {
+      repo: payload.repository.full_name,
+    });
+  },
+});
+
+new Job(client, {
+  id: "get-user-repo",
+  name: "Get User Repo",
+  version: "0.1.1",
+  enabled,
+  trigger: customTrigger({
+    name: "get.repo",
+    event: customEvent({
+      payload: z.object({
+        repo: z.string(),
+      }),
+    }),
+  }),
+  integrations: {
+    github: githubUser,
+  },
+  run: async (payload, io, ctx) => {
+    return await io.github.getRepo("get.repo", payload);
+  },
+});
+
+new Job(client, {
+  id: "get-user-repo-on-schedule",
+  name: "Get User Repo On Schedule",
+  version: "0.1.1",
+  enabled,
+  trigger: dynamicSchedule,
+  integrations: {
+    github: githubUser,
+  },
+  run: async (payload, io, ctx) => {
+    return await io.github.getRepo("get.repo", {
+      repo: ctx.event.context.source.metadata.repo,
+    });
+  },
+});
 
 new Job(client, {
   id: "register-dynamic-interval",

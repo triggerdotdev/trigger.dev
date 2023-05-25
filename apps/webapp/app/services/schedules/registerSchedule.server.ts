@@ -59,6 +59,7 @@ export class RegisterScheduleService {
         key: payload.id,
         dispatcher: eventDispatcher,
         schedule: payload,
+        accountId: payload.accountId,
       });
 
       return registration;

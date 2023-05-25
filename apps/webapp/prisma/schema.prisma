@@ -71,12 +71,19 @@ model ExternalAccount {
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   organizationId String
 
+  environment   RuntimeEnvironment @relation(fields: [environmentId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  environmentId String
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  connections ApiConnection[]
+  connections    ApiConnection[]
+  events         EventRecord[]
+  runs           JobRun[]
+  schedules      ScheduleSource[]
+  triggerSources TriggerSource[]
 
-  @@unique([organizationId, identifier])
+  @@unique([environmentId, identifier])
 }
 
 model ApiConnectionClient {
@@ -207,6 +214,7 @@ model RuntimeEnvironment {
   sources           TriggerSource[]
   eventDispatchers  EventDispatcher[]
   scheduleSources   ScheduleSource[]
+  ExternalAccount   ExternalAccount[]
 
   @@unique([projectId, slug, orgMemberId])
 }
@@ -467,10 +475,14 @@ model EventRecord {
   project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   projectId String
 
+  externalAccount   ExternalAccount? @relation(fields: [externalAccountId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  externalAccountId String?
+
   deliverAt   DateTime  @default(now())
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
   deliveredAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   isTest Boolean  @default(false)
   runs   JobRun[]
@@ -505,6 +517,9 @@ model JobRun {
 
   queue   JobQueue @relation(fields: [queueId], references: [id])
   queueId String
+
+  externalAccount   ExternalAccount? @relation(fields: [externalAccountId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  externalAccountId String?
 
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
@@ -637,6 +652,9 @@ model TriggerSource {
   dynamicTrigger   DynamicTrigger? @relation(fields: [dynamicTriggerId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   dynamicTriggerId String?
 
+  externalAccount   ExternalAccount? @relation(fields: [externalAccountId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  externalAccountId String?
+
   active      Boolean @default(false)
   interactive Boolean @default(false)
 
@@ -733,6 +751,9 @@ model ScheduleSource {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  externalAccount   ExternalAccount? @relation(fields: [externalAccountId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  externalAccountId String?
 
   @@unique([key, environmentId])
 }

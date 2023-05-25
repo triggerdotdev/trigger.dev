@@ -201,6 +201,7 @@ export type ApiEventLog = z.infer<typeof ApiEventLogSchema>;
 export const SendEventOptionsSchema = z.object({
   deliverAt: z.string().datetime().optional(),
   deliverAfter: z.number().int().optional(),
+  accountId: z.string().optional(),
 });
 
 export const SendEventBodySchema = z.object({
@@ -249,6 +250,12 @@ export const RunJobBodySchema = z.object({
     title: z.string(),
     slug: z.string(),
   }),
+  account: z
+    .object({
+      id: z.string(),
+      metadata: z.any(),
+    })
+    .optional(),
   tasks: z.array(CachedTaskSchema).optional(),
   connections: z.record(ConnectionAuthSchema).optional(),
 });
@@ -421,27 +428,26 @@ export type RegisterTriggerBody = z.infer<typeof RegisterTriggerBodySchema>;
 export const InitializeTriggerBodySchema = z.object({
   id: z.string(),
   params: z.any(),
+  accountId: z.string().optional(),
 });
 
 export type InitializeTriggerBody = z.infer<typeof InitializeTriggerBodySchema>;
 
-export const RegisterIntervalScheduleBodySchema = z
-  .object({
-    id: z.string(),
-    metadata: z.any(),
-  })
-  .merge(IntervalMetadataSchema);
+const RegisterCommonScheduleBodySchema = z.object({
+  id: z.string(),
+  metadata: z.any(),
+  accountId: z.string().optional(),
+});
+
+export const RegisterIntervalScheduleBodySchema =
+  RegisterCommonScheduleBodySchema.merge(IntervalMetadataSchema);
 
 export type RegisterIntervalScheduleBody = z.infer<
   typeof RegisterIntervalScheduleBodySchema
 >;
 
-export const InitializeCronScheduleBodySchema = z
-  .object({
-    id: z.string(),
-    metadata: z.any(),
-  })
-  .merge(CronMetadataSchema);
+export const InitializeCronScheduleBodySchema =
+  RegisterCommonScheduleBodySchema.merge(CronMetadataSchema);
 
 export type RegisterCronScheduleBody = z.infer<
   typeof InitializeCronScheduleBodySchema

@@ -50,7 +50,7 @@ async function seed() {
   const adminMember = organization.members[0];
   const defaultProject = organization.projects[0];
 
-  await prisma.runtimeEnvironment.upsert({
+  const devEnv = await prisma.runtimeEnvironment.upsert({
     where: {
       apiKey: "tr_dev_bNaLxayOXqoj",
     },
@@ -141,6 +141,7 @@ async function seed() {
       id: "clhkhsvx20000rmdy9u9d25e7",
     },
     create: {
+      id: "clhkhsvx20000rmdy9u9d25e7",
       metadata: { id: "github" },
       client: {
         connect: {
@@ -154,9 +155,14 @@ async function seed() {
       },
       connectionType: "DEVELOPER",
       dataReference: {
-        create: {
-          key: GITHUB_CONNECTION_KEY,
-          provider: "DATABASE",
+        connectOrCreate: {
+          where: {
+            key: GITHUB_CONNECTION_KEY,
+          },
+          create: {
+            key: GITHUB_CONNECTION_KEY,
+            provider: "DATABASE",
+          },
         },
       },
     },
@@ -168,6 +174,7 @@ async function seed() {
       id: "clhkigzf90000rmdyfuiec6ew",
     },
     create: {
+      id: "clhkigzf90000rmdyfuiec6ew",
       metadata: { id: "slack" },
       client: {
         connect: {
@@ -181,9 +188,14 @@ async function seed() {
       },
       connectionType: "DEVELOPER",
       dataReference: {
-        create: {
-          key: SLACK_CONNECTION_KEY,
-          provider: "DATABASE",
+        connectOrCreate: {
+          where: {
+            key: SLACK_CONNECTION_KEY,
+          },
+          create: {
+            key: SLACK_CONNECTION_KEY,
+            provider: "DATABASE",
+          },
         },
       },
     },
@@ -241,6 +253,100 @@ async function seed() {
           "bookmarks:read",
         ],
         accessToken: process.env.SEED_SLACK_ACCESS_TOKEN,
+      },
+    },
+    update: {},
+  });
+
+  const userGithubClient = await prisma.apiConnectionClient.upsert({
+    where: {
+      organizationId_slug: {
+        organizationId: organization.id,
+        slug: "github-user",
+      },
+    },
+    create: {
+      organizationId: organization.id,
+      slug: "github-user",
+      title: "GitHub User",
+      scopes: ["admin:repo_hook", "public_repo"],
+      integrationIdentifier: "github",
+      integrationAuthMethod: "oauth2",
+    },
+    update: {},
+  });
+
+  const externalAccount1Identifier = "eric1234";
+
+  const externalAccount1 = await prisma.externalAccount.upsert({
+    where: {
+      environmentId_identifier: {
+        environmentId: devEnv.id,
+        identifier: externalAccount1Identifier,
+      },
+    },
+    create: {
+      organizationId: organization.id,
+      environmentId: devEnv.id,
+      identifier: externalAccount1Identifier,
+      metadata: { foo: "bar" },
+    },
+    update: {},
+  });
+
+  await prisma.apiConnection.upsert({
+    where: {
+      id: "cli1qcroy0000b4dy084m2jsr",
+    },
+    create: {
+      id: "cli1qcroy0000b4dy084m2jsr",
+      externalAccount: {
+        connect: {
+          id: externalAccount1.id,
+        },
+      },
+      metadata: { id: "github-user" },
+      client: {
+        connect: {
+          id: userGithubClient.id,
+        },
+      },
+      organization: {
+        connect: {
+          id: organization.id,
+        },
+      },
+      connectionType: "EXTERNAL",
+      dataReference: {
+        connectOrCreate: {
+          where: {
+            key: `${externalAccount1Identifier}-github`,
+          },
+          create: {
+            key: `${externalAccount1Identifier}-github`,
+            provider: "DATABASE",
+          },
+        },
+      },
+    },
+    update: {},
+  });
+
+  await prisma.secretStore.upsert({
+    where: {
+      key: `${externalAccount1Identifier}-github`,
+    },
+    create: {
+      key: `${externalAccount1Identifier}-github`,
+      value: {
+        raw: {
+          scope: "admin:repo_hook,public_repo",
+          token_type: "bearer",
+          access_token: process.env.SEED_USER_GITHUB_ACCESS_TOKEN,
+        },
+        type: "oauth2",
+        scopes: ["admin:repo_hook,public_repo"],
+        accessToken: process.env.SEED_USER_GITHUB_ACCESS_TOKEN,
       },
     },
     update: {},

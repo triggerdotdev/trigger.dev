@@ -63,17 +63,22 @@ export class InitializeTriggerService {
       id: dynamicTrigger.slug,
       endpointSlug,
       key: payload.id,
+      accountId: payload.accountId,
     });
 
-    await this.#sendEvent.call(environment, {
-      id: registration.id,
-      name: "trigger.internal.registerSource",
-      source: "trigger.dev",
-      payload: {
-        ...registration,
-        dynamicTriggerId: dynamicTrigger.slug,
+    await this.#sendEvent.call(
+      environment,
+      {
+        id: registration.id,
+        name: "trigger.internal.registerSource",
+        source: "trigger.dev",
+        payload: {
+          ...registration,
+          dynamicTriggerId: dynamicTrigger.slug,
+        },
       },
-    });
+      { accountId: payload.accountId }
+    );
 
     return registration;
   }

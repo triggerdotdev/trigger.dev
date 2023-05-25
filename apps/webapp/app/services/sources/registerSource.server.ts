@@ -17,7 +17,8 @@ export class RegisterSourceService {
   public async call(
     endpointId: string,
     metadata: SourceMetadata,
-    dynamicTriggerId?: string
+    dynamicTriggerId?: string,
+    accountId?: string
   ) {
     const endpoint = await this.#prismaClient.endpoint.findUniqueOrThrow({
       where: {
@@ -37,7 +38,8 @@ export class RegisterSourceService {
       endpoint,
       endpoint.environment,
       metadata,
-      dynamicTriggerId
+      dynamicTriggerId,
+      accountId
     );
   }
 
@@ -45,12 +47,14 @@ export class RegisterSourceService {
     endpoint: Endpoint,
     environment: AuthenticatedEnvironment,
     metadata: SourceMetadata,
-    dynamicTriggerId?: string
+    dynamicTriggerId?: string,
+    accountId?: string
   ) {
     logger.debug("Upserting source", {
       endpoint,
       organizationId: environment.organizationId,
       metadata,
+      accountId,
     });
 
     const key = dynamicTriggerId
@@ -67,6 +71,17 @@ export class RegisterSourceService {
                 organizationId_slug: {
                   organizationId: environment.organizationId,
                   slug: metadata.clientId,
+                },
+              },
+            })
+          : undefined;
+
+        const externalAccount = accountId
+          ? await tx.externalAccount.findUniqueOrThrow({
+              where: {
+                environmentId_identifier: {
+                  environmentId: environment.id,
+                  identifier: accountId,
                 },
               },
             })
@@ -112,6 +127,9 @@ export class RegisterSourceService {
                     id: dynamicTriggerId,
                   },
                 }
+              : undefined,
+            externalAccount: externalAccount
+              ? { connect: { id: externalAccount.id } }
               : undefined,
             events: {
               create: metadata.events.map((event) => ({

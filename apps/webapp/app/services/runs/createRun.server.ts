@@ -34,6 +34,12 @@ export class CreateRunService {
       },
     });
 
+    const eventRecord = await this.#prismaClient.eventRecord.findUniqueOrThrow({
+      where: {
+        id: eventId,
+      },
+    });
+
     return await $transaction(this.#prismaClient, async (tx) => {
       // Get the current max number for the given jobId
       const currentMaxNumber = await tx.jobRun.aggregate({
@@ -56,6 +62,9 @@ export class CreateRunService {
           project: { connect: { id: environment.projectId } },
           endpoint: { connect: { id: endpoint.id } },
           queue: { connect: { id: jobQueue.id } },
+          externalAccount: eventRecord.externalAccountId
+            ? { connect: { id: eventRecord.externalAccountId } }
+            : undefined,
         },
       });
 

@@ -544,6 +544,7 @@ export class TriggerClient {
       environment,
       job,
       run,
+      account: execution.account,
     };
   }
 

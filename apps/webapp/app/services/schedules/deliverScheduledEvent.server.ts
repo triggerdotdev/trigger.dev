@@ -27,6 +27,7 @@ export class DeliverScheduledEventService {
               project: true,
             },
           },
+          externalAccount: true,
         },
       });
 
@@ -40,17 +41,21 @@ export class DeliverScheduledEventService {
       // since we are going to control that ourselves
       const eventService = new IngestSendEvent(tx, false);
 
-      const eventRecord = await eventService.call(scheduleSource.environment, {
-        id: eventId,
-        name: "internal.scheduled",
-        payload,
-        context: {
-          source: {
-            id: scheduleSource.key,
-            metadata: scheduleSource.metadata,
+      const eventRecord = await eventService.call(
+        scheduleSource.environment,
+        {
+          id: eventId,
+          name: "internal.scheduled",
+          payload,
+          context: {
+            source: {
+              id: scheduleSource.key,
+              metadata: scheduleSource.metadata,
+            },
           },
         },
-      });
+        { accountId: scheduleSource.externalAccount?.identifier }
+      );
 
       const invokeDispatcherService = new InvokeDispatcherService(tx);
 

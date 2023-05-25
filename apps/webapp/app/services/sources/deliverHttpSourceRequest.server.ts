@@ -1,13 +1,9 @@
+import { z } from "zod";
 import type { PrismaClient } from "~/db.server";
 import { prisma } from "~/db.server";
 import { ClientApi } from "../clientApi.server";
-import {
-  SecretStoreProvider,
-  getSecretStore,
-} from "../secrets/secretStore.server";
-import { SecretStore } from "../secrets/secretStore.server";
-import { z } from "zod";
 import { IngestSendEvent } from "../events/ingestSendEvent.server";
+import { getSecretStore } from "../secrets/secretStore.server";
 
 export class DeliverHttpSourceRequestService {
   #prismaClient: PrismaClient;
@@ -32,6 +28,7 @@ export class DeliverHttpSourceRequestService {
             include: {
               secretReference: true,
               dynamicTrigger: true,
+              externalAccount: true,
             },
           },
         },
@@ -89,7 +86,9 @@ export class DeliverHttpSourceRequestService {
     const ingestService = new IngestSendEvent();
 
     for (const event of events) {
-      await ingestService.call(httpSourceRequest.environment, event);
+      await ingestService.call(httpSourceRequest.environment, event, {
+        accountId: httpSourceRequest.source.externalAccount?.identifier,
+      });
     }
 
     return response;

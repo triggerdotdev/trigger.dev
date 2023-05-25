@@ -18,10 +18,12 @@ export class RegisterScheduleSourceService {
     key,
     dispatcher,
     schedule,
+    accountId,
   }: {
     key: string;
     dispatcher: EventDispatcher;
     schedule: ScheduleMetadata;
+    accountId?: string;
   }) {
     const validation = validateSchedule(schedule);
 
@@ -30,6 +32,17 @@ export class RegisterScheduleSourceService {
     }
 
     return await $transaction(this.#prismaClient, async (tx) => {
+      const externalAccount = accountId
+        ? await tx.externalAccount.findUniqueOrThrow({
+            where: {
+              environmentId_identifier: {
+                environmentId: dispatcher.environmentId,
+                identifier: accountId,
+              },
+            },
+          })
+        : undefined;
+
       const scheduleSource = await this.#prismaClient.scheduleSource.upsert({
         where: {
           key_environmentId: {
@@ -47,6 +60,7 @@ export class RegisterScheduleSourceService {
           },
           active: true,
           metadata: schedule.metadata,
+          externalAccountId: externalAccount ? externalAccount.id : undefined,
         },
         update: {
           schedule: {
@@ -54,6 +68,7 @@ export class RegisterScheduleSourceService {
             options: schedule.options,
           },
           metadata: schedule.metadata ?? {},
+          externalAccountId: externalAccount ? externalAccount.id : undefined,
         },
       });
 

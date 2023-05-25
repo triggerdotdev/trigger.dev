@@ -22,12 +22,14 @@ export class RegisterTriggerSourceService {
     endpointSlug,
     id,
     key,
+    accountId,
   }: {
     environment: AuthenticatedEnvironment;
     payload: RegisterTriggerBody;
     id: string;
     endpointSlug: string;
     key: string;
+    accountId?: string;
   }): Promise<RegisterSourceEvent> {
     const endpoint = await this.#prismaClient.endpoint.findUniqueOrThrow({
       where: {
@@ -55,7 +57,8 @@ export class RegisterTriggerSourceService {
       const triggerSource = await service.call(
         endpoint.id,
         payload.source,
-        dynamicTrigger.id
+        dynamicTrigger.id,
+        accountId
       );
 
       const eventDispatcher = await tx.eventDispatcher.upsert({

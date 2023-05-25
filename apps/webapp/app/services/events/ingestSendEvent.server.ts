@@ -45,6 +45,17 @@ export class IngestSendEvent {
       const deliverAt = this.#calculateDeliverAt(options);
 
       return await $transaction(this.#prismaClient, async (tx) => {
+        const externalAccount = options?.accountId
+          ? await tx.externalAccount.findUniqueOrThrow({
+              where: {
+                environmentId_identifier: {
+                  environmentId: environment.id,
+                  identifier: options.accountId,
+                },
+              },
+            })
+          : undefined;
+
         // Create a new event in the database
         const eventLog = await tx.eventRecord.create({
           data: {
@@ -70,6 +81,13 @@ export class IngestSendEvent {
             context: event.context ?? {},
             source: event.source ?? "trigger.dev",
             deliverAt: deliverAt,
+            externalAccount: externalAccount
+              ? {
+                  connect: {
+                    id: externalAccount.id,
+                  },
+                }
+              : {},
           },
         });
 

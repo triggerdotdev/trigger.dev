@@ -27,6 +27,7 @@ export class ResumeTaskService {
             environment: true,
             event: true,
             organization: true,
+            externalAccount: true,
             tasks: {
               where: {
                 status: {
@@ -103,6 +104,12 @@ export class ResumeTaskService {
           slug: run.organization.slug,
           title: run.organization.title,
         },
+        account: run.externalAccount
+          ? {
+              id: run.externalAccount.identifier,
+              metadata: run.externalAccount.metadata,
+            }
+          : undefined,
         tasks: [run.tasks, updatedTask]
           .flat()
           .map((t) => CachedTaskSchema.parse(t)),
