@@ -9,7 +9,9 @@ export function getJob({
 }: Pick<Job, "id"> & {
   userId: User["id"];
 }) {
+  //just the very basic info because we already fetched it for the Jobs list
   return prisma.job.findFirst({
+    select: { id: true, title: true },
     where: { id, organization: { members: { some: { userId } } } },
   });
 }

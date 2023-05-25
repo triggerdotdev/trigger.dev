@@ -3,6 +3,7 @@ import type { LoaderArgs } from "@remix-run/server-runtime";
 import { typedjson } from "remix-typedjson";
 import invariant from "tiny-invariant";
 import { PageContainer, PageBody } from "~/components/layout/AppLayout";
+import { LinkButton } from "~/components/primitives/Buttons";
 import {
   PageHeader,
   PageTitleRow,
@@ -10,11 +11,13 @@ import {
   PageButtons,
   PageDescription,
 } from "~/components/primitives/PageHeader";
+import { useCurrentJob } from "~/hooks/useJob";
 import { useCurrentOrganization } from "~/hooks/useOrganizations";
 import { useCurrentProject } from "~/hooks/useProject";
 import { getJob } from "~/models/job.server";
 import { requireUserId } from "~/services/session.server";
 import { Handle } from "~/utils/handle";
+import { testJobPath } from "~/utils/pathBuilder";
 
 export const loader = async ({ request, params }: LoaderArgs) => {
   const userId = await requireUserId(request);
@@ -47,22 +50,24 @@ export const handle: Handle = {
 export default function Job() {
   const organization = useCurrentOrganization();
   const project = useCurrentProject();
-  invariant(project, "Project must be defined");
+  const job = useCurrentJob();
   invariant(organization, "Organization must be defined");
+  invariant(project, "Project must be defined");
+  invariant(job, "Job must be defined");
 
   return (
     <PageContainer>
       <PageHeader>
         <PageTitleRow>
-          <PageTitle title="REPLACE WITH JOB TITLE" />
+          <PageTitle title={job.title} />
           <PageButtons>
-            {/* <LinkButton
-              to={newProjectPath(currentOrganization)}
+            <LinkButton
+              to={testJobPath(organization, project, job)}
               variant="primary/small"
-              shortcut="N" 
+              shortcut="T"
             >
-              Create a new project
-            </LinkButton> */}
+              Run Test
+            </LinkButton>
           </PageButtons>
         </PageTitleRow>
         <PageDescription>{project.jobs.length} Jobs</PageDescription>

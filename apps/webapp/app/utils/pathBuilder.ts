@@ -69,6 +69,14 @@ export function jobPath(
   return `${projectPath(organization, project)}/jobs/${jobParam(job)}`;
 }
 
+export function testJobPath(
+  organization: OrgForPath,
+  project: ProjectForPath,
+  job: JobForPath
+) {
+  return `${jobPath(organization, project, job)}/test`;
+}
+
 export function jobParam(job: JobForPath) {
   return job.id;
 }
