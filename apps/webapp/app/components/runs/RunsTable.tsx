@@ -1,4 +1,5 @@
 import { BeakerIcon } from "@heroicons/react/24/outline";
+import { ChevronRightIcon } from "@heroicons/react/24/solid";
 import { Link } from "@remix-run/react";
 import type { ReactNode } from "react";
 import { useJob } from "~/hooks/useJob";
@@ -8,8 +9,12 @@ import { RunList } from "~/presenters/RunListPresenter.server";
 import { formatDateTime, formatDuration } from "~/utils";
 import { cn } from "~/utils/cn";
 import { runPath } from "~/utils/pathBuilder";
+import {
+  EnvironmentLabel,
+  environmentTitle,
+} from "../environments/EnvironmentLabel";
 import { Spinner } from "../primitives/Spinner";
-import { RunStatusIcon, RunStatusLabel } from "./RunStatuses";
+import { RunStatus } from "./RunStatuses";
 
 export function RunsTable({
   total,
@@ -34,9 +39,9 @@ export function RunsTable({
           <HeaderCell title="Env" />
           <HeaderCell title="Status" />
           <HeaderCell title="Started" />
-          <HeaderCell title="Duration" alignment="right" />
-          <HeaderCell title="Test" alignment="right" />
-          <HeaderCell title="Version" alignment="right" />
+          <HeaderCell title="Duration" />
+          <HeaderCell title="Test" />
+          <HeaderCell title="Version" />
           <th>
             <span className="sr-only">Go to page</span>
           </th>
@@ -56,19 +61,14 @@ export function RunsTable({
             const path = runPath(organization, project, job, run);
             return (
               <tr key={run.id} className="group w-full">
-                <Cell to={path} alignment="left">
-                  #{run.number}
+                <Cell to={path}>#{run.number}</Cell>
+                <Cell to={path}>
+                  <EnvironmentLabel environment={run.environment} />
                 </Cell>
-                <Cell to={path} alignment="left">
-                  {run.environment.type}
+                <Cell to={path}>
+                  <RunStatus status={run.status} />
                 </Cell>
-                <Cell to={path} alignment="left">
-                  <span className="flex items-center gap-1">
-                    {RunStatusIcon(run.status, "small")}
-                    {RunStatusLabel(run.status)}
-                  </span>
-                </Cell>
-                <Cell to={path} alignment="left">
+                <Cell to={path}>
                   {run.startedAt
                     ? formatDateTime(run.startedAt, "medium")
                     : "–"}
@@ -83,10 +83,9 @@ export function RunsTable({
                     <BeakerIcon className="h-5 w-5 text-green-500" />
                   )}
                 </Cell>
-                <Cell to={path}>
-                  {run.isTest && (
-                    <BeakerIcon className="h-5 w-5 text-green-500" />
-                  )}
+                <Cell to={path}>{run.version}</Cell>
+                <Cell to={path} alignment="right">
+                  <ChevronRightIcon className="h-4 w-4 text-slate-700" />
                 </Cell>
               </tr>
             );
@@ -130,7 +129,7 @@ function HeaderCell({
 function Cell({
   children,
   to,
-  alignment = "right",
+  alignment = "left",
 }: {
   children: React.ReactNode;
   to: string;
@@ -141,8 +140,10 @@ function Cell({
       <Link
         to={to}
         className={cn(
-          "flex w-full whitespace-nowrap px-4 py-3 text-xs text-slate-400",
-          alignment === "left" ? "justify-start" : "justify-end"
+          "flex w-full whitespace-nowrap px-4 py-3 text-left text-xs text-slate-400",
+          alignment === "left"
+            ? "justify-start text-left"
+            : "justify-end text-right"
         )}
       >
         {children}

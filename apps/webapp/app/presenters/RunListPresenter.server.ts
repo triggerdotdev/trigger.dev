@@ -20,10 +20,22 @@ export class RunListPresenter {
   public async call({ userId, jobId, cursor }: RunListOptions) {
     const runs = await this.#prismaClient.jobRun.findMany({
       //todo change to a select
-      include: {
+      select: {
+        id: true,
+        number: true,
+        startedAt: true,
+        completedAt: true,
+        isTest: true,
+        status: true,
         environment: {
           select: {
             type: true,
+            slug: true,
+            orgMember: {
+              select: {
+                userId: true,
+              },
+            },
           },
         },
         version: {
@@ -62,7 +74,20 @@ export class RunListPresenter {
 
     const hasMore = runs.length > PAGE_SIZE;
     return {
-      runs: runs.slice(0, PAGE_SIZE),
+      runs: runs.slice(0, PAGE_SIZE).map((run) => ({
+        id: run.id,
+        number: run.number,
+        startedAt: run.startedAt,
+        completedAt: run.completedAt,
+        isTest: run.isTest,
+        status: run.status,
+        version: run.version?.version ?? "unknown",
+        environment: {
+          type: run.environment.type,
+          slug: run.environment.slug,
+          userId: run.environment.orgMember?.userId,
+        },
+      })),
       hasMore,
       //todo look at Stripe for how to structure the object, needs previous cursor too
       cursor: hasMore ? runs[PAGE_SIZE - 1].id : undefined,
