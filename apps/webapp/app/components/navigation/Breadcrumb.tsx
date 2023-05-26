@@ -1,5 +1,6 @@
 import { useMatches } from "@remix-run/react";
 import { Fragment } from "react";
+import { useJob, useOptionalJob } from "~/hooks/useJob";
 import {
   useOptionalOrganization,
   useOrganization,
@@ -15,7 +16,6 @@ import { BreadcrumbIcon } from "../primitives/BreadcrumbIcon";
 import { JobsMenu } from "./JobsMenu";
 import { BreadcrumbLink } from "./NavBar";
 import { ProjectsMenu } from "./ProjectsMenu";
-import { useJob } from "~/hooks/useJob";
 
 export type Breadcrumb = {
   slug: "projects" | "jobs" | "integrations" | "environments" | "job" | "runs";
@@ -38,7 +38,7 @@ export function Breadcrumb() {
   const breadcrumbs = useBreadcrumbs();
   const organization = useOptionalOrganization();
   const project = useOptionalProject();
-  const job = useJob();
+  const job = useOptionalJob();
 
   return (
     <div className="hidden items-center md:flex">
