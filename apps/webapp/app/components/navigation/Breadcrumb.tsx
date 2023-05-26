@@ -6,6 +6,7 @@ import {
 } from "~/hooks/useOrganizations";
 import { useOptionalProject, useProject } from "~/hooks/useProject";
 import {
+  jobPath,
   projectEnvironmentsPath,
   projectIntegrationsPath,
   projectPath,
@@ -14,6 +15,7 @@ import { BreadcrumbIcon } from "../primitives/BreadcrumbIcon";
 import { JobsMenu } from "./JobsMenu";
 import { BreadcrumbLink } from "./NavBar";
 import { ProjectsMenu } from "./ProjectsMenu";
+import { useJob } from "~/hooks/useJob";
 
 export type Breadcrumb = {
   slug: "projects" | "jobs" | "integrations" | "environments" | "job" | "runs";
@@ -36,6 +38,7 @@ export function Breadcrumb() {
   const breadcrumbs = useBreadcrumbs();
   const organization = useOptionalOrganization();
   const project = useOptionalProject();
+  const job = useJob();
 
   return (
     <div className="hidden items-center md:flex">
@@ -46,6 +49,7 @@ export function Breadcrumb() {
             breadcrumb={breadcrumb}
             organization={organization}
             project={project}
+            job={job}
           />
         </Fragment>
       ))}
@@ -57,10 +61,12 @@ function BreadcrumbItem({
   breadcrumb,
   organization,
   project,
+  job,
 }: {
   breadcrumb: Breadcrumb;
   organization?: ReturnType<typeof useOrganization>;
   project?: ReturnType<typeof useProject>;
+  job?: ReturnType<typeof useJob>;
 }) {
   switch (breadcrumb.slug) {
     case "projects":
@@ -104,7 +110,7 @@ function BreadcrumbItem({
       return (
         <BreadcrumbLink
           key={breadcrumb.slug}
-          to={projectPath(organization!, project!)}
+          to={jobPath(organization!, project!, job!)}
           title="Runs"
         />
       );
