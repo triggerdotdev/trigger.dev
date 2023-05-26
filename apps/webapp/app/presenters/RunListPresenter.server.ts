@@ -1,8 +1,16 @@
 import { PrismaClient, prisma } from "~/db.server";
+import { z } from "zod";
+
+export const DirectionSchema = z.union([
+  z.literal("forward"),
+  z.literal("backward"),
+]);
+export type Direction = z.infer<typeof DirectionSchema>;
 
 type RunListOptions = {
   userId: string;
   jobId: string;
+  direction?: Direction;
   cursor?: string;
 };
 
@@ -17,9 +25,15 @@ export class RunListPresenter {
     this.#prismaClient = prismaClient;
   }
 
-  public async call({ userId, jobId, cursor }: RunListOptions) {
+  public async call({
+    userId,
+    jobId,
+    direction = "forward",
+    cursor,
+  }: RunListOptions) {
+    const directionMultiplier = direction === "forward" ? 1 : -1;
+
     const runs = await this.#prismaClient.jobRun.findMany({
-      //todo change to a select
       select: {
         id: true,
         number: true,
@@ -62,7 +76,7 @@ export class RunListPresenter {
       },
       orderBy: [{ id: "desc" }],
       //take an extra page to tell if there are more
-      take: PAGE_SIZE + 1,
+      take: directionMultiplier * (PAGE_SIZE + 1),
       //skip the cursor if there is one
       skip: cursor ? 1 : 0,
       cursor: cursor
@@ -73,6 +87,25 @@ export class RunListPresenter {
     });
 
     const hasMore = runs.length > PAGE_SIZE;
+
+    //get cursors for next and previous pages
+    let next: string | undefined;
+    let previous: string | undefined;
+    switch (direction) {
+      case "forward":
+        if (hasMore) {
+          next = runs[PAGE_SIZE - 1]?.id;
+        }
+        previous = cursor ? runs.at(1)?.id : undefined;
+        break;
+      case "backward":
+        if (hasMore) {
+          next = runs[PAGE_SIZE - 1]?.id;
+        }
+        previous = runs.at(1)?.id;
+        break;
+    }
+
     return {
       runs: runs.slice(0, PAGE_SIZE).map((run) => ({
         id: run.id,
@@ -88,9 +121,10 @@ export class RunListPresenter {
           userId: run.environment.orgMember?.userId,
         },
       })),
-      hasMore,
-      //todo look at Stripe for how to structure the object, needs previous cursor too
-      cursor: hasMore ? runs[PAGE_SIZE - 1].id : undefined,
+      pagination: {
+        next,
+        previous,
+      },
     };
   }
 }
