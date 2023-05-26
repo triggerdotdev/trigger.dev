@@ -14,13 +14,14 @@ import {
   PageTitleRow,
 } from "~/components/primitives/PageHeader";
 import { Paragraph } from "~/components/primitives/Paragraph";
+import { Tabs } from "~/components/primitives/Tabs";
 import { useJob } from "~/hooks/useJob";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { getJob } from "~/models/job.server";
 import { requireUserId } from "~/services/session.server";
 import { Handle } from "~/utils/handle";
-import { testJobPath } from "~/utils/pathBuilder";
+import { jobPath, testJobPath } from "~/utils/pathBuilder";
 
 export const loader = async ({ request, params }: LoaderArgs) => {
   const userId = await requireUserId(request);
@@ -95,6 +96,12 @@ export default function Job() {
         </PageInfoRow>
       </PageHeader>
       <PageBody>
+        <Tabs
+          tabs={[
+            { label: "Runs", to: jobPath(organization, project, job) },
+            { label: "Test", to: testJobPath(organization, project, job) },
+          ]}
+        />
         <Outlet />
       </PageBody>
     </PageContainer>
