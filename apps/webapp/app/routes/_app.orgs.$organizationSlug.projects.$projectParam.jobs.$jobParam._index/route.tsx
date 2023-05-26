@@ -16,6 +16,7 @@ import { z } from "zod";
 import { useLocation } from "@remix-run/react";
 import { LinkButton } from "~/components/primitives/Buttons";
 import { cn } from "~/utils/cn";
+import { ListPagination } from "./ListPagination";
 
 //todo defer the run list query
 //todo live show when there are new items in the list
@@ -64,60 +65,4 @@ export default function Page() {
       <ListPagination list={list} className="mb-1 justify-end" />
     </div>
   );
-}
-
-function ListPagination({
-  list,
-  className,
-}: {
-  list: RunList;
-  className?: string;
-}) {
-  return (
-    <div className={cn("flex items-center gap-1", className)}>
-      <PreviousButton cursor={list.pagination.previous} />
-      <NextButton cursor={list.pagination.next} />
-    </div>
-  );
-}
-
-function NextButton({ cursor }: { cursor?: string }) {
-  const path = useCursorPath(cursor, "forward");
-
-  return path ? (
-    <LinkButton
-      to={path}
-      variant={"secondary/small"}
-      TrailingIcon="chevron-right"
-    >
-      <span className="sr-only">Next</span>
-    </LinkButton>
-  ) : null;
-}
-
-function PreviousButton({ cursor }: { cursor?: string }) {
-  const path = useCursorPath(cursor, "backward");
-
-  return path ? (
-    <LinkButton
-      to={path}
-      variant={"secondary/small"}
-      LeadingIcon="chevron-left"
-    >
-      <span className="sr-only">Previous</span>
-    </LinkButton>
-  ) : null;
-}
-
-function useCursorPath(cursor: string | undefined, direction: Direction) {
-  const location = useLocation();
-
-  if (!cursor) {
-    return undefined;
-  }
-
-  const search = new URLSearchParams(location.search);
-  search.set("cursor", cursor);
-  search.set("direction", direction);
-  return location.pathname + "?" + search.toString();
 }
