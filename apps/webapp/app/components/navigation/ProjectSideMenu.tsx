@@ -56,7 +56,7 @@ export function ProjectSideMenu() {
       variants={menuVariants}
       initial={isCollapsed ? "collapsed" : "expanded"}
       className={cn(
-        "flex h-full flex-col justify-between border-r border-slate-850 p-1 transition duration-300 ease-in-out"
+        "flex h-full flex-col justify-between overflow-hidden border-r border-slate-850 p-1 transition duration-300 ease-in-out"
       )}
     >
       <div className="flex flex-col gap-1">
