@@ -1,4 +1,3 @@
-import invariant from "tiny-invariant";
 import { PageContainer } from "~/components/layout/AppLayout";
 import {
   PageHeader,
@@ -16,7 +15,6 @@ export const handle: Handle = {
 
 export default function Page() {
   const currentProject = useProject();
-  invariant(currentProject, "Project must be defined");
 
   return (
     <PageContainer>

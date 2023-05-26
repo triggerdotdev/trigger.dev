@@ -50,8 +50,6 @@ export function ProjectSideMenu() {
     matches.at(-1)?.id ===
       "routes/_app.orgs.$organizationSlug.projects.$projectParam._index";
 
-  invariant(project, "Project must be defined");
-
   return (
     <motion.div
       animate={isCollapsed ? "collapsed" : "expanded"}

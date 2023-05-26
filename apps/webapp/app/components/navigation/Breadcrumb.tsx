@@ -4,7 +4,7 @@ import {
   useOptionalOrganization,
   useOrganization,
 } from "~/hooks/useOrganizations";
-import { useProject } from "~/hooks/useProject";
+import { useOptionalProject, useProject } from "~/hooks/useProject";
 import {
   projectEnvironmentsPath,
   projectIntegrationsPath,
@@ -35,7 +35,7 @@ function useBreadcrumbs(): Breadcrumb[] {
 export function Breadcrumb() {
   const breadcrumbs = useBreadcrumbs();
   const organization = useOptionalOrganization();
-  const project = useProject();
+  const project = useOptionalProject();
 
   return (
     <div className="hidden items-center md:flex">

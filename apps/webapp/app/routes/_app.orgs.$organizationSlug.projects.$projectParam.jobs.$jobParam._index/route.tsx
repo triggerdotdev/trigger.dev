@@ -1,4 +1,3 @@
-import invariant from "tiny-invariant";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { Handle } from "~/utils/handle";
@@ -15,7 +14,6 @@ export const handle: Handle = {
 export default function Page() {
   const organization = useOrganization();
   const project = useProject();
-  invariant(project, "Project must be defined");
 
   return <div>Runs page</div>;
 }

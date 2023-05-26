@@ -3,7 +3,7 @@ import {
   useIsNewOrganizationPage,
   useOrganizations,
 } from "~/hooks/useOrganizations";
-import { useProject } from "~/hooks/useProject";
+import { useOptionalProject, useProject } from "~/hooks/useProject";
 import {
   newOrganizationPath,
   newProjectPath,
@@ -21,7 +21,7 @@ export function ProjectsMenu() {
   const [isOpen, setIsOpen] = useState(false);
   const organizations = useOrganizations();
   const isNewOrgPage = useIsNewOrganizationPage();
-  const currentProject = useProject();
+  const currentProject = useOptionalProject();
 
   if (isNewOrgPage) {
     return null;

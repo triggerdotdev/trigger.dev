@@ -1,8 +1,6 @@
-import invariant from "tiny-invariant";
 import { JobItem, JobList } from "~/components/jobs/JobItem";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
 import {
-  PageButtons,
   PageDescription,
   PageHeader,
   PageTitle,
@@ -22,7 +20,6 @@ export const handle: Handle = {
 export default function Page() {
   const organization = useOrganization();
   const project = useProject();
-  invariant(project, "Project must be defined");
 
   return (
     <PageContainer>

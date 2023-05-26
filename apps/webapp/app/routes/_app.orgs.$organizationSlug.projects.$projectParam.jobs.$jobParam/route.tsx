@@ -52,7 +52,6 @@ export default function Job() {
   const organization = useOrganization();
   const project = useProject();
   const job = useCurrentJob();
-  invariant(project, "Project must be defined");
   invariant(job, "Job must be defined");
 
   return (
