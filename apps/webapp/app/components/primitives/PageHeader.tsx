@@ -64,7 +64,7 @@ export function PageDescription({ children }: WithChildren) {
 }
 
 export function PageInfoRow({ children }: WithChildren) {
-  return <div className="flex w-full items-center gap-2">{children}</div>;
+  return <div className="mt-2 flex w-full items-center gap-2">{children}</div>;
 }
 
 export function PageInfoGroup({

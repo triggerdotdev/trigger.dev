@@ -13,6 +13,7 @@ import {
   PageTitle,
   PageTitleRow,
 } from "~/components/primitives/PageHeader";
+import { Paragraph } from "~/components/primitives/Paragraph";
 import { useJob } from "~/hooks/useJob";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
@@ -86,7 +87,11 @@ export default function Job() {
                 />
               ))}
           </PageInfoGroup>
-          <PageInfoGroup alignment="right">Test</PageInfoGroup>
+          <PageInfoGroup alignment="right">
+            <Paragraph variant="extra-small" className="text-slate-600">
+              UID: {job.id}
+            </Paragraph>
+          </PageInfoGroup>
         </PageInfoRow>
       </PageHeader>
       <PageBody>
