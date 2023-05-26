@@ -75,7 +75,7 @@ export function PageInfoGroup({
   return (
     <div
       className={cn(
-        "flex grow items-center gap-2",
+        "flex grow items-center gap-4",
         alignment === "right" && "justify-end"
       )}
     >
@@ -87,11 +87,11 @@ export function PageInfoGroup({
 export function PageInfoProperty({
   icon,
   label,
-  text,
+  value,
 }: {
   icon?: string;
   label: string;
-  text: string;
+  value: React.ReactNode;
 }) {
   return (
     <div className="flex items-center gap-1">
@@ -102,7 +102,11 @@ export function PageInfoProperty({
       >
         {label}:
       </Paragraph>
-      <Paragraph variant="small">{text}</Paragraph>
+      {typeof value === "string" ? (
+        <Paragraph variant="small">{value}</Paragraph>
+      ) : (
+        value
+      )}
     </div>
   );
 }

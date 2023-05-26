@@ -4,6 +4,7 @@ import { typedjson } from "remix-typedjson";
 import invariant from "tiny-invariant";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { LinkButton } from "~/components/primitives/Buttons";
+import { NamedIcon } from "~/components/primitives/NamedIcon";
 import {
   PageButtons,
   PageHeader,
@@ -76,7 +77,7 @@ export default function Job() {
             <PageInfoProperty
               icon={job.event.icon}
               label={"Trigger"}
-              text={job.event.title}
+              value={job.event.title}
             />
             {job.event.elements &&
               job.event.elements.map((element, index) => (
@@ -84,9 +85,25 @@ export default function Job() {
                   key={index}
                   icon="property"
                   label={element.label}
-                  text={element.text}
+                  value={element.text}
                 />
               ))}
+            {job.integrations.length > 0 && (
+              <PageInfoProperty
+                label="Integrations"
+                value={
+                  <div className="flex gap-0.5">
+                    {job.integrations.map((integration, index) => (
+                      <NamedIcon
+                        key={index}
+                        name={integration.icon}
+                        className={"h-4 w-4"}
+                      />
+                    ))}
+                  </div>
+                }
+              />
+            )}
           </PageInfoGroup>
           <PageInfoGroup alignment="right">
             <Paragraph variant="extra-small" className="text-slate-600">
