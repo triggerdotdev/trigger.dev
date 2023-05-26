@@ -79,7 +79,7 @@ export function RunsTable({
                   })}
                 </Cell>
                 <Cell to={path}>
-                  {!run.isTest ? (
+                  {run.isTest ? (
                     <CheckIcon className="h-4 w-4 text-slate-400" />
                   ) : (
                     <StopIcon className="h-4 w-4 text-slate-850" />
