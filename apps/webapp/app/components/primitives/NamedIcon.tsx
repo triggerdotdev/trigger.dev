@@ -25,6 +25,7 @@ import {
   XMarkIcon,
   ChevronRightIcon,
   CodeBracketSquareIcon,
+  Cog8ToothIcon,
 } from "@heroicons/react/24/solid";
 import { cn } from "~/utils/cn";
 import { Spinner } from "./Spinner";
@@ -93,6 +94,9 @@ const icons = {
   ),
   "plus-small": (className: string) => (
     <PlusSmallIcon className={cn("text-green-600", className)} />
+  ),
+  property: (className: string) => (
+    <Cog8ToothIcon className={cn("text-slate-600", className)} />
   ),
   spinner: (className: string) => (
     <Spinner className={className} color="blue" />

@@ -4,6 +4,7 @@ import { BreadcrumbIcon } from "./BreadcrumbIcon";
 import { ChevronLeftIcon } from "@heroicons/react/24/solid";
 import { Paragraph } from "./Paragraph";
 import { cn } from "~/utils/cn";
+import { NamedIcon } from "./NamedIcon";
 
 type WithChildren = {
   children: React.ReactNode;
@@ -73,11 +74,34 @@ export function PageInfoGroup({
   return (
     <div
       className={cn(
-        "flex items-center gap-2",
-        alignment === "right" && "justify-self-end"
+        "flex grow items-center gap-2",
+        alignment === "right" && "justify-end"
       )}
     >
       {children}
+    </div>
+  );
+}
+
+export function PageInfoProperty({
+  icon,
+  label,
+  text,
+}: {
+  icon?: string;
+  label: string;
+  text: string;
+}) {
+  return (
+    <div className="flex items-center gap-1">
+      {icon && <NamedIcon name={icon} className="h-4 w-4" />}
+      <Paragraph
+        variant="extra-small/caps"
+        className="mt-0.5 whitespace-nowrap"
+      >
+        {label}:
+      </Paragraph>
+      <Paragraph variant="small">{text}</Paragraph>
     </div>
   );
 }

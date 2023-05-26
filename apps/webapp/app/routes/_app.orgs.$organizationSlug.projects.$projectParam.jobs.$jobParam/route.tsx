@@ -8,6 +8,7 @@ import {
   PageButtons,
   PageHeader,
   PageInfoGroup,
+  PageInfoProperty,
   PageInfoRow,
   PageTitle,
   PageTitleRow,
@@ -69,7 +70,22 @@ export default function Job() {
           </PageButtons>
         </PageTitleRow>
         <PageInfoRow>
-          <PageInfoGroup>Left</PageInfoGroup>
+          <PageInfoGroup>
+            <PageInfoProperty
+              icon={job.event.icon}
+              label={"Trigger"}
+              text={job.event.title}
+            />
+            {job.event.elements &&
+              job.event.elements.map((element, index) => (
+                <PageInfoProperty
+                  key={index}
+                  icon="property"
+                  label={element.label}
+                  text={element.text}
+                />
+              ))}
+          </PageInfoGroup>
           <PageInfoGroup alignment="right">Test</PageInfoGroup>
         </PageInfoRow>
       </PageHeader>
