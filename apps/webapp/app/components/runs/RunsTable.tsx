@@ -1,16 +1,15 @@
 import { BeakerIcon } from "@heroicons/react/24/outline";
 import { Link } from "@remix-run/react";
-import humanizeDuration from "humanize-duration";
 import type { ReactNode } from "react";
-import { dateDifference, formatDateTime } from "~/utils";
-import { Spinner } from "../primitives/Spinner";
-import { cn } from "~/utils/cn";
-import { RunList } from "~/presenters/RunListPresenter.server";
-import { RunStatusIcon, RunStatusLabel } from "./RunStatuses";
-import { runPath } from "~/utils/pathBuilder";
 import { useJob } from "~/hooks/useJob";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
+import { RunList } from "~/presenters/RunListPresenter.server";
+import { formatDateTime, formatDuration } from "~/utils";
+import { cn } from "~/utils/cn";
+import { runPath } from "~/utils/pathBuilder";
+import { Spinner } from "../primitives/Spinner";
+import { RunStatusIcon, RunStatusLabel } from "./RunStatuses";
 
 export function RunsTable({
   total,
@@ -31,12 +30,16 @@ export function RunsTable({
     <table className="w-full divide-y divide-slate-850 overflow-hidden rounded-md border border-slate-900 bg-slate-950">
       <thead className=" rounded-t-md">
         <tr>
-          <HeaderCell title="Started" />
-          <HeaderCell title="ID" />
+          <HeaderCell title="Run" />
+          <HeaderCell title="Env" />
           <HeaderCell title="Status" />
-          <HeaderCell title="Completed" />
+          <HeaderCell title="Started" />
           <HeaderCell title="Duration" alignment="right" />
           <HeaderCell title="Test" alignment="right" />
+          <HeaderCell title="Version" alignment="right" />
+          <th>
+            <span className="sr-only">Go to page</span>
+          </th>
         </tr>
       </thead>
       <tbody className="relative divide-y divide-slate-850">
@@ -54,10 +57,10 @@ export function RunsTable({
             return (
               <tr key={run.id} className="group w-full">
                 <Cell to={path} alignment="left">
-                  {run.startedAt ? formatDateTime(run.startedAt, "long") : "–"}
+                  #{run.number}
                 </Cell>
                 <Cell to={path} alignment="left">
-                  {run.id}
+                  {run.environment.type}
                 </Cell>
                 <Cell to={path} alignment="left">
                   <span className="flex items-center gap-1">
@@ -66,16 +69,19 @@ export function RunsTable({
                   </span>
                 </Cell>
                 <Cell to={path} alignment="left">
-                  {run.completedAt
-                    ? formatDateTime(run.completedAt, "long")
+                  {run.startedAt
+                    ? formatDateTime(run.startedAt, "medium")
                     : "–"}
                 </Cell>
                 <Cell to={path}>
-                  {run.startedAt && run.completedAt
-                    ? humanizeDuration(
-                        dateDifference(run.startedAt, run.completedAt)
-                      )
-                    : "–"}
+                  {formatDuration(run.startedAt, run.completedAt, {
+                    style: "short",
+                  })}
+                </Cell>
+                <Cell to={path}>
+                  {run.isTest && (
+                    <BeakerIcon className="h-5 w-5 text-green-500" />
+                  )}
                 </Cell>
                 <Cell to={path}>
                   {run.isTest && (
@@ -121,10 +127,6 @@ function HeaderCell({
   );
 }
 
-const cell = "flex whitespace-nowrap text-sm text-slate-300";
-const cellLeftAligned = cn(cell, "justify-start");
-const cellRightAligned = cn(cell, "justify-end");
-
 function Cell({
   children,
   to,
@@ -139,8 +141,8 @@ function Cell({
       <Link
         to={to}
         className={cn(
-          "w-full px-4 py-3",
-          alignment === "right" ? cellRightAligned : cellLeftAligned
+          "flex w-full whitespace-nowrap px-4 py-3 text-xs text-slate-400",
+          alignment === "left" ? "justify-start" : "justify-end"
         )}
       >
         {children}

@@ -1,6 +1,9 @@
 import type { RouteMatch } from "@remix-run/react";
 import { useMatches } from "@remix-run/react";
 import { DEV_ENVIRONMENT } from "./consts";
+import e from "express";
+import humanizeDuration from "humanize-duration";
+import { milliseconds } from "date-fns";
 
 const DEFAULT_REDIRECT = "/";
 
@@ -115,9 +118,53 @@ export function formatDateTime(
   }
 }
 
-export type PrismaReturnType<T extends (...args: any) => any> = Awaited<
-  ReturnType<T>
->;
+export function formatDuration(
+  start?: Date | null,
+  end?: Date | null,
+  options?: {
+    style?: "long" | "short";
+  }
+): string {
+  if (!start || !end) {
+    return "–";
+  }
+
+  return formatDurationMilliseconds(dateDifference(start, end), options);
+}
+
+export function formatDurationMilliseconds(
+  milliseconds: number,
+  options?: { style?: "long" | "short" }
+): string {
+  let duration = humanizeDuration(milliseconds, {
+    round: true,
+    largest: 2,
+  });
+
+  if (!options) {
+    return duration;
+  }
+
+  switch (options.style) {
+    case "short":
+      duration = duration.replace(" seconds", "s");
+      duration = duration.replace(" second", "s");
+      duration = duration.replace(" minutes", "m");
+      duration = duration.replace(" minute", "m");
+      duration = duration.replace(" hours", "h");
+      duration = duration.replace(" hour", "h");
+      duration = duration.replace(" days", "d");
+      duration = duration.replace(" day", "d");
+      duration = duration.replace(" weeks", "w");
+      duration = duration.replace(" week", "w");
+      duration = duration.replace(" months", "mo");
+      duration = duration.replace(" month", "mo");
+      duration = duration.replace(" years", "y");
+      duration = duration.replace(" year", "y");
+  }
+
+  return duration;
+}
 
 export function titleCase(original: string): string {
   return original
@@ -126,12 +173,9 @@ export function titleCase(original: string): string {
     .join(" ");
 }
 
-export function dateDifference(date1: Date, date2: Date) {
+function dateDifference(date1: Date, date2: Date) {
   return Math.abs(date1.getTime() - date2.getTime());
 }
-
-export const environmentShortName = (slug: string) =>
-  slug === DEV_ENVIRONMENT ? "Dev" : "Live";
 
 // Takes an api key (either trigger_live_xxxx or trigger_development_xxxx) and returns trigger_live_********
 export const obfuscateApiKey = (apiKey: string) => {
