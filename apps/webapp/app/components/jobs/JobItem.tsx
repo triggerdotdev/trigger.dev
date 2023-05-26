@@ -24,7 +24,7 @@ type JobItemProps = {
     text: string;
     url?: string | undefined;
   }[];
-  integrations?: {
+  integrations: {
     title: string;
     icon: string;
   }[];
@@ -74,7 +74,7 @@ export function JobItem({
           </div>
           <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
             <KeyValue name="Trigger" value={trigger} />
-            {integrations?.length > 0 && (
+            {integrations.length > 0 && (
               <KeyValue
                 name="Integrations"
                 // className="items-center"
