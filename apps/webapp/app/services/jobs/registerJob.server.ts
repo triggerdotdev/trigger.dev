@@ -5,9 +5,10 @@ import type {
   JobVersion,
   ApiConnectionClient,
 } from ".prisma/client";
-import type {
+import {
   IntegrationConfig,
   JobMetadata,
+  SCHEDULED_EVENT,
   TriggerMetadata,
 } from "@trigger.dev/internal";
 import { DEFAULT_MAX_CONCURRENT_RUNS } from "~/consts";
@@ -338,7 +339,7 @@ export class RegisterJobService {
               },
             },
             create: {
-              event: "internal.scheduled",
+              event: SCHEDULED_EVENT,
               source: "trigger.dev",
               payloadFilter: {},
               contextFilter: {},

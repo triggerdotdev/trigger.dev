@@ -53,6 +53,8 @@ export const RegisterSourceChannelBodySchema = z.discriminatedUnion("type", [
   RegisterSQSTriggerSourceBodySchema,
 ]);
 
+export const REGISTER_SOURCE_EVENT = "dev.trigger.source.register";
+
 export const RegisterTriggerSourceSchema = z.object({
   key: z.string(),
   params: z.any(),

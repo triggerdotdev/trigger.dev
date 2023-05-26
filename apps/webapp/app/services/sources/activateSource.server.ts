@@ -7,7 +7,10 @@ import type {
 } from ".prisma/client";
 import type { AuthenticatedEnvironment } from "../apiAuth.server";
 import { env } from "~/env.server";
-import type { RegisterTriggerSource } from "@trigger.dev/internal";
+import {
+  REGISTER_SOURCE_EVENT,
+  RegisterTriggerSource,
+} from "@trigger.dev/internal";
 import {
   SecretStoreProvider,
   getSecretStore,
@@ -102,7 +105,7 @@ export class ActivateSourceService {
 
     await service.call(environment, {
       id: eventId,
-      name: "trigger.internal.registerSource",
+      name: REGISTER_SOURCE_EVENT,
       source: "trigger.dev",
       payload: {
         id: triggerSource.id,

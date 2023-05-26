@@ -10,6 +10,7 @@ import {
   Logger,
   NormalizedRequest,
   NormalizedResponse,
+  REGISTER_SOURCE_EVENT,
   RegisterSourceEvent,
   RegisterSourceEventSchema,
   RegisterTriggerBody,
@@ -30,7 +31,7 @@ import type { EventSpecification, Trigger, TriggerContext } from "./types";
 import { DynamicTrigger } from "./triggers/dynamic";
 
 const registerSourceEvent: EventSpecification<RegisterSourceEvent> = {
-  name: "trigger.internal.registerSource",
+  name: REGISTER_SOURCE_EVENT,
   title: "Register Source",
   source: "internal",
   icon: "register-source",

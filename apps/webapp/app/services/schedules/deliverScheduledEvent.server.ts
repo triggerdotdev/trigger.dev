@@ -1,4 +1,4 @@
-import { ScheduledPayload } from "@trigger.dev/internal";
+import { SCHEDULED_EVENT, ScheduledPayload } from "@trigger.dev/internal";
 import { $transaction, PrismaClientOrTransaction, prisma } from "~/db.server";
 import { NextScheduledEventService } from "./nextScheduledEvent.server";
 import { IngestSendEvent } from "../events/ingestSendEvent.server";
@@ -45,7 +45,7 @@ export class DeliverScheduledEventService {
         scheduleSource.environment,
         {
           id: eventId,
-          name: "internal.scheduled",
+          name: SCHEDULED_EVENT,
           payload,
           context: {
             source: {

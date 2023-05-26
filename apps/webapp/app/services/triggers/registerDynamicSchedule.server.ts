@@ -1,4 +1,7 @@
-import type { RegisterDynamicSchedulePayload } from "@trigger.dev/internal";
+import {
+  RegisterDynamicSchedulePayload,
+  SCHEDULED_EVENT,
+} from "@trigger.dev/internal";
 import {
   $transaction,
   PrismaClient,
@@ -81,7 +84,7 @@ export class RegisterDynamicScheduleService {
           },
         },
         create: {
-          event: "internal.scheduled",
+          event: SCHEDULED_EVENT,
           source: "trigger.dev",
           payloadFilter: {},
           contextFilter: {},

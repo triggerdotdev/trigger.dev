@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+export const SCHEDULED_EVENT = "dev.trigger.scheduled";
+
 export const ScheduledPayloadSchema = z.object({
   ts: z.coerce.date(),
   lastTimestamp: z.coerce.date().optional(),

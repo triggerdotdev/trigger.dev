@@ -1,4 +1,7 @@
-import { InitializeTriggerBody } from "@trigger.dev/internal";
+import {
+  InitializeTriggerBody,
+  REGISTER_SOURCE_EVENT,
+} from "@trigger.dev/internal";
 import type { PrismaClient } from "~/db.server";
 import { prisma } from "~/db.server";
 import { AuthenticatedEnvironment } from "../apiAuth.server";
@@ -70,7 +73,7 @@ export class InitializeTriggerService {
       environment,
       {
         id: registration.id,
-        name: "trigger.internal.registerSource",
+        name: REGISTER_SOURCE_EVENT,
         source: "trigger.dev",
         payload: {
           ...registration,
