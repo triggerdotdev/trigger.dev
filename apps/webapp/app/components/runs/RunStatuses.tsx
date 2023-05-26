@@ -3,6 +3,7 @@ import {
   CheckCircleIcon,
   ClockIcon,
   ExclamationTriangleIcon,
+  WrenchIcon,
   XCircleIcon,
 } from "@heroicons/react/24/solid";
 import { cn } from "~/utils/cn";
@@ -20,17 +21,47 @@ export function RunStatus({ status }: { status: JobRunStatus }) {
 export function RunStatusLabel({ status }: { status: JobRunStatus }) {
   switch (status) {
     case "SUCCESS":
-      return <span className="text-green-500">{runStatusTitle(status)}</span>;
+      return (
+        <span className={runStatusClassNameColor(status)}>
+          {runStatusTitle(status)}
+        </span>
+      );
     case "PENDING":
-      return <span className="text-slate-500">{runStatusTitle(status)}</span>;
+      return (
+        <span className={runStatusClassNameColor(status)}>
+          {runStatusTitle(status)}
+        </span>
+      );
     case "STARTED":
-      return <span className="text-blue-500">{runStatusTitle(status)}</span>;
+      return (
+        <span className={runStatusClassNameColor(status)}>
+          {runStatusTitle(status)}
+        </span>
+      );
     case "QUEUED":
-      return <span className="text-amber-300">{runStatusTitle(status)}</span>;
+      return (
+        <span className={runStatusClassNameColor(status)}>
+          {runStatusTitle(status)}
+        </span>
+      );
     case "FAILURE":
-      return <span className="text-rose-500">{runStatusTitle(status)}</span>;
+      return (
+        <span className={runStatusClassNameColor(status)}>
+          {runStatusTitle(status)}
+        </span>
+      );
     case "TIMED_OUT":
-      return <span className="text-amber-300">{runStatusTitle(status)}</span>;
+      return (
+        <span className={runStatusClassNameColor(status)}>
+          {runStatusTitle(status)}
+        </span>
+      );
+    case "WAITING_ON_CONNECTIONS":
+      return (
+        <span className={runStatusClassNameColor(status)}>
+          {runStatusTitle(status)}
+        </span>
+      );
   }
 }
 
@@ -72,6 +103,12 @@ export function RunStatusIcon({
           className={cn(runStatusClassNameColor(status), className)}
         />
       );
+    case "WAITING_ON_CONNECTIONS":
+      return (
+        <WrenchIcon
+          className={cn(runStatusClassNameColor(status), className)}
+        />
+      );
   }
 }
 
@@ -89,6 +126,8 @@ export function runStatusTitle(status: JobRunStatus): string {
       return "Failed";
     case "TIMED_OUT":
       return "Timed out";
+    case "WAITING_ON_CONNECTIONS":
+      return "Waiting on connections";
   }
 }
 
@@ -105,6 +144,8 @@ function runStatusClassNameColor(status: JobRunStatus): string {
     case "FAILURE":
       return "text-rose-500";
     case "TIMED_OUT":
+      return "text-amber-300";
+    case "WAITING_ON_CONNECTIONS":
       return "text-amber-300";
   }
 }
