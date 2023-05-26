@@ -10,6 +10,8 @@ import {
   PageTitle,
   PageButtons,
   PageDescription,
+  PageInfoRow,
+  PageInfoGroup,
 } from "~/components/primitives/PageHeader";
 import { useCurrentJob } from "~/hooks/useJob";
 import { useCurrentOrganization } from "~/hooks/useOrganizations";
@@ -70,7 +72,10 @@ export default function Job() {
             </LinkButton>
           </PageButtons>
         </PageTitleRow>
-        <PageDescription>{project.jobs.length} Jobs</PageDescription>
+        <PageInfoRow>
+          <PageInfoGroup>Left</PageInfoGroup>
+          <PageInfoGroup alignment="right">Test</PageInfoGroup>
+        </PageInfoRow>
       </PageHeader>
       <PageBody>
         <Outlet />

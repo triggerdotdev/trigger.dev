@@ -3,6 +3,7 @@ import { Header1 } from "./Headers";
 import { BreadcrumbIcon } from "./BreadcrumbIcon";
 import { ChevronLeftIcon } from "@heroicons/react/24/solid";
 import { Paragraph } from "./Paragraph";
+import { cn } from "~/utils/cn";
 
 type WithChildren = {
   children: React.ReactNode;
@@ -55,8 +56,28 @@ export function PageButtons({ children }: WithChildren) {
 
 export function PageDescription({ children }: WithChildren) {
   return (
-    <Paragraph variant="small" className="mt-2 mb-0">
+    <Paragraph variant="small" className="mb-0 mt-2">
       {children}
     </Paragraph>
+  );
+}
+
+export function PageInfoRow({ children }: WithChildren) {
+  return <div className="flex w-full items-center gap-2">{children}</div>;
+}
+
+export function PageInfoGroup({
+  children,
+  alignment = "left",
+}: WithChildren & { alignment?: "left" | "right" }) {
+  return (
+    <div
+      className={cn(
+        "flex items-center gap-2",
+        alignment === "right" && "justify-self-end"
+      )}
+    >
+      {children}
+    </div>
   );
 }
