@@ -5,6 +5,7 @@ import { ChevronLeftIcon } from "@heroicons/react/24/solid";
 import { Paragraph } from "./Paragraph";
 import { cn } from "~/utils/cn";
 import { NamedIcon } from "./NamedIcon";
+import { Tabs, TabsProps } from "./Tabs";
 
 type WithChildren = {
   children: React.ReactNode;
@@ -102,6 +103,14 @@ export function PageInfoProperty({
         {label}:
       </Paragraph>
       <Paragraph variant="small">{text}</Paragraph>
+    </div>
+  );
+}
+
+export function PageTabs(props: TabsProps) {
+  return (
+    <div className="mt-4">
+      <Tabs {...props} />
     </div>
   );
 }
