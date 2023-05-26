@@ -66,14 +66,17 @@ export function PageContainer({
 export function PageBody({
   children,
   fullHeight,
+  hideBorder = false,
 }: {
   children: React.ReactNode;
   fullHeight?: boolean;
+  hideBorder?: boolean;
 }) {
   return (
     <div
       className={cn(
-        "border-t border-slate-800 pt-4",
+        "border-slate-800 pt-4",
+        !hideBorder && "border-t",
         fullHeight && "flex-grow"
       )}
     >

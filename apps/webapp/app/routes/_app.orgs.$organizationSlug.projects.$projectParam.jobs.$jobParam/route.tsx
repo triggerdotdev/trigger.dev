@@ -10,11 +10,11 @@ import {
   PageInfoGroup,
   PageInfoProperty,
   PageInfoRow,
+  PageTabs,
   PageTitle,
   PageTitleRow,
 } from "~/components/primitives/PageHeader";
 import { Paragraph } from "~/components/primitives/Paragraph";
-import { Tabs } from "~/components/primitives/Tabs";
 import { useJob } from "~/hooks/useJob";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
@@ -94,14 +94,14 @@ export default function Job() {
             </Paragraph>
           </PageInfoGroup>
         </PageInfoRow>
-      </PageHeader>
-      <PageBody>
-        <Tabs
+        <PageTabs
           tabs={[
             { label: "Runs", to: jobPath(organization, project, job) },
             { label: "Test", to: testJobPath(organization, project, job) },
           ]}
         />
+      </PageHeader>
+      <PageBody hideBorder>
         <Outlet />
       </PageBody>
     </PageContainer>
