@@ -5,7 +5,7 @@ import { resolveRunConnections } from "~/models/runConnection.server";
 import { ClientApi, ClientApiError } from "../clientApi.server";
 import { workerQueue } from "../worker.server";
 import { logger } from "../logger";
-import type { ApiConnection } from ".prisma/client";
+import type { ApiConnection, ApiConnectionType } from ".prisma/client";
 
 const RUN_INCLUDES = {
   queue: true,
@@ -45,7 +45,13 @@ export class StartRunService {
           return;
         }
 
-        if (run.status !== "PENDING" && run.status !== "QUEUED") {
+        const startableStatuses = [
+          "PENDING",
+          "QUEUED",
+          "WAITING_ON_CONNECTIONS",
+        ] as const;
+
+        if (!startableStatuses.includes(run.status)) {
           return;
         }
 
@@ -66,7 +72,18 @@ export class StartRunService {
           // If any of the connections are missing, we can't start the execution
           const runConnectionsByKey = await run.version.integrations.reduce(
             async (
-              accP: Promise<Record<string, ApiConnection>>,
+              accP: Promise<
+                Record<
+                  string,
+                  | { result: "resolved"; connection: ApiConnection }
+                  | {
+                      result: "missing";
+                      connectionType: ApiConnectionType;
+                      apiConnectionClientId: string;
+                      externalAccountId?: string;
+                    }
+                >
+              >,
               integration
             ) => {
               const acc = await accP;
@@ -86,11 +103,18 @@ export class StartRunService {
                     },
                   });
 
-              if (!connection) {
-                return acc;
+              if (connection) {
+                acc[integration.key] = { result: "resolved", connection };
+              } else {
+                acc[integration.key] = {
+                  result: "missing",
+                  connectionType: run.externalAccountId
+                    ? "EXTERNAL"
+                    : "DEVELOPER",
+                  externalAccountId: run.externalAccountId ?? undefined,
+                  apiConnectionClientId: integration.apiConnectionClient.id,
+                };
               }
-
-              acc[integration.key] = connection;
 
               return acc;
             },
@@ -98,13 +122,81 @@ export class StartRunService {
           );
 
           // Make sure we have all the connections we need
-          // TODO: handle this in a better way that can be retried
           if (
-            Object.keys(runConnectionsByKey).length <
-            run.version.integrations.length
+            Object.values(runConnectionsByKey).some(
+              (connection) => connection.result === "missing"
+            )
           ) {
-            throw new Error(`Missing connections for run ${run.id}`);
+            // Create missing connections and update the jobRun to be WAITING_ON_CONNECTIONS
+            const missingConnections = Object.values(runConnectionsByKey)
+              .map((runConnection) =>
+                runConnection.result === "missing" ? runConnection : undefined
+              )
+              .filter(Boolean);
+
+            // Start the jobRun and increment the jobCount
+            // TODO: what happens when there are more than 1 missing connection on a run?
+            const updatedRun = await tx.jobRun.update({
+              where: { id },
+              data: {
+                status: "WAITING_ON_CONNECTIONS",
+                missingConnections: {
+                  connectOrCreate: missingConnections.map((connection) => ({
+                    where: {
+                      apiConnectionClientId_connectionType_externalAccountId: {
+                        apiConnectionClientId: connection.apiConnectionClientId,
+                        connectionType: connection.connectionType,
+                        externalAccountId:
+                          connection.externalAccountId ?? "DEVELOPER",
+                      },
+                    },
+                    create: {
+                      apiConnectionClientId: connection.apiConnectionClientId,
+                      connectionType: connection.connectionType,
+                      externalAccountId:
+                        connection.externalAccountId ?? "DEVELOPER",
+                      resolved: false,
+                    },
+                  })),
+                },
+              },
+              include: {
+                missingConnections: {
+                  include: {
+                    _count: {
+                      select: { runs: true },
+                    },
+                  },
+                },
+                ...RUN_INCLUDES,
+              },
+            });
+
+            for (const missingConnection of updatedRun.missingConnections) {
+              if (missingConnection._count.runs === 1) {
+                workerQueue.enqueue(
+                  "missingConnectionCreated",
+                  {
+                    id: missingConnection.id,
+                  },
+                  { tx }
+                );
+              }
+            }
+
+            return { run: updatedRun };
           }
+
+          const createRunConnections = Object.entries(runConnectionsByKey)
+            .map(([key, runConnection]) =>
+              runConnection.result === "resolved"
+                ? {
+                    key,
+                    apiConnectionId: runConnection.connection.id,
+                  }
+                : undefined
+            )
+            .filter(Boolean);
 
           // Start the jobRun and increment the jobCount
           const updatedRun = await tx.jobRun.update({
@@ -120,12 +212,7 @@ export class StartRunService {
                 },
               },
               runConnections: {
-                create: Object.entries(runConnectionsByKey).map(
-                  ([key, connection]) => ({
-                    key,
-                    apiConnectionId: connection.id,
-                  })
-                ),
+                create: createRunConnections,
               },
             },
             include: {
@@ -175,6 +262,14 @@ export class StartRunService {
 
     if (run.status === "QUEUED") {
       logger.debug(`Run ${id} queued, aborting start run`, { id });
+
+      return;
+    }
+
+    if (run.status === "WAITING_ON_CONNECTIONS") {
+      logger.debug(`Run ${id} waiting on connections, aborting start run`, {
+        id,
+      });
 
       return;
     }

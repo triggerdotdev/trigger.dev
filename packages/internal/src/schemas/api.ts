@@ -470,3 +470,14 @@ export const RegisterScheduleResponseBodySchema = z.object({
 export type RegisterScheduleResponseBody = z.infer<
   typeof RegisterScheduleResponseBodySchema
 >;
+
+export const CreateExternalConnectionBodySchema = z.object({
+  accessToken: z.string(),
+  type: z.enum(["oauth2"]),
+  scopes: z.array(z.string()).optional(),
+  metadata: z.any(),
+});
+
+export type CreateExternalConnectionBody = z.infer<
+  typeof CreateExternalConnectionBodySchema
+>;

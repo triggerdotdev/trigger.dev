@@ -24,6 +24,8 @@ import { RegisterDynamicTriggerService } from "./triggers/registerDynamicTrigger
 import { RegisterDynamicScheduleService } from "./triggers/registerDynamicSchedule.server";
 import { DeliverScheduledEventService } from "./schedules/deliverScheduledEvent.server";
 import { prisma } from "~/db.server";
+import { MissingConnectionCreatedService } from "./runs/missingConnectionCreated.server";
+import { ApiConnectionCreatedService } from "./externalApis/apiConnectionCreated.server";
 
 const workerCatalog = {
   organizationCreated: z.object({ id: z.string() }),
@@ -79,6 +81,12 @@ const workerCatalog = {
     id: z.string(),
     payload: ScheduledPayloadSchema,
   }),
+  missingConnectionCreated: z.object({
+    id: z.string(),
+  }),
+  apiConnectionCreated: z.object({
+    id: z.string(),
+  }),
 };
 
 let workerQueue: ZodWorker<typeof workerCatalog>;
@@ -128,6 +136,22 @@ function getWorkerQueue() {
           const service = new DeliverScheduledEventService();
 
           await service.call(id, payload);
+        },
+      },
+      apiConnectionCreated: {
+        maxAttempts: 3,
+        handler: async (payload, job) => {
+          const service = new ApiConnectionCreatedService();
+
+          await service.call(payload.id);
+        },
+      },
+      missingConnectionCreated: {
+        maxAttempts: 3,
+        handler: async (payload, job) => {
+          const service = new MissingConnectionCreatedService();
+
+          await service.call(payload.id);
         },
       },
       runFinished: {

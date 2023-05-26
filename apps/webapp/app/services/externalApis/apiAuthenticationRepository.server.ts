@@ -3,20 +3,17 @@ import type {
   ApiConnectionAttempt,
   ApiConnectionClient,
   SecretReference,
+  ExternalAccount,
 } from ".prisma/client";
 import jsonpointer from "jsonpointer";
 import { customAlphabet } from "nanoid";
 import * as crypto from "node:crypto";
 import createSlug from "slug";
-import type { PrismaClient } from "~/db.server";
+import type { PrismaClient, PrismaClientOrTransaction } from "~/db.server";
 import { prisma } from "~/db.server";
 import { env } from "~/env.server";
 import { workerQueue } from "~/services/worker.server";
-import {
-  SecretStoreProvider,
-  getSecretStore,
-} from "../secrets/secretStore.server";
-import { SecretStore } from "../secrets/secretStore.server";
+import { getSecretStore } from "../secrets/secretStore.server";
 import type { IntegrationCatalog } from "./integrationCatalog.server";
 import { integrationCatalog } from "./integrationCatalog.server";
 import {
@@ -33,6 +30,7 @@ import type {
   RefreshTokenParams,
 } from "./types";
 import { AccessTokenSchema } from "./types";
+import { CreateExternalConnectionBody } from "@/../../packages/internal/src";
 
 export type ApiConnectionWithSecretReference = ApiConnection & {
   dataReference: SecretReference;
@@ -269,54 +267,164 @@ export class APIAuthenticationRepository {
           authenticationMethod: authMethod,
         });
 
-        let secretReference =
-          await this.#prismaClient.secretReference.findUnique({
+        return await this.#prismaClient.$transaction(async (tx) => {
+          let secretReference = await tx.secretReference.findUnique({
             where: {
               key,
             },
           });
 
-        if (secretReference) {
-          //if the secret reference already exists, update existing connections with the new scopes information
-          await this.#prismaClient.apiConnection.updateMany({
-            where: {
-              dataReferenceId: secretReference.id,
-            },
+          if (secretReference) {
+            //if the secret reference already exists, update existing connections with the new scopes information
+            await tx.apiConnection.updateMany({
+              where: {
+                dataReferenceId: secretReference.id,
+              },
+              data: {
+                scopes: token.scopes,
+                metadata,
+              },
+            });
+          } else {
+            secretReference = await tx.secretReference.create({
+              data: {
+                key,
+                provider: env.SECRET_STORE,
+              },
+            });
+          }
+
+          const secretStore = getSecretStore(env.SECRET_STORE, {
+            prismaClient: tx,
+          });
+
+          await secretStore.setSecret(key, token);
+
+          //if there's an expiry, we want to add it to the connection so we can easily run a background job against it
+          const expiresAt = this.#getExpiresAtFromToken({ token });
+
+          const connection = await tx.apiConnection.create({
             data: {
-              scopes: token.scopes,
+              organizationId: attempt.client.organizationId,
+              clientId: attempt.client.id,
               metadata,
+              dataReferenceId: secretReference.id,
+              scopes: token.scopes,
+              expiresAt,
             },
           });
-        } else {
-          secretReference = await this.#prismaClient.secretReference.create({
-            data: {
-              key,
-              provider: env.SECRET_STORE,
+
+          await workerQueue.enqueue(
+            "apiConnectionCreated",
+            {
+              id: connection.id,
             },
-          });
-        }
+            { tx }
+          );
 
-        const secretStore = getSecretStore(env.SECRET_STORE);
-        await secretStore.setSecret(key, token);
+          //schedule refreshing the token
+          await this.#scheduleRefresh(expiresAt, connection, tx);
 
-        //if there's an expiry, we want to add it to the connection so we can easily run a background job against it
-        const expiresAt = this.#getExpiresAtFromToken({ token });
+          return connection;
+        });
+      }
+    }
+  }
 
-        const connection = await this.#prismaClient.apiConnection.create({
-          data: {
-            organizationId: attempt.client.organizationId,
-            clientId: attempt.client.id,
-            metadata,
-            dataReferenceId: secretReference.id,
-            scopes: token.scopes,
-            expiresAt,
-          },
+  async createConnectionFromToken({
+    token,
+    client,
+    externalAccount,
+  }: {
+    token: AccessToken;
+    client: ApiConnectionClient;
+    externalAccount?: ExternalAccount;
+  }) {
+    const { integration, authMethod } =
+      this.#getIntegrationAndAuthMethod(client);
+
+    switch (authMethod.type) {
+      case "oauth2": {
+        const getClientConfig = getClientConfigFromEnv(
+          authMethod.client.id.envName,
+          authMethod.client.secret.envName
+        );
+
+        //this key is used to store in the relevant SecretStore
+        const hashedAccessToken = crypto
+          .createHash("sha256")
+          .update(token.accessToken)
+          .digest("base64");
+
+        const key = `${integration.identifier}-${hashedAccessToken}`;
+
+        const metadata = this.#getMetadataFromToken({
+          token,
+          authenticationMethod: authMethod,
         });
 
-        //schedule refreshing the token
-        await this.#scheduleRefresh(expiresAt, connection);
+        return await this.#prismaClient.$transaction(async (tx) => {
+          let secretReference = await tx.secretReference.findUnique({
+            where: {
+              key,
+            },
+          });
 
-        return connection;
+          if (secretReference) {
+            //if the secret reference already exists, update existing connections with the new scopes information
+            await tx.apiConnection.updateMany({
+              where: {
+                dataReferenceId: secretReference.id,
+              },
+              data: {
+                scopes: token.scopes,
+                metadata,
+              },
+            });
+          } else {
+            secretReference = await tx.secretReference.create({
+              data: {
+                key,
+                provider: env.SECRET_STORE,
+              },
+            });
+          }
+
+          const secretStore = getSecretStore(env.SECRET_STORE, {
+            prismaClient: tx,
+          });
+
+          await secretStore.setSecret(key, token);
+
+          //if there's an expiry, we want to add it to the connection so we can easily run a background job against it
+          const expiresAt = this.#getExpiresAtFromToken({ token });
+
+          const connection = await tx.apiConnection.create({
+            data: {
+              organizationId: client.organizationId,
+              clientId: client.id,
+              metadata,
+              dataReferenceId: secretReference.id,
+              scopes: token.scopes,
+              expiresAt,
+              externalAccountId: externalAccount?.id,
+              connectionType: externalAccount ? "EXTERNAL" : "DEVELOPER",
+            },
+          });
+
+          await workerQueue.enqueue(
+            "apiConnectionCreated",
+            {
+              id: connection.id,
+            },
+            { tx }
+          );
+
+          //schedule refreshing the token
+          await this.#scheduleRefresh(expiresAt, connection, tx);
+
+          return connection;
+        });
       }
     }
   }
@@ -514,7 +622,7 @@ export class APIAuthenticationRepository {
       const accountPointer = jsonpointer.compile(
         authenticationMethod.config.token.metadata.accountPointer
       );
-      const account = accountPointer.get(token.raw);
+      const account = accountPointer.get(token.raw ?? {});
       if (typeof account === "string") {
         metadata.account = account;
       }
@@ -532,7 +640,8 @@ export class APIAuthenticationRepository {
 
   async #scheduleRefresh(
     expiresAt: Date | undefined,
-    connection: ApiConnection
+    connection: ApiConnection,
+    tx?: PrismaClientOrTransaction
   ) {
     if (expiresAt) {
       await workerQueue.enqueue(
@@ -544,6 +653,7 @@ export class APIAuthenticationRepository {
         {
           //attempt refreshing 5 minutes before the token expires
           runAt: new Date(expiresAt.getTime() - tokenRefreshThreshold * 1000),
+          tx,
         }
       );
     }

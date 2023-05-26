@@ -77,11 +77,12 @@ model ExternalAccount {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  connections    ApiConnection[]
-  events         EventRecord[]
-  runs           JobRun[]
-  schedules      ScheduleSource[]
-  triggerSources TriggerSource[]
+  connections        ApiConnection[]
+  events             EventRecord[]
+  runs               JobRun[]
+  schedules          ScheduleSource[]
+  triggerSources     TriggerSource[]
+  missingConnections MissingApiConnection[]
 
   @@unique([environmentId, identifier])
 }
@@ -107,10 +108,11 @@ model ApiConnectionClient {
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   organizationId String
 
-  attempts        ApiConnectionAttempt[]
-  connections     ApiConnection[]
-  jobIntegrations JobIntegration[]
-  sources         TriggerSource[]
+  attempts           ApiConnectionAttempt[]
+  connections        ApiConnection[]
+  jobIntegrations    JobIntegration[]
+  sources            TriggerSource[]
+  missingConnections MissingApiConnection[]
 
   @@unique([organizationId, slug])
 }
@@ -228,7 +230,7 @@ enum RuntimeEnvironmentType {
 
 model Project {
   id   String @id @default(cuid())
-  slug   String @unique
+  slug String @unique
   name String
 
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
@@ -537,13 +539,15 @@ model JobRun {
 
   isTest Boolean @default(false)
 
-  tasks          Task[]
-  runConnections RunConnection[]
+  tasks              Task[]
+  runConnections     RunConnection[]
+  missingConnections MissingApiConnection[]
 }
 
 enum JobRunStatus {
   PENDING
   QUEUED
+  WAITING_ON_CONNECTIONS
   STARTED
   SUCCESS
   FAILURE
@@ -756,4 +760,25 @@ model ScheduleSource {
   externalAccountId String?
 
   @@unique([key, environmentId])
+}
+
+model MissingApiConnection {
+  id String @id @default(cuid())
+
+  resolved Boolean @default(false)
+
+  runs JobRun[]
+
+  apiConnectionClient   ApiConnectionClient @relation(fields: [apiConnectionClientId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  apiConnectionClientId String
+
+  connectionType ApiConnectionType @default(DEVELOPER)
+
+  externalAccount   ExternalAccount? @relation(fields: [externalAccountId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  externalAccountId String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([apiConnectionClientId, connectionType, externalAccountId])
 }

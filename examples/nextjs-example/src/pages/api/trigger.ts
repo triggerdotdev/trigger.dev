@@ -7,6 +7,8 @@ import {
   DynamicTrigger,
   intervalTrigger,
   Job,
+  missingConnectionNotification,
+  missingConnectionResolvedNotification,
   NormalizedRequest,
   TriggerClient,
 } from "@trigger.dev/sdk";
@@ -49,6 +51,66 @@ const dynamicSchedule = new DynamicSchedule(client, {
 });
 
 const enabled = true;
+
+new Job(client, {
+  id: "on-missing-auth-connection",
+  name: "On missing auth connection",
+  version: "0.1.1",
+  enabled,
+  trigger: missingConnectionNotification([githubUser]),
+  integrations: {
+    slack,
+  },
+  run: async (payload, io, ctx) => {
+    switch (payload.type) {
+      case "DEVELOPER": {
+        return await io.slack.postMessage("message", {
+          text: `Missing developer connection: ${JSON.stringify(payload)}`,
+          channel: "C04GWUTDC3W",
+        });
+      }
+      case "EXTERNAL": {
+        return await io.slack.postMessage("message", {
+          text: `Missing external connection: account: ${JSON.stringify(
+            payload.account
+          )}, payload: ${JSON.stringify(payload)}`,
+          channel: "C04GWUTDC3W",
+        });
+      }
+    }
+  },
+});
+
+new Job(client, {
+  id: "on-missing-auth-connection-resolved",
+  name: "On missing auth connection-resolved",
+  version: "0.1.1",
+  enabled,
+  trigger: missingConnectionResolvedNotification([githubUser]),
+  integrations: {
+    slack,
+  },
+  run: async (payload, io, ctx) => {
+    switch (payload.type) {
+      case "DEVELOPER": {
+        return await io.slack.postMessage("message", {
+          text: `Missing developer connection resolved: ${JSON.stringify(
+            payload
+          )}`,
+          channel: "C04GWUTDC3W",
+        });
+      }
+      case "EXTERNAL": {
+        return await io.slack.postMessage("message", {
+          text: `Missing external connection resolved: ${JSON.stringify(
+            payload
+          )}`,
+          channel: "C04GWUTDC3W",
+        });
+      }
+    }
+  },
+});
 
 new Job(client, {
   id: "user-on-issue-opened",

@@ -294,6 +294,24 @@ async function seed() {
     update: {},
   });
 
+  const externalAccount2Identifier = "matt1234";
+
+  const externalAccount2 = await prisma.externalAccount.upsert({
+    where: {
+      environmentId_identifier: {
+        environmentId: devEnv.id,
+        identifier: externalAccount2Identifier,
+      },
+    },
+    create: {
+      organizationId: organization.id,
+      environmentId: devEnv.id,
+      identifier: externalAccount2Identifier,
+      metadata: { bar: "baz" },
+    },
+    update: {},
+  });
+
   await prisma.apiConnection.upsert({
     where: {
       id: "cli1qcroy0000b4dy084m2jsr",

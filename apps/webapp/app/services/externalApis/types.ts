@@ -161,7 +161,7 @@ const OAuth2AccessTokenSchema = z.object({
   expiresIn: z.number().optional(),
   refreshToken: z.string().optional(),
   scopes: z.array(z.string()).optional(),
-  raw: z.record(z.any()),
+  raw: z.record(z.any()).optional(),
 });
 
 export const AccessTokenSchema = OAuth2AccessTokenSchema;
