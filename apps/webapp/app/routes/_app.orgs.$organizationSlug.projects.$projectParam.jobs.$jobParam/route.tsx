@@ -22,7 +22,12 @@ import { useProject } from "~/hooks/useProject";
 import { getJob } from "~/models/job.server";
 import { requireUserId } from "~/services/session.server";
 import { Handle } from "~/utils/handle";
-import { jobPath, testJobPath } from "~/utils/pathBuilder";
+import {
+  jobPath,
+  jobSettingsPath,
+  jobTestPath,
+  jobTriggerPath,
+} from "~/utils/pathBuilder";
 
 export const loader = async ({ request, params }: LoaderArgs) => {
   const userId = await requireUserId(request);
@@ -64,7 +69,7 @@ export default function Job() {
           <PageTitle title={job.title} />
           <PageButtons>
             <LinkButton
-              to={testJobPath(organization, project, job)}
+              to={jobTestPath(organization, project, job)}
               variant="primary/small"
               shortcut="T"
             >
@@ -114,7 +119,15 @@ export default function Job() {
         <PageTabs
           tabs={[
             { label: "Runs", to: jobPath(organization, project, job) },
-            { label: "Test", to: testJobPath(organization, project, job) },
+            { label: "Test", to: jobTestPath(organization, project, job) },
+            {
+              label: "Trigger",
+              to: jobTriggerPath(organization, project, job),
+            },
+            {
+              label: "Settings",
+              to: jobSettingsPath(organization, project, job),
+            },
           ]}
         />
       </PageHeader>

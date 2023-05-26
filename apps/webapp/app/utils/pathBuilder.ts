@@ -70,12 +70,28 @@ export function jobPath(
   return `${projectPath(organization, project)}/jobs/${jobParam(job)}`;
 }
 
-export function testJobPath(
+export function jobTestPath(
   organization: OrgForPath,
   project: ProjectForPath,
   job: JobForPath
 ) {
   return `${jobPath(organization, project, job)}/test`;
+}
+
+export function jobTriggerPath(
+  organization: OrgForPath,
+  project: ProjectForPath,
+  job: JobForPath
+) {
+  return `${jobPath(organization, project, job)}/trigger`;
+}
+
+export function jobSettingsPath(
+  organization: OrgForPath,
+  project: ProjectForPath,
+  job: JobForPath
+) {
+  return `${jobPath(organization, project, job)}/settings`;
 }
 
 export function jobParam(job: JobForPath) {
