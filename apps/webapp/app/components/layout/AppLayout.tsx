@@ -75,8 +75,8 @@ export function PageBody({
   return (
     <div
       className={cn(
-        "border-slate-800 pt-4",
-        !hideBorder && "border-t",
+        "border-slate-800",
+        !hideBorder && "border-t pt-4",
         fullHeight && "flex-grow"
       )}
     >

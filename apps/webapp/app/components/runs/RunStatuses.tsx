@@ -43,7 +43,7 @@ export function runStatusClassNameColor(status: JobRunStatus): string {
   }
 }
 
-export function runStatusLabel(status: JobRunStatus): ReactNode {
+export function RunStatusLabel(status: JobRunStatus): ReactNode {
   switch (status) {
     case "SUCCESS":
       return <span className="text-green-500">{runStatusTitle(status)}</span>;

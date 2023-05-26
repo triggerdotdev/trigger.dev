@@ -2,7 +2,7 @@ import { NavLink, useLocation } from "@remix-run/react";
 import { motion } from "framer-motion";
 import { cn } from "~/utils/cn";
 
-type TabsProps = {
+export type TabsProps = {
   tabs: {
     label: string;
     to: string;
