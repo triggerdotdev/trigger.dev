@@ -14,7 +14,7 @@ import {
 } from "~/components/primitives/PageHeader";
 import { useCurrentJob } from "~/hooks/useJob";
 import { useOrganization } from "~/hooks/useOrganizations";
-import { useCurrentProject } from "~/hooks/useProject";
+import { useProject } from "~/hooks/useProject";
 import { getJob } from "~/models/job.server";
 import { requireUserId } from "~/services/session.server";
 import { Handle } from "~/utils/handle";
@@ -50,7 +50,7 @@ export const handle: Handle = {
 
 export default function Job() {
   const organization = useOrganization();
-  const project = useCurrentProject();
+  const project = useProject();
   const job = useCurrentJob();
   invariant(project, "Project must be defined");
   invariant(job, "Job must be defined");

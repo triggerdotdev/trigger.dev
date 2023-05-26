@@ -2,7 +2,7 @@ import { useState } from "react";
 import invariant from "tiny-invariant";
 import { useCurrentJob } from "~/hooks/useJob";
 import { useOrganization } from "~/hooks/useOrganizations";
-import { useCurrentProject } from "~/hooks/useProject";
+import { useProject } from "~/hooks/useProject";
 import { jobPath } from "~/utils/pathBuilder";
 import { IconNames } from "../primitives/NamedIcon";
 import {
@@ -17,7 +17,7 @@ import {
 export function JobsMenu() {
   const [isOpen, setIsOpen] = useState(false);
   const organization = useOrganization();
-  const project = useCurrentProject();
+  const project = useProject();
   const currentJob = useCurrentJob();
   invariant(project);
 

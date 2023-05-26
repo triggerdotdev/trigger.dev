@@ -9,7 +9,7 @@ import {
   PageTitleRow,
 } from "~/components/primitives/PageHeader";
 import { useOrganization } from "~/hooks/useOrganizations";
-import { useCurrentProject } from "~/hooks/useProject";
+import { useProject } from "~/hooks/useProject";
 import { Handle } from "~/utils/handle";
 import { jobPath } from "~/utils/pathBuilder";
 
@@ -21,7 +21,7 @@ export const handle: Handle = {
 
 export default function Page() {
   const organization = useOrganization();
-  const project = useCurrentProject();
+  const project = useProject();
   invariant(project, "Project must be defined");
 
   return (

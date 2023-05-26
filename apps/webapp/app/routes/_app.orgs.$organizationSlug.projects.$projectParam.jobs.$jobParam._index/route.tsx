@@ -1,6 +1,6 @@
 import invariant from "tiny-invariant";
 import { useOrganization } from "~/hooks/useOrganizations";
-import { useCurrentProject } from "~/hooks/useProject";
+import { useProject } from "~/hooks/useProject";
 import { Handle } from "~/utils/handle";
 
 //todo defer the run list query
@@ -14,7 +14,7 @@ export const handle: Handle = {
 
 export default function Page() {
   const organization = useOrganization();
-  const project = useCurrentProject();
+  const project = useProject();
   invariant(project, "Project must be defined");
 
   return <div>Runs page</div>;

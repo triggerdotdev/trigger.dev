@@ -5,7 +5,7 @@ import {
   PageTitle,
   PageTitleRow,
 } from "~/components/primitives/PageHeader";
-import { useCurrentProject } from "~/hooks/useProject";
+import { useProject } from "~/hooks/useProject";
 import { Handle } from "~/utils/handle";
 
 export const handle: Handle = {
@@ -15,7 +15,7 @@ export const handle: Handle = {
 };
 
 export default function Page() {
-  const currentProject = useCurrentProject();
+  const currentProject = useProject();
   invariant(currentProject, "Project must be defined");
 
   return (

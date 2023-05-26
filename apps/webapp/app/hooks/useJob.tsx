@@ -1,12 +1,12 @@
 import type { UseDataFunctionReturn } from "remix-typedjson";
 import type { loader as jobLoader } from "~/routes/_app.orgs.$organizationSlug.projects.$projectParam.jobs.$jobParam/route";
 import { hydrateObject, useMatchesData } from "~/utils";
-import { useCurrentProject } from "./useProject";
+import { useProject } from "./useProject";
 
 export type MatchedJob = UseDataFunctionReturn<typeof jobLoader>["job"];
 
 export function useCurrentJob() {
-  const project = useCurrentProject();
+  const project = useProject();
   const routeMatch = useMatchesData(
     "routes/_app.orgs.$organizationSlug.projects.$projectParam.jobs.$jobParam"
   );

@@ -3,7 +3,7 @@ import { motion } from "framer-motion";
 import invariant from "tiny-invariant";
 import { useCurrentJob } from "~/hooks/useJob";
 import { useOrganization } from "~/hooks/useOrganizations";
-import { useCurrentProject } from "~/hooks/useProject";
+import { useProject } from "~/hooks/useProject";
 import { cn } from "~/utils/cn";
 import {
   accountPath,
@@ -38,7 +38,7 @@ const menuVariants = {
 
 export function ProjectSideMenu() {
   const organization = useOrganization();
-  const project = useCurrentProject();
+  const project = useProject();
   const matches = useMatches();
 
   //we collapse the menu if we're in a job or an integration

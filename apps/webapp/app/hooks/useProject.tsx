@@ -6,7 +6,7 @@ export type MatchedProject = UseDataFunctionReturn<
   typeof projectLoader
 >["project"];
 
-export function useCurrentProject() {
+export function useProject() {
   const routeMatch = useMatchesData(
     "routes/_app.orgs.$organizationSlug.projects.$projectParam"
   );
