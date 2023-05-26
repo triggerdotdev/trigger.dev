@@ -1,6 +1,6 @@
 import { useState } from "react";
 import invariant from "tiny-invariant";
-import { useCurrentOrganization } from "~/hooks/useOrganizations";
+import { useOrganization } from "~/hooks/useOrganizations";
 import { cn } from "~/utils/cn";
 
 export function EnvironmentIcon({
@@ -26,7 +26,7 @@ export function EnvironmentIcon({
 }
 
 export default function Page() {
-  const organization = useCurrentOrganization();
+  const organization = useOrganization();
   invariant(organization, "Organization must be defined");
 
   return (

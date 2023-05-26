@@ -18,7 +18,7 @@ export function useOrganizations() {
   return orgs;
 }
 
-export function useCurrentOrganization() {
+export function useOrganization() {
   const routeMatch = useMatchesData("routes/_app.orgs.$organizationSlug");
 
   if (!routeMatch || !routeMatch.data.organization) {

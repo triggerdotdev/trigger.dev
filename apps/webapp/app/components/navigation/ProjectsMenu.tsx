@@ -1,6 +1,6 @@
 import { Fragment, useState } from "react";
 import {
-  useCurrentOrganization,
+  useOrganization,
   useIsNewOrganizationPage,
   useOrganizations,
 } from "~/hooks/useOrganizations";
@@ -21,7 +21,7 @@ import {
 export function ProjectsMenu() {
   const [isOpen, setIsOpen] = useState(false);
   const organizations = useOrganizations();
-  const currentOrganization = useCurrentOrganization();
+  const currentOrganization = useOrganization();
   const isNewOrgPage = useIsNewOrganizationPage();
   const currentProject = useCurrentProject();
 

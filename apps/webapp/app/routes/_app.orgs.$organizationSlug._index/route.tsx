@@ -8,11 +8,11 @@ import {
   PageTitle,
   PageTitleRow,
 } from "~/components/primitives/PageHeader";
-import { useCurrentOrganization } from "~/hooks/useOrganizations";
+import { useOrganization } from "~/hooks/useOrganizations";
 import { newProjectPath } from "~/utils/pathBuilder";
 
 export default function Page() {
-  const currentOrganization = useCurrentOrganization();
+  const currentOrganization = useOrganization();
   invariant(currentOrganization, "No current organization");
 
   return (

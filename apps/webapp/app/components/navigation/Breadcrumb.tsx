@@ -1,7 +1,7 @@
 import { useMatches } from "@remix-run/react";
 import { Fragment } from "react";
 import invariant from "tiny-invariant";
-import { useCurrentOrganization } from "~/hooks/useOrganizations";
+import { useOrganization } from "~/hooks/useOrganizations";
 import { useCurrentProject } from "~/hooks/useProject";
 import {
   projectEnvironmentsPath,
@@ -32,7 +32,7 @@ function useBreadcrumbs(): Breadcrumb[] {
 
 export function Breadcrumb() {
   const breadcrumbs = useBreadcrumbs();
-  const organization = useCurrentOrganization();
+  const organization = useOrganization();
   const project = useCurrentProject();
 
   return (
@@ -57,7 +57,7 @@ function BreadcrumbItem({
   project,
 }: {
   breadcrumb: Breadcrumb;
-  organization?: ReturnType<typeof useCurrentOrganization>;
+  organization?: ReturnType<typeof useOrganization>;
   project?: ReturnType<typeof useCurrentProject>;
 }) {
   switch (breadcrumb.slug) {

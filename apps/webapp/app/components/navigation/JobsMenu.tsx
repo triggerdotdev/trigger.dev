@@ -1,7 +1,7 @@
 import { useState } from "react";
 import invariant from "tiny-invariant";
 import { useCurrentJob } from "~/hooks/useJob";
-import { useCurrentOrganization } from "~/hooks/useOrganizations";
+import { useOrganization } from "~/hooks/useOrganizations";
 import { useCurrentProject } from "~/hooks/useProject";
 import { jobPath } from "~/utils/pathBuilder";
 import { IconNames } from "../primitives/NamedIcon";
@@ -16,7 +16,7 @@ import {
 //todo there's an issue with hooks still, maybe pass the props in to the menus? A bit annoying
 export function JobsMenu() {
   const [isOpen, setIsOpen] = useState(false);
-  const organization = useCurrentOrganization();
+  const organization = useOrganization();
   const project = useCurrentProject();
   const currentJob = useCurrentJob();
   invariant(organization);

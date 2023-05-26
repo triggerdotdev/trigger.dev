@@ -1,14 +1,14 @@
 import { useLocation } from "@remix-run/react";
 import posthog from "posthog-js";
 import { useEffect, useRef } from "react";
-import { useCurrentOrganization } from "./useOrganizations";
+import { useOrganization } from "./useOrganizations";
 import { useOptionalUser } from "./useUser";
 
 export const usePostHog = (apiKey?: string, logging = false): void => {
   const postHogInitialized = useRef(false);
   const location = useLocation();
   const user = useOptionalUser();
-  const currentOrganization = useCurrentOrganization();
+  const currentOrganization = useOrganization();
   const currentOrganizationId = currentOrganization?.id;
 
   //start PostHog once

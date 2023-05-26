@@ -22,7 +22,7 @@ import {
   PopoverSectionHeader,
   PopoverTrigger,
 } from "~/components/primitives/Popover";
-import { useCurrentOrganization } from "~/hooks/useOrganizations";
+import { useOrganization } from "~/hooks/useOrganizations";
 import { getOrganizationFromSlug } from "~/models/organization.server";
 import { apiAuthenticationRepository } from "~/services/externalApis/apiAuthenticationRepository.server";
 import { integrationCatalog } from "~/services/externalApis/integrationCatalog.server";
@@ -60,7 +60,7 @@ export const handle: Handle = {
 
 export default function Integrations() {
   const { clients, integrations } = useTypedLoaderData<typeof loader>();
-  const organization = useCurrentOrganization();
+  const organization = useOrganization();
   invariant(organization, "Organization not found");
 
   const orderedIntegrations = Object.values(integrations).sort((a, b) =>

@@ -2,7 +2,7 @@ import { useMatches } from "@remix-run/react";
 import { motion } from "framer-motion";
 import invariant from "tiny-invariant";
 import { useCurrentJob } from "~/hooks/useJob";
-import { useCurrentOrganization } from "~/hooks/useOrganizations";
+import { useOrganization } from "~/hooks/useOrganizations";
 import { useCurrentProject } from "~/hooks/useProject";
 import { cn } from "~/utils/cn";
 import {
@@ -37,7 +37,7 @@ const menuVariants = {
 };
 
 export function ProjectSideMenu() {
-  const organization = useCurrentOrganization();
+  const organization = useOrganization();
   const project = useCurrentProject();
   const matches = useMatches();
 

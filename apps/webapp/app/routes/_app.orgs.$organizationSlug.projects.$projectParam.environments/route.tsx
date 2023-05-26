@@ -8,7 +8,7 @@ import {
   PageTitle,
   PageTitleRow,
 } from "~/components/primitives/PageHeader";
-import { useCurrentOrganization } from "~/hooks/useOrganizations";
+import { useOrganization } from "~/hooks/useOrganizations";
 import { useCurrentProject } from "~/hooks/useProject";
 import { Handle } from "~/utils/handle";
 import { projectEnvironmentsPath, projectPath } from "~/utils/pathBuilder";

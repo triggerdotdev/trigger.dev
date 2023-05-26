@@ -14,7 +14,7 @@ import {
   PageInfoGroup,
 } from "~/components/primitives/PageHeader";
 import { useCurrentJob } from "~/hooks/useJob";
-import { useCurrentOrganization } from "~/hooks/useOrganizations";
+import { useOrganization } from "~/hooks/useOrganizations";
 import { useCurrentProject } from "~/hooks/useProject";
 import { getJob } from "~/models/job.server";
 import { requireUserId } from "~/services/session.server";
@@ -50,7 +50,7 @@ export const handle: Handle = {
 };
 
 export default function Job() {
-  const organization = useCurrentOrganization();
+  const organization = useOrganization();
   const project = useCurrentProject();
   const job = useCurrentJob();
   invariant(organization, "Organization must be defined");
