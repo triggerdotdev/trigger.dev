@@ -1,5 +1,5 @@
-import { BeakerIcon } from "@heroicons/react/24/outline";
-import { ChevronRightIcon } from "@heroicons/react/24/solid";
+import { BeakerIcon, StopIcon } from "@heroicons/react/24/outline";
+import { CheckIcon, ChevronRightIcon } from "@heroicons/react/24/solid";
 import { Link } from "@remix-run/react";
 import type { ReactNode } from "react";
 import { useJob } from "~/hooks/useJob";
@@ -79,8 +79,10 @@ export function RunsTable({
                   })}
                 </Cell>
                 <Cell to={path}>
-                  {run.isTest && (
-                    <BeakerIcon className="h-5 w-5 text-green-500" />
+                  {!run.isTest ? (
+                    <CheckIcon className="h-4 w-4 text-slate-400" />
+                  ) : (
+                    <StopIcon className="h-4 w-4 text-slate-850" />
                   )}
                 </Cell>
                 <Cell to={path}>{run.version}</Cell>
