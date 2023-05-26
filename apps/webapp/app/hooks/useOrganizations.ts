@@ -2,13 +2,20 @@ import type { UseDataFunctionReturn } from "remix-typedjson";
 import type { loader as appLoader } from "~/routes/_app/route";
 import type { loader as orgLoader } from "~/routes/_app.orgs.$organizationSlug/route";
 import { hydrateObject, useMatchesData } from "~/utils";
+import invariant from "tiny-invariant";
 
 export type MatchedOrganization = UseDataFunctionReturn<
   typeof appLoader
 >["organizations"][number];
 
-export function useOrganizations() {
+export function useOptionalOrganizations() {
   return useOrganizationsFromMatchesData(["routes/_app"]);
+}
+
+export function useOrganizations() {
+  const orgs = useOptionalOrganizations();
+  invariant(orgs, "No organizations found in loader.");
+  return orgs;
 }
 
 export function useCurrentOrganization() {

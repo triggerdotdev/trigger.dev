@@ -1,3 +1,5 @@
+import { LoaderArgs, json } from "@remix-run/server-runtime";
+import { redirect } from "remix-typedjson";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { LinkButton } from "~/components/primitives/Buttons";
 import {
@@ -7,14 +9,11 @@ import {
   PageTitle,
   PageTitleRow,
 } from "~/components/primitives/PageHeader";
-import { useOrganizations } from "~/hooks/useOrganizations";
+import { useOptionalOrganizations } from "~/hooks/useOrganizations";
+import { getOrganizations } from "~/models/organization.server";
+import { requireUserId } from "~/services/session.server";
 import { newOrganizationPath } from "~/utils/pathBuilder";
 import { OrganizationGridItem } from "./OrganizationGrid";
-import { LoaderArgs, json } from "@remix-run/server-runtime";
-import { requireUserId } from "~/services/session.server";
-import { getOrganizations } from "~/models/organization.server";
-import { redirect } from "remix-typedjson";
-import { useUser } from "~/hooks/useUser";
 
 export const loader = async ({ request }: LoaderArgs) => {
   const userId = await requireUserId(request);
@@ -26,7 +25,7 @@ export const loader = async ({ request }: LoaderArgs) => {
 };
 
 export default function AppLayout() {
-  const organizations = useOrganizations();
+  const organizations = useOptionalOrganizations();
 
   return (
     <PageContainer>
@@ -49,7 +48,7 @@ export default function AppLayout() {
       </PageHeader>
       <PageBody>
         <ul className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-          {organizations ? (
+          {organizations && organizations.length > 0 ? (
             <>
               {organizations.map((organization) => (
                 <OrganizationGridItem
