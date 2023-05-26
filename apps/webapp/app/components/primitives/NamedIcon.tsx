@@ -26,6 +26,7 @@ import {
   ChevronRightIcon,
   CodeBracketSquareIcon,
   Cog8ToothIcon,
+  ChevronLeftIcon,
 } from "@heroicons/react/24/solid";
 import { cn } from "~/utils/cn";
 import { Spinner } from "./Spinner";
@@ -47,7 +48,10 @@ const icons = {
   check: (className: string) => (
     <CheckIcon className={cn("text-dimmed", className)} />
   ),
-  chevronRight: (className: string) => (
+  "chevron-left": (className: string) => (
+    <ChevronLeftIcon className={cn("text-dimmed", className)} />
+  ),
+  "chevron-right": (className: string) => (
     <ChevronRightIcon className={cn("text-dimmed", className)} />
   ),
   close: (className: string) => (

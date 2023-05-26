@@ -133,7 +133,7 @@ export function JobItem({
           </div>
         </div>
         <NamedIcon
-          name="chevronRight"
+          name="chevron-right"
           className="h-4 w-4 text-dimmed transition duration-200 group-hover:translate-x-1.5 group-hover:text-bright"
         />
       </div>
