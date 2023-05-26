@@ -67,7 +67,7 @@ export default function Integrations() {
   );
 
   return (
-    <PageContainer fullHeight>
+    <PageContainer>
       <PageHeader>
         <PageTitleRow>
           <PageTitle title="Integrations" />

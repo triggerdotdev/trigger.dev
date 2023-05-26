@@ -42,23 +42,10 @@ export function BackgroundGradient({
 }
 
 /** This container should be placed around the content on a page */
-export function PageContainer({
-  children,
-  fullHeight,
-}: {
-  children: React.ReactNode;
-  fullHeight?: boolean;
-}) {
+export function PageContainer({ children }: { children: React.ReactNode }) {
   return (
-    <div
-      className={cn(
-        "overflow-y-auto px-4 pt-4",
-        fullHeight && "flex h-full flex-col"
-      )}
-    >
-      <div className={cn("flex flex-col pb-4", fullHeight && "flex-grow")}>
-        {children}
-      </div>
+    <div className={cn("flex h-full flex-col overflow-y-auto px-4 pt-4")}>
+      <div className={cn("flex flex-grow flex-col pb-4")}>{children}</div>
     </div>
   );
 }
