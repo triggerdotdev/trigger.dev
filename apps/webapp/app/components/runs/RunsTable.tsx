@@ -7,45 +7,36 @@ import { Spinner } from "../primitives/Spinner";
 import { cn } from "~/utils/cn";
 import { RunList } from "~/presenters/RunListPresenter.server";
 import { RunStatusIcon, RunStatusLabel } from "./RunStatuses";
-
-const headerCell = "px-4 py-5 text-left text-base font-semibold text-slate-300";
-const headerCellRightAlign = cn(headerCell, "text-right");
+import { runPath } from "~/utils/pathBuilder";
+import { useJob } from "~/hooks/useJob";
+import { useOrganization } from "~/hooks/useOrganizations";
+import { useProject } from "~/hooks/useProject";
 
 export function RunsTable({
   total,
   hasFilters,
   runs,
-  basePath,
   isLoading = false,
 }: {
   total: number;
   hasFilters: boolean;
   runs: RunList["runs"];
-  basePath?: string;
   isLoading?: boolean;
 }) {
+  const organization = useOrganization();
+  const project = useProject();
+  const job = useJob();
+
   return (
-    <table className="w-full divide-y divide-slate-850">
-      <thead className="bg-slate-700/20">
+    <table className="w-full divide-y divide-slate-850 overflow-hidden rounded-md border border-slate-900 bg-slate-950">
+      <thead className=" rounded-t-md">
         <tr>
-          <th scope="col" className={headerCell}>
-            Started
-          </th>
-          <th scope="col" className={headerCell}>
-            ID
-          </th>
-          <th scope="col" className={headerCell}>
-            Status
-          </th>
-          <th scope="col" className={headerCell}>
-            Completed
-          </th>
-          <th scope="col" className={headerCellRightAlign}>
-            Duration
-          </th>
-          <th scope="col" className={headerCellRightAlign}>
-            Test
-          </th>
+          <HeaderCell title="Started" />
+          <HeaderCell title="ID" />
+          <HeaderCell title="Status" />
+          <HeaderCell title="Completed" />
+          <HeaderCell title="Duration" alignment="right" />
+          <HeaderCell title="Test" alignment="right" />
         </tr>
       </thead>
       <tbody className="relative divide-y divide-slate-850">
@@ -59,7 +50,7 @@ export function RunsTable({
           </BlankRow>
         ) : (
           runs.map((run) => {
-            const path = basePath ? `${basePath}/${run.id}` : run.id;
+            const path = runPath(organization, project, job, run);
             return (
               <tr key={run.id} className="group w-full">
                 <Cell to={path} alignment="left">
@@ -107,6 +98,26 @@ export function RunsTable({
         )}
       </tbody>
     </table>
+  );
+}
+
+function HeaderCell({
+  title,
+  alignment = "left",
+}: {
+  title: string;
+  alignment?: "left" | "right";
+}) {
+  return (
+    <th
+      scope="col"
+      className={cn(
+        "px-4 py-3 text-xs font-semibold uppercase text-slate-400",
+        alignment === "left" ? "text-left" : "text-right"
+      )}
+    >
+      {title}
+    </th>
   );
 }
 

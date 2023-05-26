@@ -5,6 +5,7 @@ import type { Project } from "~/models/project.server";
 type OrgForPath = Pick<Organization, "slug">;
 type ProjectForPath = Pick<Project, "slug">;
 type JobForPath = Pick<Job, "id">;
+type RunForPath = Pick<Job, "id">;
 
 export function accountPath() {
   return `/account`;
@@ -79,6 +80,20 @@ export function testJobPath(
 
 export function jobParam(job: JobForPath) {
   return job.id;
+}
+
+// Run
+export function runPath(
+  organization: OrgForPath,
+  project: ProjectForPath,
+  job: JobForPath,
+  run: RunForPath
+) {
+  return `${jobPath(organization, project, job)}/runs/${runParam(run)}`;
+}
+
+export function runParam(run: RunForPath) {
+  return run.id;
 }
 
 // Docs
