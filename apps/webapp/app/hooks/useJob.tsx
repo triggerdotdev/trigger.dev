@@ -2,10 +2,11 @@ import type { UseDataFunctionReturn } from "remix-typedjson";
 import type { loader as jobLoader } from "~/routes/_app.orgs.$organizationSlug.projects.$projectParam.jobs.$jobParam/route";
 import { hydrateObject, useMatchesData } from "~/utils";
 import { useOptionalProject } from "./useProject";
+import invariant from "tiny-invariant";
 
 export type MatchedJob = UseDataFunctionReturn<typeof jobLoader>["job"];
 
-export function useCurrentJob() {
+export function useOptionalJob() {
   const project = useOptionalProject();
   const routeMatch = useMatchesData(
     "routes/_app.orgs.$organizationSlug.projects.$projectParam.jobs.$jobParam"
@@ -27,5 +28,11 @@ export function useCurrentJob() {
 
   //get the job from the list on the project
   const job = project.jobs.find((j) => j.id === result.id);
+  return job;
+}
+
+export function useJob() {
+  const job = useOptionalJob();
+  invariant(job, "Job must be defined");
   return job;
 }

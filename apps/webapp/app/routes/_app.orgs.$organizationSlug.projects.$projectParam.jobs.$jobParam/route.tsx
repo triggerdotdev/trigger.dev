@@ -12,7 +12,7 @@ import {
   PageTitle,
   PageTitleRow,
 } from "~/components/primitives/PageHeader";
-import { useCurrentJob } from "~/hooks/useJob";
+import { useJob } from "~/hooks/useJob";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { getJob } from "~/models/job.server";
@@ -51,8 +51,7 @@ export const handle: Handle = {
 export default function Job() {
   const organization = useOrganization();
   const project = useProject();
-  const job = useCurrentJob();
-  invariant(job, "Job must be defined");
+  const job = useJob();
 
   return (
     <PageContainer>

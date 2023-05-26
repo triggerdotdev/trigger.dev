@@ -1,7 +1,7 @@
 import { useMatches } from "@remix-run/react";
 import { motion } from "framer-motion";
 import invariant from "tiny-invariant";
-import { useCurrentJob } from "~/hooks/useJob";
+import { useJob, useOptionalJob } from "~/hooks/useJob";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { cn } from "~/utils/cn";
@@ -42,7 +42,7 @@ export function ProjectSideMenu() {
   const matches = useMatches();
 
   //we collapse the menu if we're in a job or an integration
-  const job = useCurrentJob();
+  const job = useOptionalJob();
   const isCollapsed = job !== undefined;
 
   const jobsActive =
