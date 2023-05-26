@@ -39,6 +39,7 @@ const menuVariants = {
 export function ProjectSideMenu() {
   const organization = useCurrentOrganization();
   const project = useCurrentProject();
+  const matches = useMatches();
 
   //we collapse the menu if we're in a job or an integration
   const job = useCurrentJob();
@@ -46,7 +47,7 @@ export function ProjectSideMenu() {
 
   const jobsActive =
     job !== undefined ||
-    useMatches().at(-1)?.id ===
+    matches.at(-1)?.id ===
       "routes/_app.orgs.$organizationSlug.projects.$projectParam._index";
 
   invariant(organization, "Organization must be defined");
