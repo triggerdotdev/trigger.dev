@@ -23,22 +23,12 @@ export default function Page() {
   const organization = useOrganization();
   const project = useCurrentProject();
   invariant(project, "Project must be defined");
-  invariant(organization, "Organization must be defined");
 
   return (
     <PageContainer>
       <PageHeader>
         <PageTitleRow>
           <PageTitle title="Jobs" />
-          <PageButtons>
-            {/* <LinkButton
-              to={newProjectPath(currentOrganization)}
-              variant="primary/small"
-              shortcut="N" 
-            >
-              Create a new project
-            </LinkButton> */}
-          </PageButtons>
         </PageTitleRow>
         <PageDescription>{project.jobs.length} Jobs</PageDescription>
       </PageHeader>

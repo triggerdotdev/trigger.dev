@@ -61,7 +61,6 @@ export const handle: Handle = {
 export default function Integrations() {
   const { clients, integrations } = useTypedLoaderData<typeof loader>();
   const organization = useOrganization();
-  invariant(organization, "Organization not found");
 
   const orderedIntegrations = Object.values(integrations).sort((a, b) =>
     a.name.localeCompare(b.name)

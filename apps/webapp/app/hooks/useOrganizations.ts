@@ -18,7 +18,7 @@ export function useOrganizations() {
   return orgs;
 }
 
-export function useOrganization() {
+export function useOptionalOrganization() {
   const routeMatch = useMatchesData("routes/_app.orgs.$organizationSlug");
 
   if (!routeMatch || !routeMatch.data.organization) {
@@ -35,6 +35,12 @@ export function useOrganization() {
 
   if (result == null) return undefined;
   return result;
+}
+
+export function useOrganization() {
+  const org = useOptionalOrganization();
+  invariant(org, "No organization found in loader.");
+  return org;
 }
 
 export function useIsNewOrganizationPage(): boolean {

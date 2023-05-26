@@ -1,6 +1,5 @@
 import { Fragment, useState } from "react";
 import {
-  useOrganization,
   useIsNewOrganizationPage,
   useOrganizations,
 } from "~/hooks/useOrganizations";
@@ -21,11 +20,10 @@ import {
 export function ProjectsMenu() {
   const [isOpen, setIsOpen] = useState(false);
   const organizations = useOrganizations();
-  const currentOrganization = useOrganization();
   const isNewOrgPage = useIsNewOrganizationPage();
   const currentProject = useCurrentProject();
 
-  if (isNewOrgPage || currentOrganization === undefined) {
+  if (isNewOrgPage) {
     return null;
   }
 
@@ -39,7 +37,6 @@ export function ProjectsMenu() {
           {organizations.map((organization) => (
             <Fragment key={organization.id}>
               <PopoverSectionHeader title={organization.title} />
-
               <div className="flex flex-col gap-1 p-1">
                 {organization.projects.map((project) => {
                   const isSelected = project.id === currentProject?.id;

@@ -2,16 +2,15 @@ import { Outlet } from "@remix-run/react";
 import type { LoaderArgs } from "@remix-run/server-runtime";
 import { typedjson } from "remix-typedjson";
 import invariant from "tiny-invariant";
-import { PageContainer, PageBody } from "~/components/layout/AppLayout";
+import { PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { LinkButton } from "~/components/primitives/Buttons";
 import {
-  PageHeader,
-  PageTitleRow,
-  PageTitle,
   PageButtons,
-  PageDescription,
-  PageInfoRow,
+  PageHeader,
   PageInfoGroup,
+  PageInfoRow,
+  PageTitle,
+  PageTitleRow,
 } from "~/components/primitives/PageHeader";
 import { useCurrentJob } from "~/hooks/useJob";
 import { useOrganization } from "~/hooks/useOrganizations";
@@ -53,7 +52,6 @@ export default function Job() {
   const organization = useOrganization();
   const project = useCurrentProject();
   const job = useCurrentJob();
-  invariant(organization, "Organization must be defined");
   invariant(project, "Project must be defined");
   invariant(job, "Job must be defined");
 

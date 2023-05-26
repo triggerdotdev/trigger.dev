@@ -19,7 +19,6 @@ export function JobsMenu() {
   const organization = useOrganization();
   const project = useCurrentProject();
   const currentJob = useCurrentJob();
-  invariant(organization);
   invariant(project);
 
   return (

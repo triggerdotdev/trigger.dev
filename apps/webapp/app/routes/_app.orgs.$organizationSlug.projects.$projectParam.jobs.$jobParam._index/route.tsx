@@ -16,7 +16,6 @@ export default function Page() {
   const organization = useOrganization();
   const project = useCurrentProject();
   invariant(project, "Project must be defined");
-  invariant(organization, "Organization must be defined");
 
   return <div>Runs page</div>;
 }

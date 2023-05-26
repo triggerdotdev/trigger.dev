@@ -1,4 +1,3 @@
-import invariant from "tiny-invariant";
 import { PageContainer } from "~/components/layout/AppLayout";
 import { LinkButton } from "~/components/primitives/Buttons";
 import {
@@ -13,7 +12,6 @@ import { newProjectPath } from "~/utils/pathBuilder";
 
 export default function Page() {
   const currentOrganization = useOrganization();
-  invariant(currentOrganization, "No current organization");
 
   return (
     <PageContainer>
