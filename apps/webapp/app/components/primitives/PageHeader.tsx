@@ -89,13 +89,17 @@ export function PageInfoProperty({
   label,
   value,
 }: {
-  icon?: string;
+  icon?: string | React.ReactNode;
   label: string;
   value: React.ReactNode;
 }) {
   return (
     <div className="flex items-center gap-1">
-      {icon && <NamedIcon name={icon} className="h-4 w-4" />}
+      {icon && typeof icon === "string" ? (
+        <NamedIcon name={icon} className="h-4 w-4" />
+      ) : (
+        icon
+      )}
       <Paragraph
         variant="extra-small/caps"
         className="mt-0.5 whitespace-nowrap"

@@ -16,11 +16,13 @@ import {
   PageTabs,
 } from "~/components/primitives/PageHeader";
 import { Paragraph } from "~/components/primitives/Paragraph";
+import { RunStatusIcon, runStatusTitle } from "~/components/runs/RunStatuses";
 import { useJob } from "~/hooks/useJob";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { RunPresenter } from "~/presenters/RunPresenter.server";
 import { requireUserId } from "~/services/session.server";
+import { formatDateTime } from "~/utils";
 import { Handle } from "~/utils/handle";
 import {
   jobTestPath,
@@ -40,6 +42,12 @@ export const loader = async ({ request, params }: LoaderArgs) => {
     userId,
     id: runParam,
   });
+
+  if (!run) {
+    throw new Response(null, {
+      status: 404,
+    });
+  }
 
   return typedjson({
     run,
@@ -68,7 +76,7 @@ export default function Page() {
               to: jobPath(organization, project, job),
               text: "Runs",
             }}
-            title={`Run #${run?.number}`}
+            title={`Run #${run.number}`}
           />
           <PageButtons>
             {/*  //todo rerun
@@ -84,39 +92,28 @@ export default function Page() {
         <PageInfoRow>
           <PageInfoGroup>
             <PageInfoProperty
-              icon={job.event.icon}
-              label={"Trigger"}
-              value={job.event.title}
+              icon={"calendar"}
+              label={"Started"}
+              value={
+                run.startedAt
+                  ? formatDateTime(run.startedAt)
+                  : "Not started yet"
+              }
             />
-            {job.event.elements &&
-              job.event.elements.map((element, index) => (
-                <PageInfoProperty
-                  key={index}
-                  icon="property"
-                  label={element.label}
-                  value={element.text}
-                />
-              ))}
-            {job.integrations.length > 0 && (
-              <PageInfoProperty
-                label="Integrations"
-                value={
-                  <div className="flex gap-0.5">
-                    {job.integrations.map((integration, index) => (
-                      <NamedIcon
-                        key={index}
-                        name={integration.icon}
-                        className={"h-4 w-4"}
-                      />
-                    ))}
-                  </div>
-                }
-              />
-            )}
+            <PageInfoProperty
+              icon={<RunStatusIcon status={run.status} className="h-4 w-4" />}
+              label={"Status"}
+              value={runStatusTitle(run.status)}
+            />
+            <PageInfoProperty
+              icon={"property"}
+              label={"Version"}
+              value={`v${run.version}`}
+            />
           </PageInfoGroup>
           <PageInfoGroup alignment="right">
             <Paragraph variant="extra-small" className="text-slate-600">
-              UID: {job.id}
+              RUN ID: {run.id}
             </Paragraph>
           </PageInfoGroup>
         </PageInfoRow>

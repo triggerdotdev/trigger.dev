@@ -27,6 +27,7 @@ import {
   CodeBracketSquareIcon,
   Cog8ToothIcon,
   ChevronLeftIcon,
+  CalendarIcon,
 } from "@heroicons/react/24/solid";
 import { cn } from "~/utils/cn";
 import { Spinner } from "./Spinner";
@@ -44,6 +45,9 @@ const icons = {
   ),
   billing: (className: string) => (
     <CreditCardIcon className={cn("text-teal-500", className)} />
+  ),
+  calendar: (className: string) => (
+    <CalendarIcon className={cn("text-purple-500", className)} />
   ),
   check: (className: string) => (
     <CheckIcon className={cn("text-dimmed", className)} />
