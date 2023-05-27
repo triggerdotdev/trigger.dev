@@ -99,6 +99,11 @@ export default function Page() {
         <PageInfoRow>
           <PageInfoGroup>
             <PageInfoProperty
+              icon={<RunStatusIcon status={run.status} className="h-4 w-4" />}
+              label={"Status"}
+              value={runStatusTitle(run.status)}
+            />
+            <PageInfoProperty
               icon={"calendar"}
               label={"Started"}
               value={
@@ -106,11 +111,6 @@ export default function Page() {
                   ? formatDateTime(run.startedAt)
                   : "Not started yet"
               }
-            />
-            <PageInfoProperty
-              icon={<RunStatusIcon status={run.status} className="h-4 w-4" />}
-              label={"Status"}
-              value={runStatusTitle(run.status)}
             />
             <PageInfoProperty
               icon={"property"}
