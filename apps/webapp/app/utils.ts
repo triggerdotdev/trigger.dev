@@ -137,7 +137,7 @@ export function formatDurationMilliseconds(
   options?: { style?: "long" | "short" }
 ): string {
   let duration = humanizeDuration(milliseconds, {
-    round: true,
+    maxDecimalPoints: 1,
     largest: 2,
   });
 

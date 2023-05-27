@@ -32,7 +32,38 @@ export class RunPresenter {
             slug: true,
           },
         },
+        //todo slim these down
+        event: true,
+        tasks: {
+          select: {
+            id: true,
+            displayKey: true,
+            name: true,
+            icon: true,
+            status: true,
+            delayUntil: true,
+            noop: true,
+            description: true,
+            elements: true,
+            params: true,
+            output: true,
+            error: true,
+            startedAt: true,
+            completedAt: true,
+            children: {
+              select: {
+                id: true,
+              },
+            },
+          },
+          orderBy: {
+            createdAt: "asc",
+          },
+        },
+        runConnections: true,
+        missingConnections: true,
       },
+
       where: {
         id,
         organization: {
@@ -61,6 +92,11 @@ export class RunPresenter {
         type: run.environment.type,
         slug: run.environment.slug,
       },
+      //todo remove properties
+      event: run.event,
+      tasks: run.tasks,
+      runConnections: run.runConnections,
+      missingConnections: run.missingConnections,
     };
   }
 }

@@ -1,20 +1,18 @@
-import { Outlet } from "@remix-run/react";
 import { LoaderArgs } from "@remix-run/server-runtime";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import invariant from "tiny-invariant";
 import { environmentTitle } from "~/components/environments/EnvironmentLabel";
-import { PageContainer, PageBody } from "~/components/layout/AppLayout";
-import { LinkButton } from "~/components/primitives/Buttons";
+import { PageBody, PageContainer } from "~/components/layout/AppLayout";
+import { Header2, Header3 } from "~/components/primitives/Headers";
 import { NamedIcon } from "~/components/primitives/NamedIcon";
 import {
-  PageHeader,
-  PageTitleRow,
-  PageTitle,
   PageButtons,
-  PageInfoRow,
+  PageHeader,
   PageInfoGroup,
   PageInfoProperty,
-  PageTabs,
+  PageInfoRow,
+  PageTitle,
+  PageTitleRow,
 } from "~/components/primitives/PageHeader";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { RunStatusIcon, runStatusTitle } from "~/components/runs/RunStatuses";
@@ -24,13 +22,12 @@ import { useProject } from "~/hooks/useProject";
 import { RunPresenter } from "~/presenters/RunPresenter.server";
 import { requireUserId } from "~/services/session.server";
 import { formatDateTime, formatDuration } from "~/utils";
+import { cn } from "~/utils/cn";
 import { Handle } from "~/utils/handle";
-import {
-  jobTestPath,
-  jobPath,
-  jobTriggerPath,
-  jobSettingsPath,
-} from "~/utils/pathBuilder";
+import { jobPath } from "~/utils/pathBuilder";
+import { RunPanel, RunPanelBody, RunPanelHeader } from "./RunCard";
+import { TaskStatusIcon } from "./TaskStatus";
+import { useState } from "react";
 
 export const loader = async ({ request, params }: LoaderArgs) => {
   const userId = await requireUserId(request);
@@ -67,6 +64,7 @@ export default function Page() {
   const organization = useOrganization();
   const project = useProject();
   const job = useJob();
+  const [selectedId, setSelectedId] = useState<string | undefined>(undefined);
 
   return (
     <PageContainer>
@@ -80,7 +78,7 @@ export default function Page() {
             title={`Run #${run.number}`}
           />
           <PageButtons>
-            {!run.isTest && (
+            {run.isTest && (
               <span className="flex items-center gap-1 text-xs uppercase text-slate-600">
                 <NamedIcon name="beaker" className="h-4 w-4 text-slate-600" />
                 Test run
@@ -135,7 +133,60 @@ export default function Page() {
           </PageInfoGroup>
         </PageInfoRow>
       </PageHeader>
-      <PageBody>Run body here</PageBody>
+      <PageBody>
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            {run.tasks.map((task) => {
+              const isSelected = task.id === selectedId;
+              return (
+                <RunPanel
+                  key={task.id}
+                  selected={isSelected}
+                  onClick={() => setSelectedId(task.id)}
+                >
+                  <RunPanelHeader
+                    icon={
+                      <TaskStatusIcon
+                        status={task.status}
+                        className={cn(
+                          "h-4 w-4",
+                          !isSelected && "text-slate-400"
+                        )}
+                      />
+                    }
+                    title={task.name}
+                    accessory={
+                      <Paragraph variant="extra-small">
+                        {formatDuration(task.startedAt, task.completedAt, {
+                          style: "short",
+                        })}
+                      </Paragraph>
+                    }
+                  />
+                  <RunPanelBody>Body</RunPanelBody>
+                </RunPanel>
+              );
+            })}
+
+            <div>
+              <Header3>Trigger</Header3>
+              {JSON.stringify(run.event)}
+            </div>
+            <div>
+              <Header2>Connections</Header2>
+              <Header3>Missing</Header3>
+              {JSON.stringify(run.missingConnections)}
+              <Header3>Present</Header3>
+              {JSON.stringify(run.runConnections)}
+            </div>
+            <div>
+              <Header3>Tasks</Header3>
+              {JSON.stringify(run.tasks)}
+            </div>
+          </div>
+          <div>Detail</div>
+        </div>
+      </PageBody>
     </PageContainer>
   );
 }
