@@ -1,10 +1,7 @@
 import { PrismaClient, prisma } from "~/db.server";
 import { z } from "zod";
+import { DirectionSchema } from "~/routes/_app.orgs.$organizationSlug.projects.$projectParam.jobs.$jobParam._index/route";
 
-export const DirectionSchema = z.union([
-  z.literal("forward"),
-  z.literal("backward"),
-]);
 export type Direction = z.infer<typeof DirectionSchema>;
 
 type RunListOptions = {

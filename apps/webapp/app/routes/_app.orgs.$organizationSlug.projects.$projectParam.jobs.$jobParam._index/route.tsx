@@ -1,25 +1,20 @@
 import { LoaderArgs } from "@remix-run/server-runtime";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import invariant from "tiny-invariant";
+import { z } from "zod";
 import { RunsTable } from "~/components/runs/RunsTable";
-import { useOrganization } from "~/hooks/useOrganizations";
-import { useProject } from "~/hooks/useProject";
-import {
-  Direction,
-  DirectionSchema,
-  RunList,
-  RunListPresenter,
-} from "~/presenters/RunListPresenter.server";
+import { RunListPresenter } from "~/presenters/RunListPresenter.server";
 import { requireUserId } from "~/services/session.server";
 import { Handle } from "~/utils/handle";
-import { z } from "zod";
-import { useLocation } from "@remix-run/react";
-import { LinkButton } from "~/components/primitives/Buttons";
-import { cn } from "~/utils/cn";
 import { ListPagination } from "./ListPagination";
 
 //todo defer the run list query
 //todo live show when there are new items in the list
+
+export const DirectionSchema = z.union([
+  z.literal("forward"),
+  z.literal("backward"),
+]);
 
 const SearchSchema = z.object({
   cursor: z.string().optional(),
@@ -32,9 +27,9 @@ export const loader = async ({ request, params }: LoaderArgs) => {
   invariant(jobParam, "jobParam not found");
 
   const url = new URL(request.url);
-  const searchParams = SearchSchema.parse(
-    Object.fromEntries(url.searchParams.entries())
-  );
+  const s = Object.fromEntries(url.searchParams.entries());
+  console.log(s);
+  const searchParams = SearchSchema.parse(s);
 
   const presenter = new RunListPresenter();
   const list = await presenter.call({
