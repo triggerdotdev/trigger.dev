@@ -19,9 +19,17 @@ export class RunPresenter {
         number: true,
         status: true,
         startedAt: true,
+        completedAt: true,
+        isTest: true,
         version: {
           select: {
             version: true,
+          },
+        },
+        environment: {
+          select: {
+            type: true,
+            slug: true,
           },
         },
       },
@@ -46,7 +54,13 @@ export class RunPresenter {
       number: run.number,
       status: run.status,
       startedAt: run.startedAt,
+      completedAt: run.completedAt,
+      isTest: run.isTest,
       version: run.version.version,
+      environment: {
+        type: run.environment.type,
+        slug: run.environment.slug,
+      },
     };
   }
 }

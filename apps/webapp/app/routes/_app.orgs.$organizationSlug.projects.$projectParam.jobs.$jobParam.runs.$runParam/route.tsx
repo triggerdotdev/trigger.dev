@@ -2,6 +2,7 @@ import { Outlet } from "@remix-run/react";
 import { LoaderArgs } from "@remix-run/server-runtime";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import invariant from "tiny-invariant";
+import { environmentTitle } from "~/components/environments/EnvironmentLabel";
 import { PageContainer, PageBody } from "~/components/layout/AppLayout";
 import { LinkButton } from "~/components/primitives/Buttons";
 import { NamedIcon } from "~/components/primitives/NamedIcon";
@@ -22,7 +23,7 @@ import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { RunPresenter } from "~/presenters/RunPresenter.server";
 import { requireUserId } from "~/services/session.server";
-import { formatDateTime } from "~/utils";
+import { formatDateTime, formatDuration } from "~/utils";
 import { Handle } from "~/utils/handle";
 import {
   jobTestPath,
@@ -79,6 +80,12 @@ export default function Page() {
             title={`Run #${run.number}`}
           />
           <PageButtons>
+            {!run.isTest && (
+              <span className="flex items-center gap-1 text-xs uppercase text-slate-600">
+                <NamedIcon name="beaker" className="h-4 w-4 text-slate-600" />
+                Test run
+              </span>
+            )}
             {/*  //todo rerun
             <LinkButton
               to={jobTestPath(organization, project, job)}
@@ -109,6 +116,16 @@ export default function Page() {
               icon={"property"}
               label={"Version"}
               value={`v${run.version}`}
+            />
+            <PageInfoProperty
+              icon={"environment"}
+              label={"Env"}
+              value={environmentTitle(run.environment)}
+            />
+            <PageInfoProperty
+              icon={"clock"}
+              label={"Duration"}
+              value={formatDuration(run.startedAt, run.completedAt)}
             />
           </PageInfoGroup>
           <PageInfoGroup alignment="right">

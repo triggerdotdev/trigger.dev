@@ -5,35 +5,37 @@ import {
   StopIcon,
 } from "@heroicons/react/20/solid";
 import {
-  CheckIcon,
   ArrowLeftIcon,
   ArrowRightIcon,
+  BeakerIcon,
+  BookOpenIcon,
   BuildingOffice2Icon,
+  CalendarIcon,
+  CheckIcon,
+  ChevronLeftIcon,
+  ChevronRightIcon,
+  ClockIcon,
+  CodeBracketSquareIcon,
+  Cog8ToothIcon,
+  CreditCardIcon,
   EnvelopeIcon,
   FolderIcon,
   GlobeAltIcon,
+  KeyIcon,
+  LightBulbIcon,
+  MagnifyingGlassIcon,
   PlusIcon,
   PlusSmallIcon,
-  WrenchScrewdriverIcon,
   SquaresPlusIcon,
-  KeyIcon,
   UserGroupIcon,
-  CreditCardIcon,
-  MagnifyingGlassIcon,
-  BookOpenIcon,
-  LightBulbIcon,
+  WrenchScrewdriverIcon,
   XMarkIcon,
-  ChevronRightIcon,
-  CodeBracketSquareIcon,
-  Cog8ToothIcon,
-  ChevronLeftIcon,
-  CalendarIcon,
 } from "@heroicons/react/24/solid";
-import { cn } from "~/utils/cn";
-import { Spinner } from "./Spinner";
-import { UserProfilePhoto } from "../UserProfilePhoto";
 import { ScheduleIcon } from "~/assets/icons/ScheduleIcon";
 import { WebhookIcon } from "~/assets/icons/WebhookIcon";
+import { cn } from "~/utils/cn";
+import { UserProfilePhoto } from "../UserProfilePhoto";
+import { Spinner } from "./Spinner";
 
 const icons = {
   account: (className: string) => <UserProfilePhoto className={className} />,
@@ -58,6 +60,9 @@ const icons = {
   "chevron-right": (className: string) => (
     <ChevronRightIcon className={cn("text-dimmed", className)} />
   ),
+  clock: (className: string) => (
+    <ClockIcon className={cn("text-cyan-500", className)} />
+  ),
   close: (className: string) => (
     <XMarkIcon className={cn("text-dimmed", className)} />
   ),
@@ -66,9 +71,6 @@ const icons = {
   ),
   error: (className: string) => (
     <ExclamationCircleIcon className={cn("text-rose-500", className)} />
-  ),
-  info: (className: string) => (
-    <InformationCircleIcon className={cn("text-blue-500", className)} />
   ),
   folder: (className: string) => (
     <FolderIcon className={cn("text-indigo-600", className)} />
@@ -81,6 +83,9 @@ const icons = {
   ),
   globe: (className: string) => (
     <GlobeAltIcon className={cn("text-fuchsia-600", className)} />
+  ),
+  info: (className: string) => (
+    <InformationCircleIcon className={cn("text-blue-500", className)} />
   ),
   integration: (className: string) => (
     <SquaresPlusIcon className={cn("text-teal-500", className)} />
@@ -114,6 +119,9 @@ const icons = {
   ),
   team: (className: string) => (
     <UserGroupIcon className={cn("text-blue-500", className)} />
+  ),
+  beaker: (className: string) => (
+    <BeakerIcon className={cn("text-purple-500", className)} />
   ),
   warning: (className: string) => (
     <ExclamationTriangleIcon className={cn("text-amber-400", className)} />
