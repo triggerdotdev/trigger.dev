@@ -39,7 +39,7 @@ import {
   TaskSeparator,
 } from "./RunCard";
 import { TaskStatusIcon } from "./TaskStatus";
-import { useState } from "react";
+import { Fragment, useState } from "react";
 
 export const loader = async ({ request, params }: LoaderArgs) => {
   const userId = await requireUserId(request);
@@ -152,9 +152,8 @@ export default function Page() {
               const isSelected = task.id === selectedId;
               const isLast = index === run.tasks.length - 1;
               return (
-                <>
+                <Fragment key={task.id}>
                   <RunPanel
-                    key={task.id}
                     selected={isSelected}
                     onClick={() => setSelectedId(task.id)}
                   >
@@ -214,7 +213,7 @@ export default function Page() {
                     </RunPanelBody>
                   </RunPanel>
                   {!isLast && <TaskSeparator />}
-                </>
+                </Fragment>
               );
             })}
 
