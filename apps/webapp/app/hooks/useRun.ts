@@ -1,5 +1,5 @@
 import type { UseDataFunctionReturn } from "remix-typedjson";
-import type { loader as runLoader } from "~/routes/_app.orgs.$organizationSlug.projects.$projectParam.jobs_.$jobParam.runs.$runParam/route";
+import type { loader as runLoader } from "~/routes/_app.orgs.$organizationSlug.projects.$projectParam.jobs.$jobParam.runs.$runParam/route";
 import { hydrateObject, useMatchesData } from "~/utils";
 import { useOptionalProject } from "./useProject";
 import invariant from "tiny-invariant";
@@ -9,7 +9,7 @@ export type MatchedRun = UseDataFunctionReturn<typeof runLoader>["run"];
 export function useOptionalRun() {
   const project = useOptionalProject();
   const routeMatch = useMatchesData(
-    "routes/_app.orgs.$organizationSlug.projects.$projectParam.jobs_.$jobParam.runs.$runParam"
+    "routes/_app.orgs.$organizationSlug.projects.$projectParam.jobs.$jobParam.runs.$runParam"
   );
 
   if (!project || !routeMatch || !routeMatch.data.run) {

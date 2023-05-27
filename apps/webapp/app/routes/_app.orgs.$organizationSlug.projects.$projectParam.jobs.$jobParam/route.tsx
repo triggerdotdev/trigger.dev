@@ -19,6 +19,7 @@ import { Paragraph } from "~/components/primitives/Paragraph";
 import { useJob } from "~/hooks/useJob";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
+import { useOptionalRun, useRun } from "~/hooks/useRun";
 import { getJob } from "~/models/job.server";
 import { requireUserId } from "~/services/session.server";
 import { Handle } from "~/utils/handle";
@@ -61,8 +62,10 @@ export default function Job() {
   const organization = useOrganization();
   const project = useProject();
   const job = useJob();
+  const run = useOptionalRun();
+  const renderHeader = run === undefined;
 
-  return (
+  return renderHeader ? (
     <PageContainer>
       <PageHeader>
         <PageTitleRow>
@@ -135,5 +138,7 @@ export default function Job() {
         <Outlet />
       </PageBody>
     </PageContainer>
+  ) : (
+    <Outlet />
   );
 }
