@@ -93,6 +93,9 @@ const icons = {
   job: (className: string) => (
     <WrenchScrewdriverIcon className={cn("text-teal-500", className)} />
   ),
+  key: (className: string) => (
+    <KeyIcon className={cn("text-amber-400", className)} />
+  ),
   lightbulb: (className: string) => (
     <LightBulbIcon className={cn("text-amber-400", className)} />
   ),

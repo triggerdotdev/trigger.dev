@@ -25,7 +25,13 @@ import { formatDateTime, formatDuration } from "~/utils";
 import { cn } from "~/utils/cn";
 import { Handle } from "~/utils/handle";
 import { jobPath } from "~/utils/pathBuilder";
-import { RunPanel, RunPanelBody, RunPanelHeader } from "./RunCard";
+import {
+  RunPanel,
+  RunPanelBody,
+  RunPanelHeader,
+  RunPanelIconElement,
+  RunPanelIconSection,
+} from "./RunCard";
 import { TaskStatusIcon } from "./TaskStatus";
 import { useState } from "react";
 
@@ -163,7 +169,17 @@ export default function Page() {
                       </Paragraph>
                     }
                   />
-                  <RunPanelBody>Body</RunPanelBody>
+                  <RunPanelBody>
+                    <RunPanelIconSection>
+                      {task.displayKey && (
+                        <RunPanelIconElement
+                          icon="key"
+                          label="Key"
+                          value={task.displayKey}
+                        />
+                      )}
+                    </RunPanelIconSection>
+                  </RunPanelBody>
                 </RunPanel>
               );
             })}

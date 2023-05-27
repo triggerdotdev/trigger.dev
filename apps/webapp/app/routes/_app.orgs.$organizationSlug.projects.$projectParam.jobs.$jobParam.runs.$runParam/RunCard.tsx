@@ -51,5 +51,35 @@ export function RunPanelHeader({
 }
 
 export function RunPanelBody({ children }: { children: React.ReactNode }) {
-  return <div>{children}</div>;
+  return <div className="p-4">{children}</div>;
+}
+
+export function RunPanelIconSection({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  return <div className="flex flex-wrap gap-6">{children}</div>;
+}
+
+export function RunPanelIconElement({
+  icon,
+  label,
+  value,
+}: {
+  icon: string;
+  label: string;
+  value: string;
+}) {
+  return (
+    <div className="flex items-center gap-2">
+      <div className="flex h-8 w-8 items-center justify-center rounded-sm border border-slate-800 bg-slate-850">
+        <NamedIcon name={icon} className="h-5 w-5" />
+      </div>
+      <div className="flex flex-col">
+        <Paragraph variant="extra-extra-small/caps">{label}</Paragraph>
+        <Paragraph variant="extra-small/bright">{value}</Paragraph>
+      </div>
+    </div>
+  );
 }
