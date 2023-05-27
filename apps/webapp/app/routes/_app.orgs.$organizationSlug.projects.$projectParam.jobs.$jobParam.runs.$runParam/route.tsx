@@ -31,6 +31,7 @@ import {
   RunPanelHeader,
   RunPanelIconElement,
   RunPanelIconSection,
+  TaskSeparator,
 } from "./RunCard";
 import { TaskStatusIcon } from "./TaskStatus";
 import { useState } from "react";
@@ -142,45 +143,49 @@ export default function Page() {
       <PageBody>
         <div className="grid grid-cols-2 gap-4">
           <div>
-            {run.tasks.map((task) => {
+            {run.tasks.map((task, index) => {
               const isSelected = task.id === selectedId;
+              const isLast = index === run.tasks.length - 1;
               return (
-                <RunPanel
-                  key={task.id}
-                  selected={isSelected}
-                  onClick={() => setSelectedId(task.id)}
-                >
-                  <RunPanelHeader
-                    icon={
-                      <TaskStatusIcon
-                        status={task.status}
-                        className={cn(
-                          "h-4 w-4",
-                          !isSelected && "text-slate-400"
-                        )}
-                      />
-                    }
-                    title={task.name}
-                    accessory={
-                      <Paragraph variant="extra-small">
-                        {formatDuration(task.startedAt, task.completedAt, {
-                          style: "short",
-                        })}
-                      </Paragraph>
-                    }
-                  />
-                  <RunPanelBody>
-                    <RunPanelIconSection>
-                      {task.displayKey && (
-                        <RunPanelIconElement
-                          icon="key"
-                          label="Key"
-                          value={task.displayKey}
+                <>
+                  <RunPanel
+                    key={task.id}
+                    selected={isSelected}
+                    onClick={() => setSelectedId(task.id)}
+                  >
+                    <RunPanelHeader
+                      icon={
+                        <TaskStatusIcon
+                          status={task.status}
+                          className={cn(
+                            "h-5 w-5",
+                            !isSelected && "text-slate-400"
+                          )}
                         />
-                      )}
-                    </RunPanelIconSection>
-                  </RunPanelBody>
-                </RunPanel>
+                      }
+                      title={task.name}
+                      accessory={
+                        <Paragraph variant="extra-small">
+                          {formatDuration(task.startedAt, task.completedAt, {
+                            style: "short",
+                          })}
+                        </Paragraph>
+                      }
+                    />
+                    <RunPanelBody>
+                      <RunPanelIconSection>
+                        {task.displayKey && (
+                          <RunPanelIconElement
+                            icon="key"
+                            label="Key"
+                            value={task.displayKey}
+                          />
+                        )}
+                      </RunPanelIconSection>
+                    </RunPanelBody>
+                  </RunPanel>
+                  {!isLast && <TaskSeparator />}
+                </>
               );
             })}
 
