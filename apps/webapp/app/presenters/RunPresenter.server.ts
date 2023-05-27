@@ -94,7 +94,10 @@ export class RunPresenter {
       },
       //todo remove properties
       event: run.event,
-      tasks: run.tasks,
+      tasks: run.tasks.map((task) => ({
+        ...task,
+        params: task.params as Record<string, any>,
+      })),
       runConnections: run.runConnections,
       missingConnections: run.missingConnections,
     };

@@ -21,7 +21,11 @@ import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { RunPresenter } from "~/presenters/RunPresenter.server";
 import { requireUserId } from "~/services/session.server";
-import { formatDateTime, formatDuration } from "~/utils";
+import {
+  formatDateTime,
+  formatDuration,
+  formatDurationMilliseconds,
+} from "~/utils";
 import { cn } from "~/utils/cn";
 import { Handle } from "~/utils/handle";
 import { jobPath } from "~/utils/pathBuilder";
@@ -179,6 +183,15 @@ export default function Page() {
                             icon="key"
                             label="Key"
                             value={task.displayKey}
+                          />
+                        )}
+                        {task.delayUntil && (
+                          <RunPanelIconElement
+                            icon="clock"
+                            label="Total delay"
+                            value={formatDurationMilliseconds(
+                              task.params["seconds"] * 1000
+                            )}
                           />
                         )}
                       </RunPanelIconSection>
