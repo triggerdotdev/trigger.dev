@@ -32,6 +32,7 @@ import { jobPath } from "~/utils/pathBuilder";
 import {
   RunPanel,
   RunPanelBody,
+  RunPanelElements,
   RunPanelHeader,
   RunPanelIconElement,
   RunPanelIconSection,
@@ -195,6 +196,21 @@ export default function Page() {
                           />
                         )}
                       </RunPanelIconSection>
+                      <RunPanelElements
+                        columns={true}
+                        elements={[
+                          { label: "Payment ID", value: "abcdefhjig" },
+                          {
+                            label: "Customer ID",
+                            value: "12345",
+                          },
+                          { label: "ID", value: "abcdefhjig" },
+                          {
+                            label: "Long Customer ID",
+                            value: "12345",
+                          },
+                        ]}
+                      />
                     </RunPanelBody>
                   </RunPanel>
                   {!isLast && <TaskSeparator />}

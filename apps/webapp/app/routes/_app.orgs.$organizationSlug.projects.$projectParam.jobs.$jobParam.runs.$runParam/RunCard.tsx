@@ -1,6 +1,7 @@
 import { NamedIcon } from "~/components/primitives/NamedIcon";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { cn } from "~/utils/cn";
+import { Children, Fragment } from "react";
 
 type RunPanelProps = {
   selected: boolean;
@@ -80,6 +81,35 @@ export function RunPanelIconElement({
         <Paragraph variant="extra-extra-small/caps">{label}</Paragraph>
         <Paragraph variant="extra-small/bright">{value}</Paragraph>
       </div>
+    </div>
+  );
+}
+
+export function RunPanelElements({
+  elements,
+  columns = false,
+}: {
+  elements: { label: string; value: string }[];
+  columns?: boolean;
+}) {
+  return (
+    <div
+      className={cn(
+        "grid items-baseline gap-x-4 gap-y-1",
+        columns ? "auto-cols-max grid-flow-col auto-rows-max" : "grid-cols-2"
+      )}
+    >
+      {elements.map(({ label, value }, index) => (
+        <Fragment key={index}>
+          <Paragraph variant="extra-extra-small/caps">{label}</Paragraph>
+          <Paragraph
+            variant="extra-small/bright"
+            className={columns ? "mr-6" : ""}
+          >
+            {value}
+          </Paragraph>
+        </Fragment>
+      ))}
     </div>
   );
 }
