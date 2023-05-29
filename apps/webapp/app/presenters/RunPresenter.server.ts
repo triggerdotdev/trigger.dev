@@ -1,3 +1,5 @@
+import { DisplayElementSchema } from "@/../../packages/internal/src";
+import { z } from "zod";
 import { PrismaClient, prisma } from "~/db.server";
 
 type RunOptions = {
@@ -63,7 +65,6 @@ export class RunPresenter {
         runConnections: true,
         missingConnections: true,
       },
-
       where: {
         id,
         organization: {
@@ -97,6 +98,10 @@ export class RunPresenter {
       tasks: run.tasks.map((task) => ({
         ...task,
         params: task.params as Record<string, any>,
+        elements:
+          task.elements == null
+            ? []
+            : z.array(DisplayElementSchema).parse(task.elements),
       })),
       runConnections: run.runConnections,
       missingConnections: run.missingConnections,

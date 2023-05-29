@@ -78,6 +78,8 @@ export default function Page() {
   const job = useJob();
   const [selectedId, setSelectedId] = useState<string | undefined>(undefined);
 
+  console.log(run);
+
   return (
     <PageContainer>
       <PageHeader>
@@ -195,43 +197,21 @@ export default function Page() {
                           />
                         )}
                       </RunPanelIconSection>
-                      <RunPanelElements
-                        columns={true}
-                        elements={[
-                          { label: "Payment ID", value: "abcdefhjig" },
-                          {
-                            label: "Customer ID",
-                            value: "12345",
-                          },
-                          { label: "ID", value: "abcdefhjig" },
-                          {
-                            label: "Long Customer ID",
-                            value: "12345",
-                          },
-                        ]}
-                      />
+                      {task.elements.length > 0 && (
+                        <RunPanelElements
+                          columns={true}
+                          elements={task.elements.map((element) => ({
+                            label: element.label,
+                            value: element.text,
+                          }))}
+                        />
+                      )}
                     </RunPanelBody>
                   </RunPanel>
                   {!isLast && <TaskSeparator />}
                 </Fragment>
               );
             })}
-
-            <div>
-              <Header3>Trigger</Header3>
-              {JSON.stringify(run.event)}
-            </div>
-            <div>
-              <Header2>Connections</Header2>
-              <Header3>Missing</Header3>
-              {JSON.stringify(run.missingConnections)}
-              <Header3>Present</Header3>
-              {JSON.stringify(run.runConnections)}
-            </div>
-            <div>
-              <Header3>Tasks</Header3>
-              {JSON.stringify(run.tasks)}
-            </div>
           </div>
           <div>Detail</div>
         </div>
