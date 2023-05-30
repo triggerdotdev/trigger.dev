@@ -13,7 +13,7 @@ const variant = {
       "h-6 px-[5px] text-xs bg-indigo-600 hover:bg-indigo-500/90 group-disabled:opacity-50 group-disabled:pointer-events-none",
     icon: "h-3.5",
     shortcut:
-      "text-xxs font-medium py-0.25 min-w-[14px] rounded-[2px] px-0.5 ml-1 border border-bright/40 text-bright group-hover:border-bright/60 transition",
+      "text-[0.6rem] font-medium min-w-[17px] rounded-[2px] px-1 ml-1 -mr-0.5 grid place-content-center border border-bright/40 text-bright group-hover:border-bright/60 transition",
   },
   "secondary/small": {
     textColor:
@@ -22,7 +22,7 @@ const variant = {
       "h-6 px-[5px] text-xs bg-slate-800 hover:bg-slate-700/70 disabled:opacity-50 group-disabled:pointer-events-none",
     icon: "h-3.5",
     shortcut:
-      "text-xxs font-medium py-0.25 min-w-[14px] rounded-[2px] px-0.5 ml-1 border border-dimmed/40 text-dimmed group-hover:border-dimmed group-hover:text-bright transition",
+      "text-[0.6rem] font-medium min-w-[17px] rounded-[2px] px-1 ml-1 -mr-0.5 grid place-content-center border border-dimmed/40 text-dimmed group-hover:text-bright/80 group-hover:border-dimmed/60 transition",
   },
   "tertiary/small": {
     textColor:
@@ -31,7 +31,7 @@ const variant = {
       "h-6 px-[5px] text-xs bg-transparent hover:bg-slate-850 disabled:opacity-50 group-disabled:pointer-events-none",
     icon: "h-3.5",
     shortcut:
-      "text-xxs font-medium py-0.25 min-w-[14px] rounded-[2px] px-0.5 ml-1 border border-bright/40 text-dimmed group-hover:border-bright/60 group-hover:text-bright transition",
+      "text-[0.6rem] font-medium min-w-[17px] rounded-[2px] px-1 ml-1 -mr-0.5 grid place-content-center border border-dimmed/40 text-dimmed group-hover:text-bright/80 group-hover:border-dimmed/60 transition",
   },
   "danger/small": {
     textColor:
@@ -40,7 +40,7 @@ const variant = {
       "h-6 px-[5px] text-xs bg-rose-600 hover:bg-rose-500 disabled:opacity-50 group-disabled:pointer-events-none",
     icon: "h-3.5",
     shortcut:
-      "text-xxs font-medium py-0.25 min-w-[14px] rounded-[2px] px-0.5 ml-1 border border-bright/40 text-bright group-hover:border-bright/60 transition",
+      "text-[0.6rem] font-medium min-w-[17px] rounded-[2px] px-1 ml-1 -mr-0.5 grid place-content-center border border-bright/40 text-bright group-hover:border-bright/60 transition",
   },
   "primary/medium": {
     textColor:
@@ -144,7 +144,7 @@ function ButtonContent(props: ButtonContentPropsType) {
   return (
     <div
       className={cn(
-        fullWidth ? "flex" : "inline-flex",
+        fullWidth ? "flex" : "inline-flex text-xxs",
         btnClassName,
         className
       )}

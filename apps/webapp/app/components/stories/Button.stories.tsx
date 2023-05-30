@@ -91,7 +91,7 @@ function ButtonList({ primary }: { primary: string }) {
           <Button variant="secondary/small" shortcut="K">
             Secondary button
           </Button>
-          <Button variant="tertiary/small" shortcut="⌘S">
+          <Button variant="tertiary/small" shortcut="I">
             Tertiary button
           </Button>
           <Button variant="danger/small" shortcut="⌘S">
