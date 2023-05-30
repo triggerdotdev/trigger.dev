@@ -1,50 +1,56 @@
 /** @type {import('tailwindcss').Config} */
 const colors = require("tailwindcss/colors");
 
-const extraSlates = {
-  1000: "#060F1E",
-  950: "#0A1423",
-  850: "#141D2E",
-  750: "#293649",
+const slate = {
+  ...colors.slate,
+  450: "#7E8FA6",
+  500: "#6B7C95",
+  550: "#586981",
+  600: "#45566D",
   650: "#3C4B62",
+  750: "#293649",
+  850: "#1A2434",
+  900: "#131B2B",
+  950: "#0E1521",
+  1000: "#0B1018",
 };
 
-const background = extraSlates[1000];
+const background = slate[1000];
 const foreground = "hsl(213 31% 91%)";
 
 const muted = "hsl(223 47% 11%)";
 const mutedForeground = "hsl(215.4 16.3% 56.9%)";
 
-const popover = extraSlates[850];
+const popover = slate[850];
 const popoverForeground = colors.slate[800];
 
 const card = "hsl(0 0% 100%)";
 const cardForeground = "hsl(222.2 47.4% 11.2%)";
 
-const border = extraSlates[850];
-const input = extraSlates[850];
+const border = slate[850];
+const input = slate[850];
 
 const primary = colors.indigo[600];
 const primaryForeground = colors.indigo[500];
 
 const secondary = "hsl(222.2 47.4% 11.2%)";
-const secondaryForeground = extraSlates[850];
+const secondaryForeground = slate[850];
 
 const tertiary = "hsl(217 37% 7% / 0)";
-const tertiaryForeground = extraSlates[850];
+const tertiaryForeground = slate[850];
 
-const accent = extraSlates[750];
+const accent = slate[750];
 const accentForeground = "hsl(210 40% 98%)";
 
 const destructive = "hsl(0 63% 31%)";
 const destructiveForeground = "hsl(210 40% 98%)";
 
-const ring = extraSlates[750];
+const ring = slate[750];
 
 const radius = "0.5rem";
 
-const darkBackground = extraSlates[1000];
-const divide = extraSlates[850];
+const darkBackground = slate[1000];
+const divide = slate[850];
 const bright = colors.slate[200];
 const dimmed = colors.slate[400];
 
@@ -119,7 +125,7 @@ module.exports = {
           DEFAULT: card,
           foreground: cardForeground,
         },
-        slate: extraSlates,
+        slate,
         acid: {
           400: "#F1FF98",
           500: "#E7FF52",
