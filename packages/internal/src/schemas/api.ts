@@ -353,6 +353,7 @@ export const RunTaskOptionsSchema = z.object({
   params: SerializableJsonSchema.optional(),
   trigger: TriggerMetadataSchema.optional(),
   redact: RedactSchema.optional(),
+  connectionKey: z.string().optional(),
 });
 
 export type RunTaskOptions = z.input<typeof RunTaskOptionsSchema>;

@@ -560,6 +560,7 @@ model Task {
   displayKey     String?
   name           String
   icon           String?
+  connectionKey  String?
 
   status     TaskStatus @default(PENDING)
   delayUntil DateTime?

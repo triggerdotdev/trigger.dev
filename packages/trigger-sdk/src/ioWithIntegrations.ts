@@ -22,8 +22,8 @@ export function createIOWithIntegrations<
   }
 
   const connections = Object.entries(integrations).reduce(
-    (acc, [key, integration]) => {
-      const connection = auths?.[key];
+    (acc, [connectionKey, integration]) => {
+      const connection = auths?.[connectionKey];
       const client =
         "client" in integration.client
           ? integration.client.client
@@ -52,18 +52,17 @@ export function createIOWithIntegrations<
             key: string | string[],
             params: any
           ) => {
-            return await io.runTask(
-              key,
-              authenticatedTask.init(params),
-              async (ioTask) => {
-                return authenticatedTask.run(params, client, ioTask, io);
-              }
-            );
+            const options = authenticatedTask.init(params);
+            options.connectionKey = connectionKey;
+
+            return await io.runTask(key, options, async (ioTask) => {
+              return authenticatedTask.run(params, client, ioTask, io);
+            });
           };
         });
       }
 
-      acc[key] = ioConnection;
+      acc[connectionKey] = ioConnection;
 
       return acc;
     },
