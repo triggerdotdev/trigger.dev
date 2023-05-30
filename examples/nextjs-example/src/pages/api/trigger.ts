@@ -385,10 +385,13 @@ new Job(client, {
     repo: "ericallam/basic-starter-100k",
   }),
   run: async (payload, io, ctx) => {
-    await io.slack.postMessage("Slack 📝", {
+    //todo logging isn't working
+    // await io.logger.info("This is a simple log info message");
+    const response = await io.slack.postMessage("Slack 📝", {
       text: `New Issue opened: ${payload.issue.html_url}`,
       channel: "C04GWUTDC3W",
     });
+    // await io.logger.warn("You've been warned", response);
   },
 });
 
