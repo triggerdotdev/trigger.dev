@@ -223,7 +223,6 @@ export default function Page() {
                       </RunPanelIconSection>
                       {task.elements.length > 0 && (
                         <RunPanelElements
-                          columns={true}
                           elements={task.elements.map((element) => ({
                             label: element.label,
                             value: element.text,

@@ -105,33 +105,20 @@ export function RunPanelIconElement({
 
 export function RunPanelElements({
   elements,
-  columns = false,
   className,
 }: {
   elements: { label: string; value: string }[];
-  columns?: boolean;
   className?: string;
 }) {
   return (
     <div
-      className={cn(
-        "grid items-baseline gap-x-4 gap-y-1",
-        columns
-          ? "grid-cols-[repeat(auto-fit,minmax(120px,1fr))]"
-          : "grid-cols-2",
-        className
-      )}
+      className={cn("flex flex-wrap items-baseline gap-x-8 gap-y-1", className)}
     >
       {elements.map(({ label, value }, index) => (
-        <Fragment key={index}>
+        <div key={index} className="flex items-baseline gap-2">
           <Paragraph variant="extra-extra-small/caps">{label}</Paragraph>
-          <Paragraph
-            variant="extra-small/bright"
-            className={columns ? "mr-6" : ""}
-          >
-            {value}
-          </Paragraph>
-        </Fragment>
+          <Paragraph variant="extra-small/bright">{value}</Paragraph>
+        </div>
       ))}
     </div>
   );

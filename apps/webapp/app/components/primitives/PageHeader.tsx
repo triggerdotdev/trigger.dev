@@ -75,7 +75,7 @@ export function PageInfoGroup({
   return (
     <div
       className={cn(
-        "flex grow items-center gap-4",
+        "flex grow flex-wrap items-center gap-x-4 gap-y-1",
         alignment === "right" && "justify-end"
       )}
     >
