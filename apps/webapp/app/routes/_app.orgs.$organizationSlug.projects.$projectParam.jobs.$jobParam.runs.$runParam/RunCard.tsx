@@ -75,7 +75,7 @@ export function RunPanelBody({ children }: { children: React.ReactNode }) {
 
 export function RunPanelDescription({ text }: { text: string }) {
   return (
-    <Paragraph variant="small" className="p-4">
+    <Paragraph variant="small" className="pb-4">
       {text}
     </Paragraph>
   );
