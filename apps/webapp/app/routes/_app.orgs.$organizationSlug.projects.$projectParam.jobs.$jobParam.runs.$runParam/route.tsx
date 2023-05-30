@@ -32,6 +32,7 @@ import { jobPath } from "~/utils/pathBuilder";
 import {
   RunPanel,
   RunPanelBody,
+  RunPanelDescription,
   RunPanelElements,
   RunPanelHeader,
   RunPanelIconElement,
@@ -193,6 +194,9 @@ export default function Page() {
                       }
                     />
                     <RunPanelBody>
+                      {task.description && (
+                        <RunPanelDescription text={task.description} />
+                      )}
                       <RunPanelIconSection>
                         {task.displayKey && (
                           <RunPanelIconElement

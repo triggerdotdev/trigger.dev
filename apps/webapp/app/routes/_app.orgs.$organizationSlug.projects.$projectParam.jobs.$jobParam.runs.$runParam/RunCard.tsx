@@ -73,6 +73,14 @@ export function RunPanelBody({ children }: { children: React.ReactNode }) {
   return <div className="p-4">{children}</div>;
 }
 
+export function RunPanelDescription({ text }: { text: string }) {
+  return (
+    <Paragraph variant="small" className="p-4">
+      {text}
+    </Paragraph>
+  );
+}
+
 export function RunPanelIconSection({
   children,
 }: {
