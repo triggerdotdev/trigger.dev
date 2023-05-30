@@ -18,6 +18,7 @@ export const postMessage = authenticatedTask({
     return {
       name: "Post Message",
       params,
+      icon: "slack",
       elements: [
         {
           label: "Channel ID",

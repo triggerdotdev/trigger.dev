@@ -7,6 +7,13 @@ type RunOptions = {
   userId: string;
 };
 
+export type Task = NonNullable<
+  Awaited<ReturnType<RunPresenter["call"]>>
+>["tasks"][number];
+export type Event = NonNullable<
+  Awaited<ReturnType<RunPresenter["call"]>>
+>["event"];
+
 export class RunPresenter {
   #prismaClient: PrismaClient;
 
@@ -40,6 +47,7 @@ export class RunPresenter {
           select: {
             id: true,
             displayKey: true,
+            connectionKey: true,
             name: true,
             icon: true,
             status: true,
@@ -62,7 +70,27 @@ export class RunPresenter {
             createdAt: "asc",
           },
         },
-        runConnections: true,
+        runConnections: {
+          select: {
+            key: true,
+            apiConnection: {
+              select: {
+                metadata: true,
+                connectionType: true,
+                client: {
+                  select: {
+                    title: true,
+                    slug: true,
+                    description: true,
+                    scopes: true,
+                    integrationIdentifier: true,
+                    integrationAuthMethod: true,
+                  },
+                },
+              },
+            },
+          },
+        },
         missingConnections: true,
       },
       where: {

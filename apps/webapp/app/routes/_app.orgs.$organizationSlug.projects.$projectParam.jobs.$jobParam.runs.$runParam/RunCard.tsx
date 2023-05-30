@@ -27,7 +27,7 @@ export function RunPanel({ selected, children, onClick }: RunPanelProps) {
 
 type RunPanelHeaderProps = {
   icon: React.ReactNode;
-  title: string;
+  title: React.ReactNode;
   accessory?: React.ReactNode;
 };
 
@@ -44,9 +44,27 @@ export function RunPanelHeader({
         ) : (
           icon
         )}
-        <Paragraph variant="small/bright">{title}</Paragraph>
+        {typeof title === "string" ? (
+          <Paragraph variant="small/bright">{title}</Paragraph>
+        ) : (
+          title
+        )}
       </div>
       <div className="flex items-center gap-2">{accessory}</div>
+    </div>
+  );
+}
+
+type RunPanelIconTitleProps = {
+  icon?: string | null;
+  title: string;
+};
+
+export function RunPanelIconTitle({ icon, title }: RunPanelIconTitleProps) {
+  return (
+    <div className="flex items-center gap-1">
+      {icon && <NamedIcon name={icon} className="h-5 w-5" />}
+      {title}
     </div>
   );
 }
@@ -88,15 +106,20 @@ export function RunPanelIconElement({
 export function RunPanelElements({
   elements,
   columns = false,
+  className,
 }: {
   elements: { label: string; value: string }[];
   columns?: boolean;
+  className?: string;
 }) {
   return (
     <div
       className={cn(
         "grid items-baseline gap-x-4 gap-y-1",
-        columns ? "auto-cols-max grid-flow-col auto-rows-max" : "grid-cols-2"
+        columns
+          ? "grid-cols-[repeat(auto-fit,minmax(120px,1fr))]"
+          : "grid-cols-2",
+        className
       )}
     >
       {elements.map(({ label, value }, index) => (

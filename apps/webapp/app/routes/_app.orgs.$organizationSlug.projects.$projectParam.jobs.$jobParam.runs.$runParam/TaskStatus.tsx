@@ -1,22 +1,31 @@
 import { TaskStatus } from "@/../../packages/internal/src";
 import {
   CheckCircleIcon,
+  CheckIcon,
   ClockIcon,
   XCircleIcon,
 } from "@heroicons/react/24/solid";
 import { Spinner } from "~/components/primitives/Spinner";
 import { cn } from "~/utils/cn";
 
+type TaskStatusIconProps = {
+  status: TaskStatus;
+  className: string;
+  minimal?: boolean;
+};
+
 export function TaskStatusIcon({
   status,
   className,
-}: {
-  status: TaskStatus;
-  className: string;
-}) {
+  minimal = false,
+}: TaskStatusIconProps) {
   switch (status) {
     case "COMPLETED":
-      return (
+      return minimal ? (
+        <CheckIcon
+          className={cn(taskStatusClassNameColor(status), className)}
+        />
+      ) : (
         <CheckCircleIcon
           className={cn(taskStatusClassNameColor(status), className)}
         />

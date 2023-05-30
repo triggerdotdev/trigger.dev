@@ -36,10 +36,12 @@ import {
   RunPanelHeader,
   RunPanelIconElement,
   RunPanelIconSection,
+  RunPanelIconTitle,
   TaskSeparator,
 } from "./RunCard";
 import { TaskStatusIcon } from "./TaskStatus";
-import { Fragment, useState } from "react";
+import { Fragment, useCallback, useMemo, useState } from "react";
+import { Detail } from "./DetailView";
 
 export const loader = async ({ request, params }: LoaderArgs) => {
   const userId = await requireUserId(request);
@@ -78,7 +80,13 @@ export default function Page() {
   const job = useJob();
   const [selectedId, setSelectedId] = useState<string | undefined>(undefined);
 
-  console.log(run);
+  const selectedItem = useMemo(() => {
+    if (!selectedId) return undefined;
+    if (selectedId === run.event.id)
+      return { type: "event" as const, event: run.event };
+    const task = run.tasks.find((task) => task.id === selectedId);
+    if (task) return { type: "task" as const, task };
+  }, [selectedId, run]);
 
   return (
     <PageContainer>
@@ -153,6 +161,9 @@ export default function Page() {
             {run.tasks.map((task, index) => {
               const isSelected = task.id === selectedId;
               const isLast = index === run.tasks.length - 1;
+              const connection = run.runConnections.find(
+                (c) => c.key === task.connectionKey
+              );
               return (
                 <Fragment key={task.id}>
                   <RunPanel
@@ -163,13 +174,16 @@ export default function Page() {
                       icon={
                         <TaskStatusIcon
                           status={task.status}
+                          minimal={true}
                           className={cn(
                             "h-5 w-5",
                             !isSelected && "text-slate-400"
                           )}
                         />
                       }
-                      title={task.name}
+                      title={
+                        <RunPanelIconTitle icon={task.icon} title={task.name} />
+                      }
                       accessory={
                         <Paragraph variant="extra-small">
                           {formatDuration(task.startedAt, task.completedAt, {
@@ -185,6 +199,16 @@ export default function Page() {
                             icon="key"
                             label="Key"
                             value={task.displayKey}
+                          />
+                        )}
+                        {connection && (
+                          <RunPanelIconElement
+                            icon={
+                              connection.apiConnection.client
+                                .integrationIdentifier
+                            }
+                            label="Connection"
+                            value={connection.apiConnection.client.title}
                           />
                         )}
                         {task.delayUntil && (
@@ -204,6 +228,7 @@ export default function Page() {
                             label: element.label,
                             value: element.text,
                           }))}
+                          className="mt-4"
                         />
                       )}
                     </RunPanelBody>
@@ -213,7 +238,14 @@ export default function Page() {
               );
             })}
           </div>
-          <div>Detail</div>
+          {/* Detail view */}
+          <div>
+            {!selectedItem ? (
+              <div>Nothing selected</div>
+            ) : (
+              <Detail {...selectedItem} />
+            )}
+          </div>
         </div>
       </PageBody>
     </PageContainer>
