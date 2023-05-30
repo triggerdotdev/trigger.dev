@@ -43,6 +43,7 @@ import {
 import { TaskStatusIcon } from "./TaskStatus";
 import { Fragment, useCallback, useMemo, useState } from "react";
 import { Detail } from "./DetailView";
+import { BoltIcon } from "@heroicons/react/24/solid";
 
 export const loader = async ({ request, params }: LoaderArgs) => {
   const userId = await requireUserId(request);
@@ -158,80 +159,124 @@ export default function Page() {
       </PageHeader>
       <PageBody scrollable={false}>
         <div className="grid h-full grid-cols-2 gap-4">
-          <div className="overflow-y-auto py-4 pl-4">
-            <Header2 className="mb-2">Tasks</Header2>
-            {run.tasks.map((task, index) => {
-              const isSelected = task.id === selectedId;
-              const isLast = index === run.tasks.length - 1;
-              const connection = run.runConnections.find(
-                (c) => c.key === task.connectionKey
-              );
-              return (
-                <Fragment key={task.id}>
-                  <RunPanel
-                    selected={isSelected}
-                    onClick={() => setSelectedId(task.id)}
-                  >
-                    <RunPanelHeader
-                      icon={
-                        <TaskStatusIcon
-                          status={task.status}
-                          minimal={true}
-                          className={cn(
-                            "h-5 w-5",
-                            !isSelected && "text-slate-400"
-                          )}
-                        />
-                      }
-                      title={
-                        <RunPanelIconTitle icon={task.icon} title={task.name} />
-                      }
-                      accessory={
-                        <Paragraph variant="extra-small">
-                          {formatDuration(task.startedAt, task.completedAt, {
-                            style: "short",
-                          })}
-                        </Paragraph>
-                      }
+          <div className="flex flex-col gap-6 overflow-y-auto py-4 pl-4">
+            <div>
+              <Header2 className="mb-2">Trigger</Header2>
+              <RunPanel
+                selected={run.event.id === selectedId}
+                onClick={() => setSelectedId(run.event.id)}
+              >
+                <RunPanelHeader
+                  icon={<BoltIcon className="h-5 w-5 text-orange-500" />}
+                  title={
+                    <RunPanelIconTitle
+                      icon={job.event.icon}
+                      title={job.event.title}
                     />
-                    <RunPanelBody>
-                      {task.description && (
-                        <RunPanelDescription text={task.description} />
-                      )}
-                      <RunPanelIconSection>
-                        {task.displayKey && (
-                          <RunPanelIconElement
-                            icon="key"
-                            label="Key"
-                            value={task.displayKey}
+                  }
+                />
+                <RunPanelBody>
+                  {/* <RunPanelIconSection>
+                  {connection && (
+                    <RunPanelIconElement
+                      icon={
+                        connection.apiConnection.client.integrationIdentifier
+                      }
+                      label="Connection"
+                      value={connection.apiConnection.client.title}
+                    />
+                  )}
+                </RunPanelIconSection>
+                {task.elements.length > 0 && (
+                  <RunPanelElements
+                    elements={task.elements.map((element) => ({
+                      label: element.label,
+                      value: element.text,
+                    }))}
+                    className="mt-4"
+                  />
+                )} */}
+                </RunPanelBody>
+              </RunPanel>
+            </div>
+            <div>
+              <Header2 className="mb-2">Tasks</Header2>
+              {run.tasks.map((task, index) => {
+                const isSelected = task.id === selectedId;
+                const isLast = index === run.tasks.length - 1;
+                const connection = run.runConnections.find(
+                  (c) => c.key === task.connectionKey
+                );
+                return (
+                  <Fragment key={task.id}>
+                    <RunPanel
+                      selected={isSelected}
+                      onClick={() => setSelectedId(task.id)}
+                    >
+                      <RunPanelHeader
+                        icon={
+                          <TaskStatusIcon
+                            status={task.status}
+                            minimal={true}
+                            className={cn(
+                              "h-5 w-5",
+                              !isSelected && "text-slate-400"
+                            )}
+                          />
+                        }
+                        title={
+                          <RunPanelIconTitle
+                            icon={task.icon}
+                            title={task.name}
+                          />
+                        }
+                        accessory={
+                          <Paragraph variant="extra-small">
+                            {formatDuration(task.startedAt, task.completedAt, {
+                              style: "short",
+                            })}
+                          </Paragraph>
+                        }
+                      />
+                      <RunPanelBody>
+                        {task.description && (
+                          <RunPanelDescription text={task.description} />
+                        )}
+                        <RunPanelIconSection>
+                          {task.displayKey && (
+                            <RunPanelIconElement
+                              icon="key"
+                              label="Key"
+                              value={task.displayKey}
+                            />
+                          )}
+                          {connection && (
+                            <RunPanelIconElement
+                              icon={
+                                connection.apiConnection.client
+                                  .integrationIdentifier
+                              }
+                              label="Connection"
+                              value={connection.apiConnection.client.title}
+                            />
+                          )}
+                        </RunPanelIconSection>
+                        {task.elements.length > 0 && (
+                          <RunPanelElements
+                            elements={task.elements.map((element) => ({
+                              label: element.label,
+                              value: element.text,
+                            }))}
+                            className="mt-4"
                           />
                         )}
-                        {connection && (
-                          <RunPanelIconElement
-                            icon={
-                              connection.apiConnection.client
-                                .integrationIdentifier
-                            }
-                            label="Connection"
-                            value={connection.apiConnection.client.title}
-                          />
-                        )}
-                      </RunPanelIconSection>
-                      {task.elements.length > 0 && (
-                        <RunPanelElements
-                          elements={task.elements.map((element) => ({
-                            label: element.label,
-                            value: element.text,
-                          }))}
-                          className="mt-4"
-                        />
-                      )}
-                    </RunPanelBody>
-                  </RunPanel>
-                  {!isLast && <TaskSeparator />}
-                </Fragment>
-              );
-            })}
+                      </RunPanelBody>
+                    </RunPanel>
+                    {!isLast && <TaskSeparator />}
+                  </Fragment>
+                );
+              })}
+            </div>
           </div>
           {/* Detail view */}
           <div className="overflow-y-auto py-4 pr-4">
