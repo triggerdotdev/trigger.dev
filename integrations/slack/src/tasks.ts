@@ -24,6 +24,10 @@ export const postMessage = authenticatedTask({
           label: "Channel ID",
           text: params.channel,
         },
+        {
+          label: "Message",
+          text: params.text,
+        },
       ],
     };
   },
