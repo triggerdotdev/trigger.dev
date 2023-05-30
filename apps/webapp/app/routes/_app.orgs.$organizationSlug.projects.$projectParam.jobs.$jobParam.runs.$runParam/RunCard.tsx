@@ -2,6 +2,7 @@ import { NamedIcon } from "~/components/primitives/NamedIcon";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { cn } from "~/utils/cn";
 import { Children, Fragment } from "react";
+import { Header3 } from "~/components/primitives/Headers";
 
 type RunPanelProps = {
   selected: boolean;
@@ -71,7 +72,7 @@ export function RunPanelIconTitle({ icon, title }: RunPanelIconTitleProps) {
   return (
     <div className="flex items-center gap-1">
       {icon && <NamedIcon name={icon} className="h-5 w-5" />}
-      {title}
+      <Paragraph variant="small/bright">{title}</Paragraph>
     </div>
   );
 }
