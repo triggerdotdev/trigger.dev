@@ -10,7 +10,7 @@ import {
   BeakerIcon,
   BookOpenIcon,
   BuildingOffice2Icon,
-  CalendarIcon,
+  CalendarDaysIcon,
   CheckIcon,
   ChevronLeftIcon,
   ChevronRightIcon,
@@ -19,6 +19,7 @@ import {
   Cog8ToothIcon,
   CreditCardIcon,
   EnvelopeIcon,
+  FlagIcon,
   FolderIcon,
   GlobeAltIcon,
   KeyIcon,
@@ -49,7 +50,7 @@ const icons = {
     <CreditCardIcon className={cn("text-teal-500", className)} />
   ),
   calendar: (className: string) => (
-    <CalendarIcon className={cn("text-purple-500", className)} />
+    <CalendarDaysIcon className={cn("text-purple-500", className)} />
   ),
   check: (className: string) => (
     <CheckIcon className={cn("text-dimmed", className)} />
@@ -71,6 +72,9 @@ const icons = {
   ),
   error: (className: string) => (
     <ExclamationCircleIcon className={cn("text-rose-500", className)} />
+  ),
+  flag: (className: string) => (
+    <FlagIcon className={cn("text-sky-500", className)} />
   ),
   folder: (className: string) => (
     <FolderIcon className={cn("text-indigo-600", className)} />

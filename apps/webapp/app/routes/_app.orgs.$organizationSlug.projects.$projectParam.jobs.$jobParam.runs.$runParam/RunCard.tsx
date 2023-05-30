@@ -7,16 +7,23 @@ type RunPanelProps = {
   selected: boolean;
   children: React.ReactNode;
   onClick?: () => void;
+  className?: string;
 };
 
-export function RunPanel({ selected, children, onClick }: RunPanelProps) {
+export function RunPanel({
+  selected,
+  children,
+  onClick,
+  className,
+}: RunPanelProps) {
   return (
     <div
       className={cn(
         "overflow-hidden rounded-md border bg-slate-900 transition duration-150",
         selected ? "border-green-500" : "border-slate-850",
         onClick && "cursor-pointer",
-        onClick && !selected && "hover:border-green-500/30"
+        onClick && !selected && "hover:border-green-500/30",
+        className
       )}
       onClick={() => onClick && onClick()}
     >
@@ -86,7 +93,7 @@ export function RunPanelIconSection({
 }: {
   children: React.ReactNode;
 }) {
-  return <div className="flex flex-wrap gap-6">{children}</div>;
+  return <div className="flex flex-wrap gap-x-8 gap-y-2">{children}</div>;
 }
 
 export function RunPanelIconElement({
@@ -103,7 +110,7 @@ export function RunPanelIconElement({
       <div className="flex h-8 w-8 items-center justify-center rounded-sm border border-slate-800 bg-slate-850">
         <NamedIcon name={icon} className="h-5 w-5" />
       </div>
-      <div className="flex flex-col">
+      <div className="flex flex-col gap-0.5">
         <Paragraph variant="extra-extra-small/caps">{label}</Paragraph>
         <Paragraph variant="extra-small/bright">{value}</Paragraph>
       </div>
@@ -114,18 +121,29 @@ export function RunPanelIconElement({
 export function RunPanelElements({
   elements,
   className,
+  layout = "horizontal",
 }: {
   elements: { label: string; value: string }[];
   className?: string;
+  layout?: "horizontal" | "vertical";
 }) {
   return (
     <div
-      className={cn("flex flex-wrap items-baseline gap-x-8 gap-y-1", className)}
+      className={cn(
+        "flex items-baseline gap-x-8 gap-y-1",
+        layout === "horizontal" ? "flex-wrap" : "flex-col",
+        className
+      )}
     >
       {elements.map(({ label, value }, index) => (
-        <div key={index} className="flex items-baseline gap-2">
+        <div key={index} className="flex items-baseline gap-2 overflow-hidden">
           <Paragraph variant="extra-extra-small/caps">{label}</Paragraph>
-          <Paragraph variant="extra-small/bright">{value}</Paragraph>
+          <Paragraph
+            variant="extra-small/bright"
+            className={cn(layout === "horizontal" && "truncate")}
+          >
+            {value}
+          </Paragraph>
         </div>
       ))}
     </div>

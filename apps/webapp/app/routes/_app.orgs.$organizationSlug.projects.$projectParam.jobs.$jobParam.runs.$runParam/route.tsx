@@ -79,8 +79,9 @@ export default function Page() {
   const organization = useOrganization();
   const project = useProject();
   const job = useJob();
-  const [selectedId, setSelectedId] = useState<string | undefined>(undefined);
-
+  const [selectedId, setSelectedId] = useState<string | undefined>(
+    run.tasks[0]?.id
+  );
   const selectedItem = useMemo(() => {
     if (!selectedId) return undefined;
     if (selectedId === run.event.id)
@@ -159,6 +160,7 @@ export default function Page() {
       <PageBody>
         <div className="grid grid-cols-2 gap-4">
           <div>
+            <Header2 className="mb-2">Tasks</Header2>
             {run.tasks.map((task, index) => {
               const isSelected = task.id === selectedId;
               const isLast = index === run.tasks.length - 1;
@@ -215,15 +217,6 @@ export default function Page() {
                             value={connection.apiConnection.client.title}
                           />
                         )}
-                        {task.delayUntil && (
-                          <RunPanelIconElement
-                            icon="clock"
-                            label="Total delay"
-                            value={formatDurationMilliseconds(
-                              task.params["seconds"] * 1000
-                            )}
-                          />
-                        )}
                       </RunPanelIconSection>
                       {task.elements.length > 0 && (
                         <RunPanelElements
@@ -243,8 +236,13 @@ export default function Page() {
           </div>
           {/* Detail view */}
           <div>
+            <Header2 className="mb-2">Detail</Header2>
             {!selectedItem ? (
-              <div>Nothing selected</div>
+              <RunPanel selected={false} className="h-full">
+                <Paragraph variant="base" className="p-4">
+                  Nothing selected
+                </Paragraph>
+              </RunPanel>
             ) : (
               <Detail {...selectedItem} />
             )}
