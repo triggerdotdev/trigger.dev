@@ -54,7 +54,7 @@ export function ConnectButton({
   return (
     <Sheet>
       <SheetTrigger className={className}>{children}</SheetTrigger>
-      <SheetContent className="h-full" size="lg">
+      <SheetContent size="lg">
         <fetcher.Form
           method="post"
           action={`/resources/connection/${organizationId}/oauth2`}
@@ -142,7 +142,7 @@ export function ConnectButton({
             </Fieldset>
           </SheetBody>
           <SheetFooter>
-            <div className="pt-4">
+            <div className="flex items-center justify-end gap-x-4">
               <FormError>{scopes.error}</FormError>
               <Button
                 type="submit"

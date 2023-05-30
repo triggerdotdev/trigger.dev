@@ -57,14 +57,14 @@ const SheetOverlay = React.forwardRef<
 SheetOverlay.displayName = SheetPrimitive.Overlay.displayName;
 
 const sheetVariants = cva(
-  "fixed z-50 scale-100 gap-4 bg-slate-1000 opacity-100 shadow-lg border border-slate-900",
+  "fixed z-50 scale-100 gap-4 bg-slate-1000 opacity-100 shadow-lg rounded-md border border-slate-800 mr-4 mt-4",
   {
     variants: {
       position: {
         top: "animate-in slide-in-from-top w-full duration-300",
         bottom: "animate-in slide-in-from-bottom w-full duration-300",
         left: "animate-in slide-in-from-left h-full duration-300",
-        right: "animate-in slide-in-from-right h-full duration-300",
+        right: "animate-in slide-in-from-right h-[97vh] duration-300",
       },
       size: {
         content: "",
@@ -165,7 +165,7 @@ const SheetContent = React.forwardRef<
             <NamedIcon name="close" className="h-4 w-4" />
             <span className="sr-only">Close</span>
           </SheetPrimitive.Close>
-          <ShortcutKey shortcut="esc" variant="medium" className="" />
+          <ShortcutKey shortcut="esc" variant="medium" />
         </div>
         <div className="overflow-hidden">{children}</div>
       </div>
@@ -192,8 +192,8 @@ export const SheetFooter = ({
   children,
   ...props
 }: React.HTMLAttributes<HTMLDivElement>) => (
-  <div className={cn("shrink-0 px-4", className)} {...props}>
-    <div className="border-t border-slate-800">{children}</div>
+  <div className={cn("shrink-0", className)} {...props}>
+    <div className="mx-4 border-t border-slate-800 py-3">{children}</div>
   </div>
 );
 
