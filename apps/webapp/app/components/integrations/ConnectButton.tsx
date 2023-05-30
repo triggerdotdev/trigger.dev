@@ -62,11 +62,11 @@ export function ConnectButton({
           className="flex h-full max-h-full flex-grow flex-col"
         >
           <SheetBody>
-            <div className="flex gap-4 border-b border-slate-800 pb-4">
+            <div className="flex items-center gap-4 border-b border-slate-800 pb-3.5">
               <NamedIconInBox name={api.identifier} className="h-9 w-9" />
               <div>
-                <Header2 className="m-0">Connect to {api.name}</Header2>
-                <Paragraph className="m-0">
+                <Header2>Connect to {api.name}</Header2>
+                <Paragraph variant="extra-small">
                   {apiAuthmethod.name}{" "}
                   {apiAuthmethod.description &&
                     `– ${apiAuthmethod.description}`}
@@ -74,7 +74,7 @@ export function ConnectButton({
               </div>
             </div>
 
-            <Fieldset className="mt-4">
+            <Fieldset className="mt-1">
               <input
                 type="hidden"
                 name="integrationIdentifier"

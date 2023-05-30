@@ -194,9 +194,12 @@ export function NamedIconInBox({
 }) {
   return (
     <div
-      className={cn("rounded-sm border-slate-850 bg-slate-900 p-2", className)}
+      className={cn(
+        "rounded-sm border border-slate-750 bg-slate-800 p-1.5",
+        className
+      )}
     >
-      <NamedIcon name={name} fallback={fallback} className="h-5 w-5" />
+      <NamedIcon name={name} fallback={fallback} className="h-6 w-6" />
     </div>
   );
 }
