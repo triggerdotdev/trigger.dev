@@ -67,11 +67,10 @@ export const loader = async ({ request, params }: LoaderArgs) => {
   });
 };
 
-//todo breadcrumb
 export const handle: Handle = {
-  // breadcrumb: {
-  // slug: "run",
-  // },
+  breadcrumb: {
+    slug: "run",
+  },
 };
 
 export default function Page() {

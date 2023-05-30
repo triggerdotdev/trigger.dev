@@ -11,14 +11,23 @@ import {
   projectEnvironmentsPath,
   projectIntegrationsPath,
   projectPath,
+  runPath,
 } from "~/utils/pathBuilder";
 import { BreadcrumbIcon } from "../primitives/BreadcrumbIcon";
 import { JobsMenu } from "./JobsMenu";
 import { BreadcrumbLink } from "./NavBar";
 import { ProjectsMenu } from "./ProjectsMenu";
+import { useOptionalRun, useRun } from "~/hooks/useRun";
 
 export type Breadcrumb = {
-  slug: "projects" | "jobs" | "integrations" | "environments" | "job" | "runs";
+  slug:
+    | "projects"
+    | "jobs"
+    | "integrations"
+    | "environments"
+    | "job"
+    | "runs"
+    | "run";
   link?: {
     to: string;
     title: string;
@@ -39,6 +48,7 @@ export function Breadcrumb() {
   const organization = useOptionalOrganization();
   const project = useOptionalProject();
   const job = useOptionalJob();
+  const run = useOptionalRun();
 
   return (
     <div className="hidden items-center md:flex">
@@ -50,6 +60,7 @@ export function Breadcrumb() {
             organization={organization}
             project={project}
             job={job}
+            run={run}
           />
         </Fragment>
       ))}
@@ -62,11 +73,13 @@ function BreadcrumbItem({
   organization,
   project,
   job,
+  run,
 }: {
   breadcrumb: Breadcrumb;
   organization?: ReturnType<typeof useOrganization>;
   project?: ReturnType<typeof useProject>;
   job?: ReturnType<typeof useJob>;
+  run?: ReturnType<typeof useRun>;
 }) {
   switch (breadcrumb.slug) {
     case "projects":
@@ -113,6 +126,20 @@ function BreadcrumbItem({
           to={jobPath(organization!, project!, job!)}
           title="Runs"
         />
+      );
+    case "run":
+      return (
+        <Fragment key={breadcrumb.slug}>
+          <BreadcrumbLink
+            to={jobPath(organization!, project!, job!)}
+            title="Runs"
+          />
+          <BreadcrumbIcon />
+          <BreadcrumbLink
+            to={runPath(organization!, project!, job!, run!)}
+            title={run!.number.toString()}
+          />
+        </Fragment>
       );
   }
 

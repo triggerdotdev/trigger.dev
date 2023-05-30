@@ -87,7 +87,7 @@ export function RunsTable({
                 </Cell>
                 <Cell to={path}>{run.version}</Cell>
                 <Cell to={path} alignment="right">
-                  <ChevronRightIcon className="h-4 w-4 text-slate-700" />
+                  <ChevronRightIcon className="h-4 w-4 text-slate-700 transition group-hover:text-bright" />
                 </Cell>
               </tr>
             );
