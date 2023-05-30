@@ -87,7 +87,7 @@ export default function Integrations() {
         </PageDescription>
       </PageHeader>
 
-      <PageBody fullHeight>
+      <PageBody>
         <div className="grid h-full grid-cols-2">
           <div>
             <Header2>Connect an Integration</Header2>

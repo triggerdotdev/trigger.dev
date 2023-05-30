@@ -11,8 +11,20 @@ type WithChildren = {
   children: React.ReactNode;
 };
 
-export function PageHeader({ children }: WithChildren) {
-  return <div className="pb-4">{children}</div>;
+export function PageHeader({
+  children,
+  hideBorder,
+}: WithChildren & { hideBorder?: boolean }) {
+  return (
+    <div
+      className={cn(
+        "mx-4 pt-4",
+        hideBorder ? "" : "border-b border-slate-800 pb-4"
+      )}
+    >
+      {children}
+    </div>
+  );
 }
 
 export function PageTitleRow({ children }: WithChildren) {

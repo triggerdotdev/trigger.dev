@@ -44,28 +44,20 @@ export function BackgroundGradient({
 /** This container should be placed around the content on a page */
 export function PageContainer({ children }: { children: React.ReactNode }) {
   return (
-    <div className={cn("flex h-full flex-col overflow-y-auto px-4 pt-4")}>
-      <div className={cn("flex flex-grow flex-col pb-4")}>{children}</div>
-    </div>
+    <div className={cn("grid h-full grid-rows-[auto_1fr]")}>{children}</div>
   );
 }
 
 export function PageBody({
   children,
-  fullHeight,
-  hideBorder = false,
+  scrollable = true,
 }: {
   children: React.ReactNode;
-  fullHeight?: boolean;
-  hideBorder?: boolean;
+  scrollable?: boolean;
 }) {
   return (
     <div
-      className={cn(
-        "border-slate-800",
-        !hideBorder && "border-t pt-4",
-        fullHeight && "flex-grow"
-      )}
+      className={cn(scrollable ? "overflow-y-auto p-4 " : "overflow-hidden")}
     >
       {children}
     </div>

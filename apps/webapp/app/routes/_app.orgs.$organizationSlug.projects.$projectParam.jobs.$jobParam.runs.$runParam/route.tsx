@@ -157,9 +157,9 @@ export default function Page() {
           </PageInfoGroup>
         </PageInfoRow>
       </PageHeader>
-      <PageBody>
-        <div className="grid grid-cols-2 gap-4">
-          <div>
+      <PageBody scrollable={false}>
+        <div className="grid h-full grid-cols-2 gap-4">
+          <div className="overflow-y-auto py-4 pl-4">
             <Header2 className="mb-2">Tasks</Header2>
             {run.tasks.map((task, index) => {
               const isSelected = task.id === selectedId;
@@ -235,7 +235,7 @@ export default function Page() {
             })}
           </div>
           {/* Detail view */}
-          <div>
+          <div className="overflow-y-auto py-4 pr-4">
             <Header2 className="mb-2">Detail</Header2>
             {!selectedItem ? (
               <RunPanel selected={false} className="h-full">

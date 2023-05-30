@@ -67,7 +67,7 @@ export default function Job() {
 
   return renderHeader ? (
     <PageContainer>
-      <PageHeader>
+      <PageHeader hideBorder>
         <PageTitleRow>
           <PageTitle title={job.title} />
           <PageButtons>
@@ -134,7 +134,7 @@ export default function Job() {
           ]}
         />
       </PageHeader>
-      <PageBody hideBorder>
+      <PageBody>
         <Outlet />
       </PageBody>
     </PageContainer>
