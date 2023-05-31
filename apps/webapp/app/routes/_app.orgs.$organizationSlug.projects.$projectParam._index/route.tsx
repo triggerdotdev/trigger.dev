@@ -1,7 +1,8 @@
 import { JobItem, JobList } from "~/components/jobs/JobItem";
+import { JobSkeleton } from "~/components/jobs/JobSkeleton";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
+import { Header2 } from "~/components/primitives/Headers";
 import {
-  PageDescription,
   PageHeader,
   PageInfoGroup,
   PageInfoProperty,
@@ -41,21 +42,30 @@ export default function Page() {
         </PageInfoRow>
       </PageHeader>
       <PageBody>
-        <JobList>
-          {project.jobs.map((job) => (
-            <JobItem
-              key={job.id}
-              to={jobPath(organization, project, job)}
-              icon={job.event.icon}
-              title={job.title}
-              trigger={job.event.title}
-              id={job.slug}
-              elements={job.event.elements ?? []}
-              lastRun={job.lastRun}
-              integrations={job.integrations}
-            />
-          ))}
-        </JobList>
+        {project.jobs.length > 0 ? (
+          <JobList>
+            {project.jobs.map((job) => (
+              <JobItem
+                key={job.id}
+                to={jobPath(organization, project, job)}
+                icon={job.event.icon}
+                title={job.title}
+                trigger={job.event.title}
+                id={job.slug}
+                elements={job.event.elements ?? []}
+                lastRun={job.lastRun}
+                integrations={job.integrations}
+              />
+            ))}
+          </JobList>
+        ) : (
+          <>
+            <Header2 className="mb-2">Your Jobs will appear here</Header2>
+            <JobList>
+              <JobSkeleton />
+            </JobList>
+          </>
+        )}
       </PageBody>
     </PageContainer>
   );
