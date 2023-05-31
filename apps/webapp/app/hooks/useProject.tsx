@@ -7,6 +7,8 @@ export type MatchedProject = UseDataFunctionReturn<
   typeof projectLoader
 >["project"];
 
+export type ProjectJob = MatchedProject["jobs"][number];
+
 export function useOptionalProject() {
   const routeMatch = useMatchesData(
     "routes/_app.orgs.$organizationSlug.projects.$projectParam"
