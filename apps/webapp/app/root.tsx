@@ -177,9 +177,9 @@ function App() {
                 variants={{
                   hidden: {
                     opacity: 0,
-                    y: -30,
+                    y: 0,
                     transition: {
-                      duration: 0.3,
+                      duration: 0.15,
                       ease: "easeInOut",
                     },
                   },
