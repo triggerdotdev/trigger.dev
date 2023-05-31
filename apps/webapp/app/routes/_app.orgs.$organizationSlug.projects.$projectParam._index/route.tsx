@@ -3,6 +3,9 @@ import { PageBody, PageContainer } from "~/components/layout/AppLayout";
 import {
   PageDescription,
   PageHeader,
+  PageInfoGroup,
+  PageInfoProperty,
+  PageInfoRow,
   PageTitle,
   PageTitleRow,
 } from "~/components/primitives/PageHeader";
@@ -27,7 +30,15 @@ export default function Page() {
         <PageTitleRow>
           <PageTitle title="Jobs" />
         </PageTitleRow>
-        <PageDescription>{project.jobs.length} Jobs</PageDescription>
+        <PageInfoRow>
+          <PageInfoGroup>
+            <PageInfoProperty
+              icon={"job"}
+              label={"Active Jobs"}
+              value={project.jobs.length}
+            />
+          </PageInfoGroup>
+        </PageInfoRow>
       </PageHeader>
       <PageBody>
         <JobList>

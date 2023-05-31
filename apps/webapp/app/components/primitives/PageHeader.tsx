@@ -118,7 +118,7 @@ export function PageInfoProperty({
       >
         {label}:
       </Paragraph>
-      {typeof value === "string" ? (
+      {typeof value === "string" || typeof value === "number" ? (
         <Paragraph variant="small">{value}</Paragraph>
       ) : (
         value
