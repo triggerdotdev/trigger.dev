@@ -1,14 +1,6 @@
-import { Form } from "@remix-run/react";
 import type { Meta, StoryObj } from "@storybook/react";
 import { withDesign } from "storybook-addon-designs";
-import { LogoIcon } from "../LogoIcon";
-import { MainCenteredContainer } from "../layout/AppLayout";
-import { Badge } from "../primitives/Badge";
-import { Button } from "../primitives/Buttons";
-import { Fieldset } from "../primitives/Fieldset";
-import { FormTitle } from "../primitives/FormTitle";
-import { NamedIcon } from "../primitives/NamedIcon";
-import { Paragraph, TextLink } from "../primitives/Paragraph";
+import { Checkbox } from "../primitives/Checkbox";
 
 const meta: Meta = {
   title: "Primitives/Checkboxes",
@@ -26,70 +18,27 @@ export const Basic: Story = {
 Basic.parameters = {
   design: {
     type: "figma",
-    url: "https://www.figma.com/file/LKQ4FJ4bTnCSjedbRpk931/Sample-File",
+    url: "https://www.figma.com/file/jBqUJJ2d4lU6aSeKIIOBMY/Trigger.dev?type=design&node-id=2577%3A87576&t=ambgtfvgnwXTHmzI-1",
   },
-};
-
-export const CheckboxButtons: Story = {
-  render: () => <CheckboxButton />,
 };
 
 function BasicCheckBox() {
   return (
-    <MainCenteredContainer>
-      <fieldset className="flex items-start gap-2">
-        <input
-          type="checkbox"
-          name="scopes"
-          value="Scopes name"
-          id="123"
-          defaultChecked={false}
-          className="mt-1"
+    <div className="grid w-full place-content-center gap-8 p-8">
+      <Checkbox variant="simple" label="This is a simple checkbox" />
+      <Checkbox variant="button" label="This is a button checkbox" />
+      <div className="flex flex-col gap-y-0.5 overflow-hidden rounded-md">
+        <Checkbox
+          variant="description"
+          label="This is a checkbox with a description"
+          description="This is a long checkbox description that goes full width. Grants full access to public and private repositories including read and write access to code, commit statuses, repository invitations, collaborators, deployment statuses, and repository webhooks. Note: In addition to repository related resources, the repo scope also grants access to manage organization-owned resources including projects, invitations, team memberships and webhooks. This scope also grants the ability to manage projects owned by users."
         />
-        <div>
-          <div className="flex gap-2">
-            <label htmlFor="123">Scopes name</label>
-            <Badge
-              className="px-1.5 py-0.5 text-xs"
-              // style={{ backgroundColor: a.color }}
-            >
-              Badge
-            </Badge>
-          </div>
-          <p className="text-slate-300">admin:repo_hook, public_repo</p>
-        </div>
-      </fieldset>
-    </MainCenteredContainer>
-  );
-}
-
-function CheckboxButton() {
-  return (
-    <MainCenteredContainer>
-      <div className="flex flex-col items-center">
-        <LogoIcon className="mb-4 h-16 w-16" />
-        <FormTitle divide={false}>Create your Trigger.dev account</FormTitle>
-        <Form>
-          <Fieldset>
-            <Button variant="primary/large" fullWidth>
-              <NamedIcon name={"github"} className={"mr-1.5 h-4 w-4"} />
-              Continue with GitHub
-            </Button>
-            <Button variant="secondary/large" fullWidth>
-              <NamedIcon
-                name={"envelope"}
-                className={"mr-1.5 h-4 w-4 transition group-hover:text-bright"}
-              />
-              Continue with Email
-            </Button>
-            <Paragraph variant="small" className="mt-2 text-center">
-              By connecting your GitHub account you agree to our{" "}
-              <TextLink href="#">terms</TextLink> and{" "}
-              <TextLink href="#">privacy</TextLink> policies.
-            </Paragraph>
-          </Fieldset>
-        </Form>
+        <Checkbox
+          variant="description"
+          label="This is a checkbox with a description"
+          description="This is a long checkbox description that goes full width. Grants full access to public and private repositories including read and write access to code, commit statuses, repository invitations, collaborators, deployment statuses, and repository webhooks. Note: In addition to repository related resources, the repo scope also grants access to manage organization-owned resources including projects, invitations, team memberships and webhooks. This scope also grants the ability to manage projects owned by users."
+        />
       </div>
-    </MainCenteredContainer>
+    </div>
   );
 }
