@@ -134,14 +134,16 @@ function SideMenuItem({
           fullWidth
           textAlignLeft
           LeadingIcon={icon}
-          leadingIconClassName="text-slate-400"
+          leadingIconClassName="text-dimmed"
           to={to}
           className={({ isActive, isPending }) => {
             if (forceActive !== undefined) {
               isActive = forceActive;
             }
             return cn(
-              isActive ? "bg-slate-750 group-hover:bg-slate-750" : undefined
+              isActive
+                ? "bg-slate-800 text-bright group-hover:bg-slate-800"
+                : "text-dimmed group-hover:bg-slate-850 group-hover:text-bright"
             );
           }}
         >
