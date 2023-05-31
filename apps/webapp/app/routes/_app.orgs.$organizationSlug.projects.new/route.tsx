@@ -15,6 +15,7 @@ import { Hint } from "~/components/primitives/Hint";
 import { Input } from "~/components/primitives/Input";
 import { InputGroup } from "~/components/primitives/InputGroup";
 import { Label } from "~/components/primitives/Label";
+import { redirectWithSuccessMessage } from "~/models/message.server";
 import { createProject } from "~/models/project.server";
 import { requireUserId } from "~/services/session.server";
 import { projectPath } from "~/utils/pathBuilder";
@@ -45,7 +46,11 @@ export const action: ActionFunction = async ({ request, params }) => {
       userId,
     });
 
-    return redirect(projectPath(project.organization, project));
+    return redirectWithSuccessMessage(
+      projectPath(project.organization, project),
+      request,
+      `${submission.value.projectName} created`
+    );
   } catch (error: any) {
     return json({ errors: { body: error.message } }, { status: 400 });
   }
