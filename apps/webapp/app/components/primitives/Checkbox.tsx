@@ -1,6 +1,7 @@
-import { cn } from "~/utils/cn";
 import * as React from "react";
-import { useRef, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
+import { cn } from "~/utils/cn";
+import { Badge } from "./Badge";
 import { Paragraph } from "./Paragraph";
 
 const variants = {
@@ -9,87 +10,95 @@ const variants = {
     label: "text-bright",
     description: "text-dimmed",
     isChecked: "",
+    isDisabled: "opacity-70",
   },
   button: {
     button:
       "w-fit py-2 pl-3 pr-4 rounded border border-slate-800 hover:bg-slate-850 hover:border-slate-750 transition",
     label: "text-bright",
     description: "text-dimmed",
-    isChecked: "bg-slate-850 border-slate-750",
+    isChecked: "bg-slate-850 border-slate-750 hover:!bg-slate-850",
+    isDisabled: "opacity-70 hover:bg-transparent",
   },
   description: {
-    button: "w-full py-2 pl-3 pr-4 hover:bg-slate-850 transition",
+    button: "w-full py-2 pl-3 pr-4 checked:hover:bg-slate-850 transition",
     label: "text-bright font-mono",
     description: "text-dimmed",
     isChecked: "bg-slate-850",
+    isDisabled: "opacity-70",
   },
 };
 
-export type CheckboxProps = React.InputHTMLAttributes<HTMLInputElement> & {
+export type CheckboxProps = Omit<
+  React.InputHTMLAttributes<HTMLInputElement>,
+  "checked"
+> & {
   id: string;
+  name?: string;
+  value?: string;
   variant?: keyof typeof variants;
   label?: string;
   description?: string;
-  value?: string;
+  badge?: string;
 };
 
 export const Checkbox = React.forwardRef<HTMLInputElement, CheckboxProps>(
   (
     {
       id,
+      name,
+      value,
       variant = "simple",
       label,
       description,
-      value,
       defaultChecked,
+      badge,
+      disabled,
       ...props
     },
     ref
   ) => {
-    const myRef = useRef<HTMLInputElement | null>(null);
     const [isChecked, setIsChecked] = useState<boolean>(
       defaultChecked ?? false
     );
+    const [isDisabled, setIsDisabled] = useState<boolean>(disabled ?? false);
 
     const buttonClassName = variants[variant].button;
     const labelClassName = variants[variant].label;
     const descriptionClassName = variants[variant].description;
     const isCheckedClassName = variants[variant].isChecked;
+    const isDisabledClassName = variants[variant].isDisabled;
 
     useEffect(() => {
-      if (!myRef.current) return;
-      myRef.current.checked = isChecked;
-    }, [isChecked]);
+      setIsDisabled(disabled ?? false);
+    }, [disabled]);
 
     return (
       <div
         className={cn(
           "group flex cursor-pointer items-start gap-x-2 transition",
           buttonClassName,
-          isChecked && isCheckedClassName
+          isChecked && isCheckedClassName,
+          isDisabled && isDisabledClassName
         )}
         onClick={() => {
+          if (isDisabled) return;
           setIsChecked((c) => !c);
         }}
       >
         <input
+          name={name}
           type="checkbox"
           value={value}
-          defaultChecked={defaultChecked}
-          className="mt-1 cursor-pointer rounded-sm border border-slate-700 bg-transparent transition checked:!bg-indigo-500 group-hover:bg-slate-900 group-hover:checked:bg-indigo-500 group-focus:ring-1 focus:ring-indigo-500 focus:ring-offset-0 focus:ring-offset-transparent focus-visible:outline-none focus-visible:ring-indigo-500"
+          checked={isChecked}
+          disabled={isDisabled}
+          className="mt-1 cursor-pointer rounded-sm border border-slate-700 bg-transparent transition checked:!bg-indigo-500  group-hover:bg-slate-900 group-hover:checked:bg-indigo-500 group-focus:ring-1 focus:ring-indigo-500 focus:ring-offset-0 focus:ring-offset-transparent focus-visible:outline-none focus-visible:ring-indigo-500 disabled:border-slate-650 disabled:!bg-slate-700"
           id={id}
-          ref={(node) => {
-            myRef.current = node;
-            if (typeof ref === "function") {
-              ref(node);
-            } else if (ref) {
-              ref.current = node;
-            }
-          }}
+          ref={ref}
           {...props}
         />
         <div>
-          <div className="flex gap-2">
+          <div className="flex gap-x-2">
             <label
               htmlFor={id}
               className={cn("cursor-pointer", labelClassName)}
@@ -97,6 +106,7 @@ export const Checkbox = React.forwardRef<HTMLInputElement, CheckboxProps>(
             >
               {label}
             </label>
+            {badge && <Badge className="-mr-2">{badge}</Badge>}
           </div>
           {variant === "description" && (
             <Paragraph
