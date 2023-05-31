@@ -3,7 +3,7 @@ import { cn } from "~/utils/cn";
 
 const variants = {
   default:
-    "grid place-items-center rounded-full px-2.5 h-6 tracking-wider text-xxs bg-slate-700 text-bright uppercase",
+    "grid place-items-center rounded-full px-2 h-5 tracking-wider text-xxs bg-slate-700 text-bright uppercase",
 };
 
 type BadgeProps = React.HTMLAttributes<HTMLDivElement> & {

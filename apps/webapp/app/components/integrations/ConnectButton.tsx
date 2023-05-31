@@ -21,6 +21,7 @@ import {
 } from "../primitives/Sheet";
 import { createSchema } from "~/routes/resources.connection.$organizationId.oauth2";
 import { FormError } from "../primitives/FormError";
+import { Checkbox } from "../primitives/Checkbox";
 
 export type Status = "loading" | "idle";
 
@@ -105,11 +106,21 @@ export function ConnectButton({
               </InputGroup>
               <Header3>Select scopes</Header3>
 
-              <div className="flex flex-col gap-2">
+              <div className="flex flex-col gap-y-0.5 overflow-hidden rounded-md">
                 {apiAuthmethod.scopes.map((s) => {
                   return (
                     <fieldset key={s.name} className="flex items-start gap-2">
-                      <input
+                      <Checkbox
+                        id={s.name}
+                        value={s.name}
+                        name="scopes"
+                        label={s.name}
+                        defaultChecked={s.defaultChecked ?? false}
+                        badges={s.annotations?.map((a) => a.label)}
+                        description={s.description}
+                        variant="description"
+                      />
+                      {/* <input
                         type="checkbox"
                         name="scopes"
                         value={s.name}
@@ -134,7 +145,7 @@ export function ConnectButton({
                         {s.description && (
                           <p className="text-slate-300">{s.description}</p>
                         )}
-                      </div>
+                      </div> */}
                     </fieldset>
                   );
                 })}

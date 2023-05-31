@@ -40,6 +40,7 @@ export type CheckboxProps = Omit<
   label?: string;
   description?: string;
   badge?: string;
+  badges?: string[];
   className?: string;
 };
 
@@ -54,6 +55,7 @@ export const Checkbox = React.forwardRef<HTMLInputElement, CheckboxProps>(
       description,
       defaultChecked,
       badge,
+      badges,
       disabled,
       className,
       ...props
@@ -101,7 +103,7 @@ export const Checkbox = React.forwardRef<HTMLInputElement, CheckboxProps>(
           {...props}
         />
         <div>
-          <div className="flex gap-x-2">
+          <div className="flex items-center gap-x-2">
             <label
               htmlFor={id}
               className={cn("cursor-pointer", labelClassName)}
@@ -109,7 +111,13 @@ export const Checkbox = React.forwardRef<HTMLInputElement, CheckboxProps>(
             >
               {label}
             </label>
-            {badge && <Badge className="-mr-2">{badge}</Badge>}
+            {badges && (
+              <span className="-mr-2 flex gap-x-1.5">
+                {badges.map((badge) => (
+                  <Badge key={badge}>{badge}</Badge>
+                ))}
+              </span>
+            )}
           </div>
           {variant === "description" && (
             <Paragraph
