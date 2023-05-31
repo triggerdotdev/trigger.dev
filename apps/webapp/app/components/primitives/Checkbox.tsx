@@ -40,6 +40,7 @@ export type CheckboxProps = Omit<
   label?: string;
   description?: string;
   badge?: string;
+  className?: string;
 };
 
 export const Checkbox = React.forwardRef<HTMLInputElement, CheckboxProps>(
@@ -54,6 +55,7 @@ export const Checkbox = React.forwardRef<HTMLInputElement, CheckboxProps>(
       defaultChecked,
       badge,
       disabled,
+      className,
       ...props
     },
     ref
@@ -79,7 +81,8 @@ export const Checkbox = React.forwardRef<HTMLInputElement, CheckboxProps>(
           "group flex cursor-pointer items-start gap-x-2 transition",
           buttonClassName,
           isChecked && isCheckedClassName,
-          isDisabled && isDisabledClassName
+          isDisabled && isDisabledClassName,
+          className
         )}
         onClick={() => {
           if (isDisabled) return;
