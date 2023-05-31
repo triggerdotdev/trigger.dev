@@ -1,6 +1,7 @@
 import {
   CheckCircleIcon,
   ExclamationCircleIcon,
+  XMarkIcon,
 } from "@heroicons/react/24/solid";
 import type { LinksFunction, LoaderArgs, MetaFunction } from "@remix-run/node";
 import type { ShouldRevalidateFunction } from "@remix-run/react";
@@ -197,6 +198,9 @@ function App() {
               >
                 {t.icon}
                 {resolveValue(t.message, t)}
+                <button className="p-1" onClick={() => toast.dismiss(t.id)}>
+                  <XMarkIcon className="h-4 w-4 text-bright" />
+                </button>
               </motion.div>
             </AnimatePresence>
           )}

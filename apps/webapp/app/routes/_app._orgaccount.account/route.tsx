@@ -49,7 +49,7 @@ export const action: ActionFunction = async ({ request }) => {
     return redirectWithSuccessMessage(
       accountPath(),
       request,
-      "Account updated"
+      "Your account profile has been updated."
     );
   } catch (error: any) {
     return json({ errors: { body: error.message } }, { status: 400 });
