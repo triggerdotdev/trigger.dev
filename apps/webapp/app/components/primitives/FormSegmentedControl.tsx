@@ -1,40 +1,40 @@
-import { useState } from "react";
 import { RadioGroup } from "@headlessui/react";
 import { cn } from "~/utils/cn";
 
-type Label = {
-  name: string;
+type Options = {
+  label: string;
+  value: string;
 };
 
 type FormSegmentedControlProps = {
-  labels: Label[];
+  name: string;
+  defaultValue?: string;
+  options: Options[];
 };
 
 export default function FormSegmentedControl({
-  labels,
+  name,
+  defaultValue,
+  options,
 }: FormSegmentedControlProps) {
-  const [selected, setSelected] = useState(labels[0]);
-
   return (
     <div className="mx-auto flex h-8 w-fit rounded bg-slate-800 p-1">
-      <RadioGroup value={selected} onChange={setSelected}>
+      <RadioGroup defaultValue={defaultValue ?? options[0].value} name={name}>
         <div className="flex gap-x-1.5">
-          {labels.map((label) => (
+          {options.map((option) => (
             <RadioGroup.Option
-              key={label.name}
-              value={label}
+              key={option.value}
+              value={option.value}
               className={({ active, checked }) =>
-                `${
+                cn(
+                  "relative flex cursor-pointer rounded-[2px] px-3 py-[0.13rem] shadow-md focus:outline-none",
                   active
                     ? "focus-visible:ring focus-visible:ring-indigo-500 focus-visible:ring-opacity-60"
-                    : ""
-                }
-                  ${
-                    checked
-                      ? "bg-slate-700 text-bright"
-                      : "bg-transparent transition hover:bg-slate-750"
-                  }
-                    relative flex cursor-pointer rounded-[2px] px-3 py-[0.13rem] shadow-md focus:outline-none`
+                    : "",
+                  checked
+                    ? "bg-slate-700 text-bright"
+                    : "bg-transparent transition hover:bg-slate-750"
+                )
               }
             >
               {({ checked }) => (
@@ -49,7 +49,7 @@ export default function FormSegmentedControl({
                             checked ? "text-bright" : "text-dimmed"
                           )}
                         >
-                          {label.name}
+                          {option.label}
                         </RadioGroup.Label>
                       </div>
                     </div>

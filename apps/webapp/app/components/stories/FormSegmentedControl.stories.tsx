@@ -23,12 +23,15 @@ Basic.parameters = {
   },
 };
 
-const labels = [{ name: "Label 1" }, { name: "Label 2" }];
+const options = [
+  { label: "Label 1", value: "developer" },
+  { label: "Label 2", value: "Users" },
+];
 
 function SegmentedControl() {
   return (
     <MainCenteredContainer>
-      <FormSegmentedControl labels={labels} />
+      <FormSegmentedControl name="name" options={options} />
     </MainCenteredContainer>
   );
 }
