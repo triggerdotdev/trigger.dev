@@ -103,7 +103,7 @@
     "jsonwebtoken": "^9.0.0",
     "keyv": "^4.3.2",
     "lodash": "^4.17.21",
-    "lucide-react": "^0.171.0",
+    "lucide-react": "^0.229.0",
     "marked": "^4.0.18",
     "morgan": "^1.10.0",
     "nanoid": "^3.3.4",

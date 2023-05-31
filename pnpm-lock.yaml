@@ -172,7 +172,7 @@ importers:
       jsonwebtoken: ^9.0.0
       keyv: ^4.3.2
       lodash: ^4.17.21
-      lucide-react: ^0.171.0
+      lucide-react: ^0.229.0
       marked: ^4.0.18
       morgan: ^1.10.0
       msw: ^0.47.0
@@ -301,7 +301,7 @@ importers:
       jsonwebtoken: 9.0.0
       keyv: 4.5.2
       lodash: 4.17.21
-      lucide-react: 0.171.0_react@18.2.0
+      lucide-react: 0.229.0_react@18.2.0
       marked: 4.2.5
       morgan: 1.10.0
       nanoid: 3.3.4
@@ -16853,8 +16853,8 @@ packages:
     resolution: {integrity: sha512-Pn9cox5CsMYngeDbmChANltQl+5pi6XmTrraMSzhPmMBbmgcxmqWry0U3PGapCU1yB4/LqCcom7qhHZiF/jGfQ==}
     dev: false
 
-  /lucide-react/0.171.0_react@18.2.0:
-    resolution: {integrity: sha512-iCcpl4wfilDMeG1WtTkYTf47RMOx5KO5Kn5N8SSWq5KBxUELkHT7+p8+6wRz7GETxScA8fvjz22tFBmODnlYRg==}
+  /lucide-react/0.229.0_react@18.2.0:
+    resolution: {integrity: sha512-b0/KSFXhPi++vUbnYEDUgP8Z8Rw9MQpRfBr+dRZNPMT3FD1HrVgMHXhSpkm9ZrrEtuqIfHf/O+tAGmw4WOmIog==}
     peerDependencies:
       react: ^16.5.1 || ^17.0.0 || ^18.0.0
     dependencies:
