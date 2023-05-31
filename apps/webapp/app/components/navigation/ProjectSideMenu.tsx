@@ -16,6 +16,7 @@ import {
 import { NavLinkButton } from "../primitives/Buttons";
 import type { IconNames } from "../primitives/NamedIcon";
 import { SimpleTooltip } from "../primitives/Tooltip";
+import { UserProfilePhoto } from "../UserProfilePhoto";
 
 export function SideMenuContainer({ children }: { children: React.ReactNode }) {
   return (
@@ -95,7 +96,7 @@ export function ProjectSideMenu() {
         />
         <SideMenuItem
           name="Account"
-          icon="account"
+          icon={UserProfilePhoto}
           to={accountPath()}
           isCollapsed={isCollapsed}
         />
@@ -120,7 +121,7 @@ function SideMenuItem({
   isCollapsed,
   forceActive,
 }: {
-  icon: IconNames;
+  icon: IconNames | React.ComponentType<any>;
   name: string;
   to: string;
   isCollapsed: boolean;

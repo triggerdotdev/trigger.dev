@@ -28,6 +28,7 @@ import {
   PlusIcon,
   PlusSmallIcon,
   SquaresPlusIcon,
+  UserCircleIcon,
   UserGroupIcon,
   WrenchScrewdriverIcon,
   XMarkIcon,
@@ -39,7 +40,9 @@ import { UserProfilePhoto } from "../UserProfilePhoto";
 import { Spinner } from "./Spinner";
 
 const icons = {
-  account: (className: string) => <UserProfilePhoto className={className} />,
+  account: (className: string) => (
+    <UserCircleIcon className={cn("text-slate-400", className)} />
+  ),
   "arrow-right": (className: string) => (
     <ArrowRightIcon className={cn("text-white", className)} />
   ),
