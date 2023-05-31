@@ -79,7 +79,7 @@ export function JobItem({
                 name="Integrations"
                 // className="items-center"
                 value={
-                  <p className="flex gap-1 text-xs">
+                  <div className="flex gap-1 text-xs">
                     {integrations &&
                       integrations.map((integration, index) => (
                         <SimpleTooltip
@@ -94,7 +94,7 @@ export function JobItem({
                           content={integration.title}
                         />
                       ))}
-                  </p>
+                  </div>
                 }
               />
             )}
