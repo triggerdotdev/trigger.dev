@@ -168,9 +168,11 @@ function App() {
           {(t) => (
             <AnimatePresence>
               <motion.div
-                className="flex gap-2 rounded-lg border border-slate-750 bg-slate-850 bg-gradient-secondary p-4 text-bright shadow-md"
+                className="flex gap-2 rounded-lg border border-slate-750 bg-no-repeat p-4 text-bright shadow-md"
                 style={{
                   opacity: t.visible ? 1 : 0,
+                  background:
+                    "radial-gradient(at top, hsla(271, 91%, 65%, 0.18), hsla(221, 83%, 53%, 0.18)) hsla(221, 83%, 53%, 0.18)",
                 }}
                 initial={{ opacity: 0, y: 100 }}
                 animate={t.visible ? "visible" : "hidden"}
