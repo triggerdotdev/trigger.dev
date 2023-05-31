@@ -67,7 +67,7 @@ export function HelpContent({
   return (
     <>
       {open && (
-        <div className="mb-4 flex flex-col gap-2">
+        <div className="mb-4 flex grow flex-col gap-2">
           <div className="flex items-center justify-between pl-1">
             <div className="flex items-center gap-1">
               <NamedIcon name="lightbulb" className="h-4 w-4" />

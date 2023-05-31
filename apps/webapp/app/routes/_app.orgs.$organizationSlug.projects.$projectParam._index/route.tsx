@@ -2,7 +2,7 @@ import { JobItem, JobList } from "~/components/jobs/JobItem";
 import { JobSkeleton } from "~/components/jobs/JobSkeleton";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { Header2 } from "~/components/primitives/Headers";
-import { HelpTrigger } from "~/components/primitives/Help";
+import { HelpContent, HelpTrigger } from "~/components/primitives/Help";
 import { Help } from "~/components/primitives/Help";
 import {
   PageHeader,
@@ -124,6 +124,9 @@ export default function Page() {
                 </>
               )}
             </div>
+            <HelpContent title="How to create a Job">
+              <Paragraph>This is some help content</Paragraph>
+            </HelpContent>
           </div>
         </Help>
       </PageBody>
