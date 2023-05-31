@@ -199,7 +199,7 @@ export function NamedIconInBox({
   return (
     <div
       className={cn(
-        "rounded-sm border border-slate-750 bg-slate-800 p-1.5",
+        "grid place-content-center rounded-sm border border-slate-750 bg-slate-850",
         className
       )}
     >

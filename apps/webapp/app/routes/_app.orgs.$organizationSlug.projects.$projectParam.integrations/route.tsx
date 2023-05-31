@@ -222,20 +222,20 @@ function AddIntegrationConnection({
   integration: Integration;
 }) {
   return (
-    <div className="flex h-10 w-full items-center gap-3 rounded-md p-1 hover:bg-slate-800">
+    <div className="group flex h-11 w-full items-center gap-3 rounded-md p-1 pr-3 transition hover:bg-slate-850">
       <NamedIconInBox
         name={integration.identifier}
-        className="flex-0 h-9 w-9 transition group-hover:opacity-80"
+        className="flex-0 h-9 w-9 transition group-hover:border-slate-750"
       />
       <Paragraph
         variant="base"
-        className="m-0 flex-1 text-left group-hover:text-bright"
+        className="m-0 flex-1 text-left transition group-hover:text-bright"
       >
         {integration.name}
       </Paragraph>
       <NamedIcon
         name="plus"
-        className="h-5 w-5 flex-none text-slate-600 group-hover:text-bright"
+        className="h-6 w-6 flex-none text-slate-700 transition group-hover:text-bright"
       />
     </div>
   );
