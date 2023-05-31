@@ -137,7 +137,7 @@ function BreadcrumbItem({
           <BreadcrumbIcon />
           <BreadcrumbLink
             to={runPath(organization!, project!, job!, run!)}
-            title={run!.number.toString()}
+            title={`Run #${run!.number}`}
           />
         </Fragment>
       );

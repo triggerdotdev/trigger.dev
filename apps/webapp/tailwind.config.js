@@ -167,6 +167,8 @@ module.exports = {
         "gradient-radial": "radial-gradient(var(--tw-gradient-stops))",
         "gradient-primary": `linear-gradient(90deg, acid-500 0%, toxic-500 100%)`,
         "gradient-primary-hover": `linear-gradient(80deg, acid-600 0%, toxic-600 100%)`,
+        "gradient-secondary": `linear-gradient(90deg, hsl(271 91 65) 0%, hsl(221 83 53) 100%)`,
+        "gradient-radial-secondary": `radial-gradient(hsl(271 91 65), hsl(221 83 53))`,
       },
       gridTemplateColumns: {
         carousel: "repeat(6, 200px)",

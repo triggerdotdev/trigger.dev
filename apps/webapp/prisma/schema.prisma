@@ -32,6 +32,8 @@ model User {
   featureCloud           Boolean @default(false)
   isOnHostedRepoWaitlist Boolean @default(false)
 
+  marketingEmails Boolean @default(true)
+
   orgMemberships OrgMember[]
 }
 

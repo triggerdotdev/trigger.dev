@@ -114,3 +114,15 @@ export async function getUserById(id: User["id"]) {
 export async function getUserByEmail(email: User["email"]) {
   return prisma.user.findUnique({ where: { email } });
 }
+
+export function updateUser({
+  id,
+  name,
+  email,
+  marketingEmails,
+}: Pick<User, "id" | "name" | "email" | "marketingEmails">) {
+  return prisma.user.update({
+    where: { id },
+    data: { name, email, marketingEmails },
+  });
+}

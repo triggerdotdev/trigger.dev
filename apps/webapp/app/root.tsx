@@ -1,4 +1,9 @@
+import {
+  CheckCircleIcon,
+  ExclamationCircleIcon,
+} from "@heroicons/react/24/solid";
 import type { LinksFunction, LoaderArgs, MetaFunction } from "@remix-run/node";
+import type { ShouldRevalidateFunction } from "@remix-run/react";
 import {
   Links,
   LiveReload,
@@ -9,27 +14,25 @@ import {
   isRouteErrorResponse,
   useRouteError,
 } from "@remix-run/react";
-import type { ShouldRevalidateFunction } from "@remix-run/react";
-import tailwindStylesheetUrl from "~/tailwind.css";
-import { getUser } from "./services/session.server";
-import { Toaster, toast } from "react-hot-toast";
+import { withSentry } from "@sentry/remix";
+import { useEffect } from "react";
+import { Toaster, resolveValue, toast } from "react-hot-toast";
+import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import type { ToastMessage } from "~/models/message.server";
 import { commitSession, getSession } from "~/models/message.server";
-import { useEffect } from "react";
-import { withSentry } from "@sentry/remix";
-import { env } from "./env.server";
-import { typedjson, useTypedLoaderData } from "remix-typedjson";
-import { usePostHog } from "./hooks/usePostHog";
-import { LinkButton } from "./components/primitives/Buttons";
-import { Paragraph } from "./components/primitives/Paragraph";
+import tailwindStylesheetUrl from "~/tailwind.css";
 import {
   AppContainer,
-  BackgroundGradient,
   MainCenteredContainer,
 } from "./components/layout/AppLayout";
-import { Header1, Header2, Header3 } from "./components/primitives/Headers";
-import { friendlyErrorDisplay } from "./utils/httpErrors";
 import { NavBar } from "./components/navigation/NavBar";
+import { LinkButton } from "./components/primitives/Buttons";
+import { Header1, Header3 } from "./components/primitives/Headers";
+import { env } from "./env.server";
+import { usePostHog } from "./hooks/usePostHog";
+import { getUser } from "./services/session.server";
+import { friendlyErrorDisplay } from "./utils/httpErrors";
+import { AnimatePresence, motion } from "framer-motion";
 
 export const links: LinksFunction = () => {
   return [{ rel: "stylesheet", href: tailwindStylesheetUrl }];
@@ -150,39 +153,52 @@ function App() {
       <body className="h-full overflow-hidden bg-darkBackground">
         <Outlet />
         <Toaster
-          position="top-right"
+          position="bottom-right"
           toastOptions={{
-            className: "",
             success: {
-              style: {
-                border: "1px solid #10B981",
-                background: "#D1FAE5",
-                padding: "16px 20px",
-                color: "#1E293B",
-                maxWidth: "500px",
-              },
-              iconTheme: {
-                primary: "#10B981",
-                secondary: "#D1FAE5",
-              },
+              icon: <CheckCircleIcon className="h-6 w-6 text-green-600" />,
               duration: 5000,
             },
             error: {
-              style: {
-                border: "1px solid #F43F5E",
-                background: "#FFE4E6",
-                padding: "16px 20px",
-                color: "#1E293B",
-                maxWidth: "500px",
-              },
-              iconTheme: {
-                primary: "#F43F5E",
-                secondary: "#FFE4E6",
-              },
+              icon: <ExclamationCircleIcon className="h-6 w-6 text-rose-600" />,
               duration: 5000,
             },
           }}
-        />
+        >
+          {(t) => (
+            <AnimatePresence>
+              <motion.div
+                className="flex gap-2 rounded-lg border border-slate-750 bg-slate-850 bg-gradient-secondary p-4 text-bright shadow-md"
+                style={{
+                  opacity: t.visible ? 1 : 0,
+                }}
+                initial={{ opacity: 0, y: 100 }}
+                animate={t.visible ? "visible" : "hidden"}
+                variants={{
+                  hidden: {
+                    opacity: 0,
+                    y: -30,
+                    transition: {
+                      duration: 0.3,
+                      ease: "easeInOut",
+                    },
+                  },
+                  visible: {
+                    opacity: 1,
+                    y: 0,
+                    transition: {
+                      duration: 0.3,
+                      ease: "easeInOut",
+                    },
+                  },
+                }}
+              >
+                {t.icon}
+                {resolveValue(t.message, t)}
+              </motion.div>
+            </AnimatePresence>
+          )}
+        </Toaster>
         <ScrollRestoration />
         <Scripts />
         <LiveReload />

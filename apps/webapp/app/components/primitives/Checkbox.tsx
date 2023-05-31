@@ -5,6 +5,13 @@ import { Badge } from "./Badge";
 import { Paragraph } from "./Paragraph";
 
 const variants = {
+  "simple/small": {
+    button: "w-fit pr-4",
+    label: "text-sm text-dimmed mt-0.5",
+    description: "text-dimmed",
+    isChecked: "",
+    isDisabled: "opacity-70",
+  },
   simple: {
     button: "w-fit pr-4",
     label: "text-bright",
@@ -51,6 +58,7 @@ export const Checkbox = React.forwardRef<HTMLInputElement, CheckboxProps>(
       name,
       value,
       variant = "simple",
+      type,
       label,
       description,
       defaultChecked,
@@ -86,21 +94,24 @@ export const Checkbox = React.forwardRef<HTMLInputElement, CheckboxProps>(
           isDisabled && isDisabledClassName,
           className
         )}
-        onClick={() => {
+        onClick={(e) => {
           if (isDisabled) return;
           setIsChecked((c) => !c);
         }}
       >
         <input
+          {...props}
           name={name}
           type="checkbox"
           value={value}
           checked={isChecked}
+          onChange={(e) => {
+            setIsChecked(!isChecked);
+          }}
           disabled={isDisabled}
           className="mt-1 cursor-pointer rounded-sm border border-slate-700 bg-transparent transition checked:!bg-indigo-500  group-hover:bg-slate-900 group-hover:checked:bg-indigo-500 group-focus:ring-1 focus:ring-indigo-500 focus:ring-offset-0 focus:ring-offset-transparent focus-visible:outline-none focus-visible:ring-indigo-500 disabled:border-slate-650 disabled:!bg-slate-700"
           id={id}
           ref={ref}
-          {...props}
         />
         <div>
           <div className="flex items-center gap-x-2">
