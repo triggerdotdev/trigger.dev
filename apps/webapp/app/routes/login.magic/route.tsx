@@ -91,9 +91,10 @@ export default function LoginMagicLinkPage() {
 
             {magicLinkSent ? (
               <>
-                <FormTitle divide={false}>
-                  We've sent you a magic link!
-                </FormTitle>
+                <FormTitle
+                  divide={false}
+                  title="We've sent you a magic link!"
+                />
                 <img src={magicLinkIcon} className="mb-4 h-12 w-12" />
                 <Fieldset className="flex w-full flex-col items-center">
                   <Paragraph className="text-center">
@@ -122,9 +123,10 @@ export default function LoginMagicLinkPage() {
               </>
             ) : (
               <>
-                <FormTitle divide={false}>
-                  Create your Trigger.dev account
-                </FormTitle>
+                <FormTitle
+                  divide={false}
+                  title="Create your Trigger.dev account"
+                />
                 <Fieldset className="flex w-full flex-col items-center">
                   <InputGroup>
                     <Label>Your email address</Label>

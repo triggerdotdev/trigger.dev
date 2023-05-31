@@ -63,9 +63,7 @@ export default function LoginPage() {
             <a href="https://trigger.dev">
               <LogoIcon className="mb-4 h-16 w-16" />
             </a>
-            <FormTitle divide={false}>
-              Create your Trigger.dev account
-            </FormTitle>
+            <FormTitle divide={false} title="Create your Trigger.dev account" />
             <Fieldset>
               <Button type="submit" variant="primary/large" fullWidth>
                 <NamedIcon name={"github"} className={"mr-1.5 h-4 w-4"} />

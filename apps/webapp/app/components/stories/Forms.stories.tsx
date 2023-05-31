@@ -60,9 +60,11 @@ function Forms() {
   return (
     <MainCenteredContainer>
       <div>
-        <FormTitle LeadingIcon="organization">
-          Create a new Organization
-        </FormTitle>
+        <FormTitle
+          LeadingIcon="organization"
+          title="Create a new Organization"
+          description="Organizations are a great way to group your Projects."
+        />
         <Form>
           <Fieldset>
             <InputGroup>
@@ -111,7 +113,7 @@ function LoginForm() {
     <MainCenteredContainer>
       <div className="flex flex-col items-center">
         <LogoIcon className="mb-4 h-16 w-16" />
-        <FormTitle divide={false}>Create your Trigger.dev account</FormTitle>
+        <FormTitle divide={false} title="Create your Trigger.dev account" />
         <Form>
           <Fieldset>
             <Button variant="primary/large" fullWidth>

@@ -61,9 +61,10 @@ export default function NewOrganizationPage() {
   return (
     <MainCenteredContainer>
       <div>
-        <FormTitle LeadingIcon="organization">
-          Create a new Organization
-        </FormTitle>
+        <FormTitle
+          LeadingIcon="organization"
+          title="Create a new Organization"
+        />
         <Form method="post" {...form.props}>
           <Fieldset>
             <InputGroup>
