@@ -59,7 +59,7 @@ export function ProjectsMenu() {
               </div>
             </Fragment>
           ))}
-          <div className="border-t border-slate-800 p-1">
+          <div className="border-t border-slate-700 p-1">
             <PopoverMenuItem
               to={newOrganizationPath()}
               title="New Organization"
