@@ -25,15 +25,31 @@ Basic.parameters = {
 function BasicCheckBox() {
   return (
     <div className="grid w-full place-content-center gap-8 p-8">
-      <Checkbox variant="simple" label="This is a simple checkbox" />
-      <Checkbox variant="button" label="This is a button checkbox" />
+      <Checkbox
+        id="check1"
+        variant="simple"
+        label="This is a simple checkbox"
+      />
+      <Checkbox
+        id="check2"
+        variant="button"
+        label="This is a button checkbox"
+      />
+      <Checkbox
+        id="check2"
+        variant="button"
+        defaultChecked
+        label="This is a button checkbox"
+      />
       <div className="flex flex-col gap-y-0.5 overflow-hidden rounded-md">
         <Checkbox
+          id="check3"
           variant="description"
           label="This is a checkbox with a description"
           description="This is a long checkbox description that goes full width. Grants full access to public and private repositories including read and write access to code, commit statuses, repository invitations, collaborators, deployment statuses, and repository webhooks. Note: In addition to repository related resources, the repo scope also grants access to manage organization-owned resources including projects, invitations, team memberships and webhooks. This scope also grants the ability to manage projects owned by users."
         />
         <Checkbox
+          id="check4"
           variant="description"
           label="This is a checkbox with a description"
           description="This is a long checkbox description that goes full width. Grants full access to public and private repositories including read and write access to code, commit statuses, repository invitations, collaborators, deployment statuses, and repository webhooks. Note: In addition to repository related resources, the repo scope also grants access to manage organization-owned resources including projects, invitations, team memberships and webhooks. This scope also grants the ability to manage projects owned by users."

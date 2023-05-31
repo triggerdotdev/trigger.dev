@@ -1,6 +1,6 @@
 import { cn } from "~/utils/cn";
 import * as React from "react";
-import { useRef, useEffect } from "react";
+import { useRef, useEffect, useState } from "react";
 import { Paragraph } from "./Paragraph";
 
 const variants = {
@@ -26,6 +26,7 @@ const variants = {
 };
 
 export type CheckboxProps = React.InputHTMLAttributes<HTMLInputElement> & {
+  id: string;
   variant?: keyof typeof variants;
   label?: string;
   description?: string;
@@ -33,62 +34,66 @@ export type CheckboxProps = React.InputHTMLAttributes<HTMLInputElement> & {
 };
 
 export const Checkbox = React.forwardRef<HTMLInputElement, CheckboxProps>(
-  ({ variant = "simple", label, description, value, ...props }) => {
+  (
+    {
+      id,
+      variant = "simple",
+      label,
+      description,
+      value,
+      defaultChecked,
+      ...props
+    },
+    ref
+  ) => {
+    const myRef = useRef<HTMLInputElement | null>(null);
+    const [isChecked, setIsChecked] = useState<boolean>(
+      defaultChecked ?? false
+    );
+
     const buttonClassName = variants[variant].button;
     const labelClassName = variants[variant].label;
     const descriptionClassName = variants[variant].description;
-    const inputRef = useRef<HTMLInputElement>(null);
-    const divRef = useRef<HTMLDivElement>(null);
+    const isCheckedClassName = variants[variant].isChecked;
 
     useEffect(() => {
-      const div = divRef.current;
-      const input = inputRef.current;
-      const isChecked = variants[variant].isChecked.split(" ");
-
-      const handleClick = () => {
-        if (input && div && isChecked) {
-          input.checked = !input.checked;
-          if (input.checked) {
-            div.classList.add(...isChecked);
-          } else {
-            div.classList.remove(...isChecked);
-          }
-        }
-      };
-
-      if (div) {
-        div.addEventListener("click", handleClick);
-      }
-
-      return () => {
-        if (div) {
-          div.removeEventListener("click", handleClick);
-        }
-      };
-    }, [variant]);
+      if (!myRef.current) return;
+      myRef.current.checked = isChecked;
+    }, [isChecked]);
 
     return (
       <div
         className={cn(
           "group flex cursor-pointer items-start gap-x-2 transition",
-          buttonClassName
+          buttonClassName,
+          isChecked && isCheckedClassName
         )}
-        ref={divRef}
+        onClick={() => {
+          setIsChecked((c) => !c);
+        }}
       >
         <input
           type="checkbox"
           value={value}
-          defaultChecked={false}
+          defaultChecked={defaultChecked}
           className="mt-1 cursor-pointer rounded-sm border border-slate-700 bg-transparent transition checked:!bg-indigo-500 group-hover:bg-slate-900 group-hover:checked:bg-indigo-500 group-focus:ring-1 focus:ring-indigo-500 focus:ring-offset-0 focus:ring-offset-transparent focus-visible:outline-none focus-visible:ring-indigo-500"
-          id="checkbox"
-          ref={inputRef}
+          id={id}
+          ref={(node) => {
+            myRef.current = node;
+            if (typeof ref === "function") {
+              ref(node);
+            } else if (ref) {
+              ref.current = node;
+            }
+          }}
           {...props}
         />
         <div>
           <div className="flex gap-2">
             <label
-              htmlFor="checkbox"
+              htmlFor={id}
               className={cn("cursor-pointer", labelClassName)}
+              onClick={(e) => e.preventDefault()}
             >
               {label}
             </label>
