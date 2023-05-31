@@ -5,6 +5,7 @@ import { Header2 } from "./Headers";
 import { NamedIcon } from "./NamedIcon";
 import { Button } from "./Buttons";
 import gradientPath from "./help-gradient.svg";
+import { cn } from "~/utils/cn";
 
 type HelpContextValue = {
   open: boolean;
@@ -57,9 +58,11 @@ export function HelpTrigger({ title }: { title: string }) {
 
 export function HelpContent({
   title,
+  className,
   children,
 }: {
   title: string;
+  className?: string;
   children: React.ReactNode;
 }) {
   const { open, setOpen, allowDismissing } = React.useContext(HelpContext);
@@ -67,7 +70,7 @@ export function HelpContent({
   return (
     <>
       {open && (
-        <div className="mb-4 flex grow flex-col gap-2">
+        <div className={cn("mb-4 flex grow flex-col gap-2", className)}>
           <div className="flex items-center justify-between pl-1">
             <div className="flex items-center gap-1">
               <NamedIcon name="lightbulb" className="h-4 w-4" />
@@ -86,7 +89,7 @@ export function HelpContent({
           </div>
 
           <div
-            className="rounded border border-slate-850 bg-slate-950 bg-contain bg-left-top bg-no-repeat p-4"
+            className="grow rounded border border-slate-850 bg-slate-950 bg-contain bg-left-top bg-no-repeat p-4"
             style={{
               backgroundImage: `url(${gradientPath})`,
             }}

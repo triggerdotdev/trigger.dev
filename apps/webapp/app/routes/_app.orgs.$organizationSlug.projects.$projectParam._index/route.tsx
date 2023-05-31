@@ -77,7 +77,7 @@ export default function Page() {
       </PageHeader>
       <PageBody>
         <Help defaultOpen={project.jobs.length === 0}>
-          <div className="flex gap-4">
+          <div className="flex h-full gap-4">
             <div className="grow">
               <div className="mb-2 flex items-center justify-between gap-x-2">
                 {project.jobs.length === 0 ? (
