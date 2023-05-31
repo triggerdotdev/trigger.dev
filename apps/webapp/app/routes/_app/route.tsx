@@ -1,4 +1,4 @@
-import type { ShouldRevalidateFunction } from "@remix-run/react";
+import { ShouldRevalidateFunction, useLocation } from "@remix-run/react";
 import { Outlet } from "@remix-run/react";
 import type { LoaderArgs } from "@remix-run/server-runtime";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
@@ -6,7 +6,7 @@ import { ImpersonationBanner } from "~/components/ImpersonationBanner";
 import { NoMobileOverlay } from "~/components/NoMobileOverlay";
 import { AppContainer } from "~/components/layout/AppLayout";
 import { NavBar } from "~/components/navigation/NavBar";
-import { useIsOrgChildPage } from "~/hooks/useIsOrgChildPage";
+import { useIsProjectChildPage } from "~/hooks/useIsProjectChildPage";
 import { getOrganizations } from "~/models/organization.server";
 
 import { getImpersonationId } from "~/services/impersonation.server";
@@ -36,8 +36,11 @@ export const shouldRevalidate: ShouldRevalidateFunction = (options) => {
 };
 
 export default function App() {
+  const location = useLocation();
   const { impersonationId } = useTypedLoaderData<typeof loader>();
-  const isOrgChildPage = useIsOrgChildPage();
+  const isOrgChildPage = useIsProjectChildPage();
+
+  const showBackgroundGradient = !isOrgChildPage;
 
   return (
     <>
@@ -45,7 +48,7 @@ export default function App() {
         <ImpersonationBanner impersonationId={impersonationId} />
       )}
       <NoMobileOverlay />
-      <AppContainer showBackgroundGradient={!isOrgChildPage}>
+      <AppContainer showBackgroundGradient={showBackgroundGradient}>
         <NavBar />
         <Outlet />
       </AppContainer>
