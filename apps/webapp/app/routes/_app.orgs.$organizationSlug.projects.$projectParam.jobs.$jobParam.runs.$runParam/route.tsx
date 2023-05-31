@@ -1,9 +1,11 @@
+import { BoltIcon } from "@heroicons/react/24/solid";
 import { LoaderArgs } from "@remix-run/server-runtime";
+import { Fragment, useMemo, useState } from "react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import invariant from "tiny-invariant";
 import { environmentTitle } from "~/components/environments/EnvironmentLabel";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
-import { Header2, Header3 } from "~/components/primitives/Headers";
+import { Header2 } from "~/components/primitives/Headers";
 import { NamedIcon } from "~/components/primitives/NamedIcon";
 import {
   PageButtons,
@@ -21,14 +23,11 @@ import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { RunPresenter } from "~/presenters/RunPresenter.server";
 import { requireUserId } from "~/services/session.server";
-import {
-  formatDateTime,
-  formatDuration,
-  formatDurationMilliseconds,
-} from "~/utils";
+import { formatDateTime, formatDuration } from "~/utils";
 import { cn } from "~/utils/cn";
 import { Handle } from "~/utils/handle";
 import { jobPath } from "~/utils/pathBuilder";
+import { Detail } from "./DetailView";
 import {
   RunPanel,
   RunPanelBody,
@@ -41,9 +40,6 @@ import {
   TaskSeparator,
 } from "./RunCard";
 import { TaskStatusIcon } from "./TaskStatus";
-import { Fragment, useCallback, useMemo, useState } from "react";
-import { Detail } from "./DetailView";
-import { BoltIcon } from "@heroicons/react/24/solid";
 
 export const loader = async ({ request, params }: LoaderArgs) => {
   const userId = await requireUserId(request);

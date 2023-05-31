@@ -7,6 +7,10 @@ type ProjectForPath = Pick<Project, "slug">;
 type JobForPath = Pick<Job, "id">;
 type RunForPath = Pick<Job, "id">;
 
+export function organizationsPath() {
+  return `/`;
+}
+
 export function accountPath() {
   return `/account`;
 }
