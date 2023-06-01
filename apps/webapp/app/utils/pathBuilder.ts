@@ -28,6 +28,10 @@ export function organizationTeamPath(organization: OrgForPath) {
   return `${organizationPath(organization)}/team`;
 }
 
+export function inviteTeamMemberPath(organization: OrgForPath) {
+  return `${organizationPath(organization)}/invite`;
+}
+
 export function organizationBillingPath(organization: OrgForPath) {
   return `${organizationPath(organization)}/billing`;
 }

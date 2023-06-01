@@ -19,7 +19,11 @@ import {
   AlertTitle,
   AlertTrigger,
 } from "~/components/primitives/Alert";
-import { Button, ButtonContent } from "~/components/primitives/Buttons";
+import {
+  Button,
+  ButtonContent,
+  LinkButton,
+} from "~/components/primitives/Buttons";
 import { Header3 } from "~/components/primitives/Headers";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { SimpleTooltip } from "~/components/primitives/Tooltip";
@@ -34,9 +38,13 @@ import { titleCase } from "~/utils";
 import { OrgAdminHeader } from "../_app.orgs.$organizationSlug._index/OrgAdminHeader";
 import { parse } from "@conform-to/zod";
 import { redirectWithSuccessMessage } from "~/models/message.server";
-import { organizationTeamPath } from "~/utils/pathBuilder";
+import {
+  inviteTeamMemberPath,
+  organizationTeamPath,
+} from "~/utils/pathBuilder";
 import { Form, useActionData } from "@remix-run/react";
 import { conform, useForm } from "@conform-to/react";
+import { UserPlusIcon } from "@heroicons/react/20/solid";
 
 export const loader = async ({ request, params }: LoaderArgs) => {
   const userId = await requireUserId(request);
@@ -109,7 +117,7 @@ export default function Page() {
     <PageContainer>
       <OrgAdminHeader />
       <PageBody>
-        <ul className="flex w-full max-w-md flex-col gap-2 divide-x divide-slate-850">
+        <ul className="flex w-full max-w-md flex-col gap-4 divide-y divide-slate-850">
           {members.map((member) => (
             <li key={member.user.id} className="flex items-center gap-4">
               <UserAvatar
@@ -133,6 +141,15 @@ export default function Page() {
               </div>
             </li>
           ))}
+          <li className="flex justify-end py-4">
+            <LinkButton
+              to={inviteTeamMemberPath(organization)}
+              variant={"primary/small"}
+              LeadingIcon={UserPlusIcon}
+            >
+              Invite a team member
+            </LinkButton>
+          </li>
         </ul>
       </PageBody>
     </PageContainer>

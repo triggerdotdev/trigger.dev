@@ -30,6 +30,7 @@ import {
   SquaresPlusIcon,
   UserCircleIcon,
   UserGroupIcon,
+  UserPlusIcon,
   WrenchScrewdriverIcon,
   XMarkIcon,
 } from "@heroicons/react/24/solid";
@@ -129,6 +130,9 @@ const icons = {
   ),
   team: (className: string) => (
     <UserGroupIcon className={cn("text-blue-500", className)} />
+  ),
+  "invite-member": (className: string) => (
+    <UserPlusIcon className={cn("text-indigo-500", className)} />
   ),
   beaker: (className: string) => (
     <BeakerIcon className={cn("text-purple-500", className)} />
