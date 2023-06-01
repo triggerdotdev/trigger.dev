@@ -1,7 +1,7 @@
 import { conform, useForm } from "@conform-to/react";
 import { parse } from "@conform-to/zod";
 import { useFetcher, useLocation, useNavigation } from "@remix-run/react";
-import React, { useState } from "react";
+import React, { useMemo, useState } from "react";
 import simplur from "simplur";
 import { createSchema } from "~/routes/resources.connection.$organizationId.oauth2";
 import { Integration } from "~/services/externalApis/types";
@@ -24,6 +24,7 @@ import {
   SheetFooter,
   SheetTrigger,
 } from "../primitives/Sheet";
+import { cn } from "~/utils/cn";
 
 export type Status = "loading" | "idle";
 
@@ -70,6 +71,30 @@ export function ConnectButton({
   const [connectionType, setConnectionType] = useState<
     "EXTERNAL" | "DEVELOPER"
   >("DEVELOPER");
+
+  const [scopeFilterText, setScopeFilterText] = useState<string>("");
+
+  const visibleScopes = useMemo(() => {
+    if (scopeFilterText === "") {
+      return apiAuthmethod.scopes.map((s) => s.name);
+    }
+
+    return apiAuthmethod.scopes
+      .filter((scope) => {
+        if (scope.name.toLowerCase().includes(scopeFilterText.toLowerCase()))
+          return true;
+        if (
+          scope.description &&
+          scope.description
+            .toLowerCase()
+            .includes(scopeFilterText.toLowerCase())
+        )
+          return true;
+
+        return false;
+      })
+      .map((s) => s.name);
+  }, [apiAuthmethod.scopes, scopeFilterText]);
 
   return (
     <Sheet>
@@ -140,11 +165,8 @@ export function ConnectButton({
               <div>
                 <Header2>Use my OAuth App</Header2>
                 <Paragraph variant="small" className="mb-2">
-                  If you'd like to use your own OAuth app, you can insert the
-                  details below. You will need to set the callback url to{" "}
-                  <InlineCode variant="extra-small">
-                    https://app.trigger.dev/oauth/slack-2/callback
-                  </InlineCode>
+                  To use your own OAuth app, check the option below and insert
+                  the details.
                 </Paragraph>
                 <Checkbox
                   id="oauth"
@@ -158,23 +180,39 @@ export function ConnectButton({
                   onChange={(checked) => setUseMyOAuthApp(checked)}
                 />
                 {useMyOAuthApp && (
-                  <div className="ml-6 mt-2 flex gap-2">
-                    <InputGroup fullWidth>
-                      <Label variant="small">Client ID</Label>
-                      <Input type="text" fullWidth {...conform.input(title)} />
-                      <FormError>{title.error}</FormError>
-                    </InputGroup>
-                    <InputGroup fullWidth>
-                      <Label variant="small">Client secret</Label>
-                      <Input type="text" fullWidth {...conform.input(title)} />
-                      <FormError>{title.error}</FormError>
-                    </InputGroup>
+                  <div className="ml-6 mt-2">
+                    <Paragraph variant="small" className="mb-2">
+                      Set the callback url to{" "}
+                      <InlineCode variant="extra-small">
+                        https://app.trigger.dev/oauth/slack-2/callback
+                      </InlineCode>
+                    </Paragraph>
+                    <div className="flex gap-2">
+                      <InputGroup fullWidth>
+                        <Label variant="small">Client ID</Label>
+                        <Input
+                          type="text"
+                          fullWidth
+                          {...conform.input(title)}
+                        />
+                        <FormError>{title.error}</FormError>
+                      </InputGroup>
+                      <InputGroup fullWidth>
+                        <Label variant="small">Client secret</Label>
+                        <Input
+                          type="text"
+                          fullWidth
+                          {...conform.input(title)}
+                        />
+                        <FormError>{title.error}</FormError>
+                      </InputGroup>
+                    </div>
                   </div>
                 )}
               </div>
               <div>
                 <Header2>Scopes</Header2>
-                <Paragraph variant="small" className="mb-2">
+                <Paragraph variant="small" className="mb-4">
                   Select the scopes you want to grant to {api.name} in order for
                   it to access your data. Note: If you try and perform an action
                   in a Job that requires a scope you haven’t granted, that task
@@ -190,40 +228,57 @@ export function ConnectButton({
                     variant="button/small"
                   />
                 </fieldset>
-                <div className="flex items-center justify-between">
-                  <Header3 className="mt-4">Select scopes</Header3>
+                <div className="mb-2 mt-4 flex items-center justify-between">
+                  <Header3>Select {api.name} scopes</Header3>
                   <Paragraph variant="small" className="text-slate-500">
                     {simplur`${selectedScopes.size} scope[|s] selected`}
                   </Paragraph>
                 </div>
+                <Input
+                  placeholder="Search scopes"
+                  className="mb-2"
+                  variant="medium"
+                  icon="search"
+                  fullWidth={true}
+                  value={scopeFilterText}
+                  onChange={(e) => setScopeFilterText(e.target.value)}
+                />
                 <div className="flex flex-col gap-y-0.5 overflow-hidden rounded-md">
+                  {visibleScopes.length === 0 && (
+                    <Paragraph variant="small" className="p-4">
+                      No scopes match {scopeFilterText}. Try a different search
+                      query.
+                    </Paragraph>
+                  )}
                   {apiAuthmethod.scopes.map((s) => {
                     return (
-                      <fieldset key={s.name} className="flex items-start gap-2">
-                        <Checkbox
-                          id={s.name}
-                          value={s.name}
-                          name="scopes"
-                          label={s.name}
-                          defaultChecked={s.defaultChecked ?? false}
-                          badges={s.annotations?.map((a) => a.label)}
-                          description={s.description}
-                          variant="description"
-                          onChange={(isChecked) => {
-                            if (isChecked) {
-                              setSelectedScopes((selected) => {
-                                selected.add(s.name);
-                                return new Set(selected);
-                              });
-                            } else {
-                              setSelectedScopes((selected) => {
-                                selected.delete(s.name);
-                                return new Set(selected);
-                              });
-                            }
-                          }}
-                        />
-                      </fieldset>
+                      <Checkbox
+                        key={s.name}
+                        id={s.name}
+                        value={s.name}
+                        name="scopes"
+                        label={s.name}
+                        defaultChecked={s.defaultChecked ?? false}
+                        badges={s.annotations?.map((a) => a.label)}
+                        description={s.description}
+                        variant="description"
+                        className={cn(
+                          visibleScopes.includes(s.name) ? "" : "hidden"
+                        )}
+                        onChange={(isChecked) => {
+                          if (isChecked) {
+                            setSelectedScopes((selected) => {
+                              selected.add(s.name);
+                              return new Set(selected);
+                            });
+                          } else {
+                            setSelectedScopes((selected) => {
+                              selected.delete(s.name);
+                              return new Set(selected);
+                            });
+                          }
+                        }}
+                      />
                     );
                   })}
                 </div>

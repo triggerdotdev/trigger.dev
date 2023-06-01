@@ -7,7 +7,7 @@ import { Paragraph } from "./Paragraph";
 const variants = {
   "simple/small": {
     button: "w-fit pr-4",
-    label: "text-sm text-dimmed mt-0.5",
+    label: "text-sm text-bright mt-0.5",
     description: "text-dimmed",
     inputPosition: "mt-1",
     isChecked: "",
