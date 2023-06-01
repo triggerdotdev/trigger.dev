@@ -170,38 +170,81 @@ function LeaveRemoveButton({
       );
     }
 
+    //you leave the team
     return (
-      <Form method="post" {...form.props}>
-        <input
-          type="hidden"
-          value={member.id}
-          {...conform.input(memberId, { type: "hidden" })}
-        />
-        <Alert>
-          <AlertTrigger asChild>
-            <Button variant="secondary/small">Leave team</Button>
-          </AlertTrigger>
-          <AlertContent>
-            <AlertHeader>
-              <AlertTitle>Are you sure you want to leave the team?</AlertTitle>
-              <AlertDescription>
-                You will no longer have access to the organization. To regain
-                access, you will need to be invited again.
-              </AlertDescription>
-            </AlertHeader>
-            <AlertFooter>
-              <AlertCancel asChild>
-                <Button variant="tertiary/small">Cancel</Button>
-              </AlertCancel>
-              <Button type="submit" variant="danger/small" form={form.props.id}>
-                Leave team
-              </Button>
-            </AlertFooter>
-          </AlertContent>
-        </Alert>
-      </Form>
+      <LeaveTeamModal
+        member={member}
+        buttonText="Leave team"
+        title="Are you sure you want to leave the team?"
+        description="You will no longer have access to the organization. To regain access, you will need to be invited again."
+        actionText="Leave team"
+      />
     );
   }
 
-  return <span></span>;
+  //you remove another member
+  return (
+    <LeaveTeamModal
+      member={member}
+      buttonText="Remove from team"
+      title={`Are you sure you want to remove ${
+        member.user.name ?? "them"
+      } from the team?`}
+      description="They will no longer have access to the organization. To regain access, you will need to invite them again."
+      actionText="Remove from team"
+    />
+  );
+}
+
+function LeaveTeamModal({
+  member,
+  buttonText,
+  title,
+  description,
+  actionText,
+}: {
+  member: Member;
+  buttonText: string;
+  title: string;
+  description: string;
+  actionText: string;
+}) {
+  const lastSubmission = useActionData();
+
+  const [form, { memberId }] = useForm({
+    id: "remove-member",
+    lastSubmission,
+    onValidate({ formData }) {
+      return parse(formData, { schema });
+    },
+  });
+
+  return (
+    <Form method="post" {...form.props}>
+      <input
+        type="hidden"
+        value={member.id}
+        {...conform.input(memberId, { type: "hidden" })}
+      />
+      <Alert>
+        <AlertTrigger asChild>
+          <Button variant="secondary/small">{buttonText}</Button>
+        </AlertTrigger>
+        <AlertContent>
+          <AlertHeader>
+            <AlertTitle>{title}</AlertTitle>
+            <AlertDescription>{description}</AlertDescription>
+          </AlertHeader>
+          <AlertFooter>
+            <AlertCancel asChild>
+              <Button variant="tertiary/small">Cancel</Button>
+            </AlertCancel>
+            <Button type="submit" variant="danger/small" form={form.props.id}>
+              {actionText}
+            </Button>
+          </AlertFooter>
+        </AlertContent>
+      </Alert>
+    </Form>
+  );
 }
