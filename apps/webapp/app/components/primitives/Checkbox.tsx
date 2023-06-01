@@ -132,7 +132,7 @@ export const Checkbox = React.forwardRef<HTMLInputElement, CheckboxProps>(
           </div>
           {variant === "description" && (
             <Paragraph
-              variant="base"
+              variant="small"
               className={cn("mt-0.5", descriptionClassName)}
             >
               {description}
