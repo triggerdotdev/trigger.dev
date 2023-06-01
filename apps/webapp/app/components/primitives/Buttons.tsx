@@ -222,25 +222,24 @@ type ButtonPropsType = Pick<
   "type" | "disabled" | "onClick" | "name" | "value"
 > &
   React.ComponentProps<typeof ButtonContent>;
-export const Button = ({
-  type,
-  disabled,
-  onClick,
-  ...props
-}: ButtonPropsType) => {
-  return (
-    <button
-      className={cn("group outline-none", props.fullWidth ? "w-full" : "")}
-      type={type}
-      disabled={disabled}
-      onClick={onClick}
-      name={props.name}
-      value={props.value}
-    >
-      <ButtonContent {...props} />
-    </button>
-  );
-};
+
+export const Button = React.forwardRef<HTMLButtonElement, ButtonPropsType>(
+  ({ type, disabled, onClick, ...props }, ref) => {
+    return (
+      <button
+        className={cn("group outline-none", props.fullWidth ? "w-full" : "")}
+        type={type}
+        disabled={disabled}
+        onClick={onClick}
+        name={props.name}
+        value={props.value}
+        ref={ref}
+      >
+        <ButtonContent {...props} />
+      </button>
+    );
+  }
+);
 
 type LinkPropsType = Pick<LinkProps, "to" | "target"> &
   React.ComponentProps<typeof ButtonContent>;
