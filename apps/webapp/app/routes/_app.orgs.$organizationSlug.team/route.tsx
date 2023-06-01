@@ -30,7 +30,7 @@ import { SimpleTooltip } from "~/components/primitives/Tooltip";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useUser } from "~/hooks/useUser";
 import { requireUserId } from "~/services/session.server";
-import { titleCase } from "~/utils";
+import { formatDateTime, titleCase } from "~/utils";
 import { OrgAdminHeader } from "../_app.orgs.$organizationSlug._index/OrgAdminHeader";
 import { parse } from "@conform-to/zod";
 import { redirectWithSuccessMessage } from "~/models/message.server";
@@ -40,28 +40,30 @@ import {
 } from "~/utils/pathBuilder";
 import { Form, useActionData } from "@remix-run/react";
 import { conform, useForm } from "@conform-to/react";
-import { UserPlusIcon } from "@heroicons/react/20/solid";
+import { EnvelopeIcon, UserPlusIcon } from "@heroicons/react/20/solid";
 import {
-  getOrganizationTeamMembers,
+  getTeamMembersAndInvites,
   removeTeamMember,
 } from "~/models/member.server";
+import { UserCircleIcon } from "@heroicons/react/24/solid";
 
 export const loader = async ({ request, params }: LoaderArgs) => {
   const userId = await requireUserId(request);
   const { organizationSlug } = params;
   invariant(organizationSlug, "organizationSlug not found");
 
-  const members = await getOrganizationTeamMembers({
+  const result = await getTeamMembersAndInvites({
     userId,
     slug: organizationSlug,
   });
 
-  if (members === null) {
+  if (result === null) {
     throw new Response("Not Found", { status: 404 });
   }
 
   return typedjson({
-    members,
+    members: result.members,
+    invites: result.invites,
   });
 };
 
@@ -110,13 +112,14 @@ type Member = UseDataFunctionReturn<typeof loader>["members"][number];
 
 export default function Page() {
   const user = useUser();
-  const { members } = useTypedLoaderData<typeof loader>();
+  const { members, invites } = useTypedLoaderData<typeof loader>();
   const organization = useOrganization();
 
   return (
     <PageContainer>
       <OrgAdminHeader />
       <PageBody>
+        <Header3 className="mb-4">Members</Header3>
         <ul className="flex w-full max-w-md flex-col gap-4 divide-y divide-slate-850">
           {members.map((member) => (
             <li key={member.user.id} className="flex items-center gap-4">
@@ -141,16 +144,36 @@ export default function Page() {
               </div>
             </li>
           ))}
-          <li className="flex justify-end py-4">
-            <LinkButton
-              to={inviteTeamMemberPath(organization)}
-              variant={"primary/small"}
-              LeadingIcon={UserPlusIcon}
-            >
-              Invite a team member
-            </LinkButton>
-          </li>
         </ul>
+
+        {invites.length > 0 && (
+          <>
+            <Header3 className="mb-4 mt-8">Invites pending</Header3>
+            <ul className="flex w-full max-w-md flex-col gap-4 divide-y divide-slate-850">
+              {invites.map((invitee) => (
+                <li key={invitee.id} className="flex items-center gap-4">
+                  <EnvelopeIcon className="h-10 w-10 text-slate-800" />
+                  <div className="flex flex-col gap-0.5">
+                    <Header3>{invitee.email}</Header3>
+                    <Paragraph variant="small">
+                      Invite sent {formatDateTime(invitee.createdAt, "medium")}
+                    </Paragraph>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </>
+        )}
+
+        <div className="flex max-w-md py-8">
+          <LinkButton
+            to={inviteTeamMemberPath(organization)}
+            variant={"primary/small"}
+            LeadingIcon={UserPlusIcon}
+          >
+            Invite a team member
+          </LinkButton>
+        </div>
       </PageBody>
     </PageContainer>
   );

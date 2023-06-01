@@ -1,6 +1,6 @@
 import { prisma } from "~/db.server";
 
-export async function getOrganizationTeamMembers({
+export async function getTeamMembersAndInvites({
   userId,
   slug,
 }: {
@@ -24,6 +24,21 @@ export async function getOrganizationTeamMembers({
           },
         },
       },
+      invites: {
+        select: {
+          id: true,
+          email: true,
+          createdAt: true,
+          inviter: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+              avatarUrl: true,
+            },
+          },
+        },
+      },
     },
   });
 
@@ -31,7 +46,7 @@ export async function getOrganizationTeamMembers({
     return null;
   }
 
-  return org.members;
+  return { members: org.members, invites: org.invites };
 }
 
 export async function removeTeamMember({

@@ -9,10 +9,19 @@ import { OrganizationGridItem } from "./OrganizationGrid";
 
 export const loader = async ({ request }: LoaderArgs) => {
   const userId = await requireUserId(request);
+
+  //todo
+  //if there are invites then we should redirect to the invites page
+
+  //todo
+  //if the user hasn't confirmed their name, then redirect to the confirm name page
+
+  //if there are no orgs, then redirect to create an org
   const organizations = await getOrganizations({ userId });
   if (organizations.length === 0) {
     return redirect(newOrganizationPath());
   }
+
   return json({});
 };
 
