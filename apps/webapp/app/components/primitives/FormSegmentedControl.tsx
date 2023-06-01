@@ -18,7 +18,7 @@ export default function FormSegmentedControl({
   options,
 }: FormSegmentedControlProps) {
   return (
-    <div className="mx-auto flex h-8 w-fit rounded bg-slate-800 p-1">
+    <div className="flex h-8 w-fit rounded bg-slate-800 p-1">
       <RadioGroup defaultValue={defaultValue ?? options[0].value} name={name}>
         <div className="flex gap-x-1.5">
           {options.map((option) => (
