@@ -5,6 +5,7 @@ import type {
   RuntimeEnvironment,
   User,
 } from ".prisma/client";
+import { ro } from "date-fns/locale";
 import { customAlphabet } from "nanoid";
 import slug from "slug";
 import { prisma } from "~/db.server";
@@ -189,4 +190,66 @@ function envSlug(environmentType: RuntimeEnvironment["type"]) {
       return "preview";
     }
   }
+}
+
+export async function getOrganizationTeamMembers({
+  userId,
+  slug,
+}: {
+  userId: string;
+  slug: string;
+}) {
+  const org = await prisma.organization.findFirst({
+    where: { slug, members: { some: { userId } } },
+    select: {
+      members: {
+        select: {
+          id: true,
+          role: true,
+          user: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+              avatarUrl: true,
+            },
+          },
+        },
+      },
+    },
+  });
+
+  if (!org) {
+    return null;
+  }
+
+  return org.members;
+}
+
+export async function removeTeamMember({
+  userId,
+  slug,
+  memberId,
+}: {
+  userId: string;
+  slug: string;
+  memberId: string;
+}) {
+  const org = await prisma.organization.findFirst({
+    where: { slug, members: { some: { userId } } },
+  });
+
+  if (!org) {
+    throw new Error("User does not have access to this organization");
+  }
+
+  return prisma.orgMember.delete({
+    where: {
+      id: memberId,
+    },
+    include: {
+      organization: true,
+      user: true,
+    },
+  });
 }

@@ -1,26 +1,13 @@
-import { Link, Outlet } from "@remix-run/react";
+import { Link } from "@remix-run/react";
+import simplur from "simplur";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { LinkButton } from "~/components/primitives/Buttons";
-import {
-  PageButtons,
-  PageDescription,
-  PageHeader,
-  PageTabs,
-  PageTitle,
-  PageTitleRow,
-} from "~/components/primitives/PageHeader";
-import { useOrganization } from "~/hooks/useOrganizations";
-import {
-  newProjectPath,
-  organizationPath,
-  organizationTeamPath,
-  projectPath,
-} from "~/utils/pathBuilder";
-import { OrgAdminHeader } from "./OrgAdminHeader";
-import { NamedIcon } from "~/components/primitives/NamedIcon";
 import { Header3 } from "~/components/primitives/Headers";
+import { NamedIcon } from "~/components/primitives/NamedIcon";
 import { Paragraph } from "~/components/primitives/Paragraph";
-import simplur from "simplur";
+import { useOrganization } from "~/hooks/useOrganizations";
+import { newProjectPath, projectPath } from "~/utils/pathBuilder";
+import { OrgAdminHeader } from "./OrgAdminHeader";
 
 export default function Page() {
   const organization = useOrganization();

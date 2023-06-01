@@ -58,6 +58,7 @@
     "@octokit/webhooks": "^10.4.0",
     "@octokit/webhooks-methods": "^3.0.2",
     "@prisma/client": "^4.13.0",
+    "@radix-ui/react-alert-dialog": "^1.0.4",
     "@radix-ui/react-dialog": "^1.0.3",
     "@radix-ui/react-label": "^2.0.1",
     "@radix-ui/react-popover": "^1.0.5",

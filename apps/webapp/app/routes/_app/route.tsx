@@ -32,6 +32,25 @@ export const loader = async ({ request }: LoaderArgs) => {
 };
 
 export const shouldRevalidate: ShouldRevalidateFunction = (options) => {
+  //added an org
+  if (options.formAction === "/orgs/new") return true;
+
+  //added a project
+  if (
+    options.formAction &&
+    /^\/orgs\/[^\/]+\/projects\/new$/i.test(options.formAction)
+  ) {
+    return true;
+  }
+
+  //left a team
+  if (
+    options.formAction &&
+    /^\/orgs\/[^\/]+\/team$/i.test(options.formAction)
+  ) {
+    return true;
+  }
+
   return false;
 };
 

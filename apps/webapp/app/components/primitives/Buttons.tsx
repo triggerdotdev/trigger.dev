@@ -120,7 +120,7 @@ type ButtonContentPropsType = {
   variant: keyof typeof variant;
 };
 
-function ButtonContent(props: ButtonContentPropsType) {
+export function ButtonContent(props: ButtonContentPropsType) {
   const {
     children: text,
     LeadingIcon,
@@ -219,7 +219,7 @@ function ButtonContent(props: ButtonContentPropsType) {
 
 type ButtonPropsType = Pick<
   JSX.IntrinsicElements["button"],
-  "type" | "disabled" | "onClick" | "name" | "value"
+  "type" | "disabled" | "onClick" | "name" | "value" | "form"
 > &
   React.ComponentProps<typeof ButtonContent>;
 
@@ -234,6 +234,7 @@ export const Button = React.forwardRef<HTMLButtonElement, ButtonPropsType>(
         name={props.name}
         value={props.value}
         ref={ref}
+        form={props.form}
       >
         <ButtonContent {...props} />
       </button>
