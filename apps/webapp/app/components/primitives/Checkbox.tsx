@@ -9,6 +9,7 @@ const variants = {
     button: "w-fit pr-4",
     label: "text-sm text-dimmed mt-0.5",
     description: "text-dimmed",
+    inputPosition: "mt-1",
     isChecked: "",
     isDisabled: "opacity-70",
   },
@@ -16,14 +17,25 @@ const variants = {
     button: "w-fit pr-4",
     label: "text-bright",
     description: "text-dimmed",
+    inputPosition: "mt-1",
     isChecked: "",
     isDisabled: "opacity-70",
+  },
+  "button/small": {
+    button:
+      "flex items-center w-fit h-8 pl-2 pr-3 rounded border border-slate-800 hover:bg-slate-850 hover:border-slate-750 transition",
+    label: "text-sm text-bright",
+    description: "text-dimmed",
+    inputPosition: "mt-0",
+    isChecked: "bg-slate-850 border-slate-750 hover:!bg-slate-850",
+    isDisabled: "opacity-70 hover:bg-transparent",
   },
   button: {
     button:
       "w-fit py-2 pl-3 pr-4 rounded border border-slate-800 hover:bg-slate-850 hover:border-slate-750 transition",
     label: "text-bright",
     description: "text-dimmed",
+    inputPosition: "mt-1",
     isChecked: "bg-slate-850 border-slate-750 hover:!bg-slate-850",
     isDisabled: "opacity-70 hover:bg-transparent",
   },
@@ -31,6 +43,7 @@ const variants = {
     button: "w-full py-2 pl-3 pr-4 checked:hover:bg-slate-850 transition",
     label: "text-bright font-mono",
     description: "text-dimmed",
+    inputPosition: "mt-1",
     isChecked: "bg-slate-850",
     isDisabled: "opacity-70",
   },
@@ -38,7 +51,7 @@ const variants = {
 
 export type CheckboxProps = Omit<
   React.InputHTMLAttributes<HTMLInputElement>,
-  "checked"
+  "checked" | "onChange"
 > & {
   id: string;
   name?: string;
@@ -49,6 +62,7 @@ export type CheckboxProps = Omit<
   badge?: string;
   badges?: string[];
   className?: string;
+  onChange?: (isChecked: boolean) => void;
 };
 
 export const Checkbox = React.forwardRef<HTMLInputElement, CheckboxProps>(
@@ -80,10 +94,21 @@ export const Checkbox = React.forwardRef<HTMLInputElement, CheckboxProps>(
     const descriptionClassName = variants[variant].description;
     const isCheckedClassName = variants[variant].isChecked;
     const isDisabledClassName = variants[variant].isDisabled;
+    const inputPositionClasses = variants[variant].inputPosition;
 
     useEffect(() => {
       setIsDisabled(disabled ?? false);
     }, [disabled]);
+
+    useEffect(() => {
+      if (props.onChange) {
+        props.onChange(isChecked);
+      }
+    }, [isChecked]);
+
+    useEffect(() => {
+      setIsChecked(defaultChecked ?? false);
+    }, [defaultChecked]);
 
     return (
       <div
@@ -109,7 +134,10 @@ export const Checkbox = React.forwardRef<HTMLInputElement, CheckboxProps>(
             setIsChecked(!isChecked);
           }}
           disabled={isDisabled}
-          className="mt-1 cursor-pointer rounded-sm border border-slate-700 bg-transparent transition checked:!bg-indigo-500  group-hover:bg-slate-900 group-hover:checked:bg-indigo-500 group-focus:ring-1 focus:ring-indigo-500 focus:ring-offset-0 focus:ring-offset-transparent focus-visible:outline-none focus-visible:ring-indigo-500 disabled:border-slate-650 disabled:!bg-slate-700"
+          className={cn(
+            inputPositionClasses,
+            "cursor-pointer rounded-sm border border-slate-700 bg-transparent transition checked:!bg-indigo-500 group-hover:bg-slate-900 group-hover:checked:bg-indigo-500 group-focus:ring-1 focus:ring-indigo-500 focus:ring-offset-0 focus:ring-offset-transparent focus-visible:outline-none focus-visible:ring-indigo-500 disabled:border-slate-650 disabled:!bg-slate-700"
+          )}
           id={id}
           ref={ref}
         />
