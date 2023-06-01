@@ -10,16 +10,26 @@ type FormSegmentedControlProps = {
   name: string;
   defaultValue?: string;
   options: Options[];
+  onChange?: (value: string) => void;
 };
 
 export default function FormSegmentedControl({
   name,
   defaultValue,
   options,
+  onChange,
 }: FormSegmentedControlProps) {
   return (
     <div className="flex h-8 w-fit rounded bg-slate-800 p-1">
-      <RadioGroup defaultValue={defaultValue ?? options[0].value} name={name}>
+      <RadioGroup
+        defaultValue={defaultValue ?? options[0].value}
+        name={name}
+        onChange={(c: string) => {
+          if (onChange) {
+            onChange(c);
+          }
+        }}
+      >
         <div className="flex gap-x-1.5">
           {options.map((option) => (
             <RadioGroup.Option
