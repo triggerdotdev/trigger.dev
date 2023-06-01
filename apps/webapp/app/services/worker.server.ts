@@ -26,15 +26,13 @@ import { DeliverScheduledEventService } from "./schedules/deliverScheduledEvent.
 import { prisma } from "~/db.server";
 import { MissingConnectionCreatedService } from "./runs/missingConnectionCreated.server";
 import { ApiConnectionCreatedService } from "./externalApis/apiConnectionCreated.server";
+import { sendEmail } from "./email.server";
+import { DeliverEmailSchema } from "@/../../packages/emails/src";
 
 const workerCatalog = {
   organizationCreated: z.object({ id: z.string() }),
   endpointRegistered: z.object({ id: z.string() }),
-  deliverEmail: z.object({
-    email: z.string(),
-    to: z.string(),
-    name: z.string().optional(),
-  }),
+  scheduleEmail: DeliverEmailSchema,
   githubAppInstallationDeleted: z.object({ id: z.string() }),
   githubPush: z.object({
     branch: z.string(),
@@ -237,12 +235,12 @@ function getWorkerQueue() {
           await service.call(payload.id);
         },
       },
-      deliverEmail: {
+      scheduleEmail: {
         queueName: "internal-queue",
         priority: 100,
         maxAttempts: 3,
         handler: async (payload, job) => {
-          // TODO: implement
+          await sendEmail(payload);
         },
       },
       startInitialProjectDeployment: {

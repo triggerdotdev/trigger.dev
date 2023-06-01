@@ -19,10 +19,10 @@ export function useOrganizations() {
 }
 
 export function useOptionalOrganization() {
-  const orgs = useOrganizations();
+  const orgs = useOptionalOrganizations();
   const routeMatch = useMatchesData("routes/_app.orgs.$organizationSlug");
 
-  if (!routeMatch || !routeMatch.data.organization) {
+  if (!orgs || !routeMatch || !routeMatch.data.organization) {
     return undefined;
   }
 

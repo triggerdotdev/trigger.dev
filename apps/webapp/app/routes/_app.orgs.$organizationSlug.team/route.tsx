@@ -29,10 +29,6 @@ import { Paragraph } from "~/components/primitives/Paragraph";
 import { SimpleTooltip } from "~/components/primitives/Tooltip";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useUser } from "~/hooks/useUser";
-import {
-  getOrganizationTeamMembers,
-  removeTeamMember,
-} from "~/models/organization.server";
 import { requireUserId } from "~/services/session.server";
 import { titleCase } from "~/utils";
 import { OrgAdminHeader } from "../_app.orgs.$organizationSlug._index/OrgAdminHeader";
@@ -45,6 +41,10 @@ import {
 import { Form, useActionData } from "@remix-run/react";
 import { conform, useForm } from "@conform-to/react";
 import { UserPlusIcon } from "@heroicons/react/20/solid";
+import {
+  getOrganizationTeamMembers,
+  removeTeamMember,
+} from "~/models/member.server";
 
 export const loader = async ({ request, params }: LoaderArgs) => {
   const userId = await requireUserId(request);

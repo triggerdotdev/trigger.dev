@@ -35,6 +35,7 @@ model User {
   marketingEmails Boolean @default(true)
 
   orgMemberships OrgMember[]
+  sentInvites    OrgMemberInvite[]
 }
 
 enum AuthenticationMethod {
@@ -60,6 +61,7 @@ model Organization {
 
   projects          Project[]
   members           OrgMember[]
+  invites           OrgMemberInvite[]
   externalAccounts  ExternalAccount[]
   connectionClients ApiConnectionClient[]
   sources           TriggerSource[]
@@ -187,6 +189,24 @@ model OrgMember {
 enum OrgMemberRole {
   ADMIN
   MEMBER
+}
+
+model OrgMemberInvite {
+  id String @id @default(cuid())
+  token String @unique @default(cuid())
+  email String
+  role OrgMemberRole @default(MEMBER)
+
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  organizationId String
+
+  inviter   User   @relation(fields: [inviterId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  inviterId String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([organizationId, email])
 }
 
 model RuntimeEnvironment {

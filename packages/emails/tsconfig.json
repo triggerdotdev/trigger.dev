@@ -1,5 +1,5 @@
 {
-  "extends": "@trigger.dev/tsconfig/node16.json",
+  "extends": "@trigger.dev/tsconfig/node18.json",
   "include": ["src/globals.d.ts", "./src/**/*.ts", "./src/**/*.tsx"],
   "compilerOptions": {
     "jsx": "react",

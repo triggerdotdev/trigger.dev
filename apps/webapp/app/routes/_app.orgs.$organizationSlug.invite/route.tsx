@@ -22,10 +22,13 @@ import { FormTitle } from "~/components/primitives/FormTitle";
 import { Input } from "~/components/primitives/Input";
 import { InputGroup } from "~/components/primitives/InputGroup";
 import { Label } from "~/components/primitives/Label";
+import { env } from "~/env.server";
 import { useOrganization } from "~/hooks/useOrganizations";
+import { inviteMembers } from "~/models/member.server";
 import { redirectWithSuccessMessage } from "~/models/message.server";
+import { scheduleEmail } from "~/services/email.server";
 import { requireUserId } from "~/services/session.server";
-import { organizationTeamPath } from "~/utils/pathBuilder";
+import { acceptInvitePath, organizationTeamPath } from "~/utils/pathBuilder";
 
 const schema = z.object({
   emails: z.preprocess((i) => {
@@ -56,16 +59,30 @@ export const action: ActionFunction = async ({ request, params }) => {
   }
 
   try {
-    console.log("Valid submission", submission.value);
-    // const project = await createProject({
-    //   organizationSlug: organizationSlug,
-    //   name: submission.value.projectName,
-    //   userId,
-    // });
+    const invites = await inviteMembers({
+      slug: organizationSlug,
+      emails: submission.value.emails,
+      userId,
+    });
+
+    for (const invite of invites) {
+      try {
+        await scheduleEmail({
+          email: "invite",
+          to: invite.email,
+          orgName: invite.organization.title,
+          inviterName: invite.inviter.name ?? undefined,
+          inviterEmail: invite.inviter.email,
+          inviteLink: `${env.LOGIN_ORIGIN}${acceptInvitePath(invite.token)}`,
+        });
+      } catch (error) {
+        console.error("Failed to send invite email");
+        console.error(error);
+      }
+    }
 
     return redirectWithSuccessMessage(
-      //todo organizationTeamPath(organizationSlug),
-      "",
+      organizationTeamPath(invites[0].organization),
       request,
       simplur`${submission.value.emails.length} member[|s] invited`
     );

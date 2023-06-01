@@ -15,6 +15,10 @@ export function accountPath() {
   return `/account`;
 }
 
+export function acceptInvitePath(token: string) {
+  return `/accept-invite?token=${token}`;
+}
+
 // Org
 export function organizationPath(organization: OrgForPath) {
   return `/orgs/${organizationParam(organization)}`;

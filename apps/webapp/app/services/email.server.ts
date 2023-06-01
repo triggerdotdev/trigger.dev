@@ -29,7 +29,7 @@ export async function scheduleWelcomeEmail(user: User) {
     process.env.NODE_ENV === "development" ? 1000 * 60 : 1000 * 60 * 22;
 
   await workerQueue.enqueue(
-    "deliverEmail",
+    "scheduleEmail",
     {
       email: "welcome",
       to: user.email,
@@ -37,6 +37,14 @@ export async function scheduleWelcomeEmail(user: User) {
     },
     { runAt: new Date(Date.now() + delay) }
   );
+}
+
+export async function scheduleEmail(
+  data: DeliverEmail,
+  delay?: { seconds: number }
+) {
+  const runAt = delay ? new Date(Date.now() + delay.seconds * 1000) : undefined;
+  await workerQueue.enqueue("scheduleEmail", data, { runAt });
 }
 
 export async function sendEmail(data: DeliverEmail) {

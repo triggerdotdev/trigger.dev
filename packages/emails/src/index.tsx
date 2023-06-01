@@ -5,6 +5,7 @@ import MagicLinkEmail from "../emails/magic-link";
 import ConnectIntegration from "../emails/connect-integration";
 import WorkflowFailed from "../emails/workflow-failed";
 import WorkflowIntegration from "../emails/workflow-integration";
+import InviteEmail, { InviteEmailSchema } from "../emails/invite";
 
 import { Resend } from "resend";
 import { z } from "zod";
@@ -14,13 +15,13 @@ export const DeliverEmailSchema = z
   .discriminatedUnion("email", [
     z.object({
       email: z.literal("welcome"),
-
       name: z.string().optional(),
     }),
     z.object({
       email: z.literal("magic_link"),
       magicLink: z.string().url(),
     }),
+    InviteEmailSchema,
     z.object({
       email: z.literal("connect_integration"),
       workflowId: z.string(),
@@ -81,6 +82,11 @@ export class EmailClient {
         return {
           subject: "Magic sign-in link for Trigger.dev",
           component: <MagicLinkEmail magicLink={data.magicLink} />,
+        };
+      case "invite":
+        return {
+          subject: `You've been invited to join ${data.orgName} on Trigger.dev`,
+          component: <InviteEmail {...data} />,
         };
       case "connect_integration":
         return {

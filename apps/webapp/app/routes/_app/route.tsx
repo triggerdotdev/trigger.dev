@@ -55,11 +55,10 @@ export const shouldRevalidate: ShouldRevalidateFunction = (options) => {
 };
 
 export default function App() {
-  const location = useLocation();
   const { impersonationId } = useTypedLoaderData<typeof loader>();
-  const isOrgChildPage = useIsProjectChildPage();
+  const isProjectChildPage = useIsProjectChildPage();
 
-  const showBackgroundGradient = !isOrgChildPage;
+  const showBackgroundGradient = !isProjectChildPage;
 
   return (
     <>
