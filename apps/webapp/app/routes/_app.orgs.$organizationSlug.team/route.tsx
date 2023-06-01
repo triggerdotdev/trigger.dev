@@ -148,6 +148,7 @@ function LeaveRemoveButton({
   member: Member;
   memberCount: number;
 }) {
+  const organization = useOrganization();
   const lastSubmission = useActionData();
 
   const [form, { memberId }] = useForm({
@@ -176,7 +177,7 @@ function LeaveRemoveButton({
         member={member}
         buttonText="Leave team"
         title="Are you sure you want to leave the team?"
-        description="You will no longer have access to the organization. To regain access, you will need to be invited again."
+        description={`You will no longer have access to ${organization.title}. To regain access, you will need to be invited again.`}
         actionText="Leave team"
       />
     );
@@ -190,7 +191,7 @@ function LeaveRemoveButton({
       title={`Are you sure you want to remove ${
         member.user.name ?? "them"
       } from the team?`}
-      description="They will no longer have access to the organization. To regain access, you will need to invite them again."
+      description={`They will no longer have access to ${organization.title}. To regain access, you will need to invite them again.`}
       actionText="Remove from team"
     />
   );
