@@ -24,7 +24,7 @@ import {
   ButtonContent,
   LinkButton,
 } from "~/components/primitives/Buttons";
-import { Header3 } from "~/components/primitives/Headers";
+import { Header2, Header3 } from "~/components/primitives/Headers";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { SimpleTooltip } from "~/components/primitives/Tooltip";
 import { useOrganization } from "~/hooks/useOrganizations";
@@ -119,7 +119,7 @@ export default function Page() {
     <PageContainer>
       <OrgAdminHeader />
       <PageBody>
-        <Header3 className="mb-4">Members</Header3>
+        <Header2 className="mb-4">Members</Header2>
         <ul className="flex w-full max-w-md flex-col gap-4 divide-y divide-slate-850">
           {members.map((member) => (
             <li key={member.user.id} className="flex items-center gap-4">
@@ -133,7 +133,7 @@ export default function Page() {
                 <Paragraph variant="small">{member.user.email}</Paragraph>
               </div>
               <div className="flex grow items-center justify-end gap-4">
-                <Paragraph variant="small">
+                <Paragraph variant="extra-small">
                   {titleCase(member.role.toLocaleLowerCase())}
                 </Paragraph>
                 <LeaveRemoveButton
@@ -148,7 +148,7 @@ export default function Page() {
 
         {invites.length > 0 && (
           <>
-            <Header3 className="mb-4 mt-8">Invites pending</Header3>
+            <Header2 className="mb-4 mt-8">Invites pending</Header2>
             <ul className="flex w-full max-w-md flex-col gap-4 divide-y divide-slate-850">
               {invites.map((invitee) => (
                 <li key={invitee.id} className="flex items-center gap-4">
