@@ -6,7 +6,7 @@ import { Form, useActionData } from "@remix-run/react";
 import invariant from "tiny-invariant";
 import { z } from "zod";
 import { MainCenteredContainer } from "~/components/layout/AppLayout";
-import { Button } from "~/components/primitives/Buttons";
+import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { Fieldset } from "~/components/primitives/Fieldset";
 import { FormButtons } from "~/components/primitives/FormButtons";
 import { FormError } from "~/components/primitives/FormError";
@@ -15,10 +15,11 @@ import { Hint } from "~/components/primitives/Hint";
 import { Input } from "~/components/primitives/Input";
 import { InputGroup } from "~/components/primitives/InputGroup";
 import { Label } from "~/components/primitives/Label";
+import { useOrganization } from "~/hooks/useOrganizations";
 import { redirectWithSuccessMessage } from "~/models/message.server";
 import { createProject } from "~/models/project.server";
 import { requireUserId } from "~/services/session.server";
-import { projectPath } from "~/utils/pathBuilder";
+import { organizationPath, projectPath } from "~/utils/pathBuilder";
 
 const schema = z.object({
   projectName: z
@@ -57,6 +58,7 @@ export const action: ActionFunction = async ({ request, params }) => {
 };
 
 export default function NewOrganizationPage() {
+  const organization = useOrganization();
   const lastSubmission = useActionData();
 
   const [form, { projectName }] = useForm({
@@ -97,6 +99,14 @@ export default function NewOrganizationPage() {
                 >
                   Create
                 </Button>
+              }
+              cancelButton={
+                <LinkButton
+                  to={organizationPath(organization)}
+                  variant={"secondary/small"}
+                >
+                  Cancel
+                </LinkButton>
               }
             />
           </Fieldset>
