@@ -94,10 +94,11 @@ export function ConnectButton({
               <InputGroup>
                 <FormError>{form.error}</FormError>
               </InputGroup>
-              <InputGroup>
+              <InputGroup fullWidth>
                 <Label>Name</Label>
                 <Input
                   type="text"
+                  fullWidth
                   {...conform.input(title)}
                   placeholder={`e.g. Personal ${api.name}`}
                 />
@@ -120,32 +121,6 @@ export function ConnectButton({
                         description={s.description}
                         variant="description"
                       />
-                      {/* <input
-                        type="checkbox"
-                        name="scopes"
-                        value={s.name}
-                        id={s.name}
-                        defaultChecked={s.defaultChecked ?? false}
-                        className="mt-1"
-                      />
-                      <div>
-                        <div className="flex gap-2">
-                          <label htmlFor={s.name}>{s.name}</label>
-                          {s.annotations &&
-                            s.annotations.map((a) => (
-                              <Badge
-                                key={a.label}
-                                className="px-1.5 py-0.5 text-xs"
-                                style={{ backgroundColor: a.color }}
-                              >
-                                {a.label}
-                              </Badge>
-                            ))}
-                        </div>
-                        {s.description && (
-                          <p className="text-slate-300">{s.description}</p>
-                        )}
-                      </div> */}
                     </fieldset>
                   );
                 })}
