@@ -7,7 +7,7 @@ import { Paragraph } from "./Paragraph";
 const variants = {
   "simple/small": {
     button: "w-fit pr-4",
-    label: "text-sm text-bright mt-0.5",
+    label: "text-sm text-bright mt-0.5 select-none",
     description: "text-dimmed",
     inputPosition: "mt-1",
     isChecked: "",
@@ -15,7 +15,7 @@ const variants = {
   },
   simple: {
     button: "w-fit pr-4",
-    label: "text-bright",
+    label: "text-bright select-none",
     description: "text-dimmed",
     inputPosition: "mt-1",
     isChecked: "",
@@ -24,7 +24,7 @@ const variants = {
   "button/small": {
     button:
       "flex items-center w-fit h-8 pl-2 pr-3 rounded border border-slate-800 hover:bg-slate-850 hover:border-slate-750 transition",
-    label: "text-sm text-bright",
+    label: "text-sm text-bright select-none",
     description: "text-dimmed",
     inputPosition: "mt-0",
     isChecked: "bg-slate-850 border-slate-750 hover:!bg-slate-850",
@@ -33,7 +33,7 @@ const variants = {
   button: {
     button:
       "w-fit py-2 pl-3 pr-4 rounded border border-slate-800 hover:bg-slate-850 hover:border-slate-750 transition",
-    label: "text-bright",
+    label: "text-bright select-none",
     description: "text-dimmed",
     inputPosition: "mt-1",
     isChecked: "bg-slate-850 border-slate-750 hover:!bg-slate-850",
