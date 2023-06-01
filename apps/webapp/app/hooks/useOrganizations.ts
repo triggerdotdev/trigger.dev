@@ -19,6 +19,7 @@ export function useOrganizations() {
 }
 
 export function useOptionalOrganization() {
+  const orgs = useOrganizations();
   const routeMatch = useMatchesData("routes/_app.orgs.$organizationSlug");
 
   if (!routeMatch || !routeMatch.data.organization) {
@@ -34,7 +35,9 @@ export function useOptionalOrganization() {
   >(routeMatch.data.organization);
 
   if (result == null) return undefined;
-  return result;
+
+  const org = orgs.find((o) => o.id === result.id);
+  return org;
 }
 
 export function useOrganization() {

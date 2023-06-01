@@ -29,7 +29,7 @@ export function organizationTeamPath(organization: OrgForPath) {
 }
 
 export function organizationBillingPath(organization: OrgForPath) {
-  return `${organizationPath(organization)}/team`;
+  return `${organizationPath(organization)}/billing`;
 }
 
 function organizationParam(organization: OrgForPath) {
