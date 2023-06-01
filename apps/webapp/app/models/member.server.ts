@@ -102,3 +102,15 @@ export async function inviteMembers({
     },
   });
 }
+
+export async function getInviteFromToken({ token }: { token: string }) {
+  return await prisma.orgMemberInvite.findFirst({
+    where: {
+      token,
+    },
+    include: {
+      organization: true,
+      inviter: true,
+    },
+  });
+}
