@@ -13,7 +13,7 @@ export function FormTitle({
 }: {
   title: React.ReactNode;
   description?: React.ReactNode;
-  LeadingIcon?: IconNames;
+  LeadingIcon?: IconNames | React.ReactNode;
   divide?: boolean;
   className?: string;
 }) {
@@ -27,10 +27,13 @@ export function FormTitle({
     >
       <div className="flex items-center gap-2">
         {LeadingIcon && (
-          <NamedIcon
-            name={LeadingIcon}
-            className={cn("h-7 w-7 shrink-0 justify-start")}
-          />
+          <div className="shrink-0 justify-start">
+            {typeof LeadingIcon === "string" ? (
+              <NamedIcon name={LeadingIcon} className={cn("h-7 w-7")} />
+            ) : (
+              LeadingIcon
+            )}
+          </div>
         )}
         <Header1>{title}</Header1>
       </div>
