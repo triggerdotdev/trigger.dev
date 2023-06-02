@@ -12,6 +12,7 @@ import {
   newProjectPath,
   organizationPath,
   organizationTeamPath,
+  organizationsPath,
 } from "~/utils/pathBuilder";
 
 export function OrgAdminHeader() {
@@ -20,7 +21,13 @@ export function OrgAdminHeader() {
   return (
     <PageHeader hideBorder>
       <PageTitleRow>
-        <PageTitle title={organization.title} />
+        <PageTitle
+          backButton={{
+            to: organizationsPath(),
+            text: "Organizations and Account",
+          }}
+          title={organization.title}
+        />
         <PageButtons>
           <LinkButton
             to={newProjectPath(organization)}
