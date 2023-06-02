@@ -122,9 +122,9 @@ export default function Page() {
       <OrgAdminHeader />
       <PageBody>
         <Header2 className="mb-4">Members</Header2>
-        <ul className="flex w-full max-w-md flex-col gap-4 divide-y divide-slate-850">
+        <ul className="flex w-full max-w-md flex-col gap-4 divide-y divide-slate-800 border-b border-slate-800">
           {members.map((member) => (
-            <li key={member.user.id} className="flex items-center gap-4">
+            <li key={member.user.id} className="flex items-center gap-4 pb-4">
               <UserAvatar
                 avatarUrl={member.user.avatarUrl}
                 name={member.user.name}
@@ -132,12 +132,17 @@ export default function Page() {
               />
               <div className="flex flex-col gap-0.5">
                 <Header3>
-                  {member.user.name} {member.user.id === user.id && "(You)"}
+                  {member.user.name}{" "}
+                  {member.user.id === user.id && (
+                    <span className="text-dimmed">(You)</span>
+                  )}
                 </Header3>
                 <Paragraph variant="small">{member.user.email}</Paragraph>
               </div>
               <div className="flex grow items-center justify-end gap-4">
-                {/* <Paragraph variant="extra-small">
+                {/* 
+                // This displays Member or Admin but we'll implement this when we implement roles properly
+                <Paragraph variant="extra-small">
                   {titleCase(member.role.toLocaleLowerCase())}
                 </Paragraph> */}
                 <LeaveRemoveButton
@@ -152,10 +157,10 @@ export default function Page() {
 
         {invites.length > 0 && (
           <>
-            <Header2 className="mb-4 mt-8">Invites pending</Header2>
-            <ul className="flex w-full max-w-md flex-col gap-4 divide-y divide-slate-850">
+            <Header2 className="mt-4">Pending invites</Header2>
+            <ul className="flex w-full max-w-md flex-col divide-y divide-slate-850 border-b border-slate-800">
               {invites.map((invite) => (
-                <li key={invite.id} className="flex items-center gap-4">
+                <li key={invite.id} className="flex items-center gap-4 py-4">
                   <EnvelopeIcon className="h-10 w-10 text-slate-800" />
                   <div className="flex flex-col gap-0.5">
                     <Header3>{invite.email}</Header3>
@@ -172,7 +177,7 @@ export default function Page() {
           </>
         )}
 
-        <div className="flex max-w-md py-8">
+        <div className="mt-4 flex max-w-md justify-end">
           <LinkButton
             to={inviteTeamMemberPath(organization)}
             variant={"primary/small"}
