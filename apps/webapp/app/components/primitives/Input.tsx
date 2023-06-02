@@ -6,7 +6,7 @@ import { NamedIcon } from "./NamedIcon";
 const variants = {
   large: {
     input:
-      "px-3 flex h-10 w-full text-bright rounded-md border border-slate-800 bg-slate-850 text-sm ring-offset-background transition file:border-0 file:bg-transparent file:text-base file:font-medium placeholder:text-muted-foreground hover:border-slate-750 hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring focus-visible:ring-offset-0 disabled:cursor-not-allowed disabled:opacity-50",
+      "px-3 flex h-10 w-full text-bright rounded-md border border-slate-800 bg-slate-850 text-sm ring-offset-background transition file:border-0 file:bg-transparent file:text-base file:font-medium placeholder:text-muted-foreground hover:border-slate-750 hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring focus-visible:ring-offset-0 focus:border-ring focus:outline-none focus:ring-2 focus:ring-ring disabled:cursor-not-allowed disabled:opacity-50",
 
     iconSize: "h-4 w-4 ml-3",
     iconOffset: "pl-[34px]",
@@ -15,7 +15,7 @@ const variants = {
   },
   medium: {
     input:
-      "px-3 flex h-8 w-full text-bright rounded border border-slate-800 bg-slate-850 text-sm ring-offset-background transition file:border-0 file:bg-transparent file:text-base file:font-medium placeholder:text-muted-foreground hover:border-slate-750 hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring focus-visible:ring-offset-0 disabled:cursor-not-allowed disabled:opacity-50",
+      "px-3 flex h-8 w-full text-bright rounded border border-slate-800 bg-slate-850 text-sm ring-offset-background transition file:border-0 file:bg-transparent file:text-base file:font-medium placeholder:text-muted-foreground hover:border-slate-750 hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring focus-visible:ring-offset-0 focus:border-ring focus:outline-none focus:ring-2 focus:ring-ring disabled:cursor-not-allowed disabled:opacity-50",
 
     iconSize: "h-4 w-4 ml-2.5",
     iconOffset: "pl-[36px]",
@@ -24,10 +24,10 @@ const variants = {
   },
   small: {
     input:
-      "px-2 flex h-6 w-full text-bright rounded border border-slate-800 bg-slate-850 text-xs ring-offset-background transition file:border-0 file:bg-transparent file:text-xs file:font-medium placeholder:text-muted-foreground hover:border-slate-750 hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring focus-visible:ring-offset-0 disabled:cursor-not-allowed disabled:opacity-50",
+      "px-2 flex h-6 w-full text-bright rounded border border-slate-800 bg-slate-850 text-xs ring-offset-background transition file:border-0 file:bg-transparent file:text-xs file:font-medium placeholder:text-muted-foreground hover:border-slate-750 hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring focus-visible:ring-offset-0 focus:border-ring focus:outline-none focus:ring-2 focus:ring-ring disabled:cursor-not-allowed disabled:opacity-50",
 
     iconSize: "h-3 w-3 ml-1.5",
-    iconOffset: "pl-[21px]",
+    iconOffset: "pl-[24px]",
     shortcut:
       "right-1 top-1 grid h-fit min-w-[22px] place-content-center rounded-[2px] border border-dimmed/40 py-px px-[3px] text-[0.5rem] font-normal text-dimmed",
   },
