@@ -1,8 +1,6 @@
-import { EnvelopeIcon } from "@heroicons/react/24/solid";
 import type { LoaderArgs, MetaFunction } from "@remix-run/node";
-import { Form, Link } from "@remix-run/react";
+import { Form } from "@remix-run/react";
 import { redirect, typedjson, useTypedLoaderData } from "remix-typedjson";
-import { GitHubLoginButton } from "~/components/GitHubLoginButton";
 import { LogoIcon } from "~/components/LogoIcon";
 import {
   AppContainer,
@@ -11,7 +9,6 @@ import {
 import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { Fieldset } from "~/components/primitives/Fieldset";
 import { FormTitle } from "~/components/primitives/FormTitle";
-import { Header2 } from "~/components/primitives/Headers";
 import { NamedIcon } from "~/components/primitives/NamedIcon";
 import { Paragraph, TextLink } from "~/components/primitives/Paragraph";
 
@@ -73,7 +70,7 @@ export default function LoginPage() {
                 <NamedIcon
                   name={"envelope"}
                   className={
-                    "mr-1.5 h-4 w-4 transition group-hover:text-bright"
+                    "mr-1.5 h-4 w-4 text-dimmed transition group-hover:text-bright"
                   }
                 />
                 Continue with Email
