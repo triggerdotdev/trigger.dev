@@ -97,6 +97,7 @@ export default function Page() {
           <FormError id={email.errorId}>{email.error}</FormError>
         </InputGroup>
         <InputGroup>
+          <Label>Notifications</Label>
           <Checkbox
             id="marketingEmails"
             {...conform.input(marketingEmails, { type: "checkbox" })}
