@@ -10,7 +10,7 @@ const variant = {
     textColor:
       "text-bright group-hover:text-white transition group-disabled:text-bright/80",
     button:
-      "h-6 px-[5px] text-xs bg-indigo-600 hover:bg-indigo-500/90 group-disabled:opacity-50 group-disabled:pointer-events-none",
+      "h-6 px-[5px] text-xs bg-indigo-600 group-hover:bg-indigo-500/90 group-disabled:opacity-50 group-disabled:pointer-events-none",
     icon: "h-3.5",
     shortcut:
       "text-[0.6rem] font-medium min-w-[17px] rounded-[2px] px-1 ml-1 -mr-0.5 grid place-content-center border border-bright/40 text-bright group-hover:border-bright/60 transition",
@@ -19,7 +19,7 @@ const variant = {
     textColor:
       "text-dimmed group-hover:text-bright transition group-disabled:text-dimmed/80",
     button:
-      "h-6 px-[5px] text-xs bg-slate-800 hover:bg-slate-700/70 disabled:opacity-50 group-disabled:pointer-events-none",
+      "h-6 px-[5px] text-xs bg-slate-800 group-hover:bg-slate-700/70 disabled:opacity-50 group-disabled:pointer-events-none",
     icon: "h-3.5",
     shortcut:
       "text-[0.6rem] font-medium min-w-[17px] rounded-[2px] px-1 ml-1 -mr-0.5 grid place-content-center border border-dimmed/40 text-dimmed group-hover:text-bright/80 group-hover:border-dimmed/60 transition",
@@ -28,7 +28,7 @@ const variant = {
     textColor:
       "text-dimmed group-hover:text-bright transition group-disabled:text-dimmed/80",
     button:
-      "h-6 px-[5px] text-xs bg-transparent hover:bg-slate-850 disabled:opacity-50 group-disabled:pointer-events-none",
+      "h-6 px-[5px] text-xs bg-transparent group-hover:bg-slate-850 disabled:opacity-50 group-disabled:pointer-events-none",
     icon: "h-3.5",
     shortcut:
       "text-[0.6rem] font-medium min-w-[17px] rounded-[2px] px-1 ml-1 -mr-0.5 grid place-content-center border border-dimmed/40 text-dimmed group-hover:text-bright/80 group-hover:border-dimmed/60 transition",
@@ -37,7 +37,7 @@ const variant = {
     textColor:
       "text-bright group-hover:text-white transition group-disabled:text-bright/80",
     button:
-      "h-6 px-[5px] text-xs bg-rose-600 hover:bg-rose-500 disabled:opacity-50 group-disabled:pointer-events-none",
+      "h-6 px-[5px] text-xs bg-rose-600 group-hover:bg-rose-500 disabled:opacity-50 group-disabled:pointer-events-none",
     icon: "h-3.5",
     shortcut:
       "text-[0.6rem] font-medium min-w-[17px] rounded-[2px] px-1 ml-1 -mr-0.5 grid place-content-center border border-bright/40 text-bright group-hover:border-bright/60 transition",
@@ -46,7 +46,7 @@ const variant = {
     textColor:
       "text-bright group-hover:text-white transition group-disabled:text-bright/80",
     button:
-      "h-8 px-2 text-sm bg-indigo-600 hover:bg-indigo-500/90 disabled:opacity-50",
+      "h-8 px-2 text-sm bg-indigo-600 group-hover:bg-indigo-500/90 disabled:opacity-50",
     icon: "h-4",
     shortcut:
       "text-[0.6rem] leading-[1.13rem] min-w-[20px] px-1 rounded-[3px] ml-1.5 -mr-0.5 border border-bright/40 text-bright group-hover:border-bright/60 transition",
@@ -55,7 +55,7 @@ const variant = {
     textColor:
       "text-dimmed group-hover:text-bright transition group-disabled:text-dimmed/80",
     button:
-      "h-8 px-2 text-sm bg-slate-800 hover:bg-slate-700/70 disabled:opacity-50",
+      "h-8 px-2 text-sm bg-slate-800 group-hover:bg-slate-700/70 disabled:opacity-50",
     icon: "h-4",
     shortcut:
       "text-[0.6rem] leading-[1.13rem] min-w-[20px] px-1 rounded-[3px] ml-1.5 -mr-0.5 border border-dimmed/40 text-dimmed group-hover:border-dimmed group-hover:text-bright transition",
@@ -64,7 +64,7 @@ const variant = {
     textColor:
       "text-dimmed group-hover:text-bright transition group-disabled:text-dimmed/80",
     button:
-      "h-8 px-2 text-sm bg-transparent hover:bg-slate-850 disabled:opacity-50",
+      "h-8 px-2 text-sm bg-transparent group-hover:bg-slate-850 disabled:opacity-50",
     icon: "h-4",
     shortcut:
       "text-[0.6rem] leading-[1.13rem] min-w-[20px] px-1 rounded-[3px] ml-1.5 -mr-0.5 border border-bright/40 text-dimmed group-hover:border-bright/60 group-hover:text-bright transition",
@@ -73,7 +73,7 @@ const variant = {
     textColor:
       "text-bright group-hover:text-white transition group-disabled:text-bright/80",
     button:
-      "h-8 px-2 text-sm bg-rose-600 hover:bg-rose-500 disabled:opacity-50",
+      "h-8 px-2 text-sm bg-rose-600 group-hover:bg-rose-500 disabled:opacity-50",
     icon: "h-4",
     shortcut:
       "text-[0.6rem] leading-[1.13rem] min-w-[20px] px-1 rounded-[3px] ml-1.5 -mr-0.5 border border-bright/40 text-bright group-hover:border-bright/60 transition",
@@ -82,14 +82,14 @@ const variant = {
     textColor:
       "text-bright group-hover:text-white transition group-disabled:text-dimmed/80",
     button:
-      "h-10 px-2 text-sm font-medium bg-indigo-600 hover:bg-indigo-500/90 disabled:opacity-50",
+      "h-10 px-2 text-sm font-medium bg-indigo-600 group-hover:bg-indigo-500/90 disabled:opacity-50",
     icon: "h-5",
     shortcut: undefined,
   },
   "secondary/large": {
     textColor: "text-dimmed",
     button:
-      "h-10 px-2 text-sm text-dimmed group-hover:text-bright transition font-medium bg-slate-800 hover:bg-slate-700/70 disabled:opacity-50",
+      "h-10 px-2 text-sm text-dimmed group-hover:text-bright transition font-medium bg-slate-800 group-hover:bg-slate-700/70 disabled:opacity-50",
     icon: "h-5",
     shortcut: undefined,
   },
