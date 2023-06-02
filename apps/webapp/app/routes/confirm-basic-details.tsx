@@ -23,6 +23,9 @@ import React, { forwardRef, useState } from "react";
 import { NamedIcon } from "~/components/primitives/NamedIcon";
 import { HandRaisedIcon } from "@heroicons/react/24/solid";
 import { motion } from "framer-motion";
+import { updateUser } from "~/models/user.server";
+import { redirectWithSuccessMessage } from "~/models/message.server";
+import { organizationsPath } from "~/utils/pathBuilder";
 
 const schema = z
   .object({
@@ -36,7 +39,7 @@ const schema = z
   });
 
 export const action: ActionFunction = async ({ request }) => {
-  await requireUserId(request);
+  const userId = await requireUserId(request);
   const formData = await request.formData();
   const submission = parse(formData, { schema });
 
@@ -45,7 +48,17 @@ export const action: ActionFunction = async ({ request }) => {
   }
 
   try {
-    //todo
+    const updatedUser = await updateUser({
+      id: userId,
+      name: submission.value.name,
+      email: submission.value.email,
+    });
+
+    return redirectWithSuccessMessage(
+      organizationsPath(),
+      request,
+      "Your details has been updated."
+    );
   } catch (error: any) {
     return json({ errors: { body: error.message } }, { status: 400 });
   }
