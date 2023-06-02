@@ -1,7 +1,7 @@
 import type { LoaderArgs } from "@remix-run/server-runtime";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import invariant from "tiny-invariant";
-import { ConnectButton } from "~/components/integrations/ConnectButton";
+import { OAuthConnectSheet } from "~/components/integrations/ConnectButton";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { Badge } from "~/components/primitives/Badge";
 import { LinkButton } from "~/components/primitives/Buttons";
@@ -98,7 +98,7 @@ export default function Integrations() {
                 );
                 if (authMethods.length === 1) {
                   return (
-                    <ConnectButton
+                    <OAuthConnectSheet
                       key={integration.identifier}
                       integration={integration}
                       authMethodKey={
@@ -106,9 +106,10 @@ export default function Integrations() {
                       }
                       organizationId={organization.id}
                       className="min-w-[15rem] flex-shrink-0"
-                    >
-                      <AddIntegrationConnection integration={integration} />
-                    </ConnectButton>
+                      button={
+                        <AddIntegrationConnection integration={integration} />
+                      }
+                    />
                   );
                 }
 
@@ -126,26 +127,27 @@ export default function Integrations() {
 
                       <div className="flex flex-col p-1">
                         {authMethods.map(([key, method]) => (
-                          <ConnectButton
+                          <OAuthConnectSheet
                             key={key}
                             integration={integration}
                             authMethodKey={key}
                             organizationId={organization.id}
-                          >
-                            <div className="flex gap-2 rounded-sm p-2 hover:bg-slate-800">
-                              <NamedIcon name="globe" className="h-5 w-5" />
-                              <div className="">
-                                <Header3 className="text-left">
-                                  {method.name}
-                                </Header3>
-                                {method.description && (
-                                  <Paragraph variant="small" className="m-0">
-                                    {method.description}
-                                  </Paragraph>
-                                )}
+                            button={
+                              <div className="flex gap-2 rounded-sm p-2 hover:bg-slate-800">
+                                <NamedIcon name="globe" className="h-5 w-5" />
+                                <div className="">
+                                  <Header3 className="text-left">
+                                    {method.name}
+                                  </Header3>
+                                  {method.description && (
+                                    <Paragraph variant="small" className="m-0">
+                                      {method.description}
+                                    </Paragraph>
+                                  )}
+                                </div>
                               </div>
-                            </div>
-                          </ConnectButton>
+                            }
+                          />
                         ))}
                       </div>
                     </PopoverContent>

@@ -28,17 +28,17 @@ import { cn } from "~/utils/cn";
 
 export type Status = "loading" | "idle";
 
-export function ConnectButton({
-  integration: api,
+export function OAuthConnectSheet({
+  integration,
   authMethodKey,
   organizationId,
-  children,
+  button,
   className,
 }: {
   integration: Integration;
   authMethodKey: string;
   organizationId: string;
-  children: React.ReactNode;
+  button: React.ReactNode;
   className?: string;
 }) {
   const transition = useNavigation();
@@ -52,7 +52,7 @@ export function ConnectButton({
       });
     },
   });
-  const apiAuthmethod = api.authenticationMethods[authMethodKey];
+  const apiAuthmethod = integration.authenticationMethods[authMethodKey];
   const location = useLocation();
 
   const options = [
@@ -98,7 +98,7 @@ export function ConnectButton({
 
   return (
     <Sheet>
-      <SheetTrigger className={className}>{children}</SheetTrigger>
+      <SheetTrigger className={className}>{button}</SheetTrigger>
       <SheetContent size="lg">
         <fetcher.Form
           method="post"
@@ -108,9 +108,12 @@ export function ConnectButton({
         >
           <SheetBody>
             <div className="flex items-center gap-4 border-b border-slate-800 pb-3.5">
-              <NamedIconInBox name={api.identifier} className="h-9 w-9" />
+              <NamedIconInBox
+                name={integration.identifier}
+                className="h-9 w-9"
+              />
               <div>
-                <Header2>Connect to {api.name}</Header2>
+                <Header2>Connect to {integration.name}</Header2>
                 <Paragraph variant="extra-small">
                   {apiAuthmethod.name}{" "}
                   {apiAuthmethod.description &&
@@ -123,7 +126,7 @@ export function ConnectButton({
               <input
                 type="hidden"
                 name="integrationIdentifier"
-                value={api.identifier}
+                value={integration.identifier}
               />
               <input
                 type="hidden"
@@ -144,7 +147,7 @@ export function ConnectButton({
                   type="text"
                   fullWidth
                   {...conform.input(title)}
-                  placeholder={`e.g. Personal ${api.name}`}
+                  placeholder={`e.g. Personal ${integration.name}`}
                 />
                 <FormError>{title.error}</FormError>
               </InputGroup>
@@ -213,10 +216,10 @@ export function ConnectButton({
               <div>
                 <Header2>Scopes</Header2>
                 <Paragraph variant="small" className="mb-4">
-                  Select the scopes you want to grant to {api.name} in order for
-                  it to access your data. Note: If you try and perform an action
-                  in a Job that requires a scope you haven’t granted, that task
-                  will fail.
+                  Select the scopes you want to grant to {integration.name} in
+                  order for it to access your data. Note: If you try and perform
+                  an action in a Job that requires a scope you haven’t granted,
+                  that task will fail.
                 </Paragraph>
                 <Header3 className="mb-2">
                   Select from popular scope collections
@@ -229,7 +232,7 @@ export function ConnectButton({
                   />
                 </fieldset>
                 <div className="mb-2 mt-4 flex items-center justify-between">
-                  <Header3>Select {api.name} scopes</Header3>
+                  <Header3>Select {integration.name} scopes</Header3>
                   <Paragraph variant="small" className="text-slate-500">
                     {simplur`${selectedScopes.size} scope[|s] selected`}
                   </Paragraph>
@@ -295,8 +298,11 @@ export function ConnectButton({
                 variant="primary/medium"
               >
                 <>
-                  <NamedIcon name={api.identifier} className={"h-4 w-4"} />
-                  Connect to {api.name}
+                  <NamedIcon
+                    name={integration.identifier}
+                    className={"h-4 w-4"}
+                  />
+                  Connect to {integration.name}
                 </>
               </Button>
             </div>
@@ -317,7 +323,7 @@ export function BasicConnectButton({
   organizationId: string;
 }) {
   return (
-    <ConnectButton
+    <OAuthConnectSheet
       integration={integration}
       authMethodKey={authMethodKey}
       organizationId={organizationId}
@@ -327,6 +333,6 @@ export function BasicConnectButton({
         <NamedIcon name={integration.identifier} className={"h-8 w-8"} />
         <span>Connect to {integration.name}</span>
       </>
-    </ConnectButton>
+    </OAuthConnectSheet>
   );
 }
