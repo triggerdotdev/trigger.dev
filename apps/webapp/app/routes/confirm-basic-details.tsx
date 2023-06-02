@@ -26,22 +26,76 @@ import { motion } from "framer-motion";
 import { updateUser } from "~/models/user.server";
 import { redirectWithSuccessMessage } from "~/models/message.server";
 import { organizationsPath } from "~/utils/pathBuilder";
+import { prisma } from "~/db.server";
 
-const schema = z
-  .object({
-    name: z.string().min(3, "Your name must be at least 3 characters").max(50),
-    email: z.string().email(),
-    confirmEmail: z.string(),
-  })
-  .refine((value) => value.email === value.confirmEmail, {
-    message: "Emails must match",
-    path: ["confirmEmail"],
-  });
+function createSchema(
+  constraints: {
+    isEmailUnique?: (email: string) => Promise<boolean>;
+  } = {}
+) {
+  return z
+    .object({
+      name: z
+        .string()
+        .min(3, "Your name must be at least 3 characters")
+        .max(50),
+      email: z
+        .string()
+        .email()
+        .superRefine((email, ctx) => {
+          if (constraints.isEmailUnique === undefined) {
+            //client-side validation skips this
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              message: conform.VALIDATION_UNDEFINED,
+            });
+          } else {
+            // Tell zod this is an async validation by returning the promise
+            return constraints.isEmailUnique(email).then((isUnique) => {
+              if (isUnique) {
+                return;
+              }
+
+              ctx.addIssue({
+                code: z.ZodIssueCode.custom,
+                message: "Email is already being used by a different account",
+              });
+            });
+          }
+        }),
+      confirmEmail: z.string(),
+    })
+    .refine((value) => value.email === value.confirmEmail, {
+      message: "Emails must match",
+      path: ["confirmEmail"],
+    });
+}
 
 export const action: ActionFunction = async ({ request }) => {
   const userId = await requireUserId(request);
   const formData = await request.formData();
-  const submission = parse(formData, { schema });
+
+  const formSchema = createSchema({
+    isEmailUnique: async (email) => {
+      const existingUser = await prisma.user.findFirst({
+        where: {
+          email,
+        },
+      });
+
+      if (!existingUser) {
+        return true;
+      }
+
+      if (existingUser.id === userId) {
+        return true;
+      }
+
+      return false;
+    },
+  });
+
+  const submission = await parse(formData, { schema: formSchema, async: true });
 
   if (!submission.value) {
     return json(submission);
@@ -81,9 +135,8 @@ export default function Page() {
   const [form, { name, email, confirmEmail }] = useForm({
     id: "confirm-basic-details",
     lastSubmission,
-
     onValidate({ formData }) {
-      return parse(formData, { schema });
+      return parse(formData, { schema: createSchema() });
     },
   });
 
@@ -141,7 +194,6 @@ export default function Page() {
                   {...conform.input(email, { type: "email" })}
                   defaultValue={enteredEmail}
                   onChange={(e) => {
-                    console.log(e.target.value);
                     setEnteredEmail(e.target.value);
                   }}
                   placeholder="Your email address"
@@ -165,7 +217,6 @@ export default function Page() {
                     {...conform.input(confirmEmail, { type: "email" })}
                     placeholder="Your email, again"
                     icon="envelope"
-                    autoFocus={Boolean(confirmEmail.initialError)}
                     spellCheck={false}
                   />
                   <Hint>
