@@ -16,22 +16,31 @@ export const loader = async ({ request, params }: LoaderArgs) => {
   const { projectParam } = params;
   invariant(projectParam, "projectParam not found");
 
-  const presenter = new ProjectPresenter();
+  try {
+    const presenter = new ProjectPresenter();
 
-  const project = await presenter.call({
-    userId,
-    slug: projectParam,
-  });
+    const project = await presenter.call({
+      userId,
+      slug: projectParam,
+    });
 
-  if (!project) {
-    throw new Response("Not Found", { status: 404 });
+    if (!project) {
+      throw new Response("Not Found", { status: 404 });
+    }
+
+    analytics.project.identify({ project });
+
+    return typedjson({
+      project,
+    });
+  } catch (error) {
+    console.error(error);
+    throw new Response(undefined, {
+      status: 400,
+      statusText:
+        "Something went wrong, if this problem persists please contact support.",
+    });
   }
-
-  analytics.project.identify({ project });
-
-  return typedjson({
-    project,
-  });
 };
 
 export const handle: Handle = {

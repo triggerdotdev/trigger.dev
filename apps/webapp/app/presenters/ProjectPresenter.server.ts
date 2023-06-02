@@ -102,67 +102,75 @@ export class ProjectPresenter {
       organizationId: project.organizationId,
       createdAt: project.createdAt,
       updatedAt: project.updatedAt,
-      jobs: project.jobs.map((job) => {
-        //the best alias to select:
-        // 1. Logged-in user dev
-        // 2. Prod
-        // 3. Any other user's dev
-        const sortedAliases = job.aliases.sort((a, b) => {
-          if (
-            a.environment.type === "DEVELOPMENT" &&
-            a.environment.orgMember?.userId === userId
-          ) {
-            return -1;
+      jobs: project.jobs
+        .map((job) => {
+          //the best alias to select:
+          // 1. Logged-in user dev
+          // 2. Prod
+          // 3. Any other user's dev
+          const sortedAliases = job.aliases.sort((a, b) => {
+            if (
+              a.environment.type === "DEVELOPMENT" &&
+              a.environment.orgMember?.userId === userId
+            ) {
+              return -1;
+            }
+
+            if (
+              b.environment.type === "DEVELOPMENT" &&
+              b.environment.orgMember?.userId === userId
+            ) {
+              return 1;
+            }
+
+            if (a.environment.type === "PRODUCTION") {
+              return -1;
+            }
+
+            if (b.environment.type === "PRODUCTION") {
+              return 1;
+            }
+
+            return 0;
+          });
+
+          const alias = sortedAliases.at(0);
+
+          if (!alias) {
+            throw new Error(
+              `No aliases found for job ${job.id}, this should never happen.`
+            );
           }
 
-          if (
-            b.environment.type === "DEVELOPMENT" &&
-            b.environment.orgMember?.userId === userId
-          ) {
-            return 1;
-          }
-
-          if (a.environment.type === "PRODUCTION") {
-            return -1;
-          }
-
-          if (b.environment.type === "PRODUCTION") {
-            return 1;
-          }
-
-          return 0;
-        });
-
-        const alias = sortedAliases[0];
-
-        const eventSpecification = EventSpecificationSchema.parse(
-          alias.version.eventSpecification
-        );
-        const lastRun =
-          alias.version.runs[0] != null ? alias.version.runs[0] : undefined;
-        const integrations = z
-          .array(IntegrationMetadataSchema)
-          .parse(
-            alias.version.integrations.map(
-              (integration) => integration.metadata
-            )
+          const eventSpecification = EventSpecificationSchema.parse(
+            alias.version.eventSpecification
           );
+          const lastRun =
+            alias.version.runs[0] != null ? alias.version.runs[0] : undefined;
+          const integrations = z
+            .array(IntegrationMetadataSchema)
+            .parse(
+              alias.version.integrations.map(
+                (integration) => integration.metadata
+              )
+            );
 
-        return {
-          id: job.id,
-          slug: job.slug,
-          title: job.title,
-          version: alias.version.version,
-          event: {
-            title: eventSpecification.title,
-            icon: eventSpecification.icon,
-            source: eventSpecification.source,
-            elements: eventSpecification.elements,
-          },
-          integrations,
-          lastRun,
-        };
-      }),
+          return {
+            id: job.id,
+            slug: job.slug,
+            title: job.title,
+            version: alias.version.version,
+            event: {
+              title: eventSpecification.title,
+              icon: eventSpecification.icon,
+              source: eventSpecification.source,
+              elements: eventSpecification.elements,
+            },
+            integrations,
+            lastRun,
+          };
+        })
+        .filter(Boolean),
     };
   }
 }
