@@ -11,8 +11,6 @@ import {
   useRouteError,
 } from "@remix-run/react";
 import { withSentry } from "@sentry/remix";
-import { useEffect } from "react";
-import { toast } from "react-hot-toast";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import type { ToastMessage } from "~/models/message.server";
 import { commitSession, getSession } from "~/models/message.server";
@@ -21,7 +19,6 @@ import {
   AppContainer,
   MainCenteredContainer,
 } from "./components/layout/AppLayout";
-import { NavBar } from "./components/navigation/NavBar";
 import { LinkButton } from "./components/primitives/Buttons";
 import { Header1, Header3 } from "./components/primitives/Headers";
 import { Toast } from "./components/primitives/Toast";
@@ -67,38 +64,31 @@ export function ErrorBoundary() {
   const error = useRouteError();
 
   return (
-    <html>
+    <html lang="en" className="h-full">
       <head>
-        <title>Oops!</title>
         <Meta />
         <Links />
       </head>
       <body className="h-full overflow-hidden bg-darkBackground">
-        <div className="grid h-full w-full">
-          <AppContainer showBackgroundGradient={true}>
-            <NavBar />
-            <MainCenteredContainer>
-              <div>
-                {isRouteErrorResponse(error) ? (
-                  <ErrorDisplay
-                    title={
-                      friendlyErrorDisplay(error.status, error.statusText).title
-                    }
-                    message={
-                      error.data.message ??
-                      friendlyErrorDisplay(error.status, error.statusText)
-                        .message
-                    }
-                  />
-                ) : error instanceof Error ? (
-                  <ErrorDisplay title={error.name} message={error.message} />
-                ) : (
-                  <ErrorDisplay title="Oops" message={JSON.stringify(error)} />
-                )}
-              </div>
-            </MainCenteredContainer>
-          </AppContainer>
-        </div>
+        <AppContainer showBackgroundGradient={true}>
+          <MainCenteredContainer>
+            {isRouteErrorResponse(error) ? (
+              <ErrorDisplay
+                title={
+                  friendlyErrorDisplay(error.status, error.statusText).title
+                }
+                message={
+                  error.data.message ??
+                  friendlyErrorDisplay(error.status, error.statusText).message
+                }
+              />
+            ) : error instanceof Error ? (
+              <ErrorDisplay title={error.name} message={error.message} />
+            ) : (
+              <ErrorDisplay title="Oops" message={JSON.stringify(error)} />
+            )}
+          </MainCenteredContainer>
+        </AppContainer>
         <Scripts />
       </body>
     </html>
