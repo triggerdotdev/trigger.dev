@@ -127,16 +127,16 @@ export default function LoginMagicLinkPage() {
                   divide={false}
                   title="Create your Trigger.dev account"
                 />
-                <Fieldset className="flex w-full flex-col items-center">
+                <Fieldset className="flex w-full flex-col items-center gap-y-2">
                   <InputGroup>
                     <Label>Your email address</Label>
                     <Input
                       type="email"
                       name="email"
+                      spellCheck={false}
                       placeholder="Email Address"
                       required
                       autoFocus
-                      icon="envelope"
                     />
                   </InputGroup>
 
@@ -157,7 +157,7 @@ export default function LoginMagicLinkPage() {
                     {isLoading ? "Sending…" : "Send a magic link"}
                   </Button>
                 </Fieldset>
-                <Paragraph variant="small" className="mb-4 mt-6 text-center">
+                <Paragraph variant="extra-small" className="my-4 text-center">
                   By logging in with your email you agree to our{" "}
                   <TextLink
                     href="https://trigger.dev/legal/terms"
@@ -179,6 +179,7 @@ export default function LoginMagicLinkPage() {
                   to="/login"
                   variant={"tertiary/small"}
                   LeadingIcon={"arrow-left"}
+                  leadingIconClassName="text-dimmed group-hover:text-bright transition"
                 >
                   All login options
                 </LinkButton>
