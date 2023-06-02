@@ -312,27 +312,3 @@ export function OAuthConnectSheet({
     </Sheet>
   );
 }
-
-export function BasicConnectButton({
-  integration,
-  authMethodKey,
-  organizationId,
-}: {
-  integration: Integration;
-  authMethodKey: string;
-  organizationId: string;
-}) {
-  return (
-    <OAuthConnectSheet
-      integration={integration}
-      authMethodKey={authMethodKey}
-      organizationId={organizationId}
-      className="flex items-center gap-3 rounded bg-indigo-700 py-2 pl-3 pr-4 text-sm text-white shadow-md transition hover:bg-indigo-600 disabled:opacity-50"
-    >
-      <>
-        <NamedIcon name={integration.identifier} className={"h-8 w-8"} />
-        <span>Connect to {integration.name}</span>
-      </>
-    </OAuthConnectSheet>
-  );
-}
