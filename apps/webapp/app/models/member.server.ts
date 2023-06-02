@@ -170,6 +170,48 @@ export async function acceptInvite({
       },
     });
 
-    return invite.organization;
+    //3. Check for other invites
+    const remainingInvites = await tx.orgMemberInvite.findMany({
+      where: {
+        email: invite.email,
+      },
+    });
+
+    return { remainingInvites, organization: invite.organization };
+  });
+}
+
+export async function declineInvite({
+  userId,
+  inviteId,
+}: {
+  userId: string;
+  inviteId: string;
+}) {
+  return await prisma.$transaction(async (tx) => {
+    //1. delete invite
+    const declinedInvite = await prisma.orgMemberInvite.delete({
+      where: {
+        id: inviteId,
+      },
+      include: {
+        organization: true,
+      },
+    });
+
+    //2. get email
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { email: true },
+    });
+
+    //3. check for other invites
+    const remainingInvites = await prisma.orgMemberInvite.findMany({
+      where: {
+        email: user!.email,
+      },
+    });
+
+    return { remainingInvites, organization: declinedInvite.organization };
   });
 }

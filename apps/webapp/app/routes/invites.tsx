@@ -5,7 +5,11 @@ import { json } from "@remix-run/node";
 import { Form, useActionData } from "@remix-run/react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
-import { MainCenteredContainer } from "~/components/layout/AppLayout";
+import {
+  AppContainer,
+  MainCenteredContainer,
+} from "~/components/layout/AppLayout";
+import { NavBar } from "~/components/navigation/NavBar";
 import { Button } from "~/components/primitives/Buttons";
 import { Fieldset } from "~/components/primitives/Fieldset";
 import { FormButtons } from "~/components/primitives/FormButtons";
@@ -17,10 +21,18 @@ import { Input } from "~/components/primitives/Input";
 import { InputGroup } from "~/components/primitives/InputGroup";
 import { Label } from "~/components/primitives/Label";
 import { Paragraph } from "~/components/primitives/Paragraph";
-import { acceptInvite, getUsersInvites } from "~/models/member.server";
+import {
+  acceptInvite,
+  declineInvite,
+  getUsersInvites,
+} from "~/models/member.server";
 import { redirectWithSuccessMessage } from "~/models/message.server";
 import { requireUser, requireUserId } from "~/services/session.server";
-import { organizationPath, organizationsPath } from "~/utils/pathBuilder";
+import {
+  invitesPath,
+  organizationPath,
+  organizationsPath,
+} from "~/utils/pathBuilder";
 
 export const loader = async ({ request }: LoaderArgs) => {
   const user = await requireUser(request);
@@ -50,17 +62,42 @@ export const action: ActionFunction = async ({ request }) => {
 
   try {
     if (submission.intent === "accept") {
-      const organization = await acceptInvite({
+      const { remainingInvites, organization } = await acceptInvite({
         inviteId: submission.value.inviteId,
         userId,
       });
-      return redirectWithSuccessMessage(
-        organizationPath(organization),
-        request,
-        `You joined ${organization.title}`
-      );
+
+      if (remainingInvites.length === 0) {
+        return redirectWithSuccessMessage(
+          organizationsPath(),
+          request,
+          `You joined ${organization.title}`
+        );
+      } else {
+        return redirectWithSuccessMessage(
+          invitesPath(),
+          request,
+          `You joined ${organization.title}`
+        );
+      }
     } else if (submission.intent === "decline") {
-      console.log("decline", submission.value.inviteId);
+      const { remainingInvites, organization } = await declineInvite({
+        inviteId: submission.value.inviteId,
+        userId,
+      });
+      if (remainingInvites.length === 0) {
+        return redirectWithSuccessMessage(
+          organizationsPath(),
+          request,
+          `You declined the invite for ${organization.title}`
+        );
+      } else {
+        return redirectWithSuccessMessage(
+          invitesPath(),
+          request,
+          `You declined the invite for ${organization.title}`
+        );
+      }
     }
   } catch (error: any) {
     return json({ errors: { body: error.message } }, { status: 400 });
@@ -80,46 +117,46 @@ export default function Page() {
   });
 
   return (
-    <MainCenteredContainer>
-      <div>
-        <FormTitle
-          LeadingIcon="envelope"
-          title="You've been invited to join a team"
-        />
-        <Form method="post" {...form.props}>
-          <Fieldset>
-            {invites.map((invite) => (
-              <InputGroup key={invite.id}>
-                <Header3>{invite.organization.title}</Header3>
-                <Paragraph>
-                  Invited by{" "}
-                  {invite.inviter.displayName ?? invite.inviter.email}
-                </Paragraph>
-                <input
-                  {...conform.input(inviteId, { type: "hidden" })}
-                  value={invite.id}
-                />
-                <Button
-                  type="submit"
-                  name={conform.INTENT}
-                  value="accept"
-                  variant={"primary/small"}
-                >
-                  Accept
-                </Button>
-                <Button
-                  type="submit"
-                  name={conform.INTENT}
-                  value="decline"
-                  variant={"secondary/small"}
-                >
-                  Decline
-                </Button>
-              </InputGroup>
-            ))}
-          </Fieldset>
-        </Form>
-      </div>
-    </MainCenteredContainer>
+    <AppContainer showBackgroundGradient={true}>
+      <NavBar />
+      <MainCenteredContainer>
+        <div>
+          <FormTitle
+            LeadingIcon="envelope"
+            title="You've been invited to join a team"
+          />
+          {invites.map((invite) => (
+            <Form key={invite.id} method="post" {...form.props}>
+              <Fieldset>
+                <InputGroup>
+                  <Header3>{invite.organization.title}</Header3>
+                  <Paragraph>
+                    Invited by{" "}
+                    {invite.inviter.displayName ?? invite.inviter.email}
+                  </Paragraph>
+                  <input name="inviteId" type="hidden" value={invite.id} />
+                  <Button
+                    type="submit"
+                    name={conform.INTENT}
+                    value="accept"
+                    variant={"primary/small"}
+                  >
+                    Accept
+                  </Button>
+                  <Button
+                    type="submit"
+                    name={conform.INTENT}
+                    value="decline"
+                    variant={"secondary/small"}
+                  >
+                    Decline
+                  </Button>
+                </InputGroup>
+              </Fieldset>
+            </Form>
+          ))}
+        </div>
+      </MainCenteredContainer>
+    </AppContainer>
   );
 }

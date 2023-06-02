@@ -11,14 +11,14 @@ import { getUsersInvites } from "~/models/member.server";
 export const loader = async ({ request }: LoaderArgs) => {
   const user = await requireUser(request);
 
+  //todo
+  //if the user hasn't confirmed their name, then redirect to the confirm name page
+
   //if there are invites then we should redirect to the invites page
   const invites = await getUsersInvites({ email: user.email });
   if (invites.length > 0) {
     return redirect(invitesPath());
   }
-
-  //todo
-  //if the user hasn't confirmed their name, then redirect to the confirm name page
 
   //if there are no orgs, then redirect to create an org
   const organizations = await getOrganizations({ userId: user.id });

@@ -1,4 +1,9 @@
+import { useForm } from "@conform-to/react";
+import { parse } from "@conform-to/zod";
+import { EnvelopeIcon, UserPlusIcon } from "@heroicons/react/20/solid";
+import { Form, useActionData } from "@remix-run/react";
 import { ActionFunction, LoaderArgs, json } from "@remix-run/server-runtime";
+import { useState } from "react";
 import {
   UseDataFunctionReturn,
   typedjson,
@@ -10,7 +15,6 @@ import { UserAvatar } from "~/components/UserProfilePhoto";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
 import {
   Alert,
-  AlertAction,
   AlertCancel,
   AlertContent,
   AlertDescription,
@@ -29,23 +33,18 @@ import { Paragraph } from "~/components/primitives/Paragraph";
 import { SimpleTooltip } from "~/components/primitives/Tooltip";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useUser } from "~/hooks/useUser";
-import { requireUserId } from "~/services/session.server";
-import { formatDateTime, titleCase } from "~/utils";
-import { OrgAdminHeader } from "../_app.orgs.$organizationSlug._index/OrgAdminHeader";
-import { parse } from "@conform-to/zod";
-import { redirectWithSuccessMessage } from "~/models/message.server";
-import {
-  inviteTeamMemberPath,
-  organizationTeamPath,
-} from "~/utils/pathBuilder";
-import { Form, useActionData } from "@remix-run/react";
-import { conform, useForm } from "@conform-to/react";
-import { EnvelopeIcon, UserPlusIcon } from "@heroicons/react/20/solid";
 import {
   getTeamMembersAndInvites,
   removeTeamMember,
 } from "~/models/member.server";
-import { UserCircleIcon } from "@heroicons/react/24/solid";
+import { redirectWithSuccessMessage } from "~/models/message.server";
+import { requireUserId } from "~/services/session.server";
+import { formatDateTime, titleCase } from "~/utils";
+import {
+  inviteTeamMemberPath,
+  organizationTeamPath,
+} from "~/utils/pathBuilder";
+import { OrgAdminHeader } from "../_app.orgs.$organizationSlug._index/OrgAdminHeader";
 
 export const loader = async ({ request, params }: LoaderArgs) => {
   const userId = await requireUserId(request);
@@ -133,9 +132,9 @@ export default function Page() {
                 <Paragraph variant="small">{member.user.email}</Paragraph>
               </div>
               <div className="flex grow items-center justify-end gap-4">
-                <Paragraph variant="extra-small">
+                {/* <Paragraph variant="extra-small">
                   {titleCase(member.role.toLocaleLowerCase())}
-                </Paragraph>
+                </Paragraph> */}
                 <LeaveRemoveButton
                   userId={user.id}
                   member={member}
@@ -189,18 +188,9 @@ function LeaveRemoveButton({
   memberCount: number;
 }) {
   const organization = useOrganization();
-  const lastSubmission = useActionData();
-
-  const [form, { memberId }] = useForm({
-    id: "remove-member",
-    lastSubmission,
-    onValidate({ formData }) {
-      return parse(formData, { schema });
-    },
-  });
 
   if (userId === member.user.id) {
-    if (memberCount !== 1) {
+    if (memberCount === 1) {
       return (
         <SimpleTooltip
           button={
@@ -250,6 +240,7 @@ function LeaveTeamModal({
   description: string;
   actionText: string;
 }) {
+  const [open, setOpen] = useState(false);
   const lastSubmission = useActionData();
 
   const [form, { memberId }] = useForm({
@@ -261,13 +252,9 @@ function LeaveTeamModal({
   });
 
   return (
-    <Form method="post" {...form.props}>
-      <input
-        type="hidden"
-        value={member.id}
-        {...conform.input(memberId, { type: "hidden" })}
-      />
-      <Alert>
+    <Form method="post" {...form.props} onSubmit={() => setOpen(false)}>
+      <input type="hidden" value={member.id} name="memberId" />
+      <Alert open={open} onOpenChange={(o) => setOpen(o)}>
         <AlertTrigger asChild>
           <Button variant="secondary/small">{buttonText}</Button>
         </AlertTrigger>
