@@ -1,4 +1,4 @@
-import { BuildingOffice2Icon } from "@heroicons/react/24/solid";
+import { ChevronRightIcon } from "@heroicons/react/24/solid";
 import { Link } from "@remix-run/react";
 import simplur from "simplur";
 import { Badge } from "~/components/primitives/Badge";
@@ -23,26 +23,32 @@ export function OrganizationGridItem({
     <li key={organization.id}>
       <div
         className={cn(
-          "to-70% block rounded-md border border-slate-850 bg-gradient-to-b from-indigo-900/70 to-slate-950 p-2 "
+          "block rounded-md border border-slate-800 bg-gradient-to-bl from-indigo-900/70 via-indigo-500/10 to-slate-950 to-70% p-2"
         )}
       >
         <Link
           to={organizationPath(organization)}
-          className="flex gap-4 rounded-md border-b border-slate-850 px-2 pb-4 pt-2 hover:bg-slate-500/10"
+          className="group flex items-center gap-y-4 rounded-md border-b border-slate-800 px-2 pb-4 pt-2"
         >
-          <NamedIcon
-            name="organization"
-            className="h-10 w-10 flex-none"
+          <div className="flex w-full items-center justify-between gap-x-2">
+            <NamedIcon
+              name="organization"
+              className="h-10 w-10 flex-none"
+              aria-hidden="true"
+            />
+            <div className="flex-1">
+              <Header2 className="">{organization.title}</Header2>
+              <Paragraph variant="extra-small">
+                {simplur`${organization._count.members} team member[|s]`}
+              </Paragraph>
+            </div>
+          </div>
+          <ChevronRightIcon
+            className="h-5 w-5 text-dimmed/0 transition group-hover:text-dimmed/100"
             aria-hidden="true"
           />
-          <div className="flex-1">
-            <Header2 className="">{organization.title}</Header2>
-            <Paragraph variant="extra-small">
-              {simplur`${organization._count.members} team member[|s]`}
-            </Paragraph>
-          </div>
         </Link>
-        <div className="py-4">
+        <div className="pt-4">
           <Paragraph className="mb-2 px-2" variant="extra-small/bright/caps">
             Projects
           </Paragraph>
