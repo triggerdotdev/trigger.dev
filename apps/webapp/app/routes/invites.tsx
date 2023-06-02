@@ -1,10 +1,10 @@
 import { conform, useForm } from "@conform-to/react";
 import { parse } from "@conform-to/zod";
-import { ActionFunction, LoaderArgs, redirect } from "@remix-run/node";
-import { json } from "@remix-run/node";
+import { ActionFunction, LoaderArgs, json, redirect } from "@remix-run/node";
 import { Form, useActionData } from "@remix-run/react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
+import simplur from "simplur";
 import {
   AppContainer,
   MainCenteredContainer,
@@ -12,14 +12,9 @@ import {
 import { NavBar } from "~/components/navigation/NavBar";
 import { Button } from "~/components/primitives/Buttons";
 import { Fieldset } from "~/components/primitives/Fieldset";
-import { FormButtons } from "~/components/primitives/FormButtons";
-import { FormError } from "~/components/primitives/FormError";
 import { FormTitle } from "~/components/primitives/FormTitle";
-import { Header3 } from "~/components/primitives/Headers";
-import { Hint } from "~/components/primitives/Hint";
-import { Input } from "~/components/primitives/Input";
+import { Header2, Header3 } from "~/components/primitives/Headers";
 import { InputGroup } from "~/components/primitives/InputGroup";
-import { Label } from "~/components/primitives/Label";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import {
   acceptInvite,
@@ -28,11 +23,7 @@ import {
 } from "~/models/member.server";
 import { redirectWithSuccessMessage } from "~/models/message.server";
 import { requireUser, requireUserId } from "~/services/session.server";
-import {
-  invitesPath,
-  organizationPath,
-  organizationsPath,
-} from "~/utils/pathBuilder";
+import { invitesPath, organizationsPath } from "~/utils/pathBuilder";
 
 export const loader = async ({ request }: LoaderArgs) => {
   const user = await requireUser(request);
@@ -123,34 +114,42 @@ export default function Page() {
         <div>
           <FormTitle
             LeadingIcon="envelope"
-            title="You've been invited to join a team"
+            className="mb-0 text-sky-500"
+            title={simplur`You have ${invites.length} new invitation[|s]`}
+            // description={simplur`You've been invited to join ${invites.length} team[|s].`}
           />
           {invites.map((invite) => (
             <Form key={invite.id} method="post" {...form.props}>
               <Fieldset>
-                <InputGroup>
-                  <Header3>{invite.organization.title}</Header3>
-                  <Paragraph>
-                    Invited by{" "}
-                    {invite.inviter.displayName ?? invite.inviter.email}
-                  </Paragraph>
-                  <input name="inviteId" type="hidden" value={invite.id} />
-                  <Button
-                    type="submit"
-                    name={conform.INTENT}
-                    value="accept"
-                    variant={"primary/small"}
-                  >
-                    Accept
-                  </Button>
-                  <Button
-                    type="submit"
-                    name={conform.INTENT}
-                    value="decline"
-                    variant={"secondary/small"}
-                  >
-                    Decline
-                  </Button>
+                <InputGroup className="flex items-center justify-between border-b border-slate-800 py-4">
+                  <div className="flex flex-col gap-y-0.5 overflow-hidden">
+                    <Header2 className="truncate">
+                      {invite.organization.title}
+                    </Header2>
+                    <Paragraph variant="small" className="truncate">
+                      Invited by{" "}
+                      {invite.inviter.displayName ?? invite.inviter.email}
+                    </Paragraph>
+                    <input name="inviteId" type="hidden" value={invite.id} />
+                  </div>
+                  <div className="flex flex-col gap-y-1">
+                    <Button
+                      type="submit"
+                      name={conform.INTENT}
+                      value="accept"
+                      variant={"primary/small"}
+                    >
+                      Accept
+                    </Button>
+                    <Button
+                      type="submit"
+                      name={conform.INTENT}
+                      value="decline"
+                      variant={"secondary/small"}
+                    >
+                      Decline
+                    </Button>
+                  </div>
                 </InputGroup>
               </Fieldset>
             </Form>
