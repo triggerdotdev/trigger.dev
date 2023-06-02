@@ -87,7 +87,7 @@ export default function Page() {
           <FormError id={name.errorId}>{name.error}</FormError>
         </InputGroup>
         <InputGroup>
-          <Label htmlFor={email.id}>Project name</Label>
+          <Label htmlFor={email.id}>Email address</Label>
           <Input
             {...conform.input(email, { type: "text" })}
             placeholder="Your email"
