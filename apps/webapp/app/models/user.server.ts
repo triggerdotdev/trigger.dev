@@ -120,7 +120,9 @@ export function updateUser({
   name,
   email,
   marketingEmails,
-}: Pick<User, "id" | "name" | "email" | "marketingEmails">) {
+}: Pick<User, "id" | "name" | "email"> & {
+  marketingEmails?: boolean;
+}) {
   return prisma.user.update({
     where: { id },
     data: { name, email, marketingEmails },
