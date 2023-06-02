@@ -30,6 +30,7 @@ import {
   SquaresPlusIcon,
   UserCircleIcon,
   UserGroupIcon,
+  UserIcon,
   UserPlusIcon,
   WrenchScrewdriverIcon,
   XMarkIcon,
@@ -49,6 +50,9 @@ const icons = {
   ),
   "arrow-left": (className: string) => (
     <ArrowLeftIcon className={cn("text-white", className)} />
+  ),
+  beaker: (className: string) => (
+    <BeakerIcon className={cn("text-purple-500", className)} />
   ),
   billing: (className: string) => (
     <CreditCardIcon className={cn("text-teal-500", className)} />
@@ -98,6 +102,9 @@ const icons = {
   integration: (className: string) => (
     <SquaresPlusIcon className={cn("text-teal-500", className)} />
   ),
+  "invite-member": (className: string) => (
+    <UserPlusIcon className={cn("text-indigo-500", className)} />
+  ),
   job: (className: string) => (
     <WrenchScrewdriverIcon className={cn("text-teal-500", className)} />
   ),
@@ -131,11 +138,8 @@ const icons = {
   team: (className: string) => (
     <UserGroupIcon className={cn("text-blue-500", className)} />
   ),
-  "invite-member": (className: string) => (
-    <UserPlusIcon className={cn("text-indigo-500", className)} />
-  ),
-  beaker: (className: string) => (
-    <BeakerIcon className={cn("text-purple-500", className)} />
+  user: (className: string) => (
+    <UserIcon className={cn("text-blue-600", className)} />
   ),
   warning: (className: string) => (
     <ExclamationTriangleIcon className={cn("text-amber-400", className)} />

@@ -1,22 +1,29 @@
 import { ShouldRevalidateFunction, useLocation } from "@remix-run/react";
 import { Outlet } from "@remix-run/react";
 import type { LoaderArgs } from "@remix-run/server-runtime";
-import { typedjson, useTypedLoaderData } from "remix-typedjson";
+import { redirect, typedjson, useTypedLoaderData } from "remix-typedjson";
 import { ImpersonationBanner } from "~/components/ImpersonationBanner";
 import { NoMobileOverlay } from "~/components/NoMobileOverlay";
 import { AppContainer } from "~/components/layout/AppLayout";
 import { NavBar } from "~/components/navigation/NavBar";
 import { useIsProjectChildPage } from "~/hooks/useIsProjectChildPage";
+import { redirectWithSuccessMessage } from "~/models/message.server";
 import { getOrganizations } from "~/models/organization.server";
 
 import { getImpersonationId } from "~/services/impersonation.server";
 import { clearRedirectTo, commitSession } from "~/services/redirectTo.server";
-import { requireUserId } from "~/services/session.server";
+import { requireUser, requireUserId } from "~/services/session.server";
+import { confirmBasicDetailsPath } from "~/utils/pathBuilder";
 
 export const loader = async ({ request }: LoaderArgs) => {
-  const userId = await requireUserId(request);
-  const organizations = await getOrganizations({ userId });
+  const user = await requireUser(request);
+  const organizations = await getOrganizations({ userId: user.id });
   const impersonationId = await getImpersonationId(request);
+
+  //you have to confirm basic details before you can do anything
+  if (!user.confirmedBasicDetails) {
+    return redirect(confirmBasicDetailsPath());
+  }
 
   return typedjson(
     {

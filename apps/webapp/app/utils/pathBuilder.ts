@@ -19,6 +19,10 @@ export function invitesPath() {
   return `/invites`;
 }
 
+export function confirmBasicDetailsPath() {
+  return `/confirm-basic-details`;
+}
+
 export function acceptInvitePath(token: string) {
   return `/invite-accept?token=${token}`;
 }

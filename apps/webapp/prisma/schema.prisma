@@ -33,6 +33,7 @@ model User {
   isOnHostedRepoWaitlist Boolean @default(false)
 
   marketingEmails Boolean @default(true)
+  confirmedBasicDetails Boolean @default(false)
 
   orgMemberships OrgMember[]
   sentInvites    OrgMemberInvite[]
