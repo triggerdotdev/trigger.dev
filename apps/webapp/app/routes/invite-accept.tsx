@@ -41,7 +41,7 @@ export async function loader({ request }: LoaderArgs) {
     return redirectWithErrorMessage(
       "/",
       request,
-      `This invite is for a different email address. This account is registered to ${user.email}.`
+      `This invite is for ${invite.email}, but you are logged in as ${user.email}.`
     );
   }
 
