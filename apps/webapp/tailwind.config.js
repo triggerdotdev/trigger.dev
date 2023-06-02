@@ -145,6 +145,11 @@ module.exports = {
         md: `calc(${radius} - 2px)`,
         sm: `calc(${radius} - 4px)`,
       },
+      boxShadow: {
+        "glow-primary": "0 0 10px 5px rgba(218, 244, 55, 0.2)",
+        "glow-secondary": "0 0 10px 5px rgba(79, 70, 229, 0.2)",
+        "glow-pink": "0 0 10px 5px rgba(236, 72, 153, 0.2)",
+      },
       keyframes: {
         "accordion-down": {
           from: { height: 0 },
