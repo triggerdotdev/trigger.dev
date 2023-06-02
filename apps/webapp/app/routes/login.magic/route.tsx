@@ -96,8 +96,8 @@ export default function LoginMagicLinkPage() {
                   title="We've sent you a magic link!"
                 />
                 <img src={magicLinkIcon} className="mb-4 h-12 w-12" />
-                <Fieldset className="flex w-full flex-col items-center">
-                  <Paragraph className="text-center">
+                <Fieldset className="flex w-full flex-col items-center gap-y-2">
+                  <Paragraph className="mb-6 text-center">
                     We sent you an email which contains a magic link that will
                     log you in to your account.
                   </Paragraph>
@@ -109,6 +109,7 @@ export default function LoginMagicLinkPage() {
                         value="reset"
                         variant="tertiary/small"
                         LeadingIcon="arrow-left"
+                        leadingIconClassName="text-dimmed group-hover:text-bright transition"
                       >
                         Re-enter email
                       </Button>
