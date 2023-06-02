@@ -1,5 +1,4 @@
-import { ShouldRevalidateFunction, useLocation } from "@remix-run/react";
-import { Outlet } from "@remix-run/react";
+import { Outlet, ShouldRevalidateFunction } from "@remix-run/react";
 import type { LoaderArgs } from "@remix-run/server-runtime";
 import { redirect, typedjson, useTypedLoaderData } from "remix-typedjson";
 import { ImpersonationBanner } from "~/components/ImpersonationBanner";
@@ -7,12 +6,11 @@ import { NoMobileOverlay } from "~/components/NoMobileOverlay";
 import { AppContainer } from "~/components/layout/AppLayout";
 import { NavBar } from "~/components/navigation/NavBar";
 import { useIsProjectChildPage } from "~/hooks/useIsProjectChildPage";
-import { redirectWithSuccessMessage } from "~/models/message.server";
 import { getOrganizations } from "~/models/organization.server";
 
 import { getImpersonationId } from "~/services/impersonation.server";
 import { clearRedirectTo, commitSession } from "~/services/redirectTo.server";
-import { requireUser, requireUserId } from "~/services/session.server";
+import { requireUser } from "~/services/session.server";
 import { confirmBasicDetailsPath } from "~/utils/pathBuilder";
 
 export const loader = async ({ request }: LoaderArgs) => {
