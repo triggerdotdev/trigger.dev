@@ -47,6 +47,7 @@ import {
 } from "~/utils/pathBuilder";
 import { OrgAdminHeader } from "../_app.orgs.$organizationSlug._index/OrgAdminHeader";
 import { resendSchema } from "../invite-resend";
+import { EnvelopeOpenIcon } from "@heroicons/react/24/solid";
 
 export const loader = async ({ request, params }: LoaderArgs) => {
   const userId = await requireUserId(request);
@@ -158,10 +159,12 @@ export default function Page() {
         {invites.length > 0 && (
           <>
             <Header2 className="mt-4">Pending invites</Header2>
-            <ul className="flex w-full max-w-md flex-col divide-y divide-slate-850 border-b border-slate-800">
+            <ul className="flex w-full max-w-md flex-col divide-y divide-slate-800 border-b border-slate-800">
               {invites.map((invite) => (
                 <li key={invite.id} className="flex items-center gap-4 py-4">
-                  <EnvelopeIcon className="h-10 w-10 text-slate-800" />
+                  <div className="rounded-md border border-slate-750 bg-slate-800 p-1.5">
+                    <EnvelopeIcon className="h-7 w-7 text-cyan-500" />
+                  </div>
                   <div className="flex flex-col gap-0.5">
                     <Header3>{invite.email}</Header3>
                     <Paragraph variant="small">
