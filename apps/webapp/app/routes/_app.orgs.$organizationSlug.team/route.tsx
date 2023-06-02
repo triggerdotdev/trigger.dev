@@ -48,6 +48,7 @@ import {
 import { OrgAdminHeader } from "../_app.orgs.$organizationSlug._index/OrgAdminHeader";
 import { resendSchema } from "../invite-resend";
 import { EnvelopeOpenIcon } from "@heroicons/react/24/solid";
+import { NamedIcon } from "~/components/primitives/NamedIcon";
 
 export const loader = async ({ request, params }: LoaderArgs) => {
   const userId = await requireUserId(request);
@@ -163,7 +164,7 @@ export default function Page() {
               {invites.map((invite) => (
                 <li key={invite.id} className="flex items-center gap-4 py-4">
                   <div className="rounded-md border border-slate-750 bg-slate-800 p-1.5">
-                    <EnvelopeIcon className="h-7 w-7 text-cyan-500" />
+                    <NamedIcon name="envelope" className="h-7 w-7" />
                   </div>
                   <div className="flex flex-col gap-0.5">
                     <Header3>{invite.email}</Header3>
