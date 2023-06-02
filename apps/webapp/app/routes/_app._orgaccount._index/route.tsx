@@ -3,21 +3,25 @@ import { redirect } from "remix-typedjson";
 import { LinkButton } from "~/components/primitives/Buttons";
 import { useOptionalOrganizations } from "~/hooks/useOrganizations";
 import { getOrganizations } from "~/models/organization.server";
-import { requireUserId } from "~/services/session.server";
-import { newOrganizationPath } from "~/utils/pathBuilder";
+import { requireUser, requireUserId } from "~/services/session.server";
+import { invitesPath, newOrganizationPath } from "~/utils/pathBuilder";
 import { OrganizationGridItem } from "./OrganizationGrid";
+import { getUsersInvites } from "~/models/member.server";
 
 export const loader = async ({ request }: LoaderArgs) => {
-  const userId = await requireUserId(request);
+  const user = await requireUser(request);
 
-  //todo
   //if there are invites then we should redirect to the invites page
+  const invites = await getUsersInvites({ email: user.email });
+  if (invites.length > 0) {
+    return redirect(invitesPath());
+  }
 
   //todo
   //if the user hasn't confirmed their name, then redirect to the confirm name page
 
   //if there are no orgs, then redirect to create an org
-  const organizations = await getOrganizations({ userId });
+  const organizations = await getOrganizations({ userId: user.id });
   if (organizations.length === 0) {
     return redirect(newOrganizationPath());
   }

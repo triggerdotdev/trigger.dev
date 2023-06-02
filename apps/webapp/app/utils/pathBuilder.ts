@@ -15,6 +15,10 @@ export function accountPath() {
   return `/account`;
 }
 
+export function invitesPath() {
+  return `/invites`;
+}
+
 export function acceptInvitePath(token: string) {
   return `/accept-invite?token=${token}`;
 }

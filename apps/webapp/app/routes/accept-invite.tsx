@@ -1,5 +1,4 @@
 import type { LoaderArgs } from "@remix-run/server-runtime";
-import invariant from "tiny-invariant";
 import { getInviteFromToken } from "~/models/member.server";
 import {
   redirectWithErrorMessage,
@@ -7,7 +6,7 @@ import {
 } from "~/models/message.server";
 import { getUser } from "~/services/session.server";
 
-export async function loader({ request, params }: LoaderArgs) {
+export async function loader({ request }: LoaderArgs) {
   const user = await getUser(request);
 
   const url = new URL(request.url);

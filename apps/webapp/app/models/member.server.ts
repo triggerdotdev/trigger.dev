@@ -99,6 +99,7 @@ export async function inviteMembers({
       email,
       organizationId: org.id,
       inviterId: userId,
+      role: "MEMBER",
     })),
     skipDuplicates: true,
   });
@@ -127,5 +128,48 @@ export async function getInviteFromToken({ token }: { token: string }) {
       organization: true,
       inviter: true,
     },
+  });
+}
+
+export async function getUsersInvites({ email }: { email: string }) {
+  return await prisma.orgMemberInvite.findMany({
+    where: {
+      email,
+    },
+    include: {
+      organization: true,
+      inviter: true,
+    },
+  });
+}
+
+export async function acceptInvite({
+  userId,
+  inviteId,
+}: {
+  userId: string;
+  inviteId: string;
+}) {
+  return await prisma.$transaction(async (tx) => {
+    // 1. Delete the invite and get the invite details
+    const invite = await tx.orgMemberInvite.delete({
+      where: {
+        id: inviteId,
+      },
+      include: {
+        organization: true,
+      },
+    });
+
+    // 2. Join the organization
+    const member = await tx.orgMember.create({
+      data: {
+        organizationId: invite.organizationId,
+        userId,
+        role: invite.role,
+      },
+    });
+
+    return invite.organization;
   });
 }
