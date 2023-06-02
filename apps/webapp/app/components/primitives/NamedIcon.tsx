@@ -84,7 +84,7 @@ const icons = {
     <FolderIcon className={cn("text-indigo-600", className)} />
   ),
   envelope: (className: string) => (
-    <EnvelopeIcon className={cn("text-dimmed", className)} />
+    <EnvelopeIcon className={cn("text-cyan-500", className)} />
   ),
   environment: (className: string) => (
     <KeyIcon className={cn("text-yellow-500", className)} />
