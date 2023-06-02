@@ -16,7 +16,8 @@ export async function loader({ request }: LoaderArgs) {
     return redirectWithErrorMessage(
       "/",
       request,
-      "Invalid invite URL. Please ask the person who invited you to send another invite."
+      "Invalid invite URL. Please ask the person who invited you to send another invite.",
+      { ephemeral: false }
     );
   }
 
@@ -25,7 +26,8 @@ export async function loader({ request }: LoaderArgs) {
     return redirectWithErrorMessage(
       "/",
       request,
-      "Invite not found. Please ask the person who invited you to send another invite."
+      "Invite not found. Please ask the person who invited you to send another invite.",
+      { ephemeral: false }
     );
   }
 
@@ -33,7 +35,8 @@ export async function loader({ request }: LoaderArgs) {
     return redirectWithSuccessMessage(
       "/",
       request,
-      "Please login to accept the invite."
+      "Please login to accept the invite.",
+      { ephemeral: false }
     );
   }
 
@@ -41,7 +44,8 @@ export async function loader({ request }: LoaderArgs) {
     return redirectWithErrorMessage(
       "/",
       request,
-      `This invite is for ${invite.email}, but you are logged in as ${user.email}.`
+      `This invite is for ${invite.email}, but you are logged in as ${user.email}.`,
+      { ephemeral: false }
     );
   }
 
