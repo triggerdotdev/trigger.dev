@@ -88,7 +88,6 @@ export async function action({ request, params }: ActionArgs) {
   const submission = await parse(formData, { schema: formSchema, async: true });
 
   if (!submission.value || submission.intent !== "submit") {
-    console.log("submission", submission);
     return json(submission);
   }
 
