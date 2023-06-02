@@ -128,7 +128,9 @@ export default function Page() {
                 className="h-10 w-10"
               />
               <div className="flex flex-col gap-0.5">
-                <Header3>{member.user.name}</Header3>
+                <Header3>
+                  {member.user.name} {member.user.id === user.id && "(You)"}
+                </Header3>
                 <Paragraph variant="small">{member.user.email}</Paragraph>
               </div>
               <div className="flex grow items-center justify-end gap-4">
@@ -194,7 +196,12 @@ function LeaveRemoveButton({
       return (
         <SimpleTooltip
           button={
-            <ButtonContent variant="secondary/small">Leave team</ButtonContent>
+            <ButtonContent
+              variant="secondary/small"
+              className="cursor-not-allowed"
+            >
+              Leave team
+            </ButtonContent>
           }
           content="An organization requires at least 1 team member"
         />
@@ -252,27 +259,27 @@ function LeaveTeamModal({
   });
 
   return (
-    <Form method="post" {...form.props} onSubmit={() => setOpen(false)}>
-      <input type="hidden" value={member.id} name="memberId" />
-      <Alert open={open} onOpenChange={(o) => setOpen(o)}>
-        <AlertTrigger asChild>
-          <Button variant="secondary/small">{buttonText}</Button>
-        </AlertTrigger>
-        <AlertContent>
-          <AlertHeader>
-            <AlertTitle>{title}</AlertTitle>
-            <AlertDescription>{description}</AlertDescription>
-          </AlertHeader>
-          <AlertFooter>
-            <AlertCancel asChild>
-              <Button variant="tertiary/small">Cancel</Button>
-            </AlertCancel>
+    <Alert open={open} onOpenChange={(o) => setOpen(o)}>
+      <AlertTrigger asChild>
+        <Button variant="secondary/small">{buttonText}</Button>
+      </AlertTrigger>
+      <AlertContent>
+        <AlertHeader>
+          <AlertTitle>{title}</AlertTitle>
+          <AlertDescription>{description}</AlertDescription>
+        </AlertHeader>
+        <AlertFooter>
+          <AlertCancel asChild>
+            <Button variant="tertiary/small">Cancel</Button>
+          </AlertCancel>
+          <Form method="post" {...form.props} onSubmit={() => setOpen(false)}>
+            <input type="hidden" value={member.id} name="memberId" />
             <Button type="submit" variant="danger/small" form={form.props.id}>
               {actionText}
             </Button>
-          </AlertFooter>
-        </AlertContent>
-      </Alert>
-    </Form>
+          </Form>
+        </AlertFooter>
+      </AlertContent>
+    </Alert>
   );
 }
