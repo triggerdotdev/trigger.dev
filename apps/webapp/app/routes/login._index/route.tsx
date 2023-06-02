@@ -62,20 +62,26 @@ export default function LoginPage() {
             </a>
             <FormTitle divide={false} title="Create your Trigger.dev account" />
             <Fieldset>
-              <Button type="submit" variant="primary/large" fullWidth>
-                <NamedIcon name={"github"} className={"mr-1.5 h-4 w-4"} />
-                Continue with GitHub
-              </Button>
-              <LinkButton to="/login/magic" variant="secondary/large" fullWidth>
-                <NamedIcon
-                  name={"envelope"}
-                  className={
-                    "mr-1.5 h-4 w-4 text-dimmed transition group-hover:text-bright"
-                  }
-                />
-                Continue with Email
-              </LinkButton>
-              <Paragraph variant="small" className="mt-2 text-center">
+              <div className="flex flex-col gap-y-2">
+                <Button type="submit" variant="primary/large" fullWidth>
+                  <NamedIcon name={"github"} className={"mr-1.5 h-4 w-4"} />
+                  Continue with GitHub
+                </Button>
+                <LinkButton
+                  to="/login/magic"
+                  variant="secondary/large"
+                  fullWidth
+                >
+                  <NamedIcon
+                    name={"envelope"}
+                    className={
+                      "mr-1.5 h-4 w-4 text-dimmed transition group-hover:text-bright"
+                    }
+                  />
+                  Continue with Email
+                </LinkButton>
+              </div>
+              <Paragraph variant="extra-small" className="mt-2 text-center">
                 By connecting your GitHub account you agree to our{" "}
                 <TextLink
                   href="https://trigger.dev/legal/terms"
