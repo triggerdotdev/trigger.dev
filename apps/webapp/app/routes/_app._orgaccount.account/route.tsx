@@ -18,21 +18,72 @@ import { UserProfilePhoto } from "~/components/UserProfilePhoto";
 import { Checkbox } from "~/components/primitives/Checkbox";
 import { updateUser } from "~/models/user.server";
 import { redirectWithSuccessMessage } from "~/models/message.server";
+import { prisma } from "~/db.server";
 
-const schema = z.object({
-  name: z
-    .string({ required_error: "You must enter a name" })
-    .min(2, "Your name must be at least 2 characters long")
-    .max(50),
-  email: z.string().email(),
-  marketingEmails: z.preprocess((value) => value === "on", z.boolean()),
-});
+function createSchema(
+  constraints: {
+    isEmailUnique?: (email: string) => Promise<boolean>;
+  } = {}
+) {
+  return z.object({
+    name: z
+      .string({ required_error: "You must enter a name" })
+      .min(2, "Your name must be at least 2 characters long")
+      .max(50),
+    email: z
+      .string()
+      .email()
+      .superRefine((email, ctx) => {
+        if (constraints.isEmailUnique === undefined) {
+          //client-side validation skips this
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: conform.VALIDATION_UNDEFINED,
+          });
+        } else {
+          // Tell zod this is an async validation by returning the promise
+          return constraints.isEmailUnique(email).then((isUnique) => {
+            if (isUnique) {
+              return;
+            }
+
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              message: "Email is already being used by a different account",
+            });
+          });
+        }
+      }),
+    marketingEmails: z.preprocess((value) => value === "on", z.boolean()),
+  });
+}
 
 export const action: ActionFunction = async ({ request }) => {
   const userId = await requireUserId(request);
 
   const formData = await request.formData();
-  const submission = parse(formData, { schema });
+
+  const formSchema = createSchema({
+    isEmailUnique: async (email) => {
+      const existingUser = await prisma.user.findFirst({
+        where: {
+          email,
+        },
+      });
+
+      if (!existingUser) {
+        return true;
+      }
+
+      if (existingUser.id === userId) {
+        return true;
+      }
+
+      return false;
+    },
+  });
+
+  const submission = await parse(formData, { schema: formSchema, async: true });
 
   if (!submission.value || submission.intent !== "submit") {
     return json(submission);
@@ -64,7 +115,7 @@ export default function Page() {
     id: "account",
     lastSubmission,
     onValidate({ formData }) {
-      return parse(formData, { schema });
+      return parse(formData, { schema: createSchema() });
     },
   });
 
