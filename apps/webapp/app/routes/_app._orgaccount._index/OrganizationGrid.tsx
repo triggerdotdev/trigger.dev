@@ -23,7 +23,7 @@ export function OrganizationGridItem({
     <li key={organization.id}>
       <div
         className={cn(
-          "block rounded-md border border-slate-800 bg-gradient-to-bl from-indigo-900/70 via-indigo-500/10 to-slate-950 to-70% p-2"
+          "rounded-md border border-slate-800 bg-gradient-to-bl from-indigo-900/70 via-indigo-500/10 to-slate-900 to-70% p-2"
         )}
       >
         <Link

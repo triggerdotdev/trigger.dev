@@ -31,6 +31,10 @@ export function resendInvitePath() {
   return `/invite-resend`;
 }
 
+export function logoutPath() {
+  return `/logout`;
+}
+
 // Org
 export function organizationPath(organization: OrgForPath) {
   return `/orgs/${organizationParam(organization)}`;
