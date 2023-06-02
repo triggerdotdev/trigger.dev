@@ -16,7 +16,7 @@ export async function loader({ request }: LoaderArgs) {
     return redirectWithErrorMessage(
       "/",
       request,
-      "Invalid invite url. Please ask the person who invited you to send another invite."
+      "Invalid invite URL. Please ask the person who invited you to send another invite."
     );
   }
 
