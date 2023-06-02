@@ -1,7 +1,10 @@
 import { conform, useForm } from "@conform-to/react";
 import { parse } from "@conform-to/zod";
+import { HandRaisedIcon } from "@heroicons/react/24/solid";
 import { ActionFunction, json } from "@remix-run/node";
 import { Form, useActionData } from "@remix-run/react";
+import { motion } from "framer-motion";
+import { forwardRef, useState } from "react";
 import { z } from "zod";
 import {
   AppContainer,
@@ -17,16 +20,12 @@ import { Hint } from "~/components/primitives/Hint";
 import { Input } from "~/components/primitives/Input";
 import { InputGroup } from "~/components/primitives/InputGroup";
 import { Label } from "~/components/primitives/Label";
-import { useUser } from "~/hooks/useUser";
-import { requireUserId } from "~/services/session.server";
-import React, { forwardRef, useState } from "react";
-import { NamedIcon } from "~/components/primitives/NamedIcon";
-import { HandRaisedIcon } from "@heroicons/react/24/solid";
-import { motion } from "framer-motion";
-import { updateUser } from "~/models/user.server";
-import { redirectWithSuccessMessage } from "~/models/message.server";
-import { organizationsPath } from "~/utils/pathBuilder";
 import { prisma } from "~/db.server";
+import { useUser } from "~/hooks/useUser";
+import { redirectWithSuccessMessage } from "~/models/message.server";
+import { updateUser } from "~/models/user.server";
+import { requireUserId } from "~/services/session.server";
+import { organizationsPath } from "~/utils/pathBuilder";
 
 function createSchema(
   constraints: {
