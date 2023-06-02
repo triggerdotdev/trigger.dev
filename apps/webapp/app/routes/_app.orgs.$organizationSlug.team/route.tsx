@@ -123,10 +123,10 @@ export default function Page() {
     <PageContainer>
       <OrgAdminHeader />
       <PageBody>
-        <Header2 className="mb-4">Members</Header2>
-        <ul className="flex w-full max-w-md flex-col gap-4 divide-y divide-slate-800 border-b border-slate-800">
+        <Header2>Members</Header2>
+        <ul className="flex w-full max-w-md flex-col divide-y divide-slate-800 border-b border-slate-800">
           {members.map((member) => (
-            <li key={member.user.id} className="flex items-center gap-4 pb-4">
+            <li key={member.user.id} className="flex items-center gap-x-4 py-4">
               <UserAvatar
                 avatarUrl={member.user.avatarUrl}
                 name={member.user.name}
