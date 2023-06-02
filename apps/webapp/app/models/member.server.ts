@@ -28,7 +28,7 @@ export async function getTeamMembersAndInvites({
         select: {
           id: true,
           email: true,
-          createdAt: true,
+          updatedAt: true,
           inviter: {
             select: {
               id: true,
@@ -213,5 +213,20 @@ export async function declineInvite({
     });
 
     return { remainingInvites, organization: declinedInvite.organization };
+  });
+}
+
+export async function resendInvite({ inviteId }: { inviteId: string }) {
+  return await prisma.orgMemberInvite.update({
+    where: {
+      id: inviteId,
+    },
+    data: {
+      updatedAt: new Date(),
+    },
+    include: {
+      inviter: true,
+      organization: true,
+    },
   });
 }

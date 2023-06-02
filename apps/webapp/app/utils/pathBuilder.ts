@@ -20,7 +20,11 @@ export function invitesPath() {
 }
 
 export function acceptInvitePath(token: string) {
-  return `/accept-invite?token=${token}`;
+  return `/invite-accept?token=${token}`;
+}
+
+export function resendInvitePath() {
+  return `/invite-resend`;
 }
 
 // Org

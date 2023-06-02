@@ -43,8 +43,10 @@ import { formatDateTime, titleCase } from "~/utils";
 import {
   inviteTeamMemberPath,
   organizationTeamPath,
+  resendInvitePath,
 } from "~/utils/pathBuilder";
 import { OrgAdminHeader } from "../_app.orgs.$organizationSlug._index/OrgAdminHeader";
+import { resendSchema } from "../invite-resend";
 
 export const loader = async ({ request, params }: LoaderArgs) => {
   const userId = await requireUserId(request);
@@ -108,6 +110,7 @@ export const action: ActionFunction = async ({ request, params }) => {
 };
 
 type Member = UseDataFunctionReturn<typeof loader>["members"][number];
+type Invite = UseDataFunctionReturn<typeof loader>["invites"][number];
 
 export default function Page() {
   const user = useUser();
@@ -151,14 +154,17 @@ export default function Page() {
           <>
             <Header2 className="mb-4 mt-8">Invites pending</Header2>
             <ul className="flex w-full max-w-md flex-col gap-4 divide-y divide-slate-850">
-              {invites.map((invitee) => (
-                <li key={invitee.id} className="flex items-center gap-4">
+              {invites.map((invite) => (
+                <li key={invite.id} className="flex items-center gap-4">
                   <EnvelopeIcon className="h-10 w-10 text-slate-800" />
                   <div className="flex flex-col gap-0.5">
-                    <Header3>{invitee.email}</Header3>
+                    <Header3>{invite.email}</Header3>
                     <Paragraph variant="small">
-                      Invite sent {formatDateTime(invitee.createdAt, "medium")}
+                      Invite sent {formatDateTime(invite.updatedAt, "medium")}
                     </Paragraph>
+                  </div>
+                  <div className="flex grow items-center justify-end gap-4">
+                    <ResendButton invite={invite} />
                   </div>
                 </li>
               ))}
@@ -281,5 +287,16 @@ function LeaveTeamModal({
         </AlertFooter>
       </AlertContent>
     </Alert>
+  );
+}
+
+function ResendButton({ invite }: { invite: Invite }) {
+  return (
+    <Form method="post" action={resendInvitePath()}>
+      <input type="hidden" value={invite.id} name="inviteId" />
+      <Button type="submit" variant="secondary/small">
+        Resend invite
+      </Button>
+    </Form>
   );
 }
