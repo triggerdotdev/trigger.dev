@@ -23,11 +23,13 @@ export function UserAvatar({
   className?: string;
 }) {
   return avatarUrl ? (
-    <img
-      className={cn("aspect-square rounded-full", className)}
-      src={avatarUrl}
-      alt={name ?? "User"}
-    />
+    <div>
+      <img
+        className={cn("aspect-square rounded-full p-[7%]", className)}
+        src={avatarUrl}
+        alt={name ?? "User"}
+      />
+    </div>
   ) : (
     <UserCircleIcon className={cn("aspect-square text-slate-400", className)} />
   );
