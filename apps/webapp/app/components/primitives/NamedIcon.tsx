@@ -22,12 +22,15 @@ import {
   FlagIcon,
   FolderIcon,
   GlobeAltIcon,
+  HandRaisedIcon,
+  HeartIcon,
   KeyIcon,
   LightBulbIcon,
   MagnifyingGlassIcon,
   PlusIcon,
   PlusSmallIcon,
   SquaresPlusIcon,
+  StarIcon,
   UserCircleIcon,
   UserGroupIcon,
   UserIcon,
@@ -38,7 +41,7 @@ import {
 import { ScheduleIcon } from "~/assets/icons/ScheduleIcon";
 import { WebhookIcon } from "~/assets/icons/WebhookIcon";
 import { cn } from "~/utils/cn";
-import { UserProfilePhoto } from "../UserProfilePhoto";
+import { LogoIcon } from "../LogoIcon";
 import { Spinner } from "./Spinner";
 
 const icons = {
@@ -96,6 +99,12 @@ const icons = {
   globe: (className: string) => (
     <GlobeAltIcon className={cn("text-fuchsia-600", className)} />
   ),
+  "hand-raised": (className: string) => (
+    <HandRaisedIcon className={cn("text-amber-400", className)} />
+  ),
+  heart: (className: string) => (
+    <HeartIcon className={cn("text-rose-500", className)} />
+  ),
   info: (className: string) => (
     <InformationCircleIcon className={cn("text-blue-500", className)} />
   ),
@@ -135,9 +144,13 @@ const icons = {
   "spinner-white": (className: string) => (
     <Spinner className={className} color="white" />
   ),
+  star: (className: string) => (
+    <StarIcon className={cn("text-yellow-500", className)} />
+  ),
   team: (className: string) => (
     <UserGroupIcon className={cn("text-blue-500", className)} />
   ),
+  "logo-icon": (className: string) => <LogoIcon className={cn(className)} />,
   user: (className: string) => (
     <UserIcon className={cn("text-blue-600", className)} />
   ),
