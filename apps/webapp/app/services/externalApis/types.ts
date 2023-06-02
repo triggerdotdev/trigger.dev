@@ -152,7 +152,6 @@ type Scope = {
 
 export type ScopeAnnotation = {
   label: string;
-  color: string;
 };
 
 const OAuth2AccessTokenSchema = z.object({

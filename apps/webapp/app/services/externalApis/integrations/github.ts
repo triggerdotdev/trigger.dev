@@ -2,27 +2,22 @@ import type { Integration, ScopeAnnotation } from "../types";
 
 const repoAnnotation: ScopeAnnotation = {
   label: "Repo",
-  color: "#FFF067",
 };
 
 const webhookAnnotation: ScopeAnnotation = {
   label: "Webhooks",
-  color: "#00FFA3",
 };
 
 const orgAnnotation: ScopeAnnotation = {
   label: "Orgs",
-  color: "#FF00FF",
 };
 
 const keysAnnotation: ScopeAnnotation = {
   label: "Keys",
-  color: "#FF00FF",
 };
 
 const userAnnotation: ScopeAnnotation = {
   label: "User",
-  color: "#FF00FF",
 };
 
 export const github: Integration = {

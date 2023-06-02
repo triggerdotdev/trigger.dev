@@ -2,12 +2,10 @@ import type { Integration, ScopeAnnotation } from "../types";
 
 const userAnnotation: ScopeAnnotation = {
   label: "User",
-  color: "#00FFA3",
 };
 
 const botAnnotation: ScopeAnnotation = {
   label: "Bot",
-  color: "#FFF067",
 };
 
 export const slack: Integration = {
