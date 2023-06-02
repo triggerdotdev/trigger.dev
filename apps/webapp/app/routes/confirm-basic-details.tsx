@@ -111,7 +111,7 @@ export const action: ActionFunction = async ({ request }) => {
     return redirectWithSuccessMessage(
       organizationsPath(),
       request,
-      "Your details has been updated."
+      "Your details have been updated."
     );
   } catch (error: any) {
     return json({ errors: { body: error.message } }, { status: 400 });
