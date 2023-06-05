@@ -35,6 +35,13 @@ export function createRepoEventSource(
     schema: z.object({ repo: z.string() }),
     integration,
     key: (params) => params.repo,
+    elements: (params) => [
+      {
+        label: "Repo",
+        text: params.repo,
+        url: `https://github.com/${params.repo}`,
+      },
+    ],
     filter: (params) => ({
       repository: {
         full_name: [params.repo],
@@ -190,6 +197,13 @@ export function createOrgEventSource(
     integration,
     schema: z.object({ org: z.string() }),
     key: (params) => params.org,
+    elements: (params) => [
+      {
+        label: "Org",
+        text: params.org,
+        url: `https://github.com/${params.org}`,
+      },
+    ],
     filter: (params) => ({
       organization: {
         login: [params.org],

@@ -32,7 +32,7 @@ model User {
   featureCloud           Boolean @default(false)
   isOnHostedRepoWaitlist Boolean @default(false)
 
-  marketingEmails Boolean @default(true)
+  marketingEmails       Boolean @default(true)
   confirmedBasicDetails Boolean @default(false)
 
   orgMemberships OrgMember[]
@@ -195,10 +195,10 @@ enum OrgMemberRole {
 }
 
 model OrgMemberInvite {
-  id String @id @default(cuid())
-  token String @unique @default(cuid())
+  id    String        @id @default(cuid())
+  token String        @unique @default(cuid())
   email String
-  role OrgMemberRole @default(MEMBER)
+  role  OrgMemberRole @default(MEMBER)
 
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   organizationId String
@@ -325,6 +325,8 @@ model JobVersion {
   id                 String @id @default(cuid())
   version            String
   eventSpecification Json
+
+  elements Json?
 
   job   Job    @relation(fields: [jobId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   jobId String

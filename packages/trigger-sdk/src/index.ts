@@ -2,7 +2,6 @@ export * from "./job";
 export * from "./triggerClient";
 export * from "./integrations";
 export * from "./triggers/customTrigger";
-export * from "./triggers/comboTrigger";
 export * from "./triggers/externalSource";
 export * from "./triggers/dynamic";
 export * from "./triggers/scheduled";

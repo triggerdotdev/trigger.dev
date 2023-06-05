@@ -39,13 +39,11 @@ export class DynamicTrigger<
     client.attachDynamicTrigger(this);
   }
 
-  toJSON(): Array<TriggerMetadata> {
-    return [
-      {
-        type: "dynamic",
-        id: this.#options.id,
-      },
-    ];
+  toJSON(): TriggerMetadata {
+    return {
+      type: "dynamic",
+      id: this.#options.id,
+    };
   }
 
   get id() {
@@ -97,8 +95,7 @@ export class DynamicTrigger<
 
   attachToJob(
     triggerClient: TriggerClient,
-    job: Job<Trigger<TEventSpec>, any>,
-    index?: number
+    job: Job<Trigger<TEventSpec>, any>
   ): void {
     triggerClient.attachJobToDynamicTrigger(job, this);
   }

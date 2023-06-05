@@ -1,5 +1,4 @@
 import {
-  comboTrigger,
   cronTrigger,
   customEvent,
   customTrigger,

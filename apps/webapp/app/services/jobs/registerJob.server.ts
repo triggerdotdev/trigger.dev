@@ -280,9 +280,12 @@ export class RegisterJobService {
       },
     });
 
-    for (const trigger of metadata.triggers) {
-      await this.#upsertEventDispatcher(trigger, job, jobVersion, environment);
-    }
+    await this.#upsertEventDispatcher(
+      metadata.trigger,
+      job,
+      jobVersion,
+      environment
+    );
 
     return jobVersion;
   }
@@ -326,6 +329,17 @@ export class RegisterJobService {
             },
           },
         });
+
+        if (trigger.elements) {
+          await this.#prismaClient.jobVersion.update({
+            where: {
+              id: jobVersion.id,
+            },
+            data: {
+              elements: trigger.elements,
+            },
+          });
+        }
 
         break;
       }

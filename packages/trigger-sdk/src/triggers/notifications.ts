@@ -57,22 +57,20 @@ export class MissingConnectionNotification
     job: Job<Trigger<MissingConnectionNotificationSpecification>, any>
   ): void {}
 
-  toJSON(): Array<TriggerMetadata> {
-    return [
-      {
-        type: "static",
-        title: this.event.title,
-        rule: {
-          event: this.event.name,
-          source: "trigger.dev",
-          payload: {
-            client: {
-              id: this.options.integrations.map((i) => i.id),
-            },
+  toJSON(): TriggerMetadata {
+    return {
+      type: "static",
+      title: this.event.title,
+      rule: {
+        event: this.event.name,
+        source: "trigger.dev",
+        payload: {
+          client: {
+            id: this.options.integrations.map((i) => i.id),
           },
         },
       },
-    ];
+    };
   }
 
   get requiresPreparaton(): boolean {
@@ -109,22 +107,20 @@ export class MissingConnectionResolvedNotification
     job: Job<Trigger<MissingConnectionResolvedNotificationSpecification>, any>
   ): void {}
 
-  toJSON(): Array<TriggerMetadata> {
-    return [
-      {
-        type: "static",
-        title: this.event.title,
-        rule: {
-          event: this.event.name,
-          source: "trigger.dev",
-          payload: {
-            client: {
-              id: this.options.integrations.map((i) => i.id),
-            },
+  toJSON(): TriggerMetadata {
+    return {
+      type: "static",
+      title: this.event.title,
+      rule: {
+        event: this.event.name,
+        source: "trigger.dev",
+        payload: {
+          client: {
+            id: this.options.integrations.map((i) => i.id),
           },
         },
       },
-    ];
+    };
   }
 
   get requiresPreparaton(): boolean {

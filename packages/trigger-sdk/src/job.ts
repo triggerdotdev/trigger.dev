@@ -113,7 +113,7 @@ export class Job<
       name: this.name,
       version: this.version,
       event: this.trigger.event,
-      triggers: this.trigger.toJSON(),
+      trigger: this.trigger.toJSON(),
       integrations: this.integrations,
       queue: this.options.queue,
       startPosition: this.options.startPosition ?? "latest",

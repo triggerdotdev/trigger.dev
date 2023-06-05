@@ -25,21 +25,19 @@ export class CustomTrigger<TEventSpecification extends EventSpecification<any>>
     this.#options = options;
   }
 
-  toJSON(): Array<TriggerMetadata> {
-    return [
-      {
-        type: "static",
-        title: this.#options.name ?? this.#options.event.title,
-        rule: {
-          event: this.#options.name ?? this.#options.event.name,
-          source: this.#options.source ?? "trigger.dev",
-          payload: deepMergeFilters(
-            this.#options.filter ?? {},
-            this.#options.event.filter ?? {}
-          ),
-        },
+  toJSON(): TriggerMetadata {
+    return {
+      type: "static",
+      title: this.#options.name ?? this.#options.event.title,
+      rule: {
+        event: this.#options.name ?? this.#options.event.name,
+        source: this.#options.source ?? "trigger.dev",
+        payload: deepMergeFilters(
+          this.#options.filter ?? {},
+          this.#options.event.filter ?? {}
+        ),
       },
-    ];
+    };
   }
 
   get requiresPreparaton(): boolean {

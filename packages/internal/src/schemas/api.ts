@@ -136,7 +136,7 @@ export const JobMetadataSchema = z.object({
   name: z.string(),
   version: z.string(),
   event: EventSpecificationSchema,
-  triggers: z.array(TriggerMetadataSchema),
+  trigger: TriggerMetadataSchema,
   integrations: z.record(IntegrationConfigSchema),
   internal: z.boolean().default(false),
   queue: z.union([QueueOptionsSchema, z.string()]).optional(),

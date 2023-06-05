@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import {
+  DisplayElement,
   EventFilter,
   HandleTriggerSource,
   Logger,
@@ -108,6 +109,7 @@ type ExternalSourceOptions<
   filter: FilterFunction<TParams>;
   handler: HandlerFunction<TChannel, TParams>;
   key: KeyFunction<TParams>;
+  elements?: (params: TParams) => DisplayElement[];
 };
 
 export class ExternalSource<
@@ -140,6 +142,10 @@ export class ExternalSource<
 
   filter(params: TParams): EventFilter {
     return this.options.filter(params);
+  }
+
+  elements(params: TParams): DisplayElement[] {
+    return this.options.elements?.(params) ?? [];
   }
 
   async register(
@@ -232,27 +238,25 @@ export class ExternalSourceTrigger<
     return true;
   }
 
-  toJSON(): Array<TriggerMetadata> {
-    return [
-      {
-        type: "static",
-        title: "External Source",
-        rule: {
-          event: this.event.name,
-          payload: deepMergeFilters(
-            this.options.source.filter(this.options.params),
-            this.event.filter ?? {}
-          ),
-          source: this.event.source,
-        },
+  toJSON(): TriggerMetadata {
+    return {
+      type: "static",
+      title: "External Source",
+      rule: {
+        event: this.event.name,
+        payload: deepMergeFilters(
+          this.options.source.filter(this.options.params),
+          this.event.filter ?? {}
+        ),
+        source: this.event.source,
       },
-    ];
+      elements: this.options.source.elements(this.options.params),
+    };
   }
 
   attachToJob(
     triggerClient: TriggerClient,
-    job: Job<Trigger<TEventSpecification>, any>,
-    index?: number
+    job: Job<Trigger<TEventSpecification>, any>
   ) {
     triggerClient.attachSource({
       key: slugifyId(this.options.source.key(this.options.params)),

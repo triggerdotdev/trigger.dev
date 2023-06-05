@@ -38,18 +38,16 @@ export class IntervalTrigger implements Trigger<ScheduledEventSpecification> {
     job: Job<Trigger<ScheduledEventSpecification>, any>
   ): void {}
 
-  toJSON(): Array<TriggerMetadata> {
-    return [
-      {
-        type: "scheduled",
-        schedule: {
-          type: "interval",
-          options: {
-            seconds: this.options.seconds,
-          },
+  toJSON(): TriggerMetadata {
+    return {
+      type: "scheduled",
+      schedule: {
+        type: "interval",
+        options: {
+          seconds: this.options.seconds,
         },
       },
-    ];
+    };
   }
 
   get requiresPreparaton(): boolean {
@@ -85,18 +83,16 @@ export class CronTrigger implements Trigger<ScheduledEventSpecification> {
     job: Job<Trigger<ScheduledEventSpecification>, any>
   ): void {}
 
-  toJSON(): Array<TriggerMetadata> {
-    return [
-      {
-        type: "scheduled",
-        schedule: {
-          type: "cron",
-          options: {
-            cron: this.options.cron,
-          },
+  toJSON(): TriggerMetadata {
+    return {
+      type: "scheduled",
+      schedule: {
+        type: "cron",
+        options: {
+          cron: this.options.cron,
         },
       },
-    ];
+    };
   }
 
   get requiresPreparaton(): boolean {
@@ -145,13 +141,11 @@ export class DynamicSchedule implements Trigger<ScheduledEventSpecification> {
     triggerClient.attachDynamicSchedule(this.options.id, job);
   }
 
-  toJSON(): Array<TriggerMetadata> {
-    return [
-      {
-        type: "dynamic",
-        id: this.options.id,
-      },
-    ];
+  toJSON(): TriggerMetadata {
+    return {
+      type: "dynamic",
+      id: this.options.id,
+    };
   }
 
   get requiresPreparaton(): boolean {

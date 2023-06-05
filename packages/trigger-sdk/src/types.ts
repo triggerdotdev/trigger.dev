@@ -33,13 +33,12 @@ export type TriggerEventType<TTrigger extends Trigger<any>> =
 
 export interface Trigger<TEventSpec extends EventSpecification<any>> {
   event: TEventSpec;
-  toJSON(): Array<TriggerMetadata>;
+  toJSON(): TriggerMetadata;
   // Attach this trigger to the job and the trigger client
   // Gives different triggers the ability to do things like register internal jobs
   attachToJob(
     triggerClient: TriggerClient,
-    job: Job<Trigger<TEventSpec>, any>,
-    index?: number
+    job: Job<Trigger<TEventSpec>, any>
   ): void;
   requiresPreparaton: boolean;
 }
