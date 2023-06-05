@@ -145,6 +145,10 @@ new Job(client, {
     github: githubUser,
   },
   run: async (payload, io, ctx) => {
+    await io.logger.info("This is a log info message", {
+      payload,
+    });
+
     return await io.github.getRepo("get.repo", payload);
   },
 });
@@ -226,7 +230,7 @@ new Job(client, {
     await io.logger.info("This is a log info message", {
       payload,
     });
-    await io.sendEvent("send-event", {
+    await io.sendCustomEvent("send-event", {
       name: "custom.event",
       payload,
       context: ctx,
@@ -247,7 +251,7 @@ new Job(client, {
     await io.logger.info("This is a log info message", {
       payload,
     });
-    await io.sendEvent("send-event", {
+    await io.sendCustomEvent("send-event", {
       name: "custom.event",
       payload,
       context: ctx,
@@ -288,7 +292,7 @@ new Job(client, {
     await io.logger.info("This is a log info message", {
       payload,
     });
-    await io.sendEvent("send-event", {
+    await io.sendCustomEvent("send-event", {
       name: "custom.event",
       payload,
       context: ctx,

@@ -42,49 +42,49 @@ export type IOOptions = {
 };
 
 export class IO {
-  #id: string;
-  #apiClient: ApiClient;
-  #client: TriggerClient;
-  #logger: Logger;
-  #cachedTasks: Map<string, CachedTask>;
-  #taskStorage: AsyncLocalStorage<{ taskId: string }>;
-  #context: TriggerContext;
+  private _id: string;
+  private _apiClient: ApiClient;
+  private _triggerClient: TriggerClient;
+  private _logger: Logger;
+  private _cachedTasks: Map<string, CachedTask>;
+  private _taskStorage: AsyncLocalStorage<{ taskId: string }>;
+  private _context: TriggerContext;
 
   constructor(options: IOOptions) {
-    this.#id = options.id;
-    this.#apiClient = options.apiClient;
-    this.#client = options.client;
-    this.#logger =
+    this._id = options.id;
+    this._apiClient = options.apiClient;
+    this._triggerClient = options.client;
+    this._logger =
       options.logger ?? new Logger("trigger.dev", options.logLevel);
-    this.#cachedTasks = new Map();
+    this._cachedTasks = new Map();
 
     if (options.cachedTasks) {
       options.cachedTasks.forEach((task) => {
-        this.#cachedTasks.set(task.id, task);
+        this._cachedTasks.set(task.id, task);
       });
     }
 
-    this.#taskStorage = new AsyncLocalStorage();
-    this.#context = options.context;
+    this._taskStorage = new AsyncLocalStorage();
+    this._context = options.context;
   }
 
   get logger() {
     return new IOLogger(async (level, message, data) => {
       switch (level) {
         case "DEBUG": {
-          this.#logger.debug(message, data);
+          this._logger.debug(message, data);
           break;
         }
         case "INFO": {
-          this.#logger.info(message, data);
+          this._logger.info(message, data);
           break;
         }
         case "WARN": {
-          this.#logger.warn(message, data);
+          this._logger.warn(message, data);
           break;
         }
         case "ERROR": {
-          this.#logger.error(message, data);
+          this._logger.error(message, data);
           break;
         }
       }
@@ -118,7 +118,7 @@ export class IO {
     );
   }
 
-  async sendEvent(
+  async sendCustomEvent(
     key: string | any[],
     event: SendEvent,
     options?: SendEventOptions
@@ -126,11 +126,11 @@ export class IO {
     return await this.runTask(
       key,
       {
-        name: "sendEvent",
+        name: "sendCustomEvent",
         params: { event, options },
       },
       async (task) => {
-        return await this.#client.sendEvent(event, options);
+        return await this._triggerClient.sendEvent(event, options);
       }
     );
   }
@@ -155,8 +155,8 @@ export class IO {
         },
       },
       async (task) => {
-        return await this.#apiClient.updateSource(
-          this.#client.name,
+        return await this._apiClient.updateSource(
+          this._triggerClient.name,
           options.key,
           options
         );
@@ -308,7 +308,7 @@ export class IO {
           params,
           registration,
           io,
-          this.#context
+          this._context
         );
 
         if (!updates) {
@@ -333,7 +333,7 @@ export class IO {
     }
 
     return this.runTask(key, { name: "get-auth" }, async (task) => {
-      return await this.#client.getAuth(clientId);
+      return await this._triggerClient.getAuth(clientId);
     });
   }
 
@@ -343,10 +343,10 @@ export class IO {
     options: RunTaskOptions,
     callback: (task: IOTask, io: IO) => Promise<T>
   ): Promise<T> {
-    const parentId = this.#taskStorage.getStore()?.taskId;
+    const parentId = this._taskStorage.getStore()?.taskId;
 
     if (parentId) {
-      this.#logger.debug("Using parent task", {
+      this._logger.debug("Using parent task", {
         parentId,
         key,
         options,
@@ -354,13 +354,13 @@ export class IO {
     }
 
     const idempotencyKey = await generateIdempotencyKey(
-      [this.#id, parentId ?? "", key].flat()
+      [this._id, parentId ?? "", key].flat()
     );
 
-    const cachedTask = this.#cachedTasks.get(idempotencyKey);
+    const cachedTask = this._cachedTasks.get(idempotencyKey);
 
     if (cachedTask) {
-      this.#logger.debug("Using cached task", {
+      this._logger.debug("Using cached task", {
         idempotencyKey,
         cachedTask,
       });
@@ -368,7 +368,7 @@ export class IO {
       return cachedTask.output as T;
     }
 
-    const task = await this.#apiClient.runTask(this.#id, {
+    const task = await this._apiClient.runTask(this._id, {
       idempotencyKey,
       displayKey: typeof key === "string" ? key : undefined,
       noop: false,
@@ -377,7 +377,7 @@ export class IO {
     });
 
     if (task.status === "COMPLETED") {
-      this.#logger.debug("Using task output", {
+      this._logger.debug("Using task output", {
         idempotencyKey,
         task,
       });
@@ -388,7 +388,7 @@ export class IO {
     }
 
     if (task.status === "ERRORED") {
-      this.#logger.debug("Task errored", {
+      this._logger.debug("Task errored", {
         idempotencyKey,
         task,
       });
@@ -397,7 +397,7 @@ export class IO {
     }
 
     if (task.status === "WAITING") {
-      this.#logger.debug("Task waiting", {
+      this._logger.debug("Task waiting", {
         idempotencyKey,
         task,
       });
@@ -409,12 +409,12 @@ export class IO {
       try {
         const result = await callback(task, this);
 
-        this.#logger.debug("Completing using output", {
+        this._logger.debug("Completing using output", {
           idempotencyKey,
           task,
         });
 
-        await this.#apiClient.completeTask(this.#id, task.id, {
+        await this._apiClient.completeTask(this._id, task.id, {
           output: result ?? undefined,
         });
 
@@ -425,11 +425,11 @@ export class IO {
       }
     };
 
-    return this.#taskStorage.run({ taskId: task.id }, executeTask);
+    return this._taskStorage.run({ taskId: task.id }, executeTask);
   }
 
   #addToCachedTasks(task: ServerTask) {
-    this.#cachedTasks.set(task.idempotencyKey, task);
+    this._cachedTasks.set(task.idempotencyKey, task);
   }
 }
 
