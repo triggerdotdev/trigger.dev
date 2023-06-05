@@ -197,7 +197,16 @@ export class RunTaskService {
           id: ulid(),
           idempotencyKey,
           displayKey: taskBody.displayKey,
-          connectionKey: taskBody.connectionKey,
+          runConnection: taskBody.connectionKey
+            ? {
+                connect: {
+                  runId_key: {
+                    runId,
+                    key: taskBody.connectionKey,
+                  },
+                },
+              }
+            : undefined,
           icon: taskBody.icon,
           run: {
             connect: {

@@ -201,7 +201,7 @@ export default function Page() {
                 const isSelected = task.id === selectedId;
                 const isLast = index === run.tasks.length - 1;
                 const connection = run.runConnections.find(
-                  (c) => c.key === task.connectionKey
+                  (c) => c.id === task.runConnectionId
                 );
                 return (
                   <Fragment key={task.id}>

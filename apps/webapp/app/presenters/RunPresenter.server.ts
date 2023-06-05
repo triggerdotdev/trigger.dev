@@ -47,7 +47,7 @@ export class RunPresenter {
           select: {
             id: true,
             displayKey: true,
-            connectionKey: true,
+            runConnectionId: true,
             name: true,
             icon: true,
             status: true,
@@ -72,6 +72,7 @@ export class RunPresenter {
         },
         runConnections: {
           select: {
+            id: true,
             key: true,
             apiConnection: {
               select: {

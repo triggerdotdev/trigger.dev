@@ -432,6 +432,7 @@ model RunConnection {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+  Task      Task[]
 
   @@unique([runId, key])
 }
@@ -588,7 +589,6 @@ model Task {
   displayKey     String?
   name           String
   icon           String?
-  connectionKey  String?
 
   status     TaskStatus @default(PENDING)
   delayUntil DateTime?
@@ -612,6 +612,9 @@ model Task {
 
   parent   Task?   @relation("TaskParent", fields: [parentId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   parentId String?
+
+  runConnection   RunConnection? @relation(fields: [runConnectionId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  runConnectionId String?
 
   children Task[] @relation("TaskParent")
 
