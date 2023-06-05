@@ -1,12 +1,4 @@
-import type { Integration, ScopeAnnotation } from "../types";
-
-const userAnnotation: ScopeAnnotation = {
-  label: "User",
-};
-
-const botAnnotation: ScopeAnnotation = {
-  label: "Bot",
-};
+import type { Integration } from "../types";
 
 export const slack: Integration = {
   identifier: "slack",
