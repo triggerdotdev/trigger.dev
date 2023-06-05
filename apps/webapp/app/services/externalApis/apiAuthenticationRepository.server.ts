@@ -22,15 +22,17 @@ import type { IntegrationCatalog } from "./integrationCatalog.server";
 import { integrationCatalog } from "./integrationCatalog.server";
 import {
   createOAuth2Url,
-  getClientConfigFromEnv,
+  getClientConfig,
   grantOAuth2Token,
   refreshOAuth2Token,
 } from "./oauth2.server";
-import type {
+import {
   AccessToken,
   ApiAuthenticationMethodOAuth2,
   ConnectionMetadata,
   GrantTokenParams,
+  OAuthClient,
+  OAuthClientSchema,
   RefreshTokenParams,
 } from "./types";
 import { AccessTokenSchema } from "./types";
@@ -98,7 +100,7 @@ export class APIAuthenticationRepository {
     redirectTo,
   }: {
     id: string;
-    customClient?: { id: string; secret: string };
+    customClient?: OAuthClient;
     organizationId: string;
     integrationIdentifier: string;
     integrationAuthMethod: string;
@@ -182,6 +184,7 @@ export class APIAuthenticationRepository {
       return await this.createConnectionAttempt({
         transactionClient: tx,
         client,
+        customOAuthClient: customClient,
         redirectTo,
         url,
       });
@@ -191,11 +194,13 @@ export class APIAuthenticationRepository {
   async createConnectionAttempt({
     transactionClient,
     client,
+    customOAuthClient,
     redirectTo,
     url,
   }: {
     transactionClient: PrismaTransactionClient;
     client: ApiConnectionClient;
+    customOAuthClient?: OAuthClient;
     redirectTo: string;
     url: URL;
   }) {
@@ -218,18 +223,25 @@ export class APIAuthenticationRepository {
             },
           });
 
-        // TODO: add support for the custom client config
-        //create a url for the oauth2 flow
-        const getClientConfig = getClientConfigFromEnv(
-          authMethod.client.id.envName,
-          authMethod.client.secret.envName
-        );
-        const callbackUrl = this.#buildCallbackUrl(authMethod, url);
+        //get the client config, custom client or from env vars
+        const clientConfig = getClientConfig({
+          env: {
+            idName: authMethod.client.id.envName,
+            secretName: authMethod.client.secret.envName,
+          },
+          customOAuthClient,
+        });
+        const callbackUrl = this.#buildCallbackUrl({
+          authenticationMethod: authMethod,
+          url,
+          hasCustomClient: !!customOAuthClient,
+          clientId: client.id,
+        });
 
         const createAuthorizationParams = {
           authorizationUrl: authMethod.config.authorization.url,
-          clientId: getClientConfig.id,
-          clientSecret: getClientConfig.secret,
+          clientId: clientConfig.id,
+          clientSecret: clientConfig.secret,
           key: connectionAttempt.id,
           callbackUrl,
           scopeParamName:
@@ -261,10 +273,12 @@ export class APIAuthenticationRepository {
     attempt,
     code,
     url,
+    customOAuthClient,
   }: {
     attempt: ApiConnectionAttempt & { client: ApiConnectionClient };
     code: string;
     url: URL;
+    customOAuthClient?: OAuthClient;
   }) {
     const { integration, authMethod } = this.#getIntegrationAndAuthMethod(
       attempt.client
@@ -272,16 +286,24 @@ export class APIAuthenticationRepository {
 
     switch (authMethod.type) {
       case "oauth2": {
-        const getClientConfig = getClientConfigFromEnv(
-          authMethod.client.id.envName,
-          authMethod.client.secret.envName
-        );
-        const callbackUrl = this.#buildCallbackUrl(authMethod, url);
+        const clientConfig = getClientConfig({
+          env: {
+            idName: authMethod.client.id.envName,
+            secretName: authMethod.client.secret.envName,
+          },
+          customOAuthClient,
+        });
+        const callbackUrl = this.#buildCallbackUrl({
+          authenticationMethod: authMethod,
+          url,
+          hasCustomClient: !!customOAuthClient,
+          clientId: attempt.client.id,
+        });
 
         const params: GrantTokenParams = {
           tokenUrl: authMethod.config.token.url,
-          clientId: getClientConfig.id,
-          clientSecret: getClientConfig.secret,
+          clientId: clientConfig.id,
+          clientSecret: clientConfig.secret,
           code,
           callbackUrl,
           requestedScopes: attempt.client.scopes,
@@ -391,11 +413,6 @@ export class APIAuthenticationRepository {
 
     switch (authMethod.type) {
       case "oauth2": {
-        const getClientConfig = getClientConfigFromEnv(
-          authMethod.client.id.envName,
-          authMethod.client.secret.envName
-        );
-
         //this key is used to store in the relevant SecretStore
         const hashedAccessToken = crypto
           .createHash("sha256")
@@ -482,7 +499,11 @@ export class APIAuthenticationRepository {
       },
       include: {
         dataReference: true,
-        client: true,
+        client: {
+          include: {
+            customClientReference: true,
+          },
+        },
       },
     });
 
@@ -490,14 +511,26 @@ export class APIAuthenticationRepository {
       throw new Error(`Connection ${connectionId} not found`);
     }
 
+    let customOAuthClient: OAuthClient | undefined;
+    if (connection.client.customClientReference) {
+      const secretStore = getSecretStore(env.SECRET_STORE);
+      customOAuthClient = await secretStore.getSecret(
+        OAuthClientSchema,
+        connection.client.customClientReference.key
+      );
+    }
+
     const { authMethod } = this.#getIntegrationAndAuthMethod(connection.client);
 
     switch (authMethod.type) {
       case "oauth2": {
-        const getClientConfig = getClientConfigFromEnv(
-          authMethod.client.id.envName,
-          authMethod.client.secret.envName
-        );
+        const clientConfig = getClientConfig({
+          env: {
+            idName: authMethod.client.id.envName,
+            secretName: authMethod.client.secret.envName,
+          },
+          customOAuthClient,
+        });
 
         const secretStore = getSecretStore(connection.dataReference.provider);
         const accessToken = await secretStore.getSecret(
@@ -525,8 +558,8 @@ export class APIAuthenticationRepository {
 
         const params: RefreshTokenParams = {
           refreshUrl: authMethod.config.refresh.url,
-          clientId: getClientConfig.id,
-          clientSecret: getClientConfig.secret,
+          clientId: clientConfig.id,
+          clientSecret: clientConfig.secret,
           requestedScopes: connection.client.scopes,
           scopeSeparator: authMethod.config.authorization.scopeSeparator,
           token: {
@@ -644,10 +677,26 @@ export class APIAuthenticationRepository {
     };
   }
 
-  #buildCallbackUrl(
-    authenticationMethod: ApiAuthenticationMethodOAuth2,
-    url: URL
-  ) {
+  #buildCallbackUrl({
+    authenticationMethod,
+    url,
+    hasCustomClient,
+    clientId,
+  }: {
+    authenticationMethod: ApiAuthenticationMethodOAuth2;
+    url: URL;
+    hasCustomClient: boolean;
+    clientId: string;
+  }) {
+    if (hasCustomClient) {
+      return new URL(
+        `/oauth/${clientId}/callback`,
+        authenticationMethod.config.appHostEnvName
+          ? process.env[authenticationMethod.config.appHostEnvName]
+          : url
+      ).href;
+    }
+
     return new URL(
       `/resources/connection/oauth2/callback`,
       authenticationMethod.config.appHostEnvName

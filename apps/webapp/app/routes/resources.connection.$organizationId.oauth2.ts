@@ -144,7 +144,7 @@ export async function action({ request, params }: ActionArgs) {
   const redirectUrl = await apiAuthenticationRepository.createConnectionClient({
     id,
     customClient: hasCustomClient
-      ? { id: customClientId, secret: customClientSecret }
+      ? { id: customClientId!, secret: customClientSecret! }
       : undefined,
     clientType,
     organizationId: organization.id,

@@ -2,7 +2,10 @@ import type { LoaderArgs } from "@remix-run/server-runtime";
 import { redirect } from "@remix-run/server-runtime";
 import z from "zod";
 import { prisma } from "~/db.server";
+import { env } from "~/env.server";
 import { apiAuthenticationRepository } from "~/services/externalApis/apiAuthenticationRepository.server";
+import { OAuthClient, OAuthClientSchema } from "~/services/externalApis/types";
+import { getSecretStore } from "~/services/secrets/secretStore.server";
 
 const ParamsSchema = z
   .object({
@@ -41,7 +44,11 @@ export async function loader({ request }: LoaderArgs) {
       id: parsedParams.data.state,
     },
     include: {
-      client: true,
+      client: {
+        include: {
+          customClientReference: true,
+        },
+      },
     },
   });
 
@@ -49,11 +56,21 @@ export async function loader({ request }: LoaderArgs) {
     throw new Response("Invalid attempt", { status: 400 });
   }
 
+  let customOAuthClient: OAuthClient | undefined;
+  if (attempt.client.customClientReference) {
+    const secretStore = getSecretStore(env.SECRET_STORE);
+    customOAuthClient = await secretStore.getSecret(
+      OAuthClientSchema,
+      attempt.client.customClientReference.key
+    );
+  }
+
   try {
     await apiAuthenticationRepository.createConnectionFromAttempt({
       attempt,
       code: parsedParams.data.code,
       url,
+      customOAuthClient,
     });
 
     return redirect(attempt.redirectTo);

@@ -4,21 +4,32 @@ import type {
   AccessToken,
   CreateUrlParams,
   GrantTokenParams,
+  OAuthClient,
   RefreshTokenParams,
 } from "./types";
 import jsonpointer from "jsonpointer";
 
-export function getClientConfigFromEnv(idName: string, secretName: string) {
-  //get the client id and secret from env vars
-  const id = process.env[idName];
-  if (!id) {
-    throw new Error(`Client id environment variable not found: ${idName}`);
+export function getClientConfig({
+  env,
+  customOAuthClient,
+}: {
+  env: { idName: string; secretName: string };
+  customOAuthClient?: OAuthClient;
+}) {
+  if (customOAuthClient) {
+    return customOAuthClient;
   }
 
-  const secret = process.env[secretName];
+  //get the client id and secret from env vars
+  const id = process.env[env.idName];
+  if (!id) {
+    throw new Error(`Client id environment variable not found: ${env.idName}`);
+  }
+
+  const secret = process.env[env.secretName];
   if (!secret) {
     throw new Error(
-      `Client secret environment variable not found: ${secretName}`
+      `Client secret environment variable not found: ${env.secretName}`
     );
   }
 

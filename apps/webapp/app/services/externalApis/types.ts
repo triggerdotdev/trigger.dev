@@ -171,3 +171,9 @@ export const ConnectionMetadataSchema = z.object({
 });
 
 export type ConnectionMetadata = z.infer<typeof ConnectionMetadataSchema>;
+
+export const OAuthClientSchema = z.object({
+  id: z.string(),
+  secret: z.string(),
+});
+export type OAuthClient = z.infer<typeof OAuthClientSchema>;
