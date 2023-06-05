@@ -600,6 +600,7 @@ model Task {
   output      Json?
   error       String?
   redact      Json?
+  style       Json?
 
   startedAt   DateTime?
   completedAt DateTime?

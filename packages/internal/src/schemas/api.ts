@@ -1,7 +1,7 @@
 import { ulid } from "ulid";
 import { z } from "zod";
 import { ConnectionAuthSchema, IntegrationConfigSchema } from "./integrations";
-import { DisplayElementSchema } from "./elements";
+import { DisplayElementSchema, StyleSchema } from "./elements";
 import { DeserializedJsonSchema, SerializableJsonSchema } from "./json";
 import { CachedTaskSchema, ServerTaskSchema, TaskSchema } from "./tasks";
 import {
@@ -354,6 +354,7 @@ export const RunTaskOptionsSchema = z.object({
   trigger: TriggerMetadataSchema.optional(),
   redact: RedactSchema.optional(),
   connectionKey: z.string().optional(),
+  style: StyleSchema.optional(),
 });
 
 export type RunTaskOptions = z.input<typeof RunTaskOptionsSchema>;

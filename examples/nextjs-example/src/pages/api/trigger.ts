@@ -148,6 +148,8 @@ new Job(client, {
       payload,
     });
 
+    await io.wait("wait", 1);
+
     return await io.github.getRepo("get.repo", payload);
   },
 });

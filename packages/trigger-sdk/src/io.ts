@@ -97,6 +97,7 @@ export class IO {
           description: message,
           params: data,
           elements: [{ label: "Level", text: level }],
+          style: { style: "minimal", variant: level.toLowerCase() },
           noop: true,
         },
         async (task) => {}
@@ -113,6 +114,7 @@ export class IO {
         params: { seconds },
         noop: true,
         delayUntil: new Date(Date.now() + seconds * 1000),
+        style: { style: "minimal" },
       },
       async (task) => {}
     );

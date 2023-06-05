@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { DisplayElementSchema } from "./elements";
+import { DisplayElementSchema, StyleSchema } from "./elements";
 import { DeserializedJsonSchema } from "./json";
 
 export const TaskStatusSchema = z.enum([
@@ -27,6 +27,7 @@ export const TaskSchema = z.object({
   output: DeserializedJsonSchema.optional().nullable(),
   error: z.string().optional().nullable(),
   parentId: z.string().optional().nullable(),
+  style: StyleSchema.optional().nullable(),
 });
 
 export const ServerTaskSchema = TaskSchema.extend({

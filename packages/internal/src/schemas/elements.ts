@@ -7,3 +7,8 @@ export const DisplayElementSchema = z.object({
 });
 
 export type DisplayElement = z.infer<typeof DisplayElementSchema>;
+
+export const StyleSchema = z.object({
+  style: z.enum(["normal", "minimal"]),
+  variant: z.string().optional(),
+});

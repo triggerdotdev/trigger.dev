@@ -226,6 +226,7 @@ export class RunTaskService {
           params: taskBody.params ?? undefined,
           elements: taskBody.elements ?? undefined,
           redact: taskBody.redact ?? undefined,
+          style: taskBody.style ?? { style: "normal" },
         },
         include: {
           run: true,
