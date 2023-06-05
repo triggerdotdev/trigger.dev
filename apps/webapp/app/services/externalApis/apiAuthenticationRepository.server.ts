@@ -9,7 +9,11 @@ import jsonpointer from "jsonpointer";
 import { customAlphabet } from "nanoid";
 import * as crypto from "node:crypto";
 import createSlug from "slug";
-import type { PrismaClient, PrismaClientOrTransaction } from "~/db.server";
+import type {
+  PrismaClient,
+  PrismaClientOrTransaction,
+  PrismaTransactionClient,
+} from "~/db.server";
 import { prisma } from "~/db.server";
 import { env } from "~/env.server";
 import { workerQueue } from "~/services/worker.server";
@@ -105,7 +109,10 @@ export class APIAuthenticationRepository {
     redirectTo: string;
     url: URL;
   }): Promise<string> {
+    //creates a client and retries if it fails
     const createClientWithSlug = async (
+      transactionClient: PrismaTransactionClient,
+      customClientReference: SecretReference | undefined,
       appendRandom = false,
       attemptCount = 0
     ): Promise<ApiConnectionClient> => {
@@ -116,7 +123,7 @@ export class APIAuthenticationRepository {
       }
 
       try {
-        return await this.#prismaClient.apiConnectionClient.create({
+        return await transactionClient.apiConnectionClient.create({
           data: {
             id,
             organizationId,
@@ -127,6 +134,7 @@ export class APIAuthenticationRepository {
             integrationIdentifier,
             integrationAuthMethod,
             description,
+            customClientReferenceId: customClientReference?.id,
           },
         });
       } catch (error) {
@@ -137,27 +145,56 @@ export class APIAuthenticationRepository {
           error.code === "P2002" &&
           attemptCount < 24
         ) {
-          return await createClientWithSlug(true, attemptCount + 1);
+          return await createClientWithSlug(
+            transactionClient,
+            customClientReference,
+            true,
+            attemptCount + 1
+          );
         }
 
         throw error;
       }
     };
 
-    const client = await createClientWithSlug();
+    return this.#prismaClient.$transaction(async (tx) => {
+      let customClientReference: SecretReference | undefined = undefined;
+      //if there's a custom client, we need to save the details to the secret store
+      if (customClient) {
+        const key = `connectionClient/customClient/${id}`;
 
-    return await this.createConnectionAttempt({
-      client,
-      redirectTo,
-      url,
+        const secretStore = getSecretStore(env.SECRET_STORE, {
+          prismaClient: tx,
+        });
+
+        await secretStore.setSecret(key, { ...customClient });
+
+        customClientReference = await tx.secretReference.create({
+          data: {
+            key,
+            provider: env.SECRET_STORE,
+          },
+        });
+      }
+
+      const client = await createClientWithSlug(tx, customClientReference);
+
+      return await this.createConnectionAttempt({
+        transactionClient: tx,
+        client,
+        redirectTo,
+        url,
+      });
     });
   }
 
   async createConnectionAttempt({
+    transactionClient,
     client,
     redirectTo,
     url,
   }: {
+    transactionClient: PrismaTransactionClient;
     client: ApiConnectionClient;
     redirectTo: string;
     url: URL;
@@ -173,7 +210,7 @@ export class APIAuthenticationRepository {
 
         //create a connection attempt
         const connectionAttempt =
-          await this.#prismaClient.apiConnectionAttempt.create({
+          await transactionClient.apiConnectionAttempt.create({
             data: {
               clientId: client.id,
               redirectTo,
@@ -269,7 +306,7 @@ export class APIAuthenticationRepository {
           .update(token.accessToken)
           .digest("base64");
 
-        const key = `${integration.identifier}-${hashedAccessToken}`;
+        const key = `connection/token/${integration.identifier}-${hashedAccessToken}`;
 
         const metadata = this.#getMetadataFromToken({
           token,
