@@ -25,6 +25,7 @@ import {
   SheetTrigger,
 } from "../primitives/Sheet";
 import { cn } from "~/utils/cn";
+import { Callout } from "../primitives/Callout";
 
 export type Status = "loading" | "idle";
 
@@ -43,7 +44,10 @@ export function OAuthConnectSheet({
 }) {
   const transition = useNavigation();
   const fetcher = useFetcher();
-  const [form, { title, scopes }] = useForm({
+  const [
+    form,
+    { title, scopes, hasCustomClient, customClientId, customClientSecret },
+  ] = useForm({
     lastSubmission: fetcher.data,
     onValidate({ formData }) {
       return parse(formData, {
@@ -52,6 +56,16 @@ export function OAuthConnectSheet({
       });
     },
   });
+
+  console.log(
+    form,
+    title,
+    scopes,
+    hasCustomClient,
+    customClientId,
+    customClientSecret
+  );
+
   const apiAuthmethod = integration.authenticationMethods[authMethodKey];
   const location = useLocation();
 
@@ -68,9 +82,9 @@ export function OAuthConnectSheet({
 
   const [useMyOAuthApp, setUseMyOAuthApp] = useState(false);
 
-  const [connectionType, setConnectionType] = useState<
-    "EXTERNAL" | "DEVELOPER"
-  >("DEVELOPER");
+  const [clientType, setClientType] = useState<"EXTERNAL" | "DEVELOPER">(
+    "DEVELOPER"
+  );
 
   const [scopeFilterText, setScopeFilterText] = useState<string>("");
 
@@ -151,7 +165,11 @@ export function OAuthConnectSheet({
                 />
                 <FormError>{title.error}</FormError>
               </InputGroup>
-              <div>
+              <Callout variant="info">
+                Coming soon – create connections so you can run Jobs with your
+                users credentials.
+              </Callout>
+              {/* <div>
                 <Header2>Who will connect to this API?</Header2>
                 <Paragraph variant="small" className="mb-2">
                   Select ‘Your team’ if you want create internal Jobs for your
@@ -159,12 +177,13 @@ export function OAuthConnectSheet({
                   where your customers authenticate with this API.
                 </Paragraph>
                 <FormSegmentedControl
-                  name="connectionType"
-                  defaultValue={connectionType}
+                  name="clientType"
+                  defaultValue={clientType}
                   options={options}
-                  onChange={(val) => setConnectionType(val as any)}
+                  onChange={(val) => setClientType(val as any)}
                 />
-              </div>
+              </div> */}
+              <input type="hidden" name="clientType" value={"DEVELOPER"} />
               <div>
                 <Header2>Use my OAuth App</Header2>
                 <Paragraph variant="small" className="mb-2">
@@ -172,15 +191,15 @@ export function OAuthConnectSheet({
                   the details.
                 </Paragraph>
                 <Checkbox
-                  id="oauth"
-                  name="oauth"
+                  id="hasCustomClient"
                   label="Use my OAuth App"
                   variant="simple/small"
                   defaultChecked={
-                    connectionType === "EXTERNAL" ? true : useMyOAuthApp
+                    clientType === "EXTERNAL" ? true : useMyOAuthApp
                   }
-                  disabled={connectionType === "EXTERNAL"}
+                  disabled={clientType === "EXTERNAL"}
                   onChange={(checked) => setUseMyOAuthApp(checked)}
+                  {...conform.input(hasCustomClient, { type: "checkbox" })}
                 />
                 {useMyOAuthApp && (
                   <div className="ml-6 mt-2">
@@ -190,25 +209,26 @@ export function OAuthConnectSheet({
                         https://app.trigger.dev/oauth/slack-2/callback
                       </InlineCode>
                     </Paragraph>
-                    <div className="flex gap-2">
-                      <InputGroup fullWidth>
-                        <Label variant="small">Client ID</Label>
-                        <Input
-                          type="text"
-                          fullWidth
-                          {...conform.input(title)}
-                        />
-                        <FormError>{title.error}</FormError>
-                      </InputGroup>
-                      <InputGroup fullWidth>
-                        <Label variant="small">Client secret</Label>
-                        <Input
-                          type="text"
-                          fullWidth
-                          {...conform.input(title)}
-                        />
-                        <FormError>{title.error}</FormError>
-                      </InputGroup>
+                    <div className="flex flex-col gap-2">
+                      <div className="flex gap-2">
+                        <InputGroup fullWidth>
+                          <Label variant="small">Client ID</Label>
+                          <Input
+                            fullWidth
+                            {...conform.input(customClientId, { type: "text" })}
+                          />
+                        </InputGroup>
+                        <InputGroup fullWidth>
+                          <Label variant="small">Client secret</Label>
+                          <Input
+                            fullWidth
+                            {...conform.input(customClientSecret, {
+                              type: "password",
+                            })}
+                          />
+                        </InputGroup>
+                      </div>
+                      <FormError>{customClientId.error}</FormError>
                     </div>
                   </div>
                 )}
@@ -221,7 +241,7 @@ export function OAuthConnectSheet({
                   an action in a Job that requires a scope you haven’t granted,
                   that task will fail.
                 </Paragraph>
-                <Header3 className="mb-2">
+                {/* <Header3 className="mb-2">
                   Select from popular scope collections
                 </Header3>
                 <fieldset>
@@ -230,7 +250,7 @@ export function OAuthConnectSheet({
                     label="Select all"
                     variant="button/small"
                   />
-                </fieldset>
+                </fieldset> */}
                 <div className="mb-2 mt-4 flex items-center justify-between">
                   <Header3>Select {integration.name} scopes</Header3>
                   <Paragraph variant="small" className="text-slate-500">
