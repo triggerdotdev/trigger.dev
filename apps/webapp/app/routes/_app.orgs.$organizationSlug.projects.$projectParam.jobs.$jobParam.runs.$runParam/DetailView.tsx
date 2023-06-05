@@ -91,7 +91,9 @@ export function TaskDetail({
               <RunPanelIconElement
                 icon="clock"
                 label="Total delay"
-                value={formatDurationMilliseconds(params["seconds"] * 1000)}
+                value={formatDuration(startedAt, completedAt, {
+                  style: "long",
+                })}
               />
             )}
           </RunPanelIconSection>
