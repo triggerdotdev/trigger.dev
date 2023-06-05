@@ -14,6 +14,7 @@ export function createSchema(
 ) {
   return z
     .object({
+      id: z.string(),
       integrationIdentifier: z.string(),
       integrationAuthMethod: z.string(),
       title: z
@@ -44,6 +45,7 @@ export function createSchema(
       hasCustomClient: z.preprocess((value) => value === "on", z.boolean()),
       customClientId: z.string().optional(),
       customClientSecret: z.string().optional(),
+      clientType: z.union([z.literal("DEVELOPER"), z.literal("EXTERNAL")]),
       redirectTo: z.string(),
       scopes: z.preprocess(
         (data) => (typeof data === "string" ? [data] : data),
@@ -114,8 +116,13 @@ export async function action({ request, params }: ActionArgs) {
   }
 
   const {
+    id,
+    hasCustomClient,
+    customClientId,
+    customClientSecret,
     integrationIdentifier,
     integrationAuthMethod,
+    clientType,
     title,
     description,
     redirectTo,
@@ -135,6 +142,11 @@ export async function action({ request, params }: ActionArgs) {
 
   const url = new URL(request.url);
   const redirectUrl = await apiAuthenticationRepository.createConnectionClient({
+    id,
+    customClient: hasCustomClient
+      ? { id: customClientId, secret: customClientSecret }
+      : undefined,
+    clientType,
     organizationId: organization.id,
     integrationIdentifier,
     integrationAuthMethod,

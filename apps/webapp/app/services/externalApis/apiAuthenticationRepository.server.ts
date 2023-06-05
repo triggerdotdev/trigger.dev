@@ -31,6 +31,7 @@ import type {
 } from "./types";
 import { AccessTokenSchema } from "./types";
 import { CreateExternalConnectionBody } from "@/../../packages/internal/src";
+import { ApiConnectionType } from "~/models/apiConnection.server";
 
 export type ApiConnectionWithSecretReference = ApiConnection & {
   dataReference: SecretReference;
@@ -80,18 +81,24 @@ export class APIAuthenticationRepository {
   }
 
   async createConnectionClient({
+    id,
+    customClient,
     organizationId,
     integrationIdentifier,
     integrationAuthMethod,
+    clientType,
     scopes,
     title,
     description,
     url,
     redirectTo,
   }: {
+    id: string;
+    customClient?: { id: string; secret: string };
     organizationId: string;
     integrationIdentifier: string;
     integrationAuthMethod: string;
+    clientType: ApiConnectionType;
     scopes: string[];
     title: string;
     description?: string;
@@ -111,7 +118,9 @@ export class APIAuthenticationRepository {
       try {
         return await this.#prismaClient.apiConnectionClient.create({
           data: {
+            id,
             organizationId,
+            clientType,
             scopes,
             title,
             slug,

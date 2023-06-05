@@ -1,16 +1,18 @@
 import { conform, useForm } from "@conform-to/react";
 import { parse } from "@conform-to/zod";
 import { useFetcher, useLocation, useNavigation } from "@remix-run/react";
+import cuid from "cuid";
 import React, { useMemo, useState } from "react";
 import simplur from "simplur";
 import { createSchema } from "~/routes/resources.connection.$organizationId.oauth2";
 import { Integration } from "~/services/externalApis/types";
+import { cn } from "~/utils/cn";
 import { InlineCode } from "../code/InlineCode";
 import { Button } from "../primitives/Buttons";
+import { Callout } from "../primitives/Callout";
 import { Checkbox } from "../primitives/Checkbox";
 import { Fieldset } from "../primitives/Fieldset";
 import { FormError } from "../primitives/FormError";
-import FormSegmentedControl from "../primitives/FormSegmentedControl";
 import { Header2, Header3 } from "../primitives/Headers";
 import { Input } from "../primitives/Input";
 import { InputGroup } from "../primitives/InputGroup";
@@ -24,8 +26,6 @@ import {
   SheetFooter,
   SheetTrigger,
 } from "../primitives/Sheet";
-import { cn } from "~/utils/cn";
-import { Callout } from "../primitives/Callout";
 
 export type Status = "loading" | "idle";
 
@@ -42,6 +42,7 @@ export function OAuthConnectSheet({
   button: React.ReactNode;
   className?: string;
 }) {
+  const [id] = useState<string>(cuid());
   const transition = useNavigation();
   const fetcher = useFetcher();
   const [
@@ -56,15 +57,6 @@ export function OAuthConnectSheet({
       });
     },
   });
-
-  console.log(
-    form,
-    title,
-    scopes,
-    hasCustomClient,
-    customClientId,
-    customClientSecret
-  );
 
   const apiAuthmethod = integration.authenticationMethods[authMethodKey];
   const location = useLocation();
@@ -137,6 +129,7 @@ export function OAuthConnectSheet({
             </div>
 
             <Fieldset>
+              <input type="hidden" name="id" value={id} />
               <input
                 type="hidden"
                 name="integrationIdentifier"
@@ -206,7 +199,7 @@ export function OAuthConnectSheet({
                     <Paragraph variant="small" className="mb-2">
                       Set the callback url to{" "}
                       <InlineCode variant="extra-small">
-                        https://app.trigger.dev/oauth/slack-2/callback
+                        https://app.trigger.dev/oauth/{id}/callback
                       </InlineCode>
                     </Paragraph>
                     <div className="flex flex-col gap-2">
