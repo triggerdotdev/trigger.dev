@@ -3,7 +3,7 @@ import {
   ExclamationTriangleIcon,
   InformationCircleIcon,
   LightBulbIcon,
-} from "@heroicons/react/24/solid";
+} from "@heroicons/react/20/solid";
 import { cn } from "~/utils/cn";
 import { Paragraph } from "./Paragraph";
 
