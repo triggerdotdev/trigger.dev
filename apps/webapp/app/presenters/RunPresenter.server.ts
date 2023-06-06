@@ -131,6 +131,9 @@ export class RunPresenter {
           task.elements == null
             ? []
             : z.array(DisplayElementSchema).parse(task.elements),
+        connection: run.runConnections.find(
+          (c) => c.id === task.runConnectionId
+        ),
       })),
       runConnections: run.runConnections,
       missingConnections: run.missingConnections,

@@ -200,9 +200,7 @@ export default function Page() {
               {run.tasks.map((task, index) => {
                 const isSelected = task.id === selectedId;
                 const isLast = index === run.tasks.length - 1;
-                const connection = run.runConnections.find(
-                  (c) => c.id === task.runConnectionId
-                );
+
                 return (
                   <Fragment key={task.id}>
                     <RunPanel
@@ -246,14 +244,14 @@ export default function Page() {
                               value={task.displayKey}
                             />
                           )}
-                          {connection && (
+                          {task.connection && (
                             <RunPanelIconElement
                               icon={
-                                connection.apiConnection.client
+                                task.connection.apiConnection.client
                                   .integrationIdentifier
                               }
                               label="Connection"
-                              value={connection.apiConnection.client.title}
+                              value={task.connection.apiConnection.client.title}
                             />
                           )}
                         </RunPanelIconSection>
