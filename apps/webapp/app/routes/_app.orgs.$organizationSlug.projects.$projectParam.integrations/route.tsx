@@ -43,10 +43,10 @@ import {
 import { SimpleTooltip } from "~/components/primitives/Tooltip";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
+import { useTextFilter } from "~/hooks/useTextFilter";
 import { Organization } from "~/models/organization.server";
 import { Project } from "~/models/project.server";
 import { IntegrationsPresenter } from "~/presenters/IntegrationsPresenter.server";
-import { Integration } from "~/services/externalApis/types";
 import { requireUser } from "~/services/session.server";
 import { formatDateTime } from "~/utils";
 import { Handle } from "~/utils/handle";
@@ -95,8 +95,8 @@ export default function Integrations() {
         </PageDescription>
       </PageHeader>
 
-      <PageBody>
-        <div className="grid h-full max-w-full grid-cols-[1fr_2fr] overflow-hidden">
+      <PageBody scrollable={false}>
+        <div className="grid h-full max-w-full grid-cols-[1fr_2fr] gap-4 divide-x divide-slate-900 overflow-hidden">
           <PossibleIntegrationsList
             integrations={integrations}
             organizationId={organization.id}
@@ -112,42 +112,36 @@ export default function Integrations() {
   );
 }
 
+type Integration = UseDataFunctionReturn<typeof loader>["integrations"][0];
+
 function PossibleIntegrationsList({
   integrations,
   organizationId,
 }: {
-  integrations: UseDataFunctionReturn<typeof loader>["integrations"];
+  integrations: Integration[];
   organizationId: string;
 }) {
-  const [filter, setFilter] = useState("");
-
-  const visibleIntegrations = useMemo(() => {
-    if (filter === "") {
-      return integrations;
-    }
-
-    return integrations.filter((integration) => {
-      if (integration.name.toLowerCase().includes(filter.toLowerCase()))
-        return true;
-
-      return false;
+  const { filterText, setFilterText, filteredItems } =
+    useTextFilter<Integration>({
+      items: integrations,
+      filter: (integration, text) =>
+        integration.name.toLowerCase().includes(text.toLowerCase()),
     });
-  }, [integrations, filter]);
 
   return (
-    <div>
+    <div className="overflow-y-auto py-4 pl-4">
       <Header2 className="mb-2">Connect an Integration</Header2>
       <Input
         placeholder="Search integrations"
         className="mb-2"
-        variant="medium"
+        variant="tertiary"
         icon="search"
         fullWidth={true}
-        value={filter}
-        onChange={(e) => setFilter(e.target.value)}
+        value={filterText}
+        onChange={(e) => setFilterText(e.target.value)}
       />
       <div className="mt-2 flex flex-wrap gap-x-8 gap-y-2">
-        {visibleIntegrations.map((integration) => {
+        {filteredItems.map((integration) => {
           const authMethods = Object.entries(integration.authenticationMethods);
           if (authMethods.length === 1) {
             return (
@@ -206,17 +200,30 @@ function PossibleIntegrationsList({
   );
 }
 
+type Client = UseDataFunctionReturn<typeof loader>["clients"][0];
+
 function ConnectedIntegrationsList({
   clients,
   organization,
   project,
 }: {
-  clients: UseDataFunctionReturn<typeof loader>["clients"];
+  clients: Client[];
   organization: Organization;
   project: Project;
 }) {
+  const { filterText, setFilterText, filteredItems } = useTextFilter<Client>({
+    items: clients,
+    filter: (client, text) => {
+      if (client.title.toLowerCase().includes(text.toLowerCase())) {
+        return true;
+      }
+
+      return false;
+    },
+  });
+
   return (
-    <div className="ml-2 h-full overflow-hidden border-l border-slate-900 pl-4">
+    <div className="h-full overflow-y-auto p-4">
       <Help>
         <HelpContent title="How to connect an integration">
           <Paragraph>This is some help content</Paragraph>
@@ -225,79 +232,93 @@ function ConnectedIntegrationsList({
           <Header2 className="m-0">Your connected Integrations</Header2>
           <HelpTrigger title="How do I connect an Integration?" />
         </div>
-        <div>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHeaderCell>Name</TableHeaderCell>
-                <TableHeaderCell>API</TableHeaderCell>
-                <TableHeaderCell>Type</TableHeaderCell>
-                <TableHeaderCell>Jobs</TableHeaderCell>
-                <TableHeaderCell>Scopes</TableHeaderCell>
-                <TableHeaderCell>Client id</TableHeaderCell>
-                <TableHeaderCell>Added</TableHeaderCell>
-                <TableHeaderCell hiddenLabel>Go to page</TableHeaderCell>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {clients.length === 0 ? (
-                <TableBlankRow colSpan={8}>
-                  <div className="flex items-center justify-center">
-                    <Callout variant="warning" className="w-auto">
-                      You have no connected integrations yet. To connect an
-                      integration, select one from the list.
-                    </Callout>
-                  </div>
-                </TableBlankRow>
-              ) : (
-                <>
-                  {clients.map((client) => {
-                    const path = integrationPath(organization, project, client);
-                    return (
-                      <TableRow key={client.id}>
-                        <TableCell to={path}>{client.title}</TableCell>
-                        <TableCell to={path}>
-                          <span className="flex items-center gap-1">
-                            <NamedIcon
-                              name={client.integrationIdentifier}
-                              className="h-5 w-5"
+        {clients.length > 0 && (
+          <div>
+            <Input
+              placeholder="Search connected integrations"
+              className="mb-2"
+              variant="tertiary"
+              icon="search"
+              fullWidth={true}
+              value={filterText}
+              onChange={(e) => setFilterText(e.target.value)}
+            />
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHeaderCell>Name</TableHeaderCell>
+                  <TableHeaderCell>API</TableHeaderCell>
+                  <TableHeaderCell>Type</TableHeaderCell>
+                  <TableHeaderCell>Jobs</TableHeaderCell>
+                  <TableHeaderCell>Scopes</TableHeaderCell>
+                  <TableHeaderCell>Client id</TableHeaderCell>
+                  <TableHeaderCell>Added</TableHeaderCell>
+                  <TableHeaderCell hiddenLabel>Go to page</TableHeaderCell>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {filteredItems.length === 0 ? (
+                  <TableBlankRow colSpan={8}>
+                    <div className="flex items-center justify-center">
+                      <Callout variant="info" className="w-auto">
+                        No connected integrations match your filters.
+                      </Callout>
+                    </div>
+                  </TableBlankRow>
+                ) : (
+                  <>
+                    {filteredItems.map((client) => {
+                      const path = integrationPath(
+                        organization,
+                        project,
+                        client
+                      );
+                      return (
+                        <TableRow key={client.id}>
+                          <TableCell to={path}>{client.title}</TableCell>
+                          <TableCell to={path}>
+                            <span className="flex items-center gap-1">
+                              <NamedIcon
+                                name={client.integrationIdentifier}
+                                className="h-5 w-5"
+                              />
+                              {client.integration.name}
+                            </span>
+                          </TableCell>
+                          <TableCell to={path}>
+                            {client.authMethod.name}
+                          </TableCell>
+                          <TableCell to={path}>{client.jobCount}</TableCell>
+                          <TableCell to={path}>{client.scopesCount}</TableCell>
+                          <TableCell to={path}>
+                            <SimpleTooltip
+                              button={
+                                client.customClientId ? (
+                                  `${client.customClientId.substring(0, 8)}…`
+                                ) : (
+                                  <span className="text-slate-600">Auto</span>
+                                )
+                              }
+                              content={
+                                client.customClientId
+                                  ? client.customClientId
+                                  : "This uses the Trigger.dev OAuth client"
+                              }
                             />
-                            {client.integration.name}
-                          </span>
-                        </TableCell>
-                        <TableCell to={path}>
-                          {client.authMethod.name}
-                        </TableCell>
-                        <TableCell to={path}>{client.jobCount}</TableCell>
-                        <TableCell to={path}>{client.scopesCount}</TableCell>
-                        <TableCell to={path}>
-                          <SimpleTooltip
-                            button={
-                              client.customClientId ? (
-                                `${client.customClientId.substring(0, 8)}…`
-                              ) : (
-                                <span className="text-slate-600">Auto</span>
-                              )
-                            }
-                            content={
-                              client.customClientId
-                                ? client.customClientId
-                                : "This uses the Trigger.dev OAuth client"
-                            }
-                          />
-                        </TableCell>
-                        <TableCell to={path}>
-                          {formatDateTime(client.createdAt, "medium")}
-                        </TableCell>
-                        <TableCellChevron to={path} />
-                      </TableRow>
-                    );
-                  })}
-                </>
-              )}
-            </TableBody>
-          </Table>
-        </div>
+                          </TableCell>
+                          <TableCell to={path}>
+                            {formatDateTime(client.createdAt, "medium")}
+                          </TableCell>
+                          <TableCellChevron to={path} />
+                        </TableRow>
+                      );
+                    })}
+                  </>
+                )}
+              </TableBody>
+            </Table>
+          </div>
+        )}
       </Help>
     </div>
   );
