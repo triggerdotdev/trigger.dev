@@ -19,6 +19,7 @@ import { jobPath } from "~/utils/pathBuilder";
 import { useMemo, useState } from "react";
 import { Input } from "~/components/primitives/Input";
 import { Paragraph } from "~/components/primitives/Paragraph";
+import { useTextFilter } from "~/hooks/useTextFilter";
 
 export const handle: Handle = {
   breadcrumb: {
@@ -29,35 +30,31 @@ export const handle: Handle = {
 export default function Page() {
   const organization = useOrganization();
   const project = useProject();
-  const [searchText, setSearchText] = useState<string>("");
 
-  const filteredJobs = useMemo(() => {
-    if (searchText === "") {
-      return project.jobs;
-    }
-
-    return project.jobs.filter((job) => {
-      if (job.title.toLowerCase().includes(searchText.toLowerCase()))
-        return true;
-      if (job.event.title.toLowerCase().includes(searchText.toLowerCase()))
-        return true;
-      if (
-        job.integrations.some((integration) =>
-          integration.title.toLowerCase().includes(searchText.toLowerCase())
+  const { filterText, setFilterText, filteredItems } =
+    useTextFilter<ProjectJob>({
+      items: project.jobs,
+      filter: (job, text) => {
+        if (job.title.toLowerCase().includes(text.toLowerCase())) return true;
+        if (job.event.title.toLowerCase().includes(text.toLowerCase()))
+          return true;
+        if (
+          job.integrations.some((integration) =>
+            integration.title.toLowerCase().includes(text.toLowerCase())
+          )
         )
-      )
-        return true;
-      if (
-        job.event.elements &&
-        job.event.elements.some((element) =>
-          element.text.toLowerCase().includes(searchText.toLowerCase())
+          return true;
+        if (
+          job.event.elements &&
+          job.event.elements.some((element) =>
+            element.text.toLowerCase().includes(text.toLowerCase())
+          )
         )
-      )
-        return true;
+          return true;
 
-      return false;
+        return false;
+      },
     });
-  }, [project.jobs, searchText]);
 
   return (
     <PageContainer>
@@ -88,16 +85,16 @@ export default function Page() {
                     variant="tertiary"
                     icon="search"
                     fullWidth={true}
-                    value={searchText}
-                    onChange={(e) => setSearchText(e.target.value)}
+                    value={filterText}
+                    onChange={(e) => setFilterText(e.target.value)}
                   />
                 )}
                 <HelpTrigger title="How do I create a Job?" />
               </div>
               {project.jobs.length > 0 ? (
-                filteredJobs.length > 0 ? (
+                filteredItems.length > 0 ? (
                   <JobList>
-                    {filteredJobs.map((job) => (
+                    {filteredItems.map((job) => (
                       <JobItem
                         key={job.id}
                         to={jobPath(organization, project, job)}
@@ -113,7 +110,7 @@ export default function Page() {
                   </JobList>
                 ) : (
                   <Paragraph variant="small" className="p-4">
-                    No Jobs match {searchText}. Try a different search query.
+                    No Jobs match {filterText}. Try a different search query.
                   </Paragraph>
                 )
               ) : (
