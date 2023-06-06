@@ -218,6 +218,21 @@ function ConnectedIntegrationsList({
         return true;
       }
 
+      if (
+        client.customClientId &&
+        client.customClientId.toLowerCase().includes(text.toLowerCase())
+      ) {
+        return true;
+      }
+
+      if (client.integration.name.toLowerCase().includes(text.toLowerCase())) {
+        return true;
+      }
+
+      if (client.authMethod.name.toLowerCase().includes(text.toLowerCase())) {
+        return true;
+      }
+
       return false;
     },
   });
