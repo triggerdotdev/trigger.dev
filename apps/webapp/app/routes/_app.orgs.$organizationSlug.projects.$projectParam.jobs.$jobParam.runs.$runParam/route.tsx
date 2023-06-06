@@ -209,20 +209,28 @@ export default function Page() {
                     >
                       <RunPanelHeader
                         icon={
-                          <TaskStatusIcon
-                            status={task.status}
-                            minimal={true}
-                            className={cn(
-                              "h-5 w-5",
-                              !isSelected && "text-slate-400"
-                            )}
-                          />
+                          task.status === "COMPLETED" ? (
+                            task.icon
+                          ) : (
+                            <TaskStatusIcon
+                              status={task.status}
+                              minimal={true}
+                              className={cn(
+                                "h-5 w-5",
+                                !isSelected && "text-slate-400"
+                              )}
+                            />
+                          )
                         }
                         title={
-                          <RunPanelIconTitle
-                            icon={task.icon}
-                            title={task.name}
-                          />
+                          task.status === "COMPLETED" ? (
+                            task.name
+                          ) : (
+                            <RunPanelIconTitle
+                              icon={task.icon}
+                              title={task.name}
+                            />
+                          )
                         }
                         accessory={
                           <Paragraph variant="extra-small">
