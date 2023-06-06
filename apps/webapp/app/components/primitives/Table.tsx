@@ -11,15 +11,17 @@ type TableProps = {
 export const Table = forwardRef<HTMLTableElement, TableProps>(
   ({ className, children }, ref) => {
     return (
-      <table
-        ref={ref}
-        className={cn(
-          "w-full divide-y divide-slate-850 overflow-x-auto rounded-md border border-slate-900 bg-slate-950",
-          className
-        )}
-      >
-        {children}
-      </table>
+      <div className="overflow-x-auto whitespace-nowrap rounded-md border border-slate-900 scrollbar-thin scrollbar-track-slate-950 scrollbar-thumb-slate-700">
+        <table
+          ref={ref}
+          className={cn(
+            "divide-slate-85 w-full divide-y bg-slate-950",
+            className
+          )}
+        >
+          {children}
+        </table>
+      </div>
     );
   }
 );
