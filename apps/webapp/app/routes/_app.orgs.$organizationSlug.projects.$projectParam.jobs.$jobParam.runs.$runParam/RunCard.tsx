@@ -45,7 +45,7 @@ export function RunPanelHeader({
   accessory,
 }: RunPanelHeaderProps) {
   return (
-    <div className="flex h-10 items-center justify-between border-b border-slate-850 bg-slate-950 p-2">
+    <div className="flex h-10 items-center justify-between border-b border-slate-850 bg-midnight-850 p-2">
       <div className="flex items-center gap-2">
         {typeof icon === "string" ? (
           <NamedIcon name={icon} className="h-5 w-5" />

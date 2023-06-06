@@ -1,7 +1,7 @@
 import { cn } from "~/utils/cn";
 
 const inlineCode =
-  "px-1 py-0.5 rounded border border-slate-800 bg-slate-950 text-sky-200 font-mono";
+  "px-1 py-0.5 rounded border border-slate-800 bg-midnight-850 text-sky-200 font-mono";
 
 const variants = {
   "extra-extra-small": "text-xxs",

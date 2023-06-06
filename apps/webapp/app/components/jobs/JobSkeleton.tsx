@@ -1,6 +1,6 @@
 export function JobSkeleton() {
   return (
-    <div className={"flex w-full gap-x-4 bg-slate-950 p-4 pr-5 "}>
+    <div className={"flex w-full gap-x-4 bg-midnight-850 p-4 pr-5 "}>
       <div className="aspect-square h-6 w-6 rounded border border-slate-800 bg-slate-900 p-1.5 md:h-10 md:w-10 lg:h-12 lg:w-12" />
       <div className="flex w-full">
         <div className="flex w-full flex-col justify-between gap-y-1">

@@ -11,7 +11,7 @@ import { Breadcrumb } from "./Breadcrumb";
 
 export function NavBar() {
   return (
-    <div className="border-divide z-50 flex w-full items-center justify-between gap-2 border-b py-1 pl-2 pr-2.5">
+    <div className="z-50 flex w-full items-center justify-between gap-2 border-b border-divide py-1 pl-2 pr-2.5">
       <div className="flex gap-0.5">
         <Link to="/" className="p-2">
           <LogoIcon className="h-5 w-5" />
@@ -67,7 +67,7 @@ function MobileDropdownMenu() {
           leaveFrom="opacity-100"
           leaveTo="opacity-0"
         >
-          <Popover.Overlay className="absolute left-0 top-0 h-full w-full origin-top bg-slate-1000/80" />
+          <Popover.Overlay className="absolute left-0 top-0 h-full w-full origin-top bg-midnight-900/80" />
         </Transition.Child>
         <Transition.Child
           as={Fragment}

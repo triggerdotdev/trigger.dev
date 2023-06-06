@@ -259,7 +259,7 @@ export const CodeBlock = forwardRef<HTMLDivElement, CodeBlockProps>(
           }) => (
             <div
               dir="ltr"
-              className="overflow-auto py-3 px-2 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-slate-700"
+              className="overflow-auto px-2 py-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-slate-700"
               style={{
                 maxHeight,
               }}
@@ -366,7 +366,7 @@ function Chrome({ title }: { title?: string }) {
         <div
           className={cn(
             "rounded-sm px-3 py-0.5 text-xs text-slate-500",
-            title && "bg-slate-1000"
+            title && "bg-midnight-900"
           )}
         >
           {title}
