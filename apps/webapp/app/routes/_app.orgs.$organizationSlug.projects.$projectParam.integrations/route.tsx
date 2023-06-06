@@ -1,5 +1,7 @@
 import type { LoaderArgs } from "@remix-run/server-runtime";
+import { useMemo, useState } from "react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
+import simplur from "simplur";
 import invariant from "tiny-invariant";
 import { OAuthConnectSheet } from "~/components/integrations/OAuthConnectSheet";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
@@ -7,6 +9,7 @@ import { Badge } from "~/components/primitives/Badge";
 import { LinkButton } from "~/components/primitives/Buttons";
 import { Header2, Header3 } from "~/components/primitives/Headers";
 import { Help, HelpContent, HelpTrigger } from "~/components/primitives/Help";
+import { Input } from "~/components/primitives/Input";
 import { NamedIcon, NamedIconInBox } from "~/components/primitives/NamedIcon";
 import {
   PageButtons,
@@ -23,9 +26,7 @@ import {
   PopoverTrigger,
 } from "~/components/primitives/Popover";
 import { useOrganization } from "~/hooks/useOrganizations";
-import { getOrganizationFromSlug } from "~/models/organization.server";
-import { apiAuthenticationRepository } from "~/services/externalApis/apiAuthenticationRepository.server";
-import { integrationCatalog } from "~/services/externalApis/integrationCatalog.server";
+import { IntegrationsPresenter } from "~/presenters/IntegrationsPresenter.server";
 import { Integration } from "~/services/externalApis/types";
 import { requireUser } from "~/services/session.server";
 import { formatDateTime } from "~/utils";
@@ -36,20 +37,11 @@ export const loader = async ({ request, params }: LoaderArgs) => {
   const user = await requireUser(request);
   const { organizationSlug } = params;
   invariant(organizationSlug, "organizationSlug not found");
-  const organization = await getOrganizationFromSlug({
-    userId: user.id,
-    slug: organizationSlug,
-  });
-  invariant(organization, "Organization not found");
 
-  const clients = await apiAuthenticationRepository.getAllClients(
-    organization.id
-  );
+  const presenter = new IntegrationsPresenter();
+  const data = await presenter.call({ userId: user.id, organizationSlug });
 
-  return typedjson({
-    clients,
-    integrations: integrationCatalog.getIntegrations(),
-  });
+  return typedjson(data);
 };
 
 export const handle: Handle = {
@@ -61,10 +53,24 @@ export const handle: Handle = {
 export default function Integrations() {
   const { clients, integrations } = useTypedLoaderData<typeof loader>();
   const organization = useOrganization();
+  const [integrationFilterText, setIntegrationFilterText] = useState("");
 
-  const orderedIntegrations = Object.values(integrations).sort((a, b) =>
-    a.name.localeCompare(b.name)
-  );
+  const visibleIntegrations = useMemo(() => {
+    if (integrationFilterText === "") {
+      return integrations;
+    }
+
+    return integrations.filter((integration) => {
+      if (
+        integration.name
+          .toLowerCase()
+          .includes(integrationFilterText.toLowerCase())
+      )
+        return true;
+
+      return false;
+    });
+  }, [integrations, integrationFilterText]);
 
   return (
     <PageContainer>
@@ -91,8 +97,17 @@ export default function Integrations() {
         <div className="grid h-full grid-cols-2">
           <div>
             <Header2>Connect an Integration</Header2>
+            <Input
+              placeholder="Search integrations"
+              className="mb-2"
+              variant="medium"
+              icon="search"
+              fullWidth={true}
+              value={integrationFilterText}
+              onChange={(e) => setIntegrationFilterText(e.target.value)}
+            />
             <div className="mt-2 flex flex-wrap gap-x-8 gap-y-2">
-              {orderedIntegrations.map((integration) => {
+              {visibleIntegrations.map((integration) => {
                 const authMethods = Object.entries(
                   integration.authenticationMethods
                 );
@@ -177,24 +192,35 @@ export default function Integrations() {
                             key={client.id}
                             className="flex items-start gap-2 px-3 py-3"
                           >
-                            <NamedIcon
+                            <NamedIconInBox
                               name={client.integrationIdentifier}
-                              className="h-6 w-6"
+                              className="flex-0 h-9 w-9 transition group-hover:border-slate-750"
                             />
                             <div className="flex-grow">
                               <div className="flex flex-col gap-0.5">
+                                <Paragraph
+                                  variant="base"
+                                  className="m-0 mt-1 flex flex-1 items-center gap-2 text-left transition group-hover:text-bright"
+                                >
+                                  {client.integration.name}
+                                  <Badge>{client.authMethod.name}</Badge>
+                                </Paragraph>
                                 <Header3 className="flex gap-2">
                                   <span>{client.title}</span>
-                                  <Badge>{client.authMethod.name}</Badge>
                                 </Header3>
 
                                 {client.description && (
                                   <Paragraph>{client.description}</Paragraph>
                                 )}
-                                {client.scopes && (
+                                <Paragraph className="text-slate-400">
+                                  {simplur`${client.scopesCount} scope[|s]`}
+                                </Paragraph>
+                                <Paragraph className="text-slate-400">
+                                  {simplur`${client.jobCount} job[|s]`}
+                                </Paragraph>
+                                {client.customClientId && (
                                   <Paragraph className="text-slate-400">
-                                    <span>Scopes:</span>{" "}
-                                    {client.scopes.join(", ")}
+                                    Custom client id: {client.customClientId}
                                   </Paragraph>
                                 )}
                                 <Paragraph className="text-slate-400">
