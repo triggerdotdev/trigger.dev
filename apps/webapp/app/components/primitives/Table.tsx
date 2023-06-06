@@ -1,3 +1,4 @@
+import { ChevronRightIcon } from "@heroicons/react/24/solid";
 import { Link } from "@remix-run/react";
 import { ReactNode, forwardRef } from "react";
 import { cn } from "~/utils/cn";
@@ -85,10 +86,14 @@ type TableCellBasicProps = {
   children: ReactNode;
 };
 
+type TableHeaderCellProps = TableCellBasicProps & {
+  hiddenLabel?: boolean;
+};
+
 export const TableHeaderCell = forwardRef<
   HTMLTableCellElement,
-  TableCellBasicProps
->(({ className, alignment = "left", children }, ref) => {
+  TableHeaderCellProps
+>(({ className, alignment = "left", children, hiddenLabel = false }, ref) => {
   let alignmentClassName = "text-left";
   switch (alignment) {
     case "center":
@@ -109,7 +114,7 @@ export const TableHeaderCell = forwardRef<
         className
       )}
     >
-      {children}
+      {hiddenLabel ? <span className="sr-only">{children}</span> : children}
     </th>
   );
 });
@@ -161,6 +166,17 @@ export const TableCell = forwardRef<HTMLTableCellElement, TableCellProps>(
     );
   }
 );
+
+export const TableCellChevron = forwardRef<
+  HTMLTableCellElement,
+  { className?: string; to: string }
+>(({ className, to }, ref) => {
+  return (
+    <TableCell className={className} to={to} ref={ref} alignment="right">
+      <ChevronRightIcon className="h-4 w-4 text-slate-700 transition group-hover:text-bright" />
+    </TableCell>
+  );
+});
 
 type TableBlankRowProps = {
   className?: string;

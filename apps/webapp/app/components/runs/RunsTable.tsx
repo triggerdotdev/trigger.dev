@@ -14,6 +14,7 @@ import {
   TableBlankRow,
   TableBody,
   TableCell,
+  TableCellChevron,
   TableHeader,
   TableHeaderCell,
   TableRow,
@@ -90,9 +91,7 @@ export function RunsTable({
                   )}
                 </TableCell>
                 <TableCell to={path}>{run.version}</TableCell>
-                <TableCell to={path} alignment="right">
-                  <ChevronRightIcon className="h-4 w-4 text-slate-700 transition group-hover:text-bright" />
-                </TableCell>
+                <TableCellChevron to={path} />
               </TableRow>
             );
           })
