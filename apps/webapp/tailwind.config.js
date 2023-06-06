@@ -11,8 +11,6 @@ const slate = {
   750: "#293649",
   850: "#1A2434",
   900: "#131B2B",
-  // 950: "#0E1521",
-  // 1000: "#0B1018",
 };
 
 /** Trigger.dev custom palette */
@@ -34,7 +32,7 @@ const bright = colors.slate[200];
 const dimmed = colors.slate[400];
 
 /** Shadcn colors */
-const background = slate[1000];
+const background = midnight[900];
 const foreground = "hsl(213 31% 91%)";
 const muted = "hsl(223 47% 11%)";
 const mutedForeground = "hsl(215.4 16.3% 56.9%)";
@@ -56,7 +54,7 @@ const destructive = "hsl(0 63% 31%)";
 const destructiveForeground = "hsl(210 40% 98%)";
 const ring = colors.indigo[600];
 const radius = "0.5rem";
-const darkBackground = slate[1000];
+const darkBackground = midnight[900];
 const divide = slate[850];
 
 /** @type {import('tailwindcss').Config} */
