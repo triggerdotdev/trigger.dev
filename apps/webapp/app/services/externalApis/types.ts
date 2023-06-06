@@ -139,7 +139,7 @@ type AdditionalField = {
   type: "text" | "password";
 };
 
-type Scope = {
+export type Scope = {
   /** The name of the scope */
   name: string;
   /** Description */

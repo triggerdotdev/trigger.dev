@@ -2,12 +2,13 @@ import { conform, useForm } from "@conform-to/react";
 import { parse } from "@conform-to/zod";
 import { useFetcher, useLocation, useNavigation } from "@remix-run/react";
 import cuid from "cuid";
-import React, { useMemo, useState } from "react";
+import React, { useState } from "react";
 import simplur from "simplur";
+import { useTextFilter } from "~/hooks/useTextFilter";
 import { createSchema } from "~/routes/resources.connection.$organizationId.oauth2";
-import { Integration } from "~/services/externalApis/types";
+import { Integration, Scope } from "~/services/externalApis/types";
 import { cn } from "~/utils/cn";
-import { InlineCode } from "../code/InlineCode";
+import { CodeBlock } from "../code/CodeBlock";
 import { Button } from "../primitives/Buttons";
 import { Callout } from "../primitives/Callout";
 import { Checkbox } from "../primitives/Checkbox";
@@ -26,7 +27,6 @@ import {
   SheetFooter,
   SheetTrigger,
 } from "../primitives/Sheet";
-import { CodeBlock } from "../code/CodeBlock";
 
 export type Status = "loading" | "idle";
 
@@ -79,29 +79,19 @@ export function OAuthConnectSheet({
     "DEVELOPER"
   );
 
-  const [scopeFilterText, setScopeFilterText] = useState<string>("");
+  const { filterText, setFilterText, filteredItems } = useTextFilter<Scope>({
+    items: apiAuthmethod.scopes,
+    filter: (scope, text) => {
+      if (scope.name.toLowerCase().includes(text.toLowerCase())) return true;
+      if (
+        scope.description &&
+        scope.description.toLowerCase().includes(text.toLowerCase())
+      )
+        return true;
 
-  const visibleScopes = useMemo(() => {
-    if (scopeFilterText === "") {
-      return apiAuthmethod.scopes.map((s) => s.name);
-    }
-
-    return apiAuthmethod.scopes
-      .filter((scope) => {
-        if (scope.name.toLowerCase().includes(scopeFilterText.toLowerCase()))
-          return true;
-        if (
-          scope.description &&
-          scope.description
-            .toLowerCase()
-            .includes(scopeFilterText.toLowerCase())
-        )
-          return true;
-
-        return false;
-      })
-      .map((s) => s.name);
-  }, [apiAuthmethod.scopes, scopeFilterText]);
+      return false;
+    },
+  });
 
   return (
     <Sheet>
@@ -258,13 +248,13 @@ export function OAuthConnectSheet({
                   variant="medium"
                   icon="search"
                   fullWidth={true}
-                  value={scopeFilterText}
-                  onChange={(e) => setScopeFilterText(e.target.value)}
+                  value={filterText}
+                  onChange={(e) => setFilterText(e.target.value)}
                 />
                 <div className="flex flex-col gap-y-0.5 overflow-hidden rounded-md">
-                  {visibleScopes.length === 0 && (
+                  {filteredItems.length === 0 && (
                     <Paragraph variant="small" className="p-4">
-                      No scopes match {scopeFilterText}. Try a different search
+                      No scopes match {filterText}. Try a different search
                       query.
                     </Paragraph>
                   )}
@@ -281,7 +271,9 @@ export function OAuthConnectSheet({
                         description={s.description}
                         variant="description"
                         className={cn(
-                          visibleScopes.includes(s.name) ? "" : "hidden"
+                          filteredItems.find((f) => f.name === s.name)
+                            ? ""
+                            : "hidden"
                         )}
                         onChange={(isChecked) => {
                           if (isChecked) {
