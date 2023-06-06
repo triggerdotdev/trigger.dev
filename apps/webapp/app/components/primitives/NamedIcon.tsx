@@ -11,6 +11,7 @@ import {
   BookOpenIcon,
   BuildingOffice2Icon,
   CalendarDaysIcon,
+  ChatBubbleLeftEllipsisIcon,
   CheckIcon,
   ChevronLeftIcon,
   ChevronRightIcon,
@@ -122,6 +123,9 @@ const icons = {
   ),
   lightbulb: (className: string) => (
     <LightBulbIcon className={cn("text-amber-400", className)} />
+  ),
+  log: (className: string) => (
+    <ChatBubbleLeftEllipsisIcon className={cn("text-slate-400", className)} />
   ),
   organization: (className: string) => (
     <BuildingOffice2Icon className={cn("text-fuchsia-600", className)} />
