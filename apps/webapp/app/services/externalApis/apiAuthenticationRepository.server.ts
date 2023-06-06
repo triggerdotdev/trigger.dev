@@ -60,20 +60,6 @@ export class APIAuthenticationRepository {
     this.#prismaClient = prismaClient;
   }
 
-  /** Get all API clients for the organization */
-  async getAllClients(organizationId: string) {
-    const clients = await this.#prismaClient.apiConnectionClient.findMany({
-      where: {
-        organizationId: organizationId,
-      },
-      orderBy: {
-        title: "asc",
-      },
-    });
-
-    return clients.map((c) => this.#enrichClient(c));
-  }
-
   /** Get all API connections for the organization, for a specific API */
   async getClientsForIntegration(organizationId: string, identifier: string) {
     const clients = await this.#prismaClient.apiConnectionClient.findMany({
@@ -204,7 +190,7 @@ export class APIAuthenticationRepository {
     redirectTo: string;
     url: URL;
   }) {
-    const { authMethod } = this.#getIntegrationAndAuthMethod(client);
+    const { authMethod } = this.getIntegrationAndAuthMethod(client);
 
     switch (authMethod.type) {
       case "oauth2": {
@@ -280,7 +266,7 @@ export class APIAuthenticationRepository {
     url: URL;
     customOAuthClient?: OAuthClient;
   }) {
-    const { integration, authMethod } = this.#getIntegrationAndAuthMethod(
+    const { integration, authMethod } = this.getIntegrationAndAuthMethod(
       attempt.client
     );
 
@@ -412,7 +398,7 @@ export class APIAuthenticationRepository {
     externalAccount?: ExternalAccount;
   }) {
     const { integration, authMethod } =
-      this.#getIntegrationAndAuthMethod(client);
+      this.getIntegrationAndAuthMethod(client);
 
     switch (authMethod.type) {
       case "oauth2": {
@@ -526,7 +512,7 @@ export class APIAuthenticationRepository {
       );
     }
 
-    const { authMethod } = this.#getIntegrationAndAuthMethod(connection.client);
+    const { authMethod } = this.getIntegrationAndAuthMethod(connection.client);
 
     switch (authMethod.type) {
       case "oauth2": {
@@ -643,7 +629,7 @@ export class APIAuthenticationRepository {
   #enrichClient(client: ApiConnectionClient) {
     //add details about the API and authentication method
     const { integration, authMethod } =
-      this.#getIntegrationAndAuthMethod(client);
+      this.getIntegrationAndAuthMethod(client);
 
     return {
       ...client,
@@ -659,7 +645,12 @@ export class APIAuthenticationRepository {
     };
   }
 
-  #getIntegrationAndAuthMethod(client: ApiConnectionClient) {
+  getIntegrationAndAuthMethod(
+    client: Pick<
+      ApiConnectionClient,
+      "integrationIdentifier" | "integrationAuthMethod"
+    >
+  ) {
     const integration = this.#integrationCatalog.getIntegration(
       client.integrationIdentifier
     );
