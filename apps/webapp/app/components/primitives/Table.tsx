@@ -88,7 +88,7 @@ type TableCellBasicProps = {
 export const TableHeaderCell = forwardRef<
   HTMLTableCellElement,
   TableCellBasicProps
->(({ className, alignment, children }, ref) => {
+>(({ className, alignment = "left", children }, ref) => {
   let alignmentClassName = "text-left";
   switch (alignment) {
     case "center":
@@ -119,7 +119,7 @@ type TableCellProps = TableCellBasicProps & {
 };
 
 export const TableCell = forwardRef<HTMLTableCellElement, TableCellProps>(
-  ({ className, alignment, children, to }, ref) => {
+  ({ className, alignment = "left", children, to }, ref) => {
     let alignmentClassName = "text-left";
     switch (alignment) {
       case "center":
@@ -161,3 +161,25 @@ export const TableCell = forwardRef<HTMLTableCellElement, TableCellProps>(
     );
   }
 );
+
+type TableBlankRowProps = {
+  className?: string;
+  colSpan: number;
+  children: ReactNode;
+};
+
+export const TableBlankRow = forwardRef<
+  HTMLTableRowElement,
+  TableBlankRowProps
+>(({ children, colSpan, className }, ref) => {
+  return (
+    <tr ref={ref}>
+      <td
+        colSpan={colSpan}
+        className={cn("py-6 text-center text-sm", className)}
+      >
+        {children}
+      </td>
+    </tr>
+  );
+});

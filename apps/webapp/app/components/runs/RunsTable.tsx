@@ -15,6 +15,14 @@ import {
 } from "../environments/EnvironmentLabel";
 import { Spinner } from "../primitives/Spinner";
 import { RunStatus } from "./RunStatuses";
+import {
+  Table,
+  TableBlankRow,
+  TableCell,
+  TableHeader,
+  TableHeaderCell,
+  TableRow,
+} from "../primitives/Table";
 
 export function RunsTable({
   total,
@@ -32,64 +40,64 @@ export function RunsTable({
   const job = useJob();
 
   return (
-    <table className="w-full divide-y divide-slate-850 overflow-hidden rounded-md border border-slate-900 bg-slate-950">
-      <thead className=" rounded-t-md">
-        <tr>
-          <HeaderCell title="Run" />
-          <HeaderCell title="Env" />
-          <HeaderCell title="Status" />
-          <HeaderCell title="Started" />
-          <HeaderCell title="Duration" />
-          <HeaderCell title="Test" />
-          <HeaderCell title="Version" />
-          <th>
+    <Table>
+      <TableHeader>
+        <TableRow>
+          <TableHeaderCell>Run</TableHeaderCell>
+          <TableHeaderCell>Env</TableHeaderCell>
+          <TableHeaderCell>Status</TableHeaderCell>
+          <TableHeaderCell>Started</TableHeaderCell>
+          <TableHeaderCell>Duration</TableHeaderCell>
+          <TableHeaderCell>Test</TableHeaderCell>
+          <TableHeaderCell>Version</TableHeaderCell>
+          <TableHeaderCell>
             <span className="sr-only">Go to page</span>
-          </th>
-        </tr>
-      </thead>
+          </TableHeaderCell>
+        </TableRow>
+      </TableHeader>
       <tbody className="relative divide-y divide-slate-850">
         {total === 0 && !hasFilters ? (
-          <BlankRow>
+          <TableBlankRow colSpan={8}>
             <NoRuns title="No runs found for this Workflow" />
-          </BlankRow>
+          </TableBlankRow>
         ) : runs.length === 0 ? (
-          <BlankRow>
+          <TableBlankRow colSpan={8}>
             <NoRuns title="No runs match your filters" />
-          </BlankRow>
+          </TableBlankRow>
         ) : (
           runs.map((run) => {
             const path = runPath(organization, project, job, run);
             return (
-              <tr key={run.id} className="group w-full">
-                <Cell to={path}>#{run.number}</Cell>
-                <Cell to={path}>
+              <TableRow key={run.id}>
+                <TableCell to={path}>#{run.number}</TableCell>
+                <TableCell to={path}>
                   <EnvironmentLabel environment={run.environment} />
-                </Cell>
-                <Cell to={path}>
+                </TableCell>
+                <TableCell to={path}>
                   <RunStatus status={run.status} />
-                </Cell>
-                <Cell to={path}>
+                </TableCell>
+                <TableCell to={path}>
                   {run.startedAt
                     ? formatDateTime(run.startedAt, "medium")
                     : "–"}
-                </Cell>
-                <Cell to={path}>
+                </TableCell>
+                <TableCell to={path}>
                   {formatDuration(run.startedAt, run.completedAt, {
                     style: "short",
                   })}
-                </Cell>
-                <Cell to={path}>
+                </TableCell>
+                <TableCell to={path}>
                   {run.isTest ? (
                     <CheckIcon className="h-4 w-4 text-slate-400" />
                   ) : (
                     <StopIcon className="h-4 w-4 text-slate-850" />
                   )}
-                </Cell>
-                <Cell to={path}>{run.version}</Cell>
-                <Cell to={path} alignment="right">
+                </TableCell>
+                <TableCell to={path}>{run.version}</TableCell>
+                <TableCell to={path} alignment="right">
                   <ChevronRightIcon className="h-4 w-4 text-slate-700 transition group-hover:text-bright" />
-                </Cell>
-              </tr>
+                </TableCell>
+              </TableRow>
             );
           })
         )}
@@ -104,65 +112,65 @@ export function RunsTable({
           </tr>
         )}
       </tbody>
-    </table>
+    </Table>
   );
 }
 
-function HeaderCell({
-  title,
-  alignment = "left",
-}: {
-  title: string;
-  alignment?: "left" | "right";
-}) {
-  return (
-    <th
-      scope="col"
-      className={cn(
-        "px-4 py-3 text-xs font-semibold uppercase text-slate-400",
-        alignment === "left" ? "text-left" : "text-right"
-      )}
-    >
-      {title}
-    </th>
-  );
-}
+// function HeaderCell({
+//   title,
+//   alignment = "left",
+// }: {
+//   title: string;
+//   alignment?: "left" | "right";
+// }) {
+//   return (
+//     <th
+//       scope="col"
+//       className={cn(
+//         "px-4 py-3 text-xs font-semibold uppercase text-slate-400",
+//         alignment === "left" ? "text-left" : "text-right"
+//       )}
+//     >
+//       {title}
+//     </th>
+//   );
+// }
 
-function Cell({
-  children,
-  to,
-  alignment = "left",
-}: {
-  children: React.ReactNode;
-  to: string;
-  alignment?: "left" | "right";
-}) {
-  return (
-    <td className="cursor-pointer transition group-hover:bg-slate-850/50">
-      <Link
-        to={to}
-        className={cn(
-          "flex w-full whitespace-nowrap px-4 py-3 text-left text-xs text-slate-400",
-          alignment === "left"
-            ? "justify-start text-left"
-            : "justify-end text-right"
-        )}
-      >
-        {children}
-      </Link>
-    </td>
-  );
-}
+// function Cell({
+//   children,
+//   to,
+//   alignment = "left",
+// }: {
+//   children: React.ReactNode;
+//   to: string;
+//   alignment?: "left" | "right";
+// }) {
+//   return (
+//     <td className="cursor-pointer transition group-hover:bg-slate-850/50">
+//       <Link
+//         to={to}
+//         className={cn(
+//           "flex w-full whitespace-nowrap px-4 py-3 text-left text-xs text-slate-400",
+//           alignment === "left"
+//             ? "justify-start text-left"
+//             : "justify-end text-right"
+//         )}
+//       >
+//         {children}
+//       </Link>
+//     </td>
+//   );
+// }
 
-function BlankRow({ children }: { children: ReactNode }) {
-  return (
-    <tr>
-      <td colSpan={6} className="py-6 text-center text-sm">
-        {children}
-      </td>
-    </tr>
-  );
-}
+// function BlankRow({ children }: { children: ReactNode }) {
+//   return (
+//     <tr>
+//       <td colSpan={6} className="py-6 text-center text-sm">
+//         {children}
+//       </td>
+//     </tr>
+//   );
+// }
 
 export function NoRuns({ title }: { title: string }) {
   return (
