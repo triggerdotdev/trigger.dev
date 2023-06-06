@@ -328,7 +328,10 @@ export class APIAuthenticationRepository {
           .update(token.accessToken)
           .digest("base64");
 
-        const key = `connection/token/${integration.identifier}-${hashedAccessToken}`;
+        const key = secretStoreKeyForToken(
+          integration.identifier,
+          hashedAccessToken
+        );
 
         const metadata = this.#getMetadataFromToken({
           token,
@@ -419,7 +422,10 @@ export class APIAuthenticationRepository {
           .update(token.accessToken)
           .digest("base64");
 
-        const key = `${integration.identifier}-${hashedAccessToken}`;
+        const key = secretStoreKeyForToken(
+          integration.identifier,
+          hashedAccessToken
+        );
 
         const metadata = this.#getMetadataFromToken({
           token,
@@ -688,17 +694,8 @@ export class APIAuthenticationRepository {
     hasCustomClient: boolean;
     clientId: string;
   }) {
-    if (hasCustomClient) {
-      return new URL(
-        `/oauth/${clientId}/callback`,
-        authenticationMethod.config.appHostEnvName
-          ? process.env[authenticationMethod.config.appHostEnvName]
-          : url
-      ).href;
-    }
-
     return new URL(
-      `/resources/connection/oauth2/callback`,
+      `/oauth2/callback`,
       authenticationMethod.config.appHostEnvName
         ? process.env[authenticationMethod.config.appHostEnvName]
         : url
@@ -753,6 +750,13 @@ export class APIAuthenticationRepository {
       );
     }
   }
+}
+
+function secretStoreKeyForToken(
+  integrationIdentifier: string,
+  hashedAccessToken: string
+) {
+  return `connection/token/${integrationIdentifier}-${hashedAccessToken}`;
 }
 
 export const apiAuthenticationRepository = new APIAuthenticationRepository();

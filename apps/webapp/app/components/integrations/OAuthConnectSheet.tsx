@@ -26,6 +26,7 @@ import {
   SheetFooter,
   SheetTrigger,
 } from "../primitives/Sheet";
+import { CodeBlock } from "../code/CodeBlock";
 
 export type Status = "loading" | "idle";
 
@@ -198,9 +199,10 @@ export function OAuthConnectSheet({
                   <div className="ml-6 mt-2">
                     <Paragraph variant="small" className="mb-2">
                       Set the callback url to{" "}
-                      <InlineCode variant="extra-small">
-                        https://app.trigger.dev/oauth/{id}/callback
-                      </InlineCode>
+                      <CodeBlock
+                        code={`${origin}/oauth2/callback`}
+                        showLineNumbers={false}
+                      />
                     </Paragraph>
                     <div className="flex flex-col gap-2">
                       <div className="flex gap-2">
