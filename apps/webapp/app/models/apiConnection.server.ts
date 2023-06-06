@@ -1,1 +1,5 @@
-export type { ApiConnectionType } from ".prisma/client";
+export type {
+  ApiConnectionType,
+  ApiConnectionClient,
+  ApiConnection,
+} from ".prisma/client";

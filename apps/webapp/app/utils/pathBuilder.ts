@@ -1,3 +1,4 @@
+import { ApiConnectionClient } from ".prisma/client";
 import { Job } from "~/models/job.server";
 import type { Organization } from "~/models/organization.server";
 import type { Project } from "~/models/project.server";
@@ -6,6 +7,7 @@ type OrgForPath = Pick<Organization, "slug">;
 type ProjectForPath = Pick<Project, "slug">;
 type JobForPath = Pick<Job, "id">;
 type RunForPath = Pick<Job, "id">;
+type ApiConnectionClientForPath = Pick<ApiConnectionClient, "id">;
 
 export function organizationsPath() {
   return `/`;
@@ -87,6 +89,16 @@ export function newProjectPath(organization: OrgForPath) {
 
 function projectParam(project: ProjectForPath) {
   return project.slug;
+}
+
+// Integration
+
+export function integrationPath(
+  organization: OrgForPath,
+  project: ProjectForPath,
+  integration: ApiConnectionClientForPath
+) {
+  return `${projectIntegrationsPath(organization, project)}/${integration}`;
 }
 
 // Job
