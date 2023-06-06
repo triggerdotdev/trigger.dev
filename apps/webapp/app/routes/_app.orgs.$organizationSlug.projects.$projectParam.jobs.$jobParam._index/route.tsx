@@ -60,7 +60,7 @@ export default function Page() {
     <div>
       <ListPagination list={list} className="mb-1 justify-end" />
       <RunsTable
-        total={10}
+        total={list.runs.length}
         hasFilters={false}
         runs={list.runs}
         isLoading={isLoading}

@@ -1,28 +1,24 @@
-import { BeakerIcon, StopIcon } from "@heroicons/react/24/outline";
+import { StopIcon } from "@heroicons/react/24/outline";
 import { CheckIcon, ChevronRightIcon } from "@heroicons/react/24/solid";
-import { Link } from "@remix-run/react";
-import type { ReactNode } from "react";
 import { useJob } from "~/hooks/useJob";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { RunList } from "~/presenters/RunListPresenter.server";
 import { formatDateTime, formatDuration } from "~/utils";
-import { cn } from "~/utils/cn";
 import { runPath } from "~/utils/pathBuilder";
-import {
-  EnvironmentLabel,
-  environmentTitle,
-} from "../environments/EnvironmentLabel";
+import { EnvironmentLabel } from "../environments/EnvironmentLabel";
+import { Callout } from "../primitives/Callout";
 import { Spinner } from "../primitives/Spinner";
-import { RunStatus } from "./RunStatuses";
 import {
   Table,
   TableBlankRow,
+  TableBody,
   TableCell,
   TableHeader,
   TableHeaderCell,
   TableRow,
 } from "../primitives/Table";
+import { RunStatus } from "./RunStatuses";
 
 export function RunsTable({
   total,
@@ -55,10 +51,10 @@ export function RunsTable({
           </TableHeaderCell>
         </TableRow>
       </TableHeader>
-      <tbody className="relative divide-y divide-slate-850">
+      <TableBody>
         {total === 0 && !hasFilters ? (
           <TableBlankRow colSpan={8}>
-            <NoRuns title="No runs found for this Workflow" />
+            <NoRuns title="No runs found for this Job" />
           </TableBlankRow>
         ) : runs.length === 0 ? (
           <TableBlankRow colSpan={8}>
@@ -102,80 +98,23 @@ export function RunsTable({
           })
         )}
         {isLoading && (
-          <tr className="absolute left-0 top-0 h-full w-full bg-slate-800/90">
-            <td
-              colSpan={6}
-              className="flex h-full items-center justify-center gap-2 text-white"
-            >
-              <Spinner /> Loading…
-            </td>
-          </tr>
+          <TableBlankRow
+            colSpan={8}
+            className="absolute left-0 top-0 flex h-full w-full items-center justify-center gap-2 bg-slate-900/90"
+          >
+            <Spinner /> <span className="text-dimmed">Loading…</span>
+          </TableBlankRow>
         )}
-      </tbody>
+      </TableBody>
     </Table>
   );
 }
-
-// function HeaderCell({
-//   title,
-//   alignment = "left",
-// }: {
-//   title: string;
-//   alignment?: "left" | "right";
-// }) {
-//   return (
-//     <th
-//       scope="col"
-//       className={cn(
-//         "px-4 py-3 text-xs font-semibold uppercase text-slate-400",
-//         alignment === "left" ? "text-left" : "text-right"
-//       )}
-//     >
-//       {title}
-//     </th>
-//   );
-// }
-
-// function Cell({
-//   children,
-//   to,
-//   alignment = "left",
-// }: {
-//   children: React.ReactNode;
-//   to: string;
-//   alignment?: "left" | "right";
-// }) {
-//   return (
-//     <td className="cursor-pointer transition group-hover:bg-slate-850/50">
-//       <Link
-//         to={to}
-//         className={cn(
-//           "flex w-full whitespace-nowrap px-4 py-3 text-left text-xs text-slate-400",
-//           alignment === "left"
-//             ? "justify-start text-left"
-//             : "justify-end text-right"
-//         )}
-//       >
-//         {children}
-//       </Link>
-//     </td>
-//   );
-// }
-
-// function BlankRow({ children }: { children: ReactNode }) {
-//   return (
-//     <tr>
-//       <td colSpan={6} className="py-6 text-center text-sm">
-//         {children}
-//       </td>
-//     </tr>
-//   );
-// }
-
-export function NoRuns({ title }: { title: string }) {
+function NoRuns({ title }: { title: string }) {
   return (
     <div className="flex items-center justify-center">
-      THERE ARE NO RUNS HERE, {":("}
+      <Callout variant="warning" className="w-auto">
+        {title}
+      </Callout>
     </div>
   );
 }
