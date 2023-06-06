@@ -7,6 +7,7 @@ import { RunListPresenter } from "~/presenters/RunListPresenter.server";
 import { requireUserId } from "~/services/session.server";
 import { Handle } from "~/utils/handle";
 import { ListPagination } from "./ListPagination";
+import { useNavigation } from "@remix-run/react";
 
 //todo defer the run list query
 //todo live show when there are new items in the list
@@ -52,11 +53,18 @@ export const handle: Handle = {
 
 export default function Page() {
   const { list } = useTypedLoaderData<typeof loader>();
+  const navigation = useNavigation();
+  const isLoading = navigation.state !== "idle";
 
   return (
     <div>
       <ListPagination list={list} className="mb-1 justify-end" />
-      <RunsTable total={10} hasFilters={false} runs={list.runs} />
+      <RunsTable
+        total={10}
+        hasFilters={false}
+        runs={list.runs}
+        isLoading={isLoading}
+      />
       <ListPagination list={list} className="mb-1 justify-end" />
     </div>
   );
