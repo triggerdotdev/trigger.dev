@@ -1,4 +1,9 @@
+import { CodeBlock } from "~/components/code/CodeBlock";
+import { Header3 } from "~/components/primitives/Headers";
+import { Paragraph } from "~/components/primitives/Paragraph";
 import { Event, Task } from "~/presenters/RunPresenter.server";
+import { formatDateTime, formatDuration } from "~/utils";
+import { cn } from "~/utils/cn";
 import {
   RunPanel,
   RunPanelBody,
@@ -9,15 +14,6 @@ import {
   RunPanelIconTitle,
 } from "./RunCard";
 import { TaskStatusIcon } from "./TaskStatus";
-import { cn } from "~/utils/cn";
-import {
-  formatDateTime,
-  formatDuration,
-  formatDurationMilliseconds,
-} from "~/utils";
-import { Paragraph } from "~/components/primitives/Paragraph";
-import { Header3 } from "~/components/primitives/Headers";
-import { CodeBlock } from "~/components/code/CodeBlock";
 
 type DetailProps =
   | {
