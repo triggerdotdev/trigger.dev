@@ -12,3 +12,6 @@ export const StyleSchema = z.object({
   style: z.enum(["normal", "minimal"]),
   variant: z.string().optional(),
 });
+
+export type Style = z.infer<typeof StyleSchema>;
+export type StyleName = Style["style"];

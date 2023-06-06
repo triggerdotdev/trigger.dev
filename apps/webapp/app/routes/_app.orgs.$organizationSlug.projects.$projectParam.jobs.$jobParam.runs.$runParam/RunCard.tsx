@@ -1,14 +1,14 @@
+import { Style, StyleName } from "@/../../packages/internal/src";
 import { NamedIcon } from "~/components/primitives/NamedIcon";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { cn } from "~/utils/cn";
-import { Children, Fragment } from "react";
-import { Header3 } from "~/components/primitives/Headers";
 
 type RunPanelProps = {
   selected: boolean;
   children: React.ReactNode;
   onClick?: () => void;
   className?: string;
+  styleName?: StyleName;
 };
 
 export function RunPanel({
@@ -16,12 +16,18 @@ export function RunPanel({
   children,
   onClick,
   className,
+  styleName = "normal",
 }: RunPanelProps) {
   return (
     <div
       className={cn(
-        "overflow-hidden rounded-md border bg-slate-900 transition duration-150",
-        selected ? "border-green-500" : "border-slate-850",
+        "overflow-hidden rounded-md border transition duration-150",
+        styleName === "normal" && "bg-slate-900",
+        selected
+          ? "border-green-500"
+          : styleName === "normal"
+          ? "border-slate-850"
+          : "border-slate-900",
         onClick && "cursor-pointer",
         onClick && !selected && "hover:border-green-500/30",
         className
@@ -37,15 +43,24 @@ type RunPanelHeaderProps = {
   icon: React.ReactNode;
   title: React.ReactNode;
   accessory?: React.ReactNode;
+  styleName?: StyleName;
 };
 
 export function RunPanelHeader({
   icon,
   title,
   accessory,
+  styleName = "normal",
 }: RunPanelHeaderProps) {
   return (
-    <div className="flex h-10 items-center justify-between border-b border-slate-850 bg-midnight-850 p-2">
+    <div
+      className={cn(
+        "flex items-center justify-between px-2",
+        styleName === "normal"
+          ? "h-10 border-b border-slate-850 bg-midnight-850 py-2"
+          : "pt-2"
+      )}
+    >
       <div className="flex items-center gap-2">
         {typeof icon === "string" ? (
           <NamedIcon name={icon} className="h-5 w-5" />
@@ -81,9 +96,26 @@ export function RunPanelBody({ children }: { children: React.ReactNode }) {
   return <div className="p-4">{children}</div>;
 }
 
-export function RunPanelDescription({ text }: { text: string }) {
+const variantClasses: Record<string, string> = {
+  log: "",
+  error: "text-rose-500",
+  warn: "text-yellow-500",
+  info: "",
+  debug: "",
+};
+
+export function RunPanelDescription({
+  text,
+  variant,
+}: {
+  text: string;
+  variant?: string;
+}) {
   return (
-    <Paragraph variant="small" className="pb-4">
+    <Paragraph
+      variant="small"
+      className={cn("pb-4", variant && variantClasses[variant])}
+    >
       {text}
     </Paragraph>
   );

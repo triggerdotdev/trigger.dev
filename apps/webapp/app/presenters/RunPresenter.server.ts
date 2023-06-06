@@ -1,4 +1,7 @@
-import { DisplayElementSchema } from "@/../../packages/internal/src";
+import {
+  DisplayElementSchema,
+  StyleSchema,
+} from "@/../../packages/internal/src";
 import { z } from "zod";
 import { PrismaClient, prisma } from "~/db.server";
 
@@ -60,6 +63,7 @@ export class RunPresenter {
             error: true,
             startedAt: true,
             completedAt: true,
+            style: true,
             children: {
               select: {
                 id: true,
@@ -134,6 +138,7 @@ export class RunPresenter {
         connection: run.runConnections.find(
           (c) => c.id === task.runConnectionId
         ),
+        style: task.style ? StyleSchema.parse(task.style) : undefined,
       })),
       runConnections: run.runConnections,
       missingConnections: run.missingConnections,

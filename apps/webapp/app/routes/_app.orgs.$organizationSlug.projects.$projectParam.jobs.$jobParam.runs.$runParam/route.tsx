@@ -86,6 +86,8 @@ export default function Page() {
     if (task) return { type: "task" as const, task };
   }, [selectedId, run]);
 
+  console.log(run);
+
   return (
     <PageContainer>
       <PageHeader>
@@ -206,6 +208,7 @@ export default function Page() {
                     <RunPanel
                       selected={isSelected}
                       onClick={() => setSelectedId(task.id)}
+                      styleName={task.style?.style}
                     >
                       <RunPanelHeader
                         icon={
@@ -239,10 +242,14 @@ export default function Page() {
                             })}
                           </Paragraph>
                         }
+                        styleName={task.style?.style}
                       />
                       <RunPanelBody>
                         {task.description && (
-                          <RunPanelDescription text={task.description} />
+                          <RunPanelDescription
+                            text={task.description}
+                            variant={task.style?.variant}
+                          />
                         )}
                         <RunPanelIconSection>
                           {task.displayKey && (
