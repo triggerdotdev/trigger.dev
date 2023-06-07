@@ -22,6 +22,7 @@ import {
   Cog8ToothIcon,
   CreditCardIcon,
   EnvelopeIcon,
+  FingerPrintIcon,
   FlagIcon,
   FolderIcon,
   GlobeAltIcon,
@@ -110,6 +111,9 @@ const icons = {
   ),
   heart: (className: string) => (
     <HeartIcon className={cn("text-rose-500", className)} />
+  ),
+  id: (className: string) => (
+    <FingerPrintIcon className={cn("text-rose-200", className)} />
   ),
   info: (className: string) => (
     <InformationCircleIcon className={cn("text-blue-500", className)} />
