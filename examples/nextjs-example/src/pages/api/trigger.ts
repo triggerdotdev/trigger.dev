@@ -250,6 +250,45 @@ new Job(client, {
       payload,
       context: ctx,
     });
+
+    await io.runTask(
+      "level 1",
+      {
+        name: "Level 1",
+      },
+      async () => {
+        await io.runTask(
+          "level 2",
+          {
+            name: "Level 2",
+          },
+          async () => {
+            await io.runTask(
+              "level 3",
+              {
+                name: "Level 3",
+              },
+              async () => {
+                await io.runTask(
+                  "level 4",
+                  {
+                    name: "Level 4",
+                  },
+                  async () => {}
+                );
+                await io.runTask(
+                  "level 5",
+                  {
+                    name: "Level 5",
+                  },
+                  async () => {}
+                );
+              }
+            );
+          }
+        );
+      }
+    );
   },
 });
 
