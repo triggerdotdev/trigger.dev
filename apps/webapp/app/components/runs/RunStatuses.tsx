@@ -19,50 +19,11 @@ export function RunStatus({ status }: { status: JobRunStatus }) {
 }
 
 export function RunStatusLabel({ status }: { status: JobRunStatus }) {
-  switch (status) {
-    case "SUCCESS":
-      return (
-        <span className={runStatusClassNameColor(status)}>
-          {runStatusTitle(status)}
-        </span>
-      );
-    case "PENDING":
-      return (
-        <span className={runStatusClassNameColor(status)}>
-          {runStatusTitle(status)}
-        </span>
-      );
-    case "STARTED":
-      return (
-        <span className={runStatusClassNameColor(status)}>
-          {runStatusTitle(status)}
-        </span>
-      );
-    case "QUEUED":
-      return (
-        <span className={runStatusClassNameColor(status)}>
-          {runStatusTitle(status)}
-        </span>
-      );
-    case "FAILURE":
-      return (
-        <span className={runStatusClassNameColor(status)}>
-          {runStatusTitle(status)}
-        </span>
-      );
-    case "TIMED_OUT":
-      return (
-        <span className={runStatusClassNameColor(status)}>
-          {runStatusTitle(status)}
-        </span>
-      );
-    case "WAITING_ON_CONNECTIONS":
-      return (
-        <span className={runStatusClassNameColor(status)}>
-          {runStatusTitle(status)}
-        </span>
-      );
-  }
+  return (
+    <span className={runStatusClassNameColor(status)}>
+      {runStatusTitle(status)}
+    </span>
+  );
 }
 
 export function RunStatusIcon({
@@ -109,6 +70,16 @@ export function RunStatusIcon({
           className={cn(runStatusClassNameColor(status), className)}
         />
       );
+    case "ABORTED":
+      return (
+        <XCircleIcon
+          className={cn(runStatusClassNameColor(status), className)}
+        />
+      );
+    case "PREPROCESSING":
+      return (
+        <Spinner className={cn(runStatusClassNameColor(status), className)} />
+      );
   }
 }
 
@@ -128,6 +99,10 @@ export function runStatusTitle(status: JobRunStatus): string {
       return "Timed out";
     case "WAITING_ON_CONNECTIONS":
       return "Waiting on connections";
+    case "ABORTED":
+      return "Aborted";
+    case "PREPROCESSING":
+      return "Preprocessing";
   }
 }
 
@@ -147,5 +122,9 @@ function runStatusClassNameColor(status: JobRunStatus): string {
       return "text-amber-300";
     case "WAITING_ON_CONNECTIONS":
       return "text-amber-300";
+    case "ABORTED":
+      return "text-rose-500";
+    case "PREPROCESSING":
+      return "text-blue-500";
   }
 }
