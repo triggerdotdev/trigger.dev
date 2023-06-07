@@ -4,6 +4,7 @@ import {
   InformationCircleIcon,
   StopIcon,
 } from "@heroicons/react/20/solid";
+import { CompanyIcon, hasIcon } from "@trigger.dev/companyicons";
 import {
   ArrowLeftIcon,
   ArrowRightIcon,
@@ -181,16 +182,6 @@ const icons = {
   webhook: (className: string) => (
     <WebhookIcon className={cn("text-pink-500", className)} />
   ),
-  //APIs
-  airtable: (className: string) => (
-    <IntegrationIcon slug="airtable" name={"Airtable"} className={className} />
-  ),
-  github: (className: string) => (
-    <IntegrationIcon slug="github" name={"GitHub"} className={className} />
-  ),
-  slack: (className: string) => (
-    <IntegrationIcon slug="slack" name={"Slack"} className={className} />
-  ),
 };
 
 export type IconNames = keyof typeof icons;
@@ -207,6 +198,19 @@ export function NamedIcon({
 }) {
   if (Object.keys(icons).includes(name)) {
     return icons[name as IconNames](className);
+  }
+
+  if (hasIcon(name)) {
+    return (
+      <div
+        className={cn(
+          "grid aspect-square min-h-fit place-items-center",
+          className
+        )}
+      >
+        <CompanyIcon name={name} className={"p-[7%]"} variant="light" />
+      </div>
+    );
   }
 
   console.log(`Icon ${name} not found`);
@@ -236,32 +240,6 @@ export function NamedIconInBox({
       )}
     >
       <NamedIcon name={name} fallback={fallback} className="h-6 w-6" />
-    </div>
-  );
-}
-
-function IntegrationIcon({
-  slug,
-  name,
-  className,
-}: {
-  slug: string;
-  name: string;
-  className: string;
-}) {
-  return (
-    <div
-      className={cn(
-        "grid aspect-square min-h-fit place-items-center",
-        className
-      )}
-    >
-      <img
-        src={`/integrations/${slug}.png`}
-        // className="p-[8%]"
-        alt={name}
-        loading="lazy"
-      />
     </div>
   );
 }

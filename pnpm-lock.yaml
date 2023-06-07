@@ -104,6 +104,7 @@ importers:
       '@testing-library/react': ^13.4.0
       '@testing-library/user-event': ^14.4.3
       '@total-typescript/ts-reset': ^0.4.2
+      '@trigger.dev/companyicons': ^1.5.3
       '@trigger.dev/internal': workspace:*
       '@trigger.dev/tailwind-config': workspace:*
       '@typeform/embed-react': ^2.14.1
@@ -271,6 +272,7 @@ importers:
       '@remix-run/server-runtime': 1.16.1
       '@sentry/remix': 7.53.1_535ee7qxxe65mhmlpnplklpcuu
       '@tanstack/react-table': 8.7.6_biqbaboplfbrettd7655fr4n2y
+      '@trigger.dev/companyicons': 1.5.3_biqbaboplfbrettd7655fr4n2y
       '@trigger.dev/internal': link:../../packages/internal
       '@typeform/embed-react': 2.14.1_react@18.2.0
       '@types/simple-oauth2': 5.0.4
@@ -9411,6 +9413,16 @@ packages:
     resolution: {integrity: sha512-vqd7ZUDSrXFVT1n8b2kc3LnklncDQFPvR58yUS1kEP23/nHPAO9l1lMjUfnPrXYYk4Hj54rrLKMW5ipwk7k09A==}
     dev: true
 
+  /@trigger.dev/companyicons/1.5.3_biqbaboplfbrettd7655fr4n2y:
+    resolution: {integrity: sha512-/5+HKrJUih/QPaLYx7phT6cUhkbFMRnaS4ppMJAtpR7aBlMWoy0opoyrYhn6cH21zmPxpUTleySxyGLUrYcjoA==}
+    peerDependencies:
+      react: ^18.2.0
+      react-dom: 18.2.0
+    dependencies:
+      react: 18.2.0
+      react-dom: 18.2.0_react@18.2.0
+    dev: false
+
   /@tsconfig/node10/1.0.9:
     resolution: {integrity: sha512-jNsYVVxU8v5g43Erja32laIDHXeoNvFEpX33OK4d6hljo3jDhCBDhx5dhCCTMWUojscpAagGiRkBKxpdl9fxqA==}
 
@@ -11043,7 +11055,7 @@ packages:
   /axios/0.25.0_debug@4.3.4:
     resolution: {integrity: sha512-cD8FOb0tRH3uuEe6+evtAbgJtfxr7ly3fQjYcMcuPlgkwVS9xboaVIpcDV+cYQe+yGykgwZCs1pzjntcGa6l5g==}
     dependencies:
-      follow-redirects: 1.15.2_debug@4.3.4
+      follow-redirects: 1.15.2
     transitivePeerDependencies:
       - debug
     dev: true
@@ -11051,7 +11063,7 @@ packages:
   /axios/0.27.2:
     resolution: {integrity: sha512-t+yRIyySRTp/wua5xEr+z1q60QmLq8ABsS5O9Me1AsE5dfKqgnCFzwiCZZ/cGNd1lq4/7akDWMxdhVlucjmnOQ==}
     dependencies:
-      follow-redirects: 1.15.2_debug@4.3.4
+      follow-redirects: 1.15.2
       form-data: 4.0.0
     transitivePeerDependencies:
       - debug
@@ -14604,7 +14616,7 @@ packages:
     engines: {node: '>=0.4.0'}
     dev: true
 
-  /follow-redirects/1.15.2_debug@4.3.4:
+  /follow-redirects/1.15.2:
     resolution: {integrity: sha512-VQLG33o04KaQ8uYi2tVNbdrWp1QWxNNea+nmIB4EVM28v0hmP17z7aG1+wAkNzVq4KeXTq3221ye5qTJP91JwA==}
     engines: {node: '>=4.0'}
     peerDependencies:
@@ -14612,8 +14624,6 @@ packages:
     peerDependenciesMeta:
       debug:
         optional: true
-    dependencies:
-      debug: 4.3.4
 
   /for-each/0.3.3:
     resolution: {integrity: sha512-jqYfLp7mo9vIyQf8ykW2v7A+2N4QjeCeI5+Dz9XraiO1ign81wjiH7Fb9vSOWvQfNtmSa4H2RoQTrrXivdUZmw==}
