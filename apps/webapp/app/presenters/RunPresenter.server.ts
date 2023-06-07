@@ -20,6 +20,25 @@ export type Event = NonNullable<
 
 const ElementsSchema = z.array(DisplayElementSchema);
 
+const taskSelect = {
+  id: true,
+  displayKey: true,
+  runConnectionId: true,
+  name: true,
+  icon: true,
+  status: true,
+  delayUntil: true,
+  noop: true,
+  description: true,
+  elements: true,
+  params: true,
+  output: true,
+  error: true,
+  startedAt: true,
+  completedAt: true,
+  style: true,
+} as const;
+
 export class RunPresenter {
   #prismaClient: PrismaClient;
 
@@ -49,29 +68,41 @@ export class RunPresenter {
             slug: true,
           },
         },
-        //todo slim these down
-        event: true,
-        tasks: {
+        event: {
           select: {
             id: true,
-            displayKey: true,
-            runConnectionId: true,
             name: true,
-            icon: true,
-            status: true,
-            delayUntil: true,
-            noop: true,
-            description: true,
-            elements: true,
-            params: true,
-            output: true,
-            error: true,
-            startedAt: true,
-            completedAt: true,
-            style: true,
+            payload: true,
+            timestamp: true,
+            deliveredAt: true,
+          },
+        },
+        tasks: {
+          select: {
+            ...taskSelect,
             children: {
               select: {
-                id: true,
+                ...taskSelect,
+                children: {
+                  select: {
+                    ...taskSelect,
+                    children: {
+                      select: {
+                        ...taskSelect,
+                        children: {
+                          select: {
+                            ...taskSelect,
+                            children: {
+                              select: {
+                                ...taskSelect,
+                              },
+                            },
+                          },
+                        },
+                      },
+                    },
+                  },
+                },
               },
             },
           },
@@ -149,7 +180,6 @@ export class RunPresenter {
         type: run.environment.type,
         slug: run.environment.slug,
       },
-      //todo remove properties
       event: run.event,
       tasks: run.tasks.map((task) => ({
         ...task,

@@ -81,7 +81,10 @@ export default function Page() {
   const selectedItem = useMemo(() => {
     if (!selectedId) return undefined;
     if (selectedId === run.event.id)
-      return { type: "event" as const, event: run.event };
+      return {
+        type: "trigger" as const,
+        trigger: { ...run.event, icon: job.event.icon, title: job.event.title },
+      };
     const task = run.tasks.find((task) => task.id === selectedId);
     if (task) return { type: "task" as const, task };
   }, [selectedId, run]);

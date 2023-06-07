@@ -15,25 +15,27 @@ import {
 } from "./RunCard";
 import { TaskStatusIcon } from "./TaskStatus";
 
+type Trigger = Event & { icon: string; title: string };
+
 type DetailProps =
   | {
       type: "task";
       task: Task;
     }
   | {
-      type: "event";
-      event: Event;
+      type: "trigger";
+      trigger: Trigger;
     };
 
 export function Detail(props: DetailProps) {
   switch (props.type) {
     case "task":
       return <TaskDetail {...props.task} />;
-    case "event":
-      return <EventDetail {...props.event} />;
+    case "trigger":
+      return <EventDetail {...props.trigger} />;
+    default:
+      return <></>;
   }
-
-  return <></>;
 }
 
 export function TaskDetail({
@@ -123,10 +125,41 @@ export function TaskDetail({
   );
 }
 
-export function EventDetail({}: Event) {
+export function EventDetail({
+  icon,
+  title,
+  id,
+  name,
+  payload,
+  timestamp,
+  deliveredAt,
+}: Trigger) {
   return (
     <RunPanel selected={false}>
-      <RunPanelHeader icon={undefined} title={""} />
+      <RunPanelHeader icon={icon} title={title} />
+      <RunPanelBody>
+        <div className="mb-4 border-b border-slate-800 pb-4">
+          <RunPanelIconSection>
+            <RunPanelIconElement
+              icon="calendar"
+              label="Created"
+              value={formatDateTime(timestamp)}
+            />
+            {deliveredAt && (
+              <RunPanelIconElement
+                icon="flag"
+                label="Finished at"
+                value={formatDateTime(deliveredAt)}
+              />
+            )}
+            <RunPanelIconElement icon="flag" label="Name" value={name} />
+          </RunPanelIconSection>
+        </div>
+        <div className="mt-4 flex flex-col gap-2">
+          <Header3>Payload</Header3>
+          <CodeBlock code={JSON.stringify(payload, null, 2)} />
+        </div>
+      </RunPanelBody>
     </RunPanel>
   );
 }
