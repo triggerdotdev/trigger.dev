@@ -40,6 +40,7 @@ import {
   TaskSeparator,
 } from "./RunCard";
 import { TaskStatusIcon } from "./TaskStatus";
+import { TaskCard } from "./TaskCard";
 
 export const loader = async ({ request, params }: LoaderArgs) => {
   const userId = await requireUserId(request);
@@ -206,85 +207,13 @@ export default function Page() {
                 const isLast = index === run.tasks.length - 1;
 
                 return (
-                  <Fragment key={task.id}>
-                    <RunPanel
-                      selected={isSelected}
-                      onClick={() => setSelectedId(task.id)}
-                      styleName={task.style?.style}
-                    >
-                      <RunPanelHeader
-                        icon={
-                          task.status === "COMPLETED" ? (
-                            task.icon
-                          ) : (
-                            <TaskStatusIcon
-                              status={task.status}
-                              minimal={true}
-                              className={cn(
-                                "h-5 w-5",
-                                !isSelected && "text-slate-400"
-                              )}
-                            />
-                          )
-                        }
-                        title={
-                          task.status === "COMPLETED" ? (
-                            task.name
-                          ) : (
-                            <RunPanelIconTitle
-                              icon={task.icon}
-                              title={task.name}
-                            />
-                          )
-                        }
-                        accessory={
-                          <Paragraph variant="extra-small">
-                            {formatDuration(task.startedAt, task.completedAt, {
-                              style: "short",
-                            })}
-                          </Paragraph>
-                        }
-                        styleName={task.style?.style}
-                      />
-                      <RunPanelBody>
-                        {task.description && (
-                          <RunPanelDescription
-                            text={task.description}
-                            variant={task.style?.variant}
-                          />
-                        )}
-                        <RunPanelIconSection>
-                          {task.displayKey && (
-                            <RunPanelIconElement
-                              icon="key"
-                              label="Key"
-                              value={task.displayKey}
-                            />
-                          )}
-                          {task.connection && (
-                            <RunPanelIconElement
-                              icon={
-                                task.connection.apiConnection.client
-                                  .integrationIdentifier
-                              }
-                              label="Connection"
-                              value={task.connection.apiConnection.client.title}
-                            />
-                          )}
-                        </RunPanelIconSection>
-                        {task.elements.length > 0 && (
-                          <RunPanelElements
-                            elements={task.elements.map((element) => ({
-                              label: element.label,
-                              value: element.text,
-                            }))}
-                            className="mt-4"
-                          />
-                        )}
-                      </RunPanelBody>
-                    </RunPanel>
-                    {!isLast && <TaskSeparator />}
-                  </Fragment>
+                  <TaskCard
+                    key={task.id}
+                    isSelected={isSelected}
+                    setSelectedId={setSelectedId}
+                    isLast={isLast}
+                    {...task}
+                  />
                 );
               })}
             </div>
