@@ -37,6 +37,7 @@ const taskSelect = {
   startedAt: true,
   completedAt: true,
   style: true,
+  parentId: true,
 } as const;
 
 export class RunPresenter {
@@ -108,6 +109,9 @@ export class RunPresenter {
           },
           orderBy: {
             createdAt: "asc",
+          },
+          where: {
+            parentId: null,
           },
         },
         runConnections: {
