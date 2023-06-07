@@ -1,4 +1,5 @@
 import {
+  DisplayElement,
   DisplayElementSchema,
   StyleSchema,
 } from "@/../../packages/internal/src";
@@ -17,6 +18,8 @@ export type Event = NonNullable<
   Awaited<ReturnType<RunPresenter["call"]>>
 >["event"];
 
+const ElementsSchema = z.array(DisplayElementSchema);
+
 export class RunPresenter {
   #prismaClient: PrismaClient;
 
@@ -33,9 +36,11 @@ export class RunPresenter {
         startedAt: true,
         completedAt: true,
         isTest: true,
+        elements: true,
         version: {
           select: {
             version: true,
+            elements: true,
           },
         },
         environment: {
@@ -114,6 +119,23 @@ export class RunPresenter {
       return undefined;
     }
 
+    //merge the elements from the version and the run, with the run elements taking precedence
+    const mergedElements = new Map<string, DisplayElement>();
+    console.log("run.version.elements", run.version.elements);
+    if (run.version.elements) {
+      const elements = ElementsSchema.parse(run.version.elements);
+      for (const element of elements) {
+        mergedElements.set(element.label, element);
+      }
+    }
+    console.log("run.elements", run.elements);
+    if (run.elements) {
+      const elements = ElementsSchema.parse(run.elements);
+      for (const element of elements) {
+        mergedElements.set(element.label, element);
+      }
+    }
+
     return {
       id: run.id,
       number: run.number,
@@ -122,6 +144,7 @@ export class RunPresenter {
       completedAt: run.completedAt,
       isTest: run.isTest,
       version: run.version.version,
+      elements: Array.from(mergedElements.values()),
       environment: {
         type: run.environment.type,
         slug: run.environment.slug,
