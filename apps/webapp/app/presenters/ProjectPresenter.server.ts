@@ -35,7 +35,6 @@ export class ProjectPresenter {
             id: true,
             slug: true,
             title: true,
-
             aliases: {
               select: {
                 version: {
