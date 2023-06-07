@@ -208,7 +208,11 @@ export function NamedIcon({
           className
         )}
       >
-        <CompanyIcon name={name} className={"p-[7%]"} variant="light" />
+        <CompanyIcon
+          name={name}
+          className={"h-full w-full p-[7%]"}
+          variant="light"
+        />
       </div>
     );
   }
