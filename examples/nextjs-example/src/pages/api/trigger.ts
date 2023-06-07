@@ -274,14 +274,15 @@ new Job(client, {
                   {
                     name: "Level 4",
                   },
-                  async () => {}
-                );
-                await io.runTask(
-                  "level 5",
-                  {
-                    name: "Level 5",
-                  },
-                  async () => {}
+                  async () => {
+                    await io.runTask(
+                      "level 5",
+                      {
+                        name: "Level 5",
+                      },
+                      async () => {}
+                    );
+                  }
                 );
               }
             );

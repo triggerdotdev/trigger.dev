@@ -176,6 +176,11 @@ export function RunPanelElements({
   );
 }
 
-export function TaskSeparator() {
-  return <div className="h-4 w-4 border-r border-slate-600" />;
+export function TaskSeparator({ depth }: { depth: number }) {
+  return (
+    <div
+      className="h-4 w-4 border-r border-slate-600"
+      style={{ marginLeft: `${depth}rem` }}
+    />
+  );
 }

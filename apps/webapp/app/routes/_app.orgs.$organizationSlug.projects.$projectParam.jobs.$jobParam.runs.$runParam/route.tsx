@@ -203,15 +203,15 @@ export default function Page() {
             <div>
               <Header2 className="mb-2">Tasks</Header2>
               {run.tasks.map((task, index) => {
-                const isSelected = task.id === selectedId;
                 const isLast = index === run.tasks.length - 1;
 
                 return (
                   <TaskCard
                     key={task.id}
-                    isSelected={isSelected}
+                    selectedId={task.id}
                     setSelectedId={setSelectedId}
                     isLast={isLast}
+                    depth={0}
                     {...task}
                   />
                 );

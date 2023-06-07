@@ -18,12 +18,37 @@ export type Event = NonNullable<
   Awaited<ReturnType<RunPresenter["call"]>>
 >["event"];
 
+type QueryTask = NonNullable<
+  Awaited<ReturnType<RunPresenter["query"]>>
+>["tasks"][number];
+
 const ElementsSchema = z.array(DisplayElementSchema);
 
 const taskSelect = {
   id: true,
   displayKey: true,
-  runConnectionId: true,
+  runConnection: {
+    select: {
+      id: true,
+      key: true,
+      apiConnection: {
+        select: {
+          metadata: true,
+          connectionType: true,
+          client: {
+            select: {
+              title: true,
+              slug: true,
+              description: true,
+              scopes: true,
+              integrationIdentifier: true,
+              integrationAuthMethod: true,
+            },
+          },
+        },
+      },
+    },
+  },
   name: true,
   icon: true,
   status: true,
@@ -48,7 +73,78 @@ export class RunPresenter {
   }
 
   public async call({ id, userId }: RunOptions) {
-    const run = await this.#prismaClient.jobRun.findFirst({
+    const run = await this.query({ id, userId });
+
+    if (!run) {
+      return undefined;
+    }
+
+    //merge the elements from the version and the run, with the run elements taking precedence
+    const mergedElements = new Map<string, DisplayElement>();
+    if (run.version.elements) {
+      const elements = ElementsSchema.parse(run.version.elements);
+      for (const element of elements) {
+        mergedElements.set(element.label, element);
+      }
+    }
+    if (run.elements) {
+      const elements = ElementsSchema.parse(run.elements);
+      for (const element of elements) {
+        mergedElements.set(element.label, element);
+      }
+    }
+
+    const enrichTask = (task: QueryTask) => {
+      const { children, ...t } = task;
+      return {
+        ...t,
+        connection: t.runConnection,
+        params: t.params as Record<string, any>,
+        elements:
+          t.elements == null
+            ? []
+            : z.array(DisplayElementSchema).parse(t.elements),
+        style: t.style ? StyleSchema.parse(t.style) : undefined,
+      };
+    };
+
+    type EnrichedTask = ReturnType<typeof enrichTask> & {
+      subtasks: EnrichedTask[];
+    };
+
+    const recursivelyEnrichTasks = (task: QueryTask[]): EnrichedTask[] => {
+      return task.map((t) => {
+        const enrichedTask = enrichTask(t);
+
+        return {
+          ...enrichedTask,
+          subtasks: recursivelyEnrichTasks(t.children),
+        };
+      });
+    };
+
+    return {
+      id: run.id,
+      number: run.number,
+      status: run.status,
+      startedAt: run.startedAt,
+      completedAt: run.completedAt,
+      isTest: run.isTest,
+      version: run.version.version,
+      elements: Array.from(mergedElements.values()),
+      environment: {
+        type: run.environment.type,
+        slug: run.environment.slug,
+      },
+      event: run.event,
+      tasks: recursivelyEnrichTasks(run.tasks),
+      runConnections: run.runConnections,
+      missingConnections: run.missingConnections,
+    };
+  }
+
+  query({ id, userId }: RunOptions) {
+    return this.#prismaClient.jobRun.findFirst({
       select: {
         id: true,
         number: true,
@@ -149,56 +245,16 @@ export class RunPresenter {
         },
       },
     });
-
-    if (!run) {
-      return undefined;
-    }
-
-    //merge the elements from the version and the run, with the run elements taking precedence
-    const mergedElements = new Map<string, DisplayElement>();
-    console.log("run.version.elements", run.version.elements);
-    if (run.version.elements) {
-      const elements = ElementsSchema.parse(run.version.elements);
-      for (const element of elements) {
-        mergedElements.set(element.label, element);
-      }
-    }
-    console.log("run.elements", run.elements);
-    if (run.elements) {
-      const elements = ElementsSchema.parse(run.elements);
-      for (const element of elements) {
-        mergedElements.set(element.label, element);
-      }
-    }
-
-    return {
-      id: run.id,
-      number: run.number,
-      status: run.status,
-      startedAt: run.startedAt,
-      completedAt: run.completedAt,
-      isTest: run.isTest,
-      version: run.version.version,
-      elements: Array.from(mergedElements.values()),
-      environment: {
-        type: run.environment.type,
-        slug: run.environment.slug,
-      },
-      event: run.event,
-      tasks: run.tasks.map((task) => ({
-        ...task,
-        params: task.params as Record<string, any>,
-        elements:
-          task.elements == null
-            ? []
-            : z.array(DisplayElementSchema).parse(task.elements),
-        connection: run.runConnections.find(
-          (c) => c.id === task.runConnectionId
-        ),
-        style: task.style ? StyleSchema.parse(task.style) : undefined,
-      })),
-      runConnections: run.runConnections,
-      missingConnections: run.missingConnections,
-    };
   }
+
+  // #recursivelyEnrichTask(
+  //   task: QueryTask
+  // ): EnrichedTask & { subtasks: EnrichedTask[] } {
+  //   const enrichedTask = this.enrichTask(task);
+  //   let subtasks: (EnrichedTask & { subtasks: EnrichedTask[] })[] = [];
+  //   if (task.children) {
+  //     subtasks = task.children.map((t) => this.#recursivelyEnrichTask(t));
+  //   }
+  //   return { ...enrichedTask, subtasks };
+  // }
 }
