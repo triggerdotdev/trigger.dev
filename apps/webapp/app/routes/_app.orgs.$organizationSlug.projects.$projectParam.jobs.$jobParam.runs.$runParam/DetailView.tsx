@@ -152,7 +152,7 @@ export function EventDetail({
                 value={formatDateTime(deliveredAt)}
               />
             )}
-            <RunPanelIconElement icon="flag" label="Name" value={name} />
+            <RunPanelIconElement icon="id" label="Name" value={name} />
           </RunPanelIconSection>
         </div>
         <div className="mt-4 flex flex-col gap-2">
