@@ -52,7 +52,7 @@ function PopoverMenuItem({
 }: {
   to: string;
   icon: string;
-  title: string;
+  title: React.ReactNode;
   isSelected?: boolean;
 }) {
   return (
