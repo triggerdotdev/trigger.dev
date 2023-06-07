@@ -3,7 +3,7 @@ import { useJob } from "~/hooks/useJob";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { jobPath } from "~/utils/pathBuilder";
-import { IconNames } from "../primitives/NamedIcon";
+import { IconNames, NamedIcon } from "../primitives/NamedIcon";
 import {
   Popover,
   PopoverArrowTrigger,
@@ -11,6 +11,10 @@ import {
   PopoverMenuItem,
   PopoverSectionHeader,
 } from "../primitives/Popover";
+import { LabelValueStack } from "../primitives/LabelValueStack";
+import { LinkButton } from "../primitives/Buttons";
+import { Link } from "@remix-run/react";
+import { cn } from "~/utils/cn";
 
 export function JobsMenu() {
   const [isOpen, setIsOpen] = useState(false);
@@ -30,13 +34,25 @@ export function JobsMenu() {
             {project.jobs.map((job) => {
               const isSelected = job.id === currentJob?.id;
               return (
-                <PopoverMenuItem
+                <Link
                   key={job.id}
                   to={jobPath(organization, project, job)}
-                  title={job.title}
-                  isSelected={isSelected}
-                  icon={job.event.icon as IconNames}
-                />
+                  className={cn(
+                    "flex w-full items-center gap-2 rounded-md p-2",
+                    isSelected && "bg-slate-750 group-hover:bg-slate-750"
+                  )}
+                >
+                  <NamedIcon name={job.event.icon} className="h-6 w-6" />
+                  <LabelValueStack
+                    label={job.title}
+                    value={job.slug}
+                    variant="primary"
+                    className="w-full"
+                  />
+                  {isSelected && (
+                    <NamedIcon name="check" className="mr-1 h-6 w-6" />
+                  )}
+                </Link>
               );
             })}
           </div>
