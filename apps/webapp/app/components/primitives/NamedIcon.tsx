@@ -15,8 +15,10 @@ import {
   CalendarDaysIcon,
   ChatBubbleLeftEllipsisIcon,
   CheckIcon,
+  ChevronDownIcon,
   ChevronLeftIcon,
   ChevronRightIcon,
+  ChevronUpIcon,
   ClockIcon,
   CodeBracketSquareIcon,
   Cog8ToothIcon,
@@ -69,6 +71,12 @@ const icons = {
   ),
   check: (className: string) => (
     <CheckIcon className={cn("text-dimmed", className)} />
+  ),
+  "chevron-down": (className: string) => (
+    <ChevronDownIcon className={cn("text-dimmed", className)} />
+  ),
+  "chevron-up": (className: string) => (
+    <ChevronUpIcon className={cn("text-dimmed", className)} />
   ),
   "chevron-left": (className: string) => (
     <ChevronLeftIcon className={cn("text-dimmed", className)} />

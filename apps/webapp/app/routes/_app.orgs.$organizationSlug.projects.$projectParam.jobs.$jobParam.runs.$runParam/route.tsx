@@ -105,8 +105,6 @@ export default function Page() {
     if (task) return { type: "task" as const, task };
   }, [selectedId, run]);
 
-  console.log(run);
-
   return (
     <PageContainer>
       <PageHeader>

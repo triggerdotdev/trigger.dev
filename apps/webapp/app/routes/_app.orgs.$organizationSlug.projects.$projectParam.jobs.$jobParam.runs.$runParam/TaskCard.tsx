@@ -16,6 +16,9 @@ import {
 import { TaskStatusIcon } from "./TaskStatus";
 import { Fragment, useState } from "react";
 import simplur from "simplur";
+import { ChevronDownIcon, Square2StackIcon } from "@heroicons/react/24/solid";
+import { NamedIcon } from "~/components/primitives/NamedIcon";
+import { AnimatePresence, motion } from "framer-motion";
 
 type TaskCardProps = Task & {
   selectedId?: string;
@@ -116,12 +119,29 @@ export function TaskCard({
           </RunPanelBody>
           {subtasks && subtasks.length > 0 && (
             <button
-              className="mt-4 flex flex-col gap-2"
+              className="mt-4 flex h-10 w-full items-center justify-between gap-2 bg-slate-800 px-2"
               onClick={() => setExpanded((c) => !c)}
             >
-              {simplur`${expanded ? "Hide" : "Show"} ${
-                subtasks.length
-              } subtask[|s]`}
+              <div className="flex items-center gap-2">
+                <Square2StackIcon className="h-5 w-5 text-slate-400" />
+                <Paragraph variant="small">
+                  {simplur`${expanded ? "Hide" : "Show"} ${
+                    subtasks.length
+                  } subtask[|s]`}
+                </Paragraph>
+              </div>
+              <motion.span
+                initial={expanded ? "expanded" : "collapsed"}
+                animate={expanded ? "expanded" : "collapsed"}
+                variants={{
+                  collapsed: { rotate: 0, transition: { ease: "anticipate" } },
+                  expanded: { rotate: 180, transition: { ease: "anticipate" } },
+                }}
+              >
+                <ChevronDownIcon
+                  className={"h-5 w-5 text-slate-400 transition"}
+                />
+              </motion.span>
             </button>
           )}
         </RunPanel>
@@ -129,18 +149,22 @@ export function TaskCard({
       {(!isLast || expanded) && (
         <TaskSeparator depth={depth + (expanded ? 1 : 0)} />
       )}
+
       {subtasks &&
         subtasks.length > 0 &&
         expanded &&
         subtasks.map((subtask, index) => (
-          <TaskCard
-            selectedId={selectedId}
-            setSelectedId={setSelectedId}
-            isLast={index === subtasks.length - 1}
-            key={index}
-            depth={depth + 1}
-            {...subtask}
-          />
+          <AnimatePresence key={subtask.id}>
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 100 }}>
+              <TaskCard
+                selectedId={selectedId}
+                setSelectedId={setSelectedId}
+                isLast={index === subtasks.length - 1}
+                depth={depth + 1}
+                {...subtask}
+              />
+            </motion.div>
+          </AnimatePresence>
         ))}
     </Fragment>
   );
