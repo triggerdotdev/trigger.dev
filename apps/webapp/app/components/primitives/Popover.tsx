@@ -51,7 +51,7 @@ function PopoverMenuItem({
   isSelected,
 }: {
   to: string;
-  icon: IconNames;
+  icon: string;
   title: string;
   isSelected?: boolean;
 }) {

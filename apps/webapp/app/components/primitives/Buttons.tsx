@@ -109,8 +109,8 @@ const allVariants = {
 
 type ButtonContentPropsType = {
   children?: React.ReactNode;
-  LeadingIcon?: React.ComponentType<any> | IconNames;
-  TrailingIcon?: React.ComponentType<any> | IconNames;
+  LeadingIcon?: React.ComponentType<any> | string;
+  TrailingIcon?: React.ComponentType<any> | string;
   trailingIconClassName?: string;
   leadingIconClassName?: string;
   fullWidth?: boolean;
