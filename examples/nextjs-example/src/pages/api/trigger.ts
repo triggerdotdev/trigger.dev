@@ -366,7 +366,7 @@ new Job(client, {
 });
 
 new Job(client, {
-  id: "alert-on-new-github-issues-3",
+  id: "alert-on-new-github-issues-6",
   name: "Alert on new GitHub issues",
   version: "0.1.1",
   enabled,
@@ -375,7 +375,7 @@ new Job(client, {
   },
   trigger: github.triggers.repo({
     event: events.onIssueOpened,
-    repo: "ericallam/basic-starter-12k",
+    repo: "ericallam/basic-starter-render-test",
   }),
   run: async (payload, io, ctx) => {
     await io.wait("wait", 5); // wait for 5 seconds
