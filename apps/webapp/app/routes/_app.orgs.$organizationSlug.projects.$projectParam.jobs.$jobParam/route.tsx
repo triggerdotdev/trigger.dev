@@ -87,8 +87,9 @@ export default function Job() {
               label={"Trigger"}
               value={job.event.title}
             />
-            {job.event.elements &&
-              job.event.elements.map((element, index) => (
+            <PageInfoProperty icon="id" label={"ID"} value={job.slug} />
+            {job.elements &&
+              job.elements.map((element, index) => (
                 <PageInfoProperty
                   key={index}
                   icon="property"
