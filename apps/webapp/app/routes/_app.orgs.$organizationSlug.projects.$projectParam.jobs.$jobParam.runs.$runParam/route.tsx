@@ -76,7 +76,7 @@ export default function Page() {
   const project = useProject();
   const job = useJob();
   const [selectedId, setSelectedId] = useState<string | undefined>(
-    run.tasks[0]?.id
+    run.event.id
   );
   const selectedItem = useMemo(() => {
     if (!selectedId) return undefined;
