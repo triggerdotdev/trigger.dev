@@ -75,14 +75,14 @@ export function TaskDetail({
               <RunPanelIconElement
                 icon="calendar"
                 label="Started at"
-                value={formatDateTime(startedAt)}
+                value={formatDateTime(startedAt, "long")}
               />
             )}
             {completedAt && (
               <RunPanelIconElement
                 icon="flag"
                 label="Finished at"
-                value={formatDateTime(completedAt)}
+                value={formatDateTime(completedAt, "long")}
               />
             )}
             {delayUntil && (
@@ -143,13 +143,13 @@ export function EventDetail({
             <RunPanelIconElement
               icon="calendar"
               label="Created"
-              value={formatDateTime(timestamp)}
+              value={formatDateTime(timestamp, "long")}
             />
             {deliveredAt && (
               <RunPanelIconElement
                 icon="flag"
                 label="Finished at"
-                value={formatDateTime(deliveredAt)}
+                value={formatDateTime(deliveredAt, "long")}
               />
             )}
             <RunPanelIconElement icon="id" label="Event name" value={name} />
