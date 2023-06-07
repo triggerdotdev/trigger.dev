@@ -18,7 +18,7 @@ import { Fragment, useState } from "react";
 import simplur from "simplur";
 
 type TaskCardProps = Task & {
-  selectedId: string;
+  selectedId?: string;
   setSelectedId: (id: string) => void;
   isLast: boolean;
   depth: number;

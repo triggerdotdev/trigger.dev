@@ -21,7 +21,7 @@ import { RunStatusIcon, runStatusTitle } from "~/components/runs/RunStatuses";
 import { useJob } from "~/hooks/useJob";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
-import { RunPresenter } from "~/presenters/RunPresenter.server";
+import { RunPresenter, Task } from "~/presenters/RunPresenter.server";
 import { requireUserId } from "~/services/session.server";
 import { formatDateTime, formatDuration } from "~/utils";
 import { cn } from "~/utils/cn";
@@ -79,6 +79,21 @@ export default function Page() {
   const [selectedId, setSelectedId] = useState<string | undefined>(
     run.event.id
   );
+
+  const flatTasks = useMemo(() => {
+    const tasks: Task[] = [];
+    const queue: Task[] = [...run.tasks];
+    while (queue.length > 0) {
+      const task = queue.shift();
+      if (!task) continue;
+      tasks.push(task);
+      if (task.subtasks) {
+        queue.push(...task.subtasks);
+      }
+    }
+    return tasks;
+  }, [run]);
+
   const selectedItem = useMemo(() => {
     if (!selectedId) return undefined;
     if (selectedId === run.event.id)
@@ -86,7 +101,7 @@ export default function Page() {
         type: "trigger" as const,
         trigger: { ...run.event, icon: job.event.icon, title: job.event.title },
       };
-    const task = run.tasks.find((task) => task.id === selectedId);
+    const task = flatTasks.find((task) => task.id === selectedId);
     if (task) return { type: "task" as const, task };
   }, [selectedId, run]);
 
@@ -208,7 +223,7 @@ export default function Page() {
                 return (
                   <TaskCard
                     key={task.id}
-                    selectedId={task.id}
+                    selectedId={selectedId}
                     setSelectedId={setSelectedId}
                     isLast={isLast}
                     depth={0}
