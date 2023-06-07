@@ -1,7 +1,6 @@
 import {
   cronTrigger,
-  customEvent,
-  customTrigger,
+  eventTrigger,
   DynamicSchedule,
   DynamicTrigger,
   intervalTrigger,
@@ -132,12 +131,10 @@ new Job(client, {
   name: "Get User Repo",
   version: "0.1.1",
   enabled,
-  trigger: customTrigger({
+  trigger: eventTrigger({
     name: "get.repo",
-    event: customEvent({
-      payload: z.object({
-        repo: z.string(),
-      }),
+    schema: z.object({
+      repo: z.string(),
     }),
   }),
   integrations: {
@@ -175,13 +172,11 @@ new Job(client, {
   name: "Register Dynamic Interval",
   version: "0.1.1",
   enabled,
-  trigger: customTrigger({
+  trigger: eventTrigger({
     name: "dynamic.interval",
-    event: customEvent({
-      payload: z.object({
-        id: z.string(),
-        seconds: z.number().int().positive(),
-      }),
+    schema: z.object({
+      id: z.string(),
+      seconds: z.number().int().positive(),
     }),
   }),
   run: async (payload, io, ctx) => {
@@ -200,13 +195,11 @@ new Job(client, {
   name: "Register Dynamic Cron",
   version: "0.1.1",
   enabled,
-  trigger: customTrigger({
+  trigger: eventTrigger({
     name: "dynamic.cron",
-    event: customEvent({
-      payload: z.object({
-        id: z.string(),
-        cron: z.string(),
-      }),
+    schema: z.object({
+      id: z.string(),
+      cron: z.string(),
     }),
   }),
   run: async (payload, io, ctx) => {
@@ -231,7 +224,7 @@ new Job(client, {
     await io.logger.info("This is a log info message", {
       payload,
     });
-    await io.sendCustomEvent("send-event", {
+    await io.sendEvent("send-event", {
       name: "custom.event",
       payload,
       context: ctx,
@@ -252,7 +245,7 @@ new Job(client, {
     await io.logger.info("This is a log info message", {
       payload,
     });
-    await io.sendCustomEvent("send-event", {
+    await io.sendEvent("send-event", {
       name: "custom.event",
       payload,
       context: ctx,
@@ -282,18 +275,15 @@ new Job(client, {
   name: "Test IO functions",
   version: "0.1.1",
   enabled,
-  trigger: customTrigger({
+  trigger: eventTrigger({
     name: "test.io",
-    event: customEvent({
-      payload: z.any(),
-    }),
   }),
   run: async (payload, io, ctx) => {
     await io.wait("wait", 5); // wait for 5 seconds
     await io.logger.info("This is a log info message", {
       payload,
     });
-    await io.sendCustomEvent("send-event", {
+    await io.sendEvent("send-event", {
       name: "custom.event",
       payload,
       context: ctx,
@@ -306,11 +296,9 @@ new Job(client, {
   name: "Register dynamic trigger on new repo",
   version: "0.1.1",
   enabled,
-  trigger: customTrigger({
+  trigger: eventTrigger({
     name: "new.repo",
-    event: customEvent({
-      payload: z.object({ repo: z.string() }),
-    }),
+    schema: z.object({ repo: z.string() }),
   }),
   run: async (payload, io, ctx) => {
     return await io.registerTrigger(
@@ -378,7 +366,7 @@ new Job(client, {
 });
 
 new Job(client, {
-  id: "alert-on-new-github-issues",
+  id: "alert-on-new-github-issues-3",
   name: "Alert on new GitHub issues",
   version: "0.1.1",
   enabled,
@@ -387,16 +375,19 @@ new Job(client, {
   },
   trigger: github.triggers.repo({
     event: events.onIssueOpened,
-    repo: "ericallam/basic-starter-100k",
+    repo: "ericallam/basic-starter-12k",
   }),
   run: async (payload, io, ctx) => {
-    //todo logging isn't working
-    // await io.logger.info("This is a simple log info message");
+    await io.wait("wait", 5); // wait for 5 seconds
+
+    await io.logger.info("This is a simple log info message");
+
     const response = await io.slack.postMessage("Slack 📝", {
       text: `New Issue opened: ${payload.issue.html_url}`,
       channel: "C04GWUTDC3W",
     });
-    // await io.logger.warn("You've been warned", response);
+
+    return response;
   },
 });
 

@@ -1,8 +1,3 @@
-import { z } from "zod";
-import { EventSpecification } from "../types";
-import { Trigger } from "../types";
-import { TriggerClient } from "../triggerClient";
-import { Job } from "../job";
 import {
   CronOptions,
   IntervalOptions,
@@ -11,6 +6,9 @@ import {
   ScheduledPayloadSchema,
   TriggerMetadata,
 } from "@trigger.dev/internal";
+import { Job } from "../job";
+import { TriggerClient } from "../triggerClient";
+import { EventSpecification, Trigger } from "../types";
 
 type ScheduledEventSpecification = EventSpecification<ScheduledPayload>;
 
@@ -38,6 +36,10 @@ export class IntervalTrigger implements Trigger<ScheduledEventSpecification> {
     job: Job<Trigger<ScheduledEventSpecification>, any>
   ): void {}
 
+  get preprocessRuns() {
+    return false;
+  }
+
   toJSON(): TriggerMetadata {
     return {
       type: "scheduled",
@@ -48,10 +50,6 @@ export class IntervalTrigger implements Trigger<ScheduledEventSpecification> {
         },
       },
     };
-  }
-
-  get requiresPreparaton(): boolean {
-    return false;
   }
 }
 
@@ -83,6 +81,10 @@ export class CronTrigger implements Trigger<ScheduledEventSpecification> {
     job: Job<Trigger<ScheduledEventSpecification>, any>
   ): void {}
 
+  get preprocessRuns() {
+    return false;
+  }
+
   toJSON(): TriggerMetadata {
     return {
       type: "scheduled",
@@ -93,10 +95,6 @@ export class CronTrigger implements Trigger<ScheduledEventSpecification> {
         },
       },
     };
-  }
-
-  get requiresPreparaton(): boolean {
-    return false;
   }
 }
 
@@ -141,14 +139,14 @@ export class DynamicSchedule implements Trigger<ScheduledEventSpecification> {
     triggerClient.attachDynamicSchedule(this.options.id, job);
   }
 
+  get preprocessRuns() {
+    return false;
+  }
+
   toJSON(): TriggerMetadata {
     return {
       type: "dynamic",
       id: this.options.id,
     };
-  }
-
-  get requiresPreparaton(): boolean {
-    return false;
   }
 }

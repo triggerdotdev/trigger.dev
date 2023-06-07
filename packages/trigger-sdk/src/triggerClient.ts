@@ -10,6 +10,8 @@ import {
   Logger,
   NormalizedRequest,
   NormalizedResponse,
+  PreprocessRunBody,
+  PreprocessRunBodySchema,
   REGISTER_SOURCE_EVENT,
   RegisterSourceEvent,
   RegisterSourceEventSchema,
@@ -25,9 +27,14 @@ import { ApiClient } from "./apiClient";
 import { IO, ResumeWithTask } from "./io";
 import { createIOWithIntegrations } from "./ioWithIntegrations";
 import { Job } from "./job";
-import { CustomTrigger } from "./triggers/customTrigger";
+import { EventTrigger } from "./triggers/eventTrigger";
 import { ExternalSource, HttpSourceEvent } from "./triggers/externalSource";
-import type { EventSpecification, Trigger, TriggerContext } from "./types";
+import type {
+  EventSpecification,
+  Trigger,
+  TriggerContext,
+  TriggerPreprocessContext,
+} from "./types";
 import { DynamicTrigger } from "./triggers/dynamic";
 
 const registerSourceEvent: EventSpecification<RegisterSourceEvent> = {
@@ -243,6 +250,39 @@ export class TriggerClient {
             },
           };
         }
+        case "PREPROCESS_RUN": {
+          const body = PreprocessRunBodySchema.safeParse(request.body);
+
+          if (!body.success) {
+            return {
+              status: 400,
+              body: {
+                message: "Invalid body",
+              },
+            };
+          }
+
+          const job = this.#registeredJobs[body.data.job.id];
+
+          if (!job) {
+            return {
+              status: 404,
+              body: {
+                message: "Job not found",
+              },
+            };
+          }
+
+          const results = await this.#preprocessRun(body.data, job);
+
+          return {
+            status: 200,
+            body: {
+              abort: results.abort,
+              elements: results.elements,
+            },
+          };
+        }
         case "DELIVER_HTTP_SOURCE_REQUEST": {
           const headers = HttpSourceRequestHeadersSchema.safeParse(
             request.headers
@@ -319,7 +359,7 @@ export class TriggerClient {
       id: `register-dynamic-trigger-${trigger.id}`,
       name: `Register dynamic trigger ${trigger.id}`,
       version: trigger.source.version,
-      trigger: new CustomTrigger({
+      trigger: new EventTrigger({
         event: registerSourceEvent,
         filter: { dynamicTriggerId: [trigger.id] },
       }),
@@ -394,7 +434,7 @@ export class TriggerClient {
       id: options.key,
       name: options.key,
       version: options.source.version,
-      trigger: new CustomTrigger({
+      trigger: new EventTrigger({
         event: registerSourceEvent,
         filter: { source: { key: [options.key] } },
       }),
@@ -479,14 +519,32 @@ export class TriggerClient {
     });
   }
 
-  async #executeJob(execution: RunJobBody, job: Job<Trigger<any>, any>) {
-    this.#logger.debug("executing job", { execution, job: job.toJSON() });
+  async #preprocessRun(
+    body: PreprocessRunBody,
+    job: Job<Trigger<EventSpecification<any>>, any>
+  ) {
+    const context = this.#createPreprocessRunContext(body);
 
-    const context = this.#createRunContext(execution);
+    const parsedPayload = job.trigger.event.parsePayload(
+      body.event.payload ?? {}
+    );
+
+    const elements = job.trigger.event.runElements?.(parsedPayload) ?? [];
+
+    return {
+      abort: false,
+      elements,
+    };
+  }
+
+  async #executeJob(body: RunJobBody, job: Job<Trigger<any>, any>) {
+    this.#logger.debug("executing job", { execution: body, job: job.toJSON() });
+
+    const context = this.#createRunContext(body);
 
     const io = new IO({
-      id: execution.run.id,
-      cachedTasks: execution.tasks,
+      id: body.run.id,
+      cachedTasks: body.tasks,
       apiClient: this.#client,
       logger: this.#logger,
       client: this,
@@ -495,13 +553,13 @@ export class TriggerClient {
 
     const ioWithConnections = createIOWithIntegrations(
       io,
-      execution.connections,
+      body.connections,
       job.options.integrations
     );
 
     try {
       const output = await job.options.run(
-        job.trigger.event.parsePayload(execution.event.payload ?? {}),
+        job.trigger.event.parsePayload(body.event.payload ?? {}),
         ioWithConnections,
         context
       );
@@ -546,6 +604,26 @@ export class TriggerClient {
       job,
       run,
       account: execution.account,
+    };
+  }
+
+  #createPreprocessRunContext(
+    body: PreprocessRunBody
+  ): TriggerPreprocessContext {
+    const { event, organization, environment, job, run, account } = body;
+
+    return {
+      event: {
+        id: event.id,
+        name: event.name,
+        context: event.context,
+        timestamp: event.timestamp,
+      },
+      organization,
+      environment,
+      job,
+      run,
+      account,
     };
   }
 

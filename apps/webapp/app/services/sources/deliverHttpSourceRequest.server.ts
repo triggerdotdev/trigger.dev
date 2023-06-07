@@ -1,7 +1,7 @@
 import { z } from "zod";
 import type { PrismaClient } from "~/db.server";
 import { prisma } from "~/db.server";
-import { ClientApi } from "../clientApi.server";
+import { EndpointApi } from "../endpointApi";
 import { IngestSendEvent } from "../events/ingestSendEvent.server";
 import { getSecretStore } from "../secrets/secretStore.server";
 
@@ -55,7 +55,7 @@ export class DeliverHttpSourceRequestService {
 
     // TODO: implement auth for http source requests
 
-    const clientApi = new ClientApi(
+    const clientApi = new EndpointApi(
       httpSourceRequest.environment.apiKey,
       httpSourceRequest.endpoint.url
     );

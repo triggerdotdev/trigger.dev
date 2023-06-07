@@ -120,7 +120,7 @@ export class IO {
     );
   }
 
-  async sendCustomEvent(
+  async sendEvent(
     key: string | any[],
     event: SendEvent,
     options?: SendEventOptions
@@ -128,7 +128,7 @@ export class IO {
     return await this.runTask(
       key,
       {
-        name: "sendCustomEvent",
+        name: "sendEvent",
         params: { event, options },
       },
       async (task) => {

@@ -13,8 +13,8 @@ import {
   deepMergeFilters,
 } from "@trigger.dev/internal";
 import {
-  IntegrationClient,
   IOWithIntegrations,
+  IntegrationClient,
   TriggerIntegration,
 } from "../integrations";
 import { IO } from "../io";
@@ -234,10 +234,6 @@ export class ExternalSourceTrigger<
     return this.options.event;
   }
 
-  get requiresPreparaton(): boolean {
-    return true;
-  }
-
   toJSON(): TriggerMetadata {
     return {
       type: "static",
@@ -264,6 +260,10 @@ export class ExternalSourceTrigger<
       event: this.options.event,
       params: this.options.params,
     });
+  }
+
+  get preprocessRuns() {
+    return true;
   }
 }
 

@@ -198,6 +198,7 @@ export class RegisterJobService {
         },
         version: metadata.version,
         eventSpecification: metadata.event,
+        preprocessRuns: metadata.preprocessRuns,
         startPosition:
           metadata.startPosition === "initial" ? "INITIAL" : "LATEST",
       },
@@ -205,6 +206,7 @@ export class RegisterJobService {
         startPosition:
           metadata.startPosition === "initial" ? "INITIAL" : "LATEST",
         eventSpecification: metadata.event,
+        preprocessRuns: metadata.preprocessRuns,
         queue: {
           connect: {
             id: jobQueue.id,

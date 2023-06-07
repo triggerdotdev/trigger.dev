@@ -1,6 +1,6 @@
 import type { PrismaClient } from "~/db.server";
 import { prisma } from "~/db.server";
-import { ClientApi } from "../clientApi.server";
+import { EndpointApi } from "../endpointApi";
 import { workerQueue } from "../worker.server";
 
 export class EndpointRegisteredService {
@@ -21,7 +21,7 @@ export class EndpointRegisteredService {
     });
 
     // Make a request to the endpoint to fetch a list of jobs
-    const client = new ClientApi(endpoint.environment.apiKey, endpoint.url);
+    const client = new EndpointApi(endpoint.environment.apiKey, endpoint.url);
 
     const { jobs, sources, dynamicTriggers, dynamicSchedules } =
       await client.getEndpointData();

@@ -54,6 +54,7 @@ export class CreateRunService {
       const run = await tx.jobRun.create({
         data: {
           number: newNumber,
+          preprocess: version.preprocessRuns,
           job: { connect: { id: job.id } },
           version: { connect: { id: version.id } },
           event: { connect: { id: eventId } },

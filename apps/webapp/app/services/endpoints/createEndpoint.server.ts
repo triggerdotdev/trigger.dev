@@ -2,7 +2,7 @@ import type { Organization, RuntimeEnvironment } from ".prisma/client";
 import { $transaction, PrismaClient } from "~/db.server";
 import { prisma } from "~/db.server";
 import { AuthenticatedEnvironment } from "../apiAuth.server";
-import { ClientApi } from "../clientApi.server";
+import { EndpointApi } from "../endpointApi";
 import { workerQueue } from "../worker.server";
 
 export class CreateEndpointService {
@@ -21,7 +21,7 @@ export class CreateEndpointService {
     url: string;
     name: string;
   }) {
-    const client = new ClientApi(environment.apiKey, url);
+    const client = new EndpointApi(environment.apiKey, url);
     await client.ping();
 
     return await $transaction(this.#prismaClient, async (tx) => {

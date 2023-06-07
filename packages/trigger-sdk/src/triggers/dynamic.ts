@@ -6,7 +6,12 @@ import {
 } from "@trigger.dev/internal";
 import { Job } from "../job";
 import { TriggerClient } from "../triggerClient";
-import { EventSpecification, Trigger } from "../types";
+import {
+  EventSpecification,
+  PreprocessResults,
+  Trigger,
+  TriggerPreprocessContext,
+} from "../types";
 import { ExternalSource, ExternalSourceParams } from "./externalSource";
 import { slugifyId } from "../utils";
 
@@ -54,10 +59,6 @@ export class DynamicTrigger<
     return this.#options.event;
   }
 
-  get requiresPreparaton(): boolean {
-    return false;
-  }
-
   registeredTriggerForParams(
     params: ExternalSourceParams<TExternalSource>
   ): RegisterTriggerBody {
@@ -98,5 +99,9 @@ export class DynamicTrigger<
     job: Job<Trigger<TEventSpec>, any>
   ): void {
     triggerClient.attachJobToDynamicTrigger(job, this);
+  }
+
+  get preprocessRuns() {
+    return false;
   }
 }

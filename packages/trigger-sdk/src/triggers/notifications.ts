@@ -57,6 +57,10 @@ export class MissingConnectionNotification
     job: Job<Trigger<MissingConnectionNotificationSpecification>, any>
   ): void {}
 
+  get preprocessRuns() {
+    return false;
+  }
+
   toJSON(): TriggerMetadata {
     return {
       type: "static",
@@ -71,10 +75,6 @@ export class MissingConnectionNotification
         },
       },
     };
-  }
-
-  get requiresPreparaton(): boolean {
-    return false;
   }
 }
 
@@ -107,6 +107,10 @@ export class MissingConnectionResolvedNotification
     job: Job<Trigger<MissingConnectionResolvedNotificationSpecification>, any>
   ): void {}
 
+  get preprocessRuns() {
+    return false;
+  }
+
   toJSON(): TriggerMetadata {
     return {
       type: "static",
@@ -121,9 +125,5 @@ export class MissingConnectionResolvedNotification
         },
       },
     };
-  }
-
-  get requiresPreparaton(): boolean {
-    return false;
   }
 }

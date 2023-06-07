@@ -346,12 +346,8 @@ model JobVersion {
   queue   JobQueue @relation(fields: [queueId], references: [id])
   queueId String
 
-  ready    Boolean @default(false)
-  latest   Boolean @default(false)
-  prepare  Boolean @default(false)
-  prepared Boolean @default(false)
-
-  startPosition JobStartPosition @default(INITIAL)
+  startPosition  JobStartPosition @default(INITIAL)
+  preprocessRuns Boolean          @default(false)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -566,21 +562,61 @@ model JobRun {
   timedOutAt     DateTime?
   timedOutReason String?
 
-  isTest Boolean @default(false)
+  isTest     Boolean @default(false)
+  preprocess Boolean @default(false)
 
   tasks              Task[]
   runConnections     RunConnection[]
   missingConnections MissingApiConnection[]
+  executions         JobRunExecution[]
 }
 
 enum JobRunStatus {
   PENDING
   QUEUED
   WAITING_ON_CONNECTIONS
+  PREPROCESSING
   STARTED
   SUCCESS
   FAILURE
   TIMED_OUT
+  ABORTED
+}
+
+model JobRunExecution {
+  id String @id @default(cuid())
+
+  run   JobRun @relation(fields: [runId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  runId String
+
+  retryCount     Int @default(0)
+  retryLimit     Int @default(0)
+  retryDelayInMs Int @default(0)
+
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  startedAt   DateTime?
+  completedAt DateTime?
+
+  error String?
+
+  reason JobRunExecutionReason @default(EXECUTE_JOB)
+  status JobRunExecutionStatus @default(PENDING)
+
+  resumeTask   Task?   @relation(fields: [resumeTaskId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  resumeTaskId String?
+}
+
+enum JobRunExecutionReason {
+  PREPROCESS
+  EXECUTE_JOB
+}
+
+enum JobRunExecutionStatus {
+  PENDING
+  STARTED
+  SUCCESS
+  FAILURE
 }
 
 model Task {
@@ -617,7 +653,8 @@ model Task {
   runConnection   RunConnection? @relation(fields: [runConnectionId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   runConnectionId String?
 
-  children Task[] @relation("TaskParent")
+  children   Task[]            @relation("TaskParent")
+  executions JobRunExecution[]
 
   @@unique([runId, idempotencyKey])
 }

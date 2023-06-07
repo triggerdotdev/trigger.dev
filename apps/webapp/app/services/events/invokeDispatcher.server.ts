@@ -1,9 +1,8 @@
 import { z } from "zod";
-import type { PrismaClient, PrismaClientOrTransaction } from "~/db.server";
+import type { PrismaClientOrTransaction } from "~/db.server";
 import { prisma } from "~/db.server";
 import { logger } from "~/services/logger";
 import { CreateRunService } from "~/services/runs/createRun.server";
-import { ResumeTaskService } from "~/services/runs/resumeTask.server";
 
 const JobVersionDispatchableSchema = z.object({
   type: z.literal("JOB_VERSION"),

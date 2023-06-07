@@ -93,6 +93,18 @@ const onIssueOpened: EventSpecification<IssuesOpenedEvent> = {
     action: ["opened"],
   },
   parsePayload: (payload) => payload as IssuesOpenedEvent,
+  runElements: (payload) => [
+    {
+      label: "Issue",
+      text: `#${payload.issue.number}: ${payload.issue.title}`,
+      url: payload.issue.html_url,
+    },
+    {
+      label: "Author",
+      text: payload.sender.login,
+      url: payload.sender.html_url,
+    },
+  ],
 };
 
 const onIssue: EventSpecification<IssuesEvent> = {
@@ -101,6 +113,18 @@ const onIssue: EventSpecification<IssuesEvent> = {
   source: "github.com",
   icon: "github",
   parsePayload: (payload) => payload as IssuesEvent,
+  runElements: (payload) => [
+    {
+      label: "Issue",
+      text: `#${payload.issue.number}: ${payload.issue.title}`,
+      url: payload.issue.html_url,
+    },
+    {
+      label: "Author",
+      text: payload.sender.login,
+      url: payload.sender.html_url,
+    },
+  ],
 };
 
 const onIssueComment: EventSpecification<IssueCommentEvent> = {
@@ -109,6 +133,18 @@ const onIssueComment: EventSpecification<IssueCommentEvent> = {
   source: "github.com",
   icon: "github",
   parsePayload: (payload) => payload as IssueCommentEvent,
+  runElements: (payload) => [
+    {
+      label: "Issue",
+      text: `#${payload.issue.number}: ${payload.issue.title}`,
+      url: payload.issue.html_url,
+    },
+    {
+      label: "Author",
+      text: payload.sender.login,
+      url: payload.sender.html_url,
+    },
+  ],
 };
 
 const onStar: EventSpecification<StarEvent> = {

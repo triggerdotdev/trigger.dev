@@ -19,12 +19,26 @@ export interface TriggerContext {
   account?: { id: string; metadata?: any };
 }
 
+export interface TriggerPreprocessContext {
+  job: { id: string; version: string };
+  environment: { slug: string; id: string; type: RuntimeEnvironmentType };
+  organization: { slug: string; id: string; title: string };
+  run: { id: string; isTest: boolean };
+  event: { id: string; name: string; context: any; timestamp: Date };
+  account?: { id: string; metadata?: any };
+}
+
 export interface TaskLogger {
   debug(message: string, properties?: Record<string, any>): Promise<void>;
   info(message: string, properties?: Record<string, any>): Promise<void>;
   warn(message: string, properties?: Record<string, any>): Promise<void>;
   error(message: string, properties?: Record<string, any>): Promise<void>;
 }
+
+export type PreprocessResults = {
+  abort: boolean;
+  elements: DisplayElement[];
+};
 
 export type TriggerEventType<TTrigger extends Trigger<any>> =
   TTrigger extends Trigger<infer TEventSpec>
@@ -40,7 +54,8 @@ export interface Trigger<TEventSpec extends EventSpecification<any>> {
     triggerClient: TriggerClient,
     job: Job<Trigger<TEventSpec>, any>
   ): void;
-  requiresPreparaton: boolean;
+
+  preprocessRuns: boolean;
 }
 
 export interface EventSpecification<TEvent extends any> {
@@ -53,6 +68,7 @@ export interface EventSpecification<TEvent extends any> {
   examples?: Array<TEvent>;
   filter?: EventFilter;
   parsePayload: (payload: unknown) => TEvent;
+  runElements?: (payload: TEvent) => DisplayElement[];
 }
 
 export type EventTypeFromSpecification<

@@ -4,7 +4,6 @@ import { ZodWorker } from "~/platform/zodWorker.server";
 import { EndpointRegisteredService } from "./endpoints/endpointRegistered.server";
 import { apiAuthenticationRepository } from "./externalApis/apiAuthenticationRepository.server";
 import { RegisterJobService } from "./jobs/registerJob.server";
-import { ResumeTaskService } from "./runs/resumeTask.server";
 import { StartRunService } from "./runs/startRun.server";
 import { DeliverHttpSourceRequestService } from "./sources/deliverHttpSourceRequest.server";
 import { StartQueuedRunsService } from "./runs/startQueuedRuns.server";
@@ -28,6 +27,7 @@ import { MissingConnectionCreatedService } from "./runs/missingConnectionCreated
 import { ApiConnectionCreatedService } from "./externalApis/apiConnectionCreated.server";
 import { sendEmail } from "./email.server";
 import { DeliverEmailSchema } from "@/../../packages/emails/src";
+import { PerformRunExecutionService } from "./runs/performRunExecution";
 
 const workerCatalog = {
   organizationCreated: z.object({ id: z.string() }),
@@ -42,8 +42,10 @@ const workerCatalog = {
   stopVM: z.object({ id: z.string() }),
   startInitialProjectDeployment: z.object({ id: z.string() }),
   startRun: z.object({ id: z.string() }),
+  performRunExecution: z.object({
+    id: z.string(),
+  }),
   runFinished: z.object({ id: z.string() }),
-  resumeTask: z.object({ id: z.string() }),
   deliverHttpSourceRequest: z.object({ id: z.string() }),
   refreshOAuthToken: z.object({
     organizationId: z.string(),
@@ -226,11 +228,11 @@ function getWorkerQueue() {
           await service.call(payload.id);
         },
       },
-      resumeTask: {
-        queueName: "executions",
-        maxAttempts: 13,
+      performRunExecution: {
+        queueName: (payload) => `runs:${payload.id}`,
+        maxAttempts: 1,
         handler: async (payload, job) => {
-          const service = new ResumeTaskService();
+          const service = new PerformRunExecutionService();
 
           await service.call(payload.id);
         },

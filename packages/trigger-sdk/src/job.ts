@@ -15,6 +15,7 @@ import type {
   Trigger,
   TriggerContext,
   TriggerEventType,
+  TriggerPreprocessContext,
 } from "./types";
 import { slugifyId } from "./utils";
 
@@ -119,6 +120,7 @@ export class Job<
       startPosition: this.options.startPosition ?? "latest",
       enabled:
         typeof this.options.enabled === "boolean" ? this.options.enabled : true,
+      preprocessRuns: this.trigger.preprocessRuns,
       internal,
     };
   }

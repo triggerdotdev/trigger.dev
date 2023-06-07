@@ -5,7 +5,7 @@ import {
 import type { PrismaClient } from "~/db.server";
 import { prisma } from "~/db.server";
 import { AuthenticatedEnvironment } from "../apiAuth.server";
-import { ClientApi } from "../clientApi.server";
+import { EndpointApi } from "../endpointApi";
 import { RegisterTriggerSourceService } from "./registerTriggerSource.server";
 import { IngestSendEvent } from "../events/ingestSendEvent.server";
 
@@ -49,7 +49,7 @@ export class InitializeTriggerService {
         },
       });
 
-    const clientApi = new ClientApi(environment.apiKey, endpoint.url);
+    const clientApi = new EndpointApi(environment.apiKey, endpoint.url);
 
     const registerMetadata = await clientApi.initializeTrigger(
       dynamicTrigger.slug,

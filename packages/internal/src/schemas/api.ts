@@ -142,6 +142,7 @@ export const JobMetadataSchema = z.object({
   queue: z.union([QueueOptionsSchema, z.string()]).optional(),
   startPosition: z.enum(["initial", "latest"]),
   enabled: z.boolean(),
+  preprocessRuns: z.boolean(),
 });
 
 export type JobMetadata = z.infer<typeof JobMetadataSchema>;
@@ -273,6 +274,43 @@ export const RunJobResponseSchema = z.object({
 
 export type RunJobResponse = z.infer<typeof RunJobResponseSchema>;
 
+export const PreprocessRunBodySchema = z.object({
+  event: ApiEventLogSchema,
+  job: z.object({
+    id: z.string(),
+    version: z.string(),
+  }),
+  run: z.object({
+    id: z.string(),
+    isTest: z.boolean(),
+  }),
+  environment: z.object({
+    id: z.string(),
+    slug: z.string(),
+    type: RuntimeEnvironmentTypeSchema,
+  }),
+  organization: z.object({
+    id: z.string(),
+    title: z.string(),
+    slug: z.string(),
+  }),
+  account: z
+    .object({
+      id: z.string(),
+      metadata: z.any(),
+    })
+    .optional(),
+});
+
+export type PreprocessRunBody = z.infer<typeof PreprocessRunBodySchema>;
+
+export const PreprocessRunResponseSchema = z.object({
+  abort: z.boolean(),
+  elements: z.array(DisplayElementSchema).optional(),
+});
+
+export type PreprocessRunResponse = z.infer<typeof PreprocessRunResponseSchema>;
+
 export const CreateRunBodySchema = z.object({
   client: z.string(),
   job: JobMetadataSchema,
@@ -306,23 +344,6 @@ export const SecureStringSchema = z.object({
   strings: z.array(z.string()),
   interpolations: z.array(z.string()),
 });
-
-export const PrepareJobTriggerBodySchema = z.object({
-  id: z.string(),
-  version: z.string(),
-  connection: ConnectionAuthSchema.optional(),
-  variantId: z.string().optional(),
-});
-
-export type PrepareJobTriggerBody = z.infer<typeof PrepareJobTriggerBodySchema>;
-
-export const PrepareForJobExecutionResponseSchema = z.object({
-  ok: z.boolean(),
-});
-
-export type PrepareForJobExecutionResponse = z.infer<
-  typeof PrepareForJobExecutionResponseSchema
->;
 
 export type SecureString = z.infer<typeof SecureStringSchema>;
 
@@ -409,18 +430,6 @@ export const HttpSourceResponseSchema = z.object({
   response: NormalizedResponseSchema,
   events: z.array(RawEventSchema),
 });
-
-export const TriggerVariantResponseBodySchema = z.object({
-  id: z.string(),
-  slug: z.string(),
-  data: TriggerMetadataSchema,
-  ready: z.boolean(),
-  auth: ConnectionAuthSchema.optional(),
-});
-
-export type TriggerVariantResponseBody = z.infer<
-  typeof TriggerVariantResponseBodySchema
->;
 
 export const RegisterTriggerBodySchema = z.object({
   rule: EventRuleSchema,
