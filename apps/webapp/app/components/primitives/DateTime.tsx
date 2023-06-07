@@ -3,9 +3,10 @@ import { useLocales } from "./LocaleProvider";
 type DateTimeProps = {
   date: Date | string;
   timeZone?: string;
+  className?: string;
 };
 
-export const DateTime = ({ date, timeZone }: DateTimeProps) => {
+export const DateTime = ({ date, timeZone, className }: DateTimeProps) => {
   const realDate = typeof date === "string" ? new Date(date) : date;
 
   const locales = useLocales();
@@ -24,7 +25,7 @@ export const DateTime = ({ date, timeZone }: DateTimeProps) => {
   }).format(realDate);
 
   return (
-    <time dateTime={isoString}>
+    <time dateTime={isoString} className={className}>
       {formattedDate} at {formattedTime}
     </time>
   );

@@ -114,7 +114,7 @@ export function RunPanelDescription({
   return (
     <Paragraph
       variant="small"
-      className={cn("pb-4", variant && variantClasses[variant])}
+      className={cn(variant && variantClasses[variant])}
     >
       {text}
     </Paragraph>

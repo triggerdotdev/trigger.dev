@@ -1,4 +1,6 @@
 import {
+  DisplayElement,
+  DisplayElementSchema,
   EventSpecificationSchema,
   IntegrationMetadataSchema,
 } from "@/../../packages/internal/src";
@@ -33,12 +35,14 @@ export class ProjectPresenter {
             id: true,
             slug: true,
             title: true,
+
             aliases: {
               select: {
                 version: {
                   select: {
                     version: true,
                     eventSpecification: true,
+                    elements: true,
                     runs: {
                       select: {
                         createdAt: true,
@@ -155,6 +159,19 @@ export class ProjectPresenter {
               )
             );
 
+          let elements: DisplayElement[] = [];
+
+          if (eventSpecification.elements) {
+            elements = [...elements, ...eventSpecification.elements];
+          }
+
+          if (alias.version.elements) {
+            const versionElements = z
+              .array(DisplayElementSchema)
+              .parse(alias.version.elements);
+            elements = [...elements, ...versionElements];
+          }
+
           return {
             id: job.id,
             slug: job.slug,
@@ -164,10 +181,10 @@ export class ProjectPresenter {
               title: eventSpecification.title,
               icon: eventSpecification.icon,
               source: eventSpecification.source,
-              elements: eventSpecification.elements,
             },
             integrations,
             lastRun,
+            elements,
           };
         })
         .filter(Boolean),

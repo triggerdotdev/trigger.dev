@@ -21,8 +21,10 @@ const paragraphVariants = {
     "font-sans text-xxs uppercase tracking-wider font-normal text-bright",
 };
 
+export type ParagraphVariant = keyof typeof paragraphVariants;
+
 type ParagraphProps = {
-  variant?: keyof typeof paragraphVariants;
+  variant?: ParagraphVariant;
   className?: string;
   children: React.ReactNode;
 } & React.HTMLAttributes<HTMLParagraphElement>;

@@ -2,6 +2,7 @@ import type { Job } from ".prisma/client";
 import type { User } from "./user.server";
 import { prisma } from "~/db.server";
 export type { Job } from ".prisma/client";
+export type { JobRunStatus } from ".prisma/client";
 
 export function getJob({
   userId,

@@ -8,6 +8,7 @@ import {
   ArrowLeftIcon,
   ArrowRightIcon,
   BeakerIcon,
+  BellAlertIcon,
   BookOpenIcon,
   BuildingOffice2Icon,
   CalendarDaysIcon,
@@ -78,6 +79,9 @@ const icons = {
   ),
   close: (className: string) => (
     <XMarkIcon className={cn("text-dimmed", className)} />
+  ),
+  "connection-alert": (className: string) => (
+    <BellAlertIcon className={cn("text-rose-500", className)} />
   ),
   docs: (className: string) => (
     <BookOpenIcon className={cn("text-slate-400", className)} />
@@ -254,7 +258,7 @@ function IntegrationIcon({
     >
       <img
         src={`/integrations/${slug}.png`}
-        className="p-[8%]"
+        // className="p-[8%]"
         alt={name}
         loading="lazy"
       />
