@@ -1,4 +1,5 @@
 import { Style, StyleName } from "@/../../packages/internal/src";
+import { LabelValueStack } from "~/components/primitives/LabelValueStack";
 import { NamedIcon } from "~/components/primitives/NamedIcon";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { cn } from "~/utils/cn";
@@ -169,15 +170,7 @@ export function RunPanelElements({
       )}
     >
       {elements.map(({ label, value }, index) => (
-        <div key={index} className="flex items-baseline gap-2 overflow-hidden">
-          <Paragraph variant="extra-extra-small/caps">{label}</Paragraph>
-          <Paragraph
-            variant="extra-small/bright"
-            className={cn(layout === "horizontal" && "truncate")}
-          >
-            {value}
-          </Paragraph>
-        </div>
+        <LabelValueStack key={index} label={label} value={value} />
       ))}
     </div>
   );

@@ -191,7 +191,6 @@ export default function Page() {
                         label: element.label,
                         value: element.text,
                       }))}
-                      className="mt-4"
                     />
                   )}
                 </RunPanelBody>
