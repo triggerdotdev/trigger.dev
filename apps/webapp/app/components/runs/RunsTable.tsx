@@ -47,6 +47,7 @@ export function RunsTable({
           <TableHeaderCell>Duration</TableHeaderCell>
           <TableHeaderCell>Test</TableHeaderCell>
           <TableHeaderCell>Version</TableHeaderCell>
+          <TableHeaderCell>Created at</TableHeaderCell>
           <TableHeaderCell>
             <span className="sr-only">Go to page</span>
           </TableHeaderCell>
@@ -91,6 +92,11 @@ export function RunsTable({
                   )}
                 </TableCell>
                 <TableCell to={path}>{run.version}</TableCell>
+                <TableCell to={path}>
+                  {run.createdAt
+                    ? formatDateTime(run.createdAt, "medium")
+                    : "–"}
+                </TableCell>
                 <TableCellChevron to={path} />
               </TableRow>
             );
