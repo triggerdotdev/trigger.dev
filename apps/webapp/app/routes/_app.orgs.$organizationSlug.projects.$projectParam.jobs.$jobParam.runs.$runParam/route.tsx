@@ -184,16 +184,16 @@ export default function Page() {
                       value={connection.apiConnection.client.title}
                     />
                   )}
-                </RunPanelIconSection>
-                {task.elements.length > 0 && (
-                  <RunPanelElements
-                    elements={task.elements.map((element) => ({
-                      label: element.label,
-                      value: element.text,
-                    }))}
-                    className="mt-4"
-                  />
-                )} */}
+                </RunPanelIconSection>*/}
+                  {run.elements.length > 0 && (
+                    <RunPanelElements
+                      elements={run.elements.map((element) => ({
+                        label: element.label,
+                        value: element.text,
+                      }))}
+                      className="mt-4"
+                    />
+                  )}
                 </RunPanelBody>
               </RunPanel>
             </div>
