@@ -1,5 +1,7 @@
 import { cn } from "~/utils/cn";
 import { Paragraph, ParagraphVariant } from "./Paragraph";
+import { ArrowTopRightOnSquareIcon } from "@heroicons/react/20/solid";
+import { SimpleTooltip } from "./Tooltip";
 
 const variations: Record<
   string,
@@ -43,19 +45,28 @@ export function LabelValueStack({
       )}
     >
       <Paragraph variant={variation.label}>{label}</Paragraph>
-      <Paragraph variant={variation.value}>
+      <div>
         {href ? (
-          <a
-            href={href}
-            className=" underline underline-offset-2"
-            target="_blank"
-          >
-            {value}
-          </a>
+          <SimpleTooltip
+            side="bottom"
+            button={
+              <Paragraph variant={variation.value}>
+                <a
+                  href={href}
+                  className=" underline underline-offset-2"
+                  target="_blank"
+                >
+                  {value}
+                  <ArrowTopRightOnSquareIcon className="ml-1 inline-block h-4 w-4 text-dimmed" />
+                </a>
+              </Paragraph>
+            }
+            content={href}
+          />
         ) : (
-          value
+          <Paragraph variant={variation.value}>value</Paragraph>
         )}
-      </Paragraph>
+      </div>
     </div>
   );
 }
