@@ -1,4 +1,3 @@
-import { fi } from "date-fns/locale";
 import { useMemo, useState } from "react";
 
 type TextFilterProps<T> = {
