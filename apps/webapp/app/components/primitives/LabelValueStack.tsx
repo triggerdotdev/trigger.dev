@@ -18,6 +18,7 @@ const variations: Record<
 type LabelValueStackProps = {
   label: React.ReactNode;
   value: React.ReactNode;
+  href?: string;
   layout?: "horizontal" | "vertical";
   variant?: keyof typeof variations;
   className?: string;
@@ -26,6 +27,7 @@ type LabelValueStackProps = {
 export function LabelValueStack({
   label,
   value,
+  href,
   layout = "vertical",
   variant = "secondary",
   className,
@@ -40,11 +42,19 @@ export function LabelValueStack({
         className
       )}
     >
-      <Paragraph variant={variation.label} className="truncate">
-        {label}
-      </Paragraph>
-      <Paragraph variant={variation.value} className="truncate">
-        {value}
+      <Paragraph variant={variation.label}>{label}</Paragraph>
+      <Paragraph variant={variation.value}>
+        {href ? (
+          <a
+            href={href}
+            className=" underline underline-offset-2"
+            target="_blank"
+          >
+            {value}
+          </a>
+        ) : (
+          value
+        )}
       </Paragraph>
     </div>
   );

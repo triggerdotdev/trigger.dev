@@ -225,12 +225,7 @@ export default function Page() {
                   )}
                 </RunPanelIconSection>*/}
                   {run.elements.length > 0 && (
-                    <RunPanelElements
-                      elements={run.elements.map((element) => ({
-                        label: element.label,
-                        value: element.text,
-                      }))}
-                    />
+                    <RunPanelElements elements={run.elements} />
                   )}
                 </RunPanelBody>
               </RunPanel>

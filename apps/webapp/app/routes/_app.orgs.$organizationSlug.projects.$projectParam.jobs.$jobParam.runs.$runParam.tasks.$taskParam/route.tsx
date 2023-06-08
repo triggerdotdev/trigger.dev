@@ -113,14 +113,8 @@ export default function Page() {
         )}
         {elements.length > 0 && (
           <div className="mt-4 flex flex-col gap-2">
-            <Header3>Elements</Header3>
-            <RunPanelElements
-              elements={elements.map((element) => ({
-                label: element.label,
-                value: element.text,
-              }))}
-              layout="vertical"
-            />
+            <Header3>Properties</Header3>
+            <RunPanelElements elements={elements} layout="vertical" />
           </div>
         )}
         <div className="mt-4 flex flex-col gap-2">

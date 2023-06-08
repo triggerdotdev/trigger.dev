@@ -1,4 +1,8 @@
-import { Style, StyleName } from "@/../../packages/internal/src";
+import {
+  DisplayElement,
+  Style,
+  StyleName,
+} from "@/../../packages/internal/src";
 import { LabelValueStack } from "~/components/primitives/LabelValueStack";
 import { NamedIcon } from "~/components/primitives/NamedIcon";
 import { Paragraph } from "~/components/primitives/Paragraph";
@@ -157,7 +161,7 @@ export function RunPanelElements({
   className,
   layout = "horizontal",
 }: {
-  elements: { label: string; value: string }[];
+  elements: DisplayElement[];
   className?: string;
   layout?: "horizontal" | "vertical";
 }) {
@@ -169,8 +173,8 @@ export function RunPanelElements({
         className
       )}
     >
-      {elements.map(({ label, value }, index) => (
-        <LabelValueStack key={index} label={label} value={value} />
+      {elements.map(({ label, text, url }, index) => (
+        <LabelValueStack key={index} label={label} value={text} href={url} />
       ))}
     </div>
   );
