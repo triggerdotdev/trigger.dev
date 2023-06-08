@@ -11,6 +11,7 @@ import { cn } from "~/utils/cn";
 import {
   RunPanel,
   RunPanelBody,
+  RunPanelDescription,
   RunPanelElements,
   RunPanelHeader,
   RunPanelIconElement,
@@ -48,6 +49,7 @@ export default function Page() {
 
   const {
     name,
+    description,
     icon,
     startedAt,
     completedAt,
@@ -56,6 +58,7 @@ export default function Page() {
     params,
     elements,
     output,
+    style,
   } = task;
 
   return (
@@ -105,6 +108,9 @@ export default function Page() {
             )}
           </RunPanelIconSection>
         </div>
+        {description && (
+          <RunPanelDescription text={description} variant={style?.variant} />
+        )}
         {elements.length > 0 && (
           <div className="mt-4 flex flex-col gap-2">
             <Header3>Elements</Header3>
@@ -119,7 +125,11 @@ export default function Page() {
         )}
         <div className="mt-4 flex flex-col gap-2">
           <Header3>Input</Header3>
-          <CodeBlock code={JSON.stringify(params, null, 2)} />
+          {params ? (
+            <CodeBlock code={JSON.stringify(params, null, 2)} />
+          ) : (
+            <Paragraph variant="small">No input</Paragraph>
+          )}
         </div>
         <div className="mt-4 flex flex-col gap-2">
           <Header3>Output</Header3>
