@@ -1,6 +1,6 @@
 import { github, slack } from "@/trigger";
 import { events } from "@trigger.dev/github";
-import { makeAppHandler } from "@trigger.dev/nextjs";
+import { createAppRoute } from "@trigger.dev/nextjs";
 import { Job, TriggerClient } from "@trigger.dev/sdk";
 
 export const client = new TriggerClient({
@@ -37,6 +37,6 @@ new Job(client, {
   },
 });
 
-export const { POST, dynamic } = makeAppHandler(client, {
+export const { POST, dynamic } = createAppRoute(client, {
   path: "/api/v2/trigger",
 });

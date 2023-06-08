@@ -6,13 +6,16 @@ export type TriggerHandlerOptions = {
   path: string;
 };
 
-export function makeHandler(
+export function createPagesRoute(
   client: TriggerClient,
   options: TriggerHandlerOptions
 ) {
   client.path = options.path;
 
-  return async function handler(req: NextApiRequest, res: NextApiResponse) {
+  const handler = async function handler(
+    req: NextApiRequest,
+    res: NextApiResponse
+  ) {
     const normalizedRequest = await convertToStandardRequest(client.url, req);
 
     const response = await client.handleRequest(normalizedRequest);
@@ -25,9 +28,16 @@ export function makeHandler(
 
     res.status(response.status).json(response.body);
   };
+
+  return {
+    handler,
+    config: {
+      bodyParser: false,
+    },
+  };
 }
 
-export function makeAppHandler(
+export function createAppRoute(
   client: TriggerClient,
   options: TriggerHandlerOptions
 ) {

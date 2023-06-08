@@ -1,10 +1,8 @@
 import { client } from "@/trigger";
-import { makeHandler } from "@trigger.dev/nextjs";
+import { createPagesRoute } from "@trigger.dev/nextjs";
 
-export default makeHandler(client, { path: "/api/trigger" });
+const { handler, config } = createPagesRoute(client, { path: "/api/trigger" });
 
-export const config = {
-  api: {
-    bodyParser: false,
-  },
-};
+export { config };
+
+export default handler;
