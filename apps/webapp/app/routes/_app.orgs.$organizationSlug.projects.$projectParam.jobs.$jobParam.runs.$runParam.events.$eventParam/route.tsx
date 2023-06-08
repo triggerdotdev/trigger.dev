@@ -8,12 +8,14 @@ import { formatDateTime } from "~/utils";
 import {
   RunPanel,
   RunPanelBody,
+  RunPanelElements,
   RunPanelHeader,
   RunPanelIconElement,
   RunPanelIconSection,
 } from "../_app.orgs.$organizationSlug.projects.$projectParam.jobs.$jobParam.runs.$runParam/RunCard";
 import { EventDetailsPresenter } from "~/presenters/EventDetailsPresenter.server";
 import { useJob } from "~/hooks/useJob";
+import { useRun } from "~/hooks/useRun";
 
 export const loader = async ({ request, params }: LoaderArgs) => {
   const userId = await requireUserId(request);
@@ -42,6 +44,7 @@ export const loader = async ({ request, params }: LoaderArgs) => {
 export default function Page() {
   const { event } = useTypedLoaderData<typeof loader>();
   const job = useJob();
+  const run = useRun();
 
   const { id, name, payload, timestamp, deliveredAt } = event;
 
@@ -67,6 +70,12 @@ export default function Page() {
           </RunPanelIconSection>
         </div>
         <div className="mt-4 flex flex-col gap-2">
+          {run.elements.length > 0 && (
+            <div className="mb-2 flex flex-col gap-4">
+              <Header3>Properties</Header3>
+              <RunPanelElements elements={run.elements} layout="vertical" />
+            </div>
+          )}
           <Header3>Payload</Header3>
           <CodeBlock code={JSON.stringify(payload, null, 2)} />
         </div>
