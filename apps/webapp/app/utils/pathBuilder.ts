@@ -152,6 +152,28 @@ export function runParam(run: RunForPath) {
   return run.id;
 }
 
+// Task
+export function taskPath(
+  organization: OrgForPath,
+  project: ProjectForPath,
+  job: JobForPath,
+  run: RunForPath,
+  taskId: string
+) {
+  return `${runPath(organization, project, job, run)}/tasks/${taskId}`;
+}
+
+// Event
+export function eventPath(
+  organization: OrgForPath,
+  project: ProjectForPath,
+  job: JobForPath,
+  run: RunForPath,
+  eventId: string
+) {
+  return `${runPath(organization, project, job, run)}/events/${eventId}`;
+}
+
 // Docs
 const docsRoot = "https://docs.trigger.dev";
 

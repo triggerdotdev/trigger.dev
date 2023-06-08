@@ -22,14 +22,15 @@ import { AnimatePresence, motion } from "framer-motion";
 
 type TaskCardProps = Task & {
   selectedId?: string;
-  setSelectedId: (id: string) => void;
+  selectedTask: (id: string) => void;
   isLast: boolean;
   depth: number;
 };
 
+//todo add links to elements
 export function TaskCard({
   selectedId,
-  setSelectedId,
+  selectedTask,
   isLast,
   depth,
   id,
@@ -53,7 +54,7 @@ export function TaskCard({
       <div style={{ marginLeft: `${depth}rem` }}>
         <RunPanel
           selected={isSelected}
-          onClick={() => setSelectedId(id)}
+          onClick={() => selectedTask(id)}
           styleName={style?.style}
         >
           <RunPanelHeader
@@ -158,7 +159,7 @@ export function TaskCard({
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 100 }}>
               <TaskCard
                 selectedId={selectedId}
-                setSelectedId={setSelectedId}
+                selectedTask={selectedTask}
                 isLast={index === subtasks.length - 1}
                 depth={depth + 1}
                 {...subtask}

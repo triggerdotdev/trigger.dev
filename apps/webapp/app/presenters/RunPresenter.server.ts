@@ -27,42 +27,31 @@ const ElementsSchema = z.array(DisplayElementSchema);
 const taskSelect = {
   id: true,
   displayKey: true,
+  name: true,
+  icon: true,
+  status: true,
+  delayUntil: true,
+  description: true,
+  elements: true,
+  error: true,
+  startedAt: true,
+  completedAt: true,
+  style: true,
+  parentId: true,
   runConnection: {
     select: {
-      id: true,
-      key: true,
       apiConnection: {
         select: {
-          metadata: true,
-          connectionType: true,
           client: {
             select: {
-              title: true,
-              slug: true,
-              description: true,
-              scopes: true,
               integrationIdentifier: true,
-              integrationAuthMethod: true,
+              title: true,
             },
           },
         },
       },
     },
   },
-  name: true,
-  icon: true,
-  status: true,
-  delayUntil: true,
-  noop: true,
-  description: true,
-  elements: true,
-  params: true,
-  output: true,
-  error: true,
-  startedAt: true,
-  completedAt: true,
-  style: true,
-  parentId: true,
 } as const;
 
 export class RunPresenter {
@@ -99,7 +88,6 @@ export class RunPresenter {
       return {
         ...t,
         connection: t.runConnection,
-        params: t.params as Record<string, any>,
         elements:
           t.elements == null
             ? []
@@ -246,15 +234,4 @@ export class RunPresenter {
       },
     });
   }
-
-  // #recursivelyEnrichTask(
-  //   task: QueryTask
-  // ): EnrichedTask & { subtasks: EnrichedTask[] } {
-  //   const enrichedTask = this.enrichTask(task);
-  //   let subtasks: (EnrichedTask & { subtasks: EnrichedTask[] })[] = [];
-  //   if (task.children) {
-  //     subtasks = task.children.map((t) => this.#recursivelyEnrichTask(t));
-  //   }
-  //   return { ...enrichedTask, subtasks };
-  // }
 }

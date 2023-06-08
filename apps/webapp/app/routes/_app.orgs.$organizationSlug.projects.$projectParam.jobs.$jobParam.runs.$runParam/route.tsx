@@ -1,7 +1,13 @@
 import { BoltIcon } from "@heroicons/react/24/solid";
+import {
+  Outlet,
+  useLocation,
+  useNavigate,
+  useNavigation,
+} from "@remix-run/react";
 import { LoaderArgs } from "@remix-run/server-runtime";
-import { Fragment, useMemo, useState } from "react";
-import { typedjson, useTypedLoaderData } from "remix-typedjson";
+import { useCallback, useMemo, useState } from "react";
+import { redirect, typedjson, useTypedLoaderData } from "remix-typedjson";
 import invariant from "tiny-invariant";
 import { environmentTitle } from "~/components/environments/EnvironmentLabel";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
@@ -21,30 +27,35 @@ import { RunStatusIcon, runStatusTitle } from "~/components/runs/RunStatuses";
 import { useJob } from "~/hooks/useJob";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
-import { RunPresenter, Task } from "~/presenters/RunPresenter.server";
+import { RunPresenter } from "~/presenters/RunPresenter.server";
 import { requireUserId } from "~/services/session.server";
 import { formatDateTime, formatDuration } from "~/utils";
-import { cn } from "~/utils/cn";
 import { Handle } from "~/utils/handle";
 import { jobPath } from "~/utils/pathBuilder";
-import { Detail } from "./DetailView";
 import {
   RunPanel,
   RunPanelBody,
-  RunPanelDescription,
   RunPanelElements,
   RunPanelHeader,
-  RunPanelIconElement,
-  RunPanelIconSection,
   RunPanelIconTitle,
-  TaskSeparator,
 } from "./RunCard";
-import { TaskStatusIcon } from "./TaskStatus";
 import { TaskCard } from "./TaskCard";
+import { taskPath, eventPath } from "~/utils/pathBuilder";
+import { usePathName } from "~/hooks/usePathName";
+import { Callout } from "~/components/primitives/Callout";
 
 export const loader = async ({ request, params }: LoaderArgs) => {
   const userId = await requireUserId(request);
-  const { jobParam, runParam } = params;
+  const {
+    organizationSlug,
+    projectParam,
+    jobParam,
+    runParam,
+    eventParam,
+    taskParam,
+  } = params;
+  invariant(organizationSlug, "organizationSlug not found");
+  invariant(projectParam, "projectParam not found");
   invariant(jobParam, "jobParam not found");
   invariant(runParam, "runParam not found");
 
@@ -60,6 +71,18 @@ export const loader = async ({ request, params }: LoaderArgs) => {
     });
   }
 
+  if (!eventParam && !taskParam) {
+    return redirect(
+      eventPath(
+        { slug: organizationSlug },
+        { slug: projectParam },
+        { id: jobParam },
+        { id: runParam },
+        run.event.id
+      )
+    );
+  }
+
   return typedjson({
     run,
   });
@@ -71,39 +94,37 @@ export const handle: Handle = {
   },
 };
 
+const taskPattern = /\/tasks\/(.*)/;
+const eventPattern = /\/events\/(.*)/;
+
 export default function Page() {
   const { run } = useTypedLoaderData<typeof loader>();
   const organization = useOrganization();
   const project = useProject();
   const job = useJob();
-  const [selectedId, setSelectedId] = useState<string | undefined>(
-    run.event.id
-  );
+  const navigate = useNavigate();
 
-  const flatTasks = useMemo(() => {
-    const tasks: Task[] = [];
-    const queue: Task[] = [...run.tasks];
-    while (queue.length > 0) {
-      const task = queue.shift();
-      if (!task) continue;
-      tasks.push(task);
-      if (task.subtasks) {
-        queue.push(...task.subtasks);
-      }
+  const selectedTask = useCallback((id: string) => {
+    navigate(taskPath(organization, project, job, run, id));
+  }, []);
+
+  const selectedEvent = useCallback((id: string) => {
+    navigate(eventPath(organization, project, job, run, id));
+  }, []);
+
+  const pathName = usePathName();
+
+  const selectedId = useMemo(() => {
+    const taskMatch = pathName.match(taskPattern);
+    const taskId = taskMatch ? taskMatch[1] : undefined;
+    if (taskId) {
+      return taskId;
     }
-    return tasks;
-  }, [run]);
 
-  const selectedItem = useMemo(() => {
-    if (!selectedId) return undefined;
-    if (selectedId === run.event.id)
-      return {
-        type: "trigger" as const,
-        trigger: { ...run.event, icon: job.event.icon, title: job.event.title },
-      };
-    const task = flatTasks.find((task) => task.id === selectedId);
-    if (task) return { type: "task" as const, task };
-  }, [selectedId, run]);
+    const eventMatch = pathName.match(eventPattern);
+    const eventId = eventMatch ? eventMatch[1] : undefined;
+    return eventId;
+  }, [pathName]);
 
   return (
     <PageContainer>
@@ -179,7 +200,7 @@ export default function Page() {
               <Header2 className="mb-2">Trigger</Header2>
               <RunPanel
                 selected={run.event.id === selectedId}
-                onClick={() => setSelectedId(run.event.id)}
+                onClick={() => selectedEvent(run.event.id)}
               >
                 <RunPanelHeader
                   icon={<BoltIcon className="h-5 w-5 text-orange-500" />}
@@ -222,7 +243,7 @@ export default function Page() {
                   <TaskCard
                     key={task.id}
                     selectedId={selectedId}
-                    setSelectedId={setSelectedId}
+                    selectedTask={selectedTask}
                     isLast={isLast}
                     depth={0}
                     {...task}
@@ -234,14 +255,10 @@ export default function Page() {
           {/* Detail view */}
           <div className="overflow-y-auto py-4 pr-4">
             <Header2 className="mb-2">Detail</Header2>
-            {!selectedItem ? (
-              <RunPanel selected={false} className="h-full">
-                <Paragraph variant="base" className="p-4">
-                  Nothing selected
-                </Paragraph>
-              </RunPanel>
+            {selectedId ? (
+              <Outlet />
             ) : (
-              <Detail {...selectedItem} />
+              <Callout variant="info">Select a task or trigger</Callout>
             )}
           </div>
         </div>

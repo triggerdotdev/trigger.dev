@@ -1,7 +1,11 @@
+import { LoaderArgs } from "@remix-run/server-runtime";
+import { typedjson, useTypedLoaderData } from "remix-typedjson";
+import invariant from "tiny-invariant";
 import { CodeBlock } from "~/components/code/CodeBlock";
 import { Header3 } from "~/components/primitives/Headers";
 import { Paragraph } from "~/components/primitives/Paragraph";
-import { Event, Task } from "~/presenters/RunPresenter.server";
+import { TaskDetailsPresenter } from "~/presenters/TaskDetailsPresenter.server";
+import { requireUserId } from "~/services/session.server";
 import { formatDateTime, formatDuration } from "~/utils";
 import { cn } from "~/utils/cn";
 import {
@@ -12,43 +16,48 @@ import {
   RunPanelIconElement,
   RunPanelIconSection,
   RunPanelIconTitle,
-} from "./RunCard";
-import { TaskStatusIcon } from "./TaskStatus";
+} from "../_app.orgs.$organizationSlug.projects.$projectParam.jobs.$jobParam.runs.$runParam/RunCard";
+import { TaskStatusIcon } from "../_app.orgs.$organizationSlug.projects.$projectParam.jobs.$jobParam.runs.$runParam/TaskStatus";
 
-type Trigger = Event & { icon: string; title: string };
+export const loader = async ({ request, params }: LoaderArgs) => {
+  const userId = await requireUserId(request);
+  const { jobParam, runParam, taskParam } = params;
+  invariant(jobParam, "jobParam not found");
+  invariant(runParam, "runParam not found");
+  invariant(taskParam, "selectedParam not found");
 
-type DetailProps =
-  | {
-      type: "task";
-      task: Task;
-    }
-  | {
-      type: "trigger";
-      trigger: Trigger;
-    };
+  const presenter = new TaskDetailsPresenter();
+  const task = await presenter.call({
+    userId,
+    id: taskParam,
+  });
 
-export function Detail(props: DetailProps) {
-  switch (props.type) {
-    case "task":
-      return <TaskDetail {...props.task} />;
-    case "trigger":
-      return <EventDetail {...props.trigger} />;
-    default:
-      return <></>;
+  if (!task) {
+    throw new Response(null, {
+      status: 404,
+    });
   }
-}
 
-export function TaskDetail({
-  name,
-  icon,
-  startedAt,
-  completedAt,
-  status,
-  delayUntil,
-  params,
-  elements,
-  output,
-}: Task) {
+  return typedjson({
+    task,
+  });
+};
+
+export default function Page() {
+  const { task } = useTypedLoaderData<typeof loader>();
+
+  const {
+    name,
+    icon,
+    startedAt,
+    completedAt,
+    status,
+    delayUntil,
+    params,
+    elements,
+    output,
+  } = task;
+
   return (
     <RunPanel selected={false}>
       <RunPanelHeader
@@ -119,45 +128,6 @@ export function TaskDetail({
           ) : (
             <Paragraph variant="small">No output</Paragraph>
           )}
-        </div>
-      </RunPanelBody>
-    </RunPanel>
-  );
-}
-
-export function EventDetail({
-  icon,
-  title,
-  id,
-  name,
-  payload,
-  timestamp,
-  deliveredAt,
-}: Trigger) {
-  return (
-    <RunPanel selected={false}>
-      <RunPanelHeader icon={icon} title={title} />
-      <RunPanelBody>
-        <div className="mb-4 border-b border-slate-800 pb-4">
-          <RunPanelIconSection>
-            <RunPanelIconElement
-              icon="calendar"
-              label="Created"
-              value={formatDateTime(timestamp, "long")}
-            />
-            {deliveredAt && (
-              <RunPanelIconElement
-                icon="flag"
-                label="Finished at"
-                value={formatDateTime(deliveredAt, "long")}
-              />
-            )}
-            <RunPanelIconElement icon="id" label="Event name" value={name} />
-          </RunPanelIconSection>
-        </div>
-        <div className="mt-4 flex flex-col gap-2">
-          <Header3>Payload</Header3>
-          <CodeBlock code={JSON.stringify(payload, null, 2)} />
         </div>
       </RunPanelBody>
     </RunPanel>

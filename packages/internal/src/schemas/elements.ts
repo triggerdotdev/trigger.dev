@@ -6,6 +6,8 @@ export const DisplayElementSchema = z.object({
   url: z.string().optional(),
 });
 
+export const DisplayElementsSchema = z.array(DisplayElementSchema);
+
 export type DisplayElement = z.infer<typeof DisplayElementSchema>;
 
 export const StyleSchema = z.object({
