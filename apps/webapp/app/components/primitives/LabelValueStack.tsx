@@ -64,7 +64,7 @@ export function LabelValueStack({
             content={href}
           />
         ) : (
-          <Paragraph variant={variation.value}>value</Paragraph>
+          <Paragraph variant={variation.value}>{value}</Paragraph>
         )}
       </div>
     </div>
