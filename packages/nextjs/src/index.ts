@@ -32,7 +32,9 @@ export function createPagesRoute(
   return {
     handler,
     config: {
-      bodyParser: false,
+      api: {
+        bodyParser: false,
+      },
     },
   };
 }
