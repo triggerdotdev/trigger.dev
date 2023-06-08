@@ -3,7 +3,9 @@ import {
   IntegrationClient,
   ExternalSource,
   TriggerIntegration,
+  HandlerEvent,
 } from "@trigger.dev/sdk";
+import type { Logger } from "@trigger.dev/sdk";
 import { Octokit } from "octokit";
 import { z } from "zod";
 import { tasks } from "./tasks";
@@ -47,82 +49,7 @@ export function createRepoEventSource(
         full_name: [params.repo],
       },
     }),
-    handler: async (event, logger) => {
-      logger.debug("[inside github integration] Handling github repo event");
-
-      const { rawEvent: request, source } = event;
-
-      if (!request.rawBody) {
-        logger.debug("[inside github integration] No rawBody found");
-
-        return;
-      }
-
-      const deliveryId = request.headers["x-github-delivery"];
-      const hookId = request.headers["x-github-hook-id"];
-      const signature = request.headers["x-hub-signature-256"];
-
-      if (source.secret && signature) {
-        const githubWebhooks = new Webhooks({
-          secret: source.secret,
-        });
-
-        if (!githubWebhooks.verify(request.rawBody, signature)) {
-          logger.debug(
-            "[inside github integration] Unable to verify the signature of the rawBody",
-            {
-              signature,
-              secret: source.secret,
-            }
-          );
-
-          return;
-        }
-      }
-
-      const name = request.headers["x-github-event"];
-
-      const context = omit(request.headers, [
-        "x-github-event",
-        "x-github-delivery",
-        "x-hub-signature-256",
-        "x-hub-signature",
-        "content-type",
-        "content-length",
-        "accept",
-        "accept-encoding",
-        "x-forwarded-proto",
-      ]);
-
-      const payload = parseBody(request.rawBody);
-
-      if (!payload) {
-        logger.debug("[inside github integration] Unable to parse the rawBody");
-
-        return;
-      }
-
-      logger.debug(
-        "[inside github integration] Returning an event for the webhook!",
-        {
-          name,
-          payload,
-          context,
-        }
-      );
-
-      return {
-        events: [
-          {
-            id: [hookId, deliveryId].join(":"),
-            source: "github.com",
-            payload,
-            name,
-            context,
-          },
-        ],
-      };
-    },
+    handler: webhookHandler,
     register: async (event, io, ctx) => {
       const { params, source: httpSource, events, missingEvents } = event;
 
@@ -209,7 +136,7 @@ export function createOrgEventSource(
         login: [params.org],
       },
     }),
-    handler: async (event) => {},
+    handler: webhookHandler,
     register: async (event, io, ctx) => {
       const { params, source: httpSource, events, missingEvents } = event;
 
@@ -315,4 +242,84 @@ function omit<T extends Record<string, unknown>, K extends keyof T>(
   }
 
   return result;
+}
+
+async function webhookHandler(event: HandlerEvent<"HTTP">, logger: Logger) {
+  logger.debug("[inside github integration] Handling github repo event");
+
+  const { rawEvent: request, source } = event;
+
+  if (!request.body) {
+    logger.debug("[inside github integration] No body found");
+
+    return;
+  }
+
+  const rawBody = await request.text();
+
+  const deliveryId = request.headers.get("x-github-delivery");
+  const hookId = request.headers.get("x-github-hook-id");
+  const signature = request.headers.get("x-hub-signature-256");
+
+  if (source.secret && signature) {
+    const githubWebhooks = new Webhooks({
+      secret: source.secret,
+    });
+
+    if (!githubWebhooks.verify(rawBody, signature)) {
+      logger.debug(
+        "[inside github integration] Unable to verify the signature of the rawBody",
+        {
+          signature,
+          secret: source.secret,
+        }
+      );
+
+      return;
+    }
+  }
+
+  const name = request.headers.get("x-github-event") ?? "unknown";
+  const allHeaders = Object.fromEntries(request.headers.entries());
+
+  const context = omit(allHeaders, [
+    "x-github-event",
+    "x-github-delivery",
+    "x-hub-signature-256",
+    "x-hub-signature",
+    "content-type",
+    "content-length",
+    "accept",
+    "accept-encoding",
+    "x-forwarded-proto",
+  ]);
+
+  const payload = parseBody(rawBody);
+
+  if (!payload) {
+    logger.debug("[inside github integration] Unable to parse the rawBody");
+
+    return;
+  }
+
+  logger.debug(
+    "[inside github integration] Returning an event for the webhook!",
+    {
+      name,
+      payload,
+      context,
+    }
+  );
+
+  return {
+    events: [
+      {
+        id: [hookId, deliveryId].join(":"),
+        source: "github.com",
+        payload,
+        name,
+        context,
+      },
+    ],
+  };
 }

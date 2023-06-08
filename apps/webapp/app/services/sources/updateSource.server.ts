@@ -37,8 +37,8 @@ export class UpdateSourceService {
     const triggerSource =
       await this.#prismaClient.triggerSource.findUniqueOrThrow({
         where: {
-          key_endpointId: {
-            endpointId: endpoint.id,
+          key_environmentId: {
+            environmentId: environment.id,
             key: id,
           },
         },
@@ -54,6 +54,7 @@ export class UpdateSourceService {
       data: {
         active: true,
         channelData: payload.data as any,
+        endpointId: endpoint.id,
       },
     });
 

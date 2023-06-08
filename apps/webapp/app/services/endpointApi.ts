@@ -37,7 +37,7 @@ export class EndpointApi {
 
   async ping() {
     const response = await safeFetch(this.#url, {
-      method: "GET",
+      method: "POST",
       headers: {
         "Content-Type": "application/json",
         "x-trigger-api-key": this.#apiKey,
@@ -68,10 +68,11 @@ export class EndpointApi {
 
   async getEndpointData() {
     const response = await safeFetch(this.#url, {
-      method: "GET",
+      method: "POSt",
       headers: {
-        "Content-Type": "application/json",
+        Accept: "application/json",
         "x-trigger-api-key": this.#apiKey,
+        "x-trigger-action": "GET_ENDPOINT_DATA",
       },
     });
 
@@ -132,7 +133,7 @@ export class EndpointApi {
     const response = await safeFetch(this.#url, {
       method: "POST",
       headers: {
-        "Content-Type": "application/json",
+        "content-type": "application/json",
         "x-trigger-api-key": this.#apiKey,
         "x-trigger-action": "EXECUTE_JOB",
       },

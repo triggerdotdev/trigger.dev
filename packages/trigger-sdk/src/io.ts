@@ -158,7 +158,7 @@ export class IO {
       },
       async (task) => {
         return await this._apiClient.updateSource(
-          this._triggerClient.name,
+          this._triggerClient.id,
           options.key,
           options
         );

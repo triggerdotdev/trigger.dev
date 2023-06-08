@@ -7,4 +7,7 @@ module.exports = {
     "@trigger.dev/github",
     "@trigger.dev/internal",
   ],
+  experimental: {
+    appDir: true,
+  },
 };

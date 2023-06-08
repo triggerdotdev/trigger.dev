@@ -89,8 +89,8 @@ export class RegisterSourceService {
 
         const triggerSource = await tx.triggerSource.upsert({
           where: {
-            key_endpointId: {
-              endpointId: endpoint.id,
+            key_environmentId: {
+              environmentId: environment.id,
               key,
             },
           },
@@ -148,7 +148,16 @@ export class RegisterSourceService {
               },
             },
           },
-          update: {},
+          update: {
+            endpoint: {
+              connect: {
+                id: endpoint.id,
+              },
+            },
+            apiClient: apiClient
+              ? { connect: { id: apiClient.id } }
+              : undefined,
+          },
           include: {
             events: true,
             secretReference: true,

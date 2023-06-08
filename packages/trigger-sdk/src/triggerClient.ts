@@ -46,10 +46,10 @@ const registerSourceEvent: EventSpecification<RegisterSourceEvent> = {
 };
 
 export type TriggerClientOptions = {
+  id: string;
+  url?: string;
   apiKey?: string;
   apiUrl?: string;
-  endpoint?: string;
-  path?: string;
   logLevel?: LogLevel;
 };
 
@@ -66,7 +66,7 @@ export class TriggerClient {
     string,
     (
       source: HandleTriggerSource,
-      request: HttpSourceEvent
+      request: Request
     ) => Promise<{
       events: Array<SendEvent>;
       response?: NormalizedResponse;
@@ -85,21 +85,32 @@ export class TriggerClient {
 
   #client: ApiClient;
   #logger: Logger;
-  name: string;
-  endpoint: string;
+  private _url: string;
+  id: string;
+  path?: string;
 
-  constructor(name: string, options: TriggerClientOptions) {
-    this.name = name;
-    this.endpoint = options.endpoint ?? buildEndpointUrl(options.path);
+  constructor(options: TriggerClientOptions) {
+    this.id = options.id;
+    this._url = buildClientUrl(options.url);
     this.#options = options;
     this.#client = new ApiClient(this.#options);
     this.#logger = new Logger("trigger.dev", this.#options.logLevel);
   }
 
-  async handleRequest(request: NormalizedRequest): Promise<NormalizedResponse> {
-    this.#logger.debug("handling request", { request });
+  get url() {
+    return `${this._url}${
+      this.path ? `${this.path.startsWith("/") ? "" : "/"}${this.path}` : ""
+    }`;
+  }
 
-    const apiKey = request.headers["x-trigger-api-key"];
+  async handleRequest(request: Request): Promise<NormalizedResponse> {
+    this.#logger.debug("handling request", {
+      url: request.url,
+      headers: Object.fromEntries(request.headers.entries()),
+      method: request.method,
+    });
+
+    const apiKey = request.headers.get("x-trigger-api-key");
 
     if (!this.authorized(apiKey)) {
       return {
@@ -110,10 +121,28 @@ export class TriggerClient {
       };
     }
 
-    if (request.method === "GET") {
-      const action = request.headers["x-trigger-action"];
+    if (request.method !== "POST") {
+      return {
+        status: 405,
+        body: {
+          message: "Method not allowed",
+        },
+      };
+    }
 
-      if (action === "PING") {
+    const action = request.headers.get("x-trigger-action");
+
+    if (!action) {
+      return {
+        status: 400,
+        body: {
+          message: "Missing x-trigger-action header",
+        },
+      };
+    }
+
+    switch (action) {
+      case "PING": {
         return {
           status: 200,
           body: {
@@ -121,10 +150,104 @@ export class TriggerClient {
           },
         };
       }
+      case "GET_ENDPOINT_DATA": {
+        // if the x-trigger-job-id header is set, we return the job with that id
+        const jobId = request.headers.get("x-trigger-job-id");
 
-      // if the x-trigger-job-id header is set, we return the job with that id
-      if (request.headers["x-trigger-job-id"]) {
-        const job = this.#registeredJobs[request.headers["x-trigger-job-id"]];
+        if (jobId) {
+          const job = this.#registeredJobs[jobId];
+
+          if (!job) {
+            return {
+              status: 404,
+              body: {
+                message: "Job not found",
+              },
+            };
+          }
+
+          return {
+            status: 200,
+            body: job.toJSON(),
+          };
+        }
+
+        const body: GetEndpointDataResponse = {
+          jobs: Object.values(this.#registeredJobs).map((job) => job.toJSON()),
+          sources: Object.values(this.#registeredSources),
+          dynamicTriggers: Object.values(this.#registeredDynamicTriggers).map(
+            (trigger) => ({
+              id: trigger.id,
+              jobs: this.#jobMetadataByDynamicTriggers[trigger.id] ?? [],
+            })
+          ),
+          dynamicSchedules: Object.entries(this.#registeredSchedules).map(
+            ([id, jobs]) => ({
+              id,
+              jobs,
+            })
+          ),
+        };
+
+        // if the x-trigger-job-id header is not set, we return all jobs
+        return {
+          status: 200,
+          body,
+        };
+      }
+      case "INITIALIZE": {
+        await this.listen();
+
+        return {
+          status: 200,
+          body: {
+            message: "Initialized",
+          },
+        };
+      }
+      case "INITIALIZE_TRIGGER": {
+        const json = await request.json();
+        const body = InitializeTriggerBodySchema.safeParse(json);
+
+        if (!body.success) {
+          return {
+            status: 400,
+            body: {
+              message: "Invalid trigger body",
+            },
+          };
+        }
+
+        const dynamicTrigger = this.#registeredDynamicTriggers[body.data.id];
+
+        if (!dynamicTrigger) {
+          return {
+            status: 404,
+            body: {
+              message: "Dynamic trigger not found",
+            },
+          };
+        }
+
+        return {
+          status: 200,
+          body: dynamicTrigger.registeredTriggerForParams(body.data.params),
+        };
+      }
+      case "EXECUTE_JOB": {
+        const json = await request.json();
+        const execution = RunJobBodySchema.safeParse(json);
+
+        if (!execution.success) {
+          return {
+            status: 400,
+            body: {
+              message: "Invalid execution",
+            },
+          };
+        }
+
+        const job = this.#registeredJobs[execution.data.job.id];
 
         if (!job) {
           return {
@@ -135,202 +258,108 @@ export class TriggerClient {
           };
         }
 
+        const results = await this.#executeJob(execution.data, job);
+
+        if (results.error) {
+          return {
+            status: 500,
+            body: results.error,
+          };
+        }
+
         return {
           status: 200,
-          body: job.toJSON(),
+          body: {
+            completed: results.completed,
+            output: results.output,
+            executionId: execution.data.run.id,
+            task: results.task,
+          },
         };
       }
+      case "PREPROCESS_RUN": {
+        const json = await request.json();
+        const body = PreprocessRunBodySchema.safeParse(json);
 
-      const body: GetEndpointDataResponse = {
-        jobs: Object.values(this.#registeredJobs).map((job) => job.toJSON()),
-        sources: Object.values(this.#registeredSources),
-        dynamicTriggers: Object.values(this.#registeredDynamicTriggers).map(
-          (trigger) => ({
-            id: trigger.id,
-            jobs: this.#jobMetadataByDynamicTriggers[trigger.id] ?? [],
-          })
-        ),
-        dynamicSchedules: Object.entries(this.#registeredSchedules).map(
-          ([id, jobs]) => ({
-            id,
-            jobs,
-          })
-        ),
-      };
-
-      // if the x-trigger-job-id header is not set, we return all jobs
-      return {
-        status: 200,
-        body,
-      };
-    }
-
-    if (request.method === "POST") {
-      // Get the action from the headers
-      const action = request.headers["x-trigger-action"];
-
-      switch (action) {
-        case "INITIALIZE": {
-          await this.listen();
-
+        if (!body.success) {
           return {
-            status: 200,
+            status: 400,
             body: {
-              message: "Initialized",
+              message: "Invalid body",
             },
           };
         }
-        case "INITIALIZE_TRIGGER": {
-          const body = InitializeTriggerBodySchema.safeParse(request.body);
 
-          if (!body.success) {
-            return {
-              status: 400,
-              body: {
-                message: "Invalid trigger body",
-              },
-            };
-          }
+        const job = this.#registeredJobs[body.data.job.id];
 
-          const dynamicTrigger = this.#registeredDynamicTriggers[body.data.id];
-
-          if (!dynamicTrigger) {
-            return {
-              status: 404,
-              body: {
-                message: "Dynamic trigger not found",
-              },
-            };
-          }
-
+        if (!job) {
           return {
-            status: 200,
-            body: dynamicTrigger.registeredTriggerForParams(body.data.params),
-          };
-        }
-        case "EXECUTE_JOB": {
-          const execution = RunJobBodySchema.safeParse(request.body);
-
-          if (!execution.success) {
-            return {
-              status: 400,
-              body: {
-                message: "Invalid execution",
-              },
-            };
-          }
-
-          const job = this.#registeredJobs[execution.data.job.id];
-
-          if (!job) {
-            return {
-              status: 404,
-              body: {
-                message: "Job not found",
-              },
-            };
-          }
-
-          const results = await this.#executeJob(execution.data, job);
-
-          if (results.error) {
-            return {
-              status: 500,
-              body: results.error,
-            };
-          }
-
-          return {
-            status: 200,
+            status: 404,
             body: {
-              completed: results.completed,
-              output: results.output,
-              executionId: execution.data.run.id,
-              task: results.task,
+              message: "Job not found",
             },
           };
         }
-        case "PREPROCESS_RUN": {
-          const body = PreprocessRunBodySchema.safeParse(request.body);
 
-          if (!body.success) {
-            return {
-              status: 400,
-              body: {
-                message: "Invalid body",
-              },
-            };
-          }
+        const results = await this.#preprocessRun(body.data, job);
 
-          const job = this.#registeredJobs[body.data.job.id];
+        return {
+          status: 200,
+          body: {
+            abort: results.abort,
+            elements: results.elements,
+          },
+        };
+      }
+      case "DELIVER_HTTP_SOURCE_REQUEST": {
+        const headers = HttpSourceRequestHeadersSchema.safeParse(
+          Object.fromEntries(request.headers.entries())
+        );
 
-          if (!job) {
-            return {
-              status: 404,
-              body: {
-                message: "Job not found",
-              },
-            };
-          }
-
-          const results = await this.#preprocessRun(body.data, job);
-
+        if (!headers.success) {
           return {
-            status: 200,
+            status: 400,
             body: {
-              abort: results.abort,
-              elements: results.elements,
+              message: "Invalid headers",
             },
           };
         }
-        case "DELIVER_HTTP_SOURCE_REQUEST": {
-          const headers = HttpSourceRequestHeadersSchema.safeParse(
-            request.headers
-          );
 
-          if (!headers.success) {
-            return {
-              status: 400,
-              body: {
-                message: "Invalid headers",
-              },
-            };
-          }
+        const sourceRequest = new Request(headers.data["x-ts-http-url"], {
+          method: headers.data["x-ts-http-method"],
+          headers: headers.data["x-ts-http-headers"],
+          body:
+            headers.data["x-ts-http-method"] !== "GET"
+              ? request.body
+              : undefined,
+        });
 
-          const sourceRequest = {
-            url: headers.data["x-ts-http-url"],
-            method: headers.data["x-ts-http-method"],
-            headers: headers.data["x-ts-http-headers"],
-            rawBody: request.body,
-          };
+        const key = headers.data["x-ts-key"];
+        const dynamicId = headers.data["x-ts-dynamic-id"];
+        const secret = headers.data["x-ts-secret"];
+        const params = headers.data["x-ts-params"];
+        const data = headers.data["x-ts-data"];
 
-          const key = headers.data["x-ts-key"];
-          const dynamicId = headers.data["x-ts-dynamic-id"];
-          const secret = headers.data["x-ts-secret"];
-          const params = headers.data["x-ts-params"];
-          const data = headers.data["x-ts-data"];
+        const source = {
+          key,
+          dynamicId,
+          secret,
+          params,
+          data,
+        };
 
-          const source = {
-            key,
-            dynamicId,
-            secret,
-            params,
-            data,
-          };
+        const { response, events } = await this.#handleHttpSourceRequest(
+          source,
+          sourceRequest
+        );
 
-          const { response, events } = await this.#handleHttpSourceRequest(
-            source,
-            sourceRequest
-          );
-
-          return {
-            status: 200,
-            body: {
-              events,
-              response,
-            },
-          };
-        }
+        return {
+          status: 200,
+          body: {
+            events,
+            response,
+          },
+        };
       }
     }
 
@@ -478,11 +507,11 @@ export class TriggerClient {
   }
 
   async registerTrigger(id: string, key: string, options: RegisterTriggerBody) {
-    return this.#client.registerTrigger(this.name, id, key, options);
+    return this.#client.registerTrigger(this.id, id, key, options);
   }
 
   async getAuth(id: string) {
-    return this.#client.getAuth(this.name, id);
+    return this.#client.getAuth(this.id, id);
   }
 
   async sendEvent(event: SendEvent, options?: SendEventOptions) {
@@ -490,14 +519,14 @@ export class TriggerClient {
   }
 
   async registerSchedule(id: string, key: string, schedule: ScheduleMetadata) {
-    return this.#client.registerSchedule(this.name, id, key, schedule);
+    return this.#client.registerSchedule(this.id, id, key, schedule);
   }
 
   async unregisterSchedule(id: string, key: string) {
-    return this.#client.unregisterSchedule(this.name, id, key);
+    return this.#client.unregisterSchedule(this.id, id, key);
   }
 
-  authorized(apiKey: string) {
+  authorized(apiKey?: string | null) {
     const localApiKey = this.#options.apiKey ?? process.env.TRIGGER_API_KEY;
 
     if (!localApiKey) {
@@ -514,8 +543,8 @@ export class TriggerClient {
   async listen() {
     // Register the endpoint
     await this.#client.registerEndpoint({
-      url: this.endpoint,
-      name: this.name,
+      url: this.url,
+      name: this.id,
     });
   }
 
@@ -635,7 +664,7 @@ export class TriggerClient {
       data: any;
       params: any;
     },
-    sourceRequest: HttpSourceRequest
+    sourceRequest: Request
   ): Promise<{ response: NormalizedResponse; events: SendEvent[] }> {
     this.#logger.debug("Handling HTTP source request", {
       source,
@@ -733,30 +762,31 @@ export class TriggerClient {
   }
 }
 
-function buildEndpointUrl(path?: string): string {
-  // Try to get the endpoint from the environment
-  const endpoint = process.env.TRIGGER_ENDPOINT;
+function buildClientUrl(url?: string): string {
+  if (!url) {
+    // Try and get the host from the environment
+    const host =
+      process.env.TRIGGER_CLIENT_HOST ??
+      process.env.HOST ??
+      process.env.HOSTNAME ??
+      process.env.NOW_URL ??
+      process.env.VERCEL_URL;
 
-  // If the endpoint is set, we return it + the path
-  if (endpoint) {
-    return endpoint + (path ?? "");
+    // If the host is set, we return it + the path
+    if (host) {
+      return "https://" + host;
+    }
+
+    // If we can't get the host, we throw an error
+    throw new Error(
+      "Could not determine the url for this TriggerClient. Please set the TRIGGER_CLIENT_HOST environment variable or pass in the `url` option to the TriggerClient constructor."
+    );
   }
 
-  // Try and get the host from the environment
-  const host =
-    process.env.TRIGGER_HOST ??
-    process.env.HOST ??
-    process.env.HOSTNAME ??
-    process.env.NOW_URL ??
-    process.env.VERCEL_URL;
-
-  // If the host is set, we return it + the path
-  if (host) {
-    return "https://" + host + (path ?? "");
+  // Check to see if url has the protocol, and if it doesn't, add it
+  if (!url.startsWith("http")) {
+    return "https://" + url;
   }
 
-  // If we can't get the host, we throw an error
-  throw new Error(
-    "Could not determine the endpoint for the trigger client. Please set the TRIGGER_ENDPOINT environment variable."
-  );
+  return url;
 }

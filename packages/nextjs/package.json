@@ -1,0 +1,43 @@
+{
+  "name": "@trigger.dev/nextjs",
+  "version": "0.1.0",
+  "description": "Trigger.dev Next.js integration",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "publishConfig": {
+    "access": "public"
+  },
+  "files": [
+    "dist"
+  ],
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "require": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "devDependencies": {
+    "@trigger.dev/tsconfig": "workspace:*",
+    "@types/debug": "^4.1.7",
+    "@types/ws": "^8.5.3",
+    "next": "13.3.1",
+    "rimraf": "^3.0.2",
+    "tsup": "^6.5.0",
+    "tsx": "^3.12.1"
+  },
+  "scripts": {
+    "clean": "rimraf dist",
+    "build": "npm run clean && npm run build:tsup",
+    "build:tsup": "tsup"
+  },
+  "peerDependencies": {
+    "@trigger.dev/sdk": "workspace:^1.0.0"
+  },
+  "dependencies": {
+    "debug": "^4.3.4"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

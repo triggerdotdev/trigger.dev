@@ -383,7 +383,7 @@ export class PerformRunExecutionService {
         data: {
           retryCount,
           retryDelayInMs,
-          error: output,
+          error: JSON.stringify(output),
         },
       });
 

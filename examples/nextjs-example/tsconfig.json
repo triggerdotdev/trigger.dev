@@ -1,7 +1,11 @@
 {
   "compilerOptions": {
     "target": "es5",
-    "lib": ["dom", "dom.iterable", "esnext"],
+    "lib": [
+      "dom",
+      "dom.iterable",
+      "esnext"
+    ],
     "allowJs": true,
     "skipLibCheck": true,
     "strict": true,
@@ -15,17 +19,53 @@
     "jsx": "preserve",
     "incremental": true,
     "paths": {
-      "@/*": ["./src/*"],
-      "@trigger.dev/sdk": ["../../packages/trigger-sdk/src/index"],
-      "@trigger.dev/sdk/*": ["../../packages/trigger-sdk/src/*"],
-      "@trigger.dev/internal": ["../../packages/internal/src/index"],
-      "@trigger.dev/internal/*": ["../../packages/internal/src/*"],
-      "@trigger.dev/github": ["../../integrations/github/src/index"],
-      "@trigger.dev/github/*": ["../../integrations/github/src/*"],
-      "@trigger.dev/slack": ["../../integrations/slack/src/index"],
-      "@trigger.dev/slack/*": ["../../integrations/slack/src/*"]
-    }
+      "@/*": [
+        "./src/*"
+      ],
+      "@trigger.dev/sdk": [
+        "../../packages/trigger-sdk/src/index"
+      ],
+      "@trigger.dev/sdk/*": [
+        "../../packages/trigger-sdk/src/*"
+      ],
+      "@trigger.dev/nextjs": [
+        "../../packages/nextjs/src/index"
+      ],
+      "@trigger.dev/nextjs/*": [
+        "../../packages/nextjs/src/*"
+      ],
+      "@trigger.dev/internal": [
+        "../../packages/internal/src/index"
+      ],
+      "@trigger.dev/internal/*": [
+        "../../packages/internal/src/*"
+      ],
+      "@trigger.dev/github": [
+        "../../integrations/github/src/index"
+      ],
+      "@trigger.dev/github/*": [
+        "../../integrations/github/src/*"
+      ],
+      "@trigger.dev/slack": [
+        "../../integrations/slack/src/index"
+      ],
+      "@trigger.dev/slack/*": [
+        "../../integrations/slack/src/*"
+      ]
+    },
+    "plugins": [
+      {
+        "name": "next"
+      }
+    ]
   },
-  "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx"],
-  "exclude": ["node_modules"]
+  "include": [
+    "next-env.d.ts",
+    "**/*.ts",
+    "**/*.tsx",
+    ".next/types/**/*.ts"
+  ],
+  "exclude": [
+    "node_modules"
+  ]
 }

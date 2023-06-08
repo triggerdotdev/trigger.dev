@@ -356,7 +356,7 @@ model JobVersion {
   integrations JobIntegration[]
   aliases      JobAlias[]
 
-  @@unique([jobId, version, endpointId])
+  @@unique([jobId, version, environmentId])
 }
 
 model JobQueue {
@@ -738,7 +738,7 @@ model TriggerSource {
   httpDeliveries HttpSourceRequestDelivery[]
   registrations  DynamicTriggerRegistration[]
 
-  @@unique([key, endpointId])
+  @@unique([key, environmentId])
 }
 
 enum TriggerChannel {

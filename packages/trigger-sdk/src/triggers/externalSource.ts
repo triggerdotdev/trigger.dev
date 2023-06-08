@@ -43,7 +43,7 @@ type SqsSourceEvent = {
 
 type ExternalSourceChannelMap = {
   HTTP: {
-    event: HttpSourceEvent;
+    event: Request;
     register: {
       url: string;
     };
@@ -85,11 +85,16 @@ type RegisterFunction<
   ctx: TriggerContext
 ) => Promise<UpdateTriggerSourceBody | undefined>;
 
+export type HandlerEvent<
+  TChannel extends ChannelNames,
+  TParams extends any = any
+> = {
+  rawEvent: ExternalSourceChannelMap[TChannel]["event"];
+  source: HandleTriggerSource & { params: TParams };
+};
+
 type HandlerFunction<TChannel extends ChannelNames, TParams extends any> = (
-  event: {
-    rawEvent: ExternalSourceChannelMap[TChannel]["event"];
-    source: HandleTriggerSource & { params: TParams };
-  },
+  event: HandlerEvent<TChannel, TParams>,
   logger: Logger
 ) => Promise<{ events: SendEvent[]; response?: NormalizedResponse } | void>;
 

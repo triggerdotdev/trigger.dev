@@ -159,10 +159,10 @@ export class RegisterJobService {
     // Upsert the JobVersion
     const jobVersion = await this.#prismaClient.jobVersion.upsert({
       where: {
-        jobId_version_endpointId: {
+        jobId_version_environmentId: {
           jobId: job.id,
           version: metadata.version,
-          endpointId: endpoint.id,
+          environmentId: environment.id,
         },
       },
       create: {
@@ -210,6 +210,11 @@ export class RegisterJobService {
         queue: {
           connect: {
             id: jobQueue.id,
+          },
+        },
+        endpoint: {
+          connect: {
+            id: endpoint.id,
           },
         },
       },

@@ -1,5 +1,6 @@
 import type {
   EventFilter,
+  Logger,
   RuntimeEnvironmentType,
   SecureString,
   TriggerMetadata,
@@ -8,7 +9,7 @@ import { DisplayElement } from "@trigger.dev/internal";
 import { Job } from "./job";
 import { TriggerClient } from "./triggerClient";
 
-export type { SecureString };
+export type { SecureString, Logger };
 
 export interface TriggerContext {
   job: { id: string; version: string };
