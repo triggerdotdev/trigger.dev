@@ -71,6 +71,7 @@ export const loader = async ({ request, params }: LoaderArgs) => {
     });
   }
 
+  //redirect to the event if no event or task is selected
   if (!eventParam && !taskParam) {
     return redirect(
       eventPath(
