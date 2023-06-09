@@ -14,7 +14,7 @@ import {
   RunPanelDescription,
   RunPanelProperties,
   RunPanelHeader,
-  RunPanelIconElement,
+  RunPanelIconProperty,
   RunPanelIconSection,
   RunPanelIconTitle,
 } from "../_app.orgs.$organizationSlug.projects.$projectParam.jobs.$jobParam.runs.$runParam/RunCard";
@@ -84,21 +84,21 @@ export default function Page() {
         <div className="mb-4 border-b border-slate-800 pb-4">
           <RunPanelIconSection>
             {startedAt && (
-              <RunPanelIconElement
+              <RunPanelIconProperty
                 icon="calendar"
                 label="Started at"
                 value={formatDateTime(startedAt, "long")}
               />
             )}
             {completedAt && (
-              <RunPanelIconElement
+              <RunPanelIconProperty
                 icon="flag"
                 label="Finished at"
                 value={formatDateTime(completedAt, "long")}
               />
             )}
             {delayUntil && (
-              <RunPanelIconElement
+              <RunPanelIconProperty
                 icon="clock"
                 label="Total delay"
                 value={formatDuration(startedAt, completedAt, {

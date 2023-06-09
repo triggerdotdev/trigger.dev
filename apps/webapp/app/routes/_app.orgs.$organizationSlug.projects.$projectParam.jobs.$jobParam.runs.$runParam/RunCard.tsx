@@ -162,7 +162,7 @@ export function RunPanelIconSection({
   );
 }
 
-export function RunPanelIconElement({
+export function RunPanelIconProperty({
   icon,
   label,
   value,

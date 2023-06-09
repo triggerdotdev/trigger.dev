@@ -42,7 +42,7 @@ import {
   RunPanelProperties,
   RunPanelError,
   RunPanelHeader,
-  RunPanelIconElement,
+  RunPanelIconProperty,
   RunPanelIconSection,
   RunPanelIconTitle,
 } from "./RunCard";
@@ -225,7 +225,7 @@ export default function Page() {
                 <RunPanelBody>
                   {/* <RunPanelIconSection>
                   {connection && (
-                    <RunPanelIconElement
+                    <RunPanelIconProperty
                       icon={
                         connection.apiConnection.client.integrationIdentifier
                       }
@@ -275,21 +275,21 @@ export default function Page() {
                   <RunPanelBody>
                     <RunPanelIconSection className="mb-4">
                       {run.startedAt && (
-                        <RunPanelIconElement
+                        <RunPanelIconProperty
                           icon="calendar"
                           label="Started at"
                           value={formatDateTime(run.startedAt, "long")}
                         />
                       )}
                       {run.completedAt && (
-                        <RunPanelIconElement
+                        <RunPanelIconProperty
                           icon="flag"
                           label="Finished at"
                           value={formatDateTime(run.completedAt, "long")}
                         />
                       )}
                       {run.startedAt && run.completedAt && (
-                        <RunPanelIconElement
+                        <RunPanelIconProperty
                           icon="clock"
                           label="Total duration"
                           value={formatDuration(

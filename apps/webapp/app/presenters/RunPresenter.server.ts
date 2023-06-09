@@ -70,17 +70,17 @@ export class RunPresenter {
     }
 
     //merge the properties from the version and the run, with the run properties taking precedence
-    const mergedElements = new Map<string, DisplayProperty>();
+    const mergedProperties = new Map<string, DisplayProperty>();
     if (run.version.properties) {
       const properties = DisplayPropertiesSchema.parse(run.version.properties);
       for (const property of properties) {
-        mergedElements.set(property.label, property);
+        mergedProperties.set(property.label, property);
       }
     }
     if (run.properties) {
       const properties = DisplayPropertiesSchema.parse(run.properties);
       for (const property of properties) {
-        mergedElements.set(property.label, property);
+        mergedProperties.set(property.label, property);
       }
     }
 
@@ -130,7 +130,7 @@ export class RunPresenter {
       isTest: run.isTest,
       version: run.version.version,
       output: runOutput,
-      properties: Array.from(mergedElements.values()),
+      properties: Array.from(mergedProperties.values()),
       environment: {
         type: run.environment.type,
         slug: run.environment.slug,

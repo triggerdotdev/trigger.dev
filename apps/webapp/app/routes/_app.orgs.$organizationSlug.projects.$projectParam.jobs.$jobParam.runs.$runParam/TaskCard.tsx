@@ -9,7 +9,7 @@ import {
   RunPanelProperties,
   RunPanelError,
   RunPanelHeader,
-  RunPanelIconElement,
+  RunPanelIconProperty,
   RunPanelIconSection,
   RunPanelIconTitle,
   TaskSeparator,
@@ -97,14 +97,14 @@ export function TaskCard({
             )}
             <RunPanelIconSection>
               {displayKey && (
-                <RunPanelIconElement
+                <RunPanelIconProperty
                   icon="key"
                   label="Key"
                   value={displayKey}
                 />
               )}
               {connection && (
-                <RunPanelIconElement
+                <RunPanelIconProperty
                   icon={connection.apiConnection.client.integrationIdentifier}
                   label="Connection"
                   value={connection.apiConnection.client.title}

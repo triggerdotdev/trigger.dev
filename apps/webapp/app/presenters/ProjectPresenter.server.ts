@@ -165,10 +165,10 @@ export class ProjectPresenter {
           }
 
           if (alias.version.properties) {
-            const versionElements = z
+            const versionProperties = z
               .array(DisplayPropertySchema)
               .parse(alias.version.properties);
-            properties = [...properties, ...versionElements];
+            properties = [...properties, ...versionProperties];
           }
 
           return {

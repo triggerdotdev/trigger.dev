@@ -10,7 +10,7 @@ import {
   RunPanelBody,
   RunPanelProperties,
   RunPanelHeader,
-  RunPanelIconElement,
+  RunPanelIconProperty,
   RunPanelIconSection,
 } from "../_app.orgs.$organizationSlug.projects.$projectParam.jobs.$jobParam.runs.$runParam/RunCard";
 import { EventDetailsPresenter } from "~/presenters/EventDetailsPresenter.server";
@@ -54,19 +54,19 @@ export default function Page() {
       <RunPanelBody>
         <div className="mb-4 border-b border-slate-800 pb-4">
           <RunPanelIconSection>
-            <RunPanelIconElement
+            <RunPanelIconProperty
               icon="calendar"
               label="Created"
               value={formatDateTime(timestamp, "long")}
             />
             {deliveredAt && (
-              <RunPanelIconElement
+              <RunPanelIconProperty
                 icon="flag"
                 label="Finished at"
                 value={formatDateTime(deliveredAt, "long")}
               />
             )}
-            <RunPanelIconElement icon="id" label="Event name" value={name} />
+            <RunPanelIconProperty icon="id" label="Event name" value={name} />
           </RunPanelIconSection>
         </div>
         <div className="mt-4 flex flex-col gap-2">
