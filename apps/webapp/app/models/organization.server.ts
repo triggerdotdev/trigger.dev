@@ -7,7 +7,7 @@ import type {
 } from ".prisma/client";
 import { customAlphabet } from "nanoid";
 import slug from "slug";
-import { prisma } from "~/db.server";
+import { prisma, PrismaClientOrTransaction } from "~/db.server";
 import { workerQueue } from "~/services/worker.server";
 import { generateTwoRandomWords } from "~/utils/randomWords";
 import { createProject } from "./project.server";
@@ -128,12 +128,13 @@ export async function createEnvironment(
   organization: Organization,
   project: Project,
   type: RuntimeEnvironment["type"],
-  member?: OrgMember
+  member?: OrgMember,
+  prismaClient: PrismaClientOrTransaction = prisma
 ) {
   const slug = envSlug(type);
   const apiKey = createApiKeyForEnv(type);
 
-  return await prisma.runtimeEnvironment.create({
+  return await prismaClient.runtimeEnvironment.create({
     data: {
       slug,
       apiKey,

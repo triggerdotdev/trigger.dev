@@ -1,4 +1,5 @@
 import { prisma } from "~/db.server";
+import { createEnvironment } from "./organization.server";
 
 export async function getTeamMembersAndInvites({
   userId,
@@ -157,7 +158,11 @@ export async function acceptInvite({
         id: inviteId,
       },
       include: {
-        organization: true,
+        organization: {
+          include: {
+            projects: true,
+          },
+        },
       },
     });
 
@@ -170,7 +175,18 @@ export async function acceptInvite({
       },
     });
 
-    //3. Check for other invites
+    // 3. Create an environment for each project
+    for (const project of invite.organization.projects) {
+      await createEnvironment(
+        invite.organization,
+        project,
+        "DEVELOPMENT",
+        member,
+        tx
+      );
+    }
+
+    // 4. Check for other invites
     const remainingInvites = await tx.orgMemberInvite.findMany({
       where: {
         email: invite.email,
