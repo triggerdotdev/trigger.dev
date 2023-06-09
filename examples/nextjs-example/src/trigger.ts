@@ -232,6 +232,25 @@ new Job(client, {
 });
 
 new Job(client, {
+  id: "event-1",
+  name: "Run when the foo.bar event happens",
+  version: "0.0.1",
+  enabled: true,
+  trigger: eventTrigger({
+    name: "foo.bar",
+  }),
+  run: async (payload, io, ctx) => {
+    await io.runTask("task-1", { name: "task-1" }, async (task) => {
+      throw new Error("Task failed");
+    });
+
+    return {
+      payload,
+    };
+  },
+});
+
+new Job(client, {
   id: "scheduled-job-1",
   name: "Scheduled Job 1",
   version: "0.1.1",

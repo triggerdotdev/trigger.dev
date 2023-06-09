@@ -43,6 +43,7 @@ import {
   runTaskPath,
   runCompletedPath,
   runStreamingPath,
+  RunParamsSchema,
 } from "~/utils/pathBuilder";
 import {
   RunPanel,
@@ -68,11 +69,7 @@ export const loader = async ({ request, params }: LoaderArgs) => {
     runParam,
     eventParam,
     taskParam,
-  } = params;
-  invariant(organizationSlug, "organizationSlug not found");
-  invariant(projectParam, "projectParam not found");
-  invariant(jobParam, "jobParam not found");
-  invariant(runParam, "runParam not found");
+  } = RunParamsSchema.parse(params);
 
   const presenter = new RunPresenter();
   const run = await presenter.call({

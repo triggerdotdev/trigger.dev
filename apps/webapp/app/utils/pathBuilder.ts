@@ -2,12 +2,31 @@ import { ApiConnectionClient } from ".prisma/client";
 import { Job } from "~/models/job.server";
 import type { Organization } from "~/models/organization.server";
 import type { Project } from "~/models/project.server";
+import { z } from "zod";
 
 type OrgForPath = Pick<Organization, "slug">;
 type ProjectForPath = Pick<Project, "slug">;
 type JobForPath = Pick<Job, "slug">;
 type RunForPath = Pick<Job, "id">;
 type ApiConnectionClientForPath = Pick<ApiConnectionClient, "slug">;
+
+export const OrganizationParamsSchema = z.object({
+  organizationSlug: z.string(),
+});
+
+export const ProjectParamSchema = OrganizationParamsSchema.extend({
+  projectParam: z.string(),
+});
+
+export const JobParamsSchema = ProjectParamSchema.extend({
+  jobParam: z.string(),
+});
+
+export const RunParamsSchema = JobParamsSchema.extend({
+  runParam: z.string(),
+  taskParam: z.string().optional(),
+  eventParam: z.string().optional(),
+});
 
 export function organizationsPath() {
   return `/`;

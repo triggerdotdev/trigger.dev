@@ -8,6 +8,7 @@ import { requireUserId } from "~/services/session.server";
 import { Handle } from "~/utils/handle";
 import { ListPagination } from "./ListPagination";
 import { useNavigation } from "@remix-run/react";
+import { JobParamsSchema } from "~/utils/pathBuilder";
 
 export const DirectionSchema = z.union([
   z.literal("forward"),
@@ -21,18 +22,19 @@ const SearchSchema = z.object({
 
 export const loader = async ({ request, params }: LoaderArgs) => {
   const userId = await requireUserId(request);
-  const { jobParam } = params;
-  invariant(jobParam, "jobParam not found");
+  const { jobParam, projectParam, organizationSlug } =
+    JobParamsSchema.parse(params);
 
   const url = new URL(request.url);
   const s = Object.fromEntries(url.searchParams.entries());
-  console.log(s);
   const searchParams = SearchSchema.parse(s);
 
   const presenter = new RunListPresenter();
   const list = await presenter.call({
     userId,
     jobSlug: jobParam,
+    projectSlug: projectParam,
+    organizationSlug,
     direction: searchParams.direction,
     cursor: searchParams.cursor,
   });

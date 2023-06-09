@@ -20,10 +20,11 @@ import { useJob } from "~/hooks/useJob";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { useOptionalRun, useRun } from "~/hooks/useRun";
-import { getJob } from "~/models/job.server";
+import { findJobByParams } from "~/models/job.server";
 import { requireUserId } from "~/services/session.server";
 import { Handle } from "~/utils/handle";
 import {
+  JobParamsSchema,
   jobPath,
   jobSettingsPath,
   jobTestPath,
@@ -32,12 +33,14 @@ import {
 
 export const loader = async ({ request, params }: LoaderArgs) => {
   const userId = await requireUserId(request);
-  const { jobParam } = params;
-  invariant(jobParam, "jobParam not found");
+  const { jobParam, projectParam, organizationSlug } =
+    JobParamsSchema.parse(params);
 
-  const job = await getJob({
+  const job = await findJobByParams({
     userId,
     slug: jobParam,
+    projectSlug: projectParam,
+    organizationSlug,
   });
 
   if (job === null) {
