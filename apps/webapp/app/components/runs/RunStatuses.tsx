@@ -83,6 +83,36 @@ export function RunStatusIcon({
   }
 }
 
+type RunBasicStatus =
+  | "WAITING"
+  | "PENDING"
+  | "RUNNING"
+  | "COMPLETED"
+  | "FAILED";
+
+export function runBasicStatus(status: JobRunStatus): RunBasicStatus {
+  switch (status) {
+    case "SUCCESS":
+      return "COMPLETED";
+    case "PENDING":
+      return "PENDING";
+    case "STARTED":
+      return "RUNNING";
+    case "QUEUED":
+      return "PENDING";
+    case "FAILURE":
+      return "FAILED";
+    case "TIMED_OUT":
+      return "FAILED";
+    case "WAITING_ON_CONNECTIONS":
+      return "PENDING";
+    case "ABORTED":
+      return "FAILED";
+    case "PREPROCESSING":
+      return "PENDING";
+  }
+}
+
 export function runStatusTitle(status: JobRunStatus): string {
   switch (status) {
     case "SUCCESS":

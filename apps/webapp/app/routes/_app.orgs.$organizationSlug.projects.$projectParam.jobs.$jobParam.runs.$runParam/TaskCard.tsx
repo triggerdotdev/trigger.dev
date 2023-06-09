@@ -7,6 +7,7 @@ import {
   RunPanelBody,
   RunPanelDescription,
   RunPanelElements,
+  RunPanelError,
   RunPanelHeader,
   RunPanelIconElement,
   RunPanelIconSection,
@@ -45,6 +46,7 @@ export function TaskCard({
   connection,
   elements,
   subtasks,
+  error,
 }: TaskCardProps) {
   const [expanded, setExpanded] = useState(false);
   const isSelected = id === selectedId;
@@ -86,6 +88,7 @@ export function TaskCard({
             styleName={style?.style}
           />
           <RunPanelBody>
+            {error && <RunPanelError error={error} />}
             {description && (
               <RunPanelDescription
                 text={description}
@@ -109,13 +112,7 @@ export function TaskCard({
               )}
             </RunPanelIconSection>
             {elements.length > 0 && (
-              <RunPanelElements
-                elements={elements.map((element) => ({
-                  label: element.label,
-                  value: element.text,
-                }))}
-                className="mt-4"
-              />
+              <RunPanelElements elements={elements} className="mt-4" />
             )}
           </RunPanelBody>
           {subtasks && subtasks.length > 0 && (

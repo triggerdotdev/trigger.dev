@@ -1,6 +1,8 @@
 import {
   DisplayElement,
   DisplayElementSchema,
+  ErrorWithStack,
+  ErrorWithStackSchema,
   StyleSchema,
 } from "@/../../packages/internal/src";
 import { z } from "zod";
@@ -111,6 +113,11 @@ export class RunPresenter {
       });
     };
 
+    let runError: ErrorWithStack | undefined = undefined;
+    if (run.status === "FAILURE") {
+      runError = ErrorWithStackSchema.parse(run.output);
+    }
+
     return {
       id: run.id,
       number: run.number,
@@ -119,6 +126,7 @@ export class RunPresenter {
       completedAt: run.completedAt,
       isTest: run.isTest,
       version: run.version.version,
+      output: run.output,
       elements: Array.from(mergedElements.values()),
       environment: {
         type: run.environment.type,
@@ -128,6 +136,7 @@ export class RunPresenter {
       tasks: recursivelyEnrichTasks(run.tasks),
       runConnections: run.runConnections,
       missingConnections: run.missingConnections,
+      error: runError,
     };
   }
 
@@ -141,6 +150,7 @@ export class RunPresenter {
         completedAt: true,
         isTest: true,
         elements: true,
+        output: true,
         version: {
           select: {
             version: true,

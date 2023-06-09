@@ -3,6 +3,8 @@ import {
   Style,
   StyleName,
 } from "@/../../packages/internal/src";
+import { CodeBlock } from "~/components/code/CodeBlock";
+import { Callout } from "~/components/primitives/Callout";
 import { LabelValueStack } from "~/components/primitives/LabelValueStack";
 import { NamedIcon } from "~/components/primitives/NamedIcon";
 import { Paragraph } from "~/components/primitives/Paragraph";
@@ -123,6 +125,26 @@ export function RunPanelDescription({
     >
       {text}
     </Paragraph>
+  );
+}
+
+export function RunPanelError({
+  text,
+  error,
+  stackTrace,
+}: {
+  text: string;
+  error?: string;
+  stackTrace?: string;
+}) {
+  return (
+    <div>
+      <Callout variant="error" className="mb-2">
+        {text}
+      </Callout>
+      {error && <CodeBlock language="json" code={error} />}
+      {stackTrace && <CodeBlock language="json" code={stackTrace} />}
+    </div>
   );
 }
 

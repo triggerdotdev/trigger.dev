@@ -23,7 +23,11 @@ import {
   PageTitleRow,
 } from "~/components/primitives/PageHeader";
 import { Paragraph } from "~/components/primitives/Paragraph";
-import { RunStatusIcon, runStatusTitle } from "~/components/runs/RunStatuses";
+import {
+  RunStatusIcon,
+  runBasicStatus,
+  runStatusTitle,
+} from "~/components/runs/RunStatuses";
 import { useJob } from "~/hooks/useJob";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
@@ -36,6 +40,7 @@ import {
   RunPanel,
   RunPanelBody,
   RunPanelElements,
+  RunPanelError,
   RunPanelHeader,
   RunPanelIconTitle,
 } from "./RunCard";
@@ -126,6 +131,8 @@ export default function Page() {
     const eventId = eventMatch ? eventMatch[1] : undefined;
     return eventId;
   }, [pathName]);
+
+  const basicStatus = runBasicStatus(run.status);
 
   return (
     <PageContainer>
@@ -247,6 +254,32 @@ export default function Page() {
                 );
               })}
             </div>
+            {(basicStatus === "COMPLETED" || basicStatus === "FAILED") && (
+              <div>
+                <Header2 className="mb-2">
+                  Run {runStatusTitle(run.status)}
+                </Header2>
+                <RunPanel selected={false}>
+                  <RunPanelHeader
+                    icon={
+                      <RunStatusIcon
+                        status={run.status}
+                        className={"h-5 w-5"}
+                      />
+                    }
+                    title={"Summary"}
+                  />
+                  <RunPanelBody>
+                    {run.error && (
+                      <RunPanelError
+                        text={run.error.message}
+                        stackTrace={run.error.stack}
+                      />
+                    )}
+                  </RunPanelBody>
+                </RunPanel>
+              </div>
+            )}
           </div>
           {/* Detail view */}
           <div className="overflow-y-auto py-4 pr-4">
