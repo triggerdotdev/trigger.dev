@@ -605,6 +605,8 @@ model JobRunExecution {
 
   resumeTask   Task?   @relation(fields: [resumeTaskId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   resumeTaskId String?
+
+  graphileJobId String?
 }
 
 enum JobRunExecutionReason {

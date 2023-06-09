@@ -158,13 +158,22 @@ export class PerformRunExecutionService {
           },
         });
 
-        await workerQueue.enqueue(
+        const job = await workerQueue.enqueue(
           "performRunExecution",
           {
             id: runExecution.id,
           },
           { tx }
         );
+
+        await tx.jobRunExecution.update({
+          where: {
+            id: runExecution.id,
+          },
+          data: {
+            graphileJobId: job.id,
+          },
+        });
       });
     }
   }
@@ -347,13 +356,22 @@ export class PerformRunExecutionService {
           },
         });
 
-        await workerQueue.enqueue(
+        const graphileJob = await workerQueue.enqueue(
           "performRunExecution",
           {
             id: newJobExecution.id,
           },
           { tx, runAt: resumeTask.delayUntil ?? undefined }
         );
+
+        await tx.jobRunExecution.update({
+          where: {
+            id: newJobExecution.id,
+          },
+          data: {
+            graphileJobId: graphileJob.id,
+          },
+        });
       });
     }
   }
@@ -389,11 +407,20 @@ export class PerformRunExecutionService {
 
       const runAt = new Date(Date.now() + retryDelayInMs);
 
-      await workerQueue.enqueue(
+      const job = await workerQueue.enqueue(
         "performRunExecution",
         { id: execution.id },
         { runAt, tx }
       );
+
+      await tx.jobRunExecution.update({
+        where: {
+          id: execution.id,
+        },
+        data: {
+          graphileJobId: job.id,
+        },
+      });
     });
   }
 
@@ -483,13 +510,22 @@ export class PerformRunExecutionService {
             },
           });
 
-          await workerQueue.enqueue(
+          const job = await workerQueue.enqueue(
             "performRunExecution",
             {
               id: runExecution.id,
             },
             { tx }
           );
+
+          await tx.jobRunExecution.update({
+            where: {
+              id: runExecution.id,
+            },
+            data: {
+              graphileJobId: job.id,
+            },
+          });
 
           break;
         }

@@ -141,13 +141,20 @@ export class StartRunService {
 
     const execution = await updateRunAndCreateExecution();
 
-    await workerQueue.enqueue(
+    const job = await workerQueue.enqueue(
       "performRunExecution",
       {
         id: execution.id,
       },
       { tx }
     );
+
+    await tx.jobRunExecution.update({
+      where: { id: execution.id },
+      data: {
+        graphileJobId: job.id,
+      },
+    });
 
     await workerQueue.enqueue(
       "startQueuedRuns",
