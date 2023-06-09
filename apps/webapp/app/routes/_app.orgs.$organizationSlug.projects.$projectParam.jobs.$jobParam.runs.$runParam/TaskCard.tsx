@@ -1,28 +1,26 @@
+import { ChevronDownIcon, Square2StackIcon } from "@heroicons/react/24/solid";
+import { AnimatePresence, motion } from "framer-motion";
+import { Fragment, useState } from "react";
+import simplur from "simplur";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { Task } from "~/presenters/RunPresenter.server";
-import { formatDateTime, formatDuration } from "~/utils";
+import { formatDuration } from "~/utils";
 import { cn } from "~/utils/cn";
 import {
   RunPanel,
   RunPanelBody,
   RunPanelDescription,
-  RunPanelProperties,
   RunPanelError,
   RunPanelHeader,
   RunPanelIconProperty,
   RunPanelIconSection,
   RunPanelIconTitle,
+  RunPanelProperties,
   TaskSeparator,
-  UpdatingDuration,
   UpdatingDelay,
+  UpdatingDuration,
 } from "./RunCard";
 import { TaskStatusIcon } from "./TaskStatus";
-import { Fragment, useState } from "react";
-import simplur from "simplur";
-import { ChevronDownIcon, Square2StackIcon } from "@heroicons/react/24/solid";
-import { NamedIcon } from "~/components/primitives/NamedIcon";
-import { AnimatePresence, motion } from "framer-motion";
-import { delay } from "lodash";
 
 type TaskCardProps = Task & {
   selectedId?: string;
