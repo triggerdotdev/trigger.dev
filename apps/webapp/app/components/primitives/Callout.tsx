@@ -19,7 +19,7 @@ const variantClasses = {
     text: "text-yellow-200",
   },
   error: {
-    className: "border-rose-400/20 bg-rose-400/30",
+    className: "border-[hsl(347,77%,50%)]/30 bg-[hsl(347,77%,50%)]/20",
     icon: <ExclamationTriangleIcon className="h-5 w-5 text-rose-400" />,
     text: "text-rose-200",
   },
@@ -51,11 +51,16 @@ export function Callout({
         className
       )}
     >
-      <div className="flex items-center justify-start gap-2.5">
+      <div className="flex items-start justify-start gap-2.5">
         {icon ? icon : variantDefinition.icon}
-        <Paragraph variant={"small"} className={variantDefinition.text}>
-          {children}
-        </Paragraph>
+
+        {typeof children === "string" ? (
+          <Paragraph variant={"small"} className={variantDefinition.text}>
+            {children}
+          </Paragraph>
+        ) : (
+          children
+        )}
       </div>
     </div>
   );
