@@ -1,5 +1,11 @@
 # @trigger.dev/nextjs
 
+## 1.0.0-next.1
+
+### Patch Changes
+
+- Loosen the peer dep requirement on next
+
 ## 1.0.0-next.0
 
 ### Major Changes

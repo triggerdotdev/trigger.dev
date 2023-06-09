@@ -519,7 +519,7 @@ importers:
       '@octokit/types': ^9.2.3
       '@octokit/webhooks': ^10.4.0
       '@octokit/webhooks-types': ^6.10.0
-      '@trigger.dev/sdk': workspace:^2.0.0
+      '@trigger.dev/sdk': workspace:^2.0.0-next.0
       '@trigger.dev/tsconfig': workspace:*
       '@types/node': '18'
       octokit: ^2.0.14
@@ -542,7 +542,7 @@ importers:
   integrations/slack:
     specifiers:
       '@slack/web-api': ^6.8.1
-      '@trigger.dev/sdk': workspace:^2.0.0
+      '@trigger.dev/sdk': workspace:^2.0.0-next.0
       '@trigger.dev/tsconfig': workspace:*
       '@types/node': '18'
       rimraf: ^3.0.2

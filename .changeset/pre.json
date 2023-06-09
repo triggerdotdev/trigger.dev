@@ -12,6 +12,7 @@
     "@trigger.dev/sdk": "1.0.0"
   },
   "changesets": [
-    "dirty-needles-kneel"
+    "dirty-needles-kneel",
+    "stupid-files-cough"
   ]
 }
