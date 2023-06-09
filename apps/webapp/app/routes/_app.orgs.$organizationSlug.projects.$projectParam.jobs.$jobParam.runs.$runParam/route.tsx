@@ -92,7 +92,7 @@ export const loader = async ({ request, params }: LoaderArgs) => {
       runEventPath(
         { slug: organizationSlug },
         { slug: projectParam },
-        { id: jobParam },
+        { slug: jobParam },
         { id: runParam },
         run.event.id
       )
@@ -391,7 +391,14 @@ function BlankTasks({
     case "WAITING":
     case "PENDING":
     case "RUNNING":
-      return <TaskCardSkeleton />;
+      return (
+        <div>
+          <Paragraph variant="small" className="mb-4">
+            Waiting for tasks…
+          </Paragraph>
+          <TaskCardSkeleton />
+        </div>
+      );
     default:
       return (
         <Paragraph variant="small">There were no tasks for this run.</Paragraph>

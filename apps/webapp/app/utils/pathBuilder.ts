@@ -5,7 +5,7 @@ import type { Project } from "~/models/project.server";
 
 type OrgForPath = Pick<Organization, "slug">;
 type ProjectForPath = Pick<Project, "slug">;
-type JobForPath = Pick<Job, "id">;
+type JobForPath = Pick<Job, "slug">;
 type RunForPath = Pick<Job, "id">;
 type ApiConnectionClientForPath = Pick<ApiConnectionClient, "id">;
 
@@ -135,7 +135,7 @@ export function jobSettingsPath(
 }
 
 export function jobParam(job: JobForPath) {
-  return job.id;
+  return job.slug;
 }
 
 // Run

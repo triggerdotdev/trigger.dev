@@ -6,7 +6,7 @@ export type Direction = z.infer<typeof DirectionSchema>;
 
 type RunListOptions = {
   userId: string;
-  jobId: string;
+  jobSlug: string;
   direction?: Direction;
   cursor?: string;
 };
@@ -24,7 +24,7 @@ export class RunListPresenter {
 
   public async call({
     userId,
-    jobId,
+    jobSlug,
     direction = "forward",
     cursor,
   }: RunListOptions) {
@@ -57,7 +57,9 @@ export class RunListPresenter {
         },
       },
       where: {
-        jobId,
+        job: {
+          slug: jobSlug,
+        },
         organization: { members: { some: { userId } } },
         environment: {
           OR: [

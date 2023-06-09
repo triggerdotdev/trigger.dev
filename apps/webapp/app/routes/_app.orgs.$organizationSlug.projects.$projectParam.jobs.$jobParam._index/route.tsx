@@ -9,9 +9,6 @@ import { Handle } from "~/utils/handle";
 import { ListPagination } from "./ListPagination";
 import { useNavigation } from "@remix-run/react";
 
-//todo defer the run list query
-//todo live show when there are new items in the list
-
 export const DirectionSchema = z.union([
   z.literal("forward"),
   z.literal("backward"),
@@ -35,7 +32,7 @@ export const loader = async ({ request, params }: LoaderArgs) => {
   const presenter = new RunListPresenter();
   const list = await presenter.call({
     userId,
-    jobId: jobParam,
+    jobSlug: jobParam,
     direction: searchParams.direction,
     cursor: searchParams.cursor,
   });

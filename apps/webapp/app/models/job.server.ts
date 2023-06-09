@@ -6,13 +6,13 @@ export type { JobRunStatus } from ".prisma/client";
 
 export function getJob({
   userId,
-  id,
-}: Pick<Job, "id"> & {
+  slug,
+}: Pick<Job, "slug"> & {
   userId: User["id"];
 }) {
   //just the very basic info because we already fetched it for the Jobs list
   return prisma.job.findFirst({
     select: { id: true, title: true },
-    where: { id, organization: { members: { some: { userId } } } },
+    where: { slug, organization: { members: { some: { userId } } } },
   });
 }

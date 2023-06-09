@@ -25,6 +25,9 @@ export async function loader({ request, params }: LoaderArgs) {
   if (run.completedAt) {
     return new Response(null, {
       status: 200,
+      headers: {
+        "Content-Type": "text/event-stream",
+      },
     });
   }
 

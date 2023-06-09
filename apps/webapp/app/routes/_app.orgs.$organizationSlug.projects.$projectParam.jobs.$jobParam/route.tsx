@@ -37,7 +37,7 @@ export const loader = async ({ request, params }: LoaderArgs) => {
 
   const job = await getJob({
     userId,
-    id: jobParam,
+    slug: jobParam,
   });
 
   if (job === null) {
