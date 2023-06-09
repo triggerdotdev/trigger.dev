@@ -1,5 +1,11 @@
 # @trigger.dev/sdk
 
+## 2.0.0-next.0
+
+### Major Changes
+
+- 53c9bd56: Preparing packages for V2
+
 ## 0.2.22
 
 ### Patch Changes
