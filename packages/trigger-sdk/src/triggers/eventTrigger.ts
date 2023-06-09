@@ -65,7 +65,7 @@ export function eventTrigger<TEvent extends any = any>(
   options: TriggerOptions<TEvent>
 ): Trigger<EventSpecification<TEvent>> {
   return new EventTrigger({
-    name: "Event Trigger",
+    name: options.name,
     filter: options.filter,
     event: {
       name: options.name,
