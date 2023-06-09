@@ -43,7 +43,7 @@ export class MissingConnectionNotification
       source: "trigger.dev",
       icon: "connection-alert",
       parsePayload: MissingConnectionNotificationPayloadSchema.parse,
-      elements: [
+      properties: [
         {
           label: "Integrations",
           text: this.options.integrations.map((i) => i.id).join(", "),
@@ -93,7 +93,7 @@ export class MissingConnectionResolvedNotification
       source: "trigger.dev",
       icon: "connection-alert",
       parsePayload: MissingConnectionResolvedNotificationPayloadSchema.parse,
-      elements: [
+      properties: [
         {
           label: "Integrations",
           text: this.options.integrations.map((i) => i.id).join(", "),

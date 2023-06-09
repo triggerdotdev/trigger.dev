@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { DisplayElementSchema, StyleSchema } from "./elements";
+import { DisplayPropertySchema, StyleSchema } from "./properties";
 import { DeserializedJsonSchema } from "./json";
 
 export const TaskStatusSchema = z.enum([
@@ -22,7 +22,7 @@ export const TaskSchema = z.object({
   delayUntil: z.coerce.date().optional().nullable(),
   status: TaskStatusSchema,
   description: z.string().optional().nullable(),
-  elements: z.array(DisplayElementSchema).optional().nullable(),
+  properties: z.array(DisplayPropertySchema).optional().nullable(),
   params: DeserializedJsonSchema.optional().nullable(),
   output: DeserializedJsonSchema.optional().nullable(),
   error: z.string().optional().nullable(),

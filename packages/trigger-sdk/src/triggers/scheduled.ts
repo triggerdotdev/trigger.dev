@@ -22,7 +22,7 @@ export class IntervalTrigger implements Trigger<ScheduledEventSpecification> {
       source: "trigger.dev",
       icon: "schedule-interval",
       parsePayload: ScheduledPayloadSchema.parse,
-      elements: [
+      properties: [
         {
           label: "Interval",
           text: `${this.options.seconds}s`,
@@ -67,7 +67,7 @@ export class CronTrigger implements Trigger<ScheduledEventSpecification> {
       source: "trigger.dev",
       icon: "schedule-cron",
       parsePayload: ScheduledPayloadSchema.parse,
-      elements: [
+      properties: [
         {
           label: "Expression",
           text: this.options.cron,

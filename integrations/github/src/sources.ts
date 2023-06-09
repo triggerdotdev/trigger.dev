@@ -37,7 +37,7 @@ export function createRepoEventSource(
     schema: z.object({ repo: z.string() }),
     integration,
     key: (params) => params.repo,
-    elements: (params) => [
+    properties: (params) => [
       {
         label: "Repo",
         text: params.repo,
@@ -124,7 +124,7 @@ export function createOrgEventSource(
     integration,
     schema: z.object({ org: z.string() }),
     key: (params) => params.org,
-    elements: (params) => [
+    properties: (params) => [
       {
         label: "Org",
         text: params.org,

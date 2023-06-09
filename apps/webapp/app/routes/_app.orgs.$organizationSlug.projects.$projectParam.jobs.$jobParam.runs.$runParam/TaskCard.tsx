@@ -6,7 +6,7 @@ import {
   RunPanel,
   RunPanelBody,
   RunPanelDescription,
-  RunPanelElements,
+  RunPanelProperties,
   RunPanelError,
   RunPanelHeader,
   RunPanelIconElement,
@@ -28,7 +28,7 @@ type TaskCardProps = Task & {
   depth: number;
 };
 
-//todo add links to elements
+//todo add links to properties
 export function TaskCard({
   selectedId,
   selectedTask,
@@ -44,7 +44,7 @@ export function TaskCard({
   description,
   displayKey,
   connection,
-  elements,
+  properties,
   subtasks,
   error,
 }: TaskCardProps) {
@@ -111,8 +111,8 @@ export function TaskCard({
                 />
               )}
             </RunPanelIconSection>
-            {elements.length > 0 && (
-              <RunPanelElements elements={elements} className="mt-4" />
+            {properties.length > 0 && (
+              <RunPanelProperties properties={properties} className="mt-4" />
             )}
           </RunPanelBody>
           {subtasks && subtasks.length > 0 && (

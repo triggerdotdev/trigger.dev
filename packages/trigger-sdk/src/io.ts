@@ -96,7 +96,7 @@ export class IO {
           icon: "log",
           description: message,
           params: data,
-          elements: [{ label: "Level", text: level }],
+          properties: [{ label: "Level", text: level }],
           style: { style: "minimal", variant: level.toLowerCase() },
           noop: true,
         },
@@ -146,7 +146,7 @@ export class IO {
       {
         name: "Update Source",
         description: `Update Source ${options.key}`,
-        elements: [
+        properties: [
           {
             label: "key",
             text: options.key,
@@ -176,7 +176,7 @@ export class IO {
       key,
       {
         name: "register-interval",
-        elements: [
+        properties: [
           { label: "schedule", text: dynamicSchedule.id },
           { label: "id", text: id },
           { label: "seconds", text: options.seconds.toString() },
@@ -201,7 +201,7 @@ export class IO {
       key,
       {
         name: "unregister-interval",
-        elements: [
+        properties: [
           { label: "schedule", text: dynamicSchedule.id },
           { label: "id", text: id },
         ],
@@ -222,7 +222,7 @@ export class IO {
       key,
       {
         name: "register-cron",
-        elements: [
+        properties: [
           { label: "schedule", text: dynamicSchedule.id },
           { label: "id", text: id },
           { label: "cron", text: options.cron },
@@ -247,7 +247,7 @@ export class IO {
       key,
       {
         name: "unregister-cron",
-        elements: [
+        properties: [
           { label: "schedule", text: dynamicSchedule.id },
           { label: "id", text: id },
         ],
@@ -273,7 +273,7 @@ export class IO {
       key,
       {
         name: "register-trigger",
-        elements: [
+        properties: [
           { label: "trigger", text: trigger.id },
           { label: "id", text: id },
         ],

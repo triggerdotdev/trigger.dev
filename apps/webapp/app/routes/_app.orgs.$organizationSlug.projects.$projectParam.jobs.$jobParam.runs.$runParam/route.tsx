@@ -39,7 +39,7 @@ import { jobPath } from "~/utils/pathBuilder";
 import {
   RunPanel,
   RunPanelBody,
-  RunPanelElements,
+  RunPanelProperties,
   RunPanelError,
   RunPanelHeader,
   RunPanelIconElement,
@@ -234,8 +234,8 @@ export default function Page() {
                     />
                   )}
                 </RunPanelIconSection>*/}
-                  {run.elements.length > 0 && (
-                    <RunPanelElements elements={run.elements} />
+                  {run.properties.length > 0 && (
+                    <RunPanelProperties properties={run.properties} />
                   )}
                 </RunPanelBody>
               </RunPanel>

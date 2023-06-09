@@ -8,7 +8,7 @@ import { formatDateTime } from "~/utils";
 import {
   RunPanel,
   RunPanelBody,
-  RunPanelElements,
+  RunPanelProperties,
   RunPanelHeader,
   RunPanelIconElement,
   RunPanelIconSection,
@@ -70,10 +70,13 @@ export default function Page() {
           </RunPanelIconSection>
         </div>
         <div className="mt-4 flex flex-col gap-2">
-          {run.elements.length > 0 && (
+          {run.properties.length > 0 && (
             <div className="mb-2 flex flex-col gap-4">
               <Header3>Properties</Header3>
-              <RunPanelElements elements={run.elements} layout="vertical" />
+              <RunPanelProperties
+                properties={run.properties}
+                layout="vertical"
+              />
             </div>
           )}
           <Header3>Payload</Header3>

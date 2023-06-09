@@ -21,7 +21,7 @@ export const createIssue = authenticatedTask({
     return {
       name: "Create Issue",
       params,
-      elements: [
+      properties: [
         {
           label: "Repo",
           text: params.repo,
@@ -56,7 +56,7 @@ export const createIssueComment = authenticatedTask({
     return {
       name: "Create Issue Comment",
       params,
-      elements: [
+      properties: [
         {
           label: "Repo",
           text: params.repo,
@@ -89,7 +89,7 @@ export const getRepo = authenticatedTask({
     return {
       name: "Get Repo",
       params,
-      elements: [
+      properties: [
         {
           label: "Repo",
           text: params.repo,
@@ -163,7 +163,7 @@ export const addIssueCommentReaction = authenticatedTask({
     return {
       name: "Add Issue Reaction",
       params,
-      elements: [
+      properties: [
         {
           label: "Repo",
           text: params.repo,
@@ -225,7 +225,7 @@ export const createIssueCommentWithReaction = authenticatedTask({
     return {
       name: "Create Issue Comment",
       params,
-      elements: [
+      properties: [
         {
           label: "Repo",
           text: params.repo,
@@ -271,7 +271,7 @@ export const updateWebhook = authenticatedTask({
     return {
       name: "Update Webhook",
       params,
-      elements: [
+      properties: [
         {
           label: "Repo",
           text: params.repo,
@@ -314,7 +314,7 @@ export const updateOrgWebhook = authenticatedTask({
     return {
       name: "Update Org Webhook",
       params,
-      elements: [
+      properties: [
         {
           label: "Org",
           text: params.org,
@@ -358,7 +358,7 @@ export const createWebhook = authenticatedTask({
     return {
       name: "Create Webhook",
       params,
-      elements: [
+      properties: [
         {
           label: "Repo",
           text: params.repo,
@@ -400,7 +400,7 @@ export const createOrgWebhook = authenticatedTask({
     return {
       name: "Create Org Webhook",
       params,
-      elements: [
+      properties: [
         {
           label: "Org",
           text: params.org,
@@ -435,7 +435,7 @@ export const listWebhooks = authenticatedTask({
     return {
       name: "List Webhooks",
       params,
-      elements: [
+      properties: [
         {
           label: "Repo",
           text: params.repo,
@@ -463,7 +463,7 @@ export const listOrgWebhooks = authenticatedTask({
     return {
       name: "List Org Webhooks",
       params,
-      elements: [
+      properties: [
         {
           label: "Org",
           text: params.org,

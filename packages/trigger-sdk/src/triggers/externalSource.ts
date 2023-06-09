@@ -1,7 +1,7 @@
 import { z } from "zod";
 
 import {
-  DisplayElement,
+  DisplayProperty,
   EventFilter,
   HandleTriggerSource,
   Logger,
@@ -114,7 +114,7 @@ type ExternalSourceOptions<
   filter: FilterFunction<TParams>;
   handler: HandlerFunction<TChannel, TParams>;
   key: KeyFunction<TParams>;
-  elements?: (params: TParams) => DisplayElement[];
+  properties?: (params: TParams) => DisplayProperty[];
 };
 
 export class ExternalSource<
@@ -149,8 +149,8 @@ export class ExternalSource<
     return this.options.filter(params);
   }
 
-  elements(params: TParams): DisplayElement[] {
-    return this.options.elements?.(params) ?? [];
+  properties(params: TParams): DisplayProperty[] {
+    return this.options.properties?.(params) ?? [];
   }
 
   async register(
@@ -251,7 +251,7 @@ export class ExternalSourceTrigger<
         ),
         source: this.event.source,
       },
-      elements: this.options.source.elements(this.options.params),
+      properties: this.options.source.properties(this.options.params),
     };
   }
 

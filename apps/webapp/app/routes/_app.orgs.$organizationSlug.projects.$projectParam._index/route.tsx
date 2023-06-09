@@ -1,6 +1,5 @@
 import { JobSkeleton } from "~/components/jobs/JobSkeleton";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
-import { Callout } from "~/components/primitives/Callout";
 import { DateTime } from "~/components/primitives/DateTime";
 import { Header2 } from "~/components/primitives/Headers";
 import { Help, HelpContent, HelpTrigger } from "~/components/primitives/Help";
@@ -32,7 +31,6 @@ import { useOrganization } from "~/hooks/useOrganizations";
 import { ProjectJob, useProject } from "~/hooks/useProject";
 import { useTextFilter } from "~/hooks/useTextFilter";
 import { JobRunStatus } from "~/models/job.server";
-import { cn } from "~/utils/cn";
 import { Handle } from "~/utils/handle";
 import { jobPath } from "~/utils/pathBuilder";
 
@@ -60,9 +58,9 @@ export default function Page() {
         )
           return true;
         if (
-          job.elements &&
-          job.elements.some((element) =>
-            element.text.toLowerCase().includes(text.toLowerCase())
+          job.properties &&
+          job.properties.some((property) =>
+            property.text.toLowerCase().includes(text.toLowerCase())
           )
         )
           return true;
@@ -159,15 +157,15 @@ export default function Page() {
                               ))}
                             </TableCell>
                             <TableCell to={path}>
-                              {job.elements && (
+                              {job.properties && (
                                 <SimpleTooltip
                                   button={
                                     <div className="flex max-w-[200px] items-start justify-start gap-5 truncate">
-                                      {job.elements.map((element, index) => (
+                                      {job.properties.map((property, index) => (
                                         <LabelValueStack
                                           key={index}
-                                          label={element.label}
-                                          value={element.text}
+                                          label={property.label}
+                                          value={property.text}
                                           className=" last:truncate"
                                         />
                                       ))}
@@ -175,11 +173,11 @@ export default function Page() {
                                   }
                                   content={
                                     <div className="flex flex-col gap-2">
-                                      {job.elements.map((element, index) => (
+                                      {job.properties.map((property, index) => (
                                         <LabelValueStack
                                           key={index}
-                                          label={element.label}
-                                          value={element.text}
+                                          label={property.label}
+                                          value={property.text}
                                         />
                                       ))}
                                     </div>

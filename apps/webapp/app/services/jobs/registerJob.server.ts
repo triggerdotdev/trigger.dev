@@ -337,13 +337,13 @@ export class RegisterJobService {
           },
         });
 
-        if (trigger.elements) {
+        if (trigger.properties) {
           await this.#prismaClient.jobVersion.update({
             where: {
               id: jobVersion.id,
             },
             data: {
-              elements: trigger.elements,
+              properties: trigger.properties,
             },
           });
         }

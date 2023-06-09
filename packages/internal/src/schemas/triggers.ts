@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { EventFilterSchema, EventRuleSchema } from "./eventFilter";
-import { DisplayElementSchema } from "./elements";
+import { DisplayPropertySchema } from "./properties";
 import { ScheduleMetadataSchema } from "./schedules";
 
 export const EventSpecificationSchema = z.object({
@@ -9,7 +9,7 @@ export const EventSpecificationSchema = z.object({
   source: z.string(),
   icon: z.string(),
   filter: EventFilterSchema.optional(),
-  elements: z.array(DisplayElementSchema).optional(),
+  properties: z.array(DisplayPropertySchema).optional(),
   schema: z.any().optional(),
   examples: z.array(z.any()).optional(),
 });
@@ -22,7 +22,7 @@ export const DynamicTriggerMetadataSchema = z.object({
 export const StaticTriggerMetadataSchema = z.object({
   type: z.literal("static"),
   title: z.string(),
-  elements: z.array(DisplayElementSchema).optional(),
+  properties: z.array(DisplayPropertySchema).optional(),
   rule: EventRuleSchema,
 });
 

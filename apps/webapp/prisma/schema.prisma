@@ -326,7 +326,7 @@ model JobVersion {
   version            String
   eventSpecification Json
 
-  elements Json?
+  properties Json?
 
   job   Job    @relation(fields: [jobId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   jobId String
@@ -554,7 +554,7 @@ model JobRun {
   startedAt   DateTime?
   completedAt DateTime?
 
-  elements Json?
+  properties Json?
 
   status JobRunStatus @default(PENDING)
   output Json?
@@ -631,7 +631,7 @@ model Task {
   noop       Boolean    @default(false)
 
   description String?
-  elements    Json?
+  properties  Json?
   params      Json?
   output      Json?
   error       String?

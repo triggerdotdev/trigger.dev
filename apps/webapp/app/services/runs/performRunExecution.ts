@@ -44,7 +44,7 @@ export class PerformRunExecutionService {
   }
 
   // Execute the preprocessing step of a run, which will send the payload to the endpoint and give the job
-  // an opportunity to generate run elements based on the payload.
+  // an opportunity to generate run properties based on the payload.
   // If the endpoint is not available, or the response is not ok,
   // the run execution will be marked as failed and the run will start
   async #executePreprocessing(execution: FoundRunExecution) {
@@ -135,7 +135,7 @@ export class PerformRunExecutionService {
           data: {
             status: "STARTED",
             startedAt: new Date(),
-            elements: safeBody.data.elements,
+            properties: safeBody.data.properties,
           },
         });
 

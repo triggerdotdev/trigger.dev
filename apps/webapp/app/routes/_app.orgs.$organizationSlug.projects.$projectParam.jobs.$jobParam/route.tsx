@@ -88,13 +88,13 @@ export default function Job() {
               value={job.event.title}
             />
             <PageInfoProperty icon="id" label={"ID"} value={job.slug} />
-            {job.elements &&
-              job.elements.map((element, index) => (
+            {job.properties &&
+              job.properties.map((property, index) => (
                 <PageInfoProperty
                   key={index}
                   icon="property"
-                  label={element.label}
-                  value={element.text}
+                  label={property.label}
+                  value={property.text}
                 />
               ))}
             {job.integrations.length > 0 && (

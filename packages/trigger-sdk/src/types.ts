@@ -5,7 +5,7 @@ import type {
   SecureString,
   TriggerMetadata,
 } from "@trigger.dev/internal";
-import { DisplayElement } from "@trigger.dev/internal";
+import { DisplayProperty } from "@trigger.dev/internal";
 import { Job } from "./job";
 import { TriggerClient } from "./triggerClient";
 
@@ -38,7 +38,7 @@ export interface TaskLogger {
 
 export type PreprocessResults = {
   abort: boolean;
-  elements: DisplayElement[];
+  properties: DisplayProperty[];
 };
 
 export type TriggerEventType<TTrigger extends Trigger<any>> =
@@ -64,12 +64,12 @@ export interface EventSpecification<TEvent extends any> {
   title: string;
   source: string;
   icon: string;
-  elements?: DisplayElement[];
+  properties?: DisplayProperty[];
   schema?: any;
   examples?: Array<TEvent>;
   filter?: EventFilter;
   parsePayload: (payload: unknown) => TEvent;
-  runElements?: (payload: TEvent) => DisplayElement[];
+  runProperties?: (payload: TEvent) => DisplayProperty[];
 }
 
 export type EventTypeFromSpecification<

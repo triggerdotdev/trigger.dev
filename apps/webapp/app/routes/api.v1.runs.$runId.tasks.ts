@@ -224,7 +224,7 @@ export class RunTaskService {
           noop: taskBody.noop,
           delayUntil: taskBody.delayUntil,
           params: taskBody.params ?? undefined,
-          elements: taskBody.elements ?? undefined,
+          properties: taskBody.properties ?? undefined,
           redact: taskBody.redact ?? undefined,
           style: taskBody.style ?? { style: "normal" },
         },

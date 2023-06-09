@@ -93,7 +93,7 @@ const onIssueOpened: EventSpecification<IssuesOpenedEvent> = {
     action: ["opened"],
   },
   parsePayload: (payload) => payload as IssuesOpenedEvent,
-  runElements: (payload) => [
+  runProperties: (payload) => [
     {
       label: "Issue",
       text: `#${payload.issue.number}: ${payload.issue.title}`,
@@ -113,7 +113,7 @@ const onIssue: EventSpecification<IssuesEvent> = {
   source: "github.com",
   icon: "github",
   parsePayload: (payload) => payload as IssuesEvent,
-  runElements: (payload) => [
+  runProperties: (payload) => [
     {
       label: "Issue",
       text: `#${payload.issue.number}: ${payload.issue.title}`,
@@ -133,7 +133,7 @@ const onIssueComment: EventSpecification<IssueCommentEvent> = {
   source: "github.com",
   icon: "github",
   parsePayload: (payload) => payload as IssueCommentEvent,
-  runElements: (payload) => [
+  runProperties: (payload) => [
     {
       label: "Issue",
       text: `#${payload.issue.number}: ${payload.issue.title}`,

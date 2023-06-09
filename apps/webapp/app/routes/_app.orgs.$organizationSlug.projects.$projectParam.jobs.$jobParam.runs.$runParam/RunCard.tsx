@@ -1,5 +1,5 @@
 import {
-  DisplayElement,
+  DisplayProperty,
   Style,
   StyleName,
 } from "@/../../packages/internal/src";
@@ -184,12 +184,12 @@ export function RunPanelIconElement({
   );
 }
 
-export function RunPanelElements({
-  elements,
+export function RunPanelProperties({
+  properties,
   className,
   layout = "horizontal",
 }: {
-  elements: DisplayElement[];
+  properties: DisplayProperty[];
   className?: string;
   layout?: "horizontal" | "vertical";
 }) {
@@ -201,7 +201,7 @@ export function RunPanelElements({
         className
       )}
     >
-      {elements.map(({ label, text, url }, index) => (
+      {properties.map(({ label, text, url }, index) => (
         <LabelValueStack key={index} label={label} value={text} href={url} />
       ))}
     </div>

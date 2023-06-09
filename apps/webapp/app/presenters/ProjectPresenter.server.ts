@@ -1,6 +1,6 @@
 import {
-  DisplayElement,
-  DisplayElementSchema,
+  DisplayProperty,
+  DisplayPropertySchema,
   EventSpecificationSchema,
   IntegrationMetadataSchema,
 } from "@/../../packages/internal/src";
@@ -41,7 +41,7 @@ export class ProjectPresenter {
                   select: {
                     version: true,
                     eventSpecification: true,
-                    elements: true,
+                    properties: true,
                     runs: {
                       select: {
                         createdAt: true,
@@ -158,17 +158,17 @@ export class ProjectPresenter {
               )
             );
 
-          let elements: DisplayElement[] = [];
+          let properties: DisplayProperty[] = [];
 
-          if (eventSpecification.elements) {
-            elements = [...elements, ...eventSpecification.elements];
+          if (eventSpecification.properties) {
+            properties = [...properties, ...eventSpecification.properties];
           }
 
-          if (alias.version.elements) {
+          if (alias.version.properties) {
             const versionElements = z
-              .array(DisplayElementSchema)
-              .parse(alias.version.elements);
-            elements = [...elements, ...versionElements];
+              .array(DisplayPropertySchema)
+              .parse(alias.version.properties);
+            properties = [...properties, ...versionElements];
           }
 
           return {
@@ -183,7 +183,7 @@ export class ProjectPresenter {
             },
             integrations,
             lastRun,
-            elements,
+            properties,
           };
         })
         .filter(Boolean),

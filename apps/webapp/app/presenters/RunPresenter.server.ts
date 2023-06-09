@@ -1,6 +1,7 @@
 import {
-  DisplayElement,
-  DisplayElementSchema,
+  DisplayPropertiesSchema,
+  DisplayProperty,
+  DisplayPropertySchema,
   ErrorWithStack,
   ErrorWithStackSchema,
   StyleSchema,
@@ -24,8 +25,6 @@ type QueryTask = NonNullable<
   Awaited<ReturnType<RunPresenter["query"]>>
 >["tasks"][number];
 
-const ElementsSchema = z.array(DisplayElementSchema);
-
 const taskSelect = {
   id: true,
   displayKey: true,
@@ -34,7 +33,7 @@ const taskSelect = {
   status: true,
   delayUntil: true,
   description: true,
-  elements: true,
+  properties: true,
   error: true,
   startedAt: true,
   completedAt: true,
@@ -70,18 +69,18 @@ export class RunPresenter {
       return undefined;
     }
 
-    //merge the elements from the version and the run, with the run elements taking precedence
-    const mergedElements = new Map<string, DisplayElement>();
-    if (run.version.elements) {
-      const elements = ElementsSchema.parse(run.version.elements);
-      for (const element of elements) {
-        mergedElements.set(element.label, element);
+    //merge the properties from the version and the run, with the run properties taking precedence
+    const mergedElements = new Map<string, DisplayProperty>();
+    if (run.version.properties) {
+      const properties = DisplayPropertiesSchema.parse(run.version.properties);
+      for (const property of properties) {
+        mergedElements.set(property.label, property);
       }
     }
-    if (run.elements) {
-      const elements = ElementsSchema.parse(run.elements);
-      for (const element of elements) {
-        mergedElements.set(element.label, element);
+    if (run.properties) {
+      const properties = DisplayPropertiesSchema.parse(run.properties);
+      for (const property of properties) {
+        mergedElements.set(property.label, property);
       }
     }
 
@@ -90,10 +89,10 @@ export class RunPresenter {
       return {
         ...t,
         connection: t.runConnection,
-        elements:
-          t.elements == null
+        properties:
+          t.properties == null
             ? []
-            : z.array(DisplayElementSchema).parse(t.elements),
+            : z.array(DisplayPropertySchema).parse(t.properties),
         style: t.style ? StyleSchema.parse(t.style) : undefined,
       };
     };
@@ -131,7 +130,7 @@ export class RunPresenter {
       isTest: run.isTest,
       version: run.version.version,
       output: runOutput,
-      elements: Array.from(mergedElements.values()),
+      properties: Array.from(mergedElements.values()),
       environment: {
         type: run.environment.type,
         slug: run.environment.slug,
@@ -153,12 +152,12 @@ export class RunPresenter {
         startedAt: true,
         completedAt: true,
         isTest: true,
-        elements: true,
+        properties: true,
         output: true,
         version: {
           select: {
             version: true,
-            elements: true,
+            properties: true,
           },
         },
         environment: {

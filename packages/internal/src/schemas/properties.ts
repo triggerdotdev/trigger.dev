@@ -1,14 +1,14 @@
 import { z } from "zod";
 
-export const DisplayElementSchema = z.object({
+export const DisplayPropertySchema = z.object({
   label: z.string(),
   text: z.string(),
   url: z.string().optional(),
 });
 
-export const DisplayElementsSchema = z.array(DisplayElementSchema);
+export const DisplayPropertiesSchema = z.array(DisplayPropertySchema);
 
-export type DisplayElement = z.infer<typeof DisplayElementSchema>;
+export type DisplayProperty = z.infer<typeof DisplayPropertySchema>;
 
 export const StyleSchema = z.object({
   style: z.enum(["normal", "minimal"]),

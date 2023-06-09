@@ -1,5 +1,5 @@
 import {
-  DisplayElementSchema,
+  DisplayPropertySchema,
   StyleSchema,
 } from "@/../../packages/internal/src";
 import { z } from "zod";

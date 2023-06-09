@@ -307,7 +307,7 @@ export class TriggerClient {
           status: 200,
           body: {
             abort: results.abort,
-            elements: results.elements,
+            properties: results.properties,
           },
         };
       }
@@ -558,11 +558,11 @@ export class TriggerClient {
       body.event.payload ?? {}
     );
 
-    const elements = job.trigger.event.runElements?.(parsedPayload) ?? [];
+    const properties = job.trigger.event.runProperties?.(parsedPayload) ?? [];
 
     return {
       abort: false,
-      elements,
+      properties,
     };
   }
 

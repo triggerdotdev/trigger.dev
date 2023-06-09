@@ -1,5 +1,5 @@
 import {
-  DisplayElementSchema,
+  DisplayPropertiesSchema,
   StyleSchema,
 } from "@/../../packages/internal/src";
 import { z } from "zod";
@@ -54,7 +54,7 @@ export class TaskDetailsPresenter {
         delayUntil: true,
         noop: true,
         description: true,
-        elements: true,
+        properties: true,
         params: true,
         output: true,
         error: true,
@@ -76,10 +76,10 @@ export class TaskDetailsPresenter {
       ...task,
       connection: task.runConnection,
       params: task.params as Record<string, any>,
-      elements:
-        task.elements == null
+      properties:
+        task.properties == null
           ? []
-          : z.array(DisplayElementSchema).parse(task.elements),
+          : DisplayPropertiesSchema.parse(task.properties),
       style: task.style ? StyleSchema.parse(task.style) : undefined,
     };
   }

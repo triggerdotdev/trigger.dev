@@ -12,7 +12,7 @@ import {
   RunPanel,
   RunPanelBody,
   RunPanelDescription,
-  RunPanelElements,
+  RunPanelProperties,
   RunPanelHeader,
   RunPanelIconElement,
   RunPanelIconSection,
@@ -56,7 +56,7 @@ export default function Page() {
     status,
     delayUntil,
     params,
-    elements,
+    properties,
     output,
     style,
   } = task;
@@ -111,10 +111,10 @@ export default function Page() {
         {description && (
           <RunPanelDescription text={description} variant={style?.variant} />
         )}
-        {elements.length > 0 && (
+        {properties.length > 0 && (
           <div className="mt-4 flex flex-col gap-2">
             <Header3>Properties</Header3>
-            <RunPanelElements elements={elements} layout="vertical" />
+            <RunPanelProperties properties={properties} layout="vertical" />
           </div>
         )}
         <div className="mt-4 flex flex-col gap-2">

@@ -1,7 +1,7 @@
 import { ulid } from "ulid";
 import { z } from "zod";
 import { ConnectionAuthSchema, IntegrationConfigSchema } from "./integrations";
-import { DisplayElementSchema, StyleSchema } from "./elements";
+import { DisplayPropertySchema, StyleSchema } from "./properties";
 import { DeserializedJsonSchema, SerializableJsonSchema } from "./json";
 import { CachedTaskSchema, ServerTaskSchema, TaskSchema } from "./tasks";
 import {
@@ -306,7 +306,7 @@ export type PreprocessRunBody = z.infer<typeof PreprocessRunBodySchema>;
 
 export const PreprocessRunResponseSchema = z.object({
   abort: z.boolean(),
-  elements: z.array(DisplayElementSchema).optional(),
+  properties: z.array(DisplayPropertySchema).optional(),
 });
 
 export type PreprocessRunResponse = z.infer<typeof PreprocessRunResponseSchema>;
@@ -315,7 +315,7 @@ export const CreateRunBodySchema = z.object({
   client: z.string(),
   job: JobMetadataSchema,
   event: ApiEventLogSchema,
-  elements: z.array(DisplayElementSchema).optional(),
+  properties: z.array(DisplayPropertySchema).optional(),
 });
 
 export type CreateRunBody = z.infer<typeof CreateRunBodySchema>;
@@ -370,7 +370,7 @@ export const RunTaskOptionsSchema = z.object({
   noop: z.boolean().default(false),
   delayUntil: z.coerce.date().optional(),
   description: z.string().optional(),
-  elements: z.array(DisplayElementSchema).optional(),
+  properties: z.array(DisplayPropertySchema).optional(),
   params: SerializableJsonSchema.optional(),
   trigger: TriggerMetadataSchema.optional(),
   redact: RedactSchema.optional(),
@@ -394,7 +394,7 @@ export const RunTaskBodyOutputSchema = RunTaskBodyInputSchema.extend({
 export type RunTaskBodyOutput = z.infer<typeof RunTaskBodyOutputSchema>;
 
 export const CompleteTaskBodyInputSchema = RunTaskBodyInputSchema.pick({
-  elements: true,
+  properties: true,
   description: true,
   params: true,
 }).extend({
