@@ -316,6 +316,10 @@ new Job(client, {
       payload,
       ctx,
     });
+
+    return {
+      message: "Hello from scheduled job 1",
+    };
   },
 });
 
