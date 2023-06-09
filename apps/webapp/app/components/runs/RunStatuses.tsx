@@ -83,7 +83,7 @@ export function RunStatusIcon({
   }
 }
 
-type RunBasicStatus =
+export type RunBasicStatus =
   | "WAITING"
   | "PENDING"
   | "RUNNING"
