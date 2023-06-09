@@ -24,6 +24,7 @@ import {
 } from "~/components/primitives/PageHeader";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import {
+  RunBasicStatus,
   RunStatusIcon,
   RunStatusLabel,
   runBasicStatus,
@@ -55,6 +56,8 @@ import { usePathName } from "~/hooks/usePathName";
 import { Callout } from "~/components/primitives/Callout";
 import { CodeBlock } from "~/components/code/CodeBlock";
 import { cn } from "~/utils/cn";
+import { JobRunStatus } from "~/models/job.server";
+import { TaskCardSkeleton } from "./TaskCardSkeleton";
 
 export const loader = async ({ request, params }: LoaderArgs) => {
   const userId = await requireUserId(request);
@@ -248,20 +251,25 @@ export default function Page() {
             </div>
             <div>
               <Header2 className="mb-2">Tasks</Header2>
-              {run.tasks.map((task, index) => {
-                const isLast = index === run.tasks.length - 1;
 
-                return (
-                  <TaskCard
-                    key={task.id}
-                    selectedId={selectedId}
-                    selectedTask={selectedTask}
-                    isLast={isLast}
-                    depth={0}
-                    {...task}
-                  />
-                );
-              })}
+              {run.tasks.length > 0 ? (
+                run.tasks.map((task, index) => {
+                  const isLast = index === run.tasks.length - 1;
+
+                  return (
+                    <TaskCard
+                      key={task.id}
+                      selectedId={selectedId}
+                      selectedTask={selectedTask}
+                      isLast={isLast}
+                      depth={0}
+                      {...task}
+                    />
+                  );
+                })
+              ) : (
+                <BlankTasks status={run.status} basicStatus={basicStatus} />
+              )}
             </div>
             {(basicStatus === "COMPLETED" || basicStatus === "FAILED") && (
               <div>
@@ -341,4 +349,29 @@ export default function Page() {
       </PageBody>
     </PageContainer>
   );
+}
+
+function BlankTasks({
+  status,
+  basicStatus,
+}: {
+  status: JobRunStatus;
+  basicStatus: RunBasicStatus;
+}) {
+  switch (basicStatus) {
+    case "COMPLETED":
+      return (
+        <Paragraph variant="small">There were no tasks for this run.</Paragraph>
+      );
+    case "FAILED":
+      return <Paragraph variant="small">No tasks were run.</Paragraph>;
+    case "WAITING":
+    case "PENDING":
+    case "RUNNING":
+      return <TaskCardSkeleton />;
+    default:
+      return (
+        <Paragraph variant="small">There were no tasks for this run.</Paragraph>
+      );
+  }
 }
