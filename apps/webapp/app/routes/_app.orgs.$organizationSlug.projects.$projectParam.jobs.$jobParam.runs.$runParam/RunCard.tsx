@@ -162,6 +162,10 @@ export function RunPanelIconSection({
   );
 }
 
+export function RunPanelDivider() {
+  return <div className="mb-4 border-b border-slate-700 pb-4" />;
+}
+
 export function RunPanelIconProperty({
   icon,
   label,

@@ -12,6 +12,7 @@ import {
   RunPanel,
   RunPanelBody,
   RunPanelDescription,
+  RunPanelDivider,
   RunPanelProperties,
   RunPanelHeader,
   RunPanelIconProperty,
@@ -107,6 +108,7 @@ export default function Page() {
               />
             )}
           </RunPanelIconSection>
+          <RunPanelDivider />
         </div>
         {description && (
           <RunPanelDescription text={description} variant={style?.variant} />

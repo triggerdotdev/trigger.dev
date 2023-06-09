@@ -136,7 +136,7 @@ export function runStatusTitle(status: JobRunStatus): string {
   }
 }
 
-function runStatusClassNameColor(status: JobRunStatus): string {
+export function runStatusClassNameColor(status: JobRunStatus): string {
   switch (status) {
     case "SUCCESS":
       return "text-green-500";

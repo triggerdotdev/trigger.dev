@@ -25,7 +25,9 @@ import {
 import { Paragraph } from "~/components/primitives/Paragraph";
 import {
   RunStatusIcon,
+  RunStatusLabel,
   runBasicStatus,
+  runStatusClassNameColor,
   runStatusTitle,
 } from "~/components/runs/RunStatuses";
 import { useJob } from "~/hooks/useJob";
@@ -39,6 +41,7 @@ import { jobPath } from "~/utils/pathBuilder";
 import {
   RunPanel,
   RunPanelBody,
+  RunPanelDivider,
   RunPanelProperties,
   RunPanelError,
   RunPanelHeader,
@@ -51,6 +54,7 @@ import { taskPath, eventPath } from "~/utils/pathBuilder";
 import { usePathName } from "~/hooks/usePathName";
 import { Callout } from "~/components/primitives/Callout";
 import { CodeBlock } from "~/components/code/CodeBlock";
+import { cn } from "~/utils/cn";
 
 export const loader = async ({ request, params }: LoaderArgs) => {
   const userId = await requireUserId(request);
@@ -136,6 +140,8 @@ export default function Page() {
   }, [pathName]);
 
   const basicStatus = runBasicStatus(run.status);
+
+  console.log(run);
 
   return (
     <PageContainer>
@@ -259,9 +265,7 @@ export default function Page() {
             </div>
             {(basicStatus === "COMPLETED" || basicStatus === "FAILED") && (
               <div>
-                <Header2 className="mb-2">
-                  Run {runStatusTitle(run.status)}
-                </Header2>
+                <Header2 className={cn("mb-2")}>Run Summary</Header2>
                 <RunPanel selected={false}>
                   <RunPanelHeader
                     icon={
@@ -270,10 +274,10 @@ export default function Page() {
                         className={"h-5 w-5"}
                       />
                     }
-                    title={"Summary"}
+                    title={<RunStatusLabel status={run.status} />}
                   />
                   <RunPanelBody>
-                    <RunPanelIconSection className="mb-4">
+                    <RunPanelIconSection>
                       {run.startedAt && (
                         <RunPanelIconProperty
                           icon="calendar"
@@ -302,6 +306,7 @@ export default function Page() {
                         />
                       )}
                     </RunPanelIconSection>
+                    <RunPanelDivider />
                     {run.error && (
                       <RunPanelError
                         text={run.error.message}

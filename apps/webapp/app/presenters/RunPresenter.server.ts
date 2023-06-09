@@ -4,6 +4,7 @@ import {
   DisplayPropertySchema,
   ErrorWithStack,
   ErrorWithStackSchema,
+  EventSpecificationSchema,
   StyleSchema,
 } from "@/../../packages/internal/src";
 import { z } from "zod";
@@ -83,6 +84,16 @@ export class RunPresenter {
         mergedProperties.set(property.label, property);
       }
     }
+    if (run.version.eventSpecification) {
+      const eventSpecification = EventSpecificationSchema.parse(
+        run.version.eventSpecification
+      );
+      if (eventSpecification.properties) {
+        for (const properties of eventSpecification.properties) {
+          mergedProperties.set(properties.label, properties);
+        }
+      }
+    }
 
     const enrichTask = (task: QueryTask) => {
       const { children, ...t } = task;
@@ -158,6 +169,7 @@ export class RunPresenter {
           select: {
             version: true,
             properties: true,
+            eventSpecification: true,
           },
         },
         environment: {
