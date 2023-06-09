@@ -10,6 +10,7 @@ import slug from "slug";
 import { prisma } from "~/db.server";
 import { workerQueue } from "~/services/worker.server";
 import { generateTwoRandomWords } from "~/utils/randomWords";
+import { createProject } from "./project.server";
 
 export type { Organization } from ".prisma/client";
 
@@ -72,14 +73,9 @@ export async function createOrganization(
   attemptCount = 0
 ): Promise<Organization & { projects: Project[] }> {
   const uniqueOrgSlug = `${slug(title)}-${nanoid(4)}`;
-  const uniqueProjectSlug = `${slug(projectName)}-${nanoid(4)}`;
 
   const orgWithSameSlug = await prisma.organization.findFirst({
     where: { slug: uniqueOrgSlug },
-  });
-
-  const projectWithSameSlug = await prisma.project.findFirst({
-    where: { slug: uniqueProjectSlug },
   });
 
   if (attemptCount > 100) {
@@ -88,7 +84,7 @@ export async function createOrganization(
     );
   }
 
-  if (orgWithSameSlug || projectWithSameSlug) {
+  if (orgWithSameSlug) {
     return createOrganization(
       {
         title,
@@ -109,36 +105,23 @@ export async function createOrganization(
           role: "ADMIN",
         },
       },
-      projects: {
-        create: {
-          name: projectName,
-          slug: uniqueProjectSlug,
-        },
-      },
     },
     include: {
       members: true,
-      projects: true,
     },
   });
 
-  const adminMember = organization.members[0];
-  const defaultProject = organization.projects[0];
-
-  // Create the dev and prod environments
-  await createEnvironment(organization, defaultProject, "PRODUCTION");
-  await createEnvironment(
-    organization,
-    defaultProject,
-    "DEVELOPMENT",
-    adminMember
-  );
+  const project = await createProject({
+    organizationSlug: organization.slug,
+    name: projectName,
+    userId,
+  });
 
   await workerQueue.enqueue("organizationCreated", {
     id: organization.id,
   });
 
-  return organization;
+  return { ...organization, projects: [project] };
 }
 
 export async function createEnvironment(

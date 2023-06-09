@@ -2,7 +2,7 @@ import { nanoid } from "nanoid";
 import slug from "slug";
 import { prisma } from "~/db.server";
 import type { Project } from ".prisma/client";
-import { Organization } from "./organization.server";
+import { Organization, createEnvironment } from "./organization.server";
 export type { Project } from ".prisma/client";
 
 export async function createProject(
@@ -50,7 +50,7 @@ export async function createProject(
     );
   }
 
-  return prisma.project.create({
+  const project = await prisma.project.create({
     data: {
       name,
       slug: uniqueProjectSlug,
@@ -61,7 +61,20 @@ export async function createProject(
       },
     },
     include: {
-      organization: true,
+      organization: {
+        include: {
+          members: true,
+        },
+      },
     },
   });
+
+  // Create the dev and prod environments
+  await createEnvironment(organization, project, "PRODUCTION");
+
+  for (const member of project.organization.members) {
+    await createEnvironment(organization, project, "DEVELOPMENT", member);
+  }
+
+  return project;
 }
