@@ -42,12 +42,15 @@ import {
   RunPanelElements,
   RunPanelError,
   RunPanelHeader,
+  RunPanelIconElement,
+  RunPanelIconSection,
   RunPanelIconTitle,
 } from "./RunCard";
 import { TaskCard } from "./TaskCard";
 import { taskPath, eventPath } from "~/utils/pathBuilder";
 import { usePathName } from "~/hooks/usePathName";
 import { Callout } from "~/components/primitives/Callout";
+import { CodeBlock } from "~/components/code/CodeBlock";
 
 export const loader = async ({ request, params }: LoaderArgs) => {
   const userId = await requireUserId(request);
@@ -270,17 +273,56 @@ export default function Page() {
                     title={"Summary"}
                   />
                   <RunPanelBody>
+                    <RunPanelIconSection className="mb-4">
+                      {run.startedAt && (
+                        <RunPanelIconElement
+                          icon="calendar"
+                          label="Started at"
+                          value={formatDateTime(run.startedAt, "long")}
+                        />
+                      )}
+                      {run.completedAt && (
+                        <RunPanelIconElement
+                          icon="flag"
+                          label="Finished at"
+                          value={formatDateTime(run.completedAt, "long")}
+                        />
+                      )}
+                      {run.startedAt && run.completedAt && (
+                        <RunPanelIconElement
+                          icon="clock"
+                          label="Total duration"
+                          value={formatDuration(
+                            run.startedAt,
+                            run.completedAt,
+                            {
+                              style: "long",
+                            }
+                          )}
+                        />
+                      )}
+                    </RunPanelIconSection>
                     {run.error && (
                       <RunPanelError
                         text={run.error.message}
                         stackTrace={run.error.stack}
                       />
                     )}
+                    {run.output ? (
+                      <CodeBlock language="json" code={run.output} />
+                    ) : (
+                      run.output === null && (
+                        <Paragraph variant="small">
+                          This run returned nothing
+                        </Paragraph>
+                      )
+                    )}
                   </RunPanelBody>
                 </RunPanel>
               </div>
             )}
           </div>
+
           {/* Detail view */}
           <div className="overflow-y-auto py-4 pr-4">
             <Header2 className="mb-2">Detail</Header2>

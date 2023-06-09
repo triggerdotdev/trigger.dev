@@ -150,10 +150,16 @@ export function RunPanelError({
 
 export function RunPanelIconSection({
   children,
+  className,
 }: {
   children: React.ReactNode;
+  className?: string;
 }) {
-  return <div className="flex flex-wrap gap-x-8 gap-y-2">{children}</div>;
+  return (
+    <div className={cn("flex flex-wrap gap-x-8 gap-y-2", className)}>
+      {children}
+    </div>
+  );
 }
 
 export function RunPanelIconElement({

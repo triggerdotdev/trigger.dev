@@ -114,8 +114,12 @@ export class RunPresenter {
     };
 
     let runError: ErrorWithStack | undefined = undefined;
+    let runOutput: string | null | undefined = run.output
+      ? JSON.stringify(run.output, null, 2)
+      : null;
     if (run.status === "FAILURE") {
       runError = ErrorWithStackSchema.parse(run.output);
+      runOutput = undefined;
     }
 
     return {
@@ -126,7 +130,7 @@ export class RunPresenter {
       completedAt: run.completedAt,
       isTest: run.isTest,
       version: run.version.version,
-      output: run.output,
+      output: runOutput,
       elements: Array.from(mergedElements.values()),
       environment: {
         type: run.environment.type,
