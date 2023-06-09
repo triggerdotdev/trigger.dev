@@ -19,6 +19,7 @@ import {
   RunPanelIconSection,
   RunPanelIconTitle,
   UpdatingDelay,
+  UpdatingDuration,
 } from "../_app.orgs.$organizationSlug.projects.$projectParam.jobs.$jobParam.runs.$runParam/RunCard";
 import { TaskStatusIcon } from "../_app.orgs.$organizationSlug.projects.$projectParam.jobs.$jobParam.runs.$runParam/TaskStatus";
 
@@ -76,9 +77,10 @@ export default function Page() {
         title={<RunPanelIconTitle icon={icon} title={name} />}
         accessory={
           <Paragraph variant="extra-small">
-            {formatDuration(startedAt, completedAt, {
-              style: "short",
-            })}
+            <UpdatingDuration
+              start={startedAt ?? undefined}
+              end={completedAt ?? undefined}
+            />
           </Paragraph>
         }
       />
