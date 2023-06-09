@@ -88,7 +88,9 @@ export function TaskCard({
             styleName={style?.style}
           />
           <RunPanelBody>
-            {error && <RunPanelError error={error} />}
+            {error && (
+              <RunPanelError text={error.message} stackTrace={error.stack} />
+            )}
             {description && (
               <RunPanelDescription
                 text={description}

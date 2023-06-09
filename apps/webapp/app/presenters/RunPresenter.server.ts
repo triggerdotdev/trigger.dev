@@ -99,6 +99,7 @@ export class RunPresenter {
       const { children, ...t } = task;
       return {
         ...t,
+        error: t.error ? ErrorWithStackSchema.parse(t.error) : undefined,
         connection: t.runConnection,
         properties:
           t.properties == null
