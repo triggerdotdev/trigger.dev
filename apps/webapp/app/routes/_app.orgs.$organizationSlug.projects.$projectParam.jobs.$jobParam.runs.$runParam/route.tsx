@@ -1,7 +1,7 @@
 import { BoltIcon } from "@heroicons/react/24/solid";
-import { Outlet, useNavigate } from "@remix-run/react";
+import { Outlet, useNavigate, useRevalidator } from "@remix-run/react";
 import { LoaderArgs } from "@remix-run/server-runtime";
-import { useCallback, useMemo } from "react";
+import { useCallback, useEffect, useMemo } from "react";
 import { redirect, typedjson, useTypedLoaderData } from "remix-typedjson";
 import invariant from "tiny-invariant";
 import { CodeBlock } from "~/components/code/CodeBlock";
@@ -42,6 +42,7 @@ import {
   jobPath,
   runTaskPath,
   runCompletedPath,
+  runStreamingPath,
 } from "~/utils/pathBuilder";
 import {
   RunPanel,
@@ -56,6 +57,7 @@ import {
 } from "./RunCard";
 import { TaskCard } from "./TaskCard";
 import { TaskCardSkeleton } from "./TaskCardSkeleton";
+import { useEventSource } from "remix-utils";
 
 export const loader = async ({ request, params }: LoaderArgs) => {
   const userId = await requireUserId(request);
@@ -150,7 +152,19 @@ export default function Page() {
 
   const basicStatus = runBasicStatus(run.status);
 
-  console.log(run);
+  const revalidator = useRevalidator();
+  const events = useEventSource(
+    runStreamingPath(organization, project, job, run),
+    {
+      event: "update",
+    }
+  );
+  useEffect(() => {
+    if (events !== null) {
+      revalidator.revalidate();
+    }
+    // WARNING Don't put the revalidator in the useEffect deps array or bad things will happen
+  }, [events]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <PageContainer>

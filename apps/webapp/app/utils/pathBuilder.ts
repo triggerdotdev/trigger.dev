@@ -148,6 +148,15 @@ export function runPath(
   return `${jobPath(organization, project, job)}/runs/${runParam(run)}`;
 }
 
+export function runStreamingPath(
+  organization: OrgForPath,
+  project: ProjectForPath,
+  job: JobForPath,
+  run: RunForPath
+) {
+  return `${runPath(organization, project, job, run)}/stream`;
+}
+
 export function runParam(run: RunForPath) {
   return run.id;
 }
