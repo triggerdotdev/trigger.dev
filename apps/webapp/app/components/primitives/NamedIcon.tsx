@@ -49,6 +49,7 @@ import { WebhookIcon } from "~/assets/icons/WebhookIcon";
 import { cn } from "~/utils/cn";
 import { LogoIcon } from "../LogoIcon";
 import { Spinner } from "./Spinner";
+import { HourglassIcon } from "lucide-react";
 
 const icons = {
   account: (className: string) => (
@@ -83,6 +84,9 @@ const icons = {
   ),
   "chevron-right": (className: string) => (
     <ChevronRightIcon className={cn("text-dimmed", className)} />
+  ),
+  countdown: (className: string) => (
+    <HourglassIcon className={cn("text-amber-400", className)} />
   ),
   clock: (className: string) => (
     <ClockIcon className={cn("text-cyan-500", className)} />

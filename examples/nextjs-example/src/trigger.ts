@@ -290,6 +290,8 @@ new Job(client, {
       }
     );
 
+    await io.wait("5 minutes", 5 * 60);
+
     await io.runTask(
       "Fingers crossed",
       {

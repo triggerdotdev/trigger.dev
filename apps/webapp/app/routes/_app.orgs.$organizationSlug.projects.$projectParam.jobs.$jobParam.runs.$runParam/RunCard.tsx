@@ -1,13 +1,11 @@
-import {
-  DisplayProperty,
-  Style,
-  StyleName,
-} from "@/../../packages/internal/src";
+import { DisplayProperty, StyleName } from "@/../../packages/internal/src";
+import { useEffect, useState } from "react";
 import { CodeBlock } from "~/components/code/CodeBlock";
 import { Callout } from "~/components/primitives/Callout";
 import { LabelValueStack } from "~/components/primitives/LabelValueStack";
 import { NamedIcon } from "~/components/primitives/NamedIcon";
 import { Paragraph } from "~/components/primitives/Paragraph";
+import { formatDuration } from "~/utils";
 import { cn } from "~/utils/cn";
 
 type RunPanelProps = {
@@ -217,6 +215,59 @@ export function TaskSeparator({ depth }: { depth: number }) {
     <div
       className="h-4 w-4 border-r border-slate-600"
       style={{ marginLeft: `${depth}rem` }}
+    />
+  );
+}
+
+const updateInterval = 100;
+
+export function UpdatingDuration({ start, end }: { start?: Date; end?: Date }) {
+  const [now, setNow] = useState<Date>();
+
+  useEffect(() => {
+    if (end) return;
+
+    const interval = setInterval(() => {
+      setNow(new Date());
+    }, updateInterval);
+
+    return () => clearInterval(interval);
+  }, [end]);
+
+  return (
+    <span>
+      {formatDuration(start, end || now, {
+        style: "short",
+        maxDecimalPoints: 0,
+      })}
+    </span>
+  );
+}
+
+export function UpdatingDelay({ delayUntil }: { delayUntil: Date }) {
+  const [now, setNow] = useState<Date>();
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      const date = new Date();
+      if (date > delayUntil) {
+        setNow(delayUntil);
+        return;
+      }
+      setNow(date);
+    }, updateInterval);
+
+    return () => clearInterval(interval);
+  }, [delayUntil]);
+
+  return (
+    <RunPanelIconProperty
+      icon="countdown"
+      label="Delay finishes in"
+      value={formatDuration(now, delayUntil, {
+        style: "long",
+        maxDecimalPoints: 0,
+      })}
     />
   );
 }

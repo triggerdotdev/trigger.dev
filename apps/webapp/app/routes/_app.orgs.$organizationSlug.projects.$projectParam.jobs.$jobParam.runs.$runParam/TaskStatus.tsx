@@ -38,9 +38,7 @@ export function TaskStatusIcon({
       );
     case "WAITING":
       return (
-        <ClockIcon
-          className={cn(taskStatusClassNameColor(status), className)}
-        />
+        <Spinner className={cn(taskStatusClassNameColor(status), className)} />
       );
     case "RUNNING":
       return (
@@ -64,7 +62,7 @@ function taskStatusClassNameColor(status: TaskStatus): string {
     case "RUNNING":
       return "text-blue-500";
     case "WAITING":
-      return "text-amber-300";
+      return "text-blue-500";
     case "ERRORED":
       return "text-rose-500";
   }

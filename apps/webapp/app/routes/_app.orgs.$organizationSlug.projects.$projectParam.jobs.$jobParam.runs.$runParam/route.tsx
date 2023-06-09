@@ -150,6 +150,8 @@ export default function Page() {
 
   const basicStatus = runBasicStatus(run.status);
 
+  console.log(run);
+
   return (
     <PageContainer>
       <PageHeader>

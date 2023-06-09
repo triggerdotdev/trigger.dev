@@ -115,12 +115,15 @@ export function formatDateTime(
   }
 }
 
+type DurationOptions = {
+  style?: "long" | "short";
+  maxDecimalPoints?: number;
+};
+
 export function formatDuration(
   start?: Date | null,
   end?: Date | null,
-  options?: {
-    style?: "long" | "short";
-  }
+  options?: DurationOptions
 ): string {
   if (!start || !end) {
     return "–";
@@ -131,10 +134,10 @@ export function formatDuration(
 
 export function formatDurationMilliseconds(
   milliseconds: number,
-  options?: { style?: "long" | "short" }
+  options?: DurationOptions
 ): string {
   let duration = humanizeDuration(milliseconds, {
-    maxDecimalPoints: 1,
+    maxDecimalPoints: options?.maxDecimalPoints ?? 1,
     largest: 2,
   });
 

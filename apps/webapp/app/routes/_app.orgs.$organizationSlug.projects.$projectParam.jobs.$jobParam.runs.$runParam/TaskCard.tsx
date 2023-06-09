@@ -1,6 +1,6 @@
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { Task } from "~/presenters/RunPresenter.server";
-import { formatDuration } from "~/utils";
+import { formatDateTime, formatDuration } from "~/utils";
 import { cn } from "~/utils/cn";
 import {
   RunPanel,
@@ -13,6 +13,8 @@ import {
   RunPanelIconSection,
   RunPanelIconTitle,
   TaskSeparator,
+  UpdatingDuration,
+  UpdatingDelay,
 } from "./RunCard";
 import { TaskStatusIcon } from "./TaskStatus";
 import { Fragment, useState } from "react";
@@ -20,6 +22,7 @@ import simplur from "simplur";
 import { ChevronDownIcon, Square2StackIcon } from "@heroicons/react/24/solid";
 import { NamedIcon } from "~/components/primitives/NamedIcon";
 import { AnimatePresence, motion } from "framer-motion";
+import { delay } from "lodash";
 
 type TaskCardProps = Task & {
   selectedId?: string;
@@ -28,7 +31,6 @@ type TaskCardProps = Task & {
   depth: number;
 };
 
-//todo add links to properties
 export function TaskCard({
   selectedId,
   selectedTask,
@@ -47,6 +49,7 @@ export function TaskCard({
   properties,
   subtasks,
   error,
+  delayUntil,
 }: TaskCardProps) {
   const [expanded, setExpanded] = useState(false);
   const isSelected = id === selectedId;
@@ -80,9 +83,10 @@ export function TaskCard({
             }
             accessory={
               <Paragraph variant="extra-small">
-                {formatDuration(startedAt, completedAt, {
-                  style: "short",
-                })}
+                <UpdatingDuration
+                  start={startedAt ?? undefined}
+                  end={completedAt ?? undefined}
+                />
               </Paragraph>
             }
             styleName={style?.style}
@@ -103,6 +107,21 @@ export function TaskCard({
                   icon="key"
                   label="Key"
                   value={displayKey}
+                />
+              )}
+              {delayUntil && !completedAt && (
+                <>
+                  <UpdatingDelay delayUntil={delayUntil} />
+                </>
+              )}
+              {delayUntil && completedAt && (
+                <RunPanelIconProperty
+                  icon="clock"
+                  label="Delay duration"
+                  value={formatDuration(startedAt, delayUntil, {
+                    style: "long",
+                    maxDecimalPoints: 0,
+                  })}
                 />
               )}
               {connection && (

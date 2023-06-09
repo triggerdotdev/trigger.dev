@@ -18,6 +18,7 @@ import {
   RunPanelIconProperty,
   RunPanelIconSection,
   RunPanelIconTitle,
+  UpdatingDelay,
 } from "../_app.orgs.$organizationSlug.projects.$projectParam.jobs.$jobParam.runs.$runParam/RunCard";
 import { TaskStatusIcon } from "../_app.orgs.$organizationSlug.projects.$projectParam.jobs.$jobParam.runs.$runParam/TaskStatus";
 
@@ -97,12 +98,23 @@ export default function Page() {
               value={formatDateTime(completedAt, "long")}
             />
           )}
-          {delayUntil && (
+          {delayUntil && !completedAt && (
+            <>
+              <RunPanelIconProperty
+                icon="flag"
+                label="Continues at"
+                value={formatDateTime(delayUntil, "long")}
+              />
+              <UpdatingDelay delayUntil={delayUntil} />
+            </>
+          )}
+          {delayUntil && completedAt && (
             <RunPanelIconProperty
               icon="clock"
-              label="Total delay"
-              value={formatDuration(startedAt, completedAt, {
+              label="Delay duration"
+              value={formatDuration(startedAt, delayUntil, {
                 style: "long",
+                maxDecimalPoints: 0,
               })}
             />
           )}
