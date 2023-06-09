@@ -1,19 +1,22 @@
 import type {
   Job as GraphileJob,
-  JobHelpers,
   Runner as GraphileRunner,
+  JobHelpers,
   RunnerOptions,
   Task,
   TaskList,
   TaskSpec,
 } from "graphile-worker";
 import { run as graphileRun } from "graphile-worker";
-import type { MessageCatalogSchema } from "./messageCatalogSchema.server";
 
-import { z } from "zod";
-import { logger } from "~/services/logger";
-import { Prisma, PrismaClient, PrismaClientOrTransaction } from "~/db.server";
 import { omit } from "lodash";
+import { z } from "zod";
+import { PrismaClient, PrismaClientOrTransaction } from "~/db.server";
+import { logger } from "~/services/logger";
+
+export interface MessageCatalogSchema {
+  [key: string]: z.ZodFirstPartySchemaTypes | z.ZodDiscriminatedUnion<any, any>;
+}
 
 const GraphileJobSchema = z.object({
   id: z.coerce.string(),
