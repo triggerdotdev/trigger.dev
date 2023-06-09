@@ -11,7 +11,7 @@ import { Paragraph } from "~/components/primitives/Paragraph";
 import { cn } from "~/utils/cn";
 
 type RunPanelProps = {
-  selected: boolean;
+  selected?: boolean;
   children: React.ReactNode;
   onClick?: () => void;
   className?: string;
@@ -19,7 +19,7 @@ type RunPanelProps = {
 };
 
 export function RunPanel({
-  selected,
+  selected = false,
   children,
   onClick,
   className,

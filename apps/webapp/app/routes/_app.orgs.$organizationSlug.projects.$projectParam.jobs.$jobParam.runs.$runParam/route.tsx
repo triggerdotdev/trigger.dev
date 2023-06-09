@@ -1,16 +1,13 @@
 import { BoltIcon } from "@heroicons/react/24/solid";
-import {
-  Outlet,
-  useLocation,
-  useNavigate,
-  useNavigation,
-} from "@remix-run/react";
+import { Outlet, useNavigate } from "@remix-run/react";
 import { LoaderArgs } from "@remix-run/server-runtime";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo } from "react";
 import { redirect, typedjson, useTypedLoaderData } from "remix-typedjson";
 import invariant from "tiny-invariant";
+import { CodeBlock } from "~/components/code/CodeBlock";
 import { environmentTitle } from "~/components/environments/EnvironmentLabel";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
+import { Callout } from "~/components/primitives/Callout";
 import { Header2 } from "~/components/primitives/Headers";
 import { NamedIcon } from "~/components/primitives/NamedIcon";
 import {
@@ -28,35 +25,36 @@ import {
   RunStatusIcon,
   RunStatusLabel,
   runBasicStatus,
-  runStatusClassNameColor,
   runStatusTitle,
 } from "~/components/runs/RunStatuses";
 import { useJob } from "~/hooks/useJob";
 import { useOrganization } from "~/hooks/useOrganizations";
+import { usePathName } from "~/hooks/usePathName";
 import { useProject } from "~/hooks/useProject";
+import { JobRunStatus } from "~/models/job.server";
 import { RunPresenter } from "~/presenters/RunPresenter.server";
 import { requireUserId } from "~/services/session.server";
 import { formatDateTime, formatDuration } from "~/utils";
+import { cn } from "~/utils/cn";
 import { Handle } from "~/utils/handle";
-import { jobPath } from "~/utils/pathBuilder";
+import {
+  runEventPath,
+  jobPath,
+  runTaskPath,
+  runCompletedPath,
+} from "~/utils/pathBuilder";
 import {
   RunPanel,
   RunPanelBody,
   RunPanelDivider,
-  RunPanelProperties,
   RunPanelError,
   RunPanelHeader,
   RunPanelIconProperty,
   RunPanelIconSection,
   RunPanelIconTitle,
+  RunPanelProperties,
 } from "./RunCard";
 import { TaskCard } from "./TaskCard";
-import { taskPath, eventPath } from "~/utils/pathBuilder";
-import { usePathName } from "~/hooks/usePathName";
-import { Callout } from "~/components/primitives/Callout";
-import { CodeBlock } from "~/components/code/CodeBlock";
-import { cn } from "~/utils/cn";
-import { JobRunStatus } from "~/models/job.server";
 import { TaskCardSkeleton } from "./TaskCardSkeleton";
 
 export const loader = async ({ request, params }: LoaderArgs) => {
@@ -89,7 +87,7 @@ export const loader = async ({ request, params }: LoaderArgs) => {
   //redirect to the event if no event or task is selected
   if (!eventParam && !taskParam) {
     return redirect(
-      eventPath(
+      runEventPath(
         { slug: organizationSlug },
         { slug: projectParam },
         { id: jobParam },
@@ -121,16 +119,24 @@ export default function Page() {
   const navigate = useNavigate();
 
   const selectedTask = useCallback((id: string) => {
-    navigate(taskPath(organization, project, job, run, id));
+    navigate(runTaskPath(organization, project, job, run, id));
   }, []);
 
   const selectedEvent = useCallback((id: string) => {
-    navigate(eventPath(organization, project, job, run, id));
+    navigate(runEventPath(organization, project, job, run, id));
+  }, []);
+
+  const selectedCompleted = useCallback(() => {
+    navigate(runCompletedPath(organization, project, job, run));
   }, []);
 
   const pathName = usePathName();
 
   const selectedId = useMemo(() => {
+    if (pathName.endsWith("/completed")) {
+      return "completed";
+    }
+
     const taskMatch = pathName.match(taskPattern);
     const taskId = taskMatch ? taskMatch[1] : undefined;
     if (taskId) {
@@ -143,8 +149,6 @@ export default function Page() {
   }, [pathName]);
 
   const basicStatus = runBasicStatus(run.status);
-
-  console.log(run);
 
   return (
     <PageContainer>
@@ -274,7 +278,10 @@ export default function Page() {
             {(basicStatus === "COMPLETED" || basicStatus === "FAILED") && (
               <div>
                 <Header2 className={cn("mb-2")}>Run Summary</Header2>
-                <RunPanel selected={false}>
+                <RunPanel
+                  selected={selectedId === "completed"}
+                  onClick={() => selectedCompleted()}
+                >
                   <RunPanelHeader
                     icon={
                       <RunStatusIcon

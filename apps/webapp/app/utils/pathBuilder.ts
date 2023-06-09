@@ -153,7 +153,7 @@ export function runParam(run: RunForPath) {
 }
 
 // Task
-export function taskPath(
+export function runTaskPath(
   organization: OrgForPath,
   project: ProjectForPath,
   job: JobForPath,
@@ -164,7 +164,7 @@ export function taskPath(
 }
 
 // Event
-export function eventPath(
+export function runEventPath(
   organization: OrgForPath,
   project: ProjectForPath,
   job: JobForPath,
@@ -172,6 +172,16 @@ export function eventPath(
   eventId: string
 ) {
   return `${runPath(organization, project, job, run)}/events/${eventId}`;
+}
+
+// Event
+export function runCompletedPath(
+  organization: OrgForPath,
+  project: ProjectForPath,
+  job: JobForPath,
+  run: RunForPath
+) {
+  return `${runPath(organization, project, job, run)}/completed`;
 }
 
 // Docs

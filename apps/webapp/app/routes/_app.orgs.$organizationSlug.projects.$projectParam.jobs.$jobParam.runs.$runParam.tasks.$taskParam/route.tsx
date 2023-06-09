@@ -82,34 +82,32 @@ export default function Page() {
         }
       />
       <RunPanelBody>
-        <div className="mb-4 border-b border-slate-800 pb-4">
-          <RunPanelIconSection>
-            {startedAt && (
-              <RunPanelIconProperty
-                icon="calendar"
-                label="Started at"
-                value={formatDateTime(startedAt, "long")}
-              />
-            )}
-            {completedAt && (
-              <RunPanelIconProperty
-                icon="flag"
-                label="Finished at"
-                value={formatDateTime(completedAt, "long")}
-              />
-            )}
-            {delayUntil && (
-              <RunPanelIconProperty
-                icon="clock"
-                label="Total delay"
-                value={formatDuration(startedAt, completedAt, {
-                  style: "long",
-                })}
-              />
-            )}
-          </RunPanelIconSection>
-          <RunPanelDivider />
-        </div>
+        <RunPanelIconSection>
+          {startedAt && (
+            <RunPanelIconProperty
+              icon="calendar"
+              label="Started at"
+              value={formatDateTime(startedAt, "long")}
+            />
+          )}
+          {completedAt && (
+            <RunPanelIconProperty
+              icon="flag"
+              label="Finished at"
+              value={formatDateTime(completedAt, "long")}
+            />
+          )}
+          {delayUntil && (
+            <RunPanelIconProperty
+              icon="clock"
+              label="Total delay"
+              value={formatDuration(startedAt, completedAt, {
+                style: "long",
+              })}
+            />
+          )}
+        </RunPanelIconSection>
+        <RunPanelDivider />
         {description && (
           <RunPanelDescription text={description} variant={style?.variant} />
         )}

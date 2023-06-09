@@ -12,6 +12,7 @@ import {
   RunPanelHeader,
   RunPanelIconProperty,
   RunPanelIconSection,
+  RunPanelDivider,
 } from "../_app.orgs.$organizationSlug.projects.$projectParam.jobs.$jobParam.runs.$runParam/RunCard";
 import { EventDetailsPresenter } from "~/presenters/EventDetailsPresenter.server";
 import { useJob } from "~/hooks/useJob";
@@ -52,23 +53,22 @@ export default function Page() {
     <RunPanel selected={false}>
       <RunPanelHeader icon={job.event.icon} title={job.event.title} />
       <RunPanelBody>
-        <div className="mb-4 border-b border-slate-800 pb-4">
-          <RunPanelIconSection>
+        <RunPanelIconSection>
+          <RunPanelIconProperty
+            icon="calendar"
+            label="Created"
+            value={formatDateTime(timestamp, "long")}
+          />
+          {deliveredAt && (
             <RunPanelIconProperty
-              icon="calendar"
-              label="Created"
-              value={formatDateTime(timestamp, "long")}
+              icon="flag"
+              label="Finished at"
+              value={formatDateTime(deliveredAt, "long")}
             />
-            {deliveredAt && (
-              <RunPanelIconProperty
-                icon="flag"
-                label="Finished at"
-                value={formatDateTime(deliveredAt, "long")}
-              />
-            )}
-            <RunPanelIconProperty icon="id" label="Event name" value={name} />
-          </RunPanelIconSection>
-        </div>
+          )}
+          <RunPanelIconProperty icon="id" label="Event name" value={name} />
+        </RunPanelIconSection>
+        <RunPanelDivider />
         <div className="mt-4 flex flex-col gap-2">
           {run.properties.length > 0 && (
             <div className="mb-2 flex flex-col gap-4">
