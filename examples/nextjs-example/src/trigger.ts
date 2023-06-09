@@ -289,6 +289,16 @@ new Job(client, {
         );
       }
     );
+
+    await io.runTask(
+      "Fingers crossed",
+      {
+        name: "Just a task 🤞",
+      },
+      async () => {
+        throw new Error("You messed up buddy!");
+      }
+    );
   },
 });
 
