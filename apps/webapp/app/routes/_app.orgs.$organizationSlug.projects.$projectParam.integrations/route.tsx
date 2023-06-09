@@ -47,7 +47,7 @@ import { IntegrationsPresenter } from "~/presenters/IntegrationsPresenter.server
 import { requireUser } from "~/services/session.server";
 import { formatDateTime } from "~/utils";
 import { Handle } from "~/utils/handle";
-import { docsPath, integrationPath } from "~/utils/pathBuilder";
+import { docsPath, integrationClientPath } from "~/utils/pathBuilder";
 
 export const loader = async ({ request, params }: LoaderArgs) => {
   const user = await requireUser(request);
@@ -279,7 +279,7 @@ function ConnectedIntegrationsList({
                 ) : (
                   <>
                     {filteredItems.map((client) => {
-                      const path = integrationPath(
+                      const path = integrationClientPath(
                         organization,
                         project,
                         client

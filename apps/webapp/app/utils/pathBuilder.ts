@@ -7,7 +7,7 @@ type OrgForPath = Pick<Organization, "slug">;
 type ProjectForPath = Pick<Project, "slug">;
 type JobForPath = Pick<Job, "slug">;
 type RunForPath = Pick<Job, "id">;
-type ApiConnectionClientForPath = Pick<ApiConnectionClient, "id">;
+type ApiConnectionClientForPath = Pick<ApiConnectionClient, "slug">;
 
 export function organizationsPath() {
   return `/`;
@@ -92,13 +92,18 @@ function projectParam(project: ProjectForPath) {
 }
 
 // Integration
-
-export function integrationPath(
+export function integrationClientPath(
   organization: OrgForPath,
   project: ProjectForPath,
-  integration: ApiConnectionClientForPath
+  client: ApiConnectionClientForPath
 ) {
-  return `${projectIntegrationsPath(organization, project)}/${integration}`;
+  return `${projectIntegrationsPath(organization, project)}/${clientParam(
+    client
+  )}`;
+}
+
+function clientParam(integration: ApiConnectionClientForPath) {
+  return integration.slug;
 }
 
 // Job

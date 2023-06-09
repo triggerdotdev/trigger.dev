@@ -17,6 +17,7 @@ import { NavLinkButton } from "../primitives/Buttons";
 import type { IconNames } from "../primitives/NamedIcon";
 import { SimpleTooltip } from "../primitives/Tooltip";
 import { UserProfilePhoto } from "../UserProfilePhoto";
+import { useOptionalIntegrationClient } from "~/hooks/useIntegrationClient";
 
 export function SideMenuContainer({ children }: { children: React.ReactNode }) {
   return (
@@ -44,7 +45,8 @@ export function ProjectSideMenu() {
 
   //we collapse the menu if we're in a job or an integration
   const job = useOptionalJob();
-  const isCollapsed = job !== undefined;
+  const client = useOptionalIntegrationClient();
+  const isCollapsed = job !== undefined || client !== undefined;
 
   const jobsActive =
     job !== undefined ||
