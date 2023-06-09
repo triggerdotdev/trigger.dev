@@ -30,7 +30,11 @@ function webhookData(data: any): data is WebhookData {
 
 export function createRepoEventSource(
   integration: TriggerIntegration<IntegrationClient<Octokit, typeof tasks>>
-) {
+): ExternalSource<
+  TriggerIntegration<IntegrationClient<Octokit, typeof tasks>>,
+  { repo: string },
+  "HTTP"
+> {
   return new ExternalSource("HTTP", {
     id: "github.repo",
     version: "0.1.1",
@@ -117,7 +121,11 @@ export function createRepoEventSource(
 
 export function createOrgEventSource(
   integration: TriggerIntegration<IntegrationClient<Octokit, typeof tasks>>
-) {
+): ExternalSource<
+  TriggerIntegration<IntegrationClient<Octokit, typeof tasks>>,
+  { org: string },
+  "HTTP"
+> {
   return new ExternalSource("HTTP", {
     id: "github.org",
     version: "0.1.1",

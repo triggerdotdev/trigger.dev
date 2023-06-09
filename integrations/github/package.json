@@ -14,6 +14,7 @@
   ],
   "devDependencies": {
     "@octokit/webhooks-types": "^6.10.0",
+    "@octokit/types": "^9.2.3",
     "@trigger.dev/tsconfig": "workspace:*",
     "@types/node": "18",
     "rimraf": "^3.0.2",
@@ -29,5 +30,8 @@
     "@trigger.dev/sdk": "workspace:^1.0.0",
     "octokit": "^2.0.14",
     "zod": "^3.20.2"
+  },
+  "engines": {
+    "node": ">=18"
   }
 }

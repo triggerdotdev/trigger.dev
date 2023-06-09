@@ -1,12 +1,23 @@
-import { authenticatedTask } from "@trigger.dev/sdk";
 import { Octokit } from "octokit";
+import type { GetResponseDataTypeFromEndpointMethod } from "@octokit/types";
+import type { AuthenticatedTask } from "@trigger.dev/sdk";
 
-export const createIssue = authenticatedTask({
-  run: async (
-    params: { title: string; repo: string },
-    client: InstanceType<typeof Octokit>,
-    task
-  ) => {
+type OctokitClient = InstanceType<typeof Octokit>;
+
+type GithubAuthenticatedTask<
+  TParams extends Record<string, unknown>,
+  TFunction extends (...args: any[]) => any
+> = AuthenticatedTask<
+  OctokitClient,
+  TParams,
+  GetResponseDataTypeFromEndpointMethod<TFunction>
+>;
+
+export const createIssue: GithubAuthenticatedTask<
+  { title: string; repo: string },
+  OctokitClient["rest"]["issues"]["create"]
+> = {
+  run: async (params, client) => {
     const [owner, repo] = params.repo.split("/");
 
     return client.rest.issues
@@ -33,14 +44,13 @@ export const createIssue = authenticatedTask({
       ],
     };
   },
-});
+};
 
-export const createIssueComment = authenticatedTask({
-  run: async (
-    params: { body: string; repo: string; issueNumber: number },
-    client: InstanceType<typeof Octokit>,
-    task
-  ) => {
+export const createIssueComment: GithubAuthenticatedTask<
+  { body: string; repo: string; issueNumber: number },
+  OctokitClient["rest"]["issues"]["createComment"]
+> = {
+  run: async (params, client) => {
     const [owner, repo] = params.repo.split("/");
 
     return client.rest.issues
@@ -68,14 +78,13 @@ export const createIssueComment = authenticatedTask({
       ],
     };
   },
-});
+};
 
-export const getRepo = authenticatedTask({
-  run: async (
-    params: { repo: string },
-    client: InstanceType<typeof Octokit>,
-    task
-  ) => {
+export const getRepo: GithubAuthenticatedTask<
+  { repo: string },
+  OctokitClient["rest"]["repos"]["get"]
+> = {
+  run: async (params, client) => {
     const [owner, repo] = params.repo.split("/");
 
     const response = await client.rest.repos.get({
@@ -97,7 +106,7 @@ export const getRepo = authenticatedTask({
       ],
     };
   },
-});
+};
 
 type ReactionContent =
   | "+1"
@@ -109,16 +118,15 @@ type ReactionContent =
   | "rocket"
   | "eyes";
 
-export const addIssueCommentReaction = authenticatedTask({
-  run: async (
-    params: {
-      repo: string;
-      commentId: number;
-      content: ReactionContent;
-    },
-    client: InstanceType<typeof Octokit>,
-    task
-  ) => {
+export const addIssueCommentReaction: GithubAuthenticatedTask<
+  {
+    repo: string;
+    commentId: number;
+    content: ReactionContent;
+  },
+  OctokitClient["rest"]["reactions"]["createForIssueComment"]
+> = {
+  run: async (params, client) => {
     const [owner, repo] = params.repo.split("/");
 
     return client.rest.reactions
@@ -176,20 +184,18 @@ export const addIssueCommentReaction = authenticatedTask({
       ],
     };
   },
-});
+};
 
-export const createIssueCommentWithReaction = authenticatedTask({
-  run: async (
-    params: {
-      body: string;
-      repo: string;
-      issueNumber: number;
-      reaction: ReactionContent;
-    },
-    client: InstanceType<typeof Octokit>,
-    task,
-    io
-  ) => {
+export const createIssueCommentWithReaction: GithubAuthenticatedTask<
+  {
+    body: string;
+    repo: string;
+    issueNumber: number;
+    reaction: ReactionContent;
+  },
+  OctokitClient["rest"]["issues"]["createComment"]
+> = {
+  run: async (params, client, task, io) => {
     const comment = await io.runTask(
       `Comment on Issue #${params.issueNumber}`,
       createIssueComment.init(params),
@@ -237,20 +243,19 @@ export const createIssueCommentWithReaction = authenticatedTask({
       ],
     };
   },
-});
+};
 
-export const updateWebhook = authenticatedTask({
-  run: async (
-    params: {
-      repo: string;
-      hookId: number;
-      url: string;
-      secret: string;
-      addEvents?: string[];
-    },
-    client: InstanceType<typeof Octokit>,
-    task
-  ) => {
+export const updateWebhook: GithubAuthenticatedTask<
+  {
+    repo: string;
+    hookId: number;
+    url: string;
+    secret: string;
+    addEvents?: string[];
+  },
+  OctokitClient["rest"]["repos"]["updateWebhook"]
+> = {
+  run: async (params, client) => {
     const [owner, repo] = params.repo.split("/");
 
     return client.rest.repos
@@ -283,20 +288,19 @@ export const updateWebhook = authenticatedTask({
       ],
     };
   },
-});
+};
 
-export const updateOrgWebhook = authenticatedTask({
-  run: async (
-    params: {
-      org: string;
-      hookId: number;
-      url: string;
-      secret: string;
-      addEvents?: string[];
-    },
-    client: InstanceType<typeof Octokit>,
-    task
-  ) => {
+export const updateOrgWebhook: GithubAuthenticatedTask<
+  {
+    org: string;
+    hookId: number;
+    url: string;
+    secret: string;
+    addEvents?: string[];
+  },
+  OctokitClient["rest"]["orgs"]["updateWebhook"]
+> = {
+  run: async (params, client) => {
     return client.rest.orgs
       .updateWebhook({
         org: params.org,
@@ -326,19 +330,18 @@ export const updateOrgWebhook = authenticatedTask({
       ],
     };
   },
-});
+};
 
-export const createWebhook = authenticatedTask({
-  run: async (
-    params: {
-      repo: string;
-      url: string;
-      secret: string;
-      events: string[];
-    },
-    client: InstanceType<typeof Octokit>,
-    task
-  ) => {
+export const createWebhook: GithubAuthenticatedTask<
+  {
+    repo: string;
+    url: string;
+    secret: string;
+    events: string[];
+  },
+  OctokitClient["rest"]["repos"]["createWebhook"]
+> = {
+  run: async (params, client) => {
     const [owner, repo] = params.repo.split("/");
 
     return client.rest.repos
@@ -370,19 +373,18 @@ export const createWebhook = authenticatedTask({
       ],
     };
   },
-});
+};
 
-export const createOrgWebhook = authenticatedTask({
-  run: async (
-    params: {
-      org: string;
-      url: string;
-      secret: string;
-      events: string[];
-    },
-    client: InstanceType<typeof Octokit>,
-    task
-  ) => {
+export const createOrgWebhook: GithubAuthenticatedTask<
+  {
+    org: string;
+    url: string;
+    secret: string;
+    events: string[];
+  },
+  OctokitClient["rest"]["orgs"]["createWebhook"]
+> = {
+  run: async (params, client, task) => {
     return client.rest.orgs
       .createWebhook({
         org: params.org,
@@ -412,16 +414,15 @@ export const createOrgWebhook = authenticatedTask({
       ],
     };
   },
-});
+};
 
-export const listWebhooks = authenticatedTask({
-  run: async (
-    params: {
-      repo: string;
-    },
-    client: InstanceType<typeof Octokit>,
-    task
-  ) => {
+export const listWebhooks: GithubAuthenticatedTask<
+  {
+    repo: string;
+  },
+  OctokitClient["rest"]["repos"]["listWebhooks"]
+> = {
+  run: async (params, client) => {
     const [owner, repo] = params.repo.split("/");
 
     return client.rest.repos
@@ -443,16 +444,15 @@ export const listWebhooks = authenticatedTask({
       ],
     };
   },
-});
+};
 
-export const listOrgWebhooks = authenticatedTask({
-  run: async (
-    params: {
-      org: string;
-    },
-    client: InstanceType<typeof Octokit>,
-    task
-  ) => {
+export const listOrgWebhooks: GithubAuthenticatedTask<
+  {
+    org: string;
+  },
+  OctokitClient["rest"]["orgs"]["listWebhooks"]
+> = {
+  run: async (params, client) => {
     return client.rest.orgs
       .listWebhooks({
         org: params.org,
@@ -471,7 +471,7 @@ export const listOrgWebhooks = authenticatedTask({
       ],
     };
   },
-});
+};
 
 export const tasks = {
   createIssue,

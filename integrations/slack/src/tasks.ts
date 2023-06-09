@@ -1,13 +1,14 @@
-import { authenticatedTask } from "@trigger.dev/sdk";
 import { clientFactory } from "./client";
+import type { AuthenticatedTask } from "@trigger.dev/sdk";
 
-export const postMessage = authenticatedTask({
-  run: async (
-    params: { text: string; channel: string },
-    client: ReturnType<typeof clientFactory>,
-    task,
-    io
-  ) => {
+type SlackClientType = ReturnType<typeof clientFactory>;
+
+export const postMessage: AuthenticatedTask<
+  ReturnType<typeof clientFactory>,
+  { text: string; channel: string },
+  Awaited<ReturnType<SlackClientType["chat"]["postMessage"]>>
+> = {
+  run: async (params, client) => {
     return client.chat.postMessage({
       text: params.text,
       channel: params.channel,
@@ -31,4 +32,4 @@ export const postMessage = authenticatedTask({
       ],
     };
   },
-});
+};
