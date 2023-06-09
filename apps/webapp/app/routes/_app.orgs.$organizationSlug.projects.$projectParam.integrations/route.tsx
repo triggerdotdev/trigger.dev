@@ -1,15 +1,12 @@
 import type { LoaderArgs } from "@remix-run/server-runtime";
-import { useMemo, useState } from "react";
 import {
   UseDataFunctionReturn,
   typedjson,
   useTypedLoaderData,
 } from "remix-typedjson";
-import simplur from "simplur";
 import invariant from "tiny-invariant";
 import { OAuthConnectSheet } from "~/components/integrations/OAuthConnectSheet";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
-import { Badge } from "~/components/primitives/Badge";
 import { LinkButton } from "~/components/primitives/Buttons";
 import { Callout } from "~/components/primitives/Callout";
 import { Header2, Header3 } from "~/components/primitives/Headers";
@@ -96,7 +93,7 @@ export default function Integrations() {
       </PageHeader>
 
       <PageBody scrollable={false}>
-        <div className="grid h-full max-w-full grid-cols-[1fr_2fr] gap-4 divide-x divide-slate-900 overflow-hidden">
+        <div className="grid h-full max-w-full grid-cols-[2fr_3fr] gap-4 divide-x divide-slate-900 overflow-hidden">
           <PossibleIntegrationsList
             integrations={integrations}
             organizationId={organization.id}
@@ -140,7 +137,7 @@ function PossibleIntegrationsList({
         value={filterText}
         onChange={(e) => setFilterText(e.target.value)}
       />
-      <div className="mt-2 flex flex-wrap gap-x-8 gap-y-2">
+      <div className="mt-2 grid grid-cols-1 gap-4 sm:grid-cols-[repeat(auto-fill,_minmax(14rem,_auto))]">
         {filteredItems.map((integration) => {
           const authMethods = Object.entries(integration.authenticationMethods);
           if (authMethods.length === 1) {
@@ -152,7 +149,6 @@ function PossibleIntegrationsList({
                   Object.keys(integration.authenticationMethods)[0]
                 }
                 organizationId={organizationId}
-                className="min-w-[15rem] flex-shrink-0"
                 button={<AddIntegrationConnection integration={integration} />}
               />
             );
@@ -160,7 +156,7 @@ function PossibleIntegrationsList({
 
           return (
             <Popover key={integration.identifier}>
-              <PopoverTrigger className="min-w-[15rem] flex-shrink-0">
+              <PopoverTrigger>
                 <AddIntegrationConnection integration={integration} />
               </PopoverTrigger>
               <PopoverContent className="w-80 p-0" side="bottom" align="start">
