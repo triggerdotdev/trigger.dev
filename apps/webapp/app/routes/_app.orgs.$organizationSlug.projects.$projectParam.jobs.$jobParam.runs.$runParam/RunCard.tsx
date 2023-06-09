@@ -1,5 +1,7 @@
 import { DisplayProperty, StyleName } from "@/../../packages/internal/src";
-import { useEffect, useState } from "react";
+import { motion } from "framer-motion";
+import { HourglassIcon } from "lucide-react";
+import { ReactNode, useEffect, useState } from "react";
 import { CodeBlock } from "~/components/code/CodeBlock";
 import { Callout } from "~/components/primitives/Callout";
 import { LabelValueStack } from "~/components/primitives/LabelValueStack";
@@ -169,14 +171,18 @@ export function RunPanelIconProperty({
   label,
   value,
 }: {
-  icon: string;
+  icon: ReactNode;
   label: string;
   value: string;
 }) {
   return (
     <div className="flex items-center gap-2">
       <div className="flex h-8 w-8 items-center justify-center rounded-sm border border-slate-800 bg-slate-850">
-        <NamedIcon name={icon} className="h-5 w-5" />
+        {typeof icon === "string" ? (
+          <NamedIcon name={icon} className="h-5 w-5" />
+        ) : (
+          icon
+        )}
       </div>
       <div className="flex flex-col gap-0.5">
         <Paragraph variant="extra-extra-small/caps">{label}</Paragraph>
@@ -262,7 +268,21 @@ export function UpdatingDelay({ delayUntil }: { delayUntil: Date }) {
 
   return (
     <RunPanelIconProperty
-      icon="countdown"
+      icon={
+        <motion.span
+          animate={{
+            rotate: 180,
+            transition: {
+              repeat: Infinity,
+              duration: 0.3,
+              delay: 5,
+              repeatDelay: 5,
+            },
+          }}
+        >
+          <HourglassIcon className="h-5 w-5 text-yellow-400" />
+        </motion.span>
+      }
       label="Delay finishes in"
       value={formatDuration(now, delayUntil, {
         style: "long",
