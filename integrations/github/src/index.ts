@@ -22,6 +22,16 @@ export type GithubIntegrationOptions = {
   token?: string;
 };
 
+type GithubSources = {
+  repo: ReturnType<typeof createRepoEventSource>;
+  org: ReturnType<typeof createOrgEventSource>;
+};
+
+type GithubTriggers = {
+  repo: ReturnType<typeof createRepoTrigger>;
+  org: ReturnType<typeof createOrgTrigger>;
+};
+
 export class Github
   implements TriggerIntegration<IntegrationClient<Octokit, typeof tasks>>
 {
@@ -47,14 +57,14 @@ export class Github
     return { key: "github", title: "GitHub", icon: "github" };
   }
 
-  get sources() {
+  get sources(): GithubSources {
     return {
       repo: this._repoSource,
       org: this._orgSource,
     };
   }
 
-  get triggers() {
+  get triggers(): GithubTriggers {
     return {
       repo: this._repoTrigger,
       org: this._orgTrigger,
@@ -189,7 +199,19 @@ export const events = {
 // params.event has to be a union of all the values of the exports events object
 type GitHubEvents = (typeof events)[keyof typeof events];
 
-function createRepoTrigger(source: ReturnType<typeof createRepoEventSource>) {
+type CreateRepoTriggerReturnType = <
+  TEventSpecification extends GitHubEvents
+>(args: {
+  event: TEventSpecification;
+  repo: string;
+}) => ExternalSourceTrigger<
+  TEventSpecification,
+  ReturnType<typeof createRepoEventSource>
+>;
+
+function createRepoTrigger(
+  source: ReturnType<typeof createRepoEventSource>
+): CreateRepoTriggerReturnType {
   return <TEventSpecification extends GitHubEvents>({
     event,
     repo,
@@ -205,7 +227,19 @@ function createRepoTrigger(source: ReturnType<typeof createRepoEventSource>) {
   };
 }
 
-function createOrgTrigger(source: ReturnType<typeof createOrgEventSource>) {
+type CreateOrgTriggerReturnType = <
+  TEventSpecification extends GitHubEvents
+>(args: {
+  event: TEventSpecification;
+  org: string;
+}) => ExternalSourceTrigger<
+  TEventSpecification,
+  ReturnType<typeof createOrgEventSource>
+>;
+
+function createOrgTrigger(
+  source: ReturnType<typeof createOrgEventSource>
+): CreateOrgTriggerReturnType {
   return <TEventSpecification extends GitHubEvents>({
     event,
     org,
