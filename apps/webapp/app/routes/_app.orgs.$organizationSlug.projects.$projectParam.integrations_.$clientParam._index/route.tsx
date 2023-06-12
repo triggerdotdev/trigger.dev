@@ -6,6 +6,7 @@ import { useIntegrationClient } from "~/hooks/useIntegrationClient";
 import { useProject } from "~/hooks/useProject";
 import { IntegrationClientJobsPresenter } from "~/presenters/IntegrationClientJobsPresenter.server";
 import { requireUserId } from "~/services/session.server";
+import { Handle } from "~/utils/handle";
 import { IntegrationClientParamSchema } from "~/utils/pathBuilder";
 
 export const loader = async ({ request, params }: LoaderArgs) => {
@@ -22,6 +23,12 @@ export const loader = async ({ request, params }: LoaderArgs) => {
   });
 
   return typedjson({ jobs });
+};
+
+export const handle: Handle = {
+  breadcrumb: {
+    slug: "integration-job",
+  },
 };
 
 export default function Page() {

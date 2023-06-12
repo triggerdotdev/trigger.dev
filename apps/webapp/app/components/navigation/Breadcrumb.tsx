@@ -7,6 +7,9 @@ import {
 } from "~/hooks/useOrganizations";
 import { useOptionalProject, useProject } from "~/hooks/useProject";
 import {
+  integrationClientConnectionsPath,
+  integrationClientPath,
+  integrationClientScopesPath,
   jobPath,
   projectEnvironmentsPath,
   projectIntegrationsPath,
@@ -18,12 +21,20 @@ import { JobsMenu } from "./JobsMenu";
 import { BreadcrumbLink } from "./NavBar";
 import { ProjectsMenu } from "./ProjectsMenu";
 import { useOptionalRun, useRun } from "~/hooks/useRun";
+import {
+  useIntegrationClient,
+  useOptionalIntegrationClient,
+} from "~/hooks/useIntegrationClient";
 
 export type Breadcrumb = {
   slug:
     | "projects"
     | "jobs"
     | "integrations"
+    | "integration"
+    | "integration-job"
+    | "integration-connections"
+    | "integration-scopes"
     | "environments"
     | "job"
     | "runs"
@@ -49,6 +60,7 @@ export function Breadcrumb() {
   const project = useOptionalProject();
   const job = useOptionalJob();
   const run = useOptionalRun();
+  const client = useOptionalIntegrationClient();
 
   return (
     <div className="hidden items-center md:flex">
@@ -61,6 +73,7 @@ export function Breadcrumb() {
             project={project}
             job={job}
             run={run}
+            client={client}
           />
         </Fragment>
       ))}
@@ -74,12 +87,14 @@ function BreadcrumbItem({
   project,
   job,
   run,
+  client,
 }: {
   breadcrumb: Breadcrumb;
   organization?: ReturnType<typeof useOrganization>;
   project?: ReturnType<typeof useProject>;
   job?: ReturnType<typeof useJob>;
   run?: ReturnType<typeof useRun>;
+  client?: ReturnType<typeof useIntegrationClient>;
 }) {
   switch (breadcrumb.slug) {
     case "projects":
@@ -106,6 +121,45 @@ function BreadcrumbItem({
           key={breadcrumb.slug}
           to={projectIntegrationsPath(organization!, project!)}
           title="Integrations"
+        />
+      );
+    case "integration":
+      return (
+        <Fragment key={breadcrumb.slug}>
+          <BreadcrumbLink
+            to={projectIntegrationsPath(organization!, project!)}
+            title="Integrations"
+          />
+          <BreadcrumbIcon />
+          <BreadcrumbLink
+            to={integrationClientPath(organization!, project!, client!)}
+            title={client!.title}
+          />
+        </Fragment>
+      );
+    case "integration-job":
+      return (
+        <BreadcrumbLink
+          to={integrationClientPath(organization!, project!, client!)}
+          title={"Jobs"}
+        />
+      );
+    case "integration-connections":
+      return (
+        <BreadcrumbLink
+          to={integrationClientConnectionsPath(
+            organization!,
+            project!,
+            client!
+          )}
+          title={"Connections"}
+        />
+      );
+    case "integration-scopes":
+      return (
+        <BreadcrumbLink
+          to={integrationClientScopesPath(organization!, project!, client!)}
+          title={"Scopes"}
         />
       );
     case "job":

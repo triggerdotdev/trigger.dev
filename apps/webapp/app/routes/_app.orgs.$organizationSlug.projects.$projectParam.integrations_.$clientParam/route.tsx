@@ -49,7 +49,7 @@ export const loader = async ({ request, params }: LoaderArgs) => {
 
 export const handle: Handle = {
   breadcrumb: {
-    slug: "integrations",
+    slug: "integration",
   },
 };
 

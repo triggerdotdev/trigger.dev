@@ -16,6 +16,7 @@ import { useProject } from "~/hooks/useProject";
 import { IntegrationClientConnectionsPresenter } from "~/presenters/IntegrationClientConnectionsPresenter.server";
 import { requireUserId } from "~/services/session.server";
 import { formatDateTime } from "~/utils";
+import { Handle } from "~/utils/handle";
 import { IntegrationClientParamSchema } from "~/utils/pathBuilder";
 
 export const loader = async ({ request, params }: LoaderArgs) => {
@@ -32,6 +33,12 @@ export const loader = async ({ request, params }: LoaderArgs) => {
   });
 
   return typedjson({ connections });
+};
+
+export const handle: Handle = {
+  breadcrumb: {
+    slug: "integration-connections",
+  },
 };
 
 export default function Page() {

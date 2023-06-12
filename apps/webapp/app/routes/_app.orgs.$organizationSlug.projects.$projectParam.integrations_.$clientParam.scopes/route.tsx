@@ -23,6 +23,7 @@ import { IntegrationClientConnectionsPresenter } from "~/presenters/IntegrationC
 import { IntegrationClientScopesPresenter } from "~/presenters/IntegrationClientScopesPresenter.server";
 import { requireUserId } from "~/services/session.server";
 import { formatDateTime } from "~/utils";
+import { Handle } from "~/utils/handle";
 import { IntegrationClientParamSchema, jobPath } from "~/utils/pathBuilder";
 
 export const loader = async ({ request, params }: LoaderArgs) => {
@@ -39,6 +40,12 @@ export const loader = async ({ request, params }: LoaderArgs) => {
   });
 
   return typedjson({ scopes });
+};
+
+export const handle: Handle = {
+  breadcrumb: {
+    slug: "integration-scopes",
+  },
 };
 
 export default function Page() {
