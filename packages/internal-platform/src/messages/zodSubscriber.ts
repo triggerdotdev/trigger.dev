@@ -193,11 +193,26 @@ export class ZodSubscriber<SubscriberSchema extends MessageCatalogSchema> {
           }
         );
       } else {
-        this.#logger.debug("[ZodSubscriber] Error handling message", {
-          error: e,
-          messageData,
-          properties,
-        });
+        if (e instanceof Error) {
+          this.#logger.debug("[ZodSubscriber] Error handling message", {
+            error: {
+              name: e.name,
+              message: e.message,
+              stack: e.stack,
+            },
+            messageData,
+            properties,
+          });
+        } else {
+          this.#logger.debug(
+            "[ZodSubscriber] Error handling message (unknown error)",
+            {
+              error: e,
+              messageData,
+              properties,
+            }
+          );
+        }
       }
 
       if (!this.#maxRedeliveries || redeliveryCount > this.#maxRedeliveries) {
