@@ -2,13 +2,9 @@ import { Outlet } from "@remix-run/react";
 import { LoaderArgs } from "@remix-run/server-runtime";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { ClipboardField } from "~/components/ClipboardField";
-import { CodeBlock } from "~/components/code/CodeBlock";
-import { InlineCode } from "~/components/code/InlineCode";
 import { connectionType } from "~/components/integrations/connectionType";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
-import { Button } from "~/components/primitives/Buttons";
 import {
-  PageButtons,
   PageHeader,
   PageInfoGroup,
   PageInfoProperty,
@@ -17,7 +13,6 @@ import {
   PageTitle,
   PageTitleRow,
 } from "~/components/primitives/PageHeader";
-import { Paragraph } from "~/components/primitives/Paragraph";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { IntegrationClientPresenter } from "~/presenters/IntegrationClientPresenter.server";
