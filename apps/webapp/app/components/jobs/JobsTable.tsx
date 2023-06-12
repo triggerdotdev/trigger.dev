@@ -52,7 +52,17 @@ export function JobsTable({
                     <NamedIcon name={job.event.icon} className="h-8 w-8" />
                     <LabelValueStack
                       label={job.title}
-                      value={job.event.title}
+                      value={
+                        job.dynamic ? (
+                          <span className="flex items-center gap-0.5">
+                            <NamedIcon name="dynamic" className="h-4 w-4" />{" "}
+                            <span className="uppercase">Dynamic:</span>{" "}
+                            {job.event.title}
+                          </span>
+                        ) : (
+                          job.event.title
+                        )
+                      }
                       variant="primary"
                     />
                   </span>

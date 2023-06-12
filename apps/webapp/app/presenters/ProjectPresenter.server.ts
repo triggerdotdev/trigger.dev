@@ -72,6 +72,11 @@ export class ProjectPresenter {
                 name: "latest",
               },
             },
+            dynamicTriggers: {
+              select: {
+                type: true,
+              },
+            },
           },
           where: {
             internal: false,
@@ -176,6 +181,7 @@ export class ProjectPresenter {
             slug: job.slug,
             title: job.title,
             version: alias.version.version,
+            dynamic: job.dynamicTriggers.length > 0,
             event: {
               title: eventSpecification.title,
               icon: eventSpecification.icon,

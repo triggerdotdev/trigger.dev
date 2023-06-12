@@ -50,6 +50,7 @@ import { cn } from "~/utils/cn";
 import { LogoIcon } from "../LogoIcon";
 import { Spinner } from "./Spinner";
 import { HourglassIcon } from "lucide-react";
+import { DynamicTriggerIcon } from "~/assets/icons/DynamicTriggerIcon";
 
 const icons = {
   account: (className: string) => (
@@ -99,6 +100,9 @@ const icons = {
   ),
   docs: (className: string) => (
     <BookOpenIcon className={cn("text-slate-400", className)} />
+  ),
+  dynamic: (className: string) => (
+    <DynamicTriggerIcon className={cn("text-cyan-500", className)} />
   ),
   error: (className: string) => (
     <ExclamationCircleIcon className={cn("text-rose-500", className)} />
