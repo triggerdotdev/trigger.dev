@@ -142,7 +142,7 @@ async function seed() {
     },
     create: {
       id: "clhkhsvx20000rmdy9u9d25e7",
-      metadata: { id: "github" },
+      metadata: {},
       client: {
         connect: {
           id: githubClient.id,
@@ -175,7 +175,7 @@ async function seed() {
     },
     create: {
       id: "clhkigzf90000rmdyfuiec6ew",
-      metadata: { id: "slack" },
+      metadata: { account: "Trigger.dev" },
       client: {
         connect: {
           id: slackClient.id,
@@ -323,7 +323,7 @@ async function seed() {
           id: externalAccount1.id,
         },
       },
-      metadata: { id: "github-user" },
+      metadata: {},
       client: {
         connect: {
           id: userGithubClient.id,

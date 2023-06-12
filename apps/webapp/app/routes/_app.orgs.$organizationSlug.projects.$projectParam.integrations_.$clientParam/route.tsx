@@ -4,6 +4,7 @@ import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { ClipboardField } from "~/components/ClipboardField";
 import { CodeBlock } from "~/components/code/CodeBlock";
 import { InlineCode } from "~/components/code/InlineCode";
+import { connectionType } from "~/components/integrations/connectionType";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { Button } from "~/components/primitives/Buttons";
 import {
@@ -81,15 +82,25 @@ export default function Integrations() {
               value={<ClipboardField value={client.slug} variant="secondary" />}
             />
             <PageInfoProperty
-              icon="calendar"
-              label="Created"
-              value={formatDateTime(client.createdAt)}
+              icon={client.integration.identifier}
+              label="API"
+              value={client.integration.name}
+            />
+            <PageInfoProperty label="Method" value={client.authMethod.name} />
+            <PageInfoProperty
+              label="Type"
+              value={connectionType(client.type)}
             />
             <PageInfoProperty icon="job" label="Jobs" value={client.jobCount} />
             <PageInfoProperty
               icon="key"
               label="Client id"
               value={client.customClientId ? client.customClientId : "Auto"}
+            />
+            <PageInfoProperty
+              icon="calendar"
+              label="Added"
+              value={formatDateTime(client.createdAt)}
             />
           </PageInfoGroup>
         </PageInfoRow>

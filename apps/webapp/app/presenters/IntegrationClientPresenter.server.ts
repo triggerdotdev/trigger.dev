@@ -95,6 +95,7 @@ export class IntegrationClientPresenter {
       jobCount: client._count.jobIntegrations,
       createdAt: client.createdAt,
       customClientId: clientId,
+      type: client.clientType,
       integration: {
         identifier: integration.identifier,
         name: integration.name,
