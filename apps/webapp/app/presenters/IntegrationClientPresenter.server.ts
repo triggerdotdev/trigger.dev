@@ -38,6 +38,27 @@ export class IntegrationClientPresenter {
           },
         },
         createdAt: true,
+        jobIntegrations: {
+          select: {
+            version: {
+              select: {
+                version: true,
+              },
+            },
+            job: {
+              select: {
+                id: true,
+                title: true,
+                slug: true,
+              },
+            },
+          },
+          where: {
+            job: {
+              internal: false,
+            },
+          },
+        },
         _count: {
           select: {
             connections: true,
@@ -97,6 +118,9 @@ export class IntegrationClientPresenter {
         type: authMethod.type,
         name: authMethod.name,
       },
+      jobs: client.jobIntegrations.map(
+        (jobIntegration) => jobIntegration.job.id
+      ),
     };
   }
 }

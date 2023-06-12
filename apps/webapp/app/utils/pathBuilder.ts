@@ -121,6 +121,22 @@ export function integrationClientPath(
   )}`;
 }
 
+export function integrationClientConnectionsPath(
+  organization: OrgForPath,
+  project: ProjectForPath,
+  client: ApiConnectionClientForPath
+) {
+  return `${integrationClientPath(organization, project, client)}/connections`;
+}
+
+export function integrationClientScopesPath(
+  organization: OrgForPath,
+  project: ProjectForPath,
+  client: ApiConnectionClientForPath
+) {
+  return `${integrationClientPath(organization, project, client)}/scopes`;
+}
+
 function clientParam(integration: ApiConnectionClientForPath) {
   return integration.slug;
 }

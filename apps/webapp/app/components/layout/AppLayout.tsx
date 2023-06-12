@@ -64,6 +64,10 @@ export function PageBody({
   );
 }
 
+export function PageBodyPadding({ children }: { children: React.ReactNode }) {
+  return <div className="p-4">{children}</div>;
+}
+
 export function MainCenteredContainer({
   children,
 }: {
