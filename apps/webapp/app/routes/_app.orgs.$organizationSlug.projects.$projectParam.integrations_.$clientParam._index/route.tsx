@@ -1,16 +1,41 @@
+import { LoaderArgs } from "@remix-run/server-runtime";
+import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { c } from "tar";
 import { JobsTable } from "~/components/jobs/JobsTable";
 import { useIntegrationClient } from "~/hooks/useIntegrationClient";
 import { useProject } from "~/hooks/useProject";
+import { IntegrationClientJobsPresenter } from "~/presenters/IntegrationClientJobsPresenter.server";
+import { requireUserId } from "~/services/session.server";
+import { IntegrationClientParamSchema } from "~/utils/pathBuilder";
+
+export const loader = async ({ request, params }: LoaderArgs) => {
+  const userId = await requireUserId(request);
+  const { organizationSlug, projectParam, clientParam } =
+    IntegrationClientParamSchema.parse(params);
+
+  const presenter = new IntegrationClientJobsPresenter();
+  const { jobs } = await presenter.call({
+    userId: userId,
+    organizationSlug,
+    projectSlug: projectParam,
+    clientSlug: clientParam,
+  });
+
+  return typedjson({ jobs });
+};
 
 export default function Page() {
-  const project = useProject();
+  const { jobs } = useTypedLoaderData<typeof loader>();
   const client = useIntegrationClient();
-  const jobs = project.jobs.filter((j) => client.jobs.includes(j.id));
+  const project = useProject();
+
+  const projectJobs = project.jobs.filter((job) =>
+    jobs.map((j) => j.id).includes(job.id)
+  );
 
   return (
     <JobsTable
-      jobs={jobs}
+      jobs={projectJobs}
       noResultsText={`No Jobs are currently using "${client.title}"`}
     />
   );

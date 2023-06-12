@@ -28,7 +28,7 @@ export const RunParamsSchema = JobParamsSchema.extend({
   eventParam: z.string().optional(),
 });
 
-export const IntegrationClientParamSchema = OrganizationParamsSchema.extend({
+export const IntegrationClientParamSchema = ProjectParamSchema.extend({
   clientParam: z.string(),
 });
 

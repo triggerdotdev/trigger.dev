@@ -33,13 +33,14 @@ import {
 
 export const loader = async ({ request, params }: LoaderArgs) => {
   const user = await requireUser(request);
-  const { organizationSlug, clientParam } =
+  const { organizationSlug, clientParam, projectParam } =
     IntegrationClientParamSchema.parse(params);
 
   const presenter = new IntegrationClientPresenter();
   const client = await presenter.call({
     userId: user.id,
     organizationSlug,
+    projectSlug: projectParam,
     clientSlug: clientParam,
   });
 

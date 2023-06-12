@@ -2,6 +2,7 @@ import { User } from ".prisma/client";
 import { PrismaClient, prisma } from "~/db.server";
 import { env } from "~/env.server";
 import { Organization } from "~/models/organization.server";
+import { Project } from "~/models/project.server";
 import { apiAuthenticationRepository } from "~/services/externalApis/apiAuthenticationRepository.server";
 import { OAuthClientSchema } from "~/services/externalApis/types";
 import { getSecretStore } from "~/services/secrets/secretStore.server";
@@ -16,10 +17,12 @@ export class IntegrationClientPresenter {
   public async call({
     userId,
     organizationSlug,
+    projectSlug,
     clientSlug,
   }: {
     userId: User["id"];
     organizationSlug: Organization["slug"];
+    projectSlug: Project["slug"];
     clientSlug: string;
   }) {
     const client = await this.#prismaClient.apiConnectionClient.findFirst({
@@ -27,42 +30,27 @@ export class IntegrationClientPresenter {
         id: true,
         title: true,
         slug: true,
-        description: true,
         integrationAuthMethod: true,
         integrationIdentifier: true,
         clientType: true,
-        scopes: true,
         customClientReference: {
           select: {
             key: true,
           },
         },
         createdAt: true,
-        jobIntegrations: {
-          select: {
-            version: {
-              select: {
-                version: true,
-              },
-            },
-            job: {
-              select: {
-                id: true,
-                title: true,
-                slug: true,
-              },
-            },
-          },
-          where: {
-            job: {
-              internal: false,
-            },
-          },
-        },
         _count: {
           select: {
-            connections: true,
-            jobIntegrations: true,
+            jobIntegrations: {
+              where: {
+                job: {
+                  project: {
+                    slug: projectSlug,
+                  },
+                  internal: false,
+                },
+              },
+            },
           },
         },
       },
@@ -104,9 +92,6 @@ export class IntegrationClientPresenter {
       title: client.title,
       slug: client.slug,
       integrationIdentifier: client.integrationIdentifier,
-      description: client.description,
-      scopesCount: client.scopes.length,
-      connectionsCount: client._count.connections,
       jobCount: client._count.jobIntegrations,
       createdAt: client.createdAt,
       customClientId: clientId,
@@ -118,9 +103,6 @@ export class IntegrationClientPresenter {
         type: authMethod.type,
         name: authMethod.name,
       },
-      jobs: client.jobIntegrations.map(
-        (jobIntegration) => jobIntegration.job.id
-      ),
     };
   }
 }
