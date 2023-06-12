@@ -4,7 +4,7 @@ import { Handle } from "~/utils/handle";
 
 export const handle: Handle = {
   breadcrumb: {
-    slug: "runs",
+    slug: "test",
   },
 };
 

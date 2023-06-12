@@ -11,6 +11,7 @@ import {
   integrationClientPath,
   integrationClientScopesPath,
   jobPath,
+  jobTestPath,
   projectEnvironmentsPath,
   projectIntegrationsPath,
   projectPath,
@@ -37,6 +38,7 @@ export type Breadcrumb = {
     | "integration-scopes"
     | "environments"
     | "job"
+    | "test"
     | "runs"
     | "run";
   link?: {
@@ -172,6 +174,14 @@ function BreadcrumbItem({
           <BreadcrumbIcon />
           <JobsMenu key={breadcrumb.slug} />
         </Fragment>
+      );
+    case "test":
+      return (
+        <BreadcrumbLink
+          key={breadcrumb.slug}
+          to={jobTestPath(organization!, project!, job!)}
+          title="Test"
+        />
       );
     case "runs":
       return (
