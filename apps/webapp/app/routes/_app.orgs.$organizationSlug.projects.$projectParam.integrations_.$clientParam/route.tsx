@@ -1,30 +1,24 @@
 import { Outlet } from "@remix-run/react";
 import { LoaderArgs } from "@remix-run/server-runtime";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
-import simplur from "simplur";
-import invariant from "tiny-invariant";
-import { PageContainer, PageBody } from "~/components/layout/AppLayout";
-import { LinkButton } from "~/components/primitives/Buttons";
-import { PageInfoRow } from "~/components/primitives/PageHeader";
-import { PageInfoProperty } from "~/components/primitives/PageHeader";
-import { PageTabs } from "~/components/primitives/PageHeader";
+import { PageBody, PageContainer } from "~/components/layout/AppLayout";
 import {
   PageHeader,
-  PageTitleRow,
-  PageTitle,
-  PageButtons,
-  PageDescription,
   PageInfoGroup,
+  PageInfoProperty,
+  PageInfoRow,
+  PageTabs,
+  PageTitle,
+  PageTitleRow,
 } from "~/components/primitives/PageHeader";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { IntegrationClientPresenter } from "~/presenters/IntegrationClientPresenter.server";
-import { IntegrationsPresenter } from "~/presenters/IntegrationsPresenter.server";
 import { requireUser } from "~/services/session.server";
 import { formatDateTime } from "~/utils";
 import { Handle } from "~/utils/handle";
 import {
-  docsPath,
+  IntegrationClientParamSchema,
   integrationClientConnectionsPath,
   integrationClientPath,
   integrationClientScopesPath,
@@ -33,9 +27,8 @@ import {
 
 export const loader = async ({ request, params }: LoaderArgs) => {
   const user = await requireUser(request);
-  const { organizationSlug, clientParam } = params;
-  invariant(organizationSlug, "Organization slug must be defined");
-  invariant(clientParam, "Client param must be defined");
+  const { organizationSlug, clientParam } =
+    IntegrationClientParamSchema.parse(params);
 
   const presenter = new IntegrationClientPresenter();
   const client = await presenter.call({

@@ -28,6 +28,10 @@ export const RunParamsSchema = JobParamsSchema.extend({
   eventParam: z.string().optional(),
 });
 
+export const IntegrationClientParamSchema = OrganizationParamsSchema.extend({
+  clientParam: z.string(),
+});
+
 export function organizationsPath() {
   return `/`;
 }
