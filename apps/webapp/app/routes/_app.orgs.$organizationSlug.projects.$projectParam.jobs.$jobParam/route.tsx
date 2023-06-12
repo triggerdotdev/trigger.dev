@@ -89,6 +89,9 @@ export default function Job() {
               label={"Trigger"}
               value={job.event.title}
             />
+            {job.dynamic && (
+              <PageInfoProperty icon="dynamic" value={"Dynamic"} />
+            )}
             <PageInfoProperty icon="id" label={"ID"} value={job.slug} />
             {job.properties &&
               job.properties.map((property, index) => (

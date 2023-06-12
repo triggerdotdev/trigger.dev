@@ -102,7 +102,7 @@ export function PageInfoProperty({
   value,
 }: {
   icon?: string | React.ReactNode;
-  label: string;
+  label?: string;
   value: React.ReactNode;
 }) {
   return (
@@ -112,12 +112,14 @@ export function PageInfoProperty({
       ) : (
         icon
       )}
-      <Paragraph
-        variant="extra-small/caps"
-        className="mt-0.5 whitespace-nowrap"
-      >
-        {label}:
-      </Paragraph>
+      {label && (
+        <Paragraph
+          variant="extra-small/caps"
+          className="mt-0.5 whitespace-nowrap"
+        >
+          {label}:
+        </Paragraph>
+      )}
       {typeof value === "string" || typeof value === "number" ? (
         <Paragraph variant="small">{value}</Paragraph>
       ) : (
