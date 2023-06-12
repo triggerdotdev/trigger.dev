@@ -1,12 +1,9 @@
 import { JobSkeleton } from "~/components/jobs/JobSkeleton";
 import { JobsTable } from "~/components/jobs/JobsTable";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
-import { DateTime } from "~/components/primitives/DateTime";
 import { Header2 } from "~/components/primitives/Headers";
 import { Help, HelpContent, HelpTrigger } from "~/components/primitives/Help";
 import { Input } from "~/components/primitives/Input";
-import { LabelValueStack } from "~/components/primitives/LabelValueStack";
-import { NamedIcon } from "~/components/primitives/NamedIcon";
 import {
   PageHeader,
   PageInfoGroup,
@@ -16,24 +13,10 @@ import {
   PageTitleRow,
 } from "~/components/primitives/PageHeader";
 import { Paragraph } from "~/components/primitives/Paragraph";
-import {
-  Table,
-  TableBlankRow,
-  TableBody,
-  TableCell,
-  TableCellChevron,
-  TableHeader,
-  TableHeaderCell,
-  TableRow,
-} from "~/components/primitives/Table";
-import { SimpleTooltip } from "~/components/primitives/Tooltip";
-import { runStatusTitle } from "~/components/runs/RunStatuses";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { ProjectJob, useProject } from "~/hooks/useProject";
 import { useTextFilter } from "~/hooks/useTextFilter";
-import { JobRunStatus } from "~/models/job.server";
 import { Handle } from "~/utils/handle";
-import { jobPath } from "~/utils/pathBuilder";
 
 export const handle: Handle = {
   breadcrumb: {
