@@ -29,6 +29,10 @@ export class ResumeWithTask {
   constructor(public task: ServerTask) {}
 }
 
+export class TaskError {
+  constructor(public cause: Error, public task: ServerTask) {}
+}
+
 export type IOTask = ServerTask;
 
 export type IOOptions = {
@@ -422,8 +426,11 @@ export class IO {
 
         return result;
       } catch (error) {
-        // TODO: implement this
-        throw error;
+        if (error instanceof Error) {
+          throw new TaskError(error, task);
+        }
+
+        throw new TaskError(new Error("Unknown error"), task);
       }
     };
 

@@ -1,22 +1,18 @@
 import { ulid } from "ulid";
 import { z } from "zod";
-import { ConnectionAuthSchema, IntegrationConfigSchema } from "./integrations";
-import { DisplayPropertySchema, StyleSchema } from "./properties";
-import { DeserializedJsonSchema, SerializableJsonSchema } from "./json";
-import { CachedTaskSchema, ServerTaskSchema, TaskSchema } from "./tasks";
-import {
-  DynamicTriggerMetadataSchema,
-  EventSpecificationSchema,
-  TriggerMetadataSchema,
-} from "./triggers";
+import { ErrorWithStackSchema } from "./errors";
 import { EventRuleSchema } from "./eventFilter";
+import { ConnectionAuthSchema, IntegrationConfigSchema } from "./integrations";
+import { DeserializedJsonSchema, SerializableJsonSchema } from "./json";
+import { DisplayPropertySchema, StyleSchema } from "./properties";
 import {
   CronMetadataSchema,
   IntervalMetadataSchema,
   RegisterDynamicSchedulePayloadSchema,
   ScheduleMetadataSchema,
-  ScheduledPayloadSchema,
 } from "./schedules";
+import { CachedTaskSchema, ServerTaskSchema, TaskSchema } from "./tasks";
+import { EventSpecificationSchema, TriggerMetadataSchema } from "./triggers";
 
 export const UpdateTriggerSourceBodySchema = z.object({
   registeredEvents: z.array(z.string()),
@@ -265,12 +261,33 @@ export const RunJobBodySchema = z.object({
 
 export type RunJobBody = z.infer<typeof RunJobBodySchema>;
 
-export const RunJobResponseSchema = z.object({
-  executionId: z.string(),
-  completed: z.boolean(),
-  output: DeserializedJsonSchema.optional(),
+export const RunJobErrorSchema = z.object({
+  status: z.literal("ERROR"),
+  error: ErrorWithStackSchema,
   task: TaskSchema.optional(),
 });
+
+export type RunJobError = z.infer<typeof RunJobErrorSchema>;
+
+export const RunJobResumeWithTaskSchema = z.object({
+  status: z.literal("RESUME_WITH_TASK"),
+  task: TaskSchema,
+});
+
+export type RunJobResumeWithTask = z.infer<typeof RunJobResumeWithTaskSchema>;
+
+export const RunJobSuccessSchema = z.object({
+  status: z.literal("SUCCESS"),
+  output: DeserializedJsonSchema.optional(),
+});
+
+export type RunJobSuccess = z.infer<typeof RunJobSuccessSchema>;
+
+export const RunJobResponseSchema = z.discriminatedUnion("status", [
+  RunJobErrorSchema,
+  RunJobResumeWithTaskSchema,
+  RunJobSuccessSchema,
+]);
 
 export type RunJobResponse = z.infer<typeof RunJobResponseSchema>;
 

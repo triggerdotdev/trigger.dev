@@ -1,14 +1,11 @@
 import {
-  ErrorWithMessage,
   ErrorWithStackSchema,
   GetEndpointDataResponse,
   HandleTriggerSource,
-  HttpSourceRequest,
   HttpSourceRequestHeadersSchema,
   InitializeTriggerBodySchema,
   LogLevel,
   Logger,
-  NormalizedRequest,
   NormalizedResponse,
   PreprocessRunBody,
   PreprocessRunBodySchema,
@@ -18,24 +15,25 @@ import {
   RegisterTriggerBody,
   RunJobBody,
   RunJobBodySchema,
+  RunJobResponse,
   ScheduleMetadata,
   SendEvent,
   SendEventOptions,
   SourceMetadata,
 } from "@trigger.dev/internal";
 import { ApiClient } from "./apiClient";
-import { IO, ResumeWithTask } from "./io";
+import { IO, ResumeWithTask, TaskError } from "./io";
 import { createIOWithIntegrations } from "./ioWithIntegrations";
 import { Job } from "./job";
+import { DynamicTrigger } from "./triggers/dynamic";
 import { EventTrigger } from "./triggers/eventTrigger";
-import { ExternalSource, HttpSourceEvent } from "./triggers/externalSource";
+import { ExternalSource } from "./triggers/externalSource";
 import type {
   EventSpecification,
   Trigger,
   TriggerContext,
   TriggerPreprocessContext,
 } from "./types";
-import { DynamicTrigger } from "./triggers/dynamic";
 
 const registerSourceEvent: EventSpecification<RegisterSourceEvent> = {
   name: REGISTER_SOURCE_EVENT,
@@ -260,21 +258,9 @@ export class TriggerClient {
 
         const results = await this.#executeJob(execution.data, job);
 
-        if (results.error) {
-          return {
-            status: 500,
-            body: results.error,
-          };
-        }
-
         return {
           status: 200,
-          body: {
-            completed: results.completed,
-            output: results.output,
-            executionId: execution.data.run.id,
-            task: results.task,
-          },
+          body: results,
         };
       }
       case "PREPROCESS_RUN": {
@@ -566,7 +552,10 @@ export class TriggerClient {
     };
   }
 
-  async #executeJob(body: RunJobBody, job: Job<Trigger<any>, any>) {
+  async #executeJob(
+    body: RunJobBody,
+    job: Job<Trigger<any>, any>
+  ): Promise<RunJobResponse> {
     this.#logger.debug("executing job", { execution: body, job: job.toJSON() });
 
     const context = this.#createRunContext(body);
@@ -593,26 +582,38 @@ export class TriggerClient {
         context
       );
 
-      return { completed: true, output };
+      return { status: "SUCCESS", output };
     } catch (error) {
       if (error instanceof ResumeWithTask) {
-        return { completed: false, task: error.task };
+        return { status: "RESUME_WITH_TASK", task: error.task };
+      }
+
+      if (error instanceof TaskError) {
+        const errorWithStack = ErrorWithStackSchema.safeParse(error.cause);
+
+        if (errorWithStack.success) {
+          return {
+            status: "ERROR",
+            error: errorWithStack.data,
+            task: error.task,
+          };
+        }
+
+        return {
+          status: "ERROR",
+          error: { message: "Unknown error" },
+          task: error.task,
+        };
       }
 
       const errorWithStack = ErrorWithStackSchema.safeParse(error);
 
       if (errorWithStack.success) {
-        return { completed: true, error: errorWithStack.data };
-      }
-
-      const errorWithMessage = ErrorWithMessage.safeParse(error);
-
-      if (errorWithMessage.success) {
-        return { completed: true, error: errorWithMessage.data };
+        return { status: "ERROR", error: errorWithStack.data };
       }
 
       return {
-        completed: true,
+        status: "ERROR",
         error: { message: "Unknown error" },
       };
     }
