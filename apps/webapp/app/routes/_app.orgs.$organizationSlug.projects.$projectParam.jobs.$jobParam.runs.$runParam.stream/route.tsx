@@ -22,15 +22,6 @@ export async function loader({ request, params }: LoaderArgs) {
     0
   );
 
-  if (run.completedAt) {
-    return new Response(null, {
-      status: 200,
-      headers: {
-        "Content-Type": "text/event-stream",
-      },
-    });
-  }
-
   let stopped = false;
 
   const abortController = new AbortController();
