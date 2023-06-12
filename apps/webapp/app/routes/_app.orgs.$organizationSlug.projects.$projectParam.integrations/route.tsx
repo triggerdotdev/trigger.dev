@@ -47,15 +47,22 @@ import { IntegrationsPresenter } from "~/presenters/IntegrationsPresenter.server
 import { requireUser } from "~/services/session.server";
 import { formatDateTime } from "~/utils";
 import { Handle } from "~/utils/handle";
-import { docsPath, integrationClientPath } from "~/utils/pathBuilder";
+import {
+  ProjectParamSchema,
+  docsPath,
+  integrationClientPath,
+} from "~/utils/pathBuilder";
 
 export const loader = async ({ request, params }: LoaderArgs) => {
   const user = await requireUser(request);
-  const { organizationSlug } = params;
-  invariant(organizationSlug, "organizationSlug not found");
+  const { organizationSlug, projectParam } = ProjectParamSchema.parse(params);
 
   const presenter = new IntegrationsPresenter();
-  const data = await presenter.call({ userId: user.id, organizationSlug });
+  const data = await presenter.call({
+    userId: user.id,
+    organizationSlug,
+    projectSlug: projectParam,
+  });
 
   return typedjson(data);
 };

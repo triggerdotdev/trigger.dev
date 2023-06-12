@@ -5,6 +5,7 @@ import {
   Organization,
   getOrganizationFromSlug,
 } from "~/models/organization.server";
+import { Project } from "~/models/project.server";
 import { apiAuthenticationRepository } from "~/services/externalApis/apiAuthenticationRepository.server";
 import { integrationCatalog } from "~/services/externalApis/integrationCatalog.server";
 import { OAuthClientSchema } from "~/services/externalApis/types";
@@ -19,9 +20,11 @@ export class IntegrationsPresenter {
 
   public async call({
     userId,
+    projectSlug,
     organizationSlug,
   }: {
     userId: User["id"];
+    projectSlug: Project["slug"];
     organizationSlug: Organization["slug"];
   }) {
     const clients = await this.#prismaClient.apiConnectionClient.findMany({
@@ -43,7 +46,16 @@ export class IntegrationsPresenter {
         _count: {
           select: {
             connections: true,
-            jobIntegrations: true,
+            jobIntegrations: {
+              where: {
+                job: {
+                  project: {
+                    slug: projectSlug,
+                  },
+                  internal: false,
+                },
+              },
+            },
           },
         },
       },
