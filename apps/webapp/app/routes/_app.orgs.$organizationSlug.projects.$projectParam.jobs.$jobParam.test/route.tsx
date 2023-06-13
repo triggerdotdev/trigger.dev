@@ -26,7 +26,7 @@ import { TestJobPresenter } from "~/presenters/TestJobPresenter.server";
 import { requireUserId } from "~/services/session.server";
 import { Handle } from "~/utils/handle";
 import { JobParamsSchema, ProjectParamSchema } from "~/utils/pathBuilder";
-import { Fragment, useCallback, useEffect, useState } from "react";
+import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import { Callout } from "~/components/primitives/Callout";
 import { PopoverTrigger } from "@radix-ui/react-popover";
 import { Button, ButtonContent } from "~/components/primitives/Buttons";
@@ -61,15 +61,16 @@ export const handle: Handle = {
 // 2. Then use CreateRun. Update it so call can accept an optional transaction (that it uses)
 // 3. It should return the run, so we can redirect to the run page
 
-const defaultJson = "{\n\n}";
+const startingJson = "{\n\n}";
 
 export default function Page() {
-  const [isOpen, setIsOpen] = useState(false);
+  const [isExamplePopoverOpen, setIsExamplePopoverOpen] = useState(false);
   const { environments } = useTypedLoaderData<typeof loader>();
   const organization = useOrganization();
   const project = useProject();
 
-  const [json, setJson] = useState<string | undefined>(defaultJson);
+  const [defaultJson, setDefaultJson] = useState<string>(startingJson);
+  const currentJson = useRef<string>(defaultJson);
   const [selectedEnvironmentId, setSelectedEnvironmentId] = useState<string>(
     environments[0].id
   );
@@ -79,15 +80,9 @@ export default function Page() {
   );
 
   const insertCode = useCallback((code: string) => {
-    setJson(code);
-    setIsOpen(false);
+    setDefaultJson(code);
+    setIsExamplePopoverOpen(false);
   }, []);
-
-  //hack so we can press the same example button twice in a row
-  useEffect(() => {
-    if (json === defaultJson) return;
-    setJson(undefined);
-  }, [json]);
 
   if (environments.length === 0) {
     return (
@@ -121,7 +116,10 @@ export default function Page() {
             </Select>
           </SelectGroup>
 
-          <Popover open={isOpen} onOpenChange={(open) => setIsOpen(open)}>
+          <Popover
+            open={isExamplePopoverOpen}
+            onOpenChange={(open) => setIsExamplePopoverOpen(open)}
+          >
             <PopoverTrigger>
               <ButtonContent
                 variant="secondary/medium"
@@ -148,7 +146,12 @@ export default function Page() {
           </Popover>
         </div>
 
-        <JSONEditor content={json} readOnly={false} basicSetup />
+        <JSONEditor
+          defaultValue={defaultJson}
+          readOnly={false}
+          basicSetup
+          onChange={(v) => (currentJson.current = v)}
+        />
         <div className="flex justify-end">
           <Button type="submit" variant="primary/medium">
             Run test
