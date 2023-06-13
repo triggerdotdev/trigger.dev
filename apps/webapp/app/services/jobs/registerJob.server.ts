@@ -242,10 +242,14 @@ export class RegisterJobService {
           },
           create: {
             slug: example.id,
+            name: example.name,
+            icon: example.icon,
             jobVersionId: jobVersion.id,
             payload: example.payload,
           },
           update: {
+            name: example.name,
+            icon: example.icon,
             payload: example.payload,
           },
         });

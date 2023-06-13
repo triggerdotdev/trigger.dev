@@ -364,6 +364,8 @@ model EventExample {
   id String @id @default(cuid())
 
   slug String
+  name String
+  icon String?
 
   payload Json?
 
