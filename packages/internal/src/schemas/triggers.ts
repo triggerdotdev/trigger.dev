@@ -3,6 +3,15 @@ import { EventFilterSchema, EventRuleSchema } from "./eventFilter";
 import { DisplayPropertySchema } from "./properties";
 import { ScheduleMetadataSchema } from "./schedules";
 
+export const EventExampleSchema = z.object({
+  id: z.string(),
+  icon: z.string().optional(),
+  name: z.string(),
+  payload: z.any(),
+});
+
+export type EventExample = z.infer<typeof EventExampleSchema>;
+
 export const EventSpecificationSchema = z.object({
   name: z.string(),
   title: z.string(),
@@ -11,7 +20,7 @@ export const EventSpecificationSchema = z.object({
   filter: EventFilterSchema.optional(),
   properties: z.array(DisplayPropertySchema).optional(),
   schema: z.any().optional(),
-  examples: z.array(z.any()).optional(),
+  examples: z.array(EventExampleSchema).optional(),
 });
 
 export const DynamicTriggerMetadataSchema = z.object({

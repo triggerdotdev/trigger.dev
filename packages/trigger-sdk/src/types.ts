@@ -66,7 +66,12 @@ export interface EventSpecification<TEvent extends any> {
   icon: string;
   properties?: DisplayProperty[];
   schema?: any;
-  examples?: Array<TEvent>;
+  examples?: Array<{
+    id: string;
+    name: string;
+    icon?: string;
+    payload: TEvent;
+  }>;
   filter?: EventFilter;
   parsePayload: (payload: unknown) => TEvent;
   runProperties?: (payload: TEvent) => DisplayProperty[];

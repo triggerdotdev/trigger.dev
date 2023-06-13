@@ -156,6 +156,8 @@ export class RegisterJobService {
       },
     });
 
+    const { examples, ...eventSpecification } = metadata.event;
+
     // Upsert the JobVersion
     const jobVersion = await this.#prismaClient.jobVersion.upsert({
       where: {
@@ -197,7 +199,7 @@ export class RegisterJobService {
           },
         },
         version: metadata.version,
-        eventSpecification: metadata.event,
+        eventSpecification,
         preprocessRuns: metadata.preprocessRuns,
         startPosition:
           metadata.startPosition === "initial" ? "INITIAL" : "LATEST",
@@ -205,7 +207,7 @@ export class RegisterJobService {
       update: {
         startPosition:
           metadata.startPosition === "initial" ? "INITIAL" : "LATEST",
-        eventSpecification: metadata.event,
+        eventSpecification,
         preprocessRuns: metadata.preprocessRuns,
         queue: {
           connect: {
@@ -227,8 +229,40 @@ export class RegisterJobService {
       },
     });
 
-    const jobIntegrations = new Set<string>();
+    // Upsert the examples and delete any that are no longer in the metadata
+    const upsertedExamples = new Set<string>();
+    if (examples) {
+      for (const example of examples) {
+        const e = await this.#prismaClient.eventExample.upsert({
+          where: {
+            slug_jobVersionId: {
+              slug: example.id,
+              jobVersionId: jobVersion.id,
+            },
+          },
+          create: {
+            slug: example.id,
+            jobVersionId: jobVersion.id,
+            payload: example.payload,
+          },
+          update: {
+            payload: example.payload,
+          },
+        });
 
+        upsertedExamples.add(e.id);
+      }
+    }
+    await this.#prismaClient.eventExample.deleteMany({
+      where: {
+        jobVersionId: jobVersion.id,
+        id: {
+          notIn: Array.from(upsertedExamples),
+        },
+      },
+    });
+
+    const jobIntegrations = new Set<string>();
     // Upsert the job integrations
     for (const [key, integration] of Object.entries(metadata.integrations)) {
       const jobIntegration = await this.#upsertJobIntegration(

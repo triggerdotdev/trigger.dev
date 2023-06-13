@@ -355,8 +355,25 @@ model JobVersion {
   runs         JobRun[]
   integrations JobIntegration[]
   aliases      JobAlias[]
+  examples     EventExample[]
 
   @@unique([jobId, version, environmentId])
+}
+
+model EventExample {
+  id String @id @default(cuid())
+
+  slug String
+
+  payload Json?
+
+  jobVersion   JobVersion @relation(fields: [jobVersionId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  jobVersionId String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([slug, jobVersionId])
 }
 
 model JobQueue {
