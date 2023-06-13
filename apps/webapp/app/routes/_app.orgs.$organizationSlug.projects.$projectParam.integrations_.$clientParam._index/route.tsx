@@ -7,6 +7,7 @@ import { Header2 } from "~/components/primitives/Headers";
 import { Help, HelpContent, HelpTrigger } from "~/components/primitives/Help";
 import { Input } from "~/components/primitives/Input";
 import { Paragraph } from "~/components/primitives/Paragraph";
+import { useFilterJobs } from "~/hooks/useFilterJobs";
 import { useIntegrationClient } from "~/hooks/useIntegrationClient";
 import { ProjectJob, useProject } from "~/hooks/useProject";
 import { useTextFilter } from "~/hooks/useTextFilter";
@@ -47,29 +48,7 @@ export default function Page() {
   );
 
   const { filterText, setFilterText, filteredItems } =
-    useTextFilter<ProjectJob>({
-      items: projectJobs,
-      filter: (job, text) => {
-        if (job.title.toLowerCase().includes(text.toLowerCase())) return true;
-        if (job.event.title.toLowerCase().includes(text.toLowerCase()))
-          return true;
-        if (
-          job.integrations.some((integration) =>
-            integration.title.toLowerCase().includes(text.toLowerCase())
-          )
-        )
-          return true;
-        if (
-          job.properties &&
-          job.properties.some((property) =>
-            property.text.toLowerCase().includes(text.toLowerCase())
-          )
-        )
-          return true;
-
-        return false;
-      },
-    });
+    useFilterJobs(projectJobs);
 
   return (
     <Help defaultOpen={projectJobs.length === 0}>

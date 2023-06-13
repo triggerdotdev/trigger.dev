@@ -13,6 +13,7 @@ import {
   PageTitleRow,
 } from "~/components/primitives/PageHeader";
 import { Paragraph } from "~/components/primitives/Paragraph";
+import { useFilterJobs } from "~/hooks/useFilterJobs";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { ProjectJob, useProject } from "~/hooks/useProject";
 import { useTextFilter } from "~/hooks/useTextFilter";
@@ -28,30 +29,9 @@ export default function Page() {
   const organization = useOrganization();
   const project = useProject();
 
-  const { filterText, setFilterText, filteredItems } =
-    useTextFilter<ProjectJob>({
-      items: project.jobs,
-      filter: (job, text) => {
-        if (job.title.toLowerCase().includes(text.toLowerCase())) return true;
-        if (job.event.title.toLowerCase().includes(text.toLowerCase()))
-          return true;
-        if (
-          job.integrations.some((integration) =>
-            integration.title.toLowerCase().includes(text.toLowerCase())
-          )
-        )
-          return true;
-        if (
-          job.properties &&
-          job.properties.some((property) =>
-            property.text.toLowerCase().includes(text.toLowerCase())
-          )
-        )
-          return true;
-
-        return false;
-      },
-    });
+  const { filterText, setFilterText, filteredItems } = useFilterJobs(
+    project.jobs
+  );
 
   return (
     <PageContainer>
