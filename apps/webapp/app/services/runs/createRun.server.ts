@@ -66,6 +66,7 @@ export class CreateRunService {
           externalAccount: eventRecord.externalAccountId
             ? { connect: { id: eventRecord.externalAccountId } }
             : undefined,
+          isTest: eventRecord.isTest,
         },
       });
 

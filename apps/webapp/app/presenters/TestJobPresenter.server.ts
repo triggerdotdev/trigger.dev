@@ -35,6 +35,7 @@ export class TestJobPresenter {
           select: {
             version: {
               select: {
+                id: true,
                 version: true,
                 examples: {
                   select: {
@@ -87,6 +88,7 @@ export class TestJobPresenter {
         type: alias.environment.type,
         slug: alias.environment.slug,
         userId: alias.environment.orgMember?.userId,
+        versionId: alias.version.id,
         examples: alias.version.examples.map((example) => ({
           ...example,
           payload: JSON.stringify(example.payload, null, 2),

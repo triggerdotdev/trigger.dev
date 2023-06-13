@@ -22,10 +22,11 @@ import {
 } from "~/components/primitives/Select";
 import { redirectWithSuccessMessage } from "~/models/message.server";
 import { TestJobPresenter } from "~/presenters/TestJobPresenter.server";
+import { TestJobService } from "~/services/jobs/testJob.server";
 import { requireUserId } from "~/services/session.server";
 import { formDataAsObject } from "~/utils/formData";
 import { Handle } from "~/utils/handle";
-import { JobParamsSchema, jobTestPath } from "~/utils/pathBuilder";
+import { JobParamsSchema, jobTestPath, runPath } from "~/utils/pathBuilder";
 
 export const loader = async ({ request, params }: LoaderArgs) => {
   const userId = await requireUserId(request);
@@ -65,8 +66,10 @@ const schema = z.object({
     }
   }),
   environmentId: z.string(),
+  versionId: z.string(),
 });
 
+//todo save the chosen environment to a cookie (for that user), use it to default the env dropdown
 export const action: ActionFunction = async ({ request, params }) => {
   const userId = await requireUserId(request);
   const { organizationSlug, projectParam, jobParam } =
@@ -80,11 +83,19 @@ export const action: ActionFunction = async ({ request, params }) => {
     return json(submission);
   }
 
+  const testService = new TestJobService();
+  const run = await testService.call({
+    environmentId: submission.value.environmentId,
+    payload: submission.value.payload,
+    versionId: submission.value.versionId,
+  });
+
   return redirectWithSuccessMessage(
-    jobTestPath(
+    runPath(
       { slug: organizationSlug },
       { slug: projectParam },
-      { slug: jobParam }
+      { slug: jobParam },
+      { id: run.id }
     ),
     request,
     "Test run created"
@@ -96,13 +107,6 @@ export const handle: Handle = {
     slug: "test",
   },
 };
-
-//create an Action
-//save the chosen environment to a cookie (for that user), use it to default the env dropdown
-//create a TestEventService class
-// 1. create an EventRecord
-// 2. Then use CreateRun. Update it so call can accept an optional transaction (that it uses)
-// 3. It should return the run, so we can redirect to the run page
 
 const startingJson = "{\n\n}";
 
@@ -133,6 +137,7 @@ export default function Page() {
         {
           payload: currentJson.current,
           environmentId: selectedEnvironmentId,
+          versionId: selectedEnvironment?.versionId ?? "",
         },
         {
           action: "",
