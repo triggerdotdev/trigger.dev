@@ -9,9 +9,13 @@ export * from "./triggers/notifications";
 export * from "./io";
 export * from "./types";
 
+import { ServerTask } from "@trigger.dev/internal";
 import { SecureString } from "./types";
+export { isTriggerError } from "./errors";
 
 export type { NormalizedRequest, EventFilter } from "@trigger.dev/internal";
+
+export type Task = ServerTask;
 
 /*
  * This function is used to create a secure string that can be used in the headers of a fetch request.

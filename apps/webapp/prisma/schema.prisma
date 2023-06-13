@@ -676,6 +676,7 @@ model Task {
 
   children   Task[]            @relation("TaskParent")
   executions JobRunExecution[]
+  attempts   TaskAttempt[]
 
   @@unique([runId, idempotencyKey])
 }
@@ -684,6 +685,33 @@ enum TaskStatus {
   PENDING
   WAITING
   RUNNING
+  COMPLETED
+  ERRORED
+}
+
+model TaskAttempt {
+  id String @id @default(cuid())
+
+  number Int
+
+  task   Task   @relation(fields: [taskId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  taskId String
+
+  status TaskAttemptStatus @default(PENDING)
+
+  error String?
+
+  runAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([taskId, number])
+}
+
+enum TaskAttemptStatus {
+  PENDING
+  STARTED
   COMPLETED
   ERRORED
 }

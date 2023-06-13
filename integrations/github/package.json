@@ -13,8 +13,8 @@
     "dist/index.js.map"
   ],
   "devDependencies": {
-    "@octokit/webhooks-types": "^6.10.0",
     "@octokit/types": "^9.2.3",
+    "@octokit/webhooks-types": "^6.10.0",
     "@trigger.dev/tsconfig": "workspace:*",
     "@types/node": "18",
     "rimraf": "^3.0.2",
@@ -26,6 +26,8 @@
     "build:tsup": "tsup"
   },
   "dependencies": {
+    "@octokit/request": "^6.2.5",
+    "@octokit/request-error": "^4.0.1",
     "@octokit/webhooks": "^10.4.0",
     "@trigger.dev/sdk": "workspace:^2.0.0-next.0",
     "octokit": "^2.0.14",

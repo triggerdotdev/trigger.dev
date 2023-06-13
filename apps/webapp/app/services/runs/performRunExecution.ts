@@ -1,11 +1,14 @@
+import type { Task } from ".prisma/client";
 import {
   ApiEventLogSchema,
   CachedTaskSchema,
   RunJobError,
   RunJobResumeWithTask,
+  RunJobRetryWithTask,
   RunJobSuccess,
 } from "@trigger.dev/internal";
 import { generateErrorMessage } from "zod-error";
+import { EXECUTE_JOB_RETRY_LIMIT } from "~/consts";
 import {
   $transaction,
   PrismaClient,
@@ -13,11 +16,10 @@ import {
   prisma,
 } from "~/db.server";
 import { resolveRunConnections } from "~/models/runConnection.server";
+import { formatError } from "~/utils";
 import { safeJsonZodParse } from "~/utils/json";
 import { EndpointApi } from "../endpointApi";
 import { workerQueue } from "../worker.server";
-import type { Task } from ".prisma/client";
-import { EXECUTE_JOB_RETRY_LIMIT } from "~/consts";
 
 type FoundRunExecution = NonNullable<
   Awaited<ReturnType<typeof findRunExecution>>
@@ -216,15 +218,24 @@ export class PerformRunExecutionService {
     let resumedTask: Task | undefined;
 
     if (execution.resumeTaskId) {
-      resumedTask = await this.#prismaClient.task.update({
-        where: {
-          id: execution.resumeTaskId,
-        },
-        data: {
-          status: "COMPLETED",
-          completedAt: new Date(),
-        },
-      });
+      resumedTask =
+        (await this.#prismaClient.task.findUnique({
+          where: {
+            id: execution.resumeTaskId,
+          },
+        })) ?? undefined;
+
+      if (resumedTask) {
+        resumedTask = await this.#prismaClient.task.update({
+          where: {
+            id: execution.resumeTaskId,
+          },
+          data: {
+            status: resumedTask.noop ? "COMPLETED" : "RUNNING",
+            completedAt: resumedTask.noop ? new Date() : undefined,
+          },
+        });
+      }
     }
 
     const { response, parser } = await client.executeJobRequest({
@@ -289,7 +300,9 @@ export class PerformRunExecutionService {
       });
     }
 
-    switch (safeBody.data.status) {
+    const status = safeBody.data.status;
+
+    switch (status) {
       case "SUCCESS": {
         await this.#completeRunWithSuccess(execution, safeBody.data);
 
@@ -304,6 +317,15 @@ export class PerformRunExecutionService {
         await this.#failRunWithError(execution, safeBody.data);
 
         break;
+      }
+      case "RETRY_WITH_TASK": {
+        await this.#retryRunWithTask(execution, safeBody.data);
+
+        break;
+      }
+      default: {
+        const _exhaustiveCheck: never = status;
+        throw new Error(`Non-exhaustive match for value: ${status}`);
       }
     }
   }
@@ -413,6 +435,85 @@ export class PerformRunExecutionService {
       }
 
       await this.#failRunExecution(tx, execution, data.error ?? undefined);
+    });
+  }
+
+  async #retryRunWithTask(
+    execution: FoundRunExecution,
+    data: RunJobRetryWithTask
+  ) {
+    const { run } = execution;
+
+    return await $transaction(this.#prismaClient, async (tx) => {
+      // We need to check for an existing task attempt
+      const existingAttempt = await tx.taskAttempt.findFirst({
+        where: {
+          taskId: data.task.id,
+          status: "PENDING",
+        },
+        orderBy: {
+          number: "desc",
+        },
+      });
+
+      if (existingAttempt) {
+        await tx.taskAttempt.update({
+          where: {
+            id: existingAttempt.id,
+          },
+          data: {
+            status: "ERRORED",
+            error: formatError(data.error),
+          },
+        });
+      }
+
+      // We need to create a new task attempt
+      await tx.taskAttempt.create({
+        data: {
+          taskId: data.task.id,
+          number: existingAttempt ? existingAttempt.number + 1 : 1,
+          status: "PENDING",
+          runAt: data.retryAt,
+        },
+      });
+
+      await tx.task.update({
+        where: {
+          id: data.task.id,
+        },
+        data: {
+          status: "WAITING",
+        },
+      });
+
+      // Now we need to create a new job execution
+      const newJobExecution = await tx.jobRunExecution.create({
+        data: {
+          runId: run.id,
+          reason: "EXECUTE_JOB",
+          status: "PENDING",
+          retryLimit: EXECUTE_JOB_RETRY_LIMIT,
+          resumeTaskId: data.task.id,
+        },
+      });
+
+      const graphileJob = await workerQueue.enqueue(
+        "performRunExecution",
+        {
+          id: newJobExecution.id,
+        },
+        { tx, runAt: data.retryAt }
+      );
+
+      await tx.jobRunExecution.update({
+        where: {
+          id: newJobExecution.id,
+        },
+        data: {
+          graphileJobId: graphileJob.id,
+        },
+      });
     });
   }
 

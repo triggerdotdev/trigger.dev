@@ -42,6 +42,10 @@ export type AuthenticatedTask<TClient, TParams, TResult> = {
     io: IO
   ) => Promise<TResult>;
   init: (params: TParams) => RunTaskOptions;
+  onError?: (
+    error: unknown,
+    task: ServerTask
+  ) => { retryAt: Date; error?: Error } | undefined | void;
 };
 
 export function authenticatedTask<TClient, TParams, TResult>(options: {

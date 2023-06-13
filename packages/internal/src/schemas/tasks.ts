@@ -32,7 +32,10 @@ export const TaskSchema = z.object({
 
 export const ServerTaskSchema = TaskSchema.extend({
   idempotencyKey: z.string(),
+  attempts: z.number(),
 });
+
+export type ServerTask = z.infer<typeof ServerTaskSchema>;
 
 export const CachedTaskSchema = z.object({
   id: z.string(),

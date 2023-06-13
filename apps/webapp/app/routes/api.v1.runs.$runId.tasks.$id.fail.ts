@@ -1,13 +1,17 @@
 import type { ActionArgs } from "@remix-run/server-runtime";
 import { json } from "@remix-run/server-runtime";
-import type { CompleteTaskBodyOutput, ServerTask } from "@trigger.dev/internal";
-import { CompleteTaskBodyInputSchema } from "@trigger.dev/internal";
+import {
+  FailTaskBodyInput,
+  FailTaskBodyInputSchema,
+  ServerTask,
+} from "@trigger.dev/internal";
 import { z } from "zod";
 import { $transaction, PrismaClient, prisma } from "~/db.server";
 import { taskWithAttemptsToServerTask } from "~/models/task.server";
 import type { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { authenticateApiRequest } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger";
+import { formatError } from "~/utils";
 
 const ParamsSchema = z.object({
   runId: z.string(),
@@ -32,24 +36,24 @@ export async function action({ request, params }: ActionArgs) {
   // Now parse the request body
   const anyBody = await request.json();
 
-  logger.debug("CompleteRunTaskService.call() request body", {
+  logger.debug("FailRunTaskService.call() request body", {
     body: anyBody,
     runId,
     id,
   });
 
-  const body = CompleteTaskBodyInputSchema.safeParse(anyBody);
+  const body = FailTaskBodyInputSchema.safeParse(anyBody);
 
   if (!body.success) {
     return json({ error: "Invalid request body" }, { status: 400 });
   }
 
-  const service = new CompleteRunTaskService();
+  const service = new FailRunTaskService();
 
   try {
     const task = await service.call(authenticatedEnv, runId, id, body.data);
 
-    logger.debug("CompleteRunTaskService.call() response body", {
+    logger.debug("FailRunTaskService.call() response body", {
       runId,
       id,
       task,
@@ -69,7 +73,7 @@ export async function action({ request, params }: ActionArgs) {
   }
 }
 
-export class CompleteRunTaskService {
+export class FailRunTaskService {
   #prismaClient: PrismaClient;
 
   constructor(prismaClient: PrismaClient = prisma) {
@@ -80,7 +84,7 @@ export class CompleteRunTaskService {
     environment: AuthenticatedEnvironment,
     runId: string,
     id: string,
-    taskBody: CompleteTaskBodyOutput
+    taskBody: FailTaskBodyInput
   ): Promise<ServerTask | undefined> {
     // Using a transaction, we'll first check to see if the task already exists and return if if it does
     // If it doesn't exist, we'll create it and return it
@@ -133,18 +137,19 @@ export class CompleteRunTaskService {
               id: existingTask.attempts[0].id,
             },
             data: {
-              status: "COMPLETED",
+              status: "ERRORED",
+              error: formatError(taskBody.error),
             },
           });
         }
 
-        return await tx.task.update({
+        return await prisma.task.update({
           where: {
             id,
           },
           data: {
-            status: "COMPLETED",
-            output: taskBody.output ?? undefined,
+            status: "ERRORED",
+            output: taskBody.error ?? undefined,
             completedAt: new Date(),
           },
           include: {

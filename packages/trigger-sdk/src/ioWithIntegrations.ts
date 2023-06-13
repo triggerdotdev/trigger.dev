@@ -1,9 +1,9 @@
 import { ConnectionAuth } from "@trigger.dev/internal";
 import {
-  TriggerIntegration,
-  IntegrationClient,
-  IOWithIntegrations,
   AuthenticatedTask,
+  IOWithIntegrations,
+  IntegrationClient,
+  TriggerIntegration,
 } from "./integrations";
 import { IO } from "./io";
 
@@ -55,9 +55,14 @@ export function createIOWithIntegrations<
             const options = authenticatedTask.init(params);
             options.connectionKey = connectionKey;
 
-            return await io.runTask(key, options, async (ioTask) => {
-              return authenticatedTask.run(params, client, ioTask, io);
-            });
+            return await io.runTask(
+              key,
+              options,
+              async (ioTask) => {
+                return authenticatedTask.run(params, client, ioTask, io);
+              },
+              authenticatedTask.onError
+            );
           };
         });
       }

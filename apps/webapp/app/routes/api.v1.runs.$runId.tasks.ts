@@ -1,10 +1,13 @@
 import type { ActionArgs, LoaderArgs } from "@remix-run/server-runtime";
 import { json } from "@remix-run/server-runtime";
-import { RunTaskBodyOutput, ServerTaskSchema } from "@trigger.dev/internal";
-import { RunTaskBodyOutputSchema } from "@trigger.dev/internal";
+import {
+  RunTaskBodyOutput,
+  RunTaskBodyOutputSchema,
+  ServerTask,
+} from "@trigger.dev/internal";
 import { z } from "zod";
-import type { PrismaClient } from "~/db.server";
-import { prisma } from "~/db.server";
+import { $transaction, PrismaClient, prisma } from "~/db.server";
+import { taskWithAttemptsToServerTask } from "~/models/task.server";
 import { authenticateApiRequest } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger";
 import { ulid } from "~/services/ulid.server";
@@ -145,7 +148,7 @@ export async function action({ request, params }: ActionArgs) {
       task,
     });
 
-    return json(ServerTaskSchema.parse(task));
+    return json(task);
   } catch (error) {
     if (error instanceof Error) {
       return json({ error: error.message }, { status: 400 });
@@ -166,16 +169,17 @@ export class RunTaskService {
     runId: string,
     idempotencyKey: string,
     taskBody: RunTaskBodyOutput
-  ) {
-    // Using a transaction, we'll first check to see if the task already exists and return if if it does
-    // If it doesn't exist, we'll create it and return it
-    const task = await this.#prismaClient.$transaction(async (prisma) => {
-      const existingTask = await prisma.task.findUnique({
+  ): Promise<ServerTask> {
+    const task = await $transaction(this.#prismaClient, async (tx) => {
+      const existingTask = await tx.task.findUnique({
         where: {
           runId_idempotencyKey: {
             runId,
             idempotencyKey,
           },
+        },
+        include: {
+          attempts: true,
         },
       });
 
@@ -192,7 +196,7 @@ export class RunTaskService {
           ? "COMPLETED"
           : "RUNNING";
 
-      const task = await prisma.task.create({
+      const task = await tx.task.create({
         data: {
           id: ulid(),
           idempotencyKey,
@@ -227,15 +231,22 @@ export class RunTaskService {
           properties: taskBody.properties ?? undefined,
           redact: taskBody.redact ?? undefined,
           style: taskBody.style ?? { style: "normal" },
+          attempts: {
+            create: {
+              number: 1,
+              status: "PENDING",
+            },
+          },
         },
         include: {
           run: true,
+          attempts: true,
         },
       });
 
       return task;
     });
 
-    return task;
+    return taskWithAttemptsToServerTask(task);
   }
 }

@@ -2,6 +2,7 @@ import {
   CachedTask,
   ConnectionAuth,
   CronOptions,
+  ErrorWithStackSchema,
   IntervalOptions,
   LogLevel,
   Logger,
@@ -15,23 +16,21 @@ import {
 import { AsyncLocalStorage } from "node:async_hooks";
 import { webcrypto } from "node:crypto";
 import { ApiClient } from "./apiClient";
+import {
+  ResumeWithTaskError,
+  RetryWithTaskError,
+  isTriggerError,
+} from "./errors";
+import { createIOWithIntegrations } from "./ioWithIntegrations";
+import { calculateRetryAt } from "./retry";
 import { TriggerClient } from "./triggerClient";
 import { DynamicTrigger } from "./triggers/dynamic";
 import {
   ExternalSource,
   ExternalSourceParams,
 } from "./triggers/externalSource";
-import { EventSpecification, TaskLogger, TriggerContext } from "./types";
-import { createIOWithIntegrations } from "./ioWithIntegrations";
 import { DynamicSchedule } from "./triggers/scheduled";
-
-export class ResumeWithTask {
-  constructor(public task: ServerTask) {}
-}
-
-export class TaskError {
-  constructor(public cause: Error, public task: ServerTask) {}
-}
+import { EventSpecification, TaskLogger, TriggerContext } from "./types";
 
 export type IOTask = ServerTask;
 
@@ -343,12 +342,16 @@ export class IO {
     });
   }
 
-  // TODO: investigate why errors from Github tasks are not being caught here
-  async runTask<T extends SerializableJson | void = void>(
+  async runTask<TResult extends SerializableJson | void = void>(
     key: string | any[],
     options: RunTaskOptions,
-    callback: (task: IOTask, io: IO) => Promise<T>
-  ): Promise<T> {
+    callback: (task: IOTask, io: IO) => Promise<TResult>,
+    onError?: (
+      error: unknown,
+      task: IOTask,
+      io: IO
+    ) => { retryAt: Date; error?: Error } | undefined | void
+  ): Promise<TResult> {
     const parentId = this._taskStorage.getStore()?.taskId;
 
     if (parentId) {
@@ -371,7 +374,7 @@ export class IO {
         cachedTask,
       });
 
-      return cachedTask.output as T;
+      return cachedTask.output as TResult;
     }
 
     const task = await this._apiClient.runTask(this._id, {
@@ -390,7 +393,7 @@ export class IO {
 
       this.#addToCachedTasks(task);
 
-      return task.output as T;
+      return task.output as TResult;
     }
 
     if (task.status === "ERRORED") {
@@ -408,7 +411,7 @@ export class IO {
         task,
       });
 
-      throw new ResumeWithTask(task);
+      throw new ResumeWithTaskError(task);
     }
 
     const executeTask = async () => {
@@ -426,15 +429,70 @@ export class IO {
 
         return result;
       } catch (error) {
-        if (error instanceof Error) {
-          throw new TaskError(error, task);
+        if (onError) {
+          const onErrorResult = onError(error, task, this);
+
+          if (onErrorResult) {
+            const parsedError = ErrorWithStackSchema.safeParse(
+              onErrorResult.error
+            );
+
+            throw new RetryWithTaskError(
+              parsedError.success
+                ? parsedError.data
+                : { message: "Unknown error" },
+              task,
+              onErrorResult.retryAt
+            );
+          }
         }
 
-        throw new TaskError(new Error("Unknown error"), task);
+        const parsedError = ErrorWithStackSchema.safeParse(error);
+
+        if (options.retry) {
+          const retryAt = calculateRetryAt(options.retry, task.attempts);
+
+          if (retryAt) {
+            throw new RetryWithTaskError(
+              parsedError.success
+                ? parsedError.data
+                : { message: "Unknown error" },
+              task,
+              retryAt
+            );
+          }
+        }
+
+        if (parsedError.success) {
+          await this._apiClient.failTask(this._id, task.id, {
+            error: parsedError.data,
+          });
+        } else {
+          await this._apiClient.failTask(this._id, task.id, {
+            error: { message: JSON.stringify(error), name: "Unknown Error" },
+          });
+        }
+
+        throw error;
       }
     };
 
     return this._taskStorage.run({ taskId: task.id }, executeTask);
+  }
+
+  async try<TResult, TCatchResult>(
+    tryCallback: () => Promise<TResult>,
+    catchCallback: (error: unknown) => Promise<TCatchResult>
+  ): Promise<TResult | TCatchResult> {
+    try {
+      return await tryCallback();
+    } catch (error) {
+      if (isTriggerError(error)) {
+        throw error;
+      }
+
+      return await catchCallback(error);
+    }
   }
 
   #addToCachedTasks(task: ServerTask) {

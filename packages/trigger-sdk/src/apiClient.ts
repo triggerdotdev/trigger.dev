@@ -5,6 +5,7 @@ import {
   ConnectionAuthSchema,
   CreateRunBody,
   CreateRunResponseBodySchema,
+  FailTaskBodyInput,
   LogLevel,
   Logger,
   RegisterScheduleResponseBodySchema,
@@ -164,6 +165,29 @@ export class ApiClient {
           Authorization: `Bearer ${apiKey}`,
         },
         body: JSON.stringify(task),
+      }
+    );
+  }
+
+  async failTask(runId: string, id: string, body: FailTaskBodyInput) {
+    const apiKey = await this.#apiKey();
+
+    this.#logger.debug("Fail Task", {
+      id,
+      runId,
+      body,
+    });
+
+    return await zodfetch(
+      ServerTaskSchema,
+      `${this.#apiUrl}/api/v1/runs/${runId}/tasks/${id}/fail`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify(body),
       }
     );
   }

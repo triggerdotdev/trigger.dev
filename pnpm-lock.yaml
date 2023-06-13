@@ -460,9 +460,12 @@ importers:
       '@trigger.dev/nextjs': workspace:*
       '@trigger.dev/sdk': workspace:*
       '@types/node': 18.15.13
+      '@types/node-fetch': 2.6.x
       '@types/react': ^18.0.21
       '@types/react-dom': ^18.0.6
+      msw: ^0.47.0
       next: 13.3.1
+      node-fetch: 2.6.x
       react: ^18.2.0
       react-dom: ^18.2.0
       ts-loader: ^9.4.2
@@ -477,11 +480,14 @@ importers:
       '@types/react': 18.0.26
       '@types/react-dom': 18.0.10
       next: 13.3.1_biqbaboplfbrettd7655fr4n2y
+      node-fetch: 2.6.11
       react: 18.2.0
       react-dom: 18.2.0_react@18.2.0
       typescript: 5.0.4
       zod: 3.20.2
     devDependencies:
+      '@types/node-fetch': 2.6.2
+      msw: 0.47.4_typescript@5.0.4
       ts-loader: 9.4.2_dmnk2hichoesbonenkf5yk7fmy
       webpack: 5.80.0
 
@@ -516,6 +522,8 @@ importers:
 
   integrations/github:
     specifiers:
+      '@octokit/request': ^6.2.5
+      '@octokit/request-error': ^4.0.1
       '@octokit/types': ^9.2.3
       '@octokit/webhooks': ^10.4.0
       '@octokit/webhooks-types': ^6.10.0
@@ -527,6 +535,8 @@ importers:
       tsup: ^6.5.0
       zod: ^3.20.2
     dependencies:
+      '@octokit/request': 6.2.5
+      '@octokit/request-error': 4.0.1
       '@octokit/webhooks': 10.5.1
       '@trigger.dev/sdk': link:../../packages/trigger-sdk
       octokit: 2.0.14
@@ -7059,7 +7069,7 @@ packages:
     dependencies:
       '@octokit/auth-oauth-app': 5.0.5
       '@octokit/auth-oauth-user': 2.1.1
-      '@octokit/request': 6.2.3
+      '@octokit/request': 6.2.5
       '@octokit/request-error': 3.0.3
       '@octokit/types': 9.2.3
       '@types/lru-cache': 5.1.1
@@ -7077,7 +7087,7 @@ packages:
     dependencies:
       '@octokit/auth-oauth-device': 4.0.4
       '@octokit/auth-oauth-user': 2.1.1
-      '@octokit/request': 6.2.3
+      '@octokit/request': 6.2.5
       '@octokit/types': 9.2.3
       '@types/btoa-lite': 1.0.0
       btoa-lite: 1.0.0
@@ -7091,7 +7101,7 @@ packages:
     engines: {node: '>= 14'}
     dependencies:
       '@octokit/oauth-methods': 2.0.5
-      '@octokit/request': 6.2.3
+      '@octokit/request': 6.2.5
       '@octokit/types': 9.2.3
       universal-user-agent: 6.0.0
     transitivePeerDependencies:
@@ -7104,7 +7114,7 @@ packages:
     dependencies:
       '@octokit/auth-oauth-device': 4.0.4
       '@octokit/oauth-methods': 2.0.5
-      '@octokit/request': 6.2.3
+      '@octokit/request': 6.2.5
       '@octokit/types': 9.2.3
       btoa-lite: 1.0.0
       universal-user-agent: 6.0.0
@@ -7133,7 +7143,7 @@ packages:
     dependencies:
       '@octokit/auth-token': 3.0.3
       '@octokit/graphql': 5.0.5
-      '@octokit/request': 6.2.3
+      '@octokit/request': 6.2.5
       '@octokit/request-error': 3.0.3
       '@octokit/types': 9.2.3
       before-after-hook: 2.2.3
@@ -7155,7 +7165,7 @@ packages:
     resolution: {integrity: sha512-Qwfvh3xdqKtIznjX9lz2D458r7dJPP8l6r4GQkIdWQouZwHQK0mVT88uwiU2bdTU2OtT1uOlKpRciUWldpG0yQ==}
     engines: {node: '>= 14'}
     dependencies:
-      '@octokit/request': 6.2.3
+      '@octokit/request': 6.2.5
       '@octokit/types': 9.2.3
       universal-user-agent: 6.0.0
     transitivePeerDependencies:
@@ -7189,7 +7199,7 @@ packages:
     engines: {node: '>= 14'}
     dependencies:
       '@octokit/oauth-authorization-url': 5.0.0
-      '@octokit/request': 6.2.3
+      '@octokit/request': 6.2.5
       '@octokit/request-error': 3.0.3
       '@octokit/types': 9.2.3
       btoa-lite: 1.0.0
@@ -7255,15 +7265,24 @@ packages:
       once: 1.4.0
     dev: false
 
-  /@octokit/request/6.2.3:
-    resolution: {integrity: sha512-TNAodj5yNzrrZ/VxP+H5HiYaZep0H3GU0O7PaF+fhDrt8FPrnkei9Aal/txsN/1P7V3CPiThG0tIvpPDYUsyAA==}
+  /@octokit/request-error/4.0.1:
+    resolution: {integrity: sha512-DBTkqzs0K6SlK1gRaQ6A6yOnKKkbVy8n/A9E7Es5qYONIxBghqiETPqWhG9l7qvWgp8v3sDkB8vlV2AAX1N6gw==}
+    engines: {node: '>= 18'}
+    dependencies:
+      '@octokit/types': 9.2.3
+      deprecation: 2.3.1
+      once: 1.4.0
+    dev: false
+
+  /@octokit/request/6.2.5:
+    resolution: {integrity: sha512-z83E8UIlPNaJUsXpjD8E0V5o/5f+vJJNbNcBwVZsX3/vC650U41cOkTLjq4PKk9BYonQGOnx7N17gvLyNjgGcQ==}
     engines: {node: '>= 14'}
     dependencies:
       '@octokit/endpoint': 7.0.5
       '@octokit/request-error': 3.0.3
       '@octokit/types': 9.2.3
       is-plain-object: 5.0.0
-      node-fetch: 2.6.7
+      node-fetch: 2.6.11
       universal-user-agent: 6.0.0
     transitivePeerDependencies:
       - encoding
@@ -10665,7 +10684,7 @@ packages:
   /@types/node-fetch/2.6.2:
     resolution: {integrity: sha512-DHqhlq5jeESLy19TYhLakJ07kNumXWjcDdxXsLUMJZ6ue8VZJj4kLPQVE/2mdHh3xZziNF1xppu5lwmS53HR+A==}
     dependencies:
-      '@types/node': 18.14.0
+      '@types/node': 18.15.13
       form-data: 3.0.1
     dev: true
 
@@ -18789,6 +18808,43 @@ packages:
       strict-event-emitter: 0.2.8
       type-fest: 2.19.0
       typescript: 4.9.4
+      yargs: 17.6.2
+    transitivePeerDependencies:
+      - encoding
+      - supports-color
+    dev: true
+
+  /msw/0.47.4_typescript@5.0.4:
+    resolution: {integrity: sha512-Psftt8Yfl0+l+qqg9OlmKEsxF8S/vtda0CmlR6y8wTaWrMMzuCDa55n2hEGC0ZRDwuV6FFWc/4CjoDsBpATKBw==}
+    engines: {node: '>=14'}
+    hasBin: true
+    requiresBuild: true
+    peerDependencies:
+      typescript: '>= 4.2.x <= 4.8.x'
+    peerDependenciesMeta:
+      typescript:
+        optional: true
+    dependencies:
+      '@mswjs/cookies': 0.2.2
+      '@mswjs/interceptors': 0.17.6
+      '@open-draft/until': 1.0.3
+      '@types/cookie': 0.4.1
+      '@types/js-levenshtein': 1.1.1
+      chalk: 4.1.1
+      chokidar: 3.5.3
+      cookie: 0.4.2
+      graphql: 16.6.0
+      headers-polyfill: 3.1.2
+      inquirer: 8.2.5
+      is-node-process: 1.0.1
+      js-levenshtein: 1.1.6
+      node-fetch: 2.6.11
+      outvariant: 1.3.0
+      path-to-regexp: 6.2.1
+      statuses: 2.0.1
+      strict-event-emitter: 0.2.8
+      type-fest: 2.19.0
+      typescript: 5.0.4
       yargs: 17.6.2
     transitivePeerDependencies:
       - encoding

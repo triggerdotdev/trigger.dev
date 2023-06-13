@@ -1,6 +1,7 @@
-import { Octokit } from "octokit";
+import { RequestError } from "@octokit/request-error";
 import type { GetResponseDataTypeFromEndpointMethod } from "@octokit/types";
 import type { AuthenticatedTask } from "@trigger.dev/sdk";
+import { Octokit } from "octokit";
 
 type OctokitClient = InstanceType<typeof Octokit>;
 
@@ -13,11 +14,37 @@ type GithubAuthenticatedTask<
   GetResponseDataTypeFromEndpointMethod<TFunction>
 >;
 
+function isRequestError(error: unknown): error is RequestError {
+  return typeof error === "object" && error !== null && "status" in error;
+}
+
+function onError(error: unknown) {
+  if (!isRequestError(error)) {
+    return;
+  }
+
+  // Check if this is a rate limit error
+  if (error.status === 403 && error.response) {
+    const rateLimitRemaining = error.response.headers["x-ratelimit-remaining"];
+    const rateLimitReset = error.response.headers["x-ratelimit-reset"];
+
+    if (rateLimitRemaining === "0" && rateLimitReset) {
+      const resetDate = new Date(Number(rateLimitReset) * 1000);
+
+      return {
+        retryAt: resetDate,
+        error,
+      };
+    }
+  }
+}
+
 export const createIssue: GithubAuthenticatedTask<
   { title: string; repo: string },
   OctokitClient["rest"]["issues"]["create"]
 > = {
-  run: async (params, client) => {
+  onError,
+  run: async (params, client, task) => {
     const [owner, repo] = params.repo.split("/");
 
     return client.rest.issues
@@ -42,6 +69,13 @@ export const createIssue: GithubAuthenticatedTask<
           text: params.title,
         },
       ],
+      retry: {
+        limit: 3,
+        factor: 2,
+        minTimeoutInMs: 500,
+        maxTimeoutInMs: 30000,
+        randomize: true,
+      },
     };
   },
 };
@@ -50,6 +84,7 @@ export const createIssueComment: GithubAuthenticatedTask<
   { body: string; repo: string; issueNumber: number },
   OctokitClient["rest"]["issues"]["createComment"]
 > = {
+  onError,
   run: async (params, client) => {
     const [owner, repo] = params.repo.split("/");
 
@@ -84,12 +119,16 @@ export const getRepo: GithubAuthenticatedTask<
   { repo: string },
   OctokitClient["rest"]["repos"]["get"]
 > = {
-  run: async (params, client) => {
+  onError,
+  run: async (params, client, task) => {
     const [owner, repo] = params.repo.split("/");
 
     const response = await client.rest.repos.get({
       owner,
       repo,
+      headers: {
+        "x-trigger-attempt": String(task.attempts),
+      },
     });
 
     return response.data;
@@ -126,6 +165,7 @@ export const addIssueCommentReaction: GithubAuthenticatedTask<
   },
   OctokitClient["rest"]["reactions"]["createForIssueComment"]
 > = {
+  onError,
   run: async (params, client) => {
     const [owner, repo] = params.repo.split("/");
 
@@ -195,6 +235,7 @@ export const createIssueCommentWithReaction: GithubAuthenticatedTask<
   },
   OctokitClient["rest"]["issues"]["createComment"]
 > = {
+  onError,
   run: async (params, client, task, io) => {
     const comment = await io.runTask(
       `Comment on Issue #${params.issueNumber}`,
@@ -255,6 +296,7 @@ export const updateWebhook: GithubAuthenticatedTask<
   },
   OctokitClient["rest"]["repos"]["updateWebhook"]
 > = {
+  onError,
   run: async (params, client) => {
     const [owner, repo] = params.repo.split("/");
 
@@ -300,6 +342,7 @@ export const updateOrgWebhook: GithubAuthenticatedTask<
   },
   OctokitClient["rest"]["orgs"]["updateWebhook"]
 > = {
+  onError,
   run: async (params, client) => {
     return client.rest.orgs
       .updateWebhook({
@@ -341,6 +384,7 @@ export const createWebhook: GithubAuthenticatedTask<
   },
   OctokitClient["rest"]["repos"]["createWebhook"]
 > = {
+  onError,
   run: async (params, client) => {
     const [owner, repo] = params.repo.split("/");
 
@@ -384,6 +428,7 @@ export const createOrgWebhook: GithubAuthenticatedTask<
   },
   OctokitClient["rest"]["orgs"]["createWebhook"]
 > = {
+  onError,
   run: async (params, client, task) => {
     return client.rest.orgs
       .createWebhook({
@@ -422,6 +467,7 @@ export const listWebhooks: GithubAuthenticatedTask<
   },
   OctokitClient["rest"]["repos"]["listWebhooks"]
 > = {
+  onError,
   run: async (params, client) => {
     const [owner, repo] = params.repo.split("/");
 
@@ -452,6 +498,7 @@ export const listOrgWebhooks: GithubAuthenticatedTask<
   },
   OctokitClient["rest"]["orgs"]["listWebhooks"]
 > = {
+  onError,
   run: async (params, client) => {
     return client.rest.orgs
       .listWebhooks({

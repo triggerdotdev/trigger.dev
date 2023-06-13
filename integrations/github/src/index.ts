@@ -16,10 +16,12 @@ import { Octokit } from "octokit";
 import { clientFactory } from "./clientFactory";
 import { createOrgEventSource, createRepoEventSource } from "./sources";
 import { tasks } from "./tasks";
+import { RequestRequestOptions } from "@octokit/types";
 
 export type GithubIntegrationOptions = {
   id: string;
   token?: string;
+  octokitRequest?: RequestRequestOptions;
 };
 
 type GithubSources = {
@@ -78,6 +80,10 @@ function createConnectionFromOptions(
   if (options.token) {
     const client = new Octokit({
       auth: options.token,
+      request: options.octokitRequest,
+      retry: {
+        enabled: false,
+      },
     });
 
     return {
@@ -89,7 +95,15 @@ function createConnectionFromOptions(
 
   return {
     usesLocalAuth: false,
-    clientFactory,
+    clientFactory: (auth) => {
+      return new Octokit({
+        auth: auth.accessToken,
+        request: options.octokitRequest,
+        retry: {
+          enabled: false,
+        },
+      });
+    },
     tasks,
   };
 }

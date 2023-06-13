@@ -22,7 +22,8 @@ import {
   SourceMetadata,
 } from "@trigger.dev/internal";
 import { ApiClient } from "./apiClient";
-import { IO, ResumeWithTask, TaskError } from "./io";
+import { ResumeWithTaskError, RetryWithTaskError } from "./errors";
+import { IO } from "./io";
 import { createIOWithIntegrations } from "./ioWithIntegrations";
 import { Job } from "./job";
 import { DynamicTrigger } from "./triggers/dynamic";
@@ -584,11 +585,20 @@ export class TriggerClient {
 
       return { status: "SUCCESS", output };
     } catch (error) {
-      if (error instanceof ResumeWithTask) {
+      if (error instanceof ResumeWithTaskError) {
         return { status: "RESUME_WITH_TASK", task: error.task };
       }
 
-      if (error instanceof TaskError) {
+      if (error instanceof RetryWithTaskError) {
+        return {
+          status: "RETRY_WITH_TASK",
+          task: error.task,
+          error: error.cause,
+          retryAt: error.retryAt,
+        };
+      }
+
+      if (error instanceof RetryWithTaskError) {
         const errorWithStack = ErrorWithStackSchema.safeParse(error.cause);
 
         if (errorWithStack.success) {

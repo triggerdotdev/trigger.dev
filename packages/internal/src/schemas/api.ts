@@ -276,6 +276,15 @@ export const RunJobResumeWithTaskSchema = z.object({
 
 export type RunJobResumeWithTask = z.infer<typeof RunJobResumeWithTaskSchema>;
 
+export const RunJobRetryWithTaskSchema = z.object({
+  status: z.literal("RETRY_WITH_TASK"),
+  task: TaskSchema,
+  error: ErrorWithStackSchema,
+  retryAt: z.coerce.date(),
+});
+
+export type RunJobRetryWithTask = z.infer<typeof RunJobRetryWithTaskSchema>;
+
 export const RunJobSuccessSchema = z.object({
   status: z.literal("SUCCESS"),
   output: DeserializedJsonSchema.optional(),
@@ -286,6 +295,7 @@ export type RunJobSuccess = z.infer<typeof RunJobSuccessSchema>;
 export const RunJobResponseSchema = z.discriminatedUnion("status", [
   RunJobErrorSchema,
   RunJobResumeWithTaskSchema,
+  RunJobRetryWithTaskSchema,
   RunJobSuccessSchema,
 ]);
 
@@ -380,6 +390,16 @@ export const RedactSchema = z.object({
   paths: z.array(z.string()),
 });
 
+export const RetryOptionsSchema = z.object({
+  limit: z.number().optional(),
+  factor: z.number().optional(),
+  minTimeoutInMs: z.number().optional(),
+  maxTimeoutInMs: z.number().optional(),
+  randomize: z.boolean().optional(),
+});
+
+export type RetryOptions = z.infer<typeof RetryOptionsSchema>;
+
 export const RunTaskOptionsSchema = z.object({
   name: z.string(),
   icon: z.string().optional(),
@@ -393,6 +413,7 @@ export const RunTaskOptionsSchema = z.object({
   redact: RedactSchema.optional(),
   connectionKey: z.string().optional(),
   style: StyleSchema.optional(),
+  retry: RetryOptionsSchema.optional(),
 });
 
 export type RunTaskOptions = z.input<typeof RunTaskOptionsSchema>;
@@ -424,6 +445,12 @@ export type CompleteTaskBodyInput = z.input<typeof CompleteTaskBodyInputSchema>;
 export type CompleteTaskBodyOutput = z.infer<
   typeof CompleteTaskBodyInputSchema
 >;
+
+export const FailTaskBodyInputSchema = z.object({
+  error: ErrorWithStackSchema,
+});
+
+export type FailTaskBodyInput = z.infer<typeof FailTaskBodyInputSchema>;
 
 export const NormalizedRequestSchema = z.object({
   headers: z.record(z.string()),

@@ -1,3 +1,11 @@
+import { setupServer } from "msw/node";
+import { handlers } from "./mocks/handlers";
+
+const mockServer = setupServer(...handlers);
+mockServer.listen({
+  onUnhandledRequest: "bypass",
+});
+
 import { Github, events } from "@trigger.dev/github";
 import {
   DynamicSchedule,
@@ -7,11 +15,13 @@ import {
   cronTrigger,
   eventTrigger,
   intervalTrigger,
+  isTriggerError,
   missingConnectionNotification,
   missingConnectionResolvedNotification,
 } from "@trigger.dev/sdk";
 import { Slack } from "@trigger.dev/slack";
 import { z } from "zod";
+import fetch from "node-fetch";
 
 export const client = new TriggerClient({
   id: "nextjs-example",
@@ -21,8 +31,12 @@ export const client = new TriggerClient({
   logLevel: "debug",
 });
 
-export const github = new Github({ id: "github" });
-const githubUser = new Github({ id: "github-user" });
+export const github = new Github({
+  id: "github",
+  octokitRequest: { fetch },
+});
+
+const githubUser = new Github({ id: "github-user", octokitRequest: { fetch } });
 
 // const githubLocal = new Github({
 //   id: "github-local",
@@ -140,12 +154,6 @@ new Job(client, {
     github: githubUser,
   },
   run: async (payload, io, ctx) => {
-    await io.logger.info("This is a log info message", {
-      payload,
-    });
-
-    await io.wait("wait", 1);
-
     return await io.github.getRepo("get.repo", payload);
   },
 });
@@ -240,9 +248,57 @@ new Job(client, {
     name: "foo.bar",
   }),
   run: async (payload, io, ctx) => {
-    await io.runTask("task-1", { name: "task-1" }, async (task) => {
-      throw new Error("Task failed");
-    });
+    await io.try(
+      async () => {
+        return await io.runTask(
+          "task-1",
+          { name: "task-1", retry: { limit: 3 } },
+          async (task) => {
+            if (task.attempts > 2) {
+              return {
+                bar: "foo",
+              };
+            }
+
+            throw new Error(`Task failed on ${task.attempts} attempt(s)`);
+          }
+        );
+      },
+      async (error) => {
+        // These should never be reached
+        await io.wait("wait-after-error", 5);
+
+        await io.logger.error("This is a log error message", {
+          payload,
+          error,
+        });
+
+        return {
+          foo: "bar",
+        };
+      }
+    );
+
+    try {
+      await io.runTask(
+        "task-2",
+        { name: "task-2", retry: { limit: 5 } },
+        async (task) => {
+          throw new Error(`Task failed on ${task.attempts} attempt(s)`);
+        }
+      );
+    } catch (error) {
+      if (isTriggerError(error)) {
+        throw error;
+      }
+
+      await io.wait("wait-after-error", 5);
+
+      await io.logger.error("This is a log error message", {
+        payload,
+        error,
+      });
+    }
 
     return {
       payload,
