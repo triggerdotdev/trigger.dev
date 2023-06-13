@@ -50,6 +50,7 @@ export class TestJobPresenter {
               select: {
                 id: true,
                 type: true,
+                slug: true,
                 orgMember: {
                   select: {
                     userId: true,
@@ -84,8 +85,12 @@ export class TestJobPresenter {
       environments: job.aliases.map((alias) => ({
         id: alias.environment.id,
         type: alias.environment.type,
+        slug: alias.environment.slug,
         userId: alias.environment.orgMember?.userId,
-        examples: alias.version.examples,
+        examples: alias.version.examples.map((example) => ({
+          ...example,
+          payload: JSON.stringify(example.payload, null, 2),
+        })),
       })),
     };
   }

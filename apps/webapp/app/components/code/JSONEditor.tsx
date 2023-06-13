@@ -11,7 +11,7 @@ import { darkTheme } from "./codeMirrorTheme";
 import { cn } from "~/utils/cn";
 
 export interface JSONEditorProps extends Omit<ReactCodeMirrorProps, "onBlur"> {
-  content: string;
+  content?: string;
   language?: "json";
   readOnly?: boolean;
   onChange?: (value: string) => void;
@@ -40,6 +40,7 @@ export function JSONEditor(opts: JSONEditorProps) {
     onUpdate,
     onBlur,
     basicSetup,
+    autoFocus,
   } = {
     ...defaultProps,
     ...opts,
@@ -60,20 +61,29 @@ export function JSONEditor(opts: JSONEditorProps) {
     editable: !readOnly,
     contentEditable: !readOnly,
     value: content,
-    autoFocus: false,
+    autoFocus,
     theme: darkTheme(),
     indentWithTab: false,
     basicSetup,
     onChange,
     onUpdate,
   };
-  const { setContainer } = useCodeMirror(settings);
+  const { setContainer, state } = useCodeMirror(settings);
 
   useEffect(() => {
     if (editor.current) {
       setContainer(editor.current);
     }
   }, [setContainer]);
+
+  //if the content param changes, update the editor
+  useEffect(() => {
+    if (state !== undefined && content !== undefined) {
+      state.update({
+        changes: { from: 0, to: state.doc.length, insert: content },
+      });
+    }
+  }, [content, state]);
 
   return (
     <div
