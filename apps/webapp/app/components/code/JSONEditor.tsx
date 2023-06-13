@@ -87,7 +87,10 @@ export function JSONEditor(opts: JSONEditorProps) {
 
   return (
     <div
-      className={cn("no-scrollbar overflow-y-auto", opts.className)}
+      className={cn(
+        "overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-slate-700",
+        opts.className
+      )}
       ref={editor}
       onBlur={() => {
         if (!onBlur) return;

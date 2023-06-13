@@ -167,9 +167,9 @@ export default function Page() {
   }
 
   return (
-    <div>
+    <div className="h-full">
       <Form
-        className="flex flex-col gap-2"
+        className="grid max-h-full grid-rows-[2rem_minmax(300px_1fr)_2rem] gap-2"
         method="post"
         {...form.props}
         onSubmit={(e) => submitForm(e)}
@@ -224,13 +224,17 @@ export default function Page() {
           </Popover>
         </div>
 
-        <JSONEditor
-          defaultValue={defaultJson}
-          readOnly={false}
-          basicSetup
-          onChange={(v) => (currentJson.current = v)}
-        />
-        <FormError id={payload.errorId}>{payload.error}</FormError>
+        <div>
+          <JSONEditor
+            defaultValue={defaultJson}
+            readOnly={false}
+            basicSetup
+            onChange={(v) => (currentJson.current = v)}
+            minHeight="300px"
+            maxHeight="100%"
+          />
+          <FormError id={payload.errorId}>{payload.error}</FormError>
+        </div>
         <div className="flex justify-end">
           <Button type="submit" variant="primary/medium">
             Run test
