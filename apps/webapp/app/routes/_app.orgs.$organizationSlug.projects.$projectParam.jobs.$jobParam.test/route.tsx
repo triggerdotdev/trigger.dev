@@ -1,36 +1,31 @@
-import { Form } from "@remix-run/react";
-import { LoaderArgs } from "@remix-run/server-runtime";
+import { useForm } from "@conform-to/react";
+import { parse } from "@conform-to/zod";
+import { PopoverTrigger } from "@radix-ui/react-popover";
+import { Form, useActionData, useSubmit } from "@remix-run/react";
+import { ActionFunction, LoaderArgs, json } from "@remix-run/server-runtime";
+import { useCallback, useRef, useState } from "react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
+import { z } from "zod";
 import { JSONEditor } from "~/components/code/JSONEditor";
 import { EnvironmentLabel } from "~/components/environments/EnvironmentLabel";
-import {
-  Popover,
-  PopoverArrowTrigger,
-  PopoverContent,
-  PopoverMenuItem,
-  PopoverSectionHeader,
-} from "~/components/primitives/Popover";
+import { Button, ButtonContent } from "~/components/primitives/Buttons";
+import { Callout } from "~/components/primitives/Callout";
+import { FormError } from "~/components/primitives/FormError";
+import { Popover, PopoverContent } from "~/components/primitives/Popover";
 import {
   Select,
   SelectContent,
   SelectGroup,
   SelectItem,
-  SelectLabel,
-  SelectSeparator,
   SelectTrigger,
   SelectValue,
 } from "~/components/primitives/Select";
-import { useOrganization } from "~/hooks/useOrganizations";
-import { useProject } from "~/hooks/useProject";
+import { redirectWithSuccessMessage } from "~/models/message.server";
 import { TestJobPresenter } from "~/presenters/TestJobPresenter.server";
 import { requireUserId } from "~/services/session.server";
+import { formDataAsObject } from "~/utils/formData";
 import { Handle } from "~/utils/handle";
-import { JobParamsSchema, ProjectParamSchema } from "~/utils/pathBuilder";
-import { Fragment, useCallback, useEffect, useRef, useState } from "react";
-import { Callout } from "~/components/primitives/Callout";
-import { PopoverTrigger } from "@radix-ui/react-popover";
-import { Button, ButtonContent } from "~/components/primitives/Buttons";
-import { set } from "lodash";
+import { JobParamsSchema, jobTestPath } from "~/utils/pathBuilder";
 
 export const loader = async ({ request, params }: LoaderArgs) => {
   const userId = await requireUserId(request);
@@ -46,6 +41,54 @@ export const loader = async ({ request, params }: LoaderArgs) => {
   });
 
   return typedjson({ environments });
+};
+
+const schema = z.object({
+  payload: z.string().transform((payload, ctx) => {
+    try {
+      const data = JSON.parse(payload);
+      return data as any;
+    } catch (e) {
+      console.log("parsing error", e);
+
+      if (e instanceof Error) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: e.message,
+        });
+      } else {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "This is invalid JSON",
+        });
+      }
+    }
+  }),
+  environmentId: z.string(),
+});
+
+export const action: ActionFunction = async ({ request, params }) => {
+  const userId = await requireUserId(request);
+  const { organizationSlug, projectParam, jobParam } =
+    JobParamsSchema.parse(params);
+
+  const formData = await request.formData();
+
+  const submission = parse(formData, { schema });
+
+  if (!submission.value) {
+    return json(submission);
+  }
+
+  return redirectWithSuccessMessage(
+    jobTestPath(
+      { slug: organizationSlug },
+      { slug: projectParam },
+      { slug: jobParam }
+    ),
+    request,
+    "Test run created"
+  );
 };
 
 export const handle: Handle = {
@@ -64,10 +107,10 @@ export const handle: Handle = {
 const startingJson = "{\n\n}";
 
 export default function Page() {
+  const submit = useSubmit();
+  const lastSubmission = useActionData();
   const [isExamplePopoverOpen, setIsExamplePopoverOpen] = useState(false);
   const { environments } = useTypedLoaderData<typeof loader>();
-  const organization = useOrganization();
-  const project = useProject();
 
   const [defaultJson, setDefaultJson] = useState<string>(startingJson);
   const currentJson = useRef<string>(defaultJson);
@@ -84,6 +127,31 @@ export default function Page() {
     setIsExamplePopoverOpen(false);
   }, []);
 
+  const submitForm = useCallback(
+    (e: React.FormEvent<HTMLFormElement>) => {
+      submit(
+        {
+          payload: currentJson.current,
+          environmentId: selectedEnvironmentId,
+        },
+        {
+          action: "",
+          method: "post",
+        }
+      );
+      e.preventDefault();
+    },
+    [currentJson, selectedEnvironmentId]
+  );
+
+  const [form, { environmentId, payload }] = useForm({
+    id: "test-job",
+    lastSubmission,
+    onValidate({ formData }) {
+      return parse(formData, { schema });
+    },
+  });
+
   if (environments.length === 0) {
     return (
       <Callout variant="warning">
@@ -95,7 +163,12 @@ export default function Page() {
 
   return (
     <div>
-      <Form className="flex flex-col gap-2" method="post">
+      <Form
+        className="flex flex-col gap-2"
+        method="post"
+        {...form.props}
+        onSubmit={(e) => submitForm(e)}
+      >
         <div className="flex items-center justify-between">
           <SelectGroup>
             <Select
@@ -152,6 +225,7 @@ export default function Page() {
           basicSetup
           onChange={(v) => (currentJson.current = v)}
         />
+        <FormError id={payload.errorId}>{payload.error}</FormError>
         <div className="flex justify-end">
           <Button type="submit" variant="primary/medium">
             Run test
