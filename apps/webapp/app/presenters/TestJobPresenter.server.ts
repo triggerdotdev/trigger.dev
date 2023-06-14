@@ -64,6 +64,15 @@ export class TestJobPresenter {
             name: "latest",
           },
         },
+        _count: {
+          select: {
+            runs: {
+              where: {
+                isTest: true,
+              },
+            },
+          },
+        },
       },
       where: {
         organization: {
@@ -94,6 +103,7 @@ export class TestJobPresenter {
           payload: JSON.stringify(example.payload, null, 2),
         })),
       })),
+      hasTestRuns: job._count.runs > 0,
     };
   }
 }

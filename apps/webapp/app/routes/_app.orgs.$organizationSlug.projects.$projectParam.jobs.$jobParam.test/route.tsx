@@ -11,6 +11,10 @@ import { EnvironmentLabel } from "~/components/environments/EnvironmentLabel";
 import { Button, ButtonContent } from "~/components/primitives/Buttons";
 import { Callout } from "~/components/primitives/Callout";
 import { FormError } from "~/components/primitives/FormError";
+import { HelpTrigger } from "~/components/primitives/Help";
+import { HelpContent } from "~/components/primitives/Help";
+import { Help } from "~/components/primitives/Help";
+import { Paragraph } from "~/components/primitives/Paragraph";
 import { Popover, PopoverContent } from "~/components/primitives/Popover";
 import {
   Select,
@@ -34,14 +38,14 @@ export const loader = async ({ request, params }: LoaderArgs) => {
     JobParamsSchema.parse(params);
 
   const presenter = new TestJobPresenter();
-  const { environments } = await presenter.call({
+  const { environments, hasTestRuns } = await presenter.call({
     userId,
     organizationSlug,
     projectSlug: projectParam,
     jobSlug: jobParam,
   });
 
-  return typedjson({ environments });
+  return typedjson({ environments, hasTestRuns });
 };
 
 const schema = z.object({
@@ -114,7 +118,7 @@ export default function Page() {
   const submit = useSubmit();
   const lastSubmission = useActionData();
   const [isExamplePopoverOpen, setIsExamplePopoverOpen] = useState(false);
-  const { environments } = useTypedLoaderData<typeof loader>();
+  const { environments, hasTestRuns } = useTypedLoaderData<typeof loader>();
 
   const [defaultJson, setDefaultJson] = useState<string>(startingJson);
   const currentJson = useRef<string>(defaultJson);
@@ -167,86 +171,95 @@ export default function Page() {
   }
 
   return (
-    //todo Add help. Make it default open if there are no test runs yet
-    <Form
-      className="flex max-h-full flex-col gap-2 overflow-y-auto"
-      method="post"
-      {...form.props}
-      onSubmit={(e) => submitForm(e)}
-    >
-      <div className="flex flex-none items-center gap-2">
-        <SelectGroup>
-          <Select
-            name="environment"
-            value={selectedEnvironmentId}
-            onValueChange={setSelectedEnvironmentId}
-          >
-            <SelectTrigger size="medium">
-              <SelectValue
-                placeholder="Select environment"
-                className="m-0 p-0"
-              />{" "}
-              Environment
-            </SelectTrigger>
-            <SelectContent>
-              {environments.map((environment) => (
-                <SelectItem key={environment.id} value={environment.id}>
-                  <EnvironmentLabel environment={environment} />
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </SelectGroup>
-
-        <Popover
-          open={isExamplePopoverOpen}
-          onOpenChange={(open) => setIsExamplePopoverOpen(open)}
+    <Help defaultOpen={!hasTestRuns}>
+      <div className="flex max-h-full w-full gap-2 overflow-y-auto">
+        <Form
+          className="flex max-h-full grow flex-col gap-2 overflow-y-auto"
+          method="post"
+          {...form.props}
+          onSubmit={(e) => submitForm(e)}
         >
-          <PopoverTrigger>
-            <ButtonContent
-              variant="secondary/medium"
-              LeadingIcon="beaker"
-              TrailingIcon="chevron-down"
-            >
-              Insert an example
-            </ButtonContent>
-          </PopoverTrigger>
+          <div className="flex flex-none items-center justify-between gap-2">
+            <div className="flex flex-none items-center gap-2">
+              <SelectGroup>
+                <Select
+                  name="environment"
+                  value={selectedEnvironmentId}
+                  onValueChange={setSelectedEnvironmentId}
+                >
+                  <SelectTrigger size="medium">
+                    <SelectValue
+                      placeholder="Select environment"
+                      className="m-0 p-0"
+                    />{" "}
+                    Environment
+                  </SelectTrigger>
+                  <SelectContent>
+                    {environments.map((environment) => (
+                      <SelectItem key={environment.id} value={environment.id}>
+                        <EnvironmentLabel environment={environment} />
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </SelectGroup>
 
-          <PopoverContent className="w-80 p-0" align="start">
-            {selectedEnvironment?.examples.map((example) => (
-              <Button
-                key={example.id}
-                variant="menu-item"
-                onClick={(e) => insertCode(example.payload)}
-                LeadingIcon={example.icon ?? "beaker"}
-                fullWidth
-                textAlignLeft
+              <Popover
+                open={isExamplePopoverOpen}
+                onOpenChange={(open) => setIsExamplePopoverOpen(open)}
               >
-                {example.name}
-              </Button>
-            ))}
-          </PopoverContent>
-        </Popover>
+                <PopoverTrigger>
+                  <ButtonContent
+                    variant="secondary/medium"
+                    LeadingIcon="beaker"
+                    TrailingIcon="chevron-down"
+                  >
+                    Insert an example
+                  </ButtonContent>
+                </PopoverTrigger>
+
+                <PopoverContent className="w-80 p-0" align="start">
+                  {selectedEnvironment?.examples.map((example) => (
+                    <Button
+                      key={example.id}
+                      variant="menu-item"
+                      onClick={(e) => insertCode(example.payload)}
+                      LeadingIcon={example.icon ?? "beaker"}
+                      fullWidth
+                      textAlignLeft
+                    >
+                      {example.name}
+                    </Button>
+                  ))}
+                </PopoverContent>
+              </Popover>
+            </div>
+            <HelpTrigger title="How do I run a test" />
+          </div>
+          <div className="flex-1 overflow-auto">
+            <JSONEditor
+              defaultValue={defaultJson}
+              readOnly={false}
+              basicSetup
+              onChange={(v) => (currentJson.current = v)}
+              minHeight="150px"
+            />
+          </div>
+          <div className="flex flex-none items-center justify-between">
+            {payload.error ? (
+              <FormError id={payload.errorId}>{payload.error}</FormError>
+            ) : (
+              <div />
+            )}
+            <Button type="submit" variant="primary/medium">
+              Run test
+            </Button>
+          </div>
+        </Form>
+        <HelpContent title="How to run a test">
+          <Paragraph>Help content needs writing</Paragraph>
+        </HelpContent>
       </div>
-      <div className="flex-1 overflow-auto">
-        <JSONEditor
-          defaultValue={defaultJson}
-          readOnly={false}
-          basicSetup
-          onChange={(v) => (currentJson.current = v)}
-          minHeight="150px"
-        />
-      </div>
-      <div className="flex flex-none items-center justify-between">
-        {payload.error ? (
-          <FormError id={payload.errorId}>{payload.error}</FormError>
-        ) : (
-          <div />
-        )}
-        <Button type="submit" variant="primary/medium">
-          Run test
-        </Button>
-      </div>
-    </Form>
+    </Help>
   );
 }
