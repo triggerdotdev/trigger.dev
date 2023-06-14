@@ -1,8 +1,11 @@
-import type { UseDataFunctionReturn } from "remix-typedjson";
-import type { loader as appLoader } from "~/routes/_app/route";
-import type { loader as orgLoader } from "~/routes/_app.orgs.$organizationSlug/route";
-import { hydrateObject, useMatchesData } from "~/utils";
+import {
+  UseDataFunctionReturn,
+  useTypedRouteLoaderData,
+} from "remix-typedjson";
 import invariant from "tiny-invariant";
+import type { loader as orgLoader } from "~/routes/_app.orgs.$organizationSlug/route";
+import type { loader as appLoader } from "~/routes/_app/route";
+import { hydrateObject, useMatchesData } from "~/utils";
 
 export type MatchedOrganization = UseDataFunctionReturn<
   typeof appLoader
@@ -20,24 +23,19 @@ export function useOrganizations() {
 
 export function useOptionalOrganization() {
   const orgs = useOptionalOrganizations();
-  const routeMatch = useMatchesData("routes/_app.orgs.$organizationSlug");
+  const routeMatch = useTypedRouteLoaderData<typeof orgLoader>(
+    "routes/_app.orgs.$organizationSlug"
+  );
 
-  if (!orgs || !routeMatch || !routeMatch.data.organization) {
+  if (!orgs || !routeMatch || !routeMatch.organization) {
     return undefined;
   }
 
-  if (routeMatch.data.organization == null) {
+  if (routeMatch.organization === null) {
     return undefined;
   }
 
-  const result = hydrateObject<
-    UseDataFunctionReturn<typeof orgLoader>["organization"]
-  >(routeMatch.data.organization);
-
-  if (result == null) return undefined;
-
-  const org = orgs.find((o) => o.id === result.id);
-  return org;
+  return orgs.find((o) => o.id === routeMatch.organization.id);
 }
 
 export function useOrganization() {

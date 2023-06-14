@@ -71,7 +71,11 @@ export function hydrateDates(object: any): any {
     return object;
   }
 
-  if (typeof object === "string" && object.match(/\d{4}-\d{2}-\d{2}/)) {
+  if (
+    typeof object === "string" &&
+    object.match(/\d{4}-\d{2}-\d{2}/) &&
+    !isNaN(Date.parse(object))
+  ) {
     return new Date(object);
   }
 

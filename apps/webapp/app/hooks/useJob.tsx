@@ -1,34 +1,29 @@
-import type { UseDataFunctionReturn } from "remix-typedjson";
-import type { loader as jobLoader } from "~/routes/_app.orgs.$organizationSlug.projects.$projectParam.jobs.$jobParam/route";
-import { hydrateObject, useMatchesData } from "~/utils";
-import { useOptionalProject } from "./useProject";
+import {
+  UseDataFunctionReturn,
+  useTypedRouteLoaderData,
+} from "remix-typedjson";
 import invariant from "tiny-invariant";
+import type { loader } from "~/routes/_app.orgs.$organizationSlug.projects.$projectParam.jobs.$jobParam/route";
+import { useOptionalProject } from "./useProject";
 
-export type MatchedJob = UseDataFunctionReturn<typeof jobLoader>["job"];
+export type MatchedJob = UseDataFunctionReturn<typeof loader>["job"];
 
 export function useOptionalJob() {
   const project = useOptionalProject();
-  const routeMatch = useMatchesData(
+  const routeMatch = useTypedRouteLoaderData<typeof loader>(
     "routes/_app.orgs.$organizationSlug.projects.$projectParam.jobs.$jobParam"
   );
 
-  if (!project || !routeMatch || !routeMatch.data.job) {
+  if (!project || !routeMatch || !routeMatch.job) {
     return undefined;
   }
 
-  if (routeMatch.data.job == null) {
+  if (routeMatch.job == null) {
     return undefined;
   }
-
-  const result = hydrateObject<UseDataFunctionReturn<typeof jobLoader>["job"]>(
-    routeMatch.data.job
-  );
-
-  if (result == null) return undefined;
 
   //get the job from the list on the project
-  const job = project.jobs.find((j) => j.id === result.id);
-  return job;
+  return project.jobs.find((j) => j.id === routeMatch.job.id);
 }
 
 export function useJob() {

@@ -1,27 +1,18 @@
-import type { UseDataFunctionReturn } from "remix-typedjson";
+import {
+  UseDataFunctionReturn,
+  useTypedRouteLoaderData,
+} from "remix-typedjson";
 import invariant from "tiny-invariant";
-import type { loader as clientLoader } from "~/routes/_app.orgs.$organizationSlug.projects.$projectParam.integrations_.$clientParam/route";
-import { hydrateObject, useMatchesData } from "~/utils";
+import type { loader } from "~/routes/_app.orgs.$organizationSlug.projects.$projectParam.integrations_.$clientParam/route";
 
-export type MatchedClient = UseDataFunctionReturn<
-  typeof clientLoader
->["client"];
+export type MatchedClient = UseDataFunctionReturn<typeof loader>["client"];
 
 export function useOptionalIntegrationClient() {
-  const routeMatch = useMatchesData(
+  const routeMatch = useTypedRouteLoaderData<typeof loader>(
     "routes/_app.orgs.$organizationSlug.projects.$projectParam.integrations_.$clientParam"
   );
 
-  if (!routeMatch || !routeMatch.data.client) {
-    return undefined;
-  }
-
-  const result = hydrateObject<
-    UseDataFunctionReturn<typeof clientLoader>["client"]
-  >(routeMatch.data.client);
-
-  if (result == null) return undefined;
-  return result;
+  return routeMatch?.client;
 }
 
 export function useIntegrationClient() {

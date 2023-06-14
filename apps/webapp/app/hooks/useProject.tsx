@@ -1,29 +1,20 @@
-import type { UseDataFunctionReturn } from "remix-typedjson";
+import {
+  UseDataFunctionReturn,
+  useTypedRouteLoaderData,
+} from "remix-typedjson";
 import invariant from "tiny-invariant";
-import type { loader as projectLoader } from "~/routes/_app.orgs.$organizationSlug.projects.$projectParam/route";
-import { hydrateObject, useMatchesData } from "~/utils";
+import type { loader } from "~/routes/_app.orgs.$organizationSlug.projects.$projectParam/route";
 
-export type MatchedProject = UseDataFunctionReturn<
-  typeof projectLoader
->["project"];
+export type MatchedProject = UseDataFunctionReturn<typeof loader>["project"];
 
 export type ProjectJob = MatchedProject["jobs"][number];
 
 export function useOptionalProject() {
-  const routeMatch = useMatchesData(
+  const routeMatch = useTypedRouteLoaderData<typeof loader>(
     "routes/_app.orgs.$organizationSlug.projects.$projectParam"
   );
 
-  if (!routeMatch || !routeMatch.data.project) {
-    return undefined;
-  }
-
-  const result = hydrateObject<
-    UseDataFunctionReturn<typeof projectLoader>["project"]
-  >(routeMatch.data.project);
-
-  if (result == null) return undefined;
-  return result;
+  return routeMatch?.project;
 }
 
 export function useProject() {
