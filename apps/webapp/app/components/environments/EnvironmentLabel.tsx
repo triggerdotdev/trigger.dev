@@ -13,7 +13,7 @@ export function EnvironmentLabel({
   return (
     <span
       className={cn(
-        "rounded-sm px-1 py-0.5 text-xxs font-medium uppercase text-midnight-900",
+        "flex h-4 items-center justify-center rounded-sm px-1 text-xxs font-medium uppercase text-midnight-900",
         environmentColorClassName(environment),
         className
       )}
