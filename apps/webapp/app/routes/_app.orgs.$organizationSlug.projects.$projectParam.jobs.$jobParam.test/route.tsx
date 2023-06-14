@@ -167,13 +167,14 @@ export default function Page() {
   }
 
   return (
+    //todo Add help. Make it default open if there are no test runs yet
     <Form
       className="flex max-h-full flex-col gap-2 overflow-y-auto"
       method="post"
       {...form.props}
       onSubmit={(e) => submitForm(e)}
     >
-      <div className="flex flex-none items-center justify-between">
+      <div className="flex flex-none items-center gap-2">
         <SelectGroup>
           <Select
             name="environment"
@@ -181,7 +182,11 @@ export default function Page() {
             onValueChange={setSelectedEnvironmentId}
           >
             <SelectTrigger size="medium">
-              Environment: <SelectValue placeholder="Select environment" />
+              <SelectValue
+                placeholder="Select environment"
+                className="m-0 p-0"
+              />{" "}
+              Environment
             </SelectTrigger>
             <SelectContent>
               {environments.map((environment) => (
@@ -200,9 +205,10 @@ export default function Page() {
           <PopoverTrigger>
             <ButtonContent
               variant="secondary/medium"
+              LeadingIcon="beaker"
               TrailingIcon="chevron-down"
             >
-              Insert example
+              Insert an example
             </ButtonContent>
           </PopoverTrigger>
 
