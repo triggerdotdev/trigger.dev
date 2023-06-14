@@ -56,6 +56,7 @@ export class ReRunService {
         });
 
         const createRunService = new CreateRunService(tx);
+
         return createRunService.call({
           environment: {
             ...existingRun.environment,
