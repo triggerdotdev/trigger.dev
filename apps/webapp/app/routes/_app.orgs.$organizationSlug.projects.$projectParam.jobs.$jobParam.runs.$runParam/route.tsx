@@ -69,6 +69,7 @@ import {
   PopoverTrigger,
 } from "~/components/primitives/Popover";
 import { conform } from "@conform-to/react";
+import { RuntimeEnvironmentType } from "@/../../packages/internal/src";
 
 export const loader = async ({ request, params }: LoaderArgs) => {
   const userId = await requireUserId(request);
@@ -192,55 +193,7 @@ export default function Page() {
               </span>
             )}
             {(basicStatus === "COMPLETED" || basicStatus === "FAILED") && (
-              <Popover>
-                <PopoverTrigger>
-                  <ButtonContent variant="primary/small" shortcut="R">
-                    Rerun Job
-                  </ButtonContent>
-                </PopoverTrigger>
-                <PopoverContent
-                  className="flex w-80 flex-col gap-2 p-4"
-                  align="end"
-                >
-                  {run.environment.type === "PRODUCTION" && (
-                    <Callout variant="warning">
-                      This will rerun this job in your Production environment.
-                    </Callout>
-                  )}
-                  <Form method="post">
-                    <div className="flex flex-col items-start gap-4 divide-y divide-slate-600">
-                      <div>
-                        <Paragraph variant="small" className="mb-2">
-                          Create a new run with the same configuration and
-                          Trigger payload.
-                        </Paragraph>
-                        <Button
-                          variant="primary/small"
-                          type="submit"
-                          name={conform.INTENT}
-                          value="start"
-                        >
-                          Rerun from the start
-                        </Button>
-                      </div>
-                      <div className="pt-4">
-                        <Paragraph variant="small" className="mb-2">
-                          Continue this run from the last successfully completed
-                          task, retrying where it got to.
-                        </Paragraph>
-                        <Button
-                          variant="primary/small"
-                          type="submit"
-                          name={conform.INTENT}
-                          value="continue"
-                        >
-                          Continue run
-                        </Button>
-                      </div>
-                    </div>
-                  </Form>
-                </PopoverContent>
-              </Popover>
+              <RerunPopover environmentType={run.environment.type} />
             )}
           </PageButtons>
         </PageTitleRow>
@@ -453,4 +406,59 @@ function BlankTasks({
         <Paragraph variant="small">There were no tasks for this run.</Paragraph>
       );
   }
+}
+
+function RerunPopover({
+  environmentType,
+}: {
+  environmentType: RuntimeEnvironmentType;
+}) {
+  return (
+    <Popover>
+      <PopoverTrigger>
+        <ButtonContent variant="primary/small" shortcut="R">
+          Rerun Job
+        </ButtonContent>
+      </PopoverTrigger>
+      <PopoverContent className="flex w-80 flex-col gap-2 p-4" align="end">
+        {environmentType === "PRODUCTION" && (
+          <Callout variant="warning">
+            This will rerun this job in your Production environment.
+          </Callout>
+        )}
+        <Form method="post">
+          <div className="flex flex-col items-start gap-4 divide-y divide-slate-600">
+            <div>
+              <Paragraph variant="small" className="mb-2">
+                Create a new run with the same configuration and Trigger
+                payload.
+              </Paragraph>
+              <Button
+                variant="primary/small"
+                type="submit"
+                name={conform.INTENT}
+                value="start"
+              >
+                Rerun from the start
+              </Button>
+            </div>
+            <div className="pt-4">
+              <Paragraph variant="small" className="mb-2">
+                Continue this run from the last successfully completed task,
+                retrying where it got to.
+              </Paragraph>
+              <Button
+                variant="primary/small"
+                type="submit"
+                name={conform.INTENT}
+                value="continue"
+              >
+                Continue run
+              </Button>
+            </div>
+          </div>
+        </Form>
+      </PopoverContent>
+    </Popover>
+  );
 }
