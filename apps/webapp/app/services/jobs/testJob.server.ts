@@ -1,12 +1,6 @@
 import { EventSpecificationSchema } from "@/../../packages/internal/src";
-import {
-  PrismaClient,
-  PrismaClientOrTransaction,
-  PrismaErrorSchema,
-  prisma,
-} from "~/db.server";
+import { PrismaClient, prisma } from "~/db.server";
 import { CreateRunService } from "../runs/createRun.server";
-import Job from "~/routes/_app.orgs.$organizationSlug.projects.$projectParam.jobs.$jobParam/route";
 
 export class TestJobService {
   #prismaClient: PrismaClient;
