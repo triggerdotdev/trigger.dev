@@ -1,5 +1,5 @@
 import { BoltIcon } from "@heroicons/react/24/solid";
-import { Outlet, useNavigate, useRevalidator } from "@remix-run/react";
+import { Form, Outlet, useNavigate, useRevalidator } from "@remix-run/react";
 import { LoaderArgs } from "@remix-run/server-runtime";
 import { useCallback, useEffect, useMemo } from "react";
 import { redirect, typedjson, useTypedLoaderData } from "remix-typedjson";
@@ -62,7 +62,13 @@ import {
 import { TaskCard } from "./TaskCard";
 import { TaskCardSkeleton } from "./TaskCardSkeleton";
 import { useEventSource } from "remix-utils";
-import { Button } from "~/components/primitives/Buttons";
+import { Button, ButtonContent } from "~/components/primitives/Buttons";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "~/components/primitives/Popover";
+import { conform } from "@conform-to/react";
 
 export const loader = async ({ request, params }: LoaderArgs) => {
   const userId = await requireUserId(request);
@@ -185,10 +191,57 @@ export default function Page() {
                 Test run
               </span>
             )}
-
-            <Button variant="primary/small" shortcut="R">
-              Rerun Job
-            </Button>
+            {(basicStatus === "COMPLETED" || basicStatus === "FAILED") && (
+              <Popover>
+                <PopoverTrigger>
+                  <ButtonContent variant="primary/small" shortcut="R">
+                    Rerun Job
+                  </ButtonContent>
+                </PopoverTrigger>
+                <PopoverContent
+                  className="flex w-80 flex-col gap-2 p-4"
+                  align="end"
+                >
+                  {run.environment.type === "PRODUCTION" && (
+                    <Callout variant="warning">
+                      This will rerun this job in your Production environment.
+                    </Callout>
+                  )}
+                  <Form method="post">
+                    <div className="flex flex-col items-start gap-4 divide-y divide-slate-600">
+                      <div>
+                        <Paragraph variant="small" className="mb-2">
+                          Create a new run with the same configuration and
+                          Trigger payload.
+                        </Paragraph>
+                        <Button
+                          variant="primary/small"
+                          type="submit"
+                          name={conform.INTENT}
+                          value="start"
+                        >
+                          Rerun from the start
+                        </Button>
+                      </div>
+                      <div className="pt-4">
+                        <Paragraph variant="small" className="mb-2">
+                          Continue this run from the last successfully completed
+                          task, retrying where it got to.
+                        </Paragraph>
+                        <Button
+                          variant="primary/small"
+                          type="submit"
+                          name={conform.INTENT}
+                          value="continue"
+                        >
+                          Continue run
+                        </Button>
+                      </div>
+                    </div>
+                  </Form>
+                </PopoverContent>
+              </Popover>
+            )}
           </PageButtons>
         </PageTitleRow>
         <PageInfoRow>
@@ -231,7 +284,7 @@ export default function Page() {
       </PageHeader>
       <PageBody scrollable={false}>
         <div className="grid h-full grid-cols-2 gap-4">
-          <div className="flex flex-col gap-6 overflow-y-auto py-4 pl-4">
+          <div className="flex flex-col gap-6 overflow-y-auto py-4 pl-4 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-slate-700">
             <div>
               <Header2 className="mb-2">Trigger</Header2>
               <RunPanel
@@ -356,7 +409,7 @@ export default function Page() {
           </div>
 
           {/* Detail view */}
-          <div className="overflow-y-auto py-4 pr-4">
+          <div className="overflow-y-auto py-4 pr-4 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-slate-700">
             <Header2 className="mb-2">Detail</Header2>
             {selectedId ? (
               <Outlet />
