@@ -65,7 +65,7 @@ export function PageTitle({ title, backButton }: PageTitleProps) {
 }
 
 export function PageButtons({ children }: WithChildren) {
-  return <div className="flex gap-2">{children}</div>;
+  return <div className="flex items-center gap-3">{children}</div>;
 }
 
 export function PageDescription({ children }: WithChildren) {
