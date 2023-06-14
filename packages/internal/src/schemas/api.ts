@@ -116,9 +116,21 @@ export type HttpSourceRequestHeaders = z.output<
   typeof HttpSourceRequestHeadersSchema
 >;
 
-export const PongResponseSchema = z.object({
-  message: z.literal("PONG"),
+export const PongSuccessResponseSchema = z.object({
+  ok: z.literal(true),
 });
+
+export const PongErrorResponseSchema = z.object({
+  ok: z.literal(false),
+  error: z.string(),
+});
+
+export const PongResponseSchema = z.discriminatedUnion("ok", [
+  PongSuccessResponseSchema,
+  PongErrorResponseSchema,
+]);
+
+export type PongResponse = z.infer<typeof PongResponseSchema>;
 
 export const QueueOptionsSchema = z.object({
   name: z.string(),
@@ -162,16 +174,14 @@ export type DynamicTriggerEndpointMetadata = z.infer<
   typeof DynamicTriggerEndpointMetadataSchema
 >;
 
-export const GetEndpointDataResponseSchema = z.object({
+export const IndexEndpointResponseSchema = z.object({
   jobs: z.array(JobMetadataSchema),
   sources: z.array(SourceMetadataSchema),
   dynamicTriggers: z.array(DynamicTriggerEndpointMetadataSchema),
   dynamicSchedules: z.array(RegisterDynamicSchedulePayloadSchema),
 });
 
-export type GetEndpointDataResponse = z.infer<
-  typeof GetEndpointDataResponseSchema
->;
+export type IndexEndpointResponse = z.infer<typeof IndexEndpointResponseSchema>;
 
 export const RawEventSchema = z.object({
   id: z.string().default(() => ulid()),

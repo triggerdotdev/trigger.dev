@@ -7,7 +7,7 @@ import { logger } from "~/services/logger";
 
 const BodySchema = z.object({
   url: z.string(),
-  name: z.string(),
+  id: z.string(),
 });
 
 export async function action({ request }: ActionArgs) {
@@ -42,7 +42,7 @@ export async function action({ request }: ActionArgs) {
     const endpoint = await service.call({
       environment: authenticatedEnv,
       url: body.data.url,
-      name: body.data.name,
+      id: body.data.id,
     });
 
     return json(endpoint);

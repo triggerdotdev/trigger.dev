@@ -49,7 +49,11 @@ export class InitializeTriggerService {
         },
       });
 
-    const clientApi = new EndpointApi(environment.apiKey, endpoint.url);
+    const clientApi = new EndpointApi(
+      environment.apiKey,
+      endpoint.url,
+      endpoint.slug
+    );
 
     const registerMetadata = await clientApi.initializeTrigger(
       dynamicTrigger.slug,

@@ -58,7 +58,11 @@ export class PerformRunExecutionService {
   async #executePreprocessing(execution: FoundRunExecution) {
     const { run } = execution;
 
-    const client = new EndpointApi(run.environment.apiKey, run.endpoint.url);
+    const client = new EndpointApi(
+      run.environment.apiKey,
+      run.endpoint.url,
+      run.endpoint.slug
+    );
     const event = ApiEventLogSchema.parse({ ...run.event, id: run.eventId });
     const startedAt = new Date();
 
@@ -188,7 +192,11 @@ export class PerformRunExecutionService {
   async #executeJob(execution: FoundRunExecution) {
     const { run } = execution;
 
-    const client = new EndpointApi(run.environment.apiKey, run.endpoint.url);
+    const client = new EndpointApi(
+      run.environment.apiKey,
+      run.endpoint.url,
+      run.endpoint.slug
+    );
     const event = ApiEventLogSchema.parse({ ...run.event, id: run.eventId });
 
     const startedAt = new Date();

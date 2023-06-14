@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { env } from "~/env.server";
 import { ZodWorker } from "~/platform/zodWorker.server";
-import { EndpointRegisteredService } from "./endpoints/endpointRegistered.server";
+import { IndexEndpointService } from "./endpoints/indexEndpoint.server";
 import { apiAuthenticationRepository } from "./externalApis/apiAuthenticationRepository.server";
 import { RegisterJobService } from "./jobs/registerJob.server";
 import { StartRunService } from "./runs/startRun.server";
@@ -31,7 +31,12 @@ import { PerformRunExecutionService } from "./runs/performRunExecution";
 
 const workerCatalog = {
   organizationCreated: z.object({ id: z.string() }),
-  endpointRegistered: z.object({ id: z.string() }),
+  indexEndpoint: z.object({
+    id: z.string(),
+    source: z.enum(["MANUAL", "API", "INTERNAL", "HOOK"]).optional(),
+    sourceData: z.any().optional(),
+    reason: z.string().optional(),
+  }),
   scheduleEmail: DeliverEmailSchema,
   githubAppInstallationDeleted: z.object({ id: z.string() }),
   githubPush: z.object({
@@ -285,12 +290,17 @@ function getWorkerQueue() {
           // TODO: implement
         },
       },
-      endpointRegistered: {
+      indexEndpoint: {
         queueName: "internal-queue",
         handler: async (payload, job) => {
-          const service = new EndpointRegisteredService();
+          const service = new IndexEndpointService();
 
-          await service.call(payload.id);
+          await service.call(
+            payload.id,
+            payload.source,
+            payload.reason,
+            payload.sourceData
+          );
         },
       },
       deliverEvent: {

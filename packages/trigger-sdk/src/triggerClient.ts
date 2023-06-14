@@ -1,6 +1,6 @@
 import {
   ErrorWithStackSchema,
-  GetEndpointDataResponse,
+  IndexEndpointResponse,
   HandleTriggerSource,
   HttpSourceRequestHeadersSchema,
   InitializeTriggerBodySchema,
@@ -142,14 +142,36 @@ export class TriggerClient {
 
     switch (action) {
       case "PING": {
+        const endpointId = request.headers.get("x-trigger-endpoint-id");
+
+        if (!endpointId) {
+          return {
+            status: 200,
+            body: {
+              ok: false,
+              message: "Missing endpoint ID",
+            },
+          };
+        }
+
+        if (this.id !== endpointId) {
+          return {
+            status: 200,
+            body: {
+              ok: false,
+              message: `Endpoint ID mismatch error. Expected ${this.id}, got ${endpointId}`,
+            },
+          };
+        }
+
         return {
           status: 200,
           body: {
-            message: "PONG",
+            ok: true,
           },
         };
       }
-      case "GET_ENDPOINT_DATA": {
+      case "INDEX_ENDPOINT": {
         // if the x-trigger-job-id header is set, we return the job with that id
         const jobId = request.headers.get("x-trigger-job-id");
 
@@ -171,7 +193,7 @@ export class TriggerClient {
           };
         }
 
-        const body: GetEndpointDataResponse = {
+        const body: IndexEndpointResponse = {
           jobs: Object.values(this.#registeredJobs).map((job) => job.toJSON()),
           sources: Object.values(this.#registeredSources),
           dynamicTriggers: Object.values(this.#registeredDynamicTriggers).map(
@@ -192,16 +214,6 @@ export class TriggerClient {
         return {
           status: 200,
           body,
-        };
-      }
-      case "INITIALIZE": {
-        await this.listen();
-
-        return {
-          status: 200,
-          body: {
-            message: "Initialized",
-          },
         };
       }
       case "INITIALIZE_TRIGGER": {
@@ -525,14 +537,6 @@ export class TriggerClient {
 
   apiKey() {
     return this.#options.apiKey ?? process.env.TRIGGER_API_KEY;
-  }
-
-  async listen() {
-    // Register the endpoint
-    await this.#client.registerEndpoint({
-      url: this.url,
-      name: this.id,
-    });
   }
 
   async #preprocessRun(

@@ -58,7 +58,8 @@ export class DeliverHttpSourceRequestService {
 
     const clientApi = new EndpointApi(
       httpSourceRequest.environment.apiKey,
-      httpSourceRequest.endpoint.url
+      httpSourceRequest.endpoint.url,
+      httpSourceRequest.endpoint.slug
     );
 
     const { response, events } = await clientApi.deliverHttpSourceRequest({

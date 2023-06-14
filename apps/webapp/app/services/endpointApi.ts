@@ -1,6 +1,7 @@
 import {
   ApiEventLog,
   HttpSourceRequest,
+  PongResponse,
   PreprocessRunBody,
   PreprocessRunResponseSchema,
   RegisterTriggerBody,
@@ -10,7 +11,7 @@ import {
 import {
   DeliverEventResponseSchema,
   ErrorWithStackSchema,
-  GetEndpointDataResponseSchema,
+  IndexEndpointResponseSchema,
   HttpSourceResponseSchema,
   PongResponseSchema,
   RunJobResponseSchema,
@@ -27,34 +28,42 @@ export class EndpointApiError extends Error {
 
 // TODO: this should work with tunnelling
 export class EndpointApi {
-  #apiKey: string;
-  #url: string;
+  constructor(
+    private apiKey: string,
+    private url: string,
+    private id: string
+  ) {}
 
-  constructor(apiKey: string, url: string) {
-    this.#apiKey = apiKey;
-    this.#url = url;
-  }
-
-  async ping() {
-    const response = await safeFetch(this.#url, {
+  async ping(): Promise<PongResponse> {
+    const response = await safeFetch(this.url, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "x-trigger-api-key": this.#apiKey,
+        "x-trigger-api-key": this.apiKey,
+        "x-trigger-endpoint-id": this.id,
         "x-trigger-action": "PING",
       },
     });
 
     if (!response) {
-      throw new Error(`Could not connect to endpoint ${this.#url}`);
+      return {
+        ok: false,
+        error: `Could not connect to endpoint ${this.url}`,
+      };
+    }
+
+    if (response.status === 401) {
+      return {
+        ok: false,
+        error: `Trigger API key is invalid`,
+      };
     }
 
     if (!response.ok) {
-      throw new Error(
-        `Could not connect to endpoint ${this.#url}. Status code: ${
-          response.status
-        }`
-      );
+      return {
+        ok: false,
+        error: `Could not connect to endpoint ${this.url}. Status code: ${response.status}`,
+      };
     }
 
     const anyBody = await response.json();
@@ -66,57 +75,53 @@ export class EndpointApi {
     return PongResponseSchema.parse(anyBody);
   }
 
-  async getEndpointData() {
-    const response = await safeFetch(this.#url, {
-      method: "POSt",
+  async indexEndpoint() {
+    const response = await safeFetch(this.url, {
+      method: "POST",
       headers: {
         Accept: "application/json",
-        "x-trigger-api-key": this.#apiKey,
-        "x-trigger-action": "GET_ENDPOINT_DATA",
+        "x-trigger-api-key": this.apiKey,
+        "x-trigger-action": "INDEX_ENDPOINT",
       },
     });
 
     if (!response) {
-      throw new Error(`Could not connect to endpoint ${this.#url}`);
+      throw new Error(`Could not connect to endpoint ${this.url}`);
     }
 
     if (!response.ok) {
       throw new Error(
-        `Could not connect to endpoint ${this.#url}. Status code: ${
-          response.status
-        }`
+        `Could not connect to endpoint ${this.url}. Status code: ${response.status}`
       );
     }
 
     const anyBody = await response.json();
 
-    logger.debug("getEndpointData() response from endpoint", {
+    logger.debug("indexEndpoint() response from endpoint", {
       body: anyBody,
     });
 
-    return GetEndpointDataResponseSchema.parse(anyBody);
+    return IndexEndpointResponseSchema.parse(anyBody);
   }
 
   async deliverEvent(event: ApiEventLog) {
-    const response = await safeFetch(this.#url, {
+    const response = await safeFetch(this.url, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "x-trigger-api-key": this.#apiKey,
+        "x-trigger-api-key": this.apiKey,
         "x-trigger-action": "DELIVER_EVENT",
       },
       body: JSON.stringify(event),
     });
 
     if (!response) {
-      throw new Error(`Could not connect to endpoint ${this.#url}`);
+      throw new Error(`Could not connect to endpoint ${this.url}`);
     }
 
     if (!response.ok) {
       throw new Error(
-        `Could not connect to endpoint ${this.#url}. Status code: ${
-          response.status
-        }`
+        `Could not connect to endpoint ${this.url}. Status code: ${response.status}`
       );
     }
 
@@ -130,11 +135,11 @@ export class EndpointApi {
   }
 
   async executeJobRequest(options: RunJobBody) {
-    const response = await safeFetch(this.#url, {
+    const response = await safeFetch(this.url, {
       method: "POST",
       headers: {
         "content-type": "application/json",
-        "x-trigger-api-key": this.#apiKey,
+        "x-trigger-api-key": this.apiKey,
         "x-trigger-action": "EXECUTE_JOB",
       },
       body: JSON.stringify(options),
@@ -147,11 +152,11 @@ export class EndpointApi {
   }
 
   async preprocessRunRequest(options: PreprocessRunBody) {
-    const response = await safeFetch(this.#url, {
+    const response = await safeFetch(this.url, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "x-trigger-api-key": this.#apiKey,
+        "x-trigger-api-key": this.apiKey,
         "x-trigger-action": "PREPROCESS_RUN",
       },
       body: JSON.stringify(options),
@@ -164,18 +169,18 @@ export class EndpointApi {
     id: string,
     params: any
   ): Promise<RegisterTriggerBody | undefined> {
-    const response = await safeFetch(this.#url, {
+    const response = await safeFetch(this.url, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "x-trigger-api-key": this.#apiKey,
+        "x-trigger-api-key": this.apiKey,
         "x-trigger-action": "INITIALIZE_TRIGGER",
       },
       body: JSON.stringify({ id, params }),
     });
 
     if (!response) {
-      throw new Error(`Could not connect to endpoint ${this.#url}`);
+      throw new Error(`Could not connect to endpoint ${this.url}`);
     }
 
     if (!response.ok) {
@@ -189,9 +194,7 @@ export class EndpointApi {
       }
 
       throw new Error(
-        `Could not connect to endpoint ${this.#url}. Status code: ${
-          response.status
-        }`
+        `Could not connect to endpoint ${this.url}. Status code: ${response.status}`
       );
     }
 
@@ -212,11 +215,11 @@ export class EndpointApi {
     data: any;
     request: HttpSourceRequest;
   }) {
-    const response = await safeFetch(this.#url, {
+    const response = await safeFetch(this.url, {
       method: "POST",
       headers: {
         "Content-Type": "application/octet-stream",
-        "x-trigger-api-key": this.#apiKey,
+        "x-trigger-api-key": this.apiKey,
         "x-trigger-action": "DELIVER_HTTP_SOURCE_REQUEST",
         "x-ts-key": options.key,
         "x-ts-secret": options.secret,
@@ -231,14 +234,12 @@ export class EndpointApi {
     });
 
     if (!response) {
-      throw new Error(`Could not connect to endpoint ${this.#url}`);
+      throw new Error(`Could not connect to endpoint ${this.url}`);
     }
 
     if (!response.ok) {
       throw new Error(
-        `Could not connect to endpoint ${this.#url}. Status code: ${
-          response.status
-        }`
+        `Could not connect to endpoint ${this.url}. Status code: ${response.status}`
       );
     }
 

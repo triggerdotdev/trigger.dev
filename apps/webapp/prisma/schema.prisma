@@ -291,13 +291,40 @@ model Endpoint {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  indexingHookIdentifier String?
+
   jobVersions           JobVersion[]
   jobRuns               JobRun[]
   httpRequestDeliveries HttpSourceRequestDelivery[]
   dynamictriggers       DynamicTrigger[]
   sources               TriggerSource[]
+  indexings             EndpointIndex[]
 
   @@unique([environmentId, slug])
+}
+
+model EndpointIndex {
+  id String @id @default(cuid())
+
+  endpoint   Endpoint @relation(fields: [endpointId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  endpointId String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  source     EndpointIndexSource @default(MANUAL)
+  sourceData Json?
+  reason     String?
+
+  data  Json
+  stats Json
+}
+
+enum EndpointIndexSource {
+  MANUAL
+  API
+  INTERNAL
+  HOOK
 }
 
 model Job {
