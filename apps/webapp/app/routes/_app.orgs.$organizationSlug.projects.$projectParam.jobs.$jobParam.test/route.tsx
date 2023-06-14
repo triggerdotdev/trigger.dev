@@ -212,7 +212,7 @@ export default function Page() {
                 key={example.id}
                 variant="menu-item"
                 onClick={(e) => insertCode(example.payload)}
-                LeadingIcon={example.icon ?? undefined}
+                LeadingIcon={example.icon ?? "beaker"}
                 fullWidth
                 textAlignLeft
               >
