@@ -41,7 +41,7 @@ const variants = {
   },
   description: {
     button: "w-full py-2 pl-3 pr-4 checked:hover:bg-slate-850 transition",
-    label: "text-bright font-mono",
+    label: "text-bright font-semibold",
     description: "text-dimmed",
     inputPosition: "mt-1",
     isChecked: "bg-slate-850",
