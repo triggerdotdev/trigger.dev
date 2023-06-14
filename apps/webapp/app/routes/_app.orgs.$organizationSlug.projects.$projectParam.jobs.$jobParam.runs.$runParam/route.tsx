@@ -288,8 +288,8 @@ export default function Page() {
         </PageInfoRow>
       </PageHeader>
       <PageBody scrollable={false}>
-        <div className="grid h-full grid-cols-2 gap-4">
-          <div className="flex flex-col gap-6 overflow-y-auto py-4 pl-4 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-slate-700">
+        <div className="grid h-full grid-cols-2 gap-2">
+          <div className="flex flex-col gap-6 overflow-y-auto py-4 pl-4 pr-2 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-slate-700">
             <div>
               <Header2 className="mb-2">Trigger</Header2>
               <RunPanel
