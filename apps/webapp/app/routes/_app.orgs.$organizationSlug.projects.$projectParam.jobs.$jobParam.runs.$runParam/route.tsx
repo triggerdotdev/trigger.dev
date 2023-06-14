@@ -245,7 +245,10 @@ export default function Page() {
               </span>
             )}
             {(basicStatus === "COMPLETED" || basicStatus === "FAILED") && (
-              <RerunPopover environmentType={run.environment.type} />
+              <RerunPopover
+                environmentType={run.environment.type}
+                status={basicStatus}
+              />
             )}
           </PageButtons>
         </PageTitleRow>
@@ -462,8 +465,10 @@ function BlankTasks({
 
 function RerunPopover({
   environmentType,
+  status,
 }: {
   environmentType: RuntimeEnvironmentType;
+  status: RunBasicStatus;
 }) {
   return (
     <Popover>
@@ -482,33 +487,37 @@ function RerunPopover({
 
           <div className="flex flex-col items-start gap-4 divide-y divide-slate-600">
             <div>
-              <Paragraph variant="small" className="mb-2">
-                Create a new Run with the same configuration and Trigger
-                payload.
-              </Paragraph>
               <Button
                 variant="primary/small"
                 type="submit"
                 name={conform.INTENT}
                 value="start"
               >
-                Rerun from the start
+                Run again
               </Button>
-            </div>
-            <div className="pt-4">
-              <Paragraph variant="small" className="mb-2">
-                Continue this Run from the last successfully completed task,
-                retrying where it got to.
+
+              <Paragraph variant="small" className="mt-2">
+                Start a brand new job run with the same data as this one. This
+                will re-do any task that has already been completed.
               </Paragraph>
-              <Button
-                variant="primary/small"
-                type="submit"
-                name={conform.INTENT}
-                value="continue"
-              >
-                Continue run
-              </Button>
             </div>
+            {status === "FAILED" && (
+              <div className="pt-4">
+                <Button
+                  variant="primary/small"
+                  type="submit"
+                  name={conform.INTENT}
+                  value="continue"
+                >
+                  Retry job run
+                </Button>
+
+                <Paragraph variant="small" className="mt-2">
+                  Continue running this job run from where it left off. This
+                  will skip any task that has already been completed.
+                </Paragraph>
+              </div>
+            )}
           </div>
         </Form>
       </PopoverContent>
