@@ -1,15 +1,17 @@
+import { RuntimeEnvironmentType } from "@/../../packages/internal/src";
+import { conform } from "@conform-to/react";
+import { parse } from "@conform-to/zod";
 import { BoltIcon } from "@heroicons/react/24/solid";
 import { Form, Outlet, useNavigate, useRevalidator } from "@remix-run/react";
-import { LoaderArgs } from "@remix-run/server-runtime";
+import { ActionFunction, LoaderArgs, json } from "@remix-run/server-runtime";
 import { useCallback, useEffect, useMemo } from "react";
 import { redirect, typedjson, useTypedLoaderData } from "remix-typedjson";
-import invariant from "tiny-invariant";
+import { useEventSource } from "remix-utils";
+import { z } from "zod";
 import { CodeBlock } from "~/components/code/CodeBlock";
-import {
-  EnvironmentLabel,
-  environmentTitle,
-} from "~/components/environments/EnvironmentLabel";
+import { EnvironmentLabel } from "~/components/environments/EnvironmentLabel";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
+import { Button, ButtonContent } from "~/components/primitives/Buttons";
 import { Callout } from "~/components/primitives/Callout";
 import { Header2 } from "~/components/primitives/Headers";
 import { NamedIcon } from "~/components/primitives/NamedIcon";
@@ -24,6 +26,11 @@ import {
 } from "~/components/primitives/PageHeader";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "~/components/primitives/Popover";
+import {
   RunBasicStatus,
   RunStatusIcon,
   RunStatusLabel,
@@ -35,18 +42,21 @@ import { useOrganization } from "~/hooks/useOrganizations";
 import { usePathName } from "~/hooks/usePathName";
 import { useProject } from "~/hooks/useProject";
 import { JobRunStatus } from "~/models/job.server";
+import { redirectWithSuccessMessage } from "~/models/message.server";
 import { RunPresenter } from "~/presenters/RunPresenter.server";
+import { ReRunService } from "~/services/runs/reRun.server";
 import { requireUserId } from "~/services/session.server";
 import { formatDateTime, formatDuration } from "~/utils";
 import { cn } from "~/utils/cn";
 import { Handle } from "~/utils/handle";
 import {
-  runEventPath,
-  jobPath,
-  runTaskPath,
-  runCompletedPath,
-  runStreamingPath,
   RunParamsSchema,
+  jobPath,
+  runCompletedPath,
+  runEventPath,
+  runPath,
+  runStreamingPath,
+  runTaskPath,
 } from "~/utils/pathBuilder";
 import {
   RunPanel,
@@ -61,15 +71,6 @@ import {
 } from "./RunCard";
 import { TaskCard } from "./TaskCard";
 import { TaskCardSkeleton } from "./TaskCardSkeleton";
-import { useEventSource } from "remix-utils";
-import { Button, ButtonContent } from "~/components/primitives/Buttons";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "~/components/primitives/Popover";
-import { conform } from "@conform-to/react";
-import { RuntimeEnvironmentType } from "@/../../packages/internal/src";
 
 export const loader = async ({ request, params }: LoaderArgs) => {
   const userId = await requireUserId(request);
@@ -110,6 +111,52 @@ export const loader = async ({ request, params }: LoaderArgs) => {
   return typedjson({
     run,
   });
+};
+
+const schema = z.object({});
+
+export const action: ActionFunction = async ({ request, params }) => {
+  const userId = await requireUserId(request);
+  const { organizationSlug, projectParam, jobParam, runParam } =
+    RunParamsSchema.parse(params);
+
+  const formData = await request.formData();
+  const submission = parse(formData, { schema });
+
+  if (!submission.value) {
+    return json(submission);
+  }
+
+  try {
+    if (submission.intent === "start") {
+      const rerunService = new ReRunService();
+      const run = await rerunService.call({ runId: runParam });
+
+      return redirectWithSuccessMessage(
+        runPath(
+          { slug: organizationSlug },
+          { slug: projectParam },
+          { slug: jobParam },
+          { id: run.id }
+        ),
+        request,
+        `Created new run`
+      );
+    } else if (submission.intent === "continue") {
+      return redirectWithSuccessMessage(
+        runPath(
+          { slug: organizationSlug },
+          { slug: projectParam },
+          { slug: jobParam },
+          { id: runParam }
+        ),
+        request,
+        `Continuing run`
+      );
+    }
+  } catch (error: any) {
+    return json({ errors: { body: error.message } }, { status: 400 });
+  }
 };
 
 export const handle: Handle = {
@@ -421,16 +468,17 @@ function RerunPopover({
         </ButtonContent>
       </PopoverTrigger>
       <PopoverContent className="flex w-80 flex-col gap-2 p-4" align="end">
-        {environmentType === "PRODUCTION" && (
-          <Callout variant="warning">
-            This will rerun this job in your Production environment.
-          </Callout>
-        )}
         <Form method="post">
+          {environmentType === "PRODUCTION" && (
+            <Callout variant="warning">
+              This will rerun this Job in your Production environment.
+            </Callout>
+          )}
+
           <div className="flex flex-col items-start gap-4 divide-y divide-slate-600">
             <div>
               <Paragraph variant="small" className="mb-2">
-                Create a new run with the same configuration and Trigger
+                Create a new Run with the same configuration and Trigger
                 payload.
               </Paragraph>
               <Button
@@ -444,7 +492,7 @@ function RerunPopover({
             </div>
             <div className="pt-4">
               <Paragraph variant="small" className="mb-2">
-                Continue this run from the last successfully completed task,
+                Continue this Run from the last successfully completed task,
                 retrying where it got to.
               </Paragraph>
               <Button
