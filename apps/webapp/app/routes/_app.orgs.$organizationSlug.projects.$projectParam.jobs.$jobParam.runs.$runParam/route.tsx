@@ -71,6 +71,7 @@ import {
 } from "./RunCard";
 import { TaskCard } from "./TaskCard";
 import { TaskCardSkeleton } from "./TaskCardSkeleton";
+import { ContinueRunService } from "~/services/runs/continueRun.server";
 
 export const loader = async ({ request, params }: LoaderArgs) => {
   const userId = await requireUserId(request);
@@ -143,6 +144,10 @@ export const action: ActionFunction = async ({ request, params }) => {
         `Created new run`
       );
     } else if (submission.intent === "continue") {
+      const continueService = new ContinueRunService();
+      const run = await continueService.call({ runId: runParam });
+      //todo service needs to do something
+
       return redirectWithSuccessMessage(
         runPath(
           { slug: organizationSlug },

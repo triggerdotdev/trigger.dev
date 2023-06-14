@@ -1,4 +1,3 @@
-import { EventSpecificationSchema } from "@/../../packages/internal/src";
 import { PrismaClient, prisma } from "~/db.server";
 import { CreateRunService } from "../runs/createRun.server";
 
