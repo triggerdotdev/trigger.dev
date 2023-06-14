@@ -60,7 +60,7 @@ export function createAppRoute(
     dynamic: "force-dynamic",
     runtime: "nodejs",
     preferredRegion: "auto",
-  };
+  } as const;
 }
 
 async function convertToStandardRequest(
