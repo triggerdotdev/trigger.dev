@@ -5,7 +5,10 @@ import { useCallback, useEffect, useMemo } from "react";
 import { redirect, typedjson, useTypedLoaderData } from "remix-typedjson";
 import invariant from "tiny-invariant";
 import { CodeBlock } from "~/components/code/CodeBlock";
-import { environmentTitle } from "~/components/environments/EnvironmentLabel";
+import {
+  EnvironmentLabel,
+  environmentTitle,
+} from "~/components/environments/EnvironmentLabel";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { Callout } from "~/components/primitives/Callout";
 import { Header2 } from "~/components/primitives/Headers";
@@ -59,6 +62,7 @@ import {
 import { TaskCard } from "./TaskCard";
 import { TaskCardSkeleton } from "./TaskCardSkeleton";
 import { useEventSource } from "remix-utils";
+import { Button } from "~/components/primitives/Buttons";
 
 export const loader = async ({ request, params }: LoaderArgs) => {
   const userId = await requireUserId(request);
@@ -181,14 +185,10 @@ export default function Page() {
                 Test run
               </span>
             )}
-            {/*  //todo rerun
-            <LinkButton
-              to={jobTestPath(organization, project, job)}
-              variant="primary/small"
-              shortcut="T"
-            >
+
+            <Button variant="primary/small" shortcut="R">
               Rerun Job
-            </LinkButton> */}
+            </Button>
           </PageButtons>
         </PageTitleRow>
         <PageInfoRow>
@@ -213,9 +213,8 @@ export default function Page() {
               value={`v${run.version}`}
             />
             <PageInfoProperty
-              icon={"environment"}
               label={"Env"}
-              value={environmentTitle(run.environment)}
+              value={<EnvironmentLabel environment={run.environment} />}
             />
             <PageInfoProperty
               icon={"clock"}
