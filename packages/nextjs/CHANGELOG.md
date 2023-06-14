@@ -1,5 +1,11 @@
 # @trigger.dev/nextjs
 
+## 1.0.0-next.3
+
+### Patch Changes
+
+- 24360dc4: Make sure nextjs app routes have the correct types
+
 ## 1.0.0-next.2
 
 ### Patch Changes
