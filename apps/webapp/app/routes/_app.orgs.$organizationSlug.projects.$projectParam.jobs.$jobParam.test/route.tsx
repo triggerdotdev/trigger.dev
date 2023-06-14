@@ -168,12 +168,12 @@ export default function Page() {
 
   return (
     <Form
-      className="grid h-full grid-rows-[2rem_auto_2rem] gap-2 overflow-y-auto"
+      className="flex max-h-full flex-col gap-2 overflow-y-auto"
       method="post"
       {...form.props}
       onSubmit={(e) => submitForm(e)}
     >
-      <div className="flex items-center justify-between">
+      <div className="flex flex-none items-center justify-between">
         <SelectGroup>
           <Select
             name="environment"
@@ -222,15 +222,16 @@ export default function Page() {
           </PopoverContent>
         </Popover>
       </div>
-      <div className="overflow-auto">
+      <div className="flex-1 overflow-auto">
         <JSONEditor
           defaultValue={defaultJson}
           readOnly={false}
           basicSetup
           onChange={(v) => (currentJson.current = v)}
+          minHeight="150px"
         />
       </div>
-      <div className="flex justify-between">
+      <div className="flex flex-none items-center justify-between">
         {payload.error ? (
           <FormError id={payload.errorId}>{payload.error}</FormError>
         ) : (
