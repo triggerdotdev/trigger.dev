@@ -383,7 +383,6 @@ export const LogMessageSchema = z.object({
 export type LogMessage = z.infer<typeof LogMessageSchema>;
 
 export type ClientTask = z.infer<typeof TaskSchema>;
-export type ServerTask = z.output<typeof ServerTaskSchema>;
 export type CachedTask = z.infer<typeof CachedTaskSchema>;
 
 export const RedactSchema = z.object({
