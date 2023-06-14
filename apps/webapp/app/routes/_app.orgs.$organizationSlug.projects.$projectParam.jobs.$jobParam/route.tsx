@@ -1,4 +1,4 @@
-import { Outlet } from "@remix-run/react";
+import { Outlet, useLocation } from "@remix-run/react";
 import type { LoaderArgs } from "@remix-run/server-runtime";
 import { typedjson } from "remix-typedjson";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
@@ -66,21 +66,26 @@ export default function Job() {
   const job = useJob();
   const run = useOptionalRun();
   const renderHeader = run === undefined;
+  const location = useLocation();
+
+  const isTestPage = location.pathname.endsWith("/test");
 
   return renderHeader ? (
     <PageContainer>
       <PageHeader hideBorder>
         <PageTitleRow>
           <PageTitle title={job.title} />
-          <PageButtons>
-            <LinkButton
-              to={jobTestPath(organization, project, job)}
-              variant="primary/small"
-              shortcut="T"
-            >
-              Run Test
-            </LinkButton>
-          </PageButtons>
+          {!isTestPage && (
+            <PageButtons>
+              <LinkButton
+                to={jobTestPath(organization, project, job)}
+                variant="primary/small"
+                shortcut="T"
+              >
+                Test
+              </LinkButton>
+            </PageButtons>
+          )}
         </PageTitleRow>
         <PageInfoRow>
           <PageInfoGroup>
