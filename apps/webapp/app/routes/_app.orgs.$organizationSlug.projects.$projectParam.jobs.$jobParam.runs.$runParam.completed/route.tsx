@@ -13,7 +13,7 @@ import {
   RunPanelIconSection,
 } from "../_app.orgs.$organizationSlug.projects.$projectParam.jobs.$jobParam.runs.$runParam/RunCard";
 
-export default function Page() {
+export default function RunCompletedPage() {
   const run = useRun();
 
   return (

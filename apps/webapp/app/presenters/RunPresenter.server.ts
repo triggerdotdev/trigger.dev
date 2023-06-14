@@ -128,9 +128,17 @@ export class RunPresenter {
     let runOutput: string | null | undefined = run.output
       ? JSON.stringify(run.output, null, 2)
       : null;
+
     if (run.status === "FAILURE") {
-      runError = ErrorWithStackSchema.parse(run.output);
-      runOutput = undefined;
+      const error = ErrorWithStackSchema.safeParse(run.output);
+
+      if (error.success) {
+        runError = error.data;
+        runOutput = null;
+      } else {
+        runError = { message: "Unknown error" };
+        runOutput = null;
+      }
     }
 
     return {
