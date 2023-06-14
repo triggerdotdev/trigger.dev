@@ -24,8 +24,6 @@ export const JobParamsSchema = ProjectParamSchema.extend({
 
 export const RunParamsSchema = JobParamsSchema.extend({
   runParam: z.string(),
-  taskParam: z.string().optional(),
-  eventParam: z.string().optional(),
 });
 
 export const IntegrationClientParamSchema = ProjectParamSchema.extend({
@@ -217,14 +215,13 @@ export function runTaskPath(
 }
 
 // Event
-export function runEventPath(
+export function runTriggerPath(
   organization: OrgForPath,
   project: ProjectForPath,
   job: JobForPath,
-  run: RunForPath,
-  eventId: string
+  run: RunForPath
 ) {
-  return `${runPath(organization, project, job, run)}/events/${eventId}`;
+  return `${runPath(organization, project, job, run)}/trigger`;
 }
 
 // Event

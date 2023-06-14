@@ -1,8 +1,3 @@
-import {
-  DisplayPropertySchema,
-  StyleSchema,
-} from "@/../../packages/internal/src";
-import { z } from "zod";
 import { PrismaClient, prisma } from "~/db.server";
 
 type DetailsProps = {
@@ -21,23 +16,23 @@ export class EventDetailsPresenter {
     this.#prismaClient = prismaClient;
   }
 
-  public async call({ id, userId }: DetailsProps) {
-    const event = await this.#prismaClient.eventRecord.findFirst({
-      select: {
-        id: true,
-        name: true,
-        payload: true,
-        timestamp: true,
-        deliveredAt: true,
-      },
+  public async call(runId: string) {
+    const { event } = await this.#prismaClient.jobRun.findUniqueOrThrow({
       where: {
-        id,
+        id: runId,
+      },
+      select: {
+        event: {
+          select: {
+            id: true,
+            name: true,
+            payload: true,
+            timestamp: true,
+            deliveredAt: true,
+          },
+        },
       },
     });
-
-    if (!event) {
-      return undefined;
-    }
 
     return event;
   }

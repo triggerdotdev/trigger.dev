@@ -5,7 +5,7 @@ import { BoltIcon } from "@heroicons/react/24/solid";
 import { Form, Outlet, useNavigate, useRevalidator } from "@remix-run/react";
 import { ActionFunction, LoaderArgs, json } from "@remix-run/server-runtime";
 import { useCallback, useEffect, useMemo } from "react";
-import { redirect, typedjson, useTypedLoaderData } from "remix-typedjson";
+import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { useEventSource } from "remix-utils";
 import { z } from "zod";
 import { CodeBlock } from "~/components/code/CodeBlock";
@@ -44,6 +44,7 @@ import { useProject } from "~/hooks/useProject";
 import { JobRunStatus } from "~/models/job.server";
 import { redirectWithSuccessMessage } from "~/models/message.server";
 import { RunPresenter } from "~/presenters/RunPresenter.server";
+import { ContinueRunService } from "~/services/runs/continueRun.server";
 import { ReRunService } from "~/services/runs/reRun.server";
 import { requireUserId } from "~/services/session.server";
 import { formatDateTime, formatDuration } from "~/utils";
@@ -53,10 +54,10 @@ import {
   RunParamsSchema,
   jobPath,
   runCompletedPath,
-  runEventPath,
   runPath,
   runStreamingPath,
   runTaskPath,
+  runTriggerPath,
 } from "~/utils/pathBuilder";
 import {
   RunPanel,
@@ -71,18 +72,10 @@ import {
 } from "./RunCard";
 import { TaskCard } from "./TaskCard";
 import { TaskCardSkeleton } from "./TaskCardSkeleton";
-import { ContinueRunService } from "~/services/runs/continueRun.server";
 
 export const loader = async ({ request, params }: LoaderArgs) => {
   const userId = await requireUserId(request);
-  const {
-    organizationSlug,
-    projectParam,
-    jobParam,
-    runParam,
-    eventParam,
-    taskParam,
-  } = RunParamsSchema.parse(params);
+  const { runParam } = RunParamsSchema.parse(params);
 
   const presenter = new RunPresenter();
   const run = await presenter.call({
@@ -96,19 +89,6 @@ export const loader = async ({ request, params }: LoaderArgs) => {
     });
   }
 
-  //redirect to the event if no event or task is selected
-  if (!eventParam && !taskParam) {
-    return redirect(
-      runEventPath(
-        { slug: organizationSlug },
-        { slug: projectParam },
-        { slug: jobParam },
-        { id: runParam },
-        run.event.id
-      )
-    );
-  }
-
   return typedjson({
     run,
   });
@@ -117,7 +97,6 @@ export const loader = async ({ request, params }: LoaderArgs) => {
 const schema = z.object({});
 
 export const action: ActionFunction = async ({ request, params }) => {
-  const userId = await requireUserId(request);
   const { organizationSlug, projectParam, jobParam, runParam } =
     RunParamsSchema.parse(params);
 
@@ -145,7 +124,7 @@ export const action: ActionFunction = async ({ request, params }) => {
       );
     } else if (submission.intent === "continue") {
       const continueService = new ContinueRunService();
-      const run = await continueService.call({ runId: runParam });
+      await continueService.call({ runId: runParam });
       //todo service needs to do something
 
       return redirectWithSuccessMessage(
@@ -156,7 +135,7 @@ export const action: ActionFunction = async ({ request, params }) => {
           { id: runParam }
         ),
         request,
-        `Continuing run`
+        `Resuming run`
       );
     }
   } catch (error: any) {
@@ -171,7 +150,6 @@ export const handle: Handle = {
 };
 
 const taskPattern = /\/tasks\/(.*)/;
-const eventPattern = /\/events\/(.*)/;
 
 export default function Page() {
   const { run } = useTypedLoaderData<typeof loader>();
@@ -184,8 +162,8 @@ export default function Page() {
     navigate(runTaskPath(organization, project, job, run, id));
   }, []);
 
-  const selectedEvent = useCallback((id: string) => {
-    navigate(runEventPath(organization, project, job, run, id));
+  const selectedTrigger = useCallback(() => {
+    navigate(runTriggerPath(organization, project, job, run));
   }, []);
 
   const selectedCompleted = useCallback(() => {
@@ -199,15 +177,15 @@ export default function Page() {
       return "completed";
     }
 
+    if (pathName.endsWith("/trigger")) {
+      return "trigger";
+    }
+
     const taskMatch = pathName.match(taskPattern);
     const taskId = taskMatch ? taskMatch[1] : undefined;
     if (taskId) {
       return taskId;
     }
-
-    const eventMatch = pathName.match(eventPattern);
-    const eventId = eventMatch ? eventMatch[1] : undefined;
-    return eventId;
   }, [pathName]);
 
   const basicStatus = runBasicStatus(run.status);
@@ -296,8 +274,8 @@ export default function Page() {
             <div>
               <Header2 className="mb-2">Trigger</Header2>
               <RunPanel
-                selected={run.event.id === selectedId}
-                onClick={() => selectedEvent(run.event.id)}
+                selected={selectedId === "trigger"}
+                onClick={() => selectedTrigger()}
               >
                 <RunPanelHeader
                   icon={<BoltIcon className="h-5 w-5 text-orange-500" />}

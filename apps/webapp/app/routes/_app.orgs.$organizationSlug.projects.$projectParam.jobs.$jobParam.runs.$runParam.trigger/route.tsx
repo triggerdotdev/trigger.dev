@@ -1,35 +1,27 @@
 import { LoaderArgs } from "@remix-run/server-runtime";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
-import invariant from "tiny-invariant";
 import { CodeBlock } from "~/components/code/CodeBlock";
 import { Header3 } from "~/components/primitives/Headers";
-import { requireUserId } from "~/services/session.server";
+import { useJob } from "~/hooks/useJob";
+import { useRun } from "~/hooks/useRun";
+import { EventDetailsPresenter } from "~/presenters/EventDetailsPresenter.server";
 import { formatDateTime } from "~/utils";
+import { RunParamsSchema } from "~/utils/pathBuilder";
 import {
   RunPanel,
   RunPanelBody,
-  RunPanelProperties,
+  RunPanelDivider,
   RunPanelHeader,
   RunPanelIconProperty,
   RunPanelIconSection,
-  RunPanelDivider,
+  RunPanelProperties,
 } from "../_app.orgs.$organizationSlug.projects.$projectParam.jobs.$jobParam.runs.$runParam/RunCard";
-import { EventDetailsPresenter } from "~/presenters/EventDetailsPresenter.server";
-import { useJob } from "~/hooks/useJob";
-import { useRun } from "~/hooks/useRun";
 
 export const loader = async ({ request, params }: LoaderArgs) => {
-  const userId = await requireUserId(request);
-  const { jobParam, runParam, eventParam } = params;
-  invariant(jobParam, "jobParam not found");
-  invariant(runParam, "runParam not found");
-  invariant(eventParam, "eventParam not found");
+  const { runParam } = RunParamsSchema.parse(params);
 
   const presenter = new EventDetailsPresenter();
-  const event = await presenter.call({
-    userId,
-    id: eventParam,
-  });
+  const event = await presenter.call(runParam);
 
   if (!event) {
     throw new Response(null, {
