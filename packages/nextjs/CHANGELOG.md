@@ -1,5 +1,14 @@
 # @trigger.dev/nextjs
 
+## 1.0.0-next.2
+
+### Patch Changes
+
+- Add support for task errors and task retrying
+- Updated dependencies
+- Updated dependencies [b4167a38]
+  - @trigger.dev/sdk@2.0.0-next.1
+
 ## 1.0.0-next.1
 
 ### Patch Changes

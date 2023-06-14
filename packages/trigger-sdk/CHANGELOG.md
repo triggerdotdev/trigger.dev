@@ -1,5 +1,12 @@
 # @trigger.dev/sdk
 
+## 2.0.0-next.1
+
+### Patch Changes
+
+- Add support for task errors and task retrying
+- b4167a38: Fixed the eventTrigger name
+
 ## 2.0.0-next.0
 
 ### Major Changes
