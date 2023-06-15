@@ -14,6 +14,7 @@ import {
 } from "../primitives/Sheet";
 import { RadioGroup, RadioGroupItem } from "../primitives/RadioButton";
 import { ApiKeyHelp } from "./ApiKeyHelp";
+import { CustomHelp } from "./CustomHelp";
 
 type IntegrationMethod = "apikey" | "oauth2" | "custom";
 
@@ -44,7 +45,7 @@ export function ConnectToIntegrationSheet({
           <NamedIconInBox name={integration.identifier} className="h-9 w-9" />
           <Header1>{integration.name}</Header1>
         </SheetHeader>
-        <SheetBody className="overflow-auto-y">
+        <SheetBody>
           <Header2 className="mb-2">Choose an integration method</Header2>
           <RadioGroup
             name="method"
@@ -116,6 +117,6 @@ function SelectedIntegrationMethod({
     case "oauth2":
       return null;
     case "custom":
-      return null;
+      return <CustomHelp name={integration.name} />;
   }
 }
