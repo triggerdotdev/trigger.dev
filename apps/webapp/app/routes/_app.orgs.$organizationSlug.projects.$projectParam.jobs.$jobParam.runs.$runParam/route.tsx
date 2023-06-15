@@ -380,7 +380,11 @@ export default function Page() {
                       />
                     )}
                     {run.output ? (
-                      <CodeBlock language="json" code={run.output} />
+                      <CodeBlock
+                        language="json"
+                        code={run.output}
+                        maxLines={10}
+                      />
                     ) : (
                       run.output === null && (
                         <Paragraph variant="small">
