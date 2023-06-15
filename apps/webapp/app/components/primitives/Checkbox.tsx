@@ -59,7 +59,6 @@ export type CheckboxProps = Omit<
   variant?: keyof typeof variants;
   label?: string;
   description?: string;
-  badge?: string;
   badges?: string[];
   className?: string;
   onChange?: (isChecked: boolean) => void;
@@ -76,7 +75,6 @@ export const Checkbox = React.forwardRef<HTMLInputElement, CheckboxProps>(
       label,
       description,
       defaultChecked,
-      badge,
       badges,
       disabled,
       className,
