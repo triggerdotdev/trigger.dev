@@ -43,7 +43,11 @@ import { useProject } from "~/hooks/useProject";
 import { useTextFilter } from "~/hooks/useTextFilter";
 import { Organization } from "~/models/organization.server";
 import { Project } from "~/models/project.server";
-import { IntegrationsPresenter } from "~/presenters/IntegrationsPresenter.server";
+import {
+  IntegrationOrApi,
+  IntegrationsPresenter,
+} from "~/presenters/IntegrationsPresenter.server";
+import { Integration } from "~/services/externalApis/types";
 import { requireUser } from "~/services/session.server";
 import { formatDateTime } from "~/utils";
 import { Handle } from "~/utils/handle";
@@ -74,7 +78,7 @@ export const handle: Handle = {
 };
 
 export default function Integrations() {
-  const { clients, integrations } = useTypedLoaderData<typeof loader>();
+  const { clients, options } = useTypedLoaderData<typeof loader>();
   const organization = useOrganization();
   const project = useProject();
 
@@ -102,7 +106,7 @@ export default function Integrations() {
       <PageBody scrollable={false}>
         <div className="grid h-full max-w-full grid-cols-[2fr_3fr] gap-4 divide-x divide-slate-900 overflow-hidden">
           <PossibleIntegrationsList
-            integrations={integrations}
+            options={options}
             organizationId={organization.id}
           />
           <ConnectedIntegrationsList
@@ -116,18 +120,16 @@ export default function Integrations() {
   );
 }
 
-type Integration = UseDataFunctionReturn<typeof loader>["integrations"][0];
-
 function PossibleIntegrationsList({
-  integrations,
+  options,
   organizationId,
 }: {
-  integrations: Integration[];
+  options: IntegrationOrApi[];
   organizationId: string;
 }) {
   const { filterText, setFilterText, filteredItems } =
-    useTextFilter<Integration>({
-      items: integrations,
+    useTextFilter<IntegrationOrApi>({
+      items: options,
       filter: (integration, text) =>
         integration.name.toLowerCase().includes(text.toLowerCase()),
     });
@@ -145,15 +147,20 @@ function PossibleIntegrationsList({
         onChange={(e) => setFilterText(e.target.value)}
       />
       <div className="mt-2 grid grid-cols-1 gap-4 sm:grid-cols-[repeat(auto-fill,_minmax(14rem,_auto))]">
-        {filteredItems.map((integration) => {
-          return (
-            <ConnectToIntegrationSheet
-              key={integration.identifier}
-              integration={integration}
-              organizationId={organizationId}
-              button={<AddIntegrationConnection integration={integration} />}
-            />
-          );
+        {filteredItems.map((option) => {
+          switch (option.type) {
+            case "integration":
+              return (
+                <ConnectToIntegrationSheet
+                  key={option.identifier}
+                  integration={option}
+                  organizationId={organizationId}
+                  button={<AddIntegrationConnection integration={option} />}
+                />
+              );
+            case "api":
+              return <span key={option.identifier}>{option.name}</span>;
+          }
         })}
       </div>
     </div>

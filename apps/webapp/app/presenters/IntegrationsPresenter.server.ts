@@ -4,9 +4,16 @@ import { env } from "~/env.server";
 import { Organization } from "~/models/organization.server";
 import { Project } from "~/models/project.server";
 import { apiAuthenticationRepository } from "~/services/externalApis/apiAuthenticationRepository.server";
+import { Api, apisList } from "~/services/externalApis/apis";
 import { integrationCatalog } from "~/services/externalApis/integrationCatalog.server";
-import { OAuthClientSchema } from "~/services/externalApis/types";
+import { Integration, OAuthClientSchema } from "~/services/externalApis/types";
 import { getSecretStore } from "~/services/secrets/secretStore.server";
+
+export type IntegrationOrApi =
+  | ({
+      type: "integration";
+    } & Integration)
+  | ({ type: "api" } & Api);
 
 export class IntegrationsPresenter {
   #prismaClient: PrismaClient;
@@ -123,11 +130,18 @@ export class IntegrationsPresenter {
 
     const integrations = Object.values(
       integrationCatalog.getIntegrations()
-    ).sort((a, b) => a.name.localeCompare(b.name));
+    ).map((i) => ({ type: "integration" as const, ...i }));
 
+    const apis = apisList
+      .filter((a) => !integrations.some((i) => i.identifier === a.identifier))
+      .map((a) => ({ type: "api" as const, ...a }));
+
+    const options = [...integrations, ...apis].sort((a, b) =>
+      a.name.localeCompare(b.name)
+    );
     return {
       clients: clientsWithConnections,
-      integrations,
+      options,
     };
   }
 }
