@@ -78,6 +78,10 @@ export class IntegrationClientPresenter {
     const { integration, authMethod } =
       apiAuthenticationRepository.getIntegrationAndAuthMethod(client);
 
+    if (authMethod.type !== "oauth2") {
+      throw new Error("Only OAuth2 clients are supported");
+    }
+
     let clientId: String | undefined = undefined;
     if (client.customClientReference) {
       const clientConfig = await secretStore.getSecret(

@@ -1,14 +1,8 @@
 import { User } from "@trigger.dev/database";
 import { PrismaClient, prisma } from "~/db.server";
-import { env } from "~/env.server";
 import { Organization } from "~/models/organization.server";
 import { Project } from "~/models/project.server";
 import { apiAuthenticationRepository } from "~/services/externalApis/apiAuthenticationRepository.server";
-import {
-  ConnectionMetadataSchema,
-  OAuthClientSchema,
-} from "~/services/externalApis/types";
-import { getSecretStore } from "~/services/secrets/secretStore.server";
 
 export class IntegrationClientScopesPresenter {
   #prismaClient: PrismaClient;
@@ -53,6 +47,10 @@ export class IntegrationClientScopesPresenter {
 
     const { integration, authMethod } =
       apiAuthenticationRepository.getIntegrationAndAuthMethod(client);
+
+    if (authMethod.type !== "oauth2") {
+      throw new Error("Only OAuth2 clients are supported");
+    }
 
     return {
       scopes: client.scopes.map((s) => {

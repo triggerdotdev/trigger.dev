@@ -5,7 +5,7 @@ import {
   useTypedLoaderData,
 } from "remix-typedjson";
 import invariant from "tiny-invariant";
-import { OAuthConnectSheet } from "~/components/integrations/OAuthConnectSheet";
+import { ConnectToIntegrationSheet } from "~/components/integrations/ConnectToIntegrationSheet";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { LinkButton } from "~/components/primitives/Buttons";
 import { Callout } from "~/components/primitives/Callout";
@@ -146,56 +146,13 @@ function PossibleIntegrationsList({
       />
       <div className="mt-2 grid grid-cols-1 gap-4 sm:grid-cols-[repeat(auto-fill,_minmax(14rem,_auto))]">
         {filteredItems.map((integration) => {
-          const authMethods = Object.entries(integration.authenticationMethods);
-          if (authMethods.length === 1) {
-            return (
-              <OAuthConnectSheet
-                key={integration.identifier}
-                integration={integration}
-                authMethodKey={
-                  Object.keys(integration.authenticationMethods)[0]
-                }
-                organizationId={organizationId}
-                button={<AddIntegrationConnection integration={integration} />}
-              />
-            );
-          }
-
           return (
-            <Popover key={integration.identifier}>
-              <PopoverTrigger>
-                <AddIntegrationConnection integration={integration} />
-              </PopoverTrigger>
-              <PopoverContent className="w-80 p-0" side="bottom" align="start">
-                <PopoverSectionHeader title="Select your authentication method" />
-
-                <div className="flex flex-col p-1">
-                  {authMethods.map(([key, method]) => (
-                    <OAuthConnectSheet
-                      key={key}
-                      integration={integration}
-                      authMethodKey={key}
-                      organizationId={organizationId}
-                      button={
-                        <div className="flex gap-2 rounded-sm p-2 hover:bg-slate-800">
-                          <NamedIcon name="globe" className="h-5 w-5" />
-                          <div className="">
-                            <Header3 className="text-left">
-                              {method.name}
-                            </Header3>
-                            {method.description && (
-                              <Paragraph variant="small" className="m-0">
-                                {method.description}
-                              </Paragraph>
-                            )}
-                          </div>
-                        </div>
-                      }
-                    />
-                  ))}
-                </div>
-              </PopoverContent>
-            </Popover>
+            <ConnectToIntegrationSheet
+              key={integration.identifier}
+              integration={integration}
+              organizationId={organizationId}
+              button={<AddIntegrationConnection integration={integration} />}
+            />
           );
         })}
       </div>

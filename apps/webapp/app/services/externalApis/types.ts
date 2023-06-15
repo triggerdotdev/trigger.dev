@@ -5,55 +5,20 @@ export type Integration = {
   identifier: string;
   /** The name of the API */
   name: string;
+  /** Package name */
+  packageName: string;
   /** The possible authentication methods we support for this API  */
   authenticationMethods: Record<string, ApiAuthenticationMethod>;
 };
 
 /** An authentication method that can be used */
-export type ApiAuthenticationMethod = ApiAuthenticationMethodOAuth2;
+export type ApiAuthenticationMethod =
+  | ApiAuthenticationMethodOAuth2
+  | ApiAuthenticationMethodApiKey;
 
-export type AuthorizationLocation = "header" | "body";
-
-export type CreateUrlParams = {
-  authorizationUrl: string;
-  clientId: string;
-  clientSecret: string;
-  key: string;
-  callbackUrl: string;
-  scopeParamName: string;
-  scopes: string[];
-  scopeSeparator: string;
-  pkceCode?: string;
-  authorizationLocation: AuthorizationLocation;
-  extraParameters?: Record<string, string>;
-};
-
-export type GrantTokenParams = {
-  tokenUrl: string;
-  clientId: string;
-  clientSecret: string;
-  code: string;
-  callbackUrl: string;
-  requestedScopes: string[];
-  scopeSeparator: string;
-  accessTokenPointer: string;
-  refreshTokenPointer: string;
-  expiresInPointer: string;
-  scopePointer: string;
-  pkceCode?: string;
-};
-
-export type RefreshTokenParams = {
-  refreshUrl: string;
-  clientId: string;
-  clientSecret: string;
-  requestedScopes: string[];
-  scopeSeparator: string;
-  token: { accessToken: string; refreshToken: string; expiresAt: Date };
-  accessTokenPointer: string;
-  refreshTokenPointer: string;
-  expiresInPointer: string;
-  scopePointer: string;
+export type ApiAuthenticationMethodApiKey = {
+  /** The type of authentication method */
+  type: "apikey";
 };
 
 //A useful reference is the Simple OAuth2 npm library: https://github.com/lelylan/simple-oauth2/blob/HEAD/API.md#options
@@ -128,6 +93,50 @@ export type ApiAuthenticationMethodOAuth2 = {
   additionalFields?: AdditionalField[];
   /** The possible scopes this auth method supports */
   scopes: Scope[];
+};
+
+export type AuthorizationLocation = "header" | "body";
+
+export type CreateUrlParams = {
+  authorizationUrl: string;
+  clientId: string;
+  clientSecret: string;
+  key: string;
+  callbackUrl: string;
+  scopeParamName: string;
+  scopes: string[];
+  scopeSeparator: string;
+  pkceCode?: string;
+  authorizationLocation: AuthorizationLocation;
+  extraParameters?: Record<string, string>;
+};
+
+export type GrantTokenParams = {
+  tokenUrl: string;
+  clientId: string;
+  clientSecret: string;
+  code: string;
+  callbackUrl: string;
+  requestedScopes: string[];
+  scopeSeparator: string;
+  accessTokenPointer: string;
+  refreshTokenPointer: string;
+  expiresInPointer: string;
+  scopePointer: string;
+  pkceCode?: string;
+};
+
+export type RefreshTokenParams = {
+  refreshUrl: string;
+  clientId: string;
+  clientSecret: string;
+  requestedScopes: string[];
+  scopeSeparator: string;
+  token: { accessToken: string; refreshToken: string; expiresAt: Date };
+  accessTokenPointer: string;
+  refreshTokenPointer: string;
+  expiresInPointer: string;
+  scopePointer: string;
 };
 
 type AdditionalField = {

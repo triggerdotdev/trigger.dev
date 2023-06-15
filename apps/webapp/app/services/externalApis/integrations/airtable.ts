@@ -3,6 +3,7 @@ import type { Integration } from "../types";
 export const airtable: Integration = {
   identifier: "airtable",
   name: "Airtable",
+  packageName: "@trigger.dev/airtable",
   authenticationMethods: {
     oauth2: {
       name: "OAuth2",

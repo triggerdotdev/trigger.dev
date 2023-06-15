@@ -602,6 +602,11 @@ export class APIAuthenticationRepository {
         await this.#scheduleRefresh(expiresAt, connection);
         return newConnection;
       }
+      default: {
+        throw new Error(
+          `Authentication method type ${authMethod.type} not supported`
+        );
+      }
     }
   }
 
@@ -630,6 +635,12 @@ export class APIAuthenticationRepository {
     //add details about the API and authentication method
     const { integration, authMethod } =
       this.getIntegrationAndAuthMethod(client);
+
+    if (authMethod.type !== "oauth2") {
+      throw new Error(
+        `Authentication method type ${authMethod.type} not supported`
+      );
+    }
 
     return {
       ...client,

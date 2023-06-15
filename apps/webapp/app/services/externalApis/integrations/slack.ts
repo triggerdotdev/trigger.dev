@@ -3,6 +3,7 @@ import type { Integration } from "../types";
 export const slack: Integration = {
   identifier: "slack",
   name: "Slack",
+  packageName: "@trigger.dev/slack",
   authenticationMethods: {
     oauth2Bot: {
       name: "OAuth2 (Bot)",

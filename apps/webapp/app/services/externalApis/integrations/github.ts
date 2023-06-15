@@ -23,6 +23,7 @@ const userAnnotation: ScopeAnnotation = {
 export const github: Integration = {
   identifier: "github",
   name: "GitHub",
+  packageName: "@trigger.dev/github",
   authenticationMethods: {
     oauth2: {
       name: "OAuth",
@@ -259,6 +260,9 @@ export const github: Integration = {
             "Grants the ability to add and update GitHub Actions workflow files. Workflow files can be committed without this scope if the same file (with both the same path and contents) exists on another branch in the same repository. Workflow files can expose GITHUB_TOKEN which may have a different set of scopes.",
         },
       ],
+    },
+    apikey: {
+      type: "apikey",
     },
   },
 };
