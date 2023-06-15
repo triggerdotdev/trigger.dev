@@ -40,12 +40,13 @@ export function LabelValueStack({
     <div
       className={cn(
         "flex items-baseline",
-        layout === "vertical" ? "flex-col" : "gap-1",
+        layout === "vertical" && "flex-col",
+        variant === "primary" ? "gap-x-1 gap-y-0" : "gap-x-1 gap-y-0.5",
         className
       )}
     >
       <Paragraph variant={variation.label}>{label}</Paragraph>
-      <div>
+      <>
         {href ? (
           <SimpleTooltip
             side="bottom"
@@ -53,7 +54,7 @@ export function LabelValueStack({
               <Paragraph variant={variation.value}>
                 <a
                   href={href}
-                  className=" underline underline-offset-2"
+                  className="underline underline-offset-2"
                   target="_blank"
                 >
                   {value}
@@ -66,7 +67,7 @@ export function LabelValueStack({
         ) : (
           <Paragraph variant={variation.value}>{value}</Paragraph>
         )}
-      </div>
+      </>
     </div>
   );
 }
