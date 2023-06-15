@@ -35,8 +35,8 @@ const variants = {
   description: {
     button:
       "w-full py-2 pl-2 pr-3 hover:bg-slate-850 transition data-[disabled]:opacity-70 data-[state=checked]:bg-slate-850 border-slate-800 border rounded-sm",
-    label: "text-bright font-semibold -mt-1",
-    description: "text-dimmed -mt-0.5",
+    label: "text-bright font-semibold -mt-1 text-left",
+    description: "text-dimmed -mt-0.5 text-left",
     inputPosition: "mt-0",
   },
 };
@@ -91,7 +91,7 @@ export const RadioGroupItem = React.forwardRef<
       >
         <div
           className={cn(
-            "aspect-square h-4 w-4 overflow-hidden rounded-sm border border-slate-700 ring-offset-background focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50",
+            "aspect-square h-4 w-4 shrink-0 overflow-hidden rounded-sm border border-slate-700 ring-offset-background focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50",
             variation.inputPosition
           )}
         >
