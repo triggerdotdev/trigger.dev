@@ -19,6 +19,9 @@ export type ApiAuthenticationMethod =
 export type ApiAuthenticationMethodApiKey = {
   /** The type of authentication method */
   type: "apikey";
+  help: {
+    sample: string;
+  };
 };
 
 //A useful reference is the Simple OAuth2 npm library: https://github.com/lelylan/simple-oauth2/blob/HEAD/API.md#options

@@ -263,6 +263,50 @@ export const github: Integration = {
     },
     apikey: {
       type: "apikey",
+      help: {
+        sample: `
+import {
+  Job,
+  TriggerClient
+} from "@trigger.dev/sdk";
+import { Github, events } from "@trigger.dev/github";
+
+export const client = new TriggerClient({
+  id: "nextjs-example",
+  apiKey: process.env.TRIGGER_API_KEY,
+  logLevel: "debug",
+});
+
+export const github = new Github({
+  id: "github",
+  token: process.env.GITHUB_TOKEN
+});
+
+new Job(client, {
+  id: "alert-on-new-github-issues",
+  name: "Alert on new GitHub issues",
+  version: "0.1.1",
+  integrations: {
+    github,
+  },
+  trigger: github.triggers.repo({
+    event: events.onIssueOpened,
+    repo: "ericallam/basic-starter-12k",
+  }),
+  run: async (payload, io, ctx) => {
+    await io.wait("wait", 5); // wait for 5 seconds
+
+    await io.logger.info("This is a simple log info message");
+
+    const repo = await io.github.getRepo("get-repo", {
+      repo: \`\${payload.repository.owner}/\${payload.repository.name}\`,
+    });
+
+    return repo;
+  },
+});
+`,
+      },
     },
   },
 };

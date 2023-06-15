@@ -1,6 +1,9 @@
 import React, { useState } from "react";
-import { Integration } from "~/services/externalApis/types";
-import { Header1 } from "../primitives/Headers";
+import {
+  ApiAuthenticationMethodApiKey,
+  Integration,
+} from "~/services/externalApis/types";
+import { Header1, Header2 } from "../primitives/Headers";
 import { NamedIconInBox } from "../primitives/NamedIcon";
 import {
   Sheet,
@@ -10,6 +13,7 @@ import {
   SheetTrigger,
 } from "../primitives/Sheet";
 import { RadioGroup, RadioGroupItem } from "../primitives/RadioButton";
+import { ApiKeyHelp } from "./ApiKeyHelp";
 
 type IntegrationMethod = "apikey" | "oauth2" | "custom";
 
@@ -28,6 +32,10 @@ export function ConnectToIntegrationSheet({
     IntegrationMethod | undefined
   >(undefined);
 
+  const authMethods = Object.values(integration.authenticationMethods);
+  const hasApiKeyOption = authMethods.some((s) => s.type === "apikey");
+  const hasOAuth2Option = authMethods.some((s) => s.type === "oauth2");
+
   return (
     <Sheet>
       <SheetTrigger className={className}>{button}</SheetTrigger>
@@ -36,11 +44,15 @@ export function ConnectToIntegrationSheet({
           <NamedIconInBox name={integration.identifier} className="h-9 w-9" />
           <Header1>{integration.name}</Header1>
         </SheetHeader>
-        <SheetBody>
-          <RadioGroup name="method" className="flex gap-2">
-            {Object.values(integration.authenticationMethods).some(
-              (s) => s.type === "apikey"
-            ) && (
+        <SheetBody className="overflow-auto-y">
+          <Header2 className="mb-2">Choose an integration method</Header2>
+          <RadioGroup
+            name="method"
+            className="flex gap-2"
+            value={integrationMethod}
+            onValueChange={(v) => setIntegrationMethod(v as IntegrationMethod)}
+          >
+            {hasApiKeyOption && (
               <RadioGroupItem
                 id="apikey"
                 value="apikey"
@@ -49,9 +61,7 @@ export function ConnectToIntegrationSheet({
                 variant="description"
               />
             )}
-            {Object.values(integration.authenticationMethods).some(
-              (s) => s.type === "oauth2"
-            ) && (
+            {hasOAuth2Option && (
               <RadioGroupItem
                 id="oauth2"
                 value="oauth2"
@@ -68,38 +78,44 @@ export function ConnectToIntegrationSheet({
               variant="description"
             />
           </RadioGroup>
+
+          {integrationMethod && (
+            <SelectedIntegrationMethod
+              integration={integration}
+              organizationId={organizationId}
+              method={integrationMethod}
+            />
+          )}
         </SheetBody>
       </SheetContent>
     </Sheet>
   );
 }
 
-type RadioGroupProps = {
-  value: string;
-  onChange: (value: string) => void;
-  options: RadioGroupOption[];
-  className?: string;
-};
+function SelectedIntegrationMethod({
+  integration,
+  organizationId,
+  method,
+}: {
+  integration: Integration;
+  organizationId: string;
+  method: IntegrationMethod;
+}) {
+  const authMethods = Object.values(integration.authenticationMethods);
 
-type RadioGroupOption = {
-  label: string;
-  value: string;
-  description?: string;
-};
-
-// function RadioGroup({ value, onChange, options,className }: RadioGroupProps) {
-//   return (
-//     <div className={cn("", className)}>
-//       {options.map((option) => (
-//         <RadioGroupOption
-//           key={option.value}
-//           label={option.label}
-//           value={option.value}
-//           description={option.description}
-//           checked={value === option.value}
-//           onChange={onChange}
-//         />
-//       ))}
-//     </div>
-//   );
-// }
+  switch (method) {
+    case "apikey":
+      const apiAuth = authMethods.find((a) => a.type === "apikey");
+      if (!apiAuth) return null;
+      return (
+        <ApiKeyHelp
+          integration={integration}
+          apiAuth={apiAuth as ApiAuthenticationMethodApiKey}
+        />
+      );
+    case "oauth2":
+      return null;
+    case "custom":
+      return null;
+  }
+}
