@@ -159,7 +159,7 @@ const SheetContent = React.forwardRef<
       className={cn(sheetVariants({ position, size }), className)}
       {...props}
     >
-      <div className="grid h-full grid-rows-[2.75rem_1fr]">
+      <div className="grid max-h-full grid-rows-[2.75rem_1fr] overflow-hidden">
         <div className="flex items-center gap-2 border-b border-slate-800 p-2">
           <SheetPrimitive.Close className="rounded-sm p-1 transition hover:bg-slate-800 disabled:pointer-events-none">
             <NamedIcon name="close" className="h-4 w-4" />
@@ -167,7 +167,9 @@ const SheetContent = React.forwardRef<
           </SheetPrimitive.Close>
           <ShortcutKey shortcut="esc" variant="medium" />
         </div>
-        <div className="overflow-hidden">{children}</div>
+        <div className="flex max-h-full flex-col overflow-hidden">
+          {children}
+        </div>
       </div>
     </SheetPrimitive.Content>
   </SheetPortal>
@@ -180,7 +182,7 @@ export const SheetBody = ({
 }: React.HTMLAttributes<HTMLDivElement>) => (
   <div
     className={cn(
-      "grow overflow-auto p-4 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-slate-700",
+      "overflow-y-auto p-4 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-slate-700",
       className
     )}
     {...props}
