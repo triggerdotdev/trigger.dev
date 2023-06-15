@@ -54,21 +54,21 @@ export function ConnectToIntegrationSheet({
             value={integrationMethod}
             onValueChange={(v) => setIntegrationMethod(v as IntegrationMethod)}
           >
-            {hasApiKeyOption && (
-              <RadioGroupItem
-                id="apikey"
-                value="apikey"
-                label="API Key"
-                description="Use API keys in your code. They never leave your server."
-                variant="description"
-              />
-            )}
             {hasOAuth2Option && (
               <RadioGroupItem
                 id="oauth2"
                 value="oauth2"
                 label="OAuth"
                 description="We handle OAuth for you or your users."
+                variant="description"
+              />
+            )}
+            {hasApiKeyOption && (
+              <RadioGroupItem
+                id="apikey"
+                value="apikey"
+                label="API Key"
+                description="Use API keys in your code. They never leave your server."
                 variant="description"
               />
             )}
