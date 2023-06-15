@@ -6,11 +6,15 @@ import {
 import { RadioGroup, RadioGroupItem } from "../primitives/RadioButton";
 import { ApiConnectionType } from "~/models/apiConnection.server";
 import { Header2 } from "../primitives/Headers";
+import { ConnectToOAuthForm } from "./ConnectToOAuthForm";
+import { Paragraph } from "../primitives/Paragraph";
 
 export function SelectOAuthMethod({
   integration,
+  organizationId,
 }: {
   integration: Integration;
+  organizationId: string;
 }) {
   const oAuthMethods = Object.entries(integration.authenticationMethods).filter(
     (a): a is [string, ApiAuthenticationMethodOAuth2] => a[1].type === "oauth2"
@@ -81,6 +85,33 @@ export function SelectOAuthMethod({
           </RadioGroup>
         </>
       )}
+      {selectedOAuthMethod &&
+        connectionType &&
+        oAuthKey &&
+        (connectionType === "DEVELOPER" ? (
+          <ConnectToOAuthForm
+            integration={integration}
+            authMethod={selectedOAuthMethod}
+            authMethodKey={oAuthKey}
+            organizationId={organizationId}
+            clientType={connectionType}
+          />
+        ) : (
+          <>
+            <Header2 className="mb-1 mt-4">User OAuth coming soon</Header2>
+            <Paragraph spacing>
+              End-user OAuth is going to be released soon. If you are interested
+              in being an early beta tester then please{" "}
+              <a
+                href="mailto:founders@trigger.dev"
+                className="text-indigo-500 underline"
+              >
+                message us
+              </a>
+              .
+            </Paragraph>
+          </>
+        ))}
     </>
   );
 }

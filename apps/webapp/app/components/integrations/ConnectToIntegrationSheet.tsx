@@ -116,7 +116,12 @@ function SelectedIntegrationMethod({
         />
       );
     case "oauth2":
-      return <SelectOAuthMethod integration={integration} />;
+      return (
+        <SelectOAuthMethod
+          integration={integration}
+          organizationId={organizationId}
+        />
+      );
     case "custom":
       return <CustomHelp name={integration.name} />;
   }

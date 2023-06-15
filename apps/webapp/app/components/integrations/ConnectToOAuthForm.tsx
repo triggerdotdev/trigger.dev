@@ -28,7 +28,7 @@ import { Paragraph } from "../primitives/Paragraph";
 
 export type Status = "loading" | "idle";
 
-export function ConnectToIntegrationSheet({
+export function ConnectToOAuthForm({
   integration,
   authMethod,
   authMethodKey,
@@ -88,17 +88,6 @@ export function ConnectToIntegrationSheet({
       {...form.props}
       className="flex h-full max-h-full flex-grow flex-col"
     >
-      <div className="flex items-center gap-4 border-b border-slate-800 pb-3.5">
-        <NamedIconInBox name={integration.identifier} className="h-9 w-9" />
-        <div>
-          <Header2>Connect to {integration.name}</Header2>
-          <Paragraph variant="extra-small">
-            {authMethod.name}{" "}
-            {authMethod.description && `– ${authMethod.description}`}
-          </Paragraph>
-        </div>
-      </div>
-
       <Fieldset>
         <input type="hidden" name="id" value={id} />
         <input
