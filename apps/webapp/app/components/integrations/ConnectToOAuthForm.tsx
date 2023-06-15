@@ -33,17 +33,13 @@ export function ConnectToIntegrationSheet({
   authMethod,
   authMethodKey,
   organizationId,
-  button,
-  className,
   clientType,
 }: {
   integration: Integration;
   authMethod: ApiAuthenticationMethodOAuth2;
   authMethodKey: string;
   organizationId: string;
-  button: React.ReactNode;
   clientType: ApiConnectionType;
-  className?: string;
 }) {
   const [id] = useState<string>(cuid());
   const transition = useNavigation();

@@ -20,7 +20,7 @@ export type ApiAuthenticationMethodApiKey = {
   /** The type of authentication method */
   type: "apikey";
   help: {
-    sample: string;
+    samples: { title: string; code: string }[];
   };
 };
 

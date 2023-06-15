@@ -31,10 +31,12 @@ export function ApiKeyHelp({
         code={`npm install ${integration.packageName}`}
         className="mb-4"
       />
-      <Paragraph spacing>
-        Then in your code you can use the integration like this:
-      </Paragraph>
-      <CodeBlock code={apiAuth.help.sample} className="mb-4" />
+      {apiAuth.help.samples.map((sample, i) => (
+        <div key={i}>
+          <Paragraph spacing>{sample.title}</Paragraph>
+          <CodeBlock code={sample.code} className="mb-4" />
+        </div>
+      ))}
     </div>
   );
 }

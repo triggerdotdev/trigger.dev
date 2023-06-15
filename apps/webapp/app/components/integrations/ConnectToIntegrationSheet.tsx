@@ -15,6 +15,7 @@ import {
 import { RadioGroup, RadioGroupItem } from "../primitives/RadioButton";
 import { ApiKeyHelp } from "./ApiKeyHelp";
 import { CustomHelp } from "./CustomHelp";
+import { SelectOAuthMethod } from "./SelectOAuthMethod";
 
 type IntegrationMethod = "apikey" | "oauth2" | "custom";
 
@@ -115,7 +116,7 @@ function SelectedIntegrationMethod({
         />
       );
     case "oauth2":
-      return null;
+      return <SelectOAuthMethod integration={integration} />;
     case "custom":
       return <CustomHelp name={integration.name} />;
   }
