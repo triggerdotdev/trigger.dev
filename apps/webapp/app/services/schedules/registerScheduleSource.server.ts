@@ -1,4 +1,4 @@
-import type { EventDispatcher } from ".prisma/client";
+import type { EventDispatcher } from "@trigger.dev/database";
 import {
   CronMetadata,
   IntervalMetadata,

@@ -1,4 +1,4 @@
-import type { EventDispatcher, EventRecord } from ".prisma/client";
+import type { EventDispatcher, EventRecord } from "@trigger.dev/database";
 import type { EventFilter } from "@trigger.dev/internal";
 import { EventFilterSchema } from "@trigger.dev/internal";
 import { $transaction, PrismaClientOrTransaction, prisma } from "~/db.server";

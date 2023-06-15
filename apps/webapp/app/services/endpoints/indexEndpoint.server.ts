@@ -2,7 +2,7 @@ import { $transaction, PrismaClient } from "~/db.server";
 import { prisma } from "~/db.server";
 import { EndpointApi } from "../endpointApi";
 import { workerQueue } from "../worker.server";
-import type { EndpointIndexSource } from ".prisma/client";
+import type { EndpointIndexSource } from "@trigger.dev/database";
 
 export class IndexEndpointService {
   #prismaClient: PrismaClient;

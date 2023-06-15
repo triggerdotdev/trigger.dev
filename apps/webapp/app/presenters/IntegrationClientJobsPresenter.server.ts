@@ -1,4 +1,4 @@
-import { User } from ".prisma/client";
+import { User } from "@trigger.dev/database";
 import { PrismaClient, prisma } from "~/db.server";
 import { Organization } from "~/models/organization.server";
 import { Project } from "~/models/project.server";

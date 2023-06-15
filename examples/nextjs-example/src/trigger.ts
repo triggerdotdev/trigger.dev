@@ -316,9 +316,11 @@ new Job(client, {
   }),
   run: async (payload, io, ctx) => {
     await io.wait("wait", 5); // wait for 5 seconds
+
     await io.logger.info("This is a log info message", {
       payload,
     });
+
     await io.sendEvent("send-event", {
       name: "custom.event",
       payload,

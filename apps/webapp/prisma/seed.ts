@@ -1,5 +1,5 @@
 /* eslint-disable turbo/no-undeclared-env-vars */
-import { PrismaClient } from ".prisma/client";
+import { PrismaClient } from "@trigger.dev/database";
 
 const prisma = new PrismaClient();
 

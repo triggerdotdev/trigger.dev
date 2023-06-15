@@ -1,4 +1,4 @@
-import type { Task, TaskAttempt } from ".prisma/client";
+import type { Task, TaskAttempt } from "@trigger.dev/database";
 import { ServerTask } from "@trigger.dev/internal";
 
 export type TaskWithAttempts = Task & { attempts: TaskAttempt[] };

@@ -1,9 +1,9 @@
 import { nanoid } from "nanoid";
 import slug from "slug";
 import { prisma } from "~/db.server";
-import type { Project } from ".prisma/client";
+import type { Project } from "@trigger.dev/database";
 import { Organization, createEnvironment } from "./organization.server";
-export type { Project } from ".prisma/client";
+export type { Project } from "@trigger.dev/database";
 
 export async function createProject(
   {

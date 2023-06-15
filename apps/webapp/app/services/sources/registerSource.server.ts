@@ -1,4 +1,4 @@
-import type { Endpoint } from ".prisma/client";
+import type { Endpoint } from "@trigger.dev/database";
 import type { SourceMetadata } from "@trigger.dev/internal";
 import { $transaction, PrismaClientOrTransaction } from "~/db.server";
 import { prisma } from "~/db.server";

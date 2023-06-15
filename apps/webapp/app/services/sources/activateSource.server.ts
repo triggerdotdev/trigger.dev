@@ -4,7 +4,7 @@ import type {
   TriggerSource,
   SecretReference,
   TriggerSourceEvent,
-} from ".prisma/client";
+} from "@trigger.dev/database";
 import type { AuthenticatedEnvironment } from "../apiAuth.server";
 import { env } from "~/env.server";
 import {

@@ -1,4 +1,4 @@
-import { PrismaClient, Prisma } from ".prisma/client";
+import { PrismaClient, Prisma } from "@trigger.dev/database";
 import invariant from "tiny-invariant";
 import { z } from "zod";
 
@@ -96,7 +96,7 @@ function getClient() {
 }
 
 export { prisma };
-export type { PrismaClient } from ".prisma/client";
+export type { PrismaClient } from "@trigger.dev/database";
 
 export const PrismaErrorSchema = z.object({
   code: z.string(),

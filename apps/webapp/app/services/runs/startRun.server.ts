@@ -1,4 +1,4 @@
-import type { ApiConnection, ApiConnectionType } from ".prisma/client";
+import type { ApiConnection, ApiConnectionType } from "@trigger.dev/database";
 import type { PrismaClient, PrismaClientOrTransaction } from "~/db.server";
 import { prisma } from "~/db.server";
 import { workerQueue } from "../worker.server";

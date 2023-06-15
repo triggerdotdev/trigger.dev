@@ -4,7 +4,7 @@ import type {
   ApiConnectionClient,
   SecretReference,
   ExternalAccount,
-} from ".prisma/client";
+} from "@trigger.dev/database";
 import jsonpointer from "jsonpointer";
 import { customAlphabet } from "nanoid";
 import * as crypto from "node:crypto";

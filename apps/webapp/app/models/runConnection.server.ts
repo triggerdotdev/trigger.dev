@@ -1,4 +1,4 @@
-import type { RunConnection } from ".prisma/client";
+import type { RunConnection } from "@trigger.dev/database";
 import type { ConnectionAuth } from "@trigger.dev/internal";
 import type { ApiConnectionWithSecretReference } from "~/services/externalApis/apiAuthenticationRepository.server";
 import { apiAuthenticationRepository } from "~/services/externalApis/apiAuthenticationRepository.server";

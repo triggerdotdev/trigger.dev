@@ -4,7 +4,7 @@ import type {
   JobIntegration,
   JobVersion,
   ApiConnectionClient,
-} from ".prisma/client";
+} from "@trigger.dev/database";
 import {
   IntegrationConfig,
   JobMetadata,

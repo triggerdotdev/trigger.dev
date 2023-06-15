@@ -1,4 +1,4 @@
-import type { RuntimeEnvironment } from ".prisma/client";
+import type { RuntimeEnvironment } from "@trigger.dev/database";
 import { prisma } from "~/db.server";
 
 export type { RuntimeEnvironment };

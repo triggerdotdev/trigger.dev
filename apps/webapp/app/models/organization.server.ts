@@ -4,15 +4,14 @@ import type {
   Project,
   RuntimeEnvironment,
   User,
-} from ".prisma/client";
+} from "@trigger.dev/database";
 import { customAlphabet } from "nanoid";
 import slug from "slug";
 import { prisma, PrismaClientOrTransaction } from "~/db.server";
 import { workerQueue } from "~/services/worker.server";
-import { generateTwoRandomWords } from "~/utils/randomWords";
 import { createProject } from "./project.server";
 
-export type { Organization } from ".prisma/client";
+export type { Organization };
 
 const nanoid = customAlphabet("1234567890abcdef", 4);
 const apiKeyId = customAlphabet(

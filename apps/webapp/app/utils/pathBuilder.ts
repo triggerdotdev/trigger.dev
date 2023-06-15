@@ -1,4 +1,4 @@
-import { ApiConnectionClient } from ".prisma/client";
+import { ApiConnectionClient } from "@trigger.dev/database";
 import { Job } from "~/models/job.server";
 import type { Organization } from "~/models/organization.server";
 import type { Project } from "~/models/project.server";

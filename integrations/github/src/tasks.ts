@@ -44,7 +44,7 @@ export const createIssue: GithubAuthenticatedTask<
   OctokitClient["rest"]["issues"]["create"]
 > = {
   onError,
-  run: async (params, client, task) => {
+  run: async (params, client, task, io) => {
     const [owner, repo] = params.repo.split("/");
 
     return client.rest.issues

@@ -1,0 +1,19 @@
+{
+  "name": "@trigger.dev/database",
+  "private": true,
+  "version": "0.0.0",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "dependencies": {
+    "@prisma/client": "latest",
+    "typescript": "^4.8.4"
+  },
+  "devDependencies": {
+    "prisma": "latest"
+  },
+  "scripts": {
+    "db:generate": "prisma generate",
+    "db:push": "prisma db push --skip-generate",
+    "db:migrate:dev": "prisma migrate dev"
+  }
+}

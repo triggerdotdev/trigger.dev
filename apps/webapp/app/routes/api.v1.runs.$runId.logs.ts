@@ -1,4 +1,4 @@
-import type { Organization, RuntimeEnvironment } from ".prisma/client";
+import type { Organization, RuntimeEnvironment } from "@trigger.dev/database";
 import type { ActionArgs } from "@remix-run/server-runtime";
 import { json } from "@remix-run/server-runtime";
 import type { LogMessage } from "@trigger.dev/internal";

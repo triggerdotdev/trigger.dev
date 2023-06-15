@@ -1,4 +1,4 @@
-import { JobRunStatus } from ".prisma/client";
+import type { JobRunStatus } from "@trigger.dev/database";
 import {
   CheckCircleIcon,
   ClockIcon,
