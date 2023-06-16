@@ -129,9 +129,9 @@ function PossibleIntegrationsList({
 
   return (
     <div className="overflow-y-auto py-4 pl-4">
-      <Header2 className="mb-2">Connect an Integration</Header2>
+      <Header2 className="mb-2">Connect an API</Header2>
       <Input
-        placeholder="Search integrations"
+        placeholder="Search APIs"
         className="mb-2"
         variant="tertiary"
         icon="search"
