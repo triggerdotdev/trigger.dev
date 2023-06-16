@@ -4,12 +4,12 @@ import {
   typedjson,
   useTypedLoaderData,
 } from "remix-typedjson";
-import invariant from "tiny-invariant";
 import { ConnectToIntegrationSheet } from "~/components/integrations/ConnectToIntegrationSheet";
+import { NoIntegrationSheet } from "~/components/integrations/NoIntegrationSheet";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { LinkButton } from "~/components/primitives/Buttons";
 import { Callout } from "~/components/primitives/Callout";
-import { Header2, Header3 } from "~/components/primitives/Headers";
+import { Header2 } from "~/components/primitives/Headers";
 import { Help, HelpContent, HelpTrigger } from "~/components/primitives/Help";
 import { Input } from "~/components/primitives/Input";
 import { NamedIcon, NamedIconInBox } from "~/components/primitives/NamedIcon";
@@ -21,12 +21,6 @@ import {
   PageTitleRow,
 } from "~/components/primitives/PageHeader";
 import { Paragraph } from "~/components/primitives/Paragraph";
-import {
-  Popover,
-  PopoverContent,
-  PopoverSectionHeader,
-  PopoverTrigger,
-} from "~/components/primitives/Popover";
 import {
   Table,
   TableBlankRow,
@@ -47,7 +41,6 @@ import {
   IntegrationOrApi,
   IntegrationsPresenter,
 } from "~/presenters/IntegrationsPresenter.server";
-import { Integration } from "~/services/externalApis/types";
 import { requireUser } from "~/services/session.server";
 import { formatDateTime } from "~/utils";
 import { Handle } from "~/utils/handle";
@@ -155,11 +148,27 @@ function PossibleIntegrationsList({
                   key={option.identifier}
                   integration={option}
                   organizationId={organizationId}
-                  button={<AddIntegrationConnection integration={option} />}
+                  button={
+                    <AddIntegrationConnection
+                      identifier={option.identifier}
+                      name={option.name}
+                    />
+                  }
                 />
               );
             case "api":
-              return <span key={option.identifier}>{option.name}</span>;
+              return (
+                <NoIntegrationSheet
+                  key={option.identifier}
+                  api={option}
+                  button={
+                    <AddIntegrationConnection
+                      identifier={option.identifier}
+                      name={option.name}
+                    />
+                  }
+                />
+              );
           }
         })}
       </div>
@@ -307,21 +316,23 @@ function ConnectedIntegrationsList({
 }
 
 function AddIntegrationConnection({
-  integration,
+  identifier,
+  name,
 }: {
-  integration: Integration;
+  identifier: string;
+  name: string;
 }) {
   return (
     <div className="group flex h-11 w-full items-center gap-3 rounded-md p-1 pr-3 transition hover:bg-slate-850">
       <NamedIconInBox
-        name={integration.identifier}
+        name={identifier}
         className="flex-0 h-9 w-9 transition group-hover:border-slate-750"
       />
       <Paragraph
         variant="base"
         className="m-0 flex-1 text-left transition group-hover:text-bright"
       >
-        {integration.name}
+        {name}
       </Paragraph>
       <NamedIcon
         name="plus"
