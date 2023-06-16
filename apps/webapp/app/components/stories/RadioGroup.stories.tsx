@@ -1,6 +1,5 @@
 import type { Meta, StoryObj } from "@storybook/react";
 import { withDesign } from "storybook-addon-designs";
-import { Checkbox } from "../primitives/Checkbox";
 import { useState } from "react";
 import { Button } from "../primitives/Buttons";
 import { RadioGroup, RadioGroupItem } from "../primitives/RadioButton";
