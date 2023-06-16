@@ -104,7 +104,7 @@ export function ClipboardField({
       {icon && (
         <div
           onClick={() => inputIcon.current && inputIcon.current.focus()}
-          className={cn(iconPosition, "flex items-center border-y border-l")}
+          className={cn(iconPosition, "flex items-center")}
         >
           {typeof icon === "string" ? (
             <NamedIcon name={icon} className={iconClassName} />
