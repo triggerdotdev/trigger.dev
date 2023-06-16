@@ -104,7 +104,7 @@ importers:
       '@testing-library/react': ^13.4.0
       '@testing-library/user-event': ^14.4.3
       '@total-typescript/ts-reset': ^0.4.2
-      '@trigger.dev/companyicons': ^1.5.3
+      '@trigger.dev/companyicons': ^1.5.4
       '@trigger.dev/database': workspace:*
       '@trigger.dev/internal': workspace:*
       '@trigger.dev/tailwind-config': workspace:*
@@ -270,7 +270,7 @@ importers:
       '@remix-run/server-runtime': 1.16.1
       '@sentry/remix': 7.53.1_535ee7qxxe65mhmlpnplklpcuu
       '@tanstack/react-table': 8.7.6_biqbaboplfbrettd7655fr4n2y
-      '@trigger.dev/companyicons': 1.5.3_biqbaboplfbrettd7655fr4n2y
+      '@trigger.dev/companyicons': 1.5.4_biqbaboplfbrettd7655fr4n2y
       '@trigger.dev/database': link:../../packages/database
       '@trigger.dev/internal': link:../../packages/internal
       '@typeform/embed-react': 2.14.1_react@18.2.0
@@ -9589,8 +9589,8 @@ packages:
     resolution: {integrity: sha512-vqd7ZUDSrXFVT1n8b2kc3LnklncDQFPvR58yUS1kEP23/nHPAO9l1lMjUfnPrXYYk4Hj54rrLKMW5ipwk7k09A==}
     dev: true
 
-  /@trigger.dev/companyicons/1.5.3_biqbaboplfbrettd7655fr4n2y:
-    resolution: {integrity: sha512-/5+HKrJUih/QPaLYx7phT6cUhkbFMRnaS4ppMJAtpR7aBlMWoy0opoyrYhn6cH21zmPxpUTleySxyGLUrYcjoA==}
+  /@trigger.dev/companyicons/1.5.4_biqbaboplfbrettd7655fr4n2y:
+    resolution: {integrity: sha512-wNAWx+nLt2TtVtupc+TAXFan11Q75whVN9SBawdsAuOe3ZJcskpyGiBrGMk2djjEWvyLPzchkAl5MY2Pia8iVA==}
     peerDependencies:
       react: ^18.2.0
       react-dom: 18.2.0
