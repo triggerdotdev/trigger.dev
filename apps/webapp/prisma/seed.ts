@@ -26,38 +26,40 @@ async function seedIntegrationAuthMethods() {
     for (const [key, authMethod] of Object.entries(
       integration.authenticationMethods
     )) {
-      console.log(`Upserting auth method ${identifier}.${key}`);
+      if (authMethod.type === "oauth2") {
+        console.log(`Upserting auth method ${identifier}.${key}`);
 
-      await prisma.integrationAuthMethod.upsert({
-        where: {
-          definitionId_key: {
-            definitionId: identifier,
-            key,
-          },
-        },
-        create: {
-          key,
-          name: authMethod.name,
-          description: authMethod.description ?? "",
-          type: authMethod.type,
-          client: authMethod.client,
-          config: authMethod.config,
-          scopes: authMethod.scopes,
-          definition: {
-            connect: {
-              id: identifier,
+        await prisma.integrationAuthMethod.upsert({
+          where: {
+            definitionId_key: {
+              definitionId: identifier,
+              key,
             },
           },
-        },
-        update: {
-          name: authMethod.name,
-          description: authMethod.description ?? "",
-          type: authMethod.type,
-          client: authMethod.client,
-          config: authMethod.config,
-          scopes: authMethod.scopes,
-        },
-      });
+          create: {
+            key,
+            name: authMethod.name,
+            description: authMethod.description ?? "",
+            type: authMethod.type,
+            client: authMethod.client,
+            config: authMethod.config,
+            scopes: authMethod.scopes,
+            definition: {
+              connect: {
+                id: identifier,
+              },
+            },
+          },
+          update: {
+            name: authMethod.name,
+            description: authMethod.description ?? "",
+            type: authMethod.type,
+            client: authMethod.client,
+            config: authMethod.config,
+            scopes: authMethod.scopes,
+          },
+        });
+      }
     }
   }
 }
