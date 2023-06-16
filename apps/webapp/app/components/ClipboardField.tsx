@@ -11,7 +11,7 @@ const variations = {
     input:
       "bg-slate-850 border-0 text-xs px-2 w-auto rounded-l h-6 leading-6 focus:ring-transparent",
     buttonVariant: "primary/small" as const,
-    button: "rounded-l-none min-w-[3rem]",
+    button: "rounded-l-none min-w-[3.1rem]",
     iconSize: "h-3 w-3",
     iconPadding: "pl-1",
   },
@@ -21,7 +21,7 @@ const variations = {
     input:
       "bg-slate-850 border-0 text-xs px-2 w-auto rounded-l h-6 leading-6 focus:ring-transparent",
     buttonVariant: "secondary/small" as const,
-    button: "rounded-l-none border-l border-slate-750 min-w-[3rem]",
+    button: "rounded-l-none border-l border-slate-750 min-w-[3.1rem]",
     iconSize: "h-3 w-3",
     iconPadding: "pl-1",
   },
@@ -31,7 +31,7 @@ const variations = {
     input:
       "bg-transparent border-0 text-xs px-2 w-auto rounded-l h-6 leading-6 focus:ring-transparent",
     buttonVariant: "tertiary/small" as const,
-    button: "rounded-l-none border-l border-slate-850 min-w-[3rem]",
+    button: "rounded-l-none border-l border-slate-850 min-w-[3.1rem]",
     iconSize: "h-3 w-3",
     iconPadding: "pl-1",
   },
