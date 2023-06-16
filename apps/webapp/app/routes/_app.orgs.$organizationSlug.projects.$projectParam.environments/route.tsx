@@ -69,7 +69,7 @@ export default function Page() {
               key={environment.id}
               secure
               value={environment.apiKey}
-              variant={"primary"}
+              variant={"primary/medium"}
             />
           ))}
         </div>

@@ -74,7 +74,9 @@ export default function Integrations() {
           <PageInfoGroup>
             <PageInfoProperty
               label="Slug"
-              value={<ClipboardField value={client.slug} variant="secondary" />}
+              value={
+                <ClipboardField value={client.slug} variant="secondary/small" />
+              }
             />
             <PageInfoProperty
               icon={client.integration.identifier}
