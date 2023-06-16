@@ -27,14 +27,17 @@ export function SideMenuContainer({ children }: { children: React.ReactNode }) {
   );
 }
 
+const expandedWith = "14rem";
+const collapsedWith = "2.81rem";
+
 const menuVariants = {
   expanded: {
-    minWidth: "11rem",
-    width: "11rem",
+    minWidth: expandedWith,
+    width: expandedWith,
   },
   collapsed: {
-    minWidth: "2.81rem",
-    width: "2.81rem",
+    minWidth: collapsedWith,
+    width: collapsedWith,
   },
 };
 
@@ -77,7 +80,7 @@ export function ProjectSideMenu() {
           isCollapsed={isCollapsed}
         />
         <SideMenuItem
-          name="Environments"
+          name="Environments & API Keys"
           icon="environment"
           to={projectEnvironmentsPath(organization, project)}
           isCollapsed={isCollapsed}
@@ -151,7 +154,7 @@ function SideMenuItem({
           }}
         >
           <motion.span
-            className="pl-1"
+            className="shrink-0 pl-1"
             animate={isCollapsed ? "collapsed" : "expanded"}
             variants={itemVariants}
             initial={isCollapsed ? "collapsed" : "expanded"}
