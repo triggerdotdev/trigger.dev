@@ -417,7 +417,7 @@ export const RunTaskOptionsSchema = z.object({
   delayUntil: z.coerce.date().optional(),
   description: z.string().optional(),
   properties: z.array(DisplayPropertySchema).optional(),
-  params: SerializableJsonSchema.optional(),
+  params: z.any(),
   trigger: TriggerMetadataSchema.optional(),
   redact: RedactSchema.optional(),
   connectionKey: z.string().optional(),

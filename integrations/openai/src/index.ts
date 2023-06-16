@@ -1,9 +1,10 @@
 import { OpenAIApi, Configuration } from "openai";
 import type { IntegrationClient, TriggerIntegration } from "@trigger.dev/sdk";
-import { createCompletion } from "./tasks";
+import { createChatCompletion, createCompletion } from "./tasks";
 
 const tasks = {
   createCompletion,
+  createChatCompletion,
 };
 
 export type OpenAIIntegrationOptions = {

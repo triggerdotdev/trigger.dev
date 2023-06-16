@@ -69,6 +69,8 @@ const dynamicSchedule = new DynamicSchedule(client, {
 
 const enabled = true;
 
+const CHAT_MODELS = ["gpt-3.5-turbo"];
+
 new Job(client, {
   id: "openai-test",
   name: "OpenAI Test",
@@ -85,6 +87,20 @@ new Job(client, {
     openai,
   },
   run: async (payload, io, ctx) => {
+    if (CHAT_MODELS.includes(payload.model)) {
+      const completion = await io.openai.createChatCompletion("✨", {
+        model: payload.model,
+        messages: [
+          {
+            role: "user",
+            content: payload.prompt,
+          },
+        ],
+      });
+
+      return completion;
+    }
+
     const completion = await io.openai.createCompletion("✨", {
       model: payload.model,
       prompt: payload.prompt,
