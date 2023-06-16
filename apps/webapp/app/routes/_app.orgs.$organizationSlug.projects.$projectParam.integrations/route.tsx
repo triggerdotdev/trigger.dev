@@ -161,6 +161,7 @@ function PossibleIntegrationsList({
                 <NoIntegrationSheet
                   key={option.identifier}
                   api={option}
+                  requested={option.voted}
                   button={
                     <AddIntegrationConnection
                       identifier={option.identifier}

@@ -36,6 +36,7 @@ model User {
 
   orgMemberships OrgMember[]
   sentInvites    OrgMemberInvite[]
+  apiVotes       ApiIntegrationVote[]
 }
 
 enum AuthenticationMethod {
@@ -926,4 +927,18 @@ model MissingApiConnection {
   updatedAt DateTime @updatedAt
 
   @@unique([apiConnectionClientId, connectionType, externalAccountId])
+}
+
+model ApiIntegrationVote {
+  id String @id @default(cuid())
+
+  apiIdentifier String
+
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  userId String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([apiIdentifier, userId])
 }

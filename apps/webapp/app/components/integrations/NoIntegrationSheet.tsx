@@ -1,9 +1,8 @@
-import React, { useState } from "react";
-import {
-  ApiAuthenticationMethodApiKey,
-  Integration,
-} from "~/services/externalApis/types";
-import { Header1, Header2 } from "../primitives/Headers";
+import React from "react";
+import { Api } from "~/services/externalApis/apis";
+import { Button } from "../primitives/Buttons";
+import { Callout } from "../primitives/Callout";
+import { Header1 } from "../primitives/Headers";
 import { NamedIconInBox } from "../primitives/NamedIcon";
 import {
   Sheet,
@@ -12,21 +11,23 @@ import {
   SheetHeader,
   SheetTrigger,
 } from "../primitives/Sheet";
-import { RadioGroup, RadioGroupItem } from "../primitives/RadioButton";
-import { ApiKeyHelp } from "./ApiKeyHelp";
 import { CustomHelp } from "./CustomHelp";
-import { SelectOAuthMethod } from "./SelectOAuthMethod";
-import { Api } from "~/services/externalApis/apis";
-import { Callout } from "../primitives/Callout";
-import { Button } from "../primitives/Buttons";
+import { CheckIcon } from "@heroicons/react/24/solid";
+import { useFetcher } from "@remix-run/react";
+import { Paragraph } from "../primitives/Paragraph";
 
 export function NoIntegrationSheet({
   api,
+  requested,
   button,
 }: {
   api: Api;
+  requested: boolean;
   button: React.ReactNode;
 }) {
+  const fetcher = useFetcher();
+  const isLoading = fetcher.state !== "idle";
+
   return (
     <Sheet>
       <SheetTrigger>{button}</SheetTrigger>
@@ -36,9 +37,29 @@ export function NoIntegrationSheet({
             <NamedIconInBox name={api.identifier} className="h-9 w-9" />
             <Header1>{api.name}</Header1>
           </div>
-          <Button variant="primary/small">
-            I want an integration for {api.name}
-          </Button>
+          {requested ? (
+            <div className="flex items-center gap-1">
+              <CheckIcon className="h-4 w-4 text-green-500" />
+              <Paragraph variant="small">
+                We'll let you know when the integration is available
+              </Paragraph>
+            </div>
+          ) : (
+            <fetcher.Form
+              method="post"
+              action={`/resources/apivote/${api.identifier}`}
+            >
+              <Button
+                variant="primary/small"
+                disabled={isLoading}
+                LeadingIcon={isLoading ? "spinner-white" : undefined}
+              >
+                {isLoading
+                  ? "Saving…"
+                  : `I want an integration for ${api.name}`}
+              </Button>
+            </fetcher.Form>
+          )}
         </SheetHeader>
         <SheetBody>
           <Callout variant="info">

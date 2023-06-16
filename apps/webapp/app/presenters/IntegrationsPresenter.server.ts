@@ -13,7 +13,7 @@ export type IntegrationOrApi =
   | ({
       type: "integration";
     } & Integration)
-  | ({ type: "api" } & Api);
+  | ({ type: "api" } & Api & { voted: boolean });
 
 export class IntegrationsPresenter {
   #prismaClient: PrismaClient;
@@ -132,13 +132,29 @@ export class IntegrationsPresenter {
       integrationCatalog.getIntegrations()
     ).map((i) => ({ type: "integration" as const, ...i }));
 
+    //get all apis, some don't have integrations yet.
+    //get whether the user has voted for them or not
+    const votes = await this.#prismaClient.apiIntegrationVote.findMany({
+      select: {
+        apiIdentifier: true,
+      },
+      where: {
+        userId,
+      },
+    });
+
     const apis = apisList
       .filter((a) => !integrations.some((i) => i.identifier === a.identifier))
-      .map((a) => ({ type: "api" as const, ...a }));
+      .map((a) => ({
+        type: "api" as const,
+        ...a,
+        voted: votes.some((v) => v.apiIdentifier === a.identifier),
+      }));
 
     const options = [...integrations, ...apis].sort((a, b) =>
       a.name.localeCompare(b.name)
     );
+
     return {
       clients: clientsWithConnections,
       options,
