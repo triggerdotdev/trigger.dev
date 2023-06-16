@@ -14,7 +14,7 @@
   "scripts": {
     "build": "turbo run build",
     "build:force": "turbo run build --force",
-    "db:migrate": "turbo run db:push db:generate",
+    "db:migrate": "turbo run db:migrate:deploy db:generate",
     "db:seed": "turbo run db:seed",
     "dev": "turbo run dev --parallel",
     "i:dev": "infisical run -- turbo run dev --parallel",
