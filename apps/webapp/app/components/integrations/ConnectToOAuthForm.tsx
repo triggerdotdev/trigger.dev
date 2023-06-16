@@ -114,10 +114,6 @@ export function ConnectToOAuthForm({
           />
           <FormError>{title.error}</FormError>
         </InputGroup>
-        <Callout variant="info">
-          Coming soon – create connections so you can run Jobs with your users
-          credentials.
-        </Callout>
         <input type="hidden" name="clientType" value={clientType} />
         <div>
           <Header2>Use my OAuth App</Header2>
