@@ -2,10 +2,9 @@ import { conform, useForm } from "@conform-to/react";
 import { parse } from "@conform-to/zod";
 import { useFetcher, useLocation, useNavigation } from "@remix-run/react";
 import cuid from "cuid";
-import React, { useState } from "react";
+import { useState } from "react";
 import simplur from "simplur";
 import { useTextFilter } from "~/hooks/useTextFilter";
-import { ApiConnectionType } from "~/models/apiConnection.server";
 import { createSchema } from "~/routes/resources.connection.$organizationId.oauth2";
 import {
   ApiAuthenticationMethodOAuth2,
@@ -15,7 +14,6 @@ import {
 import { cn } from "~/utils/cn";
 import { CodeBlock } from "../code/CodeBlock";
 import { Button } from "../primitives/Buttons";
-import { Callout } from "../primitives/Callout";
 import { Checkbox } from "../primitives/Checkbox";
 import { Fieldset } from "../primitives/Fieldset";
 import { FormError } from "../primitives/FormError";
@@ -23,8 +21,9 @@ import { Header2, Header3 } from "../primitives/Headers";
 import { Input } from "../primitives/Input";
 import { InputGroup } from "../primitives/InputGroup";
 import { Label } from "../primitives/Label";
-import { NamedIcon, NamedIconInBox } from "../primitives/NamedIcon";
+import { NamedIcon } from "../primitives/NamedIcon";
 import { Paragraph } from "../primitives/Paragraph";
+import type { ConnectionType } from "@trigger.dev/database";
 
 export type Status = "loading" | "idle";
 
@@ -39,7 +38,7 @@ export function ConnectToOAuthForm({
   authMethod: ApiAuthenticationMethodOAuth2;
   authMethodKey: string;
   organizationId: string;
-  clientType: ApiConnectionType;
+  clientType: ConnectionType;
 }) {
   const [id] = useState<string>(cuid());
   const transition = useNavigation();

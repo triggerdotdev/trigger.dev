@@ -4,7 +4,7 @@ import {
   Integration,
 } from "~/services/externalApis/types";
 import { RadioGroup, RadioGroupItem } from "../primitives/RadioButton";
-import { ApiConnectionType } from "~/models/apiConnection.server";
+import type { ConnectionType } from "@trigger.dev/database";
 import { Header2 } from "../primitives/Headers";
 import { ConnectToOAuthForm } from "./ConnectToOAuthForm";
 import { Paragraph } from "../primitives/Paragraph";
@@ -24,7 +24,7 @@ export function SelectOAuthMethod({
     oAuthMethods.length === 1 ? oAuthMethods[0][0] : undefined
   );
   const [connectionType, setConnectionType] = useState<
-    ApiConnectionType | undefined
+    ConnectionType | undefined
   >();
 
   const selectedOAuthMethod = oAuthKey
@@ -42,7 +42,7 @@ export function SelectOAuthMethod({
             name="oauth-method"
             className="flex gap-2"
             value={oAuthKey}
-            onValueChange={(v) => setOAuthKey(v)}
+            onValueChange={(v: any) => setOAuthKey(v)}
           >
             {oAuthMethods.map(([key, auth]) => (
               <RadioGroupItem
@@ -66,7 +66,7 @@ export function SelectOAuthMethod({
             name="connection-type"
             className="flex gap-2"
             value={connectionType}
-            onValueChange={(v) => setConnectionType(v as ApiConnectionType)}
+            onValueChange={(v: any) => setConnectionType(v as ConnectionType)}
           >
             <RadioGroupItem
               id="DEVELOPER"
