@@ -86,6 +86,7 @@ type TableCellBasicProps = {
   className?: string;
   alignment?: "left" | "center" | "right";
   children: ReactNode;
+  colSpan?: number;
 };
 
 type TableHeaderCellProps = TableCellBasicProps & {
@@ -95,38 +96,11 @@ type TableHeaderCellProps = TableCellBasicProps & {
 export const TableHeaderCell = forwardRef<
   HTMLTableCellElement,
   TableHeaderCellProps
->(({ className, alignment = "left", children, hiddenLabel = false }, ref) => {
-  let alignmentClassName = "text-left";
-  switch (alignment) {
-    case "center":
-      alignmentClassName = "text-center";
-      break;
-    case "right":
-      alignmentClassName = "text-right";
-      break;
-  }
-
-  return (
-    <th
-      ref={ref}
-      scope="col"
-      className={cn(
-        "px-4 py-3 align-middle text-xs font-semibold uppercase text-slate-400",
-        alignmentClassName,
-        className
-      )}
-    >
-      {hiddenLabel ? <span className="sr-only">{children}</span> : children}
-    </th>
-  );
-});
-
-type TableCellProps = TableCellBasicProps & {
-  to?: string;
-};
-
-export const TableCell = forwardRef<HTMLTableCellElement, TableCellProps>(
-  ({ className, alignment = "left", children, to }, ref) => {
+>(
+  (
+    { className, alignment = "left", children, colSpan, hiddenLabel = false },
+    ref
+  ) => {
     let alignmentClassName = "text-left";
     switch (alignment) {
       case "center":
@@ -138,29 +112,67 @@ export const TableCell = forwardRef<HTMLTableCellElement, TableCellProps>(
     }
 
     return (
+      <th
+        ref={ref}
+        scope="col"
+        className={cn(
+          "px-4 py-3 align-middle text-xs font-semibold uppercase text-slate-400",
+          alignmentClassName,
+          className
+        )}
+        colSpan={colSpan}
+      >
+        {hiddenLabel ? <span className="sr-only">{children}</span> : children}
+      </th>
+    );
+  }
+);
+
+type TableCellProps = TableCellBasicProps & {
+  to?: string;
+  onClick?: (event: React.MouseEvent<HTMLButtonElement, MouseEvent>) => void;
+};
+
+export const TableCell = forwardRef<HTMLTableCellElement, TableCellProps>(
+  ({ className, alignment = "left", children, colSpan, to, onClick }, ref) => {
+    let alignmentClassName = "text-left";
+    switch (alignment) {
+      case "center":
+        alignmentClassName = "text-center";
+        break;
+      case "right":
+        alignmentClassName = "text-right";
+        break;
+    }
+
+    const flexClasses = cn(
+      "flex w-full whitespace-nowrap px-4 py-3 text-xs text-slate-400",
+      alignment === "left"
+        ? "justify-start text-left"
+        : alignment === "center"
+        ? "justify-center text-center"
+        : "justify-end text-right"
+    );
+
+    return (
       <td
         ref={ref}
         className={cn(
           "text-xs text-slate-400 transition group-hover:bg-slate-850/50",
-          to ? "cursor-pointer" : "px-4 py-3 align-middle",
-          !to && alignmentClassName,
+          to || onClick ? "cursor-pointer" : "px-4 py-3 align-middle",
+          !to && !onClick && alignmentClassName,
           className
         )}
+        colSpan={colSpan}
       >
         {to ? (
-          <Link
-            to={to}
-            className={cn(
-              "flex w-full whitespace-nowrap px-4 py-3 text-xs text-slate-400",
-              alignment === "left"
-                ? "justify-start text-left"
-                : alignment === "center"
-                ? "justify-center text-center"
-                : "justify-end text-right"
-            )}
-          >
+          <Link to={to} className={flexClasses}>
             {children}
           </Link>
+        ) : onClick ? (
+          <button onClick={onClick} className={flexClasses}>
+            {children}
+          </button>
         ) : (
           <>{children}</>
         )}
@@ -171,10 +183,20 @@ export const TableCell = forwardRef<HTMLTableCellElement, TableCellProps>(
 
 export const TableCellChevron = forwardRef<
   HTMLTableCellElement,
-  { className?: string; to: string }
->(({ className, to }, ref) => {
+  {
+    className?: string;
+    to?: string;
+    onClick?: (event: React.MouseEvent<HTMLButtonElement, MouseEvent>) => void;
+  }
+>(({ className, to, onClick }, ref) => {
   return (
-    <TableCell className={className} to={to} ref={ref} alignment="right">
+    <TableCell
+      className={className}
+      to={to}
+      onClick={onClick}
+      ref={ref}
+      alignment="right"
+    >
       <ChevronRightIcon className="h-4 w-4 text-slate-700 transition group-hover:text-bright" />
     </TableCell>
   );
