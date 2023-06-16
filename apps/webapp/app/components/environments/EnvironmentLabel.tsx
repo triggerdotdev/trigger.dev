@@ -1,7 +1,7 @@
 import { RuntimeEnvironment } from "~/models/runtimeEnvironment.server";
 import { cn } from "~/utils/cn";
 
-type Environment = Pick<RuntimeEnvironment, "type" | "slug">;
+type Environment = Pick<RuntimeEnvironment, "type">;
 
 export function EnvironmentLabel({
   environment,

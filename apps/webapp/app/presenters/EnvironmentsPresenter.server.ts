@@ -6,7 +6,7 @@ import {
 import { Project } from "~/models/project.server";
 import { User } from "~/models/user.server";
 
-type Client = {
+export type Client = {
   slug: string;
   endpoints: {
     DEVELOPMENT: ClientEndpoint;
@@ -15,7 +15,7 @@ type Client = {
   };
 };
 
-type ClientEndpoint =
+export type ClientEndpoint =
   | {
       state: "unconfigured";
     }
@@ -98,6 +98,8 @@ export class EnvironmentsPresenter {
       return true;
     });
 
+    console.log("filtered", JSON.stringify(filtered));
+
     //build up list of clients for display, with endpoints by type
     const clients: Client[] = [];
     for (const environment of filtered) {
@@ -112,6 +114,7 @@ export class EnvironmentsPresenter {
               PRODUCTION: { state: "unconfigured" },
             },
           };
+          clients.push(client);
         }
 
         if (environment.type === "PREVIEW") {
