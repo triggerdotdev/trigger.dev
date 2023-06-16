@@ -93,44 +93,46 @@ export default function Page() {
           ))}
         </div>
 
-        <Header1>Clients</Header1>
-        {clients.length > 0 ? (
-          clients.map((client) => (
-            <div key={client.slug}>
-              <Header2>{client.slug}</Header2>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHeaderCell>Environment</TableHeaderCell>
-                    <TableHeaderCell>Last refreshed</TableHeaderCell>
-                    <TableHeaderCell>Jobs</TableHeaderCell>
-                    <TableHeaderCell>Url</TableHeaderCell>
-                    <TableHeaderCell hiddenLabel>Go to page</TableHeaderCell>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  <EndpointRow
-                    endpoint={client.endpoints.DEVELOPMENT}
-                    type="DEVELOPMENT"
-                    onClick={() => console.log("click")}
-                  />
-                  <EndpointRow
-                    endpoint={client.endpoints.STAGING}
-                    type="STAGING"
-                    onClick={() => console.log("click")}
-                  />
-                  <EndpointRow
-                    endpoint={client.endpoints.PRODUCTION}
-                    type="PRODUCTION"
-                    onClick={() => console.log("click")}
-                  />
-                </TableBody>
-              </Table>
-            </div>
-          ))
-        ) : (
-          <Paragraph>You have no clients yet</Paragraph>
-        )}
+        <Header1 className="mb-2">Clients</Header1>
+        <div className="flex flex-col gap-4">
+          {clients.length > 0 ? (
+            clients.map((client) => (
+              <div key={client.slug}>
+                <Header2 className="mb-2">{client.slug}</Header2>
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHeaderCell>Environment</TableHeaderCell>
+                      <TableHeaderCell>Last refreshed</TableHeaderCell>
+                      <TableHeaderCell>Jobs</TableHeaderCell>
+                      <TableHeaderCell>Url</TableHeaderCell>
+                      <TableHeaderCell hiddenLabel>Go to page</TableHeaderCell>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    <EndpointRow
+                      endpoint={client.endpoints.DEVELOPMENT}
+                      type="DEVELOPMENT"
+                      onClick={() => console.log("click")}
+                    />
+                    <EndpointRow
+                      endpoint={client.endpoints.STAGING}
+                      type="STAGING"
+                      onClick={() => console.log("click")}
+                    />
+                    <EndpointRow
+                      endpoint={client.endpoints.PRODUCTION}
+                      type="PRODUCTION"
+                      onClick={() => console.log("click")}
+                    />
+                  </TableBody>
+                </Table>
+              </div>
+            ))
+          ) : (
+            <Paragraph>You have no clients yet</Paragraph>
+          )}
+        </div>
       </PageBody>
     </PageContainer>
   );
