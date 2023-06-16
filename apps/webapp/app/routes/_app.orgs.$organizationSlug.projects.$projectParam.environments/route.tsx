@@ -34,6 +34,15 @@ import { ProjectParamSchema } from "~/utils/pathBuilder";
 import { RuntimeEnvironmentType } from "../../../../../packages/database/src";
 import { formatDateTime } from "~/utils";
 import { Button, ButtonContent } from "~/components/primitives/Buttons";
+import { useMemo, useState } from "react";
+import { s } from "vitest/dist/index-6e18a03a";
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+} from "~/components/primitives/Sheet";
+import { select } from "@conform-to/react/helpers";
+import { ConfigureEndpointSheet } from "./ConfigureEndpointSheet";
 
 export const loader = async ({ request, params }: LoaderArgs) => {
   const userId = await requireUserId(request);
@@ -68,6 +77,26 @@ export const handle: Handle = {
 
 export default function Page() {
   const { environments, clients } = useTypedLoaderData<typeof loader>();
+  const [selected, setSelected] = useState<
+    { client: string; type: RuntimeEnvironmentType } | undefined
+  >();
+
+  const selectedEndpoint = useMemo(() => {
+    if (!selected) return undefined;
+
+    const client = clients.find((c) => c.slug === selected.client);
+    if (!client) return undefined;
+
+    if (selected.type === "PREVIEW") {
+      throw new Error("PREVIEW is not yet supported");
+    }
+
+    return {
+      clientSlug: selected.client,
+      type: selected.type,
+      endpoint: client.endpoints[selected.type],
+    };
+  }, [selected, clients]);
 
   return (
     <PageContainer>
@@ -113,17 +142,32 @@ export default function Page() {
                     <EndpointRow
                       endpoint={client.endpoints.DEVELOPMENT}
                       type="DEVELOPMENT"
-                      onClick={() => console.log("click")}
+                      onClick={() =>
+                        setSelected({
+                          client: client.slug,
+                          type: "DEVELOPMENT",
+                        })
+                      }
                     />
                     <EndpointRow
                       endpoint={client.endpoints.STAGING}
                       type="STAGING"
-                      onClick={() => console.log("click")}
+                      onClick={() =>
+                        setSelected({
+                          client: client.slug,
+                          type: "STAGING",
+                        })
+                      }
                     />
                     <EndpointRow
                       endpoint={client.endpoints.PRODUCTION}
                       type="PRODUCTION"
-                      onClick={() => console.log("click")}
+                      onClick={() =>
+                        setSelected({
+                          client: client.slug,
+                          type: "PRODUCTION",
+                        })
+                      }
                     />
                   </TableBody>
                 </Table>
@@ -133,6 +177,14 @@ export default function Page() {
             <Paragraph>You have no clients yet</Paragraph>
           )}
         </div>
+        {selectedEndpoint && (
+          <ConfigureEndpointSheet
+            slug={selectedEndpoint.clientSlug}
+            endpoint={selectedEndpoint.endpoint}
+            type={selectedEndpoint.type}
+            onClose={() => setSelected(undefined)}
+          />
+        )}
       </PageBody>
     </PageContainer>
   );
@@ -159,7 +211,7 @@ function EndpointRow({
           <TableCell onClick={onClick} colSpan={4} alignment="right">
             <div className="flex items-center justify-end gap-4">
               <span className="text-rose-500">
-                {environmentTitle({ type })} environment is not configured
+                The {environmentTitle({ type })} environment is not configured
               </span>
               <ButtonContent variant="primary/small">Configure</ButtonContent>
             </div>
