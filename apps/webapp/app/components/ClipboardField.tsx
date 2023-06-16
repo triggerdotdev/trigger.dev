@@ -1,13 +1,13 @@
 import { cn } from "~/utils/cn";
 import { Button } from "./primitives/Buttons";
-import { useCallback, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { CheckIcon } from "@heroicons/react/20/solid";
 import { IconNames, NamedIcon } from "./primitives/NamedIcon";
 
 const variations = {
   "primary/small": {
     container:
-      "flex items-center text-dimmed font-mono rounded border border-slate-800 bg-slate-850 text-xs ring-offset-background transition hover:border-slate-750 hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring focus-visible:ring-offset-0 focus:border-ring focus:outline-none focus:ring-2 focus:ring-ring",
+      "flex items-center text-dimmed font-mono rounded border border-slate-800 bg-slate-850 text-xs transition hover:border-slate-750 hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-0 focus-visible:ring-offset-0 focus:border-transparent focus:outline-none focus:ring-0 focus:ring-transparent",
     input: "bg-slate-850 border-0 text-xs px-2 w-auto rounded-l h-6 leading-6",
     buttonVariant: "primary/small" as const,
     button: "rounded-l-none min-w-[3rem]",
@@ -16,7 +16,7 @@ const variations = {
   },
   "secondary/small": {
     container:
-      "flex items-center text-dimmed font-mono rounded border border-slate-750 bg-slate-850 text-xs ring-offset-background transition hover:border-slate-750 hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring focus-visible:ring-offset-0 focus:border-ring focus:outline-none focus:ring-2 focus:ring-ring",
+      "flex items-center text-dimmed font-mono rounded border border-slate-750 bg-slate-850 text-xs transition hover:border-slate-750 hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-0 focus-visible:ring-offset-0 focus:border-transparent focus:outline-none focus:ring-0 focus:ring-transparent",
     input: "bg-slate-850 border-0 text-xs px-2 w-auto rounded-l h-6 leading-6",
     buttonVariant: "secondary/small" as const,
     button: "rounded-l-none border-l border-slate-750 min-w-[3rem]",
@@ -25,7 +25,7 @@ const variations = {
   },
   "tertiary/small": {
     container:
-      "flex items-center text-dimmed font-mono rounded border border-slate-850 bg-transparent text-xs ring-offset-background transition hover:border-slate-800 hover:bg-slate-950 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring focus-visible:ring-offset-0 focus:border-ring focus:outline-none focus:ring-2 focus:ring-ring",
+      "flex items-center text-dimmed font-mono rounded border border-slate-850 bg-transparent text-xs transition hover:border-slate-800 hover:bg-slate-950 focus-visible:outline-none focus-visible:ring-0 focus-visible:ring-offset-0 focus:border-transparent focus:outline-none focus:ring-0 focus:ring-transparent",
     input:
       "bg-transparent border-0 text-xs px-2 w-auto rounded-l h-6 leading-6",
     buttonVariant: "tertiary/small" as const,
@@ -35,7 +35,7 @@ const variations = {
   },
   "primary/medium": {
     container:
-      "flex items-center text-dimmed font-mono rounded border border-slate-800 bg-slate-850 text-sm ring-offset-background transition hover:border-slate-750 hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring focus-visible:ring-offset-0 focus:border-ring focus:outline-none focus:ring-2 focus:ring-ring",
+      "flex items-center text-dimmed font-mono rounded border border-slate-800 bg-slate-850 text-sm transition hover:border-slate-750 hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-0 focus-visible:ring-offset-0 focus:border-transparent focus:outline-none focus:ring-0 focus:ring-transparent",
     input: "bg-slate-850 border-0 text-sm px-3 w-auto rounded-l h-8 leading-6",
     buttonVariant: "primary/medium" as const,
     button: "rounded-l-none min-w-[4rem]",
@@ -44,7 +44,7 @@ const variations = {
   },
   "secondary/medium": {
     container:
-      "flex items-center text-dimmed font-mono rounded border border-slate-750 bg-slate-850 text-sm ring-offset-background transition hover:border-slate-750 hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring focus-visible:ring-offset-0 focus:border-ring focus:outline-none focus:ring-2 focus:ring-ring",
+      "flex items-center text-dimmed font-mono rounded border border-slate-750 bg-slate-850 text-sm transition hover:border-slate-750 hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-0 focus-visible:ring-offset-0 focus:border-transparent focus:outline-none focus:ring-0 focus:ring-transparent",
     input: "bg-slate-850 border-0 text-sm px-3 w-auto rounded-l h-8 leading-6",
     buttonVariant: "secondary/medium" as const,
     button: "rounded-l-none border-l border-slate-750 min-w-[4rem]",
@@ -53,7 +53,7 @@ const variations = {
   },
   "tertiary/medium": {
     container:
-      "flex items-center text-dimmed font-mono rounded border border-slate-850 bg-transparent text-sm ring-offset-background transition hover:border-slate-800 hover:bg-slate-950 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring focus-visible:ring-offset-0 focus:border-ring focus:outline-none focus:ring-2 focus:ring-ring",
+      "flex items-center text-dimmed font-mono rounded border border-slate-850 bg-transparent text-sm transition hover:border-slate-800 hover:bg-slate-950 focus:border-4 focus:border-solid focus:border-l-transparent",
     input:
       "bg-transparent border-0 text-sm px-3 w-auto rounded-l h-8 leading-6",
     buttonVariant: "tertiary/medium" as const,
@@ -97,15 +97,14 @@ export function ClipboardField({
   const { container, input, buttonVariant, button } = variations[variant];
   const iconClassName = variations[variant].iconSize;
   const iconPosition = variations[variant].iconPadding;
+  const inputIcon = useRef<HTMLInputElement>(null);
 
   return (
     <div className={cn(container, className)}>
       {icon && (
         <div
-          className={cn(
-            iconPosition,
-            "pointer-events-none flex items-center border-y border-l"
-          )}
+          onClick={() => inputIcon.current && inputIcon.current.focus()}
+          className={cn(iconPosition, "flex items-center border-y border-l")}
         >
           {typeof icon === "string" ? (
             <NamedIcon name={icon} className={iconClassName} />
@@ -116,6 +115,7 @@ export function ClipboardField({
       )}
       <input
         type="text"
+        ref={inputIcon}
         value={isSecure ? "•".repeat(value.length) : value}
         readOnly={true}
         className={cn("select-all", input)}
