@@ -139,7 +139,7 @@ function PossibleIntegrationsList({
         value={filterText}
         onChange={(e) => setFilterText(e.target.value)}
       />
-      <div className="mt-2 grid grid-cols-1 gap-4 sm:grid-cols-[repeat(auto-fill,_minmax(14rem,_auto))]">
+      <div className="mt-2 grid grid-cols-1 gap-x-4 gap-y-2 sm:grid-cols-[repeat(auto-fill,_minmax(14rem,_auto))]">
         {filteredItems.map((option) => {
           switch (option.type) {
             case "integration":
