@@ -8,7 +8,8 @@ const variations = {
   "primary/small": {
     container:
       "flex items-center text-dimmed font-mono rounded border border-slate-800 bg-slate-850 text-xs transition hover:border-slate-750 hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-0 focus-visible:ring-offset-0 focus:border-transparent focus:outline-none focus:ring-0 focus:ring-transparent",
-    input: "bg-slate-850 border-0 text-xs px-2 w-auto rounded-l h-6 leading-6",
+    input:
+      "bg-slate-850 border-0 text-xs px-2 w-auto rounded-l h-6 leading-6 focus:ring-transparent",
     buttonVariant: "primary/small" as const,
     button: "rounded-l-none min-w-[3rem]",
     iconSize: "h-3 w-3",
@@ -17,7 +18,8 @@ const variations = {
   "secondary/small": {
     container:
       "flex items-center text-dimmed font-mono rounded border border-slate-750 bg-slate-850 text-xs transition hover:border-slate-750 hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-0 focus-visible:ring-offset-0 focus:border-transparent focus:outline-none focus:ring-0 focus:ring-transparent",
-    input: "bg-slate-850 border-0 text-xs px-2 w-auto rounded-l h-6 leading-6",
+    input:
+      "bg-slate-850 border-0 text-xs px-2 w-auto rounded-l h-6 leading-6 focus:ring-transparent",
     buttonVariant: "secondary/small" as const,
     button: "rounded-l-none border-l border-slate-750 min-w-[3rem]",
     iconSize: "h-3 w-3",
@@ -27,7 +29,7 @@ const variations = {
     container:
       "flex items-center text-dimmed font-mono rounded border border-slate-850 bg-transparent text-xs transition hover:border-slate-800 hover:bg-slate-950 focus-visible:outline-none focus-visible:ring-0 focus-visible:ring-offset-0 focus:border-transparent focus:outline-none focus:ring-0 focus:ring-transparent",
     input:
-      "bg-transparent border-0 text-xs px-2 w-auto rounded-l h-6 leading-6",
+      "bg-transparent border-0 text-xs px-2 w-auto rounded-l h-6 leading-6 focus:ring-transparent",
     buttonVariant: "tertiary/small" as const,
     button: "rounded-l-none border-l border-slate-850 min-w-[3rem]",
     iconSize: "h-3 w-3",
@@ -36,30 +38,32 @@ const variations = {
   "primary/medium": {
     container:
       "flex items-center text-dimmed font-mono rounded border border-slate-800 bg-slate-850 text-sm transition hover:border-slate-750 hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-0 focus-visible:ring-offset-0 focus:border-transparent focus:outline-none focus:ring-0 focus:ring-transparent",
-    input: "bg-slate-850 border-0 text-sm px-3 w-auto rounded-l h-8 leading-6",
+    input:
+      "bg-slate-850 border-0 text-sm px-3 w-auto rounded-l h-8 leading-6 focus:ring-transparent",
     buttonVariant: "primary/medium" as const,
     button: "rounded-l-none min-w-[4rem]",
     iconSize: "h-4 w-4",
-    iconPadding: "pl-1.5",
+    iconPadding: "pl-2",
   },
   "secondary/medium": {
     container:
       "flex items-center text-dimmed font-mono rounded border border-slate-750 bg-slate-850 text-sm transition hover:border-slate-750 hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-0 focus-visible:ring-offset-0 focus:border-transparent focus:outline-none focus:ring-0 focus:ring-transparent",
-    input: "bg-slate-850 border-0 text-sm px-3 w-auto rounded-l h-8 leading-6",
+    input:
+      "bg-slate-850 border-0 text-sm px-3 w-auto rounded-l h-8 leading-6 focus:ring-transparent",
     buttonVariant: "secondary/medium" as const,
     button: "rounded-l-none border-l border-slate-750 min-w-[4rem]",
     iconSize: "h-4 w-4",
-    iconPadding: "pl-1.5",
+    iconPadding: "pl-2",
   },
   "tertiary/medium": {
     container:
       "flex items-center text-dimmed font-mono rounded border border-slate-850 bg-transparent text-sm transition hover:border-slate-800 hover:bg-slate-950 focus:border-4 focus:border-solid focus:border-l-transparent",
     input:
-      "bg-transparent border-0 text-sm px-3 w-auto rounded-l h-8 leading-6",
+      "bg-transparent border-0 text-sm px-3 w-auto rounded-l h-8 leading-6 focus:ring-transparent",
     buttonVariant: "tertiary/medium" as const,
     button: "rounded-l-none border-l border-slate-850 min-w-[4rem]",
     iconSize: "h-4 w-4",
-    iconPadding: "pl-1.5",
+    iconPadding: "pl-2",
   },
 };
 

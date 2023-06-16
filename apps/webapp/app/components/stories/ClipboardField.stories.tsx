@@ -45,7 +45,7 @@ function ClipboardFieldExample() {
           variant="tertiary/medium"
           icon={
             <EnvironmentLabel
-              environment={{ type: "PRODUCTION", slug: "PROD" }}
+              environment={{ type: "DEVELOPMENT", slug: "DEV" }}
             />
           }
         />
@@ -76,7 +76,7 @@ function ClipboardFieldExample() {
           variant="tertiary/small"
           icon={
             <EnvironmentLabel
-              environment={{ type: "PRODUCTION", slug: "PROD" }}
+              environment={{ type: "STAGING", slug: "STAGING" }}
             />
           }
           secure={true}
