@@ -157,10 +157,10 @@ export type JobMetadata = z.infer<typeof JobMetadataSchema>;
 
 export const SourceMetadataSchema = z.object({
   channel: z.enum(["HTTP", "SQS", "SMTP"]),
+  integration: IntegrationConfigSchema,
   key: z.string(),
   params: z.any(),
   events: z.array(z.string()),
-  clientId: z.string().optional(),
 });
 
 export type SourceMetadata = z.infer<typeof SourceMetadataSchema>;

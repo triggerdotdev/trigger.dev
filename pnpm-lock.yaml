@@ -456,7 +456,9 @@ importers:
     specifiers:
       '@trigger.dev/github': workspace:*
       '@trigger.dev/nextjs': workspace:*
+      '@trigger.dev/openai': workspace:*
       '@trigger.dev/sdk': workspace:*
+      '@trigger.dev/slack': workspace:*
       '@types/node': 18.15.13
       '@types/node-fetch': 2.6.x
       '@types/react': ^18.0.21
@@ -473,7 +475,9 @@ importers:
     dependencies:
       '@trigger.dev/github': link:../../integrations/github
       '@trigger.dev/nextjs': link:../../packages/nextjs
+      '@trigger.dev/openai': link:../../integrations/openai
       '@trigger.dev/sdk': link:../../packages/trigger-sdk
+      '@trigger.dev/slack': link:../../integrations/slack
       '@types/node': 18.15.13
       '@types/react': 18.0.26
       '@types/react-dom': 18.0.10
@@ -544,6 +548,25 @@ importers:
       '@octokit/webhooks-types': 6.10.0
       '@trigger.dev/tsconfig': link:../../config-packages/tsconfig
       '@types/node': 18.14.0
+      rimraf: 3.0.2
+      tsup: 6.6.3
+
+  integrations/openai:
+    specifiers:
+      '@trigger.dev/sdk': workspace:^2.0.0-next.0
+      '@trigger.dev/tsconfig': workspace:*
+      '@types/node': '18'
+      openai: ^3.3.0
+      rimraf: ^3.0.2
+      tsup: ^6.5.0
+      zod: ^3.20.2
+    dependencies:
+      '@trigger.dev/sdk': link:../../packages/trigger-sdk
+      openai: 3.3.0
+      zod: 3.20.2
+    devDependencies:
+      '@trigger.dev/tsconfig': link:../../config-packages/tsconfig
+      '@types/node': 18.15.13
       rimraf: 3.0.2
       tsup: 6.6.3
 
@@ -9822,7 +9845,7 @@ packages:
     resolution: {integrity: sha512-MxObHvNl4A69ofaTRU8DFqvgzzv8s9yRtaPPm5gud9HDNvpB3GPQFvNuTWAI59B9huVGV5jXYJwbCsmBsOGYWA==}
     dependencies:
       '@types/jsonfile': 6.1.1
-      '@types/node': 18.14.0
+      '@types/node': 18.15.13
     dev: true
 
   /@types/glob/7.2.0:
@@ -11235,6 +11258,14 @@ packages:
     transitivePeerDependencies:
       - debug
     dev: true
+
+  /axios/0.26.1:
+    resolution: {integrity: sha512-fPwcX4EvnSHuInCMItEhAGnaSEXRBjtzh9fOtsE6E1G6p7vl7edEeZe11QHf18+6+9gR5PbKV/sGKNaD8YaMeA==}
+    dependencies:
+      follow-redirects: 1.15.2
+    transitivePeerDependencies:
+      - debug
+    dev: false
 
   /axios/0.27.2:
     resolution: {integrity: sha512-t+yRIyySRTp/wua5xEr+z1q60QmLq8ABsS5O9Me1AsE5dfKqgnCFzwiCZZ/cGNd1lq4/7akDWMxdhVlucjmnOQ==}
@@ -18769,6 +18800,15 @@ packages:
       is-docker: 2.2.1
       is-wsl: 2.2.0
     dev: true
+
+  /openai/3.3.0:
+    resolution: {integrity: sha512-uqxI/Au+aPRnsaQRe8CojU0eCR7I0mBiKjD3sNMzY6DaC1ZVrc85u98mtJW6voDug8fgGN+DIZmTDxTthxb7dQ==}
+    dependencies:
+      axios: 0.26.1
+      form-data: 4.0.0
+    transitivePeerDependencies:
+      - debug
+    dev: false
 
   /openapi-types/12.1.0:
     resolution: {integrity: sha512-XpeCy01X6L5EpP+6Hc3jWN7rMZJ+/k1lwki/kTmWzbVhdPie3jd5O2ZtedEx8Yp58icJ0osVldLMrTB/zslQXA==}

@@ -287,17 +287,6 @@ export default function Page() {
                   }
                 />
                 <RunPanelBody>
-                  {/* <RunPanelIconSection>
-                  {connection && (
-                    <RunPanelIconProperty
-                      icon={
-                        connection.apiConnection.client.integrationIdentifier
-                      }
-                      label="Connection"
-                      value={connection.apiConnection.client.title}
-                    />
-                  )}
-                </RunPanelIconSection>*/}
                   {run.properties.length > 0 && (
                     <RunPanelProperties properties={run.properties} />
                   )}

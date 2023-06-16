@@ -31,7 +31,7 @@ export async function loader({ request, params }: LoaderArgs) {
     return json({ error: "Invalid or Missing API key" }, { status: 401 });
   }
 
-  const apiClient = await prisma.apiConnectionClient.findUnique({
+  const integration = await prisma.integration.findUnique({
     where: {
       organizationId_slug: {
         organizationId: authenticatedEnv.organizationId,
@@ -40,13 +40,13 @@ export async function loader({ request, params }: LoaderArgs) {
     },
   });
 
-  if (!apiClient) {
-    return json({ error: "API Client not found" }, { status: 404 });
+  if (!integration) {
+    return json({ error: "Integration not found" }, { status: 404 });
   }
 
-  const connection = await prisma.apiConnection.findFirst({
+  const connection = await prisma.integrationConnection.findFirst({
     where: {
-      clientId: apiClient.id,
+      integrationId: integration.id,
       connectionType: "DEVELOPER",
     },
     include: {
@@ -55,7 +55,7 @@ export async function loader({ request, params }: LoaderArgs) {
   });
 
   if (!connection) {
-    return json({ error: "API Connection not found" }, { status: 404 });
+    return json({ error: "Connection not found" }, { status: 404 });
   }
 
   const connectionAuth = await resolveApiConnection(connection);

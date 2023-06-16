@@ -1,3 +1,4 @@
+import { RequestRequestOptions } from "@octokit/types";
 import {
   IssueCommentEvent,
   IssuesEvent,
@@ -7,16 +8,14 @@ import {
   StarEvent,
 } from "@octokit/webhooks-types";
 import {
-  IntegrationClient,
   EventSpecification,
   ExternalSourceTrigger,
+  IntegrationClient,
   TriggerIntegration,
 } from "@trigger.dev/sdk";
 import { Octokit } from "octokit";
-import { clientFactory } from "./clientFactory";
 import { createOrgEventSource, createRepoEventSource } from "./sources";
 import { tasks } from "./tasks";
-import { RequestRequestOptions } from "@octokit/types";
 
 export type GithubIntegrationOptions = {
   id: string;
@@ -56,7 +55,7 @@ export class Github
   }
 
   get metadata() {
-    return { key: "github", title: "GitHub", icon: "github" };
+    return { name: "GitHub", id: "github" };
   }
 
   get sources(): GithubSources {

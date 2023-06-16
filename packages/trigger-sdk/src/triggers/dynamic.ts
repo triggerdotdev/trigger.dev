@@ -6,14 +6,9 @@ import {
 } from "@trigger.dev/internal";
 import { Job } from "../job";
 import { TriggerClient } from "../triggerClient";
-import {
-  EventSpecification,
-  PreprocessResults,
-  Trigger,
-  TriggerPreprocessContext,
-} from "../types";
-import { ExternalSource, ExternalSourceParams } from "./externalSource";
+import { EventSpecification, Trigger } from "../types";
 import { slugifyId } from "../utils";
+import { ExternalSource, ExternalSourceParams } from "./externalSource";
 
 export type DynamicTriggerOptions<
   TEventSpec extends EventSpecification<any>,
@@ -76,9 +71,13 @@ export class DynamicTrigger<
         channel: this.source.channel,
         params,
         events: [this.event.name],
-        clientId: !this.source.integration.usesLocalAuth
-          ? this.source.integration.id
-          : undefined,
+        integration: {
+          id: this.source.integration.id,
+          metadata: this.source.integration.metadata,
+          authSource: this.source.integration.client.usesLocalAuth
+            ? "LOCAL"
+            : "HOSTED",
+        },
       },
     };
   }

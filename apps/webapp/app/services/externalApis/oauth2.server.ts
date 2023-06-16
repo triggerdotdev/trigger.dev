@@ -39,19 +39,26 @@ export function getClientConfig({
   };
 }
 
-export async function createOAuth2Url({
-  authorizationUrl,
-  clientId,
-  clientSecret,
-  key,
-  callbackUrl,
-  scopeParamName,
-  scopes,
-  scopeSeparator,
-  pkceCode,
-  authorizationLocation,
-  extraParameters,
-}: CreateUrlParams) {
+export function createOAuth2Url(
+  {
+    authorizationUrl,
+    clientId,
+    clientSecret,
+    key,
+    callbackUrl,
+    scopeParamName,
+    scopes,
+    scopeSeparator,
+    pkceCode,
+    authorizationLocation,
+    extraParameters,
+  }: CreateUrlParams,
+  strategy?: string
+) {
+  if (strategy) {
+    throw new Error(`createOauth2Url ${strategy} not implemented`);
+  }
+
   //create the oauth2 client
   const authUrl = new URL(authorizationUrl);
   const authHost = `${authUrl.protocol}//${authUrl.host}`;
@@ -105,20 +112,27 @@ export async function createOAuth2Url({
   return authorizeUrl;
 }
 
-export async function grantOAuth2Token({
-  tokenUrl,
-  clientId,
-  clientSecret,
-  code,
-  callbackUrl,
-  requestedScopes,
-  scopeSeparator,
-  accessTokenPointer,
-  refreshTokenPointer,
-  expiresInPointer,
-  scopePointer,
-  pkceCode,
-}: GrantTokenParams): Promise<AccessToken> {
+export async function grantOAuth2Token(
+  {
+    tokenUrl,
+    clientId,
+    clientSecret,
+    code,
+    callbackUrl,
+    requestedScopes,
+    scopeSeparator,
+    accessTokenPointer,
+    refreshTokenPointer,
+    expiresInPointer,
+    scopePointer,
+    pkceCode,
+  }: GrantTokenParams,
+  strategy?: string
+): Promise<AccessToken> {
+  if (strategy) {
+    throw new Error(`grantOAuth2Token ${strategy} not implemented`);
+  }
+
   //create the oauth2 client
   const tokenUrlObj = new URL(tokenUrl);
 
@@ -162,18 +176,25 @@ export async function grantOAuth2Token({
   });
 }
 
-export async function refreshOAuth2Token({
-  refreshUrl,
-  clientId,
-  clientSecret,
-  requestedScopes,
-  scopeSeparator,
-  token: { accessToken, refreshToken, expiresAt },
-  accessTokenPointer,
-  refreshTokenPointer,
-  expiresInPointer,
-  scopePointer,
-}: RefreshTokenParams) {
+export async function refreshOAuth2Token(
+  {
+    refreshUrl,
+    clientId,
+    clientSecret,
+    requestedScopes,
+    scopeSeparator,
+    token: { accessToken, refreshToken, expiresAt },
+    accessTokenPointer,
+    refreshTokenPointer,
+    expiresInPointer,
+    scopePointer,
+  }: RefreshTokenParams,
+  strategy?: string
+) {
+  if (strategy) {
+    throw new Error(`refreshOAuth2Token ${strategy} not implemented`);
+  }
+
   //create the oauth2 client
   const tokenUrlObj = new URL(refreshUrl);
 

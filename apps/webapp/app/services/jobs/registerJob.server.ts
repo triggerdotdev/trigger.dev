@@ -1,9 +1,9 @@
 import type {
   Endpoint,
+  Integration,
   Job,
   JobIntegration,
   JobVersion,
-  ApiConnectionClient,
 } from "@trigger.dev/database";
 import {
   IntegrationConfig,
@@ -55,35 +55,77 @@ export class RegisterJobService {
       metadata,
     });
 
-    const integrationSlugs = new Set<string>();
+    const integrations = new Map<string, Integration>();
 
-    if (metadata.integrations) {
-      for (const integration of Object.values(metadata.integrations)) {
-        integrationSlugs.add(integration.id);
-      }
-    }
-
-    const apiConnectionClients = new Map<string, ApiConnectionClient>();
-
-    for (const integrationSlug of integrationSlugs) {
-      const apiConnectionClient =
-        await this.#prismaClient.apiConnectionClient.findUnique({
-          where: {
-            organizationId_slug: {
-              organizationId: environment.organizationId,
-              slug: integrationSlug,
-            },
+    for (const [, jobIntegration] of Object.entries(metadata.integrations)) {
+      let integration = await this.#prismaClient.integration.findUnique({
+        where: {
+          organizationId_slug: {
+            organizationId: environment.organizationId,
+            slug: jobIntegration.id,
           },
-        });
+        },
+      });
 
-      if (!apiConnectionClient) {
-        // TODO: find a better way to handle and message the user about this issue
-        throw new Error(
-          `Could not find ApiConnectionClient with slug ${integrationSlug}`
-        );
+      if (!integration) {
+        if (jobIntegration.authSource === "LOCAL") {
+          integration = await this.#prismaClient.integration.upsert({
+            where: {
+              organizationId_slug: {
+                organizationId: environment.organizationId,
+                slug: jobIntegration.id,
+              },
+            },
+            create: {
+              slug: jobIntegration.id,
+              title: jobIntegration.metadata.name,
+              authSource: "LOCAL",
+              connectionType: "DEVELOPER",
+              organization: {
+                connect: {
+                  id: environment.organizationId,
+                },
+              },
+              definition: {
+                connectOrCreate: {
+                  where: {
+                    id: jobIntegration.metadata.id,
+                  },
+                  create: {
+                    id: jobIntegration.metadata.id,
+                    name: jobIntegration.metadata.name,
+                    instructions: jobIntegration.metadata.instructions,
+                  },
+                },
+              },
+            },
+            update: {
+              title: jobIntegration.metadata.name,
+              authSource: "LOCAL",
+              connectionType: "DEVELOPER",
+              definition: {
+                connectOrCreate: {
+                  where: {
+                    id: jobIntegration.metadata.id,
+                  },
+                  create: {
+                    id: jobIntegration.metadata.id,
+                    name: jobIntegration.metadata.name,
+                    instructions: jobIntegration.metadata.instructions,
+                  },
+                },
+              },
+            },
+          });
+        } else {
+          // TODO: find a better way to handle and message the user about this issue
+          throw new Error(
+            `Could not find Integration with id ${jobIntegration.id}`
+          );
+        }
       }
 
-      apiConnectionClients.set(integrationSlug, apiConnectionClient);
+      integrations.set(jobIntegration.id, integration);
     }
 
     // Upsert the Job
@@ -115,7 +157,7 @@ export class RegisterJobService {
       include: {
         integrations: {
           include: {
-            apiConnectionClient: true,
+            integration: true,
           },
         },
       },
@@ -223,7 +265,7 @@ export class RegisterJobService {
       include: {
         integrations: {
           include: {
-            apiConnectionClient: true,
+            integration: true,
           },
         },
       },
@@ -273,7 +315,7 @@ export class RegisterJobService {
         job,
         jobVersion,
         integration,
-        apiConnectionClients,
+        integrations,
         key
       );
 
@@ -435,24 +477,20 @@ export class RegisterJobService {
 
   async #upsertJobIntegration(
     job: Job & {
-      integrations: Array<
-        JobIntegration & { apiConnectionClient: ApiConnectionClient | null }
-      >;
+      integrations: Array<JobIntegration & { integration: Integration | null }>;
     },
     jobVersion: JobVersion & {
-      integrations: Array<
-        JobIntegration & { apiConnectionClient: ApiConnectionClient | null }
-      >;
+      integrations: Array<JobIntegration & { integration: Integration | null }>;
     },
     config: IntegrationConfig,
-    apiConnectionClients: Map<string, ApiConnectionClient>,
+    integrations: Map<string, Integration>,
     key: string
   ): Promise<JobIntegration> {
-    const apiConnectionClient = apiConnectionClients.get(config.id);
+    const integration = integrations.get(config.id);
 
-    if (!apiConnectionClient) {
+    if (!integration) {
       throw new Error(
-        `Could not find api connection client with id ${config.id} for job ${job.id}`
+        `Could not find integration with id ${config.id} for job ${job.id}`
       );
     }
 
@@ -467,7 +505,7 @@ export class RegisterJobService {
           id: existingInstanceConnection.id,
         },
         data: {
-          apiConnectionClientId: apiConnectionClient.id,
+          integrationId: integration.id,
         },
       });
     }
@@ -497,10 +535,9 @@ export class RegisterJobService {
             },
           },
           key,
-          metadata: existingJobIntegration.metadata ?? {},
-          apiConnectionClient: {
+          integration: {
             connect: {
-              id: apiConnectionClient.id,
+              id: integration.id,
             },
           },
         },
@@ -526,10 +563,9 @@ export class RegisterJobService {
           },
         },
         key,
-        metadata: config.metadata,
-        apiConnectionClient: {
+        integration: {
           connect: {
-            id: apiConnectionClient.id,
+            id: integration.id,
           },
         },
       },

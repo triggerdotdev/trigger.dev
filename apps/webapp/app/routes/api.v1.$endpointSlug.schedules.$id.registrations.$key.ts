@@ -1,13 +1,8 @@
 import type { ActionArgs } from "@remix-run/server-runtime";
 import { json } from "@remix-run/server-runtime";
-import {
-  RegisterScheduleBodySchema,
-  RegisterScheduleResponseBodySchema,
-} from "@trigger.dev/internal";
 import { z } from "zod";
 import { authenticateApiRequest } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger";
-import { RegisterScheduleService } from "~/services/schedules/registerSchedule.server";
 import { UnregisterScheduleService } from "~/services/schedules/unregisterSchedule.server";
 
 const ParamsSchema = z.object({

@@ -1,39 +1,47 @@
-import type { RunConnection } from "@trigger.dev/database";
+import type { Integration, RunConnection } from "@trigger.dev/database";
 import type { ConnectionAuth } from "@trigger.dev/internal";
-import type { ApiConnectionWithSecretReference } from "~/services/externalApis/apiAuthenticationRepository.server";
-import { apiAuthenticationRepository } from "~/services/externalApis/apiAuthenticationRepository.server";
+import type { ConnectionWithSecretReference } from "~/services/externalApis/integrationAuthRepository.server";
+import { integrationAuthRepository } from "~/services/externalApis/integrationAuthRepository.server";
 
-export type RunConnectionWithApiConnection = RunConnection & {
-  apiConnection: ApiConnectionWithSecretReference | null;
+export type ResolvableRunConnection = RunConnection & {
+  integration: Integration;
+  connection: ConnectionWithSecretReference | null;
 };
 
 export async function resolveRunConnections(
-  connections: Array<RunConnectionWithApiConnection>
-): Promise<Record<string, ConnectionAuth>> {
+  connections: Array<ResolvableRunConnection>
+): Promise<{ auth: Record<string, ConnectionAuth>; success: boolean }> {
+  let allResolved = true;
+
   const result: Record<string, ConnectionAuth> = {};
 
   for (const connection of connections) {
+    if (connection.integration.authSource === "LOCAL") {
+      continue;
+    }
+
     const auth = await resolveRunConnection(connection);
 
     if (!auth) {
+      allResolved = false;
       continue;
     }
 
     result[connection.key] = auth;
   }
 
-  return result;
+  return { auth: result, success: allResolved };
 }
 
 export async function resolveRunConnection(
-  connection: RunConnectionWithApiConnection
+  connection: ResolvableRunConnection
 ): Promise<ConnectionAuth | undefined> {
-  if (!connection.apiConnection) {
+  if (!connection.connection) {
     return;
   }
 
-  const response = await apiAuthenticationRepository.getCredentials(
-    connection.apiConnection
+  const response = await integrationAuthRepository.getCredentials(
+    connection.connection
   );
 
   if (!response) {
@@ -48,13 +56,13 @@ export async function resolveRunConnection(
 }
 
 export async function resolveApiConnection(
-  connection?: ApiConnectionWithSecretReference
+  connection?: ConnectionWithSecretReference
 ): Promise<ConnectionAuth | undefined> {
   if (!connection) {
     return;
   }
 
-  const response = await apiAuthenticationRepository.getCredentials(connection);
+  const response = await integrationAuthRepository.getCredentials(connection);
 
   if (!response) {
     return;

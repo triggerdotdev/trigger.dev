@@ -3,7 +3,6 @@ import { PrismaClient, prisma } from "~/db.server";
 import { env } from "~/env.server";
 import { Organization } from "~/models/organization.server";
 import { Project } from "~/models/project.server";
-import { apiAuthenticationRepository } from "~/services/externalApis/apiAuthenticationRepository.server";
 import { OAuthClientSchema } from "~/services/externalApis/types";
 import { getSecretStore } from "~/services/secrets/secretStore.server";
 
@@ -25,14 +24,24 @@ export class IntegrationClientPresenter {
     projectSlug: Project["slug"];
     clientSlug: string;
   }) {
-    const client = await this.#prismaClient.apiConnectionClient.findFirst({
+    const integration = await this.#prismaClient.integration.findFirst({
       select: {
         id: true,
         title: true,
         slug: true,
-        integrationAuthMethod: true,
-        integrationIdentifier: true,
-        clientType: true,
+        authMethod: {
+          select: {
+            type: true,
+            name: true,
+          },
+        },
+        definition: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
+        connectionType: true,
         customClientReference: {
           select: {
             key: true,
@@ -67,7 +76,7 @@ export class IntegrationClientPresenter {
       },
     });
 
-    if (!client) {
+    if (!integration) {
       return undefined;
     }
 
@@ -75,38 +84,31 @@ export class IntegrationClientPresenter {
       prismaClient: this.#prismaClient,
     });
 
-    const { integration, authMethod } =
-      apiAuthenticationRepository.getIntegrationAndAuthMethod(client);
-
-    if (authMethod.type !== "oauth2") {
-      throw new Error("Only OAuth2 clients are supported");
-    }
-
     let clientId: String | undefined = undefined;
-    if (client.customClientReference) {
+    if (integration.customClientReference) {
       const clientConfig = await secretStore.getSecret(
         OAuthClientSchema,
-        client.customClientReference.key
+        integration.customClientReference.key
       );
       clientId = clientConfig?.id;
     }
 
     return {
-      id: client.id,
-      title: client.title,
-      slug: client.slug,
-      integrationIdentifier: client.integrationIdentifier,
-      jobCount: client._count.jobIntegrations,
-      createdAt: client.createdAt,
+      id: integration.id,
+      title: integration.title ?? integration.slug,
+      slug: integration.slug,
+      integrationIdentifier: integration.definition.id,
+      jobCount: integration._count.jobIntegrations,
+      createdAt: integration.createdAt,
       customClientId: clientId,
-      type: client.clientType,
+      type: integration.connectionType,
       integration: {
-        identifier: integration.identifier,
-        name: integration.name,
+        identifier: integration.definition.id,
+        name: integration.definition.name,
       },
       authMethod: {
-        type: authMethod.type,
-        name: authMethod.name,
+        type: integration.authMethod?.type ?? "local",
+        name: integration.authMethod?.name ?? "Local Auth",
       },
     };
   }

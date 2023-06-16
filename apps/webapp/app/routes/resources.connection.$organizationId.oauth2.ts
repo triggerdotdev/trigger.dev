@@ -1,11 +1,11 @@
+import { conform } from "@conform-to/react";
+import { parse } from "@conform-to/zod";
 import { ActionArgs, json } from "@remix-run/server-runtime";
 import { redirect, typedjson } from "remix-typedjson";
 import z from "zod";
 import { prisma } from "~/db.server";
-import { apiAuthenticationRepository } from "~/services/externalApis/apiAuthenticationRepository.server";
+import { integrationAuthRepository } from "~/services/externalApis/integrationAuthRepository.server";
 import { requireUserId } from "~/services/session.server";
-import { conform, useForm } from "@conform-to/react";
-import { parse } from "@conform-to/zod";
 
 export function createSchema(
   constraints: {
@@ -98,14 +98,14 @@ export async function action({ request, params }: ActionArgs) {
 
   const formSchema = createSchema({
     isTitleUnique: async (title) => {
-      const existingClient = await prisma.apiConnectionClient.findFirst({
+      const existingIntegration = await prisma.integration.findFirst({
         where: {
           organizationId,
           title,
         },
       });
 
-      return !existingClient;
+      return !existingIntegration;
     },
   });
 
@@ -141,7 +141,7 @@ export async function action({ request, params }: ActionArgs) {
   });
 
   const url = new URL(request.url);
-  const redirectUrl = await apiAuthenticationRepository.createConnectionClient({
+  const redirectUrl = await integrationAuthRepository.createConnectionClient({
     id,
     customClient: hasCustomClient
       ? { id: customClientId!, secret: customClientSecret! }

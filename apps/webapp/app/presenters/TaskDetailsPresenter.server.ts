@@ -1,8 +1,4 @@
-import {
-  DisplayPropertiesSchema,
-  StyleSchema,
-} from "@/../../packages/internal/src";
-import { z } from "zod";
+import { DisplayPropertiesSchema, StyleSchema } from "@trigger.dev/internal";
 import { PrismaClient, prisma } from "~/db.server";
 
 type DetailsProps = {
@@ -30,18 +26,23 @@ export class TaskDetailsPresenter {
           select: {
             id: true,
             key: true,
-            apiConnection: {
+            connection: {
               select: {
                 metadata: true,
                 connectionType: true,
-                client: {
+                integration: {
                   select: {
                     title: true,
                     slug: true,
                     description: true,
                     scopes: true,
-                    integrationIdentifier: true,
-                    integrationAuthMethod: true,
+                    definition: true,
+                    authMethod: {
+                      select: {
+                        type: true,
+                        name: true,
+                      },
+                    },
                   },
                 },
               },

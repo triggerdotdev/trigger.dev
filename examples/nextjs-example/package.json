@@ -10,6 +10,8 @@
   },
   "dependencies": {
     "@trigger.dev/github": "workspace:*",
+    "@trigger.dev/openai": "workspace:*",
+    "@trigger.dev/slack": "workspace:*",
     "@trigger.dev/nextjs": "workspace:*",
     "@trigger.dev/sdk": "workspace:*",
     "@types/node": "18.15.13",

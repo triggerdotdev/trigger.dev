@@ -29,7 +29,7 @@ export class DeliverHttpSourceRequestService {
               secretReference: true,
               dynamicTrigger: true,
               externalAccount: true,
-              apiClient: true,
+              integration: true,
             },
           },
         },

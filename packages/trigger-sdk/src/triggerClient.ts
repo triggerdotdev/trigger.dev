@@ -446,9 +446,13 @@ export class TriggerClient {
         key: options.key,
         params: options.params,
         events: [],
-        clientId: !options.source.integration.usesLocalAuth
-          ? options.source.integration.id
-          : undefined,
+        integration: {
+          id: options.source.integration.id,
+          metadata: options.source.integration.metadata,
+          authSource: options.source.integration.client.usesLocalAuth
+            ? "LOCAL"
+            : "HOSTED",
+        },
       };
     }
 

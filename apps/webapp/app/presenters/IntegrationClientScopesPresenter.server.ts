@@ -2,7 +2,8 @@ import { User } from "@trigger.dev/database";
 import { PrismaClient, prisma } from "~/db.server";
 import { Organization } from "~/models/organization.server";
 import { Project } from "~/models/project.server";
-import { apiAuthenticationRepository } from "~/services/externalApis/apiAuthenticationRepository.server";
+
+import { Scope } from "~/services/externalApis/types";
 
 export class IntegrationClientScopesPresenter {
   #prismaClient: PrismaClient;
@@ -22,10 +23,9 @@ export class IntegrationClientScopesPresenter {
     projectSlug: Project["slug"];
     clientSlug: string;
   }) {
-    const client = await this.#prismaClient.apiConnectionClient.findFirst({
+    const integration = await this.#prismaClient.integration.findFirst({
       select: {
-        integrationIdentifier: true,
-        integrationAuthMethod: true,
+        authMethod: true,
         scopes: true,
       },
       where: {
@@ -41,20 +41,15 @@ export class IntegrationClientScopesPresenter {
       },
     });
 
-    if (!client) {
+    if (!integration) {
       throw new Error("Client not found");
     }
 
-    const { integration, authMethod } =
-      apiAuthenticationRepository.getIntegrationAndAuthMethod(client);
-
-    if (authMethod.type !== "oauth2") {
-      throw new Error("Only OAuth2 clients are supported");
-    }
+    const authMethodScopes = (integration.authMethod?.scopes ?? []) as Scope[];
 
     return {
-      scopes: client.scopes.map((s) => {
-        const matchingScope = authMethod.scopes.find(
+      scopes: integration.scopes.map((s) => {
+        const matchingScope = authMethodScopes.find(
           (scope) => scope.name === s
         );
 

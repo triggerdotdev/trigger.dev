@@ -6,7 +6,7 @@ import {
   ErrorWithStackSchema,
   EventSpecificationSchema,
   StyleSchema,
-} from "@/../../packages/internal/src";
+} from "@trigger.dev/internal";
 import { z } from "zod";
 import { PrismaClient, prisma } from "~/db.server";
 
@@ -42,14 +42,11 @@ const taskSelect = {
   parentId: true,
   runConnection: {
     select: {
-      apiConnection: {
+      integration: {
         select: {
-          client: {
-            select: {
-              integrationIdentifier: true,
-              title: true,
-            },
-          },
+          definitionId: true,
+          title: true,
+          slug: true,
         },
       },
     },
@@ -236,20 +233,13 @@ export class RunPresenter {
           select: {
             id: true,
             key: true,
-            apiConnection: {
+            integration: {
               select: {
-                metadata: true,
-                connectionType: true,
-                client: {
-                  select: {
-                    title: true,
-                    slug: true,
-                    description: true,
-                    scopes: true,
-                    integrationIdentifier: true,
-                    integrationAuthMethod: true,
-                  },
-                },
+                title: true,
+                slug: true,
+                description: true,
+                scopes: true,
+                definition: true,
               },
             },
           },

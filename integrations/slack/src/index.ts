@@ -29,6 +29,6 @@ export class Slack
   }
 
   get metadata() {
-    return { key: "slack", title: "Slack.com", icon: "slack" };
+    return { id: "slack", name: "Slack.com" };
   }
 }

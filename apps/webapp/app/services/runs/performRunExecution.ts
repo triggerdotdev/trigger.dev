@@ -213,13 +213,9 @@ export class PerformRunExecutionService {
 
     const connections = await resolveRunConnections(run.runConnections);
 
-    if (Object.keys(connections).length < run.runConnections.length) {
+    if (!connections.success) {
       return this.#failRunExecutionWithRetry(execution, {
-        message: `Could not resolve all connections for run ${
-          run.id
-        }, there should be ${run.runConnections.length} connections but only ${
-          Object.keys(connections).length
-        } were resolved.`,
+        message: `Could not resolve all connections for run ${run.id}, attempting to retry`,
       });
     }
 
@@ -273,7 +269,7 @@ export class PerformRunExecutionService {
             metadata: run.externalAccount.metadata,
           }
         : undefined,
-      connections,
+      connections: connections.auth,
       tasks: [run.tasks, resumedTask]
         .flat()
         .filter(Boolean)
@@ -286,7 +282,6 @@ export class PerformRunExecutionService {
       });
     }
 
-    // TODO: handle timeouts
     if (!response.ok) {
       return await this.#failRunExecutionWithRetry(execution, {
         message: `Endpoint responded with ${response.status} status code`,
@@ -706,7 +701,8 @@ async function findRunExecution(prisma: PrismaClientOrTransaction, id: string) {
           externalAccount: true,
           runConnections: {
             include: {
-              apiConnection: {
+              integration: true,
+              connection: {
                 include: {
                   dataReference: true,
                 },

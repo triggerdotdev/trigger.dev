@@ -14,8 +14,6 @@ export const CommonMissingConnectionNotificationPayloadSchema = z.object({
     scopes: z.array(z.string()),
     createdAt: z.coerce.date(),
     updatedAt: z.coerce.date(),
-    integrationIdentifier: z.string(),
-    integrationAuthMethod: z.string(),
   }),
   authorizationUrl: z.string(),
 });

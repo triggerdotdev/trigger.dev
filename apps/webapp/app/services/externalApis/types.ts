@@ -60,7 +60,7 @@ export type ApiAuthenticationMethodOAuth2 = {
       /** Additional parameters to send to the authorization url */
       extraParameters?: Record<string, string>;
       /** Some APIs have strange urls, this allows total control to deal with that */
-      createUrl?: (config: CreateUrlParams) => Promise<string>;
+      createUrlStrategy?: string;
     };
     /** Token is how a token is obtained */
     token: {
@@ -79,13 +79,13 @@ export type ApiAuthenticationMethodOAuth2 = {
       /** The scope key in the token. Default to "/scope" */
       scopePointer?: string;
       /** Some APIs have strange granting logic, this allows total control to deal with that */
-      grantToken?: (config: GrantTokenParams) => Promise<AccessToken>;
+      grantTokenStrategy?: string;
     };
     /** Refresh is how a token is refreshed */
     refresh: {
       url: string;
       /** Some APIs have strange refreshing logic, this allows total control to deal with that */
-      refreshToken?: (config: RefreshTokenParams) => Promise<AccessToken>;
+      refreshTokenStrategy?: string;
     };
     /** Proof Key of Code Exchange (PKCE) is an extension of the standard authorization code grant OAuth flow. Defaults to true */
     pkce?: boolean;

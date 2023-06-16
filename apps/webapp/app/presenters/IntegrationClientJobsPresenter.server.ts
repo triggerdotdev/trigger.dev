@@ -41,7 +41,7 @@ export class IntegrationClientJobsPresenter {
         },
         integrations: {
           some: {
-            apiConnectionClient: {
+            integration: {
               slug: clientSlug,
             },
           },

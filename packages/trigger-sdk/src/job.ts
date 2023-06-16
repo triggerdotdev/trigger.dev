@@ -15,7 +15,6 @@ import type {
   Trigger,
   TriggerContext,
   TriggerEventType,
-  TriggerPreprocessContext,
 } from "./types";
 import { slugifyId } from "./utils";
 
@@ -92,12 +91,11 @@ export class Job<
       (acc: Record<string, IntegrationConfig>, key) => {
         const integration = this.options.integrations![key];
 
-        if (!integration.client.usesLocalAuth) {
-          acc[key] = {
-            id: integration.id,
-            metadata: integration.metadata,
-          };
-        }
+        acc[key] = {
+          id: integration.id,
+          metadata: integration.metadata,
+          authSource: integration.client.usesLocalAuth ? "LOCAL" : "HOSTED",
+        };
 
         return acc;
       },

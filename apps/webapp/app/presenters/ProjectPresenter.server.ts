@@ -52,7 +52,13 @@ export class ProjectPresenter {
                     },
                     integrations: {
                       select: {
-                        metadata: true,
+                        key: true,
+                        integration: {
+                          select: {
+                            slug: true,
+                            definition: true,
+                          },
+                        },
                       },
                     },
                   },
@@ -153,15 +159,17 @@ export class ProjectPresenter {
           const eventSpecification = EventSpecificationSchema.parse(
             alias.version.eventSpecification
           );
+
           const lastRun =
             alias.version.runs[0] != null ? alias.version.runs[0] : undefined;
-          const integrations = z
-            .array(IntegrationMetadataSchema)
-            .parse(
-              alias.version.integrations.map(
-                (integration) => integration.metadata
-              )
-            );
+
+          const integrations = alias.version.integrations.map(
+            (integration) => ({
+              key: integration.key,
+              title: integration.integration.slug,
+              icon: integration.integration.definition.id,
+            })
+          );
 
           let properties: DisplayProperty[] = [];
 

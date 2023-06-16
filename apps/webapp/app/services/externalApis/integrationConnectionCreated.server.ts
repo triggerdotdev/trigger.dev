@@ -4,7 +4,7 @@ import { logger } from "../logger";
 import { workerQueue } from "../worker.server";
 import { MISSING_CONNECTION_RESOLVED_NOTIFICATION } from "@/../../packages/internal/src";
 
-export class ApiConnectionCreatedService {
+export class IntegrationConnectionCreatedService {
   #prismaClient: PrismaClientOrTransaction;
 
   constructor(prismaClient: PrismaClientOrTransaction = prisma) {
@@ -12,27 +12,27 @@ export class ApiConnectionCreatedService {
   }
 
   public async call(id: string) {
-    logger.debug("ApiConnectionCreatedService.call", { id });
+    logger.debug("IntegrationConnectionCreatedService.call", { id });
 
     return await $transaction(this.#prismaClient, async (tx) => {
       // first, deliver the event through the dispatcher
-      const apiConnection = await tx.apiConnection.findUniqueOrThrow({
+      const connection = await tx.integrationConnection.findUniqueOrThrow({
         where: {
           id,
         },
         include: {
           externalAccount: true,
-          client: true,
+          integration: true,
         },
       });
 
-      const missingConnection = await tx.missingApiConnection.findUnique({
+      const missingConnection = await tx.missingConnection.findUnique({
         where: {
-          apiConnectionClientId_connectionType_externalAccountId: {
-            apiConnectionClientId: apiConnection.clientId,
-            connectionType: apiConnection.connectionType,
-            externalAccountId: apiConnection.externalAccount
-              ? apiConnection.externalAccount.id
+          integrationId_connectionType_externalAccountId: {
+            integrationId: connection.integrationId,
+            connectionType: connection.connectionType,
+            externalAccountId: connection.externalAccount
+              ? connection.externalAccount.id
               : "DEVELOPER",
           },
         },
@@ -50,7 +50,7 @@ export class ApiConnectionCreatedService {
               createdAt: "asc",
             },
           },
-          apiConnectionClient: true,
+          integration: true,
           externalAccount: true,
         },
       });
@@ -80,17 +80,13 @@ export class ApiConnectionCreatedService {
           id: missingConnection.id,
           type: missingConnection.connectionType,
           client: {
-            id: missingConnection.apiConnectionClient.slug,
-            title: missingConnection.apiConnectionClient.title,
-            scopes: missingConnection.apiConnectionClient.scopes,
-            createdAt: missingConnection.apiConnectionClient.createdAt,
-            updatedAt: missingConnection.apiConnectionClient.updatedAt,
-            integrationIdentifier:
-              missingConnection.apiConnectionClient.integrationIdentifier,
-            integrationAuthMethod:
-              missingConnection.apiConnectionClient.integrationAuthMethod,
+            id: missingConnection.integration.slug,
+            title: missingConnection.integration.title,
+            scopes: missingConnection.integration.scopes,
+            createdAt: missingConnection.integration.createdAt,
+            updatedAt: missingConnection.integration.updatedAt,
           },
-          expiresAt: apiConnection.expiresAt ?? undefined,
+          expiresAt: connection.expiresAt ?? undefined,
           account: missingConnection.externalAccount
             ? {
                 id: missingConnection.externalAccount.identifier,
@@ -101,14 +97,14 @@ export class ApiConnectionCreatedService {
         context: {},
       });
 
-      await tx.missingApiConnection.delete({
+      await tx.missingConnection.delete({
         where: {
           id: missingConnection.id,
         },
       });
 
       for (const run of missingConnection.runs) {
-        logger.debug("[ApiConnectionCreatedService] restarting run", {
+        logger.debug("[IntegrationConnectionCreatedService] restarting run", {
           run,
         });
 

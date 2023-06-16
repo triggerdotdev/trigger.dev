@@ -12,7 +12,7 @@ import {
   AuthenticatedEnvironment,
   authenticateApiRequest,
 } from "~/services/apiAuth.server";
-import { apiAuthenticationRepository } from "~/services/externalApis/apiAuthenticationRepository.server";
+import { integrationAuthRepository } from "~/services/externalApis/integrationAuthRepository.server";
 
 const ParamsSchema = z.object({
   accountId: z.string(),
@@ -56,14 +56,14 @@ export async function action({ request, params }: ActionArgs) {
   try {
     const service = new CreateExternalConnectionService();
 
-    const apiConnection = await service.call(
+    const connection = await service.call(
       parsedParams.data.accountId,
       parsedParams.data.clientSlug,
       authenticatedEnv,
       body.data
     );
 
-    return json(apiConnection);
+    return json(connection);
   } catch (error) {
     const parsedError = ErrorWithStackSchema.safeParse(error);
 
@@ -98,19 +98,18 @@ class CreateExternalConnectionService {
         },
       });
 
-    const apiClient =
-      await this.#prismaClient.apiConnectionClient.findUniqueOrThrow({
-        where: {
-          organizationId_slug: {
-            organizationId: environment.organizationId,
-            slug: clientSlug,
-          },
+    const integration = await this.#prismaClient.integration.findUniqueOrThrow({
+      where: {
+        organizationId_slug: {
+          organizationId: environment.organizationId,
+          slug: clientSlug,
         },
-      });
+      },
+    });
 
-    return await apiAuthenticationRepository.createConnectionFromToken({
+    return await integrationAuthRepository.createConnectionFromToken({
       externalAccount: externalAccount,
-      client: apiClient,
+      integration,
       token: payload,
     });
   }

@@ -3,7 +3,6 @@ import { PrismaClient, prisma } from "~/db.server";
 import { env } from "~/env.server";
 import { Organization } from "~/models/organization.server";
 import { Project } from "~/models/project.server";
-import { apiAuthenticationRepository } from "~/services/externalApis/apiAuthenticationRepository.server";
 import { Api, apisList } from "~/services/externalApis/apis";
 import { integrationCatalog } from "~/services/externalApis/integrationCatalog.server";
 import { Integration, OAuthClientSchema } from "~/services/externalApis/types";
@@ -31,15 +30,26 @@ export class IntegrationsPresenter {
     projectSlug: Project["slug"];
     organizationSlug: Organization["slug"];
   }) {
-    const clients = await this.#prismaClient.apiConnectionClient.findMany({
+    const clients = await this.#prismaClient.integration.findMany({
       select: {
         id: true,
         title: true,
         slug: true,
         description: true,
-        integrationAuthMethod: true,
-        integrationIdentifier: true,
-        clientType: true,
+        authMethod: {
+          select: {
+            type: true,
+            name: true,
+          },
+        },
+        definition: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
+        authSource: true,
+        connectionType: true,
         scopes: true,
         customClientReference: {
           select: {
@@ -84,13 +94,6 @@ export class IntegrationsPresenter {
 
     const enrichedClients = await Promise.all(
       clients.map(async (c) => {
-        const { integration, authMethod } =
-          apiAuthenticationRepository.getIntegrationAndAuthMethod(c);
-
-        if (authMethod.type !== "oauth2") {
-          throw new Error("Only OAuth2 clients are supported");
-        }
-
         let clientId: String | undefined = undefined;
         if (c.customClientReference) {
           const clientConfig = await secretStore.getSecret(
@@ -102,9 +105,9 @@ export class IntegrationsPresenter {
 
         return {
           id: c.id,
-          title: c.title,
+          title: c.title ?? c.slug,
           slug: c.slug,
-          integrationIdentifier: c.integrationIdentifier,
+          integrationIdentifier: c.definition.id,
           description: c.description,
           scopesCount: c.scopes.length,
           connectionsCount: c._count.connections,
@@ -112,20 +115,21 @@ export class IntegrationsPresenter {
           createdAt: c.createdAt,
           customClientId: clientId,
           integration: {
-            identifier: integration.identifier,
-            name: integration.name,
+            identifier: c.definition.id,
+            name: c.definition.name,
           },
           authMethod: {
-            type: authMethod.type,
-            name: authMethod.name,
+            type: c.authMethod?.type ?? "local",
+            name: c.authMethod?.name ?? "Local Only",
           },
+          authSource: c.authSource,
         };
       })
     );
 
     //filter out the ones that have no connections
     const clientsWithConnections = enrichedClients.filter(
-      (c) => c.connectionsCount > 0
+      (c) => c.authSource === "LOCAL" || c.connectionsCount > 0
     );
 
     const integrations = Object.values(

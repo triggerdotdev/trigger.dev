@@ -1,12 +1,69 @@
 /* eslint-disable turbo/no-undeclared-env-vars */
 import { PrismaClient } from "@trigger.dev/database";
+import { integrationCatalog } from "../app/services/externalApis/integrationCatalog.server";
 
 const prisma = new PrismaClient();
 
 const GITHUB_CONNECTION_KEY = "github-seed-key";
 const SLACK_CONNECTION_KEY = "slack-seed-key";
 
+async function seedIntegrationAuthMethods() {
+  for (const [identifier, integration] of Object.entries(
+    integrationCatalog.getIntegrations()
+  )) {
+    await prisma.integrationDefinition.upsert({
+      where: {
+        id: identifier,
+      },
+      create: {
+        id: identifier,
+        name: integration.name,
+        instructions: "Instructions go here",
+      },
+      update: {},
+    });
+
+    for (const [key, authMethod] of Object.entries(
+      integration.authenticationMethods
+    )) {
+      console.log(`Upserting auth method ${identifier}.${key}`);
+
+      await prisma.integrationAuthMethod.upsert({
+        where: {
+          definitionId_key: {
+            definitionId: identifier,
+            key,
+          },
+        },
+        create: {
+          key,
+          name: authMethod.name,
+          description: authMethod.description ?? "",
+          type: authMethod.type,
+          client: authMethod.client,
+          config: authMethod.config,
+          scopes: authMethod.scopes,
+          definition: {
+            connect: {
+              id: identifier,
+            },
+          },
+        },
+        update: {
+          name: authMethod.name,
+          description: authMethod.description ?? "",
+          type: authMethod.type,
+          client: authMethod.client,
+          config: authMethod.config,
+          scopes: authMethod.scopes,
+        },
+      });
+    }
+  }
+}
+
 async function seed() {
+  await seedIntegrationAuthMethods();
   // Create a user, organization, and project
   const user = await prisma.user.upsert({
     where: {
@@ -99,8 +156,8 @@ async function seed() {
     update: {},
   });
 
-  // Now we need to create a couple of ApiConnectionClients
-  const slackClient = await prisma.apiConnectionClient.upsert({
+  // Now we need to create a couple of Integrations
+  const slackIntegration = await prisma.integration.upsert({
     where: {
       organizationId_slug: {
         organizationId: organization.id,
@@ -108,17 +165,34 @@ async function seed() {
       },
     },
     create: {
-      organizationId: organization.id,
+      organization: {
+        connect: {
+          id: organization.id,
+        },
+      },
+      definition: {
+        connect: {
+          id: "slack",
+        },
+      },
       slug: "my-slack-new",
       title: "My Slack",
       scopes: ["chat:write"],
-      integrationIdentifier: "slack",
-      integrationAuthMethod: "oauth2Bot",
+      authSource: "HOSTED",
+      connectionType: "DEVELOPER",
+      authMethod: {
+        connect: {
+          definitionId_key: {
+            definitionId: "slack",
+            key: "oauth2Bot",
+          },
+        },
+      },
     },
     update: {},
   });
 
-  const githubClient = await prisma.apiConnectionClient.upsert({
+  const githubIntegration = await prisma.integration.upsert({
     where: {
       organizationId_slug: {
         organizationId: organization.id,
@@ -126,26 +200,43 @@ async function seed() {
       },
     },
     create: {
-      organizationId: organization.id,
+      organization: {
+        connect: {
+          id: organization.id,
+        },
+      },
+      definition: {
+        connect: {
+          id: "github",
+        },
+      },
       slug: "github",
       title: "GitHub",
       scopes: ["admin:repo_hook", "public_repo"],
-      integrationIdentifier: "github",
-      integrationAuthMethod: "oauth2",
+      authSource: "HOSTED",
+      connectionType: "DEVELOPER",
+      authMethod: {
+        connect: {
+          definitionId_key: {
+            definitionId: "github",
+            key: "oauth2",
+          },
+        },
+      },
     },
     update: {},
   });
 
-  await prisma.apiConnection.upsert({
+  await prisma.integrationConnection.upsert({
     where: {
       id: "clhkhsvx20000rmdy9u9d25e7",
     },
     create: {
       id: "clhkhsvx20000rmdy9u9d25e7",
       metadata: {},
-      client: {
+      integration: {
         connect: {
-          id: githubClient.id,
+          id: githubIntegration.id,
         },
       },
       organization: {
@@ -169,16 +260,16 @@ async function seed() {
     update: {},
   });
 
-  await prisma.apiConnection.upsert({
+  await prisma.integrationConnection.upsert({
     where: {
       id: "clhkigzf90000rmdyfuiec6ew",
     },
     create: {
       id: "clhkigzf90000rmdyfuiec6ew",
       metadata: { account: "Trigger.dev" },
-      client: {
+      integration: {
         connect: {
-          id: slackClient.id,
+          id: slackIntegration.id,
         },
       },
       organization: {
@@ -258,7 +349,7 @@ async function seed() {
     update: {},
   });
 
-  const userGithubClient = await prisma.apiConnectionClient.upsert({
+  const userGithubIntegration = await prisma.integration.upsert({
     where: {
       organizationId_slug: {
         organizationId: organization.id,
@@ -266,12 +357,29 @@ async function seed() {
       },
     },
     create: {
-      organizationId: organization.id,
+      definition: {
+        connect: {
+          id: "github",
+        },
+      },
       slug: "github-user",
       title: "GitHub User",
       scopes: ["admin:repo_hook", "public_repo"],
-      integrationIdentifier: "github",
-      integrationAuthMethod: "oauth2",
+      authSource: "HOSTED",
+      connectionType: "EXTERNAL",
+      authMethod: {
+        connect: {
+          definitionId_key: {
+            definitionId: "github",
+            key: "oauth2",
+          },
+        },
+      },
+      organization: {
+        connect: {
+          id: organization.id,
+        },
+      },
     },
     update: {},
   });
@@ -312,7 +420,7 @@ async function seed() {
     update: {},
   });
 
-  await prisma.apiConnection.upsert({
+  await prisma.integrationConnection.upsert({
     where: {
       id: "cli1qcroy0000b4dy084m2jsr",
     },
@@ -324,9 +432,9 @@ async function seed() {
         },
       },
       metadata: {},
-      client: {
+      integration: {
         connect: {
-          id: userGithubClient.id,
+          id: userGithubIntegration.id,
         },
       },
       organization: {

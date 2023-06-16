@@ -64,17 +64,15 @@ export class RegisterSourceService {
     const { id, orphanedEvents } = await $transaction(
       this.#prismaClient,
       async (tx) => {
-        0;
-        const apiClient = metadata.clientId
-          ? await tx.apiConnectionClient.findUnique({
-              where: {
-                organizationId_slug: {
-                  organizationId: environment.organizationId,
-                  slug: metadata.clientId,
-                },
-              },
-            })
-          : undefined;
+        const integration = await this.#findOrCreateIntegration(
+          tx,
+          environment.organizationId,
+          metadata.integration
+        );
+
+        if (!integration) {
+          throw new Error("Integration not found");
+        }
 
         const externalAccount = accountId
           ? await tx.externalAccount.findUniqueOrThrow({
@@ -118,9 +116,7 @@ export class RegisterSourceService {
                 id: environment.id,
               },
             },
-            apiClient: apiClient
-              ? { connect: { id: apiClient.id } }
-              : undefined,
+            integration: { connect: { id: integration.id } },
             dynamicTrigger: dynamicTriggerId
               ? {
                   connect: {
@@ -154,9 +150,7 @@ export class RegisterSourceService {
                 id: endpoint.id,
               },
             },
-            apiClient: apiClient
-              ? { connect: { id: apiClient.id } }
-              : undefined,
+            integration: { connect: { id: integration.id } },
           },
           include: {
             events: true,
@@ -229,7 +223,7 @@ export class RegisterSourceService {
         include: {
           events: true,
           secretReference: true,
-          apiClient: true,
+          integration: true,
         },
       });
 
@@ -256,5 +250,71 @@ export class RegisterSourceService {
     }
 
     return triggerSource;
+  }
+
+  async #findOrCreateIntegration(
+    tx: PrismaClientOrTransaction,
+    organizationId: string,
+    config: SourceMetadata["integration"]
+  ) {
+    if (config.authSource === "HOSTED") {
+      return tx.integration.findUnique({
+        where: {
+          organizationId_slug: {
+            organizationId,
+            slug: config.id,
+          },
+        },
+      });
+    } else {
+      return tx.integration.upsert({
+        where: {
+          organizationId_slug: {
+            organizationId,
+            slug: config.id,
+          },
+        },
+        create: {
+          slug: config.id,
+          title: config.metadata.name,
+          authSource: "LOCAL",
+          connectionType: "DEVELOPER",
+          organization: {
+            connect: {
+              id: organizationId,
+            },
+          },
+          definition: {
+            connectOrCreate: {
+              where: {
+                id: config.metadata.id,
+              },
+              create: {
+                id: config.metadata.id,
+                name: config.metadata.name,
+                instructions: config.metadata.instructions,
+              },
+            },
+          },
+        },
+        update: {
+          title: config.metadata.name,
+          authSource: "LOCAL",
+          connectionType: "DEVELOPER",
+          definition: {
+            connectOrCreate: {
+              where: {
+                id: config.metadata.id,
+              },
+              create: {
+                id: config.metadata.id,
+                name: config.metadata.name,
+                instructions: config.metadata.instructions,
+              },
+            },
+          },
+        },
+      });
+    }
   }
 }

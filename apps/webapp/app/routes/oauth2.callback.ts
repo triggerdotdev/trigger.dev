@@ -3,7 +3,7 @@ import { redirect } from "@remix-run/server-runtime";
 import z from "zod";
 import { prisma } from "~/db.server";
 import { env } from "~/env.server";
-import { apiAuthenticationRepository } from "~/services/externalApis/apiAuthenticationRepository.server";
+import { integrationAuthRepository } from "~/services/externalApis/integrationAuthRepository.server";
 import { OAuthClient, OAuthClientSchema } from "~/services/externalApis/types";
 import { getSecretStore } from "~/services/secrets/secretStore.server";
 
@@ -39,12 +39,12 @@ export async function loader({ request }: LoaderArgs) {
     throw new Response("Invalid params", { status: 400 });
   }
 
-  const attempt = await prisma.apiConnectionAttempt.findUnique({
+  const attempt = await prisma.connectionAttempt.findUnique({
     where: {
       id: parsedParams.data.state,
     },
     include: {
-      client: {
+      integration: {
         include: {
           customClientReference: true,
         },
@@ -57,16 +57,16 @@ export async function loader({ request }: LoaderArgs) {
   }
 
   let customOAuthClient: OAuthClient | undefined;
-  if (attempt.client.customClientReference) {
+  if (attempt.integration.customClientReference) {
     const secretStore = getSecretStore(env.SECRET_STORE);
     customOAuthClient = await secretStore.getSecret(
       OAuthClientSchema,
-      attempt.client.customClientReference.key
+      attempt.integration.customClientReference.key
     );
   }
 
   try {
-    await apiAuthenticationRepository.createConnectionFromAttempt({
+    await integrationAuthRepository.createConnectionFromAttempt({
       attempt,
       code: parsedParams.data.code,
       url,

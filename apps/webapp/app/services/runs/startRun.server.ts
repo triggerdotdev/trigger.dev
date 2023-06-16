@@ -1,8 +1,12 @@
-import type { ApiConnection, ApiConnectionType } from "@trigger.dev/database";
+import type {
+  ConnectionType,
+  Integration,
+  IntegrationConnection,
+} from "@trigger.dev/database";
+import { EXECUTE_JOB_RETRY_LIMIT, PREPROCESS_RETRY_LIMIT } from "~/consts";
 import type { PrismaClient, PrismaClientOrTransaction } from "~/db.server";
 import { prisma } from "~/db.server";
 import { workerQueue } from "../worker.server";
-import { EXECUTE_JOB_RETRY_LIMIT, PREPROCESS_RETRY_LIMIT } from "~/consts";
 
 type FoundRun = NonNullable<Awaited<ReturnType<typeof findRun>>>;
 type RunConnectionsByKey = Awaited<ReturnType<typeof createRunConnections>>;
@@ -63,11 +67,19 @@ export class StartRunService {
   ) {
     const createRunConnections = Object.entries(runConnectionsByKey)
       .map(([key, runConnection]) =>
-        runConnection.result === "resolved"
-          ? {
+        runConnection.result === "resolvedHosted"
+          ? ({
               key,
-              apiConnectionId: runConnection.connection.id,
-            }
+              connectionId: runConnection.connection.id,
+              integrationId: runConnection.integration.id,
+              authSource: "HOSTED",
+            } as const)
+          : runConnection.result === "resolvedLocal"
+          ? ({
+              key,
+              integrationId: runConnection.integration.id,
+              authSource: "LOCAL",
+            } as const)
           : undefined
       )
       .filter(Boolean);
@@ -183,14 +195,14 @@ export class StartRunService {
         missingConnections: {
           connectOrCreate: missingConnections.map((connection) => ({
             where: {
-              apiConnectionClientId_connectionType_externalAccountId: {
-                apiConnectionClientId: connection.apiConnectionClientId,
+              integrationId_connectionType_externalAccountId: {
+                integrationId: connection.integration.id,
                 connectionType: connection.connectionType,
                 externalAccountId: connection.externalAccountId ?? "DEVELOPER",
               },
             },
             create: {
-              apiConnectionClientId: connection.apiConnectionClientId,
+              integrationId: connection.integration.id,
               connectionType: connection.connectionType,
               externalAccountId: connection.externalAccountId ?? "DEVELOPER",
               resolved: false,
@@ -232,7 +244,7 @@ async function findRun(tx: PrismaClientOrTransaction, id: string) {
         include: {
           integrations: {
             include: {
-              apiConnectionClient: true,
+              integration: true,
             },
           },
         },
@@ -250,43 +262,59 @@ async function createRunConnections(
       accP: Promise<
         Record<
           string,
-          | { result: "resolved"; connection: ApiConnection }
+          | {
+              result: "resolvedHosted";
+              connection: IntegrationConnection;
+              integration: Integration;
+            }
+          | { result: "resolvedLocal"; integration: Integration }
           | {
               result: "missing";
-              connectionType: ApiConnectionType;
-              apiConnectionClientId: string;
+              connectionType: ConnectionType;
+              integration: Integration;
               externalAccountId?: string;
             }
         >
       >,
-      integration
+      jobIntegration
     ) => {
       const acc = await accP;
 
-      const connection = run.externalAccountId
-        ? await tx.apiConnection.findFirst({
-            where: {
-              clientId: integration.apiConnectionClient.id,
-              connectionType: "EXTERNAL",
-              externalAccountId: run.externalAccountId,
-            },
-          })
-        : await tx.apiConnection.findFirst({
-            where: {
-              clientId: integration.apiConnectionClient.id,
-              connectionType: "DEVELOPER",
-            },
-          });
-
-      if (connection) {
-        acc[integration.key] = { result: "resolved", connection };
-      } else {
-        acc[integration.key] = {
-          result: "missing",
-          connectionType: run.externalAccountId ? "EXTERNAL" : "DEVELOPER",
-          externalAccountId: run.externalAccountId ?? undefined,
-          apiConnectionClientId: integration.apiConnectionClient.id,
+      if (jobIntegration.integration.authSource === "LOCAL") {
+        acc[jobIntegration.key] = {
+          result: "resolvedLocal",
+          integration: jobIntegration.integration,
         };
+      } else {
+        const connection = run.externalAccountId
+          ? await tx.integrationConnection.findFirst({
+              where: {
+                integrationId: jobIntegration.integration.id,
+                connectionType: "EXTERNAL",
+                externalAccountId: run.externalAccountId,
+              },
+            })
+          : await tx.integrationConnection.findFirst({
+              where: {
+                integrationId: jobIntegration.integration.id,
+                connectionType: "DEVELOPER",
+              },
+            });
+
+        if (connection) {
+          acc[jobIntegration.key] = {
+            result: "resolvedHosted",
+            connection,
+            integration: jobIntegration.integration,
+          };
+        } else {
+          acc[jobIntegration.key] = {
+            result: "missing",
+            connectionType: run.externalAccountId ? "EXTERNAL" : "DEVELOPER",
+            externalAccountId: run.externalAccountId ?? undefined,
+            integration: jobIntegration.integration,
+          };
+        }
       }
 
       return acc;

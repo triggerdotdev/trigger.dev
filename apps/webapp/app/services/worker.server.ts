@@ -2,7 +2,7 @@ import { z } from "zod";
 import { env } from "~/env.server";
 import { ZodWorker } from "~/platform/zodWorker.server";
 import { IndexEndpointService } from "./endpoints/indexEndpoint.server";
-import { apiAuthenticationRepository } from "./externalApis/apiAuthenticationRepository.server";
+import { integrationAuthRepository } from "./externalApis/integrationAuthRepository.server";
 import { RegisterJobService } from "./jobs/registerJob.server";
 import { StartRunService } from "./runs/startRun.server";
 import { DeliverHttpSourceRequestService } from "./sources/deliverHttpSourceRequest.server";
@@ -24,7 +24,7 @@ import { RegisterDynamicScheduleService } from "./triggers/registerDynamicSchedu
 import { DeliverScheduledEventService } from "./schedules/deliverScheduledEvent.server";
 import { prisma } from "~/db.server";
 import { MissingConnectionCreatedService } from "./runs/missingConnectionCreated.server";
-import { ApiConnectionCreatedService } from "./externalApis/apiConnectionCreated.server";
+import { IntegrationConnectionCreatedService } from "./externalApis/integrationConnectionCreated.server";
 import { sendEmail } from "./email.server";
 import { DeliverEmailSchema } from "@/../../packages/emails/src";
 import { PerformRunExecutionService } from "./runs/performRunExecution";
@@ -89,7 +89,7 @@ const workerCatalog = {
   missingConnectionCreated: z.object({
     id: z.string(),
   }),
-  apiConnectionCreated: z.object({
+  connectionCreated: z.object({
     id: z.string(),
   }),
 };
@@ -143,10 +143,10 @@ function getWorkerQueue() {
           await service.call(id, payload);
         },
       },
-      apiConnectionCreated: {
+      connectionCreated: {
         maxAttempts: 3,
         handler: async (payload, job) => {
-          const service = new ApiConnectionCreatedService();
+          const service = new IntegrationConnectionCreatedService();
 
           await service.call(payload.id);
         },
@@ -314,7 +314,7 @@ function getWorkerQueue() {
       refreshOAuthToken: {
         queueName: "internal-queue",
         handler: async (payload, job) => {
-          await apiAuthenticationRepository.refreshConnection({
+          await integrationAuthRepository.refreshConnection({
             connectionId: payload.connectionId,
           });
         },

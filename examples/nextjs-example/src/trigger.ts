@@ -20,6 +20,7 @@ import {
   missingConnectionResolvedNotification,
 } from "@trigger.dev/sdk";
 import { Slack } from "@trigger.dev/slack";
+import { OpenAI } from "@trigger.dev/openai";
 import { z } from "zod";
 import fetch from "node-fetch";
 
@@ -29,6 +30,11 @@ export const client = new TriggerClient({
   apiKey: process.env.TRIGGER_API_KEY,
   apiUrl: process.env.TRIGGER_API_URL,
   logLevel: "debug",
+});
+
+const openai = new OpenAI({
+  id: "openai",
+  apiKey: process.env.OPENAI_API_KEY!,
 });
 
 export const github = new Github({
@@ -62,6 +68,31 @@ const dynamicSchedule = new DynamicSchedule(client, {
 });
 
 const enabled = true;
+
+new Job(client, {
+  id: "openai-test",
+  name: "OpenAI Test",
+  version: "0.0.1",
+  enabled,
+  trigger: eventTrigger({
+    name: "openai.test",
+    schema: z.object({
+      model: z.string(),
+      prompt: z.string(),
+    }),
+  }),
+  integrations: {
+    openai,
+  },
+  run: async (payload, io, ctx) => {
+    const completion = await io.openai.createCompletion("✨", {
+      model: payload.model,
+      prompt: payload.prompt,
+    });
+
+    return completion;
+  },
+});
 
 new Job(client, {
   id: "on-missing-auth-connection",

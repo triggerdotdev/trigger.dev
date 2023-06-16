@@ -1,6 +1,6 @@
-import { ApiConnectionType } from "~/models/apiConnection.server";
+import type { ConnectionType } from "@trigger.dev/database";
 
-export function connectionType(type: ApiConnectionType) {
+export function connectionType(type: ConnectionType) {
   switch (type) {
     case "DEVELOPER":
       return "Developer";

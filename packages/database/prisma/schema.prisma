@@ -52,20 +52,20 @@ model Organization {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  environments   RuntimeEnvironment[]
-  apiConnections ApiConnection[]
-  endpoints      Endpoint[]
-  jobs           Job[]
-  jobVersions    JobVersion[]
-  events         EventRecord[]
-  jobRuns        JobRun[]
+  environments RuntimeEnvironment[]
+  connections  IntegrationConnection[]
+  endpoints    Endpoint[]
+  jobs         Job[]
+  jobVersions  JobVersion[]
+  events       EventRecord[]
+  jobRuns      JobRun[]
 
-  projects          Project[]
-  members           OrgMember[]
-  invites           OrgMemberInvite[]
-  externalAccounts  ExternalAccount[]
-  connectionClients ApiConnectionClient[]
-  sources           TriggerSource[]
+  projects         Project[]
+  members          OrgMember[]
+  invites          OrgMemberInvite[]
+  externalAccounts ExternalAccount[]
+  integrations     Integration[]
+  sources          TriggerSource[]
 }
 
 model ExternalAccount {
@@ -82,27 +82,66 @@ model ExternalAccount {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  connections        ApiConnection[]
+  connections        IntegrationConnection[]
   events             EventRecord[]
   runs               JobRun[]
   schedules          ScheduleSource[]
   triggerSources     TriggerSource[]
-  missingConnections MissingApiConnection[]
+  missingConnections MissingConnection[]
 
   @@unique([environmentId, identifier])
 }
 
-model ApiConnectionClient {
+// This is a "global" table that store all the integration methods for all the integrations across all orgs
+model IntegrationAuthMethod {
+  id  String @id @default(cuid())
+  key String
+
+  name        String
+  description String
+  type        String
+
+  client Json?
+  config Json?
+  scopes Json?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  integrations Integration[]
+
+  definition   IntegrationDefinition @relation(fields: [definitionId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  definitionId String
+
+  @@unique([definitionId, key])
+}
+
+model IntegrationDefinition {
+  id           String  @id
+  name         String
+  instructions String?
+
+  authMethods IntegrationAuthMethod[]
+  Integration Integration[]
+}
+
+model Integration {
   id String @id @default(cuid())
 
-  title       String
-  slug        String
+  slug String
+
+  title       String?
   description String?
 
-  integrationIdentifier String @default("generic")
-  integrationAuthMethod String @default("oauth2")
+  authSource IntegrationAuthSource @default(HOSTED)
 
-  clientType ApiConnectionType @default(DEVELOPER)
+  definition   IntegrationDefinition @relation(fields: [definitionId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  definitionId String
+
+  authMethod   IntegrationAuthMethod? @relation(fields: [authMethodId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  authMethodId String?
+
+  connectionType ConnectionType @default(DEVELOPER)
 
   scopes String[]
 
@@ -115,33 +154,38 @@ model ApiConnectionClient {
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   organizationId String
 
-  attempts           ApiConnectionAttempt[]
-  connections        ApiConnection[]
+  attempts           ConnectionAttempt[]
+  connections        IntegrationConnection[]
   jobIntegrations    JobIntegration[]
   sources            TriggerSource[]
-  missingConnections MissingApiConnection[]
+  missingConnections MissingConnection[]
+  RunConnection      RunConnection[]
 
   @@unique([organizationId, slug])
 }
 
-model ApiConnection {
+enum IntegrationAuthSource {
+  HOSTED
+  LOCAL
+}
+
+model IntegrationConnection {
   id String @id @default(cuid())
+
+  connectionType ConnectionType @default(DEVELOPER)
 
   expiresAt DateTime?
   metadata  Json
-
-  scopes String[]
+  scopes    String[]
 
   dataReference   SecretReference @relation(fields: [dataReferenceId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   dataReferenceId String
 
-  client   ApiConnectionClient @relation(fields: [clientId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  clientId String
+  integration   Integration @relation(fields: [integrationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  integrationId String
 
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   organizationId String
-
-  connectionType ApiConnectionType @default(DEVELOPER)
 
   externalAccount   ExternalAccount? @relation(fields: [externalAccountId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   externalAccountId String?
@@ -152,12 +196,12 @@ model ApiConnection {
   runConnections RunConnection[]
 }
 
-enum ApiConnectionType {
+enum ConnectionType {
   EXTERNAL
   DEVELOPER
 }
 
-model ApiConnectionAttempt {
+model ConnectionAttempt {
   id String @id @default(cuid())
 
   securityCode String?
@@ -167,8 +211,8 @@ model ApiConnectionAttempt {
   createdAt DateTime @default(now())
   updatedAt DateTime @default(now()) @updatedAt
 
-  client   ApiConnectionClient @relation(fields: [clientId], references: [id])
-  clientId String
+  integration   Integration @relation(fields: [integrationId], references: [id])
+  integrationId String
 }
 
 model OrgMember {
@@ -451,10 +495,8 @@ model JobIntegration {
   job   Job    @relation(fields: [jobId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   jobId String
 
-  metadata Json
-
-  apiConnectionClient   ApiConnectionClient @relation(fields: [apiConnectionClientId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  apiConnectionClientId String
+  integration   Integration @relation(fields: [integrationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  integrationId String
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -466,15 +508,21 @@ model RunConnection {
   id  String @id @default(cuid())
   key String
 
+  authSource IntegrationAuthSource @default(HOSTED)
+
   run   JobRun @relation(fields: [runId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   runId String
 
-  apiConnection   ApiConnection @relation(fields: [apiConnectionId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  apiConnectionId String
+  connection   IntegrationConnection? @relation(fields: [connectionId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  connectionId String?
+
+  integration   Integration @relation(fields: [integrationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  integrationId String
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
-  Task      Task[]
+
+  tasks Task[]
 
   @@unique([runId, key])
 }
@@ -613,7 +661,7 @@ model JobRun {
 
   tasks              Task[]
   runConnections     RunConnection[]
-  missingConnections MissingApiConnection[]
+  missingConnections MissingConnection[]
   executions         JobRunExecution[]
 }
 
@@ -748,9 +796,9 @@ model SecretReference {
   key      String              @unique
   provider SecretStoreProvider @default(DATABASE)
 
-  apiConnections       ApiConnection[]
-  apiConnectionClients ApiConnectionClient[]
-  triggerSources       TriggerSource[]
+  connections    IntegrationConnection[]
+  integrations   Integration[]
+  triggerSources TriggerSource[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -796,8 +844,8 @@ model TriggerSource {
   project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   projectId String
 
-  apiClient   ApiConnectionClient? @relation(fields: [apiClientId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  apiClientId String?
+  integration   Integration @relation(fields: [integrationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  integrationId String
 
   dynamicTrigger   DynamicTrigger? @relation(fields: [dynamicTriggerId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   dynamicTriggerId String?
@@ -908,17 +956,17 @@ model ScheduleSource {
   @@unique([key, environmentId])
 }
 
-model MissingApiConnection {
+model MissingConnection {
   id String @id @default(cuid())
 
   resolved Boolean @default(false)
 
   runs JobRun[]
 
-  apiConnectionClient   ApiConnectionClient @relation(fields: [apiConnectionClientId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  apiConnectionClientId String
+  integration   Integration @relation(fields: [integrationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  integrationId String
 
-  connectionType ApiConnectionType @default(DEVELOPER)
+  connectionType ConnectionType @default(DEVELOPER)
 
   externalAccount   ExternalAccount? @relation(fields: [externalAccountId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   externalAccountId String?
@@ -926,7 +974,7 @@ model MissingApiConnection {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  @@unique([apiConnectionClientId, connectionType, externalAccountId])
+  @@unique([integrationId, connectionType, externalAccountId])
 }
 
 model ApiIntegrationVote {

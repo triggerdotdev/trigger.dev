@@ -4,7 +4,7 @@ import { env } from "~/env.server";
 import { Job } from "~/models/job.server";
 import { Organization } from "~/models/organization.server";
 import { Project } from "~/models/project.server";
-import { apiAuthenticationRepository } from "~/services/externalApis/apiAuthenticationRepository.server";
+import { integrationAuthRepository } from "~/services/externalApis/integrationAuthRepository.server";
 import {
   ConnectionMetadataSchema,
   OAuthClientSchema,

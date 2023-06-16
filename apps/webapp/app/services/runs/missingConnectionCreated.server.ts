@@ -13,31 +13,29 @@ export class MissingConnectionCreatedService {
   public async call(id: string) {
     return await $transaction(this.#prismaClient, async (tx) => {
       // first, deliver the event through the dispatcher
-      const missingConnection = await tx.missingApiConnection.findUniqueOrThrow(
-        {
-          where: {
-            id,
-          },
-          include: {
-            runs: {
-              include: {
-                environment: {
-                  include: {
-                    project: true,
-                    organization: true,
-                  },
+      const missingConnection = await tx.missingConnection.findUniqueOrThrow({
+        where: {
+          id,
+        },
+        include: {
+          runs: {
+            include: {
+              environment: {
+                include: {
+                  project: true,
+                  organization: true,
                 },
               },
-              take: 1,
-              orderBy: {
-                createdAt: "asc",
-              },
             },
-            externalAccount: true,
-            apiConnectionClient: true,
+            take: 1,
+            orderBy: {
+              createdAt: "asc",
+            },
           },
-        }
-      );
+          externalAccount: true,
+          integration: true,
+        },
+      });
 
       if (missingConnection.resolved) {
         return;
@@ -60,15 +58,11 @@ export class MissingConnectionCreatedService {
           id: missingConnection.id,
           type: missingConnection.connectionType,
           client: {
-            id: missingConnection.apiConnectionClient.slug,
-            title: missingConnection.apiConnectionClient.title,
-            scopes: missingConnection.apiConnectionClient.scopes,
-            createdAt: missingConnection.apiConnectionClient.createdAt,
-            updatedAt: missingConnection.apiConnectionClient.updatedAt,
-            integrationIdentifier:
-              missingConnection.apiConnectionClient.integrationIdentifier,
-            integrationAuthMethod:
-              missingConnection.apiConnectionClient.integrationAuthMethod,
+            id: missingConnection.integration.slug,
+            title: missingConnection.integration.title,
+            scopes: missingConnection.integration.scopes,
+            createdAt: missingConnection.integration.createdAt,
+            updatedAt: missingConnection.integration.updatedAt,
           },
           authorizationUrl: `${env.APP_ORIGIN}/api/missing-connections/${missingConnection.id}/authorize`, // TODO: make this real
           account: missingConnection.externalAccount

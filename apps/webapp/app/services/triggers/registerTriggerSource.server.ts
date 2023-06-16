@@ -132,7 +132,7 @@ export class RegisterTriggerSourceService {
             type: "HTTP",
             url: `${env.APP_ORIGIN}/api/v1/sources/http/${triggerSource.id}`,
           },
-          clientId: triggerSource.apiClient?.slug,
+          clientId: triggerSource.integration.slug,
         },
         events: triggerSource.events.map((e) => e.name),
         missingEvents: [],

@@ -1,4 +1,4 @@
-import { ApiConnectionClient } from "@trigger.dev/database";
+import type { Integration } from "@trigger.dev/database";
 import { Job } from "~/models/job.server";
 import type { Organization } from "~/models/organization.server";
 import type { Project } from "~/models/project.server";
@@ -8,7 +8,7 @@ type OrgForPath = Pick<Organization, "slug">;
 type ProjectForPath = Pick<Project, "slug">;
 type JobForPath = Pick<Job, "slug">;
 type RunForPath = Pick<Job, "id">;
-type ApiConnectionClientForPath = Pick<ApiConnectionClient, "slug">;
+type IntegrationForPath = Pick<Integration, "slug">;
 
 export const OrganizationParamsSchema = z.object({
   organizationSlug: z.string(),
@@ -116,7 +116,7 @@ function projectParam(project: ProjectForPath) {
 export function integrationClientPath(
   organization: OrgForPath,
   project: ProjectForPath,
-  client: ApiConnectionClientForPath
+  client: IntegrationForPath
 ) {
   return `${projectIntegrationsPath(organization, project)}/${clientParam(
     client
@@ -126,7 +126,7 @@ export function integrationClientPath(
 export function integrationClientConnectionsPath(
   organization: OrgForPath,
   project: ProjectForPath,
-  client: ApiConnectionClientForPath
+  client: IntegrationForPath
 ) {
   return `${integrationClientPath(organization, project, client)}/connections`;
 }
@@ -134,12 +134,12 @@ export function integrationClientConnectionsPath(
 export function integrationClientScopesPath(
   organization: OrgForPath,
   project: ProjectForPath,
-  client: ApiConnectionClientForPath
+  client: IntegrationForPath
 ) {
   return `${integrationClientPath(organization, project, client)}/scopes`;
 }
 
-function clientParam(integration: ApiConnectionClientForPath) {
+function clientParam(integration: IntegrationForPath) {
   return integration.slug;
 }
 

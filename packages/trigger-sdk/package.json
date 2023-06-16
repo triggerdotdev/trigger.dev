@@ -33,7 +33,8 @@
   "scripts": {
     "clean": "rimraf dist",
     "build": "npm run clean && npm run build:tsup",
-    "build:tsup": "tsup --dts-resolve"
+    "build:tsup": "tsup --dts-resolve",
+    "typecheck": "tsup --dts-resolve --no-dts"
   },
   "dependencies": {
     "chalk": "^5.2.0",
