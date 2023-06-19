@@ -6,6 +6,7 @@ import {
 } from "@heroicons/react/20/solid";
 import { cn } from "~/utils/cn";
 import { Paragraph } from "./Paragraph";
+import { CheckCircleIcon } from "@heroicons/react/24/solid";
 
 const variantClasses = {
   info: {
@@ -32,6 +33,11 @@ const variantClasses = {
     icon: <LightBulbIcon className="h-5 w-5 shrink-0 text-green-400" />,
     text: "text-green-200",
   },
+  success: {
+    className: "border-green-400/20 bg-green-400/30",
+    icon: <CheckCircleIcon className="h-5 w-5 shrink-0 text-green-400" />,
+    text: "text-green-200",
+  },
 } as const;
 
 export function Callout({
@@ -50,7 +56,7 @@ export function Callout({
   return (
     <div
       className={cn(
-        `flex w-full gap-4 rounded-md border py-3 pl-3 pr-4 shadow-md backdrop-blur-sm`,
+        `flex w-full gap-4 rounded-md border py-2 pl-2 pr-3 shadow-md backdrop-blur-sm`,
         variantDefinition.className,
         className
       )}
