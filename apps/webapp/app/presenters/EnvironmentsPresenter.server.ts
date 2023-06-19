@@ -5,6 +5,7 @@ import {
 } from "~/models/indexEndpoint.server";
 import { Project } from "~/models/project.server";
 import { User } from "~/models/user.server";
+import { RuntimeEnvironmentType } from "../../../../packages/database/src";
 
 export type Client = {
   slug: string;
@@ -18,6 +19,11 @@ export type Client = {
 export type ClientEndpoint =
   | {
       state: "unconfigured";
+      environment: {
+        id: string;
+        apiKey: string;
+        type: RuntimeEnvironmentType;
+      };
     }
   | {
       state: "configured";
@@ -29,6 +35,11 @@ export type ClientEndpoint =
         source: string;
         updatedAt: Date;
         stats: IndexEndpointStats;
+      };
+      environment: {
+        id: string;
+        apiKey: string;
+        type: RuntimeEnvironmentType;
       };
     };
 
@@ -98,8 +109,6 @@ export class EnvironmentsPresenter {
       return true;
     });
 
-    console.log("filtered", JSON.stringify(filtered));
-
     //build up list of clients for display, with endpoints by type
     const clients: Client[] = [];
     for (const environment of filtered) {
@@ -109,9 +118,9 @@ export class EnvironmentsPresenter {
           client = {
             slug: endpoint.slug,
             endpoints: {
-              DEVELOPMENT: { state: "unconfigured" },
-              STAGING: { state: "unconfigured" },
-              PRODUCTION: { state: "unconfigured" },
+              DEVELOPMENT: { state: "unconfigured", environment },
+              STAGING: { state: "unconfigured", environment },
+              PRODUCTION: { state: "unconfigured", environment },
             },
           };
           clients.push(client);
@@ -137,6 +146,7 @@ export class EnvironmentsPresenter {
                 stats: parseEndpointIndexStats(latestIndex.stats),
               }
             : undefined,
+          environment,
         };
       });
     }

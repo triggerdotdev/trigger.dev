@@ -1,4 +1,5 @@
 import { LoaderArgs } from "@remix-run/server-runtime";
+import { useMemo, useState } from "react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { ClipboardField } from "~/components/ClipboardField";
 import {
@@ -6,6 +7,7 @@ import {
   environmentTitle,
 } from "~/components/environments/EnvironmentLabel";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
+import { ButtonContent } from "~/components/primitives/Buttons";
 import { Header1, Header2 } from "~/components/primitives/Headers";
 import {
   PageDescription,
@@ -23,25 +25,15 @@ import {
   TableHeaderCell,
   TableRow,
 } from "~/components/primitives/Table";
-import { useProject } from "~/hooks/useProject";
 import {
   ClientEndpoint,
   EnvironmentsPresenter,
 } from "~/presenters/EnvironmentsPresenter.server";
 import { requireUserId } from "~/services/session.server";
+import { formatDateTime } from "~/utils";
 import { Handle } from "~/utils/handle";
 import { ProjectParamSchema } from "~/utils/pathBuilder";
 import { RuntimeEnvironmentType } from "../../../../../packages/database/src";
-import { formatDateTime } from "~/utils";
-import { Button, ButtonContent } from "~/components/primitives/Buttons";
-import { useMemo, useState } from "react";
-import { s } from "vitest/dist/index-6e18a03a";
-import {
-  Sheet,
-  SheetContent,
-  SheetHeader,
-} from "~/components/primitives/Sheet";
-import { select } from "@conform-to/react/helpers";
 import { ConfigureEndpointSheet } from "./ConfigureEndpointSheet";
 
 export const loader = async ({ request, params }: LoaderArgs) => {
