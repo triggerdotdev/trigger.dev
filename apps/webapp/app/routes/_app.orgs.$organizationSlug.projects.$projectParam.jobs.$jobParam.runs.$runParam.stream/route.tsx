@@ -24,24 +24,24 @@ export async function loader({ request, params }: LoaderArgs) {
 
   let stopped = false;
 
-  const abortController = new AbortController();
-  request.signal.addEventListener("abort", () => {
-    abortController.abort();
-  });
-
-  return eventStream(abortController.signal, (send) => {
+  return eventStream(request.signal, (send) => {
     const pinger = setInterval(() => {
+      if (stopped) {
+        clearInterval(pinger);
+        return;
+      }
       send({ event: "ping", data: new Date().toISOString() });
     }, 1000);
 
     const interval = setInterval(() => {
       if (stopped) {
-        abortController.abort();
+        clearInterval(interval);
         return;
       }
 
       runForUpdates(runParam)
         .then((run) => {
+          if (stopped) return;
           if (!run) return;
 
           if (run.completedAt) {
@@ -67,11 +67,12 @@ export async function loader({ request, params }: LoaderArgs) {
           lastTotalTaskUpdatedTime = totalRunUpdated;
         })
         .catch(() => {
-          abortController.abort();
+          stopped = true;
         });
     }, 348);
 
     return function clear() {
+      stopped = true;
       clearInterval(pinger);
       clearInterval(interval);
     };
