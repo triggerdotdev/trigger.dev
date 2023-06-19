@@ -5,13 +5,17 @@ import {
 } from "~/models/indexEndpoint.server";
 import { Project } from "~/models/project.server";
 import { User } from "~/models/user.server";
-import { RuntimeEnvironmentType } from "../../../../packages/database/src";
+import {
+  Endpoint,
+  EndpointIndex,
+  RuntimeEnvironment,
+  RuntimeEnvironmentType,
+} from "../../../../packages/database/src";
 
 export type Client = {
   slug: string;
   endpoints: {
     DEVELOPMENT: ClientEndpoint;
-    STAGING: ClientEndpoint;
     PRODUCTION: ClientEndpoint;
   };
 };
@@ -52,7 +56,7 @@ export class EnvironmentsPresenter {
 
   public async call({
     userId,
-    slug,
+    slug: projectSlug,
   }: Pick<Project, "slug"> & {
     userId: User["id"];
   }) {
@@ -89,7 +93,7 @@ export class EnvironmentsPresenter {
       },
       where: {
         project: {
-          slug,
+          slug: projectSlug,
         },
         organization: {
           members: {
@@ -109,46 +113,70 @@ export class EnvironmentsPresenter {
       return true;
     });
 
+    //get all the possible client slugs
+    const clientSlugs = new Set<string>();
+    for (const environment of filtered) {
+      for (const endpoint of environment.endpoints) {
+        clientSlugs.add(endpoint.slug);
+      }
+    }
+
     //build up list of clients for display, with endpoints by type
     const clients: Client[] = [];
-    for (const environment of filtered) {
-      environment.endpoints.forEach((endpoint) => {
-        let client = clients.find((client) => client.slug === endpoint.slug);
-        if (!client) {
-          client = {
-            slug: endpoint.slug,
-            endpoints: {
-              DEVELOPMENT: { state: "unconfigured", environment },
-              STAGING: { state: "unconfigured", environment },
-              PRODUCTION: { state: "unconfigured", environment },
-            },
-          };
-          clients.push(client);
-        }
+    for (const slug of clientSlugs) {
+      const developmentEnvironment = filtered.find(
+        (environment) => environment.type === "DEVELOPMENT"
+      );
+      if (!developmentEnvironment) {
+        throw new Error(
+          "Development environment not found, this should not happen"
+        );
+      }
 
-        if (environment.type === "PREVIEW") {
-          console.error("PREVIEW environments are not supported yet");
-          return;
-        }
+      const productionEnvironment = filtered.find(
+        (environment) => environment.type === "PRODUCTION"
+      );
+      if (!productionEnvironment) {
+        throw new Error(
+          "Production environment not found, this should not happen"
+        );
+      }
 
-        const latestIndex = endpoint.indexings[0];
+      const client: Client = {
+        slug,
+        endpoints: {
+          DEVELOPMENT: {
+            state: "unconfigured",
+            environment: developmentEnvironment,
+          },
+          PRODUCTION: {
+            state: "unconfigured",
+            environment: productionEnvironment,
+          },
+        },
+      };
 
-        client.endpoints[environment.type] = {
-          state: "configured",
-          id: endpoint.id,
-          slug: endpoint.slug,
-          url: endpoint.url,
-          indexWebhookPath: `/api/v1/endpoints/${environment.id}/${endpoint.slug}/index/${endpoint.indexingHookIdentifier}`,
-          latestIndex: latestIndex
-            ? {
-                source: latestIndex.source,
-                updatedAt: latestIndex.updatedAt,
-                stats: parseEndpointIndexStats(latestIndex.stats),
-              }
-            : undefined,
-          environment,
-        };
-      });
+      const devEndpoint = developmentEnvironment.endpoints.find(
+        (endpoint) => endpoint.slug === slug
+      );
+      if (devEndpoint) {
+        client.endpoints.DEVELOPMENT = endpointClient(
+          devEndpoint,
+          developmentEnvironment
+        );
+      }
+
+      const prodEndpoint = productionEnvironment.endpoints.find(
+        (endpoint) => endpoint.slug === slug
+      );
+      if (prodEndpoint) {
+        client.endpoints.PRODUCTION = endpointClient(
+          prodEndpoint,
+          productionEnvironment
+        );
+      }
+
+      clients.push(client);
     }
 
     return {
@@ -161,4 +189,27 @@ export class EnvironmentsPresenter {
       clients,
     };
   }
+}
+
+function endpointClient(
+  endpoint: Pick<Endpoint, "id" | "slug" | "url" | "indexingHookIdentifier"> & {
+    indexings: Pick<EndpointIndex, "source" | "updatedAt" | "stats">[];
+  },
+  environment: Pick<RuntimeEnvironment, "id" | "apiKey" | "type">
+): ClientEndpoint {
+  return {
+    state: "configured" as const,
+    id: endpoint.id,
+    slug: endpoint.slug,
+    url: endpoint.url,
+    indexWebhookPath: `/api/v1/endpoints/${environment.id}/${endpoint.slug}/index/${endpoint.indexingHookIdentifier}`,
+    latestIndex: endpoint.indexings[0]
+      ? {
+          source: endpoint.indexings[0].source,
+          updatedAt: endpoint.indexings[0].updatedAt,
+          stats: parseEndpointIndexStats(endpoint.indexings[0].stats),
+        }
+      : undefined,
+    environment: environment,
+  };
 }

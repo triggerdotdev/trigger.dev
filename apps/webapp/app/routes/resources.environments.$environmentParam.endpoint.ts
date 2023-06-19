@@ -49,7 +49,8 @@ export async function action({ request, params }: ActionArgs) {
       url: submission.value.url,
       environment,
     });
-    return json(result);
+
+    return json(submission);
   } catch (e) {
     if (e instanceof CreateEndpointError) {
       submission.error.url = e.message;
