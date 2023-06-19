@@ -4,6 +4,7 @@ import { eventStream } from "remix-utils";
 import { z } from "zod";
 import { prisma } from "~/db.server";
 import { requireUserId } from "~/services/session.server";
+import { sse } from "~/utils/sse";
 
 export async function loader({ request, params }: LoaderArgs) {
   await requireUserId(request);
@@ -22,60 +23,33 @@ export async function loader({ request, params }: LoaderArgs) {
     0
   );
 
-  let stopped = false;
-
-  return eventStream(request.signal, (send) => {
-    const pinger = setInterval(() => {
-      if (stopped) {
-        clearInterval(pinger);
-        return;
-      }
-      send({ event: "ping", data: new Date().toISOString() });
-    }, 1000);
-
-    const interval = setInterval(() => {
-      if (stopped) {
-        clearInterval(interval);
-        return;
+  return sse({
+    request,
+    run: async (send, stop) => {
+      const result = await runForUpdates(runParam);
+      if (!result) {
+        return stop();
       }
 
-      runForUpdates(runParam)
-        .then((run) => {
-          if (stopped) return;
-          if (!run) return;
+      if (result.completedAt) {
+        send({ data: new Date().toISOString() });
+        return stop();
+      }
 
-          if (run.completedAt) {
-            stopped = true;
-            return send({
-              event: "update",
-              data: run.completedAt.toISOString(),
-            });
-          }
+      const totalRunUpdated = result.tasks.reduce(
+        (prev, task) => prev + task.updatedAt.getTime(),
+        0
+      );
 
-          const totalRunUpdated = run.tasks.reduce(
-            (prev, task) => prev + task.updatedAt.getTime(),
-            0
-          );
+      if (lastUpdatedAt !== result.updatedAt.getTime()) {
+        send({ data: result.updatedAt.toISOString() });
+      } else if (lastTotalTaskUpdatedTime !== totalRunUpdated) {
+        send({ data: new Date().toISOString() });
+      }
 
-          if (lastUpdatedAt !== run.updatedAt.getTime()) {
-            send({ event: "update", data: run.updatedAt.toISOString() });
-          } else if (lastTotalTaskUpdatedTime !== totalRunUpdated) {
-            send({ event: "update", data: nanoid() });
-          }
-
-          lastUpdatedAt = run.updatedAt.getTime();
-          lastTotalTaskUpdatedTime = totalRunUpdated;
-        })
-        .catch(() => {
-          stopped = true;
-        });
-    }, 348);
-
-    return function clear() {
-      stopped = true;
-      clearInterval(pinger);
-      clearInterval(interval);
-    };
+      lastUpdatedAt = result.updatedAt.getTime();
+      lastTotalTaskUpdatedTime = totalRunUpdated;
+    },
   });
 }
 

@@ -194,7 +194,7 @@ export default function Page() {
   const events = useEventSource(
     runStreamingPath(organization, project, job, run),
     {
-      event: "update",
+      event: "message",
     }
   );
   useEffect(() => {
