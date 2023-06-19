@@ -2,7 +2,10 @@ import { parse } from "@conform-to/zod";
 import { ActionArgs, json } from "@remix-run/server-runtime";
 import { z } from "zod";
 import { prisma } from "~/db.server";
-import { CreateEndpointService } from "~/services/endpoints/createEndpoint.server";
+import {
+  CreateEndpointError,
+  CreateEndpointService,
+} from "~/services/endpoints/createEndpoint.server";
 import { requireUserId } from "~/services/session.server";
 
 const ParamsSchema = z.object({
@@ -19,12 +22,7 @@ export async function action({ request, params }: ActionArgs) {
   const { environmentParam } = ParamsSchema.parse(params);
 
   const formData = await request.formData();
-  const object = Object.fromEntries(formData.entries());
-  console.log("object", object);
-
   const submission = parse(formData, { schema: bodySchema });
-
-  console.log(submission);
 
   if (!submission.value || submission.intent !== "submit") {
     return json(submission);
@@ -53,6 +51,11 @@ export async function action({ request, params }: ActionArgs) {
     });
     return json(result);
   } catch (e) {
+    if (e instanceof CreateEndpointError) {
+      submission.error.url = e.message;
+      return json(submission);
+    }
+
     return json(e, { status: 400 });
   }
 }

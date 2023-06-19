@@ -9,6 +9,15 @@ const indexingHookIdentifier = customAlphabet(
   10
 );
 
+export class CreateEndpointError extends Error {
+  code: "FAILED_PING" | "FAILED_UPSERT";
+  constructor(code: "FAILED_PING" | "FAILED_UPSERT", message: string) {
+    super(message);
+    Object.setPrototypeOf(this, CreateEndpointError.prototype);
+    this.code = code;
+  }
+}
+
 export class CreateEndpointService {
   #prismaClient: PrismaClient;
 
@@ -30,53 +39,63 @@ export class CreateEndpointService {
     const pong = await client.ping();
 
     if (!pong.ok) {
-      throw new Error(pong.error);
+      throw new CreateEndpointError("FAILED_PING", pong.error);
     }
 
-    return await $transaction(this.#prismaClient, async (tx) => {
-      const endpoint = await tx.endpoint.upsert({
-        where: {
-          environmentId_slug: {
-            environmentId: environment.id,
+    try {
+      const result = await $transaction(this.#prismaClient, async (tx) => {
+        const endpoint = await tx.endpoint.upsert({
+          where: {
+            environmentId_slug: {
+              environmentId: environment.id,
+              slug: id,
+            },
+          },
+          create: {
+            environment: {
+              connect: {
+                id: environment.id,
+              },
+            },
+            organization: {
+              connect: {
+                id: environment.organizationId,
+              },
+            },
+            project: {
+              connect: {
+                id: environment.projectId,
+              },
+            },
             slug: id,
+            url,
+            indexingHookIdentifier: indexingHookIdentifier(),
           },
-        },
-        create: {
-          environment: {
-            connect: {
-              id: environment.id,
-            },
+          update: {
+            url,
           },
-          organization: {
-            connect: {
-              id: environment.organizationId,
-            },
+        });
+
+        // Kick off process to fetch the jobs for this endpoint
+        await workerQueue.enqueue(
+          "indexEndpoint",
+          {
+            id: endpoint.id,
+            source: "INTERNAL",
           },
-          project: {
-            connect: {
-              id: environment.projectId,
-            },
-          },
-          slug: id,
-          url,
-          indexingHookIdentifier: indexingHookIdentifier(),
-        },
-        update: {
-          url,
-        },
+          { tx }
+        );
+
+        return endpoint;
       });
 
-      // Kick off process to fetch the jobs for this endpoint
-      await workerQueue.enqueue(
-        "indexEndpoint",
-        {
-          id: endpoint.id,
-          source: "INTERNAL",
-        },
-        { tx }
-      );
-
-      return endpoint;
-    });
+      return result;
+    } catch (error) {
+      if (error instanceof Error) {
+        throw new CreateEndpointError("FAILED_UPSERT", error.message);
+      } else {
+        throw new CreateEndpointError("FAILED_UPSERT", "Something went wrong");
+      }
+    }
   }
 }
