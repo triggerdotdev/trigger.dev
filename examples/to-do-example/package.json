@@ -1,5 +1,5 @@
 {
-  "name": "@examples/to-do",
+  "name": "@examples/to-do-example",
   "version": "0.1.0",
   "private": true,
   "scripts": {
@@ -9,22 +9,17 @@
     "lint": "next lint"
   },
   "dependencies": {
-    "@trigger.dev/nextjs": "workspace:*",
-    "@trigger.dev/sdk": "workspace:*",
-    "@types/node": "18.15.13",
+    "@types/node": "20.3.1",
     "@types/react": "^18.0.21",
     "@types/react-dom": "^18.0.6",
+    "autoprefixer": "10.4.14",
+    "eslint": "^8.24.0",
+    "eslint-config-next": "13.4.6",
     "next": "13.3.1",
-    "node-fetch": "2.6.x",
+    "postcss": "8.4.24",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
-    "typescript": "5.0.4",
-    "zod": "^3.20.2"
-  },
-  "devDependencies": {
-    "@types/node-fetch": "2.6.x",
-    "msw": "^0.47.0",
-    "ts-loader": "^9.4.2",
-    "webpack": "^5.0.0"
+    "tailwindcss": "3.3.2",
+    "typescript": "5.1.3"
   }
 }
