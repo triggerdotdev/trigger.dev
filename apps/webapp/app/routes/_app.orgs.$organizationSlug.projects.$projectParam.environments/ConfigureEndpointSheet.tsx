@@ -46,8 +46,6 @@ export function ConfigureEndpointSheet({
   });
   const loadingEndpointUrl = setEndpointUrlFetcher.state !== "idle";
 
-  console.log("endpoint", endpoint);
-
   return (
     <Sheet
       open={true}
@@ -57,7 +55,7 @@ export function ConfigureEndpointSheet({
         }
       }}
     >
-      <SheetContent>
+      <SheetContent size="lg">
         <SheetHeader>
           <Header1>
             <div className="flex items-center gap-2">
