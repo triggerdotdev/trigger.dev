@@ -8,23 +8,31 @@ export class Logger {
   #name: string;
   readonly #level: number;
   #filteredKeys: string[] = [];
+  #jsonReplacer?: (key: string, value: unknown) => unknown;
 
   constructor(
     name: string,
     level: LogLevel = "info",
-    filteredKeys: string[] = []
+    filteredKeys: string[] = [],
+    jsonReplacer?: (key: string, value: unknown) => unknown
   ) {
     this.#name = name;
     this.#level = logLevels.indexOf(
       (process.env.TRIGGER_LOG_LEVEL ?? level) as LogLevel
     );
     this.#filteredKeys = filteredKeys;
+    this.#jsonReplacer = jsonReplacer;
   }
 
   // Return a new Logger instance with the same name and a new log level
   // but filter out the keys from the log messages (at any level)
   filter(...keys: string[]) {
-    return new Logger(this.#name, logLevels[this.#level], keys);
+    return new Logger(
+      this.#name,
+      logLevels[this.#level],
+      keys,
+      this.#jsonReplacer
+    );
   }
 
   log(...args: any[]) {
@@ -64,8 +72,24 @@ export class Logger {
       ),
     };
 
-    console.debug(JSON.stringify(structuredLog, bigIntReplacer));
+    console.debug(
+      JSON.stringify(structuredLog, createReplacer(this.#jsonReplacer))
+    );
   }
+}
+
+function createReplacer(replacer?: (key: string, value: unknown) => unknown) {
+  return (key: string, value: unknown) => {
+    if (typeof value === "bigint") {
+      return value.toString();
+    }
+
+    if (replacer) {
+      return replacer(key, value);
+    }
+
+    return value;
+  };
 }
 
 // Replacer function for JSON.stringify that converts BigInts to strings

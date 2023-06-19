@@ -21,12 +21,13 @@ export interface TriggerIntegration<
 
 export type IntegrationClient<
   TClient,
-  TTasks extends Record<string, AuthenticatedTask<TClient, any, any>>
+  TTasks extends Record<string, AuthenticatedTask<TClient, any, any, any>>
 > =
   | {
       usesLocalAuth: true;
       client: TClient;
       tasks?: TTasks;
+      auth: any;
     }
   | {
       usesLocalAuth: false;
@@ -34,12 +35,18 @@ export type IntegrationClient<
       tasks?: TTasks;
     };
 
-export type AuthenticatedTask<TClient, TParams, TResult> = {
+export type AuthenticatedTask<
+  TClient,
+  TParams,
+  TResult,
+  TAuth = ConnectionAuth
+> = {
   run: (
     params: TParams,
     client: TClient,
     task: ServerTask,
-    io: IO
+    io: IO,
+    auth: TAuth
   ) => Promise<TResult>;
   init: (params: TParams) => RunTaskOptions;
   onError?: (
@@ -63,13 +70,14 @@ export function authenticatedTask<TClient, TParams, TResult>(options: {
 type ExtractRunFunction<T> = T extends AuthenticatedTask<
   any,
   infer TParams,
-  infer TResult
+  infer TResult,
+  infer TAuth
 >
   ? (key: string, params: TParams) => Promise<TResult>
   : never;
 
 type ExtractTasks<
-  TTasks extends Record<string, AuthenticatedTask<any, any, any>>
+  TTasks extends Record<string, AuthenticatedTask<any, any, any, any>>
 > = {
   [key in keyof TTasks]: ExtractRunFunction<TTasks[key]>;
 };

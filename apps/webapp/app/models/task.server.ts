@@ -24,5 +24,6 @@ export function taskWithAttemptsToServerTask(
     parentId: task.parentId,
     attempts: task.attempts.length,
     idempotencyKey: task.idempotencyKey,
+    operation: task.operation,
   };
 }

@@ -10,7 +10,7 @@ export * from "./io";
 export * from "./types";
 
 import { ServerTask } from "@trigger.dev/internal";
-import { SecureString } from "./types";
+import { RedactString } from "./types";
 export { isTriggerError } from "./errors";
 
 export type { NormalizedRequest, EventFilter } from "@trigger.dev/internal";
@@ -18,22 +18,22 @@ export type { NormalizedRequest, EventFilter } from "@trigger.dev/internal";
 export type Task = ServerTask;
 
 /*
- * This function is used to create a secure string that can be used in the headers of a fetch request.
+ * This function is used to create a redacted string that can be used in the headers of a fetch request.
  * It is used to prevent the string from being logged in trigger.dev.
  * You can use it like this:
  *
  * await ctx.fetch("https://example.com", {
  *  headers: {
- *    Authorization: secureString`Bearer ${ACCESS_TOKEN}`,
+ *    Authorization: redactString`Bearer ${ACCESS_TOKEN}`,
  *  },
  * })
  */
-export function secureString(
+export function redactString(
   strings: TemplateStringsArray,
   ...interpolations: string[]
-): SecureString {
+): RedactString {
   return {
-    __secureString: true,
+    __redactedString: true,
     strings: strings.raw as string[],
     interpolations,
   };

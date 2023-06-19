@@ -3,6 +3,8 @@ import {
   ConnectionAuth,
   CronOptions,
   ErrorWithStackSchema,
+  FetchRequestInit,
+  FetchRetryOptions,
   IntervalOptions,
   LogLevel,
   Logger,
@@ -121,6 +123,44 @@ export class IO {
       },
       async (task) => {}
     );
+  }
+
+  async backgroundFetch<TResponseData>(
+    key: string | any[],
+    url: string,
+    requestInit?: FetchRequestInit,
+    retry?: FetchRetryOptions
+  ): Promise<TResponseData> {
+    const urlObject = new URL(url);
+
+    return (await this.runTask(
+      key,
+      {
+        name: `fetch ${urlObject.hostname}${urlObject.pathname}`,
+        params: { url, requestInit, retry },
+        operation: "fetch",
+        icon: "background",
+        noop: false,
+        properties: [
+          {
+            label: "url",
+            text: url,
+            url,
+          },
+          {
+            label: "method",
+            text: requestInit?.method ?? "GET",
+          },
+          {
+            label: "background",
+            text: "true",
+          },
+        ],
+      },
+      async (task) => {
+        return task.output;
+      }
+    )) as TResponseData;
   }
 
   async sendEvent(
@@ -350,7 +390,7 @@ export class IO {
       error: unknown,
       task: IOTask,
       io: IO
-    ) => { retryAt: Date; error?: Error } | undefined | void
+    ) => { retryAt: Date; error?: Error; jitter?: number } | undefined | void
   ): Promise<TResult> {
     const parentId = this._taskStorage.getStore()?.taskId;
 
@@ -414,6 +454,15 @@ export class IO {
       throw new ResumeWithTaskError(task);
     }
 
+    if (task.status === "RUNNING" && typeof task.operation === "string") {
+      this._logger.debug("Task running operation", {
+        idempotencyKey,
+        task,
+      });
+
+      throw new ResumeWithTaskError(task);
+    }
+
     const executeTask = async () => {
       try {
         const result = await callback(task, this);
@@ -429,6 +478,10 @@ export class IO {
 
         return result;
       } catch (error) {
+        if (isTriggerError(error)) {
+          throw error;
+        }
+
         if (onError) {
           const onErrorResult = onError(error, task, this);
 

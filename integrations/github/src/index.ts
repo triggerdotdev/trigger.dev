@@ -43,7 +43,7 @@ export class Github
   _orgTrigger: ReturnType<typeof createOrgTrigger>;
 
   constructor(private options: GithubIntegrationOptions) {
-    this.client = createConnectionFromOptions(options);
+    this.client = createClientFromOptions(options);
     this._repoSource = createRepoEventSource(this);
     this._orgSource = createOrgEventSource(this);
     this._repoTrigger = createRepoTrigger(this._repoSource);
@@ -73,7 +73,7 @@ export class Github
   }
 }
 
-function createConnectionFromOptions(
+function createClientFromOptions(
   options: GithubIntegrationOptions
 ): IntegrationClient<Octokit, typeof tasks> {
   if (options.token) {
@@ -89,6 +89,7 @@ function createConnectionFromOptions(
       usesLocalAuth: true,
       client,
       tasks,
+      auth: options.token,
     };
   }
 

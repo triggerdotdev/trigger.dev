@@ -22,6 +22,7 @@ import {
   UpdatingDuration,
 } from "../_app.orgs.$organizationSlug.projects.$projectParam.jobs.$jobParam.runs.$runParam/RunCard";
 import { TaskStatusIcon } from "../_app.orgs.$organizationSlug.projects.$projectParam.jobs.$jobParam.runs.$runParam/TaskStatus";
+import { sensitiveDataReplacer } from "~/services/logger";
 
 export const loader = async ({ request, params }: LoaderArgs) => {
   const userId = await requireUserId(request);
@@ -134,7 +135,9 @@ export default function Page() {
         <div className="mt-4 flex flex-col gap-2">
           <Header3>Input</Header3>
           {params ? (
-            <CodeBlock code={JSON.stringify(params, null, 2)} />
+            <CodeBlock
+              code={JSON.stringify(params, sensitiveDataReplacer, 2)}
+            />
           ) : (
             <Paragraph variant="small">No input</Paragraph>
           )}

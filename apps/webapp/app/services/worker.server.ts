@@ -28,6 +28,7 @@ import { IntegrationConnectionCreatedService } from "./externalApis/integrationC
 import { sendEmail } from "./email.server";
 import { DeliverEmailSchema } from "@/../../packages/emails/src";
 import { PerformRunExecutionService } from "./runs/performRunExecution";
+import { PerformTaskOperationService } from "./tasks/performTaskOperation.server";
 
 const workerCatalog = {
   organizationCreated: z.object({ id: z.string() }),
@@ -48,6 +49,9 @@ const workerCatalog = {
   startInitialProjectDeployment: z.object({ id: z.string() }),
   startRun: z.object({ id: z.string() }),
   performRunExecution: z.object({
+    id: z.string(),
+  }),
+  performTaskOperation: z.object({
     id: z.string(),
   }),
   runFinished: z.object({ id: z.string() }),
@@ -238,6 +242,15 @@ function getWorkerQueue() {
         maxAttempts: 1,
         handler: async (payload, job) => {
           const service = new PerformRunExecutionService();
+
+          await service.call(payload.id);
+        },
+      },
+      performTaskOperation: {
+        queueName: (payload) => `tasks:${payload.id}`,
+        maxAttempts: 3,
+        handler: async (payload, job) => {
+          const service = new PerformTaskOperationService();
 
           await service.call(payload.id);
         },

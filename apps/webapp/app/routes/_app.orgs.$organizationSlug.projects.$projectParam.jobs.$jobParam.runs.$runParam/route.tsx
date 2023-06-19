@@ -222,12 +222,10 @@ export default function Page() {
                 Test run
               </span>
             )}
-            {(basicStatus === "COMPLETED" || basicStatus === "FAILED") && (
-              <RerunPopover
-                environmentType={run.environment.type}
-                status={basicStatus}
-              />
-            )}
+            <RerunPopover
+              environmentType={run.environment.type}
+              status={basicStatus}
+            />
           </PageButtons>
         </PageTitleRow>
         <PageInfoRow>

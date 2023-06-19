@@ -20,3 +20,8 @@ export function safeJsonZodParse<T>(
 
   return schema.safeParse(parsed);
 }
+
+export async function safeJsonFromResponse(response: Response) {
+  const json = await response.text();
+  return safeJsonParse(json);
+}

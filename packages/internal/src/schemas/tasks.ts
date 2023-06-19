@@ -28,6 +28,7 @@ export const TaskSchema = z.object({
   error: z.string().optional().nullable(),
   parentId: z.string().optional().nullable(),
   style: StyleSchema.optional().nullable(),
+  operation: z.string().optional().nullable(),
 });
 
 export const ServerTaskSchema = TaskSchema.extend({

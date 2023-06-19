@@ -393,32 +393,36 @@ export class PerformRunExecutionService {
         },
       });
 
-      const newJobExecution = await tx.jobRunExecution.create({
-        data: {
-          runId: run.id,
-          reason: "EXECUTE_JOB",
-          status: "PENDING",
-          retryLimit: EXECUTE_JOB_RETRY_LIMIT,
-          resumeTaskId: data.task.id,
-        },
-      });
+      // If the task has an operation, then the next performRunExecution will occur
+      // when that operation has finished
+      if (!data.task.operation) {
+        const newJobExecution = await tx.jobRunExecution.create({
+          data: {
+            runId: run.id,
+            reason: "EXECUTE_JOB",
+            status: "PENDING",
+            retryLimit: EXECUTE_JOB_RETRY_LIMIT,
+            resumeTaskId: data.task.id,
+          },
+        });
 
-      const graphileJob = await workerQueue.enqueue(
-        "performRunExecution",
-        {
-          id: newJobExecution.id,
-        },
-        { tx, runAt: data.task.delayUntil ?? undefined }
-      );
+        const graphileJob = await workerQueue.enqueue(
+          "performRunExecution",
+          {
+            id: newJobExecution.id,
+          },
+          { tx, runAt: data.task.delayUntil ?? undefined }
+        );
 
-      await tx.jobRunExecution.update({
-        where: {
-          id: newJobExecution.id,
-        },
-        data: {
-          graphileJobId: graphileJob.id,
-        },
-      });
+        await tx.jobRunExecution.update({
+          where: {
+            id: newJobExecution.id,
+          },
+          data: {
+            graphileJobId: graphileJob.id,
+          },
+        });
+      }
     });
   }
 

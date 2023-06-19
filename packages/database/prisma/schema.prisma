@@ -733,6 +733,7 @@ model Task {
   error       String?
   redact      Json?
   style       Json?
+  operation   String?
 
   startedAt   DateTime?
   completedAt DateTime?

@@ -2,14 +2,14 @@ import type {
   EventFilter,
   Logger,
   RuntimeEnvironmentType,
-  SecureString,
+  RedactString,
   TriggerMetadata,
 } from "@trigger.dev/internal";
 import { DisplayProperty } from "@trigger.dev/internal";
 import { Job } from "./job";
 import { TriggerClient } from "./triggerClient";
 
-export type { SecureString, Logger };
+export type { RedactString, Logger };
 
 export interface TriggerContext {
   job: { id: string; version: string };

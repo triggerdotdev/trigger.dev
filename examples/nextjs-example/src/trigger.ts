@@ -69,7 +69,45 @@ const dynamicSchedule = new DynamicSchedule(client, {
 
 const enabled = true;
 
-const CHAT_MODELS = ["gpt-3.5-turbo"];
+new Job(client, {
+  id: "test-background-fetch-retry",
+  name: "Test background fetch retry",
+  version: "0.0.1",
+  enabled,
+  trigger: eventTrigger({
+    name: "test.background-fetch",
+    schema: z.object({
+      url: z.string(),
+      method: z.string().optional(),
+      headers: z.record(z.string()).optional(),
+      body: z.any().optional(),
+      retry: z.any().optional(),
+    }),
+  }),
+  run: async (payload, io, ctx) => {
+    return await io.backgroundFetch<any>(
+      "fetch",
+      payload.url,
+      {
+        method: payload.method ?? "GET",
+        headers: payload.headers,
+        body: payload.body ? JSON.stringify(payload.body) : undefined,
+      },
+      payload.retry
+    );
+  },
+});
+
+const CHAT_MODELS = [
+  "gpt-3.5-turbo",
+  "gpt-3.5-turbo-0301",
+  "gpt-3.5-turbo-0613",
+  "gpt-3.5-turbo-16k",
+  "gpt-3.5-turbo-16k-0613",
+  "gpt-4",
+  "gpt-4-0314",
+  "gpt-4-0613",
+];
 
 new Job(client, {
   id: "openai-test",
@@ -81,6 +119,7 @@ new Job(client, {
     schema: z.object({
       model: z.string(),
       prompt: z.string(),
+      background: z.boolean().optional(),
     }),
   }),
   integrations: {
@@ -88,6 +127,23 @@ new Job(client, {
   },
   run: async (payload, io, ctx) => {
     if (CHAT_MODELS.includes(payload.model)) {
+      if (payload.background) {
+        const completion = await io.openai.backgroundCreateChatCompletion(
+          "✨",
+          {
+            model: payload.model,
+            messages: [
+              {
+                role: "user",
+                content: payload.prompt,
+              },
+            ],
+          }
+        );
+
+        return completion;
+      }
+
       const completion = await io.openai.createChatCompletion("✨", {
         model: payload.model,
         messages: [
@@ -96,6 +152,15 @@ new Job(client, {
             content: payload.prompt,
           },
         ],
+      });
+
+      return completion;
+    }
+
+    if (payload.background) {
+      const completion = await io.openai.backgroundCreateCompletion("✨", {
+        model: payload.model,
+        prompt: payload.prompt,
       });
 
       return completion;

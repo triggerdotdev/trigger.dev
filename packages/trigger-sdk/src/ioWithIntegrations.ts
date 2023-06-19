@@ -23,17 +23,19 @@ export function createIOWithIntegrations<
 
   const connections = Object.entries(integrations).reduce(
     (acc, [connectionKey, integration]) => {
-      const connection = auths?.[connectionKey];
-      const client =
-        "client" in integration.client
-          ? integration.client.client
-          : connection
-          ? integration.client.clientFactory?.(connection)
-          : undefined;
+      let auth = auths?.[connectionKey];
+
+      const client = integration.client.usesLocalAuth
+        ? integration.client.client
+        : auth
+        ? integration.client.clientFactory?.(auth)
+        : undefined;
 
       if (!client) {
         return acc;
       }
+
+      auth = integration.client.usesLocalAuth ? integration.client.auth : auth;
 
       const ioConnection = {
         client,
@@ -42,7 +44,7 @@ export function createIOWithIntegrations<
       if (integration.client.tasks) {
         const tasks: Record<
           string,
-          AuthenticatedTask<any, any, any>
+          AuthenticatedTask<any, any, any, any>
         > = integration.client.tasks;
 
         Object.keys(tasks).forEach((taskName) => {
@@ -59,7 +61,7 @@ export function createIOWithIntegrations<
               key,
               options,
               async (ioTask) => {
-                return authenticatedTask.run(params, client, ioTask, io);
+                return authenticatedTask.run(params, client, ioTask, io, auth);
               },
               authenticatedTask.onError
             );

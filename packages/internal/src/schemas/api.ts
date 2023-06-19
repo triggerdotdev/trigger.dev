@@ -376,13 +376,13 @@ export const CreateRunResponseBodySchema = z.discriminatedUnion("ok", [
 
 export type CreateRunResponseBody = z.infer<typeof CreateRunResponseBodySchema>;
 
-export const SecureStringSchema = z.object({
-  __secureString: z.literal(true),
+export const RedactStringSchema = z.object({
+  __redactedString: z.literal(true),
   strings: z.array(z.string()),
   interpolations: z.array(z.string()),
 });
 
-export type SecureString = z.infer<typeof SecureStringSchema>;
+export type RedactString = z.infer<typeof RedactStringSchema>;
 
 export const LogMessageSchema = z.object({
   level: z.enum(["DEBUG", "INFO", "WARN", "ERROR"]),
@@ -414,6 +414,7 @@ export const RunTaskOptionsSchema = z.object({
   icon: z.string().optional(),
   displayKey: z.string().optional(),
   noop: z.boolean().default(false),
+  operation: z.enum(["fetch"]).optional(),
   delayUntil: z.coerce.date().optional(),
   description: z.string().optional(),
   properties: z.array(DisplayPropertySchema).optional(),

@@ -11,6 +11,7 @@ import { taskWithAttemptsToServerTask } from "~/models/task.server";
 import { authenticateApiRequest } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger";
 import { ulid } from "~/services/ulid.server";
+import { workerQueue } from "~/services/worker.server";
 
 const ParamsSchema = z.object({
   runId: z.string(),
@@ -230,6 +231,7 @@ export class RunTaskService {
           params: taskBody.params ?? undefined,
           properties: taskBody.properties ?? undefined,
           redact: taskBody.redact ?? undefined,
+          operation: taskBody.operation,
           style: taskBody.style ?? { style: "normal" },
           attempts: {
             create: {
@@ -243,6 +245,17 @@ export class RunTaskService {
           attempts: true,
         },
       });
+
+      if (task.status === "RUNNING" && typeof taskBody.operation === "string") {
+        // We need to schedule the operation
+        await workerQueue.enqueue(
+          "performTaskOperation",
+          {
+            id: task.id,
+          },
+          { tx, runAt: task.delayUntil ?? undefined }
+        );
+      }
 
       return task;
     });

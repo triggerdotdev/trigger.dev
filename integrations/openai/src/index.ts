@@ -1,16 +1,18 @@
 import { OpenAIApi, Configuration } from "openai";
 import type { IntegrationClient, TriggerIntegration } from "@trigger.dev/sdk";
-import { createChatCompletion, createCompletion } from "./tasks";
+import {
+  createChatCompletion,
+  createCompletion,
+  backgroundCreateCompletion,
+  backgroundCreateChatCompletion,
+} from "./tasks";
+import { OpenAIIntegrationOptions } from "./types";
 
 const tasks = {
   createCompletion,
   createChatCompletion,
-};
-
-export type OpenAIIntegrationOptions = {
-  id: string;
-  apiKey: string;
-  organization?: string;
+  backgroundCreateCompletion,
+  backgroundCreateChatCompletion,
 };
 
 export class OpenAI
@@ -28,6 +30,10 @@ export class OpenAI
           organization: options.organization,
         })
       ),
+      auth: {
+        apiKey: options.apiKey,
+        organization: options.organization,
+      },
     };
   }
 

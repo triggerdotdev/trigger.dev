@@ -1,4 +1,7 @@
-import { ErrorWithStack } from "@/../../packages/internal/src";
+import {
+  ErrorWithStack,
+  ErrorWithStackSchema,
+} from "@trigger.dev/internal";
 import type { RouteMatch } from "@remix-run/react";
 import { useMatches } from "@remix-run/react";
 import humanizeDuration from "humanize-duration";
@@ -197,4 +200,17 @@ export function formatError(
   }
 
   return formatError(error, "short") + "\n" + error.stack;
+}
+
+export function formatUnknownError(
+  error: unknown,
+  style: "short" | "long" = "short"
+): string {
+  const parsedError = ErrorWithStackSchema.safeParse(error);
+
+  if (parsedError.success) {
+    return formatError(parsedError.data, style);
+  }
+
+  return "Unknown error";
 }

@@ -8,3 +8,4 @@ export * from "./properties";
 export * from "./integrations";
 export * from "./schedules";
 export * from "./notifications";
+export * from "./fetch";
