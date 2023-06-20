@@ -232,6 +232,9 @@ export function NamedIcon({
           name={name}
           className={"h-full w-full p-[7%]"}
           variant="light"
+          style={{
+            shapeRendering: "geometricPrecision",
+          }}
         />
       </div>
     );
