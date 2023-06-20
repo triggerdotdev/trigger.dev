@@ -152,6 +152,7 @@ const icons = {
   log: (className: string) => (
     <ChatBubbleLeftEllipsisIcon className={cn("text-slate-400", className)} />
   ),
+  "logo-icon": (className: string) => <LogoIcon className={cn(className)} />,
   organization: (className: string) => (
     <BuildingOffice2Icon className={cn("text-fuchsia-600", className)} />
   ),
@@ -179,7 +180,6 @@ const icons = {
   team: (className: string) => (
     <UserGroupIcon className={cn("text-blue-500", className)} />
   ),
-  "logo-icon": (className: string) => <LogoIcon className={cn(className)} />,
   user: (className: string) => (
     <UserIcon className={cn("text-blue-600", className)} />
   ),
