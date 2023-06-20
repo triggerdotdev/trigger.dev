@@ -157,18 +157,6 @@ export default function Page() {
   const job = useJob();
   const navigate = useNavigate();
 
-  const selectedTask = useCallback((id: string) => {
-    navigate(runTaskPath(organization, project, job, run, id));
-  }, []);
-
-  const selectedTrigger = useCallback(() => {
-    navigate(runTriggerPath(organization, project, job, run));
-  }, []);
-
-  const selectedCompleted = useCallback(() => {
-    navigate(runCompletedPath(organization, project, job, run));
-  }, []);
-
   const pathName = usePathName();
 
   const selectedId = useMemo(() => {
@@ -272,7 +260,9 @@ export default function Page() {
               <Header2 className="mb-2">Trigger</Header2>
               <RunPanel
                 selected={selectedId === "trigger"}
-                onClick={() => selectedTrigger()}
+                onClick={() =>
+                  navigate(runTriggerPath(organization, project, job, run))
+                }
               >
                 <RunPanelHeader
                   icon={<BoltIcon className="h-5 w-5 text-orange-500" />}
@@ -304,7 +294,11 @@ export default function Page() {
                     <TaskCard
                       key={task.id}
                       selectedId={selectedId}
-                      selectedTask={selectedTask}
+                      selectedTask={(taskId) =>
+                        navigate(
+                          runTaskPath(organization, project, job, run, taskId)
+                        )
+                      }
                       isLast={isLast}
                       depth={0}
                       {...task}
@@ -320,7 +314,9 @@ export default function Page() {
                 <Header2 className={cn("mb-2")}>Run Summary</Header2>
                 <RunPanel
                   selected={selectedId === "completed"}
-                  onClick={() => selectedCompleted()}
+                  onClick={() =>
+                    navigate(runCompletedPath(organization, project, job, run))
+                  }
                 >
                   <RunPanelHeader
                     icon={
