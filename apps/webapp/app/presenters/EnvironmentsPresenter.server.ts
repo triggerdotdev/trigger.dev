@@ -11,6 +11,7 @@ import {
   RuntimeEnvironment,
   RuntimeEnvironmentType,
 } from "../../../../packages/database/src";
+import { env } from "~/env.server";
 
 export type Client = {
   slug: string;
@@ -56,9 +57,12 @@ export class EnvironmentsPresenter {
 
   public async call({
     userId,
-    slug: projectSlug,
-  }: Pick<Project, "slug"> & {
+    projectSlug,
+    baseUrl,
+  }: {
     userId: User["id"];
+    projectSlug: Project["slug"];
+    baseUrl: string;
   }) {
     const environments = await this.#prismaClient.runtimeEnvironment.findMany({
       select: {
@@ -162,7 +166,8 @@ export class EnvironmentsPresenter {
       if (devEndpoint) {
         client.endpoints.DEVELOPMENT = endpointClient(
           devEndpoint,
-          developmentEnvironment
+          developmentEnvironment,
+          baseUrl
         );
       }
 
@@ -172,7 +177,8 @@ export class EnvironmentsPresenter {
       if (prodEndpoint) {
         client.endpoints.PRODUCTION = endpointClient(
           prodEndpoint,
-          productionEnvironment
+          productionEnvironment,
+          baseUrl
         );
       }
 
@@ -195,14 +201,15 @@ function endpointClient(
   endpoint: Pick<Endpoint, "id" | "slug" | "url" | "indexingHookIdentifier"> & {
     indexings: Pick<EndpointIndex, "source" | "updatedAt" | "stats">[];
   },
-  environment: Pick<RuntimeEnvironment, "id" | "apiKey" | "type">
+  environment: Pick<RuntimeEnvironment, "id" | "apiKey" | "type">,
+  baseUrl: string
 ): ClientEndpoint {
   return {
     state: "configured" as const,
     id: endpoint.id,
     slug: endpoint.slug,
     url: endpoint.url,
-    indexWebhookPath: `/api/v1/endpoints/${environment.id}/${endpoint.slug}/index/${endpoint.indexingHookIdentifier}`,
+    indexWebhookPath: `${baseUrl}/api/v1/endpoints/${environment.id}/${endpoint.slug}/index/${endpoint.indexingHookIdentifier}`,
     latestIndex: endpoint.indexings[0]
       ? {
           source: endpoint.indexings[0].source,

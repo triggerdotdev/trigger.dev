@@ -25,6 +25,7 @@ import { FormError } from "~/components/primitives/FormError";
 import { useEventSource } from "remix-utils";
 import { useEffect } from "react";
 import { endpointStreamingPath } from "~/utils/pathBuilder";
+import { ClipboardField } from "~/components/ClipboardField";
 
 type ConfigureEndpointSheetProps = {
   slug: string;
@@ -94,7 +95,7 @@ export function ConfigureEndpointSheet({
             {...form.props}
           >
             <InputGroup className="max-w-none">
-              <Label>Endpoint URL</Label>
+              <Header2>Endpoint URL</Header2>
               <div className="flex items-center">
                 <input
                   {...conform.input(clientSlug, { type: "hidden" })}
@@ -104,7 +105,7 @@ export function ConfigureEndpointSheet({
                   className="rounded-r-none"
                   {...conform.input(url, { type: "url" })}
                   defaultValue={"url" in endpoint ? endpoint.url : ""}
-                  placeholder="Path to your Trigger API route"
+                  placeholder="URL for your Trigger API route"
                 />
                 <Button
                   type="submit"
@@ -130,10 +131,10 @@ export function ConfigureEndpointSheet({
           </setEndpointUrlFetcher.Form>
 
           {endpoint.state === "configured" && (
-            <div className="mt-4 flex flex-col">
+            <div className="mt-4 flex flex-col gap-4">
               <div>
                 <Header2>Status</Header2>
-                <Paragraph>
+                <Paragraph className="mb-2" variant="small">
                   We connect to your endpoint and refresh your Jobs.
                 </Paragraph>
                 <refreshEndpointFetcher.Form
@@ -163,6 +164,17 @@ export function ConfigureEndpointSheet({
                     </Button>
                   </Callout>
                 </refreshEndpointFetcher.Form>
+              </div>
+              <div className="max-w-full overflow-hidden">
+                <Header2>Automatic refreshing</Header2>
+                <Paragraph className="mb-2" variant="small">
+                  Use this webhook URL so your Jobs get automatically refreshed
+                  when you deploy. View Vercel instructions here.
+                </Paragraph>
+                <ClipboardField
+                  variant="secondary/medium"
+                  value={endpoint.indexWebhookPath}
+                />
               </div>
             </div>
           )}

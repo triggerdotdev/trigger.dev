@@ -41,10 +41,13 @@ export const loader = async ({ request, params }: LoaderArgs) => {
   const { projectParam } = ProjectParamSchema.parse(params);
 
   try {
+    const url = new URL(request.url);
+    const baseUrl = `${url.protocol}//${url.host}`;
     const presenter = new EnvironmentsPresenter();
     const { environments, clients } = await presenter.call({
       userId,
-      slug: projectParam,
+      projectSlug: projectParam,
+      baseUrl,
     });
 
     return typedjson({
