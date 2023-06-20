@@ -285,9 +285,12 @@ export default function Page() {
                   }
                 />
                 <RunPanelBody>
-                  {run.properties.length > 0 && (
-                    <RunPanelProperties properties={run.properties} />
-                  )}
+                  <RunPanelProperties
+                    properties={[
+                      { label: "Event name", text: run.event.name },
+                      ...run.properties,
+                    ]}
+                  />
                 </RunPanelBody>
               </RunPanel>
             </div>
