@@ -16,6 +16,8 @@ import { RadioGroup, RadioGroupItem } from "../primitives/RadioButton";
 import { ApiKeyHelp } from "./ApiKeyHelp";
 import { CustomHelp } from "./CustomHelp";
 import { SelectOAuthMethod } from "./SelectOAuthMethod";
+import { Paragraph } from "../primitives/Paragraph";
+import { LinkButton } from "../primitives/Buttons";
 
 type IntegrationMethod = "apikey" | "oauth2" | "custom";
 
@@ -44,7 +46,19 @@ export function ConnectToIntegrationSheet({
       <SheetContent size="lg">
         <SheetHeader>
           <NamedIconInBox name={integration.identifier} className="h-9 w-9" />
-          <Header1>{integration.name}</Header1>
+          <div className="grow">
+            <Header2>{integration.name}</Header2>
+            {integration.description && (
+              <Paragraph variant="small">{integration.description}</Paragraph>
+            )}
+          </div>
+          <LinkButton
+            to={`https://trigger.dev/docs/integrations/${integration.identifier}`}
+            variant="secondary/small"
+            LeadingIcon="docs"
+          >
+            View docs
+          </LinkButton>
         </SheetHeader>
         <SheetBody>
           <Header2 className="mb-2">Choose an integration method</Header2>
