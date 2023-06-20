@@ -169,7 +169,8 @@ export function ConfigureEndpointSheet({
                 <Header2>Automatic refreshing</Header2>
                 <Paragraph className="mb-2" variant="small">
                   Use this webhook URL so your Jobs get automatically refreshed
-                  when you deploy. View Vercel instructions here.
+                  when you deploy. You just need to hit this URL (POST) and we
+                  will refresh your Jobs.
                 </Paragraph>
                 <ClipboardField
                   variant="secondary/medium"
