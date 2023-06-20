@@ -1,7 +1,7 @@
 import { Fragment } from "react";
-import { useIsMac } from "~/hooks/useIsMac";
 import { Modifier, ShortcutDefinition } from "~/hooks/useShortcutKeys";
 import { cn } from "~/utils/cn";
+import { useOperatingSystem } from "./OperatingSystemProvider";
 
 const variants = {
   small:
@@ -23,9 +23,10 @@ export function ShortcutKey({
   variant,
   className,
 }: ShortcutKeyProps) {
-  const isMac = useIsMac();
+  const { platform } = useOperatingSystem();
+  const isMac = platform === "mac";
   let relevantShortcut =
-    "all" in shortcut ? shortcut.all : isMac ? shortcut.mac : shortcut.windows;
+    "mac" in shortcut ? (isMac ? shortcut.mac : shortcut.windows) : shortcut;
   const modifiers = relevantShortcut.modifiers ?? [];
   const character = relevantShortcut.key;
 

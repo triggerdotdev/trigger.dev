@@ -42,7 +42,11 @@ function PageHeaders() {
           <PageTitleRow>
             <PageTitle title="Organizations" />
             <PageButtons>
-              <LinkButton to={""} variant="primary/small" shortcut="N">
+              <LinkButton
+                to={""}
+                variant="primary/small"
+                shortcut={{ key: "n" }}
+              >
                 Create a new Organization
               </LinkButton>
             </PageButtons>
@@ -61,7 +65,11 @@ function PageHeaders() {
               backButton={{ to: "#", text: "Orgs" }}
             />
             <PageButtons>
-              <LinkButton to={""} variant="primary/small" shortcut="N">
+              <LinkButton
+                to={""}
+                variant="primary/small"
+                shortcut={{ key: "n" }}
+              >
                 Create a new Organization
               </LinkButton>
             </PageButtons>

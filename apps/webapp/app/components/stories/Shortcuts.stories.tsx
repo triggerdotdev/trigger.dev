@@ -3,6 +3,8 @@ import { Switch } from "../primitives/Switch";
 import { ShortcutKey } from "../primitives/ShortcutKey";
 import { ShortcutDefinition } from "~/hooks/useShortcutKeys";
 import { Button } from "../primitives/Buttons";
+import { OperatingSystemContextProvider } from "../primitives/OperatingSystemProvider";
+import { Header1 } from "../primitives/Headers";
 
 const meta: Meta = {
   title: "Primitives/ShortcutKey",
@@ -17,16 +19,26 @@ export const ShortcutKeys: Story = {
 };
 
 const shortcuts: ShortcutDefinition[] = [
-  { all: { key: "esc" } },
-  { all: { key: "f" } },
-  { all: { key: "f", modifiers: ["meta"] } },
-  { all: { key: "k", modifiers: ["meta"] } },
-  { all: { key: "del", modifiers: ["alt", "ctrl"] } },
+  { key: "esc" },
+  { key: "f" },
+  { key: "f", modifiers: ["meta"] },
+  { key: "k", modifiers: ["meta"] },
+  { key: "del", modifiers: ["alt", "ctrl"] },
 ];
 
 function Collection() {
   return (
     <div className="flex flex-col items-start gap-y-4">
+      <Set platform="mac" />
+      <Set platform="windows" />
+    </div>
+  );
+}
+
+function Set({ platform }: { platform: "mac" | "windows" }) {
+  return (
+    <OperatingSystemContextProvider platform={platform}>
+      <Header1>{platform}</Header1>
       {shortcuts.map((shortcut, index) => (
         <div key={index} className="flex items-center gap-x-2">
           <ShortcutKey shortcut={shortcut} variant="small" />
@@ -57,6 +69,6 @@ function Collection() {
           </Button>
         </div>
       ))}
-    </div>
+    </OperatingSystemContextProvider>
   );
 }

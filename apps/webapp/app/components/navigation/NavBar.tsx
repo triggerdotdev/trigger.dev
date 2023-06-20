@@ -31,7 +31,8 @@ export function NavBar() {
           variant="secondary/small"
           data-attr="posthog-feedback-button"
           LeadingIcon={ChatBubbleLeftRightIcon}
-          shortcut="F"
+          shortcut={{ key: "f" }}
+          onClick={() => console.log("feedback")}
         >
           Send us feedback
         </Button>

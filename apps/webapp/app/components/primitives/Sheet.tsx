@@ -1,10 +1,9 @@
 "use client";
 
-import * as React from "react";
 import * as SheetPrimitive from "@radix-ui/react-dialog";
 import type { VariantProps } from "class-variance-authority";
 import { cva } from "class-variance-authority";
-import { X } from "lucide-react";
+import * as React from "react";
 import { cn } from "~/utils/cn";
 import { NamedIcon } from "./NamedIcon";
 import { ShortcutKey } from "./ShortcutKey";
@@ -165,7 +164,7 @@ const SheetContent = React.forwardRef<
             <NamedIcon name="close" className="h-4 w-4" />
             <span className="sr-only">Close</span>
           </SheetPrimitive.Close>
-          <ShortcutKey shortcut={{ all: { key: "esc" } }} variant="medium" />
+          <ShortcutKey shortcut={{ key: "esc" }} variant="small" />
         </div>
         <div className="flex max-h-full flex-col overflow-hidden">
           {children}
@@ -212,4 +211,4 @@ export const SheetFooter = ({
   </div>
 );
 
-export { Sheet, SheetTrigger, SheetContent };
+export { Sheet, SheetContent, SheetTrigger };

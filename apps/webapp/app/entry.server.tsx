@@ -8,6 +8,10 @@ import type { EntryContext, Headers } from "@remix-run/node"; // or cloudflare/d
 import { parseAcceptLanguage } from "intl-parse-accept-language";
 import isbot from "isbot";
 import { LocaleContextProvider } from "./components/primitives/LocaleProvider";
+import {
+  OperatingSystemContextProvider,
+  OperatingSystemPlatform,
+} from "./components/primitives/OperatingSystemProvider";
 
 const ABORT_DELAY = 30000;
 
@@ -22,6 +26,16 @@ export default function handleRequest(
     validate: Intl.DateTimeFormat.supportedLocalesOf,
   });
 
+  //get whether it's a mac or pc from the headers
+  const platform: OperatingSystemPlatform = request.headers
+    .get("user-agent")
+    ?.includes("Mac")
+    ? "mac"
+    : "windows";
+
+  console.log("User Agent", request.headers.get("user-agent"));
+  console.log("Server Platform", platform);
+
   // If the request is from a bot, we want to wait for the full
   // response to render before sending it to the client. This
   // ensures that bots can see the full page content.
@@ -31,7 +45,8 @@ export default function handleRequest(
       responseStatusCode,
       responseHeaders,
       remixContext,
-      locales
+      locales,
+      platform
     );
   }
 
@@ -40,7 +55,8 @@ export default function handleRequest(
     responseStatusCode,
     responseHeaders,
     remixContext,
-    locales
+    locales,
+    platform
   );
 }
 
@@ -49,17 +65,20 @@ function serveTheBots(
   responseStatusCode: number,
   responseHeaders: Headers,
   remixContext: EntryContext,
-  locales: string[]
+  locales: string[],
+  platform: OperatingSystemPlatform
 ) {
   return new Promise((resolve, reject) => {
     const { pipe, abort } = renderToPipeableStream(
-      <LocaleContextProvider locales={locales}>
-        <RemixServer
-          context={remixContext}
-          url={request.url}
-          abortDelay={ABORT_DELAY}
-        />
-      </LocaleContextProvider>,
+      <OperatingSystemContextProvider platform={platform}>
+        <LocaleContextProvider locales={locales}>
+          <RemixServer
+            context={remixContext}
+            url={request.url}
+            abortDelay={ABORT_DELAY}
+          />
+        </LocaleContextProvider>
+      </OperatingSystemContextProvider>,
       {
         // Use onAllReady to wait for the entire document to be ready
         onAllReady() {
@@ -87,18 +106,21 @@ function serveBrowsers(
   responseStatusCode: number,
   responseHeaders: Headers,
   remixContext: EntryContext,
-  locales: string[]
+  locales: string[],
+  platform: OperatingSystemPlatform
 ) {
   return new Promise((resolve, reject) => {
     let didError = false;
     const { pipe, abort } = renderToPipeableStream(
-      <LocaleContextProvider locales={locales}>
-        <RemixServer
-          context={remixContext}
-          url={request.url}
-          abortDelay={ABORT_DELAY}
-        />
-      </LocaleContextProvider>,
+      <OperatingSystemContextProvider platform={platform}>
+        <LocaleContextProvider locales={locales}>
+          <RemixServer
+            context={remixContext}
+            url={request.url}
+            abortDelay={ABORT_DELAY}
+          />
+        </LocaleContextProvider>
+      </OperatingSystemContextProvider>,
       {
         // use onShellReady to wait until a suspense boundary is triggered
         onShellReady() {

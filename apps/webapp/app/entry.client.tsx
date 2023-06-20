@@ -4,12 +4,17 @@ import * as Sentry from "@sentry/remix";
 import { useEffect } from "react";
 import posthog from "posthog-js";
 import { LocaleContextProvider } from "./components/primitives/LocaleProvider";
+import { OperatingSystemContextProvider } from "./components/primitives/OperatingSystemProvider";
 
 hydrateRoot(
   document,
-  <LocaleContextProvider locales={window.navigator.languages as string[]}>
-    <RemixBrowser />
-  </LocaleContextProvider>
+  <OperatingSystemContextProvider
+    platform={window.navigator.userAgent.includes("Mac") ? "mac" : "windows"}
+  >
+    <LocaleContextProvider locales={window.navigator.languages as string[]}>
+      <RemixBrowser />
+    </LocaleContextProvider>
+  </OperatingSystemContextProvider>
 );
 
 if (process.env.NODE_ENV === "production") {

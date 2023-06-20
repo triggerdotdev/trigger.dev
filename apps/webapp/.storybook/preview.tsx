@@ -3,6 +3,7 @@ import "../app/tailwind.css";
 import { unstable_createRemixStub } from "@remix-run/testing";
 import React from "react";
 import { LocaleContextProvider } from "../app/components/primitives/LocaleProvider";
+import { OperatingSystemContextProvider } from "../app/components/primitives/OperatingSystemProvider";
 
 const preview: Preview = {
   parameters: {
@@ -33,9 +34,13 @@ const preview: Preview = {
       ]);
 
       return (
-        <LocaleContextProvider locales={window.navigator.languages as string[]}>
-          <RemixStub initialEntries={["/"]} />
-        </LocaleContextProvider>
+        <OperatingSystemContextProvider platform="mac">
+          <LocaleContextProvider
+            locales={window.navigator.languages as string[]}
+          >
+            <RemixStub initialEntries={["/"]} />
+          </LocaleContextProvider>
+        </OperatingSystemContextProvider>
       );
     },
   ],

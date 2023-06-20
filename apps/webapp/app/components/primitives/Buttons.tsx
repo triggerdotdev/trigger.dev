@@ -1,6 +1,11 @@
 import { Link, LinkProps, NavLink, NavLinkProps } from "@remix-run/react";
-import React from "react";
-import { ShortcutDefinition } from "~/hooks/useShortcutKeys";
+import React, {
+  ReactComponentElement,
+  forwardRef,
+  useImperativeHandle,
+  useRef,
+} from "react";
+import { ShortcutDefinition, useShortcutKeys } from "~/hooks/useShortcutKeys";
 import { cn } from "~/utils/cn";
 import { NamedIcon } from "./NamedIcon";
 import { ShortcutKey } from "./ShortcutKey";
@@ -238,8 +243,23 @@ type ButtonPropsType = Pick<
 > &
   React.ComponentProps<typeof ButtonContent>;
 
-export const Button = React.forwardRef<HTMLButtonElement, ButtonPropsType>(
+export const Button = forwardRef<HTMLButtonElement, ButtonPropsType>(
   ({ type, disabled, onClick, ...props }, ref) => {
+    const innerRef = useRef<HTMLButtonElement>(null);
+    useImperativeHandle(ref, () => innerRef.current as HTMLButtonElement);
+
+    if (props.shortcut) {
+      useShortcutKeys({
+        shortcut: props.shortcut,
+        action: () => {
+          if (innerRef.current) {
+            innerRef.current.click();
+          }
+        },
+        disabled,
+      });
+    }
+
     return (
       <button
         className={cn("group outline-none", props.fullWidth ? "w-full" : "")}
@@ -248,7 +268,7 @@ export const Button = React.forwardRef<HTMLButtonElement, ButtonPropsType>(
         onClick={onClick}
         name={props.name}
         value={props.value}
-        ref={ref}
+        ref={innerRef}
         form={props.form}
       >
         <ButtonContent {...props} />
@@ -260,10 +280,23 @@ export const Button = React.forwardRef<HTMLButtonElement, ButtonPropsType>(
 type LinkPropsType = Pick<LinkProps, "to" | "target"> &
   React.ComponentProps<typeof ButtonContent>;
 export const LinkButton = ({ to, ...props }: LinkPropsType) => {
+  const innerRef = useRef<HTMLAnchorElement>(null);
+  if (props.shortcut) {
+    useShortcutKeys({
+      shortcut: props.shortcut,
+      action: () => {
+        if (innerRef.current) {
+          innerRef.current.click();
+        }
+      },
+    });
+  }
+
   if (to.toString().startsWith("http")) {
     return (
       <ExtLink
         href={to.toString()}
+        ref={innerRef}
         className={cn("group outline-none", props.fullWidth ? "w-full" : "")}
       >
         <ButtonContent {...props} />
@@ -273,6 +306,7 @@ export const LinkButton = ({ to, ...props }: LinkPropsType) => {
     return (
       <Link
         to={to}
+        ref={innerRef}
         className={cn("group outline-none", props.fullWidth ? "w-full" : "")}
       >
         <ButtonContent {...props} />
@@ -314,16 +348,19 @@ type ExtLinkProps = JSX.IntrinsicElements["a"] & {
   href: string;
 };
 
-function ExtLink({ className, href, children, ...props }: ExtLinkProps) {
-  return (
-    <a
-      className={cn(className)}
-      target="_blank"
-      rel="noopener noreferrer"
-      href={href}
-      {...props}
-    >
-      {children}
-    </a>
-  );
-}
+const ExtLink = forwardRef<HTMLAnchorElement, ExtLinkProps>(
+  ({ className, href, children, ...props }, ref) => {
+    return (
+      <a
+        className={cn(className)}
+        target="_blank"
+        rel="noopener noreferrer"
+        href={href}
+        ref={ref}
+        {...props}
+      >
+        {children}
+      </a>
+    );
+  }
+);

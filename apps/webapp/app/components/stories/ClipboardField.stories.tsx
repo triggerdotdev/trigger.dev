@@ -26,11 +26,7 @@ function ClipboardFieldExample() {
         <ClipboardField
           value="with leadingIcon"
           variant="tertiary/small"
-          icon={
-            <EnvironmentLabel
-              environment={{ type: "PRODUCTION", slug: "PROD" }}
-            />
-          }
+          icon={<EnvironmentLabel environment={{ type: "PRODUCTION" }} />}
         />
         <ClipboardField
           value="with leadingIcon"
@@ -43,11 +39,7 @@ function ClipboardFieldExample() {
         <ClipboardField
           value="with leadingIcon"
           variant="tertiary/medium"
-          icon={
-            <EnvironmentLabel
-              environment={{ type: "DEVELOPMENT", slug: "DEV" }}
-            />
-          }
+          icon={<EnvironmentLabel environment={{ type: "DEVELOPMENT" }} />}
         />
         <ClipboardField
           value="with leadingIcon"
@@ -74,11 +66,7 @@ function ClipboardFieldExample() {
         <ClipboardField
           value="with leadingIcon"
           variant="tertiary/small"
-          icon={
-            <EnvironmentLabel
-              environment={{ type: "STAGING", slug: "STAGING" }}
-            />
-          }
+          icon={<EnvironmentLabel environment={{ type: "STAGING" }} />}
           secure={true}
         />
         <ClipboardField
@@ -105,11 +93,7 @@ function ClipboardFieldExample() {
         <ClipboardField
           value="with leadingIcon"
           variant="tertiary/medium"
-          icon={
-            <EnvironmentLabel
-              environment={{ type: "PRODUCTION", slug: "PROD" }}
-            />
-          }
+          icon={<EnvironmentLabel environment={{ type: "PRODUCTION" }} />}
           secure={true}
         />
         <ClipboardField

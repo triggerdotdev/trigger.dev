@@ -32,7 +32,7 @@ export function OrgAdminHeader() {
           <LinkButton
             to={newProjectPath(organization)}
             variant="primary/small"
-            shortcut="N"
+            shortcut={{ key: "n" }}
           >
             Create a new project
           </LinkButton>

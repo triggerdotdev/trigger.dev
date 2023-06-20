@@ -439,10 +439,10 @@ function RerunPopover({
 }) {
   return (
     <Popover>
-      <PopoverTrigger>
-        <ButtonContent variant="primary/small" shortcut="R">
+      <PopoverTrigger asChild={true}>
+        <Button variant="primary/small" shortcut={{ key: "R" }}>
           Rerun Job
-        </ButtonContent>
+        </Button>
       </PopoverTrigger>
       <PopoverContent className="flex w-80 flex-col gap-2 p-4" align="end">
         <Form method="post">

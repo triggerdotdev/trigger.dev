@@ -80,7 +80,7 @@ export default function Job() {
               <LinkButton
                 to={jobTestPath(organization, project, job)}
                 variant="primary/small"
-                shortcut="T"
+                shortcut={{ key: "t" }}
               >
                 Test
               </LinkButton>

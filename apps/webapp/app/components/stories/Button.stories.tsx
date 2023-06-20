@@ -87,19 +87,19 @@ function ButtonList({ primary }: { primary: string }) {
           <Header3 className="mb-1 uppercase">Shortcut</Header3>
           <Button
             variant="primary/small"
-            shortcut={{ all: { key: "s", modifiers: ["meta"] } }}
+            shortcut={{ key: "s", modifiers: ["meta"] }}
           >
             Primary button
           </Button>
-          <Button variant="secondary/small" shortcut={{ all: { key: "f" } }}>
+          <Button variant="secondary/small" shortcut={{ key: "f" }}>
             Secondary button
           </Button>
-          <Button variant="tertiary/small" shortcut={{ all: { key: "i" } }}>
+          <Button variant="tertiary/small" shortcut={{ key: "i" }}>
             Tertiary button
           </Button>
           <Button
             variant="danger/small"
-            shortcut={{ all: { key: "s", modifiers: ["meta"] } }}
+            shortcut={{ key: "s", modifiers: ["meta"] }}
           >
             Danger button
           </Button>
@@ -203,25 +203,25 @@ function ButtonList({ primary }: { primary: string }) {
           <Header3 className="mb-1 uppercase">Shortcut</Header3>
           <Button
             variant="primary/medium"
-            shortcut={{ all: { key: "s", modifiers: ["meta"] } }}
+            shortcut={{ key: "s", modifiers: ["meta"] }}
           >
             Primary button
           </Button>
           <Button
             variant="secondary/medium"
-            shortcut={{ all: { key: "s", modifiers: ["meta"] } }}
+            shortcut={{ key: "s", modifiers: ["meta"] }}
           >
             Secondary button
           </Button>
           <Button
             variant="tertiary/medium"
-            shortcut={{ all: { key: "s", modifiers: ["meta"] } }}
+            shortcut={{ key: "s", modifiers: ["meta"] }}
           >
             Tertiary button
           </Button>
           <Button
             variant="danger/medium"
-            shortcut={{ all: { key: "s", modifiers: ["meta"] } }}
+            shortcut={{ key: "s", modifiers: ["meta"] }}
           >
             Danger button
           </Button>
