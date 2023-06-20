@@ -1,7 +1,7 @@
 import { RuntimeEnvironmentType } from "@/../../packages/internal/src";
 import { conform } from "@conform-to/react";
 import { parse } from "@conform-to/zod";
-import { BoltIcon } from "@heroicons/react/24/solid";
+import { BoltIcon, ForwardIcon } from "@heroicons/react/24/solid";
 import { Form, Outlet, useNavigate, useRevalidator } from "@remix-run/react";
 import { ActionFunction, LoaderArgs, json } from "@remix-run/server-runtime";
 import { useCallback, useEffect, useMemo } from "react";
@@ -464,13 +464,15 @@ function RerunPopover({
                 type="submit"
                 name={conform.INTENT}
                 value="start"
+                fullWidth
+                LeadingIcon={BoltIcon}
               >
                 Run again
               </Button>
 
-              <Paragraph variant="small" className="mt-2">
-                Start a brand new job run with the same data as this one. This
-                will re-do any task that has already been completed.
+              <Paragraph variant="extra-small" className="mt-2">
+                Start a brand new job run with the same Trigger data as this
+                one. This will re-do every task.
               </Paragraph>
             </div>
             {status === "FAILED" && (
@@ -480,11 +482,13 @@ function RerunPopover({
                   type="submit"
                   name={conform.INTENT}
                   value="continue"
+                  fullWidth
+                  LeadingIcon={ForwardIcon}
                 >
                   Retry job run
                 </Button>
 
-                <Paragraph variant="small" className="mt-2">
+                <Paragraph variant="extra-small" className="mt-2">
                   Continue running this job run from where it left off. This
                   will skip any task that has already been completed.
                 </Paragraph>
