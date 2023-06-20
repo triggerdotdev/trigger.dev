@@ -33,9 +33,6 @@ export default function handleRequest(
     ? "mac"
     : "windows";
 
-  console.log("User Agent", request.headers.get("user-agent"));
-  console.log("Server Platform", platform);
-
   // If the request is from a bot, we want to wait for the full
   // response to render before sending it to the client. This
   // ensures that bots can see the full page content.
