@@ -70,7 +70,7 @@ export interface EventSpecification<TEvent extends any> {
     id: string;
     name: string;
     icon?: string;
-    payload: TEvent;
+    payload: any;
   }>;
   filter?: EventFilter;
   parsePayload: (payload: unknown) => TEvent;
