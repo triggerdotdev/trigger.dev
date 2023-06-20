@@ -8,7 +8,7 @@ import {
 } from "~/components/primitives/Sheet";
 import { ClientEndpoint } from "~/presenters/EnvironmentsPresenter.server";
 import { RuntimeEnvironmentType } from "../../../../../packages/database/src";
-import { useFetcher } from "@remix-run/react";
+import { useFetcher, useRevalidator } from "@remix-run/react";
 import { InputGroup } from "~/components/primitives/InputGroup";
 import { Input } from "~/components/primitives/Input";
 import { Button } from "~/components/primitives/Buttons";
@@ -22,6 +22,9 @@ import { conform, useForm } from "@conform-to/react";
 import { parse } from "@conform-to/zod";
 import { bodySchema } from "../resources.environments.$environmentParam.endpoint";
 import { FormError } from "~/components/primitives/FormError";
+import { useEventSource } from "remix-utils";
+import { useEffect } from "react";
+import { endpointStreamingPath } from "~/utils/pathBuilder";
 
 type ConfigureEndpointSheetProps = {
   slug: string;
@@ -45,6 +48,21 @@ export function ConfigureEndpointSheet({
     },
   });
   const loadingEndpointUrl = setEndpointUrlFetcher.state !== "idle";
+
+  const revalidator = useRevalidator();
+  const events = useEventSource(
+    endpointStreamingPath({ id: endpoint.environment.id }),
+    {
+      event: "message",
+    }
+  );
+
+  useEffect(() => {
+    if (events !== null) {
+      revalidator.revalidate();
+    }
+    // WARNING Don't put the revalidator in the useEffect deps array or bad things will happen
+  }, [events]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <Sheet

@@ -1,8 +1,9 @@
-import type { Integration } from "@trigger.dev/database";
+import type { Integration, RuntimeEnvironment } from "@trigger.dev/database";
 import { Job } from "~/models/job.server";
 import type { Organization } from "~/models/organization.server";
 import type { Project } from "~/models/project.server";
 import { z } from "zod";
+import { Environment } from "vitest";
 
 type OrgForPath = Pick<Organization, "slug">;
 type ProjectForPath = Pick<Project, "slug">;
@@ -102,6 +103,10 @@ export function projectEnvironmentsPath(
   project: ProjectForPath
 ) {
   return `${projectPath(organization, project)}/environments`;
+}
+
+export function endpointStreamingPath(environment: { id: string }) {
+  return `/resources/environments/${environment.id}/endpoint/stream`;
 }
 
 export function newProjectPath(organization: OrgForPath) {
