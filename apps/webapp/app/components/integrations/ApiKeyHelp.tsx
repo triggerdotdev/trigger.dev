@@ -6,6 +6,7 @@ import { Paragraph } from "../primitives/Paragraph";
 import { CodeBlock } from "../code/CodeBlock";
 import { InlineCode } from "../code/InlineCode";
 import { Header1, Header2 } from "../primitives/Headers";
+import { ClipboardField } from "../primitives/ClipboardField";
 
 export function ApiKeyHelp({
   integration,
@@ -27,8 +28,9 @@ export function ApiKeyHelp({
         First install the <InlineCode>{integration.packageName}</InlineCode>{" "}
         package using your preferred package manager. For example:
       </Paragraph>
-      <CodeBlock
-        code={`npm install ${integration.packageName}`}
+      <ClipboardField
+        variant="secondary/medium"
+        value={`npm install ${integration.packageName}`}
         className="mb-4"
       />
       {apiAuth.help.samples.map((sample, i) => (
