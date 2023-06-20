@@ -1,6 +1,7 @@
-import Image from "next/image";
-import { Header2, Header3 } from "./components/Header";
+import { Header1, Header2 } from "./components/Header";
 import { Paragraph } from "./components/Paragraph";
+import { PrimaryGradientText } from "./components/TextStyling";
+import { ToDoRow, ToDoRowAdd } from "./components/ToDoRow";
 
 export default function Home() {
   return (
@@ -53,7 +54,16 @@ export default function Home() {
           </Paragraph>
         </div>
       </div>
-      <div className="h-full bg-slate-800"></div>
+      <div className="h-full w-full items-center justify-center flex flex-col px-2">
+        <Header1 variant="base/bold" className="mb-6">
+          <PrimaryGradientText>To-do list</PrimaryGradientText>
+        </Header1>
+        <div className="flex flex-col w-full gap-y-4">
+          <ToDoRow variant="add" />
+          <ToDoRow variant="active" />
+          <ToDoRow variant="completed" />
+        </div>
+      </div>
       <div className="h-full bg-slate-900"></div>
     </main>
   );
