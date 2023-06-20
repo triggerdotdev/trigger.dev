@@ -503,7 +503,7 @@ export class IO {
         const parsedError = ErrorWithStackSchema.safeParse(error);
 
         if (options.retry) {
-          const retryAt = calculateRetryAt(options.retry, task.attempts);
+          const retryAt = calculateRetryAt(options.retry, task.attempts - 1);
 
           if (retryAt) {
             throw new RetryWithTaskError(
