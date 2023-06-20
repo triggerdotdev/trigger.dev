@@ -10,16 +10,34 @@ type ExampleInputData = {
     key: string;
     value: string;
   };
-  now: Date;
+  data: {
+    now: Date;
+  };
 };
 
 export const currentDate: ExampleReplacement = {
   marker: "__CURRENT_DATE__",
-  replace({ now }: ExampleInputData) {
+  replace({ data: { now } }: ExampleInputData) {
     return now.toISOString();
   },
 };
 
-export const replacements: ExampleReplacement[] = [currentDate];
+export const currentTimestampMilliseconds: ExampleReplacement = {
+  marker: "__CURRENT_TIMESTAMP_MS__",
+  replace({ data: { now } }: ExampleInputData) {
+    return now.getTime();
+  },
+};
 
-DeserializedJsonSchema;
+export const currentTimestampSeconds: ExampleReplacement = {
+  marker: "__CURRENT_TIMESTAMP_S__",
+  replace({ data: { now } }: ExampleInputData) {
+    return now.getTime() / 1000;
+  },
+};
+
+export const replacements: ExampleReplacement[] = [
+  currentDate,
+  currentTimestampMilliseconds,
+  currentTimestampSeconds,
+];
