@@ -1,9 +1,12 @@
+import { FireIcon } from "@heroicons/react/24/solid";
 import type { LoaderArgs } from "@remix-run/server-runtime";
+import { useState } from "react";
 import {
   UseDataFunctionReturn,
   typedjson,
   useTypedLoaderData,
 } from "remix-typedjson";
+import { LogoIcon } from "~/components/LogoIcon";
 import { ConnectToIntegrationSheet } from "~/components/integrations/ConnectToIntegrationSheet";
 import { NoIntegrationSheet } from "~/components/integrations/NoIntegrationSheet";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
@@ -21,6 +24,7 @@ import {
   PageTitleRow,
 } from "~/components/primitives/PageHeader";
 import { Paragraph } from "~/components/primitives/Paragraph";
+import { Switch } from "~/components/primitives/Switch";
 import {
   Table,
   TableBlankRow,
@@ -120,16 +124,32 @@ function PossibleIntegrationsList({
   options: IntegrationOrApi[];
   organizationId: string;
 }) {
+  const [onlyShowIntegrations, setOnlyShowIntegrations] = useState(false);
+  const optionsToShow = onlyShowIntegrations
+    ? options.filter((o) => o.type === "integration")
+    : options;
   const { filterText, setFilterText, filteredItems } =
     useTextFilter<IntegrationOrApi>({
-      items: options,
+      items: optionsToShow,
       filter: (integration, text) =>
         integration.name.toLowerCase().includes(text.toLowerCase()),
     });
 
   return (
     <div className="overflow-y-auto py-4 pl-4">
-      <Header2 className="mb-2">Connect an API</Header2>
+      <div className="flex items-center justify-between">
+        <Header2 className="mb-2">Connect an API</Header2>
+        <Switch
+          checked={onlyShowIntegrations}
+          onCheckedChange={setOnlyShowIntegrations}
+          variant="small"
+          label={
+            <span className="inline-flex items-center gap-0.5">
+              <IntegrationIcon /> Trigger.dev Integrations
+            </span>
+          }
+        />
+      </div>
       <Input
         placeholder="Search APIs"
         className="mb-2"
@@ -152,6 +172,7 @@ function PossibleIntegrationsList({
                     <AddIntegrationConnection
                       identifier={option.identifier}
                       name={option.name}
+                      isIntegration
                     />
                   }
                 />
@@ -166,6 +187,7 @@ function PossibleIntegrationsList({
                     <AddIntegrationConnection
                       identifier={option.identifier}
                       name={option.name}
+                      isIntegration={false}
                     />
                   }
                 />
@@ -319,26 +341,35 @@ function ConnectedIntegrationsList({
 function AddIntegrationConnection({
   identifier,
   name,
+  isIntegration,
 }: {
   identifier: string;
   name: string;
+  isIntegration: boolean;
 }) {
   return (
     <div className="group flex h-11 w-full items-center gap-3 rounded-md p-1 pr-3 transition hover:bg-slate-850">
       <NamedIconInBox
         name={identifier}
-        className="flex-0 h-9 w-9 transition group-hover:border-slate-750"
+        className="h-9 w-9 flex-none transition group-hover:border-slate-750"
       />
       <Paragraph
         variant="base"
         className="m-0 flex-1 text-left transition group-hover:text-bright"
       >
-        {name}
+        {name}{" "}
       </Paragraph>
-      <NamedIcon
-        name="plus"
-        className="h-6 w-6 flex-none text-slate-700 transition group-hover:text-bright"
-      />
+      <div className="flex flex-none items-center gap-1">
+        {isIntegration && <IntegrationIcon />}
+        <NamedIcon
+          name="plus"
+          className="h-6 w-6 flex-none text-slate-700 transition group-hover:text-bright"
+        />
+      </div>
     </div>
   );
+}
+
+function IntegrationIcon() {
+  return <FireIcon className="h-3.5 w-3.5 flex-none text-amber-500" />;
 }
