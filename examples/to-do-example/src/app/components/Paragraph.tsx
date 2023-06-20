@@ -9,7 +9,7 @@ const paragraphVariants = {
   base: "text-base pb-8 last:pb-0",
   "base/medium": "text-base font-medium pb-8 last:pb-0",
   "base/bold": "text-base font-bold pb-8 last:pb-0",
-  large: "text-base md:text-lg pb-6 last:pb-0",
+  large: "text-base font-medium md:text-xl pb-6 last:pb-0",
   "extraLarge/semiBold": "font-semibold sm:text-2xl text-xl pb-2", // this is the same as Header3 base/semibold
 };
 
