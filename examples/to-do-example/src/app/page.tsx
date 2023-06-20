@@ -1,12 +1,12 @@
 import { Header1, Header2 } from "./components/Header";
 import { Paragraph } from "./components/Paragraph";
 import { PrimaryGradientText } from "./components/TextStyling";
-import { ToDoRow, ToDoRowAdd } from "./components/ToDoRow";
+import { ToDoRow } from "./components/ToDoRow";
 
 export default function Home() {
   return (
     <main className="grid grid-cols-3 h-screen bg-midnight-950">
-      <div className="flex flex-col justify-center h-full px-12">
+      <div className="flex flex-col pt-40 h-full px-12">
         <Header2 variant="small/semibold">To-do list example project</Header2>
         <div className="pb-2 flex">
           <Paragraph variant="small/medium" className="text-slate-500">
@@ -54,7 +54,7 @@ export default function Home() {
           </Paragraph>
         </div>
       </div>
-      <div className="h-full w-full items-center justify-center flex flex-col px-2">
+      <div className="h-full w-full items-center pt-40 flex flex-col px-2">
         <Header1 variant="base/bold" className="mb-6">
           <PrimaryGradientText>To-do list</PrimaryGradientText>
         </Header1>
@@ -64,7 +64,23 @@ export default function Home() {
           <ToDoRow variant="completed" />
         </div>
       </div>
-      <div className="h-full bg-slate-900"></div>
+      <div className="h-full w-full pt-40 flex flex-col px-8">
+        <Paragraph variant="small" capitalize>
+          Trigger.dev jobs
+        </Paragraph>
+        <div className="flex w-full justify-center items-center">
+          <div className="rounded full h-1 w-1 bg-red-500" />
+          <Paragraph
+            variant="extraSmall"
+            removeBottomPadding
+            className="px-2"
+            capitalize
+          >
+            Inactive
+          </Paragraph>
+          <div className="rounded-full h-px w-full bg-slate-800" />
+        </div>
+      </div>
     </main>
   );
 }

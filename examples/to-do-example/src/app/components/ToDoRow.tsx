@@ -18,7 +18,7 @@ const ToDoRowVariants = {
   },
   completed: {
     button: "bg-slate-900 text-slate-100",
-    text: "text-slate-600 italic",
+    text: "text-slate-600",
     icon: <CheckCircleIcon className="text-green-500" />,
   },
 };
