@@ -125,7 +125,6 @@ export const action: ActionFunction = async ({ request, params }) => {
     } else if (submission.intent === "continue") {
       const continueService = new ContinueRunService();
       await continueService.call({ runId: runParam });
-      //todo service needs to do something
 
       return redirectWithSuccessMessage(
         runPath(
