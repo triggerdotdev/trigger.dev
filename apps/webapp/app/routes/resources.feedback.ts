@@ -1,11 +1,12 @@
 import { parse } from "@conform-to/zod";
 import { ActionArgs, json } from "@remix-run/server-runtime";
 import { PlainClient } from "@team-plain/typescript-sdk";
+import { inspect } from "util";
+import { s } from "vitest/dist/index-6e18a03a";
 import { z } from "zod";
 import { env } from "~/env.server";
 import { redirectWithSuccessMessage } from "~/models/message.server";
-import { CreateEndpointError } from "~/services/endpoints/createEndpoint.server";
-import { requireUserId } from "~/services/session.server";
+import { requireUser } from "~/services/session.server";
 
 let client: PlainClient | undefined;
 
@@ -14,14 +15,19 @@ const feedbackType = z.union([z.literal("bug"), z.literal("feature")], {
   invalid_type_error: "Must be either 'bug' or 'feature'",
 });
 
+const feedbackTypeLabel = {
+  bug: "Bug",
+  feature: "Feature request",
+};
+
 export const schema = z.object({
-  redirectPath: z.string(),
+  path: z.string(),
   feedbackType,
   message: z.string().min(1, "Must be at least 1 character"),
 });
 
 export async function action({ request }: ActionArgs) {
-  const userId = await requireUserId(request);
+  const user = await requireUser(request);
 
   const formData = await request.formData();
   const submission = parse(formData, { schema });
@@ -31,14 +37,68 @@ export async function action({ request }: ActionArgs) {
   }
 
   try {
-    if (env.PLAIN_API_KEY) {
-      client = new PlainClient({
-        apiKey: env.PLAIN_API_KEY,
-      });
+    if (!env.PLAIN_API_KEY) {
+      submission.error.message = "PLAIN_API_KEY is not set";
+      return json(submission);
+    }
+
+    client = new PlainClient({
+      apiKey: env.PLAIN_API_KEY,
+    });
+
+    const upsertCustomerRes = await client.upsertCustomer({
+      identifier: {
+        emailAddress: user.email,
+      },
+      onCreate: {
+        fullName: user.name ?? "",
+        email: {
+          email: user.email,
+          isVerified: true,
+        },
+      },
+      onUpdate: {},
+    });
+
+    if (upsertCustomerRes.error) {
+      console.error(
+        inspect(upsertCustomerRes.error, {
+          showHidden: false,
+          depth: null,
+          colors: true,
+        })
+      );
+      submission.error.message = upsertCustomerRes.error.message;
+      return json(submission);
+    }
+
+    const upsertTimelineEntryRes = await client.upsertCustomTimelineEntry({
+      customerId: upsertCustomerRes.data.customer.id,
+      title: feedbackTypeLabel[submission.value.feedbackType],
+      components: [
+        {
+          componentText: {
+            text: submission.value.message,
+          },
+        },
+      ],
+      changeCustomerStatusToActive: true,
+    });
+
+    if (upsertTimelineEntryRes.error) {
+      console.error(
+        inspect(upsertTimelineEntryRes.error, {
+          showHidden: false,
+          depth: null,
+          colors: true,
+        })
+      );
+      submission.error.message = upsertTimelineEntryRes.error.message;
+      return json(submission);
     }
 
     return redirectWithSuccessMessage(
-      submission.value.redirectPath,
+      submission.value.path,
       request,
       "Feedback submitted"
     );

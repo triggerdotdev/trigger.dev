@@ -1,5 +1,29 @@
+import { conform, useForm } from "@conform-to/react";
+import { parse } from "@conform-to/zod";
 import { ChatBubbleLeftRightIcon } from "@heroicons/react/24/solid";
+import {
+  Form,
+  useActionData,
+  useLocation,
+  useNavigation,
+} from "@remix-run/react";
+import { useState } from "react";
+import { schema } from "~/routes/resources.feedback";
 import { Button } from "./primitives/Buttons";
+import { Fieldset } from "./primitives/Fieldset";
+import { FormButtons } from "./primitives/FormButtons";
+import { FormError } from "./primitives/FormError";
+import { InputGroup } from "./primitives/InputGroup";
+import { Label } from "./primitives/Label";
+import { Paragraph } from "./primitives/Paragraph";
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "./primitives/Select";
 import {
   Sheet,
   SheetBody,
@@ -7,37 +31,7 @@ import {
   SheetHeader,
   SheetTrigger,
 } from "./primitives/Sheet";
-import { Header1 } from "./primitives/Headers";
-import { NamedIconInBox } from "./primitives/NamedIcon";
-import { Paragraph } from "./primitives/Paragraph";
-import {
-  Form,
-  useActionData,
-  useLocation,
-  useNavigation,
-} from "@remix-run/react";
-import { Fieldset } from "./primitives/Fieldset";
-import { InputGroup } from "./primitives/InputGroup";
-import { Label } from "./primitives/Label";
-import {
-  Select,
-  SelectContent,
-  SelectGroup,
-  SelectItem,
-  SelectLabel,
-  SelectSeparator,
-  SelectTrigger,
-  SelectValue,
-} from "./primitives/Select";
-import { FormButtons } from "./primitives/FormButtons";
-import { conform, useForm } from "@conform-to/react";
-import { parse } from "@conform-to/zod";
-import { schema } from "~/routes/resources.feedback";
-import { FormError } from "./primitives/FormError";
-import { Input } from "./primitives/Input";
 import { TextArea } from "./primitives/TextArea";
-import { useState } from "react";
-import { set } from "jsonpointer";
 
 export function Feedback() {
   const [open, setOpen] = useState(false);
@@ -45,7 +39,7 @@ export function Feedback() {
   const lastSubmission = useActionData();
   const navigation = useNavigation();
 
-  const [form, { redirectPath, feedbackType, message }] = useForm({
+  const [form, { path, feedbackType, message }] = useForm({
     id: "accept-invite",
     lastSubmission,
     onValidate({ formData }) {
@@ -69,7 +63,6 @@ export function Feedback() {
           variant="secondary/small"
           LeadingIcon={ChatBubbleLeftRightIcon}
           shortcut={{ key: "f" }}
-          onClick={() => console.log("feedback")}
         >
           Send us feedback
         </Button>
@@ -84,7 +77,7 @@ export function Feedback() {
             <Fieldset>
               <input
                 value={location.pathname}
-                {...conform.input(redirectPath, { type: "hidden" })}
+                {...conform.input(path, { type: "hidden" })}
               />
               <InputGroup>
                 <Label>What kind of feedback do you have?</Label>
