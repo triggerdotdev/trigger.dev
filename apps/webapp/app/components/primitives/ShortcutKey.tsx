@@ -5,9 +5,9 @@ import { cn } from "~/utils/cn";
 
 const variants = {
   small:
-    "flex-inline text-[0.55rem] font-medium py-[0.1rem] min-w-[1rem] rounded-[2px] px-[0.2rem] border border-bright/40 text-dimmed group-hover:border-bright/60 group-hover:text-bright transition items-center justify-center text-center uppercase",
+    "text-[0.6rem] font-medium min-w-[17px] rounded-[2px] px-1 ml-1 -mr-0.5 grid place-content-center border border-dimmed/40 text-dimmed group-hover:text-bright/80 group-hover:border-dimmed/60 transition uppercase",
   medium:
-    "flex-inline text-xxs min-w-[1.2rem] pb-[0.15rem] pt-[0.17rem] px-[0.25rem] rounded-[3px] border border-bright/40 text-dimmed group-hover:border-bright/60 group-hover:text-bright transition items-center justify-center text-center uppercase",
+    "text-[0.75rem] font-medium min-w-[17px] rounded-[2px] px-1 ml-1 -mr-0.5 grid place-content-center border border-dimmed/40 text-dimmed group-hover:text-bright/80 group-hover:border-dimmed/60 transition uppercase",
 };
 
 export type ShortcutKeyVariant = keyof typeof variants;
@@ -43,15 +43,11 @@ function modifierString(modifier: Modifier, isMac: boolean) {
   switch (modifier) {
     case "alt":
       return isMac ? "⌥" : "Alt";
-      break;
     case "ctrl":
       return isMac ? "⌃" : "Ctrl";
-      break;
     case "meta":
       return isMac ? "⌘" : "Meta";
-      break;
     case "shift":
       return isMac ? "⇧" : "Shift";
-      break;
   }
 }

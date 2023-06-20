@@ -1,9 +1,9 @@
-import { LinkProps, NavLink, NavLinkProps } from "@remix-run/react";
-import { Link } from "@remix-run/react";
+import { Link, LinkProps, NavLink, NavLinkProps } from "@remix-run/react";
 import React from "react";
+import { ShortcutDefinition } from "~/hooks/useShortcutKeys";
 import { cn } from "~/utils/cn";
-import type { IconNames } from "./NamedIcon";
 import { NamedIcon } from "./NamedIcon";
+import { ShortcutKey } from "./ShortcutKey";
 
 const variant = {
   "primary/small": {
@@ -12,8 +12,9 @@ const variant = {
     button:
       "h-6 px-[5px] text-xs bg-indigo-600 group-hover:bg-indigo-500/90 group-disabled:opacity-50 group-disabled:pointer-events-none",
     icon: "h-3.5",
+    shortcutVariant: "small" as const,
     shortcut:
-      "text-[0.6rem] font-medium min-w-[17px] rounded-[2px] px-1 ml-1 -mr-0.5 grid place-content-center border border-bright/40 text-bright group-hover:border-bright/60 transition",
+      "ml-1 -mr-0.5 border-bright/40 text-bright group-hover:border-bright/60 justify-self-center",
   },
   "secondary/small": {
     textColor:
@@ -21,8 +22,9 @@ const variant = {
     button:
       "h-6 px-[5px] text-xs bg-slate-800 group-hover:bg-slate-700/70 disabled:opacity-50 group-disabled:pointer-events-none",
     icon: "h-3.5",
+    shortcutVariant: "small" as const,
     shortcut:
-      "text-[0.6rem] font-medium min-w-[17px] rounded-[2px] px-1 ml-1 -mr-0.5 grid place-content-center border border-dimmed/40 text-dimmed group-hover:text-bright/80 group-hover:border-dimmed/60 transition",
+      "ml-1 -mr-0.5 border-dimmed/40 text-dimmed group-hover:text-bright/80 group-hover:border-dimmed/60",
   },
   "tertiary/small": {
     textColor:
@@ -30,8 +32,9 @@ const variant = {
     button:
       "h-6 px-[5px] text-xs bg-transparent group-hover:bg-slate-850 disabled:opacity-50 group-disabled:pointer-events-none",
     icon: "h-3.5",
+    shortcutVariant: "small" as const,
     shortcut:
-      "text-[0.6rem] font-medium min-w-[17px] rounded-[2px] px-1 ml-1 -mr-0.5 grid place-content-center border border-dimmed/40 text-dimmed group-hover:text-bright/80 group-hover:border-dimmed/60 transition",
+      "ml-1 -mr-0.5 border-dimmed/40 text-dimmed group-hover:text-bright/80 group-hover:border-dimmed/60",
   },
   "danger/small": {
     textColor:
@@ -39,8 +42,9 @@ const variant = {
     button:
       "h-6 px-[5px] text-xs bg-rose-600 group-hover:bg-rose-500 disabled:opacity-50 group-disabled:pointer-events-none",
     icon: "h-3.5",
+    shortcutVariant: "small" as const,
     shortcut:
-      "text-[0.6rem] font-medium min-w-[17px] rounded-[2px] px-1 ml-1 -mr-0.5 grid place-content-center border border-bright/40 text-bright group-hover:border-bright/60 transition",
+      "ml-1 -mr-0.5 border-bright/40 text-bright group-hover:border-bright/60",
   },
   "primary/medium": {
     textColor:
@@ -48,8 +52,9 @@ const variant = {
     button:
       "h-8 px-2 text-sm bg-indigo-600 group-hover:bg-indigo-500/90 disabled:opacity-50",
     icon: "h-4",
+    shortcutVariant: "medium" as const,
     shortcut:
-      "text-[0.6rem] leading-[1.13rem] min-w-[20px] px-1 rounded-[3px] ml-1.5 -mr-0.5 border border-bright/40 text-bright group-hover:border-bright/60 transition",
+      "ml-1.5 -mr-0.5 border-bright/40 text-bright group-hover:border-bright/60",
   },
   "secondary/medium": {
     textColor:
@@ -57,8 +62,9 @@ const variant = {
     button:
       "h-8 px-2 text-sm bg-slate-800 group-hover:bg-slate-700/70 disabled:opacity-50",
     icon: "h-4",
+    shortcutVariant: "medium" as const,
     shortcut:
-      "text-[0.6rem] leading-[1.13rem] min-w-[20px] px-1 rounded-[3px] ml-1.5 -mr-0.5 border border-dimmed/40 text-dimmed group-hover:border-dimmed group-hover:text-bright transition",
+      "ml-1.5 -mr-0.5 border-dimmed/40 text-dimmed group-hover:border-dimmed group-hover:text-bright",
   },
   "tertiary/medium": {
     textColor:
@@ -66,8 +72,9 @@ const variant = {
     button:
       "h-8 px-2 text-sm bg-transparent group-hover:bg-slate-850 disabled:opacity-50",
     icon: "h-4",
+    shortcutVariant: "medium" as const,
     shortcut:
-      "text-[0.6rem] leading-[1.13rem] min-w-[20px] px-1 rounded-[3px] ml-1.5 -mr-0.5 border border-bright/40 text-dimmed group-hover:border-bright/60 group-hover:text-bright transition",
+      "ml-1.5 -mr-0.5 border-bright/40 text-dimmed group-hover:border-bright/60 group-hover:text-bright",
   },
   "danger/medium": {
     textColor:
@@ -75,8 +82,9 @@ const variant = {
     button:
       "h-8 px-2 text-sm bg-rose-600 group-hover:bg-rose-500 disabled:opacity-50",
     icon: "h-4",
+    shortcutVariant: "medium" as const,
     shortcut:
-      "text-[0.6rem] leading-[1.13rem] min-w-[20px] px-1 rounded-[3px] ml-1.5 -mr-0.5 border border-bright/40 text-bright group-hover:border-bright/60 transition",
+      "ml-1.5 -mr-0.5 border-bright/40 text-bright group-hover:border-bright/60",
   },
   "primary/large": {
     textColor:
@@ -84,6 +92,7 @@ const variant = {
     button:
       "h-10 px-2 text-sm font-medium bg-indigo-600 group-hover:bg-indigo-500/90 disabled:opacity-50",
     icon: "h-5",
+    shortcutVariant: undefined,
     shortcut: undefined,
   },
   "secondary/large": {
@@ -91,6 +100,7 @@ const variant = {
     button:
       "h-10 px-2 text-sm text-dimmed group-hover:text-bright transition font-medium bg-slate-800 group-hover:bg-slate-700/70 disabled:opacity-50",
     icon: "h-5",
+    shortcutVariant: undefined,
     shortcut: undefined,
   },
   "menu-item": {
@@ -98,6 +108,7 @@ const variant = {
     button:
       "h-9 px-[0.475rem] text-sm rounded-sm bg-transparent group-hover:bg-slate-800 transition",
     icon: "h-5",
+    shortcutVariant: undefined,
     shortcut: undefined,
   },
 };
@@ -116,7 +127,7 @@ type ButtonContentPropsType = {
   fullWidth?: boolean;
   textAlignLeft?: boolean;
   className?: string;
-  shortcut?: string;
+  shortcut?: ShortcutDefinition;
   variant: keyof typeof variant;
 };
 
@@ -132,15 +143,14 @@ export function ButtonContent(props: ButtonContentPropsType) {
     textAlignLeft,
     className,
   } = props;
+  const variation = allVariants.variant[props.variant];
 
   // Based on the size prop, we'll use the corresponding variant classnames
-  const btnClassName = cn(
-    allVariants.$all,
-    allVariants.variant[props.variant].button
-  );
-  const iconClassName = allVariants.variant[props.variant].icon;
-  const shortcutClassName = allVariants.variant[props.variant].shortcut;
-  const textColorClassName = allVariants.variant[props.variant].textColor;
+  const btnClassName = cn(allVariants.$all, variation.button);
+  const iconClassName = variation.icon;
+  const shortcutClassName = variation.shortcut;
+  const textColorClassName = variation.textColor;
+
   return (
     <div
       className={cn(
@@ -210,7 +220,13 @@ export function ButtonContent(props: ButtonContentPropsType) {
               )}
             />
           ))}
-        {shortcut && <span className={cn(shortcutClassName)}>{shortcut}</span>}
+        {shortcut && (
+          <ShortcutKey
+            className={cn(shortcutClassName)}
+            shortcut={shortcut}
+            variant={variation.shortcutVariant ?? "medium"}
+          />
+        )}
       </div>
     </div>
   );

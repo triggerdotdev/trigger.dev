@@ -85,16 +85,22 @@ function ButtonList({ primary }: { primary: string }) {
         </div>
         <div className="flex flex-col items-start gap-2">
           <Header3 className="mb-1 uppercase">Shortcut</Header3>
-          <Button variant="primary/small" shortcut="⌘S">
+          <Button
+            variant="primary/small"
+            shortcut={{ all: { key: "s", modifiers: ["meta"] } }}
+          >
             Primary button
           </Button>
-          <Button variant="secondary/small" shortcut="K">
+          <Button variant="secondary/small" shortcut={{ all: { key: "f" } }}>
             Secondary button
           </Button>
-          <Button variant="tertiary/small" shortcut="I">
+          <Button variant="tertiary/small" shortcut={{ all: { key: "i" } }}>
             Tertiary button
           </Button>
-          <Button variant="danger/small" shortcut="⌘S">
+          <Button
+            variant="danger/small"
+            shortcut={{ all: { key: "s", modifiers: ["meta"] } }}
+          >
             Danger button
           </Button>
         </div>
@@ -195,16 +201,28 @@ function ButtonList({ primary }: { primary: string }) {
         </div>
         <div className="flex flex-col items-start gap-2">
           <Header3 className="mb-1 uppercase">Shortcut</Header3>
-          <Button variant="primary/medium" shortcut="⌘S">
+          <Button
+            variant="primary/medium"
+            shortcut={{ all: { key: "s", modifiers: ["meta"] } }}
+          >
             Primary button
           </Button>
-          <Button variant="secondary/medium" shortcut="F">
+          <Button
+            variant="secondary/medium"
+            shortcut={{ all: { key: "s", modifiers: ["meta"] } }}
+          >
             Secondary button
           </Button>
-          <Button variant="tertiary/medium" shortcut="⌘S">
+          <Button
+            variant="tertiary/medium"
+            shortcut={{ all: { key: "s", modifiers: ["meta"] } }}
+          >
             Tertiary button
           </Button>
-          <Button variant="danger/medium" shortcut="⌘S">
+          <Button
+            variant="danger/medium"
+            shortcut={{ all: { key: "s", modifiers: ["meta"] } }}
+          >
             Danger button
           </Button>
         </div>
