@@ -1,5 +1,6 @@
 import { airtable } from "./integrations/airtable";
 import { github } from "./integrations/github";
+import { openai } from "./integrations/openai";
 import { slack } from "./integrations/slack";
 import type { Integration } from "./types";
 
@@ -24,7 +25,8 @@ export class IntegrationCatalog {
 }
 
 export const integrationCatalog = new IntegrationCatalog({
-  slack,
   airtable,
   github,
+  openai,
+  slack,
 });
