@@ -122,7 +122,7 @@ export function ClipboardField({
         ref={inputIcon}
         value={isSecure ? "•".repeat(value.length) : value}
         readOnly={true}
-        className={cn("select-all", input)}
+        className={cn("shrink grow select-all overflow-x-auto", input)}
         size={value.length}
         onFocus={(e) => {
           if (secure) {
@@ -136,7 +136,11 @@ export function ClipboardField({
           }
         }}
       />
-      <Button variant={buttonVariant} onClick={copy} className={cn(button)}>
+      <Button
+        variant={buttonVariant}
+        onClick={copy}
+        className={cn("shrink-0 grow-0", button)}
+      >
         {copied ? <CheckIcon className="h-4 w-4 text-green-500" /> : "Copy"}
       </Button>
     </div>
