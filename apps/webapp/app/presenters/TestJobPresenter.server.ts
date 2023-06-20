@@ -117,7 +117,7 @@ function exampleReplacer(key: string, value: any) {
           key,
           value,
         },
-        now: new Date(),
+        data: { now: new Date() },
       });
     }
   });
