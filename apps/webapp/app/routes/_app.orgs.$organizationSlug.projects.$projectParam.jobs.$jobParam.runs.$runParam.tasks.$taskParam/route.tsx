@@ -148,14 +148,16 @@ export default function Page() {
             <Header3>Retries</Header3>
             <Table>
               <TableHeader>
-                <TableHeaderCell>Attempt</TableHeaderCell>
-                <TableHeaderCell>Status</TableHeaderCell>
-                <TableHeaderCell>Date</TableHeaderCell>
-                <TableHeaderCell>Error</TableHeaderCell>
+                <TableRow>
+                  <TableHeaderCell>Attempt</TableHeaderCell>
+                  <TableHeaderCell>Status</TableHeaderCell>
+                  <TableHeaderCell>Date</TableHeaderCell>
+                  <TableHeaderCell>Error</TableHeaderCell>
+                </TableRow>
               </TableHeader>
               <TableBody>
                 {attempts.map((attempt) => (
-                  <TableRow>
+                  <TableRow key={attempt.number}>
                     <TableCell>{attempt.number}</TableCell>
                     <TableCell>
                       <TaskAttemptStatusLabel status={attempt.status} />
