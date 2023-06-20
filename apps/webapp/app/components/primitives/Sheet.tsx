@@ -165,7 +165,7 @@ const SheetContent = React.forwardRef<
             <NamedIcon name="close" className="h-4 w-4" />
             <span className="sr-only">Close</span>
           </SheetPrimitive.Close>
-          <ShortcutKey shortcut="esc" variant="medium" />
+          <ShortcutKey shortcut={{ all: { key: "esc" } }} variant="medium" />
         </div>
         <div className="flex max-h-full flex-col overflow-hidden">
           {children}
