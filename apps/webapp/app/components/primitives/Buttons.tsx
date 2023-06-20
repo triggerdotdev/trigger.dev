@@ -181,7 +181,6 @@ export function ButtonContent(props: ButtonContentPropsType) {
             <span
               className={cn(
                 "mx-auto grow self-center truncate px-1",
-
                 textColorClassName
               )}
             >

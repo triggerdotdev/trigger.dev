@@ -49,6 +49,9 @@ export function ConfigureEndpointSheet({
   });
   const loadingEndpointUrl = setEndpointUrlFetcher.state !== "idle";
 
+  const refreshEndpointFetcher = useFetcher();
+  const refreshingEndpoint = refreshEndpointFetcher.state !== "idle";
+
   const revalidator = useRevalidator();
   const events = useEventSource(
     endpointStreamingPath({ id: endpoint.environment.id }),
@@ -133,12 +136,33 @@ export function ConfigureEndpointSheet({
                 <Paragraph>
                   We connect to your endpoint and refresh your Jobs.
                 </Paragraph>
-                <Callout variant="success">
-                  Endpoint configured. Last refreshed:{" "}
-                  {endpoint.latestIndex
-                    ? formatDateTime(endpoint.latestIndex.updatedAt)
-                    : "–"}
-                </Callout>
+                <refreshEndpointFetcher.Form
+                  method="post"
+                  action={`/resources/environments/${endpoint.environment.id}/endpoint/${endpoint.id}`}
+                >
+                  <Callout
+                    variant="success"
+                    className="justiy-between items-center"
+                  >
+                    <Paragraph variant="small" className="grow text-green-200">
+                      Endpoint configured. Last refreshed:{" "}
+                      {endpoint.latestIndex
+                        ? formatDateTime(endpoint.latestIndex.updatedAt, "long")
+                        : "–"}
+                    </Paragraph>
+                    <Button
+                      variant="primary/small"
+                      type="submit"
+                      className="bg-green-700 group-hover:bg-green-600/90"
+                      disabled={refreshingEndpoint}
+                      LeadingIcon={
+                        refreshingEndpoint ? "spinner-white" : undefined
+                      }
+                    >
+                      {refreshingEndpoint ? "Refreshing" : "Refresh now"}
+                    </Button>
+                  </Callout>
+                </refreshEndpointFetcher.Form>
               </div>
             </div>
           )}

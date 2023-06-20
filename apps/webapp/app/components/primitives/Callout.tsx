@@ -56,22 +56,20 @@ export function Callout({
   return (
     <div
       className={cn(
-        `flex w-full gap-4 rounded-md border py-2 pl-2 pr-3 shadow-md backdrop-blur-sm`,
+        `flex w-full items-start gap-2.5 rounded-md border py-2 pl-2 pr-3 shadow-md backdrop-blur-sm`,
         variantDefinition.className,
         className
       )}
     >
-      <div className="flex items-start justify-start gap-2.5">
-        {icon ? icon : variantDefinition.icon}
+      {icon ? icon : variantDefinition.icon}
 
-        {typeof children === "string" ? (
-          <Paragraph variant={"small"} className={variantDefinition.text}>
-            {children}
-          </Paragraph>
-        ) : (
-          children
-        )}
-      </div>
+      {typeof children === "string" ? (
+        <Paragraph variant={"small"} className={variantDefinition.text}>
+          {children}
+        </Paragraph>
+      ) : (
+        children
+      )}
     </div>
   );
 }
