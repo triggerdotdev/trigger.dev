@@ -43,12 +43,12 @@ export function ShortcutKey({
 function modifierString(modifier: Modifier, isMac: boolean) {
   switch (modifier) {
     case "alt":
-      return isMac ? "⌥" : "Alt";
+      return isMac ? "⌥" : "Alt+";
     case "ctrl":
-      return isMac ? "⌃" : "Ctrl";
+      return isMac ? "⌃" : "Ctrl+";
     case "meta":
-      return isMac ? "⌘" : "Meta";
+      return isMac ? "⌘" : "⊞";
     case "shift":
-      return isMac ? "⇧" : "Shift";
+      return isMac ? "⇧" : "Shift+";
   }
 }

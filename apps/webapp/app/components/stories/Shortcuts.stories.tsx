@@ -23,7 +23,7 @@ const shortcuts: ShortcutDefinition[] = [
   { key: "f" },
   { key: "f", modifiers: ["meta"] },
   { key: "k", modifiers: ["meta"] },
-  { key: "del", modifiers: ["alt", "ctrl"] },
+  { key: "del", modifiers: ["ctrl", "alt"] },
 ];
 
 function Collection() {
