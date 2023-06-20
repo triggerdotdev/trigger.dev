@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from "@storybook/react";
 import { withDesign } from "storybook-addon-designs";
-import { ClipboardField } from "../ClipboardField";
+import { ClipboardField } from "../primitives/ClipboardField";
 import { EnvironmentLabel } from "../environments/EnvironmentLabel";
 
 const meta: Meta = {

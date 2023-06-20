@@ -25,7 +25,7 @@ import { FormError } from "~/components/primitives/FormError";
 import { useEventSource } from "remix-utils";
 import { useEffect } from "react";
 import { endpointStreamingPath } from "~/utils/pathBuilder";
-import { ClipboardField } from "~/components/ClipboardField";
+import { ClipboardField } from "~/components/primitives/ClipboardField";
 
 type ConfigureEndpointSheetProps = {
   slug: string;

@@ -1,7 +1,7 @@
 import { Outlet } from "@remix-run/react";
 import { LoaderArgs } from "@remix-run/server-runtime";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
-import { ClipboardField } from "~/components/ClipboardField";
+import { ClipboardField } from "~/components/primitives/ClipboardField";
 import { connectionType } from "~/components/integrations/connectionType";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
 import {

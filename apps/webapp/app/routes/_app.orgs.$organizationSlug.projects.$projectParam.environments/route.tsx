@@ -1,7 +1,7 @@
 import { LoaderArgs } from "@remix-run/server-runtime";
 import { useMemo, useState } from "react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
-import { ClipboardField } from "~/components/ClipboardField";
+import { ClipboardField } from "~/components/primitives/ClipboardField";
 import {
   EnvironmentLabel,
   environmentTitle,

@@ -1,8 +1,8 @@
 import { cn } from "~/utils/cn";
-import { Button } from "./primitives/Buttons";
+import { Button } from "./Buttons";
 import { useCallback, useRef, useState } from "react";
 import { CheckIcon } from "@heroicons/react/20/solid";
-import { IconNames, NamedIcon } from "./primitives/NamedIcon";
+import { IconNames, NamedIcon } from "./NamedIcon";
 
 const variations = {
   "primary/small": {
