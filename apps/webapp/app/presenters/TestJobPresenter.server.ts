@@ -10,6 +10,7 @@ import {
   OAuthClientSchema,
 } from "~/services/externalApis/types";
 import { getSecretStore } from "~/services/secrets/secretStore.server";
+import { replacements } from "@trigger.dev/internal";
 
 export class TestJobPresenter {
   #prismaClient: PrismaClient;
@@ -100,10 +101,26 @@ export class TestJobPresenter {
         versionId: alias.version.id,
         examples: alias.version.examples.map((example) => ({
           ...example,
-          payload: JSON.stringify(example.payload, null, 2),
+          payload: JSON.stringify(example.payload, exampleReplacer, 2),
         })),
       })),
       hasTestRuns: job._count.runs > 0,
     };
   }
+}
+
+function exampleReplacer(key: string, value: any) {
+  replacements.forEach((replacement) => {
+    if (value === replacement.marker) {
+      value = replacement.replace({
+        match: {
+          key,
+          value,
+        },
+        now: new Date(),
+      });
+    }
+  });
+
+  return value;
 }

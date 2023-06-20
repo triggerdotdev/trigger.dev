@@ -1,16 +1,30 @@
 import {
   CronOptions,
+  EventExample,
   IntervalOptions,
   ScheduleMetadata,
   ScheduledPayload,
   ScheduledPayloadSchema,
   TriggerMetadata,
+  currentDate,
 } from "@trigger.dev/internal";
 import { Job } from "../job";
 import { TriggerClient } from "../triggerClient";
 import { EventSpecification, Trigger } from "../types";
 
 type ScheduledEventSpecification = EventSpecification<ScheduledPayload>;
+
+const examples = [
+  {
+    id: "now",
+    name: "Now",
+    icon: "clock",
+    payload: {
+      ts: currentDate.marker,
+      lastTimestamp: currentDate.marker,
+    },
+  },
+];
 
 export class IntervalTrigger implements Trigger<ScheduledEventSpecification> {
   constructor(private options: IntervalOptions) {}
@@ -21,6 +35,7 @@ export class IntervalTrigger implements Trigger<ScheduledEventSpecification> {
       title: "Schedule",
       source: "trigger.dev",
       icon: "schedule-interval",
+      examples,
       parsePayload: ScheduledPayloadSchema.parse,
       properties: [
         {
@@ -66,6 +81,7 @@ export class CronTrigger implements Trigger<ScheduledEventSpecification> {
       title: "Cron Schedule",
       source: "trigger.dev",
       icon: "schedule-cron",
+      examples,
       parsePayload: ScheduledPayloadSchema.parse,
       properties: [
         {
@@ -120,6 +136,7 @@ export class DynamicSchedule implements Trigger<ScheduledEventSpecification> {
       title: "Dynamic Schedule",
       source: "trigger.dev",
       icon: "schedule-dynamic",
+      examples,
       parsePayload: ScheduledPayloadSchema.parse,
     };
   }

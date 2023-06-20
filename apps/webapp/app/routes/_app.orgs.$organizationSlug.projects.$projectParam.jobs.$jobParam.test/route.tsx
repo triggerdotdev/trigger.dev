@@ -204,35 +204,38 @@ export default function Page() {
                 </Select>
               </SelectGroup>
 
-              <Popover
-                open={isExamplePopoverOpen}
-                onOpenChange={(open) => setIsExamplePopoverOpen(open)}
-              >
-                <PopoverTrigger>
-                  <ButtonContent
-                    variant="secondary/medium"
-                    LeadingIcon="beaker"
-                    TrailingIcon="chevron-down"
+              {selectedEnvironment &&
+                selectedEnvironment.examples.length > 0 && (
+                  <Popover
+                    open={isExamplePopoverOpen}
+                    onOpenChange={(open) => setIsExamplePopoverOpen(open)}
                   >
-                    Insert an example
-                  </ButtonContent>
-                </PopoverTrigger>
+                    <PopoverTrigger>
+                      <ButtonContent
+                        variant="secondary/medium"
+                        LeadingIcon="beaker"
+                        TrailingIcon="chevron-down"
+                      >
+                        Insert an example
+                      </ButtonContent>
+                    </PopoverTrigger>
 
-                <PopoverContent className="w-80 p-0" align="start">
-                  {selectedEnvironment?.examples.map((example) => (
-                    <Button
-                      key={example.id}
-                      variant="menu-item"
-                      onClick={(e) => insertCode(example.payload)}
-                      LeadingIcon={example.icon ?? "beaker"}
-                      fullWidth
-                      textAlignLeft
-                    >
-                      {example.name}
-                    </Button>
-                  ))}
-                </PopoverContent>
-              </Popover>
+                    <PopoverContent className="w-80 p-0" align="start">
+                      {selectedEnvironment?.examples.map((example) => (
+                        <Button
+                          key={example.id}
+                          variant="menu-item"
+                          onClick={(e) => insertCode(example.payload)}
+                          LeadingIcon={example.icon ?? "beaker"}
+                          fullWidth
+                          textAlignLeft
+                        >
+                          {example.name}
+                        </Button>
+                      ))}
+                    </PopoverContent>
+                  </Popover>
+                )}
             </div>
             <HelpTrigger title="How do I run a test" />
           </div>
