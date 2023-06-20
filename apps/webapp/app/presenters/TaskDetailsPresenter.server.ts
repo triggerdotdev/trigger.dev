@@ -63,6 +63,18 @@ export class TaskDetailsPresenter {
         completedAt: true,
         style: true,
         parentId: true,
+        attempts: {
+          select: {
+            number: true,
+            status: true,
+            error: true,
+            runAt: true,
+            updatedAt: true,
+          },
+          orderBy: {
+            number: "asc",
+          },
+        },
       },
       where: {
         id,

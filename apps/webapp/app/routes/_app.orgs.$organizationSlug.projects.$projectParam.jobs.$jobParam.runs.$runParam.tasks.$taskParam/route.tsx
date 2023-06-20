@@ -23,6 +23,15 @@ import {
 } from "../_app.orgs.$organizationSlug.projects.$projectParam.jobs.$jobParam.runs.$runParam/RunCard";
 import { TaskStatusIcon } from "../_app.orgs.$organizationSlug.projects.$projectParam.jobs.$jobParam.runs.$runParam/TaskStatus";
 import { sensitiveDataReplacer } from "~/services/logger";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHeader,
+  TableHeaderCell,
+  TableRow,
+} from "~/components/primitives/Table";
+import { TaskAttemptStatusLabel } from "./TaskAttemptStatus";
 
 export const loader = async ({ request, params }: LoaderArgs) => {
   const userId = await requireUserId(request);
@@ -63,6 +72,7 @@ export default function Page() {
     properties,
     output,
     style,
+    attempts,
   } = task;
 
   return (
@@ -132,6 +142,37 @@ export default function Page() {
             <RunPanelProperties properties={properties} layout="vertical" />
           </div>
         )}
+
+        {attempts.length > 0 && (
+          <div className="mt-4 flex flex-col gap-2">
+            <Header3>Retries</Header3>
+            <Table>
+              <TableHeader>
+                <TableHeaderCell>Attempt</TableHeaderCell>
+                <TableHeaderCell>Status</TableHeaderCell>
+                <TableHeaderCell>Date</TableHeaderCell>
+                <TableHeaderCell>Error</TableHeaderCell>
+              </TableHeader>
+              <TableBody>
+                {attempts.map((attempt) => (
+                  <TableRow>
+                    <TableCell>{attempt.number}</TableCell>
+                    <TableCell>
+                      <TaskAttemptStatusLabel status={attempt.status} />
+                    </TableCell>
+                    <TableCell>
+                      {attempt.status === "PENDING" && attempt.runAt
+                        ? formatDateTime(attempt.runAt, "long")
+                        : formatDateTime(attempt.updatedAt, "long")}
+                    </TableCell>
+                    <TableCell>{attempt.error}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        )}
+
         <div className="mt-4 flex flex-col gap-2">
           <Header3>Input</Header3>
           {params ? (
