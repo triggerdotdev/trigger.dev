@@ -10,14 +10,18 @@ import { requireUser } from "~/services/session.server";
 
 let client: PlainClient | undefined;
 
-const feedbackType = z.union([z.literal("bug"), z.literal("feature")], {
-  required_error: "Must be either 'bug' or 'feature'",
-  invalid_type_error: "Must be either 'bug' or 'feature'",
-});
+const feedbackType = z.union(
+  [z.literal("bug"), z.literal("feature"), z.literal("help")],
+  {
+    required_error: "Must be either 'bug' or 'feature'",
+    invalid_type_error: "Must be either 'bug' or 'feature'",
+  }
+);
 
 const feedbackTypeLabel = {
   bug: "Bug",
   feature: "Feature request",
+  help: "Help",
 };
 
 export const schema = z.object({
@@ -38,6 +42,7 @@ export async function action({ request }: ActionArgs) {
 
   try {
     if (!env.PLAIN_API_KEY) {
+      console.error("PLAIN_API_KEY is not set");
       submission.error.message = "PLAIN_API_KEY is not set";
       return json(submission);
     }

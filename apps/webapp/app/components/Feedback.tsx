@@ -89,6 +89,7 @@ export function Feedback() {
                     <SelectContent>
                       <SelectItem value="bug">Bug report</SelectItem>
                       <SelectItem value="feature">Feature request</SelectItem>
+                      <SelectItem value="help">Help me out</SelectItem>
                     </SelectContent>
                   </Select>
                 </SelectGroup>
