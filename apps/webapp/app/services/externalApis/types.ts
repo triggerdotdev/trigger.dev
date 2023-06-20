@@ -1,13 +1,15 @@
 import { z } from "zod";
 
 export type Integration = {
-  /** Used to uniquely identify an API */
+  /** Used to uniquely identify an integration */
   identifier: string;
-  /** The name of the API */
+  /** The name of the integration */
   name: string;
+  /** The description of the integration */
+  description?: string;
   /** Package name */
   packageName: string;
-  /** The possible authentication methods we support for this API  */
+  /** All the authentication methods we support for this integration  */
   authenticationMethods: Record<string, ApiAuthenticationMethod>;
 };
 
