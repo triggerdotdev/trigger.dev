@@ -19,10 +19,10 @@ export function TaskAttemptStatusLabel({
   status: TaskAttemptStatus;
 }) {
   return (
-    <span className="inline-flex items-center gap-1">
+    <span className="inline-flex items-center gap-0.5">
       <TaskAttemptStatusIcon status={status} className="h-4 w-4" />
       <Paragraph
-        variant="small"
+        variant="extra-small"
         className={taskAttemptStatusClassNameColor(status)}
       >
         {taskAttemptStatusTitle(status)}
@@ -68,7 +68,7 @@ function taskAttemptStatusClassNameColor(status: TaskAttemptStatus): string {
     case "COMPLETED":
       return "text-green-500";
     case "PENDING":
-      return "text-slate-500";
+      return "text-slate-400";
     case "STARTED":
       return "text-blue-500";
     case "ERRORED":

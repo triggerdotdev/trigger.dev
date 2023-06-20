@@ -143,7 +143,7 @@ export default function Page() {
           </div>
         )}
 
-        {attempts.length > 0 && (
+        {attempts.length > 1 && (
           <div className="mt-4 flex flex-col gap-2">
             <Header3>Retries</Header3>
             <Table>
