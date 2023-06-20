@@ -35,6 +35,7 @@ const EnvironmentSchema = z.object({
   REPLY_TO_EMAIL: z.string(),
   RESEND_API_KEY: z.string(),
   SESSION_SECRET: z.string(),
+  PLAIN_API_KEY: z.string().optional(),
 });
 
 export type Environment = z.infer<typeof EnvironmentSchema>;

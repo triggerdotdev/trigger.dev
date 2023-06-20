@@ -99,6 +99,7 @@ importers:
       '@tailwindcss/forms': ^0.5.3
       '@tailwindcss/typography': ^0.5.9
       '@tanstack/react-table': ^8.0.0-alpha.87
+      '@team-plain/typescript-sdk': ^2.2.0
       '@testing-library/cypress': ^8.0.3
       '@testing-library/dom': ^8.18.1
       '@testing-library/jest-dom': ^5.16.5
@@ -272,6 +273,7 @@ importers:
       '@remix-run/server-runtime': 1.16.1
       '@sentry/remix': 7.53.1_535ee7qxxe65mhmlpnplklpcuu
       '@tanstack/react-table': 8.7.6_biqbaboplfbrettd7655fr4n2y
+      '@team-plain/typescript-sdk': 2.2.0
       '@trigger.dev/companyicons': 1.5.6_biqbaboplfbrettd7655fr4n2y
       '@trigger.dev/database': link:../../packages/database
       '@trigger.dev/internal': link:../../packages/internal
@@ -5613,6 +5615,14 @@ packages:
     resolution: {integrity: sha512-jjcWBokl9eb1gVJ85QmoaQ73CQ52xAaOCF29ukRbYNl6lY+ts0ErTaDYOBlejcbUs2OpaiqYLO5uDhyLFzWw4w==}
     dev: false
 
+  /@graphql-typed-document-node/core/3.2.0_graphql@16.6.0:
+    resolution: {integrity: sha512-mB9oAsNCm9aM3/SOv4YtBMqZbYj10R7dkq8byBqxGY/ncFwhf2oQzMV+LCRlWoDSEBJ3COiR1yeDvMtsoOsuFQ==}
+    peerDependencies:
+      graphql: ^0.8.0 || ^0.9.0 || ^0.10.0 || ^0.11.0 || ^0.12.0 || ^0.13.0 || ^14.0.0 || ^15.0.0 || ^16.0.0 || ^17.0.0
+    dependencies:
+      graphql: 16.6.0
+    dev: false
+
   /@hapi/boom/10.0.1:
     resolution: {integrity: sha512-ERcCZaEjdH3OgSJlyjVk8pHIFeus91CjKP3v+MpgBNp5IvGzP2l/bRiD78nqYcKPaZdbKkK5vDBVPd2ohHBlsA==}
     dependencies:
@@ -9593,6 +9603,17 @@ packages:
     engines: {node: '>=12'}
     dev: false
 
+  /@team-plain/typescript-sdk/2.2.0:
+    resolution: {integrity: sha512-ZNRZJ1uhQYHqaAKNAMdcSvULxutDQldocJWEDxJ5CJX4QYyzD8adK7gB9szKQDsxHFA3sZgTjtSruFBOf+C2fw==}
+    dependencies:
+      '@graphql-typed-document-node/core': 3.2.0_graphql@16.6.0
+      axios: 1.4.0
+      graphql: 16.6.0
+      zod: 3.21.4
+    transitivePeerDependencies:
+      - debug
+    dev: false
+
   /@testing-library/cypress/8.0.7_cypress@10.11.0:
     resolution: {integrity: sha512-3HTV725rOS+YHve/gD9coZp/UcPK5xhr4H0GMnq/ni6USdtzVtSOG9WBFtd8rYnrXk8rrGD+0toRFYouJNIG0Q==}
     engines: {node: '>=12', npm: '>=6'}
@@ -11380,6 +11401,16 @@ packages:
     dependencies:
       follow-redirects: 1.15.2
       form-data: 4.0.0
+    transitivePeerDependencies:
+      - debug
+    dev: false
+
+  /axios/1.4.0:
+    resolution: {integrity: sha512-S4XCWMEmzvo64T9GfvQDOXgYRDJ/wsSZc7Jvdgx5u1sd0JwsuPLqb3SYmusag+edF6ziyMensPVqLTSc1PiSEA==}
+    dependencies:
+      follow-redirects: 1.15.2
+      form-data: 4.0.0
+      proxy-from-env: 1.1.0
     transitivePeerDependencies:
       - debug
     dev: false
@@ -15706,7 +15737,6 @@ packages:
   /graphql/16.6.0:
     resolution: {integrity: sha512-KPIBPDlW7NxrbT/eh4qPXz5FiFdL5UbaA0XUNz2Rp3Z3hqBSkbj0GVjwFDztsWVauZUWsbKHgMg++sk8UX0bkw==}
     engines: {node: ^12.22.0 || ^14.16.0 || ^16.0.0 || >=17.0.0}
-    dev: true
 
   /gunzip-maybe/1.4.2:
     resolution: {integrity: sha512-4haO1M4mLO91PW57BMsDFf75UmwoRX0GkdD+Faw+Lr+r/OZrOCS0pIBwOL1xCKQqnQzbNFGgK2V2CpBUPeFNTw==}
@@ -24252,6 +24282,10 @@ packages:
 
   /zod/3.20.2:
     resolution: {integrity: sha512-1MzNQdAvO+54H+EaK5YpyEy0T+Ejo/7YLHS93G3RnYWh5gaotGHwGeN/ZO687qEDU2y4CdStQYXVHIgrUl5UVQ==}
+    dev: false
+
+  /zod/3.21.4:
+    resolution: {integrity: sha512-m46AKbrzKVzOzs/DZgVnG5H55N1sv1M8qZU3A8RIKbs3mrACDNeIOeilDymVb2HdmP8uwshOCF4uJ8uM9rCqJw==}
     dev: false
 
   /zwitch/2.0.4:
