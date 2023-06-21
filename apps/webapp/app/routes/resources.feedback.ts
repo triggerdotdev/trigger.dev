@@ -148,6 +148,7 @@ export async function action({ request }: ActionArgs) {
         },
       ],
       changeCustomerStatusToActive: true,
+      sendCustomTimelineEntryCreatedNotification: true,
     });
 
     if (upsertTimelineEntryRes.error) {
