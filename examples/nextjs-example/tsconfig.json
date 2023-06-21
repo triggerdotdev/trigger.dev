@@ -22,6 +22,12 @@
       "@trigger.dev/nextjs/*": ["../../packages/nextjs/src/*"],
       "@trigger.dev/internal": ["../../packages/internal/src/index"],
       "@trigger.dev/internal/*": ["../../packages/internal/src/*"],
+      "@trigger.dev/integration-kit": [
+        "../../packages/integration-kit/src/index"
+      ],
+      "@trigger.dev/integration-kit/*": [
+        "../../packages/integration-kit/src/*"
+      ],
       "@trigger.dev/github": ["../../integrations/github/src/index"],
       "@trigger.dev/github/*": ["../../integrations/github/src/*"],
       "@trigger.dev/slack": ["../../integrations/slack/src/index"],

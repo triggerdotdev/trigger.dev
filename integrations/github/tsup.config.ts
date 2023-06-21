@@ -18,6 +18,5 @@ export default defineConfig([
     },
     esbuildPlugins: [],
     external: ["http", "https", "util", "events", "tty", "os", "timers"],
-    noExternal: ["@trigger.dev/integration-kit"],
   },
 ]);

@@ -16,7 +16,6 @@
     "@octokit/types": "^9.2.3",
     "@octokit/webhooks-types": "^6.10.0",
     "@trigger.dev/tsconfig": "workspace:*",
-    "@trigger.dev/integration-kit": "workspace:*",
     "@types/node": "18",
     "rimraf": "^3.0.2",
     "tsup": "^6.5.0"
@@ -24,14 +23,14 @@
   "scripts": {
     "clean": "rimraf dist",
     "build": "npm run clean && npm run build:tsup",
-    "build:tsup": "tsup --dts-resolve",
-    "typecheck": "tsup --dts-resolve --no-dts"
+    "build:tsup": "tsup"
   },
   "dependencies": {
     "@octokit/request": "^6.2.5",
     "@octokit/request-error": "^4.0.1",
     "@octokit/webhooks": "^10.4.0",
     "@trigger.dev/sdk": "workspace:^2.0.0-next.1",
+    "@trigger.dev/integration-kit": "workspace:^2.0.0-next.1",
     "octokit": "^2.0.14",
     "zod": "^3.20.2"
   },
