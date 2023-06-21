@@ -1,4 +1,3 @@
-import { FireIcon } from "@heroicons/react/24/solid";
 import type { LoaderArgs } from "@remix-run/server-runtime";
 import { useState } from "react";
 import {
@@ -371,5 +370,5 @@ function AddIntegrationConnection({
 }
 
 function IntegrationIcon() {
-  return <FireIcon className="h-3.5 w-3.5 flex-none text-amber-500" />;
+  return <LogoIcon className="h-3.5 w-3.5 pb-0.5 flex-none text-amber-500" />;
 }
