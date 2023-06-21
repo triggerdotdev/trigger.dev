@@ -1,8 +1,13 @@
 import { parse } from "@conform-to/zod";
 import { ActionArgs, json } from "@remix-run/server-runtime";
-import { PlainClient } from "@team-plain/typescript-sdk";
+import {
+  ComponentDividerSpacingSize,
+  ComponentSpacerSize,
+  ComponentTextColor,
+  ComponentTextSize,
+  PlainClient,
+} from "@team-plain/typescript-sdk";
 import { inspect } from "util";
-import { s } from "vitest/dist/index-6e18a03a";
 import { z } from "zod";
 import { env } from "~/env.server";
 import { redirectWithSuccessMessage } from "~/models/message.server";
@@ -10,19 +15,30 @@ import { requireUser } from "~/services/session.server";
 
 let client: PlainClient | undefined;
 
+export const feedbackTypeLabel = {
+  bug: "Bug report",
+  feature: "Feature request",
+  help: "Help me out",
+  integration: "Request an integration",
+};
+
+type FeedbackType = keyof typeof feedbackTypeLabel;
+
+const feedbackTypeLiterals = Object.keys(feedbackTypeLabel).map((key) =>
+  z.literal(key)
+);
+
 const feedbackType = z.union(
-  [z.literal("bug"), z.literal("feature"), z.literal("help")],
+  [
+    feedbackTypeLiterals[0],
+    feedbackTypeLiterals[1],
+    ...feedbackTypeLiterals.slice(2),
+  ],
   {
     required_error: "Must be either 'bug' or 'feature'",
     invalid_type_error: "Must be either 'bug' or 'feature'",
   }
 );
-
-const feedbackTypeLabel = {
-  bug: "Bug",
-  feature: "Feature request",
-  help: "Help",
-};
 
 export const schema = z.object({
   path: z.string(),
@@ -77,10 +93,46 @@ export async function action({ request }: ActionArgs) {
       return json(submission);
     }
 
+    const title =
+      feedbackTypeLabel[submission.value.feedbackType as FeedbackType];
     const upsertTimelineEntryRes = await client.upsertCustomTimelineEntry({
       customerId: upsertCustomerRes.data.customer.id,
-      title: feedbackTypeLabel[submission.value.feedbackType],
+      title,
       components: [
+        {
+          componentText: {
+            text: `New ${title} reported by ${user.name} (${user.email})`,
+          },
+        },
+        {
+          componentDivider: {
+            dividerSpacingSize: ComponentDividerSpacingSize.M,
+          },
+        },
+        {
+          componentText: {
+            textSize: ComponentTextSize.S,
+            textColor: ComponentTextColor.Muted,
+            text: "Page",
+          },
+        },
+        {
+          componentText: {
+            text: submission.value.path,
+          },
+        },
+        {
+          componentSpacer: {
+            spacerSize: ComponentSpacerSize.M,
+          },
+        },
+        {
+          componentText: {
+            textSize: ComponentTextSize.S,
+            textColor: ComponentTextColor.Muted,
+            text: "Message",
+          },
+        },
         {
           componentText: {
             text: submission.value.message,
@@ -105,7 +157,7 @@ export async function action({ request }: ActionArgs) {
     return redirectWithSuccessMessage(
       submission.value.path,
       request,
-      "Feedback submitted"
+      "Thanks for your feedback! We'll get back to you soon."
     );
   } catch (e) {
     return json(e, { status: 400 });

@@ -8,7 +8,7 @@ import {
   useNavigation,
 } from "@remix-run/react";
 import { useState } from "react";
-import { schema } from "~/routes/resources.feedback";
+import { feedbackTypeLabel, schema } from "~/routes/resources.feedback";
 import { Button } from "./primitives/Buttons";
 import { Fieldset } from "./primitives/Fieldset";
 import { FormButtons } from "./primitives/FormButtons";
@@ -67,7 +67,7 @@ export function Feedback() {
           Send us feedback
         </Button>
       </SheetTrigger>
-      <SheetContent>
+      <SheetContent size="sm">
         <SheetHeader className="justify-between">Give us feedback</SheetHeader>
         <SheetBody>
           <Paragraph variant="small" className="mb-4">
@@ -82,14 +82,16 @@ export function Feedback() {
               <InputGroup>
                 <Label>What kind of feedback do you have?</Label>
                 <SelectGroup>
-                  <Select {...conform.input(feedbackType)} defaultValue="bug">
+                  <Select {...conform.input(feedbackType)} defaultValue={"bug"}>
                     <SelectTrigger size="medium" width="full">
                       <SelectValue placeholder="Type" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="bug">Bug report</SelectItem>
-                      <SelectItem value="feature">Feature request</SelectItem>
-                      <SelectItem value="help">Help me out</SelectItem>
+                      {Object.entries(feedbackTypeLabel).map(([key, value]) => (
+                        <SelectItem key={key} value={key}>
+                          {value}
+                        </SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
                 </SelectGroup>
@@ -104,6 +106,7 @@ export function Feedback() {
               </InputGroup>
               <FormError>{form.error}</FormError>
               <FormButtons
+                className="max-w-md"
                 confirmButton={
                   <Button type="submit" variant="primary/medium">
                     Send
