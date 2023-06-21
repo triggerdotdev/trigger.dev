@@ -135,11 +135,11 @@ new Job(client, {
 });
 
 new Job(client, {
-  id: "github-integration-on-new-tag",
-  name: "GitHub Integration - On New Tag",
+  id: "github-integration-on-push",
+  name: "GitHub Integration - On Push",
   version: "0.1.0",
   trigger: githubApiKey.triggers.repo({
-    event: events.onNewTag,
+    event: events.onPush,
     repo: "triggerdotdev/empty",
   }),
   run: async (payload, io, ctx) => {

@@ -5,6 +5,7 @@ import {
   IssuesAssignedEvent,
   IssuesEvent,
   IssuesOpenedEvent,
+  PushEvent,
   RepositoryCreatedEvent,
   StarCreatedEvent,
   StarEvent,
@@ -23,6 +24,7 @@ import {
   issueCommentCreated,
   issueOpened,
   newBranch,
+  push,
   starredRepo,
 } from "./webhook-examples";
 import { truncate } from "@trigger.dev/integration-kit";
@@ -269,18 +271,6 @@ const onNewBranch: EventSpecification<CreateEvent> = {
   runProperties: (payload) => branchTagProperties(payload),
 };
 
-const onNewTag: EventSpecification<CreateEvent> = {
-  name: "create",
-  title: "On new tag",
-  source: "github.com",
-  icon: "github",
-  filter: {
-    ref_type: ["tag"],
-  },
-  parsePayload: (payload) => payload as CreateEvent,
-  runProperties: (payload) => branchTagProperties(payload),
-};
-
 function branchTagProperties(payload: CreateEvent) {
   return [
     {
@@ -294,6 +284,46 @@ function branchTagProperties(payload: CreateEvent) {
     },
   ];
 }
+
+const onPush: EventSpecification<PushEvent> = {
+  name: "push",
+  title: "On push",
+  source: "github.com",
+  icon: "github",
+  examples: [push],
+  parsePayload: (payload) => payload as PushEvent,
+  runProperties: (payload) => {
+    let props = [
+      {
+        label: "Repo",
+        text: payload.repository.name,
+        url: payload.repository.url,
+      },
+      {
+        label: "Branch",
+        text: payload.ref,
+      },
+      {
+        label: "Pusher",
+        text: payload.pusher.name,
+      },
+      {
+        label: "Commits",
+        text: `${payload.commits.length}`,
+      },
+    ];
+
+    if (payload.head_commit) {
+      props.push({
+        label: "Head commit",
+        text: payload.head_commit.id,
+        url: payload.head_commit.url,
+      });
+    }
+
+    return props;
+  },
+};
 
 export const events = {
   /** When any action is performed on an issue  */
@@ -314,8 +344,8 @@ export const events = {
   onNewBranchOrTag,
   /** When a new branch is created  */
   onNewBranch,
-  /** When a new tag is created  */
-  onNewTag,
+  /** When a push is made to a repo  */
+  onPush,
 };
 
 // params.event has to be a union of all the values of the exports events object
