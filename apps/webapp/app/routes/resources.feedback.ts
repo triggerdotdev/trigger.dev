@@ -72,13 +72,21 @@ export async function action({ request }: ActionArgs) {
         emailAddress: user.email,
       },
       onCreate: {
+        externalId: user.id,
         fullName: user.name ?? "",
         email: {
           email: user.email,
           isVerified: true,
         },
       },
-      onUpdate: {},
+      onUpdate: {
+        externalId: { value: user.id },
+        fullName: { value: user.name ?? "" },
+        email: {
+          email: user.email,
+          isVerified: true,
+        },
+      },
     });
 
     if (upsertCustomerRes.error) {
