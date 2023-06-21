@@ -94,7 +94,7 @@ export function ProjectSideMenu() {
           isCollapsed={isCollapsed}
         />
         <SideMenuItem
-          name="Billing"
+          name="Usage & Billing"
           icon="billing"
           to={organizationBillingPath(organization)}
           isCollapsed={isCollapsed}

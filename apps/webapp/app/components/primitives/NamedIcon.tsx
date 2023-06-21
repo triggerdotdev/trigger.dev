@@ -10,6 +10,7 @@ import {
   ArrowRightIcon,
   BeakerIcon,
   BellAlertIcon,
+  BoltIcon,
   BookOpenIcon,
   BuildingOffice2Icon,
   CalendarDaysIcon,
@@ -160,9 +161,6 @@ const icons = {
   organization: (className: string) => (
     <BuildingOffice2Icon className={cn("text-fuchsia-600", className)} />
   ),
-  search: (className: string) => (
-    <MagnifyingGlassIcon className={cn("text-dimmed", className)} />
-  ),
   plus: (className: string) => (
     <PlusIcon className={cn("text-green-600", className)} />
   ),
@@ -170,6 +168,12 @@ const icons = {
     <PlusSmallIcon className={cn("text-green-600", className)} />
   ),
   property: (className: string) => (
+    <Cog8ToothIcon className={cn("text-slate-600", className)} />
+  ),
+  search: (className: string) => (
+    <MagnifyingGlassIcon className={cn("text-dimmed", className)} />
+  ),
+  settings: (className: string) => (
     <Cog8ToothIcon className={cn("text-slate-600", className)} />
   ),
   spinner: (className: string) => (
@@ -183,6 +187,9 @@ const icons = {
   ),
   team: (className: string) => (
     <UserGroupIcon className={cn("text-blue-500", className)} />
+  ),
+  trigger: (className: string) => (
+    <BoltIcon className={cn("text-orange-500", className)} />
   ),
   user: (className: string) => (
     <UserIcon className={cn("text-blue-600", className)} />

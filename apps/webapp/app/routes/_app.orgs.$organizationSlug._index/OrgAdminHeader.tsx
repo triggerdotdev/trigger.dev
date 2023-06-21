@@ -10,6 +10,7 @@ import {
 import { useOrganization } from "~/hooks/useOrganizations";
 import {
   newProjectPath,
+  organizationBillingPath,
   organizationPath,
   organizationTeamPath,
   organizationsPath,
@@ -43,6 +44,10 @@ export function OrgAdminHeader() {
         tabs={[
           { label: "Projects", to: organizationPath(organization) },
           { label: "Team", to: organizationTeamPath(organization) },
+          {
+            label: "Usage & billing",
+            to: organizationBillingPath(organization),
+          },
         ]}
       />
     </PageHeader>
