@@ -25,7 +25,7 @@ const header3Variants = {
 };
 
 const header4Variants = {
-  "extra-small/medium": "font-title font-medium text-sm pb-1",
+  "extra-small/medium": "font-title font-semibold text-base pb-1",
   "small/semibold":
     "font-title sm:font-semibold sm:text-lg text-base font-medium pb-2 sm:leading-tight",
   "base/semibold": "font-title font-semibold text-xl pb-2",

@@ -531,10 +531,13 @@ importers:
   examples/to-do-example:
     specifiers:
       '@heroicons/react': ^2.0.13
+      '@radix-ui/react-accordion': ^1.1.2
+      '@radix-ui/react-slot': ^1.0.2
       '@types/node': 20.3.1
       '@types/react': ^18.0.21
       '@types/react-dom': ^18.0.6
       autoprefixer: 10.4.14
+      class-variance-authority: ^0.5.2
       clsx: ^1.2.1
       eslint: ^8.24.0
       eslint-config-next: 13.4.6
@@ -544,13 +547,17 @@ importers:
       react-dom: ^18.2.0
       tailwind-merge: ^1.12.0
       tailwindcss: 3.3.2
+      tailwindcss-animate: ^1.0.5
       typescript: 5.1.3
     dependencies:
       '@heroicons/react': 2.0.13_react@18.2.0
+      '@radix-ui/react-accordion': 1.1.2_ie75ejlwqy5zh3tldgt7pftwcu
+      '@radix-ui/react-slot': 1.0.2_kzbn2opkn2327fwg5yzwzya5o4
       '@types/node': 20.3.1
       '@types/react': 18.0.26
       '@types/react-dom': 18.0.10
       autoprefixer: 10.4.14_postcss@8.4.24
+      class-variance-authority: 0.5.2_typescript@5.1.3
       clsx: 1.2.1
       eslint: 8.31.0
       eslint-config-next: 13.4.6_s43uvkm2vk3nfxpeso3phtympe
@@ -560,6 +567,7 @@ importers:
       react-dom: 18.2.0_react@18.2.0
       tailwind-merge: 1.12.0
       tailwindcss: 3.3.2
+      tailwindcss-animate: 1.0.5_tailwindcss@3.3.2
       typescript: 5.1.3
 
   integrations/github:
@@ -6599,6 +6607,35 @@ packages:
       '@babel/runtime': 7.20.7
     dev: false
 
+  /@radix-ui/react-accordion/1.1.2_ie75ejlwqy5zh3tldgt7pftwcu:
+    resolution: {integrity: sha512-fDG7jcoNKVjSK6yfmuAs0EnPDro0WMXIhMtXdTBWqEioVW206ku+4Lw07e+13lUkFkpoEQ2PdeMIAGpdqEAmDg==}
+    peerDependencies:
+      '@types/react': '*'
+      '@types/react-dom': '*'
+      react: ^16.8 || ^17.0 || ^18.0
+      react-dom: ^16.8 || ^17.0 || ^18.0
+    peerDependenciesMeta:
+      '@types/react':
+        optional: true
+      '@types/react-dom':
+        optional: true
+    dependencies:
+      '@babel/runtime': 7.20.7
+      '@radix-ui/primitive': 1.0.1
+      '@radix-ui/react-collapsible': 1.0.3_ie75ejlwqy5zh3tldgt7pftwcu
+      '@radix-ui/react-collection': 1.0.3_ie75ejlwqy5zh3tldgt7pftwcu
+      '@radix-ui/react-compose-refs': 1.0.1_kzbn2opkn2327fwg5yzwzya5o4
+      '@radix-ui/react-context': 1.0.1_kzbn2opkn2327fwg5yzwzya5o4
+      '@radix-ui/react-direction': 1.0.1_kzbn2opkn2327fwg5yzwzya5o4
+      '@radix-ui/react-id': 1.0.1_kzbn2opkn2327fwg5yzwzya5o4
+      '@radix-ui/react-primitive': 1.0.3_ie75ejlwqy5zh3tldgt7pftwcu
+      '@radix-ui/react-use-controllable-state': 1.0.1_kzbn2opkn2327fwg5yzwzya5o4
+      '@types/react': 18.0.26
+      '@types/react-dom': 18.0.10
+      react: 18.2.0
+      react-dom: 18.2.0_react@18.2.0
+    dev: false
+
   /@radix-ui/react-alert-dialog/1.0.4_ie75ejlwqy5zh3tldgt7pftwcu:
     resolution: {integrity: sha512-jbfBCRlKYlhbitueOAv7z74PXYeIQmWpKwm3jllsdkw7fGWNkxqP3v0nY9WmOzcPqpQuoorNtvViBgL46n5gVg==}
     peerDependencies:
@@ -6633,6 +6670,34 @@ packages:
     dependencies:
       '@babel/runtime': 7.20.7
       '@radix-ui/react-primitive': 1.0.2_biqbaboplfbrettd7655fr4n2y
+      react: 18.2.0
+      react-dom: 18.2.0_react@18.2.0
+    dev: false
+
+  /@radix-ui/react-collapsible/1.0.3_ie75ejlwqy5zh3tldgt7pftwcu:
+    resolution: {integrity: sha512-UBmVDkmR6IvDsloHVN+3rtx4Mi5TFvylYXpluuv0f37dtaz3H99bp8No0LGXRigVpl3UAT4l9j6bIchh42S/Gg==}
+    peerDependencies:
+      '@types/react': '*'
+      '@types/react-dom': '*'
+      react: ^16.8 || ^17.0 || ^18.0
+      react-dom: ^16.8 || ^17.0 || ^18.0
+    peerDependenciesMeta:
+      '@types/react':
+        optional: true
+      '@types/react-dom':
+        optional: true
+    dependencies:
+      '@babel/runtime': 7.20.7
+      '@radix-ui/primitive': 1.0.1
+      '@radix-ui/react-compose-refs': 1.0.1_kzbn2opkn2327fwg5yzwzya5o4
+      '@radix-ui/react-context': 1.0.1_kzbn2opkn2327fwg5yzwzya5o4
+      '@radix-ui/react-id': 1.0.1_kzbn2opkn2327fwg5yzwzya5o4
+      '@radix-ui/react-presence': 1.0.1_ie75ejlwqy5zh3tldgt7pftwcu
+      '@radix-ui/react-primitive': 1.0.3_ie75ejlwqy5zh3tldgt7pftwcu
+      '@radix-ui/react-use-controllable-state': 1.0.1_kzbn2opkn2327fwg5yzwzya5o4
+      '@radix-ui/react-use-layout-effect': 1.0.1_kzbn2opkn2327fwg5yzwzya5o4
+      '@types/react': 18.0.26
+      '@types/react-dom': 18.0.10
       react: 18.2.0
       react-dom: 18.2.0_react@18.2.0
     dev: false
@@ -12304,6 +12369,17 @@ packages:
         optional: true
     dependencies:
       typescript: 4.9.4
+    dev: false
+
+  /class-variance-authority/0.5.2_typescript@5.1.3:
+    resolution: {integrity: sha512-j7Qqw3NPbs4IpO80gvdACWmVvHiLLo5MECacUBLnJG17CrLpWaQ7/4OaWX6P0IO1j2nvZ7AuSfBS/ImtEUZJGA==}
+    peerDependencies:
+      typescript: '>= 4.5.5 < 6'
+    peerDependenciesMeta:
+      typescript:
+        optional: true
+    dependencies:
+      typescript: 5.1.3
     dev: false
 
   /classnames/2.3.2:

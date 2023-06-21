@@ -118,3 +118,23 @@ export function TriggerCard({
     </Accordion>
   );
 }
+
+export function TriggerSyncCard({
+  accordianContentVariant,
+  active,
+  children,
+}: CardProps) {
+  return (
+    <Accordion type="single" collapsible>
+      <AccordionItem value="item-1">
+        <AccordionTrigger className="text-left">
+          <AccordianTriggerContent
+            accordianContentVariant={accordianContentVariant}
+            active={active}
+          />
+        </AccordionTrigger>
+        <AccordionContent>{children}</AccordionContent>
+      </AccordionItem>
+    </Accordion>
+  );
+}
