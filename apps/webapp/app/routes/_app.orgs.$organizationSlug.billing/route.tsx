@@ -9,7 +9,7 @@ export default function Page() {
       <PageBody>
         <ComingSoon
           title="Usage & billing"
-          description="View your usage, tier and billing information. During the v2 beta we will expose usage and start billing."
+          description="View your usage, tier and billing information. During the beta we will display usage and start billing if you exceed your limits. But don't worry, we'll give you plenty of warning."
           icon="billing"
         />
       </PageBody>
