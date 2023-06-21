@@ -170,7 +170,7 @@ const onIssueComment: EventSpecification<IssueCommentEvent> = {
     ...issueProperties(payload),
     {
       label: "Comment body",
-      text: truncate(payload.comment.body, 20),
+      text: truncate(payload.comment.body, 40),
       url: payload.comment.html_url,
     },
   ],
