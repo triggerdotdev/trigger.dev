@@ -105,3 +105,45 @@ new Job(client, {
     return { payload, ctx };
   },
 });
+
+new Job(client, {
+  id: "github-integration-on-new-branch-or-tag",
+  name: "GitHub Integration - On New Branch or Tag",
+  version: "0.1.0",
+  trigger: githubApiKey.triggers.repo({
+    event: events.onNewBranchOrTag,
+    repo: "triggerdotdev/empty",
+  }),
+  run: async (payload, io, ctx) => {
+    await io.logger.info("This is a simple log info message");
+    return { payload, ctx };
+  },
+});
+
+new Job(client, {
+  id: "github-integration-on-new-branch",
+  name: "GitHub Integration - On New Branch",
+  version: "0.1.0",
+  trigger: githubApiKey.triggers.repo({
+    event: events.onNewBranch,
+    repo: "triggerdotdev/empty",
+  }),
+  run: async (payload, io, ctx) => {
+    await io.logger.info("This is a simple log info message");
+    return { payload, ctx };
+  },
+});
+
+new Job(client, {
+  id: "github-integration-on-new-tag",
+  name: "GitHub Integration - On New Tag",
+  version: "0.1.0",
+  trigger: githubApiKey.triggers.repo({
+    event: events.onNewTag,
+    repo: "triggerdotdev/empty",
+  }),
+  run: async (payload, io, ctx) => {
+    await io.logger.info("This is a simple log info message");
+    return { payload, ctx };
+  },
+});

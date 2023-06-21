@@ -1,5 +1,6 @@
 import { RequestRequestOptions } from "@octokit/types";
 import {
+  CreateEvent,
   IssueCommentEvent,
   IssuesAssignedEvent,
   IssuesEvent,
@@ -21,6 +22,7 @@ import {
   issueAssigned,
   issueCommentCreated,
   issueOpened,
+  newBranch,
   starredRepo,
 } from "./webhook-examples";
 import { truncate } from "@trigger.dev/integration-kit";
@@ -245,6 +247,54 @@ const onNewRepository: EventSpecification<RepositoryCreatedEvent> = {
   parsePayload: (payload) => payload as RepositoryCreatedEvent,
 };
 
+const onNewBranchOrTag: EventSpecification<CreateEvent> = {
+  name: "create",
+  title: "On new branch or tag",
+  source: "github.com",
+  icon: "github",
+  parsePayload: (payload) => payload as CreateEvent,
+  runProperties: (payload) => branchTagProperties(payload),
+};
+
+const onNewBranch: EventSpecification<CreateEvent> = {
+  name: "create",
+  title: "On new branch tag",
+  source: "github.com",
+  icon: "github",
+  filter: {
+    ref_type: ["branch"],
+  },
+  examples: [newBranch],
+  parsePayload: (payload) => payload as CreateEvent,
+  runProperties: (payload) => branchTagProperties(payload),
+};
+
+const onNewTag: EventSpecification<CreateEvent> = {
+  name: "create",
+  title: "On new tag",
+  source: "github.com",
+  icon: "github",
+  filter: {
+    ref_type: ["tag"],
+  },
+  parsePayload: (payload) => payload as CreateEvent,
+  runProperties: (payload) => branchTagProperties(payload),
+};
+
+function branchTagProperties(payload: CreateEvent) {
+  return [
+    {
+      label: "Repo",
+      text: payload.repository.name,
+      url: payload.repository.url,
+    },
+    {
+      label: payload.ref_type === "branch" ? "Branch" : "Tag",
+      text: payload.ref,
+    },
+  ];
+}
+
 export const events = {
   /** When any action is performed on an issue  */
   onIssue,
@@ -260,6 +310,12 @@ export const events = {
   onNewStar,
   /** When a new repo is created  */
   onNewRepository,
+  /** When a new branch or tag is created  */
+  onNewBranchOrTag,
+  /** When a new branch is created  */
+  onNewBranch,
+  /** When a new tag is created  */
+  onNewTag,
 };
 
 // params.event has to be a union of all the values of the exports events object
