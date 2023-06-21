@@ -59,6 +59,13 @@ export interface Trigger<TEventSpec extends EventSpecification<any>> {
   preprocessRuns: boolean;
 }
 
+export type EventSpecificationExample = {
+  id: string;
+  name: string;
+  icon?: string;
+  payload: any;
+};
+
 export interface EventSpecification<TEvent extends any> {
   name: string;
   title: string;
@@ -66,12 +73,7 @@ export interface EventSpecification<TEvent extends any> {
   icon: string;
   properties?: DisplayProperty[];
   schema?: any;
-  examples?: Array<{
-    id: string;
-    name: string;
-    icon?: string;
-    payload: any;
-  }>;
+  examples?: Array<EventSpecificationExample>;
   filter?: EventFilter;
   parsePayload: (payload: unknown) => TEvent;
   runProperties?: (payload: TEvent) => DisplayProperty[];
