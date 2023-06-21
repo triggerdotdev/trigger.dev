@@ -530,19 +530,23 @@ importers:
     specifiers:
       '@heroicons/react': ^2.0.13
       '@types/node': 20.3.1
+      '@types/node-fetch': 2.6.x
       '@types/react': ^18.0.21
       '@types/react-dom': ^18.0.6
       autoprefixer: 10.4.14
       clsx: ^1.2.1
       eslint: ^8.24.0
       eslint-config-next: 13.4.6
+      msw: ^0.47.0
       next: 13.3.1
       postcss: 8.4.24
       react: ^18.2.0
       react-dom: ^18.2.0
       tailwind-merge: ^1.12.0
       tailwindcss: 3.3.2
+      ts-loader: ^9.4.2
       typescript: 5.1.3
+      webpack: ^5.0.0
     dependencies:
       '@heroicons/react': 2.0.13_react@18.2.0
       '@types/node': 20.3.1
@@ -559,6 +563,11 @@ importers:
       tailwind-merge: 1.12.0
       tailwindcss: 3.3.2
       typescript: 5.1.3
+    devDependencies:
+      '@types/node-fetch': 2.6.2
+      msw: 0.47.4_typescript@5.1.3
+      ts-loader: 9.4.2_myiobgd6xjctomu2xmm6lnfgqm
+      webpack: 5.80.0
 
   integrations/github:
     specifiers:
@@ -18479,6 +18488,43 @@ packages:
       - supports-color
     dev: true
 
+  /msw/0.47.4_typescript@5.1.3:
+    resolution: {integrity: sha512-Psftt8Yfl0+l+qqg9OlmKEsxF8S/vtda0CmlR6y8wTaWrMMzuCDa55n2hEGC0ZRDwuV6FFWc/4CjoDsBpATKBw==}
+    engines: {node: '>=14'}
+    hasBin: true
+    requiresBuild: true
+    peerDependencies:
+      typescript: '>= 4.2.x <= 4.8.x'
+    peerDependenciesMeta:
+      typescript:
+        optional: true
+    dependencies:
+      '@mswjs/cookies': 0.2.2
+      '@mswjs/interceptors': 0.17.6
+      '@open-draft/until': 1.0.3
+      '@types/cookie': 0.4.1
+      '@types/js-levenshtein': 1.1.1
+      chalk: 4.1.1
+      chokidar: 3.5.3
+      cookie: 0.4.2
+      graphql: 16.6.0
+      headers-polyfill: 3.1.2
+      inquirer: 8.2.5
+      is-node-process: 1.0.1
+      js-levenshtein: 1.1.6
+      node-fetch: 2.6.7
+      outvariant: 1.3.0
+      path-to-regexp: 6.2.1
+      statuses: 2.0.1
+      strict-event-emitter: 0.2.8
+      type-fest: 2.19.0
+      typescript: 5.1.3
+      yargs: 17.6.2
+    transitivePeerDependencies:
+      - encoding
+      - supports-color
+    dev: true
+
   /mute-stream/0.0.8:
     resolution: {integrity: sha512-nnbWWOkoWyUsTjKrhgD0dcz22mdkSnpYqbEjIm2nhwhuxlSkpywJmBo8h0ZqJdkp73mb90SssHkN4rsRaBAfAA==}
 
@@ -22566,6 +22612,21 @@ packages:
       webpack: 5.80.0
     dev: true
 
+  /ts-loader/9.4.2_myiobgd6xjctomu2xmm6lnfgqm:
+    resolution: {integrity: sha512-OmlC4WVmFv5I0PpaxYb+qGeGOdm5giHU7HwDDUjw59emP2UYMHy9fFSDcYgSNoH8sXcj4hGCSEhlDZ9ULeDraA==}
+    engines: {node: '>=12.0.0'}
+    peerDependencies:
+      typescript: '*'
+      webpack: ^5.0.0
+    dependencies:
+      chalk: 4.1.2
+      enhanced-resolve: 5.13.0
+      micromatch: 4.0.5
+      semver: 7.5.0
+      typescript: 5.1.3
+      webpack: 5.80.0
+    dev: true
+
   /ts-node/10.9.1_fodzh64fuekdilycyvke2qmf2e:
     resolution: {integrity: sha512-NtVysVPkxxrwFGUUxGYhfux8k78pQB3JqYBXlLRZgdGUqTO5wU/UyHop5p70iEbGhB7q5KmiZiU0Y3KlJrScEw==}
     hasBin: true
@@ -22957,7 +23018,6 @@ packages:
     resolution: {integrity: sha512-XH627E9vkeqhlZFQuL+UsyAXEnibT0kWR2FWONlr4sTjvxyJYnyefgrkyECLzM5NenmKzRAy2rR/OlYLA1HkZw==}
     engines: {node: '>=14.17'}
     hasBin: true
-    dev: false
 
   /ufo/1.1.0:
     resolution: {integrity: sha512-LQc2s/ZDMaCN3QLpa+uzHUOQ7SdV0qgv3VBXOolQGXTaaZpIur6PwUclF5nN2hNkiTRcUugXd1zFOW3FLJ135Q==}
