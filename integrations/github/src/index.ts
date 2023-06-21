@@ -21,6 +21,7 @@ import {
   issueAssigned,
   issueCommentCreated,
   issueOpened,
+  starredRepo,
 } from "./webhook-examples";
 import { truncate } from "@trigger.dev/integration-kit";
 
@@ -195,6 +196,7 @@ const onStar: EventSpecification<StarEvent> = {
   title: "On star",
   source: "github.com",
   icon: "github",
+  examples: [starredRepo],
   parsePayload: (payload) => payload as StarEvent,
   runProperties: (payload) => starProperties(payload),
 };
@@ -207,6 +209,7 @@ const onNewStar: EventSpecification<StarCreatedEvent> = {
   filter: {
     action: ["created"],
   },
+  examples: [starredRepo],
   parsePayload: (payload) => payload as StarCreatedEvent,
   runProperties: (payload) => starProperties(payload),
 };

@@ -912,3 +912,187 @@ export const issueCommentCreated: EventSpecificationExample = {
     },
   },
 };
+
+export const starredRepo: EventSpecificationExample = {
+  id: "star.created",
+  name: "Repo starred",
+  payload: {
+    action: "created",
+    sender: {
+      id: 10635986,
+      url: "https://api.github.com/users/matt-aitken",
+      type: "User",
+      login: "matt-aitken",
+      node_id: "MDQ6VXNlcjEwNjM1OTg2",
+      html_url: "https://github.com/matt-aitken",
+      gists_url: "https://api.github.com/users/matt-aitken/gists{/gist_id}",
+      repos_url: "https://api.github.com/users/matt-aitken/repos",
+      avatar_url: "https://avatars.githubusercontent.com/u/10635986?v=4",
+      events_url: "https://api.github.com/users/matt-aitken/events{/privacy}",
+      site_admin: false,
+      gravatar_id: "",
+      starred_url:
+        "https://api.github.com/users/matt-aitken/starred{/owner}{/repo}",
+      followers_url: "https://api.github.com/users/matt-aitken/followers",
+      following_url:
+        "https://api.github.com/users/matt-aitken/following{/other_user}",
+      organizations_url: "https://api.github.com/users/matt-aitken/orgs",
+      subscriptions_url:
+        "https://api.github.com/users/matt-aitken/subscriptions",
+      received_events_url:
+        "https://api.github.com/users/matt-aitken/received_events",
+    },
+    repository: {
+      id: 656732269,
+      url: "https://api.github.com/repos/triggerdotdev/empty",
+      fork: false,
+      name: "empty",
+      size: 0,
+      forks: 0,
+      owner: {
+        id: 95297378,
+        url: "https://api.github.com/users/triggerdotdev",
+        type: "Organization",
+        login: "triggerdotdev",
+        node_id: "O_kgDOBa4fYg",
+        html_url: "https://github.com/triggerdotdev",
+        gists_url: "https://api.github.com/users/triggerdotdev/gists{/gist_id}",
+        repos_url: "https://api.github.com/users/triggerdotdev/repos",
+        avatar_url: "https://avatars.githubusercontent.com/u/95297378?v=4",
+        events_url:
+          "https://api.github.com/users/triggerdotdev/events{/privacy}",
+        site_admin: false,
+        gravatar_id: "",
+        starred_url:
+          "https://api.github.com/users/triggerdotdev/starred{/owner}{/repo}",
+        followers_url: "https://api.github.com/users/triggerdotdev/followers",
+        following_url:
+          "https://api.github.com/users/triggerdotdev/following{/other_user}",
+        organizations_url: "https://api.github.com/users/triggerdotdev/orgs",
+        subscriptions_url:
+          "https://api.github.com/users/triggerdotdev/subscriptions",
+        received_events_url:
+          "https://api.github.com/users/triggerdotdev/received_events",
+      },
+      topics: [],
+      git_url: "git://github.com/triggerdotdev/empty.git",
+      license: null,
+      node_id: "R_kgDOJyTwbQ",
+      private: false,
+      ssh_url: "git@github.com:triggerdotdev/empty.git",
+      svn_url: "https://github.com/triggerdotdev/empty",
+      archived: false,
+      disabled: false,
+      has_wiki: true,
+      homepage: null,
+      html_url: "https://github.com/triggerdotdev/empty",
+      keys_url:
+        "https://api.github.com/repos/triggerdotdev/empty/keys{/key_id}",
+      language: null,
+      tags_url: "https://api.github.com/repos/triggerdotdev/empty/tags",
+      watchers: 1,
+      blobs_url:
+        "https://api.github.com/repos/triggerdotdev/empty/git/blobs{/sha}",
+      clone_url: "https://github.com/triggerdotdev/empty.git",
+      forks_url: "https://api.github.com/repos/triggerdotdev/empty/forks",
+      full_name: "triggerdotdev/empty",
+      has_pages: false,
+      hooks_url: "https://api.github.com/repos/triggerdotdev/empty/hooks",
+      pulls_url:
+        "https://api.github.com/repos/triggerdotdev/empty/pulls{/number}",
+      pushed_at: "2023-06-21T14:21:08Z",
+      teams_url: "https://api.github.com/repos/triggerdotdev/empty/teams",
+      trees_url:
+        "https://api.github.com/repos/triggerdotdev/empty/git/trees{/sha}",
+      created_at: "2023-06-21T14:21:07Z",
+      events_url: "https://api.github.com/repos/triggerdotdev/empty/events",
+      has_issues: true,
+      issues_url:
+        "https://api.github.com/repos/triggerdotdev/empty/issues{/number}",
+      labels_url:
+        "https://api.github.com/repos/triggerdotdev/empty/labels{/name}",
+      merges_url: "https://api.github.com/repos/triggerdotdev/empty/merges",
+      mirror_url: null,
+      updated_at: "2023-06-21T17:22:03Z",
+      visibility: "public",
+      archive_url:
+        "https://api.github.com/repos/triggerdotdev/empty/{archive_format}{/ref}",
+      commits_url:
+        "https://api.github.com/repos/triggerdotdev/empty/commits{/sha}",
+      compare_url:
+        "https://api.github.com/repos/triggerdotdev/empty/compare/{base}...{head}",
+      description:
+        "An empty repo that can be used to test the @trigger.dev/github integration",
+      forks_count: 0,
+      is_template: false,
+      open_issues: 4,
+      branches_url:
+        "https://api.github.com/repos/triggerdotdev/empty/branches{/branch}",
+      comments_url:
+        "https://api.github.com/repos/triggerdotdev/empty/comments{/number}",
+      contents_url:
+        "https://api.github.com/repos/triggerdotdev/empty/contents/{+path}",
+      git_refs_url:
+        "https://api.github.com/repos/triggerdotdev/empty/git/refs{/sha}",
+      git_tags_url:
+        "https://api.github.com/repos/triggerdotdev/empty/git/tags{/sha}",
+      has_projects: true,
+      releases_url:
+        "https://api.github.com/repos/triggerdotdev/empty/releases{/id}",
+      statuses_url:
+        "https://api.github.com/repos/triggerdotdev/empty/statuses/{sha}",
+      allow_forking: true,
+      assignees_url:
+        "https://api.github.com/repos/triggerdotdev/empty/assignees{/user}",
+      downloads_url:
+        "https://api.github.com/repos/triggerdotdev/empty/downloads",
+      has_downloads: true,
+      languages_url:
+        "https://api.github.com/repos/triggerdotdev/empty/languages",
+      default_branch: "main",
+      milestones_url:
+        "https://api.github.com/repos/triggerdotdev/empty/milestones{/number}",
+      stargazers_url:
+        "https://api.github.com/repos/triggerdotdev/empty/stargazers",
+      watchers_count: 1,
+      deployments_url:
+        "https://api.github.com/repos/triggerdotdev/empty/deployments",
+      git_commits_url:
+        "https://api.github.com/repos/triggerdotdev/empty/git/commits{/sha}",
+      has_discussions: false,
+      subscribers_url:
+        "https://api.github.com/repos/triggerdotdev/empty/subscribers",
+      contributors_url:
+        "https://api.github.com/repos/triggerdotdev/empty/contributors",
+      issue_events_url:
+        "https://api.github.com/repos/triggerdotdev/empty/issues/events{/number}",
+      stargazers_count: 1,
+      subscription_url:
+        "https://api.github.com/repos/triggerdotdev/empty/subscription",
+      collaborators_url:
+        "https://api.github.com/repos/triggerdotdev/empty/collaborators{/collaborator}",
+      issue_comment_url:
+        "https://api.github.com/repos/triggerdotdev/empty/issues/comments{/number}",
+      notifications_url:
+        "https://api.github.com/repos/triggerdotdev/empty/notifications{?since,all,participating}",
+      open_issues_count: 4,
+      web_commit_signoff_required: false,
+    },
+    starred_at: "2023-06-21T17:22:03Z",
+    organization: {
+      id: 95297378,
+      url: "https://api.github.com/orgs/triggerdotdev",
+      login: "triggerdotdev",
+      node_id: "O_kgDOBa4fYg",
+      hooks_url: "https://api.github.com/orgs/triggerdotdev/hooks",
+      repos_url: "https://api.github.com/orgs/triggerdotdev/repos",
+      avatar_url: "https://avatars.githubusercontent.com/u/95297378?v=4",
+      events_url: "https://api.github.com/orgs/triggerdotdev/events",
+      issues_url: "https://api.github.com/orgs/triggerdotdev/issues",
+      description: "",
+      members_url: "https://api.github.com/orgs/triggerdotdev/members{/member}",
+      public_members_url:
+        "https://api.github.com/orgs/triggerdotdev/public_members{/member}",
+    },
+  },
+};

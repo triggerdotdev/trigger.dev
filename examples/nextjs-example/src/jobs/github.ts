@@ -63,3 +63,45 @@ new Job(client, {
     return { payload, ctx };
   },
 });
+
+new Job(client, {
+  id: "github-integration-on-star",
+  name: "GitHub Integration - On Star",
+  version: "0.1.0",
+  trigger: githubApiKey.triggers.repo({
+    event: events.onStar,
+    repo: "triggerdotdev/empty",
+  }),
+  run: async (payload, io, ctx) => {
+    await io.logger.info("This is a simple log info message");
+    return { payload, ctx };
+  },
+});
+
+new Job(client, {
+  id: "github-integration-on-new-star",
+  name: "GitHub Integration - On New Star",
+  version: "0.1.0",
+  trigger: githubApiKey.triggers.repo({
+    event: events.onNewStar,
+    repo: "triggerdotdev/empty",
+  }),
+  run: async (payload, io, ctx) => {
+    await io.logger.info("This is a simple log info message");
+    return { payload, ctx };
+  },
+});
+
+new Job(client, {
+  id: "github-integration-on-new-repo",
+  name: "GitHub Integration - On New Repository",
+  version: "0.1.0",
+  trigger: githubApiKey.triggers.repo({
+    event: events.onNewRepository,
+    repo: "triggerdotdev/empty",
+  }),
+  run: async (payload, io, ctx) => {
+    await io.logger.info("This is a simple log info message");
+    return { payload, ctx };
+  },
+});
