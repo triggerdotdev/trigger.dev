@@ -17,7 +17,12 @@ import {
 import { Octokit } from "octokit";
 import { createOrgEventSource, createRepoEventSource } from "./sources";
 import { tasks } from "./tasks";
-import { issueAssigned, issueOpened } from "./webhook-examples";
+import {
+  issueAssigned,
+  issueCommentCreated,
+  issueOpened,
+} from "./webhook-examples";
+import { truncate } from "@trigger.dev/integration-kit";
 
 export type GithubIntegrationOptions = {
   id: string;
@@ -158,8 +163,16 @@ const onIssueComment: EventSpecification<IssueCommentEvent> = {
   title: "On issue comment",
   source: "github.com",
   icon: "github",
+  examples: [issueCommentCreated],
   parsePayload: (payload) => payload as IssueCommentEvent,
-  runProperties: (payload) => issueProperties(payload),
+  runProperties: (payload) => [
+    ...issueProperties(payload),
+    {
+      label: "Comment body",
+      text: truncate(payload.comment.body, 20),
+      url: payload.comment.html_url,
+    },
+  ],
 };
 
 function issueProperties(payload: IssuesEvent | IssueCommentEvent) {
