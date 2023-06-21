@@ -1,4 +1,4 @@
-import { TriggerCard } from "./components/Cards";
+import { TriggerCard, TriggerSyncCard } from "./components/Cards";
 import { Header1, Header2 } from "./components/Header";
 import { Paragraph } from "./components/Paragraph";
 import { PrimaryGradientText } from "./components/TextStyling";
@@ -82,17 +82,31 @@ export default function Home() {
           <div className="rounded-full h-px w-full bg-slate-800" />
         </div>
         <TriggerCard
-          active={false}
+          active={true}
           accordianContentVariant={"summaryEmailCard"}
+          scheduledTime={"2.30am"}
         >
           Stuff goes here
         </TriggerCard>
-        <TriggerCard active={false} accordianContentVariant="dailySlackSummary">
+        <TriggerCard
+          active={false}
+          accordianContentVariant="dailySlackSummary"
+          scheduledTime={""}
+        >
           Stuff goes here
         </TriggerCard>
-        <TriggerCard active={false} accordianContentVariant="githubIssuesSync">
+        <TriggerCard
+          active={false}
+          accordianContentVariant="githubIssuesSync"
+          scheduledTime={""}
+        >
           Stuff goes here
         </TriggerCard>
+        <TriggerSyncCard
+          active={false}
+          scheduledTime={""}
+          syncCardVariant={"linearSyncVariant"}
+        ></TriggerSyncCard>
       </div>
     </main>
   );

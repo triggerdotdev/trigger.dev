@@ -1,5 +1,3 @@
-"use client";
-
 import * as React from "react";
 import * as AccordionPrimitive from "@radix-ui/react-accordion";
 import { cn } from "@/utils/cn";
@@ -13,7 +11,10 @@ const AccordionItem = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <AccordionPrimitive.Item
     ref={ref}
-    className={cn("bg-slate-900 p-3 rounded-md ", className)}
+    className={cn(
+      "bg-slate-900 p-3 rounded-md  hover:bg-slate-800 transition duration-300",
+      className
+    )}
     {...props}
   />
 ));
