@@ -236,12 +236,12 @@ export const createIssueCommentWithReaction: GithubAuthenticatedTask<
   OctokitClient["rest"]["issues"]["createComment"]
 > = {
   onError,
-  run: async (params, client, task, io) => {
+  run: async (params, client, task, io, auth) => {
     const comment = await io.runTask(
       `Comment on Issue #${params.issueNumber}`,
       createIssueComment.init(params),
       async (t) => {
-        return createIssueComment.run(params, client, t, io);
+        return createIssueComment.run(params, client, t, io, auth);
       }
     );
 
@@ -261,7 +261,8 @@ export const createIssueCommentWithReaction: GithubAuthenticatedTask<
           },
           client,
           t,
-          io
+          io,
+          auth
         );
       }
     );
