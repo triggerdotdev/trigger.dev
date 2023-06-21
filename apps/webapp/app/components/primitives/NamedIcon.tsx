@@ -20,6 +20,7 @@ import {
   ChevronRightIcon,
   ChevronUpIcon,
   ClockIcon,
+  CloudIcon,
   CodeBracketSquareIcon,
   Cog8ToothIcon,
   CreditCardIcon,
@@ -61,6 +62,9 @@ const icons = {
   ),
   "arrow-left": (className: string) => (
     <ArrowLeftIcon className={cn("text-white", className)} />
+  ),
+  background: (className: string) => (
+    <CloudIcon className={cn("text-sky-400", className)} />
   ),
   beaker: (className: string) => (
     <BeakerIcon className={cn("text-purple-500", className)} />
