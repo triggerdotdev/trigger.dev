@@ -147,3 +147,17 @@ new Job(client, {
     return { payload, ctx };
   },
 });
+
+new Job(client, {
+  id: "github-integration-on-pull-request",
+  name: "GitHub Integration - On Pull Request",
+  version: "0.1.0",
+  trigger: githubApiKey.triggers.repo({
+    event: events.onPullRequest,
+    repo: "triggerdotdev/empty",
+  }),
+  run: async (payload, io, ctx) => {
+    await io.logger.info("This is a simple log info message");
+    return { payload, ctx };
+  },
+});

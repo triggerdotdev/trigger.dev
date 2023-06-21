@@ -5,6 +5,7 @@ import {
   IssuesAssignedEvent,
   IssuesEvent,
   IssuesOpenedEvent,
+  PullRequestEvent,
   PushEvent,
   RepositoryCreatedEvent,
   StarCreatedEvent,
@@ -24,6 +25,7 @@ import {
   issueCommentCreated,
   issueOpened,
   newBranch,
+  pullRequestOpened,
   push,
   starredRepo,
 } from "./webhook-examples";
@@ -325,6 +327,47 @@ const onPush: EventSpecification<PushEvent> = {
   },
 };
 
+const onPullRequest: EventSpecification<PullRequestEvent> = {
+  name: "pull_request",
+  title: "On pull request",
+  source: "github.com",
+  icon: "github",
+  examples: [pullRequestOpened],
+  parsePayload: (payload) => payload as PullRequestEvent,
+  runProperties: (payload) => [
+    {
+      label: "Repo",
+      text: payload.repository.name,
+      url: payload.repository.url,
+    },
+    {
+      label: "action",
+      text: payload.action,
+    },
+    {
+      label: "Number",
+      text: `${payload.number}`,
+    },
+    {
+      label: "Title",
+      text: payload.pull_request.title,
+    },
+    {
+      label: "Author",
+      text: payload.pull_request.user.login,
+      url: payload.pull_request.user.html_url,
+    },
+    {
+      label: "Commits",
+      text: `${payload.pull_request.commits}`,
+    },
+    {
+      label: "Body",
+      text: truncate(payload.pull_request.body ?? "none", 40),
+    },
+  ],
+};
+
 export const events = {
   /** When any action is performed on an issue  */
   onIssue,
@@ -346,6 +389,8 @@ export const events = {
   onNewBranch,
   /** When a push is made to a repo  */
   onPush,
+  /** When activity occurs on a pull request. Doesn't include reviews, issues or comments. */
+  onPullRequest,
 };
 
 // params.event has to be a union of all the values of the exports events object
