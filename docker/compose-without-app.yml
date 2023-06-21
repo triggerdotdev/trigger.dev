@@ -1,0 +1,21 @@
+version: "3"
+
+volumes:
+  database-data:
+
+networks:
+  app_network:
+    external: false
+
+services:
+  database:
+    container_name: database
+    image: postgres:latest
+    restart: always
+    volumes:
+      - database-data:/var/lib/postgresql/data/
+    env_file: .env
+    networks:
+      - app_network
+    ports:
+      - 5432:5432

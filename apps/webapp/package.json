@@ -11,7 +11,6 @@
     "format": "prettier --write .",
     "lint": "eslint --cache --cache-location ./node_modules/.cache/eslint .",
     "start": "cross-env NODE_ENV=production node --max-old-space-size=8192 ./build/server.js",
-    "docker:build": "cd ../.. && docker build -t trigger-webapp -f ./apps/webapp/Dockerfile .",
     "test": "vitest run",
     "test:cov": "vitest run --coverage",
     "test:e2e:dev": "start-server-and-test dev http://localhost:3000 \"npx cypress open\"",

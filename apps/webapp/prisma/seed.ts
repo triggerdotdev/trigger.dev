@@ -66,6 +66,8 @@ async function seedIntegrationAuthMethods() {
 
 async function seed() {
   await seedIntegrationAuthMethods();
+
+  // TODO: extract this into a separate file and put it behind some kind of env var
   // Create a user, organization, and project
   const user = await prisma.user.upsert({
     where: {
