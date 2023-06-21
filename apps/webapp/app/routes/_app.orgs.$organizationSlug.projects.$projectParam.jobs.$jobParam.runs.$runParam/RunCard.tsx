@@ -206,7 +206,7 @@ export function RunPanelProperties({
       className={cn(
         "flex items-baseline",
         layout === "horizontal"
-          ? "flex-wrap gap-x-8 gap-y-1"
+          ? "flex-wrap gap-x-8 gap-y-2"
           : "flex-col gap-y-3",
         className
       )}
