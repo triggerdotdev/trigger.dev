@@ -30,6 +30,7 @@
     "@octokit/request-error": "^4.0.1",
     "@octokit/webhooks": "^10.4.0",
     "@trigger.dev/sdk": "workspace:^2.0.0-next.1",
+    "@trigger.dev/integration-kit": "workspace:^2.0.0-next.1",
     "octokit": "^2.0.14",
     "zod": "^3.20.2"
   },

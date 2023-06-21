@@ -6,6 +6,7 @@ import {
   HandlerEvent,
 } from "@trigger.dev/sdk";
 import type { Logger } from "@trigger.dev/sdk";
+import { safeJsonParse, omit } from "@trigger.dev/integration-kit";
 import { Octokit } from "octokit";
 import { z } from "zod";
 import { tasks } from "./tasks";
@@ -227,29 +228,6 @@ function parseBody(body: any) {
   }
 
   return body;
-}
-
-function safeJsonParse(data: string) {
-  try {
-    return JSON.parse(data);
-  } catch (e) {
-    return null;
-  }
-}
-
-function omit<T extends Record<string, unknown>, K extends keyof T>(
-  obj: T,
-  keys: K[]
-): Omit<T, K> {
-  const result: any = {};
-
-  for (const key of Object.keys(obj)) {
-    if (!keys.includes(key as K)) {
-      result[key] = obj[key];
-    }
-  }
-
-  return result;
 }
 
 async function webhookHandler(event: HandlerEvent<"HTTP">, logger: Logger) {
