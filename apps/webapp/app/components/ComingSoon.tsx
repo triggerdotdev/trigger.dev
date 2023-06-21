@@ -1,7 +1,7 @@
 import { ReactNode } from "react";
 import { MainCenteredContainer } from "./layout/AppLayout";
-import { Header1 } from "./primitives/Headers";
-import { NamedIcon } from "./primitives/NamedIcon";
+import { Header1, Header2 } from "./primitives/Headers";
+import { NamedIcon, NamedIconInBox } from "./primitives/NamedIcon";
 import { Paragraph } from "./primitives/Paragraph";
 
 type ComingSoonProps = {
@@ -14,15 +14,18 @@ export function ComingSoon({ title, description, icon }: ComingSoonProps) {
   return (
     <MainCenteredContainer>
       <div className="flex flex-col justify-center rounded border border-slate-800 bg-slate-850">
-        <div className="mb-2 flex flex-col border-b border-slate-750 px-4 pb-3 pt-4">
-          <Paragraph variant="extra-extra-small/caps">Coming soon</Paragraph>
-          <div className=" flex items-center gap-1 ">
-            <Header1>{title}</Header1>
-            {typeof icon === "string" ? (
-              <NamedIcon name={icon} className={"h-5 w-5"} />
-            ) : (
-              icon
-            )}
+        <div className="flex items-center gap-2 border-b border-slate-750 px-4 py-4">
+          {typeof icon === "string" ? (
+            <NamedIconInBox
+              name={icon}
+              className={"h-10 w-10 bg-midnight-800"}
+            />
+          ) : (
+            icon
+          )}
+          <div className="mt-0.5 flex flex-col">
+            <Paragraph variant="extra-extra-small/caps">Coming soon</Paragraph>
+            <Header1 className="-mt-0.5">{title}</Header1>
           </div>
         </div>
         <Paragraph variant="small" className="p-4">
