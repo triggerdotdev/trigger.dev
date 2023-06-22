@@ -50,9 +50,8 @@ jobs:
       - name: ⬇️ Checkout repo
         uses: actions/checkout@v3
 
-      - name: 🐳 Docker Build
-        run: |
-          docker build -t trigger_build_image -f docker/Dockerfile .
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
 
       # Push to Public Registry
       - name: Login to GitHub Container Registry
@@ -62,11 +61,12 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Push to GitHub Container Registry
-        run: |
-          docker tag trigger_build_image $REGISTRY/$REPOSITORY:$IMAGE_TAG
-          docker push $REGISTRY/$REPOSITORY:$IMAGE_TAG
-        env:
-          REGISTRY: ghcr.io/triggerdogdev
-          REPOSITORY: trigger.dev
-          IMAGE_TAG: ${{ github.head_ref || github.ref_name }}
+      - name: Build and push
+        uses: docker/build-push-action@v4
+        with:
+          context: .
+          file: ./docker/Dockerfile
+          push: true
+          tags: ghcr.io/${{ github.repository }}:latest
+          cache-from: type=registry,ref=user/app:latest
+          cache-to: type=inline
