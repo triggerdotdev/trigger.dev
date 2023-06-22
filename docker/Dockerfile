@@ -42,6 +42,7 @@ COPY --from=pruner /triggerdotdev/out/full/ .
 COPY --from=dev-deps /triggerdotdev/ .
 COPY turbo.json turbo.json
 COPY docker/scripts ./scripts
+RUN chmod +x ./scripts/wait-for-it.sh
 RUN chmod +x ./scripts/entrypoint.sh
 RUN pnpm run generate
 RUN pnpm run build --filter=webapp...
