@@ -5,7 +5,8 @@
   "sideEffects": false,
   "scripts": {
     "build": "run-s build:*",
-    "build:remix": "remix build",
+    "build:remix": "remix build --sourcemap",
+    "build:server": "esbuild --platform=node --format=cjs ./server.ts --outdir=build",
     "dev": "run-p dev:*",
     "dev:remix": "cross-env NODE_ENV=development remix dev",
     "format": "prettier --write .",
