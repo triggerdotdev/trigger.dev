@@ -63,4 +63,7 @@ COPY --from=builder /triggerdotdev/scripts ./scripts
 
 EXPOSE 3000
 
+RUN npm install -g prisma@4.16.0
+RUN npm install -g ts-node
+
 CMD ["./scripts/entrypoint.sh"]

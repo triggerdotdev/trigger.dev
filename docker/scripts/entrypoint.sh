@@ -5,6 +5,6 @@ if [ -n "$DATABASE_HOST" ]; then
   scripts/wait-for-it.sh ${DATABASE_HOST} -- echo "database is up"
 fi
 
-npx prisma migrate deploy --schema /triggerdotdev/packages/database/prisma/schema.prisma
-npx ts-node@latest --transpile-only /triggerdotdev/apps/webapp/prisma/seed.ts
-npx turbo run start
+npx --no-install prisma migrate deploy --schema /triggerdotdev/packages/database/prisma/schema.prisma
+npx --no-install ts-node --transpile-only /triggerdotdev/apps/webapp/prisma/seed.ts
+cd /triggerdotdev/apps/webapp && npm run start
