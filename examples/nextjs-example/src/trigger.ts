@@ -246,7 +246,8 @@ new Job(client, {
   },
   run: async (payload, io, ctx) => {
     return await io.github.getRepo("get.repo", {
-      repo: payload.repository.full_name,
+      owner: payload.repository.owner.login,
+      repo: payload.repository.name,
     });
   },
 });
@@ -259,6 +260,7 @@ new Job(client, {
   trigger: eventTrigger({
     name: "get.repo",
     schema: z.object({
+      owner: z.string(),
       repo: z.string(),
     }),
   }),
@@ -281,6 +283,7 @@ new Job(client, {
   },
   run: async (payload, io, ctx) => {
     return await io.github.getRepo("get.repo", {
+      owner: ctx.event.context.source.metadata.owner,
       repo: ctx.event.context.source.metadata.repo,
     });
   },

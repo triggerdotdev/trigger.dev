@@ -40,17 +40,15 @@ function onError(error: unknown) {
 }
 
 export const createIssue: GithubAuthenticatedTask<
-  { title: string; repo: string },
+  { title: string; owner: string; repo: string },
   OctokitClient["rest"]["issues"]["create"]
 > = {
   onError,
   run: async (params, client, task, io) => {
-    const [owner, repo] = params.repo.split("/");
-
     return client.rest.issues
       .create({
-        owner,
-        repo,
+        owner: params.owner,
+        repo: params.repo,
         title: params.title,
       })
       .then((res) => res.data);
@@ -81,17 +79,15 @@ export const createIssue: GithubAuthenticatedTask<
 };
 
 export const createIssueComment: GithubAuthenticatedTask<
-  { body: string; repo: string; issueNumber: number },
+  { body: string; owner: string; repo: string; issueNumber: number },
   OctokitClient["rest"]["issues"]["createComment"]
 > = {
   onError,
   run: async (params, client) => {
-    const [owner, repo] = params.repo.split("/");
-
     return client.rest.issues
       .createComment({
-        owner,
-        repo,
+        owner: params.owner,
+        repo: params.repo,
         body: params.body,
         issue_number: params.issueNumber,
       })
@@ -116,16 +112,14 @@ export const createIssueComment: GithubAuthenticatedTask<
 };
 
 export const getRepo: GithubAuthenticatedTask<
-  { repo: string },
+  { owner: string; repo: string },
   OctokitClient["rest"]["repos"]["get"]
 > = {
   onError,
   run: async (params, client, task) => {
-    const [owner, repo] = params.repo.split("/");
-
     const response = await client.rest.repos.get({
-      owner,
-      repo,
+      owner: params.owner,
+      repo: params.repo,
       headers: {
         "x-trigger-attempt": String(task.attempts),
       },
@@ -159,6 +153,7 @@ type ReactionContent =
 
 export const addIssueCommentReaction: GithubAuthenticatedTask<
   {
+    owner: string;
     repo: string;
     commentId: number;
     content: ReactionContent;
@@ -167,12 +162,10 @@ export const addIssueCommentReaction: GithubAuthenticatedTask<
 > = {
   onError,
   run: async (params, client) => {
-    const [owner, repo] = params.repo.split("/");
-
     return client.rest.reactions
       .createForIssueComment({
-        owner,
-        repo,
+        owner: params.owner,
+        repo: params.repo,
         comment_id: params.commentId,
         content: params.content,
       })
@@ -229,6 +222,7 @@ export const addIssueCommentReaction: GithubAuthenticatedTask<
 export const createIssueCommentWithReaction: GithubAuthenticatedTask<
   {
     body: string;
+    owner: string;
     repo: string;
     issueNumber: number;
     reaction: ReactionContent;
@@ -248,6 +242,7 @@ export const createIssueCommentWithReaction: GithubAuthenticatedTask<
     await io.runTask(
       `React with ${params.reaction}`,
       addIssueCommentReaction.init({
+        owner: params.owner,
         repo: params.repo,
         commentId: comment.id,
         content: params.reaction,
@@ -255,6 +250,7 @@ export const createIssueCommentWithReaction: GithubAuthenticatedTask<
       async (t) => {
         return addIssueCommentReaction.run(
           {
+            owner: params.owner,
             repo: params.repo,
             commentId: comment.id,
             content: params.reaction,
@@ -289,6 +285,7 @@ export const createIssueCommentWithReaction: GithubAuthenticatedTask<
 
 export const updateWebhook: GithubAuthenticatedTask<
   {
+    owner: string;
     repo: string;
     hookId: number;
     url: string;
@@ -299,12 +296,10 @@ export const updateWebhook: GithubAuthenticatedTask<
 > = {
   onError,
   run: async (params, client) => {
-    const [owner, repo] = params.repo.split("/");
-
     return client.rest.repos
       .updateWebhook({
-        owner,
-        repo,
+        owner: params.owner,
+        repo: params.repo,
         hook_id: params.hookId,
         config: {
           content_type: "json",
@@ -320,6 +315,10 @@ export const updateWebhook: GithubAuthenticatedTask<
       name: "Update Webhook",
       params,
       properties: [
+        {
+          label: "Owner",
+          text: params.owner,
+        },
         {
           label: "Repo",
           text: params.repo,
@@ -378,6 +377,7 @@ export const updateOrgWebhook: GithubAuthenticatedTask<
 
 export const createWebhook: GithubAuthenticatedTask<
   {
+    owner: string;
     repo: string;
     url: string;
     secret: string;
@@ -387,12 +387,10 @@ export const createWebhook: GithubAuthenticatedTask<
 > = {
   onError,
   run: async (params, client) => {
-    const [owner, repo] = params.repo.split("/");
-
     return client.rest.repos
       .createWebhook({
-        owner,
-        repo,
+        owner: params.owner,
+        repo: params.repo,
         config: {
           content_type: "json",
           url: params.url,
@@ -407,6 +405,10 @@ export const createWebhook: GithubAuthenticatedTask<
       name: "Create Webhook",
       params,
       properties: [
+        {
+          label: "Owner",
+          text: params.owner,
+        },
         {
           label: "Repo",
           text: params.repo,
@@ -464,18 +466,17 @@ export const createOrgWebhook: GithubAuthenticatedTask<
 
 export const listWebhooks: GithubAuthenticatedTask<
   {
+    owner: string;
     repo: string;
   },
   OctokitClient["rest"]["repos"]["listWebhooks"]
 > = {
   onError,
   run: async (params, client) => {
-    const [owner, repo] = params.repo.split("/");
-
     return client.rest.repos
       .listWebhooks({
-        owner,
-        repo,
+        owner: params.owner,
+        repo: params.repo,
       })
       .then((response) => response.data);
   },
@@ -484,6 +485,10 @@ export const listWebhooks: GithubAuthenticatedTask<
       name: "List Webhooks",
       params,
       properties: [
+        {
+          label: "Owner",
+          text: params.owner,
+        },
         {
           label: "Repo",
           text: params.repo,
@@ -523,6 +528,7 @@ export const listOrgWebhooks: GithubAuthenticatedTask<
 
 export const tasks = {
   createIssue,
+  //todo updateIssue (e.g. assign, add label)
   createIssueComment,
   getRepo,
   createIssueCommentWithReaction,
