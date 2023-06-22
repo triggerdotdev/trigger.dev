@@ -11,6 +11,7 @@ import { Fieldset } from "~/components/primitives/Fieldset";
 import { FormTitle } from "~/components/primitives/FormTitle";
 import { NamedIcon } from "~/components/primitives/NamedIcon";
 import { Paragraph, TextLink } from "~/components/primitives/Paragraph";
+import { isGithubAuthSupported } from "~/services/auth.server";
 
 import { commitSession, setRedirectTo } from "~/services/redirectTo.server";
 import { getUserId } from "~/services/session.server";
@@ -26,7 +27,7 @@ export async function loader({ request }: LoaderArgs) {
     const session = await setRedirectTo(request, redirectTo);
 
     return typedjson(
-      { redirectTo },
+      { redirectTo, isGithubAuthSupported },
       {
         headers: {
           "Set-Cookie": await commitSession(session),
@@ -34,7 +35,7 @@ export async function loader({ request }: LoaderArgs) {
       }
     );
   } else {
-    return typedjson({ redirectTo: null });
+    return typedjson({ redirectTo: null, isGithubAuthSupported });
   }
 }
 
@@ -63,10 +64,12 @@ export default function LoginPage() {
             <FormTitle divide={false} title="Create your Trigger.dev account" />
             <Fieldset>
               <div className="flex flex-col gap-y-2">
-                <Button type="submit" variant="primary/large" fullWidth>
-                  <NamedIcon name={"github"} className={"mr-1.5 h-4 w-4"} />
-                  Continue with GitHub
-                </Button>
+                {isGithubAuthSupported && (
+                  <Button type="submit" variant="primary/large" fullWidth>
+                    <NamedIcon name={"github"} className={"mr-1.5 h-4 w-4"} />
+                    Continue with GitHub
+                  </Button>
+                )}
                 <LinkButton
                   to="/login/magic"
                   variant="secondary/large"
@@ -82,7 +85,7 @@ export default function LoginPage() {
                 </LinkButton>
               </div>
               <Paragraph variant="extra-small" className="mt-2 text-center">
-                By connecting your GitHub account you agree to our{" "}
+                By signing up you agree to our{" "}
                 <TextLink
                   href="https://trigger.dev/legal/terms"
                   target="_blank"

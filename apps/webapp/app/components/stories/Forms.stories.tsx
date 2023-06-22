@@ -128,7 +128,7 @@ function LoginForm() {
               Continue with Email
             </Button>
             <Paragraph variant="small" className="mt-2 text-center">
-              By connecting your GitHub account you agree to our{" "}
+              By creating an account you agree to our{" "}
               <TextLink href="#">terms</TextLink> and{" "}
               <TextLink href="#">privacy</TextLink> policies.
             </Paragraph>
