@@ -4,14 +4,14 @@ import { parse } from "@conform-to/zod";
 import { BoltIcon, ForwardIcon } from "@heroicons/react/24/solid";
 import { Form, Outlet, useNavigate, useRevalidator } from "@remix-run/react";
 import { ActionFunction, LoaderArgs, json } from "@remix-run/server-runtime";
-import { useCallback, useEffect, useMemo } from "react";
+import { useEffect, useMemo } from "react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { useEventSource } from "remix-utils";
 import { z } from "zod";
 import { CodeBlock } from "~/components/code/CodeBlock";
 import { EnvironmentLabel } from "~/components/environments/EnvironmentLabel";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
-import { Button, ButtonContent } from "~/components/primitives/Buttons";
+import { Button } from "~/components/primitives/Buttons";
 import { Callout } from "~/components/primitives/Callout";
 import { Header2 } from "~/components/primitives/Headers";
 import { NamedIcon } from "~/components/primitives/NamedIcon";
@@ -54,7 +54,7 @@ import {
   RunParamsSchema,
   jobPath,
   runCompletedPath,
-  runPath,
+  runDashboardPath,
   runStreamingPath,
   runTaskPath,
   runTriggerPath,
@@ -113,7 +113,7 @@ export const action: ActionFunction = async ({ request, params }) => {
       const run = await rerunService.call({ runId: runParam });
 
       return redirectWithSuccessMessage(
-        runPath(
+        runDashboardPath(
           { slug: organizationSlug },
           { slug: projectParam },
           { slug: jobParam },
@@ -127,7 +127,7 @@ export const action: ActionFunction = async ({ request, params }) => {
       await continueService.call({ runId: runParam });
 
       return redirectWithSuccessMessage(
-        runPath(
+        runDashboardPath(
           { slug: organizationSlug },
           { slug: projectParam },
           { slug: jobParam },

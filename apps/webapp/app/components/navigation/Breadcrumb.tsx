@@ -1,11 +1,16 @@
 import { useMatches } from "@remix-run/react";
 import { Fragment } from "react";
+import {
+  useIntegrationClient,
+  useOptionalIntegrationClient,
+} from "~/hooks/useIntegrationClient";
 import { useJob, useOptionalJob } from "~/hooks/useJob";
 import {
   useOptionalOrganization,
   useOrganization,
 } from "~/hooks/useOrganizations";
 import { useOptionalProject, useProject } from "~/hooks/useProject";
+import { useOptionalRun, useRun } from "~/hooks/useRun";
 import {
   integrationClientConnectionsPath,
   integrationClientPath,
@@ -15,17 +20,12 @@ import {
   projectEnvironmentsPath,
   projectIntegrationsPath,
   projectPath,
-  runPath,
+  runDashboardPath,
 } from "~/utils/pathBuilder";
 import { BreadcrumbIcon } from "../primitives/BreadcrumbIcon";
 import { JobsMenu } from "./JobsMenu";
 import { BreadcrumbLink } from "./NavBar";
 import { ProjectsMenu } from "./ProjectsMenu";
-import { useOptionalRun, useRun } from "~/hooks/useRun";
-import {
-  useIntegrationClient,
-  useOptionalIntegrationClient,
-} from "~/hooks/useIntegrationClient";
 
 export type Breadcrumb = {
   slug:
@@ -200,7 +200,7 @@ function BreadcrumbItem({
           />
           <BreadcrumbIcon />
           <BreadcrumbLink
-            to={runPath(organization!, project!, job!, run!)}
+            to={runDashboardPath(organization!, project!, job!, run!)}
             title={`Run #${run!.number}`}
           />
         </Fragment>

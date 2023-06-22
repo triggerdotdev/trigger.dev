@@ -185,13 +185,22 @@ export function jobParam(job: JobForPath) {
 }
 
 // Run
-export function runPath(
+function runPath(
   organization: OrgForPath,
   project: ProjectForPath,
   job: JobForPath,
   run: RunForPath
 ) {
   return `${jobPath(organization, project, job)}/runs/${runParam(run)}`;
+}
+
+export function runDashboardPath(
+  organization: OrgForPath,
+  project: ProjectForPath,
+  job: JobForPath,
+  run: RunForPath
+) {
+  return runTriggerPath(organization, project, job, run);
 }
 
 export function runStreamingPath(

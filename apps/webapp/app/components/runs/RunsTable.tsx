@@ -1,11 +1,11 @@
 import { StopIcon } from "@heroicons/react/24/outline";
-import { CheckIcon, ChevronRightIcon } from "@heroicons/react/24/solid";
+import { CheckIcon } from "@heroicons/react/24/solid";
 import { useJob } from "~/hooks/useJob";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { RunList } from "~/presenters/RunListPresenter.server";
 import { formatDateTime, formatDuration } from "~/utils";
-import { runPath } from "~/utils/pathBuilder";
+import { runDashboardPath } from "~/utils/pathBuilder";
 import { EnvironmentLabel } from "../environments/EnvironmentLabel";
 import { Callout } from "../primitives/Callout";
 import { Spinner } from "../primitives/Spinner";
@@ -64,7 +64,7 @@ export function RunsTable({
           </TableBlankRow>
         ) : (
           runs.map((run) => {
-            const path = runPath(organization, project, job, run);
+            const path = runDashboardPath(organization, project, job, run);
             return (
               <TableRow key={run.id}>
                 <TableCell to={path}>#{run.number}</TableCell>
