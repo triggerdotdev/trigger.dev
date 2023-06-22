@@ -68,6 +68,27 @@ new Job(client, {
 });
 
 new Job(client, {
+  id: "openai-images",
+  name: "OpenAI Images",
+  version: "0.0.1",
+  trigger: eventTrigger({
+    name: "openai.images",
+    schema: z.object({}),
+  }),
+  integrations: {
+    openai,
+  },
+  run: async (payload, io, ctx) => {
+    await io.openai.createImage("image", {
+      prompt: "A hedgehog wearing a party hat",
+      n: 2,
+      size: "256x256",
+      response_format: "url",
+    });
+  },
+});
+
+new Job(client, {
   id: "openai-files",
   name: "OpenAI Files",
   version: "0.0.1",

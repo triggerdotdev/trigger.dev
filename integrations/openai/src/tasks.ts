@@ -4,6 +4,7 @@ import {
   CreateCompletionRequest,
   CreateEditRequest,
   CreateFineTuneRequest,
+  CreateImageRequest,
   OpenAIApi,
 } from "openai";
 import { OpenAIIntegrationAuth } from "./types";
@@ -251,6 +252,56 @@ export const createEdit: AuthenticatedTask<
 
     return {
       name: "Create edit",
+      params,
+      icon: "openai",
+      properties,
+    };
+  },
+};
+
+type CreateImageResponseData = Prettify<
+  Awaited<ReturnType<OpenAIClientType["createImage"]>>["data"]
+>;
+
+export const createImage: AuthenticatedTask<
+  OpenAIClientType,
+  Prettify<CreateImageRequest>,
+  CreateImageResponseData
+> = {
+  run: async (params, client) => {
+    return client.createImage(params).then((res) => res.data);
+  },
+  init: (params) => {
+    let properties = [
+      {
+        label: "Prompt",
+        text: params.prompt,
+      },
+    ];
+
+    if (params.n) {
+      properties.push({
+        label: "Number of images",
+        text: params.n.toString(),
+      });
+    }
+
+    if (params.size) {
+      properties.push({
+        label: "Size",
+        text: params.size,
+      });
+    }
+
+    if (params.response_format) {
+      properties.push({
+        label: "Response format",
+        text: params.response_format,
+      });
+    }
+
+    return {
+      name: "Create image",
       params,
       icon: "openai",
       properties,
