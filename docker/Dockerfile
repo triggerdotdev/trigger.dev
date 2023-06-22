@@ -61,4 +61,6 @@ COPY --from=builder /triggerdotdev/apps/webapp/build ./apps/webapp/build
 COPY --from=builder /triggerdotdev/apps/webapp/public ./apps/webapp/public
 COPY --from=builder /triggerdotdev/scripts ./scripts
 
+EXPOSE 3000
+
 CMD ["./scripts/entrypoint.sh"]
