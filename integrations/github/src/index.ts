@@ -441,6 +441,7 @@ type CreateRepoTriggerReturnType = <
   TEventSpecification extends GitHubEvents
 >(args: {
   event: TEventSpecification;
+  owner: string;
   repo: string;
 }) => ExternalSourceTrigger<
   TEventSpecification,
@@ -452,14 +453,16 @@ function createRepoTrigger(
 ): CreateRepoTriggerReturnType {
   return <TEventSpecification extends GitHubEvents>({
     event,
+    owner,
     repo,
   }: {
     event: TEventSpecification;
+    owner: string;
     repo: string;
   }) => {
     return new ExternalSourceTrigger({
       event,
-      params: { repo },
+      params: { owner, repo },
       source,
     });
   };

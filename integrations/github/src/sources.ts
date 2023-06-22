@@ -33,25 +33,30 @@ export function createRepoEventSource(
   integration: TriggerIntegration<IntegrationClient<Octokit, typeof tasks>>
 ): ExternalSource<
   TriggerIntegration<IntegrationClient<Octokit, typeof tasks>>,
-  { repo: string },
+  { owner: string; repo: string },
   "HTTP"
 > {
   return new ExternalSource("HTTP", {
     id: "github.repo",
     version: "0.1.1",
-    schema: z.object({ repo: z.string() }),
+    schema: z.object({ owner: z.string(), repo: z.string() }),
     integration,
-    key: (params) => params.repo,
+    key: (params) => `${params.owner}/${params.repo}`,
     properties: (params) => [
+      {
+        label: "Owner",
+        text: params.owner,
+        url: `https://github.com/${params.owner}`,
+      },
       {
         label: "Repo",
         text: params.repo,
-        url: `https://github.com/${params.repo}`,
+        url: `https://github.com/${params.owner}/${params.repo}`,
       },
     ],
     filter: (params) => ({
       repository: {
-        full_name: [params.repo],
+        full_name: [`${params.owner}/${params.repo}`],
       },
     }),
     handler: webhookHandler,
@@ -64,6 +69,7 @@ export function createRepoEventSource(
           const newWebhookData = await io.integration.updateWebhook(
             "update-webhook",
             {
+              owner: params.owner,
               repo: params.repo,
               hookId: httpSource.data.id,
               url: httpSource.url,
@@ -82,6 +88,7 @@ export function createRepoEventSource(
       }
 
       const webhooks = await io.integration.listWebhooks("list-webhooks", {
+        owner: params.owner,
         repo: params.repo,
       });
 
@@ -94,6 +101,7 @@ export function createRepoEventSource(
         const updatedWebhook = await io.integration.updateWebhook(
           "update-webhook",
           {
+            owner: params.owner,
             repo: params.repo,
             hookId: existingWebhook.id,
             url: httpSource.url,
@@ -109,6 +117,7 @@ export function createRepoEventSource(
       }
 
       const webhook = await io.integration.createWebhook("create-webhook", {
+        owner: params.owner,
         repo: params.repo,
         events,
         url: httpSource.url,

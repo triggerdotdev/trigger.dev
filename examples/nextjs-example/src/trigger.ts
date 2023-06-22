@@ -542,7 +542,7 @@ new Job(client, {
   enabled,
   trigger: eventTrigger({
     name: "new.repo",
-    schema: z.object({ repo: z.string() }),
+    schema: z.object({ owner: z.string(), repo: z.string() }),
   }),
   run: async (payload, io, ctx) => {
     return await io.registerTrigger(
@@ -550,6 +550,7 @@ new Job(client, {
       dynamicOnIssueOpenedTrigger,
       payload.repo,
       {
+        owner: payload.owner,
         repo: payload.repo,
       }
     );
@@ -619,7 +620,8 @@ new Job(client, {
   },
   trigger: github.triggers.repo({
     event: events.onIssueOpened,
-    repo: "ericallam/basic-starter-12k",
+    owner: "ericallam",
+    repo: "basic-starter-12k",
   }),
   run: async (payload, io, ctx) => {
     await io.wait("wait", 5); // wait for 5 seconds

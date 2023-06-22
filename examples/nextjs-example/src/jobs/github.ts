@@ -14,7 +14,8 @@ new Job(client, {
   version: "0.1.0",
   trigger: githubApiKey.triggers.repo({
     event: events.onIssue,
-    repo: "triggerdotdev/empty",
+    owner: "triggerdotdev",
+    repo: "empty",
   }),
   run: async (payload, io, ctx) => {
     await io.logger.info("This is a simple log info message");
@@ -28,7 +29,8 @@ new Job(client, {
   version: "0.1.0",
   trigger: githubApiKey.triggers.repo({
     event: events.onIssueOpened,
-    repo: "triggerdotdev/empty",
+    owner: "triggerdotdev",
+    repo: "empty",
   }),
   run: async (payload, io, ctx) => {
     await io.logger.info("This is a simple log info message");
@@ -42,7 +44,8 @@ new Job(client, {
   version: "0.1.0",
   trigger: githubApiKey.triggers.repo({
     event: events.onIssueAssigned,
-    repo: "triggerdotdev/empty",
+    owner: "triggerdotdev",
+    repo: "empty",
   }),
   run: async (payload, io, ctx) => {
     await io.logger.info("This is a simple log info message");
@@ -56,7 +59,8 @@ new Job(client, {
   version: "0.1.0",
   trigger: githubApiKey.triggers.repo({
     event: events.onIssueComment,
-    repo: "triggerdotdev/empty",
+    owner: "triggerdotdev",
+    repo: "empty",
   }),
   run: async (payload, io, ctx) => {
     await io.logger.info("This is a simple log info message");
@@ -70,7 +74,8 @@ new Job(client, {
   version: "0.1.0",
   trigger: githubApiKey.triggers.repo({
     event: events.onStar,
-    repo: "triggerdotdev/empty",
+    owner: "triggerdotdev",
+    repo: "empty",
   }),
   run: async (payload, io, ctx) => {
     await io.logger.info("This is a simple log info message");
@@ -84,7 +89,8 @@ new Job(client, {
   version: "0.1.0",
   trigger: githubApiKey.triggers.repo({
     event: events.onNewStar,
-    repo: "triggerdotdev/empty",
+    owner: "triggerdotdev",
+    repo: "empty",
   }),
   run: async (payload, io, ctx) => {
     await io.logger.info("This is a simple log info message");
@@ -98,7 +104,8 @@ new Job(client, {
   version: "0.1.0",
   trigger: githubApiKey.triggers.repo({
     event: events.onNewRepository,
-    repo: "triggerdotdev/empty",
+    owner: "triggerdotdev",
+    repo: "empty",
   }),
   run: async (payload, io, ctx) => {
     await io.logger.info("This is a simple log info message");
@@ -112,7 +119,8 @@ new Job(client, {
   version: "0.1.0",
   trigger: githubApiKey.triggers.repo({
     event: events.onNewBranchOrTag,
-    repo: "triggerdotdev/empty",
+    owner: "triggerdotdev",
+    repo: "empty",
   }),
   run: async (payload, io, ctx) => {
     await io.logger.info("This is a simple log info message");
@@ -126,7 +134,8 @@ new Job(client, {
   version: "0.1.0",
   trigger: githubApiKey.triggers.repo({
     event: events.onNewBranch,
-    repo: "triggerdotdev/empty",
+    owner: "triggerdotdev",
+    repo: "empty",
   }),
   run: async (payload, io, ctx) => {
     await io.logger.info("This is a simple log info message");
@@ -140,7 +149,8 @@ new Job(client, {
   version: "0.1.0",
   trigger: githubApiKey.triggers.repo({
     event: events.onPush,
-    repo: "triggerdotdev/empty",
+    owner: "triggerdotdev",
+    repo: "empty",
   }),
   run: async (payload, io, ctx) => {
     await io.logger.info("This is a simple log info message");
@@ -154,7 +164,8 @@ new Job(client, {
   version: "0.1.0",
   trigger: githubApiKey.triggers.repo({
     event: events.onPullRequest,
-    repo: "triggerdotdev/empty",
+    owner: "triggerdotdev",
+    repo: "empty",
   }),
   run: async (payload, io, ctx) => {
     await io.logger.info("This is a simple log info message");
@@ -168,7 +179,8 @@ new Job(client, {
   version: "0.1.0",
   trigger: githubApiKey.triggers.repo({
     event: events.onPullRequestReview,
-    repo: "triggerdotdev/empty",
+    owner: "triggerdotdev",
+    repo: "empty",
   }),
   run: async (payload, io, ctx) => {
     await io.logger.info("This is a simple log info message");
