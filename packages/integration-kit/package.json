@@ -20,6 +20,7 @@
   "devDependencies": {
     "@trigger.dev/tsconfig": "workspace:*",
     "@types/node": "18",
+    "@types/uuid": "^9.0.0",
     "rimraf": "^3.0.2",
     "tsup": "^6.5.0",
     "tsx": "^3.12.1"
@@ -30,7 +31,9 @@
     "build:tsup": "tsup --dts-resolve",
     "typecheck": "tsup --dts-resolve --no-dts"
   },
-  "dependencies": {},
+  "dependencies": {
+    "uuid": "^9.0.0"
+  },
   "engines": {
     "node": ">=18"
   }

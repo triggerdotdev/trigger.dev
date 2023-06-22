@@ -6,6 +6,7 @@ import {
 } from "openai";
 import { OpenAIIntegrationAuth } from "./types";
 import { redactString } from "@trigger.dev/sdk";
+import { fileFromString } from "@trigger.dev/integration-kit";
 
 type OpenAIClientType = InstanceType<typeof OpenAIApi>;
 
@@ -151,6 +152,134 @@ export const backgroundCreateChatCompletion: AuthenticatedTask<
         {
           label: "model",
           text: params.model,
+        },
+      ],
+    };
+  },
+};
+
+type ListModelsResponseData = Awaited<
+  ReturnType<OpenAIClientType["listModels"]>
+>["data"];
+
+export const listModels: AuthenticatedTask<
+  OpenAIClientType,
+  void,
+  ListModelsResponseData
+> = {
+  run: async (params, client) => {
+    return client.listModels().then((res) => res.data);
+  },
+  init: (params) => {
+    return {
+      name: "List models",
+      params,
+      icon: "openai",
+      properties: [],
+    };
+  },
+};
+
+type CreateFileResponseData = Awaited<
+  ReturnType<OpenAIClientType["createFile"]>
+>["data"];
+
+type CreateFileRequest = {
+  file: string | File;
+  fileName?: string;
+  purpose: string;
+};
+
+export const createFile: AuthenticatedTask<
+  OpenAIClientType,
+  CreateFileRequest,
+  CreateFileResponseData
+> = {
+  run: async (params, client) => {
+    let file: File;
+
+    if (typeof params.file === "string") {
+      file = (await fileFromString(
+        params.file,
+        params.fileName ?? "file.txt"
+      )) as any;
+    } else {
+      file = params.file;
+    }
+
+    return client.createFile(file, params.purpose).then((res) => res.data);
+  },
+  init: (params) => {
+    return {
+      name: "Create file",
+      params,
+      icon: "openai",
+      properties: [
+        {
+          label: "Purpose",
+          text: params.purpose,
+        },
+        {
+          label: "Input type",
+          text: typeof params.file === "string" ? "string" : "File",
+        },
+      ],
+    };
+  },
+};
+
+type ListFilesResponseData = Awaited<
+  ReturnType<OpenAIClientType["listFiles"]>
+>["data"];
+
+export const listFiles: AuthenticatedTask<
+  OpenAIClientType,
+  void,
+  ListFilesResponseData
+> = {
+  run: async (params, client) => {
+    return client.listFiles().then((res) => res.data);
+  },
+  init: (params) => {
+    return {
+      name: "List files",
+      params,
+      icon: "openai",
+      properties: [],
+    };
+  },
+};
+
+type CreateFineTuneFileRequest = {
+  fileName: string;
+  examples: {
+    prompt: string;
+    completion: string;
+  }[];
+};
+
+export const createFineTuneFile: AuthenticatedTask<
+  OpenAIClientType,
+  CreateFineTuneFileRequest,
+  CreateFileResponseData
+> = {
+  run: async (params, client) => {
+    const file = (await fileFromString(
+      params.examples.map((d) => JSON.stringify(d)).join("\n"),
+      params.fileName
+    )) as any;
+
+    return client.createFile(file, "fine-tune").then((res) => res.data);
+  },
+  init: (params) => {
+    return {
+      name: "Create fine tune file",
+      params,
+      icon: "openai",
+      properties: [
+        {
+          label: "Examples",
+          text: params.examples.length.toString(),
         },
       ],
     };

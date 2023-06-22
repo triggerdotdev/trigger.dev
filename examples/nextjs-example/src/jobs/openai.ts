@@ -20,6 +20,8 @@ new Job(client, {
     openai,
   },
   run: async (payload, io, ctx) => {
+    await io.openai.listModels("list-models");
+
     await io.openai.backgroundCreateChatCompletion(
       "background-chat-completion",
       {
@@ -52,5 +54,45 @@ new Job(client, {
       model: "text-davinci-003",
       prompt: "Create a good programming joke about Tasks",
     });
+  },
+});
+
+new Job(client, {
+  id: "openai-files",
+  name: "OpenAI Files",
+  version: "0.0.1",
+  trigger: eventTrigger({
+    name: "openai.files",
+    schema: z.object({}),
+  }),
+  integrations: {
+    openai,
+  },
+  run: async (payload, io, ctx) => {
+    // jsonl string
+    await io.openai.createFile("file-string", {
+      file: `{ "prompt": "Tell me a joke", "completion": "Something funny" }\n{ "prompt": "Tell me another joke", "completion": "Something also funny" }`,
+      fileName: "cool-file.jsonl",
+      purpose: "fine-tune",
+    });
+
+    // fine tune file
+    await io.openai.createFineTuneFile("file-fine-tune", {
+      fileName: "fine-tune.jsonl",
+      examples: [
+        {
+          prompt: "Tell me a joke",
+          completion: "Why did the chicken cross the road? No one knows",
+        },
+        {
+          prompt: "Tell me another joke",
+          completion:
+            "Why did the chicken cross the road? To get to the other side",
+        },
+      ],
+    });
+
+    const files = await io.openai.listFiles("list-files");
+    await io.logger.info("files", files);
   },
 });

@@ -605,6 +605,7 @@ importers:
 
   integrations/openai:
     specifiers:
+      '@trigger.dev/integration-kit': workspace:^2.0.0-next.1
       '@trigger.dev/sdk': workspace:^2.0.0-next.0
       '@trigger.dev/tsconfig': workspace:*
       '@types/node': '18'
@@ -613,6 +614,7 @@ importers:
       tsup: ^6.5.0
       zod: ^3.20.2
     dependencies:
+      '@trigger.dev/integration-kit': link:../../packages/integration-kit
       '@trigger.dev/sdk': link:../../packages/trigger-sdk
       openai: 3.3.0
       zod: 3.20.2
@@ -748,12 +750,17 @@ importers:
     specifiers:
       '@trigger.dev/tsconfig': workspace:*
       '@types/node': '18'
+      '@types/uuid': ^9.0.0
       rimraf: ^3.0.2
       tsup: ^6.5.0
       tsx: ^3.12.1
+      uuid: ^9.0.0
+    dependencies:
+      uuid: 9.0.0
     devDependencies:
       '@trigger.dev/tsconfig': link:../../config-packages/tsconfig
       '@types/node': 18.15.13
+      '@types/uuid': 9.0.0
       rimraf: 3.0.2
       tsup: 6.6.3
       tsx: 3.12.2
@@ -16257,7 +16264,7 @@ packages:
       cosmiconfig: 7.1.0
       deepmerge: 4.2.2
       fs-extra: 10.1.0
-      memfs: 3.5.1
+      memfs: 3.5.3
       minimatch: 3.1.2
       node-abort-controller: 3.1.1
       schema-utils: 3.1.2
@@ -16416,8 +16423,8 @@ packages:
     dependencies:
       minipass: 3.3.6
 
-  /fs-monkey/1.0.3:
-    resolution: {integrity: sha512-cybjIfiiE+pTWicSCLFHSrXZ6EilF30oh91FDP9S2B051prEa7QWfrVTQm10/dDpswBDXZugPa1Ogu8Yh+HV0Q==}
+  /fs-monkey/1.0.4:
+    resolution: {integrity: sha512-INM/fWAxMICjttnD0DX1rBvinKskj5G1w+oy/pnm9u/tSlnBrzFonJMcalKJ30P8RRsPzKcCG7Q8l0jx5Fh9YQ==}
     dev: true
 
   /fs.realpath/1.0.0:
@@ -18964,11 +18971,11 @@ packages:
     resolution: {integrity: sha512-dq+qelQ9akHpcOl/gUVRTxVIOkAJ1wR3QAvb4RsVjS8oVoFjDGTc679wJYmUmknUF5HwMLOgb5O+a3KxfWapPQ==}
     engines: {node: '>= 0.6'}
 
-  /memfs/3.5.1:
-    resolution: {integrity: sha512-UWbFJKvj5k+nETdteFndTpYxdeTMox/ULeqX5k/dpaQJCCFmj5EeKv3dBcyO2xmkRAx2vppRu5dVG7SOtsGOzA==}
+  /memfs/3.5.3:
+    resolution: {integrity: sha512-UERzLsxzllchadvbPs5aolHh65ISpKpM+ccLbOJ8/vvpBKmAWf+la7dXFy7Mr0ySHbdHrFv5kGFCUHHe6GFEmw==}
     engines: {node: '>= 4.0.0'}
     dependencies:
-      fs-monkey: 1.0.3
+      fs-monkey: 1.0.4
     dev: true
 
   /memoizerific/1.11.3:
@@ -24994,7 +25001,7 @@ packages:
       webpack: ^4.0.0 || ^5.0.0
     dependencies:
       colorette: 2.0.19
-      memfs: 3.5.1
+      memfs: 3.5.3
       mime-types: 2.1.35
       range-parser: 1.2.1
       schema-utils: 4.0.1

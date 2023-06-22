@@ -5,6 +5,10 @@ import {
   createCompletion,
   backgroundCreateCompletion,
   backgroundCreateChatCompletion,
+  listModels,
+  createFile,
+  listFiles,
+  createFineTuneFile,
 } from "./tasks";
 import { OpenAIIntegrationOptions } from "./types";
 
@@ -13,6 +17,10 @@ const tasks = {
   createChatCompletion,
   backgroundCreateCompletion,
   backgroundCreateChatCompletion,
+  listModels,
+  createFile,
+  listFiles,
+  createFineTuneFile,
 };
 
 export class OpenAI
