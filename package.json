@@ -7,10 +7,6 @@
     "integrations/*"
   ],
   "version": "0.0.1",
-  "prisma": {
-    "schema": "apps/webapp/prisma/schema.prisma",
-    "seed": "tsx apps/webapp/prisma/seed.ts"
-  },
   "scripts": {
     "build": "turbo run build",
     "build:force": "turbo run build --force",
