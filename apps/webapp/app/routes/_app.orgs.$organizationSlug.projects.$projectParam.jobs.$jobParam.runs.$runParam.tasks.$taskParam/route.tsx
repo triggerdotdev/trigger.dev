@@ -180,6 +180,7 @@ export default function Page() {
           {params ? (
             <CodeBlock
               code={JSON.stringify(params, sensitiveDataReplacer, 2)}
+              maxLines={35}
             />
           ) : (
             <Paragraph variant="small">No input</Paragraph>
