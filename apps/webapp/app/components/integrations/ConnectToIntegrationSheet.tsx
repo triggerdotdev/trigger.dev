@@ -26,10 +26,12 @@ export function ConnectToIntegrationSheet({
   organizationId,
   button,
   className,
+  callbackUrl
 }: {
   integration: Integration;
   organizationId: string;
   button: React.ReactNode;
+  callbackUrl: string;
   className?: string;
 }) {
   const [integrationMethod, setIntegrationMethod] = useState<
@@ -100,6 +102,7 @@ export function ConnectToIntegrationSheet({
               integration={integration}
               organizationId={organizationId}
               method={integrationMethod}
+              callbackUrl={callbackUrl}
             />
           )}
         </SheetBody>
@@ -112,10 +115,12 @@ function SelectedIntegrationMethod({
   integration,
   organizationId,
   method,
+  callbackUrl
 }: {
   integration: Integration;
   organizationId: string;
   method: IntegrationMethod;
+  callbackUrl: string;
 }) {
   const authMethods = Object.values(integration.authenticationMethods);
 
@@ -134,6 +139,7 @@ function SelectedIntegrationMethod({
         <SelectOAuthMethod
           integration={integration}
           organizationId={organizationId}
+          callbackUrl={callbackUrl}
         />
       );
     case "custom":

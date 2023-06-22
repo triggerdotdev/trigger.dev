@@ -162,6 +162,7 @@ export class IntegrationsPresenter {
     return {
       clients: clientsWithConnections,
       options,
+      callbackUrl: `${env.APP_ORIGIN}/oauth2/callback`
     };
   }
 }

@@ -12,9 +12,11 @@ import { Paragraph } from "../primitives/Paragraph";
 export function SelectOAuthMethod({
   integration,
   organizationId,
+  callbackUrl
 }: {
   integration: Integration;
   organizationId: string;
+  callbackUrl: string;
 }) {
   const oAuthMethods = Object.entries(integration.authenticationMethods).filter(
     (a): a is [string, ApiAuthenticationMethodOAuth2] => a[1].type === "oauth2"
@@ -95,6 +97,7 @@ export function SelectOAuthMethod({
             authMethodKey={oAuthKey}
             organizationId={organizationId}
             clientType={connectionType}
+            callbackUrl={callbackUrl}
           />
         ) : (
           <>

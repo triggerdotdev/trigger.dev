@@ -74,7 +74,7 @@ export const handle: Handle = {
 };
 
 export default function Integrations() {
-  const { clients, options } = useTypedLoaderData<typeof loader>();
+  const { clients, options, callbackUrl } = useTypedLoaderData<typeof loader>();
   const organization = useOrganization();
   const project = useProject();
 
@@ -104,6 +104,7 @@ export default function Integrations() {
           <PossibleIntegrationsList
             options={options}
             organizationId={organization.id}
+            callbackUrl={callbackUrl}
           />
           <ConnectedIntegrationsList
             clients={clients}
@@ -119,9 +120,11 @@ export default function Integrations() {
 function PossibleIntegrationsList({
   options,
   organizationId,
+  callbackUrl,
 }: {
   options: IntegrationOrApi[];
   organizationId: string;
+  callbackUrl: string;
 }) {
   const [onlyShowIntegrations, setOnlyShowIntegrations] = useState(false);
   const optionsToShow = onlyShowIntegrations
@@ -167,6 +170,7 @@ function PossibleIntegrationsList({
                   key={option.identifier}
                   integration={option}
                   organizationId={organizationId}
+                  callbackUrl={callbackUrl}
                   button={
                     <AddIntegrationConnection
                       identifier={option.identifier}
@@ -370,5 +374,5 @@ function AddIntegrationConnection({
 }
 
 function IntegrationIcon() {
-  return <LogoIcon className="h-3.5 w-3.5 pb-0.5 flex-none text-amber-500" />;
+  return <LogoIcon className="h-3.5 w-3.5 flex-none pb-0.5 text-amber-500" />;
 }

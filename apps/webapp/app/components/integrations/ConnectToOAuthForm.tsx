@@ -33,12 +33,14 @@ export function ConnectToOAuthForm({
   authMethodKey,
   organizationId,
   clientType,
+  callbackUrl,
 }: {
   integration: Integration;
   authMethod: ApiAuthenticationMethodOAuth2;
   authMethodKey: string;
   organizationId: string;
   clientType: ConnectionType;
+  callbackUrl: string;
 }) {
   const [id] = useState<string>(cuid());
   const transition = useNavigation();
@@ -133,10 +135,7 @@ export function ConnectToOAuthForm({
             <div className="ml-6 mt-2">
               <Paragraph variant="small" className="mb-2">
                 Set the callback url to{" "}
-                <CodeBlock
-                  code={`${origin}/oauth2/callback`}
-                  showLineNumbers={false}
-                />
+                <CodeBlock code={callbackUrl} showLineNumbers={false} />
               </Paragraph>
               <div className="flex flex-col gap-2">
                 <div className="flex gap-2">
