@@ -2,12 +2,17 @@ import type { AuthenticatedTask } from "@trigger.dev/sdk";
 import {
   CreateChatCompletionRequest,
   CreateCompletionRequest,
+  CreateEditRequest,
   CreateFineTuneRequest,
   OpenAIApi,
 } from "openai";
 import { OpenAIIntegrationAuth } from "./types";
 import { redactString } from "@trigger.dev/sdk";
-import { Prettify, fileFromString } from "@trigger.dev/integration-kit";
+import {
+  Prettify,
+  fileFromString,
+  truncate,
+} from "@trigger.dev/integration-kit";
 
 type OpenAIClientType = InstanceType<typeof OpenAIApi>;
 
@@ -208,6 +213,47 @@ export const backgroundCreateChatCompletion: AuthenticatedTask<
           text: params.model,
         },
       ],
+    };
+  },
+};
+
+type CreateEditResponseData = Prettify<
+  Awaited<ReturnType<OpenAIClientType["createEdit"]>>["data"]
+>;
+
+export const createEdit: AuthenticatedTask<
+  OpenAIClientType,
+  Prettify<CreateEditRequest>,
+  CreateEditResponseData
+> = {
+  run: async (params, client) => {
+    return client.createEdit(params).then((res) => res.data);
+  },
+  init: (params) => {
+    let properties = [
+      {
+        label: "Model",
+        text: params.model,
+      },
+    ];
+
+    if (params.input) {
+      properties.push({
+        label: "Input",
+        text: truncate(params.input, 40),
+      });
+    }
+
+    properties.push({
+      label: "Instruction",
+      text: truncate(params.instruction, 40),
+    });
+
+    return {
+      name: "Create edit",
+      params,
+      icon: "openai",
+      properties,
     };
   },
 };

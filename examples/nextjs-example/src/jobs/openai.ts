@@ -58,6 +58,12 @@ new Job(client, {
       model: "text-davinci-003",
       prompt: "Create a good programming joke about Tasks",
     });
+
+    await io.openai.createEdit("edit", {
+      model: "text-davinci-edit-001",
+      input: "Thsi is ridddled with erors",
+      instruction: "Fix the spelling errors",
+    });
   },
 });
 
