@@ -21,7 +21,8 @@ new Job(client, {
   },
   trigger: github.triggers.repo({
     event: events.onIssueOpened,
-    repo: "ericallam/basic-starter-12k",
+    owner: "ericallam",
+    repo: "basic-starter-12k",
   }),
   run: async (payload, io, ctx) => {
     await io.wait("wait", 5); // wait for 5 seconds
