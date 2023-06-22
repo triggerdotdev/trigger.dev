@@ -15,6 +15,7 @@ import {
   LinearLightIcon,
 } from "@trigger.dev/companyicons";
 import { Content } from "next/font/google";
+import { Button } from "./Button";
 
 const accordianContentVariants = {
   summaryEmailCard: {
@@ -172,13 +173,17 @@ export function TriggerSyncCard({
             <div>
               {" "}
               {active ? (
-                <button className="bg-slate-700 hover:bg-slate-600 transition px-2 rounded font-sans">
-                  Sync now
-                </button>
+                <Button
+                  buttonText={"Sync now"}
+                  buttonVariant={"primary"}
+                  buttonSize={"small"}
+                />
               ) : (
-                <button className="bg-indigo-500 hover:bg-indigo-400 transition px-2 rounded font-sans">
-                  Connect
-                </button>
+                <Button
+                  buttonText={"Connect"}
+                  buttonVariant={"primary"}
+                  buttonSize={"small"}
+                />
               )}
             </div>
           </div>
