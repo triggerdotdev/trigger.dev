@@ -4,7 +4,7 @@ import { z } from "zod";
 
 export type PrismaTransactionClient = Omit<
   PrismaClient,
-  "$connect" | "$disconnect" | "$on" | "$transaction" | "$use"
+  "$connect" | "$disconnect" | "$on" | "$transaction" | "$use" | "$extends"
 >;
 
 export type PrismaClientOrTransaction = PrismaClient | PrismaTransactionClient;

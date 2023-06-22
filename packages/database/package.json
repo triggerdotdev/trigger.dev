@@ -5,11 +5,11 @@
   "main": "./src/index.ts",
   "types": "./src/index.ts",
   "dependencies": {
-    "@prisma/client": "latest",
+    "@prisma/client": "^4.16.0",
     "typescript": "^4.8.4"
   },
   "devDependencies": {
-    "prisma": "latest"
+    "prisma": "^4.16.0"
   },
   "scripts": {
     "db:generate": "prisma generate",
