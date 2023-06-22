@@ -18,7 +18,7 @@ concurrency:
 jobs:
   typecheck:
     name: ʦ TypeScript
-    runs-on: ubuntu-latest
+    runs-on: buildjet-4vcpu-ubuntu-2204
     steps:
       - name: ⬇️ Checkout repo
         uses: actions/checkout@v3
@@ -29,7 +29,7 @@ jobs:
           version: 7.18
 
       - name: ⎔ Setup node
-        uses: actions/setup-node@v3
+        uses: buildjet/setup-node@v3
         with:
           node-version: 18
           cache: "pnpm"
@@ -45,7 +45,7 @@ jobs:
 
   publish:
     needs: [typecheck]
-    runs-on: ubuntu-latest
+    runs-on: buildjet-4vcpu-ubuntu-2204
     steps:
       - name: ⬇️ Checkout repo
         uses: actions/checkout@v3
