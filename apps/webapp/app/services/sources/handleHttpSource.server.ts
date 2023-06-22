@@ -1,6 +1,7 @@
 import type { PrismaClient } from "~/db.server";
 import { prisma } from "~/db.server";
 import { workerQueue } from "../worker.server";
+import { requestUrl } from "~/utils";
 
 export class HandleHttpSourceService {
   #prismaClient: PrismaClient;
@@ -10,6 +11,8 @@ export class HandleHttpSourceService {
   }
 
   public async call(id: string, request: Request) {
+    const url = requestUrl(request);
+
     const triggerSource = await this.#prismaClient.triggerSource.findUnique({
       where: { id },
       include: {
@@ -35,7 +38,7 @@ export class HandleHttpSourceService {
             sourceId: triggerSource.id,
             endpointId: triggerSource.endpointId,
             environmentId: triggerSource.environmentId,
-            url: request.url,
+            url: url.href,
             method: request.method,
             headers: Object.fromEntries(request.headers),
             body: ["POST", "PUT", "PATCH"].includes(request.method)

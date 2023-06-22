@@ -30,7 +30,7 @@ import {
   EnvironmentsPresenter,
 } from "~/presenters/EnvironmentsPresenter.server";
 import { requireUserId } from "~/services/session.server";
-import { formatDateTime } from "~/utils";
+import { formatDateTime, requestUrl } from "~/utils";
 import { Handle } from "~/utils/handle";
 import { ProjectParamSchema } from "~/utils/pathBuilder";
 import { RuntimeEnvironmentType } from "../../../../../packages/database/src";
@@ -41,7 +41,7 @@ export const loader = async ({ request, params }: LoaderArgs) => {
   const { projectParam } = ProjectParamSchema.parse(params);
 
   try {
-    const url = new URL(request.url);
+    const url = requestUrl(request);
     const baseUrl = `${url.protocol}//${url.host}`;
     const presenter = new EnvironmentsPresenter();
     const { environments, clients } = await presenter.call({

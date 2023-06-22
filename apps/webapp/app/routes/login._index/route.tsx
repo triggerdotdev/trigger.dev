@@ -12,22 +12,22 @@ import { FormTitle } from "~/components/primitives/FormTitle";
 import { NamedIcon } from "~/components/primitives/NamedIcon";
 import { Paragraph, TextLink } from "~/components/primitives/Paragraph";
 import { isGithubAuthSupported } from "~/services/auth.server";
-
 import { commitSession, setRedirectTo } from "~/services/redirectTo.server";
 import { getUserId } from "~/services/session.server";
+import { requestUrl } from "~/utils";
 
 export async function loader({ request }: LoaderArgs) {
   const userId = await getUserId(request);
   if (userId) return redirect("/");
 
-  const url = new URL(request.url);
+  const url = requestUrl(request);
   const redirectTo = url.searchParams.get("redirectTo");
 
   if (redirectTo) {
     const session = await setRedirectTo(request, redirectTo);
 
     return typedjson(
-      { redirectTo, isGithubAuthSupported },
+      { redirectTo, showGithubAuth: isGithubAuthSupported },
       {
         headers: {
           "Set-Cookie": await commitSession(session),
@@ -35,7 +35,10 @@ export async function loader({ request }: LoaderArgs) {
       }
     );
   } else {
-    return typedjson({ redirectTo: null, isGithubAuthSupported });
+    return typedjson({
+      redirectTo: null,
+      showGithubAuth: isGithubAuthSupported,
+    });
   }
 }
 
@@ -64,7 +67,7 @@ export default function LoginPage() {
             <FormTitle divide={false} title="Create your Trigger.dev account" />
             <Fieldset>
               <div className="flex flex-col gap-y-2">
-                {isGithubAuthSupported && (
+                {data.showGithubAuth && (
                   <Button type="submit" variant="primary/large" fullWidth>
                     <NamedIcon name={"github"} className={"mr-1.5 h-4 w-4"} />
                     Continue with GitHub

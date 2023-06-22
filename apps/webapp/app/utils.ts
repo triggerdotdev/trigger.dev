@@ -1,7 +1,4 @@
-import {
-  ErrorWithStack,
-  ErrorWithStackSchema,
-} from "@trigger.dev/internal";
+import { ErrorWithStack, ErrorWithStackSchema } from "@trigger.dev/internal";
 import type { RouteMatch } from "@remix-run/react";
 import { useMatches } from "@remix-run/react";
 import humanizeDuration from "humanize-duration";
@@ -213,4 +210,17 @@ export function formatUnknownError(
   }
 
   return "Unknown error";
+}
+
+// This will read the X-Forwarded-Proto header from the request, and make sure the
+// returned url has the matching proto if the request.url does not
+export function requestUrl(request: Request): URL {
+  const url = new URL(request.url);
+  const proto = request.headers.get("X-Forwarded-Proto");
+
+  if (proto && url.protocol !== proto) {
+    url.protocol = proto;
+  }
+
+  return url;
 }

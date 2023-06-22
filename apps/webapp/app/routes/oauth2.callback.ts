@@ -6,6 +6,7 @@ import { env } from "~/env.server";
 import { integrationAuthRepository } from "~/services/externalApis/integrationAuthRepository.server";
 import { OAuthClient, OAuthClientSchema } from "~/services/externalApis/types";
 import { getSecretStore } from "~/services/secrets/secretStore.server";
+import { requestUrl } from "~/utils";
 
 const ParamsSchema = z
   .object({
@@ -20,7 +21,7 @@ export async function loader({ request }: LoaderArgs) {
     return { status: 405, body: "Method Not Allowed" };
   }
 
-  const url = new URL(request.url);
+  const url = requestUrl(request);
   const parsedParams = ParamsSchema.safeParse(
     Object.fromEntries(url.searchParams)
   );
