@@ -2,18 +2,19 @@ import type { AuthenticatedTask } from "@trigger.dev/sdk";
 import {
   CreateChatCompletionRequest,
   CreateCompletionRequest,
+  CreateFineTuneRequest,
   OpenAIApi,
 } from "openai";
 import { OpenAIIntegrationAuth } from "./types";
 import { redactString } from "@trigger.dev/sdk";
-import { fileFromString } from "@trigger.dev/integration-kit";
+import { Prettify, fileFromString } from "@trigger.dev/integration-kit";
 
 type OpenAIClientType = InstanceType<typeof OpenAIApi>;
 
 export const createCompletion: AuthenticatedTask<
   OpenAIClientType,
-  CreateCompletionRequest,
-  Awaited<ReturnType<OpenAIClientType["createCompletion"]>>["data"]
+  Prettify<CreateCompletionRequest>,
+  Prettify<Awaited<ReturnType<OpenAIClientType["createCompletion"]>>["data"]>
 > = {
   run: async (params, client) => {
     return client.createCompletion(params).then((res) => res.data);
@@ -39,8 +40,8 @@ type CreateCompletionResponseData = Awaited<
 
 export const backgroundCreateCompletion: AuthenticatedTask<
   OpenAIClientType,
-  CreateCompletionRequest,
-  CreateCompletionResponseData,
+  Prettify<CreateCompletionRequest>,
+  Prettify<CreateCompletionResponseData>,
   OpenAIIntegrationAuth
 > = {
   run: async (params, client, task, io, auth) => {
@@ -81,8 +82,8 @@ type CreateChatCompetionResponseData = Awaited<
 
 export const createChatCompletion: AuthenticatedTask<
   OpenAIClientType,
-  CreateChatCompletionRequest,
-  CreateChatCompetionResponseData
+  Prettify<CreateChatCompletionRequest>,
+  Prettify<CreateChatCompetionResponseData>
 > = {
   run: async (params, client) => {
     return client.createChatCompletion(params).then((res) => res.data);
@@ -104,8 +105,8 @@ export const createChatCompletion: AuthenticatedTask<
 
 export const backgroundCreateChatCompletion: AuthenticatedTask<
   OpenAIClientType,
-  CreateChatCompletionRequest,
-  CreateChatCompetionResponseData,
+  Prettify<CreateChatCompletionRequest>,
+  Prettify<CreateChatCompetionResponseData>,
   OpenAIIntegrationAuth
 > = {
   run: async (params, client, task, io, auth) => {
@@ -165,7 +166,7 @@ type ListModelsResponseData = Awaited<
 export const listModels: AuthenticatedTask<
   OpenAIClientType,
   void,
-  ListModelsResponseData
+  Prettify<ListModelsResponseData>
 > = {
   run: async (params, client) => {
     return client.listModels().then((res) => res.data);
@@ -192,8 +193,8 @@ type CreateFileRequest = {
 
 export const createFile: AuthenticatedTask<
   OpenAIClientType,
-  CreateFileRequest,
-  CreateFileResponseData
+  Prettify<CreateFileRequest>,
+  Prettify<CreateFileResponseData>
 > = {
   run: async (params, client) => {
     let file: File;
@@ -228,9 +229,9 @@ export const createFile: AuthenticatedTask<
   },
 };
 
-type ListFilesResponseData = Awaited<
-  ReturnType<OpenAIClientType["listFiles"]>
->["data"];
+type ListFilesResponseData = Prettify<
+  Awaited<ReturnType<OpenAIClientType["listFiles"]>>["data"]
+>;
 
 export const listFiles: AuthenticatedTask<
   OpenAIClientType,
@@ -260,8 +261,8 @@ type CreateFineTuneFileRequest = {
 
 export const createFineTuneFile: AuthenticatedTask<
   OpenAIClientType,
-  CreateFineTuneFileRequest,
-  CreateFileResponseData
+  Prettify<CreateFineTuneFileRequest>,
+  Prettify<CreateFileResponseData>
 > = {
   run: async (params, client) => {
     const file = (await fileFromString(
@@ -280,6 +281,189 @@ export const createFineTuneFile: AuthenticatedTask<
         {
           label: "Examples",
           text: params.examples.length.toString(),
+        },
+      ],
+    };
+  },
+};
+
+type CreateFineTuneResponseData = Prettify<
+  Awaited<ReturnType<OpenAIClientType["createFineTune"]>>["data"]
+>;
+
+export const createFineTune: AuthenticatedTask<
+  OpenAIClientType,
+  Prettify<CreateFineTuneRequest>,
+  CreateFineTuneResponseData
+> = {
+  run: async (params, client) => {
+    return client.createFineTune(params).then((res) => res.data);
+  },
+  init: (params) => {
+    let properties = [
+      {
+        label: "Training file",
+        text: params.training_file,
+      },
+    ];
+
+    if (params.validation_file) {
+      properties.push({
+        label: "Validation file",
+        text: params.validation_file,
+      });
+    }
+
+    if (params.model) {
+      properties.push({
+        label: "Model",
+        text: params.model,
+      });
+    }
+
+    return {
+      name: "Create fine tune",
+      params,
+      icon: "openai",
+      properties,
+    };
+  },
+};
+
+type ListFineTunesResponseData = Prettify<
+  Awaited<ReturnType<OpenAIClientType["listFineTunes"]>>["data"]
+>;
+
+export const listFineTunes: AuthenticatedTask<
+  OpenAIClientType,
+  void,
+  ListFineTunesResponseData
+> = {
+  run: async (params, client) => {
+    return client.listFineTunes().then((res) => res.data);
+  },
+  init: (params) => {
+    return {
+      name: "List fine tunes",
+      params,
+      icon: "openai",
+      properties: [],
+    };
+  },
+};
+
+type SpecificFineTuneRequest = {
+  fineTuneId: string;
+};
+
+type RetrieveFineTuneResponseData = Prettify<
+  Awaited<ReturnType<OpenAIClientType["retrieveFineTune"]>>["data"]
+>;
+
+export const retrieveFineTune: AuthenticatedTask<
+  OpenAIClientType,
+  Prettify<SpecificFineTuneRequest>,
+  RetrieveFineTuneResponseData
+> = {
+  run: async (params, client) => {
+    return client.retrieveFineTune(params.fineTuneId).then((res) => res.data);
+  },
+  init: (params) => {
+    return {
+      name: "Retrieve fine tune",
+      params,
+      icon: "openai",
+      properties: [
+        {
+          label: "Fine tune id",
+          text: params.fineTuneId,
+        },
+      ],
+    };
+  },
+};
+
+type CancelFineTuneResponseData = Prettify<
+  Awaited<ReturnType<OpenAIClientType["cancelFineTune"]>>["data"]
+>;
+
+export const cancelFineTune: AuthenticatedTask<
+  OpenAIClientType,
+  Prettify<SpecificFineTuneRequest>,
+  CancelFineTuneResponseData
+> = {
+  run: async (params, client) => {
+    return client.cancelFineTune(params.fineTuneId).then((res) => res.data);
+  },
+  init: (params) => {
+    return {
+      name: "Cancel fine tune",
+      params,
+      icon: "openai",
+      properties: [
+        {
+          label: "Fine tune id",
+          text: params.fineTuneId,
+        },
+      ],
+    };
+  },
+};
+
+type ListFineTuneEventsResponseData = Prettify<
+  Awaited<ReturnType<OpenAIClientType["listFineTuneEvents"]>>["data"]
+>;
+
+export const listFineTuneEvents: AuthenticatedTask<
+  OpenAIClientType,
+  Prettify<SpecificFineTuneRequest>,
+  ListFineTuneEventsResponseData
+> = {
+  run: async (params, client) => {
+    return client
+      .listFineTuneEvents(params.fineTuneId, false)
+      .then((res) => res.data);
+  },
+  init: (params) => {
+    return {
+      name: "List fine tune events",
+      params,
+      icon: "openai",
+      properties: [
+        {
+          label: "Fine tune id",
+          text: params.fineTuneId,
+        },
+      ],
+    };
+  },
+};
+
+type DeleteFineTunedModelRequest = {
+  fineTunedModelId: string;
+};
+
+type DeleteFineTuneResponseData = Prettify<
+  Awaited<ReturnType<OpenAIClientType["deleteModel"]>>["data"]
+>;
+
+export const deleteFineTune: AuthenticatedTask<
+  OpenAIClientType,
+  Prettify<DeleteFineTunedModelRequest>,
+  DeleteFineTuneResponseData
+> = {
+  run: async (params, client) => {
+    return client.deleteModel(params.fineTunedModelId).then((res) => res.data);
+  },
+  init: (params) => {
+    return {
+      name: "Delete fine tune model",
+      params,
+      icon: "openai",
+      properties: [
+        {
+          label: "Fine tuned model id",
+          text: params.fineTunedModelId,
         },
       ],
     };

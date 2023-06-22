@@ -77,7 +77,7 @@ new Job(client, {
     });
 
     // fine tune file
-    await io.openai.createFineTuneFile("file-fine-tune", {
+    const fineTuneFile = await io.openai.createFineTuneFile("file-fine-tune", {
       fileName: "fine-tune.jsonl",
       examples: [
         {
@@ -92,7 +92,34 @@ new Job(client, {
       ],
     });
 
+    const model = await io.openai.createFineTune("fine-tune", {
+      model: "davinci",
+      training_file: fineTuneFile.id,
+    });
+
+    const fineTunes = await io.openai.listFineTunes("list-fine-tunes");
+
+    const fineTune = await io.openai.retrieveFineTune("get-fine-tune", {
+      fineTuneId: model.id,
+    });
+
+    const events = await io.openai.listFineTuneEvents("list-fine-tune-events", {
+      fineTuneId: model.id,
+    });
+
+    const cancelFineTune = await io.openai.cancelFineTune("cancel-fine-tune", {
+      fineTuneId: model.id,
+    });
+
     const files = await io.openai.listFiles("list-files");
     await io.logger.info("files", files);
+
+    //this will fail because the fine tune didn't complete
+    await io.logger.info(
+      "This next task will fail because the model never completed"
+    );
+    const deleteFineTune = await io.openai.deleteFineTune("delete-fine-tune", {
+      fineTunedModelId: model.id,
+    });
   },
 });

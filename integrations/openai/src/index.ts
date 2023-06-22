@@ -9,6 +9,12 @@ import {
   createFile,
   listFiles,
   createFineTuneFile,
+  createFineTune,
+  listFineTunes,
+  retrieveFineTune,
+  cancelFineTune,
+  listFineTuneEvents,
+  deleteFineTune,
 } from "./tasks";
 import { OpenAIIntegrationOptions } from "./types";
 
@@ -21,6 +27,12 @@ const tasks = {
   createFile,
   listFiles,
   createFineTuneFile,
+  createFineTune,
+  listFineTunes,
+  retrieveFineTune,
+  cancelFineTune,
+  listFineTuneEvents,
+  deleteFineTune,
 };
 
 export class OpenAI
