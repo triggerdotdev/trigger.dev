@@ -30,10 +30,10 @@ export const github: Integration = {
       type: "oauth2",
       client: {
         id: {
-          envName: "EXTERNAL_GITHUB_CLIENT_ID",
+          envName: "CLOUD_GITHUB_CLIENT_ID",
         },
         secret: {
-          envName: "EXTERNAL_GITHUB_CLIENT_SECRET",
+          envName: "CLOUD_GITHUB_CLIENT_SECRET",
         },
       },
       config: {

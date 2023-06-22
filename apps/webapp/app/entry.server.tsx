@@ -1,4 +1,3 @@
-import * as Sentry from "~/services/sentry.server";
 import * as Worker from "~/services/worker.server";
 import { PassThrough } from "stream";
 import { renderToPipeableStream } from "react-dom/server";
@@ -144,5 +143,4 @@ function serveBrowsers(
   });
 }
 
-Sentry.init();
 Worker.init().catch(console.error);

@@ -10,10 +10,10 @@ export const airtable: Integration = {
       type: "oauth2",
       client: {
         id: {
-          envName: "EXTERNAL_AIRTABLE_CLIENT_ID",
+          envName: "CLOUD_AIRTABLE_CLIENT_ID",
         },
         secret: {
-          envName: "EXTERNAL_AIRTABLE_CLIENT_SECRET",
+          envName: "CLOUD_AIRTABLE_CLIENT_SECRET",
         },
       },
       config: {

@@ -24,6 +24,7 @@ import { Label } from "../primitives/Label";
 import { NamedIcon } from "../primitives/NamedIcon";
 import { Paragraph } from "../primitives/Paragraph";
 import type { ConnectionType } from "@trigger.dev/database";
+import { useFeatures } from "~/hooks/useFeatures";
 
 export type Status = "loading" | "idle";
 
@@ -45,6 +46,8 @@ export function ConnectToOAuthForm({
   const [id] = useState<string>(cuid());
   const transition = useNavigation();
   const fetcher = useFetcher();
+  const { isManagedCloud } = useFeatures();
+
   const [
     form,
     { title, scopes, hasCustomClient, customClientId, customClientSecret },
@@ -66,7 +69,9 @@ export function ConnectToOAuthForm({
     )
   );
 
-  const [useMyOAuthApp, setUseMyOAuthApp] = useState(clientType === "EXTERNAL");
+  const requiresCustomOAuthApp = clientType === "EXTERNAL" || !isManagedCloud;
+
+  const [useMyOAuthApp, setUseMyOAuthApp] = useState(requiresCustomOAuthApp);
 
   const { filterText, setFilterText, filteredItems } = useTextFilter<Scope>({
     items: authMethod.scopes,
@@ -126,10 +131,10 @@ export function ConnectToOAuthForm({
             id="hasCustomClient"
             label="Use my OAuth App"
             variant="simple/small"
-            defaultChecked={clientType === "EXTERNAL" ? true : useMyOAuthApp}
-            disabled={clientType === "EXTERNAL"}
+            disabled={requiresCustomOAuthApp}
             onChange={(checked) => setUseMyOAuthApp(checked)}
             {...conform.input(hasCustomClient, { type: "checkbox" })}
+            defaultChecked={requiresCustomOAuthApp}
           />
           {useMyOAuthApp && (
             <div className="ml-6 mt-2">

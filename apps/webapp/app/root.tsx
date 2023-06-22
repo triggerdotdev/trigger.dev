@@ -10,7 +10,6 @@ import {
   isRouteErrorResponse,
   useRouteError,
 } from "@remix-run/react";
-import { withSentry } from "@sentry/remix";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import type { ToastMessage } from "~/models/message.server";
 import { commitSession, getSession } from "~/models/message.server";
@@ -26,6 +25,7 @@ import { env } from "./env.server";
 import { usePostHog } from "./hooks/usePostHog";
 import { getUser } from "./services/session.server";
 import { friendlyErrorDisplay } from "./utils/httpErrors";
+import { featuresForRequest } from "./features.server";
 
 export const links: LinksFunction = () => {
   return [{ rel: "stylesheet", href: tailwindStylesheetUrl }];
@@ -41,12 +41,14 @@ export const loader = async ({ request }: LoaderArgs) => {
   const session = await getSession(request.headers.get("cookie"));
   const toastMessage = session.get("toastMessage") as ToastMessage;
   const posthogProjectKey = env.POSTHOG_PROJECT_KEY;
+  const features = featuresForRequest(request);
 
   return typedjson(
     {
       user: await getUser(request),
       toastMessage,
       posthogProjectKey,
+      features,
     },
     { headers: { "Set-Cookie": await commitSession(session) } }
   );
@@ -128,4 +130,4 @@ function App() {
   );
 }
 
-export default withSentry(App);
+export default App;

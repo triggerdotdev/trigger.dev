@@ -2,13 +2,7 @@ import path from "path";
 import express from "express";
 import compression from "compression";
 import morgan from "morgan";
-import { createRequestHandler as expressCreateRequestHandler } from "@remix-run/express";
-import { wrapExpressCreateRequestHandler } from "@sentry/remix";
-
-const createRequestHandler =
-  process.env.NODE_ENV === "production"
-    ? wrapExpressCreateRequestHandler(expressCreateRequestHandler)
-    : expressCreateRequestHandler;
+import { createRequestHandler } from "@remix-run/express";
 
 const app = express();
 

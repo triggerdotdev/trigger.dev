@@ -14,6 +14,7 @@ export const usePostHog = (apiKey?: string, logging = false): void => {
   //start PostHog once
   useEffect(() => {
     if (apiKey === undefined) return;
+    if (apiKey === "") return;
     if (postHogInitialized.current === true) return;
     if (logging) console.log("posthog.init", apiKey);
     postHogInitialized.current = true;

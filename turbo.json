@@ -85,9 +85,6 @@
     "clean": {
       "cache": false
     },
-    "sentry-upload": {
-      "cache": false
-    },
     "clean:sourcemaps": {
       "cache": false
     },
@@ -110,7 +107,6 @@
     "MAGIC_LINK_SECRET",
     "AUTH_GITHUB_CLIENT_ID",
     "AUTH_GITHUB_CLIENT_SECRET",
-    "SENTRY_DSN",
     "FROM_EMAIL",
     "REPLY_TO_EMAIL",
     "RESEND_API_KEY",
