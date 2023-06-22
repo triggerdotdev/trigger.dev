@@ -3,6 +3,7 @@ import { Header1, Header2 } from "./components/Header";
 import { Paragraph } from "./components/Paragraph";
 import { PrimaryGradientText } from "./components/TextStyling";
 import { ToDoRow } from "./components/ToDoRow";
+// import { ToDoRow } from "./components/ToDoRow";
 
 export default function Home() {
   return (
@@ -29,18 +30,20 @@ export default function Home() {
               trigger.dev/to-do-list-example
             </a>
           </Paragraph>
-          <Paragraph variant="base" removeBottomPadding>
-            View the{" "}
-            <a
-              rel="noopener noreferrer"
-              target="_blank"
-              href=""
-              className="text-indigo-400 hover:underline hover:underline-offset-2 transition"
-            >
-              source code
-            </a>
-            .
-          </Paragraph>
+          <div className="flex gap-x-2">
+            <Paragraph variant="base" removeBottomPadding>
+              View the{" "}
+              <a
+                rel="noopener noreferrer"
+                target="_blank"
+                href=""
+                className="text-indigo-400 hover:underline hover:underline-offset-2 transition"
+              >
+                source code
+              </a>
+              .
+            </Paragraph>
+          </div>
           <Paragraph variant="base" removeBottomPadding>
             View the{" "}
             <a

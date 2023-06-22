@@ -66,7 +66,6 @@ export function AccordianTriggerContent({
       <div className="flex gap-2">
         <div className="w-6 h-6">{contentVariants.icon}</div>
         <div className="w-11/12">
-          {" "}
           <Header4 variant={"extra-small/medium"}>
             {active
               ? contentVariants.activeHeaderText
@@ -78,7 +77,7 @@ export function AccordianTriggerContent({
         <>
           <div className="flex gap-1 items-center">
             <CheckCircleIcon className="text-green-500 h-3 w-3" />
-            contentVariants.activeBodyReactContent
+            {contentVariants.activeBodyReactContent}
             <Paragraph
               variant="small"
               className="font-bold text-slate-300"
@@ -89,7 +88,9 @@ export function AccordianTriggerContent({
           </div>
         </>
       ) : (
-        <Paragraph variant="small">contentVariants.inactiveBodyText</Paragraph>
+        <Paragraph variant="small">
+          {contentVariants.inactiveBodyText}
+        </Paragraph>
       )}
     </div>
   );
