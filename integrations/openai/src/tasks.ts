@@ -3,6 +3,7 @@ import {
   CreateChatCompletionRequest,
   CreateCompletionRequest,
   CreateEditRequest,
+  CreateEmbeddingRequest,
   CreateFineTuneRequest,
   CreateImageRequest,
   OpenAIApi,
@@ -268,7 +269,7 @@ export const createImage: AuthenticatedTask<
   Prettify<CreateImageRequest>,
   CreateImageResponseData
 > = {
-  run: async (params, client) => {
+  run: async (params, client, task) => {
     return client.createImage(params).then((res) => res.data);
   },
   init: (params) => {
@@ -305,6 +306,40 @@ export const createImage: AuthenticatedTask<
       params,
       icon: "openai",
       properties,
+    };
+  },
+};
+
+type CreateEmbeddingResponseData = Prettify<
+  Awaited<ReturnType<OpenAIClientType["createEmbedding"]>>["data"]
+>;
+
+export const createEmbedding: AuthenticatedTask<
+  OpenAIClientType,
+  Prettify<CreateEmbeddingRequest>,
+  CreateEmbeddingResponseData
+> = {
+  run: async (params, client) => {
+    return client.createEmbedding(params).then((res) => res.data);
+  },
+  init: (params) => {
+    return {
+      name: "Create embedding",
+      params,
+      icon: "openai",
+      properties: [
+        {
+          label: "Model",
+          text: params.model,
+        },
+        {
+          label: "Input",
+          text:
+            typeof params.input === "string"
+              ? truncate(params.input, 40)
+              : truncate(params.input.at(0) ?? "none", 40),
+        },
+      ],
     };
   },
 };

@@ -64,6 +64,11 @@ new Job(client, {
       input: "Thsi is ridddled with erors",
       instruction: "Fix the spelling errors",
     });
+
+    await io.openai.createEmbedding("embedding", {
+      model: "text-embedding-ada-002",
+      input: "The food was delicious and the waiter...",
+    });
   },
 });
 
