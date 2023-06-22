@@ -1,0 +1,17 @@
+# fly.toml app configuration file generated for trigger-v2-fly-demo on 2023-06-22T14:44:12+01:00
+#
+# See https://fly.io/docs/reference/configuration/ for information about how to use this file.
+#
+
+app = "trigger-v2-fly-demo"
+primary_region = "lhr"
+
+[build]
+  image = "ghcr.io/triggerdotdev/trigger.dev:latest"
+
+[http_service]
+  internal_port = 3000
+  force_https = true
+  auto_stop_machines = true
+  auto_start_machines = true
+  min_machines_running = 0

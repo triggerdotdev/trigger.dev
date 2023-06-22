@@ -18,4 +18,4 @@ Create long-running jobs directly in your codebase with features like API integr
 
 ### _**Trigger.dev v2 is launching soon...**_
 
-Visit the new landing page for [Trigger.dev v2](https://next.trigger.dev) and [sign up for early access.](https://bcymafitv0e.typeform.com/to/QQnotGJM#source=github)
+Visit the new landing page for [Trigger.dev v2](https://trigger.dev) and [sign up for early access.](https://bcymafitv0e.typeform.com/to/QQnotGJM#source=github)
