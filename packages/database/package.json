@@ -12,7 +12,7 @@
     "prisma": "^4.16.0"
   },
   "scripts": {
-    "db:generate": "prisma generate",
+    "generate": "prisma generate",
     "db:migrate:dev": "prisma migrate dev",
     "db:migrate:deploy": "prisma migrate deploy"
   }
