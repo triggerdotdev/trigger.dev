@@ -27,13 +27,27 @@ new Job(client, {
   id: "github-integration-on-issue-opened",
   name: "GitHub Integration - On Issue Opened",
   version: "0.1.0",
+  integrations: { github: githubApiKey },
   trigger: githubApiKey.triggers.repo({
     event: events.onIssueOpened,
     owner: "triggerdotdev",
     repo: "empty",
   }),
   run: async (payload, io, ctx) => {
-    await io.logger.info("This is a simple log info message");
+    await io.github.addIssueAssignees("add assignee", {
+      owner: payload.repository.owner.login,
+      repo: payload.repository.name,
+      issueNumber: payload.issue.number,
+      assignees: ["matt-aitken"],
+    });
+
+    await io.github.addIssueLabels("add label", {
+      owner: payload.repository.owner.login,
+      repo: payload.repository.name,
+      issueNumber: payload.issue.number,
+      labels: ["bug"],
+    });
+
     return { payload, ctx };
   },
 });

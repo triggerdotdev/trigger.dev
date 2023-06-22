@@ -2,6 +2,7 @@ import { RequestError } from "@octokit/request-error";
 import type { GetResponseDataTypeFromEndpointMethod } from "@octokit/types";
 import type { AuthenticatedTask } from "@trigger.dev/sdk";
 import { Octokit } from "octokit";
+import { issueProperties, repoProperties } from "./propertyHelpers";
 
 type OctokitClient = InstanceType<typeof Octokit>;
 
@@ -58,10 +59,7 @@ export const createIssue: GithubAuthenticatedTask<
       name: "Create Issue",
       params,
       properties: [
-        {
-          label: "Repo",
-          text: params.repo,
-        },
+        ...repoProperties(params),
         {
           label: "Title",
           text: params.title,
@@ -74,6 +72,68 @@ export const createIssue: GithubAuthenticatedTask<
         maxTimeoutInMs: 30000,
         randomize: true,
       },
+    };
+  },
+};
+
+export const addIssueAssignees: GithubAuthenticatedTask<
+  { owner: string; repo: string; issueNumber: number; assignees: string[] },
+  OctokitClient["rest"]["issues"]["addAssignees"]
+> = {
+  onError,
+  run: async (params, client, task, io) => {
+    return client.rest.issues
+      .addAssignees({
+        owner: params.owner,
+        repo: params.repo,
+        issue_number: params.issueNumber,
+        assignees: params.assignees,
+      })
+      .then((res) => res.data);
+  },
+  init: (params) => {
+    return {
+      name: "Add Issue Assignees",
+      params,
+      properties: [
+        ...repoProperties(params),
+        ...issueProperties(params),
+        {
+          label: "assignees",
+          text: params.assignees.join(", "),
+        },
+      ],
+    };
+  },
+};
+
+export const addIssueLabels: GithubAuthenticatedTask<
+  { owner: string; repo: string; issueNumber: number; labels: string[] },
+  OctokitClient["rest"]["issues"]["addLabels"]
+> = {
+  onError,
+  run: async (params, client, task, io) => {
+    return client.rest.issues
+      .addLabels({
+        owner: params.owner,
+        repo: params.repo,
+        issue_number: params.issueNumber,
+        labels: params.labels,
+      })
+      .then((res) => res.data);
+  },
+  init: (params) => {
+    return {
+      name: "Add Issue Labels",
+      params,
+      properties: [
+        ...repoProperties(params),
+        ...issueProperties(params),
+        {
+          label: "Labels",
+          text: params.labels.join(", "),
+        },
+      ],
     };
   },
 };
@@ -97,16 +157,7 @@ export const createIssueComment: GithubAuthenticatedTask<
     return {
       name: "Create Issue Comment",
       params,
-      properties: [
-        {
-          label: "Repo",
-          text: params.repo,
-        },
-        {
-          label: "Issue",
-          text: `#${params.issueNumber}`,
-        },
-      ],
+      properties: [...repoProperties(params), ...issueProperties(params)],
     };
   },
 };
@@ -528,7 +579,8 @@ export const listOrgWebhooks: GithubAuthenticatedTask<
 
 export const tasks = {
   createIssue,
-  //todo updateIssue (e.g. assign, add label)
+  addIssueAssignees,
+  addIssueLabels,
   createIssueComment,
   getRepo,
   createIssueCommentWithReaction,
