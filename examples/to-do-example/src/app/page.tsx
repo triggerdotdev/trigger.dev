@@ -1,5 +1,6 @@
 import { BookOpenIcon, CheckCircleIcon } from "@heroicons/react/24/solid";
 import { GitHubLightIcon, SlackIcon } from "@trigger.dev/companyicons";
+import { Button } from "./components/Button";
 import { TriggerCard, TriggerSyncCard } from "./components/Cards";
 import { Header1, Header2 } from "./components/Header";
 import { Login } from "./components/Login";
@@ -7,8 +8,6 @@ import { Paragraph } from "./components/Paragraph";
 import { PrimaryGradientText } from "./components/TextStyling";
 import { ToDoRow } from "./components/ToDoRow";
 import { TriggerDotDevLogo } from "./components/TriggerDotDevLogo";
-import { DatePicker } from "./components/ui/datepicker";
-import { Button } from "./components/Button";
 // import { ToDoRow } from "./components/ToDoRow";
 
 export default function Home() {
