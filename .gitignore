@@ -48,4 +48,4 @@ apps/**/public/build
 .sentryclirc
 .buildt
 
-/tmp
+**/tmp/
