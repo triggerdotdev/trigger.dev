@@ -1,28 +1,25 @@
 import { cn } from "@/utils/cn";
 import { CheckCircleIcon, PlusIcon } from "@heroicons/react/24/solid";
-import { Paragraph } from "./Paragraph";
 
 const baseStyle =
-  "flex h-16 w-full rounded-md transition hover:cursor-pointer pl-12 font-sans focus:outline-none focus:bg-slate-600 focus:text-slate-200";
+  "flex h-16 w-full rounded-md transition hover:cursor-pointer pl-12 font-sans focus:outline-none  focus:text-slate-200";
 
 const ToDoRowVariants = {
   add: {
     button:
-      "bg-slate-900 border-slate-600 border-2 hover:border-slate-400  pr-4 ",
-    text: "text-slate-600 italic",
+      "bg-slate-900 border-slate-500 border-2 hover:border-slate-400 pr-4 focus:text-slate-200 focus:bg-slate-800",
     icon: (
-      <PlusIcon className="text-toxic-500 group-hover:rotate-180 transition duration-500" />
+      <PlusIcon className="text-slate-500 group-hover:text-slate-200 group-hover:rotate-180 transition duration-500 delay-300" />
     ),
   },
   active: {
-    button: "bg-slate-800",
-    text: "text-slate-100",
+    button:
+      "bg-slate-800 text-slate-200 focus:bg-slate-700 focus:text-slate-200 hover:bg-slate-700",
     icon: <div className="rounded-full border-2 border-slate-400 h-4 w-4" />,
   },
   completed: {
-    button: "bg-slate-900",
-    text: "text-slate-600",
-    icon: <CheckCircleIcon className="text-green-500" />,
+    button: "bg-slate-900 text-slate-600",
+    icon: <CheckCircleIcon className="text-green-500 focus:bg-slate-800" />,
   },
 };
 
@@ -49,11 +46,11 @@ export function ToDoRow({ variant, className }: ToDoRowProps) {
         <input
           type="text"
           name="q"
-          placeholder="Search..."
+          placeholder="What needs to be done?"
           className={cn(
             baseStyle,
             ToDoRowVariants[variant].button,
-            "text-lg placeholder-slate-600 focus:text-slate-200",
+            "text-lg placeholder-slate-500 ",
             className
           )}
         />

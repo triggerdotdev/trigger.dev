@@ -67,6 +67,7 @@ module.exports = {
           },
         ],
       },
+
       colors: {
         bright,
         dimmed,
@@ -87,7 +88,9 @@ module.exports = {
       "gradient-radial": "radial-gradient(var(--tw-gradient-stops))",
       "gradient-conic":
         "conic-gradient(from 180deg at 50% 50%, var(--tw-gradient-stops))",
+      "gradient-primary": `linear-gradient(90deg, acid-500 0%, toxic-500 100%)`,
+      "gradient-primary-hover": `linear-gradient(80deg, acid-600 0%, toxic-600 100%)`,
     },
   },
-  plugins: [],
+  plugins: [require("tailwindcss-animate")],
 };

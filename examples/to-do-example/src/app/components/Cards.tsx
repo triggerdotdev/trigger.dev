@@ -66,7 +66,7 @@ export function AccordianTriggerContent({
       <div className="flex gap-2">
         <div className="w-6 h-6">{contentVariants.icon}</div>
         <div className="w-11/12">
-          <Header4 variant={"extra-small/medium"}>
+          <Header4 variant={"extra-small/medium"} className="text-slate-300">
             {active
               ? contentVariants.activeHeaderText
               : contentVariants.inactiveHeaderText}
@@ -129,8 +129,8 @@ export function TriggerCard({
 const SyncCardVariants = {
   linearSyncVariant: {
     icon: <LinearLightIcon />,
-    inactiveHeaderText: "Setup a weekly summary email",
-    activeHeaderText: "Weekly summary email",
+    inactiveHeaderText: "Sync Linear issues",
+    activeHeaderText: "Linear issues are synced",
     activeBodyReactContent: (
       <Paragraph removeBottomPadding variant="small">
         Scheduled for
@@ -160,7 +160,10 @@ export function TriggerSyncCard({
           <div className="flex place-content-between">
             <div className="flex gap-2">
               <div className="w-6 h-6">{syncVariant.icon}</div>
-              <Header4 variant={"extra-small/medium"}>
+              <Header4
+                variant={"extra-small/medium"}
+                className="text-slate-300"
+              >
                 {active
                   ? syncVariant.activeHeaderText
                   : syncVariant.inactiveHeaderText}
