@@ -176,7 +176,7 @@ export function TaskCard({
               <TaskCard
                 selectedId={selectedId}
                 selectedTask={selectedTask}
-                isLast={index === subtasks.length - 1}
+                isLast={false}
                 depth={depth + 1}
                 {...subtask}
               />
