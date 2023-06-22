@@ -1,9 +1,8 @@
 /* eslint-disable turbo/no-undeclared-env-vars */
-import { PrismaClient } from "@trigger.dev/database";
+
 import { integrationCatalog } from "../app/services/externalApis/integrationCatalog.server";
 import { seedCloud } from "./seedCloud";
-
-const prisma = new PrismaClient();
+import { prisma } from "../app/db.server";
 
 async function seedIntegrationAuthMethods() {
   for (const [identifier, integration] of Object.entries(

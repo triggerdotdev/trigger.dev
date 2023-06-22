@@ -6,6 +6,9 @@
 app = "trigger-v2-fly-demo"
 primary_region = "lhr"
 
+[env]
+PRIMARY_REGION = "lhr"
+
 [build]
   image = "ghcr.io/triggerdotdev/trigger.dev:latest"
 
