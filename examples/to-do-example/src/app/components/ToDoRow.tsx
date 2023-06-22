@@ -8,15 +8,15 @@ const baseStyle =
 const ToDoRowVariants = {
   add: {
     button:
-      "bg-slate-800 border-slate-500 border-2 hover:border-slate-400  pr-4 ",
+      "bg-slate-900 border-slate-600 border-2 hover:border-slate-400  pr-4 ",
     text: "text-slate-600 italic",
     icon: (
-      <PlusIcon className="text-slate-200 group-hover:rotate-180 transition duration-500" />
+      <PlusIcon className="text-toxic-500 group-hover:rotate-180 transition duration-500" />
     ),
   },
   active: {
     button: "bg-slate-800",
-    text: "text-slate-200",
+    text: "text-slate-100",
     icon: <div className="rounded-full border-2 border-slate-400 h-4 w-4" />,
   },
   completed: {
