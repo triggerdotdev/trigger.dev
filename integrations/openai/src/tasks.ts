@@ -11,6 +11,59 @@ import { Prettify, fileFromString } from "@trigger.dev/integration-kit";
 
 type OpenAIClientType = InstanceType<typeof OpenAIApi>;
 
+type RetrieveModelRequest = {
+  model: string;
+};
+
+type RetrieveModelResponseData = Prettify<
+  Awaited<ReturnType<OpenAIClientType["retrieveModel"]>>["data"]
+>;
+
+export const retrieveModel: AuthenticatedTask<
+  OpenAIClientType,
+  Prettify<RetrieveModelRequest>,
+  RetrieveModelResponseData
+> = {
+  run: async (params, client) => {
+    return client.retrieveModel(params.model).then((res) => res.data);
+  },
+  init: (params) => {
+    return {
+      name: "Retrieve model",
+      params,
+      icon: "openai",
+      properties: [
+        {
+          label: "Model id",
+          text: params.model,
+        },
+      ],
+    };
+  },
+};
+
+type ListModelsResponseData = Awaited<
+  ReturnType<OpenAIClientType["listModels"]>
+>["data"]["data"];
+
+export const listModels: AuthenticatedTask<
+  OpenAIClientType,
+  void,
+  Prettify<ListModelsResponseData>
+> = {
+  run: async (params, client) => {
+    return client.listModels().then((res) => res.data.data);
+  },
+  init: (params) => {
+    return {
+      name: "List models",
+      params,
+      icon: "openai",
+      properties: [],
+    };
+  },
+};
+
 export const createCompletion: AuthenticatedTask<
   OpenAIClientType,
   Prettify<CreateCompletionRequest>,
@@ -155,28 +208,6 @@ export const backgroundCreateChatCompletion: AuthenticatedTask<
           text: params.model,
         },
       ],
-    };
-  },
-};
-
-type ListModelsResponseData = Awaited<
-  ReturnType<OpenAIClientType["listModels"]>
->["data"];
-
-export const listModels: AuthenticatedTask<
-  OpenAIClientType,
-  void,
-  Prettify<ListModelsResponseData>
-> = {
-  run: async (params, client) => {
-    return client.listModels().then((res) => res.data);
-  },
-  init: (params) => {
-    return {
-      name: "List models",
-      params,
-      icon: "openai",
-      properties: [],
     };
   },
 };

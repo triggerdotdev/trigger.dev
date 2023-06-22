@@ -1,29 +1,31 @@
-import { OpenAIApi, Configuration } from "openai";
 import type { IntegrationClient, TriggerIntegration } from "@trigger.dev/sdk";
+import { Configuration, OpenAIApi } from "openai";
 import {
+  backgroundCreateChatCompletion,
+  backgroundCreateCompletion,
+  cancelFineTune,
   createChatCompletion,
   createCompletion,
-  backgroundCreateCompletion,
-  backgroundCreateChatCompletion,
-  listModels,
   createFile,
-  listFiles,
-  createFineTuneFile,
   createFineTune,
-  listFineTunes,
-  retrieveFineTune,
-  cancelFineTune,
-  listFineTuneEvents,
+  createFineTuneFile,
   deleteFineTune,
+  listFiles,
+  listFineTuneEvents,
+  listFineTunes,
+  listModels,
+  retrieveFineTune,
+  retrieveModel,
 } from "./tasks";
 import { OpenAIIntegrationOptions } from "./types";
 
 const tasks = {
+  retrieveModel,
+  listModels,
   createCompletion,
   createChatCompletion,
   backgroundCreateCompletion,
   backgroundCreateChatCompletion,
-  listModels,
   createFile,
   listFiles,
   createFineTuneFile,
