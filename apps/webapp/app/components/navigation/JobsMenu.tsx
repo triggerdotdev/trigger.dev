@@ -28,7 +28,11 @@ export function JobsMenu() {
         <PopoverArrowTrigger isOpen={isOpen}>
           {currentJob?.title ?? "Select a job"}
         </PopoverArrowTrigger>
-        <PopoverContent className="w-80 p-0" align="start">
+        <PopoverContent
+          className="w-80 overflow-y-auto p-0"
+          align="start"
+          collisionPadding={20}
+        >
           <PopoverSectionHeader title="Jobs" />
           <div className="flex flex-col gap-1 p-1">
             {project.jobs.map((job) => {
