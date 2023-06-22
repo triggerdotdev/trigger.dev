@@ -47,3 +47,5 @@ apps/**/public/build
 .tests-container-id.txt
 .sentryclirc
 .buildt
+
+/tmp
