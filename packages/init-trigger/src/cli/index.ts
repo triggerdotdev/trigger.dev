@@ -39,23 +39,22 @@ export const parseCliOptions = async () => {
     )
     .option(
       "-k, --api-key <api-key>",
-      "The development API key to use for the project.",
-      false
+      "The development API key to use for the project."
     )
     .option(
       "-e, --endpoint-slug <endpoint-slug>",
       "The unique slug for the endpoint to use for this project. (e.g. my-nextjs-project)",
-      false
+      "my-nextjs-project"
     )
     .option(
       "-u, --endpoint-url <endpoint-url>",
       "The URL of your local Next.js project. (e.g. http://localhost:3000). NOTE: Must be a publicly accessible URL if you are using a deployed Trigger.dev instance",
-      false
+      "http://localhost:3000"
     )
     .option(
       "-t, --trigger-url <trigger-url>",
       "The URL of the Trigger.dev instance to use. (e.g. https://cloud.trigger.dev)",
-      false
+      "https://cloud.trigger.dev"
     )
     .version(getVersion(), "-v, --version", "Display the version number")
     .parse(process.argv);

@@ -1,5 +1,11 @@
 # create-trigger
 
+## 0.2.1-next.2
+
+### Patch Changes
+
+- Fixed the help defaults
+
 ## 0.2.1-next.1
 
 ### Patch Changes
