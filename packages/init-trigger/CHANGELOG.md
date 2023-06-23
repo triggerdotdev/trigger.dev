@@ -1,5 +1,11 @@
 # create-trigger
 
+## 0.2.1-next.4
+
+### Patch Changes
+
+- Fixed the version of the @trigger.dev/nextjs package
+
 ## 0.2.1-next.3
 
 ### Patch Changes

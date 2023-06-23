@@ -67,7 +67,7 @@ const main = async () => {
 
   await addDependencies(resolvedPath, [
     { name: "@trigger.dev/sdk", version: "next" },
-    { name: "@trigger.dev/nextjs", version: "next" },
+    { name: "@trigger.dev/nextjs", version: "latest" },
   ]);
 
   // Setup environment variables
