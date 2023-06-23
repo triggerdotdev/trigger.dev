@@ -18,5 +18,4 @@ export const TITLE_TEXT = `
 export const DEFAULT_APP_NAME = "my-triggers";
 export const COMMAND_NAME = "@trigger.dev/init";
 export const TEMPLATE_ORGANIZATION = "triggerdotdev";
-export const TRIGGER_BASE_URL =
-  process.env.TRIGGER_BASE_URL ?? "https://cloud.trigger.dev";
+export const DEFAULT_TRIGGER_URL = "https://cloud.trigger.dev";

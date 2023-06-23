@@ -1,5 +1,11 @@
 # create-trigger
 
+## 0.2.1-next.3
+
+### Patch Changes
+
+- Improved the CLI prompts
+
 ## 0.2.1-next.2
 
 ### Patch Changes

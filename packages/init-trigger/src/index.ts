@@ -9,11 +9,21 @@ import fs from "fs/promises";
 import pathModule from "path";
 import { simpleGit } from "simple-git";
 import { TriggerApi } from "./utils/triggerApi.js";
+import { DEFAULT_TRIGGER_URL } from "./consts.js";
+import ora from "ora";
 
 const main = async () => {
   renderTitle();
 
   const cliOptions = await parseCliOptions();
+
+  if (cliOptions.flags.triggerUrl === DEFAULT_TRIGGER_URL) {
+    logger.info(`✨ Initializing project in Trigger.dev Cloud`);
+  } else {
+    logger.info(
+      `✨ Initializing project using Trigger.dev at ${cliOptions.flags.triggerUrl}`
+    );
+  }
 
   const resolvedPath = resolvePath(cliOptions.flags.projectPath);
   // Detect if are are in a Next.js project
@@ -61,12 +71,7 @@ const main = async () => {
   ]);
 
   // Setup environment variables
-  const addedEnvVars = await setupEnvironmentVariables(
-    resolvedPath,
-    cliResults
-  );
-
-  logger.success(`✅ Setup environment variables ${addedEnvVars.join(", ")}`);
+  await setupEnvironmentVariables(resolvedPath, cliResults);
 
   const usesSrcDir = await detectUseOfSrcDir(resolvedPath);
 
@@ -83,6 +88,8 @@ const main = async () => {
   } else {
     await createTriggerAppRoute(routeDir, cliResults, usesSrcDir);
   }
+
+  await waitForProjectToBuild();
 
   const api = new TriggerApi(apiKey, cliResults.flags.triggerUrl);
 
@@ -305,14 +312,7 @@ export const { POST, dynamic } = createAppRoute(client, {
   );
 }
 
-type EnvironmentVariable = "TRIGGER_API_KEY" | "TRIGGER_API_URL" | "VERCEL_URL";
-
-async function setupEnvironmentVariables(
-  path: string,
-  cliResults: CliResults
-): Promise<Array<EnvironmentVariable>> {
-  let results: Array<EnvironmentVariable> = [];
-
+async function setupEnvironmentVariables(path: string, cliResults: CliResults) {
   const envFilePath = pathModule.join(path, ".env.local");
   const envFileExists = await pathExists(envFilePath);
 
@@ -327,13 +327,15 @@ async function setupEnvironmentVariables(
       );
 
       await fs.writeFile(envFilePath, updatedEnvFileContent);
-      results.push("TRIGGER_API_KEY");
+
+      logger.success("✅ Updated TRIGGER_API_KEY in .env.local");
     } else {
       await fs.appendFile(
         envFilePath,
         `TRIGGER_API_KEY=${cliResults.flags.apiKey}\n`
       );
-      results.push("TRIGGER_API_KEY");
+
+      logger.success("✅ Added TRIGGER_API_KEY to .env.local");
     }
 
     if (envFileContent.includes("TRIGGER_API_URL")) {
@@ -344,13 +346,15 @@ async function setupEnvironmentVariables(
       );
 
       await fs.writeFile(envFilePath, updatedEnvFileContent);
-      results.push("TRIGGER_API_URL");
+
+      logger.success("✅ Updated TRIGGER_API_URL in .env.local");
     } else {
       await fs.appendFile(
         envFilePath,
         `TRIGGER_API_URL=${cliResults.flags.triggerUrl}\n`
       );
-      results.push("TRIGGER_API_URL");
+
+      logger.success("✅ Added TRIGGER_API_URL to .env.local");
     }
 
     if (!envFileContent.includes("VERCEL_URL")) {
@@ -358,7 +362,8 @@ async function setupEnvironmentVariables(
         envFilePath,
         `VERCEL_URL=${cliResults.flags.endpointUrl}\n`
       );
-      results.push("VERCEL_URL");
+
+      logger.success("✅ Added VERCEL_URL to .env.local");
     }
   } else {
     const envFileContent = `
@@ -368,10 +373,11 @@ VERCEL_URL=${cliResults.flags.endpointUrl}
   `;
 
     await fs.writeFile(envFilePath, envFileContent);
-    results = ["TRIGGER_API_KEY", "TRIGGER_API_URL", "VERCEL_URL"];
-  }
 
-  return results;
+    logger.success(
+      "✅ Created .env.local and added required environment variables"
+    );
+  }
 }
 
 async function pathExists(path: string): Promise<boolean> {
@@ -381,4 +387,14 @@ async function pathExists(path: string): Promise<boolean> {
   } catch (error) {
     return false;
   }
+}
+
+async function waitForProjectToBuild() {
+  const spinner = ora("Waiting for project to build...").start();
+
+  await new Promise((resolve) => {
+    setTimeout(resolve, 1000);
+  });
+
+  spinner.stop();
 }
