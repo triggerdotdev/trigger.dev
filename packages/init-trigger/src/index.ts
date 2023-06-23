@@ -65,14 +65,23 @@ const main = async () => {
     resolvedPath,
     cliResults
   );
+
   logger.success(`✅ Setup environment variables ${addedEnvVars.join(", ")}`);
 
-  const nextJsDir = await detectPagesOrAppDir(resolvedPath);
+  const usesSrcDir = await detectUseOfSrcDir(resolvedPath);
+
+  if (usesSrcDir) {
+    logger.info("📁 Detected use of src directory");
+  }
+
+  const nextJsDir = await detectPagesOrAppDir(resolvedPath, usesSrcDir);
+
+  const routeDir = pathModule.join(resolvedPath, usesSrcDir ? "src" : "");
 
   if (nextJsDir === "pages") {
-    await createTriggerPageRoute(resolvedPath, cliResults);
+    await createTriggerPageRoute(routeDir, cliResults, usesSrcDir);
   } else {
-    await createTriggerAppRoute(resolvedPath, cliResults);
+    await createTriggerAppRoute(routeDir, cliResults, usesSrcDir);
   }
 
   const api = new TriggerApi(apiKey, cliResults.flags.triggerUrl);
@@ -144,20 +153,55 @@ async function detectTypescriptProject(path: string): Promise<boolean> {
   }
 }
 
+async function detectUseOfSrcDir(path: string): Promise<boolean> {
+  // Detects if the project is using a src directory
+  try {
+    await fs.access(pathModule.join(path, "src"));
+    return true;
+  } catch (error) {
+    return false;
+  }
+}
+
 // Detect the use of pages or app dir in the Next.js project
 // Import the next.config.js file and check for experimental: { appDir: true }
-async function detectPagesOrAppDir(path: string): Promise<"pages" | "app"> {
+async function detectPagesOrAppDir(
+  path: string,
+  usesSrcDir = false
+): Promise<"pages" | "app"> {
   const nextConfigPath = pathModule.join(path, "next.config.js");
   const importedConfig = await import(nextConfigPath);
 
   if (importedConfig?.default?.experimental?.appDir) {
     return "app";
   } else {
+    // We need to check if src/app/page.tsx exists
+    // Or app/page.tsx exists
+    // If so then we return app
+    // If not return pages
+
+    const appPagePath = pathModule.join(
+      path,
+      usesSrcDir ? "src" : "",
+      "app",
+      "page.tsx"
+    );
+
+    const appPageExists = await pathExists(appPagePath);
+
+    if (appPageExists) {
+      return "app";
+    }
+
     return "pages";
   }
 }
 
-async function createTriggerPageRoute(path: string, cliResults: CliResults) {
+async function createTriggerPageRoute(
+  path: string,
+  cliResults: CliResults,
+  usesSrcDir = false
+) {
   const routeContent = `
 import { Job, TriggerClient, eventTrigger } from "@trigger.dev/sdk";
 import { createPagesRoute } from "@trigger.dev/nextjs";
@@ -203,10 +247,16 @@ export default handler;
   }
 
   await fs.writeFile(pathModule.join(directories, "trigger.ts"), routeContent);
-  logger.success("✅ Create pages route at /pages/api/trigger.ts");
+  logger.success(
+    `✅ Created pages route at ${usesSrcDir ? "src/" : ""}pages/api/trigger.ts`
+  );
 }
 
-async function createTriggerAppRoute(path: string, cliResults: CliResults) {
+async function createTriggerAppRoute(
+  path: string,
+  cliResults: CliResults,
+  usesSrcDir = false
+) {
   const routeContent = `
 import { Job, TriggerClient, eventTrigger } from "@trigger.dev/sdk";
 import { createAppRoute } from "@trigger.dev/nextjs";
@@ -250,7 +300,9 @@ export const { POST, dynamic } = createAppRoute(client, {
   }
 
   await fs.writeFile(pathModule.join(directories, "route.ts"), routeContent);
-  logger.success("✅ Create app route at /app/api/trigger/route.ts");
+  logger.success(
+    `✅ Created app route at ${usesSrcDir ? "src/" : ""}app/api/trigger.ts`
+  );
 }
 
 type EnvironmentVariable = "TRIGGER_API_KEY" | "TRIGGER_API_URL" | "VERCEL_URL";
