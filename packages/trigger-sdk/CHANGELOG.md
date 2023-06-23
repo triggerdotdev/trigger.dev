@@ -1,5 +1,13 @@
 # @trigger.dev/sdk
 
+## 2.0.0-next.2
+
+### Patch Changes
+
+- 28914b87: Creating the init CLI package
+- 817b4ed1: Endpoint registration and indexing now is only initiated outside of clients
+- e4b0b1e3: Added support for backgroundFetch
+
 ## 2.0.0-next.1
 
 ### Patch Changes

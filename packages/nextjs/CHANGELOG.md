@@ -1,5 +1,15 @@
 # @trigger.dev/nextjs
 
+## 1.0.0-next.4
+
+### Patch Changes
+
+- 28914b87: Creating the init CLI package
+- Updated dependencies [28914b87]
+- Updated dependencies [817b4ed1]
+- Updated dependencies [e4b0b1e3]
+  - @trigger.dev/sdk@2.0.0-next.2
+
 ## 1.0.0-next.3
 
 ### Patch Changes

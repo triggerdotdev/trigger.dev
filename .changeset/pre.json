@@ -9,12 +9,19 @@
     "emails": "1.0.0",
     "@trigger.dev/internal": "0.0.1",
     "@trigger.dev/nextjs": "0.1.0",
-    "@trigger.dev/sdk": "1.0.0"
+    "@trigger.dev/sdk": "1.0.0",
+    "@trigger.dev/openai": "1.0.0-next.0",
+    "@trigger.dev/database": "0.0.0",
+    "@trigger.dev/init": "0.2.0",
+    "@trigger.dev/integration-kit": "2.0.0-next.1"
   },
   "changesets": [
+    "curly-hornets-sort",
     "dirty-needles-kneel",
+    "four-ligers-perform",
     "great-meals-listen",
     "itchy-rockets-provide",
+    "modern-emus-suffer",
     "stupid-files-cough",
     "tough-walls-share"
   ]
