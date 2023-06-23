@@ -1,21 +1,52 @@
-import { getUserPkgManager, type PackageManager } from "./getUserPkgManager.js";
-import { logger } from "./logger.js";
-import ora, { type Ora } from "ora";
 import chalk from "chalk";
 import { execa } from "execa";
+import ora, { type Ora } from "ora";
+import pathModule from "path";
+import { getUserPkgManager, type PackageManager } from "./getUserPkgManager.js";
+import fs from "fs/promises";
 
-export async function installDependencies(projectDir: string) {
-  logger.info("Installing dependencies...");
+export type InstallPackage = {
+  name: string;
+  version: string;
+};
 
+export async function addDependencies(
+  projectDir: string,
+  packages: Array<InstallPackage>
+) {
   const pkgManager = getUserPkgManager();
+
+  await addDependenciesToPackageJson(projectDir, packages);
 
   const installSpinner = await runInstallCommand(pkgManager, projectDir);
 
   // If the spinner was used to show the progress, use succeed method on it
   // If not, use the succeed on a new spinner
   (installSpinner || ora()).succeed(
-    chalk.green("Successfully installed dependencies!\n")
+    chalk.green(
+      `Successfully installed ${packages
+        .map((pkg) => `${pkg.name}@${pkg.version}`)
+        .join(", ")}}`
+    )
   );
+}
+
+async function addDependenciesToPackageJson(
+  projectDir: string,
+  packages: Array<InstallPackage>
+) {
+  const pkgJsonPath = pathModule.join(projectDir, "package.json");
+  const pkgBuffer = await fs.readFile(pkgJsonPath);
+  const pkgJson = JSON.parse(pkgBuffer.toString());
+
+  // Add the dependencies to the package.json file
+  pkgJson.dependencies = {
+    ...pkgJson.dependencies,
+    ...Object.fromEntries(packages.map((pkg) => [pkg.name, pkg.version])),
+  };
+
+  // Write the updated package.json file
+  await fs.writeFile(pkgJsonPath, JSON.stringify(pkgJson, null, 2));
 }
 
 async function runInstallCommand(

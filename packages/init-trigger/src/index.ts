@@ -1,0 +1,332 @@
+#!/usr/bin/env node
+
+import { CliResults, parseCliOptions, runCliPrompts } from "./cli/index.js";
+import { addDependencies } from "./utils/addDependencies.js";
+import { logger } from "./utils/logger.js";
+import { resolvePath } from "./utils/parseNameAndPath.js";
+import { renderTitle } from "./utils/renderTitle.js";
+import fs from "fs/promises";
+import pathModule from "path";
+import { simpleGit } from "simple-git";
+import { TriggerApi } from "./utils/triggerApi.js";
+
+const main = async () => {
+  renderTitle();
+
+  const cliOptions = await parseCliOptions();
+
+  const resolvedPath = resolvePath(cliOptions.flags.projectPath);
+  // Detect if are are in a Next.js project
+  const isNextJsProject = await detectNextJsProject(resolvedPath);
+
+  if (!isNextJsProject) {
+    logger.error("You must run this command in a Next.js project.");
+    process.exit(1);
+  } else {
+    logger.success("✅ Detected Next.js project");
+  }
+
+  const hasGitChanges = await detectGitChanges(resolvedPath);
+
+  if (hasGitChanges) {
+    // Warn the user that they have git changes
+    logger.warn(
+      "⚠️ You have uncommitted git changes, you may want to commit them before continuing."
+    );
+  }
+
+  const isTypescriptProject = await detectTypescriptProject(resolvedPath);
+
+  if (!isTypescriptProject) {
+    // Exit with an error message
+    logger.error(
+      "You must be using TypeScript in your Next.js project to use Trigger.dev."
+    );
+
+    process.exit(1);
+  }
+
+  const cliResults = await runCliPrompts(cliOptions);
+
+  const apiKey = cliResults.flags.apiKey;
+
+  if (!apiKey) {
+    logger.error("You must provide an API key to continue.");
+    process.exit(1);
+  }
+
+  await addDependencies(resolvedPath, [
+    { name: "@trigger.dev/sdk", version: "next" },
+    { name: "@trigger.dev/nextjs", version: "next" },
+  ]);
+
+  // Setup environment variables
+  const addedEnvVars = await setupEnvironmentVariables(
+    resolvedPath,
+    cliResults
+  );
+  logger.success(`✅ Setup environment variables ${addedEnvVars.join(", ")}`);
+
+  const nextJsDir = await detectPagesOrAppDir(resolvedPath);
+
+  if (nextJsDir === "pages") {
+    await createTriggerPageRoute(resolvedPath, cliResults);
+  } else {
+    await createTriggerAppRoute(resolvedPath, cliResults);
+  }
+
+  const api = new TriggerApi(apiKey, cliResults.flags.triggerUrl);
+
+  const endpoint = await api.createEndpoint({
+    id: cliResults.flags.endpointSlug,
+    url: `${cliResults.flags.endpointUrl}${
+      cliResults.flags.endpointUrl.endsWith("/") ? "" : "/"
+    }api/trigger`,
+  });
+
+  if (!endpoint) {
+    logger.error(
+      "Unable to create endpoint, please contact eric@trigger.dev for assistance."
+    );
+
+    process.exit(1);
+  }
+
+  logger.success(`✅ Successfully initialized Trigger.dev!`);
+  logger.info(
+    `🔗 Visit your Trigger.dev dashboard at ${cliResults.flags.triggerUrl}`
+  );
+
+  process.exit(0);
+};
+
+main().catch((err) => {
+  logger.error("Aborting installation...");
+  if (err instanceof Error) {
+    logger.error(err);
+  } else {
+    logger.error(
+      "An unknown error has occurred. Please open an issue on github with the below:"
+    );
+    console.log(err);
+  }
+  process.exit(1);
+});
+
+// Detects if the project is a Next.js project at path
+async function detectNextJsProject(path: string): Promise<boolean> {
+  // Checks for the presence of a next.config.js file
+  try {
+    // Check if next.config.js file exists in the given path
+    await fs.access(pathModule.join(path, "next.config.js"));
+    return true;
+  } catch (error) {
+    // If next.config.js file doesn't exist, it's not a Next.js project
+    return false;
+  }
+}
+
+// Detects if there are any uncommitted git changes at path
+async function detectGitChanges(path: string): Promise<boolean> {
+  const git = simpleGit(path);
+  const status = await git.status();
+
+  return status.files.length > 0;
+}
+
+async function detectTypescriptProject(path: string): Promise<boolean> {
+  // Checks for the presence of a tsconfig.json file
+  try {
+    await fs.access(pathModule.join(path, "tsconfig.json"));
+    return true;
+  } catch (error) {
+    return false;
+  }
+}
+
+// Detect the use of pages or app dir in the Next.js project
+// Import the next.config.js file and check for experimental: { appDir: true }
+async function detectPagesOrAppDir(path: string): Promise<"pages" | "app"> {
+  const nextConfigPath = pathModule.join(path, "next.config.js");
+  const importedConfig = await import(nextConfigPath);
+
+  if (importedConfig?.default?.experimental?.appDir) {
+    return "app";
+  } else {
+    return "pages";
+  }
+}
+
+async function createTriggerPageRoute(path: string, cliResults: CliResults) {
+  const routeContent = `
+import { Job, TriggerClient, eventTrigger } from "@trigger.dev/sdk";
+import { createPagesRoute } from "@trigger.dev/nextjs";
+
+const { handler, config } = createPagesRoute(client, { path: "/api/trigger" });
+export { config };
+
+const client = new TriggerClient({
+  id: "${cliResults.flags.endpointSlug}",
+  url: process.env.VERCEL_URL,
+  apiKey: process.env.TRIGGER_API_KEY,
+  apiUrl: process.env.TRIGGER_API_URL,
+});
+
+new Job(client, {
+  id: "example-job",
+  name: "Example Job",
+  version: "0.0.1",
+  trigger: eventTrigger({
+    name: "example.event",
+  }),
+  run: async (payload, io, ctx) => {
+    await io.logger.info("Hello world!", { payload });
+
+    return {
+      message: "Hello world!",
+    };
+  },
+});
+
+export default handler;
+  `;
+
+  const directories = pathModule.join(path, "pages", "api");
+  await fs.mkdir(directories, { recursive: true });
+
+  // Don't overwrite the file if it already exists
+  const exists = await pathExists(pathModule.join(directories, "trigger.ts"));
+
+  if (exists) {
+    logger.info("Skipping creation of pages route because it already exists");
+    return;
+  }
+
+  await fs.writeFile(pathModule.join(directories, "trigger.ts"), routeContent);
+  logger.success("✅ Create pages route at /pages/api/trigger.ts");
+}
+
+async function createTriggerAppRoute(path: string, cliResults: CliResults) {
+  const routeContent = `
+import { Job, TriggerClient, eventTrigger } from "@trigger.dev/sdk";
+import { createAppRoute } from "@trigger.dev/nextjs";
+
+const client = new TriggerClient({
+  id: "${cliResults.flags.endpointSlug}",
+  url: process.env.VERCEL_URL,
+  apiKey: process.env.TRIGGER_API_KEY,
+  apiUrl: process.env.TRIGGER_API_URL,
+});
+
+new Job(client, {
+  id: "example-job",
+  name: "Example Job",
+  version: "0.0.1",
+  trigger: eventTrigger({
+    name: "example.event",
+  }),
+  run: async (payload, io, ctx) => {
+    await io.logger.info("Hello world!", { payload });
+
+    return {
+      message: "Hello world!",
+    };
+  },
+});
+
+export const { POST, dynamic } = createAppRoute(client, {
+  path: "/api/trigger",
+});
+  `;
+
+  const directories = pathModule.join(path, "app", "api", "trigger");
+  await fs.mkdir(directories, { recursive: true });
+
+  const fileExists = await pathExists(pathModule.join(directories, "route.ts"));
+
+  if (fileExists) {
+    logger.info("Skipping creation of app route because it already exists");
+    return;
+  }
+
+  await fs.writeFile(pathModule.join(directories, "route.ts"), routeContent);
+  logger.success("✅ Create app route at /app/api/trigger/route.ts");
+}
+
+type EnvironmentVariable = "TRIGGER_API_KEY" | "TRIGGER_API_URL" | "VERCEL_URL";
+
+async function setupEnvironmentVariables(
+  path: string,
+  cliResults: CliResults
+): Promise<Array<EnvironmentVariable>> {
+  let results: Array<EnvironmentVariable> = [];
+
+  const envFilePath = pathModule.join(path, ".env.local");
+  const envFileExists = await pathExists(envFilePath);
+
+  if (envFileExists) {
+    const envFileContent = await fs.readFile(envFilePath, "utf-8");
+
+    if (envFileContent.includes("TRIGGER_API_KEY")) {
+      // Update the existing value
+      const updatedEnvFileContent = envFileContent.replace(
+        /TRIGGER_API_KEY=.*/g,
+        `TRIGGER_API_KEY=${cliResults.flags.apiKey}`
+      );
+
+      await fs.writeFile(envFilePath, updatedEnvFileContent);
+      results.push("TRIGGER_API_KEY");
+    } else {
+      await fs.appendFile(
+        envFilePath,
+        `TRIGGER_API_KEY=${cliResults.flags.apiKey}\n`
+      );
+      results.push("TRIGGER_API_KEY");
+    }
+
+    if (envFileContent.includes("TRIGGER_API_URL")) {
+      // Update existing value
+      const updatedEnvFileContent = envFileContent.replace(
+        /TRIGGER_API_URL=.*/g,
+        `TRIGGER_API_URL=${cliResults.flags.triggerUrl}`
+      );
+
+      await fs.writeFile(envFilePath, updatedEnvFileContent);
+      results.push("TRIGGER_API_URL");
+    } else {
+      await fs.appendFile(
+        envFilePath,
+        `TRIGGER_API_URL=${cliResults.flags.triggerUrl}\n`
+      );
+      results.push("TRIGGER_API_URL");
+    }
+
+    if (!envFileContent.includes("VERCEL_URL")) {
+      await fs.appendFile(
+        envFilePath,
+        `VERCEL_URL=${cliResults.flags.endpointUrl}\n`
+      );
+      results.push("VERCEL_URL");
+    }
+  } else {
+    const envFileContent = `
+TRIGGER_API_KEY=${cliResults.flags.apiKey}
+TRIGGER_API_URL=${cliResults.flags.triggerUrl}
+VERCEL_URL=${cliResults.flags.endpointUrl}
+  `;
+
+    await fs.writeFile(envFilePath, envFileContent);
+    results = ["TRIGGER_API_KEY", "TRIGGER_API_URL", "VERCEL_URL"];
+  }
+
+  return results;
+}
+
+async function pathExists(path: string): Promise<boolean> {
+  try {
+    await fs.access(path);
+    return true;
+  } catch (error) {
+    return false;
+  }
+}

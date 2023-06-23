@@ -36,6 +36,11 @@ export async function action({ request }: ActionArgs) {
     return json({ error: "Invalid request body" }, { status: 400 });
   }
 
+  logger.info("Creating endpoint", {
+    url: request.url,
+    endpoint: body.data,
+  });
+
   const service = new CreateEndpointService();
 
   try {

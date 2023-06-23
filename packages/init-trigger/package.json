@@ -1,14 +1,14 @@
 {
-  "name": "create-trigger",
+  "name": "@trigger.dev/init",
   "version": "0.2.0",
-  "description": "The Trigger.dev CLI to easily create and manage a Trigger.dev project",
+  "description": "The CLI to easily initialize Trigger.dev in your Next.js project",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "license": "MIT",
   "repository": {
     "type": "git",
     "url": "https://github.com/triggerdotdev/trigger.dev.git",
-    "directory": "packages/create-trigger"
+    "directory": "packages/init-trigger"
   },
   "publishConfig": {
     "access": "public"
@@ -21,7 +21,10 @@
     "events",
     "webhooks",
     "integrations",
-    "apis"
+    "apis",
+    "jobs",
+    "background-jobs",
+    "nextjs"
   ],
   "files": [
     "dist"
@@ -29,7 +32,7 @@
   "type": "module",
   "exports": "./dist/index.js",
   "bin": {
-    "create-trigger": "./dist/index.js"
+    "init": "./dist/index.js"
   },
   "devDependencies": {
     "@types/fs-extra": "^11.0.1",
@@ -60,9 +63,10 @@
     "inquirer": "^9.1.4",
     "node-fetch": "^3.3.0",
     "ora": "^6.1.2",
+    "simple-git": "^3.19.0",
     "terminal-link": "^3.0.0"
   },
   "engines": {
-    "node": ">=16"
+    "node": ">=18"
   }
 }
