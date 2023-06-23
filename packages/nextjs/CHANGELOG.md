@@ -1,5 +1,11 @@
 # @trigger.dev/nextjs
 
+## 1.0.0-next.5
+
+### Patch Changes
+
+- Update the devDependency on nextjs to be more permissive
+
 ## 1.0.0-next.4
 
 ### Patch Changes
