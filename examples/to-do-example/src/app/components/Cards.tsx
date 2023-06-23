@@ -77,7 +77,7 @@ export function AccordianTriggerContent({
       {active ? (
         <>
           <div className="flex gap-1 items-center">
-            <CheckCircleIcon className="text-green-500 h-3 w-3" />
+            <CheckCircleIcon className="text-toxic-500 h-3 w-3" />
             {contentVariants.activeBodyReactContent}
             <Paragraph
               variant="small"
@@ -191,7 +191,7 @@ export function TriggerSyncCard({
         {active ? (
           <>
             <div className="flex gap-1 items-center">
-              <CheckCircleIcon className="text-green-500 h-3 w-3" />
+              <CheckCircleIcon className="text-toxic-500 h-3 w-3" />
               syncVariant.activeBodyReactContent
               <Paragraph
                 variant="small"

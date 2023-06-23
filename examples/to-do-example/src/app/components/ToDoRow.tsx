@@ -19,7 +19,7 @@ const ToDoRowVariants = {
   },
   completed: {
     button: "bg-slate-900 text-slate-600",
-    icon: <CheckCircleIcon className="text-green-500 focus:bg-slate-800" />,
+    icon: <CheckCircleIcon className="text-toxic-500 focus:bg-slate-800" />,
   },
 };
 
