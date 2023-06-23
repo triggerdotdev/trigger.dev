@@ -1,6 +1,6 @@
 {
   "name": "@trigger.dev/init",
-  "version": "0.2.1-next.0",
+  "version": "0.2.1-next.1",
   "description": "The CLI to easily initialize Trigger.dev in your Next.js project",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",

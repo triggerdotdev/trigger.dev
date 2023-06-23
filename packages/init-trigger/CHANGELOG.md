@@ -1,5 +1,11 @@
 # create-trigger
 
+## 0.2.1-next.1
+
+### Patch Changes
+
+- 6f19a3e7: Fix for Next.js projects using the src dir
+
 ## 0.2.1-next.0
 
 ### Patch Changes
