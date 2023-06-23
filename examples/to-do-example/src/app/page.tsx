@@ -85,10 +85,12 @@ export default function Home() {
       <div className="h-full w-full items-center pt-40 flex flex-col px-2">
         <div className="flex items-center gap-x-4 mb-6">
           <Header1 variant="base/bold" removeBottomPadding>
-            <PrimaryGradientText>To-do list</PrimaryGradientText>
+            <PrimaryGradientText>To-do</PrimaryGradientText>
           </Header1>
-          <div className="border border-toxic-500 rounded-md p-2 bg-gradient-primary w-12 h-12">
-            <CheckCircleIcon className="text-toxic-500" />
+          <div className="rounded-md bg-gradient-primary w-12 h-12">
+            <div className="rounded-md m-px p-1 bg-slate-800">
+              <CheckCircleIcon className="text-toxic-500" />
+            </div>
           </div>
         </div>
         <div className="flex flex-col w-full gap-y-4">
