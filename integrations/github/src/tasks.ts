@@ -579,8 +579,9 @@ export const listOrgWebhooks: GithubAuthenticatedTask<
 
 export const tasks = {
   createIssue,
-  addIssueAssignees,
-  addIssueLabels,
+  // TODO: figure out why this is breaking build
+  // addIssueAssignees,
+  // addIssueLabels,
   createIssueComment,
   getRepo,
   createIssueCommentWithReaction,
