@@ -50,7 +50,7 @@ Easily integrate with hundreds of third-party APIs – including your own. Use A
 
 Easily add integrations for your users (section TBD)/
 
-## View our [docs](http://trigger.dev/docs) for complete documentation
+## View our [docs](https://trigger-docs.mintlify.app/documentation/introduction) for (in)complete documentation
 
 ### Self Host Guide
 
