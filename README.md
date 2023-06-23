@@ -14,8 +14,48 @@
 
 Create long-running jobs directly in your codebase with features like API integrations, webhooks, scheduling and delays.
 
-&nbsp;
+### Developer-first features
 
-### _**Trigger.dev v2 is launching soon...**_
+#### 1. Long running Jobs on serverless
 
-Visit the new landing page for [Trigger.dev v2](https://trigger.dev) and [sign up for early access.](https://bcymafitv0e.typeform.com/to/QQnotGJM#source=github)
+Reliably run Jobs and don’t worry about function timeouts, we handle those for you.
+
+- Auto-resume after a function timeout
+- Auto-resume after a server outage
+- Add delays of up to a year
+
+#### 2. In your codebase
+
+Create Jobs where they belong: in your codebase. Version control, localhost, test, review, and deploy like you're already used to.
+
+#### 3. Secure by design
+
+We only receive Triggers and the data you choose to send to us. You can even completely self-host the entire platform.
+
+#### 4. Don't worry about deployment
+
+Just use our SDK to write Jobs in your Next.js codebase. There's nothing extra to deploy and no CI to configure, your Jobs just connect to our cloud. Or you can always self-host.
+
+#### 5. Full Visibility of every job run
+
+View every Task in every Run so you can tell exactly what happened.
+
+![image](https://www.trigger.dev/build/_assets/web-app-2QFKXFLW.png)
+
+#### 6. Built in integrations
+
+Easily integrate with hundreds of third-party APIs – including your own. Use API keys (which never leave your server) or let us handle OAuth for you. Install our integration packages and easily subscribe to webhooks and perform common tasks, or you can easily use your existing favorite Node.JS SDKs and get resumability and idempotency through our `runTask` function.
+
+#### 7. Trigger.dev Connect (coming soon)
+
+Easily add integrations for your users (section TBD)/
+
+## View our [docs](http://trigger.dev/docs) for complete documentation
+
+### Self Host Guide
+
+We provide an official trigger.dev docker image you can use to easily self-host the platform
+
+### Contributing Guide
+
+Placeholder for upcoming guide on how to contribute to this project.
