@@ -55,6 +55,9 @@ jobs:
       - name: ⬇️ Checkout repo
         uses: actions/checkout@v3
 
+      - name: 🐳 Set up QEMU
+        uses: docker/setup-qemu-action@v2
+
       - name: 🐳 Generate Docker metadata
         id: meta
         uses: docker/metadata-action@v4
@@ -90,6 +93,7 @@ jobs:
           context: .
           file: ./docker/Dockerfile
           push: ${{ github.event_name != 'pull_request' }}
+          platforms: linux/amd64,linux/arm64
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=registry,ref=${{ github.repository }}:main
