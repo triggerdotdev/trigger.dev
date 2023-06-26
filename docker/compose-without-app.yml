@@ -14,7 +14,7 @@ services:
     restart: always
     volumes:
       - database-data:/var/lib/postgresql/data/
-    env_file: .env
+    env_file: ../.env
     networks:
       - app_network
     ports:

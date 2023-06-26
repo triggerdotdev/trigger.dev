@@ -16,7 +16,7 @@ services:
       - 3000:3000
     depends_on:
       - database
-    env_file: .env
+    env_file: ../.env
     environment:
       - DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@${DATABASE_HOST}/${POSTGRES_DB}
     networks:
@@ -28,7 +28,7 @@ services:
     restart: always
     volumes:
       - database-data:/var/lib/postgresql/data/
-    env_file: .env
+    env_file: ../.env
     networks:
       - app_network
     ports:
