@@ -50,7 +50,6 @@ import { Handle } from "~/utils/handle";
 import {
   ProjectParamSchema,
   docsCreateIntegration,
-  docsPath,
   integrationClientPath,
 } from "~/utils/pathBuilder";
 
