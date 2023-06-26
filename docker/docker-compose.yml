@@ -14,7 +14,10 @@ services:
     restart: always
     volumes:
       - database-data:/var/lib/postgresql/data/
-    env_file: ../.env
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: postgres
     networks:
       - app_network
     ports:
