@@ -4,22 +4,21 @@ Trigger.dev uses [changesets](https://github.com/changesets/changesets) to manag
 
 ## Adding a changeset
 
-To add a changeset, use `pnpm run changeset:add` and follow the instructions [here](https://github.com/changesets/changesets/blob/main/docs/adding-a-changeset.md). Please only ever select one of our public packages when adding a changeset, which currently are:
+To add a changeset, use `pnpm run changeset:add` and follow the instructions [here](https://github.com/changesets/changesets/blob/main/docs/adding-a-changeset.md). Please only ever select one of our public packages when adding a changeset.
 
-- `@trigger.dev/sdk`
-- `@trigger.dev/integration-sdk`
-- `@trigger.dev/github`
-- `@trigger.dev/notion`
-- `@trigger.dev/slack`
-- `@trigger.dev/shopify`
-- `@trigger.dev/resend`
-
-## Release instructions
+## Release instructions (local only)
 
 Based on the instructions [here](https://github.com/changesets/changesets/blob/main/docs/intro-to-using-changesets.md)
 
 1. Run `pnpm run changeset:version`
 2. Run `pnpm run changeset:release`
+
+## Release instructions (CI)
+
+Please follow the best-practice of adding changesets in the same commit as the code making the change with `pnpm run changeset:add`, as it will allow our release.yml CI workflow to function properly:
+
+- Anytime new changesets are added in a commit in the `main` branch, the [release.yml](./.github/workflows/release.yml) workflow will run and will automatically create/update a PR with a fresh run of `pnpm run changeset:version`.
+- When the version PR is merged into `main`, the release.yml workflow will automatically run `pnpm run changeset:release` to build and release packages to npm.
 
 ## Pre-release instructions
 
