@@ -50,12 +50,58 @@ Easily integrate with hundreds of third-party APIs – including your own. Use A
 
 Easily add integrations for your users (section TBD)/
 
-## View our [docs](https://trigger-docs.mintlify.app/documentation/introduction) for (in)complete documentation
+## Documentation
 
-### Self Host Guide
+View our [docs](https://trigger-docs.mintlify.app/documentation/introduction) for (in)complete documentation.
 
-We provide an official trigger.dev docker image you can use to easily self-host the platform. We're working on more extensive guides but we currently provide a [Fly.io example repository](https://github.com/triggerdotdev/fly.io) with instructions in the README for deploying and using a self-hosted instance of Trigger.dev on Fly.io
+## Self-host
 
-### Contributing Guide
+We provide an official trigger.dev docker image you can use to easily self-host the platform. We're working on more extensive guides but we currently provide a [Fly.io example repository](https://github.com/triggerdotdev/fly.io) with instructions in the README for deploying and using a self-hosted instance of Trigger.dev on Fly.io.
 
-Placeholder for upcoming guide on how to contribute to this project.
+## Development
+
+### Prerequisites
+- Node.js version >=18.x
+- [pnpm package manager](https://pnpm.io/installation) version 7
+- Docker 
+
+### Setup
+
+1. Clone the repo into a public GitHub repository or fork [https://github.com/triggerdotdev/trigger.dev/fork](https://github.com/triggerdotdev/trigger.dev/fork). If you plan to distribute the code, keep the source code public to comply with the [Apache Licence 2.0](https://github.com/triggerdotdev/trigger.dev/blob/main/LICENSE).
+
+      ```
+      git clone https://github.com/triggerdotdev/trigger.dev.git
+      ```
+      > If you are on windows, run the following command on gitbash with admin privileges:
+      > `git clone -c core.symlinks=true https://triggerdotdev/trigger.dev.git`
+2. Navigate to the project folder
+      ```
+      cd trigger.dev
+      ```
+3. Install the required packages using pnpm.
+      ```
+      pnpm i
+      ```
+4. Create your `.env` file
+      ```
+      cp .env.example .env
+      ```
+      > Alternatively, duplicate the `.env.example` file and rename it to `.env`.
+      
+      Open the `.env` file and fill in the required values.
+5. Start Docker. This starts the required services like Postgres.
+      ```
+      pnpm run docker:services
+      ```
+6. Migrate the database
+      ```
+      pnpm run db:migrate
+      ```
+8. Run the seed script
+      ```
+      pnpm run db:seed
+      ```
+5. Run the project. It should run on `port:3030`
+      ```
+      pnpm run dev --filter webapp
+      ```
