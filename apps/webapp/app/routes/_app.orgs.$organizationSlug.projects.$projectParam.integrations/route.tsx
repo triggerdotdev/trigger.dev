@@ -49,6 +49,7 @@ import { formatDateTime } from "~/utils";
 import { Handle } from "~/utils/handle";
 import {
   ProjectParamSchema,
+  docsCreateIntegration,
   docsPath,
   integrationClientPath,
 } from "~/utils/pathBuilder";
@@ -85,7 +86,7 @@ export default function Integrations() {
           <PageTitle title="Integrations" />
           <PageButtons>
             <LinkButton
-              to={docsPath("/integrations/create")}
+              to={docsCreateIntegration()}
               variant="secondary/small"
               LeadingIcon="docs"
             >

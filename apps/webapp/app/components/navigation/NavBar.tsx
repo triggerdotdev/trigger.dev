@@ -7,6 +7,7 @@ import { Feedback } from "../Feedback";
 import { LogoIcon } from "../LogoIcon";
 import { LinkButton } from "../primitives/Buttons";
 import { Breadcrumb } from "./Breadcrumb";
+import { docsRoot } from "~/utils/pathBuilder";
 
 export function NavBar() {
   return (
@@ -20,7 +21,7 @@ export function NavBar() {
       </div>
       <div className="hidden items-center gap-2 sm:flex">
         <LinkButton
-          to="https://docs.trigger.dev"
+          to={docsRoot()}
           variant="secondary/small"
           LeadingIcon={BookOpenIcon}
         >
@@ -75,7 +76,7 @@ function MobileDropdownMenu() {
             className="absolute inset-x-6 top-0 mt-20 flex origin-top flex-col gap-4 rounded-md bg-slate-800 p-4 text-lg tracking-tight text-slate-900 shadow-xl ring-1 ring-slate-700"
           >
             {/* <PrimaryA
-              href="https://docs.trigger.dev"
+              href={docsRoot()}
               target="_blank"
               className="max-w-full"
             >

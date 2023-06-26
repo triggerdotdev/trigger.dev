@@ -3,8 +3,12 @@ import {
   ApiAuthenticationMethodApiKey,
   Integration,
 } from "~/services/externalApis/types";
-import { Header1, Header2 } from "../primitives/Headers";
+import { docsIntegrationPath } from "~/utils/pathBuilder";
+import { LinkButton } from "../primitives/Buttons";
+import { Header2 } from "../primitives/Headers";
 import { NamedIconInBox } from "../primitives/NamedIcon";
+import { Paragraph } from "../primitives/Paragraph";
+import { RadioGroup, RadioGroupItem } from "../primitives/RadioButton";
 import {
   Sheet,
   SheetBody,
@@ -12,12 +16,9 @@ import {
   SheetHeader,
   SheetTrigger,
 } from "../primitives/Sheet";
-import { RadioGroup, RadioGroupItem } from "../primitives/RadioButton";
 import { ApiKeyHelp } from "./ApiKeyHelp";
 import { CustomHelp } from "./CustomHelp";
 import { SelectOAuthMethod } from "./SelectOAuthMethod";
-import { Paragraph } from "../primitives/Paragraph";
-import { LinkButton } from "../primitives/Buttons";
 
 type IntegrationMethod = "apikey" | "oauth2" | "custom";
 
@@ -26,7 +27,7 @@ export function ConnectToIntegrationSheet({
   organizationId,
   button,
   className,
-  callbackUrl
+  callbackUrl,
 }: {
   integration: Integration;
   organizationId: string;
@@ -55,7 +56,7 @@ export function ConnectToIntegrationSheet({
             )}
           </div>
           <LinkButton
-            to={`https://trigger.dev/docs/integrations/${integration.identifier}`}
+            to={docsIntegrationPath(integration.identifier)}
             variant="secondary/small"
             LeadingIcon="docs"
           >
@@ -115,7 +116,7 @@ function SelectedIntegrationMethod({
   integration,
   organizationId,
   method,
-  callbackUrl
+  callbackUrl,
 }: {
   integration: Integration;
   organizationId: string;

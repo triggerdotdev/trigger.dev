@@ -248,8 +248,14 @@ export function runCompletedPath(
 }
 
 // Docs
-const docsRoot = "https://docs.trigger.dev";
+export function docsRoot() {
+  return "https://docs.trigger.dev";
+}
 
-export function docsPath(path: string) {
-  return `${docsRoot}${path}`;
+export function docsIntegrationPath(api: string) {
+  return `${docsRoot()}/integrations/apis/${api}`;
+}
+
+export function docsCreateIntegration() {
+  return `${docsRoot()}/integrations/create`;
 }
