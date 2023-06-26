@@ -153,6 +153,10 @@ export const apisList = [
     name: "Replicate",
   },
   {
+    identifier: "resend",
+    name: "Resend",
+  },
+  {
     identifier: "salesforce",
     name: "Salesforce",
   },

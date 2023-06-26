@@ -69,7 +69,7 @@
     "@remix-run/server-runtime": "1.16.1",
     "@tanstack/react-table": "^8.0.0-alpha.87",
     "@team-plain/typescript-sdk": "^2.2.0",
-    "@trigger.dev/companyicons": "^1.5.8",
+    "@trigger.dev/companyicons": "^1.5.10",
     "@trigger.dev/database": "workspace:*",
     "@trigger.dev/internal": "workspace:*",
     "@typeform/embed-react": "^2.14.1",
