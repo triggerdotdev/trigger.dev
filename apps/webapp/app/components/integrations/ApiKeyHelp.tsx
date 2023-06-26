@@ -36,7 +36,11 @@ export function ApiKeyHelp({
       {apiAuth.help.samples.map((sample, i) => (
         <div key={i}>
           <Paragraph spacing>{sample.title}</Paragraph>
-          <CodeBlock code={sample.code} className="mb-4" />
+          <CodeBlock
+            code={sample.code}
+            className="mb-4"
+            highlightedRanges={sample.highlight}
+          />
         </div>
       ))}
     </div>
