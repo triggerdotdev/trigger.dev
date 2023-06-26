@@ -61,13 +61,13 @@ We provide an official trigger.dev docker image you can use to easily self-host 
 ## Development
 
 ### Prerequisites
-- Node.js version >=18.x
+- [Node.js](https://nodejs.org/en) version >=18.x
 - [pnpm package manager](https://pnpm.io/installation) version 7
-- Docker 
+- [Docker](https://www.docker.com/get-started/)
 
 ### Setup
 
-1. Clone the repo into a public GitHub repository or fork [https://github.com/triggerdotdev/trigger.dev/fork](https://github.com/triggerdotdev/trigger.dev/fork). If you plan to distribute the code, keep the source code public to comply with the [Apache Licence 2.0](https://github.com/triggerdotdev/trigger.dev/blob/main/LICENSE).
+1. Clone the repo into a public GitHub repository or [fork the repo](https://github.com/triggerdotdev/trigger.dev/fork). If you plan to distribute the code, keep the source code public to comply with the [Apache Licence 2.0](https://github.com/triggerdotdev/trigger.dev/blob/main/LICENSE).
 
       ```
       git clone https://github.com/triggerdotdev/trigger.dev.git
@@ -82,18 +82,16 @@ We provide an official trigger.dev docker image you can use to easily self-host 
       ```
       pnpm i
       ```
-4. Create your `.env` file
+4. Create your `.env` files
       ```
-      cp .env.example .env
+      cp .env.example .env && cp packages/database/.env.example packages/database/.env
       ```
-      > Alternatively, duplicate the `.env.example` file and rename it to `.env`.
-      
-      Open the `.env` file and fill in the required values.
-5. Start Docker. This starts the required services like Postgres.
+      Open the root `.env` file and fill in the required values.
+6. Start Docker. This starts the required services like Postgres.
       ```
-      pnpm run docker:services
+      pnpm run docker
       ```
-6. Migrate the database
+7. Migrate the database
       ```
       pnpm run db:migrate
       ```
