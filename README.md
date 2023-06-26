@@ -5,9 +5,9 @@
   <img alt="Trigger.dev logo" src="https://imagedelivery.net/3TbraffuDZ4aEf8KWOmI_w/a45d1fa2-0ae8-4a39-4409-f4f934bfae00/public">
 </picture>
   
-## The background jobs framework for Next.js
+### The background jobs framework for Next.js
 
-[Discord](https://discord.gg/bpVDSjcG) | [Website](https://trigger.dev) | [Issues](https://github.com/triggerdotdev/trigger.dev/issues) | [Docs](https://trigger-docs.mintlify.app/documentation/introduction)
+[Discord](https://discord.gg/bpVDSjcG) | [Website](https://trigger.dev) | [Issues](https://github.com/triggerdotdev/trigger.dev/issues) | [Docs](https://trigger.dev/docs)
 
 [![Twitter](https://img.shields.io/twitter/url/https/twitter.com/triggerdotdev.svg?style=social&label=Follow%20%40trigger.dev)](https://twitter.com/triggerdotdev)
 [![GitHub Repo stars](https://img.shields.io/github/stars/triggerdotdev/trigger.dev?style=social)](https://github.com/triggerdotdev/trigger.dev)
@@ -52,7 +52,7 @@ Easily add integrations for your users.
 
 # Getting started
 
-Visit our docs [here](https://trigger-docs.mintlify.app/documentation/introduction).
+Visit our docs [here](https://trigger.dev/docs).
 
 ## Self-host
 
