@@ -1,5 +1,4 @@
 import { BookOpenIcon, CheckCircleIcon } from "@heroicons/react/24/solid";
-import { GitHubLightIcon, SlackIcon } from "@trigger.dev/companyicons";
 import { Button } from "./components/Button";
 import { TriggerCard, TriggerSyncCard } from "./components/Cards";
 import { Header1, Header2 } from "./components/Header";
@@ -8,15 +7,20 @@ import { Paragraph } from "./components/Paragraph";
 import { PrimaryGradientText } from "./components/TextStyling";
 import { ToDoRow } from "./components/ToDoRow";
 import { TriggerDotDevLogo } from "./components/TriggerDotDevLogo";
+import {
+  CodeSandboxLightIcon,
+  GitHubLightIcon,
+  SlackIcon,
+} from "@trigger.dev/companyicons";
 // import { ToDoRow } from "./components/ToDoRow";
 
 export default function Home() {
   return (
-    <main className="grid grid-cols-1 lg:grid-cols-3 md:h-screen bg-midnight-950">
-      <div className="absolute bg-gradient-radial from-indigo-900/30 to-indigo-900/0 h-2/3 w-full top-0 -z-10" />
-      <div className="flex flex-col pt-40 h-full px-12">
+    <main className="bg-midnight-950 grid grid-cols-1 md:h-screen lg:grid-cols-3">
+      <div className="absolute top-0 -z-10 h-2/3 w-full bg-gradient-radial from-indigo-900/30 to-indigo-900/0" />
+      <div className="flex h-full flex-col px-12 pt-40">
         <Header2 variant="small/semibold">To-do list example project</Header2>
-        <div className="pb-2 items-center gap-x-2 flex">
+        <div className="flex items-center gap-x-2 pb-2">
           <Paragraph
             variant="small"
             className="text-slate-500"
@@ -36,44 +40,45 @@ export default function Home() {
         <Paragraph variant="base">
           This project demonstrates some of the key features of Trigger.dev.{" "}
         </Paragraph>
-        <div className="h-px bg-slate-800 rounded-full w-full" />
-        <div className="flex flex-col pt-6 gap-y-2">
-          <div className="flex gap-x-2 items-center">
-            <GitHubLightIcon className="text-slate-200 w-4 h-4" />
+        <div className="h-px w-full rounded-full bg-slate-800" />
+        <div className="flex flex-col gap-y-2 pt-6">
+          <div className="flex items-center gap-x-2">
+            <GitHubLightIcon className="h-4 w-4 text-slate-200" />
             <Paragraph variant="base" removeBottomPadding>
               <a
                 rel="noopener noreferrer"
                 target="_blank"
                 href="https://github.com/trigger.dev/to-do-list-example"
-                className="text-indigo-400 hover:underline hover:underline-offset-2 transition"
+                className="text-indigo-400 transition hover:underline hover:underline-offset-2"
               >
                 trigger.dev/to-do-list-example
               </a>
             </Paragraph>
           </div>
-          <div className="flex gap-x-2 items-center">
+          <div className="flex items-center gap-x-2">
+            <CodeSandboxLightIcon />
             <Paragraph variant="base" removeBottomPadding>
               View the{" "}
               <a
                 rel="noopener noreferrer"
                 target="_blank"
                 href=""
-                className="text-indigo-400 hover:underline hover:underline-offset-2 transition"
+                className="text-indigo-400 transition hover:underline hover:underline-offset-2"
               >
                 source code
               </a>
               .
             </Paragraph>
           </div>
-          <div className="flex gap-x-2 items-center">
-            <BookOpenIcon className="text-slate-200 w-4 h-4" />
+          <div className="flex items-center gap-x-2">
+            <BookOpenIcon className="h-4 w-4 text-slate-200" />
             <Paragraph variant="base" removeBottomPadding>
               View the{" "}
               <a
                 rel="noopener noreferrer"
                 target="_blank"
                 href=""
-                className="text-indigo-400 hover:underline hover:underline-offset-2 transition"
+                className="text-indigo-400 transition hover:underline hover:underline-offset-2"
               >
                 docs
               </a>
@@ -82,31 +87,31 @@ export default function Home() {
           </div>
         </div>
       </div>
-      <div className="h-full w-full items-center pt-40 flex flex-col px-2">
-        <div className="flex items-center gap-x-4 mb-6">
+      <div className="flex h-full w-full flex-col items-center px-2 pt-40">
+        <div className="mb-6 flex items-center gap-x-4">
           <Header1 variant="base/bold" removeBottomPadding>
             <PrimaryGradientText>To-do</PrimaryGradientText>
           </Header1>
-          <div className="rounded-md bg-gradient-primary w-12 h-12">
-            <div className="rounded-md m-px p-1 bg-slate-800">
+          <div className="h-12 w-12 rounded-md bg-gradient-primary">
+            <div className="m-px rounded-md bg-slate-800 p-1">
               <CheckCircleIcon className="text-toxic-500" />
             </div>
           </div>
         </div>
-        <div className="flex flex-col w-full gap-y-4">
+        <div className="flex w-full flex-col gap-y-4">
           <ToDoRow variant="add" />
           <ToDoRow variant="active" />
           <ToDoRow variant="completed" />
         </div>
       </div>
       <div className="h-full w-full pt-40 ">
-        <div className="flex flex-col place-content-between px-12 h-full pb-12">
+        <div className="flex h-full flex-col place-content-between px-12 pb-12">
           <div className="flex flex-col gap-4">
             <Paragraph variant="small" capitalize removeBottomPadding>
               Trigger.dev jobs
             </Paragraph>
-            <div className="flex w-full justify-center items-center">
-              <div className="rounded full h-1 w-1 bg-red-500" />
+            <div className="flex w-full items-center justify-center">
+              <div className="full h-1 w-1 rounded bg-red-500" />
               <Paragraph
                 variant="extraSmall"
                 removeBottomPadding
@@ -115,17 +120,17 @@ export default function Home() {
               >
                 Inactive
               </Paragraph>
-              <div className="rounded-full h-px w-full bg-slate-800" />
+              <div className="h-px w-full rounded-full bg-slate-800" />
             </div>
             <TriggerCard
               active={true}
               accordianContentVariant={"summaryEmailCard"}
               scheduledTime={"2.30am"}
             >
-              <div className="rounded-full h-px w-full bg-slate-700 mb-4" />
+              <div className="mb-4 h-px w-full rounded-full bg-slate-700" />
               <Paragraph
                 variant="extraSmall"
-                className="text-slate-200 pb-2"
+                className="pb-2 text-slate-200"
                 removeBottomPadding
               >
                 Email
@@ -135,7 +140,7 @@ export default function Home() {
               </Paragraph>
               <Paragraph
                 variant="extraSmall"
-                className="text-slate-200 pb-2"
+                className="pb-2 text-slate-200"
                 removeBottomPadding
               >
                 Pick a time
@@ -155,10 +160,10 @@ export default function Home() {
               accordianContentVariant="dailySlackSummary"
               scheduledTime={""}
             >
-              <div className="rounded-full h-px w-full bg-slate-700 mb-4" />
+              <div className="mb-4 h-px w-full rounded-full bg-slate-700" />
               <Paragraph
                 variant="extraSmall"
-                className="text-slate-200 pb-2"
+                className="pb-2 text-slate-200"
                 removeBottomPadding
               >
                 Pick a time
@@ -168,7 +173,7 @@ export default function Home() {
               </Paragraph>
               <Paragraph
                 variant="extraSmall"
-                className="text-slate-200 pb-2"
+                className="pb-2 text-slate-200"
                 removeBottomPadding
               >
                 Connect your Slack account
@@ -177,7 +182,7 @@ export default function Home() {
                 buttonText={"Connect Slack"}
                 buttonVariant={"primary"}
                 buttonSize={"small"}
-                iconLeft={<SlackIcon className="w-4 h-4" />}
+                iconLeft={<SlackIcon className="h-4 w-4" />}
                 className="mb-3"
               />
               <Paragraph variant="extraSmall" className="text-slate-400">
@@ -189,10 +194,10 @@ export default function Home() {
               accordianContentVariant="githubIssuesSync"
               scheduledTime={""}
             >
-              <div className="rounded-full h-px w-full bg-slate-700 mb-4" />
+              <div className="mb-4 h-px w-full rounded-full bg-slate-700" />
               <Paragraph
                 variant="extraSmall"
-                className="text-slate-200 pb-2"
+                className="pb-2 text-slate-200"
                 removeBottomPadding
               >
                 Connect your GitHub account
@@ -201,7 +206,7 @@ export default function Home() {
                 buttonText={"Connect GitHub"}
                 buttonVariant={"primary"}
                 buttonSize={"small"}
-                iconLeft={<GitHubLightIcon className="w-4 h-4" />}
+                iconLeft={<GitHubLightIcon className="h-4 w-4" />}
                 className="mb-3"
               />
               <Paragraph variant="extraSmall" className="text-slate-400">

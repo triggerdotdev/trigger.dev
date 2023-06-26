@@ -13,7 +13,7 @@
     "@radix-ui/react-accordion": "^1.1.2",
     "@radix-ui/react-popover": "^1.0.5",
     "@radix-ui/react-slot": "^1.0.2",
-    "@trigger.dev/companyicons": "^1.5.9",
+    "@trigger.dev/companyicons": "^1.5.11",
     "@types/node": "20.3.1",
     "@types/react": "^18.0.21",
     "@types/react-dom": "^18.0.6",
