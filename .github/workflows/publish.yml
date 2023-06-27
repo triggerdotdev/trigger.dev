@@ -71,7 +71,7 @@ jobs:
       - name: 🐳 Login to ECR
         uses: docker/login-action@v1
         with:
-          registry: ${{ steps.ecr-login.outputs.registry }
+          registry: ${{ steps.ecr-login.outputs.registry }}
 
       - name: 🐳 Set up QEMU
         uses: docker/setup-qemu-action@v2
