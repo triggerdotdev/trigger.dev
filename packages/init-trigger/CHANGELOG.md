@@ -1,5 +1,11 @@
 # create-trigger
 
+## 0.2.1-next.5
+
+### Patch Changes
+
+- 62f94206: Fixed CLI showing undefined when not specifying a trigger-url flag
+
 ## 0.2.1-next.4
 
 ### Patch Changes
