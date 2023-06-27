@@ -40,7 +40,7 @@ function onError(error: unknown) {
   }
 }
 
-export const createIssue: GithubAuthenticatedTask<
+const createIssue: GithubAuthenticatedTask<
   { title: string; owner: string; repo: string },
   OctokitClient["rest"]["issues"]["create"]
 > = {
@@ -76,10 +76,12 @@ export const createIssue: GithubAuthenticatedTask<
   },
 };
 
-export const addIssueAssignees: GithubAuthenticatedTask<
+type AddIssueAssigneesTask = GithubAuthenticatedTask<
   { owner: string; repo: string; issueNumber: number; assignees: string[] },
   OctokitClient["rest"]["issues"]["addAssignees"]
-> = {
+>;
+
+const addIssueAssignees: AddIssueAssigneesTask = {
   onError,
   run: async (params, client, task, io) => {
     return client.rest.issues
@@ -107,10 +109,12 @@ export const addIssueAssignees: GithubAuthenticatedTask<
   },
 };
 
-export const addIssueLabels: GithubAuthenticatedTask<
+type AddIssueLabelsTask = GithubAuthenticatedTask<
   { owner: string; repo: string; issueNumber: number; labels: string[] },
   OctokitClient["rest"]["issues"]["addLabels"]
-> = {
+>;
+
+const addIssueLabels: AddIssueLabelsTask = {
   onError,
   run: async (params, client, task, io) => {
     return client.rest.issues
@@ -138,7 +142,7 @@ export const addIssueLabels: GithubAuthenticatedTask<
   },
 };
 
-export const createIssueComment: GithubAuthenticatedTask<
+const createIssueComment: GithubAuthenticatedTask<
   { body: string; owner: string; repo: string; issueNumber: number },
   OctokitClient["rest"]["issues"]["createComment"]
 > = {
@@ -162,7 +166,7 @@ export const createIssueComment: GithubAuthenticatedTask<
   },
 };
 
-export const getRepo: GithubAuthenticatedTask<
+const getRepo: GithubAuthenticatedTask<
   { owner: string; repo: string },
   OctokitClient["rest"]["repos"]["get"]
 > = {
@@ -202,7 +206,7 @@ type ReactionContent =
   | "rocket"
   | "eyes";
 
-export const addIssueCommentReaction: GithubAuthenticatedTask<
+const addIssueCommentReaction: GithubAuthenticatedTask<
   {
     owner: string;
     repo: string;
@@ -270,7 +274,7 @@ export const addIssueCommentReaction: GithubAuthenticatedTask<
   },
 };
 
-export const createIssueCommentWithReaction: GithubAuthenticatedTask<
+const createIssueCommentWithReaction: GithubAuthenticatedTask<
   {
     body: string;
     owner: string;
@@ -334,7 +338,7 @@ export const createIssueCommentWithReaction: GithubAuthenticatedTask<
   },
 };
 
-export const updateWebhook: GithubAuthenticatedTask<
+const updateWebhook: GithubAuthenticatedTask<
   {
     owner: string;
     repo: string;
@@ -383,7 +387,7 @@ export const updateWebhook: GithubAuthenticatedTask<
   },
 };
 
-export const updateOrgWebhook: GithubAuthenticatedTask<
+const updateOrgWebhook: GithubAuthenticatedTask<
   {
     org: string;
     hookId: number;
@@ -426,7 +430,7 @@ export const updateOrgWebhook: GithubAuthenticatedTask<
   },
 };
 
-export const createWebhook: GithubAuthenticatedTask<
+const createWebhook: GithubAuthenticatedTask<
   {
     owner: string;
     repo: string;
@@ -473,7 +477,7 @@ export const createWebhook: GithubAuthenticatedTask<
   },
 };
 
-export const createOrgWebhook: GithubAuthenticatedTask<
+const createOrgWebhook: GithubAuthenticatedTask<
   {
     org: string;
     url: string;
@@ -515,7 +519,7 @@ export const createOrgWebhook: GithubAuthenticatedTask<
   },
 };
 
-export const listWebhooks: GithubAuthenticatedTask<
+const listWebhooks: GithubAuthenticatedTask<
   {
     owner: string;
     repo: string;
@@ -549,7 +553,7 @@ export const listWebhooks: GithubAuthenticatedTask<
   },
 };
 
-export const listOrgWebhooks: GithubAuthenticatedTask<
+const listOrgWebhooks: GithubAuthenticatedTask<
   {
     org: string;
   },
@@ -579,9 +583,8 @@ export const listOrgWebhooks: GithubAuthenticatedTask<
 
 export const tasks = {
   createIssue,
-  // TODO: figure out why this is breaking build
-  // addIssueAssignees,
-  // addIssueLabels,
+  addIssueAssignees,
+  addIssueLabels,
   createIssueComment,
   getRepo,
   createIssueCommentWithReaction,
