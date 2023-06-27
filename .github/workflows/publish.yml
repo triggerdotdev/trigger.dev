@@ -51,6 +51,9 @@ jobs:
   publish:
     needs: [typecheck]
     runs-on: buildjet-4vcpu-ubuntu-2204
+    outputs:
+      version: ${{ steps.get_version.outputs.version }}
+      short_sha: ${{ steps.get_commit.outputs.sha_short }}
     steps:
       - name: ⬇️ Checkout repo
         uses: actions/checkout@v3
@@ -69,6 +72,11 @@ jobs:
             exit 1
           fi
           echo ::set-output name=version::${IMAGE_TAG}
+
+      - name: 🔢 Get the commit hash
+        id: get_commit
+        run: |
+          echo ::set-output name=sha_short::$(echo ${{ github.sha }} | cut -c1-7)
 
       - name: 🐳 Build Docker Image
         run: |
@@ -126,3 +134,13 @@ jobs:
         env:
           REGISTRY: ${{ steps.ecr-login.outputs.registry }}
           REPOSITORY: trigger.dev
+
+      - name: 🌐 Push commit hash to Amazon ECR
+        if: startsWith(github.ref, 'refs/heads/')
+        run: |
+          docker tag release_build_image $REGISTRY/$REPOSITORY:$IMAGE_TAG
+          docker push $REGISTRY/$REPOSITORY:$IMAGE_TAG
+        env:
+          REGISTRY: ${{ steps.ecr-login.outputs.registry }}
+          REPOSITORY: trigger.dev
+          IMAGE_TAG: ${{ steps.get_version.outputs.version }}-${{ steps.get_commit.outputs.sha_short }}
