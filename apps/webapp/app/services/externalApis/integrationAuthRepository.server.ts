@@ -750,7 +750,7 @@ export class IntegrationAuthRepository {
     return new URL(
       `/oauth2/callback`,
       authenticationMethod.config.appHostEnvName
-        ? process.env[authenticationMethod.config.appHostEnvName]
+        ? process.env[authenticationMethod.config.appHostEnvName] ?? url
         : url
     ).href;
   }
