@@ -19,10 +19,12 @@ const main = async () => {
 
   if (cliOptions.flags.triggerUrl === DEFAULT_TRIGGER_URL) {
     logger.info(`✨ Initializing project in Trigger.dev Cloud`);
-  } else {
+  } else if (typeof cliOptions.flags.triggerUrl === "string") {
     logger.info(
       `✨ Initializing project using Trigger.dev at ${cliOptions.flags.triggerUrl}`
     );
+  } else {
+    logger.info(`✨ Initializing Trigger.dev in project`);
   }
 
   const resolvedPath = resolvePath(cliOptions.flags.projectPath);
