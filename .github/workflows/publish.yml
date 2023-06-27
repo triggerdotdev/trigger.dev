@@ -64,12 +64,14 @@ jobs:
           role-to-assume: arn:aws:iam::067435167850:role/GitHubAction-AssumeRoleWithAction
           aws-region: ${{ env.AWS_REGION }}
 
-      - name: 🌐 Login to Amazon ECR
+      - name: 🌐 Get ECR Login
         id: ecr-login
         uses: aws-actions/amazon-ecr-login@v1
 
-      - name: 🌐 Print ECR Output
-        run: echo ${{ steps.ecr-login.outputs.registry }}
+      - name: 🐳 Login to ECR
+        uses: docker/login-action@v1
+        with:
+          registry: ${{ steps.ecr-login.outputs.registry }
 
       - name: 🐳 Set up QEMU
         uses: docker/setup-qemu-action@v2
