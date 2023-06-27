@@ -97,6 +97,9 @@ jobs:
           role-to-assume: arn:aws:iam::067435167850:role/GitHubAction-AssumeRoleWithAction
           aws-region: ${{ env.AWS_REGION }}
 
+      - name: 🌐 Login to Amazon ECR
+        uses: aws-actions/amazon-ecr-login@v1
+
       - name: 🐳 Build and push
         uses: docker/build-push-action@v4
         with:
