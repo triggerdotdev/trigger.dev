@@ -6,9 +6,6 @@ on:
       - main
     tags:
       - "v*"
-  pull_request:
-    branches:
-      - main
 
 permissions:
   id-token: write
@@ -58,6 +55,21 @@ jobs:
       - name: ⬇️ Checkout repo
         uses: actions/checkout@v3
 
+      - name: 🆚 Get the version
+        id: get_version
+        run: |
+          IMAGE_TAG="${GITHUB_REF#refs/tags/}"
+          if [[ $GITHUB_REF == refs/tags/* ]]; then
+            echo "IMAGE_TAG=${IMAGE_TAG}"
+          elif [[ $GITHUB_REF == refs/heads/* ]]; then
+            IMAGE_TAG="${GITHUB_REF#refs/heads/}"
+            echo "IMAGE_TAG=${IMAGE_TAG}"
+          else
+            echo "Invalid reference: ${GITHUB_REF}"
+            exit 1
+          fi
+          echo ::set-output name=version::${IMAGE_TAG}
+
       - name: 🐳 Build Docker Image
         run: |
           docker build -t release_build_image -f ./docker/Dockerfile .
@@ -76,7 +88,16 @@ jobs:
         env:
           REGISTRY: ghcr.io/triggerdotdev
           REPOSITORY: trigger.dev
-          IMAGE_TAG: main
+          IMAGE_TAG: ${{ steps.get_version.outputs.version }}
+
+      - name: 🐙 Push 'latest' to GitHub Container Registry
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          docker tag release_build_image $REGISTRY/$REPOSITORY:latest
+          docker push $REGISTRY/$REPOSITORY:latest
+        env:
+          REGISTRY: ghcr.io/triggerdotdev
+          REPOSITORY: trigger.dev
 
       - name: 🌐 Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v2
@@ -95,4 +116,13 @@ jobs:
         env:
           REGISTRY: ${{ steps.ecr-login.outputs.registry }}
           REPOSITORY: trigger.dev
-          IMAGE_TAG: main
+          IMAGE_TAG: ${{ steps.get_version.outputs.version }}
+
+      - name: 🌐 Push 'latest' to Amazon ECR
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          docker tag release_build_image $REGISTRY/$REPOSITORY:latest
+          docker push $REGISTRY/$REPOSITORY:latest
+        env:
+          REGISTRY: ${{ steps.ecr-login.outputs.registry }}
+          REPOSITORY: trigger.dev
