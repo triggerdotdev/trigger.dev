@@ -147,7 +147,7 @@ function PossibleIntegrationsList({
           onCheckedChange={setOnlyShowIntegrations}
           variant="small"
           label={
-            <span className="inline-flex items-center gap-0.5">
+            <span className="inline-flex items-center gap-1">
               <IntegrationIcon /> Trigger.dev Integrations
             </span>
           }
@@ -374,6 +374,6 @@ function AddIntegrationConnection({
   );
 }
 
-function IntegrationIcon() {
-  return <LogoIcon className="h-3.5 w-3.5 flex-none pb-0.5 text-amber-500" />;
+export function IntegrationIcon() {
+  return <LogoIcon className="h-3.5 w-3.5 flex-none pb-0.5" />;
 }
