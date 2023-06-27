@@ -12,6 +12,7 @@
     "build:force": "turbo run build --force",
     "db:migrate": "turbo run db:migrate:deploy generate",
     "db:seed": "turbo run db:seed",
+    "db:studio": "turbo run db:studio",
     "dev": "turbo run dev --parallel",
     "i:dev": "infisical run -- turbo run dev --parallel",
     "format": "prettier --write \"**/*.{ts,tsx,md}\"",

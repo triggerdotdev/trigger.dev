@@ -38,6 +38,9 @@
     "db:seed": {
       "cache": false
     },
+    "db:studio": {
+      "cache": false
+    },
     "dev": {
       "cache": false
     },
