@@ -1,3 +1,4 @@
+import { HowToCreateAJob } from "~/components/helpContent/HelpContentText";
 import { JobSkeleton } from "~/components/jobs/JobSkeleton";
 import { JobsTable } from "~/components/jobs/JobsTable";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
@@ -81,7 +82,7 @@ export default function Page() {
               )}
             </div>
             <HelpContent title="How to create a Job">
-              <Paragraph>This is some help content</Paragraph>
+              <HowToCreateAJob />
             </HelpContent>
           </div>
         </Help>

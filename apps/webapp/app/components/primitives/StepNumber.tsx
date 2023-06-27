@@ -1,30 +1,32 @@
-export function TutorialStep({
+import { Header2 } from "./Headers";
+
+export function StepNumber({
   stepNumber,
-  drawLine,
   active = false,
   complete = false,
+  title,
 }: {
   stepNumber?: string;
-  drawLine?: boolean;
   active?: boolean;
   complete?: boolean;
+  title?: string;
 }) {
   return (
-    <div className="mr-3 flex flex-col items-center justify-center">
+    <div className="mr-3">
       {active ? (
-        <span className="flex h-7 w-7 items-center justify-center rounded bg-green-600 py-1 text-sm font-semibold text-slate-900 shadow">
-          {stepNumber}
-        </span>
+        <div className="flex items-center gap-x-3">
+          <span className="flex h-6 w-6 items-center justify-center rounded bg-green-600 py-1 text-xs font-semibold text-slate-900 shadow">
+            {stepNumber}
+          </span>
+          <Header2>{title}</Header2>
+        </div>
       ) : (
-        <span className="flex h-7 w-7 items-center justify-center rounded border border-slate-700 bg-slate-800 py-1 text-sm font-semibold text-green-400 shadow">
-          {complete ? "✓" : stepNumber}
-        </span>
-      )}
-
-      {drawLine ? (
-        <div className="h-full border-l border-slate-700"></div>
-      ) : (
-        <div className="h-full"></div>
+        <div className="flex items-center gap-x-3">
+          <span className="flex h-6 w-6 items-center justify-center rounded border border-slate-700 bg-slate-800 py-1 text-xs font-semibold text-dimmed shadow">
+            {complete ? "✓" : stepNumber}
+          </span>
+          <Header2>{title}</Header2>
+        </div>
       )}
     </div>
   );

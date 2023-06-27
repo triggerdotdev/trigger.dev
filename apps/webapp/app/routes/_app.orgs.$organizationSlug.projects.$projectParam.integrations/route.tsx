@@ -6,6 +6,7 @@ import {
   useTypedLoaderData,
 } from "remix-typedjson";
 import { LogoIcon } from "~/components/LogoIcon";
+import { HowToConnectAnIntegration } from "~/components/helpContent/HelpContentText";
 import { ConnectToIntegrationSheet } from "~/components/integrations/ConnectToIntegrationSheet";
 import { NoIntegrationSheet } from "~/components/integrations/NoIntegrationSheet";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
@@ -242,8 +243,8 @@ function ConnectedIntegrationsList({
   return (
     <div className="h-full overflow-y-auto p-4">
       <Help>
-        <HelpContent title="How to connect an integration">
-          <Paragraph>This is some help content</Paragraph>
+        <HelpContent title="How to connect an Integration">
+          <HowToConnectAnIntegration />
         </HelpContent>
         <div className="mb-2 flex items-center justify-between">
           <Header2 className="m-0">Your connected Integrations</Header2>
