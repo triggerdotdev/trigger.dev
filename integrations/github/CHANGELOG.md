@@ -1,5 +1,11 @@
 # @trigger.dev/github
 
+## 1.0.0-next.3
+
+### Patch Changes
+
+- 23adc15c: Fixed the broken export issue with two of the new tasks
+
 ## 1.0.0-next.2
 
 ### Patch Changes
