@@ -381,10 +381,10 @@ export const slack: Integration = {
       type: "oauth2",
       client: {
         id: {
-          envName: "EXTERNAL_SLACK_CLIENT_ID",
+          envName: "CLOUD_SLACK_CLIENT_ID",
         },
         secret: {
-          envName: "EXTERNAL_SLACK_CLIENT_SECRET",
+          envName: "CLOUD_SLACK_CLIENT_SECRET",
         },
       },
       config: {
@@ -404,7 +404,7 @@ export const slack: Integration = {
         refresh: {
           url: "https://slack.com/api/oauth.v2.access",
         },
-        appHostEnvName: "EXTERNAL_SLACK_APP_HOST",
+        appHostEnvName: "CLOUD_SLACK_APP_HOST",
       },
       scopes: [
         {
