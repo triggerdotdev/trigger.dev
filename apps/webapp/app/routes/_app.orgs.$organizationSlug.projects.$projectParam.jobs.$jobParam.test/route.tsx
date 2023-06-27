@@ -8,6 +8,7 @@ import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
 import { JSONEditor } from "~/components/code/JSONEditor";
 import { EnvironmentLabel } from "~/components/environments/EnvironmentLabel";
+import { HowToRunATest } from "~/components/helpContent/HelpContentText";
 import { Button, ButtonContent } from "~/components/primitives/Buttons";
 import { Callout } from "~/components/primitives/Callout";
 import { FormError } from "~/components/primitives/FormError";
@@ -264,7 +265,7 @@ export default function Page() {
           </div>
         </Form>
         <HelpContent title="How to run a test">
-          <Paragraph>Help content needs writing</Paragraph>
+          <HowToRunATest />
         </HelpContent>
       </div>
     </Help>

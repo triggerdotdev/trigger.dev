@@ -1,6 +1,7 @@
 import { LoaderArgs } from "@remix-run/server-runtime";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { c } from "tar";
+import { HowToUseThisIntegration } from "~/components/helpContent/HelpContentText";
 import { JobSkeleton } from "~/components/jobs/JobSkeleton";
 import { JobsTable } from "~/components/jobs/JobsTable";
 import { Header2 } from "~/components/primitives/Headers";
@@ -85,7 +86,7 @@ export default function Page() {
           )}
         </div>
         <HelpContent title="How to use this integration">
-          <Paragraph>How to use this integration</Paragraph>
+          <HowToUseThisIntegration />
         </HelpContent>
       </div>
     </Help>

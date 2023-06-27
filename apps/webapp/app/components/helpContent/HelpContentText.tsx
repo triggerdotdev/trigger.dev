@@ -1,6 +1,28 @@
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { StepNumber } from "~/components/primitives/StepNumber";
 
+export function HowToCreateAJob() {
+  return (
+    <>
+      <StepNumber stepNumber="1" title="Step 1 title" />
+      <StepContentContainer>
+        <Paragraph variant="small">Content</Paragraph>
+      </StepContentContainer>
+    </>
+  );
+}
+
+export function HowToRunATest() {
+  return (
+    <>
+      <StepNumber stepNumber="1" title="Step 1 title" />
+      <StepContentContainer>
+        <Paragraph variant="small">Content</Paragraph>
+      </StepContentContainer>
+    </>
+  );
+}
+
 export function HowToConnectAnIntegration() {
   return (
     <>
@@ -12,12 +34,12 @@ export function HowToConnectAnIntegration() {
   );
 }
 
-export function HowToCreateAJob() {
+export function HowToUseThisIntegration() {
   return (
     <>
       <StepNumber stepNumber="1" title="Step 1 title" />
       <StepContentContainer>
-        <Paragraph variant="small">How to create a Job content</Paragraph>
+        <Paragraph variant="small">Content</Paragraph>
       </StepContentContainer>
     </>
   );
