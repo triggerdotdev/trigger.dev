@@ -58,48 +58,41 @@ jobs:
       - name: ⬇️ Checkout repo
         uses: actions/checkout@v3
 
+      - name: 🐳 Build Docker Image
+        run: |
+          docker build -t release_build_image -f ./docker/Dockerfile .
+
+      - name: 🐙 Login to GitHub Container Registry
+        uses: docker/login-action@v2
+        with:
+          registry: ghcr.io
+          username: ${{ github.repository_owner }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: 🐙 Push to GitHub Container Registry
+        run: |
+          docker tag release_build_image $REGISTRY/$REPOSITORY:$IMAGE_TAG
+          docker push $REGISTRY/$REPOSITORY:$IMAGE_TAG
+        env:
+          REGISTRY: ghcr.io/triggerdotdev
+          REPOSITORY: trigger.dev
+          IMAGE_TAG: main
+
       - name: 🌐 Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v2
         with:
           role-to-assume: arn:aws:iam::067435167850:role/GitHubAction-AssumeRoleWithAction
           aws-region: ${{ env.AWS_REGION }}
 
-      - name: 🌐 Get ECR Login
+      - name: 🌐 Login to ECR
         id: ecr-login
         uses: aws-actions/amazon-ecr-login@v1
 
-      - name: 🐳 Login to ECR
-        uses: docker/login-action@v1
-        with:
-          registry: ${{ steps.ecr-login.outputs.registry }}
-
-      - name: 🐳 Set up QEMU
-        uses: docker/setup-qemu-action@v2
-
-      - name: 🐳 Generate Docker metadata
-        id: meta
-        uses: docker/metadata-action@v4
-        with:
-          images: |
-            ${{ steps.ecr-login.outputs.registry }}/${{ github.event.repository.name }}
-          tags: |
-            type=ref,event=branch
-            type=ref,event=pr
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
-
-      - name: 🐳 Set up Docker Buildx
-        uses: docker/setup-buildx-action@v2
-
-      - name: 🐳 Build and push
-        uses: docker/build-push-action@v4
-        with:
-          context: .
-          file: ./docker/Dockerfile
-          push: ${{ github.event_name != 'pull_request' }}
-          platforms: linux/amd64,linux/arm64
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=registry,ref=${{ github.repository }}:main
-          cache-to: type=registry,ref=${{ github.repository }}:main,mode=max
-          provenance: false
+      - name: 🌐 Push to Amazon ECR
+        run: |
+          docker tag release_build_image $REGISTRY/$REPOSITORY:$IMAGE_TAG
+          docker push $REGISTRY/$REPOSITORY:$IMAGE_TAG
+        env:
+          REGISTRY: ${{ steps.ecr-login.outputs.registry }}
+          REPOSITORY: trigger.dev
+          IMAGE_TAG: main
