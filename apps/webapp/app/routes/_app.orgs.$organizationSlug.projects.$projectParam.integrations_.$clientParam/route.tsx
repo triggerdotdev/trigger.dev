@@ -57,6 +57,23 @@ export default function Integrations() {
   const { client } = useTypedLoaderData<typeof loader>();
   const organization = useOrganization();
   const project = useProject();
+  let tabs = [
+    {
+      label: "Jobs",
+      to: integrationClientPath(organization, project, client),
+    },
+  ];
+
+  if (client.authMethod.type !== "local") {
+    tabs.push({
+      label: "Connections",
+      to: integrationClientConnectionsPath(organization, project, client),
+    });
+    tabs.push({
+      label: "Scopes",
+      to: integrationClientScopesPath(organization, project, client),
+    });
+  }
 
   return (
     <PageContainer>
@@ -101,26 +118,7 @@ export default function Integrations() {
             />
           </PageInfoGroup>
         </PageInfoRow>
-        <PageTabs
-          tabs={[
-            {
-              label: "Jobs",
-              to: integrationClientPath(organization, project, client),
-            },
-            {
-              label: "Connections",
-              to: integrationClientConnectionsPath(
-                organization,
-                project,
-                client
-              ),
-            },
-            {
-              label: "Scopes",
-              to: integrationClientScopesPath(organization, project, client),
-            },
-          ]}
-        />
+        <PageTabs tabs={tabs} />
       </PageHeader>
 
       <PageBody scrollable={true}>
