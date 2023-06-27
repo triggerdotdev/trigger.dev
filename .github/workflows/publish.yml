@@ -68,7 +68,7 @@ jobs:
           images: |
             ${{ github.repository }}
             ghcr.io/${{ github.repository }}
-            public.ecr.aws/i8g4o0p8/${{ github.event.repository.name }}
+            067435167850.dkr.ecr.us-east-1.amazonaws.com/${{ github.event.repository.name }}
           tags: |
             type=ref,event=branch
             type=ref,event=pr
