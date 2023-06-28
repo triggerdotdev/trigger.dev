@@ -1,5 +1,11 @@
 # create-trigger
 
+## 0.2.1-next.7
+
+### Patch Changes
+
+- 85108cfc: Remove the localhost default for endpoint URL
+
 ## 0.2.1-next.6
 
 ### Patch Changes

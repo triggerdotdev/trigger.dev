@@ -1,5 +1,11 @@
 # @trigger.dev/sdk
 
+## 2.0.0-next.4
+
+### Patch Changes
+
+- f2f4d4b8: Adding more granular error messages around unauthorized requests
+
 ## 2.0.0-next.3
 
 ### Patch Changes
