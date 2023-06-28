@@ -202,8 +202,8 @@ const promptEndpointUrl = async (instanceUrl: string): Promise<string> => {
   }>({
     type: "input",
     name: "endpointUrl",
-    message:
-      "What's the URL of your Next.js project? (e.g. http://localhost:3000)",
+    default: "http://localhost:3000",
+    message: "What's the URL of your Next.js project?",
     validate: (input) => {
       if (!input) {
         return "Please enter the URL of your Next.js project";
@@ -214,7 +214,7 @@ const promptEndpointUrl = async (instanceUrl: string): Promise<string> => {
       const triggerUrl = new URL(instanceUrl);
 
       if (triggerUrl.hostname !== "localhost" && url.hostname === "localhost") {
-        return `Your Trigger.dev instance is hosted at ${triggerUrl.hostname}, so your Next.js project must also be publicly accessible. See our docs for more info: https://trigger.dev/docs/guides/tunneling`;
+        return `Your Trigger.dev instance is hosted at ${triggerUrl.hostname}, so your Next.js project must also be publicly accessible. See our docs for more info: https://trigger.dev/docs/documentation/guides/tunneling-localhost`;
       }
 
       // Make sure triggerUrl and url don't use the same port if they are both localhost

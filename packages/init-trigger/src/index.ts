@@ -11,6 +11,7 @@ import { simpleGit } from "simple-git";
 import { TriggerApi } from "./utils/triggerApi.js";
 import { DEFAULT_TRIGGER_URL } from "./consts.js";
 import ora from "ora";
+import { renderApiKey } from "./utils/renderApiKey.js";
 
 const main = async () => {
   renderTitle();
@@ -315,69 +316,78 @@ export const { POST, dynamic } = createAppRoute(client, {
 }
 
 async function setupEnvironmentVariables(path: string, cliResults: CliResults) {
-  const envFilePath = pathModule.join(path, ".env.local");
-  const envFileExists = await pathExists(envFilePath);
+  if (cliResults.flags.apiKey) {
+    await setupEnvironmentVariable(
+      path,
+      ".env.local",
+      "TRIGGER_API_KEY",
+      cliResults.flags.apiKey,
+      true,
+      renderApiKey
+    );
+  }
 
-  if (envFileExists) {
-    const envFileContent = await fs.readFile(envFilePath, "utf-8");
+  if (cliResults.flags.triggerUrl) {
+    await setupEnvironmentVariable(
+      path,
+      ".env.local",
+      "TRIGGER_API_URL",
+      cliResults.flags.triggerUrl,
+      true
+    );
+  }
 
-    if (envFileContent.includes("TRIGGER_API_KEY")) {
-      // Update the existing value
-      const updatedEnvFileContent = envFileContent.replace(
-        /TRIGGER_API_KEY=.*/g,
-        `TRIGGER_API_KEY=${cliResults.flags.apiKey}`
+  if (cliResults.flags.endpointUrl) {
+    await setupEnvironmentVariable(
+      path,
+      ".env.local",
+      "VERCEL_URL",
+      cliResults.flags.endpointUrl,
+      false
+    );
+  }
+}
+
+async function setupEnvironmentVariable(
+  dir: string,
+  fileName: string,
+  variableName: string,
+  value: string,
+  replaceValue: boolean = true,
+  renderer: (value: string) => string = (value) => value
+) {
+  const path = pathModule.join(dir, fileName);
+  const envFileExists = await pathExists(path);
+
+  if (!envFileExists) {
+    await fs.writeFile(path, "");
+  }
+
+  const envFileContent = await fs.readFile(path, "utf-8");
+
+  if (envFileContent.includes(variableName)) {
+    if (!replaceValue) {
+      logger.info(
+        `☑ Skipping setting ${variableName}=${renderer(
+          value
+        )} because it already exists`
       );
-
-      await fs.writeFile(envFilePath, updatedEnvFileContent);
-
-      logger.success("✅ Updated TRIGGER_API_KEY in .env.local");
-    } else {
-      await fs.appendFile(
-        envFilePath,
-        `TRIGGER_API_KEY=${cliResults.flags.apiKey}\n`
-      );
-
-      logger.success("✅ Added TRIGGER_API_KEY to .env.local");
+      return;
     }
+    // Update the existing value
+    const updatedEnvFileContent = envFileContent.replace(
+      new RegExp(`${variableName}=.*\\n`, "g"),
+      `${variableName}=${value}\n`
+    );
 
-    if (envFileContent.includes("TRIGGER_API_URL")) {
-      // Update existing value
-      const updatedEnvFileContent = envFileContent.replace(
-        /TRIGGER_API_URL=.*/g,
-        `TRIGGER_API_URL=${cliResults.flags.triggerUrl}`
-      );
+    await fs.writeFile(path, updatedEnvFileContent);
 
-      await fs.writeFile(envFilePath, updatedEnvFileContent);
-
-      logger.success("✅ Updated TRIGGER_API_URL in .env.local");
-    } else {
-      await fs.appendFile(
-        envFilePath,
-        `TRIGGER_API_URL=${cliResults.flags.triggerUrl}\n`
-      );
-
-      logger.success("✅ Added TRIGGER_API_URL to .env.local");
-    }
-
-    if (!envFileContent.includes("VERCEL_URL")) {
-      await fs.appendFile(
-        envFilePath,
-        `VERCEL_URL=${cliResults.flags.endpointUrl}\n`
-      );
-
-      logger.success("✅ Added VERCEL_URL to .env.local");
-    }
+    logger.success(`✅ Set ${variableName}=${renderer(value)} in ${fileName}`);
   } else {
-    const envFileContent = `
-TRIGGER_API_KEY=${cliResults.flags.apiKey}
-TRIGGER_API_URL=${cliResults.flags.triggerUrl}
-VERCEL_URL=${cliResults.flags.endpointUrl}
-  `;
-
-    await fs.writeFile(envFilePath, envFileContent);
+    await fs.appendFile(path, `\n${variableName}=${value}`);
 
     logger.success(
-      "✅ Created .env.local and added required environment variables"
+      `✅ Added ${variableName}=${renderer(value)} to ${fileName}`
     );
   }
 }
