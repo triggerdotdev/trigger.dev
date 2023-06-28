@@ -22,8 +22,12 @@ const HelpContext = React.createContext<HelpContextValue>({
 type HelpProps = {
   defaultOpen?: boolean;
   allowDismissing?: boolean;
-  children?: React.ReactNode;
+  children?: React.ReactNode | ((open: boolean) => React.ReactNode);
 };
+
+function useHelp() {
+  return React.useContext(HelpContext);
+}
 
 export function Help({
   defaultOpen,
@@ -34,13 +38,13 @@ export function Help({
 
   return (
     <HelpContext.Provider value={{ open, setOpen, allowDismissing }}>
-      {children}
+      {typeof children === "function" ? children(open) : children}
     </HelpContext.Provider>
   );
 }
 
 export function HelpTrigger({ title }: { title: string }) {
-  const { open, setOpen } = React.useContext(HelpContext);
+  const { open, setOpen } = useHelp();
 
   return open ? (
     <></>
@@ -65,7 +69,7 @@ export function HelpContent({
   className?: string;
   children: React.ReactNode;
 }) {
-  const { open, setOpen, allowDismissing } = React.useContext(HelpContext);
+  const { open, setOpen, allowDismissing } = useHelp();
 
   return (
     <>

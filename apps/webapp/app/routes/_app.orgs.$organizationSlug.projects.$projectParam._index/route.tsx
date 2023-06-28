@@ -18,6 +18,7 @@ import { useFilterJobs } from "~/hooks/useFilterJobs";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { ProjectJob, useProject } from "~/hooks/useProject";
 import { useTextFilter } from "~/hooks/useTextFilter";
+import { cn } from "~/utils/cn";
 import { Handle } from "~/utils/handle";
 
 export const handle: Handle = {
@@ -52,39 +53,46 @@ export default function Page() {
       </PageHeader>
       <PageBody>
         <Help defaultOpen={project.jobs.length === 0}>
-          <div className="flex h-full gap-4">
-            <div className="grow">
-              <div className="mb-2 flex items-center justify-between gap-x-2">
-                {project.jobs.length === 0 ? (
-                  <Header2>Your Jobs will appear here</Header2>
-                ) : (
-                  <Input
-                    placeholder="Search Jobs"
-                    variant="tertiary"
-                    icon="search"
-                    fullWidth={true}
-                    value={filterText}
-                    onChange={(e) => setFilterText(e.target.value)}
-                  />
-                )}
-                <HelpTrigger title="How do I create a Job?" />
-              </div>
-              {project.jobs.length > 0 ? (
-                <JobsTable
-                  jobs={filteredItems}
-                  noResultsText={`No Jobs match ${filterText}. Try a different search
-                query.`}
-                />
-              ) : (
-                <>
-                  <JobSkeleton />
-                </>
+          {(open) => (
+            <div
+              className={cn(
+                "grid h-full gap-4",
+                open ? "grid-cols-2" : "grid-cols-1"
               )}
+            >
+              <div>
+                <div className="mb-2 flex items-center justify-between gap-x-2">
+                  {project.jobs.length === 0 ? (
+                    <Header2>Your Jobs will appear here</Header2>
+                  ) : (
+                    <Input
+                      placeholder="Search Jobs"
+                      variant="tertiary"
+                      icon="search"
+                      fullWidth={true}
+                      value={filterText}
+                      onChange={(e) => setFilterText(e.target.value)}
+                    />
+                  )}
+                  <HelpTrigger title="How do I create a Job?" />
+                </div>
+                {project.jobs.length > 0 ? (
+                  <JobsTable
+                    jobs={filteredItems}
+                    noResultsText={`No Jobs match ${filterText}. Try a different search
+                query.`}
+                  />
+                ) : (
+                  <>
+                    <JobSkeleton />
+                  </>
+                )}
+              </div>
+              <HelpContent title="How to create a Job">
+                <HowToCreateAJob />
+              </HelpContent>
             </div>
-            <HelpContent title="How to create a Job">
-              <HowToCreateAJob />
-            </HelpContent>
-          </div>
+          )}
         </Help>
       </PageBody>
     </PageContainer>
