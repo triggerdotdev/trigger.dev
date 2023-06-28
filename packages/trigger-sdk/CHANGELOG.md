@@ -1,5 +1,11 @@
 # @trigger.dev/sdk
 
+## 2.0.0-next.3
+
+### Patch Changes
+
+- 24542d4e: Adding support for trigger source in the run context, and make sure dynamic trigger runs are preprocessed so they have a chance of populating run properties
+
 ## 2.0.0-next.2
 
 ### Patch Changes
