@@ -166,10 +166,7 @@ export default function LoginMagicLinkPage() {
                 </Fieldset>
                 <Paragraph variant="extra-small" className="my-4 text-center">
                   By logging in with your email you agree to our{" "}
-                  <TextLink
-                    href="https://trigger.dev/legal/terms"
-                    target="_blank"
-                  >
+                  <TextLink href="https://trigger.dev/legal" target="_blank">
                     terms
                   </TextLink>{" "}
                   and{" "}
@@ -179,7 +176,7 @@ export default function LoginMagicLinkPage() {
                   >
                     privacy
                   </TextLink>{" "}
-                  policies.
+                  policy.
                 </Paragraph>
 
                 <LinkButton

@@ -95,20 +95,17 @@ export default function LoginPage() {
               </div>
               <Paragraph variant="extra-small" className="mt-2 text-center">
                 By signing up you agree to our{" "}
-                <TextLink
-                  href="https://trigger.dev/legal/terms"
-                  target="_blank"
-                >
+                <TextLink href="https://trigger.dev/legal" target="_blank">
                   terms
-                </TextLink>{" "}
-                and{" "}
+                </TextLink>
+                {" "}and{" "}
                 <TextLink
                   href="https://trigger.dev/legal/privacy"
                   target="_blank"
                 >
                   privacy
-                </TextLink>{" "}
-                policies.
+                </TextLink>
+                {" "}policy.
               </Paragraph>
             </Fieldset>
           </div>
