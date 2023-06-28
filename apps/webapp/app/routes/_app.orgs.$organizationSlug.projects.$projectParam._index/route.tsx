@@ -1,12 +1,11 @@
+import Confetti from "react-confetti";
 import { HowToSetupYourProject } from "~/components/helpContent/HelpContentText";
 import { JobsTable } from "~/components/jobs/JobsTable";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
-import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { Callout } from "~/components/primitives/Callout";
 import { Header2 } from "~/components/primitives/Headers";
 import { Help, HelpContent, HelpTrigger } from "~/components/primitives/Help";
 import { Input } from "~/components/primitives/Input";
-import { NamedIcon } from "~/components/primitives/NamedIcon";
 import {
   PageHeader,
   PageInfoGroup,
@@ -15,12 +14,13 @@ import {
   PageTitle,
   PageTitleRow,
 } from "~/components/primitives/PageHeader";
-import { Paragraph, TextLink } from "~/components/primitives/Paragraph";
+import { Paragraph } from "~/components/primitives/Paragraph";
 import { useFilterJobs } from "~/hooks/useFilterJobs";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { cn } from "~/utils/cn";
 import { Handle } from "~/utils/handle";
+import useWindowSize from "react-use/lib/useWindowSize";
 
 export const handle: Handle = {
   breadcrumb: {
@@ -35,6 +35,8 @@ export default function Page() {
   const { filterText, setFilterText, filteredItems } = useFilterJobs(
     project.jobs
   );
+
+  const { width, height } = useWindowSize();
 
   return (
     <PageContainer>
@@ -53,6 +55,13 @@ export default function Page() {
         </PageInfoRow>
       </PageHeader>
       <PageBody>
+        {/* <Confetti
+          width={width}
+          height={height}
+          recycle={false}
+          numberOfPieces={700}
+          colors={["#E7FF52", "#41FF54"]}
+        /> */}
         <Help defaultOpen={project.jobs.length === 0}>
           {(open) => (
             <div
