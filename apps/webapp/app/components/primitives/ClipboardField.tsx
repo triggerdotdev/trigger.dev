@@ -73,6 +73,7 @@ type ClipboardFieldProps = {
   variant: keyof typeof variations;
   className?: string;
   icon?: IconNames | React.ReactNode;
+  fullWidth?: boolean;
 };
 
 export function ClipboardField({
@@ -81,6 +82,7 @@ export function ClipboardField({
   variant,
   className,
   icon,
+  fullWidth = true,
 }: ClipboardFieldProps) {
   const [isSecure, setIsSecure] = useState(secure !== undefined && secure);
   const [copied, setCopied] = useState(false);
@@ -104,7 +106,9 @@ export function ClipboardField({
   const inputIcon = useRef<HTMLInputElement>(null);
 
   return (
-    <div className={cn(container, className)}>
+    <div
+      className={cn(container, fullWidth ? "w-full" : "max-w-max", className)}
+    >
       {icon && (
         <div
           onClick={() => inputIcon.current && inputIcon.current.focus()}
