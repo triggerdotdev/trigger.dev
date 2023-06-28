@@ -36,6 +36,7 @@ export function HowToSetupYourProject() {
         <StepContentContainer>
           <ClipboardField
             variant="primary/medium"
+            fullWidth={false}
             className="mt-2"
             value={`brew install ngrok/ngrok/ngrok`}
           />
@@ -51,6 +52,7 @@ export function HowToSetupYourProject() {
           </Paragraph>
           <ClipboardField
             variant="primary/medium"
+            fullWidth={false}
             className="mb-4"
             value={`ngrok http 3000`}
           />
@@ -85,6 +87,7 @@ export function HowToSetupYourProject() {
         <ClipboardField
           variant="primary/medium"
           className="mb-4"
+          secure="npx @trigger.dev/init@latest -k ••••••••• -t https://test-cloud.trigger.dev -u <ngrok public url>"
           value={`npx @trigger.dev/init@latest -k ${devEnvironment?.apiKey} -t https://test-cloud.trigger.dev -u <ngrok public url>`}
         />
         <Paragraph spacing>
