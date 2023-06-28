@@ -3,9 +3,9 @@ import { StepNumber } from "~/components/primitives/StepNumber";
 import { IntegrationIcon } from "~/routes/_app.orgs.$organizationSlug.projects.$projectParam.integrations/route";
 import { Callout } from "../primitives/Callout";
 import integrationButton from "./integration-button.png";
-import { CodeBlock } from "../code/CodeBlock";
 import { useDevEnvironment } from "~/hooks/useEnvironments";
 import { ClipboardField } from "../primitives/ClipboardField";
+import { Button } from "../primitives/Buttons";
 
 export function HowToSetupYourProject() {
   const devEnvironment = useDevEnvironment();
@@ -41,11 +41,22 @@ export function HowToSetupYourProject() {
           className="mb-4"
           value={`npx @trigger.dev/init -k ${devEnvironment?.apiKey} -t https://test-cloud.trigger.dev`}
         />
-        <Paragraph>
+        <Paragraph spacing>
           The CLI will add Trigger.dev to your existing Next.js project, setup a
-          route and give you an example file, which will appear on in the list
-          on this page.
+          route and give you an example file.
         </Paragraph>
+        <Paragraph>
+          Once you've run the CLI command, click Refresh to view your example
+          Job in the list.
+        </Paragraph>
+        <Button
+          variant="primary/medium"
+          className="mt-4"
+          LeadingIcon="refresh"
+          onClick={() => window.location.reload()}
+        >
+          Refresh
+        </Button>
       </StepContentContainer>
     </>
   );
