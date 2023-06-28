@@ -3,27 +3,49 @@ import { StepNumber } from "~/components/primitives/StepNumber";
 import { IntegrationIcon } from "~/routes/_app.orgs.$organizationSlug.projects.$projectParam.integrations/route";
 import { Callout } from "../primitives/Callout";
 import integrationButton from "./integration-button.png";
+import { CodeBlock } from "../code/CodeBlock";
+import { useDevEnvironment } from "~/hooks/useEnvironments";
+import { ClipboardField } from "../primitives/ClipboardField";
 
 export function HowToSetupYourProject() {
+  const devEnvironment = useDevEnvironment();
+  console.log(devEnvironment);
   return (
     <>
       <StepNumber stepNumber="1" title="Run your Next.js app" />
       <StepContentContainer>
-        <Paragraph>Content</Paragraph>
+        <Paragraph>Ensure your Next.js app is running locally.</Paragraph>
       </StepContentContainer>
       <StepNumber stepNumber="2" title="Run NGROK" />
       <StepContentContainer>
+        <Paragraph spacing>Run NGROK in a new terminal window.</Paragraph>
         <Paragraph>
-          In a new terminal window, run NGROK. You can install it{" "}
-          <TextLink href="https://ngrok.com/download" target="_blank">
-            here
+          We recommend using NGROK in order to establish a tunnel between your
+          locally running Next.js app and the internet. Follow our{" "}
+          <TextLink
+            href="https://trigger.dev/docs/documentation/guides/tunneling-localhost"
+            target="_blank"
+          >
+            guide to setting up NGROK
           </TextLink>{" "}
-          if you don't already have it.
+          before moving onto the next step.
         </Paragraph>
       </StepContentContainer>
-      <StepNumber stepNumber="3" title="Run the CLI" />
+      <StepNumber stepNumber="3" title="Use the CLI" />
       <StepContentContainer>
-        <Paragraph>Content</Paragraph>
+        <Paragraph spacing>
+          Run this CLI command in a new terminal window.
+        </Paragraph>
+        <ClipboardField
+          variant="primary/medium"
+          className="mb-4"
+          value={`npx @trigger.dev/init -k ${devEnvironment?.apiKey} -t https://test-cloud.trigger.dev`}
+        />
+        <Paragraph>
+          The CLI will add Trigger.dev to your existing Next.js project, setup a
+          route and give you an example file, which will appear on in the list
+          on this page.
+        </Paragraph>
       </StepContentContainer>
     </>
   );
