@@ -60,8 +60,18 @@ export default function Page() {
           width={width}
           height={height}
           recycle={false}
-          numberOfPieces={700}
-          colors={["#E7FF52", "#41FF54"]}
+          numberOfPieces={1000}
+          colors={[
+            "#E7FF52",
+            "#41FF54",
+            "rgb(245 158 11)",
+            "rgb(22 163 74)",
+            "rgb(37 99 235)",
+            "rgb(67 56 202)",
+            "rgb(219 39 119)",
+            "rgb(225 29 72)",
+            "rgb(217 70 239)",
+          ]}
         /> */}
         <Help defaultOpen={project.jobs.length === 0}>
           {(open) => (
