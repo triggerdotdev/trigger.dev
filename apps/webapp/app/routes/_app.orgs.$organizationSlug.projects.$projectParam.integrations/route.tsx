@@ -266,6 +266,7 @@ function ConnectedIntegrationsList({
                 <TableRow>
                   <TableHeaderCell>Name</TableHeaderCell>
                   <TableHeaderCell>API</TableHeaderCell>
+                  <TableHeaderCell>ID</TableHeaderCell>
                   <TableHeaderCell>Type</TableHeaderCell>
                   <TableHeaderCell>Jobs</TableHeaderCell>
                   <TableHeaderCell>Scopes</TableHeaderCell>
@@ -303,6 +304,7 @@ function ConnectedIntegrationsList({
                               {client.integration.name}
                             </span>
                           </TableCell>
+                          <TableCell to={path}>{client.slug}</TableCell>
                           <TableCell to={path}>
                             {client.authMethod.name}
                           </TableCell>
