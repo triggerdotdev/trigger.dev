@@ -1,5 +1,11 @@
 # create-trigger
 
+## 0.2.1-next.6
+
+### Patch Changes
+
+- 94ae9e65: Fixed an issue that cause environment variables to be incorrectly added to .env.local
+
 ## 0.2.1-next.5
 
 ### Patch Changes
