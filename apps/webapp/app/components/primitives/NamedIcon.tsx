@@ -7,6 +7,7 @@ import {
 import { CompanyIcon, hasIcon } from "@trigger.dev/companyicons";
 import {
   ArrowLeftIcon,
+  ArrowPathIcon,
   ArrowRightIcon,
   ArrowTopRightOnSquareIcon,
   BeakerIcon,
@@ -173,6 +174,9 @@ const icons = {
   ),
   property: (className: string) => (
     <Cog8ToothIcon className={cn("text-slate-600", className)} />
+  ),
+  refresh: (className: string) => (
+    <ArrowPathIcon className={cn("text-bright", className)} />
   ),
   search: (className: string) => (
     <MagnifyingGlassIcon className={cn("text-dimmed", className)} />
