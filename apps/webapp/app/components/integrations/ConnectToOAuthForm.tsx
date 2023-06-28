@@ -240,18 +240,16 @@ export function ConnectToOAuthForm({
         </div>
       </Fieldset>
 
-      <div className="flex items-center justify-end gap-x-4">
+      <div className="absolute bottom-0 left-0 flex w-full items-center justify-end gap-x-4 rounded-b-md border-t border-slate-800 bg-midnight-900 p-4">
         <FormError>{scopes.error}</FormError>
         <Button
           type="submit"
           className="flex gap-2"
           disabled={transition.state !== "idle"}
           variant="primary/medium"
+          LeadingIcon={integration.identifier}
         >
-          <>
-            <NamedIcon name={integration.identifier} className={"h-4 w-4"} />
-            Connect to {integration.name}
-          </>
+          Connect to {integration.name}
         </Button>
       </div>
     </fetcher.Form>

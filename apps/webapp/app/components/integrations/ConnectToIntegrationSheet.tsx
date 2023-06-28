@@ -46,7 +46,7 @@ export function ConnectToIntegrationSheet({
   return (
     <Sheet>
       <SheetTrigger className={className}>{button}</SheetTrigger>
-      <SheetContent size="lg">
+      <SheetContent size="lg" className="relative">
         <SheetHeader>
           <NamedIconInBox name={integration.identifier} className="h-9 w-9" />
           <div className="grow">
