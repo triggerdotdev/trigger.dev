@@ -55,6 +55,7 @@ export default function Page() {
         </PageInfoRow>
       </PageHeader>
       <PageBody>
+        {/* Todo: this confetti component needs to trigger when the example project is created, then never again. */}
         {/* <Confetti
           width={width}
           height={height}
