@@ -1,15 +1,29 @@
-import { Paragraph } from "~/components/primitives/Paragraph";
+import { Paragraph, TextLink } from "~/components/primitives/Paragraph";
 import { StepNumber } from "~/components/primitives/StepNumber";
 import { IntegrationIcon } from "~/routes/_app.orgs.$organizationSlug.projects.$projectParam.integrations/route";
 import { Callout } from "../primitives/Callout";
 import integrationButton from "./integration-button.png";
 
-export function HowToCreateAJob() {
+export function HowToSetupYourProject() {
   return (
     <>
-      <StepNumber stepNumber="1" title="Step 1 title" />
+      <StepNumber stepNumber="1" title="Run your Next.js app" />
       <StepContentContainer>
-        <Paragraph variant="small">Content</Paragraph>
+        <Paragraph>Content</Paragraph>
+      </StepContentContainer>
+      <StepNumber stepNumber="2" title="Run NGROK" />
+      <StepContentContainer>
+        <Paragraph>
+          In a new terminal window, run NGROK. You can install it{" "}
+          <TextLink href="https://ngrok.com/download" target="_blank">
+            here
+          </TextLink>{" "}
+          if you don't already have it.
+        </Paragraph>
+      </StepContentContainer>
+      <StepNumber stepNumber="3" title="Run the CLI" />
+      <StepContentContainer>
+        <Paragraph>Content</Paragraph>
       </StepContentContainer>
     </>
   );
@@ -20,7 +34,7 @@ export function HowToRunATest() {
     <>
       <StepNumber stepNumber="1" title="Step 1 title" />
       <StepContentContainer>
-        <Paragraph variant="small">Content</Paragraph>
+        <Paragraph>Content</Paragraph>
       </StepContentContainer>
     </>
   );
@@ -41,7 +55,7 @@ export function HowToConnectAnIntegration() {
           </span>
           are Trigger.dev Integrations. These Integrations make connecting to
           the API easier by offering OAuth or API key authentication. All APIs
-          can also be used with generic fetch or an SDK.
+          can also be used with fetch or an SDK.
         </Paragraph>
         <img src={integrationButton} className="mt-2 h-10" />
       </StepContentContainer>
@@ -80,7 +94,7 @@ export function HowToUseThisIntegration() {
     <>
       <StepNumber stepNumber="1" title="Step 1 title" />
       <StepContentContainer>
-        <Paragraph variant="small">Content</Paragraph>
+        <Paragraph>Content</Paragraph>
       </StepContentContainer>
     </>
   );
