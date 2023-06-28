@@ -6,6 +6,7 @@ import {
   RunJobResumeWithTask,
   RunJobRetryWithTask,
   RunJobSuccess,
+  RunSourceContextSchema,
 } from "@trigger.dev/internal";
 import { generateErrorMessage } from "zod-error";
 import { EXECUTE_JOB_RETRY_LIMIT } from "~/consts";
@@ -242,6 +243,10 @@ export class PerformRunExecutionService {
       }
     }
 
+    const sourceContext = RunSourceContextSchema.safeParse(
+      run.event.sourceContext
+    );
+
     const { response, parser } = await client.executeJobRequest({
       event,
       job: {
@@ -270,6 +275,7 @@ export class PerformRunExecutionService {
           }
         : undefined,
       connections: connections.auth,
+      source: sourceContext.success ? sourceContext.data : undefined,
       tasks: [run.tasks, resumedTask]
         .flat()
         .filter(Boolean)

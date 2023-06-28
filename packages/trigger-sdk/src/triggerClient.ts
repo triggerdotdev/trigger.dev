@@ -638,7 +638,7 @@ export class TriggerClient {
   }
 
   #createRunContext(execution: RunJobBody): TriggerContext {
-    const { event, organization, environment, job, run } = execution;
+    const { event, organization, environment, job, run, source } = execution;
 
     return {
       event: {
@@ -652,6 +652,7 @@ export class TriggerClient {
       job,
       run,
       account: execution.account,
+      source,
     };
   }
 

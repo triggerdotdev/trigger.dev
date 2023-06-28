@@ -1,10 +1,10 @@
 import type { RawEvent, SendEventOptions } from "@trigger.dev/internal";
 import {
   $transaction,
-  PrismaClient,
   PrismaClientOrTransaction,
+  PrismaErrorSchema,
+  prisma,
 } from "~/db.server";
-import { PrismaErrorSchema, prisma } from "~/db.server";
 import type { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { workerQueue } from "~/services/worker.server";
 
@@ -39,7 +39,8 @@ export class IngestSendEvent {
   public async call(
     environment: AuthenticatedEnvironment,
     event: RawEvent,
-    options?: SendEventOptions
+    options?: SendEventOptions,
+    sourceContext?: { id: string; metadata?: any }
   ) {
     try {
       const deliverAt = this.#calculateDeliverAt(options);
@@ -80,6 +81,7 @@ export class IngestSendEvent {
             payload: event.payload ?? {},
             context: event.context ?? {},
             source: event.source ?? "trigger.dev",
+            sourceContext,
             deliverAt: deliverAt,
             externalAccount: externalAccount
               ? {

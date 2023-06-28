@@ -245,6 +245,8 @@ new Job(client, {
     github: githubUser,
   },
   run: async (payload, io, ctx) => {
+    await io.logger.info("user-on-issue-opened", { ctx });
+
     return await io.github.getRepo("get.repo", {
       owner: payload.repository.owner.login,
       repo: payload.repository.name,

@@ -18,6 +18,7 @@ export interface TriggerContext {
   run: { id: string; isTest: boolean; startedAt: Date };
   event: { id: string; name: string; context: any; timestamp: Date };
   account?: { id: string; metadata?: any };
+  source?: { id: string; metadata?: any };
 }
 
 export interface TriggerPreprocessContext {

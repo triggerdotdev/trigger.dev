@@ -18,7 +18,8 @@ export class RegisterSourceService {
     endpointId: string,
     metadata: SourceMetadata,
     dynamicTriggerId?: string,
-    accountId?: string
+    accountId?: string,
+    dynamicSource?: { id: string; metadata: any }
   ) {
     const endpoint = await this.#prismaClient.endpoint.findUniqueOrThrow({
       where: {
@@ -39,7 +40,8 @@ export class RegisterSourceService {
       endpoint.environment,
       metadata,
       dynamicTriggerId,
-      accountId
+      accountId,
+      dynamicSource
     );
   }
 
@@ -48,7 +50,8 @@ export class RegisterSourceService {
     environment: AuthenticatedEnvironment,
     metadata: SourceMetadata,
     dynamicTriggerId?: string,
-    accountId?: string
+    accountId?: string,
+    dynamicSource?: { id: string; metadata: any }
   ) {
     logger.debug("Upserting source", {
       endpoint,
@@ -57,9 +60,9 @@ export class RegisterSourceService {
       accountId,
     });
 
-    const key = dynamicTriggerId
-      ? `${dynamicTriggerId}:${metadata.key}`
-      : metadata.key;
+    const key = [dynamicTriggerId, dynamicSource?.id, metadata.key]
+      .filter(Boolean)
+      .join(":");
 
     const { id, orphanedEvents } = await $transaction(
       this.#prismaClient,
@@ -143,6 +146,8 @@ export class RegisterSourceService {
                 },
               },
             },
+            dynamicSourceId: dynamicSource?.id,
+            dynamicSourceMetadata: dynamicSource?.metadata,
           },
           update: {
             endpoint: {
@@ -151,6 +156,8 @@ export class RegisterSourceService {
               },
             },
             integration: { connect: { id: integration.id } },
+            dynamicSourceId: dynamicSource?.id,
+            dynamicSourceMetadata: dynamicSource?.metadata,
           },
           include: {
             events: true,

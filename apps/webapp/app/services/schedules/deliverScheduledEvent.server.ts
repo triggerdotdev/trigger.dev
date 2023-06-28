@@ -47,14 +47,12 @@ export class DeliverScheduledEventService {
           id: eventId,
           name: SCHEDULED_EVENT,
           payload,
-          context: {
-            source: {
-              id: scheduleSource.key,
-              metadata: scheduleSource.metadata,
-            },
-          },
         },
-        { accountId: scheduleSource.externalAccount?.identifier }
+        { accountId: scheduleSource.externalAccount?.identifier },
+        {
+          id: scheduleSource.key,
+          metadata: scheduleSource.metadata,
+        }
       );
 
       const invokeDispatcherService = new InvokeDispatcherService(tx);

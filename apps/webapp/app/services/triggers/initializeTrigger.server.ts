@@ -71,6 +71,7 @@ export class InitializeTriggerService {
       endpointSlug,
       key: payload.id,
       accountId: payload.accountId,
+      registrationMetadata: payload.metadata,
     });
 
     await this.#sendEvent.call(

@@ -238,6 +238,11 @@ export type RuntimeEnvironmentType = z.infer<
   typeof RuntimeEnvironmentTypeSchema
 >;
 
+export const RunSourceContextSchema = z.object({
+  id: z.string(),
+  metadata: z.any(),
+});
+
 export const RunJobBodySchema = z.object({
   event: ApiEventLogSchema,
   job: z.object({
@@ -265,6 +270,7 @@ export const RunJobBodySchema = z.object({
       metadata: z.any(),
     })
     .optional(),
+  source: RunSourceContextSchema.optional(),
   tasks: z.array(CachedTaskSchema).optional(),
   connections: z.record(ConnectionAuthSchema).optional(),
 });
@@ -496,6 +502,7 @@ export const InitializeTriggerBodySchema = z.object({
   id: z.string(),
   params: z.any(),
   accountId: z.string().optional(),
+  metadata: z.any().optional()
 });
 
 export type InitializeTriggerBody = z.infer<typeof InitializeTriggerBodySchema>;

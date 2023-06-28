@@ -101,6 +101,6 @@ export class DynamicTrigger<
   }
 
   get preprocessRuns() {
-    return false;
+    return true;
   }
 }

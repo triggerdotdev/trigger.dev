@@ -88,9 +88,19 @@ export class DeliverHttpSourceRequestService {
     const ingestService = new IngestSendEvent();
 
     for (const event of events) {
-      await ingestService.call(httpSourceRequest.environment, event, {
-        accountId: httpSourceRequest.source.externalAccount?.identifier,
-      });
+      await ingestService.call(
+        httpSourceRequest.environment,
+        event,
+        {
+          accountId: httpSourceRequest.source.externalAccount?.identifier,
+        },
+        httpSourceRequest.source.dynamicSourceId
+          ? {
+              id: httpSourceRequest.source.dynamicSourceId,
+              metadata: httpSourceRequest.source.dynamicSourceMetadata,
+            }
+          : undefined
+      );
     }
 
     return response;

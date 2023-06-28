@@ -577,12 +577,13 @@ enum JobStartPosition {
 }
 
 model EventRecord {
-  id        String   @id @default(cuid())
-  eventId   String
-  name      String
-  timestamp DateTime @default(now())
-  payload   Json
-  context   Json?
+  id            String   @id @default(cuid())
+  eventId       String
+  name          String
+  timestamp     DateTime @default(now())
+  payload       Json
+  context       Json?
+  sourceContext Json?
 
   source String @default("trigger.dev")
 
@@ -853,6 +854,9 @@ model TriggerSource {
   externalAccount   ExternalAccount? @relation(fields: [externalAccountId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   externalAccountId String?
 
+  dynamicSourceId       String?
+  dynamicSourceMetadata Json?
+
   active      Boolean @default(false)
   interactive Boolean @default(false)
 
@@ -899,6 +903,8 @@ model DynamicTriggerRegistration {
 
   source   TriggerSource @relation(fields: [sourceId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   sourceId String
+
+  metadata Json?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

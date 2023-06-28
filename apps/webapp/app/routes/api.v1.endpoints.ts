@@ -11,7 +11,7 @@ const BodySchema = z.object({
 });
 
 export async function action({ request }: ActionArgs) {
-  logger.info("Creating endpoint", { url: request.url });
+  logger.info("action", { url: request.url });
 
   // Ensure this is a POST request
   if (request.method.toUpperCase() !== "POST") {
