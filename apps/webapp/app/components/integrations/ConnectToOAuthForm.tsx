@@ -25,6 +25,8 @@ import { NamedIcon } from "../primitives/NamedIcon";
 import { Paragraph } from "../primitives/Paragraph";
 import type { ConnectionType } from "@trigger.dev/database";
 import { useFeatures } from "~/hooks/useFeatures";
+import { Hint } from "../primitives/Hint";
+import { InlineCode } from "../code/InlineCode";
 
 export type Status = "loading" | "idle";
 
@@ -50,7 +52,14 @@ export function ConnectToOAuthForm({
 
   const [
     form,
-    { title, scopes, hasCustomClient, customClientId, customClientSecret },
+    {
+      title,
+      slug,
+      scopes,
+      hasCustomClient,
+      customClientId,
+      customClientSecret,
+    },
   ] = useForm({
     lastSubmission: fetcher.data,
     onValidate({ formData }) {
@@ -109,6 +118,20 @@ export function ConnectToOAuthForm({
         <input type="hidden" name="redirectTo" value={location.pathname} />
         <InputGroup>
           <FormError>{form.error}</FormError>
+        </InputGroup>
+        <InputGroup fullWidth>
+          <Label variant="large">ID</Label>
+          <Input
+            type="text"
+            fullWidth
+            {...conform.input(slug)}
+            placeholder={`e.g. ${integration.identifier}`}
+          />
+          <Hint>
+            This is used in your code to reference this connection. It must be
+            unique for this project.
+          </Hint>
+          <FormError>{slug.error}</FormError>
         </InputGroup>
         <InputGroup fullWidth>
           <Label variant="large">Name</Label>

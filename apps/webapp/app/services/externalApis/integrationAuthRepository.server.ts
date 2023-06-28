@@ -82,6 +82,7 @@ export class IntegrationAuthRepository {
 
   async createConnectionClient({
     id,
+    slug,
     customClient,
     organizationId,
     integrationIdentifier,
@@ -94,6 +95,7 @@ export class IntegrationAuthRepository {
     redirectTo,
   }: {
     id: string;
+    slug: string;
     customClient?: OAuthClient;
     organizationId: string;
     integrationIdentifier: string;
@@ -105,76 +107,6 @@ export class IntegrationAuthRepository {
     redirectTo: string;
     url: URL;
   }): Promise<string> {
-    //creates a client and retries if it fails
-    const createClientWithSlug = async (
-      tx: PrismaTransactionClient,
-      customClientReference: SecretReference | undefined,
-      appendRandom = false,
-      attemptCount = 0
-    ): Promise<Integration> => {
-      let slug = createSlug(title);
-
-      if (appendRandom) {
-        slug = `${slug}-${randomGenerator()}`;
-      }
-
-      try {
-        return await tx.integration.create({
-          data: {
-            id,
-            connectionType: clientType,
-            scopes,
-            title,
-            slug,
-            authSource: "HOSTED",
-            description,
-            customClientReference: customClientReference
-              ? {
-                  connect: {
-                    id: customClientReference.id,
-                  },
-                }
-              : undefined,
-            organization: {
-              connect: {
-                id: organizationId,
-              },
-            },
-            authMethod: {
-              connect: {
-                definitionId_key: {
-                  definitionId: integrationIdentifier,
-                  key: integrationAuthMethod,
-                },
-              },
-            },
-            definition: {
-              connect: {
-                id: integrationIdentifier,
-              },
-            },
-          },
-        });
-      } catch (error) {
-        if (
-          error &&
-          typeof error === "object" &&
-          "code" in error &&
-          error.code === "P2002" &&
-          attemptCount < 24
-        ) {
-          return await createClientWithSlug(
-            tx,
-            customClientReference,
-            true,
-            attemptCount + 1
-          );
-        }
-
-        throw error;
-      }
-    };
-
     return this.#prismaClient.$transaction(async (tx) => {
       let customClientReference: SecretReference | undefined = undefined;
       //if there's a custom client, we need to save the details to the secret store
@@ -195,7 +127,42 @@ export class IntegrationAuthRepository {
         });
       }
 
-      const client = await createClientWithSlug(tx, customClientReference);
+      const client = await tx.integration.create({
+        data: {
+          id,
+          connectionType: clientType,
+          scopes,
+          title,
+          slug,
+          authSource: "HOSTED",
+          description,
+          customClientReference: customClientReference
+            ? {
+                connect: {
+                  id: customClientReference.id,
+                },
+              }
+            : undefined,
+          organization: {
+            connect: {
+              id: organizationId,
+            },
+          },
+          authMethod: {
+            connect: {
+              definitionId_key: {
+                definitionId: integrationIdentifier,
+                key: integrationAuthMethod,
+              },
+            },
+          },
+          definition: {
+            connect: {
+              id: integrationIdentifier,
+            },
+          },
+        },
+      });
 
       return await this.createConnectionAttempt({
         tx,

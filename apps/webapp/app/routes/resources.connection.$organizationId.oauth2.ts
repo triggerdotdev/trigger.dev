@@ -10,11 +10,36 @@ import { requireUserId } from "~/services/session.server";
 export function createSchema(
   constraints: {
     isTitleUnique?: (title: string) => Promise<boolean>;
+    isSlugUnique?: (slug: string) => Promise<boolean>;
   } = {}
 ) {
   return z
     .object({
       id: z.string(),
+      slug: z
+        .string()
+        .min(2, "The id must be at least 2 characters long")
+        .superRefine((title, ctx) => {
+          if (constraints.isSlugUnique === undefined) {
+            //client-side validation skips this
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              message: conform.VALIDATION_UNDEFINED,
+            });
+          } else {
+            // Tell zod this is an async validation by returning the promise
+            return constraints.isSlugUnique(title).then((isUnique) => {
+              if (isUnique) {
+                return;
+              }
+
+              ctx.addIssue({
+                code: z.ZodIssueCode.custom,
+                message: "The id must be unique in your organization",
+              });
+            });
+          }
+        }),
       integrationIdentifier: z.string(),
       integrationAuthMethod: z.string(),
       title: z
@@ -107,6 +132,16 @@ export async function action({ request, params }: ActionArgs) {
 
       return !existingIntegration;
     },
+    isSlugUnique: async (slug) => {
+      const existingIntegration = await prisma.integration.findFirst({
+        where: {
+          organizationId,
+          slug,
+        },
+      });
+
+      return !existingIntegration;
+    },
   });
 
   const submission = await parse(formData, { schema: formSchema, async: true });
@@ -117,6 +152,7 @@ export async function action({ request, params }: ActionArgs) {
 
   const {
     id,
+    slug,
     hasCustomClient,
     customClientId,
     customClientSecret,
@@ -143,6 +179,7 @@ export async function action({ request, params }: ActionArgs) {
   const url = new URL(request.url);
   const redirectUrl = await integrationAuthRepository.createConnectionClient({
     id,
+    slug,
     customClient: hasCustomClient
       ? { id: customClientId!, secret: customClientSecret! }
       : undefined,
