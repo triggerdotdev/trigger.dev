@@ -11,14 +11,15 @@ import { InlineCode } from "../code/InlineCode";
 
 export function HowToSetupYourProject() {
   const devEnvironment = useDevEnvironment();
-  console.log(devEnvironment);
   return (
     <>
       <StepNumber stepNumber="1" title="Run your Next.js app" />
       <StepContentContainer>
-        <Paragraph>Ensure your Next.js app is running locally.</Paragraph>
+        <Paragraph>
+          Ensure your Next.js app is running locally on port 3000.
+        </Paragraph>
       </StepContentContainer>
-      <StepNumber stepNumber="2" title="Run ngrok" />
+      <StepNumber stepNumber="2" title="Create a tunnel to your Next.js app" />
       <StepContentContainer>
         <Paragraph spacing>
           There are a few ways to do this, but we recommend using{" "}
@@ -45,6 +46,9 @@ export function HowToSetupYourProject() {
         </StepContentContainer>
         <StepNumber stepNumber="c" title="Create an http tunnel at port 3000" />
         <StepContentContainer>
+          <Paragraph spacing>
+            This creates a tunnel to your Next.js app.
+          </Paragraph>
           <ClipboardField
             variant="primary/medium"
             className="mb-4"
@@ -53,15 +57,18 @@ export function HowToSetupYourProject() {
         </StepContentContainer>
         <StepNumber
           stepNumber="d"
-          title="Grab your forwarding address in the ngrok output"
+          title="Grab your public URL in the ngrok output"
         />
         <StepContentContainer>
           <img src={ngrok} className="mt-2 w-full" />
         </StepContentContainer>
-        <StepNumber stepNumber="d" title="Use the forwarding URL" />
+        <StepNumber
+          stepNumber="d"
+          title="Use the forwarding URL (public URL)"
+        />
         <StepContentContainer>
           <Paragraph spacing>
-            Use the forwarding URL that ngrok gave you for the{" "}
+            Use the public URL that ngrok gave you for the{" "}
             <InlineCode>VERCEL_URL</InlineCode> environment variable.
           </Paragraph>
         </StepContentContainer>
@@ -69,12 +76,16 @@ export function HowToSetupYourProject() {
       <StepNumber stepNumber="3" title="Use the CLI" />
       <StepContentContainer>
         <Paragraph spacing>
-          Run this CLI command in a new terminal window.
+          Run this CLI command in a new terminal window.{" "}
+        </Paragraph>
+        <Paragraph spacing>
+          Use the public URL that you copied from step 2d for the -u
+          placeholder.
         </Paragraph>
         <ClipboardField
           variant="primary/medium"
           className="mb-4"
-          value={`npx @trigger.dev/init -k ${devEnvironment?.apiKey} -t https://test-cloud.trigger.dev`}
+          value={`npx @trigger.dev/init@latest -k ${devEnvironment?.apiKey} -t https://test-cloud.trigger.dev -u <ngrok public url>`}
         />
         <Paragraph spacing>
           The CLI will add Trigger.dev to your existing Next.js project, setup a
