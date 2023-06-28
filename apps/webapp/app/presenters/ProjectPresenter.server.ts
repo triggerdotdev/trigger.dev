@@ -99,6 +99,7 @@ export class ProjectPresenter {
                 userId: true,
               },
             },
+            apiKey: true,
           },
         },
       },
@@ -201,6 +202,13 @@ export class ProjectPresenter {
           };
         })
         .filter(Boolean),
+      environments: project.environments.map((environment) => ({
+        id: environment.id,
+        slug: environment.slug,
+        type: environment.type,
+        apiKey: environment.apiKey,
+        userId: environment.orgMember?.userId,
+      })),
     };
   }
 }
