@@ -224,3 +224,18 @@ export function requestUrl(request: Request): URL {
 
   return url;
 }
+
+export function appEnvTitleTag(
+  appEnv: "test" | "production" | "development" | "staging"
+): string {
+  switch (appEnv) {
+    case "test":
+      return " (test)";
+    case "production":
+      return "";
+    case "development":
+      return " (dev)";
+    case "staging":
+      return " (staging)";
+  }
+}

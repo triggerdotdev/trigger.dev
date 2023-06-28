@@ -1,4 +1,4 @@
-import type { LinksFunction, LoaderArgs, MetaFunction } from "@remix-run/node";
+import type { LinksFunction, LoaderArgs } from "@remix-run/node";
 import type { ShouldRevalidateFunction } from "@remix-run/react";
 import {
   Links,
@@ -10,7 +10,11 @@ import {
   isRouteErrorResponse,
   useRouteError,
 } from "@remix-run/react";
-import { typedjson, useTypedLoaderData } from "remix-typedjson";
+import {
+  TypedMetaFunction,
+  typedjson,
+  useTypedLoaderData,
+} from "remix-typedjson";
 import type { ToastMessage } from "~/models/message.server";
 import { commitSession, getSession } from "~/models/message.server";
 import tailwindStylesheetUrl from "~/tailwind.css";
@@ -22,18 +26,19 @@ import { LinkButton } from "./components/primitives/Buttons";
 import { Header1, Header3 } from "./components/primitives/Headers";
 import { Toast } from "./components/primitives/Toast";
 import { env } from "./env.server";
+import { featuresForRequest } from "./features.server";
 import { usePostHog } from "./hooks/usePostHog";
 import { getUser } from "./services/session.server";
+import { appEnvTitleTag } from "./utils";
 import { friendlyErrorDisplay } from "./utils/httpErrors";
-import { featuresForRequest } from "./features.server";
 
 export const links: LinksFunction = () => {
   return [{ rel: "stylesheet", href: tailwindStylesheetUrl }];
 };
 
-export const meta: MetaFunction = () => ({
+export const meta: TypedMetaFunction<typeof loader> = ({ data }) => ({
+  title: `Trigger.dev${appEnvTitleTag(data.appEnv)}`,
   charset: "utf-8",
-  title: "Trigger",
   viewport: "width=device-width,initial-scale=1",
 });
 
@@ -49,10 +54,13 @@ export const loader = async ({ request }: LoaderArgs) => {
       toastMessage,
       posthogProjectKey,
       features,
+      appEnv: env.APP_ENV,
     },
     { headers: { "Set-Cookie": await commitSession(session) } }
   );
 };
+
+export type LoaderType = typeof loader;
 
 export const shouldRevalidate: ShouldRevalidateFunction = (options) => {
   if (options.formAction === "/resources/environment") {

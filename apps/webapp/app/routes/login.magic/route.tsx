@@ -1,8 +1,11 @@
-import { ArrowLeftIcon } from "@heroicons/react/24/solid";
-import type { ActionArgs, LoaderArgs, MetaFunction } from "@remix-run/node";
+import type { ActionArgs, LoaderArgs } from "@remix-run/node";
 import { redirect } from "@remix-run/node";
 import { Form, useTransition } from "@remix-run/react";
-import { typedjson, useTypedLoaderData } from "remix-typedjson";
+import {
+  TypedMetaFunction,
+  typedjson,
+  useTypedLoaderData,
+} from "remix-typedjson";
 import { z } from "zod";
 import { LogoIcon } from "~/components/LogoIcon";
 import {
@@ -11,6 +14,7 @@ import {
 } from "~/components/layout/AppLayout";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { Fieldset } from "~/components/primitives/Fieldset";
+import { FormButtons } from "~/components/primitives/FormButtons";
 import { FormTitle } from "~/components/primitives/FormTitle";
 import { Input } from "~/components/primitives/Input";
 import { InputGroup } from "~/components/primitives/InputGroup";
@@ -23,7 +27,15 @@ import {
   getUserSession,
 } from "~/services/sessionStorage.server";
 import magicLinkIcon from "./login.magic.svg";
-import { FormButtons } from "~/components/primitives/FormButtons";
+
+import type { LoaderType as RootLoader } from "~/root";
+import { appEnvTitleTag } from "~/utils";
+
+export const meta: TypedMetaFunction<typeof loader, { root: RootLoader }> = ({
+  parentsData,
+}) => ({
+  title: `Login to Trigger.dev${appEnvTitleTag(parentsData.root.appEnv)}`,
+});
 
 export async function loader({ request }: LoaderArgs) {
   await authenticator.isAuthenticated(request, {
@@ -64,12 +76,6 @@ export async function action({ request }: ActionArgs) {
     });
   }
 }
-
-export const meta: MetaFunction = () => {
-  return {
-    title: "Login magic",
-  };
-};
 
 export default function LoginMagicLinkPage() {
   const { magicLinkSent } = useTypedLoaderData<typeof loader>();
