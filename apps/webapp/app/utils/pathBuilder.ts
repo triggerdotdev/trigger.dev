@@ -26,6 +26,10 @@ export const RunParamsSchema = JobParamsSchema.extend({
   runParam: z.string(),
 });
 
+export const TaskParamsSchema = RunParamsSchema.extend({
+  taskParam: z.string(),
+});
+
 export const IntegrationClientParamSchema = ProjectParamSchema.extend({
   clientParam: z.string(),
 });

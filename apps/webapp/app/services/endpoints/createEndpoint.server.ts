@@ -1,7 +1,7 @@
 import { customAlphabet } from "nanoid";
 import { $transaction, prisma, PrismaClient } from "~/db.server";
 import { AuthenticatedEnvironment } from "../apiAuth.server";
-import { EndpointApi } from "../endpointApi";
+import { EndpointApi } from "../endpointApi.server";
 import { workerQueue } from "../worker.server";
 
 const indexingHookIdentifier = customAlphabet(

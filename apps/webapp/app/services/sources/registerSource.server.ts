@@ -3,7 +3,7 @@ import type { SourceMetadata } from "@trigger.dev/internal";
 import { $transaction, PrismaClientOrTransaction } from "~/db.server";
 import { prisma } from "~/db.server";
 import type { AuthenticatedEnvironment } from "../apiAuth.server";
-import { logger } from "../logger";
+import { logger } from "../logger.server";
 import { workerQueue } from "../worker.server";
 import { generateSecret } from "./utils.server";
 

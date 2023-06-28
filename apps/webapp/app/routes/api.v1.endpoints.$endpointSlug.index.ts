@@ -3,7 +3,7 @@ import { z } from "zod";
 import { prisma } from "~/db.server";
 import { authenticateApiRequest } from "~/services/apiAuth.server";
 import { IndexEndpointService } from "~/services/endpoints/indexEndpoint.server";
-import { logger } from "~/services/logger";
+import { logger } from "~/services/logger.server";
 
 const ParamsSchema = z.object({
   endpointSlug: z.string(),

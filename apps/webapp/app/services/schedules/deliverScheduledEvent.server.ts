@@ -3,7 +3,7 @@ import { $transaction, PrismaClientOrTransaction, prisma } from "~/db.server";
 import { NextScheduledEventService } from "./nextScheduledEvent.server";
 import { IngestSendEvent } from "../events/ingestSendEvent.server";
 import { InvokeDispatcherService } from "../events/invokeDispatcher.server";
-import { logger } from "../logger";
+import { logger } from "../logger.server";
 
 export class DeliverScheduledEventService {
   #prismaClient: PrismaClientOrTransaction;

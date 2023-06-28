@@ -16,7 +16,7 @@ import {
   PongResponseSchema,
   RunJobResponseSchema,
 } from "@trigger.dev/internal";
-import { logger } from "./logger";
+import { logger } from "./logger.server";
 
 export class EndpointApiError extends Error {
   constructor(message: string, stack?: string) {

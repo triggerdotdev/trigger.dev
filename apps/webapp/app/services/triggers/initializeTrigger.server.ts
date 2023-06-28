@@ -5,7 +5,7 @@ import {
 import type { PrismaClient } from "~/db.server";
 import { prisma } from "~/db.server";
 import { AuthenticatedEnvironment } from "../apiAuth.server";
-import { EndpointApi } from "../endpointApi";
+import { EndpointApi } from "../endpointApi.server";
 import { RegisterTriggerSourceService } from "./registerTriggerSource.server";
 import { IngestSendEvent } from "../events/ingestSendEvent.server";
 

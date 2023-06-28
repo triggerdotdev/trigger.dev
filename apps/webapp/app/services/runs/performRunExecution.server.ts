@@ -18,7 +18,7 @@ import {
 } from "~/db.server";
 import { resolveRunConnections } from "~/models/runConnection.server";
 import { safeJsonZodParse } from "~/utils/json";
-import { EndpointApi } from "../endpointApi";
+import { EndpointApi } from "../endpointApi.server";
 import { workerQueue } from "../worker.server";
 import { formatError } from "~/utils/formatErrors.server";
 

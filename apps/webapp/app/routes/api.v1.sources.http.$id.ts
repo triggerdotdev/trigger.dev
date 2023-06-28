@@ -1,6 +1,6 @@
 import type { ActionArgs, LoaderArgs } from "@remix-run/server-runtime";
 import { z } from "zod";
-import { logger } from "~/services/logger";
+import { logger } from "~/services/logger.server";
 import { HandleHttpSourceService } from "~/services/sources/handleHttpSource.server";
 
 export async function action({ request, params }: ActionArgs) {

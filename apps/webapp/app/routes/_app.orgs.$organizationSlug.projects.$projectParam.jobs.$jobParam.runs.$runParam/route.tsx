@@ -1,4 +1,4 @@
-import { RuntimeEnvironmentType } from "@/../../packages/internal/src";
+import type { RuntimeEnvironmentType } from "@trigger.dev/internal";
 import { conform } from "@conform-to/react";
 import { parse } from "@conform-to/zod";
 import { BoltIcon, ForwardIcon } from "@heroicons/react/24/solid";
@@ -294,11 +294,11 @@ export default function Page() {
                     <TaskCard
                       key={task.id}
                       selectedId={selectedId}
-                      selectedTask={(taskId) =>
+                      selectedTask={(taskId) => {
                         navigate(
                           runTaskPath(organization, project, job, run, taskId)
-                        )
-                      }
+                        );
+                      }}
                       isLast={isLast}
                       depth={0}
                       {...task}

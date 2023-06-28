@@ -1,6 +1,6 @@
 import { $transaction, PrismaClient } from "~/db.server";
 import { prisma } from "~/db.server";
-import { EndpointApi } from "../endpointApi";
+import { EndpointApi } from "../endpointApi.server";
 import { workerQueue } from "../worker.server";
 import type { EndpointIndexSource } from "@trigger.dev/database";
 

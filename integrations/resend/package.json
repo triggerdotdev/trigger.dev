@@ -1,0 +1,34 @@
+{
+  "name": "@trigger.dev/resend",
+  "version": "1.0.0-next.1",
+  "description": "The official Resend.com integration for Trigger.dev",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "publishConfig": {
+    "access": "public"
+  },
+  "files": [
+    "dist/index.js",
+    "dist/index.d.ts",
+    "dist/index.js.map"
+  ],
+  "devDependencies": {
+    "@trigger.dev/tsconfig": "workspace:*",
+    "@types/node": "18",
+    "rimraf": "^3.0.2",
+    "tsup": "^6.5.0"
+  },
+  "scripts": {
+    "clean": "rimraf dist",
+    "build": "npm run clean && npm run build:tsup",
+    "build:tsup": "tsup"
+  },
+  "dependencies": {
+    "@trigger.dev/integration-kit": "workspace:^2.0.0-next",
+    "@trigger.dev/sdk": "workspace:^2.0.0-next",
+    "resend": "^0.9.1"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

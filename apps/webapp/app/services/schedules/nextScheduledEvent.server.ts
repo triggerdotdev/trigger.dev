@@ -7,7 +7,7 @@ import {
 import { $transaction, PrismaClientOrTransaction, prisma } from "~/db.server";
 import { parseExpression } from "cron-parser";
 import { workerQueue } from "../worker.server";
-import { logger } from "../logger";
+import { logger } from "../logger.server";
 
 export class NextScheduledEventService {
   #prismaClient: PrismaClientOrTransaction;

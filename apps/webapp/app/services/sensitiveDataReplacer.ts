@@ -1,12 +1,4 @@
-import type { LogLevel, RedactString } from "@trigger.dev/internal";
-import { Logger } from "@trigger.dev/internal";
-
-export const logger = new Logger(
-  "webapp",
-  (process.env.APP_LOG_LEVEL ?? "debug") as LogLevel,
-  [],
-  sensitiveDataReplacer
-);
+import type { RedactString } from "@trigger.dev/internal";
 
 // Replaces redacted strings with "******".
 // For example, this object: {"Authorization":{"__redactedString":true,"strings":["Bearer ",""],"interpolations":["sk-1234"]}}

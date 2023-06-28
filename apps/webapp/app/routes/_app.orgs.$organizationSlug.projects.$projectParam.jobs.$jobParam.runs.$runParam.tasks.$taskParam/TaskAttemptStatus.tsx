@@ -3,7 +3,7 @@ import {
   ClockIcon,
   XCircleIcon,
 } from "@heroicons/react/24/solid";
-import { TaskAttemptStatus } from "@trigger.dev/database";
+import type { TaskAttemptStatus } from "@trigger.dev/database";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { Spinner } from "~/components/primitives/Spinner";
 import { cn } from "~/utils/cn";

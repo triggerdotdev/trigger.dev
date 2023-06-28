@@ -15,7 +15,7 @@ import { DEFAULT_MAX_CONCURRENT_RUNS } from "~/consts";
 import type { PrismaClient } from "~/db.server";
 import { prisma } from "~/db.server";
 import type { AuthenticatedEnvironment } from "../apiAuth.server";
-import { logger } from "../logger";
+import { logger } from "../logger.server";
 import type { RuntimeEnvironment } from "~/models/runtimeEnvironment.server";
 import { RegisterScheduleSourceService } from "../schedules/registerScheduleSource.server";
 

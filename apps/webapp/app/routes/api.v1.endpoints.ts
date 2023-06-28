@@ -3,7 +3,7 @@ import { json } from "@remix-run/server-runtime";
 import { z } from "zod";
 import { authenticateApiRequest } from "~/services/apiAuth.server";
 import { CreateEndpointService } from "~/services/endpoints/createEndpoint.server";
-import { logger } from "~/services/logger";
+import { logger } from "~/services/logger.server";
 
 const BodySchema = z.object({
   url: z.string(),

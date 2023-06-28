@@ -12,7 +12,7 @@ import { run as graphileRun } from "graphile-worker";
 import { omit } from "lodash";
 import { z } from "zod";
 import { PrismaClient, PrismaClientOrTransaction } from "~/db.server";
-import { logger } from "~/services/logger";
+import { logger } from "~/services/logger.server";
 
 export interface MessageCatalogSchema {
   [key: string]: z.ZodFirstPartySchemaTypes | z.ZodDiscriminatedUnion<any, any>;

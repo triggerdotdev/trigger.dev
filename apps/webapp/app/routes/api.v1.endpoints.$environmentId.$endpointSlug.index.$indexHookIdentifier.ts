@@ -1,7 +1,7 @@
 import { ActionArgs, LoaderArgs, json } from "@remix-run/server-runtime";
 import { z } from "zod";
 import { PrismaClient, prisma } from "~/db.server";
-import { logger } from "~/services/logger";
+import { logger } from "~/services/logger.server";
 import { workerQueue } from "~/services/worker.server";
 import { safeJsonParse } from "~/utils/json";
 

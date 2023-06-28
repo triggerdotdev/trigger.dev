@@ -14,6 +14,7 @@
     "@trigger.dev/openai": "workspace:*",
     "@trigger.dev/sdk": "workspace:*",
     "@trigger.dev/slack": "workspace:*",
+    "@trigger.dev/resend": "workspace:*",
     "@types/node": "18.15.13",
     "@types/react": "^18.0.21",
     "@types/react-dom": "^18.0.6",

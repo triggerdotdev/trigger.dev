@@ -1,8 +1,8 @@
 import { $transaction, PrismaClientOrTransaction, prisma } from "~/db.server";
 import { IngestSendEvent } from "../events/ingestSendEvent.server";
-import { logger } from "../logger";
+import { logger } from "../logger.server";
 import { workerQueue } from "../worker.server";
-import { MISSING_CONNECTION_RESOLVED_NOTIFICATION } from "@/../../packages/internal/src";
+import { MISSING_CONNECTION_RESOLVED_NOTIFICATION } from "@trigger.dev/internal";
 
 export class IntegrationConnectionCreatedService {
   #prismaClient: PrismaClientOrTransaction;

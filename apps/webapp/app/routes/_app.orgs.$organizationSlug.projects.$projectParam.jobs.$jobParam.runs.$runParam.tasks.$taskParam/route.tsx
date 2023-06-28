@@ -1,28 +1,8 @@
 import { LoaderArgs } from "@remix-run/server-runtime";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
-import invariant from "tiny-invariant";
 import { CodeBlock } from "~/components/code/CodeBlock";
 import { Header3 } from "~/components/primitives/Headers";
 import { Paragraph } from "~/components/primitives/Paragraph";
-import { TaskDetailsPresenter } from "~/presenters/TaskDetailsPresenter.server";
-import { requireUserId } from "~/services/session.server";
-import { formatDateTime, formatDuration } from "~/utils";
-import { cn } from "~/utils/cn";
-import {
-  RunPanel,
-  RunPanelBody,
-  RunPanelDescription,
-  RunPanelDivider,
-  RunPanelProperties,
-  RunPanelHeader,
-  RunPanelIconProperty,
-  RunPanelIconSection,
-  RunPanelIconTitle,
-  UpdatingDelay,
-  UpdatingDuration,
-} from "../_app.orgs.$organizationSlug.projects.$projectParam.jobs.$jobParam.runs.$runParam/RunCard";
-import { TaskStatusIcon } from "../_app.orgs.$organizationSlug.projects.$projectParam.jobs.$jobParam.runs.$runParam/TaskStatus";
-import { sensitiveDataReplacer } from "~/services/logger";
 import {
   Table,
   TableBody,
@@ -31,14 +11,31 @@ import {
   TableHeaderCell,
   TableRow,
 } from "~/components/primitives/Table";
+import { TaskDetailsPresenter } from "~/presenters/TaskDetailsPresenter.server";
+import { requireUserId } from "~/services/session.server";
+import { formatDateTime, formatDuration } from "~/utils";
+import { cn } from "~/utils/cn";
+import { TaskParamsSchema } from "~/utils/pathBuilder";
+import {
+  RunPanel,
+  RunPanelBody,
+  RunPanelDescription,
+  RunPanelDivider,
+  RunPanelHeader,
+  RunPanelIconProperty,
+  RunPanelIconSection,
+  RunPanelIconTitle,
+  RunPanelProperties,
+  UpdatingDelay,
+  UpdatingDuration,
+} from "../_app.orgs.$organizationSlug.projects.$projectParam.jobs.$jobParam.runs.$runParam/RunCard";
+import { TaskStatusIcon } from "../_app.orgs.$organizationSlug.projects.$projectParam.jobs.$jobParam.runs.$runParam/TaskStatus";
 import { TaskAttemptStatusLabel } from "./TaskAttemptStatus";
+import { sensitiveDataReplacer } from "~/services/sensitiveDataReplacer";
 
 export const loader = async ({ request, params }: LoaderArgs) => {
   const userId = await requireUserId(request);
-  const { jobParam, runParam, taskParam } = params;
-  invariant(jobParam, "jobParam not found");
-  invariant(runParam, "runParam not found");
-  invariant(taskParam, "selectedParam not found");
+  const { taskParam } = TaskParamsSchema.parse(params);
 
   const presenter = new TaskDetailsPresenter();
   const task = await presenter.call({

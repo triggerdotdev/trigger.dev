@@ -3,7 +3,7 @@ import {
   DisplayPropertySchema,
   EventSpecificationSchema,
   IntegrationMetadataSchema,
-} from "@/../../packages/internal/src";
+} from "@trigger.dev/internal";
 import { PrismaClient, prisma } from "~/db.server";
 import { Project } from "~/models/project.server";
 import { User } from "~/models/user.server";

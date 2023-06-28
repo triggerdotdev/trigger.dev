@@ -10,7 +10,7 @@ import {
   authenticateApiRequest,
   AuthenticatedEnvironment,
 } from "~/services/apiAuth.server";
-import { logger } from "~/services/logger";
+import { logger } from "~/services/logger.server";
 
 const ParamsSchema = z.object({
   runId: z.string(),

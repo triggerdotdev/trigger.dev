@@ -10,7 +10,7 @@ import { $transaction, PrismaClient, prisma } from "~/db.server";
 import { taskWithAttemptsToServerTask } from "~/models/task.server";
 import type { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { authenticateApiRequest } from "~/services/apiAuth.server";
-import { logger } from "~/services/logger";
+import { logger } from "~/services/logger.server";
 import { formatError } from "~/utils/formatErrors.server";
 
 const ParamsSchema = z.object({

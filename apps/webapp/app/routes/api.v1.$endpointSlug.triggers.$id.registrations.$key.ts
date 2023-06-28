@@ -3,7 +3,7 @@ import { json } from "@remix-run/server-runtime";
 import { RegisterTriggerBodySchema } from "@trigger.dev/internal";
 import { z } from "zod";
 import { authenticateApiRequest } from "~/services/apiAuth.server";
-import { logger } from "~/services/logger";
+import { logger } from "~/services/logger.server";
 import { RegisterTriggerSourceService } from "~/services/triggers/registerTriggerSource.server";
 
 const ParamsSchema = z.object({

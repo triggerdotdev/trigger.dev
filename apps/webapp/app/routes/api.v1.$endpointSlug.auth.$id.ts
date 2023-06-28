@@ -4,7 +4,7 @@ import { z } from "zod";
 import { prisma } from "~/db.server";
 import { resolveApiConnection } from "~/models/runConnection.server";
 import { authenticateApiRequest } from "~/services/apiAuth.server";
-import { logger } from "~/services/logger";
+import { logger } from "~/services/logger.server";
 
 const ParamsSchema = z.object({
   endpointSlug: z.string(),

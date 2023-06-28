@@ -2,7 +2,7 @@ import type { EventDispatcher, EventRecord } from "@trigger.dev/database";
 import type { EventFilter } from "@trigger.dev/internal";
 import { EventFilterSchema } from "@trigger.dev/internal";
 import { $transaction, PrismaClientOrTransaction, prisma } from "~/db.server";
-import { logger } from "~/services/logger";
+import { logger } from "~/services/logger.server";
 import { workerQueue } from "../worker.server";
 
 export class DeliverEventService {
