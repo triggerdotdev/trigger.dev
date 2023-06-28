@@ -83,17 +83,20 @@ new Job(client, {
 });
 
 new Job(client, {
-  id: "github-integration-on-star",
-  name: "GitHub Integration - On Star",
+  id: "star-slack-notification",
+  name: "New Star Slack Notification",
   version: "0.1.0",
+  integrations: { slack },
   trigger: githubApiKey.triggers.repo({
-    event: events.onStar,
+    event: events.onNewStar,
     owner: "triggerdotdev",
     repo: "empty",
   }),
   run: async (payload, io, ctx) => {
-    await io.logger.info("This is a simple log info message");
-    return { payload, ctx };
+    const response = await io.slack.postMessage("Slack star", {
+      text: `${payload.sender.login} starred ${payload.repository.full_name}.\nTotal: ${payload.repository.stargazers_count}⭐️`,
+      channel: "C04GWUTDC3W",
+    });
   },
 });
 
