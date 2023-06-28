@@ -8,6 +8,7 @@ import { CompanyIcon, hasIcon } from "@trigger.dev/companyicons";
 import {
   ArrowLeftIcon,
   ArrowRightIcon,
+  ArrowTopRightOnSquareIcon,
   BeakerIcon,
   BellAlertIcon,
   BoltIcon,
@@ -111,6 +112,9 @@ const icons = {
   ),
   error: (className: string) => (
     <ExclamationCircleIcon className={cn("text-rose-500", className)} />
+  ),
+  "external-link": (className: string) => (
+    <ArrowTopRightOnSquareIcon className={cn("text-dimmed", className)} />
   ),
   flag: (className: string) => (
     <FlagIcon className={cn("text-sky-500", className)} />
