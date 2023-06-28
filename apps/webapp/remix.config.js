@@ -1,6 +1,7 @@
 /** @type {import('@remix-run/dev').AppConfig} */
 module.exports = {
   future: {
+    v2_dev: true,
     v2_routeConvention: true,
     v2_normalizeFormMethod: true,
     v2_errorBoundary: true,
@@ -10,6 +11,7 @@ module.exports = {
   cacheDirectory: "./node_modules/.cache/remix",
   ignoredRouteFiles: ["**/.*"],
   devServerPort: 8002,
+  serverModuleFormat: "cjs",
   serverDependenciesToBundle: [
     "pretty-bytes",
     "marked",
