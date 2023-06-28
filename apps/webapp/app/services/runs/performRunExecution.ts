@@ -17,10 +17,10 @@ import {
   prisma,
 } from "~/db.server";
 import { resolveRunConnections } from "~/models/runConnection.server";
-import { formatError } from "~/utils";
 import { safeJsonZodParse } from "~/utils/json";
 import { EndpointApi } from "../endpointApi";
 import { workerQueue } from "../worker.server";
+import { formatError } from "~/utils/formatErrors.server";
 
 type FoundRunExecution = NonNullable<
   Awaited<ReturnType<typeof findRunExecution>>

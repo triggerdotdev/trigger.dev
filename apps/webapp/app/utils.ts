@@ -1,4 +1,3 @@
-import { ErrorWithStack, ErrorWithStackSchema } from "@trigger.dev/internal";
 import type { RouteMatch } from "@remix-run/react";
 import { useMatches } from "@remix-run/react";
 import humanizeDuration from "humanize-duration";
@@ -187,30 +186,6 @@ export const obfuscateApiKey = (apiKey: string) => {
   const [prefix, slug, secretPart] = apiKey.split("_");
   return `${prefix}_${slug}_${"*".repeat(secretPart.length)}`;
 };
-
-export function formatError(
-  error: ErrorWithStack,
-  style: "short" | "long" = "short"
-): string {
-  if (style === "short") {
-    return error.name ? `${error.name}: ${error.message}` : error.message;
-  }
-
-  return formatError(error, "short") + "\n" + error.stack;
-}
-
-export function formatUnknownError(
-  error: unknown,
-  style: "short" | "long" = "short"
-): string {
-  const parsedError = ErrorWithStackSchema.safeParse(error);
-
-  if (parsedError.success) {
-    return formatError(parsedError.data, style);
-  }
-
-  return "Unknown error";
-}
 
 // This will read the X-Forwarded-Proto header from the request, and make sure the
 // returned url has the matching proto if the request.url does not

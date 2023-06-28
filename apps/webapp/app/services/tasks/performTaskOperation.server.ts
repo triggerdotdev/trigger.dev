@@ -17,7 +17,7 @@ import {
 } from "@trigger.dev/internal";
 import { safeJsonFromResponse } from "~/utils/json";
 import { logger } from "../logger";
-import { formatUnknownError } from "~/utils";
+import { formatUnknownError } from "~/utils/formatErrors.server";
 
 type FoundTask = Awaited<ReturnType<typeof findTask>>;
 
