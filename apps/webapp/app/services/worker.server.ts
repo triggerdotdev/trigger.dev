@@ -27,7 +27,7 @@ import { MissingConnectionCreatedService } from "./runs/missingConnectionCreated
 import { IntegrationConnectionCreatedService } from "./externalApis/integrationConnectionCreated.server";
 import { sendEmail } from "./email.server";
 import { DeliverEmailSchema } from "@/../../packages/emails/src";
-import { PerformRunExecutionService } from "./runs/performRunExecution";
+import { PerformRunExecutionService } from "./runs/performRunExecution.server";
 import { PerformTaskOperationService } from "./tasks/performTaskOperation.server";
 
 const workerCatalog = {
