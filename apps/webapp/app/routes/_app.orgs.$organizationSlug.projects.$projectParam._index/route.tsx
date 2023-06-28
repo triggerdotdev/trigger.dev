@@ -1,9 +1,11 @@
 import { HowToSetupYourProject } from "~/components/helpContent/HelpContentText";
 import { JobsTable } from "~/components/jobs/JobsTable";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
+import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { Header2 } from "~/components/primitives/Headers";
 import { Help, HelpContent, HelpTrigger } from "~/components/primitives/Help";
 import { Input } from "~/components/primitives/Input";
+import { NamedIcon } from "~/components/primitives/NamedIcon";
 import {
   PageHeader,
   PageInfoGroup,
@@ -12,7 +14,7 @@ import {
   PageTitle,
   PageTitleRow,
 } from "~/components/primitives/PageHeader";
-import { Paragraph } from "~/components/primitives/Paragraph";
+import { Paragraph, TextLink } from "~/components/primitives/Paragraph";
 import { useFilterJobs } from "~/hooks/useFilterJobs";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
@@ -74,22 +76,59 @@ export default function Page() {
                   )}
                   <HelpTrigger title="How do I setup my Project?" />
                 </div>
-                {project.jobs.length > 0 ? (
-                  <JobsTable
-                    jobs={filteredItems}
-                    noResultsText={`No Jobs match ${filterText}. Try a different search
-                query.`}
-                  />
-                ) : (
+                {project.jobs.length === 0 && (
+                  <div
+                    className={
+                      "flex w-full justify-center gap-x-4 rounded-md border border-dashed border-indigo-800 px-5 py-8"
+                    }
+                  >
+                    <Paragraph variant="small">
+                      Your Jobs will appear here.
+                    </Paragraph>
+                  </div>
+                )}
+                {project.jobs.length === 1 && (
                   <>
-                    <div
-                      className={
-                        "flex w-full justify-center gap-x-4 rounded-md border border-dashed border-indigo-800 px-5 py-8"
-                      }
+                    <JobsTable
+                      jobs={filteredItems}
+                      noResultsText={`No Jobs match ${filterText}. Try a different search
+                query.`}
+                    />
+                    <a
+                      href="https://trigger.dev/docs/documentation/quickstart#your-first-job"
+                      target="_blank"
+                      className="group my-3 flex w-full items-center justify-between rounded border border-slate-850 bg-midnight-850 px-5 py-4 text-dimmed transition hover:bg-slate-900"
                     >
-                      <Paragraph variant="small">
-                        Your Jobs will appear here.
-                      </Paragraph>
+                      <span className="flex items-center gap-x-2 transition group-hover:text-bright">
+                        <NamedIcon
+                          name="docs"
+                          className="h-6 w-6 text-blue-500"
+                        />
+                        Create your first Job in code.
+                      </span>
+                      <NamedIcon
+                        name="external-link"
+                        className="h-5 w-5 transition group-hover:text-bright"
+                      />
+                    </a>
+                  </>
+                )}
+                {project.jobs.length > 1 && (
+                  <>
+                    <JobsTable
+                      jobs={filteredItems}
+                      noResultsText={`No Jobs match ${filterText}. Try a different search
+              query.`}
+                    />
+                    <div className="mb-4 flex w-full justify-end pt-2">
+                      <LinkButton
+                        variant="tertiary/small"
+                        to="https://trigger.dev/docs/documentation/guides/create-a-job"
+                        target="_blank"
+                        TrailingIcon="external-link"
+                      >
+                        Create another Job
+                      </LinkButton>
                     </div>
                   </>
                 )}
