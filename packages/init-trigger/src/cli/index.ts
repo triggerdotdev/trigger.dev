@@ -202,7 +202,6 @@ const promptEndpointUrl = async (instanceUrl: string): Promise<string> => {
   }>({
     type: "input",
     name: "endpointUrl",
-    default: "http://localhost:3000",
     message: "What's the URL of your Next.js project?",
     validate: (input) => {
       if (!input) {
