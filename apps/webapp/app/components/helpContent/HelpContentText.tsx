@@ -3,9 +3,11 @@ import { StepNumber } from "~/components/primitives/StepNumber";
 import { IntegrationIcon } from "~/routes/_app.orgs.$organizationSlug.projects.$projectParam.integrations/route";
 import { Callout } from "../primitives/Callout";
 import integrationButton from "./integration-button.png";
+import ngrok from "./ngrok.png";
 import { useDevEnvironment } from "~/hooks/useEnvironments";
 import { ClipboardField } from "../primitives/ClipboardField";
 import { Button } from "../primitives/Buttons";
+import { InlineCode } from "../code/InlineCode";
 
 export function HowToSetupYourProject() {
   const devEnvironment = useDevEnvironment();
@@ -16,20 +18,53 @@ export function HowToSetupYourProject() {
       <StepContentContainer>
         <Paragraph>Ensure your Next.js app is running locally.</Paragraph>
       </StepContentContainer>
-      <StepNumber stepNumber="2" title="Run NGROK" />
+      <StepNumber stepNumber="2" title="Run ngrok" />
       <StepContentContainer>
-        <Paragraph spacing>Run NGROK in a new terminal window.</Paragraph>
-        <Paragraph>
-          We recommend using NGROK in order to establish a tunnel between your
-          locally running Next.js app and the internet. Follow our{" "}
+        <Paragraph spacing>
+          There are a few ways to do this, but we recommend using{" "}
           <TextLink
             href="https://trigger.dev/docs/documentation/guides/tunneling-localhost"
             target="_blank"
           >
-            guide to setting up NGROK
-          </TextLink>{" "}
-          before moving onto the next step.
+            ngrok
+          </TextLink>
+          . It’s free and easy to use and required to create a tunnel, making
+          your local machine accessible to the internet.
         </Paragraph>
+        <StepNumber stepNumber="a" title="Install ngrok" />
+        <StepContentContainer>
+          <ClipboardField
+            variant="primary/medium"
+            className="mt-2"
+            value={`brew install ngrok/ngrok/ngrok`}
+          />
+        </StepContentContainer>
+        <StepNumber stepNumber="b" title="Open a new terminal window/tab" />
+        <StepContentContainer>
+          <Paragraph spacing>You need to leave this running.</Paragraph>
+        </StepContentContainer>
+        <StepNumber stepNumber="c" title="Create an http tunnel at port 3000" />
+        <StepContentContainer>
+          <ClipboardField
+            variant="primary/medium"
+            className="mb-4"
+            value={`ngrok http 3000`}
+          />
+        </StepContentContainer>
+        <StepNumber
+          stepNumber="d"
+          title="Grab your forwarding address in the ngrok output"
+        />
+        <StepContentContainer>
+          <img src={ngrok} className="mt-2 w-full" />
+        </StepContentContainer>
+        <StepNumber stepNumber="d" title="Use the forwarding URL" />
+        <StepContentContainer>
+          <Paragraph spacing>
+            Use the forwarding URL that ngrok gave you for the{" "}
+            <InlineCode>VERCEL_URL</InlineCode> environment variable.
+          </Paragraph>
+        </StepContentContainer>
       </StepContentContainer>
       <StepNumber stepNumber="3" title="Use the CLI" />
       <StepContentContainer>
