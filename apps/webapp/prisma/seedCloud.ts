@@ -370,61 +370,74 @@ export async function seedCloud(prisma: PrismaClient) {
     update: {},
   });
 
-  await prisma.integrationConnection.upsert({
-    where: {
-      id: "cli1qcroy0000b4dy084m2jsr",
-    },
-    create: {
-      id: "cli1qcroy0000b4dy084m2jsr",
-      externalAccount: {
-        connect: {
-          id: externalAccount1.id,
-        },
+  if (process.env.SEED_CLOUD_USER_GITHUB_ACCESS_TOKEN) {
+    await prisma.integrationConnection.upsert({
+      where: {
+        id: "cli1qcroy0000b4dy084m2jsr",
       },
-      metadata: {},
-      integration: {
-        connect: {
-          id: userGithubIntegration.id,
-        },
-      },
-      organization: {
-        connect: {
-          id: organization.id,
-        },
-      },
-      connectionType: "EXTERNAL",
-      dataReference: {
-        connectOrCreate: {
-          where: {
-            key: `${externalAccount1Identifier}-github`,
-          },
-          create: {
-            key: `${externalAccount1Identifier}-github`,
-            provider: "DATABASE",
+      create: {
+        id: "cli1qcroy0000b4dy084m2jsr",
+        externalAccount: {
+          connect: {
+            id: externalAccount1.id,
           },
         },
+        metadata: {},
+        integration: {
+          connect: {
+            id: userGithubIntegration.id,
+          },
+        },
+        organization: {
+          connect: {
+            id: organization.id,
+          },
+        },
+        connectionType: "EXTERNAL",
+        dataReference: {
+          connectOrCreate: {
+            where: {
+              key: `${externalAccount1Identifier}-github`,
+            },
+            create: {
+              key: `${externalAccount1Identifier}-github`,
+              provider: "DATABASE",
+            },
+          },
+        },
       },
-    },
-    update: {},
-  });
+      update: {},
+    });
 
-  await prisma.secretStore.upsert({
-    where: {
-      key: `${externalAccount1Identifier}-github`,
-    },
-    create: {
-      key: `${externalAccount1Identifier}-github`,
-      value: {
-        raw: {
-          scope: "admin:repo_hook,public_repo",
-          token_type: "bearer",
-          access_token: process.env.SEED_USER_GITHUB_ACCESS_TOKEN,
-        },
-        type: "oauth2",
-        scopes: ["admin:repo_hook,public_repo"],
-        accessToken: process.env.SEED_USER_GITHUB_ACCESS_TOKEN,
+    await prisma.secretStore.upsert({
+      where: {
+        key: `${externalAccount1Identifier}-github`,
       },
-    },
-    update: {},
-  });
+      create: {
+        key: `${externalAccount1Identifier}-github`,
+        value: {
+          raw: {
+            scope: "admin:repo_hook,public_repo",
+            token_type: "bearer",
+            access_token: process.env.SEED_CLOUD_USER_GITHUB_ACCESS_TOKEN,
+          },
+          type: "oauth2",
+          scopes: ["admin:repo_hook,public_repo"],
+          accessToken: process.env.SEED_CLOUD_USER_GITHUB_ACCESS_TOKEN,
+        },
+      },
+      update: {
+        value: {
+          raw: {
+            scope: "admin:repo_hook,public_repo",
+            token_type: "bearer",
+            access_token: process.env.SEED_CLOUD_USER_GITHUB_ACCESS_TOKEN,
+          },
+          type: "oauth2",
+          scopes: ["admin:repo_hook,public_repo"],
+          accessToken: process.env.SEED_CLOUD_USER_GITHUB_ACCESS_TOKEN,
+        },
+      },
+    });
+  }
 }
