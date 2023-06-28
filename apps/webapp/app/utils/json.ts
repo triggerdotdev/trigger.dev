@@ -25,3 +25,21 @@ export async function safeJsonFromResponse(response: Response) {
   const json = await response.text();
   return safeJsonParse(json);
 }
+
+export async function safeBodyFromResponse<T>(
+  response: Response,
+  schema: z.Schema<T>
+): Promise<T | undefined> {
+  const json = await response.text();
+  const unknownJson = safeJsonParse(json);
+
+  if (!unknownJson) {
+    return;
+  }
+
+  const parsedJson = schema.safeParse(unknownJson);
+
+  if (parsedJson.success) {
+    return parsedJson.data;
+  }
+}

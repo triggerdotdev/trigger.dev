@@ -111,20 +111,45 @@ export class TriggerClient {
 
     const apiKey = request.headers.get("x-trigger-api-key");
 
-    if (!this.authorized(apiKey)) {
-      return {
-        status: 401,
-        body: {
-          message: "Unauthorized",
-        },
-      };
+    const authorization = this.authorized(apiKey);
+
+    switch (authorization) {
+      case "authorized": {
+        break;
+      }
+      case "missing-client": {
+        return {
+          status: 401,
+          body: {
+            message: "Unauthorized: client missing apiKey",
+          },
+        };
+      }
+      case "missing-header": {
+        return {
+          status: 401,
+          body: {
+            message: "Unauthorized: missing x-trigger-api-key header",
+          },
+        };
+      }
+      case "unauthorized": {
+        return {
+          status: 401,
+          body: {
+            message: `Forbidden: client apiKey mismatch: Expected ${
+              this.#options.apiKey
+            }, got ${apiKey}`,
+          },
+        };
+      }
     }
 
     if (request.method !== "POST") {
       return {
         status: 405,
         body: {
-          message: "Method not allowed",
+          message: "Method not allowed (only POST is allowed)",
         },
       };
     }
@@ -529,14 +554,20 @@ export class TriggerClient {
     return this.#client.unregisterSchedule(this.id, id, key);
   }
 
-  authorized(apiKey?: string | null) {
+  authorized(
+    apiKey?: string | null
+  ): "authorized" | "unauthorized" | "missing-client" | "missing-header" {
+    if (typeof apiKey !== "string") {
+      return "missing-header";
+    }
+
     const localApiKey = this.#options.apiKey ?? process.env.TRIGGER_API_KEY;
 
     if (!localApiKey) {
-      return false;
+      return "missing-client";
     }
 
-    return apiKey === localApiKey;
+    return apiKey === localApiKey ? "authorized" : "unauthorized";
   }
 
   apiKey() {

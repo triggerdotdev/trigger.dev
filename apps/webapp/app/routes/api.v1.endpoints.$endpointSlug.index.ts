@@ -62,12 +62,29 @@ export async function action({ request, params }: ActionArgs) {
 
   const service = new IndexEndpointService();
 
-  const { data, ...index } = await service.call(
-    endpoint.id,
-    "API",
-    parsedBody.data.reason,
-    parsedBody.data.data
-  );
+  try {
+    const { data, ...index } = await service.call(
+      endpoint.id,
+      "API",
+      parsedBody.data.reason,
+      parsedBody.data.data
+    );
 
-  return json(index);
+    return json(index);
+  } catch (error) {
+    if (error instanceof Error) {
+      logger.error("Error indexing endpoint", {
+        url: request.url,
+        error: {
+          name: error.name,
+          message: error.message,
+          stack: error.stack,
+        },
+      });
+
+      return json({ error: error.message }, { status: 400 });
+    }
+
+    return json({ error: "Something went wrong" }, { status: 500 });
+  }
 }

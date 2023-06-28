@@ -1,21 +1,20 @@
 import {
   ApiEventLog,
+  DeliverEventResponseSchema,
+  ErrorWithStackSchema,
   HttpSourceRequest,
+  HttpSourceResponseSchema,
+  IndexEndpointResponseSchema,
   PongResponse,
+  PongResponseSchema,
   PreprocessRunBody,
   PreprocessRunResponseSchema,
   RegisterTriggerBody,
   RegisterTriggerBodySchema,
   RunJobBody,
-} from "@trigger.dev/internal";
-import {
-  DeliverEventResponseSchema,
-  ErrorWithStackSchema,
-  IndexEndpointResponseSchema,
-  HttpSourceResponseSchema,
-  PongResponseSchema,
   RunJobResponseSchema,
 } from "@trigger.dev/internal";
+import { safeBodyFromResponse } from "~/utils/json";
 import { logger } from "./logger.server";
 
 export class EndpointApiError extends Error {
@@ -53,10 +52,19 @@ export class EndpointApi {
     }
 
     if (response.status === 401) {
+      const body = await safeBodyFromResponse(response, ErrorWithStackSchema);
+
+      if (body) {
+        return {
+          ok: false,
+          error: body.message,
+        } as const;
+      }
+
       return {
         ok: false,
         error: `Trigger API key is invalid`,
-      };
+      } as const;
     }
 
     if (!response.ok) {
@@ -89,6 +97,22 @@ export class EndpointApi {
       throw new Error(`Could not connect to endpoint ${this.url}`);
     }
 
+    if (response.status === 401) {
+      const body = await safeBodyFromResponse(response, ErrorWithStackSchema);
+
+      if (body) {
+        return {
+          ok: false,
+          error: body.message,
+        } as const;
+      }
+
+      return {
+        ok: false,
+        error: `Trigger API key is invalid`,
+      } as const;
+    }
+
     if (!response.ok) {
       throw new Error(
         `Could not connect to endpoint ${this.url}. Status code: ${response.status}`
@@ -101,7 +125,12 @@ export class EndpointApi {
       body: anyBody,
     });
 
-    return IndexEndpointResponseSchema.parse(anyBody);
+    const data = IndexEndpointResponseSchema.parse(anyBody);
+
+    return {
+      ok: true,
+      data,
+    } as const;
   }
 
   async deliverEvent(event: ApiEventLog) {

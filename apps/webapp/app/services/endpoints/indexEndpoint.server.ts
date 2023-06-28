@@ -33,8 +33,14 @@ export class IndexEndpointService {
       endpoint.slug
     );
 
+    const indexResponse = await client.indexEndpoint();
+
+    if (!indexResponse.ok) {
+      throw new Error(indexResponse.error);
+    }
+
     const { jobs, sources, dynamicTriggers, dynamicSchedules } =
-      await client.indexEndpoint();
+      indexResponse.data;
 
     const queueName = `endpoint-${endpoint.id}`;
 
