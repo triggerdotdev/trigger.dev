@@ -1,5 +1,4 @@
-import { HowToCreateAJob } from "~/components/helpContent/HelpContentText";
-import { JobSkeleton } from "~/components/jobs/JobSkeleton";
+import { HowToSetupYourProject } from "~/components/helpContent/HelpContentText";
 import { JobsTable } from "~/components/jobs/JobsTable";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { Header2 } from "~/components/primitives/Headers";
@@ -16,8 +15,7 @@ import {
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { useFilterJobs } from "~/hooks/useFilterJobs";
 import { useOrganization } from "~/hooks/useOrganizations";
-import { ProjectJob, useProject } from "~/hooks/useProject";
-import { useTextFilter } from "~/hooks/useTextFilter";
+import { useProject } from "~/hooks/useProject";
 import { cn } from "~/utils/cn";
 import { Handle } from "~/utils/handle";
 
@@ -63,7 +61,7 @@ export default function Page() {
               <div>
                 <div className="mb-2 flex items-center justify-between gap-x-2">
                   {project.jobs.length === 0 ? (
-                    <Header2>Your Jobs will appear here</Header2>
+                    <Header2>Jobs</Header2>
                   ) : (
                     <Input
                       placeholder="Search Jobs"
@@ -74,7 +72,7 @@ export default function Page() {
                       onChange={(e) => setFilterText(e.target.value)}
                     />
                   )}
-                  <HelpTrigger title="How do I create a Job?" />
+                  <HelpTrigger title="How do I setup my Project?" />
                 </div>
                 {project.jobs.length > 0 ? (
                   <JobsTable
@@ -84,12 +82,20 @@ export default function Page() {
                   />
                 ) : (
                   <>
-                    <JobSkeleton />
+                    <div
+                      className={
+                        "flex w-full justify-center gap-x-4 rounded-md border border-dashed border-indigo-800 px-5 py-8"
+                      }
+                    >
+                      <Paragraph variant="small">
+                        Your Jobs will appear here.
+                      </Paragraph>
+                    </div>
                   </>
                 )}
               </div>
-              <HelpContent title="How to create a Job">
-                <HowToCreateAJob />
+              <HelpContent title="How to setup your Project">
+                <HowToSetupYourProject />
               </HelpContent>
             </div>
           )}
