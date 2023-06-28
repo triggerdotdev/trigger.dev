@@ -69,7 +69,7 @@ const variations = {
 
 type ClipboardFieldProps = {
   value: string;
-  secure?: boolean;
+  secure?: boolean | string;
   variant: keyof typeof variations;
   className?: string;
   icon?: IconNames | React.ReactNode;
@@ -82,7 +82,7 @@ export function ClipboardField({
   className,
   icon,
 }: ClipboardFieldProps) {
-  const [isSecure, setIsSecure] = useState(secure);
+  const [isSecure, setIsSecure] = useState(secure !== undefined && secure);
   const [copied, setCopied] = useState(false);
 
   const copy = useCallback(
@@ -120,7 +120,13 @@ export function ClipboardField({
       <input
         type="text"
         ref={inputIcon}
-        value={isSecure ? "•".repeat(value.length) : value}
+        value={
+          isSecure
+            ? typeof secure === "string"
+              ? secure
+              : "•".repeat(value.length)
+            : value
+        }
         readOnly={true}
         className={cn("shrink grow select-all overflow-x-auto", input)}
         size={value.length}

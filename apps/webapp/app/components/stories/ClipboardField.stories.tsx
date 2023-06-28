@@ -103,6 +103,62 @@ function ClipboardFieldExample() {
           secure={true}
         />
       </div>
+      <div className="flex flex-col items-start gap-y-8 p-8">
+        <ClipboardField
+          value="npx abcdefghi"
+          variant="primary/small"
+          secure="npx ••••••••"
+        />
+        <ClipboardField
+          value="npx abcdefghi"
+          variant="secondary/small"
+          secure="npx ••••••••"
+        />
+        <ClipboardField
+          value="npx abcdefghi"
+          variant="tertiary/small"
+          secure="npx ••••••••"
+        />
+        <ClipboardField
+          value="npx abcdefghi"
+          variant="tertiary/small"
+          icon={<EnvironmentLabel environment={{ type: "STAGING" }} />}
+          secure="npx ••••••••"
+        />
+        <ClipboardField
+          value="npx abcdefghi"
+          variant="tertiary/small"
+          icon="search"
+          secure="npx ••••••••"
+        />
+        <ClipboardField
+          value="npx abcdefghi"
+          variant="primary/medium"
+          secure="npx ••••••••"
+        />
+        <ClipboardField
+          value="npx abcdefghi"
+          variant="secondary/medium"
+          secure="npx ••••••••"
+        />
+        <ClipboardField
+          value="npx abcdefghi"
+          variant="tertiary/medium"
+          secure="npx ••••••••"
+        />
+        <ClipboardField
+          value="npx abcdefghi"
+          variant="tertiary/medium"
+          icon={<EnvironmentLabel environment={{ type: "PRODUCTION" }} />}
+          secure="npx ••••••••"
+        />
+        <ClipboardField
+          value="npx abcdefghi"
+          variant="tertiary/medium"
+          icon="search"
+          secure="npx ••••••••"
+        />
+      </div>
     </div>
   );
 }
