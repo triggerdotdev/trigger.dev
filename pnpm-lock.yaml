@@ -637,6 +637,7 @@ importers:
       '@types/node': '16'
       '@types/node-fetch': ^2.6.2
       chalk: ^5.2.0
+      chokidar: ^3.5.3
       commander: ^9.4.1
       degit: ^2.8.4
       execa: ^7.0.0
@@ -658,6 +659,7 @@ importers:
     dependencies:
       '@types/degit': 2.8.3
       chalk: 5.2.0
+      chokidar: 3.5.3
       commander: 9.5.0
       degit: 2.8.4
       execa: 7.0.0

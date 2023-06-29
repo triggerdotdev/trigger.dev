@@ -6,11 +6,24 @@ import { resolvePath } from "../utils/parseNameAndPath.js";
 import ngrok from "ngrok";
 import { z } from "zod";
 import { TriggerApi } from "../utils/triggerApi.js";
+import chokidar from "chokidar";
 
 export const DevCommandOptionsSchema = z.object({
   port: z.coerce.number(),
   envFile: z.string(),
   tunnel: z.union([z.literal("ngrok"), z.literal("localtunnel")]),
+});
+
+const compileTimeWaitMs = 300;
+const throttleTimeMs = 1000;
+
+const formattedDate = new Intl.DateTimeFormat("en", {
+  year: "numeric",
+  month: "short",
+  day: "numeric",
+  hour: "numeric",
+  minute: "numeric",
+  second: "numeric",
 });
 
 export async function devCommand(path: string, anyOptions: any) {
@@ -54,16 +67,28 @@ export async function devCommand(path: string, anyOptions: any) {
   const tunnelUrl = await createTunnel(options.port);
   logger.success(`🚇 Created tunnel: ${tunnelUrl}`);
 
-  logger.info(`Connecting to Trigger.dev...`);
+  logger.info(`🔌 Connecting to Trigger.dev...`);
   //wait 200ms
   // await wait(200);
 
-  //do initial refresh of the endpoint
-  //todo get path for API
-  await refreshEndpoint(apiClient, endpointId, tunnelUrl);
-  logger.success(`🔄 Updated your Jobs`);
+  //refresh function
+  const refresh = async () => {
+    //compiling takes a bit of time
+    await wait(compileTimeWaitMs);
+    const result = await refreshEndpoint(apiClient, endpointId, tunnelUrl);
+    if (result?.updatedAt) {
+      logger.success(
+        `🔄 Updated your Jobs ${formattedDate.format(
+          new Date(result.updatedAt)
+        )}`
+      );
+    }
+  };
 
-  // Watch for changes to .ts files and call triggerApi.indexEndpoint
+  // Watch for changes to .ts files and refresh endpoints
+  chokidar.watch(resolvedPath).on("all", (event, path) => {
+    throttle(refresh, throttleTimeMs);
+  });
 }
 
 async function getEndpointIdFromPackageJson(path: string) {
@@ -138,4 +163,20 @@ async function refreshEndpoint(
   }
 
   return response.data;
+}
+
+//wait function
+async function wait(ms: number) {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
+}
+
+//throttle function
+let throttleTimeout: NodeJS.Timeout | null = null;
+function throttle(fn: () => any, delay: number) {
+  if (throttleTimeout) {
+    clearTimeout(throttleTimeout);
+  }
+  throttleTimeout = setTimeout(fn, delay);
 }
