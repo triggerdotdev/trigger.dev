@@ -109,6 +109,7 @@ export default function Page() {
           {environments.map((environment) => (
             <ClipboardField
               key={environment.id}
+              fullWidth={false}
               secure
               value={environment.apiKey}
               variant={"primary/medium"}
