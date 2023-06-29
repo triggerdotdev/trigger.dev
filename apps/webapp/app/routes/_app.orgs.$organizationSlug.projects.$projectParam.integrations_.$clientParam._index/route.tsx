@@ -89,7 +89,7 @@ export default function Page() {
               />
             )}
           </div>
-          <HelpContent title="How to use this integration">
+          <HelpContent title="How to use this Integration">
             <HowToUseThisIntegration />
           </HelpContent>
         </div>
