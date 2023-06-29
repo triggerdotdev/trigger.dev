@@ -188,6 +188,12 @@ export function HowToRunATest() {
           When you’re happy with the payload, click Run test.
         </Paragraph>
       </StepContentContainer>
+      <Callout
+        variant="docs"
+        href="https://trigger.dev/docs/documentation/guides/testing-jobs"
+      >
+        Learn more about running tests.
+      </Callout>
     </>
   );
 }
