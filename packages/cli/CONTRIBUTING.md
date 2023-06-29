@@ -1,4 +1,4 @@
-## How to run the CLI locally
+# How to run the CLI locally
 
 First, cd into the cli directory:
 
