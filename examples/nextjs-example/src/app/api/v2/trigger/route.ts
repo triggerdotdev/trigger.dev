@@ -5,7 +5,6 @@ import { Job, TriggerClient } from "@trigger.dev/sdk";
 
 export const client = new TriggerClient({
   id: "nextjs-appdir-example",
-  url: process.env.VERCEL_URL,
   apiKey: process.env.TRIGGER_API_KEY,
   apiUrl: process.env.TRIGGER_API_URL,
   logLevel: "debug",
@@ -38,6 +37,4 @@ new Job(client, {
   },
 });
 
-export const { POST, dynamic } = createAppRoute(client, {
-  path: "/api/v2/trigger",
-});
+export const { POST, dynamic } = createAppRoute(client);

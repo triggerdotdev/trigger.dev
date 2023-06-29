@@ -26,7 +26,6 @@ import fetch from "node-fetch";
 
 export const client = new TriggerClient({
   id: "nextjs-example",
-  url: process.env.VERCEL_URL,
   apiKey: process.env.TRIGGER_API_KEY,
   apiUrl: process.env.TRIGGER_API_URL,
   logLevel: "debug",

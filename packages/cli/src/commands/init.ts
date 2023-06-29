@@ -1,35 +1,45 @@
 #!/usr/bin/env node
 
-import { CliResults, parseCliOptions, runCliPrompts } from "./cli/index.js";
-import { addDependencies } from "./utils/addDependencies.js";
-import { logger } from "./utils/logger.js";
-import { resolvePath } from "./utils/parseNameAndPath.js";
-import { renderTitle } from "./utils/renderTitle.js";
 import fs from "fs/promises";
+import inquirer from "inquirer";
 import pathModule from "path";
-import { simpleGit } from "simple-git";
-import { TriggerApi } from "./utils/triggerApi.js";
-import { DEFAULT_TRIGGER_URL } from "./consts.js";
-import ora from "ora";
-import { renderApiKey } from "./utils/renderApiKey.js";
 import { pathToRegexp } from "path-to-regexp";
+import { simpleGit } from "simple-git";
+import {
+  promptApiKey,
+  promptEndpointSlug,
+  promptTriggerUrl,
+} from "../cli/index.js";
+import { COMMAND_NAME, DEFAULT_TRIGGER_URL } from "../consts.js";
+import { addDependencies } from "../utils/addDependencies.js";
+import { logger } from "../utils/logger.js";
+import { resolvePath } from "../utils/parseNameAndPath.js";
+import { renderApiKey } from "../utils/renderApiKey.js";
+import { renderTitle } from "../utils/renderTitle.js";
 
-const main = async () => {
+export type InitCommandOptions = {
+  projectPath: string;
+  triggerUrl?: string;
+  endpointSlug?: string;
+  apiKey?: string;
+};
+
+type ResolvedOptions = Required<InitCommandOptions>;
+
+export const initCommand = async (options: InitCommandOptions) => {
   renderTitle();
 
-  const cliOptions = await parseCliOptions();
-
-  if (cliOptions.flags.triggerUrl === DEFAULT_TRIGGER_URL) {
+  if (options.triggerUrl === DEFAULT_TRIGGER_URL) {
     logger.info(`✨ Initializing project in Trigger.dev Cloud`);
-  } else if (typeof cliOptions.flags.triggerUrl === "string") {
+  } else if (typeof options.triggerUrl === "string") {
     logger.info(
-      `✨ Initializing project using Trigger.dev at ${cliOptions.flags.triggerUrl}`
+      `✨ Initializing project using Trigger.dev at ${options.triggerUrl}`
     );
   } else {
     logger.info(`✨ Initializing Trigger.dev in project`);
   }
 
-  const resolvedPath = resolvePath(cliOptions.flags.projectPath);
+  const resolvedPath = resolvePath(options.projectPath);
   // Detect if are are in a Next.js project
   const isNextJsProject = await detectNextJsProject(resolvedPath);
 
@@ -60,9 +70,12 @@ const main = async () => {
     process.exit(1);
   }
 
-  const cliResults = await runCliPrompts(cliOptions);
+  const resolvedOptions = await resolveOptionsWithPrompts(
+    options,
+    resolvedPath
+  );
 
-  const apiKey = cliResults.flags.apiKey;
+  const apiKey = resolvedOptions.apiKey;
 
   if (!apiKey) {
     logger.error("You must provide an API key to continue.");
@@ -75,7 +88,7 @@ const main = async () => {
   ]);
 
   // Setup environment variables
-  await setupEnvironmentVariables(resolvedPath, cliResults);
+  await setupEnvironmentVariables(resolvedPath, resolvedOptions);
 
   const usesSrcDir = await detectUseOfSrcDir(resolvedPath);
 
@@ -88,52 +101,94 @@ const main = async () => {
   const routeDir = pathModule.join(resolvedPath, usesSrcDir ? "src" : "");
 
   if (nextJsDir === "pages") {
-    await createTriggerPageRoute(routeDir, cliResults, usesSrcDir);
+    await createTriggerPageRoute(routeDir, resolvedOptions, usesSrcDir);
   } else {
-    await createTriggerAppRoute(routeDir, cliResults, usesSrcDir);
+    await createTriggerAppRoute(routeDir, resolvedOptions, usesSrcDir);
   }
 
   await detectMiddlewareUsage(resolvedPath, usesSrcDir);
 
-  await waitForProjectToBuild();
+  await addConfigurationToPackageJson(resolvedPath, resolvedOptions);
 
-  const api = new TriggerApi(apiKey, cliResults.flags.triggerUrl);
-
-  const response = await api.createEndpoint({
-    id: cliResults.flags.endpointSlug,
-    url: `${cliResults.flags.endpointUrl}${
-      cliResults.flags.endpointUrl.endsWith("/") ? "" : "/"
-    }api/trigger`,
-  });
-
-  if (!response.ok) {
-    logger.error(
-      `${response.error}. Please contact eric@trigger.dev for assistance.`
-    );
-
-    process.exit(1);
-  }
-
-  logger.success(`✅ Successfully initialized Trigger.dev!`);
-  logger.info(
-    `🔗 Visit your Trigger.dev dashboard at ${cliResults.flags.triggerUrl}`
-  );
+  await printNextSteps(resolvedOptions);
 
   process.exit(0);
 };
 
-main().catch((err) => {
-  logger.error("Aborting installation...");
-  if (err instanceof Error) {
-    logger.error(err);
-  } else {
-    logger.error(
-      "An unknown error has occurred. Please open an issue on github with the below:"
-    );
-    console.log(err);
+async function printNextSteps(options: ResolvedOptions) {
+  logger.success(`✅ Successfully initialized Trigger.dev!`);
+
+  logger.info(
+    `🔗 You can now connect to ${options.triggerUrl} and run jobs locally using the '@trigger.dev/cli dev' command`
+  );
+}
+
+async function addConfigurationToPackageJson(
+  path: string,
+  options: ResolvedOptions
+) {
+  const pkgJsonPath = pathModule.join(path, "package.json");
+  const pkgBuffer = await fs.readFile(pkgJsonPath);
+  const pkgJson = JSON.parse(pkgBuffer.toString());
+
+  pkgJson["trigger.dev"] = {
+    endpointId: options.endpointSlug,
+  };
+
+  // Write the updated package.json file
+  await fs.writeFile(pkgJsonPath, JSON.stringify(pkgJson, null, 2));
+
+  logger.success(`✅ Wrote trigger.dev config to package.json`);
+}
+
+export const resolveOptionsWithPrompts = async (
+  options: InitCommandOptions,
+  path: string
+): Promise<ResolvedOptions> => {
+  const resolvedOptions: InitCommandOptions = { ...options };
+
+  try {
+    if (!options.triggerUrl) {
+      resolvedOptions.triggerUrl = await promptTriggerUrl();
+    }
+
+    if (!options.apiKey) {
+      resolvedOptions.apiKey = await promptApiKey(resolvedOptions.triggerUrl!);
+    }
+
+    if (!options.endpointSlug) {
+      resolvedOptions.endpointSlug = await promptEndpointSlug(path);
+    }
+  } catch (err) {
+    // If the user is not calling the command from an interactive terminal, inquirer will throw an error with isTTYError = true
+    // If this happens, we catch the error, tell the user what has happened, and then continue to run the program with a default trigger project
+    // Otherwise we have to do some fancy namespace extension logic on the Error type which feels overkill for one line
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    if (err instanceof Error && (err as any).isTTYError) {
+      logger.warn(
+        `'${COMMAND_NAME} init' needs an interactive terminal to provide options`
+      );
+
+      const { shouldContinue } = await inquirer.prompt<{
+        shouldContinue: boolean;
+      }>({
+        name: "shouldContinue",
+        type: "confirm",
+        message: `Continue initializing your trigger.dev project?`,
+        default: true,
+      });
+
+      if (!shouldContinue) {
+        logger.info("Exiting...");
+        process.exit(0);
+      }
+    } else {
+      throw err;
+    }
   }
-  process.exit(1);
-});
+
+  return resolvedOptions as ResolvedOptions;
+};
 
 // Detects if the project is a Next.js project at path
 async function detectNextJsProject(path: string): Promise<boolean> {
@@ -227,10 +282,10 @@ async function detectMiddlewareUsage(path: string, usesSrcDir = false) {
 
   if (!matcher || matcher.length === 0) {
     logger.warn(
-      `⚠️ ⚠️ ⚠️  It looks like you're using Next.js middleware at ${pathModule.relative(
+      `⚠️ ⚠️ ⚠️  It looks like there might be conflicting Next.js middleware in ${pathModule.relative(
         process.cwd(),
         middlewarePath
-      )}. This can cause problems with Trigger.dev. Please see https://trigger.dev/docs/documentation/guides/platforms/nextjs#middleware for more info.`
+      )} which can cause issues with Trigger.dev. Please see https://trigger.dev/docs/documentation/guides/platforms/nextjs#middleware`
     );
 
     return;
@@ -246,10 +301,10 @@ async function detectMiddlewareUsage(path: string, usesSrcDir = false) {
     // Check to see if /api/trigger matches the regex, if it does, then we need to output a warning with a link to the docs to fix it
     if (matcherRegex.test("/api/trigger")) {
       logger.warn(
-        `🚨 It looks like you're using Next.js middleware at ${pathModule.relative(
+        `🚨 It looks like there might be conflicting Next.js middleware in ${pathModule.relative(
           process.cwd(),
           middlewarePath
-        )} that matches the '/api/trigger' path. This can cause problems with Trigger.dev. Please see https://trigger.dev/docs/documentation/guides/platforms/nextjs#middleware for more info.`
+        )} which will cause issues with Trigger.dev. Please see https://trigger.dev/docs/documentation/guides/platforms/nextjs#middleware`
       );
     }
   } else if (
@@ -260,10 +315,10 @@ async function detectMiddlewareUsage(path: string, usesSrcDir = false) {
 
     if (matcherRegexes.some((r) => r.test("/api/trigger"))) {
       logger.warn(
-        `🚨 It looks like you're using Next.js middleware at ${pathModule.relative(
+        `🚨 It looks like there might be conflicting Next.js middleware in ${pathModule.relative(
           process.cwd(),
           middlewarePath
-        )} that matches the '/api/trigger' path. This can cause problems with Trigger.dev. Please see https://trigger.dev/docs/documentation/guides/platforms/nextjs#middleware for more info.`
+        )} which will cause issues with Trigger.dev. Please see https://trigger.dev/docs/documentation/guides/platforms/nextjs#middleware`
       );
     }
   }
@@ -305,19 +360,18 @@ async function getMiddlewareConfigMatcher(
 
 async function createTriggerPageRoute(
   path: string,
-  cliResults: CliResults,
+  options: ResolvedOptions,
   usesSrcDir = false
 ) {
   const routeContent = `
 import { Job, TriggerClient, eventTrigger } from "@trigger.dev/sdk";
 import { createPagesRoute } from "@trigger.dev/nextjs";
 
-const { handler, config } = createPagesRoute(client, { path: "/api/trigger" });
+const { handler, config } = createPagesRoute(client);
 export { config };
 
 const client = new TriggerClient({
-  id: "${cliResults.flags.endpointSlug}",
-  url: process.env.VERCEL_URL,
+  id: "${options.endpointSlug}",
   apiKey: process.env.TRIGGER_API_KEY,
   apiUrl: process.env.TRIGGER_API_URL,
 });
@@ -360,7 +414,7 @@ export default handler;
 
 async function createTriggerAppRoute(
   path: string,
-  cliResults: CliResults,
+  options: ResolvedOptions,
   usesSrcDir = false
 ) {
   const routeContent = `
@@ -368,8 +422,7 @@ import { Job, TriggerClient, eventTrigger } from "@trigger.dev/sdk";
 import { createAppRoute } from "@trigger.dev/nextjs";
 
 const client = new TriggerClient({
-  id: "${cliResults.flags.endpointSlug}",
-  url: process.env.VERCEL_URL,
+  id: "${options.endpointSlug}",
   apiKey: process.env.TRIGGER_API_KEY,
   apiUrl: process.env.TRIGGER_API_URL,
 });
@@ -390,9 +443,7 @@ new Job(client, {
   },
 });
 
-export const { POST, dynamic } = createAppRoute(client, {
-  path: "/api/trigger",
-});
+export const { POST, dynamic } = createAppRoute(client);
   `;
 
   const directories = pathModule.join(path, "app", "api", "trigger");
@@ -411,35 +462,28 @@ export const { POST, dynamic } = createAppRoute(client, {
   );
 }
 
-async function setupEnvironmentVariables(path: string, cliResults: CliResults) {
-  if (cliResults.flags.apiKey) {
+async function setupEnvironmentVariables(
+  path: string,
+  options: ResolvedOptions
+) {
+  if (options.apiKey) {
     await setupEnvironmentVariable(
       path,
       ".env.local",
       "TRIGGER_API_KEY",
-      cliResults.flags.apiKey,
+      options.apiKey,
       true,
       renderApiKey
     );
   }
 
-  if (cliResults.flags.triggerUrl) {
+  if (options.triggerUrl) {
     await setupEnvironmentVariable(
       path,
       ".env.local",
       "TRIGGER_API_URL",
-      cliResults.flags.triggerUrl,
+      options.triggerUrl,
       true
-    );
-  }
-
-  if (cliResults.flags.endpointUrl) {
-    await setupEnvironmentVariable(
-      path,
-      ".env.local",
-      "VERCEL_URL",
-      cliResults.flags.endpointUrl,
-      false
     );
   }
 }
@@ -495,14 +539,4 @@ async function pathExists(path: string): Promise<boolean> {
   } catch (error) {
     return false;
   }
-}
-
-async function waitForProjectToBuild() {
-  const spinner = ora("Waiting for project to build...").start();
-
-  await new Promise((resolve) => {
-    setTimeout(resolve, 1000);
-  });
-
-  spinner.stop();
 }

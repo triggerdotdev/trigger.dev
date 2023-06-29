@@ -4,7 +4,7 @@ import "@/jobs/openai";
 import "@/jobs/resend";
 import { createPagesRoute } from "@trigger.dev/nextjs";
 
-const { handler, config } = createPagesRoute(client, { path: "/api/trigger" });
+const { handler, config } = createPagesRoute(client);
 
 export { config };
 

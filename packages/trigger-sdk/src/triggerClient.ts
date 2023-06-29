@@ -1,8 +1,8 @@
 import {
   ErrorWithStackSchema,
-  IndexEndpointResponse,
   HandleTriggerSource,
   HttpSourceRequestHeadersSchema,
+  IndexEndpointResponse,
   InitializeTriggerBodySchema,
   LogLevel,
   Logger,
@@ -46,14 +46,9 @@ const registerSourceEvent: EventSpecification<RegisterSourceEvent> = {
 
 export type TriggerClientOptions = {
   id: string;
-  url?: string;
   apiKey?: string;
   apiUrl?: string;
   logLevel?: LogLevel;
-};
-
-export type ListenOptions = {
-  url: string;
 };
 
 export class TriggerClient {
@@ -84,22 +79,13 @@ export class TriggerClient {
 
   #client: ApiClient;
   #logger: Logger;
-  private _url: string;
   id: string;
-  path?: string;
 
   constructor(options: TriggerClientOptions) {
     this.id = options.id;
-    this._url = buildClientUrl(options.url);
     this.#options = options;
     this.#client = new ApiClient(this.#options);
     this.#logger = new Logger("trigger.dev", this.#options.logLevel);
-  }
-
-  get url() {
-    return `${this._url}${
-      this.path ? `${this.path.startsWith("/") ? "" : "/"}${this.path}` : ""
-    }`;
   }
 
   async handleRequest(request: Request): Promise<NormalizedResponse> {
@@ -811,33 +797,4 @@ export class TriggerClient {
       },
     };
   }
-}
-
-function buildClientUrl(url?: string): string {
-  if (!url) {
-    // Try and get the host from the environment
-    const host =
-      process.env.TRIGGER_CLIENT_HOST ??
-      process.env.HOST ??
-      process.env.HOSTNAME ??
-      process.env.NOW_URL ??
-      process.env.VERCEL_URL;
-
-    // If the host is set, we return it + the path
-    if (host) {
-      return "https://" + host;
-    }
-
-    // If we can't get the host, we throw an error
-    throw new Error(
-      "Could not determine the url for this TriggerClient. Please set the TRIGGER_CLIENT_HOST environment variable or pass in the `url` option to the TriggerClient constructor."
-    );
-  }
-
-  // Check to see if url has the protocol, and if it doesn't, add it
-  if (!url.startsWith("http")) {
-    return "https://" + url;
-  }
-
-  return url;
 }

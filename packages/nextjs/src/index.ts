@@ -2,21 +2,12 @@ import type { TriggerClient } from "@trigger.dev/sdk";
 import type { NextApiRequest, NextApiResponse } from "next";
 import { NextResponse } from "next/server";
 
-export type TriggerHandlerOptions = {
-  path: string;
-};
-
-export function createPagesRoute(
-  client: TriggerClient,
-  options: TriggerHandlerOptions
-) {
-  client.path = options.path;
-
+export function createPagesRoute(client: TriggerClient) {
   const handler = async function handler(
     req: NextApiRequest,
     res: NextApiResponse
   ) {
-    const normalizedRequest = await convertToStandardRequest(client.url, req);
+    const normalizedRequest = await convertToStandardRequest(req);
 
     const response = await client.handleRequest(normalizedRequest);
 
@@ -39,12 +30,7 @@ export function createPagesRoute(
   };
 }
 
-export function createAppRoute(
-  client: TriggerClient,
-  options: TriggerHandlerOptions
-) {
-  client.path = options.path;
-
+export function createAppRoute(client: TriggerClient) {
   const POST = async function handler(req: Request) {
     const response = await client.handleRequest(req);
 
@@ -64,7 +50,6 @@ export function createAppRoute(
 }
 
 async function convertToStandardRequest(
-  url: string,
   nextReq: NextApiRequest
 ): Promise<Request> {
   const { headers: nextHeaders, method } = nextReq;
@@ -75,8 +60,8 @@ async function convertToStandardRequest(
     headers.set(key, value as string);
   });
 
-  // Create a new Request object
-  const webReq = new Request(url, {
+  // Create a new Request object (hardcode the url because it doesn't really matter what it is)
+  const webReq = new Request("https://next.js/api/trigger", {
     headers,
     method,
     // @ts-ignore
