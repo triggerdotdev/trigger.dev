@@ -34,9 +34,9 @@ const variants = {
   },
   description: {
     button:
-      "w-full py-2 pl-2 pr-3 hover:bg-slate-850 transition data-[disabled]:opacity-70 data-[state=checked]:bg-slate-850 border-slate-800 border rounded-sm",
+      "w-full p-2.5 hover:bg-slate-850 transition data-[disabled]:opacity-70 data-[state=checked]:bg-slate-850 border-slate-800 border rounded-sm",
     label: "text-bright font-semibold -mt-1 text-left",
-    description: "text-dimmed -mt-0.5 text-left",
+    description: "text-dimmed -mt-0 text-left",
     inputPosition: "mt-0",
   },
 };
