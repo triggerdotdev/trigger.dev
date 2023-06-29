@@ -1,9 +1,11 @@
 import { conform, useForm } from "@conform-to/react";
 import { parse } from "@conform-to/zod";
 import { useFetcher, useLocation, useNavigation } from "@remix-run/react";
+import type { ConnectionType } from "@trigger.dev/database";
 import cuid from "cuid";
 import { useState } from "react";
 import simplur from "simplur";
+import { useFeatures } from "~/hooks/useFeatures";
 import { useTextFilter } from "~/hooks/useTextFilter";
 import { createSchema } from "~/routes/resources.connection.$organizationId.oauth2";
 import {
@@ -18,15 +20,11 @@ import { Checkbox } from "../primitives/Checkbox";
 import { Fieldset } from "../primitives/Fieldset";
 import { FormError } from "../primitives/FormError";
 import { Header2, Header3 } from "../primitives/Headers";
+import { Hint } from "../primitives/Hint";
 import { Input } from "../primitives/Input";
 import { InputGroup } from "../primitives/InputGroup";
 import { Label } from "../primitives/Label";
-import { NamedIcon } from "../primitives/NamedIcon";
 import { Paragraph } from "../primitives/Paragraph";
-import type { ConnectionType } from "@trigger.dev/database";
-import { useFeatures } from "~/hooks/useFeatures";
-import { Hint } from "../primitives/Hint";
-import { InlineCode } from "../code/InlineCode";
 
 export type Status = "loading" | "idle";
 
@@ -222,7 +220,7 @@ export function ConnectToOAuthForm({
             value={filterText}
             onChange={(e) => setFilterText(e.target.value)}
           />
-          <div className="flex flex-col gap-y-0.5 overflow-hidden rounded-md">
+          <div className="mb-28 flex flex-col gap-y-0.5 overflow-hidden rounded-md">
             {filteredItems.length === 0 && (
               <Paragraph variant="small" className="p-4">
                 No scopes match {filterText}. Try a different search query.
