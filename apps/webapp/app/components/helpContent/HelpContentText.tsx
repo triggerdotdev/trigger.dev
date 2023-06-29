@@ -9,6 +9,12 @@ import { useDevEnvironment } from "~/hooks/useEnvironments";
 import { ClipboardField } from "../primitives/ClipboardField";
 import { Button } from "../primitives/Buttons";
 import { InlineCode } from "../code/InlineCode";
+import {
+  ClientTabs,
+  ClientTabsContent,
+  ClientTabsList,
+  ClientTabsTrigger,
+} from "../primitives/ClientTabs";
 
 export function HowToSetupYourProject() {
   const devEnvironment = useDevEnvironment();
@@ -33,14 +39,28 @@ export function HowToSetupYourProject() {
           . It’s free and easy to use and required to create a tunnel, making
           your local machine accessible to the internet.
         </Paragraph>
-        <StepNumber stepNumber="a" title="Install ngrok" />
+        <StepNumber stepNumber="a" title="Install ngrok" className="mb-2" />
         <StepContentContainer>
-          <ClipboardField
-            variant="primary/medium"
-            fullWidth={false}
-            className="mt-2"
-            value={`brew install ngrok/ngrok/ngrok`}
-          />
+          <ClientTabs defaultValue="mac">
+            <ClientTabsList>
+              <ClientTabsTrigger value={"mac"}>Mac</ClientTabsTrigger>
+              <ClientTabsTrigger value={"windows"}>Windows</ClientTabsTrigger>
+            </ClientTabsList>
+            <ClientTabsContent value={"mac"}>
+              <ClipboardField
+                variant="primary/medium"
+                fullWidth={false}
+                value={`brew install ngrok/ngrok/ngrok`}
+              />
+            </ClientTabsContent>
+            <ClientTabsContent value={"windows"}>
+              <ClipboardField
+                variant="primary/medium"
+                fullWidth={false}
+                value={`choco install ngrok`}
+              />
+            </ClientTabsContent>
+          </ClientTabs>
         </StepContentContainer>
         <StepNumber stepNumber="b" title="Open a new terminal window/tab" />
         <StepContentContainer>
@@ -60,20 +80,10 @@ export function HowToSetupYourProject() {
         </StepContentContainer>
         <StepNumber
           stepNumber="d"
-          title="Grab your public URL in the ngrok output"
+          title={`Grab your "forwarding" URL from the ngrok output`}
         />
         <StepContentContainer>
           <img src={ngrok} className="mt-2 w-full" />
-        </StepContentContainer>
-        <StepNumber
-          stepNumber="d"
-          title="Use the forwarding URL (public URL)"
-        />
-        <StepContentContainer>
-          <Paragraph spacing>
-            Use the public URL that ngrok gave you for the{" "}
-            <InlineCode>VERCEL_URL</InlineCode> environment variable.
-          </Paragraph>
         </StepContentContainer>
       </StepContentContainer>
       <StepNumber stepNumber="3" title="Use the CLI" />
@@ -84,18 +94,25 @@ export function HowToSetupYourProject() {
         <ClipboardField
           variant="primary/medium"
           className="mb-4"
-          secure="npx @trigger.dev/init@latest -k ••••••••• -t https://test-cloud.trigger.dev -u <ngrok public url>"
-          value={`npx @trigger.dev/init@latest -k ${devEnvironment?.apiKey} -t https://test-cloud.trigger.dev -u <ngrok public url>`}
+          secure="npx @trigger.dev/init@latest -k ••••••••• -t https://cloud.trigger.dev -u <ngrok_forwarding_url>"
+          value={`npx @trigger.dev/init@latest -k ${devEnvironment?.apiKey} -t https://cloud.trigger.dev -u <ngrok_forwarding_url>`}
         />
         <Paragraph spacing>
           Use the public URL from step 2d above to replace the -u placeholder
           text.
         </Paragraph>
         <img src={publicUrl} className="mb-4 mt-2 w-full" />
+      </StepContentContainer>
+
+      <StepNumber stepNumber="4" title="Run the CLI" />
+      <StepContentContainer>
         <Paragraph spacing>
-          Run the CLI. It will add Trigger.dev to your existing Next.js project,
-          setup a route and give you an example file.
+          It will add Trigger.dev to your existing Next.js project, setup a
+          route and give you an example file.
         </Paragraph>
+      </StepContentContainer>
+      <StepNumber stepNumber="5" title="Check for Jobs" />
+      <StepContentContainer>
         <Paragraph>
           Once you've run the CLI command, click Refresh to view your example
           Job in the list.
