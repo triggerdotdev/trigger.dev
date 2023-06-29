@@ -55,6 +55,7 @@ export const loader = async ({ request }: LoaderArgs) => {
       posthogProjectKey,
       features,
       appEnv: env.APP_ENV,
+      appOrigin: env.APP_ORIGIN,
     },
     { headers: { "Set-Cookie": await commitSession(session) } }
   );
