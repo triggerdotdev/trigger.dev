@@ -53,7 +53,7 @@
     "vite-tsconfig-paths": "^4.0.5",
     "vitest": "^0.28.4"
   },
-  "packageManager": "pnpm@7.13.5",
+  "packageManager": "pnpm@7.18.1",
   "dependencies": {
     "@changesets/cli": "^2.26.0",
     "node-fetch": "2.6.x"
