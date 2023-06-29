@@ -4,6 +4,7 @@ import { IntegrationIcon } from "~/routes/_app.orgs.$organizationSlug.projects.$
 import { Callout } from "../primitives/Callout";
 import integrationButton from "./integration-button.png";
 import ngrok from "./ngrok.png";
+import publicUrl from "./public-url.png";
 import { useDevEnvironment } from "~/hooks/useEnvironments";
 import { ClipboardField } from "../primitives/ClipboardField";
 import { Button } from "../primitives/Buttons";
@@ -78,11 +79,7 @@ export function HowToSetupYourProject() {
       <StepNumber stepNumber="3" title="Use the CLI" />
       <StepContentContainer>
         <Paragraph spacing>
-          Run this CLI command in a new terminal window.{" "}
-        </Paragraph>
-        <Paragraph spacing>
-          Use the public URL that you copied from step 2d for the -u
-          placeholder.
+          Copy this CLI command into a new terminal window.{" "}
         </Paragraph>
         <ClipboardField
           variant="primary/medium"
@@ -91,8 +88,13 @@ export function HowToSetupYourProject() {
           value={`npx @trigger.dev/init@latest -k ${devEnvironment?.apiKey} -t https://test-cloud.trigger.dev -u <ngrok public url>`}
         />
         <Paragraph spacing>
-          The CLI will add Trigger.dev to your existing Next.js project, setup a
-          route and give you an example file.
+          Use the public URL from step 2d above to replace the -u placeholder
+          text.
+        </Paragraph>
+        <img src={publicUrl} className="mb-4 mt-2 w-full" />
+        <Paragraph spacing>
+          Run the CLI. It will add Trigger.dev to your existing Next.js project,
+          setup a route and give you an example file.
         </Paragraph>
         <Paragraph>
           Once you've run the CLI command, click Refresh to view your example
