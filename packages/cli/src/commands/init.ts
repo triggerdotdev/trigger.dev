@@ -16,6 +16,7 @@ import { logger } from "../utils/logger.js";
 import { resolvePath } from "../utils/parseNameAndPath.js";
 import { renderApiKey } from "../utils/renderApiKey.js";
 import { renderTitle } from "../utils/renderTitle.js";
+import { detectNextJsProject } from "../utils/detectNextJsProject.js";
 
 export type InitCommandOptions = {
   projectPath: string;
@@ -141,7 +142,7 @@ async function addConfigurationToPackageJson(
   logger.success(`✅ Wrote trigger.dev config to package.json`);
 }
 
-export const resolveOptionsWithPrompts = async (
+const resolveOptionsWithPrompts = async (
   options: InitCommandOptions,
   path: string
 ): Promise<ResolvedOptions> => {
@@ -189,19 +190,6 @@ export const resolveOptionsWithPrompts = async (
 
   return resolvedOptions as ResolvedOptions;
 };
-
-// Detects if the project is a Next.js project at path
-async function detectNextJsProject(path: string): Promise<boolean> {
-  // Checks for the presence of a next.config.js file
-  try {
-    // Check if next.config.js file exists in the given path
-    await fs.access(pathModule.join(path, "next.config.js"));
-    return true;
-  } catch (error) {
-    // If next.config.js file doesn't exist, it's not a Next.js project
-    return false;
-  }
-}
 
 // Detects if there are any uncommitted git changes at path
 async function detectGitChanges(path: string): Promise<boolean> {

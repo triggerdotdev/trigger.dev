@@ -57,8 +57,8 @@ program
       .default("ngrok")
   )
   .version(getVersion(), "-v, --version", "Display the version number")
-  .action(async (options) => {
-    await devCommand(options);
+  .action(async (path, options) => {
+    await devCommand(path, options);
   });
 
 export const promptTriggerUrl = async (): Promise<string> => {

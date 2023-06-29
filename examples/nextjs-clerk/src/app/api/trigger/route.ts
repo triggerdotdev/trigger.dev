@@ -23,4 +23,6 @@ new Job(client, {
   },
 });
 
-export const { POST, dynamic } = createAppRoute(client);
+export const { POST, dynamic } = createAppRoute(client, {
+  path: "/api/trigger",
+});

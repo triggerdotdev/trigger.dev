@@ -27,6 +27,6 @@
     "@trigger.dev/cli": "workspace:*"
   },
   "trigger.dev": {
-    "endpointId": "nextjs-clerk"
+    "endpointId": "my-nextjs-project"
   }
 }
