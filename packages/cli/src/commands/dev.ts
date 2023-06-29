@@ -25,10 +25,12 @@ export async function devCommand(path: string, anyOptions: any) {
   // Detect if are are in a Next.js project
   const isNextJsProject = await detectNextJsProject(resolvedPath);
   if (!isNextJsProject) {
-    logger.error("You must run this command in a Next.js project.");
+    logger.error(
+      `You must run this command in a Next.js project: ${resolvedPath}`
+    );
     process.exit(1);
   }
-  logger.success(`✅ Detected valid Next.js project at ${resolvedPath}`);
+  logger.success(`✅ Detected valid Next.js project`);
 
   // Read from package.json to get the endpointId
   const endpointId = await getEndpointIdFromPackageJson(resolvedPath);
@@ -136,10 +138,4 @@ async function refreshEndpoint(
   }
 
   return response.data;
-}
-
-function wait(duration: number) {
-  return new Promise((resolve) => {
-    setTimeout(resolve, duration);
-  });
 }
