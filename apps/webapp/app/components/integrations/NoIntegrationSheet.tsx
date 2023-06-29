@@ -41,7 +41,7 @@ export function NoIntegrationSheet({
             <div className="flex items-center gap-1">
               <CheckIcon className="h-4 w-4 text-green-500" />
               <Paragraph variant="small">
-                We'll let you know when the integration is available.
+                We'll let you know when the Integration is available.
               </Paragraph>
             </div>
           ) : (
