@@ -1,23 +1,26 @@
 import { Paragraph, TextLink } from "~/components/primitives/Paragraph";
 import { StepNumber } from "~/components/primitives/StepNumber";
-import { IntegrationIcon } from "~/routes/_app.orgs.$organizationSlug.projects.$projectParam.integrations/route";
-import { Callout } from "../primitives/Callout";
-import integrationButton from "./integration-button.png";
-import ngrok from "./ngrok.png";
-import publicUrl from "./public-url.png";
+import { useAppOrigin } from "~/hooks/useAppOrigin";
 import { useDevEnvironment } from "~/hooks/useEnvironments";
-import { ClipboardField } from "../primitives/ClipboardField";
+import { IntegrationIcon } from "~/routes/_app.orgs.$organizationSlug.projects.$projectParam.integrations/route";
 import { Button } from "../primitives/Buttons";
-import { InlineCode } from "../code/InlineCode";
+import { Callout } from "../primitives/Callout";
 import {
   ClientTabs,
   ClientTabsContent,
   ClientTabsList,
   ClientTabsTrigger,
 } from "../primitives/ClientTabs";
+import { ClipboardField } from "../primitives/ClipboardField";
+import integrationButton from "./integration-button.png";
+import ngrok from "./ngrok.png";
+import publicUrl from "./public-url.png";
+import selectEnvironment from "./select-environment.png";
+import selectExample from "./select-example.png";
 
 export function HowToSetupYourProject() {
   const devEnvironment = useDevEnvironment();
+  const appOrigin = useAppOrigin();
   return (
     <>
       <StepNumber stepNumber="1" title="Run your Next.js app" />
@@ -102,24 +105,24 @@ export function HowToSetupYourProject() {
             <ClipboardField
               variant="primary/medium"
               className="mb-4"
-              secure="npx @trigger.dev/init@latest -k ••••••••• -t https://cloud.trigger.dev -u <ngrok_forwarding_url>"
-              value={`npx @trigger.dev/init@latest -k ${devEnvironment?.apiKey} -t https://cloud.trigger.dev -u <ngrok_forwarding_url>`}
+              secure={`npx @trigger.dev/init@latest -k ••••••••• -t ${appOrigin} -u <ngrok_forwarding_url>`}
+              value={`npx @trigger.dev/init@latest -k ${devEnvironment?.apiKey} -t ${appOrigin} -u <ngrok_forwarding_url>`}
             />
           </ClientTabsContent>
           <ClientTabsContent value={"pnpm"}>
             <ClipboardField
               variant="primary/medium"
               className="mb-4"
-              secure="pnpm dlx @trigger.dev/init@latest -k ••••••••• -t https://cloud.trigger.dev -u <ngrok_forwarding_url>"
-              value={`pnpm dlx @trigger.dev/init@latest -k ${devEnvironment?.apiKey} -t https://cloud.trigger.dev -u <ngrok_forwarding_url>`}
+              secure={`pnpm dlx @trigger.dev/init@latest -k ••••••••• -t ${appOrigin} -u <ngrok_forwarding_url>`}
+              value={`pnpm dlx @trigger.dev/init@latest -k ${devEnvironment?.apiKey} -t ${appOrigin} -u <ngrok_forwarding_url>`}
             />
           </ClientTabsContent>
           <ClientTabsContent value={"yarn"}>
             <ClipboardField
               variant="primary/medium"
               className="mb-4"
-              secure="yarn @trigger.dev/init@latest -k ••••••••• -t https://cloud.trigger.dev -u <ngrok_forwarding_url>"
-              value={`yarn @trigger.dev/init@latest -k ${devEnvironment?.apiKey} -t https://cloud.trigger.dev -u <ngrok_forwarding_url>`}
+              secure={`yarn @trigger.dev/init@latest -k ••••••••• -t ${appOrigin} -u <ngrok_forwarding_url>`}
+              value={`yarn @trigger.dev/init@latest -k ${devEnvironment?.apiKey} -t ${appOrigin} -u <ngrok_forwarding_url>`}
             />
           </ClientTabsContent>
         </ClientTabs>
@@ -159,9 +162,31 @@ export function HowToSetupYourProject() {
 export function HowToRunATest() {
   return (
     <>
-      <StepNumber stepNumber="1" title="Step 1 title" />
+      <StepNumber
+        stepNumber="1"
+        title="Select an environment
+"
+      />
       <StepContentContainer>
-        <Paragraph>Content</Paragraph>
+        <Paragraph spacing>
+          Select the environment you’d like the test to run against.
+        </Paragraph>
+        <img src={selectEnvironment} className="mt-2 w-52" />
+      </StepContentContainer>
+      <StepNumber stepNumber="2" title="Write your test payload" />
+      <StepContentContainer>
+        <Paragraph spacing>
+          Write your own payload specific to your Job. Some Triggers also
+          provide example payloads that you can select from. This will populate
+          the code editor below.
+        </Paragraph>
+        <img src={selectExample} className="mt-2 h-40" />
+      </StepContentContainer>
+      <StepNumber stepNumber="3" title="Run your test" />
+      <StepContentContainer>
+        <Paragraph spacing>
+          When you’re happy with the payload, click Run test.
+        </Paragraph>
       </StepContentContainer>
     </>
   );
