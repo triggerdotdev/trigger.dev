@@ -7,6 +7,12 @@ import { InlineCode } from "../code/InlineCode";
 import { ClipboardField } from "../primitives/ClipboardField";
 import { Header1 } from "../primitives/Headers";
 import { Paragraph } from "../primitives/Paragraph";
+import {
+  ClientTabs,
+  ClientTabsContent,
+  ClientTabsList,
+  ClientTabsTrigger,
+} from "../primitives/ClientTabs";
 
 export function ApiKeyHelp({
   integration,
@@ -28,11 +34,34 @@ export function ApiKeyHelp({
         First install the <InlineCode>{integration.packageName}</InlineCode>{" "}
         package using your preferred package manager. For example:
       </Paragraph>
-      <ClipboardField
-        variant="secondary/medium"
-        value={`npm install ${integration.packageName}`}
-        className="mb-4"
-      />
+      <ClientTabs defaultValue="npm">
+        <ClientTabsList>
+          <ClientTabsTrigger value={"npm"}>npm</ClientTabsTrigger>
+          <ClientTabsTrigger value={"pnpm"}>pnpm</ClientTabsTrigger>
+          <ClientTabsTrigger value={"yarn"}>yarn</ClientTabsTrigger>
+        </ClientTabsList>
+        <ClientTabsContent value={"npm"}>
+          <ClipboardField
+            variant="secondary/medium"
+            value={`npm install ${integration.packageName}@next`}
+            className="mb-4"
+          />
+        </ClientTabsContent>
+        <ClientTabsContent value={"pnpm"}>
+          <ClipboardField
+            variant="secondary/medium"
+            value={`pnpm install ${integration.packageName}@next`}
+            className="mb-4"
+          />
+        </ClientTabsContent>
+        <ClientTabsContent value={"yarn"}>
+          <ClipboardField
+            variant="secondary/medium"
+            value={`yarn add ${integration.packageName}@next`}
+            className="mb-4"
+          />
+        </ClientTabsContent>
+      </ClientTabs>
       {apiAuth.help.samples.map((sample, i) => (
         <div key={i}>
           <Paragraph spacing>{sample.title}</Paragraph>
