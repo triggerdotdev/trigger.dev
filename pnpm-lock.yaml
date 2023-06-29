@@ -493,11 +493,12 @@ importers:
 
   examples/nextjs-example:
     specifiers:
+      '@trigger.dev/cli': workspace:*
       '@trigger.dev/github': workspace:*
-      '@trigger.dev/nextjs': workspace:*
+      '@trigger.dev/nextjs': ^1.0.0-next.5
       '@trigger.dev/openai': workspace:*
       '@trigger.dev/resend': workspace:*
-      '@trigger.dev/sdk': workspace:*
+      '@trigger.dev/sdk': ^2.0.0-next.4
       '@trigger.dev/slack': workspace:*
       '@types/node': 18.15.13
       '@types/node-fetch': 2.6.x
@@ -515,10 +516,10 @@ importers:
       zod: ^3.20.2
     dependencies:
       '@trigger.dev/github': link:../../integrations/github
-      '@trigger.dev/nextjs': link:../../packages/nextjs
+      '@trigger.dev/nextjs': 1.0.0-next.5_ngnd5ehxnyzkwd4dttjmjus36i
       '@trigger.dev/openai': link:../../integrations/openai
       '@trigger.dev/resend': link:../../integrations/resend
-      '@trigger.dev/sdk': link:../../packages/trigger-sdk
+      '@trigger.dev/sdk': 2.0.0-next.4
       '@trigger.dev/slack': link:../../integrations/slack
       '@types/node': 18.15.13
       '@types/react': 18.0.26
@@ -530,6 +531,7 @@ importers:
       typescript: 5.0.4
       zod: 3.20.2
     devDependencies:
+      '@trigger.dev/cli': link:../../packages/cli
       '@types/node-fetch': 2.6.2
       eslint: 8.42.0
       eslint-config-next: 13.4.6_binxsscxvozjxebftqdoazsxm4
@@ -9877,6 +9879,20 @@ packages:
       '@trigger.dev/sdk': 2.0.0-next.4
       debug: 4.3.4
       next: 13.4.7_biqbaboplfbrettd7655fr4n2y
+    transitivePeerDependencies:
+      - supports-color
+    dev: false
+
+  /@trigger.dev/nextjs/1.0.0-next.5_ngnd5ehxnyzkwd4dttjmjus36i:
+    resolution: {integrity: sha512-41/RvyfuR3cPDCKAAhWOJMNw3KgA9uho7vcg8Q0ri8NCObsvxbStpnb5lpvNsUVOTyB7qy3tHULVJhKANczQqQ==}
+    engines: {node: '>=18'}
+    peerDependencies:
+      '@trigger.dev/sdk': ^2.0.0-next.2
+      next: ^13.3.1
+    dependencies:
+      '@trigger.dev/sdk': 2.0.0-next.4
+      debug: 4.3.4
+      next: 13.3.1_biqbaboplfbrettd7655fr4n2y
     transitivePeerDependencies:
       - supports-color
     dev: false
