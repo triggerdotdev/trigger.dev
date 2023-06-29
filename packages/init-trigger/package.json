@@ -63,8 +63,10 @@
     "inquirer": "^9.1.4",
     "node-fetch": "^3.3.0",
     "ora": "^6.1.2",
+    "path-to-regexp": "^6.2.1",
     "simple-git": "^3.19.0",
-    "terminal-link": "^3.0.0"
+    "terminal-link": "^3.0.0",
+    "zod": "^3.20.2"
   },
   "engines": {
     "node": ">=18"

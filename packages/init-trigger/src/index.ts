@@ -12,6 +12,7 @@ import { TriggerApi } from "./utils/triggerApi.js";
 import { DEFAULT_TRIGGER_URL } from "./consts.js";
 import ora from "ora";
 import { renderApiKey } from "./utils/renderApiKey.js";
+import { pathToRegexp } from "path-to-regexp";
 
 const main = async () => {
   renderTitle();
@@ -69,8 +70,8 @@ const main = async () => {
   }
 
   await addDependencies(resolvedPath, [
-    { name: "@trigger.dev/sdk", version: "next" },
-    { name: "@trigger.dev/nextjs", version: "latest" },
+    { name: "@trigger.dev/sdk", tag: "next" },
+    { name: "@trigger.dev/nextjs", tag: "latest" },
   ]);
 
   // Setup environment variables
@@ -92,20 +93,22 @@ const main = async () => {
     await createTriggerAppRoute(routeDir, cliResults, usesSrcDir);
   }
 
+  await detectMiddlewareUsage(resolvedPath, usesSrcDir);
+
   await waitForProjectToBuild();
 
   const api = new TriggerApi(apiKey, cliResults.flags.triggerUrl);
 
-  const endpoint = await api.createEndpoint({
+  const response = await api.createEndpoint({
     id: cliResults.flags.endpointSlug,
     url: `${cliResults.flags.endpointUrl}${
       cliResults.flags.endpointUrl.endsWith("/") ? "" : "/"
     }api/trigger`,
   });
 
-  if (!endpoint) {
+  if (!response.ok) {
     logger.error(
-      "Unable to create endpoint, please contact eric@trigger.dev for assistance."
+      `${response.error}. Please contact eric@trigger.dev for assistance.`
     );
 
     process.exit(1);
@@ -204,6 +207,99 @@ async function detectPagesOrAppDir(
     }
 
     return "pages";
+  }
+}
+
+async function detectMiddlewareUsage(path: string, usesSrcDir = false) {
+  const middlewarePath = pathModule.join(
+    path,
+    usesSrcDir ? "src" : "",
+    "middleware.ts"
+  );
+
+  const middlewareExists = await pathExists(middlewarePath);
+
+  if (!middlewareExists) {
+    return;
+  }
+
+  const matcher = await getMiddlewareConfigMatcher(middlewarePath);
+
+  if (!matcher || matcher.length === 0) {
+    logger.warn(
+      `⚠️ ⚠️ ⚠️  It looks like you're using Next.js middleware at ${pathModule.relative(
+        process.cwd(),
+        middlewarePath
+      )}. This can cause problems with Trigger.dev. Please see https://trigger.dev/docs/documentation/guides/platforms/nextjs#middleware for more info.`
+    );
+
+    return;
+  }
+
+  if (matcher.length === 0) {
+    return;
+  }
+
+  if (typeof matcher === "string") {
+    const matcherRegex = pathToRegexp(matcher);
+
+    // Check to see if /api/trigger matches the regex, if it does, then we need to output a warning with a link to the docs to fix it
+    if (matcherRegex.test("/api/trigger")) {
+      logger.warn(
+        `🚨 It looks like you're using Next.js middleware at ${pathModule.relative(
+          process.cwd(),
+          middlewarePath
+        )} that matches the '/api/trigger' path. This can cause problems with Trigger.dev. Please see https://trigger.dev/docs/documentation/guides/platforms/nextjs#middleware for more info.`
+      );
+    }
+  } else if (
+    Array.isArray(matcher) &&
+    matcher.every((m) => typeof m === "string")
+  ) {
+    const matcherRegexes = matcher.map((m) => pathToRegexp(m));
+
+    if (matcherRegexes.some((r) => r.test("/api/trigger"))) {
+      logger.warn(
+        `🚨 It looks like you're using Next.js middleware at ${pathModule.relative(
+          process.cwd(),
+          middlewarePath
+        )} that matches the '/api/trigger' path. This can cause problems with Trigger.dev. Please see https://trigger.dev/docs/documentation/guides/platforms/nextjs#middleware for more info.`
+      );
+    }
+  }
+}
+
+async function getMiddlewareConfigMatcher(
+  path: string
+): Promise<Array<string>> {
+  const fileContent = await fs.readFile(path, "utf-8");
+
+  const regex = /matcher:\s*(\[.*\]|".*")/s;
+  let match = regex.exec(fileContent);
+
+  if (!match) {
+    return [];
+  }
+
+  if (match.length < 2) {
+    return [];
+  }
+
+  let matcherString: string = match[1] as string;
+
+  // Handle array scenario
+  if (matcherString.startsWith("[") && matcherString.endsWith("]")) {
+    matcherString = matcherString.slice(1, -1); // Remove brackets
+    const arrayRegex = /("(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*')/g;
+    let arrayMatch;
+    const matches: string[] = [];
+    while ((arrayMatch = arrayRegex.exec(matcherString)) !== null) {
+      matches.push((arrayMatch[1] as string).slice(1, -1)); // remove quotes
+    }
+    return matches;
+  } else {
+    // Handle single string scenario
+    return [matcherString.slice(1, -1)]; // remove quotes
   }
 }
 

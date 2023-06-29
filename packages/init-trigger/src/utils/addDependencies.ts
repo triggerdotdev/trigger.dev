@@ -4,8 +4,15 @@ import ora, { type Ora } from "ora";
 import pathModule from "path";
 import { getUserPkgManager, type PackageManager } from "./getUserPkgManager.js";
 import fs from "fs/promises";
+import fetch from "node-fetch";
+import { z } from "zod";
 
 export type InstallPackage = {
+  name: string;
+  tag: string;
+};
+
+export type InstalledPackage = {
   name: string;
   version: string;
 };
@@ -16,37 +23,95 @@ export async function addDependencies(
 ) {
   const pkgManager = getUserPkgManager();
 
-  await addDependenciesToPackageJson(projectDir, packages);
+  const spinner = ora(
+    "Adding @trigger.dev dependencies to package.json..."
+  ).start();
+
+  const installedPackages = await addDependenciesToPackageJson(
+    projectDir,
+    packages
+  );
+
+  spinner.succeed(
+    chalk.green(
+      `Successfully added dependencies to package.json: ${installedPackages
+        .map((pkg) => `${pkg.name}@${pkg.version}`)
+        .join(", ")}`
+    )
+  );
 
   const installSpinner = await runInstallCommand(pkgManager, projectDir);
 
-  // If the spinner was used to show the progress, use succeed method on it
-  // If not, use the succeed on a new spinner
-  (installSpinner || ora()).succeed(
-    chalk.green(
-      `Successfully installed ${packages
-        .map((pkg) => `${pkg.name}@${pkg.version}`)
-        .join(", ")}}`
-    )
-  );
+  (installSpinner || ora()).stop();
 }
 
 async function addDependenciesToPackageJson(
   projectDir: string,
   packages: Array<InstallPackage>
-) {
+): Promise<Array<InstalledPackage>> {
   const pkgJsonPath = pathModule.join(projectDir, "package.json");
   const pkgBuffer = await fs.readFile(pkgJsonPath);
   const pkgJson = JSON.parse(pkgBuffer.toString());
 
+  const packagesToInstall = await getLatestPackageVersions(packages);
+
   // Add the dependencies to the package.json file
   pkgJson.dependencies = {
     ...pkgJson.dependencies,
-    ...Object.fromEntries(packages.map((pkg) => [pkg.name, pkg.version])),
+    ...Object.fromEntries(
+      packagesToInstall.map((pkg) => [pkg.name, `^${pkg.version}`])
+    ),
   };
 
   // Write the updated package.json file
   await fs.writeFile(pkgJsonPath, JSON.stringify(pkgJson, null, 2));
+
+  return packagesToInstall;
+}
+
+const PackageSchema = z.object({
+  name: z.string(),
+  "dist-tags": z.record(z.string()),
+});
+
+async function getLatestPackageVersion(
+  packageName: string,
+  tag: string
+): Promise<InstalledPackage | undefined> {
+  const response = await fetch(`https://registry.npmjs.org/${packageName}`);
+
+  if (!response.ok) {
+    return;
+  }
+
+  const body = await response.json();
+
+  const parsedBody = PackageSchema.safeParse(body);
+
+  if (!parsedBody.success) {
+    return;
+  }
+
+  const latestVersion = parsedBody.data["dist-tags"][tag];
+
+  if (!latestVersion) {
+    return;
+  }
+
+  return {
+    name: packageName,
+    version: latestVersion,
+  };
+}
+
+async function getLatestPackageVersions(
+  packages: Array<InstallPackage>
+): Promise<Array<InstalledPackage>> {
+  const latestPackageVersions = await Promise.all(
+    packages.map((pkg) => getLatestPackageVersion(pkg.name, pkg.tag))
+  );
+
+  return latestPackageVersions.filter(Boolean) as Array<InstalledPackage>;
 }
 
 async function runInstallCommand(
