@@ -76,7 +76,7 @@ export function Callout({
           className
         )}
       >
-        <div className="flex w-full items-center gap-x-2">
+        <div className="flex w-full items-start gap-x-2">
           {icon ? icon : variantDefinition.icon}
 
           {typeof children === "string" ? (
