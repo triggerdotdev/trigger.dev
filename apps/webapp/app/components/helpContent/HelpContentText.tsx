@@ -124,8 +124,8 @@ export function HowToSetupYourProject() {
           </ClientTabsContent>
         </ClientTabs>
         <Paragraph spacing>
-          Use the public URL from step 2d above to replace the -u placeholder
-          text.
+          Use the "forwarding" URL from step 2d above to replace the -u
+          placeholder text.
         </Paragraph>
         <img src={publicUrl} className="mb-4 mt-2 w-full" />
       </StepContentContainer>
