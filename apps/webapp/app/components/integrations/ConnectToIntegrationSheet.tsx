@@ -5,7 +5,7 @@ import {
 } from "~/services/externalApis/types";
 import { docsIntegrationPath } from "~/utils/pathBuilder";
 import { LinkButton } from "../primitives/Buttons";
-import { Header2 } from "../primitives/Headers";
+import { Header1, Header2 } from "../primitives/Headers";
 import { NamedIconInBox } from "../primitives/NamedIcon";
 import { Paragraph } from "../primitives/Paragraph";
 import { RadioGroup, RadioGroupItem } from "../primitives/RadioButton";
@@ -50,7 +50,7 @@ export function ConnectToIntegrationSheet({
         <SheetHeader>
           <NamedIconInBox name={integration.identifier} className="h-9 w-9" />
           <div className="grow">
-            <Header2>{integration.name}</Header2>
+            <Header1>{integration.name}</Header1>
             {integration.description && (
               <Paragraph variant="small">{integration.description}</Paragraph>
             )}
