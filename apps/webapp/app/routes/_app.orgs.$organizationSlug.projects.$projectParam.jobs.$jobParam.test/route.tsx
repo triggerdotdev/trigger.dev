@@ -200,7 +200,7 @@ export default function Page() {
                       value={selectedEnvironmentId}
                       onValueChange={setSelectedEnvironmentId}
                     >
-                      <SelectTrigger size="small">
+                      <SelectTrigger size="secondary/small">
                         <SelectValue
                           placeholder="Select environment"
                           className="m-0 p-0"

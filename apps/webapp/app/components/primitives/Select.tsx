@@ -6,7 +6,8 @@ import { Check, ChevronDown } from "lucide-react";
 import { cn } from "~/utils/cn";
 
 const sizes = {
-  small: "text-xs h-6 bg-tertiary hover:bg-tertiary-foreground px-2",
+  "secondary/small":
+    "text-xs h-6 bg-tertiary hover:bg-tertiary-foreground pr-2 pl-1 bg-slate-800",
   medium:
     "text-sm h-8 bg-slate-850 border border-slate-800 hover:bg-slate-800 hover:border-slate-750 px-2.5",
 };
@@ -24,7 +25,13 @@ const SelectTrigger = React.forwardRef<
   React.ComponentPropsWithoutRef<typeof SelectPrimitive.Trigger> & SelectProps
 >(
   (
-    { className, children, width = "content", size = "small", ...props },
+    {
+      className,
+      children,
+      width = "content",
+      size = "secondary/small",
+      ...props
+    },
     ref
   ) => {
     const sizeClassName = sizes[size];
