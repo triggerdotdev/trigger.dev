@@ -28,7 +28,7 @@ export type EndpointResponse =
 export class TriggerApi {
   constructor(private apiKey: string, private baseUrl: string) {}
 
-  async createEndpoint(
+  async registerEndpoint(
     options: CreateEndpointOptions
   ): Promise<EndpointResponse> {
     const response = await fetch(`${this.baseUrl}/api/v1/endpoints`, {
