@@ -91,12 +91,38 @@ export function HowToSetupYourProject() {
         <Paragraph spacing>
           Copy this CLI command into a new terminal window.{" "}
         </Paragraph>
-        <ClipboardField
-          variant="primary/medium"
-          className="mb-4"
-          secure="npx @trigger.dev/init@latest -k ••••••••• -t https://cloud.trigger.dev -u <ngrok_forwarding_url>"
-          value={`npx @trigger.dev/init@latest -k ${devEnvironment?.apiKey} -t https://cloud.trigger.dev -u <ngrok_forwarding_url>`}
-        />
+
+        <ClientTabs defaultValue="npm">
+          <ClientTabsList>
+            <ClientTabsTrigger value={"npm"}>npm</ClientTabsTrigger>
+            <ClientTabsTrigger value={"pnpm"}>pnpm</ClientTabsTrigger>
+            <ClientTabsTrigger value={"yarn"}>yarn</ClientTabsTrigger>
+          </ClientTabsList>
+          <ClientTabsContent value={"npm"}>
+            <ClipboardField
+              variant="primary/medium"
+              className="mb-4"
+              secure="npx @trigger.dev/init@latest -k ••••••••• -t https://cloud.trigger.dev -u <ngrok_forwarding_url>"
+              value={`npx @trigger.dev/init@latest -k ${devEnvironment?.apiKey} -t https://cloud.trigger.dev -u <ngrok_forwarding_url>`}
+            />
+          </ClientTabsContent>
+          <ClientTabsContent value={"pnpm"}>
+            <ClipboardField
+              variant="primary/medium"
+              className="mb-4"
+              secure="pnpm dlx @trigger.dev/init@latest -k ••••••••• -t https://cloud.trigger.dev -u <ngrok_forwarding_url>"
+              value={`pnpm dlx @trigger.dev/init@latest -k ${devEnvironment?.apiKey} -t https://cloud.trigger.dev -u <ngrok_forwarding_url>`}
+            />
+          </ClientTabsContent>
+          <ClientTabsContent value={"yarn"}>
+            <ClipboardField
+              variant="primary/medium"
+              className="mb-4"
+              secure="yarn @trigger.dev/init@latest -k ••••••••• -t https://cloud.trigger.dev -u <ngrok_forwarding_url>"
+              value={`yarn @trigger.dev/init@latest -k ${devEnvironment?.apiKey} -t https://cloud.trigger.dev -u <ngrok_forwarding_url>`}
+            />
+          </ClientTabsContent>
+        </ClientTabs>
         <Paragraph spacing>
           Use the public URL from step 2d above to replace the -u placeholder
           text.
