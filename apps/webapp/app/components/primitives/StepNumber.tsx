@@ -1,3 +1,4 @@
+import { cn } from "~/utils/cn";
 import { Header2 } from "./Headers";
 
 export function StepNumber({
@@ -5,14 +6,16 @@ export function StepNumber({
   active = false,
   complete = false,
   title,
+  className,
 }: {
   stepNumber?: string;
   active?: boolean;
   complete?: boolean;
   title?: string;
+  className?: string;
 }) {
   return (
-    <div className="mr-3">
+    <div className={cn("mr-3", className)}>
       {active ? (
         <div className="flex items-center gap-x-3">
           <span className="flex h-6 w-6 items-center justify-center rounded bg-green-600 py-1 text-xs font-semibold text-slate-900 shadow">
