@@ -1,7 +1,7 @@
 import { ReactNode } from "react";
 import { MainCenteredContainer } from "./layout/AppLayout";
-import { Header1, Header2 } from "./primitives/Headers";
-import { NamedIcon, NamedIconInBox } from "./primitives/NamedIcon";
+import { Header2 } from "./primitives/Headers";
+import { NamedIconInBox } from "./primitives/NamedIcon";
 import { Paragraph } from "./primitives/Paragraph";
 
 type ComingSoonProps = {
@@ -23,9 +23,9 @@ export function ComingSoon({ title, description, icon }: ComingSoonProps) {
           ) : (
             icon
           )}
-          <div className="mt-0.5 flex flex-col">
+          <div className="mt-0.5 flex flex-col gap-y-1">
             <Paragraph variant="extra-extra-small/caps">Coming soon</Paragraph>
-            <Header1 className="-mt-0.5">{title}</Header1>
+            <Header2 className="-mt-0.5">{title}</Header2>
           </div>
         </div>
         <Paragraph variant="small" className="p-4">

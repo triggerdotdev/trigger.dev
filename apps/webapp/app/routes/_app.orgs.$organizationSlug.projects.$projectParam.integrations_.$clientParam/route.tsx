@@ -92,7 +92,7 @@ export default function Integrations() {
             <PageInfoProperty
               label="ID"
               value={
-                <ClipboardField value={client.slug} variant="secondary/small" />
+                <ClipboardField value={client.slug} variant="tertiary/small" />
               }
             />
             <PageInfoProperty
