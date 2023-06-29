@@ -29,6 +29,7 @@ import { redirectWithSuccessMessage } from "~/models/message.server";
 import { TestJobPresenter } from "~/presenters/TestJobPresenter.server";
 import { TestJobService } from "~/services/jobs/testJob.server";
 import { requireUserId } from "~/services/session.server";
+import { cn } from "~/utils/cn";
 import { formDataAsObject } from "~/utils/formData";
 import { Handle } from "~/utils/handle";
 import {
@@ -177,97 +178,114 @@ export default function Page() {
 
   return (
     <Help defaultOpen={!hasTestRuns}>
-      <div className="flex max-h-full w-full gap-2 overflow-y-auto">
-        <Form
-          className="flex max-h-full grow flex-col gap-2 overflow-y-auto"
-          method="post"
-          {...form.props}
-          onSubmit={(e) => submitForm(e)}
+      {(open) => (
+        <div
+          className={cn(
+            "grid h-full gap-4",
+            open ? "grid-cols-2" : "grid-cols-1"
+          )}
         >
-          <div className="flex flex-none items-center justify-between gap-2">
-            <div className="flex flex-none items-center gap-2">
-              <SelectGroup>
-                <Select
-                  name="environment"
-                  value={selectedEnvironmentId}
-                  onValueChange={setSelectedEnvironmentId}
-                >
-                  <SelectTrigger size="medium">
-                    <SelectValue
-                      placeholder="Select environment"
-                      className="m-0 p-0"
-                    />{" "}
-                    Environment
-                  </SelectTrigger>
-                  <SelectContent>
-                    {environments.map((environment) => (
-                      <SelectItem key={environment.id} value={environment.id}>
-                        <EnvironmentLabel environment={environment} />
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </SelectGroup>
+          <div className="flex h-fit max-h-full overflow-hidden">
+            <Form
+              className="flex max-h-full grow flex-col gap-2 overflow-y-auto"
+              method="post"
+              {...form.props}
+              onSubmit={(e) => submitForm(e)}
+            >
+              <div className="flex flex-none items-center justify-between gap-2">
+                <div className="flex flex-none items-center gap-2">
+                  <SelectGroup>
+                    <Select
+                      name="environment"
+                      value={selectedEnvironmentId}
+                      onValueChange={setSelectedEnvironmentId}
+                    >
+                      <SelectTrigger size="small">
+                        <SelectValue
+                          placeholder="Select environment"
+                          className="m-0 p-0"
+                        />{" "}
+                        Environment
+                      </SelectTrigger>
+                      <SelectContent>
+                        {environments.map((environment) => (
+                          <SelectItem
+                            key={environment.id}
+                            value={environment.id}
+                          >
+                            <EnvironmentLabel environment={environment} />
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </SelectGroup>
 
-              {selectedEnvironment &&
-                selectedEnvironment.examples.length > 0 && (
-                  <Popover
-                    open={isExamplePopoverOpen}
-                    onOpenChange={(open) => setIsExamplePopoverOpen(open)}
-                  >
-                    <PopoverTrigger>
-                      <ButtonContent
-                        variant="secondary/medium"
-                        LeadingIcon="beaker"
-                        TrailingIcon="chevron-down"
+                  {selectedEnvironment &&
+                    selectedEnvironment.examples.length > 0 && (
+                      <Popover
+                        open={isExamplePopoverOpen}
+                        onOpenChange={(open) => setIsExamplePopoverOpen(open)}
                       >
-                        Insert an example
-                      </ButtonContent>
-                    </PopoverTrigger>
+                        <PopoverTrigger>
+                          <ButtonContent
+                            variant="secondary/small"
+                            LeadingIcon="beaker"
+                            TrailingIcon="chevron-down"
+                          >
+                            Insert an example
+                          </ButtonContent>
+                        </PopoverTrigger>
 
-                    <PopoverContent className="w-80 p-0" align="start">
-                      {selectedEnvironment?.examples.map((example) => (
-                        <Button
-                          key={example.id}
-                          variant="menu-item"
-                          onClick={(e) => insertCode(example.payload)}
-                          LeadingIcon={example.icon ?? "beaker"}
-                          fullWidth
-                          textAlignLeft
-                        >
-                          {example.name}
-                        </Button>
-                      ))}
-                    </PopoverContent>
-                  </Popover>
+                        <PopoverContent className="w-80 p-0" align="start">
+                          {selectedEnvironment?.examples.map((example) => (
+                            <Button
+                              key={example.id}
+                              variant="menu-item"
+                              onClick={(e) => insertCode(example.payload)}
+                              LeadingIcon={example.icon ?? "beaker"}
+                              fullWidth
+                              textAlignLeft
+                            >
+                              {example.name}
+                            </Button>
+                          ))}
+                        </PopoverContent>
+                      </Popover>
+                    )}
+                </div>
+                <HelpTrigger title="How do I run a test" />
+              </div>
+              <div className="flex-1 overflow-auto rounded border border-slate-850">
+                <JSONEditor
+                  defaultValue={defaultJson}
+                  readOnly={false}
+                  basicSetup
+                  onChange={(v) => (currentJson.current = v)}
+                  minHeight="150px"
+                />
+              </div>
+              <div className="flex flex-none items-center justify-between">
+                {payload.error ? (
+                  <FormError id={payload.errorId}>{payload.error}</FormError>
+                ) : (
+                  <div />
                 )}
-            </div>
-            <HelpTrigger title="How do I run a test" />
+                <Button
+                  type="submit"
+                  variant="primary/medium"
+                  LeadingIcon="beaker"
+                  leadingIconClassName="text-bright"
+                >
+                  Run test
+                </Button>
+              </div>
+            </Form>
           </div>
-          <div className="flex-1 overflow-auto">
-            <JSONEditor
-              defaultValue={defaultJson}
-              readOnly={false}
-              basicSetup
-              onChange={(v) => (currentJson.current = v)}
-              minHeight="150px"
-            />
-          </div>
-          <div className="flex flex-none items-center justify-between">
-            {payload.error ? (
-              <FormError id={payload.errorId}>{payload.error}</FormError>
-            ) : (
-              <div />
-            )}
-            <Button type="submit" variant="primary/medium">
-              Run test
-            </Button>
-          </div>
-        </Form>
-        <HelpContent title="How to run a test">
-          <HowToRunATest />
-        </HelpContent>
-      </div>
+          <HelpContent title="How to run a test" className="h-fit">
+            <HowToRunATest />
+          </HelpContent>
+        </div>
+      )}
     </Help>
   );
 }
