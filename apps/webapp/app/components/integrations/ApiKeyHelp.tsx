@@ -2,11 +2,11 @@ import {
   ApiAuthenticationMethodApiKey,
   Integration,
 } from "~/services/externalApis/types";
-import { Paragraph } from "../primitives/Paragraph";
 import { CodeBlock } from "../code/CodeBlock";
 import { InlineCode } from "../code/InlineCode";
-import { Header1, Header2 } from "../primitives/Headers";
 import { ClipboardField } from "../primitives/ClipboardField";
+import { Header1 } from "../primitives/Headers";
+import { Paragraph } from "../primitives/Paragraph";
 
 export function ApiKeyHelp({
   integration,
