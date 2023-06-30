@@ -123,7 +123,10 @@ function PopoverMenu() {
   return (
     <Popover onOpenChange={(open) => setIsOpen(open)}>
       <PopoverArrowTrigger isOpen={isOpen}>My Blog</PopoverArrowTrigger>
-      <PopoverContent className="w-80 p-0" align="start">
+      <PopoverContent
+        className="min-w-[20rem] overflow-y-auto p-0 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-slate-700"
+        align="start"
+      >
         <Fragment>
           <PopoverSectionHeader title="Acme Ltd." />
 

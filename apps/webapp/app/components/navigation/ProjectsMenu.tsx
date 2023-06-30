@@ -3,7 +3,7 @@ import {
   useIsNewOrganizationPage,
   useOrganizations,
 } from "~/hooks/useOrganizations";
-import { useOptionalProject, useProject } from "~/hooks/useProject";
+import { useOptionalProject } from "~/hooks/useProject";
 import {
   newOrganizationPath,
   newProjectPath,
@@ -33,11 +33,15 @@ export function ProjectsMenu() {
         <PopoverArrowTrigger isOpen={isOpen}>
           {currentProject?.name ?? "Select a project"}
         </PopoverArrowTrigger>
-        <PopoverContent className="w-80 p-0" align="start">
+        <PopoverContent
+          className="min-w-[20rem] overflow-y-auto p-0 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-slate-700"
+          align="start"
+          collisionPadding={20}
+        >
           {organizations.map((organization) => (
             <Fragment key={organization.id}>
               <PopoverSectionHeader title={organization.title} />
-              <div className="flex flex-col gap-1 p-1">
+              <div className="flex flex-col gap-1 p-1 ">
                 {organization.projects.map((project) => {
                   const isSelected = project.id === currentProject?.id;
                   return (
