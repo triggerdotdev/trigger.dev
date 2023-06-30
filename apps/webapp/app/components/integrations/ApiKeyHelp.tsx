@@ -1,26 +1,26 @@
-import {
-  ApiAuthenticationMethodApiKey,
-  Integration,
-} from "~/services/externalApis/types";
-import { CodeBlock } from "../code/CodeBlock";
+import { Help, Integration } from "~/services/externalApis/types";
 import { InlineCode } from "../code/InlineCode";
-import { ClipboardField } from "../primitives/ClipboardField";
 import { Header1 } from "../primitives/Headers";
 import { Paragraph } from "../primitives/Paragraph";
-import {
-  ClientTabs,
-  ClientTabsContent,
-  ClientTabsList,
-  ClientTabsTrigger,
-} from "../primitives/ClientTabs";
+import { HelpInstall } from "./HelpInstall";
+import { HelpSamples, ReplacementData } from "./HelpSamples";
+
+export type HelpPanelIntegration = Pick<
+  Integration,
+  "name" | "packageName" | "identifier"
+>;
+
+export type HelpPanelProps = {
+  integration: HelpPanelIntegration;
+  help?: Help;
+  integrationClient?: ReplacementData;
+};
 
 export function ApiKeyHelp({
   integration,
-  apiAuth,
-}: {
-  integration: Integration;
-  apiAuth: ApiAuthenticationMethodApiKey;
-}) {
+  help,
+  integrationClient,
+}: HelpPanelProps) {
   return (
     <div className="mt-4">
       <Header1 className="mb-2">
@@ -31,47 +31,18 @@ export function ApiKeyHelp({
         keys won't leave your server, we'll never see them.
       </Paragraph>
       <Paragraph spacing>
-        First install the <InlineCode>{integration.packageName}</InlineCode>{" "}
-        package using your preferred package manager. For example:
+        First install the{" "}
+        <InlineCode>{integration.packageName}@next</InlineCode> package using
+        your preferred package manager. For example:
       </Paragraph>
-      <ClientTabs defaultValue="npm">
-        <ClientTabsList>
-          <ClientTabsTrigger value={"npm"}>npm</ClientTabsTrigger>
-          <ClientTabsTrigger value={"pnpm"}>pnpm</ClientTabsTrigger>
-          <ClientTabsTrigger value={"yarn"}>yarn</ClientTabsTrigger>
-        </ClientTabsList>
-        <ClientTabsContent value={"npm"}>
-          <ClipboardField
-            variant="secondary/medium"
-            value={`npm install ${integration.packageName}@next`}
-            className="mb-4"
-          />
-        </ClientTabsContent>
-        <ClientTabsContent value={"pnpm"}>
-          <ClipboardField
-            variant="secondary/medium"
-            value={`pnpm install ${integration.packageName}@next`}
-            className="mb-4"
-          />
-        </ClientTabsContent>
-        <ClientTabsContent value={"yarn"}>
-          <ClipboardField
-            variant="secondary/medium"
-            value={`yarn add ${integration.packageName}@next`}
-            className="mb-4"
-          />
-        </ClientTabsContent>
-      </ClientTabs>
-      {apiAuth.help.samples.map((sample, i) => (
-        <div key={i}>
-          <Paragraph spacing>{sample.title}</Paragraph>
-          <CodeBlock
-            code={sample.code}
-            className="mb-4"
-            highlightedRanges={sample.highlight}
-          />
-        </div>
-      ))}
+      <HelpInstall packageName={integration.packageName} />
+      {help && (
+        <HelpSamples
+          help={help}
+          integration={integration}
+          integrationClient={integrationClient}
+        />
+      )}
     </div>
   );
 }

@@ -16,6 +16,10 @@ import integrationButton from "./integration-button.png";
 import selectEnvironment from "./select-environment.png";
 import selectExample from "./select-example.png";
 import { InlineCode } from "../code/InlineCode";
+import { ApiKeyHelp, HelpPanelProps } from "../integrations/ApiKeyHelp";
+import { CodeBlock } from "../code/CodeBlock";
+import { HelpInstall } from "../integrations/HelpInstall";
+import { HelpSamples } from "../integrations/HelpSamples";
 
 export function HowToSetupYourProject() {
   const devEnvironment = useDevEnvironment();
@@ -224,13 +228,29 @@ export function HowToConnectAnIntegration() {
   );
 }
 
-export function HowToUseThisIntegration() {
+export function HowToUseThisIntegration({
+  integration,
+  help,
+  integrationClient,
+}: HelpPanelProps) {
   return (
     <>
-      <StepNumber stepNumber="1" title="Step 1 title" />
+      <StepNumber stepNumber="1" title="Install the package" />
       <StepContentContainer>
-        <Paragraph>Content</Paragraph>
+        <HelpInstall packageName={integration.packageName} />
       </StepContentContainer>
+      {help && (
+        <>
+          <StepNumber stepNumber="2" title="Create a Job" />
+          <StepContentContainer>
+            <HelpSamples
+              help={help}
+              integration={integration}
+              integrationClient={integrationClient}
+            />
+          </StepContentContainer>
+        </>
+      )}
     </>
   );
 }

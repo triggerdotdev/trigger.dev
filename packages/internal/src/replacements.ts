@@ -1,4 +1,4 @@
-import { DeserializedJson, DeserializedJsonSchema } from "./schemas";
+import { DeserializedJson } from "./schemas";
 
 export interface ExampleReplacement {
   marker: string;

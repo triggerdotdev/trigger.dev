@@ -43,8 +43,6 @@ export const handle: Handle = {
 
 export default function Page() {
   const { connections } = useTypedLoaderData<typeof loader>();
-  const client = useIntegrationClient();
-  const project = useProject();
 
   return (
     <Table>

@@ -3,7 +3,12 @@ import { PrismaClient, prisma } from "~/db.server";
 import { env } from "~/env.server";
 import { Organization } from "~/models/organization.server";
 import { Project } from "~/models/project.server";
-import { OAuthClientSchema } from "~/services/externalApis/types";
+import { integrationCatalog } from "~/services/externalApis/integrationCatalog.server";
+import {
+  Help,
+  HelpSchema,
+  OAuthClientSchema,
+} from "~/services/externalApis/types";
 import { getSecretStore } from "~/services/secrets/secretStore.server";
 
 export class IntegrationClientPresenter {
@@ -31,14 +36,18 @@ export class IntegrationClientPresenter {
         slug: true,
         authMethod: {
           select: {
+            key: true,
             type: true,
             name: true,
+            help: true,
           },
         },
+        authSource: true,
         definition: {
           select: {
             id: true,
             name: true,
+            packageName: true,
           },
         },
         connectionType: true,
@@ -93,6 +102,10 @@ export class IntegrationClientPresenter {
       clientId = clientConfig?.id;
     }
 
+    const help = integration.authMethod?.help
+      ? HelpSchema.parse(integration.authMethod?.help)
+      : undefined;
+
     return {
       id: integration.id,
       title: integration.title ?? integration.slug,
@@ -105,11 +118,13 @@ export class IntegrationClientPresenter {
       integration: {
         identifier: integration.definition.id,
         name: integration.definition.name,
+        packageName: integration.definition.packageName,
       },
       authMethod: {
         type: integration.authMethod?.type ?? "local",
         name: integration.authMethod?.name ?? "Local Auth",
       },
+      help,
     };
   }
 }

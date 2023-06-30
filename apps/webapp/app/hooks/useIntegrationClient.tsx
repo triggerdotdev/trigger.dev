@@ -16,7 +16,7 @@ export function useOptionalIntegrationClient() {
 }
 
 export function useIntegrationClient() {
-  const client = useOptionalIntegrationClient();
-  invariant(client, "Client must be defined");
-  return client;
+  const integration = useOptionalIntegrationClient();
+  invariant(integration, "Integration must be defined");
+  return integration;
 }

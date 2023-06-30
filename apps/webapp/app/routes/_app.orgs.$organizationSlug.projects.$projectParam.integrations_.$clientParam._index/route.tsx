@@ -1,3 +1,4 @@
+import { useMatches } from "@remix-run/react";
 import { LoaderArgs } from "@remix-run/server-runtime";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { HowToUseThisIntegration } from "~/components/helpContent/HelpContentText";
@@ -90,7 +91,15 @@ export default function Page() {
             )}
           </div>
           <HelpContent title="How to use this Integration">
-            <HowToUseThisIntegration />
+            <HowToUseThisIntegration
+              integration={{
+                name: client.integration.name,
+                identifier: client.integrationIdentifier,
+                packageName: client.integration.packageName,
+              }}
+              integrationClient={client}
+              help={client.help}
+            />
           </HelpContent>
         </div>
       )}

@@ -129,12 +129,7 @@ function SelectedIntegrationMethod({
     case "apikey":
       const apiAuth = authMethods.find((a) => a.type === "apikey");
       if (!apiAuth) return null;
-      return (
-        <ApiKeyHelp
-          integration={integration}
-          apiAuth={apiAuth as ApiAuthenticationMethodApiKey}
-        />
-      );
+      return <ApiKeyHelp integration={integration} help={apiAuth.help} />;
     case "oauth2":
       return (
         <SelectOAuthMethod
