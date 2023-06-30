@@ -1,5 +1,11 @@
 # create-trigger
 
+## 0.2.1-next.11
+
+### Patch Changes
+
+- 161d59d0: Added better Next Steps in the init cli command
+
 ## 0.2.1-next.10
 
 ### Patch Changes
