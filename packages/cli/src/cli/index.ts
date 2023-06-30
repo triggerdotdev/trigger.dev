@@ -1,4 +1,4 @@
-import { Command, Option } from "commander";
+import { Command } from "commander";
 import inquirer from "inquirer";
 import { initCommand } from "../commands/init.js";
 import { COMMAND_NAME, DEFAULT_TRIGGER_URL } from "../consts.js";
