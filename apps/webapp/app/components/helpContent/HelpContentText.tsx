@@ -1,4 +1,4 @@
-import { Paragraph, TextLink } from "~/components/primitives/Paragraph";
+import { Paragraph } from "~/components/primitives/Paragraph";
 import { StepNumber } from "~/components/primitives/StepNumber";
 import { useAppOrigin } from "~/hooks/useAppOrigin";
 import { useDevEnvironment } from "~/hooks/useEnvironments";
@@ -13,8 +13,6 @@ import {
 } from "../primitives/ClientTabs";
 import { ClipboardField } from "../primitives/ClipboardField";
 import integrationButton from "./integration-button.png";
-import ngrok from "./ngrok.png";
-import publicUrl from "./public-url.png";
 import selectEnvironment from "./select-environment.png";
 import selectExample from "./select-example.png";
 
@@ -23,78 +21,11 @@ export function HowToSetupYourProject() {
   const appOrigin = useAppOrigin();
   return (
     <>
-      <StepNumber stepNumber="1" title="Run your Next.js app" />
-      <StepContentContainer>
-        <Paragraph>
-          Ensure your Next.js app is running locally on port 3000.
-        </Paragraph>
-      </StepContentContainer>
-      <StepNumber stepNumber="2" title="Create a tunnel to your Next.js app" />
+      <StepNumber stepNumber="1" title="Run the CLI init command" />
       <StepContentContainer>
         <Paragraph spacing>
-          There are a few ways to do this, but we recommend using{" "}
-          <TextLink
-            href="https://trigger.dev/docs/documentation/guides/tunneling-localhost"
-            target="_blank"
-          >
-            ngrok
-          </TextLink>
-          . It’s free and easy to use and required to create a tunnel, making
-          your local machine accessible to the internet.
+          Run this CLI command in a terminal window from your Next.js project.
         </Paragraph>
-        <StepNumber stepNumber="a" title="Install ngrok" className="mb-2" />
-        <StepContentContainer>
-          <ClientTabs defaultValue="mac">
-            <ClientTabsList>
-              <ClientTabsTrigger value={"mac"}>Mac</ClientTabsTrigger>
-              <ClientTabsTrigger value={"windows"}>Windows</ClientTabsTrigger>
-            </ClientTabsList>
-            <ClientTabsContent value={"mac"}>
-              <ClipboardField
-                variant="primary/medium"
-                fullWidth={false}
-                value={`brew install ngrok/ngrok/ngrok`}
-              />
-            </ClientTabsContent>
-            <ClientTabsContent value={"windows"}>
-              <ClipboardField
-                variant="primary/medium"
-                fullWidth={false}
-                value={`choco install ngrok`}
-              />
-            </ClientTabsContent>
-          </ClientTabs>
-        </StepContentContainer>
-        <StepNumber stepNumber="b" title="Open a new terminal window/tab" />
-        <StepContentContainer>
-          <Paragraph spacing>You need to leave this running.</Paragraph>
-        </StepContentContainer>
-        <StepNumber stepNumber="c" title="Create an http tunnel at port 3000" />
-        <StepContentContainer>
-          <Paragraph spacing>
-            This creates a tunnel to your Next.js app.
-          </Paragraph>
-          <ClipboardField
-            variant="primary/medium"
-            fullWidth={false}
-            className="mb-4"
-            value={`ngrok http 3000`}
-          />
-        </StepContentContainer>
-        <StepNumber
-          stepNumber="d"
-          title={`Grab your "forwarding" URL from the ngrok output`}
-        />
-        <StepContentContainer>
-          <img src={ngrok} className="mt-2 w-full" />
-        </StepContentContainer>
-      </StepContentContainer>
-      <StepNumber stepNumber="3" title="Use the CLI" />
-      <StepContentContainer>
-        <Paragraph spacing>
-          Copy this CLI command into a new terminal window.{" "}
-        </Paragraph>
-
         <ClientTabs defaultValue="npm">
           <ClientTabsList>
             <ClientTabsTrigger value={"npm"}>npm</ClientTabsTrigger>
@@ -105,42 +36,86 @@ export function HowToSetupYourProject() {
             <ClipboardField
               variant="primary/medium"
               className="mb-4"
-              secure={`npx @trigger.dev/init@latest -k ••••••••• -t ${appOrigin} -u <ngrok_forwarding_url>`}
-              value={`npx @trigger.dev/init@latest -k ${devEnvironment?.apiKey} -t ${appOrigin} -u <ngrok_forwarding_url>`}
+              secure={`npx @trigger.dev/cli@latest init -k ••••••••• -t ${appOrigin}`}
+              value={`npx @trigger.dev/cli@latest init -k ${devEnvironment?.apiKey} -t ${appOrigin}`}
             />
           </ClientTabsContent>
           <ClientTabsContent value={"pnpm"}>
             <ClipboardField
               variant="primary/medium"
               className="mb-4"
-              secure={`pnpm dlx @trigger.dev/init@latest -k ••••••••• -t ${appOrigin} -u <ngrok_forwarding_url>`}
-              value={`pnpm dlx @trigger.dev/init@latest -k ${devEnvironment?.apiKey} -t ${appOrigin} -u <ngrok_forwarding_url>`}
+              secure={`pnpm dlx @trigger.dev/cli@latest init -k ••••••••• -t ${appOrigin}`}
+              value={`pnpm dlx @trigger.dev/cli@latest init -k ${devEnvironment?.apiKey} -t ${appOrigin}`}
             />
           </ClientTabsContent>
           <ClientTabsContent value={"yarn"}>
             <ClipboardField
               variant="primary/medium"
               className="mb-4"
-              secure={`yarn @trigger.dev/init@latest -k ••••••••• -t ${appOrigin} -u <ngrok_forwarding_url>`}
-              value={`yarn @trigger.dev/init@latest -k ${devEnvironment?.apiKey} -t ${appOrigin} -u <ngrok_forwarding_url>`}
+              secure={`yarn @trigger.dev/cli@latest init -k ••••••••• -t ${appOrigin}`}
+              value={`yarn @trigger.dev/cli@latest init -k ${devEnvironment?.apiKey} -t ${appOrigin}`}
             />
           </ClientTabsContent>
         </ClientTabs>
-        <Paragraph spacing>
-          Use the "forwarding" URL from step 2d above to replace the -u
-          placeholder text.
+        <Paragraph spacing variant="small">
+          It will ask you for a "unique ID for your endpoint". You can just use
+          the default by hitting enter.
         </Paragraph>
-        <img src={publicUrl} className="mb-4 mt-2 w-full" />
       </StepContentContainer>
-
-      <StepNumber stepNumber="4" title="Run the CLI" />
+      <StepNumber stepNumber="2" title="Run your Next.js app" />
+      <StepContentContainer>
+        <Paragraph>
+          Ensure your Next.js app is running locally on port 3000.
+        </Paragraph>
+      </StepContentContainer>
+      <StepNumber stepNumber="3" title="Run the CLI dev command" />
       <StepContentContainer>
         <Paragraph spacing>
-          It will add Trigger.dev to your existing Next.js project, setup a
-          route and give you an example file.
+          The CLI `dev` command allows the Trigger.dev service to send messages
+          to your Next.js site. This is required for registering Jobs,
+          triggering them and running tasks. To achieve this it creates a tunnel
+          (using{" "}
+          <a href="https://ngrok.com/" className="underline">
+            ngrok
+          </a>
+          ) so Trigger.dev can send messages to your machine.
         </Paragraph>
+        <Paragraph spacing>
+          You should leave the `dev` command running when you're developing.
+        </Paragraph>
+        <Paragraph spacing>
+          In a <strong>new terminal window or tab</strong> run:
+        </Paragraph>
+        <ClientTabs defaultValue="npm">
+          <ClientTabsList>
+            <ClientTabsTrigger value={"npm"}>npm</ClientTabsTrigger>
+            <ClientTabsTrigger value={"pnpm"}>pnpm</ClientTabsTrigger>
+            <ClientTabsTrigger value={"yarn"}>yarn</ClientTabsTrigger>
+          </ClientTabsList>
+          <ClientTabsContent value={"npm"}>
+            <ClipboardField
+              variant="primary/medium"
+              className="mb-4"
+              value={`npx @trigger.dev/cli@latest dev`}
+            />
+          </ClientTabsContent>
+          <ClientTabsContent value={"pnpm"}>
+            <ClipboardField
+              variant="primary/medium"
+              className="mb-4"
+              value={`pnpm dlx @trigger.dev/cli@latest dev`}
+            />
+          </ClientTabsContent>
+          <ClientTabsContent value={"yarn"}>
+            <ClipboardField
+              variant="primary/medium"
+              className="mb-4"
+              value={`yarn @trigger.dev/cli@latest dev`}
+            />
+          </ClientTabsContent>
+        </ClientTabs>
       </StepContentContainer>
-      <StepNumber stepNumber="5" title="Check for Jobs" />
+      <StepNumber stepNumber="4" title="Check for Jobs" />
       <StepContentContainer>
         <Paragraph>
           Once you've run the CLI command, click Refresh to view your example
