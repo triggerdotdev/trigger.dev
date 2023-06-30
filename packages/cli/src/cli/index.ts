@@ -52,11 +52,6 @@ program
     "The name of the env file to load",
     ".env.local"
   )
-  .addOption(
-    new Option("-t, --tunnel <tunnel>", "Choose the tunnel provider")
-      .choices(["ngrok", "localtunnel", "trigger.dev (coming soon)"])
-      .default("ngrok")
-  )
   .version(getVersion(), "-v, --version", "Display the version number")
   .action(async (path, options) => {
     await devCommand(path, options);

@@ -11,7 +11,6 @@ import chokidar from "chokidar";
 export const DevCommandOptionsSchema = z.object({
   port: z.coerce.number(),
   envFile: z.string(),
-  tunnel: z.union([z.literal("ngrok"), z.literal("localtunnel")]),
 });
 
 const compileTimeWaitMs = 300;
