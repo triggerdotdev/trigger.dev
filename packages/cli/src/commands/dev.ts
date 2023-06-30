@@ -151,18 +151,22 @@ async function refreshEndpoint(
   endpointId: string,
   tunnelUrl: string
 ) {
-  const response = await apiClient.registerEndpoint({
-    id: endpointId,
-    url: `${tunnelUrl}/api/trigger`,
-  });
+  try {
+    const response = await apiClient.registerEndpoint({
+      id: endpointId,
+      url: `${tunnelUrl}/api/trigger`,
+    });
 
-  if (!response.ok) {
-    logger.error(`Endpoint couldn't refresh: ${response.error}`);
-    // process.exit(1);
+    if (!response.ok) {
+      logger.error(`🚨 Endpoint couldn't refresh: ${response.error}`);
+      return;
+    }
+
+    return response.data;
+  } catch (e) {
+    logger.error(`🚨 Endpoint couldn't refresh: ${e}`);
     return;
   }
-
-  return response.data;
 }
 
 //wait function
