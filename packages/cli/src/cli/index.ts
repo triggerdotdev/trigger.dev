@@ -28,7 +28,8 @@ program
   )
   .option(
     "-t, --trigger-url <trigger-url>",
-    "The URL of the Trigger.dev instance to use."
+    "The URL of the Trigger.dev instance to use.",
+    createUrlValidator("--trigger-url")
   )
   .version(getVersion(), "-v, --version", "Display the version number")
   .action(async (options) => {
@@ -91,9 +92,20 @@ export const promptTriggerUrl = async (): Promise<string> => {
     type: "input",
     name: "triggerUrl",
     message: "Enter the URL of your self-hosted Trigger.dev instance",
+    filter: (input) => {
+      return tryToCreateValidUrlFromValue(input);
+    },
     validate: (input) => {
       if (!input) {
         return "Please enter the URL of your self-hosted Trigger.dev instance";
+      }
+
+      const possibleUrl = tryToCreateValidUrlFromValue(input);
+
+      try {
+        new URL(possibleUrl);
+      } catch (e) {
+        return "Please enter a valid URL";
       }
 
       return true;
@@ -198,4 +210,33 @@ function slugify(value: string): string {
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-|-$/g, "");
+}
+
+// Create a URL validator for a specific flag name
+// If the input is a string like test-cloud.trigger.dev, we should automatically add https://
+// If the input is a string like localhost:3030, we should automatically add http://
+function createUrlValidator(flagName: string): (input: string) => string {
+  return (input: string) => {
+    try {
+      const possibleUrl = tryToCreateValidUrlFromValue(input);
+
+      new URL(possibleUrl);
+
+      return possibleUrl;
+    } catch (e) {
+      throw new Error(`Please enter a valid URL for the ${flagName} flag`);
+    }
+  };
+}
+
+function tryToCreateValidUrlFromValue(input: string): string {
+  let possibleUrl = input;
+
+  if (!input.startsWith("http://") && !input.startsWith("https://")) {
+    possibleUrl = input.includes("localhost")
+      ? `http://${input}`
+      : `https://${input}`;
+  }
+
+  return possibleUrl;
 }
