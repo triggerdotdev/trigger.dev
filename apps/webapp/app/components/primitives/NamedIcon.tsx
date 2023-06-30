@@ -231,7 +231,7 @@ export function NamedIcon({
   className,
   fallback,
 }: {
-  name: string;
+  name: IconNames | (string & {});
   className: string;
   fallback?: JSX.Element;
 }) {
