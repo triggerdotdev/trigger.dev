@@ -25,8 +25,54 @@ export type EndpointResponse =
     }
   | { ok: false; error: string };
 
+const WhoamiResponseSchema = z.object({
+  id: z.string(),
+  slug: z.string(),
+  type: z.string(),
+  createdAt: z.coerce.date(),
+  updatedAt: z.coerce.date(),
+  project: z.object({
+    id: z.string(),
+    slug: z.string(),
+    name: z.string(),
+    createdAt: z.coerce.date(),
+    updatedAt: z.coerce.date(),
+  }),
+  organization: z.object({
+    id: z.string(),
+    slug: z.string(),
+    title: z.string(),
+    createdAt: z.coerce.date(),
+    updatedAt: z.coerce.date(),
+  }),
+});
+
+export type WhoamiResponse = z.infer<typeof WhoamiResponseSchema>;
+
 export class TriggerApi {
   constructor(private apiKey: string, private baseUrl: string) {}
+
+  async whoami(apiKey: string): Promise<WhoamiResponse | undefined> {
+    const response = await fetch(`${this.baseUrl}/api/v1/whoami`, {
+      method: "GET",
+      headers: {
+        Accept: "application/json",
+        Authorization: `Bearer ${apiKey}`,
+      },
+    });
+
+    if (response.ok) {
+      const body = await response.json();
+
+      const parsed = WhoamiResponseSchema.safeParse(body);
+
+      if (parsed.success) {
+        return parsed.data;
+      }
+    }
+
+    return;
+  }
 
   async registerEndpoint(
     options: CreateEndpointOptions

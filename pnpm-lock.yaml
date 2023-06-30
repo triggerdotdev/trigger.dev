@@ -476,8 +476,8 @@ importers:
       typescript: 5.1.6
     dependencies:
       '@clerk/nextjs': 4.21.12_5v7kwk6wz2hvmegftnptprfjvm
-      '@trigger.dev/nextjs': 1.0.0-next.5_2p6duyjdlqfptvv2ohfljlwidy
-      '@trigger.dev/sdk': 2.0.0-next.4
+      '@trigger.dev/nextjs': 1.0.0-next.5_yuyr3hquo7tgjdmhxnzkuafg3m
+      '@trigger.dev/sdk': 2.0.0-next.5
       '@types/node': 20.3.2
       '@types/react': 18.0.26
       '@types/react-dom': 18.0.10
@@ -10694,22 +10694,22 @@ packages:
       react-dom: 18.2.0_react@18.2.0
     dev: false
 
-  /@trigger.dev/nextjs/1.0.0-next.5_2p6duyjdlqfptvv2ohfljlwidy:
+  /@trigger.dev/nextjs/1.0.0-next.5_yuyr3hquo7tgjdmhxnzkuafg3m:
     resolution: {integrity: sha512-41/RvyfuR3cPDCKAAhWOJMNw3KgA9uho7vcg8Q0ri8NCObsvxbStpnb5lpvNsUVOTyB7qy3tHULVJhKANczQqQ==}
     engines: {node: '>=18'}
     peerDependencies:
       '@trigger.dev/sdk': ^2.0.0-next.2
       next: ^13.3.1
     dependencies:
-      '@trigger.dev/sdk': 2.0.0-next.4
+      '@trigger.dev/sdk': 2.0.0-next.5
       debug: 4.3.4
       next: 13.4.7_biqbaboplfbrettd7655fr4n2y
     transitivePeerDependencies:
       - supports-color
     dev: false
 
-  /@trigger.dev/sdk/2.0.0-next.4:
-    resolution: {integrity: sha512-9N2YcM/Tt3Gu4Btf1EiHmRlsTuLyR9M+XLpbzOgli3MbhfHF0d39isE5M4Jz9qY+dQYeh5Rlyx+MEHTJxwvOdw==}
+  /@trigger.dev/sdk/2.0.0-next.5:
+    resolution: {integrity: sha512-ERnhWSiWSO1sOkKVZfFP+bmbDOtgyviahY7tVP/8LD0cJb/uz5zSufcqHRHhVCXU423u24tJcYYJcXKNyoSmHQ==}
     engines: {node: '>=18'}
     dependencies:
       chalk: 5.2.0

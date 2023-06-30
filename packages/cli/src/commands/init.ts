@@ -17,6 +17,7 @@ import { resolvePath } from "../utils/parseNameAndPath.js";
 import { renderApiKey } from "../utils/renderApiKey.js";
 import { renderTitle } from "../utils/renderTitle.js";
 import { detectNextJsProject } from "../utils/detectNextJsProject.js";
+import { TriggerApi, WhoamiResponse } from "../utils/triggerApi.js";
 
 export type InitCommandOptions = {
   projectPath: string;
@@ -83,6 +84,17 @@ export const initCommand = async (options: InitCommandOptions) => {
     process.exit(1);
   }
 
+  const apiClient = new TriggerApi(apiKey, resolvedOptions.triggerUrl);
+  const authorizedKey = await apiClient.whoami(apiKey);
+
+  if (!authorizedKey) {
+    logger.error(
+      `🛑 The API key you provided is not authorized. Try visiting your dashboard at ${resolvedOptions.triggerUrl} to get a new API key.`
+    );
+
+    process.exit(1);
+  }
+
   await addDependencies(resolvedPath, [
     { name: "@trigger.dev/sdk", tag: "next" },
     { name: "@trigger.dev/nextjs", tag: "latest" },
@@ -111,16 +123,28 @@ export const initCommand = async (options: InitCommandOptions) => {
 
   await addConfigurationToPackageJson(resolvedPath, resolvedOptions);
 
-  await printNextSteps(resolvedOptions);
+  await printNextSteps(resolvedOptions, authorizedKey);
 
   process.exit(0);
 };
 
-async function printNextSteps(options: ResolvedOptions) {
+async function printNextSteps(
+  options: ResolvedOptions,
+  authorizedKey: WhoamiResponse
+) {
+  const projectUrl = `${options.triggerUrl}/orgs/${authorizedKey.organization.slug}/projects/${authorizedKey.project.slug}`;
+
   logger.success(`✅ Successfully initialized Trigger.dev!`);
 
+  logger.info("Next steps:");
+  logger.info(`   1. Run your Next.js project locally with 'npm run dev'`);
   logger.info(
-    `🔗 You can now connect to ${options.triggerUrl} and run jobs locally using the '@trigger.dev/cli dev' command`
+    `   2. Run 'npx @trigger.dev/cli dev' to watch for changes and automatically register Trigger.dev jobs`
+  );
+  logger.info(`   3. View your jobs at ${projectUrl}`);
+
+  logger.info(
+    `🔗 Head over to our docs at https://trigger.dev/docs to learn more about how to create different kinds of jobs and add integrations.`
   );
 }
 
