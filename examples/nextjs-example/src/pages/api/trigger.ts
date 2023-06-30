@@ -1,7 +1,8 @@
 import { client } from "@/trigger";
-import "@/jobs/github";
-import "@/jobs/openai";
-import "@/jobs/resend";
+// import "@/jobs/github";
+// import "@/jobs/openai";
+// import "@/jobs/resend";
+// import "@/jobs/general";
 import "@/jobs/slack";
 import { createPagesRoute } from "@trigger.dev/nextjs";
 
