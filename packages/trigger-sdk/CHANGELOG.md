@@ -1,5 +1,11 @@
 # @trigger.dev/sdk
 
+## 2.0.0-next.5
+
+### Patch Changes
+
+- 7e2d48ac: Removed the url option for TriggerClient
+
 ## 2.0.0-next.4
 
 ### Patch Changes
