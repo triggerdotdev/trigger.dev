@@ -121,7 +121,7 @@ export class RegisterJobService {
           integration = await this.#prismaClient.integration.create({
             data: {
               slug: jobIntegration.id,
-              title: jobIntegration.metadata.name,
+              title: jobIntegration.id,
               authSource: "HOSTED",
               setupStatus: "MISSING_FIELDS",
               connectionType: "DEVELOPER",
