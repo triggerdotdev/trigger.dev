@@ -8,12 +8,16 @@ import type { ConnectionType } from "@trigger.dev/database";
 import { Header2 } from "../primitives/Headers";
 import { ConnectToOAuthForm } from "./ConnectToOAuthForm";
 import { Paragraph } from "../primitives/Paragraph";
+import { Client } from "~/presenters/IntegrationsPresenter.server";
+import { UpdateOAuthForm } from "./UpdateOAuthForm";
 
 export function SelectOAuthMethod({
   integration,
   organizationId,
-  callbackUrl
+  callbackUrl,
+  existingIntegration,
 }: {
+  existingIntegration?: Client;
   integration: Integration;
   organizationId: string;
   callbackUrl: string;
@@ -91,14 +95,26 @@ export function SelectOAuthMethod({
         connectionType &&
         oAuthKey &&
         (connectionType === "DEVELOPER" ? (
-          <ConnectToOAuthForm
-            integration={integration}
-            authMethod={selectedOAuthMethod}
-            authMethodKey={oAuthKey}
-            organizationId={organizationId}
-            clientType={connectionType}
-            callbackUrl={callbackUrl}
-          />
+          existingIntegration ? (
+            <UpdateOAuthForm
+              existingIntegration={existingIntegration}
+              integration={integration}
+              authMethod={selectedOAuthMethod}
+              authMethodKey={oAuthKey}
+              organizationId={organizationId}
+              clientType={connectionType}
+              callbackUrl={callbackUrl}
+            />
+          ) : (
+            <ConnectToOAuthForm
+              integration={integration}
+              authMethod={selectedOAuthMethod}
+              authMethodKey={oAuthKey}
+              organizationId={organizationId}
+              clientType={connectionType}
+              callbackUrl={callbackUrl}
+            />
+          )
         ) : (
           <>
             <Header2 className="mb-1 mt-4">User OAuth coming soon</Header2>

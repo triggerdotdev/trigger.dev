@@ -174,6 +174,99 @@ export class IntegrationAuthRepository {
     });
   }
 
+  async populateMissingConnectionClientFields({
+    id,
+    customClient,
+    organizationId,
+    integrationIdentifier,
+    integrationAuthMethod,
+    clientType,
+    scopes,
+    title,
+    description,
+    url,
+    redirectTo,
+  }: {
+    id: string;
+    customClient?: OAuthClient;
+    organizationId: string;
+    integrationIdentifier: string;
+    integrationAuthMethod: string;
+    clientType: ConnectionType;
+    scopes: string[];
+    title: string;
+    description?: string;
+    redirectTo: string;
+    url: URL;
+  }): Promise<string> {
+    return this.#prismaClient.$transaction(async (tx) => {
+      let customClientReference: SecretReference | undefined = undefined;
+      //if there's a custom client, we need to save the details to the secret store
+      if (customClient) {
+        const key = `connectionClient/customClient/${id}`;
+
+        const secretStore = getSecretStore(env.SECRET_STORE, {
+          prismaClient: tx,
+        });
+
+        await secretStore.setSecret(key, { ...customClient });
+
+        customClientReference = await tx.secretReference.create({
+          data: {
+            key,
+            provider: env.SECRET_STORE,
+          },
+        });
+      }
+
+      const client = await tx.integration.update({
+        where: {
+          id,
+        },
+        data: {
+          connectionType: clientType,
+          scopes,
+          title,
+          description,
+          setupStatus: "COMPLETE",
+          customClientReference: customClientReference
+            ? {
+                connect: {
+                  id: customClientReference.id,
+                },
+              }
+            : undefined,
+          organization: {
+            connect: {
+              id: organizationId,
+            },
+          },
+          authMethod: {
+            connect: {
+              definitionId_key: {
+                definitionId: integrationIdentifier,
+                key: integrationAuthMethod,
+              },
+            },
+          },
+          definition: {
+            connect: {
+              id: integrationIdentifier,
+            },
+          },
+        },
+      });
+
+      return await this.createConnectionAttempt({
+        tx,
+        integration: client,
+        customOAuthClient: customClient,
+        redirectTo,
+        url,
+      });
+    });
+  }
+
   async createConnectionAttempt({
     tx,
     integration,

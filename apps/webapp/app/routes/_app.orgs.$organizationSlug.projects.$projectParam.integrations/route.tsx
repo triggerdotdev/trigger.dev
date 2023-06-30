@@ -1,14 +1,11 @@
-import { ExclamationCircleIcon } from "@heroicons/react/24/solid";
+import { ChevronRightIcon } from "@heroicons/react/24/solid";
 import type { LoaderArgs } from "@remix-run/server-runtime";
 import { useCallback, useState } from "react";
-import {
-  UseDataFunctionReturn,
-  typedjson,
-  useTypedLoaderData,
-} from "remix-typedjson";
+import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { LogoIcon } from "~/components/LogoIcon";
 import { HowToConnectAnIntegration } from "~/components/helpContent/HelpContentText";
 import { ConnectToIntegrationSheet } from "~/components/integrations/ConnectToIntegrationSheet";
+import { IntegrationWithMissingFieldSheet } from "~/components/integrations/IntegrationWithMissingFieldSheet";
 import { NoIntegrationSheet } from "~/components/integrations/NoIntegrationSheet";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { LinkButton } from "~/components/primitives/Buttons";
@@ -43,6 +40,7 @@ import { useTextFilter } from "~/hooks/useTextFilter";
 import { Organization } from "~/models/organization.server";
 import { Project } from "~/models/project.server";
 import {
+  Client,
   IntegrationOrApi,
   IntegrationsPresenter,
 } from "~/presenters/IntegrationsPresenter.server";
@@ -115,6 +113,7 @@ export default function Integrations() {
                 clients={clientMissingFields}
                 organizationId={organization.id}
                 callbackUrl={callbackUrl}
+                options={options}
               />
             )}
             <ConnectedIntegrationsList
@@ -216,8 +215,6 @@ function PossibleIntegrationsList({
     </div>
   );
 }
-
-type Client = UseDataFunctionReturn<typeof loader>["clients"][0];
 
 function ConnectedIntegrationsList({
   clients,
@@ -374,12 +371,17 @@ function IntegrationsWithMissingFields({
   clients,
   organizationId,
   callbackUrl,
+  options,
 }: {
   clients: Client[];
   organizationId: string;
   callbackUrl: string;
+  options: IntegrationOrApi[];
 }) {
   const clicked = useCallback((id: string) => {}, [clients]);
+  const integrationsList = options.flatMap((o) =>
+    o.type === "integration" ? [o] : []
+  );
 
   return (
     <div className="mb-6">
@@ -387,42 +389,83 @@ function IntegrationsWithMissingFields({
         <NamedIcon name="error" className="h-5 w-5" />
         Integrations with missing details
       </Header2>
+
       <Table>
         <TableHeader>
           <TableRow>
             <TableHeaderCell>Name</TableHeaderCell>
             <TableHeaderCell>API</TableHeaderCell>
-            <TableHeaderCell>ID</TableHeaderCell>
             <TableHeaderCell>Added</TableHeaderCell>
             <TableHeaderCell hiddenLabel>Go to page</TableHeaderCell>
           </TableRow>
         </TableHeader>
         <TableBody>
           {clients.map((client) => {
+            const integration = integrationsList.find(
+              (i) => i.identifier === client.integrationIdentifier
+            );
+
+            if (!integration) {
+              return <div key={client.id}>Can't find matching integration</div>;
+            }
+
             return (
               <TableRow key={client.id}>
-                <TableCell onClick={() => clicked(client.id)}>
-                  <span className="inline-flex items-center gap-1">
-                    <NamedIcon name="error" className="h-5 w-5" />{" "}
-                    {client.title}
-                  </span>
+                <TableCell>
+                  <IntegrationWithMissingFieldSheet
+                    integration={integration}
+                    organizationId={organizationId}
+                    button={
+                      <span className="inline-flex items-center gap-1">
+                        <NamedIcon name="error" className="h-5 w-5" />{" "}
+                        {client.title}
+                      </span>
+                    }
+                    callbackUrl={callbackUrl}
+                    existingIntegration={client}
+                    className="flex w-full cursor-pointer justify-start"
+                  />
                 </TableCell>
-                <TableCell onClick={() => clicked(client.id)}>
-                  <span className="flex items-center gap-1">
-                    <NamedIcon
-                      name={client.integrationIdentifier}
-                      className="h-5 w-5"
-                    />
-                    {client.integration.name}
-                  </span>
+                <TableCell>
+                  <IntegrationWithMissingFieldSheet
+                    integration={integration}
+                    organizationId={organizationId}
+                    button={
+                      <span className="flex items-center gap-1">
+                        <NamedIcon
+                          name={client.integrationIdentifier}
+                          className="h-5 w-5"
+                        />
+                        {client.integration.name}
+                      </span>
+                    }
+                    callbackUrl={callbackUrl}
+                    existingIntegration={client}
+                    className="flex w-full cursor-pointer justify-start"
+                  />
                 </TableCell>
-                <TableCell onClick={() => clicked(client.id)}>
-                  {client.slug}
+                <TableCell>
+                  <IntegrationWithMissingFieldSheet
+                    integration={integration}
+                    organizationId={organizationId}
+                    button={formatDateTime(client.createdAt, "medium")}
+                    callbackUrl={callbackUrl}
+                    existingIntegration={client}
+                    className="flex w-full cursor-pointer justify-start"
+                  />
                 </TableCell>
-                <TableCell onClick={() => clicked(client.id)}>
-                  {formatDateTime(client.createdAt, "medium")}
+                <TableCell alignment="right">
+                  <IntegrationWithMissingFieldSheet
+                    integration={integration}
+                    organizationId={organizationId}
+                    button={
+                      <ChevronRightIcon className="h-4 w-4 text-slate-700 transition group-hover:text-bright" />
+                    }
+                    callbackUrl={callbackUrl}
+                    existingIntegration={client}
+                    className="flex w-full cursor-pointer justify-end"
+                  />
                 </TableCell>
-                <TableCellChevron onClick={() => clicked(client.id)} />
               </TableRow>
             );
           })}

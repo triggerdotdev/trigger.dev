@@ -14,10 +14,7 @@ export const Table = forwardRef<HTMLTableElement, TableProps>(
       <div className="overflow-x-auto whitespace-nowrap rounded-md border border-slate-900 scrollbar-thin scrollbar-track-midnight-850 scrollbar-thumb-slate-700">
         <table
           ref={ref}
-          className={cn(
-            "divide-slate-85 w-full divide-y bg-midnight-850",
-            className
-          )}
+          className={cn("w-full divide-y bg-midnight-850", className)}
         >
           {children}
         </table>

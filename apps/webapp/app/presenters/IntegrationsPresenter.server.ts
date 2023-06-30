@@ -14,6 +14,10 @@ export type IntegrationOrApi =
     } & Integration)
   | ({ type: "api" } & Api & { voted: boolean });
 
+export type Client = Awaited<
+  ReturnType<IntegrationsPresenter["call"]>
+>["clients"][number];
+
 export class IntegrationsPresenter {
   #prismaClient: PrismaClient;
 
