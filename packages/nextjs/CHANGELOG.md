@@ -1,5 +1,11 @@
 # @trigger.dev/nextjs
 
+## 1.0.0-next.6
+
+### Patch Changes
+
+- fe04b9d3: Adaptors no longer take an options object
+
 ## 1.0.0-next.5
 
 ### Patch Changes

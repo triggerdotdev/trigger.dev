@@ -1,6 +1,6 @@
 {
   "name": "@trigger.dev/nextjs",
-  "version": "1.0.0-next.5",
+  "version": "1.0.0-next.6",
   "description": "Trigger.dev Next.js integration",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
