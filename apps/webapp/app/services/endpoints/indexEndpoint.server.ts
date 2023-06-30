@@ -67,6 +67,7 @@ export class IndexEndpointService {
           },
           {
             queueName,
+            tx,
           }
         );
       }
@@ -82,6 +83,7 @@ export class IndexEndpointService {
           },
           {
             queueName,
+            tx,
           }
         );
       }
@@ -97,6 +99,7 @@ export class IndexEndpointService {
           },
           {
             queueName,
+            tx,
           }
         );
       }
@@ -112,6 +115,7 @@ export class IndexEndpointService {
           },
           {
             queueName,
+            tx,
           }
         );
       }
