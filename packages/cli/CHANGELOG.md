@@ -1,5 +1,12 @@
 # create-trigger
 
+## 0.2.1-next.9
+
+### Patch Changes
+
+- b2a8b565: Split the CLI into two commands, init and a new dev command
+- ac371664: Better handle input for the --trigger-url option
+
 ## 0.2.1-next.8
 
 ### Patch Changes

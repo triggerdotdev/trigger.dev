@@ -14,7 +14,8 @@
     "@trigger.dev/database": "0.0.0",
     "@trigger.dev/init": "0.2.0",
     "@trigger.dev/integration-kit": "2.0.0-next.1",
-    "@trigger.dev/resend": "1.0.0-next.1"
+    "@trigger.dev/resend": "1.0.0-next.1",
+    "@trigger.dev/cli": "0.2.1-next.8"
   },
   "changesets": [
     "bright-horses-bathe",
@@ -26,16 +27,19 @@
     "eight-buckets-agree",
     "eighty-queens-prove",
     "four-ligers-perform",
+    "friendly-parents-clean",
     "great-meals-listen",
     "heavy-mails-explain",
     "itchy-rockets-provide",
     "metal-donkeys-relate",
     "modern-emus-suffer",
     "quick-stingrays-own",
+    "shy-bobcats-hear",
     "strong-cars-visit",
     "stupid-files-cough",
     "sweet-snails-refuse",
     "tame-flowers-invite",
+    "ten-birds-confess",
     "tough-walls-share",
     "wild-rats-mix"
   ]
