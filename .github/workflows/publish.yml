@@ -144,10 +144,3 @@ jobs:
           REGISTRY: ${{ steps.ecr-login.outputs.registry }}
           REPOSITORY: trigger.dev
           IMAGE_TAG: ${{ steps.get_version.outputs.version }}-${{ steps.get_commit.outputs.sha_short }}
-
-      - name: 🚀 Trigger Test Deploy
-        if: github.ref == 'refs/heads/main' && github.event_name == 'push' && github.repository == 'triggerdotdev/trigger.dev'
-        env:
-          DEPLOY_TEST_HOOK: ${{ secrets.DEPLOY_TEST_HOOK }}
-        run: |
-          curl -X POST $DEPLOY_TEST_HOOK
