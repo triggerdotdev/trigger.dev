@@ -132,6 +132,7 @@ model Integration {
   title       String?
   description String?
 
+  setupStatus IntegrationSetupStatus @default(COMPLETE)
   authSource IntegrationAuthSource @default(HOSTED)
 
   definition   IntegrationDefinition @relation(fields: [definitionId], references: [id], onDelete: Cascade, onUpdate: Cascade)
@@ -166,6 +167,11 @@ model Integration {
 enum IntegrationAuthSource {
   HOSTED
   LOCAL
+}
+
+enum IntegrationSetupStatus {
+  MISSING_FIELDS
+  COMPLETE
 }
 
 model IntegrationConnection {

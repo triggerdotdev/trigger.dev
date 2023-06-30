@@ -36,6 +36,7 @@ export class IntegrationsPresenter {
         title: true,
         slug: true,
         description: true,
+        setupStatus: true,
         authMethod: {
           select: {
             type: true,
@@ -123,13 +124,16 @@ export class IntegrationsPresenter {
             name: c.authMethod?.name ?? "Local Only",
           },
           authSource: c.authSource,
+          setupStatus: c.setupStatus,
         };
       })
     );
 
-    //filter out the ones that have no connections
-    const clientsWithConnections = enrichedClients.filter(
-      (c) => c.authSource === "LOCAL" || c.connectionsCount > 0
+    const setupClients = enrichedClients.filter(
+      (c) => c.setupStatus === "COMPLETE"
+    );
+    const clientMissingFields = enrichedClients.filter(
+      (c) => c.setupStatus === "MISSING_FIELDS"
     );
 
     const integrations = Object.values(
@@ -160,9 +164,10 @@ export class IntegrationsPresenter {
     );
 
     return {
-      clients: clientsWithConnections,
+      clients: setupClients,
+      clientMissingFields,
       options,
-      callbackUrl: `${env.APP_ORIGIN}/oauth2/callback`
+      callbackUrl: `${env.APP_ORIGIN}/oauth2/callback`,
     };
   }
 }

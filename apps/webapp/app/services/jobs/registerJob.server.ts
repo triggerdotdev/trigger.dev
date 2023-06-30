@@ -118,10 +118,32 @@ export class RegisterJobService {
             },
           });
         } else {
-          // TODO: find a better way to handle and message the user about this issue
-          throw new Error(
-            `Could not find Integration with id ${jobIntegration.id}`
-          );
+          integration = await this.#prismaClient.integration.create({
+            data: {
+              slug: jobIntegration.id,
+              title: jobIntegration.metadata.name,
+              authSource: "HOSTED",
+              setupStatus: "MISSING_FIELDS",
+              connectionType: "DEVELOPER",
+              organization: {
+                connect: {
+                  id: environment.organizationId,
+                },
+              },
+              definition: {
+                connectOrCreate: {
+                  where: {
+                    id: jobIntegration.metadata.id,
+                  },
+                  create: {
+                    id: jobIntegration.metadata.id,
+                    name: jobIntegration.metadata.name,
+                    instructions: jobIntegration.metadata.instructions,
+                  },
+                },
+              },
+            },
+          });
         }
       }
 
