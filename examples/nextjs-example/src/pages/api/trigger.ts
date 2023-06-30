@@ -2,6 +2,7 @@ import { client } from "@/trigger";
 import "@/jobs/github";
 import "@/jobs/openai";
 import "@/jobs/resend";
+import "@/jobs/slack";
 import { createPagesRoute } from "@trigger.dev/nextjs";
 
 const { handler, config } = createPagesRoute(client);
