@@ -255,7 +255,7 @@ export default function Page() {
                 </div>
                 <HelpTrigger title="How do I run a test" />
               </div>
-              <div className="flex-1 overflow-auto rounded border border-slate-850">
+              <div className="flex-1 overflow-auto rounded border border-slate-850 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-slate-700">
                 <JSONEditor
                   defaultValue={defaultJson}
                   readOnly={false}
