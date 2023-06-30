@@ -274,6 +274,7 @@ function ConnectedIntegrationsList({
                   <TableHeaderCell>Jobs</TableHeaderCell>
                   <TableHeaderCell>Scopes</TableHeaderCell>
                   <TableHeaderCell>Client id</TableHeaderCell>
+                  <TableHeaderCell>Connections</TableHeaderCell>
                   <TableHeaderCell>Added</TableHeaderCell>
                   <TableHeaderCell hiddenLabel>Go to page</TableHeaderCell>
                 </TableRow>
@@ -312,22 +313,35 @@ function ConnectedIntegrationsList({
                             {client.authMethod.name}
                           </TableCell>
                           <TableCell to={path}>{client.jobCount}</TableCell>
-                          <TableCell to={path}>{client.scopesCount}</TableCell>
                           <TableCell to={path}>
-                            <SimpleTooltip
-                              button={
-                                client.customClientId ? (
-                                  `${client.customClientId.substring(0, 8)}…`
-                                ) : (
-                                  <span className="text-slate-600">Auto</span>
-                                )
-                              }
-                              content={
-                                client.customClientId
-                                  ? client.customClientId
-                                  : "This uses the Trigger.dev OAuth client"
-                              }
-                            />
+                            {client.authSource === "LOCAL"
+                              ? "–"
+                              : client.scopesCount}
+                          </TableCell>
+                          <TableCell to={path}>
+                            {client.authSource === "LOCAL" ? (
+                              "–"
+                            ) : (
+                              <SimpleTooltip
+                                button={
+                                  client.customClientId ? (
+                                    `${client.customClientId.substring(0, 8)}…`
+                                  ) : (
+                                    <span className="text-slate-600">Auto</span>
+                                  )
+                                }
+                                content={
+                                  client.customClientId
+                                    ? client.customClientId
+                                    : "This uses the Trigger.dev OAuth client"
+                                }
+                              />
+                            )}
+                          </TableCell>
+                          <TableCell to={path}>
+                            {client.authSource === "LOCAL"
+                              ? "–"
+                              : client.connectionsCount}
                           </TableCell>
                           <TableCell to={path}>
                             {formatDateTime(client.createdAt, "medium")}
