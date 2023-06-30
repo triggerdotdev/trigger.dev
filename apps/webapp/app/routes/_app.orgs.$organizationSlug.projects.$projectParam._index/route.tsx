@@ -77,7 +77,7 @@ export default function Page() {
           {(open) => (
             <div
               className={cn(
-                "grid h-full gap-4",
+                "grid h-fit gap-4",
                 open ? "grid-cols-2" : "grid-cols-1"
               )}
             >

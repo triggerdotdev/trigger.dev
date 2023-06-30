@@ -1,4 +1,4 @@
-import { Paragraph } from "~/components/primitives/Paragraph";
+import { Paragraph, TextLink } from "~/components/primitives/Paragraph";
 import { StepNumber } from "~/components/primitives/StepNumber";
 import { useAppOrigin } from "~/hooks/useAppOrigin";
 import { useDevEnvironment } from "~/hooks/useEnvironments";
@@ -15,6 +15,7 @@ import { ClipboardField } from "../primitives/ClipboardField";
 import integrationButton from "./integration-button.png";
 import selectEnvironment from "./select-environment.png";
 import selectExample from "./select-example.png";
+import { InlineCode } from "../code/InlineCode";
 
 export function HowToSetupYourProject() {
   const devEnvironment = useDevEnvironment();
@@ -58,8 +59,8 @@ export function HowToSetupYourProject() {
           </ClientTabsContent>
         </ClientTabs>
         <Paragraph spacing variant="small">
-          It will ask you for a "unique ID for your endpoint". You can just use
-          the default by hitting enter.
+          It will ask you for a "unique ID for your endpoint". You can use the
+          default by hitting enter.
         </Paragraph>
       </StepContentContainer>
       <StepNumber stepNumber="2" title="Run your Next.js app" />
@@ -71,20 +72,21 @@ export function HowToSetupYourProject() {
       <StepNumber stepNumber="3" title="Run the CLI dev command" />
       <StepContentContainer>
         <Paragraph spacing>
-          The CLI `dev` command allows the Trigger.dev service to send messages
-          to your Next.js site. This is required for registering Jobs,
-          triggering them and running tasks. To achieve this it creates a tunnel
-          (using{" "}
-          <a href="https://ngrok.com/" className="underline">
-            ngrok
-          </a>
-          ) so Trigger.dev can send messages to your machine.
+          The CLI <InlineCode>dev</InlineCode> command allows the Trigger.dev
+          service to send messages to your Next.js site. This is required for
+          registering Jobs, triggering them and running Tasks. To achieve this
+          it creates a tunnel (using{" "}
+          <TextLink href="https://ngrok.com/">ngrok</TextLink>) so Trigger.dev
+          can send messages to your machine.
         </Paragraph>
         <Paragraph spacing>
-          You should leave the `dev` command running when you're developing.
+          You should leave the <InlineCode>dev</InlineCode> command running when
+          you're developing.
         </Paragraph>
         <Paragraph spacing>
-          In a <strong>new terminal window or tab</strong> run:
+          In a{" "}
+          <strong className="text-bright">new terminal window or tab</strong>{" "}
+          run:
         </Paragraph>
         <ClientTabs defaultValue="npm">
           <ClientTabsList>
