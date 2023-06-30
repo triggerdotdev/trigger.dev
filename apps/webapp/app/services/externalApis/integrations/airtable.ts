@@ -71,6 +71,20 @@ export const airtable: Integration = {
           defaultChecked: true,
         },
       ],
+      help: {
+        samples: [
+          {
+            title: "Creating the client",
+            code: `
+import { Airtable } from "@trigger.dev/airtable";
+
+const airtable = new Airtable({
+  id: "__SLUG__"
+});
+`,
+          },
+        ],
+      },
     },
   },
 };

@@ -15,7 +15,7 @@ export const resend: Integration = {
 import { Resend } from "@trigger.dev/resend";
 
 const resend = new Resend({
-  id: "resend",
+  id: "__SLUG__",
   apiKey: process.env.RESEND_API_KEY!,
 });
 `,
@@ -47,7 +47,6 @@ new Job(client, {
     });
   },
 });
-            
             `,
             highlight: [
               [13, 15],

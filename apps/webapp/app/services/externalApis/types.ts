@@ -18,12 +18,23 @@ export type ApiAuthenticationMethod =
   | ApiAuthenticationMethodOAuth2
   | ApiAuthenticationMethodApiKey;
 
+const HelpSampleSchema = z.object({
+  title: z.string(),
+  code: z.string(),
+  highlight: z.array(z.tuple([z.number(), z.number()])).optional(),
+});
+
+export const HelpSchema = z.object({
+  samples: z.array(HelpSampleSchema),
+});
+
+export type Help = z.infer<typeof HelpSchema>;
+export type HelpSample = z.infer<typeof HelpSampleSchema>;
+
 export type ApiAuthenticationMethodApiKey = {
   /** The type of authentication method */
   type: "apikey";
-  help: {
-    samples: { title: string; code: string; highlight?: [number, number][] }[];
-  };
+  help: Help;
 };
 
 //A useful reference is the Simple OAuth2 npm library: https://github.com/lelylan/simple-oauth2/blob/HEAD/API.md#options
@@ -98,6 +109,7 @@ export type ApiAuthenticationMethodOAuth2 = {
   additionalFields?: AdditionalField[];
   /** The possible scopes this auth method supports */
   scopes: Scope[];
+  help: Help;
 };
 
 export type AuthorizationLocation = "header" | "body";

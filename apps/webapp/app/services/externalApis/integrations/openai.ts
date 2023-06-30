@@ -17,7 +17,7 @@ export const openai: Integration = {
 import { OpenAI } from "@trigger.dev/openai";
 
 const openai = new OpenAI({
-  id: "openai",
+  id: "__SLUG__",
   apiKey: process.env.OPENAI_API_KEY!,
 });
 `,

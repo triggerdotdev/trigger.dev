@@ -16,8 +16,14 @@ async function seedIntegrationAuthMethods() {
         id: identifier,
         name: integration.name,
         instructions: "Instructions go here",
+        description: integration.description,
+        packageName: integration.packageName,
       },
-      update: {},
+      update: {
+        name: integration.name,
+        description: integration.description,
+        packageName: integration.packageName,
+      },
     });
 
     for (const [key, authMethod] of Object.entries(
@@ -46,6 +52,7 @@ async function seedIntegrationAuthMethods() {
                 id: identifier,
               },
             },
+            help: authMethod.help,
           },
           update: {
             name: authMethod.name,
@@ -54,6 +61,7 @@ async function seedIntegrationAuthMethods() {
             client: authMethod.client,
             config: authMethod.config,
             scopes: authMethod.scopes,
+            help: authMethod.help,
           },
         });
       }

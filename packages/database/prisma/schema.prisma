@@ -112,6 +112,8 @@ model IntegrationAuthMethod {
   definition   IntegrationDefinition @relation(fields: [definitionId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   definitionId String
 
+  help Json?
+
   @@unique([definitionId, key])
 }
 
@@ -119,6 +121,8 @@ model IntegrationDefinition {
   id           String  @id
   name         String
   instructions String?
+  description  String?
+  packageName String @default("")
 
   authMethods IntegrationAuthMethod[]
   Integration Integration[]

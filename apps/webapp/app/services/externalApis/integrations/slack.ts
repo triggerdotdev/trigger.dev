@@ -1,4 +1,46 @@
-import type { Integration } from "../types";
+import type { Help, Integration } from "../types";
+
+const help: Help = {
+  samples: [
+    {
+      title: "Creating the client",
+      code: `
+import { Slack } from "@trigger.dev/slack";
+
+const slack = new Slack({
+  id: "__SLUG__",
+});
+`,
+    },
+    {
+      title: "Using the client",
+      code: `
+new Job(client, {
+  id: "slack-test",
+  name: "Slack test",
+  version: "0.0.1",
+  trigger: eventTrigger({
+    name: "slack.test",
+    schema: z.object({}),
+  }),
+  integrations: {
+    slack,
+  },
+  run: async (payload, io, ctx) => {
+    const response = await io.slack.postMessage("post message", {
+      channel: "C04GWUTDC3W",
+      text: "My first Slack message",
+    });
+  },
+});
+      `,
+      highlight: [
+        [13, 15],
+        [17, 22],
+      ],
+    },
+  ],
+};
 
 export const slack: Integration = {
   identifier: "slack",
@@ -374,6 +416,7 @@ export const slack: Integration = {
           description: "Add steps that people can use in Workflow Builder",
         },
       ],
+      help,
     },
     oauth2User: {
       name: "OAuth2 (User)",
@@ -824,6 +867,7 @@ export const slack: Integration = {
           description: "Set presence for your slack app",
         },
       ],
+      help,
     },
   },
 };

@@ -1,4 +1,4 @@
-import type { Integration, ScopeAnnotation } from "../types";
+import type { HelpSample, Integration, ScopeAnnotation } from "../types";
 
 const repoAnnotation: ScopeAnnotation = {
   label: "Repo",
@@ -18,6 +18,47 @@ const keysAnnotation: ScopeAnnotation = {
 
 const userAnnotation: ScopeAnnotation = {
   label: "User",
+};
+
+const usageSample: HelpSample = {
+  title: "Using the client",
+  code: `
+  import { Github, events } from "@trigger.dev/github";
+
+  const github = new Github({
+    id: "__SLUG__",
+    token: process.env.GITHUB_TOKEN,
+  });
+  
+  new Job(client, {
+    id: "alert-on-new-github-issues",
+    name: "Alert on new GitHub issues",
+    version: "0.1.1",
+    trigger: github.triggers.repo({
+      event: events.onIssueOpened,
+      owner: "triggerdotdev",
+      repo: "trigger.dev",
+    }),
+    run: async (payload, io, ctx) => {
+      //wrap the SDK call in runTask
+      const { data } = await io.runTask(
+        "create-card",
+        { name: "Create card" },
+        async () => {
+          //create a project card using the underlying client
+          return io.github.client.rest.projects.createCard({
+            column_id: 123,
+            note: "test",
+          });
+        }
+      );
+  
+      //log the url of the created card
+      await io.logger.info(data.url);
+    },
+  });
+  
+  `,
 };
 
 export const github: Integration = {
@@ -260,6 +301,21 @@ export const github: Integration = {
             "Grants the ability to add and update GitHub Actions workflow files. Workflow files can be committed without this scope if the same file (with both the same path and contents) exists on another branch in the same repository. Workflow files can expose GITHUB_TOKEN which may have a different set of scopes.",
         },
       ],
+      help: {
+        samples: [
+          {
+            title: "Creating the client",
+            code: `
+import { Github } from "@trigger.dev/github";
+
+const github = new Github({
+  id: "__SLUG__"
+});
+`,
+          },
+          usageSample,
+        ],
+      },
     },
     apikey: {
       type: "apikey",
@@ -271,38 +327,12 @@ export const github: Integration = {
 import { Github } from "@trigger.dev/github";
 
 const github = new Github({
-  id: "github",
+  id: "__SLUG__",
   token: process.env.GITHUB_TOKEN
 });
 `,
           },
-          {
-            title: "Using the client",
-            code: `
-new Job(client, {
-  id: "alert-on-new-github-issues",
-  name: "Alert on new GitHub issues",
-  version: "0.1.1",
-  integrations: {
-    //if you want to use the client in the run function, pass it in
-    github,
-  },
-  //you can also subscribe to events using the client
-  trigger: github.triggers.repo({
-    event: events.onIssueOpened,
-    repo: "ericallam/basic-starter-12k",
-  }),
-  run: async (payload, io, ctx) => {
-   
-    const repo = await io.github.getRepo("get-repo", {
-      repo: \`\${payload.repository.owner}/\${payload.repository.name}\`,
-    });
-
-    return repo;
-  },
-});
-            `,
-          },
+          usageSample,
         ],
       },
     },
