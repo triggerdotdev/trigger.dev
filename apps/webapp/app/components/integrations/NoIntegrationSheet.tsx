@@ -56,16 +56,16 @@ export function NoIntegrationSheet({
               >
                 {isLoading
                   ? "Saving…"
-                  : `I want an integration for ${api.name}`}
+                  : `I want an Integration for ${api.name}`}
               </Button>
             </fetcher.Form>
           )}
         </SheetHeader>
         <SheetBody>
           <Callout variant="info">
-            We don’t have an integration for the {api.name} API yet but you can
+            We don’t have an Integration for the {api.name} API yet but you can
             request one by clicking the button above. In the meantime, connect
-            to {api.name} using the methods below.
+            to {api.name} using one of the methods below.
           </Callout>
           <CustomHelp name={api.name} />
         </SheetBody>

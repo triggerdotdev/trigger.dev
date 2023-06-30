@@ -156,7 +156,7 @@ function PossibleIntegrationsList({
       <Input
         placeholder="Search APIs"
         className="mb-2"
-        variant="tertiary"
+        variant="medium"
         icon="search"
         fullWidth={true}
         value={filterText}
@@ -253,9 +253,9 @@ function ConnectedIntegrationsList({
         {clients.length > 0 && (
           <div>
             <Input
-              placeholder="Search connected integrations"
+              placeholder="Search connected Integrations"
               className="mb-2"
-              variant="tertiary"
+              variant="medium"
               icon="search"
               fullWidth={true}
               value={filterText}
@@ -280,7 +280,7 @@ function ConnectedIntegrationsList({
                   <TableBlankRow colSpan={8}>
                     <div className="flex items-center justify-center">
                       <Callout variant="info" className="w-auto">
-                        No connected integrations match your filters.
+                        No connected Integrations match your filters.
                       </Callout>
                     </div>
                   </TableBlankRow>
