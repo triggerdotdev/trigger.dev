@@ -86,7 +86,7 @@ export async function devCommand(path: string, anyOptions: any) {
   };
 
   // Watch for changes to .ts files and refresh endpoints
-  chokidar.watch(resolvedPath).on("all", (event, path) => {
+  chokidar.watch(resolvedPath).on("all", (_event, _path) => {
     throttle(refresh, throttleTimeMs);
   });
 }
