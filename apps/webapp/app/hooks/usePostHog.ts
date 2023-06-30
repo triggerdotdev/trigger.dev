@@ -21,6 +21,7 @@ export const usePostHog = (apiKey?: string, logging = false): void => {
     posthog.init(apiKey, {
       api_host: "https://app.posthog.com",
       opt_in_site_apps: true,
+      debug: logging,
       loaded: function (posthog) {
         if (logging) console.log("posthog.loaded", apiKey);
         if (user !== undefined) {
