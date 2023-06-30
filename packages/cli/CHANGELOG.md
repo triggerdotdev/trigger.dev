@@ -1,5 +1,11 @@
 # create-trigger
 
+## 0.2.1-next.10
+
+### Patch Changes
+
+- c2e2f7ca: Removed --tunnel option, currently we just support ngrok
+
 ## 0.2.1-next.9
 
 ### Patch Changes
