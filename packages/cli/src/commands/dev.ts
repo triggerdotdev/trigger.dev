@@ -67,27 +67,51 @@ export async function devCommand(path: string, anyOptions: any) {
   logger.success(`🚇 Created tunnel: ${tunnelUrl}`);
 
   logger.info(`🔌 Connecting to Trigger.dev...`);
-  //wait 200ms
-  // await wait(200);
 
   //refresh function
+  let attemptCount = 0;
   const refresh = async () => {
-    //compiling takes a bit of time
-    await wait(compileTimeWaitMs);
     const result = await refreshEndpoint(apiClient, endpointId, tunnelUrl);
-    if (result?.updatedAt) {
+    if (result.success) {
+      attemptCount = 0;
       logger.success(
         `🔄 Updated your Jobs ${formattedDate.format(
-          new Date(result.updatedAt)
+          new Date(result.data.updatedAt)
         )}`
       );
+    } else {
+      attemptCount++;
+      const delay = backoff(attemptCount);
+      // console.log(`Attempt: ${attemptCount}`, delay);
+      await wait(delay);
+      refresh();
     }
   };
 
   // Watch for changes to .ts files and refresh endpoints
-  chokidar.watch(resolvedPath).on("all", (_event, _path) => {
+  const watcher = chokidar.watch(
+    [
+      `${resolvedPath}/**/*.ts`,
+      `${resolvedPath}/**/*.tsx`,
+      `${resolvedPath}/**/*.js`,
+      `${resolvedPath}/**/*.jsx`,
+      `${resolvedPath}/**/*.json`,
+      `${resolvedPath}/pnpm-lock.yaml`,
+    ],
+    {
+      ignored: /(node_modules|\.next)/,
+      //don't trigger a watch when it collects the paths
+      ignoreInitial: true,
+    }
+  );
+
+  watcher.on("all", (_event, _path) => {
+    // console.log(_event, _path);
     throttle(refresh, throttleTimeMs);
   });
+
+  //Do initial refresh
+  throttle(refresh, throttleTimeMs);
 }
 
 async function getEndpointIdFromPackageJson(path: string) {
@@ -158,13 +182,13 @@ async function refreshEndpoint(
 
     if (!response.ok) {
       logger.error(`🚨 Endpoint couldn't refresh: ${response.error}`);
-      return;
+      return { success: false as const };
     }
 
-    return response.data;
+    return { success: true as const, data: response.data };
   } catch (e) {
     logger.error(`🚨 Endpoint couldn't refresh: ${e}`);
-    return;
+    return { success: false as const };
   }
 }
 
@@ -182,4 +206,10 @@ function throttle(fn: () => any, delay: number) {
     clearTimeout(throttleTimeout);
   }
   throttleTimeout = setTimeout(fn, delay);
+}
+
+const maximum_backoff = 30;
+const initial_backoff = 0.2;
+function backoff(attempt: number) {
+  return Math.min((2 ^ attempt) * initial_backoff, maximum_backoff) * 1000;
 }
