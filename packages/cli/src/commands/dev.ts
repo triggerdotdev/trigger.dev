@@ -81,6 +81,14 @@ export async function devCommand(path: string, anyOptions: any) {
       );
     } else {
       attemptCount++;
+
+      if (attemptCount === 5) {
+        logger.info(`🔌 Still connecting to Trigger.dev...`);
+      } else if (attemptCount === 10) {
+        logger.error(`🚨 Failed to connect: ${result.error}`);
+        logger.info(`🔌 Retrying...`);
+      }
+
       const delay = backoff(attemptCount);
       // console.log(`Attempt: ${attemptCount}`, delay);
       await wait(delay);
@@ -181,14 +189,16 @@ async function refreshEndpoint(
     });
 
     if (!response.ok) {
-      logger.error(`🚨 Endpoint couldn't refresh: ${response.error}`);
-      return { success: false as const };
+      return { success: false as const, error: response.error };
     }
 
     return { success: true as const, data: response.data };
   } catch (e) {
-    logger.error(`🚨 Endpoint couldn't refresh: ${e}`);
-    return { success: false as const };
+    if (e instanceof Error) {
+      return { success: false as const, error: e.message };
+    } else {
+      return { success: false as const, error: "Unknown error" };
+    }
   }
 }
 
