@@ -7,13 +7,13 @@ import ngrok from "ngrok";
 import { z } from "zod";
 import { TriggerApi } from "../utils/triggerApi.js";
 import chokidar from "chokidar";
+import ora from "ora";
 
 export const DevCommandOptionsSchema = z.object({
   port: z.coerce.number(),
   envFile: z.string(),
 });
 
-const compileTimeWaitMs = 300;
 const throttleTimeMs = 1000;
 
 const formattedDate = new Intl.DateTimeFormat("en", {
@@ -42,7 +42,7 @@ export async function devCommand(path: string, anyOptions: any) {
     );
     process.exit(1);
   }
-  logger.success(`✅ Detected valid Next.js project`);
+  logger.success(`✔️ Detected valid Next.js project`);
 
   // Read from package.json to get the endpointId
   const endpointId = await getEndpointIdFromPackageJson(resolvedPath);
@@ -52,21 +52,22 @@ export async function devCommand(path: string, anyOptions: any) {
     );
     process.exit(1);
   }
-  logger.success(`✅ Detected TriggerClient id: ${endpointId}`);
+  logger.success(`✔️ Detected TriggerClient id: ${endpointId}`);
 
   // Read from .env.local to get the TRIGGER_API_KEY and TRIGGER_API_URL
   const { apiKey, apiUrl } = await getTriggerApiDetails(
     resolvedPath,
     options.envFile
   );
-  logger.success(`✅ Found API Key in ${options.envFile} file`);
+  logger.success(`✔️ Found API Key in ${options.envFile} file`);
   const apiClient = new TriggerApi(apiKey, apiUrl);
 
   // Setup tunnel
+  const tunnelSpinner = ora(`🚇 Creating tunnel`).start();
   const tunnelUrl = await createTunnel(options.port);
-  logger.success(`🚇 Created tunnel: ${tunnelUrl}`);
+  tunnelSpinner.succeed(`🚇 Created tunnel: ${tunnelUrl}`);
 
-  logger.info(`🔌 Connecting to Trigger.dev...`);
+  const connectingSpinner = ora(`Connecting to Trigger.dev...`).start();
 
   //refresh function
   let attemptCount = 0;
@@ -74,6 +75,7 @@ export async function devCommand(path: string, anyOptions: any) {
     const result = await refreshEndpoint(apiClient, endpointId, tunnelUrl);
     if (result.success) {
       attemptCount = 0;
+      connectingSpinner.stop();
       logger.success(
         `🔄 Updated your Jobs ${formattedDate.format(
           new Date(result.data.updatedAt)
@@ -82,11 +84,10 @@ export async function devCommand(path: string, anyOptions: any) {
     } else {
       attemptCount++;
 
-      if (attemptCount === 5) {
-        logger.info(`🔌 Still connecting to Trigger.dev...`);
-      } else if (attemptCount === 10) {
+      if (attemptCount === 10) {
         logger.error(`🚨 Failed to connect: ${result.error}`);
-        logger.info(`🔌 Retrying...`);
+        logger.info(`Will attempt again on the next file change…`);
+        return;
       }
 
       const delay = backoff(attemptCount);
