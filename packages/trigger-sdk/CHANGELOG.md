@@ -1,5 +1,18 @@
 # @trigger.dev/sdk
 
+## 2.0.0-next.6
+
+### Patch Changes
+
+- 486d6818: IO Logging now respects the job and client logLevel, and only outputs locally when ioLogLocalEnabled is true
+- 8e147dbe: io.sendEvent jsdocs
+- a11ddf65: Added JSDocs related to logging
+- 6c869466: Fixed responses from the PING action to match expected schema
+- 86dbd5d1: Added JSdocs for io.wait and io.logger
+- 953e7fc9: Added human readable cron expression property to cron triggers
+- 807b9d4c: Added jsdocs for TriggerClient() and sendEvent()
+- 917a70fb: Added JSdocs for Job
+
 ## 2.0.0-next.5
 
 ### Patch Changes

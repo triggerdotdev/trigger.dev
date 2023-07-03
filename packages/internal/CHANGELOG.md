@@ -1,5 +1,11 @@
 # internal-platform
 
+## 0.0.2-next.0
+
+### Patch Changes
+
+- a11ddf65: Added JSDocs related to logging
+
 ## 0.0.3
 
 ### Patch Changes
