@@ -1,6 +1,6 @@
 import { client } from "@/trigger";
 import { Slack } from "@trigger.dev/slack";
-import { Job, cronTrigger } from "@trigger.dev/sdk";
+import { Job, cronTrigger, eventTrigger } from "@trigger.dev/sdk";
 
 const db = {
   getKpiSummary: async (date: Date) => {
@@ -11,7 +11,7 @@ const db = {
   },
 };
 
-export const slack = new Slack({ id: "slack" });
+export const slack = new Slack({ id: "slack-6" });
 
 new Job(client, {
   id: "slack-kpi-summary",
@@ -28,6 +28,42 @@ new Job(client, {
     const response = await io.slack.postMessage("Slack 📝", {
       text: `Yesterday's revenue was $${revenue}`,
       channel: "C04GWUTDC3W",
+    });
+
+    return response;
+  },
+});
+
+new Job(client, {
+  id: "slack-auto-join",
+  name: "Slack Auto Join",
+  version: "0.1.1",
+  integrations: {
+    slack,
+  },
+  trigger: eventTrigger({
+    name: "slack.auto_join",
+  }),
+  run: async (payload, io, ctx) => {
+    const response = await io.slack.postMessage("Slack 📝", {
+      channel: "C05G130TH4G",
+      text: "Welcome to the team, Eric!",
+      blocks: [
+        {
+          type: "section",
+          text: {
+            type: "mrkdwn",
+            text: `Welcome to the team, Eric!`,
+          },
+        },
+        {
+          type: "section",
+          text: {
+            type: "mrkdwn",
+            text: `I'm here to help you get started with Trigger!`,
+          },
+        },
+      ],
     });
 
     return response;

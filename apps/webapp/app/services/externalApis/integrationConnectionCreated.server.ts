@@ -28,10 +28,10 @@ export class IntegrationConnectionCreatedService {
 
       const missingConnection = await tx.missingConnection.findUnique({
         where: {
-          integrationId_connectionType_externalAccountId: {
+          integrationId_connectionType_accountIdentifier: {
             integrationId: connection.integrationId,
             connectionType: connection.connectionType,
-            externalAccountId: connection.externalAccount
+            accountIdentifier: connection.externalAccount
               ? connection.externalAccount.id
               : "DEVELOPER",
           },

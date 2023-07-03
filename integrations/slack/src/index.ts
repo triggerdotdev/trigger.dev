@@ -1,10 +1,11 @@
 import { WebClient } from "@slack/web-api";
 import type { IntegrationClient, TriggerIntegration } from "@trigger.dev/sdk";
 import { clientFactory } from "./client";
-import { postMessage } from "./tasks";
+import { joinConversation, postMessage } from "./tasks";
 
 const tasks = {
   postMessage,
+  joinConversation,
 };
 
 export type SlackIntegrationOptions = {

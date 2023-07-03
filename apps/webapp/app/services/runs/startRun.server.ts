@@ -195,16 +195,17 @@ export class StartRunService {
         missingConnections: {
           connectOrCreate: missingConnections.map((connection) => ({
             where: {
-              integrationId_connectionType_externalAccountId: {
+              integrationId_connectionType_accountIdentifier: {
                 integrationId: connection.integration.id,
                 connectionType: connection.connectionType,
-                externalAccountId: connection.externalAccountId ?? "DEVELOPER",
+                accountIdentifier: connection.externalAccountId ?? "DEVELOPER",
               },
             },
             create: {
               integrationId: connection.integration.id,
               connectionType: connection.connectionType,
-              externalAccountId: connection.externalAccountId ?? "DEVELOPER",
+              accountIdentifier: connection.externalAccountId ?? "DEVELOPER",
+              externalAccountId: connection.externalAccountId,
               resolved: false,
             },
           })),

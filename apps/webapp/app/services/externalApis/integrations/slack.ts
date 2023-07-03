@@ -49,7 +49,7 @@ export const slack: Integration = {
   authenticationMethods: {
     oauth2Bot: {
       name: "OAuth2 (Bot)",
-      description: "Authenticate as a bot",
+      description: "Authenticate as a bot. This is the recommended method.",
       type: "oauth2",
       client: {
         id: {
@@ -111,6 +111,7 @@ export const slack: Integration = {
         {
           name: "channels:join",
           description: "Join public channels in a workspace",
+          defaultChecked: true,
         },
         {
           name: "channels:manage",
@@ -141,17 +142,20 @@ export const slack: Integration = {
         {
           name: "chat:write",
           description: "Post messages in approved channels & conversations",
+          defaultChecked: true,
         },
 
         {
           name: "chat:write.customize",
           description:
             "Send messages as @your_slack_app with a customized username and avatar",
+          defaultChecked: true,
         },
         {
           name: "chat:write.public",
           description:
             "Send messages to channels @your_slack_app isn't a member of",
+          defaultChecked: true,
         },
 
         {
@@ -591,10 +595,12 @@ export const slack: Integration = {
         {
           name: "chat:write:bot",
           description: "Send messages as your slack app",
+          defaultChecked: true,
         },
         {
           name: "chat:write:user",
           description: "Send messages on a user’s behalf",
+          defaultChecked: true,
         },
 
         {

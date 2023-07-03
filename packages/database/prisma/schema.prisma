@@ -122,7 +122,7 @@ model IntegrationDefinition {
   name         String
   instructions String?
   description  String?
-  packageName String @default("")
+  packageName  String  @default("")
 
   authMethods IntegrationAuthMethod[]
   Integration Integration[]
@@ -137,7 +137,7 @@ model Integration {
   description String?
 
   setupStatus IntegrationSetupStatus @default(COMPLETE)
-  authSource IntegrationAuthSource @default(HOSTED)
+  authSource  IntegrationAuthSource  @default(HOSTED)
 
   definition   IntegrationDefinition @relation(fields: [definitionId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   definitionId String
@@ -987,10 +987,13 @@ model MissingConnection {
   externalAccount   ExternalAccount? @relation(fields: [externalAccountId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   externalAccountId String?
 
+  accountIdentifier String?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@unique([integrationId, connectionType, externalAccountId])
+  @@unique([integrationId, connectionType, accountIdentifier])
 }
 
 model ApiIntegrationVote {
