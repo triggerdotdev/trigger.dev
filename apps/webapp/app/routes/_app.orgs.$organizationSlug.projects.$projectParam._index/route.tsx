@@ -21,6 +21,7 @@ import { useProject } from "~/hooks/useProject";
 import { cn } from "~/utils/cn";
 import { Handle } from "~/utils/handle";
 import useWindowSize from "react-use/lib/useWindowSize";
+import { docsPath } from "~/utils/pathBuilder";
 
 export const handle: Handle = {
   breadcrumb: {
@@ -117,7 +118,9 @@ export default function Page() {
                     {project.jobs.length === 1 ? (
                       <Callout
                         variant="docs"
-                        href="https://trigger.dev/docs/documentation/quickstart#your-first-job"
+                        href={docsPath(
+                          "documentation/quickstart#your-first-job"
+                        )}
                         className="my-3"
                       >
                         Create your first Job in code
@@ -125,7 +128,7 @@ export default function Page() {
                     ) : (
                       <Callout
                         variant="docs"
-                        href="https://trigger.dev/docs/documentation/guides/create-a-job"
+                        href={docsPath("documentation/guides/create-a-job")}
                         className="my-3"
                       >
                         Create another Job
