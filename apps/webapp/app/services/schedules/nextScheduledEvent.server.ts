@@ -43,7 +43,7 @@ export class NextScheduledEventService {
       );
 
       logger.debug("enqueuing scheduled event", {
-        scheduleSourceId: scheduleSource.id,
+        scheduleSource,
         scheduleTime,
         lastTimestamp: scheduleSource.lastEventTimestamp,
       });
@@ -61,6 +61,7 @@ export class NextScheduledEventService {
           runAt: scheduleTime,
           queueName: `scheduler:${scheduleSource.environmentId}`,
           tx,
+          jobKey: `scheduled:${scheduleSource.id}`,
         }
       );
 

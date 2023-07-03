@@ -811,6 +811,7 @@ importers:
       '@types/uuid': ^9.0.0
       '@types/ws': ^8.5.3
       chalk: ^5.2.0
+      cronstrue: ^2.21.0
       debug: ^4.3.4
       evt: ^2.4.13
       get-caller-file: ^2.0.5
@@ -830,6 +831,7 @@ importers:
       zod-to-json-schema: ^3.20.2
     dependencies:
       chalk: 5.2.0
+      cronstrue: 2.21.0
       debug: 4.3.4
       evt: 2.4.13
       get-caller-file: 2.0.5

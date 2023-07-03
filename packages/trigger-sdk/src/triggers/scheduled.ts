@@ -1,6 +1,5 @@
 import {
   CronOptions,
-  EventExample,
   IntervalOptions,
   ScheduleMetadata,
   ScheduledPayload,
@@ -11,6 +10,7 @@ import {
 import { Job } from "../job";
 import { TriggerClient } from "../triggerClient";
 import { EventSpecification, Trigger } from "../types";
+import cronstrue from "cronstrue";
 
 type ScheduledEventSpecification = EventSpecification<ScheduledPayload>;
 
@@ -76,6 +76,10 @@ export class CronTrigger implements Trigger<ScheduledEventSpecification> {
   constructor(private options: CronOptions) {}
 
   get event() {
+    const humanReadable = cronstrue.toString(this.options.cron, {
+      throwExceptionOnParseError: false,
+    });
+
     return {
       name: "trigger.scheduled",
       title: "Cron Schedule",
@@ -85,8 +89,12 @@ export class CronTrigger implements Trigger<ScheduledEventSpecification> {
       parsePayload: ScheduledPayloadSchema.parse,
       properties: [
         {
-          label: "Expression",
+          label: "cron",
           text: this.options.cron,
+        },
+        {
+          label: "Schedule",
+          text: humanReadable,
         },
       ],
     };

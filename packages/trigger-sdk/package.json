@@ -38,6 +38,7 @@
   },
   "dependencies": {
     "chalk": "^5.2.0",
+    "cronstrue": "^2.21.0",
     "debug": "^4.3.4",
     "evt": "^2.4.13",
     "get-caller-file": "^2.0.5",

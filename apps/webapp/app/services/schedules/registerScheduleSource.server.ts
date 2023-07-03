@@ -68,7 +68,7 @@ export class RegisterScheduleSourceService {
         },
       });
 
-      if (scheduleSource.active && !scheduleSource.workerJobId) {
+      if (scheduleSource.active) {
         const service = new NextScheduledEventService(tx);
 
         await service.call(scheduleSource.id);
