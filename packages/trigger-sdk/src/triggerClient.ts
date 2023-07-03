@@ -9,6 +9,7 @@ import {
   NormalizedResponse,
   PreprocessRunBody,
   PreprocessRunBodySchema,
+  Prettify,
   REGISTER_SOURCE_EVENT,
   RegisterSourceEvent,
   RegisterSourceEventSchema,
@@ -45,12 +46,20 @@ const registerSourceEvent: EventSpecification<RegisterSourceEvent> = {
 };
 
 export type TriggerClientOptions = {
+  /** The `id` property is used to uniquely identify the client.
+   */
   id: string;
+  /** The `apiKey` property is the API Key for your Trigger.dev environment. We
+      recommend using an environment variable to store your API Key. */
   apiKey?: string;
+  /** The `apiUrl` property is an optional property that specifies the API URL. You
+      only need to specify this if you are not using Trigger.dev Cloud and are
+      running your own Trigger.dev instance. */
   apiUrl?: string;
   logLevel?: LogLevel;
 };
 
+/** A [TriggerClient](https://trigger.dev/docs/documentation/concepts/client-adaptors) is used to connect to a specific [Project](https://trigger.dev/docs/documentation/concepts/projects) by using an [API Key](https://trigger.dev/docs/documentation/concepts/environments-apikeys). */
 export class TriggerClient {
   #options: TriggerClientOptions;
   #registeredJobs: Record<string, Job<Trigger<EventSpecification<any>>, any>> =
@@ -81,7 +90,7 @@ export class TriggerClient {
   #logger: Logger;
   id: string;
 
-  constructor(options: TriggerClientOptions) {
+  constructor(options: Prettify<TriggerClientOptions>) {
     this.id = options.id;
     this.#options = options;
     this.#client = new ApiClient(this.#options);
@@ -528,6 +537,8 @@ export class TriggerClient {
     return this.#client.getAuth(this.id, id);
   }
 
+  /** You can call this function from anywhere in your code to send an event. The other way to send an event is by using `io.sendEvent()` from inside a `run()` function.
+   */
   async sendEvent(event: SendEvent, options?: SendEventOptions) {
     return this.#client.sendEvent(event, options);
   }

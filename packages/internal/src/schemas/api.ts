@@ -184,32 +184,73 @@ export const IndexEndpointResponseSchema = z.object({
 export type IndexEndpointResponse = z.infer<typeof IndexEndpointResponseSchema>;
 
 export const RawEventSchema = z.object({
-  id: z.string().default(() => ulid()),
+  /** The `name` property must exactly match any subscriptions you want to
+      trigger. */
   name: z.string(),
-  source: z.string().optional(),
+  /** The `payload` property will be sent to any matching Jobs and will appear
+      as the `payload` param of the `run()` function. You can leave this
+      parameter out if you just want to trigger a Job without any input data. */
   payload: z.any(),
+  /** The optional `context` property will be sent to any matching Jobs and will
+      be passed through as the `context.event.context` param of the `run()`
+      function. This is optional but can be useful if you want to pass through
+      some additional context to the Job. */
   context: z.any().optional(),
+  /** The `id` property uniquely identify this particular event. If unset it
+      will be set automatically using `ulid`. */
+  id: z.string().default(() => ulid()),
+  /** This is optional, it defaults to the current timestamp. Usually you would
+      only set this if you have a timestamp that you wish to pass through, e.g.
+      you receive a timestamp from a service and you want the same timestamp to
+      be used in your Job. */
   timestamp: z.string().datetime().optional(),
+  /** This is optional, it defaults to "trigger.dev". It can be useful to set
+      this as you can filter events using this in the `eventTrigger()`. */
+  source: z.string().optional(),
 });
 
 export type RawEvent = z.infer<typeof RawEventSchema>;
+
+/** The event you wish to send to Trigger a Job */
 export type SendEvent = z.input<typeof RawEventSchema>;
 
+/** The event that was sent */
 export const ApiEventLogSchema = z.object({
+  /** The `id` of the event that was sent.
+   */
   id: z.string(),
+  /** The `name` of the event that was sent. */
   name: z.string(),
+  /** The `payload` of the event that was sent */
   payload: DeserializedJsonSchema,
+  /** The `context` of the event that was sent. Is `undefined` if no context was
+      set when sending the event. */
   context: DeserializedJsonSchema.optional().nullable(),
+  /** The `timestamp` of the event that was sent */
   timestamp: z.coerce.date(),
+  /** The timestamp when the event will be delivered to any matching Jobs. Is
+      `undefined` if `deliverAt` or `deliverAfter` wasn't set when sending the
+      event. */
   deliverAt: z.coerce.date().optional().nullable(),
+  /** The timestamp when the event was delivered. Is `undefined` if `deliverAt`
+      or `deliverAfter` were set when sending the event. */
   deliveredAt: z.coerce.date().optional().nullable(),
 });
 
 export type ApiEventLog = z.infer<typeof ApiEventLogSchema>;
 
+/** Options to control the delivery of the event */
 export const SendEventOptionsSchema = z.object({
+  /** An optional Date when you want the event to Trigger Jobs. The event will
+      be sent to the platform immediately but won't be acted upon until the
+      specified time. */
   deliverAt: z.string().datetime().optional(),
+  /** An optional number of seconds you want to wait for the event to Trigger
+      any relevant Jobs. The event will be sent to the platform immediately but
+      won't be acted upon until the specified time. */
   deliverAfter: z.number().int().optional(),
+  /** This optional param will be used by the Trigger.dev Connect feature, which
+      is coming soon. */
   accountId: z.string().optional(),
 });
 
@@ -502,7 +543,7 @@ export const InitializeTriggerBodySchema = z.object({
   id: z.string(),
   params: z.any(),
   accountId: z.string().optional(),
-  metadata: z.any().optional()
+  metadata: z.any().optional(),
 });
 
 export type InitializeTriggerBody = z.infer<typeof InitializeTriggerBodySchema>;
