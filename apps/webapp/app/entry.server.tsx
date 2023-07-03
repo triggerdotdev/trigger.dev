@@ -26,12 +26,6 @@ export default function handleRequest(
     validate: Intl.DateTimeFormat.supportedLocalesOf,
   });
 
-  logger.debug("accept-language", {
-    acceptLanguage,
-    locales,
-    headers: Object.fromEntries(request.headers.entries()),
-  });
-
   //get whether it's a mac or pc from the headers
   const platform: OperatingSystemPlatform = request.headers
     .get("user-agent")

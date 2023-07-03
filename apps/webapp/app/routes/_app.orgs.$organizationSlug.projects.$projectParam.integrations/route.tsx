@@ -10,6 +10,7 @@ import { NoIntegrationSheet } from "~/components/integrations/NoIntegrationSheet
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { LinkButton } from "~/components/primitives/Buttons";
 import { Callout } from "~/components/primitives/Callout";
+import { DateTime } from "~/components/primitives/DateTime";
 import { Header2 } from "~/components/primitives/Headers";
 import { Help, HelpContent, HelpTrigger } from "~/components/primitives/Help";
 import { Input } from "~/components/primitives/Input";
@@ -351,7 +352,7 @@ function ConnectedIntegrationsList({
                             : client.connectionsCount}
                         </TableCell>
                         <TableCell to={path}>
-                          {formatDateTime(client.createdAt, "medium")}
+                          <DateTime date={client.createdAt} />
                         </TableCell>
                         <TableCellChevron to={path} />
                       </TableRow>
