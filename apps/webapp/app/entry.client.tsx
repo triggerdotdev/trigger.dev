@@ -1,7 +1,5 @@
-import { RemixBrowser, useLocation, useMatches } from "@remix-run/react";
+import { RemixBrowser } from "@remix-run/react";
 import { hydrateRoot } from "react-dom/client";
-import { useEffect } from "react";
-import posthog from "posthog-js";
 import { LocaleContextProvider } from "./components/primitives/LocaleProvider";
 import { OperatingSystemContextProvider } from "./components/primitives/OperatingSystemProvider";
 

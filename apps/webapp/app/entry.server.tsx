@@ -11,6 +11,7 @@ import {
   OperatingSystemContextProvider,
   OperatingSystemPlatform,
 } from "./components/primitives/OperatingSystemProvider";
+import { logger } from "./services/logger.server";
 
 const ABORT_DELAY = 30000;
 
@@ -23,6 +24,12 @@ export default function handleRequest(
   const acceptLanguage = request.headers.get("accept-language");
   const locales = parseAcceptLanguage(acceptLanguage, {
     validate: Intl.DateTimeFormat.supportedLocalesOf,
+  });
+
+  logger.debug("accept-language", {
+    acceptLanguage,
+    locales,
+    headers: Object.fromEntries(request.headers.entries()),
   });
 
   //get whether it's a mac or pc from the headers
