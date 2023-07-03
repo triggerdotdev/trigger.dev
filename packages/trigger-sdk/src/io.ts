@@ -187,6 +187,11 @@ export class IO {
     )) as TResponseData;
   }
 
+  /** `io.sendEvent()` allows you to send an event from inside a Job run. The sent even will trigger any Jobs that are listening for that event (based on the name).
+   * @param key Should be a stable and unique key inside the `run()`. See [resumability](https://trigger.dev/docs/documentation/concepts/resumability) for more information.
+   * @param event The event to send. The event name must match the name of the event that your Jobs are listening for.
+   * @param options Options for sending the event.
+   */
   async sendEvent(
     key: string | any[],
     event: SendEvent,
