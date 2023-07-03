@@ -16,7 +16,8 @@ export const client = new TriggerClient({
   id: "nextjs-example",
   apiKey: process.env.TRIGGER_API_KEY,
   apiUrl: process.env.TRIGGER_API_URL,
-  logLevel: "debug",
+  verbose: false,
+  ioLogLocalEnabled: true,
 });
 
 export const openai = new OpenAI({

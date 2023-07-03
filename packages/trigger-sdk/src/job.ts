@@ -12,6 +12,7 @@ import {
 import { TriggerClient } from "./triggerClient";
 import type {
   EventSpecification,
+  Logger,
   Trigger,
   TriggerContext,
   TriggerEventType,
@@ -101,6 +102,10 @@ export class Job<
       },
       {}
     );
+  }
+
+  get logLevel() {
+    return this.options.logLevel;
   }
 
   toJSON(): JobMetadata {

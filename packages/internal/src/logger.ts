@@ -35,6 +35,10 @@ export class Logger {
     );
   }
 
+  static satisfiesLogLevel(logLevel: LogLevel, setLevel: LogLevel) {
+    return logLevels.indexOf(logLevel) <= logLevels.indexOf(setLevel);
+  }
+
   log(...args: any[]) {
     if (this.#level < 0) return;
 

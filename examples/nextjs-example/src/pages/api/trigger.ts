@@ -4,6 +4,7 @@ import "@/jobs/openai";
 import "@/jobs/resend";
 import "@/jobs/general";
 import "@/jobs/slack";
+import "@/jobs/logging";
 import { createPagesRoute } from "@trigger.dev/nextjs";
 
 const { handler, config } = createPagesRoute(client);

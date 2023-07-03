@@ -57,6 +57,8 @@ export type TriggerClientOptions = {
       running your own Trigger.dev instance. */
   apiUrl?: string;
   logLevel?: LogLevel;
+  verbose?: boolean;
+  ioLogLocalEnabled?: boolean;
 };
 
 /** A [TriggerClient](https://trigger.dev/docs/documentation/concepts/client-adaptors) is used to connect to a specific [Project](https://trigger.dev/docs/documentation/concepts/projects) by using an [API Key](https://trigger.dev/docs/documentation/concepts/environments-apikeys). */
@@ -87,18 +89,21 @@ export class TriggerClient {
     {};
 
   #client: ApiClient;
-  #logger: Logger;
+  #internalLogger: Logger;
   id: string;
 
   constructor(options: Prettify<TriggerClientOptions>) {
     this.id = options.id;
     this.#options = options;
     this.#client = new ApiClient(this.#options);
-    this.#logger = new Logger("trigger.dev", this.#options.logLevel);
+    this.#internalLogger = new Logger(
+      "trigger.dev",
+      this.#options.verbose ? "debug" : "log"
+    );
   }
 
   async handleRequest(request: Request): Promise<NormalizedResponse> {
-    this.#logger.debug("handling request", {
+    this.#internalLogger.debug("handling request", {
       url: request.url,
       headers: Object.fromEntries(request.headers.entries()),
       method: request.method,
@@ -455,7 +460,7 @@ export class TriggerClient {
     params: any;
   }): void {
     this.#registeredHttpSourceHandlers[options.key] = async (s, r) => {
-      return await options.source.handle(s, r, this.#logger);
+      return await options.source.handle(s, r, this.#internalLogger);
     };
 
     let registeredSource = this.#registeredSources[options.key];
@@ -593,7 +598,10 @@ export class TriggerClient {
     body: RunJobBody,
     job: Job<Trigger<any>, any>
   ): Promise<RunJobResponse> {
-    this.#logger.debug("executing job", { execution: body, job: job.toJSON() });
+    this.#internalLogger.debug("executing job", {
+      execution: body,
+      job: job.toJSON(),
+    });
 
     const context = this.#createRunContext(body);
 
@@ -601,9 +609,13 @@ export class TriggerClient {
       id: body.run.id,
       cachedTasks: body.tasks,
       apiClient: this.#client,
-      logger: this.#logger,
+      logger: this.#internalLogger,
       client: this,
       context,
+      jobLogLevel: job.logLevel ?? this.#options.logLevel ?? "info",
+      jobLogger: this.#options.ioLogLocalEnabled
+        ? new Logger(job.id, job.logLevel ?? this.#options.logLevel ?? "info")
+        : undefined,
     });
 
     const ioWithConnections = createIOWithIntegrations(
@@ -714,7 +726,7 @@ export class TriggerClient {
     },
     sourceRequest: Request
   ): Promise<{ response: NormalizedResponse; events: SendEvent[] }> {
-    this.#logger.debug("Handling HTTP source request", {
+    this.#internalLogger.debug("Handling HTTP source request", {
       source,
     });
 
@@ -722,9 +734,12 @@ export class TriggerClient {
       const dynamicTrigger = this.#registeredDynamicTriggers[source.dynamicId];
 
       if (!dynamicTrigger) {
-        this.#logger.debug("No dynamic trigger registered for HTTP source", {
-          source,
-        });
+        this.#internalLogger.debug(
+          "No dynamic trigger registered for HTTP source",
+          {
+            source,
+          }
+        );
 
         return {
           response: {
@@ -740,7 +755,7 @@ export class TriggerClient {
       const results = await dynamicTrigger.source.handle(
         source,
         sourceRequest,
-        this.#logger
+        this.#internalLogger
       );
 
       if (!results) {
@@ -769,7 +784,7 @@ export class TriggerClient {
     const handler = this.#registeredHttpSourceHandlers[source.key];
 
     if (!handler) {
-      this.#logger.debug("No handler registered for HTTP source", {
+      this.#internalLogger.debug("No handler registered for HTTP source", {
         source,
       });
 

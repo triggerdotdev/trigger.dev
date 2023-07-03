@@ -43,6 +43,8 @@ export type IOOptions = {
   context: TriggerContext;
   logger?: Logger;
   logLevel?: LogLevel;
+  jobLogger?: Logger;
+  jobLogLevel: LogLevel;
   cachedTasks?: Array<CachedTask>;
 };
 
@@ -51,6 +53,8 @@ export class IO {
   private _apiClient: ApiClient;
   private _triggerClient: TriggerClient;
   private _logger: Logger;
+  private _jobLogger?: Logger;
+  private _jobLogLevel: LogLevel;
   private _cachedTasks: Map<string, CachedTask>;
   private _taskStorage: AsyncLocalStorage<{ taskId: string }>;
   private _context: TriggerContext;
@@ -62,6 +66,8 @@ export class IO {
     this._logger =
       options.logger ?? new Logger("trigger.dev", options.logLevel);
     this._cachedTasks = new Map();
+    this._jobLogger = options.jobLogger;
+    this._jobLogLevel = options.jobLogLevel;
 
     if (options.cachedTasks) {
       options.cachedTasks.forEach((task) => {
@@ -75,38 +81,51 @@ export class IO {
 
   get logger() {
     return new IOLogger(async (level, message, data) => {
+      let logLevel: LogLevel = "info";
+
       switch (level) {
+        case "LOG": {
+          this._jobLogger?.log(message, data);
+          logLevel = "log";
+          break;
+        }
         case "DEBUG": {
-          this._logger.debug(message, data);
+          this._jobLogger?.debug(message, data);
+          logLevel = "debug";
           break;
         }
         case "INFO": {
-          this._logger.info(message, data);
+          this._jobLogger?.info(message, data);
+          logLevel = "info";
           break;
         }
         case "WARN": {
-          this._logger.warn(message, data);
+          this._jobLogger?.warn(message, data);
+          logLevel = "warn";
           break;
         }
         case "ERROR": {
-          this._logger.error(message, data);
+          this._jobLogger?.error(message, data);
+          logLevel = "error";
           break;
         }
       }
 
-      await this.runTask(
-        [message, level],
-        {
-          name: "log",
-          icon: "log",
-          description: message,
-          params: data,
-          properties: [{ label: "Level", text: level }],
-          style: { style: "minimal", variant: level.toLowerCase() },
-          noop: true,
-        },
-        async (task) => {}
-      );
+      if (Logger.satisfiesLogLevel(logLevel, this._jobLogLevel)) {
+        await this.runTask(
+          [message, level],
+          {
+            name: "log",
+            icon: "log",
+            description: message,
+            params: data,
+            properties: [{ label: "Level", text: level }],
+            style: { style: "minimal", variant: level.toLowerCase() },
+            noop: true,
+          },
+          async (task) => {}
+        );
+      }
     });
   }
 
@@ -595,7 +614,7 @@ function stableStringify(obj: any): string {
 }
 
 type CallbackFunction = (
-  level: "DEBUG" | "INFO" | "WARN" | "ERROR",
+  level: "DEBUG" | "INFO" | "WARN" | "ERROR" | "LOG",
   message: string,
   properties?: Record<string, any>
 ) => Promise<void>;
@@ -603,6 +622,9 @@ type CallbackFunction = (
 export class IOLogger implements TaskLogger {
   constructor(private callback: CallbackFunction) {}
 
+  log(message: string, properties?: Record<string, any>): Promise<void> {
+    return this.callback("LOG", message, properties);
+  }
   debug(message: string, properties?: Record<string, any>): Promise<void> {
     return this.callback("DEBUG", message, properties);
   }
