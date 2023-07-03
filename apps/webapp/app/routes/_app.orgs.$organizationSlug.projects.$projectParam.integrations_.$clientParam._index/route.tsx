@@ -15,7 +15,11 @@ import { IntegrationClientJobsPresenter } from "~/presenters/IntegrationClientJo
 import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
 import { Handle } from "~/utils/handle";
-import { IntegrationClientParamSchema } from "~/utils/pathBuilder";
+import {
+  IntegrationClientParamSchema,
+  docsIntegrationPath,
+  docsRoot,
+} from "~/utils/pathBuilder";
 
 export const loader = async ({ request, params }: LoaderArgs) => {
   const userId = await requireUserId(request);
@@ -103,9 +107,10 @@ export default function Page() {
             />
             <Callout
               variant="docs"
-              href={`https://trigger.dev/docs/integrations/apis/${client.integration.name}`}
+              href={docsIntegrationPath(client.integration.identifier)}
             >
-              View the ${client.integration.name} docs page to learn more.
+              View the docs to learn more about using the{" "}
+              {client.integration.name} Integration.
             </Callout>
           </HelpContent>
         </div>
