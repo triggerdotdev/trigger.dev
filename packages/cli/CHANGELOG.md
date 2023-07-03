@@ -1,5 +1,12 @@
 # create-trigger
 
+## 0.2.1-next.13
+
+### Patch Changes
+
+- 6c869466: [dev] Better handle errors when registering endpoint
+- 0013e78b: Export the client from the generated code and added code comments
+
 ## 0.2.1-next.12
 
 ### Patch Changes
