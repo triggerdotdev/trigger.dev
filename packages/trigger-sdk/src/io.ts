@@ -79,6 +79,7 @@ export class IO {
     this._context = options.context;
   }
 
+  /** Used to send log messages to the [Run log](https://trigger.dev/docs/documentation/guides/viewing-runs). */
   get logger() {
     return new IOLogger(async (level, message, data) => {
       let logLevel: LogLevel = "info";
@@ -129,6 +130,10 @@ export class IO {
     });
   }
 
+  /** `io.wait()` waits for the specified amount of time before continuing the Job. Delays work even if you're on a serverless platform with timeouts, or if your server goes down. They utilize [resumability](https://trigger.dev/docs/documentation/concepts/resumability) to ensure that the Run can be resumed after the delay.
+   * @param key Should be a stable and unique key inside the `run()`. See [resumability](https://trigger.dev/docs/documentation/concepts/resumability) for more information.
+   * @param seconds The number of seconds to wait. This can be very long, serverless timeouts are not an issue.
+   */
   async wait(key: string | any[], seconds: number) {
     return await this.runTask(
       key,
@@ -622,18 +627,27 @@ type CallbackFunction = (
 export class IOLogger implements TaskLogger {
   constructor(private callback: CallbackFunction) {}
 
+  /** Log: essential messages */
   log(message: string, properties?: Record<string, any>): Promise<void> {
     return this.callback("LOG", message, properties);
   }
+
+  /** For debugging: the least important log level */
   debug(message: string, properties?: Record<string, any>): Promise<void> {
     return this.callback("DEBUG", message, properties);
   }
+
+  /** Info: the second least important log level */
   info(message: string, properties?: Record<string, any>): Promise<void> {
     return this.callback("INFO", message, properties);
   }
+
+  /** Warnings: the third most important log level  */
   warn(message: string, properties?: Record<string, any>): Promise<void> {
     return this.callback("WARN", message, properties);
   }
+
+  /** Error: The second most important log level */
   error(message: string, properties?: Record<string, any>): Promise<void> {
     return this.callback("ERROR", message, properties);
   }

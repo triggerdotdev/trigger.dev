@@ -57,9 +57,9 @@ export type TriggerClientOptions = {
       running your own Trigger.dev instance. */
   apiUrl?: string;
   /** The `logLevel` property is an optional property that specifies the level of
-      logging for the TriggerClient. The level is inherited by all Jobs that use this CLient, unless they also specify a `logLevel`. */
+      logging for the TriggerClient. The level is inherited by all Jobs that use this Client, unless they also specify a `logLevel`. */
   logLevel?: LogLevel;
-  /** Very verbose log messages */
+  /** Very verbose log messages, defaults to false. */
   verbose?: boolean;
   /** Default is unset and off. If set to true it will log to the server's console as well as the Trigger.dev platform */
   ioLogLocalEnabled?: boolean;
