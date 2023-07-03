@@ -4,6 +4,7 @@ import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { HowToUseThisIntegration } from "~/components/helpContent/HelpContentText";
 import { JobSkeleton } from "~/components/jobs/JobSkeleton";
 import { JobsTable } from "~/components/jobs/JobsTable";
+import { Callout } from "~/components/primitives/Callout";
 import { Header2 } from "~/components/primitives/Headers";
 import { Help, HelpContent, HelpTrigger } from "~/components/primitives/Help";
 import { Input } from "~/components/primitives/Input";
@@ -100,6 +101,12 @@ export default function Page() {
               integrationClient={client}
               help={client.help}
             />
+            <Callout
+              variant="docs"
+              href={`https://trigger.dev/docs/integrations/apis/${client.integration.name}`}
+            >
+              View the ${client.integration.name} docs page to learn more.
+            </Callout>
           </HelpContent>
         </div>
       )}
