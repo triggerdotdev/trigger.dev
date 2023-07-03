@@ -1,6 +1,6 @@
 {
   "name": "@trigger.dev/cli",
-  "version": "0.2.1-next.11",
+  "version": "0.2.1-next.12",
   "description": "The Trigger.dev CLI",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
