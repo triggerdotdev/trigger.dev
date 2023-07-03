@@ -379,15 +379,18 @@ async function createTriggerPageRoute(
 import { Job, TriggerClient, eventTrigger } from "@trigger.dev/sdk";
 import { createPagesRoute } from "@trigger.dev/nextjs";
 
+//this route is used to send and receive data with Trigger.dev
 const { handler, config } = createPagesRoute(client);
 export { config };
 
-const client = new TriggerClient({
+//used to send data to Trigger.dev and register jobs
+export const client = new TriggerClient({
   id: "${options.endpointSlug}",
   apiKey: process.env.TRIGGER_API_KEY,
   apiUrl: process.env.TRIGGER_API_URL,
 });
 
+//your first job
 new Job(client, {
   id: "example-job",
   name: "Example Job",
@@ -433,12 +436,14 @@ async function createTriggerAppRoute(
 import { Job, TriggerClient, eventTrigger } from "@trigger.dev/sdk";
 import { createAppRoute } from "@trigger.dev/nextjs";
 
-const client = new TriggerClient({
+//used to send data to Trigger.dev and register jobs
+export const client = new TriggerClient({
   id: "${options.endpointSlug}",
   apiKey: process.env.TRIGGER_API_KEY,
   apiUrl: process.env.TRIGGER_API_URL,
 });
 
+//your first job
 new Job(client, {
   id: "example-job",
   name: "Example Job",
@@ -455,6 +460,7 @@ new Job(client, {
   },
 });
 
+//this route is used to send and receive data with Trigger.dev
 export const { POST, dynamic } = createAppRoute(client);
   `;
 
