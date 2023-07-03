@@ -41,12 +41,7 @@ export type JobOptions<
       - integration Triggers, like webhooks. See the [integrations](https://trigger.dev/docs/integrations) page for more information. */
   trigger: TTrigger;
   /** The `logLevel` property is an optional property that specifies the level of
-      logging for the Job. The level is inherited from the client if you omit this property. It can have one of the following values:
-      - `log` - logs only essential messages
-      - `error` - logs error messages
-      - `warn` - logs errors and warning messages
-      - `info` - logs errors, warnings and info messages
-      - `debug` - logs everything with full verbosity */
+      logging for the Job. The level is inherited from the client if you omit this property. */
   logLevel?: LogLevel;
   /** Imports the specified integrations into the Job. The integrations will be available on the `io` object in the `run()` function with the same name as the key. For example:
       ```ts

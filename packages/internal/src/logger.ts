@@ -1,5 +1,13 @@
 // Create a logger class that uses the debug package internally
 
+/**
+ * Represents different log levels.
+ * - `"log"`: Only essential messages.
+ * - `"error"`: Errors and essential messages.
+ * - `"warn"`: Warnings, Errors and essential messages.
+ * - `"info"`: Info, Warnings, Errors and essential messages.
+ * - `"debug"`: Everything.
+ */
 export type LogLevel = "log" | "error" | "warn" | "info" | "debug";
 
 const logLevels: Array<LogLevel> = ["log", "error", "warn", "info", "debug"];
