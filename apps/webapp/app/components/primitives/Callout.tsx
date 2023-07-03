@@ -45,7 +45,7 @@ const variantClasses = {
   docs: {
     className:
       "border-blue-400/20 bg-blue-400/30 transition hover:bg-blue-400/40",
-    icon: <BookOpenIcon className="h-5 w-5 shrink-0 text-blue-400" />,
+    icon: <BookOpenIcon className="mt-0.5 h-5 w-5 shrink-0 text-blue-400" />,
     text: "text-blue-200",
   },
 } as const;
