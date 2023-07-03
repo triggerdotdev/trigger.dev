@@ -6,6 +6,7 @@ import z from "zod";
 import { prisma } from "~/db.server";
 import { integrationAuthRepository } from "~/services/externalApis/integrationAuthRepository.server";
 import { requireUserId } from "~/services/session.server";
+import { requestUrl } from "~/utils/requestUrl.server";
 
 export const schema = z
   .object({
@@ -98,7 +99,8 @@ export async function action({ request, params }: ActionArgs) {
     },
   });
 
-  const url = new URL(request.url);
+  const url = requestUrl(request);
+
   const redirectUrl =
     await integrationAuthRepository.populateMissingConnectionClientFields({
       id: integrationId,

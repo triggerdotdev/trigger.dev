@@ -1,7 +1,7 @@
 import type { PrismaClient } from "~/db.server";
 import { prisma } from "~/db.server";
 import { workerQueue } from "../worker.server";
-import { requestUrl } from "~/utils";
+import { requestUrl } from "~/utils/requestUrl.server";
 
 export class HandleHttpSourceService {
   #prismaClient: PrismaClient;

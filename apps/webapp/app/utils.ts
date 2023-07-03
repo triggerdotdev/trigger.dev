@@ -187,19 +187,6 @@ export const obfuscateApiKey = (apiKey: string) => {
   return `${prefix}_${slug}_${"*".repeat(secretPart.length)}`;
 };
 
-// This will read the X-Forwarded-Proto header from the request, and make sure the
-// returned url has the matching proto if the request.url does not
-export function requestUrl(request: Request): URL {
-  const url = new URL(request.url);
-  const proto = request.headers.get("X-Forwarded-Proto");
-
-  if (proto && url.protocol !== proto) {
-    url.protocol = proto;
-  }
-
-  return url;
-}
-
 export function appEnvTitleTag(
   appEnv: "test" | "production" | "development" | "staging"
 ): string {

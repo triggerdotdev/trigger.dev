@@ -30,11 +30,12 @@ import {
   EnvironmentsPresenter,
 } from "~/presenters/EnvironmentsPresenter.server";
 import { requireUserId } from "~/services/session.server";
-import { formatDateTime, requestUrl } from "~/utils";
+import { formatDateTime } from "~/utils";
 import { Handle } from "~/utils/handle";
 import { ProjectParamSchema } from "~/utils/pathBuilder";
 import { RuntimeEnvironmentType } from "../../../../../packages/database/src";
 import { ConfigureEndpointSheet } from "./ConfigureEndpointSheet";
+import { requestUrl } from "~/utils/requestUrl.server";
 
 export const loader = async ({ request, params }: LoaderArgs) => {
   const userId = await requireUserId(request);

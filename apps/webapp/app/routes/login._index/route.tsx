@@ -20,7 +20,8 @@ import type { LoaderType as RootLoader } from "~/root";
 import { isGithubAuthSupported } from "~/services/auth.server";
 import { commitSession, setRedirectTo } from "~/services/redirectTo.server";
 import { getUserId } from "~/services/session.server";
-import { appEnvTitleTag, requestUrl } from "~/utils";
+import { appEnvTitleTag } from "~/utils";
+import { requestUrl } from "~/utils/requestUrl.server";
 
 export const meta: TypedMetaFunction<typeof loader, { root: RootLoader }> = ({
   parentsData,

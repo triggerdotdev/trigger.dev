@@ -6,7 +6,7 @@ import { env } from "~/env.server";
 import { integrationAuthRepository } from "~/services/externalApis/integrationAuthRepository.server";
 import { OAuthClient, OAuthClientSchema } from "~/services/externalApis/types";
 import { getSecretStore } from "~/services/secrets/secretStore.server";
-import { requestUrl } from "~/utils";
+import { requestUrl } from "~/utils/requestUrl.server";
 
 const ParamsSchema = z
   .object({

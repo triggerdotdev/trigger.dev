@@ -1,4 +1,4 @@
-import { requestUrl } from "./utils";
+import { requestUrl } from "./utils/requestUrl.server";
 
 export type TriggerFeatures = {
   isManagedCloud: boolean;
