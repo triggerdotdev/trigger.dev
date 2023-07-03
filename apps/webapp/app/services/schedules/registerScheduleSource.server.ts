@@ -25,11 +25,7 @@ export class RegisterScheduleSourceService {
     schedule: ScheduleMetadata;
     accountId?: string;
   }) {
-    const validation = validateSchedule(schedule);
-
-    if (!validation.valid) {
-      throw new Error(validation.reason);
-    }
+    const validatedSchedule = validateSchedule(schedule);
 
     return await $transaction(this.#prismaClient, async (tx) => {
       const externalAccount = accountId
@@ -55,8 +51,8 @@ export class RegisterScheduleSourceService {
           environmentId: dispatcher.environmentId,
           dispatcherId: dispatcher.id,
           schedule: {
-            type: schedule.type,
-            options: schedule.options,
+            type: validatedSchedule.type,
+            options: validatedSchedule.options,
           },
           active: true,
           metadata: schedule.metadata,
@@ -64,8 +60,8 @@ export class RegisterScheduleSourceService {
         },
         update: {
           schedule: {
-            type: schedule.type,
-            options: schedule.options,
+            type: validatedSchedule.type,
+            options: validatedSchedule.options,
           },
           metadata: schedule.metadata ?? {},
           externalAccountId: externalAccount ? externalAccount.id : undefined,
@@ -83,18 +79,7 @@ export class RegisterScheduleSourceService {
   }
 }
 
-type ScheduleValidationResult =
-  | {
-      valid: true;
-    }
-  | {
-      valid: false;
-      reason: string;
-    };
-
-function validateSchedule(
-  schedule: ScheduleMetadata
-): ScheduleValidationResult {
+function validateSchedule(schedule: ScheduleMetadata): ScheduleMetadata {
   switch (schedule.type) {
     case "cron":
       return validateCron(schedule);
@@ -103,23 +88,19 @@ function validateSchedule(
   }
 }
 
-function validateInterval(
-  schedule: IntervalMetadata
-): ScheduleValidationResult {
+function validateInterval(schedule: IntervalMetadata): ScheduleMetadata {
   if (schedule.options.seconds < 60) {
     return {
-      valid: false,
-      reason: "Interval must be greater than 60 seconds",
+      type: "interval",
+      options: {
+        seconds: 60,
+      },
     };
   }
 
-  return {
-    valid: true,
-  };
+  return schedule;
 }
 
-function validateCron(schedule: CronMetadata): ScheduleValidationResult {
-  return {
-    valid: true,
-  };
+function validateCron(schedule: CronMetadata): ScheduleMetadata {
+  return schedule;
 }
