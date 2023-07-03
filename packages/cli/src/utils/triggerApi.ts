@@ -23,7 +23,9 @@ export type EndpointResponse =
       ok: true;
       data: EndpointData;
     }
-  | { ok: false; error: string };
+  | { ok: false; error: string; retryable: boolean };
+
+const RETRYABLE_PATTERN = /Could not connect to endpoint/i;
 
 const WhoamiResponseSchema = z.object({
   id: z.string(),
@@ -97,27 +99,31 @@ export class TriggerApi {
             ok: false,
             error:
               "An unknown issue occurred when registering with Trigger.dev",
+            retryable: true,
           };
         }
 
-        const parsedJson = z.object({ message: z.string() }).safeParse(rawJson);
+        const parsedJson = z.object({ error: z.string() }).safeParse(rawJson);
 
         if (!parsedJson.success) {
           return {
             ok: false,
             error:
               "An unknown issue occurred when registering with Trigger.dev",
+            retryable: true,
           };
         }
 
         return {
           ok: false,
-          error: parsedJson.data.message,
+          error: parsedJson.data.error,
+          retryable: RETRYABLE_PATTERN.test(parsedJson.data.error),
         };
       } else {
         return {
           ok: false,
           error: "An unknown issue occurred when registering with Trigger.dev",
+          retryable: true,
         };
       }
     }

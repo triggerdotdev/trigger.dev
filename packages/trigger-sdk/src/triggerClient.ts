@@ -160,7 +160,7 @@ export class TriggerClient {
             status: 200,
             body: {
               ok: false,
-              message: "Missing endpoint ID",
+              error: "Missing endpoint ID",
             },
           };
         }
@@ -170,7 +170,7 @@ export class TriggerClient {
             status: 200,
             body: {
               ok: false,
-              message: `Endpoint ID mismatch error. Expected ${this.id}, got ${endpointId}`,
+              error: `Endpoint ID mismatch error. Expected ${this.id}, got ${endpointId}`,
             },
           };
         }

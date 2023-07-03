@@ -17,9 +17,6 @@ export const DevCommandOptionsSchema = z.object({
 const throttleTimeMs = 1000;
 
 const formattedDate = new Intl.DateTimeFormat("en", {
-  year: "numeric",
-  month: "short",
-  day: "numeric",
   hour: "numeric",
   minute: "numeric",
   second: "numeric",
@@ -42,7 +39,7 @@ export async function devCommand(path: string, anyOptions: any) {
     );
     process.exit(1);
   }
-  logger.success(`✔️ Detected valid Next.js project`);
+  logger.success(`✔️ [trigger.dev] Detected valid Next.js project`);
 
   // Read from package.json to get the endpointId
   const endpointId = await getEndpointIdFromPackageJson(resolvedPath);
@@ -52,40 +49,51 @@ export async function devCommand(path: string, anyOptions: any) {
     );
     process.exit(1);
   }
-  logger.success(`✔️ Detected TriggerClient id: ${endpointId}`);
+  logger.success(`✔️ [trigger.dev] Detected TriggerClient id: ${endpointId}`);
 
   // Read from .env.local to get the TRIGGER_API_KEY and TRIGGER_API_URL
-  const { apiKey, apiUrl } = await getTriggerApiDetails(
-    resolvedPath,
-    options.envFile
-  );
-  logger.success(`✔️ Found API Key in ${options.envFile} file`);
-  const apiClient = new TriggerApi(apiKey, apiUrl);
+  const { apiUrl } = await getTriggerApiDetails(resolvedPath, options.envFile);
+  logger.success(`✔️ [trigger.dev] Found API Key in ${options.envFile} file`);
 
   // Setup tunnel
-  const tunnelSpinner = ora(`🚇 Creating tunnel`).start();
-  const tunnelUrl = await createTunnel(options.port);
-  tunnelSpinner.succeed(`🚇 Created tunnel: ${tunnelUrl}`);
+  const endpointUrl = await resolveEndpointUrl(apiUrl, options.port);
 
-  const connectingSpinner = ora(`Connecting to Trigger.dev...`).start();
+  const connectingSpinner = ora(
+    `[trigger.dev] Connecting to Trigger.dev...`
+  ).start();
 
   //refresh function
   let attemptCount = 0;
   const refresh = async () => {
-    const result = await refreshEndpoint(apiClient, endpointId, tunnelUrl);
+    const refreshedEndpointId = await getEndpointIdFromPackageJson(
+      resolvedPath
+    );
+
+    // Read from .env.local to get the TRIGGER_API_KEY and TRIGGER_API_URL
+    const { apiKey, apiUrl } = await getTriggerApiDetails(
+      resolvedPath,
+      options.envFile
+    );
+
+    const apiClient = new TriggerApi(apiKey, apiUrl);
+
+    const result = await refreshEndpoint(
+      apiClient,
+      refreshedEndpointId ?? endpointId,
+      endpointUrl
+    );
     if (result.success) {
       attemptCount = 0;
-      connectingSpinner.stop();
-      logger.success(
-        `🔄 Updated your Jobs ${formattedDate.format(
-          new Date(result.data.updatedAt)
-        )}`
+      connectingSpinner.succeed(
+        `[trigger.dev] 🔄 Refreshed ${
+          refreshedEndpointId ?? endpointId
+        } ${formattedDate.format(new Date(result.data.updatedAt))}`
       );
     } else {
       attemptCount++;
 
-      if (attemptCount === 10) {
-        logger.error(`🚨 Failed to connect: ${result.error}`);
+      if (attemptCount === 10 || !result.retryable) {
+        connectingSpinner.fail(`🚨 Failed to connect: ${result.error}`);
         logger.info(`Will attempt again on the next file change…`);
         return;
       }
@@ -169,6 +177,21 @@ async function getTriggerApiDetails(path: string, envFile: string) {
   return { apiKey, apiUrl };
 }
 
+async function resolveEndpointUrl(apiUrl: string, port: number) {
+  const apiURL = new URL(apiUrl);
+
+  if (apiURL.hostname === "localhost") {
+    return `http://localhost:${port}`;
+  }
+
+  // Setup tunnel
+  const tunnelSpinner = ora(`🚇 Creating tunnel`).start();
+  const tunnelUrl = await createTunnel(port);
+  tunnelSpinner.succeed(`🚇 Created tunnel: ${tunnelUrl}`);
+
+  return tunnelUrl;
+}
+
 async function createTunnel(port: number) {
   try {
     return await ngrok.connect(port);
@@ -190,15 +213,23 @@ async function refreshEndpoint(
     });
 
     if (!response.ok) {
-      return { success: false as const, error: response.error };
+      return {
+        success: false as const,
+        error: response.error,
+        retryable: response.retryable,
+      };
     }
 
     return { success: true as const, data: response.data };
   } catch (e) {
     if (e instanceof Error) {
-      return { success: false as const, error: e.message };
+      return { success: false as const, error: e.message, retryable: true };
     } else {
-      return { success: false as const, error: "Unknown error" };
+      return {
+        success: false as const,
+        error: "Unknown error",
+        retryable: true,
+      };
     }
   }
 }

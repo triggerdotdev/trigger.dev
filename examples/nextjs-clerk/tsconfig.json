@@ -20,7 +20,27 @@
       }
     ],
     "paths": {
-      "@/*": ["./src/*"]
+      "@/*": ["./src/*"],
+      "@trigger.dev/sdk": ["../../packages/trigger-sdk/src/index"],
+      "@trigger.dev/sdk/*": ["../../packages/trigger-sdk/src/*"],
+      "@trigger.dev/nextjs": ["../../packages/nextjs/src/index"],
+      "@trigger.dev/nextjs/*": ["../../packages/nextjs/src/*"],
+      "@trigger.dev/internal": ["../../packages/internal/src/index"],
+      "@trigger.dev/internal/*": ["../../packages/internal/src/*"],
+      "@trigger.dev/integration-kit": [
+        "../../packages/integration-kit/src/index"
+      ],
+      "@trigger.dev/integration-kit/*": [
+        "../../packages/integration-kit/src/*"
+      ],
+      "@trigger.dev/github": ["../../integrations/github/src/index"],
+      "@trigger.dev/github/*": ["../../integrations/github/src/*"],
+      "@trigger.dev/slack": ["../../integrations/slack/src/index"],
+      "@trigger.dev/slack/*": ["../../integrations/slack/src/*"],
+      "@trigger.dev/openai": ["../../integrations/openai/src/index"],
+      "@trigger.dev/openai/*": ["../../integrations/openai/src/*"],
+      "@trigger.dev/resend": ["../../integrations/resend/src/index"],
+      "@trigger.dev/resend/*": ["../../integrations/resend/src/*"]
     }
   },
   "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts"],

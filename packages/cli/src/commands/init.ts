@@ -139,7 +139,7 @@ async function printNextSteps(
   logger.info("Next steps:");
   logger.info(`   1. Run your Next.js project locally with 'npm run dev'`);
   logger.info(
-    `   2. Run 'npx @trigger.dev/cli dev' to watch for changes and automatically register Trigger.dev jobs`
+    `   2. Run 'npx @trigger.dev/cli@latest dev' to watch for changes and automatically register Trigger.dev jobs`
   );
   logger.info(`   3. View your jobs at ${projectUrl}`);
 

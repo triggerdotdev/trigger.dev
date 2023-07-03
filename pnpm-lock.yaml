@@ -462,8 +462,8 @@ importers:
     specifiers:
       '@clerk/nextjs': ^4.21.12
       '@trigger.dev/cli': workspace:*
-      '@trigger.dev/nextjs': ^1.0.0-next.5
-      '@trigger.dev/sdk': ^2.0.0-next.4
+      '@trigger.dev/nextjs': workspace:*
+      '@trigger.dev/sdk': workspace:*
       '@types/node': 20.3.2
       '@types/react': ^18.0.21
       '@types/react-dom': ^18.0.6
@@ -476,8 +476,8 @@ importers:
       typescript: 5.1.6
     dependencies:
       '@clerk/nextjs': 4.21.12_5v7kwk6wz2hvmegftnptprfjvm
-      '@trigger.dev/nextjs': 1.0.0-next.5_yuyr3hquo7tgjdmhxnzkuafg3m
-      '@trigger.dev/sdk': 2.0.0-next.5
+      '@trigger.dev/nextjs': link:../../packages/nextjs
+      '@trigger.dev/sdk': link:../../packages/trigger-sdk
       '@types/node': 20.3.2
       '@types/react': 18.0.26
       '@types/react-dom': 18.0.10
@@ -10692,46 +10692,6 @@ packages:
     dependencies:
       react: 18.2.0
       react-dom: 18.2.0_react@18.2.0
-    dev: false
-
-  /@trigger.dev/nextjs/1.0.0-next.5_yuyr3hquo7tgjdmhxnzkuafg3m:
-    resolution: {integrity: sha512-41/RvyfuR3cPDCKAAhWOJMNw3KgA9uho7vcg8Q0ri8NCObsvxbStpnb5lpvNsUVOTyB7qy3tHULVJhKANczQqQ==}
-    engines: {node: '>=18'}
-    peerDependencies:
-      '@trigger.dev/sdk': ^2.0.0-next.2
-      next: ^13.3.1
-    dependencies:
-      '@trigger.dev/sdk': 2.0.0-next.5
-      debug: 4.3.4
-      next: 13.4.7_biqbaboplfbrettd7655fr4n2y
-    transitivePeerDependencies:
-      - supports-color
-    dev: false
-
-  /@trigger.dev/sdk/2.0.0-next.5:
-    resolution: {integrity: sha512-ERnhWSiWSO1sOkKVZfFP+bmbDOtgyviahY7tVP/8LD0cJb/uz5zSufcqHRHhVCXU423u24tJcYYJcXKNyoSmHQ==}
-    engines: {node: '>=18'}
-    dependencies:
-      chalk: 5.2.0
-      debug: 4.3.4
-      evt: 2.4.13
-      get-caller-file: 2.0.5
-      git-remote-origin-url: 4.0.0
-      git-repo-info: 2.1.1
-      node-fetch: 2.6.11
-      slug: 6.1.0
-      terminal-link: 3.0.0
-      ulid: 2.3.0
-      uuid: 9.0.0
-      ws: 8.12.0
-      zod: 3.21.4
-      zod-error: 1.1.0
-      zod-to-json-schema: 3.20.2_zod@3.21.4
-    transitivePeerDependencies:
-      - bufferutil
-      - encoding
-      - supports-color
-      - utf-8-validate
     dev: false
 
   /@tsconfig/node10/1.0.9:
@@ -25798,14 +25758,6 @@ packages:
       zod: ^3.20.0
     dependencies:
       zod: 3.20.2
-    dev: false
-
-  /zod-to-json-schema/3.20.2_zod@3.21.4:
-    resolution: {integrity: sha512-qka3UAXmVXD8z5SHkRU89UyHp8JHJW7zc8RQCpt7QloJOn6uijwkjUm8o+M/cF1IysmKc5gxac/QeDikaQMdzQ==}
-    peerDependencies:
-      zod: ^3.20.0
-    dependencies:
-      zod: 3.21.4
     dev: false
 
   /zod/3.20.2:
