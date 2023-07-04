@@ -619,8 +619,8 @@ export class IO {
 
   /** `io.try()` allows you to run Tasks and catch any errors that are thrown, it's similar to a normal `try/catch` block but works with [io.runTask()](/sdk/io/runtask).
    * A regular `try/catch` block on its own won't work as expected with Tasks. Internally `runTask()` throws some special errors to control flow execution. This is necessary to deal with resumability, serverless timeouts, and retrying Tasks.
-   * @param tryCallback The callback that will be called when the Task is run. The callback receives the Task and the IO as parameters.
-   * @param catchCallback The callback that will be called when the Task fails. The callback receives the error
+   * @param tryCallback The code you wish to run
+   * @param catchCallback Thhis will be called if the Task fails. The callback receives the error
    * @returns A Promise that resolves with the returned value or the error
    */
   async try<TResult, TCatchResult>(
