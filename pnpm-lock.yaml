@@ -572,7 +572,7 @@ importers:
   integrations/openai:
     specifiers:
       '@trigger.dev/integration-kit': workspace:^2.0.0-next.2
-      '@trigger.dev/sdk': workspace:^2.0.0-next.2
+      '@trigger.dev/sdk': workspace:^2.0.0-next.8
       '@trigger.dev/tsconfig': workspace:*
       '@types/node': '18'
       openai: ^3.3.0
