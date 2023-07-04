@@ -10,9 +10,11 @@ export const ScheduledPayloadSchema = z.object({
 export type ScheduledPayload = z.infer<typeof ScheduledPayloadSchema>;
 
 export const IntervalOptionsSchema = z.object({
+  /** The number of seconds for the interval. Min = 60, Max = 86400 (1 day) */
   seconds: z.number().int().positive().min(60).max(86400),
 });
 
+/** Interval options */
 export type IntervalOptions = z.infer<typeof IntervalOptionsSchema>;
 
 export const CronOptionsSchema = z.object({
@@ -30,8 +32,11 @@ export const CronMetadataSchema = z.object({
 export type CronMetadata = z.infer<typeof CronMetadataSchema>;
 
 export const IntervalMetadataSchema = z.object({
+  /** An interval reoccurs at the specified number of seconds  */
   type: z.literal("interval"),
+  /** An object containing options about the interval. */
   options: IntervalOptionsSchema,
+  /** Any additional metadata about the schedule. */
   metadata: z.any(),
 });
 

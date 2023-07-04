@@ -554,8 +554,11 @@ export const InitializeTriggerBodySchema = z.object({
 export type InitializeTriggerBody = z.infer<typeof InitializeTriggerBodySchema>;
 
 const RegisterCommonScheduleBodySchema = z.object({
+  /** A unique id for the schedule. This is used to identify and unregister the schedule later. */
   id: z.string(),
+  /** Any additional metadata about the schedule. */
   metadata: z.any(),
+  /** This will be used by the Trigger.dev Connect feature, which is coming soon. */
   accountId: z.string().optional(),
 });
 
