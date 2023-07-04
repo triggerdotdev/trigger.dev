@@ -12,13 +12,20 @@ import { TriggerClient } from "./triggerClient";
 export type { RedactString, Logger };
 
 export interface TriggerContext {
+  /** Job metadata */
   job: { id: string; version: string };
+  /** Environment metadata */
   environment: { slug: string; id: string; type: RuntimeEnvironmentType };
+  /** Organization metadata */
   organization: { slug: string; id: string; title: string };
+  /** Run metadata */
   run: { id: string; isTest: boolean; startedAt: Date };
+  /** Event metadata */
   event: { id: string; name: string; context: any; timestamp: Date };
-  account?: { id: string; metadata?: any };
+  /** Source metadata */
   source?: { id: string; metadata?: any };
+  /** Account metadata */
+  account?: { id: string; metadata?: any };
 }
 
 export interface TriggerPreprocessContext {
