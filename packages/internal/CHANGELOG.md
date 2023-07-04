@@ -1,5 +1,11 @@
 # internal-platform
 
+## 0.0.2-next.1
+
+### Patch Changes
+
+- e26923eb: backgroundFetch jsdocs
+
 ## 0.0.2-next.0
 
 ### Patch Changes
