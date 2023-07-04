@@ -462,20 +462,34 @@ export const RetryOptionsSchema = z.object({
 export type RetryOptions = z.infer<typeof RetryOptionsSchema>;
 
 export const RunTaskOptionsSchema = z.object({
+  /** The name of the Task is required. This is displayed on the Task in the logs. */
   name: z.string(),
-  icon: z.string().optional(),
-  displayKey: z.string().optional(),
-  noop: z.boolean().default(false),
-  operation: z.enum(["fetch"]).optional(),
+  /** The Task will wait and only start at the specified Date  */
   delayUntil: z.coerce.date().optional(),
-  description: z.string().optional(),
-  properties: z.array(DisplayPropertySchema).optional(),
-  params: z.any(),
-  trigger: TriggerMetadataSchema.optional(),
-  redact: RedactSchema.optional(),
-  connectionKey: z.string().optional(),
-  style: StyleSchema.optional(),
+  /** Retry options */
   retry: RetryOptionsSchema.optional(),
+  /** The icon for the Task, it will appear in the logs.
+   *  You can use the name of a company in lowercase, e.g. "github".
+   *  Or any icon name that [Font Awesome](https://fontawesome.com/icons) supports. */
+  icon: z.string().optional(),
+  /** The key for the Task that you want to appear in the logs */
+  displayKey: z.string().optional(),
+  /** A description of the Task */
+  description: z.string().optional(),
+  /** Properties that are displayed in the logs */
+  properties: z.array(DisplayPropertySchema).optional(),
+  /** The input params to the Task, will be displayed in the logs  */
+  params: z.any(),
+  /** The style of the log entry. */
+  style: StyleSchema.optional(),
+  /** Allows you to link the Integration connection in the logs. This is handled automatically in integrations.  */
+  connectionKey: z.string().optional(),
+  /** An operation you want to perform on the Trigger.dev platform, current only "fetch" is supported. If you wish to `fetch` use [`io.backgroundFetch()`](https://trigger.dev/docs/sdk/io/backgroundfetch) instead. */
+  operation: z.enum(["fetch"]).optional(),
+  /** A No Operation means that the code won't be executed. This is used internally to implement features like [io.wait()](https://trigger.dev/docs/sdk/io/wait).  */
+  noop: z.boolean().default(false),
+  redact: RedactSchema.optional(),
+  trigger: TriggerMetadataSchema.optional(),
 });
 
 export type RunTaskOptions = z.input<typeof RunTaskOptionsSchema>;
