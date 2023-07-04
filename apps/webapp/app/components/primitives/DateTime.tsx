@@ -24,6 +24,10 @@ export const DateTime = ({ date, timeZone, className }: DateTimeProps) => {
     timeZone,
   }).format(realDate);
 
+  console.log(
+    `<DateTime> (formattedDate = ${formattedDate}) (formattedTime = ${formattedTime}) (isoString = ${isoString})`
+  );
+
   return (
     <time dateTime={isoString} className={className}>
       {formattedDate} at {formattedTime}
