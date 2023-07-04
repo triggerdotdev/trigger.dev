@@ -1,5 +1,17 @@
 # @trigger.dev/sdk
 
+## 2.0.0-next.8
+
+### Patch Changes
+
+- cca7da9d: Better docs for io.try
+- 722fe7b7: registerCron and unregisterCron jsdocs
+- c83443a4: io.runTask jsdocs
+- c83443a4: registerTrigger jsdocs
+- 99c6cd03: io.registerInterval and io.unregisterInterval jsdocs
+- f160b34b: isTriggerError jsdocs
+- 01cf5f3b: io.try jsdocs
+
 ## 2.0.0-next.7
 
 ### Patch Changes
