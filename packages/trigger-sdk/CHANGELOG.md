@@ -1,5 +1,12 @@
 # @trigger.dev/sdk
 
+## 2.0.0-next.7
+
+### Patch Changes
+
+- 2cbf50b1: deliverAt and timestamp event properties are now dates
+- e26923eb: backgroundFetch jsdocs
+
 ## 2.0.0-next.6
 
 ### Patch Changes
