@@ -76,7 +76,6 @@ const schema = z.object({
 
 //todo save the chosen environment to a cookie (for that user), use it to default the env dropdown
 export const action: ActionFunction = async ({ request, params }) => {
-  const userId = await requireUserId(request);
   const { organizationSlug, projectParam, jobParam } =
     JobParamsSchema.parse(params);
 

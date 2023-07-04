@@ -1,16 +1,9 @@
 import { User } from "@trigger.dev/database";
+import { replacements } from "@trigger.dev/internal";
 import { PrismaClient, prisma } from "~/db.server";
-import { env } from "~/env.server";
 import { Job } from "~/models/job.server";
 import { Organization } from "~/models/organization.server";
 import { Project } from "~/models/project.server";
-import { integrationAuthRepository } from "~/services/externalApis/integrationAuthRepository.server";
-import {
-  ConnectionMetadataSchema,
-  OAuthClientSchema,
-} from "~/services/externalApis/types";
-import { getSecretStore } from "~/services/secrets/secretStore.server";
-import { replacements } from "@trigger.dev/internal";
 
 export class TestJobPresenter {
   #prismaClient: PrismaClient;
@@ -83,6 +76,9 @@ export class TestJobPresenter {
               userId,
             },
           },
+        },
+        project: {
+          slug: projectSlug,
         },
         slug: jobSlug,
       },
