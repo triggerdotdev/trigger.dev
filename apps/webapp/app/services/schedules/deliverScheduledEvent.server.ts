@@ -13,72 +13,82 @@ export class DeliverScheduledEventService {
   }
 
   public async call(id: string, payload: ScheduledPayload) {
-    return await $transaction(this.#prismaClient, async (tx) => {
-      // first, deliver the event through the dispatcher
-      const scheduleSource = await tx.scheduleSource.findUniqueOrThrow({
-        where: {
-          id,
-        },
-        include: {
-          dispatcher: true,
-          environment: {
-            include: {
-              organization: true,
-              project: true,
-            },
+    return await $transaction(
+      this.#prismaClient,
+      async (tx) => {
+        // first, deliver the event through the dispatcher
+        const scheduleSource = await tx.scheduleSource.findUniqueOrThrow({
+          where: {
+            id,
           },
-          externalAccount: true,
-        },
-      });
+          include: {
+            dispatcher: true,
+            environment: {
+              include: {
+                organization: true,
+                project: true,
+              },
+            },
+            externalAccount: true,
+          },
+        });
 
-      if (!scheduleSource.active) {
-        return;
-      }
-
-      const eventId = `${scheduleSource.id}:${payload.ts.getTime()}`;
-
-      // false prevents send event from delivering the event to dispatchers
-      // since we are going to control that ourselves
-      const eventService = new IngestSendEvent(tx, false);
-
-      const eventRecord = await eventService.call(
-        scheduleSource.environment,
-        {
-          id: eventId,
-          name: SCHEDULED_EVENT,
-          payload,
-        },
-        { accountId: scheduleSource.externalAccount?.identifier },
-        {
-          id: scheduleSource.key,
-          metadata: scheduleSource.metadata,
+        if (!scheduleSource.active) {
+          return;
         }
-      );
 
-      const invokeDispatcherService = new InvokeDispatcherService(tx);
+        const eventId = `${scheduleSource.id}:${payload.ts.getTime()}`;
 
-      await invokeDispatcherService.call(
-        scheduleSource.dispatcher.id,
-        eventRecord.id
-      );
+        // false prevents send event from delivering the event to dispatchers
+        // since we are going to control that ourselves
+        const eventService = new IngestSendEvent(tx, false);
 
-      logger.debug("updating lastEventTimestamp", {
-        id,
-        lastEventTimestamp: payload.ts,
-      });
+        const eventRecord = await eventService.call(
+          scheduleSource.environment,
+          {
+            id: eventId,
+            name: SCHEDULED_EVENT,
+            payload,
+          },
+          { accountId: scheduleSource.externalAccount?.identifier },
+          {
+            id: scheduleSource.key,
+            metadata: scheduleSource.metadata,
+          }
+        );
 
-      await tx.scheduleSource.update({
-        where: {
+        if (!eventRecord) {
+          throw new Error(
+            `Unable to create an event record when delivering scheduled event for scheduleSource.id = ${scheduleSource.id}`
+          );
+        }
+
+        const invokeDispatcherService = new InvokeDispatcherService(tx);
+
+        await invokeDispatcherService.call(
+          scheduleSource.dispatcher.id,
+          eventRecord.id
+        );
+
+        logger.debug("updating lastEventTimestamp", {
           id,
-        },
-        data: {
           lastEventTimestamp: payload.ts,
-        },
-      });
+        });
 
-      const nextScheduledEventService = new NextScheduledEventService(tx);
+        await tx.scheduleSource.update({
+          where: {
+            id,
+          },
+          data: {
+            lastEventTimestamp: payload.ts,
+          },
+        });
 
-      await nextScheduledEventService.call(scheduleSource.id);
-    });
+        const nextScheduledEventService = new NextScheduledEventService(tx);
+
+        await nextScheduledEventService.call(scheduleSource.id);
+      },
+      { timeout: 10000 }
+    );
   }
 }

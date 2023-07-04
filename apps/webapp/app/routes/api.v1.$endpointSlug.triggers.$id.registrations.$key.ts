@@ -57,6 +57,10 @@ export async function action({ request, params }: ActionArgs) {
       key: parsedParams.data.key,
     });
 
+    if (!registration) {
+      return json({ error: "Could not register trigger" }, { status: 500 });
+    }
+
     return json(registration);
   } catch (error) {
     if (error instanceof Error) {

@@ -12,10 +12,7 @@ import { HowToRunATest } from "~/components/helpContent/HelpContentText";
 import { Button, ButtonContent } from "~/components/primitives/Buttons";
 import { Callout } from "~/components/primitives/Callout";
 import { FormError } from "~/components/primitives/FormError";
-import { HelpTrigger } from "~/components/primitives/Help";
-import { HelpContent } from "~/components/primitives/Help";
-import { Help } from "~/components/primitives/Help";
-import { Paragraph } from "~/components/primitives/Paragraph";
+import { Help, HelpContent, HelpTrigger } from "~/components/primitives/Help";
 import { Popover, PopoverContent } from "~/components/primitives/Popover";
 import {
   Select,
@@ -25,18 +22,16 @@ import {
   SelectTrigger,
   SelectValue,
 } from "~/components/primitives/Select";
-import { redirectWithSuccessMessage } from "~/models/message.server";
+import {
+  redirectBackWithErrorMessage,
+  redirectWithSuccessMessage,
+} from "~/models/message.server";
 import { TestJobPresenter } from "~/presenters/TestJobPresenter.server";
 import { TestJobService } from "~/services/jobs/testJob.server";
 import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
-import { formDataAsObject } from "~/utils/formData";
 import { Handle } from "~/utils/handle";
-import {
-  JobParamsSchema,
-  jobTestPath,
-  runDashboardPath,
-} from "~/utils/pathBuilder";
+import { JobParamsSchema, runDashboardPath } from "~/utils/pathBuilder";
 
 export const loader = async ({ request, params }: LoaderArgs) => {
   const userId = await requireUserId(request);
@@ -99,6 +94,13 @@ export const action: ActionFunction = async ({ request, params }) => {
     payload: submission.value.payload,
     versionId: submission.value.versionId,
   });
+
+  if (!run) {
+    return redirectBackWithErrorMessage(
+      request,
+      "Unable to start a test run: Something went wrong"
+    );
+  }
 
   return redirectWithSuccessMessage(
     runDashboardPath(

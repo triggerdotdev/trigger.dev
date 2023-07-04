@@ -1,6 +1,7 @@
 import { PrismaClient, Prisma } from "@trigger.dev/database";
 import invariant from "tiny-invariant";
 import { z } from "zod";
+import { logger } from "./services/logger.server";
 
 export type PrismaTransactionClient = Omit<
   PrismaClient,
@@ -15,15 +16,54 @@ function isTransactionClient(
   return !("$transaction" in prisma);
 }
 
-export function $transaction<R>(
+function isPrismaKnownError(
+  error: unknown
+): error is Prisma.PrismaClientKnownRequestError {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    typeof error.code === "string"
+  );
+}
+
+export type PrismaTransactionOptions = {
+  /** The maximum amount of time (in ms) Prisma Client will wait to acquire a transaction from the database. The default value is 2000ms. */
+  maxWait?: number;
+
+  /** The maximum amount of time (in ms) the interactive transaction can run before being canceled and rolled back. The default value is 5000ms. */
+  timeout?: number;
+
+  /**  Sets the transaction isolation level. By default this is set to the value currently configured in your database. */
+  isolationLevel?: Prisma.TransactionIsolationLevel;
+};
+
+export async function $transaction<R>(
   prisma: PrismaClientOrTransaction,
-  fn: (prisma: PrismaTransactionClient) => Promise<R>
-): Promise<R> {
+  fn: (prisma: PrismaTransactionClient) => Promise<R>,
+  options?: PrismaTransactionOptions
+): Promise<R | undefined> {
   if (isTransactionClient(prisma)) {
     return fn(prisma);
   }
 
-  return (prisma as PrismaClient).$transaction(fn);
+  try {
+    return await (prisma as PrismaClient).$transaction(fn, options);
+  } catch (error) {
+    if (isPrismaKnownError(error)) {
+      logger.debug("prisma.$transaction error", {
+        code: error.code,
+        meta: error.meta,
+        stack: error.stack,
+        message: error.message,
+        name: error.name,
+      });
+
+      return;
+    }
+
+    throw error;
+  }
 }
 
 export { Prisma };

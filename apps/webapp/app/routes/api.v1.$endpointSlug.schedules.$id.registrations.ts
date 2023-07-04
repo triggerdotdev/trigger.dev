@@ -58,6 +58,10 @@ export async function action({ request, params }: ActionArgs) {
       id: parsedParams.data.id,
     });
 
+    if (!registration) {
+      return json({ error: "Something went wrong" }, { status: 500 });
+    }
+
     return json(
       RegisterScheduleResponseBodySchema.parse({
         id: registration.key,

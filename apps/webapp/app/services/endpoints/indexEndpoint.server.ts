@@ -51,90 +51,94 @@ export class IndexEndpointService {
       dynamicSchedules: 0,
     };
 
-    return await $transaction(this.#prismaClient, async (tx) => {
-      for (const job of jobs) {
-        if (!job.enabled) {
-          continue;
+    return await $transaction(
+      this.#prismaClient,
+      async (tx) => {
+        for (const job of jobs) {
+          if (!job.enabled) {
+            continue;
+          }
+
+          indexStats.jobs++;
+
+          await workerQueue.enqueue(
+            "registerJob",
+            {
+              job,
+              endpointId: endpoint.id,
+            },
+            {
+              queueName,
+              tx,
+            }
+          );
         }
 
-        indexStats.jobs++;
+        for (const source of sources) {
+          indexStats.sources++;
 
-        await workerQueue.enqueue(
-          "registerJob",
-          {
-            job,
-            endpointId: endpoint.id,
-          },
-          {
-            queueName,
-            tx,
-          }
-        );
-      }
+          await workerQueue.enqueue(
+            "registerSource",
+            {
+              source,
+              endpointId: endpoint.id,
+            },
+            {
+              queueName,
+              tx,
+            }
+          );
+        }
 
-      for (const source of sources) {
-        indexStats.sources++;
+        for (const dynamicTrigger of dynamicTriggers) {
+          indexStats.dynamicTriggers++;
 
-        await workerQueue.enqueue(
-          "registerSource",
-          {
-            source,
-            endpointId: endpoint.id,
-          },
-          {
-            queueName,
-            tx,
-          }
-        );
-      }
+          await workerQueue.enqueue(
+            "registerDynamicTrigger",
+            {
+              dynamicTrigger,
+              endpointId: endpoint.id,
+            },
+            {
+              queueName,
+              tx,
+            }
+          );
+        }
 
-      for (const dynamicTrigger of dynamicTriggers) {
-        indexStats.dynamicTriggers++;
+        for (const dynamicSchedule of dynamicSchedules) {
+          indexStats.dynamicSchedules++;
 
-        await workerQueue.enqueue(
-          "registerDynamicTrigger",
-          {
-            dynamicTrigger,
-            endpointId: endpoint.id,
-          },
-          {
-            queueName,
-            tx,
-          }
-        );
-      }
+          await workerQueue.enqueue(
+            "registerDynamicSchedule",
+            {
+              dynamicSchedule,
+              endpointId: endpoint.id,
+            },
+            {
+              queueName,
+              tx,
+            }
+          );
+        }
 
-      for (const dynamicSchedule of dynamicSchedules) {
-        indexStats.dynamicSchedules++;
-
-        await workerQueue.enqueue(
-          "registerDynamicSchedule",
-          {
-            dynamicSchedule,
-            endpointId: endpoint.id,
-          },
-          {
-            queueName,
-            tx,
-          }
-        );
-      }
-
-      return await tx.endpointIndex.create({
-        data: {
-          endpointId: endpoint.id,
-          stats: indexStats,
+        return await tx.endpointIndex.create({
           data: {
-            jobs,
-            sources,
-            dynamicTriggers,
-            dynamicSchedules,
+            endpointId: endpoint.id,
+            stats: indexStats,
+            data: {
+              jobs,
+              sources,
+              dynamicTriggers,
+              dynamicSchedules,
+            },
+            source,
+            sourceData,
+            reason,
           },
-          source,
-          sourceData,
-          reason,
-        },
-      });
-    });
+        });
+      },
+      { timeout: 15000 }
+    );
   }
 }

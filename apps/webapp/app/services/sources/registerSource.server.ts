@@ -64,7 +64,7 @@ export class RegisterSourceService {
       .filter(Boolean)
       .join(":");
 
-    const { id, orphanedEvents } = await $transaction(
+    const source = await $transaction(
       this.#prismaClient,
       async (tx) => {
         const integration = await this.#findOrCreateIntegration(
@@ -215,8 +215,15 @@ export class RegisterSourceService {
           id: triggerSource.id,
           orphanedEvents: Array.from(orphanedEvents),
         };
-      }
+      },
+      { timeout: 15000 }
     );
+
+    if (!source) {
+      return;
+    }
+
+    const { id, orphanedEvents } = source;
 
     // We need to activate the source if:
     // 1. It's not active

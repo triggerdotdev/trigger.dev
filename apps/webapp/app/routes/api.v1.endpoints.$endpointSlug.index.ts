@@ -63,12 +63,18 @@ export async function action({ request, params }: ActionArgs) {
   const service = new IndexEndpointService();
 
   try {
-    const { data, ...index } = await service.call(
+    const indexing = await service.call(
       endpoint.id,
       "API",
       parsedBody.data.reason,
       parsedBody.data.data
     );
+
+    if (!indexing) {
+      return json({ error: "Something went wrong" }, { status: 500 });
+    }
+
+    const { data, ...index } = indexing;
 
     return json(index);
   } catch (error) {

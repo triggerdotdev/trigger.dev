@@ -1,8 +1,8 @@
-import { $transaction, PrismaClientOrTransaction, prisma } from "~/db.server";
+import { MISSING_CONNECTION_RESOLVED_NOTIFICATION } from "@trigger.dev/internal";
+import { PrismaClientOrTransaction, prisma } from "~/db.server";
 import { IngestSendEvent } from "../events/ingestSendEvent.server";
 import { logger } from "../logger.server";
 import { workerQueue } from "../worker.server";
-import { MISSING_CONNECTION_RESOLVED_NOTIFICATION } from "@trigger.dev/internal";
 
 export class IntegrationConnectionCreatedService {
   #prismaClient: PrismaClientOrTransaction;
@@ -14,9 +14,9 @@ export class IntegrationConnectionCreatedService {
   public async call(id: string) {
     logger.debug("IntegrationConnectionCreatedService.call", { id });
 
-    return await $transaction(this.#prismaClient, async (tx) => {
-      // first, deliver the event through the dispatcher
-      const connection = await tx.integrationConnection.findUniqueOrThrow({
+    // first, deliver the event through the dispatcher
+    const connection =
+      await this.#prismaClient.integrationConnection.findUniqueOrThrow({
         where: {
           id,
         },
@@ -26,7 +26,8 @@ export class IntegrationConnectionCreatedService {
         },
       });
 
-      const missingConnection = await tx.missingConnection.findUnique({
+    const missingConnection =
+      await this.#prismaClient.missingConnection.findUnique({
         where: {
           integrationId_connectionType_accountIdentifier: {
             integrationId: connection.integrationId,
@@ -55,68 +56,63 @@ export class IntegrationConnectionCreatedService {
         },
       });
 
-      if (!missingConnection) {
-        return;
-      }
+    if (!missingConnection) {
+      return;
+    }
 
-      if (missingConnection.resolved) {
-        return;
-      }
+    if (missingConnection.resolved) {
+      return;
+    }
 
-      const firstRun = missingConnection.runs[0];
+    const firstRun = missingConnection.runs[0];
 
-      if (!firstRun) {
-        return;
-      }
+    if (!firstRun) {
+      return;
+    }
 
-      const eventId = `${missingConnection.id}-resolved`;
+    const eventId = `${missingConnection.id}-resolved`;
 
-      const eventService = new IngestSendEvent(tx);
+    const eventService = new IngestSendEvent();
 
-      await eventService.call(firstRun.environment, {
-        id: eventId,
-        name: MISSING_CONNECTION_RESOLVED_NOTIFICATION,
-        payload: {
-          id: missingConnection.id,
-          type: missingConnection.connectionType,
-          client: {
-            id: missingConnection.integration.slug,
-            title: missingConnection.integration.title,
-            scopes: missingConnection.integration.scopes,
-            createdAt: missingConnection.integration.createdAt,
-            updatedAt: missingConnection.integration.updatedAt,
-          },
-          expiresAt: connection.expiresAt ?? undefined,
-          account: missingConnection.externalAccount
-            ? {
-                id: missingConnection.externalAccount.identifier,
-                metadata: missingConnection.externalAccount.metadata,
-              }
-            : undefined,
+    await eventService.call(firstRun.environment, {
+      id: eventId,
+      name: MISSING_CONNECTION_RESOLVED_NOTIFICATION,
+      payload: {
+        id: missingConnection.id,
+        type: missingConnection.connectionType,
+        client: {
+          id: missingConnection.integration.slug,
+          title: missingConnection.integration.title,
+          scopes: missingConnection.integration.scopes,
+          createdAt: missingConnection.integration.createdAt,
+          updatedAt: missingConnection.integration.updatedAt,
         },
-        context: {},
-      });
-
-      await tx.missingConnection.delete({
-        where: {
-          id: missingConnection.id,
-        },
-      });
-
-      for (const run of missingConnection.runs) {
-        logger.debug("[IntegrationConnectionCreatedService] restarting run", {
-          run,
-        });
-
-        // We need to start the run again
-        await workerQueue.enqueue(
-          "startRun",
-          {
-            id: run.id,
-          },
-          { tx }
-        );
-      }
+        expiresAt: connection.expiresAt ?? undefined,
+        account: missingConnection.externalAccount
+          ? {
+              id: missingConnection.externalAccount.identifier,
+              metadata: missingConnection.externalAccount.metadata,
+            }
+          : undefined,
+      },
+      context: {},
     });
+
+    await this.#prismaClient.missingConnection.delete({
+      where: {
+        id: missingConnection.id,
+      },
+    });
+
+    for (const run of missingConnection.runs) {
+      logger.debug("[IntegrationConnectionCreatedService] restarting run", {
+        run,
+      });
+
+      // We need to start the run again
+      await workerQueue.enqueue("startRun", {
+        id: run.id,
+      });
+    }
   }
 }

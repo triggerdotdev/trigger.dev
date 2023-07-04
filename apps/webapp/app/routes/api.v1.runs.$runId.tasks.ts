@@ -149,6 +149,10 @@ export async function action({ request, params }: ActionArgs) {
       task,
     });
 
+    if (!task) {
+      return json({ error: "Something went wrong" }, { status: 500 });
+    }
+
     return json(task);
   } catch (error) {
     if (error instanceof Error) {
@@ -170,7 +174,7 @@ export class RunTaskService {
     runId: string,
     idempotencyKey: string,
     taskBody: RunTaskBodyOutput
-  ): Promise<ServerTask> {
+  ): Promise<ServerTask | undefined> {
     const task = await $transaction(this.#prismaClient, async (tx) => {
       const existingTask = await tx.task.findUnique({
         where: {
@@ -260,6 +264,6 @@ export class RunTaskService {
       return task;
     });
 
-    return taskWithAttemptsToServerTask(task);
+    return task ? taskWithAttemptsToServerTask(task) : undefined;
   }
 }

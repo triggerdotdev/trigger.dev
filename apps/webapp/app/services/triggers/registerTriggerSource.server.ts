@@ -32,7 +32,7 @@ export class RegisterTriggerSourceService {
     key: string;
     accountId?: string;
     registrationMetadata?: any;
-  }): Promise<RegisterSourceEvent> {
+  }): Promise<RegisterSourceEvent | undefined> {
     const endpoint = await this.#prismaClient.endpoint.findUniqueOrThrow({
       where: {
         environmentId_slug: {
@@ -53,97 +53,105 @@ export class RegisterTriggerSourceService {
         },
       });
 
-    return await $transaction(this.#prismaClient, async (tx) => {
-      const service = new RegisterSourceService(tx);
+    return await $transaction(
+      this.#prismaClient,
+      async (tx) => {
+        const service = new RegisterSourceService(tx);
 
-      const triggerSource = await service.call(
-        endpoint.id,
-        payload.source,
-        dynamicTrigger.id,
-        accountId,
-        { id: key, metadata: registrationMetadata }
-      );
+        const triggerSource = await service.call(
+          endpoint.id,
+          payload.source,
+          dynamicTrigger.id,
+          accountId,
+          { id: key, metadata: registrationMetadata }
+        );
 
-      const eventDispatcher = await tx.eventDispatcher.upsert({
-        where: {
-          dispatchableId_environmentId: {
+        if (!triggerSource) {
+          return;
+        }
+
+        const eventDispatcher = await tx.eventDispatcher.upsert({
+          where: {
+            dispatchableId_environmentId: {
+              dispatchableId: triggerSource.id,
+              environmentId: environment.id,
+            },
+          },
+          create: {
             dispatchableId: triggerSource.id,
             environmentId: environment.id,
+            event: payload.rule.event,
+            source: payload.rule.source,
+            payloadFilter: payload.rule.payload,
+            contextFilter: payload.rule.context,
+            dispatchable: {
+              type: "DYNAMIC_TRIGGER",
+              id: dynamicTrigger.id,
+            },
           },
-        },
-        create: {
-          dispatchableId: triggerSource.id,
-          environmentId: environment.id,
-          event: payload.rule.event,
-          source: payload.rule.source,
-          payloadFilter: payload.rule.payload,
-          contextFilter: payload.rule.context,
-          dispatchable: {
-            type: "DYNAMIC_TRIGGER",
-            id: dynamicTrigger.id,
+          update: {
+            event: payload.rule.event,
+            source: payload.rule.source,
+            payloadFilter: payload.rule.payload,
+            contextFilter: payload.rule.context,
+            dispatchable: {
+              type: "DYNAMIC_TRIGGER",
+              id: dynamicTrigger.id,
+            },
           },
-        },
-        update: {
-          event: payload.rule.event,
-          source: payload.rule.source,
-          payloadFilter: payload.rule.payload,
-          contextFilter: payload.rule.context,
-          dispatchable: {
-            type: "DYNAMIC_TRIGGER",
-            id: dynamicTrigger.id,
-          },
-        },
-      });
+        });
 
-      const registration = await tx.dynamicTriggerRegistration.upsert({
-        where: {
-          key_dynamicTriggerId: {
+        const registration = await tx.dynamicTriggerRegistration.upsert({
+          where: {
+            key_dynamicTriggerId: {
+              key,
+              dynamicTriggerId: dynamicTrigger.id,
+            },
+          },
+          create: {
             key,
             dynamicTriggerId: dynamicTrigger.id,
+            sourceId: triggerSource.id,
+            eventDispatcherId: eventDispatcher.id,
+            metadata: registrationMetadata,
           },
-        },
-        create: {
-          key,
-          dynamicTriggerId: dynamicTrigger.id,
-          sourceId: triggerSource.id,
-          eventDispatcherId: eventDispatcher.id,
-          metadata: registrationMetadata,
-        },
-        update: {
-          metadata: registrationMetadata,
-        },
-      });
-
-      const secretStore = getSecretStore(
-        triggerSource.secretReference.provider,
-        { prismaClient: tx }
-      );
-
-      const { secret } = await secretStore.getSecretOrThrow(
-        z.object({
-          secret: z.string(),
-        }),
-        triggerSource.secretReference.key
-      );
-
-      return {
-        id: registration.id,
-        source: {
-          key: triggerSource.key,
-          active: triggerSource.active,
-          params: triggerSource.params,
-          secret,
-          data: triggerSource.channelData as any,
-          channel: {
-            type: "HTTP",
-            url: `${env.APP_ORIGIN}/api/v1/sources/http/${triggerSource.id}`,
+          update: {
+            metadata: registrationMetadata,
           },
-          clientId: triggerSource.integration.slug,
-        },
-        events: triggerSource.events.map((e) => e.name),
-        missingEvents: [],
-        orphanedEvents: [],
-      };
-    });
+        });
+
+        const secretStore = getSecretStore(
+          triggerSource.secretReference.provider,
+          { prismaClient: tx }
+        );
+
+        const { secret } = await secretStore.getSecretOrThrow(
+          z.object({
+            secret: z.string(),
+          }),
+          triggerSource.secretReference.key
+        );
+
+        return {
+          id: registration.id,
+          source: {
+            key: triggerSource.key,
+            active: triggerSource.active,
+            params: triggerSource.params,
+            secret,
+            data: triggerSource.channelData as any,
+            channel: {
+              type: "HTTP",
+              url: `${env.APP_ORIGIN}/api/v1/sources/http/${triggerSource.id}`,
+            },
+            clientId: triggerSource.integration.slug,
+          },
+          events: triggerSource.events.map((e) => e.name),
+          missingEvents: [],
+          orphanedEvents: [],
+        };
+      },
+      { timeout: 15000 }
+    );
   }
 }

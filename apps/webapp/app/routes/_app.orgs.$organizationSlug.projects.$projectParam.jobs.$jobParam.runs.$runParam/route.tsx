@@ -43,7 +43,10 @@ import { useOrganization } from "~/hooks/useOrganizations";
 import { usePathName } from "~/hooks/usePathName";
 import { useProject } from "~/hooks/useProject";
 import { JobRunStatus } from "~/models/job.server";
-import { redirectWithSuccessMessage } from "~/models/message.server";
+import {
+  redirectBackWithErrorMessage,
+  redirectWithSuccessMessage,
+} from "~/models/message.server";
 import { RunPresenter } from "~/presenters/RunPresenter.server";
 import { ContinueRunService } from "~/services/runs/continueRun.server";
 import { ReRunService } from "~/services/runs/reRun.server";
@@ -113,6 +116,10 @@ export const action: ActionFunction = async ({ request, params }) => {
     if (submission.intent === "start") {
       const rerunService = new ReRunService();
       const run = await rerunService.call({ runId: runParam });
+
+      if (!run) {
+        return redirectBackWithErrorMessage(request, "Unable to retry run");
+      }
 
       return redirectWithSuccessMessage(
         runDashboardPath(

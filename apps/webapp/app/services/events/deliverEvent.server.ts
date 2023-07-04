@@ -13,76 +13,80 @@ export class DeliverEventService {
   }
 
   public async call(id: string) {
-    await $transaction(this.#prismaClient, async (tx) => {
-      const eventRecord = await tx.eventRecord.findUniqueOrThrow({
-        where: {
-          id,
-        },
-        include: {
-          environment: {
-            include: {
-              organization: true,
-              project: true,
+    await $transaction(
+      this.#prismaClient,
+      async (tx) => {
+        const eventRecord = await tx.eventRecord.findUniqueOrThrow({
+          where: {
+            id,
+          },
+          include: {
+            environment: {
+              include: {
+                organization: true,
+                project: true,
+              },
             },
           },
-        },
-      });
+        });
 
-      const possibleEventDispatchers = await tx.eventDispatcher.findMany({
-        where: {
-          environmentId: eventRecord.environmentId,
-          event: eventRecord.name,
-          source: eventRecord.source,
-          enabled: true,
-          manual: false,
-        },
-      });
+        const possibleEventDispatchers = await tx.eventDispatcher.findMany({
+          where: {
+            environmentId: eventRecord.environmentId,
+            event: eventRecord.name,
+            source: eventRecord.source,
+            enabled: true,
+            manual: false,
+          },
+        });
 
-      logger.debug("Found possible event dispatchers", {
-        possibleEventDispatchers,
-        eventRecord: eventRecord.id,
-      });
-
-      const matchingEventDispatchers = possibleEventDispatchers.filter(
-        (eventDispatcher) =>
-          this.#evaluateEventRule(eventDispatcher, eventRecord)
-      );
-
-      if (matchingEventDispatchers.length === 0) {
-        logger.debug("No matching event dispatchers", {
+        logger.debug("Found possible event dispatchers", {
+          possibleEventDispatchers,
           eventRecord: eventRecord.id,
         });
 
-        return;
-      }
+        const matchingEventDispatchers = possibleEventDispatchers.filter(
+          (eventDispatcher) =>
+            this.#evaluateEventRule(eventDispatcher, eventRecord)
+        );
 
-      logger.debug("Found matching event dispatchers", {
-        matchingEventDispatchers,
-        eventRecord: eventRecord.id,
-      });
+        if (matchingEventDispatchers.length === 0) {
+          logger.debug("No matching event dispatchers", {
+            eventRecord: eventRecord.id,
+          });
 
-      await Promise.all(
-        matchingEventDispatchers.map((eventDispatcher) =>
-          workerQueue.enqueue(
-            "events.invokeDispatcher",
-            {
-              id: eventDispatcher.id,
-              eventRecordId: eventRecord.id,
-            },
-            { tx }
+          return;
+        }
+
+        logger.debug("Found matching event dispatchers", {
+          matchingEventDispatchers,
+          eventRecord: eventRecord.id,
+        });
+
+        await Promise.all(
+          matchingEventDispatchers.map((eventDispatcher) =>
+            workerQueue.enqueue(
+              "events.invokeDispatcher",
+              {
+                id: eventDispatcher.id,
+                eventRecordId: eventRecord.id,
+              },
+              { tx }
+            )
           )
-        )
-      );
+        );
 
-      await tx.eventRecord.update({
-        where: {
-          id: eventRecord.id,
-        },
-        data: {
-          deliveredAt: new Date(),
-        },
-      });
-    });
+        await tx.eventRecord.update({
+          where: {
+            id: eventRecord.id,
+          },
+          data: {
+            deliveredAt: new Date(),
+          },
+        });
+      },
+      { timeout: 10000 }
+    );
   }
 
   #evaluateEventRule(

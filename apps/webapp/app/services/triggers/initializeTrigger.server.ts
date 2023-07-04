@@ -74,6 +74,10 @@ export class InitializeTriggerService {
       registrationMetadata: payload.metadata,
     });
 
+    if (!registration) {
+      return;
+    }
+
     await this.#sendEvent.call(
       environment,
       {
