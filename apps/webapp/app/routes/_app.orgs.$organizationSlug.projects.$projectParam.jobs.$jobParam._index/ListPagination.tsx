@@ -24,10 +24,11 @@ function NextButton({ cursor }: { cursor?: string }) {
   return path ? (
     <LinkButton
       to={path}
-      variant={"secondary/small"}
+      variant={"tertiary/small"}
       TrailingIcon="chevron-right"
+      className="flex items-center"
     >
-      <span className="sr-only">Next</span>
+      Next
     </LinkButton>
   ) : null;
 }
@@ -38,10 +39,11 @@ function PreviousButton({ cursor }: { cursor?: string }) {
   return path ? (
     <LinkButton
       to={path}
-      variant={"secondary/small"}
+      variant={"tertiary/small"}
       LeadingIcon="chevron-left"
+      className="flex items-center"
     >
-      <span className="sr-only">Previous</span>
+      Prev
     </LinkButton>
   ) : null;
 }
