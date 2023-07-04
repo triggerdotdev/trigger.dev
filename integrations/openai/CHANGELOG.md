@@ -1,5 +1,19 @@
 # @trigger.dev/slack
 
+## 1.0.0-next.2
+
+### Patch Changes
+
+- 12803536: listModels returns the response.data instead of response.data.data
+- Updated dependencies [cca7da9d]
+- Updated dependencies [722fe7b7]
+- Updated dependencies [c83443a4]
+- Updated dependencies [c83443a4]
+- Updated dependencies [99c6cd03]
+- Updated dependencies [f160b34b]
+- Updated dependencies [01cf5f3b]
+  - @trigger.dev/sdk@2.0.0-next.8
+
 ## 1.0.0-next.1
 
 ### Patch Changes
