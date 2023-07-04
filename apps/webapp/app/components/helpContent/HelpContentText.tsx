@@ -140,6 +140,25 @@ export function HowToSetupYourProject() {
   );
 }
 
+export function HowToRunYourJob() {
+  return (
+    <>
+      <StepNumber
+        stepNumber="1"
+        title="Step 1
+"
+      />
+      <StepContentContainer>
+        <Paragraph spacing>Step 1 content.</Paragraph>
+      </StepContentContainer>
+
+      <Callout variant="docs" href="#">
+        Add link to docs here.
+      </Callout>
+    </>
+  );
+}
+
 export function HowToRunATest() {
   return (
     <>
