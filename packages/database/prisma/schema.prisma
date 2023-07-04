@@ -266,11 +266,14 @@ model OrgMemberInvite {
 }
 
 model RuntimeEnvironment {
-  id     String @id @default(cuid())
-  slug   String
-  apiKey String @unique
+  id       String  @id @default(cuid())
+  slug     String
+  apiKey   String  @unique
+  pkApiKey String?
 
   type RuntimeEnvironmentType @default(DEVELOPMENT)
+
+  autoEnableInternalSources Boolean @default(true)
 
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   organizationId String

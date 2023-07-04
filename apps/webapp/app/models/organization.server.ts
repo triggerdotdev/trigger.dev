@@ -132,11 +132,14 @@ export async function createEnvironment(
 ) {
   const slug = envSlug(type);
   const apiKey = createApiKeyForEnv(type);
+  const pkApiKey = createPkApiKeyForEnv(type);
 
   return await prismaClient.runtimeEnvironment.create({
     data: {
       slug,
       apiKey,
+      pkApiKey,
+      autoEnableInternalSources: type !== "DEVELOPMENT",
       organization: {
         connect: {
           id: organization.id,
@@ -155,6 +158,10 @@ export async function createEnvironment(
 
 function createApiKeyForEnv(envType: RuntimeEnvironment["type"]) {
   return `tr_${envSlug(envType)}_${apiKeyId(12)}`;
+}
+
+function createPkApiKeyForEnv(envType: RuntimeEnvironment["type"]) {
+  return `pk_${envSlug(envType)}_${apiKeyId(16)}`;
 }
 
 function envSlug(environmentType: RuntimeEnvironment["type"]) {

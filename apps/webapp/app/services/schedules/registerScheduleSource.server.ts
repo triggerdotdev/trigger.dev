@@ -39,6 +39,12 @@ export class RegisterScheduleSourceService {
           })
         : undefined;
 
+      const environment = await tx.runtimeEnvironment.findUniqueOrThrow({
+        where: {
+          id: dispatcher.environmentId,
+        },
+      });
+
       const scheduleSource = await this.#prismaClient.scheduleSource.upsert({
         where: {
           key_environmentId: {
@@ -54,7 +60,7 @@ export class RegisterScheduleSourceService {
             type: validatedSchedule.type,
             options: validatedSchedule.options,
           },
-          active: true,
+          active: environment.autoEnableInternalSources,
           metadata: schedule.metadata,
           externalAccountId: externalAccount ? externalAccount.id : undefined,
         },
