@@ -1,6 +1,6 @@
 import { useForm } from "@conform-to/react";
 import { parse } from "@conform-to/zod";
-import { EnvelopeIcon, UserPlusIcon } from "@heroicons/react/20/solid";
+import { UserPlusIcon } from "@heroicons/react/20/solid";
 import { Form, useActionData } from "@remix-run/react";
 import { ActionFunction, LoaderArgs, json } from "@remix-run/server-runtime";
 import { useState } from "react";
@@ -28,7 +28,9 @@ import {
   ButtonContent,
   LinkButton,
 } from "~/components/primitives/Buttons";
+import { DateTime } from "~/components/primitives/DateTime";
 import { Header2, Header3 } from "~/components/primitives/Headers";
+import { NamedIcon } from "~/components/primitives/NamedIcon";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { SimpleTooltip } from "~/components/primitives/Tooltip";
 import { useOrganization } from "~/hooks/useOrganizations";
@@ -39,16 +41,12 @@ import {
 } from "~/models/member.server";
 import { redirectWithSuccessMessage } from "~/models/message.server";
 import { requireUserId } from "~/services/session.server";
-import { formatDateTime, titleCase } from "~/utils";
 import {
   inviteTeamMemberPath,
   organizationTeamPath,
   resendInvitePath,
 } from "~/utils/pathBuilder";
 import { OrgAdminHeader } from "../_app.orgs.$organizationSlug._index/OrgAdminHeader";
-import { resendSchema } from "../invite-resend";
-import { EnvelopeOpenIcon } from "@heroicons/react/24/solid";
-import { NamedIcon } from "~/components/primitives/NamedIcon";
 
 export const loader = async ({ request, params }: LoaderArgs) => {
   const userId = await requireUserId(request);
@@ -169,7 +167,7 @@ export default function Page() {
                   <div className="flex flex-col gap-0.5">
                     <Header3>{invite.email}</Header3>
                     <Paragraph variant="small">
-                      Invite sent {formatDateTime(invite.updatedAt, "medium")}
+                      Invite sent {<DateTime date={invite.updatedAt} />}
                     </Paragraph>
                   </div>
                   <div className="flex grow items-center justify-end gap-4">

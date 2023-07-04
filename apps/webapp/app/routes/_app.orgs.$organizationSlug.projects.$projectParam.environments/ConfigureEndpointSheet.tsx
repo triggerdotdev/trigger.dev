@@ -1,5 +1,20 @@
+import { conform, useForm } from "@conform-to/react";
+import { parse } from "@conform-to/zod";
+import { useFetcher, useRevalidator } from "@remix-run/react";
+import { useEffect } from "react";
+import { useEventSource } from "remix-utils";
+import { InlineCode } from "~/components/code/InlineCode";
 import { EnvironmentLabel } from "~/components/environments/EnvironmentLabel";
+import { Button } from "~/components/primitives/Buttons";
+import { Callout } from "~/components/primitives/Callout";
+import { ClipboardField } from "~/components/primitives/ClipboardField";
+import { DateTime } from "~/components/primitives/DateTime";
+import { FormError } from "~/components/primitives/FormError";
 import { Header1, Header2 } from "~/components/primitives/Headers";
+import { Hint } from "~/components/primitives/Hint";
+import { Input } from "~/components/primitives/Input";
+import { InputGroup } from "~/components/primitives/InputGroup";
+import { Paragraph } from "~/components/primitives/Paragraph";
 import {
   Sheet,
   SheetBody,
@@ -7,25 +22,9 @@ import {
   SheetHeader,
 } from "~/components/primitives/Sheet";
 import { ClientEndpoint } from "~/presenters/EnvironmentsPresenter.server";
-import { RuntimeEnvironmentType } from "../../../../../packages/database/src";
-import { useFetcher, useRevalidator } from "@remix-run/react";
-import { InputGroup } from "~/components/primitives/InputGroup";
-import { Input } from "~/components/primitives/Input";
-import { Button } from "~/components/primitives/Buttons";
-import { Label } from "~/components/primitives/Label";
-import { Hint } from "~/components/primitives/Hint";
-import { InlineCode } from "~/components/code/InlineCode";
-import { Paragraph } from "~/components/primitives/Paragraph";
-import { Callout } from "~/components/primitives/Callout";
-import { formatDateTime } from "~/utils";
-import { conform, useForm } from "@conform-to/react";
-import { parse } from "@conform-to/zod";
-import { bodySchema } from "../resources.environments.$environmentParam.endpoint";
-import { FormError } from "~/components/primitives/FormError";
-import { useEventSource } from "remix-utils";
-import { useEffect } from "react";
 import { endpointStreamingPath } from "~/utils/pathBuilder";
-import { ClipboardField } from "~/components/primitives/ClipboardField";
+import { RuntimeEnvironmentType } from "../../../../../packages/database/src";
+import { bodySchema } from "../resources.environments.$environmentParam.endpoint";
 
 type ConfigureEndpointSheetProps = {
   slug: string;
@@ -147,9 +146,11 @@ export function ConfigureEndpointSheet({
                   >
                     <Paragraph variant="small" className="grow text-green-200">
                       Endpoint configured. Last refreshed:{" "}
-                      {endpoint.latestIndex
-                        ? formatDateTime(endpoint.latestIndex.updatedAt, "long")
-                        : "–"}
+                      {endpoint.latestIndex ? (
+                        <DateTime date={endpoint.latestIndex.updatedAt} />
+                      ) : (
+                        "–"
+                      )}
                     </Paragraph>
                     <Button
                       variant="primary/small"

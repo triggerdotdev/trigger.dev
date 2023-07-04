@@ -93,32 +93,6 @@ export function hydrateDates(object: any): any {
   return object;
 }
 
-const dateFormatter = new Intl.DateTimeFormat("en-US", {
-  dateStyle: "medium",
-  timeStyle: "short",
-});
-const dateFormatterLong = new Intl.DateTimeFormat("en-US", {
-  dateStyle: "medium",
-  timeStyle: "medium",
-});
-
-export function formatDateTime(
-  date: Date,
-  style: "medium" | "long" = "medium"
-): string {
-  try {
-    switch (style) {
-      case "long":
-        return dateFormatterLong.format(date);
-      case "medium":
-        return dateFormatter.format(date);
-    }
-  } catch (error) {
-    console.error(error);
-    return "Unknown";
-  }
-}
-
 type DurationOptions = {
   style?: "long" | "short";
   maxDecimalPoints?: number;

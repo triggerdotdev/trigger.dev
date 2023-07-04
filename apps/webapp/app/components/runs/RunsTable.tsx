@@ -4,10 +4,11 @@ import { useJob } from "~/hooks/useJob";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { RunList } from "~/presenters/RunListPresenter.server";
-import { formatDateTime, formatDuration } from "~/utils";
+import { formatDuration } from "~/utils";
 import { runDashboardPath } from "~/utils/pathBuilder";
 import { EnvironmentLabel } from "../environments/EnvironmentLabel";
 import { Callout } from "../primitives/Callout";
+import { DateTime } from "../primitives/DateTime";
 import { Spinner } from "../primitives/Spinner";
 import {
   Table,
@@ -75,9 +76,7 @@ export function RunsTable({
                   <RunStatus status={run.status} />
                 </TableCell>
                 <TableCell to={path}>
-                  {run.startedAt
-                    ? formatDateTime(run.startedAt, "medium")
-                    : "–"}
+                  {run.startedAt ? <DateTime date={run.startedAt} /> : "–"}
                 </TableCell>
                 <TableCell to={path}>
                   {formatDuration(run.startedAt, run.completedAt, {
@@ -93,9 +92,7 @@ export function RunsTable({
                 </TableCell>
                 <TableCell to={path}>{run.version}</TableCell>
                 <TableCell to={path}>
-                  {run.createdAt
-                    ? formatDateTime(run.createdAt, "medium")
-                    : "–"}
+                  {run.createdAt ? <DateTime date={run.createdAt} /> : "–"}
                 </TableCell>
                 <TableCellChevron to={path} />
               </TableRow>

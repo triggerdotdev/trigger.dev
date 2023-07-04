@@ -46,7 +46,6 @@ import {
   IntegrationsPresenter,
 } from "~/presenters/IntegrationsPresenter.server";
 import { requireUser } from "~/services/session.server";
-import { formatDateTime } from "~/utils";
 import { Handle } from "~/utils/handle";
 import {
   ProjectParamSchema,
@@ -449,7 +448,7 @@ function IntegrationsWithMissingFields({
                   <IntegrationWithMissingFieldSheet
                     integration={integration}
                     organizationId={organizationId}
-                    button={formatDateTime(client.createdAt, "medium")}
+                    button={<DateTime date={client.createdAt} />}
                     callbackUrl={callbackUrl}
                     existingIntegration={client}
                     className="flex w-full cursor-pointer justify-start"

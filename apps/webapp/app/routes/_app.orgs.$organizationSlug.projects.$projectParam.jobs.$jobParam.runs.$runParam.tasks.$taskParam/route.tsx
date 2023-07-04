@@ -1,6 +1,7 @@
 import { LoaderArgs } from "@remix-run/server-runtime";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { CodeBlock } from "~/components/code/CodeBlock";
+import { DateTime, formattedDateTime } from "~/components/primitives/DateTime";
 import { Header3 } from "~/components/primitives/Headers";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import {
@@ -12,8 +13,9 @@ import {
   TableRow,
 } from "~/components/primitives/Table";
 import { TaskDetailsPresenter } from "~/presenters/TaskDetailsPresenter.server";
+import { sensitiveDataReplacer } from "~/services/sensitiveDataReplacer";
 import { requireUserId } from "~/services/session.server";
-import { formatDateTime, formatDuration } from "~/utils";
+import { formatDuration } from "~/utils";
 import { cn } from "~/utils/cn";
 import { TaskParamsSchema } from "~/utils/pathBuilder";
 import {
@@ -31,7 +33,7 @@ import {
 } from "../_app.orgs.$organizationSlug.projects.$projectParam.jobs.$jobParam.runs.$runParam/RunCard";
 import { TaskStatusIcon } from "../_app.orgs.$organizationSlug.projects.$projectParam.jobs.$jobParam.runs.$runParam/TaskStatus";
 import { TaskAttemptStatusLabel } from "./TaskAttemptStatus";
-import { sensitiveDataReplacer } from "~/services/sensitiveDataReplacer";
+import { useLocales } from "~/components/primitives/LocaleProvider";
 
 export const loader = async ({ request, params }: LoaderArgs) => {
   const userId = await requireUserId(request);
@@ -56,6 +58,7 @@ export const loader = async ({ request, params }: LoaderArgs) => {
 
 export default function Page() {
   const { task } = useTypedLoaderData<typeof loader>();
+  const locales = useLocales();
 
   const {
     name,
@@ -98,14 +101,14 @@ export default function Page() {
             <RunPanelIconProperty
               icon="calendar"
               label="Started at"
-              value={formatDateTime(startedAt, "long")}
+              value={formattedDateTime(startedAt, locales)}
             />
           )}
           {completedAt && (
             <RunPanelIconProperty
               icon="flag"
               label="Finished at"
-              value={formatDateTime(completedAt, "long")}
+              value={formattedDateTime(completedAt, locales)}
             />
           )}
           {delayUntil && !completedAt && (
@@ -113,7 +116,7 @@ export default function Page() {
               <RunPanelIconProperty
                 icon="flag"
                 label="Continues at"
-                value={formatDateTime(delayUntil, "long")}
+                value={formattedDateTime(delayUntil, locales)}
               />
               <UpdatingDelay delayUntil={delayUntil} />
             </>
@@ -160,9 +163,13 @@ export default function Page() {
                       <TaskAttemptStatusLabel status={attempt.status} />
                     </TableCell>
                     <TableCell>
-                      {attempt.status === "PENDING" && attempt.runAt
-                        ? formatDateTime(attempt.runAt, "long")
-                        : formatDateTime(attempt.updatedAt, "long")}
+                      <DateTime
+                        date={
+                          attempt.status === "PENDING" && attempt.runAt
+                            ? attempt.runAt
+                            : attempt.updatedAt
+                        }
+                      />
                     </TableCell>
                     <TableCell>{attempt.error}</TableCell>
                   </TableRow>

@@ -6,36 +6,48 @@ type DateTimeProps = {
   className?: string;
 };
 
-export const DateTime = ({ date, timeZone, className }: DateTimeProps) => {
+export const DateTime = ({
+  date,
+  timeZone = "UTC",
+  className,
+}: DateTimeProps) => {
   const realDate = typeof date === "string" ? new Date(date) : date;
 
   const locales = useLocales();
   const isoString = realDate.toISOString();
-  const formattedDate = new Intl.DateTimeFormat(locales, {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-    timeZone,
-  }).format(realDate);
-
-  const formattedTime = new Intl.DateTimeFormat(locales, {
-    hour: "numeric",
-    minute: "numeric",
-    timeZone,
-  }).format(realDate);
-
-  console.log(
-    `<DateTime> (formattedDate = ${formattedDate}) (formattedTime = ${formattedTime}) (isoString = ${isoString})`
-  );
 
   return (
     <time dateTime={isoString} className={className}>
-      {formattedDate} at {formattedTime}
+      {formattedDateTime(date, locales, timeZone)}
     </time>
   );
 };
 
-export const DateTimeAccurate = ({ date, timeZone }: DateTimeProps) => {
+export function formattedDateTime(
+  date: Date | string,
+  locales: string[],
+  timeZone: string = "UTC"
+) {
+  const realDate = typeof date === "string" ? new Date(date) : date;
+
+  const formattedDate = new Intl.DateTimeFormat(locales, {
+    year: "2-digit",
+    month: "2-digit",
+    day: "2-digit",
+    timeZone,
+  }).format(realDate);
+
+  const formattedTime = new Intl.DateTimeFormat(locales, {
+    hour: "2-digit",
+    minute: "2-digit",
+    timeZoneName: "short",
+    timeZone,
+  }).format(realDate);
+
+  return `${formattedDate} at ${formattedTime}`;
+}
+
+export const DateTimeAccurate = ({ date, timeZone = "UTC" }: DateTimeProps) => {
   const realDate = typeof date === "string" ? new Date(date) : date;
 
   const locales = useLocales();

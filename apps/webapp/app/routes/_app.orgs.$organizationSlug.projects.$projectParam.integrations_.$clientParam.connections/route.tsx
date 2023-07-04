@@ -1,6 +1,7 @@
 import { LoaderArgs } from "@remix-run/server-runtime";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { connectionType } from "~/components/integrations/connectionType";
+import { DateTime } from "~/components/primitives/DateTime";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import {
   Table,
@@ -11,11 +12,8 @@ import {
   TableHeaderCell,
   TableRow,
 } from "~/components/primitives/Table";
-import { useIntegrationClient } from "~/hooks/useIntegrationClient";
-import { useProject } from "~/hooks/useProject";
 import { IntegrationClientConnectionsPresenter } from "~/presenters/IntegrationClientConnectionsPresenter.server";
 import { requireUserId } from "~/services/session.server";
-import { formatDateTime } from "~/utils";
 import { Handle } from "~/utils/handle";
 import { IntegrationClientParamSchema } from "~/utils/pathBuilder";
 
@@ -69,8 +67,12 @@ export default function Page() {
                 <TableCell>
                   <ExpiresAt expiresAt={connection.expiresAt} />
                 </TableCell>
-                <TableCell>{formatDateTime(connection.createdAt)}</TableCell>
-                <TableCell>{formatDateTime(connection.updatedAt)}</TableCell>
+                <TableCell>
+                  {<DateTime date={connection.createdAt} />}
+                </TableCell>
+                <TableCell>
+                  {<DateTime date={connection.updatedAt} />}
+                </TableCell>
               </TableRow>
             );
           })
@@ -96,7 +98,7 @@ function ExpiresAt({ expiresAt }: { expiresAt: Date | null }) {
 
   return (
     <span className={inPast ? "text-rose-500" : ""}>
-      {formatDateTime(expiresAt)}
+      <DateTime date={expiresAt} />
     </span>
   );
 }

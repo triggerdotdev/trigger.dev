@@ -1,9 +1,9 @@
-import type { RuntimeEnvironmentType } from "@trigger.dev/internal";
 import { conform } from "@conform-to/react";
 import { parse } from "@conform-to/zod";
 import { BoltIcon, ForwardIcon } from "@heroicons/react/24/solid";
 import { Form, Outlet, useNavigate, useRevalidator } from "@remix-run/react";
 import { ActionFunction, LoaderArgs, json } from "@remix-run/server-runtime";
+import type { RuntimeEnvironmentType } from "@trigger.dev/internal";
 import { useEffect, useMemo } from "react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { useEventSource } from "remix-utils";
@@ -13,6 +13,7 @@ import { EnvironmentLabel } from "~/components/environments/EnvironmentLabel";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { Button } from "~/components/primitives/Buttons";
 import { Callout } from "~/components/primitives/Callout";
+import { DateTime, formattedDateTime } from "~/components/primitives/DateTime";
 import { Header2 } from "~/components/primitives/Headers";
 import { NamedIcon } from "~/components/primitives/NamedIcon";
 import {
@@ -47,7 +48,7 @@ import { RunPresenter } from "~/presenters/RunPresenter.server";
 import { ContinueRunService } from "~/services/runs/continueRun.server";
 import { ReRunService } from "~/services/runs/reRun.server";
 import { requireUserId } from "~/services/session.server";
-import { formatDateTime, formatDuration } from "~/utils";
+import { formatDuration } from "~/utils";
 import { cn } from "~/utils/cn";
 import { Handle } from "~/utils/handle";
 import {
@@ -72,6 +73,7 @@ import {
 } from "./RunCard";
 import { TaskCard } from "./TaskCard";
 import { TaskCardSkeleton } from "./TaskCardSkeleton";
+import { useLocales } from "~/components/primitives/LocaleProvider";
 
 export const loader = async ({ request, params }: LoaderArgs) => {
   const userId = await requireUserId(request);
@@ -156,6 +158,7 @@ export default function Page() {
   const project = useProject();
   const job = useJob();
   const navigate = useNavigate();
+  const locales = useLocales();
 
   const pathName = usePathName();
 
@@ -227,7 +230,7 @@ export default function Page() {
               label={"Started"}
               value={
                 run.startedAt
-                  ? formatDateTime(run.startedAt)
+                  ? formattedDateTime(run.startedAt, locales)
                   : "Not started yet"
               }
             />
@@ -333,14 +336,14 @@ export default function Page() {
                         <RunPanelIconProperty
                           icon="calendar"
                           label="Started at"
-                          value={formatDateTime(run.startedAt, "long")}
+                          value={formattedDateTime(run.startedAt, locales)}
                         />
                       )}
                       {run.completedAt && (
                         <RunPanelIconProperty
                           icon="flag"
                           label="Finished at"
-                          value={formatDateTime(run.completedAt, "long")}
+                          value={formattedDateTime(run.completedAt, locales)}
                         />
                       )}
                       {run.startedAt && run.completedAt && (

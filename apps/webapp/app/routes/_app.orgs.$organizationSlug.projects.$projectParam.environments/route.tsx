@@ -1,13 +1,14 @@
 import { LoaderArgs } from "@remix-run/server-runtime";
 import { useMemo, useState } from "react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
-import { ClipboardField } from "~/components/primitives/ClipboardField";
 import {
   EnvironmentLabel,
   environmentTitle,
 } from "~/components/environments/EnvironmentLabel";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { ButtonContent } from "~/components/primitives/Buttons";
+import { ClipboardField } from "~/components/primitives/ClipboardField";
+import { DateTime } from "~/components/primitives/DateTime";
 import { Header1, Header2 } from "~/components/primitives/Headers";
 import {
   PageDescription,
@@ -30,12 +31,11 @@ import {
   EnvironmentsPresenter,
 } from "~/presenters/EnvironmentsPresenter.server";
 import { requireUserId } from "~/services/session.server";
-import { formatDateTime } from "~/utils";
 import { Handle } from "~/utils/handle";
 import { ProjectParamSchema } from "~/utils/pathBuilder";
+import { requestUrl } from "~/utils/requestUrl.server";
 import { RuntimeEnvironmentType } from "../../../../../packages/database/src";
 import { ConfigureEndpointSheet } from "./ConfigureEndpointSheet";
-import { requestUrl } from "~/utils/requestUrl.server";
 
 export const loader = async ({ request, params }: LoaderArgs) => {
   const userId = await requireUserId(request);
@@ -214,9 +214,11 @@ function EndpointRow({
             </div>
           </TableCell>
           <TableCell onClick={onClick}>
-            {endpoint.latestIndex
-              ? formatDateTime(endpoint.latestIndex.updatedAt)
-              : "–"}
+            {endpoint.latestIndex ? (
+              <DateTime date={endpoint.latestIndex.updatedAt} />
+            ) : (
+              "–"
+            )}
           </TableCell>
           <TableCell onClick={onClick}>
             {endpoint.latestIndex?.stats.jobs ?? "–"}

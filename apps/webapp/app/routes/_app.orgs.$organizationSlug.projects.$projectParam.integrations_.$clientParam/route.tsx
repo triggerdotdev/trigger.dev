@@ -1,9 +1,10 @@
 import { Outlet } from "@remix-run/react";
 import { LoaderArgs } from "@remix-run/server-runtime";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
-import { ClipboardField } from "~/components/primitives/ClipboardField";
 import { connectionType } from "~/components/integrations/connectionType";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
+import { ClipboardField } from "~/components/primitives/ClipboardField";
+import { DateTime } from "~/components/primitives/DateTime";
 import {
   PageHeader,
   PageInfoGroup,
@@ -17,7 +18,6 @@ import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { IntegrationClientPresenter } from "~/presenters/IntegrationClientPresenter.server";
 import { requireUser } from "~/services/session.server";
-import { formatDateTime } from "~/utils";
 import { Handle } from "~/utils/handle";
 import {
   IntegrationClientParamSchema,
@@ -114,7 +114,7 @@ export default function Integrations() {
             <PageInfoProperty
               icon="calendar"
               label="Added"
-              value={formatDateTime(client.createdAt)}
+              value={<DateTime date={client.createdAt} />}
             />
           </PageInfoGroup>
         </PageInfoRow>
