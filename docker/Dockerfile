@@ -63,7 +63,8 @@ COPY --from=builder /triggerdotdev/scripts ./scripts
 
 EXPOSE 3000
 
+# This is needed to run migrations in the entrypoint.sh script (TODO: figure out a better way to do this)
 RUN npm install -g prisma@4.16.0
-RUN npm install -g ts-node
+RUN npm install -g ts-node@10.9.1
 
 CMD ["./scripts/entrypoint.sh"]

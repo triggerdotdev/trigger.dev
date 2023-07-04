@@ -1,0 +1,35 @@
+version: "3"
+
+volumes:
+  database-data:
+
+networks:
+  app_network:
+    external: false
+
+services:
+  db:
+    container_name: db
+    image: postgres:latest
+    restart: always
+    volumes:
+      - database-data:/var/lib/postgresql/data/
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: postgres
+    networks:
+      - app_network
+    ports:
+      - 5432:5432
+  app:
+    build:
+      context: ../
+      dockerfile: docker/Dockerfile
+    ports:
+      - 3000:3000
+    depends_on:
+      - db
+    env_file: .env
+    networks:
+      - app_network
