@@ -447,10 +447,15 @@ export const RedactSchema = z.object({
 });
 
 export const RetryOptionsSchema = z.object({
+  /** The maximum number of times to retry the request. */
   limit: z.number().optional(),
+  /** The exponential factor to use when calculating the next retry time. */
   factor: z.number().optional(),
+  /** The minimum amount of time to wait before retrying the request. */
   minTimeoutInMs: z.number().optional(),
+  /** The maximum amount of time to wait before retrying the request. */
   maxTimeoutInMs: z.number().optional(),
+  /** Whether to randomize the retry time. */
   randomize: z.boolean().optional(),
 });
 

@@ -149,6 +149,17 @@ export class IO {
     );
   }
 
+  /** `io.backgroundFetch()` fetches data from a URL that can take longer that the serverless timeout. The actual `fetch` request is performed on the Trigger.dev platform, and the response is sent back to you.
+   * @param key Should be a stable and unique key inside the `run()`. See [resumability](https://trigger.dev/docs/documentation/concepts/resumability) for more information.
+   * @param url The URL to fetch from.
+   * @param requestInit The options for the request
+   * @param retry The options for retrying the request if it fails
+   * An object where the key is a status code pattern and the value is a retrying strategy.
+   * Supported patterns are:
+   * - Specific status codes: 429
+   * - Ranges: 500-599
+   * - Wildcards: 2xx, 3xx, 4xx, 5xx
+   */
   async backgroundFetch<TResponseData>(
     key: string | any[],
     url: string,
