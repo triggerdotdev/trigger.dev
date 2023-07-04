@@ -22,9 +22,11 @@ new Job(client, {
   run: async (payload, io, ctx) => {
     const models = await io.openai.listModels("list-models");
 
-    await io.openai.retrieveModel("get-model", {
-      model: models[0].id,
-    });
+    if (models.data.length > 0) {
+      await io.openai.retrieveModel("get-model", {
+        model: models.data[0].id,
+      });
+    }
 
     await io.openai.backgroundCreateChatCompletion(
       "background-chat-completion",

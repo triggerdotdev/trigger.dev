@@ -51,7 +51,7 @@ export const retrieveModel: AuthenticatedTask<
 
 type ListModelsResponseData = Awaited<
   ReturnType<OpenAIClientType["listModels"]>
->["data"]["data"];
+>["data"];
 
 export const listModels: AuthenticatedTask<
   OpenAIClientType,
@@ -59,7 +59,7 @@ export const listModels: AuthenticatedTask<
   Prettify<ListModelsResponseData>
 > = {
   run: async (params, client) => {
-    return client.listModels().then((res) => res.data.data);
+    return client.listModels().then((res) => res.data);
   },
   init: (params) => {
     return {
