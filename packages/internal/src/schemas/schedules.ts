@@ -18,6 +18,9 @@ export const IntervalOptionsSchema = z.object({
 export type IntervalOptions = z.infer<typeof IntervalOptionsSchema>;
 
 export const CronOptionsSchema = z.object({
+  /** A CRON expression that defines the schedule. A useful tool when writing CRON
+    expressions is [crontab guru](https://crontab.guru). Note that the timezone
+    used is UTC. */
   cron: z.string(),
 });
 

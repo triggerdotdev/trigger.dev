@@ -546,7 +546,10 @@ export class TriggerClient {
     return this.#client.getAuth(this.id, id);
   }
 
-  /** You can call this function from anywhere in your code to send an event. The other way to send an event is by using `io.sendEvent()` from inside a `run()` function.
+  /** You can call this function from anywhere in your code to send an event. The other way to send an event is by using [`io.sendEvent()`](https://trigger.dev/docs/sdk/io/sendevent) from inside a `run()` function.
+   * @param event The event to send.
+   * @param options Options for sending the event.
+   * @returns A promise that resolves to the event details
    */
   async sendEvent(event: SendEvent, options?: SendEventOptions) {
     return this.#client.sendEvent(event, options);

@@ -291,7 +291,7 @@ export class IO {
 
   /** `io.unregisterInterval()` allows you to unregister a [DynamicSchedule](https://trigger.dev/docs/sdk/dynamicschedule) that was previously registered with `io.registerInterval()`.
    * @param key Should be a stable and unique key inside the `run()`. See [resumability](https://trigger.dev/docs/documentation/concepts/resumability) for more information.
-   * @param dynamicSchedule The [DynamicSchedule](https://trigger.dev/docs/sdk/dynamicschedule) to register a new schedule on.
+   * @param dynamicSchedule The [DynamicSchedule](https://trigger.dev/docs/sdk/dynamicschedule) to unregister a schedule on.
    * @param id A unique id for the interval. This is used to identify and unregister the interval later.
    */
   async unregisterInterval(
@@ -314,6 +314,12 @@ export class IO {
     );
   }
 
+  /** `io.registerCron()` allows you to register a [DynamicSchedule](https://trigger.dev/docs/sdk/dynamicschedule) that will trigger any jobs it's attached to on a regular CRON schedule.
+   * @param key Should be a stable and unique key inside the `run()`. See [resumability](https://trigger.dev/docs/documentation/concepts/resumability) for more information.
+   * @param dynamicSchedule The [DynamicSchedule](https://trigger.dev/docs/sdk/dynamicschedule) to register a new schedule on.
+   * @param id A unique id for the schedule. This is used to identify and unregister the schedule later.
+   * @param options The options for the CRON schedule.
+   */
   async registerCron(
     key: string | any[],
     dynamicSchedule: DynamicSchedule,
@@ -340,6 +346,11 @@ export class IO {
     );
   }
 
+  /** `io.unregisterCron()` allows you to unregister a [DynamicSchedule](https://trigger.dev/docs/sdk/dynamicschedule) that was previously registered with `io.registerCron()`.
+   * @param key Should be a stable and unique key inside the `run()`. See [resumability](https://trigger.dev/docs/documentation/concepts/resumability) for more information.
+   * @param dynamicSchedule The [DynamicSchedule](https://trigger.dev/docs/sdk/dynamicschedule) to unregister a schedule on.
+   * @param id A unique id for the interval. This is used to identify and unregister the interval later.
+   */
   async unregisterCron(
     key: string | any[],
     dynamicSchedule: DynamicSchedule,
