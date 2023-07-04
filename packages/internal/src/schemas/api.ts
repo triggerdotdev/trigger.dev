@@ -203,7 +203,7 @@ export const RawEventSchema = z.object({
       only set this if you have a timestamp that you wish to pass through, e.g.
       you receive a timestamp from a service and you want the same timestamp to
       be used in your Job. */
-  timestamp: z.string().datetime().optional(),
+  timestamp: z.coerce.date().optional(),
   /** This is optional, it defaults to "trigger.dev". It can be useful to set
       this as you can filter events using this in the `eventTrigger()`. */
   source: z.string().optional(),
@@ -241,15 +241,15 @@ export type ApiEventLog = z.infer<typeof ApiEventLogSchema>;
 
 /** Options to control the delivery of the event */
 export const SendEventOptionsSchema = z.object({
-  /** An optional Date when you want the event to Trigger Jobs. The event will
+  /** An optional Date when you want the event to trigger Jobs. The event will
       be sent to the platform immediately but won't be acted upon until the
       specified time. */
-  deliverAt: z.string().datetime().optional(),
-  /** An optional number of seconds you want to wait for the event to Trigger
+  deliverAt: z.coerce.date().optional(),
+  /** An optional number of seconds you want to wait for the event to trigger
       any relevant Jobs. The event will be sent to the platform immediately but
-      won't be acted upon until the specified time. */
+      won't be delivered until after the elapsed number of seconds. */
   deliverAfter: z.number().int().optional(),
-  /** This optional param will be used by the Trigger.dev Connect feature, which
+  /** This optional param will be used by Trigger.dev Connect, which
       is coming soon. */
   accountId: z.string().optional(),
 });

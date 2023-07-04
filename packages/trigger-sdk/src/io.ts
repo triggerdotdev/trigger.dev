@@ -213,6 +213,13 @@ export class IO {
       {
         name: "sendEvent",
         params: { event, options },
+        properties: [
+          {
+            label: "name",
+            text: event.name,
+          },
+          ...(event?.id ? [{ label: "ID", text: event.id }] : []),
+        ],
       },
       async (task) => {
         return await this._triggerClient.sendEvent(event, options);

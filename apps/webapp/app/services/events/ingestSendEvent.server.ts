@@ -20,12 +20,8 @@ export class IngestSendEvent {
 
   #calculateDeliverAt(options?: SendEventOptions) {
     // If deliverAt is a string and a valid date, convert it to a Date object
-    if (options?.deliverAt && typeof options.deliverAt === "string") {
-      const deliverAt = new Date(options.deliverAt);
-
-      if (deliverAt.toString() !== "Invalid Date") {
-        return deliverAt;
-      }
+    if (options?.deliverAt) {
+      return options?.deliverAt;
     }
 
     // deliverAfter is the number of seconds to wait before delivering the event
