@@ -229,8 +229,7 @@ function getWorkerQueue() {
         },
       },
       startRun: {
-        queueName: "executions",
-        maxAttempts: 13,
+        maxAttempts: 8,
         handler: async (payload, job) => {
           const service = new StartRunService();
 
@@ -317,7 +316,6 @@ function getWorkerQueue() {
         },
       },
       deliverEvent: {
-        queueName: "event-dispatcher",
         handler: async (payload, job) => {
           const service = new DeliverEventService();
 

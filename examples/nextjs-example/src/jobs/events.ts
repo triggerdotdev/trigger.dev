@@ -26,3 +26,21 @@ new Job(client, {
     );
   },
 });
+
+new Job(client, {
+  id: "test-event-trigger-2",
+  name: "Test Event Trigger 2",
+  version: "0.0.1",
+  logLevel: "debug",
+  trigger: eventTrigger({
+    name: "test-event-trigger-2",
+  }),
+  run: async (payload, io, ctx) => {
+    for (let index = 0; index < 100; index++) {
+      await io.sendEvent(`send-${index}`, {
+        name: "test-event-trigger-1",
+        payload: { name: "whatever", payload: { index } },
+      });
+    }
+  },
+});

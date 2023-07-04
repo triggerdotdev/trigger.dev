@@ -43,8 +43,14 @@ export class StartQueuedRunsService {
       return;
     }
 
-    await workerQueue.enqueue("startRun", {
-      id: run.id,
-    });
+    await workerQueue.enqueue(
+      "startRun",
+      {
+        id: run.id,
+      },
+      {
+        queueName: `job-queue:${queue.id}`,
+      }
+    );
   }
 }

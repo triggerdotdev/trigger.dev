@@ -19,25 +19,23 @@ export class StartRunService {
   }
 
   public async call(id: string) {
-    await this.#prismaClient.$transaction(async (tx) => {
-      const run = await findRun(tx, id);
+    const run = await findRun(this.#prismaClient, id);
 
-      if (!run || !this.#runIsStartable(run)) {
-        return;
-      }
+    if (!run || !this.#runIsStartable(run)) {
+      return;
+    }
 
-      if (run.queue.jobCount >= run.queue.maxJobs) {
-        await this.#queueRun(tx, id);
+    if (run.queue.jobCount >= run.queue.maxJobs) {
+      await this.#queueRun(id);
+    } else {
+      const runConnectionsByKey = await createRunConnections(this.#prismaClient, run);
+
+      if (hasMissingConnections(runConnectionsByKey)) {
+        await this.#handleMissingConnections(id, runConnectionsByKey);
       } else {
-        const runConnectionsByKey = await createRunConnections(tx, run);
-
-        if (hasMissingConnections(runConnectionsByKey)) {
-          await this.#handleMissingConnections(tx, id, runConnectionsByKey);
-        } else {
-          await this.#startRun(tx, id, run, runConnectionsByKey);
-        }
+        await this.#startRun(id, run, runConnectionsByKey);
       }
-    });
+    }
   }
 
   #runIsStartable(run: FoundRun) {
@@ -49,8 +47,8 @@ export class StartRunService {
     return startableStatuses.includes(run.status);
   }
 
-  async #queueRun(tx: PrismaClientOrTransaction, id: string) {
-    await tx.jobRun.update({
+  async #queueRun(id: string) {
+    await this.#prismaClient.jobRun.update({
       where: { id },
       data: {
         status: "QUEUED",
@@ -60,7 +58,6 @@ export class StartRunService {
   }
 
   async #startRun(
-    tx: PrismaClientOrTransaction,
     id: string,
     run: FoundRun,
     runConnectionsByKey: RunConnectionsByKey
@@ -87,7 +84,7 @@ export class StartRunService {
     const updateRunAndCreateExecution = async () => {
       if (run.preprocess) {
         // Start the jobRun and increment the jobCount
-        await tx.jobRun.update({
+        await this.#prismaClient.jobRun.update({
           where: { id },
           data: {
             status: "PREPROCESSING",
@@ -104,7 +101,7 @@ export class StartRunService {
           },
         });
 
-        return await tx.jobRunExecution.create({
+        return await this.#prismaClient.jobRunExecution.create({
           data: {
             run: {
               connect: {
@@ -118,7 +115,7 @@ export class StartRunService {
         });
       } else {
         // Start the jobRun and increment the jobCount
-        await tx.jobRun.update({
+        await this.#prismaClient.jobRun.update({
           where: { id },
           data: {
             status: "STARTED",
@@ -136,7 +133,7 @@ export class StartRunService {
           },
         });
 
-        return await tx.jobRunExecution.create({
+        return await this.#prismaClient.jobRunExecution.create({
           data: {
             run: {
               connect: {
@@ -158,10 +155,9 @@ export class StartRunService {
       {
         id: execution.id,
       },
-      { tx }
     );
 
-    await tx.jobRunExecution.update({
+    await this.#prismaClient.jobRunExecution.update({
       where: { id: execution.id },
       data: {
         graphileJobId: job.id,
@@ -173,12 +169,10 @@ export class StartRunService {
       {
         id: run.queueId,
       },
-      { tx }
     );
   }
 
   async #handleMissingConnections(
-    tx: PrismaClientOrTransaction,
     id: string,
     runConnectionsByKey: RunConnectionsByKey
   ) {
@@ -188,7 +182,7 @@ export class StartRunService {
       )
       .filter(Boolean);
 
-    const updatedRun = await tx.jobRun.update({
+    const updatedRun = await this.#prismaClient.jobRun.update({
       where: { id },
       data: {
         status: "WAITING_ON_CONNECTIONS",
@@ -229,7 +223,6 @@ export class StartRunService {
           {
             id: missingConnection.id,
           },
-          { tx }
         );
       }
     }

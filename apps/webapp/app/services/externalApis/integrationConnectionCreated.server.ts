@@ -40,6 +40,7 @@ export class IntegrationConnectionCreatedService {
         include: {
           runs: {
             include: {
+              queue: true,
               environment: {
                 include: {
                   project: true,
@@ -110,9 +111,15 @@ export class IntegrationConnectionCreatedService {
       });
 
       // We need to start the run again
-      await workerQueue.enqueue("startRun", {
-        id: run.id,
-      });
+      await workerQueue.enqueue(
+        "startRun",
+        {
+          id: run.id,
+        },
+        {
+          queueName: `job-queue:${run.queue.id}`,
+        }
+      );
     }
   }
 }

@@ -75,7 +75,7 @@ export class CreateRunService {
         {
           id: run.id,
         },
-        { tx }
+        { tx, queueName: `job-queue:${jobQueue.id}` }
       );
 
       return run;
