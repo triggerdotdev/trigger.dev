@@ -1,3 +1,4 @@
+import { Link } from "@remix-run/react";
 import { cn } from "~/utils/cn";
 
 const paragraphVariants = {
@@ -90,18 +91,44 @@ export function Paragraph({
 }
 
 type TextLinkProps = {
-  href: string;
+  href?: string;
+  to?: string;
+  className?: string;
   children: React.ReactNode;
 } & React.AnchorHTMLAttributes<HTMLAnchorElement>;
 
-export function TextLink({ href, children, ...props }: TextLinkProps) {
-  return (
+const classes = "text-indigo-500 transition hover:text-indigo-400";
+
+export function TextLink({
+  href,
+  to,
+  children,
+  className,
+  ...props
+}: TextLinkProps) {
+  return to ? (
+    <Link
+      to={to}
+      className={cn(
+        "text-indigo-500 transition hover:text-indigo-400",
+        className
+      )}
+      {...props}
+    >
+      {children}
+    </Link>
+  ) : href ? (
     <a
       href={href}
-      className="text-indigo-500 transition hover:text-indigo-400"
+      className={cn(
+        "text-indigo-500 transition hover:text-indigo-400",
+        className
+      )}
       {...props}
     >
       {children}
     </a>
+  ) : (
+    <span>Need to define a path or href</span>
   );
 }
