@@ -39,6 +39,7 @@ import {
   MagnifyingGlassIcon,
   PlusIcon,
   PlusSmallIcon,
+  QrCodeIcon,
   SquaresPlusIcon,
   StarIcon,
   UserCircleIcon,
@@ -174,6 +175,9 @@ const icons = {
   ),
   property: (className: string) => (
     <Cog8ToothIcon className={cn("text-slate-600", className)} />
+  ),
+  "qr-code": (className: string) => (
+    <QrCodeIcon className={cn("text-amber-400", className)} />
   ),
   refresh: (className: string) => (
     <ArrowPathIcon className={cn("text-bright", className)} />
