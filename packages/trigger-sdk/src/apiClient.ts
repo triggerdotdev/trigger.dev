@@ -63,7 +63,7 @@ export class ApiClient {
     this.#apiUrl =
       this.#options.apiUrl ??
       process.env.TRIGGER_API_URL ??
-      "https://api.trigger.dev";
+      "https://cloud.trigger.dev";
     this.#logger = new Logger("trigger.dev", this.#options.logLevel);
   }
 
