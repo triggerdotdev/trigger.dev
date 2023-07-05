@@ -1,5 +1,14 @@
 # @trigger.dev/github
 
+## 1.0.0-next.4
+
+### Patch Changes
+
+- 32ff3f31: Fixed some properties that had API urls instead of HTML urls
+- Updated dependencies [acaae993]
+- Updated dependencies [aaa70a9a]
+  - @trigger.dev/sdk@2.0.0-next.9
+
 ## 1.0.0-next.3
 
 ### Patch Changes

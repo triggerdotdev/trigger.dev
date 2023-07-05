@@ -1,5 +1,12 @@
 # @trigger.dev/sdk
 
+## 2.0.0-next.9
+
+### Patch Changes
+
+- acaae993: run context jsdocs
+- aaa70a9a: eventTrigger() jsdocs
+
 ## 2.0.0-next.8
 
 ### Patch Changes
