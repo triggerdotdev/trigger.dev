@@ -245,7 +245,7 @@ export function NamedIcon({
 
   if (hasIcon(name)) {
     return (
-      <div
+      <span
         className={cn(
           "grid aspect-square min-h-fit place-items-center",
           className
@@ -259,7 +259,7 @@ export function NamedIcon({
             shapeRendering: "geometricPrecision",
           }}
         />
-      </div>
+      </span>
     );
   }
 

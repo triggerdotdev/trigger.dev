@@ -111,7 +111,7 @@ export default function Job() {
               <PageInfoProperty
                 label="Integrations"
                 value={
-                  <div className="flex gap-0.5">
+                  <span className="flex gap-0.5">
                     {job.integrations.map((integration, index) => (
                       <NamedIcon
                         key={index}
@@ -119,7 +119,7 @@ export default function Job() {
                         className={"h-4 w-4"}
                       />
                     ))}
-                  </div>
+                  </span>
                 }
               />
             )}
