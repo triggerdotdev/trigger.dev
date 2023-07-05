@@ -227,7 +227,7 @@ function starProperties(payload: StarEvent) {
     {
       label: "Repo",
       text: `${payload.repository.name}`,
-      url: payload.repository.url,
+      url: payload.repository.html_url,
     },
     {
       label: "Author",
@@ -280,7 +280,7 @@ function branchTagProperties(payload: CreateEvent) {
     {
       label: "Repo",
       text: payload.repository.name,
-      url: payload.repository.url,
+      url: payload.repository.html_url,
     },
     {
       label: payload.ref_type === "branch" ? "Branch" : "Tag",
@@ -301,7 +301,7 @@ const onPush: EventSpecification<PushEvent> = {
       {
         label: "Repo",
         text: payload.repository.name,
-        url: payload.repository.url,
+        url: payload.repository.html_url,
       },
       {
         label: "Branch",
@@ -340,7 +340,7 @@ const onPullRequest: EventSpecification<PullRequestEvent> = {
     {
       label: "Repo",
       text: payload.repository.name,
-      url: payload.repository.url,
+      url: payload.repository.html_url,
     },
     {
       label: "action",
@@ -381,7 +381,7 @@ const onPullRequestReview: EventSpecification<PullRequestReviewEvent> = {
     {
       label: "Repo",
       text: payload.repository.name,
-      url: payload.repository.url,
+      url: payload.repository.html_url,
     },
     {
       label: "action",
