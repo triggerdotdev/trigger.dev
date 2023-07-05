@@ -1,5 +1,6 @@
 import { Link } from "@remix-run/react";
 import { cn } from "~/utils/cn";
+import { IconNames, NamedIcon } from "./NamedIcon";
 
 const paragraphVariants = {
   base: {
@@ -94,25 +95,42 @@ type TextLinkProps = {
   href?: string;
   to?: string;
   className?: string;
+  trailingIcon?: IconNames;
+  trailingIconClassName?: string;
   children: React.ReactNode;
 } & React.AnchorHTMLAttributes<HTMLAnchorElement>;
 
-const classes = "text-indigo-500 transition hover:text-indigo-400";
+const classes =
+  "text-indigo-500 transition hover:text-indigo-400 inline-flex gap-0.5 items-center";
 
 export function TextLink({
   href,
   to,
   children,
   className,
+  trailingIcon,
+  trailingIconClassName,
   ...props
 }: TextLinkProps) {
   return to ? (
     <Link to={to} className={cn(classes, className)} {...props}>
-      {children}
+      {children}{" "}
+      {trailingIcon && (
+        <NamedIcon
+          name={trailingIcon}
+          className={cn("h-4 w-4", trailingIconClassName)}
+        />
+      )}
     </Link>
   ) : href ? (
     <a href={href} className={cn(classes, className)} {...props}>
-      {children}
+      {children}{" "}
+      {trailingIcon && (
+        <NamedIcon
+          name={trailingIcon}
+          className={cn("h-4 w-4", trailingIconClassName)}
+        />
+      )}
     </a>
   ) : (
     <span>Need to define a path or href</span>

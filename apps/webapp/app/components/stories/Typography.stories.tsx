@@ -70,10 +70,14 @@ function Typography({ header1, header2, header3, paragraph }: TypographyProps) {
           TextLink. It takes an href and children.
         </Paragraph>
         <Paragraph>
-          Learn how to get started quickly using the included some example Jobs
-          which are great as a quick start project. You can check them out in
-          your project here in triggerdotdev/jobs/examples. You can also see the
-          examples in more detail in the docs.
+          Learn how to get{" "}
+          <TextLink href="#" trailingIcon="external-link">
+            started quickly
+          </TextLink>{" "}
+          using the included some example Jobs which are great as a quick start
+          project. You can check them out in your project here in
+          triggerdotdev/jobs/examples. You can also see the examples in more
+          detail in the docs.
         </Paragraph>
       </div>
       <div>
