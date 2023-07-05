@@ -1,9 +1,8 @@
 import { LoaderArgs } from "@remix-run/server-runtime";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { CodeBlock } from "~/components/code/CodeBlock";
-import { formattedDateTime } from "~/components/primitives/DateTime";
+import { DateTime } from "~/components/primitives/DateTime";
 import { Header3 } from "~/components/primitives/Headers";
-import { useLocales } from "~/components/primitives/LocaleProvider";
 import { useJob } from "~/hooks/useJob";
 import { useRun } from "~/hooks/useRun";
 import { EventDetailsPresenter } from "~/presenters/EventDetailsPresenter.server";
@@ -39,7 +38,6 @@ export default function Page() {
   const { event } = useTypedLoaderData<typeof loader>();
   const job = useJob();
   const run = useRun();
-  const locales = useLocales();
 
   const { id, name, payload, timestamp, deliveredAt } = event;
 
@@ -51,13 +49,13 @@ export default function Page() {
           <RunPanelIconProperty
             icon="calendar"
             label="Created"
-            value={formattedDateTime(timestamp, locales)}
+            value={<DateTime date={timestamp} />}
           />
           {deliveredAt && (
             <RunPanelIconProperty
               icon="flag"
               label="Finished at"
-              value={formattedDateTime(deliveredAt, locales)}
+              value={<DateTime date={deliveredAt} />}
             />
           )}
           <RunPanelIconProperty icon="id" label="Event name" value={name} />

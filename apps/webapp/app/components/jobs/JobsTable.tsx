@@ -126,10 +126,9 @@ export function JobsTable({
                         </span>
                       }
                       value={
-                        <DateTime
-                          date={job.lastRun.createdAt}
-                          className={classForJobStatus(job.lastRun.status)}
-                        />
+                        <span className={classForJobStatus(job.lastRun.status)}>
+                          <DateTime date={job.lastRun.createdAt} />
+                        </span>
                       }
                     />
                   ) : (

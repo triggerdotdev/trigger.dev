@@ -4,8 +4,7 @@ import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { connectionType } from "~/components/integrations/connectionType";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { ClipboardField } from "~/components/primitives/ClipboardField";
-import { formattedDateTime } from "~/components/primitives/DateTime";
-import { useLocales } from "~/components/primitives/LocaleProvider";
+import { DateTime } from "~/components/primitives/DateTime";
 import {
   PageHeader,
   PageInfoGroup,
@@ -58,7 +57,7 @@ export default function Integrations() {
   const { client } = useTypedLoaderData<typeof loader>();
   const organization = useOrganization();
   const project = useProject();
-  const locales = useLocales();
+
   let tabs = [
     {
       label: "Jobs",
@@ -116,7 +115,7 @@ export default function Integrations() {
             <PageInfoProperty
               icon="calendar"
               label="Added"
-              value={formattedDateTime(client.createdAt, locales)}
+              value={<DateTime date={client.createdAt} />}
             />
           </PageInfoGroup>
         </PageInfoRow>

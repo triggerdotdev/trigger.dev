@@ -1,76 +1,112 @@
+import { Fragment, useEffect, useState } from "react";
 import { useLocales } from "./LocaleProvider";
 
 type DateTimeProps = {
   date: Date | string;
   timeZone?: string;
-  className?: string;
+  includeSeconds?: boolean;
+  log?: boolean;
 };
 
 export const DateTime = ({
   date,
   timeZone = "UTC",
-  className,
+  includeSeconds = true,
+  log = false,
 }: DateTimeProps) => {
+  const locales = useLocales();
+
   const realDate = typeof date === "string" ? new Date(date) : date;
 
-  const locales = useLocales();
-  const isoString = realDate.toISOString();
-
-  return (
-    <time dateTime={isoString} className={className}>
-      {formattedDateTime(date, locales, timeZone)}
-    </time>
+  const initialFormattedDateTime = formatDateTime(
+    realDate,
+    timeZone,
+    locales,
+    includeSeconds
   );
+
+  const [formattedDateTime, setFormattedDateTime] = useState<string>(
+    initialFormattedDateTime
+  );
+
+  useEffect(() => {
+    const resolvedOptions = Intl.DateTimeFormat().resolvedOptions();
+
+    setFormattedDateTime(
+      formatDateTime(
+        realDate,
+        resolvedOptions.timeZone,
+        locales,
+        includeSeconds
+      )
+    );
+  }, [locales, includeSeconds, realDate]);
+
+  if (log) {
+    console.log(`<DateTime formattedDateTime = ${formattedDateTime} />`)
+  }
+
+  return <Fragment>{formattedDateTime}</Fragment>;
 };
 
-export function formattedDateTime(
-  date: Date | string,
+function formatDateTime(
+  date: Date,
+  timeZone: string,
   locales: string[],
-  timeZone: string = "UTC"
-) {
-  const realDate = typeof date === "string" ? new Date(date) : date;
-
-  const formattedDate = new Intl.DateTimeFormat(locales, {
-    year: "2-digit",
-    month: "2-digit",
-    day: "2-digit",
+  includeSeconds: boolean
+): string {
+  return new Intl.DateTimeFormat(locales, {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "numeric",
+    second: includeSeconds ? "numeric" : undefined,
     timeZone,
-  }).format(realDate);
-
-  const formattedTime = new Intl.DateTimeFormat(locales, {
-    hour: "2-digit",
-    minute: "2-digit",
-    timeZoneName: "short",
-    timeZone,
-  }).format(realDate);
-
-  return `${formattedDate} at ${formattedTime}`;
+  }).format(date);
 }
 
 export const DateTimeAccurate = ({ date, timeZone = "UTC" }: DateTimeProps) => {
+  const locales = useLocales();
+
   const realDate = typeof date === "string" ? new Date(date) : date;
 
-  const locales = useLocales();
-  const isoString = realDate.toISOString();
-  const formattedDate = new Intl.DateTimeFormat(locales, {
+  const initialFormattedDateTime = formatDateTimeAccurate(
+    realDate,
+    timeZone,
+    locales
+  );
+
+  const [formattedDateTime, setFormattedDateTime] = useState<string>(
+    initialFormattedDateTime
+  );
+
+  useEffect(() => {
+    const resolvedOptions = Intl.DateTimeFormat().resolvedOptions();
+
+    setFormattedDateTime(
+      formatDateTimeAccurate(realDate, resolvedOptions.timeZone, locales)
+    );
+  }, [locales, realDate]);
+
+  return <Fragment>{formattedDateTime}</Fragment>;
+};
+
+function formatDateTimeAccurate(
+  date: Date,
+  timeZone: string,
+  locales: string[]
+): string {
+  const milliseconds = `00${date.getMilliseconds()}`.slice(-3);
+
+  const formattedDateTime = new Intl.DateTimeFormat(locales, {
     month: "short",
     day: "2-digit",
-    timeZone,
-  }).format(realDate);
-
-  const formattedTime = new Intl.DateTimeFormat(locales, {
     hour: "numeric",
     minute: "2-digit",
     second: "2-digit",
-    hour12: false,
     timeZone,
-  }).format(realDate);
+  }).format(date);
 
-  const milliseconds = `00${realDate.getMilliseconds()}`.slice(-3);
-
-  return (
-    <time dateTime={isoString}>
-      {formattedDate} {formattedTime}.{milliseconds}
-    </time>
-  );
-};
+  return `${formatDateTime}.${milliseconds}`;
+}

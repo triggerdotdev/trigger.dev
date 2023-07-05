@@ -1,8 +1,9 @@
 import { LoaderArgs } from "@remix-run/server-runtime";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { CodeBlock } from "~/components/code/CodeBlock";
-import { DateTime, formattedDateTime } from "~/components/primitives/DateTime";
+import { DateTime } from "~/components/primitives/DateTime";
 import { Header3 } from "~/components/primitives/Headers";
+import { useLocales } from "~/components/primitives/LocaleProvider";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import {
   Table,
@@ -33,7 +34,6 @@ import {
 } from "../_app.orgs.$organizationSlug.projects.$projectParam.jobs.$jobParam.runs.$runParam/RunCard";
 import { TaskStatusIcon } from "../_app.orgs.$organizationSlug.projects.$projectParam.jobs.$jobParam.runs.$runParam/TaskStatus";
 import { TaskAttemptStatusLabel } from "./TaskAttemptStatus";
-import { useLocales } from "~/components/primitives/LocaleProvider";
 
 export const loader = async ({ request, params }: LoaderArgs) => {
   const userId = await requireUserId(request);
@@ -101,14 +101,14 @@ export default function Page() {
             <RunPanelIconProperty
               icon="calendar"
               label="Started at"
-              value={formattedDateTime(startedAt, locales)}
+              value={<DateTime date={startedAt} />}
             />
           )}
           {completedAt && (
             <RunPanelIconProperty
               icon="flag"
               label="Finished at"
-              value={formattedDateTime(completedAt, locales)}
+              value={<DateTime date={completedAt} />}
             />
           )}
           {delayUntil && !completedAt && (
@@ -116,7 +116,7 @@ export default function Page() {
               <RunPanelIconProperty
                 icon="flag"
                 label="Continues at"
-                value={formattedDateTime(delayUntil, locales)}
+                value={<DateTime date={delayUntil} />}
               />
               <UpdatingDelay delayUntil={delayUntil} />
             </>

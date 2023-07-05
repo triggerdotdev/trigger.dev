@@ -28,9 +28,7 @@ import {
   ButtonContent,
   LinkButton,
 } from "~/components/primitives/Buttons";
-import { formattedDateTime } from "~/components/primitives/DateTime";
 import { Header2, Header3 } from "~/components/primitives/Headers";
-import { useLocales } from "~/components/primitives/LocaleProvider";
 import { NamedIcon } from "~/components/primitives/NamedIcon";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { SimpleTooltip } from "~/components/primitives/Tooltip";
@@ -48,6 +46,7 @@ import {
   resendInvitePath,
 } from "~/utils/pathBuilder";
 import { OrgAdminHeader } from "../_app.orgs.$organizationSlug._index/OrgAdminHeader";
+import { DateTime } from "~/components/primitives/DateTime";
 
 export const loader = async ({ request, params }: LoaderArgs) => {
   const userId = await requireUserId(request);
@@ -116,7 +115,6 @@ type Invite = UseDataFunctionReturn<typeof loader>["invites"][number];
 export default function Page() {
   const user = useUser();
   const { members, invites } = useTypedLoaderData<typeof loader>();
-  const locales = useLocales();
   const organization = useOrganization();
 
   return (
@@ -169,7 +167,7 @@ export default function Page() {
                   <div className="flex flex-col gap-0.5">
                     <Header3>{invite.email}</Header3>
                     <Paragraph variant="small">
-                      Invite sent {formattedDateTime(invite.updatedAt, locales)}
+                      Invite sent {<DateTime date={invite.updatedAt} />}
                     </Paragraph>
                   </div>
                   <div className="flex grow items-center justify-end gap-4">

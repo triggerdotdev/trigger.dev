@@ -13,7 +13,7 @@ import { EnvironmentLabel } from "~/components/environments/EnvironmentLabel";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { Button } from "~/components/primitives/Buttons";
 import { Callout } from "~/components/primitives/Callout";
-import { DateTime, formattedDateTime } from "~/components/primitives/DateTime";
+import { DateTime } from "~/components/primitives/DateTime";
 import { Header2 } from "~/components/primitives/Headers";
 import { NamedIcon } from "~/components/primitives/NamedIcon";
 import {
@@ -76,7 +76,6 @@ import {
 } from "./RunCard";
 import { TaskCard } from "./TaskCard";
 import { TaskCardSkeleton } from "./TaskCardSkeleton";
-import { useLocales } from "~/components/primitives/LocaleProvider";
 
 export const loader = async ({ request, params }: LoaderArgs) => {
   const userId = await requireUserId(request);
@@ -165,7 +164,6 @@ export default function Page() {
   const project = useProject();
   const job = useJob();
   const navigate = useNavigate();
-  const locales = useLocales();
 
   const pathName = usePathName();
 
@@ -236,9 +234,11 @@ export default function Page() {
               icon={"calendar"}
               label={"Started"}
               value={
-                run.startedAt
-                  ? formattedDateTime(run.startedAt, locales)
-                  : "Not started yet"
+                run.startedAt ? (
+                  <DateTime date={run.startedAt} />
+                ) : (
+                  "Not started yet"
+                )
               }
             />
             <PageInfoProperty
@@ -343,14 +343,14 @@ export default function Page() {
                         <RunPanelIconProperty
                           icon="calendar"
                           label="Started at"
-                          value={formattedDateTime(run.startedAt, locales)}
+                          value={<DateTime date={run.startedAt} />}
                         />
                       )}
                       {run.completedAt && (
                         <RunPanelIconProperty
                           icon="flag"
                           label="Finished at"
-                          value={formattedDateTime(run.completedAt, locales)}
+                          value={<DateTime date={run.completedAt} />}
                         />
                       )}
                       {run.startedAt && run.completedAt && (

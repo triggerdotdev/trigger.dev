@@ -1,5 +1,5 @@
 import { CodeBlock } from "~/components/code/CodeBlock";
-import { DateTime, formattedDateTime } from "~/components/primitives/DateTime";
+import { DateTime } from "~/components/primitives/DateTime";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { RunStatusIcon, RunStatusLabel } from "~/components/runs/RunStatuses";
 import { useRun } from "~/hooks/useRun";
@@ -13,11 +13,9 @@ import {
   RunPanelIconProperty,
   RunPanelIconSection,
 } from "../_app.orgs.$organizationSlug.projects.$projectParam.jobs.$jobParam.runs.$runParam/RunCard";
-import { useLocales } from "~/components/primitives/LocaleProvider";
 
 export default function RunCompletedPage() {
   const run = useRun();
-  const locales = useLocales();
 
   return (
     <RunPanel>
@@ -31,14 +29,14 @@ export default function RunCompletedPage() {
             <RunPanelIconProperty
               icon="calendar"
               label="Started at"
-              value={formattedDateTime(run.startedAt, locales)}
+              value={<DateTime date={run.startedAt} />}
             />
           )}
           {run.completedAt && (
             <RunPanelIconProperty
               icon="flag"
               label="Finished at"
-              value={formattedDateTime(run.completedAt, locales)}
+              value={<DateTime date={run.completedAt} />}
             />
           )}
           {run.startedAt && run.completedAt && (

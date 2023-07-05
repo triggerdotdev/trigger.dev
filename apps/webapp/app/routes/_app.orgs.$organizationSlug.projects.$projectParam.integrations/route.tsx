@@ -351,7 +351,11 @@ function ConnectedIntegrationsList({
                             : client.connectionsCount}
                         </TableCell>
                         <TableCell to={path}>
-                          <DateTime date={client.createdAt} />
+                          <DateTime
+                            date={client.createdAt}
+                            includeSeconds={false}
+                            log={true}
+                          />
                         </TableCell>
                         <TableCellChevron to={path} />
                       </TableRow>

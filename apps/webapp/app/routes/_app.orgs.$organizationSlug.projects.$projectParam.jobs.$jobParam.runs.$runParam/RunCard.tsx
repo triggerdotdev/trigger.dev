@@ -173,7 +173,7 @@ export function RunPanelIconProperty({
 }: {
   icon: ReactNode;
   label: string;
-  value: string;
+  value: ReactNode;
 }) {
   return (
     <div className="flex items-center gap-2">
