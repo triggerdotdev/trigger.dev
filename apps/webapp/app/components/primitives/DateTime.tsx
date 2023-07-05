@@ -5,14 +5,12 @@ type DateTimeProps = {
   date: Date | string;
   timeZone?: string;
   includeSeconds?: boolean;
-  log?: boolean;
 };
 
 export const DateTime = ({
   date,
   timeZone = "UTC",
   includeSeconds = true,
-  log = false,
 }: DateTimeProps) => {
   const locales = useLocales();
 
@@ -41,15 +39,6 @@ export const DateTime = ({
       )
     );
   }, [locales, includeSeconds, realDate]);
-
-  if (log) {
-    console.log(
-      `<DateTime formattedDateTime = ${formattedDateTime.replace(
-        /\s/g,
-        String.fromCharCode(32)
-      )} />`
-    );
-  }
 
   return (
     <Fragment>

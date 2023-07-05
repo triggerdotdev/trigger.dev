@@ -354,7 +354,6 @@ function ConnectedIntegrationsList({
                           <DateTime
                             date={client.createdAt}
                             includeSeconds={false}
-                            log={true}
                           />
                         </TableCell>
                         <TableCellChevron to={path} />
