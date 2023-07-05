@@ -24,6 +24,7 @@ export const CronOptionsSchema = z.object({
   cron: z.string(),
 });
 
+/** The options for a `cronTrigger()` */
 export type CronOptions = z.infer<typeof CronOptionsSchema>;
 
 export const CronMetadataSchema = z.object({

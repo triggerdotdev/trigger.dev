@@ -122,6 +122,9 @@ export class CronTrigger implements Trigger<ScheduledEventSpecification> {
   }
 }
 
+/** `cronTrigger()` is set as a [Job's trigger](https://trigger.dev/docs/sdk/job) to trigger a Job on a recurring schedule using a CRON expression.
+ * @param options An object containing options about the CRON schedule.
+ */
 export function cronTrigger(options: CronOptions) {
   return new CronTrigger(options);
 }
