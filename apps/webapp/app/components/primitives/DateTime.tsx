@@ -43,10 +43,19 @@ export const DateTime = ({
   }, [locales, includeSeconds, realDate]);
 
   if (log) {
-    console.log(`<DateTime formattedDateTime = ${formattedDateTime} />`)
+    console.log(
+      `<DateTime formattedDateTime = ${formattedDateTime.replace(
+        /\s/g,
+        String.fromCharCode(32)
+      )} />`
+    );
   }
 
-  return <Fragment>{formattedDateTime}</Fragment>;
+  return (
+    <Fragment>
+      {formattedDateTime.replace(/\s/g, String.fromCharCode(32))}
+    </Fragment>
+  );
 };
 
 function formatDateTime(
@@ -89,7 +98,11 @@ export const DateTimeAccurate = ({ date, timeZone = "UTC" }: DateTimeProps) => {
     );
   }, [locales, realDate]);
 
-  return <Fragment>{formattedDateTime}</Fragment>;
+  return (
+    <Fragment>
+      {formattedDateTime.replace(/\s/g, String.fromCharCode(32))}
+    </Fragment>
+  );
 };
 
 function formatDateTimeAccurate(
