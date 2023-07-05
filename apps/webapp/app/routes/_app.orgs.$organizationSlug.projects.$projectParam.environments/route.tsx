@@ -119,7 +119,7 @@ export default function Page() {
           ))}
         </div>
 
-        <Header1 className="mb-2">Clients</Header1>
+        <Header1 className="mb-2">Endpoints</Header1>
         <div className="flex flex-col gap-4">
           {clients.length > 0 ? (
             clients.map((client) => (
@@ -129,9 +129,9 @@ export default function Page() {
                   <TableHeader>
                     <TableRow>
                       <TableHeaderCell>Environment</TableHeaderCell>
+                      <TableHeaderCell>Url</TableHeaderCell>
                       <TableHeaderCell>Last refreshed</TableHeaderCell>
                       <TableHeaderCell>Jobs</TableHeaderCell>
-                      <TableHeaderCell>Url</TableHeaderCell>
                       <TableHeaderCell hiddenLabel>Go to page</TableHeaderCell>
                     </TableRow>
                   </TableHeader>
@@ -197,7 +197,7 @@ function EndpointRow({
           </TableCell>
           <TableCell onClick={onClick} colSpan={4} alignment="right">
             <div className="flex items-center justify-end gap-4">
-              <span className="text-rose-500">
+              <span className="text-amber-500">
                 The {environmentTitle({ type })} environment is not configured
               </span>
               <ButtonContent variant="primary/small">Configure</ButtonContent>
@@ -213,6 +213,7 @@ function EndpointRow({
               <EnvironmentLabel environment={{ type }} />
             </div>
           </TableCell>
+          <TableCell onClick={onClick}>{endpoint.url}</TableCell>
           <TableCell onClick={onClick}>
             {endpoint.latestIndex ? (
               <DateTime date={endpoint.latestIndex.updatedAt} />
@@ -223,7 +224,6 @@ function EndpointRow({
           <TableCell onClick={onClick}>
             {endpoint.latestIndex?.stats.jobs ?? "–"}
           </TableCell>
-          <TableCell onClick={onClick}>{endpoint.url}</TableCell>
           <TableCellChevron onClick={onClick} />
         </TableRow>
       );
