@@ -383,7 +383,7 @@ export default function Page() {
                     ) : (
                       run.output === null && (
                         <Paragraph variant="small">
-                          This run returned nothing
+                          This Run returned nothing.
                         </Paragraph>
                       )
                     )}
