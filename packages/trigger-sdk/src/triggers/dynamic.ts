@@ -10,15 +10,31 @@ import { EventSpecification, Trigger } from "../types";
 import { slugifyId } from "../utils";
 import { ExternalSource, ExternalSourceParams } from "./externalSource";
 
+/** Options for a DynamicTrigger  */
 export type DynamicTriggerOptions<
   TEventSpec extends EventSpecification<any>,
   TExternalSource extends ExternalSource<any, any, any>
 > = {
+  /** Used to uniquely identify a DynamicTrigger */
   id: string;
+  /** An event from an [Integration](https://trigger.dev/docs/integrations) package that you want to attach to the DynamicTrigger. The event types will come through to the payload in your Job's run. */
   event: TEventSpec;
+  /** An external source fron an [Integration](https://trigger.dev/docs/integrations) package
+   * @example 
+   * ```ts
+   *  import { events } from "@trigger.dev/github";
+   * 
+   *  const dynamicOnIssueOpened = new DynamicTrigger(client, {
+        id: "github-issue-opened",
+        event: events.onIssueOpened,
+        source: github.sources.repo,
+      });
+   * ```
+    */
   source: TExternalSource;
 };
 
+/** `DynamicTrigger` allows you to define a trigger that can be configured dynamically at runtime. */
 export class DynamicTrigger<
   TEventSpec extends EventSpecification<any>,
   TExternalSource extends ExternalSource<any, any, any>
@@ -28,6 +44,10 @@ export class DynamicTrigger<
   #options: DynamicTriggerOptions<TEventSpec, TExternalSource>;
   source: TExternalSource;
 
+  /** `DynamicTrigger` allows you to define a trigger that can be configured dynamically at runtime.
+   * @param client The `TriggerClient` instance to use for registering the trigger.
+   * @param options The options for the dynamic trigger.
+   * */
   constructor(
     client: TriggerClient,
     options: DynamicTriggerOptions<TEventSpec, TExternalSource>
@@ -82,6 +102,10 @@ export class DynamicTrigger<
     };
   }
 
+  /** Use this method to register a new configuration with the DynamicTrigger.
+   * @param key The key for the configuration. This will be used to identify the configuration when it is triggered.
+   * @param params The params for the configuration.
+   */
   async register(
     key: string,
     params: ExternalSourceParams<TExternalSource>

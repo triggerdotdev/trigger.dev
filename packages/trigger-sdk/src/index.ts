@@ -22,7 +22,7 @@ export type Task = ServerTask;
  * It is used to prevent the string from being logged in trigger.dev.
  * You can use it like this:
  *
- * await ctx.fetch("https://example.com", {
+ * await io.backgroundFetch<SomeResponseType>("https://example.com", {
  *  headers: {
  *    Authorization: redactString`Bearer ${ACCESS_TOKEN}`,
  *  },

@@ -132,9 +132,17 @@ export function cronTrigger(options: CronOptions) {
   return new CronTrigger(options);
 }
 
+/** DynamicSchedule options
+ * @param id Used to uniquely identify a DynamicSchedule
+ */
 export type DynamicIntervalOptions = { id: string };
 
+/** DynamicSchedule` allows you to define a scheduled trigger that can be configured dynamically at runtime. */
 export class DynamicSchedule implements Trigger<ScheduledEventSpecification> {
+  /**
+   * @param client The `TriggerClient` instance to use for registering the trigger.
+   * @param options The options for the schedule.
+   */
   constructor(
     private client: TriggerClient,
     private options: DynamicIntervalOptions
