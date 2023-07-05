@@ -67,7 +67,7 @@ export const promptTriggerUrl = async (): Promise<string> => {
       message: "Are you using the Trigger.dev cloud or self-hosted?",
       choices: [
         {
-          name: "Trigger.dev Cloud (https://cloud.trigger.dev)",
+          name: `Trigger.dev Cloud (https://api.trigger.dev)`,
           value: "cloud",
           default: true,
         },
