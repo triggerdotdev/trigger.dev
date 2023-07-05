@@ -128,3 +128,22 @@ export function updateUser({
     data: { name, email, marketingEmails, confirmedBasicDetails: true },
   });
 }
+
+export async function grantUserCloudAccess({
+  id,
+  inviteCode,
+}: {
+  id: string;
+  inviteCode: string;
+}) {
+  return prisma.user.update({
+    where: { id },
+    data: {
+      invitationCode: {
+        connect: {
+          code: inviteCode,
+        },
+      },
+    },
+  });
+}

@@ -1,6 +1,6 @@
 import * as React from "react";
 import { cn } from "~/utils/cn";
-import type { IconNames } from "./NamedIcon";
+import type { IconNamesOrString } from "./NamedIcon";
 import { NamedIcon } from "./NamedIcon";
 
 const variants = {
@@ -44,7 +44,7 @@ const variants = {
 
 export type InputProps = React.InputHTMLAttributes<HTMLInputElement> & {
   variant?: keyof typeof variants;
-  icon?: IconNames;
+  icon?: IconNamesOrString;
   shortcut?: string;
   fullWidth?: boolean;
 };

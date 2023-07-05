@@ -1,6 +1,6 @@
 import { Link } from "@remix-run/react";
 import { cn } from "~/utils/cn";
-import { IconNames, NamedIcon } from "./NamedIcon";
+import { IconNamesOrString, NamedIcon } from "./NamedIcon";
 
 const paragraphVariants = {
   base: {
@@ -95,13 +95,13 @@ type TextLinkProps = {
   href?: string;
   to?: string;
   className?: string;
-  trailingIcon?: IconNames;
+  trailingIcon?: IconNamesOrString;
   trailingIconClassName?: string;
   children: React.ReactNode;
 } & React.AnchorHTMLAttributes<HTMLAnchorElement>;
 
 const classes =
-  "text-indigo-500 transition hover:text-indigo-400 inline-flex gap-0.5 items-center";
+  "text-indigo-500 transition hover:text-indigo-400 inline-flex gap-0.5 items-center group";
 
 export function TextLink({
   href,

@@ -1,8 +1,17 @@
+import { Link } from "@remix-run/react";
 import { Paragraph, TextLink } from "~/components/primitives/Paragraph";
 import { StepNumber } from "~/components/primitives/StepNumber";
 import { useAppOrigin } from "~/hooks/useAppOrigin";
 import { useDevEnvironment } from "~/hooks/useEnvironments";
+import { useJob } from "~/hooks/useJob";
+import { useOrganization } from "~/hooks/useOrganizations";
+import { useProject } from "~/hooks/useProject";
 import { IntegrationIcon } from "~/routes/_app.orgs.$organizationSlug.projects.$projectParam.integrations/route";
+import { jobTestPath } from "~/utils/pathBuilder";
+import { InlineCode } from "../code/InlineCode";
+import { HelpPanelProps } from "../integrations/ApiKeyHelp";
+import { HelpInstall } from "../integrations/HelpInstall";
+import { HelpSamples } from "../integrations/HelpSamples";
 import { Button, LinkButton } from "../primitives/Buttons";
 import { Callout, variantClasses } from "../primitives/Callout";
 import {
@@ -15,17 +24,6 @@ import { ClipboardField } from "../primitives/ClipboardField";
 import integrationButton from "./integration-button.png";
 import selectEnvironment from "./select-environment.png";
 import selectExample from "./select-example.png";
-import { InlineCode } from "../code/InlineCode";
-import { ApiKeyHelp, HelpPanelProps } from "../integrations/ApiKeyHelp";
-import { CodeBlock } from "../code/CodeBlock";
-import { HelpInstall } from "../integrations/HelpInstall";
-import { HelpSamples } from "../integrations/HelpSamples";
-import { jobTestPath } from "~/utils/pathBuilder";
-import { useOrganization } from "~/hooks/useOrganizations";
-import { useProject } from "~/hooks/useProject";
-import { useJob } from "~/hooks/useJob";
-import { Link } from "@remix-run/react";
-import { OrderedList, OrderedListItem } from "../primitives/Lists";
 
 export function HowToSetupYourProject() {
   const devEnvironment = useDevEnvironment();
