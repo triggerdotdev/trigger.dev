@@ -178,7 +178,7 @@ export default function Page() {
   }
 
   return (
-    <Help defaultOpen={!hasTestRuns}>
+    <Help defaultOpen={true}>
       {(open) => (
         <div
           className={cn(
@@ -254,7 +254,7 @@ export default function Page() {
                       </Popover>
                     )}
                 </div>
-                <HelpTrigger title="How do I run a test" />
+                <HelpTrigger title="How do I run a test?" />
               </div>
               <div className="flex-1 overflow-auto rounded border border-slate-850 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-slate-700">
                 <JSONEditor
