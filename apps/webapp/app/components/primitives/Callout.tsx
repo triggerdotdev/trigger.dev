@@ -12,7 +12,7 @@ import {
   CheckCircleIcon,
 } from "@heroicons/react/24/solid";
 
-const variantClasses = {
+export const variantClasses = {
   info: {
     className: "border-blue-400/20 bg-blue-400/30",
     icon: <InformationCircleIcon className="h-5 w-5 shrink-0 text-blue-400" />,
@@ -76,7 +76,7 @@ export function Callout({
           className
         )}
       >
-        <div className="flex w-full items-start gap-x-2">
+        <div className={"flex w-full items-start gap-x-2"}>
           {icon ? icon : variantDefinition.icon}
 
           {typeof children === "string" ? (
