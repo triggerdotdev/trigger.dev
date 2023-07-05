@@ -52,7 +52,7 @@ export function HelpTrigger({ title }: { title: string }) {
     <Button
       variant="tertiary/small"
       LeadingIcon="lightbulb"
-      leadingIconClassName="text-slate-400"
+      leadingIconClassName="text-amber-400"
       onClick={() => setOpen(true)}
     >
       {title}
