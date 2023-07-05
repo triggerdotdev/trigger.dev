@@ -1,5 +1,12 @@
 # create-trigger
 
+## 0.2.1-next.14
+
+### Patch Changes
+
+- 6d4922f4: api.trigger.dev is now the default cloud url
+- f4db1b27: Initializing a next.js project now creates a better file structure
+
 ## 0.2.1-next.13
 
 ### Patch Changes
