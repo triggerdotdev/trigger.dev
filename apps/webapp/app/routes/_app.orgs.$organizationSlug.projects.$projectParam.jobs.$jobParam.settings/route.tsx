@@ -4,7 +4,7 @@ export default function Page() {
   return (
     <ComingSoon
       title="Job settings"
-      description="Disable a job, archive it and more."
+      description="Disable a Job, archive it and more."
       icon="settings"
     />
   );
