@@ -1,7 +1,7 @@
 import { Command } from "commander";
 import inquirer from "inquirer";
 import { initCommand } from "../commands/init.js";
-import { COMMAND_NAME, DEFAULT_TRIGGER_URL } from "../consts.js";
+import { COMMAND_NAME, CLOUD_TRIGGER_URL } from "../consts.js";
 import { getVersion } from "../utils/getVersion.js";
 import pathModule from "node:path";
 import { devCommand } from "../commands/dev.js";
@@ -67,7 +67,7 @@ export const promptTriggerUrl = async (): Promise<string> => {
       message: "Are you using the Trigger.dev cloud or self-hosted?",
       choices: [
         {
-          name: `Trigger.dev Cloud (https://api.trigger.dev)`,
+          name: `Trigger.dev Cloud (${CLOUD_TRIGGER_URL})`,
           value: "cloud",
           default: true,
         },
@@ -80,7 +80,7 @@ export const promptTriggerUrl = async (): Promise<string> => {
   ]);
 
   if (instanceType === "cloud") {
-    return DEFAULT_TRIGGER_URL;
+    return CLOUD_TRIGGER_URL;
   }
 
   const { triggerUrl } = await inquirer.prompt<{ triggerUrl: string }>({
@@ -113,7 +113,7 @@ export const promptTriggerUrl = async (): Promise<string> => {
 export const promptApiKey = async (instanceUrl: string): Promise<string> => {
   // First prompt if they want to enter their API key now, and if they say Yes, then prompt for it and return it
   const { apiKey } = await inquirer.prompt<{ apiKey: string }>({
-    type: "input",
+    type: "password",
     name: "apiKey",
     message: `Enter your development API key (Find yours ➡️ ${instanceUrl})`,
     validate: (input) => {
