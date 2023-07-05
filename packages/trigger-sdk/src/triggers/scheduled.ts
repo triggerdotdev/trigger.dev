@@ -68,6 +68,9 @@ export class IntervalTrigger implements Trigger<ScheduledEventSpecification> {
   }
 }
 
+/** `intervalTrigger()` is set as a [Job's trigger](/sdk/job) to trigger a Job at a recurring interval.
+ * @param options An object containing options about the interval.
+ */
 export function intervalTrigger(options: IntervalOptions) {
   return new IntervalTrigger(options);
 }
