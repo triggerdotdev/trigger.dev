@@ -1,5 +1,11 @@
 # @trigger.dev/sdk
 
+## 2.0.0-next.10
+
+### Patch Changes
+
+- 6d4922f4: api.trigger.dev is now the default cloud url
+
 ## 2.0.0-next.9
 
 ### Patch Changes
