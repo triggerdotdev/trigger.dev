@@ -23,9 +23,9 @@ export function UserAvatar({
   className?: string;
 }) {
   return avatarUrl ? (
-    <div>
+    <div className={cn("grid aspect-square place-items-center", className)}>
       <img
-        className={cn("aspect-square rounded-full p-[7%]", className)}
+        className={cn("aspect-square rounded-full p-[7%]")}
         src={avatarUrl}
         alt={name ?? "User"}
       />
