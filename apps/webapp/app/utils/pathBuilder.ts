@@ -50,6 +50,10 @@ export function confirmBasicDetailsPath() {
   return `/confirm-basic-details`;
 }
 
+export function invitationCodePath() {
+  return `/invitation-code`;
+}
+
 export function acceptInvitePath(token: string) {
   return `/invite-accept?token=${token}`;
 }

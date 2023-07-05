@@ -36,6 +36,18 @@ model User {
   orgMemberships OrgMember[]
   sentInvites    OrgMemberInvite[]
   apiVotes       ApiIntegrationVote[]
+
+  invitationCode   InvitationCode? @relation(fields: [invitationCodeId], references: [id])
+  invitationCodeId String?
+}
+
+model InvitationCode {
+  id   String @id @default(cuid())
+  code String @unique
+
+  users User[]
+
+  createdAt DateTime @default(now())
 }
 
 enum AuthenticationMethod {
