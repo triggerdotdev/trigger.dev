@@ -54,13 +54,41 @@ export class EventTrigger<TEventSpecification extends EventSpecification<any>>
   }
 }
 
+/** Configuration options for an EventTrigger */
 type TriggerOptions<TEvent> = {
+  /** The name of the event you are subscribing to. Must be an exact match (case sensitive). */
   name: string;
+  /** A [Zod](https://trigger.dev/docs/documentation/guides/zod) schema that defines the shape of the event payload.
+   * The default is `z.any()` which is `any`.
+   * */
   schema?: z.Schema<TEvent>;
+  /** You can use this to filter events based on the source. */
   source?: string;
+  /** Used to filter which events trigger the Job
+   * @example
+   * filter:
+   * ```ts
+   * {
+   *    name: ["John", "Jane"],
+   *    age: [18, 21]
+   * }
+   * ```
+   *
+   * This filter would match against an event with the following data:
+   * ```json
+   * {
+   *    "name": "Jane",
+   *    "age": 18,
+   *    "location": "San Francisco"
+   * }
+   * ```
+   */
   filter?: EventFilter;
 };
 
+/** `eventTrigger()` is set as a [Job's trigger](https://trigger.dev/docs/sdk/job) to subscribe to an event a Job from [a sent event](https://trigger.dev/docs/sdk/triggerclient/instancemethods/sendevent)
+ * @param options options for the EventTrigger
+ */
 export function eventTrigger<TEvent extends any = any>(
   options: TriggerOptions<TEvent>
 ): Trigger<EventSpecification<TEvent>> {

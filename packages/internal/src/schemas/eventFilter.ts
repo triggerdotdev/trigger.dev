@@ -1,12 +1,17 @@
 import { z } from "zod";
 
 const EventMatcherSchema = z.union([
+  /** Match against a string */
   z.array(z.string()),
+  /** Match against a number */
   z.array(z.number()),
+  /** Match against a boolean */
   z.array(z.boolean()),
 ]);
+
 type EventMatcher = z.infer<typeof EventMatcherSchema>;
 
+/** A filter for matching against data */
 export type EventFilter = { [key: string]: EventMatcher | EventFilter };
 
 export const EventFilterSchema: z.ZodType<EventFilter> = z.lazy(() =>
