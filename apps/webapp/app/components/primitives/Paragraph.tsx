@@ -107,25 +107,11 @@ export function TextLink({
   ...props
 }: TextLinkProps) {
   return to ? (
-    <Link
-      to={to}
-      className={cn(
-        "text-indigo-500 transition hover:text-indigo-400",
-        className
-      )}
-      {...props}
-    >
+    <Link to={to} className={cn(classes, className)} {...props}>
       {children}
     </Link>
   ) : href ? (
-    <a
-      href={href}
-      className={cn(
-        "text-indigo-500 transition hover:text-indigo-400",
-        className
-      )}
-      {...props}
-    >
+    <a href={href} className={cn(classes, className)} {...props}>
       {children}
     </a>
   ) : (

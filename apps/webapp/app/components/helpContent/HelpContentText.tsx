@@ -3,8 +3,8 @@ import { StepNumber } from "~/components/primitives/StepNumber";
 import { useAppOrigin } from "~/hooks/useAppOrigin";
 import { useDevEnvironment } from "~/hooks/useEnvironments";
 import { IntegrationIcon } from "~/routes/_app.orgs.$organizationSlug.projects.$projectParam.integrations/route";
-import { Button } from "../primitives/Buttons";
-import { Callout } from "../primitives/Callout";
+import { Button, LinkButton } from "../primitives/Buttons";
+import { Callout, variantClasses } from "../primitives/Callout";
 import {
   ClientTabs,
   ClientTabsContent,
@@ -20,6 +20,12 @@ import { ApiKeyHelp, HelpPanelProps } from "../integrations/ApiKeyHelp";
 import { CodeBlock } from "../code/CodeBlock";
 import { HelpInstall } from "../integrations/HelpInstall";
 import { HelpSamples } from "../integrations/HelpSamples";
+import { jobTestPath } from "~/utils/pathBuilder";
+import { useOrganization } from "~/hooks/useOrganizations";
+import { useProject } from "~/hooks/useProject";
+import { useJob } from "~/hooks/useJob";
+import { Link } from "@remix-run/react";
+import { OrderedList, OrderedListItem } from "../primitives/Lists";
 
 export function HowToSetupYourProject() {
   const devEnvironment = useDevEnvironment();
@@ -141,20 +147,60 @@ export function HowToSetupYourProject() {
 }
 
 export function HowToRunYourJob() {
+  const organization = useOrganization();
+  const project = useProject();
+  const job = useJob();
+
   return (
     <>
-      <StepNumber
-        stepNumber="1"
-        title="Step 1
-"
-      />
+      <Callout variant="info" className="mb-6">
+        <Paragraph variant={"small"} className={variantClasses.info.text}>
+          Scheduled Triggers <strong>do not</strong> trigger Jobs in the DEV
+          Environment. When developing locally you should use the{" "}
+          <Link
+            to={jobTestPath(organization, project, job)}
+            className="underline underline-offset-2 transition hover:text-blue-100"
+          >
+            Test feature
+          </Link>{" "}
+          to trigger any scheduled Jobs.
+        </Paragraph>
+      </Callout>
+
+      <Paragraph spacing>There are two ways to run your Job:</Paragraph>
+
+      <StepNumber stepNumber="1" title="Trigger a test Run" />
       <StepContentContainer>
-        <Paragraph spacing>Step 1 content.</Paragraph>
+        <Paragraph spacing>
+          You can perform a Run with any payload you want, or use one of our
+          examples, on the test page.
+        </Paragraph>
+        <LinkButton
+          to={jobTestPath(organization, project, job)}
+          variant={"primary/small"}
+          LeadingIcon={"beaker"}
+          leadingIconClassName="text-bright"
+        >
+          Test
+        </LinkButton>
       </StepContentContainer>
 
-      <Callout variant="docs" href="#">
-        Add link to docs here.
-      </Callout>
+      <StepNumber stepNumber="2" title="Trigger your Job for real" />
+      <StepContentContainer>
+        <Paragraph spacing>
+          Performing a real run depends on the type of Trigger your Job is
+          using.
+        </Paragraph>
+
+        <LinkButton
+          to="https://trigger.dev/docs/documentation/guides/running-jobs"
+          variant={"primary/small"}
+          LeadingIcon={"docs"}
+          leadingIconClassName="text-bright"
+        >
+          How to run a Job
+        </LinkButton>
+      </StepContentContainer>
     </>
   );
 }
