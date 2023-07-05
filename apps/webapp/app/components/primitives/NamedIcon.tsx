@@ -1,4 +1,5 @@
 import {
+  ArrowTopRightOnSquareIcon,
   ExclamationCircleIcon,
   ExclamationTriangleIcon,
   InformationCircleIcon,
@@ -9,7 +10,6 @@ import {
   ArrowLeftIcon,
   ArrowPathIcon,
   ArrowRightIcon,
-  ArrowTopRightOnSquareIcon,
   BeakerIcon,
   BellAlertIcon,
   BoltIcon,
