@@ -72,18 +72,21 @@ export function ProjectSideMenu() {
           to={projectPath(organization, project)}
           isCollapsed={isCollapsed}
           forceActive={jobsActive}
+          data-action="jobs"
         />
         <SideMenuItem
           name="Integrations"
           icon="integration"
           to={projectIntegrationsPath(organization, project)}
           isCollapsed={isCollapsed}
+          data-action="integrations"
         />
         <SideMenuItem
           name="Environments & API Keys"
           icon="environment"
           to={projectEnvironmentsPath(organization, project)}
           isCollapsed={isCollapsed}
+          data-action="environments & api keys"
         />
       </div>
       <div className="flex flex-col">
@@ -92,18 +95,21 @@ export function ProjectSideMenu() {
           icon="team"
           to={organizationTeamPath(organization)}
           isCollapsed={isCollapsed}
+          data-action="team"
         />
         <SideMenuItem
           name="Usage & Billing"
           icon="billing"
           to={organizationBillingPath(organization)}
           isCollapsed={isCollapsed}
+          data-action="usage & billing"
         />
         <SideMenuItem
           name="Account"
           icon={UserProfilePhoto}
           to={accountPath()}
           isCollapsed={isCollapsed}
+          data-action="account"
         />
       </div>
     </motion.div>
