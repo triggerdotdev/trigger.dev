@@ -111,7 +111,7 @@ type ExternalSourceOptions<
   schema: z.Schema<TParams>;
   integration: TIntegration;
   register: RegisterFunction<TIntegration, TParams, TChannel>;
-  filter: FilterFunction<TParams>;
+  filter?: FilterFunction<TParams>;
   handler: HandlerFunction<TChannel, TParams>;
   key: KeyFunction<TParams>;
   properties?: (params: TParams) => DisplayProperty[];
@@ -146,7 +146,7 @@ export class ExternalSource<
   }
 
   filter(params: TParams): EventFilter {
-    return this.options.filter(params);
+    return this.options.filter?.(params) ?? {};
   }
 
   properties(params: TParams): DisplayProperty[] {

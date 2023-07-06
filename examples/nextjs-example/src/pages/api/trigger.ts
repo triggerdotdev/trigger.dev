@@ -5,6 +5,7 @@ import "@/jobs/openai";
 import "@/jobs/resend";
 import "@/jobs/general";
 import "@/jobs/slack";
+import "@/jobs/typeform";
 import "@/jobs/logging";
 import "@/jobs/schedules";
 import "@/jobs/events";

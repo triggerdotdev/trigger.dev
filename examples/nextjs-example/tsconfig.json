@@ -35,7 +35,9 @@
       "@trigger.dev/openai": ["../../integrations/openai/src/index"],
       "@trigger.dev/openai/*": ["../../integrations/openai/src/*"],
       "@trigger.dev/resend": ["../../integrations/resend/src/index"],
-      "@trigger.dev/resend/*": ["../../integrations/resend/src/*"]
+      "@trigger.dev/resend/*": ["../../integrations/resend/src/*"],
+      "@trigger.dev/typeform": ["../../integrations/typeform/src/index"],
+      "@trigger.dev/typeform/*": ["../../integrations/typeform/src/*"]
     },
     "plugins": [
       {

@@ -181,6 +181,10 @@ export const apisList = [
     name: "Spotify",
   },
   {
+    identifier: "stabilityai",
+    name: "Stability AI",
+  },
+  {
     identifier: "stripe",
     name: "Stripe",
   },
@@ -203,6 +207,10 @@ export const apisList = [
   {
     identifier: "twitter",
     name: "Twitter",
+  },
+  {
+    identifier: "typeform",
+    name: "Typeform",
   },
   {
     identifier: "whatsapp",
