@@ -5,6 +5,7 @@ import {
 import invariant from "tiny-invariant";
 import type { loader } from "~/routes/_app.orgs.$organizationSlug.projects.$projectParam.jobs.$jobParam/route";
 import { useOptionalProject } from "./useProject";
+import { useChanged } from "./useChanged";
 
 export type MatchedJob = UseDataFunctionReturn<typeof loader>["job"];
 
@@ -31,3 +32,9 @@ export function useJob() {
   invariant(job, "Job must be defined");
   return job;
 }
+
+export const useJobChanged = (
+  action: (org: MatchedJob | undefined) => void
+) => {
+  useChanged(useOptionalJob, action);
+};

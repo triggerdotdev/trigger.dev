@@ -4,6 +4,7 @@ import {
 } from "remix-typedjson";
 import invariant from "tiny-invariant";
 import type { loader } from "~/routes/_app.orgs.$organizationSlug.projects.$projectParam/route";
+import { useChanged } from "./useChanged";
 
 export type MatchedProject = UseDataFunctionReturn<typeof loader>["project"];
 
@@ -22,3 +23,9 @@ export function useProject() {
   invariant(project, "Project must be defined");
   return project;
 }
+
+export const useProjectChanged = (
+  action: (org: MatchedProject | undefined) => void
+) => {
+  useChanged(useOptionalProject, action);
+};

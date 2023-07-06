@@ -1,4 +1,3 @@
-import { useEffect, useRef } from "react";
 import {
   UseDataFunctionReturn,
   useTypedRouteLoaderData,
@@ -7,6 +6,7 @@ import invariant from "tiny-invariant";
 import type { loader as orgLoader } from "~/routes/_app.orgs.$organizationSlug/route";
 import type { loader as appLoader } from "~/routes/_app/route";
 import { hydrateObject, useMatchesData } from "~/utils";
+import { useChanged } from "./useChanged";
 
 export type MatchedOrganization = UseDataFunctionReturn<
   typeof appLoader
@@ -61,43 +61,8 @@ function useOrganizationsFromMatchesData(paths: string[]) {
   >(routeMatch.data.organizations);
 }
 
-export function useOrganizationChanged(
+export const useOrganizationChanged = (
   action: (org: MatchedOrganization | undefined) => void
-) {
-  const previousOrganizationId = useRef<string | undefined>();
-  const organization = useOptionalOrganization();
-
-  useEffect(() => {
-    if (previousOrganizationId.current !== organization?.id) {
-      action(organization);
-    }
-
-    previousOrganizationId.current = organization?.id;
-  }, [organization]);
-
-  useEffect(() => {
-    if (organization !== undefined) return;
-    action(organization);
-  }, []);
-}
-
-function useChanged<T extends { id: string }>(
-  getItem: () => T | undefined,
-  action: (item: T | undefined) => void
-) {
-  const previousItemId = useRef<string | undefined>();
-  const item = getItem();
-
-  useEffect(() => {
-    if (previousItemId.current !== item?.id) {
-      action(item);
-    }
-
-    previousItemId.current = item?.id;
-  }, [item]);
-
-  useEffect(() => {
-    if (item !== undefined) return;
-    action(item);
-  }, []);
-}
+) => {
+  useChanged(useOptionalOrganization, action);
+};

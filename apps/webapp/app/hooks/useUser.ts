@@ -1,5 +1,6 @@
 import type { User } from "~/models/user.server";
 import { useMatchesData } from "~/utils";
+import { useChanged } from "./useChanged";
 
 function isUser(user: any): user is User {
   return user && typeof user === "object" && typeof user.email === "string";
@@ -21,4 +22,8 @@ export function useUser(): User {
     );
   }
   return maybeUser;
+}
+
+export function useUserChanged(callback: (user: User | undefined) => void) {
+  useChanged(useOptionalUser, callback);
 }
