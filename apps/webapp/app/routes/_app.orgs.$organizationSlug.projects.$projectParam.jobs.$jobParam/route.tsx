@@ -43,7 +43,10 @@ export const loader = async ({ request, params }: LoaderArgs) => {
   });
 
   if (job === null) {
-    throw new Response("Not Found", { status: 404 });
+    throw new Response("Not Found", {
+      status: 404,
+      statusText: `There is no Job ${jobParam} in this Project.`,
+    });
   }
 
   //todo identify job
