@@ -29,6 +29,7 @@ import { usePostHog } from "./hooks/usePostHog";
 import { getUser } from "./services/session.server";
 import { appEnvTitleTag } from "./utils";
 import { ErrorBoundary as HighlightErrorBoundary } from "@highlight-run/react";
+import { useHighlight } from "./hooks/useHighlight";
 
 export const links: LinksFunction = () => {
   return [{ rel: "stylesheet", href: tailwindStylesheetUrl }];
@@ -96,6 +97,7 @@ function App() {
   const { posthogProjectKey, highlightProjectId } =
     useTypedLoaderData<typeof loader>();
   usePostHog(posthogProjectKey);
+  useHighlight();
 
   return (
     <>
