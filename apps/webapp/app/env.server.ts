@@ -27,6 +27,7 @@ const EnvironmentSchema = z.object({
     .default(process.env.NODE_ENV),
   SECRET_STORE: SecretStoreOptionsSchema.default("DATABASE"),
   POSTHOG_PROJECT_KEY: z.string().optional(),
+  HIGHLIGHT_PROJECT_ID: z.string().optional(),
   MAGIC_LINK_SECRET: z.string(),
   AUTH_GITHUB_CLIENT_ID: z.string().optional(),
   AUTH_GITHUB_CLIENT_SECRET: z.string().optional(),

@@ -19,6 +19,7 @@ module.exports = {
     "@trigger.dev/internal",
     "emails",
     "@octokit/webhooks",
+    "highlight.run",
   ],
   watchPaths: async () => {
     return [

@@ -17,6 +17,13 @@ export function NavBar() {
           <LogoIcon className="h-5 w-5" />
         </Link>
         <Breadcrumb />
+        <button
+          onClick={() => {
+            throw new Error("this is a test error");
+          }}
+        >
+          Throw
+        </button>
         <MobileDropdownMenu />
       </div>
       <div className="hidden items-center gap-2 sm:flex">
