@@ -1,4 +1,3 @@
-import { ErrorBoundary as HighlightErrorBoundary } from "@highlight-run/react";
 import type { ShouldRevalidateFunction } from "@remix-run/react";
 import { Outlet } from "@remix-run/react";
 import type { LoaderArgs } from "@remix-run/server-runtime";
