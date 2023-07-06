@@ -130,10 +130,7 @@ export default function LoginMagicLinkPage() {
               </>
             ) : (
               <>
-                <FormTitle
-                  divide={false}
-                  title="Create your Trigger.dev account"
-                />
+                <FormTitle divide={false} title="Log in to Trigger.dev" />
                 <Fieldset className="flex w-full flex-col items-center gap-y-2">
                   <InputGroup>
                     <Label>Your email address</Label>

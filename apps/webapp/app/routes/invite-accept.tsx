@@ -35,7 +35,7 @@ export async function loader({ request }: LoaderArgs) {
     return redirectWithSuccessMessage(
       "/",
       request,
-      "Please login to accept the invite.",
+      "Please log in to accept the invite.",
       { ephemeral: false }
     );
   }

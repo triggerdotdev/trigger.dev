@@ -20,10 +20,10 @@ export default function Email({ magicLink }: { magicLink: string }) {
   return (
     <Html>
       <Head />
-      <Preview>Login with this magic link 🪄</Preview>
+      <Preview>Log in with this magic link 🪄</Preview>
       <Section style={main}>
         <Container style={container}>
-          <Text style={h1}>Login to Trigger.dev</Text>
+          <Text style={h1}>Log in to Trigger.dev</Text>
           <Link
             href={magicLink}
             target="_blank"
@@ -36,7 +36,7 @@ export default function Email({ magicLink }: { magicLink: string }) {
             Click here to log in with this magic link
           </Link>
           <Text style={paragraphLight}>
-            If you didn&apos;t try to login, you can safely ignore this email.
+            If you didn&apos;t try to log in, you can safely ignore this email.
           </Text>
           <Image
             path="/emails/logo-mono.png"
