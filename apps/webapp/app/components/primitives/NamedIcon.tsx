@@ -104,7 +104,7 @@ const icons = {
     <XMarkIcon className={cn("text-dimmed", className)} />
   ),
   "connection-alert": (className: string) => (
-    <BellAlertIcon className={cn("text-rose-500", className)} />
+    <BellAlertIcon className={cn("text-amber-500", className)} />
   ),
   docs: (className: string) => (
     <BookOpenIcon className={cn("text-slate-400", className)} />
