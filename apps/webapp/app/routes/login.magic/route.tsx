@@ -34,7 +34,7 @@ import { appEnvTitleTag } from "~/utils";
 export const meta: TypedMetaFunction<typeof loader, { root: RootLoader }> = ({
   parentsData,
 }) => ({
-  title: `Login to Trigger.dev${appEnvTitleTag(parentsData.root.appEnv)}`,
+  title: `Login to Trigger.dev${appEnvTitleTag(parentsData?.root.appEnv)}`,
 });
 
 export async function loader({ request }: LoaderArgs) {

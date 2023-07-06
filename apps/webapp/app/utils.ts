@@ -162,8 +162,12 @@ export const obfuscateApiKey = (apiKey: string) => {
 };
 
 export function appEnvTitleTag(
-  appEnv: "test" | "production" | "development" | "staging"
+  appEnv?: "test" | "production" | "development" | "staging"
 ): string {
+  if (!appEnv) {
+    return "";
+  }
+
   switch (appEnv) {
     case "test":
       return " (test)";
