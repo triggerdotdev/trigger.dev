@@ -101,7 +101,13 @@ function App() {
 
   return (
     <>
-      <HighlightInit projectId={highlightProjectId} />
+      {highlightProjectId && (
+        <HighlightInit
+          projectId={highlightProjectId}
+          tracingOrigins={true}
+          networkRecording={{ enabled: true, recordHeadersAndBody: true }}
+        />
+      )}
       <html lang="en" className="h-full">
         <head>
           <Meta />
