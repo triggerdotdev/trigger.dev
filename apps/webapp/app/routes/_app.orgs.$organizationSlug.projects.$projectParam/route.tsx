@@ -2,14 +2,18 @@ import { Outlet } from "@remix-run/react";
 import type { LoaderArgs } from "@remix-run/server-runtime";
 import { typedjson } from "remix-typedjson";
 import invariant from "tiny-invariant";
+import { RouteErrorDisplay } from "~/components/ErrorDisplay";
 import {
   ProjectSideMenu,
   SideMenuContainer,
 } from "~/components/navigation/ProjectSideMenu";
+import { useOrganization } from "~/hooks/useOrganizations";
+import { useProject } from "~/hooks/useProject";
 import { ProjectPresenter } from "~/presenters/ProjectPresenter.server";
 import { analytics } from "~/services/analytics.server";
 import { requireUserId } from "~/services/session.server";
 import { Handle } from "~/utils/handle";
+import { projectPath } from "~/utils/pathBuilder";
 
 export const loader = async ({ request, params }: LoaderArgs) => {
   const userId = await requireUserId(request);
@@ -25,7 +29,10 @@ export const loader = async ({ request, params }: LoaderArgs) => {
     });
 
     if (!project) {
-      throw new Response("Not Found", { status: 404 });
+      throw new Response("Not Found", {
+        status: 404,
+        statusText: `Project ${projectParam} not found in your Organization.`,
+      });
     }
 
     analytics.project.identify({ project });
@@ -34,6 +41,10 @@ export const loader = async ({ request, params }: LoaderArgs) => {
       project,
     });
   } catch (error) {
+    if (error instanceof Response) {
+      throw error;
+    }
+
     console.error(error);
     throw new Response(undefined, {
       status: 400,
@@ -59,5 +70,15 @@ export default function Project() {
         </div>
       </SideMenuContainer>
     </>
+  );
+}
+
+export function ErrorBoundary() {
+  const org = useOrganization();
+  const project = useProject();
+  return (
+    <RouteErrorDisplay
+      button={{ title: project.name, to: projectPath(org, project) }}
+    />
   );
 }
