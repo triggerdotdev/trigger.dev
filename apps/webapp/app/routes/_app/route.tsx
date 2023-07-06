@@ -1,9 +1,13 @@
 import { Outlet, ShouldRevalidateFunction } from "@remix-run/react";
 import type { LoaderArgs } from "@remix-run/server-runtime";
 import { redirect, typedjson, useTypedLoaderData } from "remix-typedjson";
+import { RouteErrorDisplay } from "~/components/ErrorDisplay";
 import { ImpersonationBanner } from "~/components/ImpersonationBanner";
 import { NoMobileOverlay } from "~/components/NoMobileOverlay";
-import { AppContainer } from "~/components/layout/AppLayout";
+import {
+  AppContainer,
+  MainCenteredContainer,
+} from "~/components/layout/AppLayout";
 import { NavBar } from "~/components/navigation/NavBar";
 import { featuresForRequest } from "~/features.server";
 import { useIsProjectChildPage } from "~/hooks/useIsProjectChildPage";
@@ -89,6 +93,19 @@ export default function App() {
       <AppContainer showBackgroundGradient={showBackgroundGradient}>
         <NavBar />
         <Outlet />
+      </AppContainer>
+    </>
+  );
+}
+
+export function ErrorBoundary() {
+  return (
+    <>
+      <NoMobileOverlay />
+      <AppContainer showBackgroundGradient={true}>
+        <MainCenteredContainer>
+          <RouteErrorDisplay />
+        </MainCenteredContainer>
       </AppContainer>
     </>
   );
