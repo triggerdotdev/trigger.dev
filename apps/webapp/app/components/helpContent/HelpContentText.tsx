@@ -152,7 +152,7 @@ export function HowToRunYourJob() {
   return (
     <>
       <Callout variant="info" className="mb-6">
-        <Paragraph variant={"small"} className={variantClasses.info.text}>
+        <Paragraph variant={"small"} className={variantClasses.info.textColor}>
           Scheduled Triggers <strong>do not</strong> trigger Jobs in the DEV
           Environment. When developing locally you should use the{" "}
           <Link
@@ -234,7 +234,7 @@ export function HowToRunATest() {
       </StepContentContainer>
       <Callout
         variant="docs"
-        href="https://trigger.dev/docs/documentation/guides/testing-jobs"
+        to="https://trigger.dev/docs/documentation/guides/testing-jobs"
       >
         Learn more about running tests.
       </Callout>
@@ -282,7 +282,7 @@ export function HowToConnectAnIntegration() {
       </StepContentContainer>
       <Callout
         variant={"docs"}
-        href="https://trigger.dev/docs/integrations/introduction"
+        to="https://trigger.dev/docs/integrations/introduction"
       >
         View the Integration docs page for more information on connecting an API
         using an Integration or other method.

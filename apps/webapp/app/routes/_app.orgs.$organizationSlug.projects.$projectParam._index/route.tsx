@@ -118,9 +118,7 @@ export default function Page() {
                     {project.jobs.length === 1 ? (
                       <Callout
                         variant="docs"
-                        href={docsPath(
-                          "documentation/quickstart#your-first-job"
-                        )}
+                        to={docsPath("documentation/quickstart#your-first-job")}
                         className="my-3"
                       >
                         Create your first Job in code
@@ -128,7 +126,7 @@ export default function Page() {
                     ) : (
                       <Callout
                         variant="docs"
-                        href={docsPath("documentation/guides/create-a-job")}
+                        to={docsPath("documentation/guides/create-a-job")}
                         className="my-3"
                       >
                         Create another Job

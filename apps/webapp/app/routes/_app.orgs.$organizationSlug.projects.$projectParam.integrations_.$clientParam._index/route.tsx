@@ -107,7 +107,7 @@ export default function Page() {
             />
             <Callout
               variant="docs"
-              href={docsIntegrationPath(client.integration.identifier)}
+              to={docsIntegrationPath(client.integration.identifier)}
             >
               View the docs to learn more about using the{" "}
               {client.integration.name} Integration.
