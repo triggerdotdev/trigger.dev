@@ -1,62 +1,83 @@
 import { useLocation } from "@remix-run/react";
 import posthog from "posthog-js";
 import { useEffect, useRef } from "react";
-import { useOptionalOrganization } from "./useOrganizations";
-import { useOptionalUser } from "./useUser";
+import { useOrganizationChanged } from "./useOrganizations";
+import { useOptionalUser, useUserChanged } from "./useUser";
+import { useProjectChanged } from "./useProject";
+import { useJobChanged } from "./useJob";
 
-export const usePostHog = (apiKey?: string, logging = false): void => {
+export const usePostHog = (
+  apiKey?: string,
+  logging = false,
+  debug = false
+): void => {
   const postHogInitialized = useRef(false);
   const location = useLocation();
   const user = useOptionalUser();
-  const currentOrganization = useOptionalOrganization();
-  const currentOrganizationId = currentOrganization?.id;
 
   //start PostHog once
   useEffect(() => {
-    if (apiKey === undefined) return;
-    if (apiKey === "") return;
+    if (apiKey === undefined || apiKey === "") return;
     if (postHogInitialized.current === true) return;
-    if (logging) console.log("posthog.init", apiKey);
-    postHogInitialized.current = true;
+    if (logging) console.log("Initializing PostHog");
     posthog.init(apiKey, {
       api_host: "https://app.posthog.com",
       opt_in_site_apps: true,
-      debug: logging,
+      debug,
       loaded: function (posthog) {
-        if (logging) console.log("posthog.loaded", apiKey);
+        if (logging) console.log("PostHog loaded");
         if (user !== undefined) {
-          if (logging) console.log("posthog.identify", user.id, user.email);
+          if (logging) console.log("Loaded: Identifying user", user);
           posthog.identify(user.id, { email: user.email });
         }
       },
     });
+    postHogInitialized.current = true;
   }, [apiKey, logging, user]);
 
-  //identify the user, and unidentify on log out
-  useEffect(() => {
+  useUserChanged((user) => {
     if (postHogInitialized.current === false) return;
-    if (user === undefined) {
-      if (logging) console.log("posthog.reset");
-      posthog.reset();
-    } else {
-      if (logging) console.log("posthog.identify", user.id, user.email);
+    if (logging) console.log("User changed");
+    if (user) {
+      if (logging) console.log("Identifying user", user);
       posthog.identify(user.id, { email: user.email });
+    } else {
+      if (logging) console.log("Resetting user");
+      posthog.reset();
     }
-  }, [logging, user]);
+  });
 
-  //identify the organization
-  useEffect(() => {
+  useOrganizationChanged((org) => {
     if (postHogInitialized.current === false) return;
-    if (currentOrganizationId !== undefined) {
-      if (logging) console.log("posthog.organization", currentOrganizationId);
-      posthog.group("organization", currentOrganizationId);
+    if (org) {
+      if (logging) console.log(`Grouping by organization`, org);
+      posthog.group("organization", org.id);
+    } else {
+      //reset the groups when you go to one of the top-level pages
+      if (logging) console.log("Resetting groups");
+      posthog.resetGroups();
     }
-  }, [currentOrganizationId, logging]);
+  });
+
+  useProjectChanged((project) => {
+    if (postHogInitialized.current === false) return;
+    if (project) {
+      if (logging) console.log(`Grouping by project`, project);
+      posthog.group("project", project.id);
+    }
+  });
+
+  useJobChanged((job) => {
+    if (postHogInitialized.current === false) return;
+    if (job) {
+      if (logging) console.log(`Grouping by job`, job);
+      posthog.group("job", job.id);
+    }
+  });
 
   //page view
   useEffect(() => {
     if (postHogInitialized.current === false) return;
-    if (logging) console.log("posthog.capture", "$pageview", location.pathname);
     posthog.capture("$pageview");
   }, [location, logging]);
 };
