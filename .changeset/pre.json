@@ -15,7 +15,8 @@
     "@trigger.dev/init": "0.2.0",
     "@trigger.dev/integration-kit": "2.0.0-next.1",
     "@trigger.dev/resend": "1.0.0-next.1",
-    "@trigger.dev/cli": "0.2.1-next.8"
+    "@trigger.dev/cli": "0.2.1-next.8",
+    "@trigger.dev/typeform": "1.0.0-next.2"
   },
   "changesets": [
     "afraid-hornets-cheer",
@@ -42,11 +43,14 @@
     "hot-seals-press",
     "itchy-cars-count",
     "itchy-rockets-provide",
+    "khaki-needles-wait",
     "long-clocks-hide",
     "lovely-hounds-accept",
+    "lovely-plants-brake",
     "lucky-crews-matter",
     "metal-donkeys-relate",
     "modern-emus-suffer",
+    "modern-turtles-eat",
     "moody-islands-melt",
     "odd-colts-smash",
     "pink-islands-pay",
@@ -55,6 +59,7 @@
     "quiet-berries-tickle",
     "quiet-dryers-collect",
     "rich-clocks-attack",
+    "shiny-mirrors-beam",
     "shy-bobcats-hear",
     "silent-mirrors-lay",
     "silver-insects-sneeze",

@@ -1,5 +1,14 @@
 # @trigger.dev/sdk
 
+## 2.0.0-next.11
+
+### Patch Changes
+
+- 931be399: cronTrigger jsdocs
+- ba446524: intervalTrigger() jsdocs
+- 094f6f5a: jsdocs for DynamicTrigger and DynamicSchedule
+- 3ee396d7: Creating the typeform integration package
+
 ## 2.0.0-next.10
 
 ### Patch Changes
