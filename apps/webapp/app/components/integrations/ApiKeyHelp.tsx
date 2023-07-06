@@ -31,9 +31,8 @@ export function ApiKeyHelp({
         keys won't leave your server, we'll never see them.
       </Paragraph>
       <Paragraph spacing>
-        First install the{" "}
-        <InlineCode>{integration.packageName}@next</InlineCode> package using
-        your preferred package manager. For example:
+        First install the <InlineCode>{integration.packageName}</InlineCode>{" "}
+        package using your preferred package manager. For example:
       </Paragraph>
       <HelpInstall packageName={integration.packageName} />
       {help && (

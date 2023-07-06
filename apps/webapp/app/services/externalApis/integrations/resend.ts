@@ -3,7 +3,7 @@ import type { Integration } from "../types";
 export const resend: Integration = {
   identifier: "resend",
   name: "Resend",
-  packageName: "@trigger.dev/resend",
+  packageName: "@trigger.dev/resend@next",
   authenticationMethods: {
     apikey: {
       type: "apikey",

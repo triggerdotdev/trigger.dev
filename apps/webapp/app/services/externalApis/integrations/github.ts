@@ -64,7 +64,7 @@ const usageSample: HelpSample = {
 export const github: Integration = {
   identifier: "github",
   name: "GitHub",
-  packageName: "@trigger.dev/github",
+  packageName: "@trigger.dev/github@next",
   authenticationMethods: {
     oauth2: {
       name: "OAuth",

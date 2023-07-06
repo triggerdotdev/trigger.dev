@@ -21,21 +21,21 @@ export function HelpInstall({ packageName }: { packageName: string }) {
         <ClientTabsContent value={"npm"}>
           <ClipboardField
             variant="secondary/medium"
-            value={`npm install ${packageName}@next`}
+            value={`npm install ${packageName}`}
             className="mb-4"
           />
         </ClientTabsContent>
         <ClientTabsContent value={"pnpm"}>
           <ClipboardField
             variant="secondary/medium"
-            value={`pnpm install ${packageName}@next`}
+            value={`pnpm install ${packageName}`}
             className="mb-4"
           />
         </ClientTabsContent>
         <ClientTabsContent value={"yarn"}>
           <ClipboardField
             variant="secondary/medium"
-            value={`yarn add ${packageName}@next`}
+            value={`yarn add ${packageName}`}
             className="mb-4"
           />
         </ClientTabsContent>
