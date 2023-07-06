@@ -1,4 +1,5 @@
-import type { EntryContext, Headers } from "@remix-run/node"; // or cloudflare/deno
+import { H } from "@highlight-run/node";
+import type { DataFunctionArgs, EntryContext, Headers } from "@remix-run/node"; // or cloudflare/deno
 import { Response } from "@remix-run/node"; // or cloudflare/deno
 import { RemixServer } from "@remix-run/react";
 import { parseAcceptLanguage } from "intl-parse-accept-language";
@@ -11,6 +12,7 @@ import {
   OperatingSystemContextProvider,
   OperatingSystemPlatform,
 } from "./components/primitives/OperatingSystemProvider";
+import { env } from "./env.server";
 
 const ABORT_DELAY = 30000;
 
@@ -107,6 +109,7 @@ function serveBrowsers(
 ) {
   return new Promise((resolve, reject) => {
     let didError = false;
+    let shellReady = false;
     const { pipe, abort } = renderToPipeableStream(
       <OperatingSystemContextProvider platform={platform}>
         <LocaleContextProvider locales={locales}>
@@ -120,6 +123,7 @@ function serveBrowsers(
       {
         // use onShellReady to wait until a suspense boundary is triggered
         onShellReady() {
+          shellReady = true;
           responseHeaders.set("Content-Type", "text/html");
           let body = new PassThrough();
           pipe(body);
@@ -133,9 +137,11 @@ function serveBrowsers(
         onShellError(err: unknown) {
           reject(err);
         },
-        onError(err: unknown) {
+        onError(error: unknown) {
           didError = true;
-          console.error(err);
+          if (shellReady) {
+            logError(error, request);
+          }
         },
       }
     );
@@ -143,4 +149,33 @@ function serveBrowsers(
   });
 }
 
-Worker.init().catch(console.error);
+if (env.HIGHLIGHT_PROJECT_ID) {
+  H.init({ projectID: env.HIGHLIGHT_PROJECT_ID });
+}
+
+export function handleError(
+  error: unknown,
+  { request, params, context }: DataFunctionArgs
+) {
+  logError(error, request);
+}
+
+Worker.init().catch((error) => {
+  logError(error);
+});
+
+function logError(error: unknown, request?: Request) {
+  const parsed = request
+    ? H.parseHeaders(Object.fromEntries(request.headers))
+    : undefined;
+  if (error instanceof Error) {
+    H.consumeError(error, parsed?.secureSessionId, parsed?.requestId);
+  } else {
+    H.consumeError(
+      new Error(`Unknown error: ${JSON.stringify(error)}`),
+      parsed?.secureSessionId,
+      parsed?.requestId
+    );
+  }
+  console.error(error);
+}
