@@ -4,7 +4,7 @@ export default function Page() {
   return (
     <ComingSoon
       title="View all Triggers"
-      description="View all of the registered Triggers for this job."
+      description="View all of the registered Triggers for this Job."
       icon="trigger"
     />
   );
