@@ -1,3 +1,4 @@
+import { useEffect, useRef } from "react";
 import {
   UseDataFunctionReturn,
   useTypedRouteLoaderData,
@@ -58,4 +59,45 @@ function useOrganizationsFromMatchesData(paths: string[]) {
   return hydrateObject<
     UseDataFunctionReturn<typeof appLoader>["organizations"]
   >(routeMatch.data.organizations);
+}
+
+export function useOrganizationChanged(
+  action: (org: MatchedOrganization | undefined) => void
+) {
+  const previousOrganizationId = useRef<string | undefined>();
+  const organization = useOptionalOrganization();
+
+  useEffect(() => {
+    if (previousOrganizationId.current !== organization?.id) {
+      action(organization);
+    }
+
+    previousOrganizationId.current = organization?.id;
+  }, [organization]);
+
+  useEffect(() => {
+    if (organization !== undefined) return;
+    action(organization);
+  }, []);
+}
+
+function useChanged<T extends { id: string }>(
+  getItem: () => T | undefined,
+  action: (item: T | undefined) => void
+) {
+  const previousItemId = useRef<string | undefined>();
+  const item = getItem();
+
+  useEffect(() => {
+    if (previousItemId.current !== item?.id) {
+      action(item);
+    }
+
+    previousItemId.current = item?.id;
+  }, [item]);
+
+  useEffect(() => {
+    if (item !== undefined) return;
+    action(item);
+  }, []);
 }
