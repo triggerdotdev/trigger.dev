@@ -64,6 +64,7 @@ export const RegisterTriggerSourceSchema = z.object({
 export type RegisterTriggerSource = z.infer<typeof RegisterTriggerSourceSchema>;
 
 export const RegisterSourceEventSchema = z.object({
+  /** The id of the source */
   id: z.string(),
   source: RegisterTriggerSourceSchema,
   events: z.array(z.string()),
