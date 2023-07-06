@@ -12,6 +12,7 @@ const db = {
 };
 
 export const slack = new Slack({ id: "slack-6" });
+export const slackMissing = new Slack({ id: "slack-7" });
 
 new Job(client, {
   id: "slack-kpi-summary",
@@ -64,6 +65,26 @@ new Job(client, {
           },
         },
       ],
+    });
+
+    return response;
+  },
+});
+
+new Job(client, {
+  id: "slack-missing-integration",
+  name: "Slack with missing integration",
+  version: "0.1.1",
+  integrations: {
+    slack: slackMissing,
+  },
+  trigger: eventTrigger({
+    name: "missing.integration",
+  }),
+  run: async (payload, io, ctx) => {
+    const response = await io.slack.postMessage("message", {
+      text: `There's no Slack connection, or is there?`,
+      channel: "C04GWUTDC3W",
     });
 
     return response;
