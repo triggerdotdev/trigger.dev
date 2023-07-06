@@ -102,73 +102,77 @@ function BreadcrumbItem({
     case "projects":
       return <ProjectsMenu key={breadcrumb.slug} />;
     case "jobs":
+      if (!organization || !project) return null;
       return (
         <BreadcrumbLink
           key={breadcrumb.slug}
-          to={projectPath(organization!, project!)}
+          to={projectPath(organization, project)}
           title="Jobs"
         />
       );
     case "environments":
+      if (!organization || !project) return null;
       return (
         <BreadcrumbLink
           key={breadcrumb.slug}
-          to={projectEnvironmentsPath(organization!, project!)}
+          to={projectEnvironmentsPath(organization, project)}
           title="Environments"
         />
       );
     case "integrations":
+      if (!organization || !project) return null;
       return (
         <BreadcrumbLink
           key={breadcrumb.slug}
-          to={projectIntegrationsPath(organization!, project!)}
+          to={projectIntegrationsPath(organization, project)}
           title="Integrations"
         />
       );
     case "integration":
+      if (!organization || !project || !client) return null;
       return (
         <Fragment key={breadcrumb.slug}>
           <BreadcrumbLink
-            to={projectIntegrationsPath(organization!, project!)}
+            to={projectIntegrationsPath(organization, project)}
             title="Integrations"
           />
           <BreadcrumbIcon />
           <BreadcrumbLink
-            to={integrationClientPath(organization!, project!, client!)}
-            title={client!.title}
+            to={integrationClientPath(organization, project, client)}
+            title={client.title}
           />
         </Fragment>
       );
     case "integration-job":
+      if (!organization || !project || !client) return null;
       return (
         <BreadcrumbLink
-          to={integrationClientPath(organization!, project!, client!)}
+          to={integrationClientPath(organization, project, client)}
           title={"Jobs"}
         />
       );
     case "integration-connections":
+      if (!organization || !project || !client) return null;
       return (
         <BreadcrumbLink
-          to={integrationClientConnectionsPath(
-            organization!,
-            project!,
-            client!
-          )}
+          to={integrationClientConnectionsPath(organization, project, client)}
           title={"Connections"}
         />
       );
     case "integration-scopes":
+      if (!organization || !project || !client) return null;
       return (
         <BreadcrumbLink
-          to={integrationClientScopesPath(organization!, project!, client!)}
+          to={integrationClientScopesPath(organization, project, client)}
           title={"Scopes"}
         />
       );
     case "job":
+      if (!organization || !project || !job) return null;
       return (
         <Fragment key={breadcrumb.slug}>
           <BreadcrumbLink
-            to={projectPath(organization!, project!)}
+            to={projectPath(organization, project)}
             title="Jobs"
           />
           <BreadcrumbIcon />
@@ -176,32 +180,35 @@ function BreadcrumbItem({
         </Fragment>
       );
     case "test":
+      if (!organization || !project || !job) return null;
       return (
         <BreadcrumbLink
           key={breadcrumb.slug}
-          to={jobTestPath(organization!, project!, job!)}
+          to={jobTestPath(organization, project, job)}
           title="Test"
         />
       );
     case "runs":
+      if (!organization || !project || !job) return null;
       return (
         <BreadcrumbLink
           key={breadcrumb.slug}
-          to={jobPath(organization!, project!, job!)}
+          to={jobPath(organization, project, job)}
           title="Runs"
         />
       );
     case "run":
+      if (!organization || !project || !job || !run) return null;
       return (
         <Fragment key={breadcrumb.slug}>
           <BreadcrumbLink
-            to={jobPath(organization!, project!, job!)}
+            to={jobPath(organization, project, job)}
             title="Runs"
           />
           <BreadcrumbIcon />
           <BreadcrumbLink
-            to={runDashboardPath(organization!, project!, job!, run!)}
-            title={`Run #${run!.number}`}
+            to={runDashboardPath(organization, project, job, run)}
+            title={`Run #${run.number}`}
           />
         </Fragment>
       );
