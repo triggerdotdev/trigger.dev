@@ -165,17 +165,19 @@ Worker.init().catch((error) => {
 });
 
 function logError(error: unknown, request?: Request) {
-  const parsed = request
-    ? H.parseHeaders(Object.fromEntries(request.headers))
-    : undefined;
-  if (error instanceof Error) {
-    H.consumeError(error, parsed?.secureSessionId, parsed?.requestId);
-  } else {
-    H.consumeError(
-      new Error(`Unknown error: ${JSON.stringify(error)}`),
-      parsed?.secureSessionId,
-      parsed?.requestId
-    );
+  if (env.HIGHLIGHT_PROJECT_ID) {
+    const parsed = request
+      ? H.parseHeaders(Object.fromEntries(request.headers))
+      : undefined;
+    if (error instanceof Error) {
+      H.consumeError(error, parsed?.secureSessionId, parsed?.requestId);
+    } else {
+      H.consumeError(
+        new Error(`Unknown error: ${JSON.stringify(error)}`),
+        parsed?.secureSessionId,
+        parsed?.requestId
+      );
+    }
   }
   console.error(error);
 }
