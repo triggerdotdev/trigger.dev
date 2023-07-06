@@ -1,7 +1,7 @@
 import { useMatches } from "@remix-run/react";
 import { motion } from "framer-motion";
-import invariant from "tiny-invariant";
-import { useJob, useOptionalJob } from "~/hooks/useJob";
+import { useOptionalIntegrationClient } from "~/hooks/useIntegrationClient";
+import { useOptionalJob } from "~/hooks/useJob";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { cn } from "~/utils/cn";
@@ -13,11 +13,10 @@ import {
   projectIntegrationsPath,
   projectPath,
 } from "~/utils/pathBuilder";
+import { UserProfilePhoto } from "../UserProfilePhoto";
 import { NavLinkButton } from "../primitives/Buttons";
 import type { IconNames } from "../primitives/NamedIcon";
 import { SimpleTooltip } from "../primitives/Tooltip";
-import { UserProfilePhoto } from "../UserProfilePhoto";
-import { useOptionalIntegrationClient } from "~/hooks/useIntegrationClient";
 
 export function SideMenuContainer({ children }: { children: React.ReactNode }) {
   return (
