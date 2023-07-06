@@ -4,11 +4,11 @@ import type {
   MessageAttachment,
   MessageMetadata,
   WebAPIPlatformError,
+  WebClient,
 } from "@slack/web-api";
-import { clientFactory } from "./client";
 import type { AuthenticatedTask } from "@trigger.dev/sdk";
 
-type SlackClientType = ReturnType<typeof clientFactory>;
+type SlackClientType = InstanceType<typeof WebClient>;
 
 export type ChatPostMessageArguments = {
   channel: string;
@@ -40,7 +40,7 @@ function isPlatformError(error: unknown): error is WebAPIPlatformError {
 }
 
 export const postMessage: AuthenticatedTask<
-  ReturnType<typeof clientFactory>,
+  SlackClientType,
   ChatPostMessageArguments,
   Awaited<ReturnType<SlackClientType["chat"]["postMessage"]>>
 > = {
@@ -102,7 +102,7 @@ type ConversationsJoinResponse = Awaited<
 >;
 
 export const joinConversation: AuthenticatedTask<
-  ReturnType<typeof clientFactory>,
+  SlackClientType,
   { channel: string },
   ConversationsJoinResponse
 > = {

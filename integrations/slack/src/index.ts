@@ -1,6 +1,5 @@
 import { WebClient } from "@slack/web-api";
 import type { IntegrationClient, TriggerIntegration } from "@trigger.dev/sdk";
-import { clientFactory } from "./client";
 import { joinConversation, postMessage } from "./tasks";
 
 const tasks = {
@@ -21,7 +20,9 @@ export class Slack
     this.client = {
       tasks,
       usesLocalAuth: false,
-      clientFactory,
+      clientFactory: (auth) => {
+        return new WebClient(auth.accessToken);
+      },
     };
   }
 

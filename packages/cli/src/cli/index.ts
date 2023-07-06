@@ -57,6 +57,27 @@ program
     await devCommand(path, options);
   });
 
+// program
+//   .command("create-integration")
+//   .description("Create a new integration package for Trigger.dev")
+//   .argument(
+//     "[path]",
+//     "The path where you would like the package to be created",
+//     "."
+//   )
+//   .option(
+//     "-n, --package-name <package name>",
+//     "The name of the package to create (e.g. @trigger.dev/slack)"
+//   )
+//   .option(
+//     "-s, --sdk-package <integration package>",
+//     "The name of the SDK package to use (e.g. @slack/web-api)"
+//   )
+//   .version(getVersion(), "-v, --version", "Display the version number")
+//   .action(async (path, options) => {
+//     await createIntegrationCommand(path, options);
+//   });
+
 export const promptTriggerUrl = async (): Promise<string> => {
   const { instanceType } = await inquirer.prompt<{
     instanceType: "cloud" | "self-hosted";

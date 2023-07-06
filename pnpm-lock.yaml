@@ -678,6 +678,7 @@ importers:
       localtunnel: ^2.0.2
       ngrok: 5.0.0-beta.2
       node-fetch: ^3.3.0
+      openai: ^3.3.0
       ora: ^6.1.2
       path-to-regexp: ^6.2.1
       rimraf: ^3.0.2
@@ -701,6 +702,7 @@ importers:
       localtunnel: 2.0.2
       ngrok: 5.0.0-beta.2
       node-fetch: 3.3.0
+      openai: 3.3.0
       ora: 6.1.2
       path-to-regexp: 6.2.1
       simple-git: 3.19.0
