@@ -390,7 +390,7 @@ function IntegrationsWithMissingFields({
     <div className="mb-6">
       <Header2 className="mb-2 flex items-center gap-1">
         <NamedIcon name="error" className="h-5 w-5" />
-        Integrations with missing details
+        Integrations requiring configuration
       </Header2>
 
       <Table>

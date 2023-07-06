@@ -21,7 +21,7 @@ import { useProject } from "~/hooks/useProject";
 import { cn } from "~/utils/cn";
 import { Handle } from "~/utils/handle";
 import useWindowSize from "react-use/lib/useWindowSize";
-import { docsPath } from "~/utils/pathBuilder";
+import { docsPath, projectIntegrationsPath } from "~/utils/pathBuilder";
 
 export const handle: Handle = {
   breadcrumb: {
@@ -83,6 +83,19 @@ export default function Page() {
               )}
             >
               <div>
+                {project.jobs.length > 0 &&
+                  project.jobs.some(
+                    (j) => j.hasIntegrationsRequiringAction
+                  ) && (
+                    <Callout
+                      variant="error"
+                      to={projectIntegrationsPath(organization, project)}
+                      className="mb-2"
+                    >
+                      Some of your Jobs have Integrations that have not been
+                      configured.
+                    </Callout>
+                  )}
                 <div className="mb-2 flex items-center justify-between gap-x-2">
                   {project.jobs.length === 0 ? (
                     <Header2>Jobs</Header2>

@@ -18,6 +18,7 @@ import { runStatusTitle } from "../runs/RunStatuses";
 import { ProjectJob, useProject } from "~/hooks/useProject";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { JobRunStatus } from "~/models/job.server";
+import { cn } from "~/utils/cn";
 
 export function JobsTable({
   jobs,
@@ -46,7 +47,12 @@ export function JobsTable({
           jobs.map((job) => {
             const path = jobPath(organization, project, job);
             return (
-              <TableRow key={job.id}>
+              <TableRow
+                key={job.id}
+                className={cn(
+                  job.hasIntegrationsRequiringAction && "bg-rose-500/30"
+                )}
+              >
                 <TableCell to={path}>
                   <span className="flex items-center gap-2">
                     <NamedIcon name={job.event.icon} className="h-8 w-8" />
@@ -79,12 +85,30 @@ export function JobsTable({
                     <SimpleTooltip
                       key={integration.key}
                       button={
-                        <NamedIcon
-                          name={integration.icon}
-                          className="h-6 w-6"
-                        />
+                        <div className="relative">
+                          <NamedIcon
+                            name={integration.icon}
+                            className="h-6 w-6"
+                          />
+                          {integration.setupStatus === "MISSING_FIELDS" && (
+                            <NamedIcon
+                              name="error"
+                              className="absolute -left-1 -top-1 h-4 w-4"
+                            />
+                          )}
+                        </div>
                       }
-                      content={`${integration.title}: ${integration.key}`}
+                      content={
+                        <div>
+                          <p className="mb-1 text-rose-400">
+                            {integration.setupStatus === "MISSING_FIELDS" &&
+                              "This integration requires configuration"}
+                          </p>
+                          <p>
+                            {integration.title}: {integration.key}
+                          </p>
+                        </div>
+                      }
                     />
                   ))}
                 </TableCell>

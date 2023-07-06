@@ -57,6 +57,7 @@ export class ProjectPresenter {
                           select: {
                             slug: true,
                             definition: true,
+                            setupStatus: true,
                           },
                         },
                       },
@@ -169,6 +170,7 @@ export class ProjectPresenter {
               key: integration.key,
               title: integration.integration.slug,
               icon: integration.integration.definition.id,
+              setupStatus: integration.integration.setupStatus,
             })
           );
 
@@ -197,6 +199,9 @@ export class ProjectPresenter {
               source: eventSpecification.source,
             },
             integrations,
+            hasIntegrationsRequiringAction: integrations.some(
+              (i) => i.setupStatus === "MISSING_FIELDS"
+            ),
             lastRun,
             properties,
           };
