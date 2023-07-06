@@ -1,8 +1,11 @@
+import { ErrorBoundary as HighlightErrorBoundary } from "@highlight-run/react";
 import type { ShouldRevalidateFunction } from "@remix-run/react";
 import { Outlet } from "@remix-run/react";
 import type { LoaderArgs } from "@remix-run/server-runtime";
 import { typedjson } from "remix-typedjson";
 import invariant from "tiny-invariant";
+import { RouteErrorDisplay } from "~/components/ErrorDisplay";
+import { useOrganization } from "~/hooks/useOrganizations";
 import { getOrganizationFromSlug } from "~/models/organization.server";
 import { analytics } from "~/services/analytics.server";
 import {
@@ -10,6 +13,7 @@ import {
   setCurrentOrg,
 } from "~/services/currentOrganization.server";
 import { requireUserId } from "~/services/session.server";
+import { organizationPath } from "~/utils/pathBuilder";
 
 export const loader = async ({ request, params }: LoaderArgs) => {
   const userId = await requireUserId(request);
@@ -46,6 +50,15 @@ export default function Organization() {
     <>
       <Outlet />
     </>
+  );
+}
+
+export function ErrorBoundary() {
+  const org = useOrganization();
+  return (
+    <RouteErrorDisplay
+      button={{ title: org.title, to: organizationPath(org) }}
+    />
   );
 }
 
