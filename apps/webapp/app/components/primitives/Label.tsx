@@ -1,12 +1,22 @@
 import * as React from "react";
 import { cn } from "~/utils/cn";
-import { Header2, Header3 } from "./Headers";
-import { Paragraph } from "./Paragraph";
+
+const labelVariants = {
+  small: {
+    text: "font-sans text-sm font-normal",
+  },
+  medium: {
+    text: "font-sans text-sm leading-5 font-medium",
+  },
+  large: {
+    text: "font-sans text-base leading-6 font-medium",
+  },
+};
 
 type LabelProps = React.AllHTMLAttributes<HTMLLabelElement> & {
   className?: string;
   children: React.ReactNode;
-  variant?: "small" | "medium" | "large";
+  variant?: keyof typeof labelVariants;
 };
 
 export function Label({
@@ -15,17 +25,10 @@ export function Label({
   variant = "medium",
   ...props
 }: LabelProps) {
-  return variant === "medium" ? (
-    <Header3 className={cn(className)} {...props}>
+  const variation = labelVariants[variant];
+  return (
+    <label className={cn(variation.text, className)} {...props}>
       {children}
-    </Header3>
-  ) : variant === "large" ? (
-    <Header2 className={cn(className)} {...props}>
-      {children}
-    </Header2>
-  ) : (
-    <Paragraph variant="small" className={cn(className)}>
-      {children}
-    </Paragraph>
+    </label>
   );
 }

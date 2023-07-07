@@ -175,6 +175,33 @@ function SearchForm() {
                 fullWidth={false}
               />
             </InputGroup>
+            <InputGroup>
+              <Label variant="small">This is a small label</Label>
+              <Input
+                placeholder="Search"
+                required={true}
+                icon="search"
+                shortcut="⌘K"
+              />
+            </InputGroup>
+            <InputGroup>
+              <Label variant="medium">This is a medium label</Label>
+              <Input
+                placeholder="Search"
+                required={true}
+                icon="search"
+                shortcut="⌘K"
+              />
+            </InputGroup>
+            <InputGroup>
+              <Label variant="large">This is a large label</Label>
+              <Input
+                placeholder="Search"
+                required={true}
+                icon="search"
+                shortcut="⌘K"
+              />
+            </InputGroup>
           </Fieldset>
         </Form>
       </div>
