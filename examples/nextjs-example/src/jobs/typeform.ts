@@ -19,7 +19,7 @@ new Job(client, {
   trigger: eventTrigger({
     name: "typeform.playground",
     schema: z.object({
-      formId: z.string(),
+      formId: z.string().optional(),
     }),
   }),
   run: async (payload, io, ctx) => {
