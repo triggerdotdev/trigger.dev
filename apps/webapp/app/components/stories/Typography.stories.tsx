@@ -43,7 +43,7 @@ function Typography({ header1, header2, header3, paragraph }: TypographyProps) {
     <div className="flex flex-col gap-8">
       <div>
         <Header1>{header1}</Header1>
-        <Header1 variant="dimmed">{header1}</Header1>
+        <Header1 textColor="dimmed">{header1}</Header1>
         <Header2>{header2}</Header2>
         <Header3>{header3}</Header3>
         <Paragraph>{paragraph}</Paragraph>

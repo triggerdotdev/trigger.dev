@@ -50,7 +50,7 @@ export function PageTitle({ title, backButton }: PageTitleProps) {
           >
             <ChevronLeftIcon className="h-6" />
             <Header1
-              variant="dimmed"
+              textColor="dimmed"
               className="transition group-hover:text-white"
             >
               {backButton.text}
