@@ -16,6 +16,7 @@ model User {
   accessToken               String?
   authenticationProfile     Json?
   authenticationExtraParams Json?
+  authIdentifier            String?              @unique
 
   displayName String?
   name        String?

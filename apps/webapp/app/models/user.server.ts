@@ -78,27 +78,72 @@ export async function findOrCreateGithubUser({
     ? (authenticationExtraParams as unknown as Prisma.JsonObject)
     : undefined;
 
-  const fields = {
-    accessToken,
-    authenticationProfile: authProfile,
-    authenticationExtraParams: authExtraParams,
-    name,
-    avatarUrl,
-    displayName,
-  };
+  const authIdentifier = `github:${authenticationProfile.id}`;
 
-  const existingUser = await prisma.user.findFirst({
+  const existingUser = await prisma.user.findUnique({
+    where: {
+      authIdentifier,
+    },
+  });
+
+  const existingEmailUser = await prisma.user.findUnique({
     where: {
       email,
     },
   });
 
+  if (existingEmailUser && !existingUser) {
+    const user = await prisma.user.update({
+      where: {
+        email,
+      },
+      data: {
+        accessToken,
+        authenticationProfile: authProfile,
+        authenticationExtraParams: authExtraParams,
+        avatarUrl,
+        authIdentifier,
+      },
+    });
+
+    return {
+      user,
+      isNewUser: false,
+    };
+  }
+
+  if (existingEmailUser && existingUser) {
+    const user = await prisma.user.update({
+      where: {
+        id: existingUser.id,
+      },
+      data: {
+        accessToken,
+      },
+    });
+
+    return {
+      user,
+      isNewUser: false,
+    };
+  }
+
   const user = await prisma.user.upsert({
     where: {
-      email,
+      authIdentifier,
     },
-    update: fields,
-    create: { ...fields, email, authenticationMethod: "GITHUB" },
+    update: { accessToken },
+    create: {
+      accessToken,
+      authenticationProfile: authProfile,
+      authenticationExtraParams: authExtraParams,
+      name,
+      avatarUrl,
+      displayName,
+      authIdentifier,
+      email,
+      authenticationMethod: "GITHUB",
+    },
   });
 
   return {

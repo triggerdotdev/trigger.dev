@@ -4,6 +4,7 @@ import { env } from "~/env.server";
 import { findOrCreateUser } from "~/models/user.server";
 import type { AuthUser } from "./authUser";
 import { postAuthentication } from "./postAuth.server";
+import { logger } from "./logger.server";
 
 export function addGitHubStrategy(
   authenticator: Authenticator<AuthUser>,
@@ -24,6 +25,12 @@ export function addGitHubStrategy(
       }
 
       try {
+        logger.debug("GitHub login", {
+          emails,
+          profile,
+          extraParams,
+        });
+
         const { user, isNewUser } = await findOrCreateUser({
           email: emails[0].value,
           authenticationMethod: "GITHUB",
