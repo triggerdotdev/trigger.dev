@@ -1,6 +1,7 @@
 import type { DynamicTriggerEndpointMetadata } from "@trigger.dev/internal";
 import type { PrismaClient } from "~/db.server";
 import { prisma } from "~/db.server";
+import { ExtendedEndpoint, findEndpoint } from "~/models/endpoint.server";
 
 export class RegisterDynamicTriggerService {
   #prismaClient: PrismaClient;
@@ -10,13 +11,18 @@ export class RegisterDynamicTriggerService {
   }
 
   public async call(
-    endpointId: string,
+    endpointIdOrEndpoint: string | ExtendedEndpoint,
     metadata: DynamicTriggerEndpointMetadata
   ) {
+    const endpoint =
+      typeof endpointIdOrEndpoint === "string"
+        ? await findEndpoint(endpointIdOrEndpoint)
+        : endpointIdOrEndpoint;
+
     const dynamicTrigger = await this.#prismaClient.dynamicTrigger.upsert({
       where: {
         endpointId_slug_type: {
-          endpointId: endpointId,
+          endpointId: endpoint.id,
           slug: metadata.id,
           type: "EVENT",
         },
@@ -26,7 +32,7 @@ export class RegisterDynamicTriggerService {
         type: "EVENT",
         endpoint: {
           connect: {
-            id: endpointId,
+            id: endpoint.id,
           },
         },
       },
@@ -44,7 +50,7 @@ export class RegisterDynamicTriggerService {
         },
         versions: {
           some: {
-            endpointId,
+            endpointId: endpoint.id,
           },
         },
       },

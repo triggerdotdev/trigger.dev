@@ -6,6 +6,7 @@ import type { AuthenticatedEnvironment } from "../apiAuth.server";
 import { logger } from "../logger.server";
 import { workerQueue } from "../worker.server";
 import { generateSecret } from "./utils.server";
+import { ExtendedEndpoint, findEndpoint } from "~/models/endpoint.server";
 
 export class RegisterSourceService {
   #prismaClient: PrismaClientOrTransaction;
@@ -15,25 +16,16 @@ export class RegisterSourceService {
   }
 
   public async call(
-    endpointId: string,
+    endpointIdOrEndpoint: string | ExtendedEndpoint,
     metadata: SourceMetadata,
     dynamicTriggerId?: string,
     accountId?: string,
     dynamicSource?: { id: string; metadata: any }
   ) {
-    const endpoint = await this.#prismaClient.endpoint.findUniqueOrThrow({
-      where: {
-        id: endpointId,
-      },
-      include: {
-        environment: {
-          include: {
-            project: true,
-            organization: true,
-          },
-        },
-      },
-    });
+    const endpoint =
+      typeof endpointIdOrEndpoint === "string"
+        ? await findEndpoint(endpointIdOrEndpoint)
+        : endpointIdOrEndpoint;
 
     return this.#upsertSource(
       endpoint,
@@ -53,13 +45,6 @@ export class RegisterSourceService {
     accountId?: string,
     dynamicSource?: { id: string; metadata: any }
   ) {
-    logger.debug("Upserting source", {
-      endpoint,
-      organizationId: environment.organizationId,
-      metadata,
-      accountId,
-    });
-
     const key = [dynamicTriggerId, dynamicSource?.id, metadata.key]
       .filter(Boolean)
       .join(":");

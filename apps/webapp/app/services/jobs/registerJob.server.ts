@@ -18,6 +18,7 @@ import type { AuthenticatedEnvironment } from "../apiAuth.server";
 import { logger } from "../logger.server";
 import type { RuntimeEnvironment } from "~/models/runtimeEnvironment.server";
 import { RegisterScheduleSourceService } from "../schedules/registerScheduleSource.server";
+import { ExtendedEndpoint, findEndpoint } from "~/models/endpoint.server";
 
 export class RegisterJobService {
   #prismaClient: PrismaClient;
@@ -26,22 +27,16 @@ export class RegisterJobService {
     this.#prismaClient = prismaClient;
   }
 
-  public async call(endpointId: string, metadata: JobMetadata) {
-    const endpoint = await this.#prismaClient.endpoint.findUniqueOrThrow({
-      where: {
-        id: endpointId,
-      },
-      include: {
-        environment: {
-          include: {
-            project: true,
-            organization: true,
-          },
-        },
-      },
-    });
+  public async call(
+    endpointIdOrEndpoint: string | ExtendedEndpoint,
+    metadata: JobMetadata
+  ) {
+    const endpoint =
+      typeof endpointIdOrEndpoint === "string"
+        ? await findEndpoint(endpointIdOrEndpoint)
+        : endpointIdOrEndpoint;
 
-    await this.#upsertJob(endpoint, endpoint.environment, metadata);
+    return this.#upsertJob(endpoint, endpoint.environment, metadata);
   }
 
   async #upsertJob(
@@ -49,12 +44,6 @@ export class RegisterJobService {
     environment: AuthenticatedEnvironment,
     metadata: JobMetadata
   ): Promise<JobVersion> {
-    logger.debug("Upserting job", {
-      endpoint,
-      organizationId: environment.organizationId,
-      metadata,
-    });
-
     const integrations = new Map<string, Integration>();
 
     for (const [, jobIntegration] of Object.entries(metadata.integrations)) {

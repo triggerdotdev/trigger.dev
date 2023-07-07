@@ -3,6 +3,7 @@ import {
   SCHEDULED_EVENT,
 } from "@trigger.dev/internal";
 import { PrismaClientOrTransaction, prisma } from "~/db.server";
+import { ExtendedEndpoint, findEndpoint } from "~/models/endpoint.server";
 
 export class RegisterDynamicScheduleService {
   #prismaClient: PrismaClientOrTransaction;
@@ -12,13 +13,18 @@ export class RegisterDynamicScheduleService {
   }
 
   public async call(
-    endpointId: string,
+    endpointIdOrEndpoint: string | ExtendedEndpoint,
     metadata: RegisterDynamicSchedulePayload
   ) {
+    const endpoint =
+      typeof endpointIdOrEndpoint === "string"
+        ? await findEndpoint(endpointIdOrEndpoint)
+        : endpointIdOrEndpoint;
+
     const dynamicTrigger = await this.#prismaClient.dynamicTrigger.upsert({
       where: {
         endpointId_slug_type: {
-          endpointId: endpointId,
+          endpointId: endpoint.id,
           slug: metadata.id,
           type: "SCHEDULE",
         },
@@ -28,7 +34,7 @@ export class RegisterDynamicScheduleService {
         type: "SCHEDULE",
         endpoint: {
           connect: {
-            id: endpointId,
+            id: endpoint.id,
           },
         },
       },
@@ -47,7 +53,7 @@ export class RegisterDynamicScheduleService {
         },
         versions: {
           some: {
-            endpointId,
+            endpointId: endpoint.id,
           },
         },
       },

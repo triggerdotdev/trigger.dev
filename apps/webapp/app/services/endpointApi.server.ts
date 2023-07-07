@@ -121,10 +121,6 @@ export class EndpointApi {
 
     const anyBody = await response.json();
 
-    logger.debug("indexEndpoint() response from endpoint", {
-      body: anyBody,
-    });
-
     const data = IndexEndpointResponseSchema.parse(anyBody);
 
     return {

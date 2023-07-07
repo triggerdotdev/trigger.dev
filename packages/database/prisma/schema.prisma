@@ -413,6 +413,9 @@ model Job {
   aliases         JobAlias[]
   dynamicTriggers DynamicTrigger[]
 
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt @default(now())
+
   @@unique([projectId, slug])
 }
 

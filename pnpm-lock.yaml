@@ -690,8 +690,8 @@ importers:
 
   integrations/typeform:
     specifiers:
-      '@trigger.dev/integration-kit': workspace:^2.0.0-next.2
-      '@trigger.dev/sdk': workspace:^2.0.0-next.8
+      '@trigger.dev/integration-kit': workspace:^2.0.0-next.3
+      '@trigger.dev/sdk': workspace:^2.0.0-next.11
       '@trigger.dev/tsconfig': workspace:*
       '@typeform/api-client': ^1.8.0
       '@types/node': '18'

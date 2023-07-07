@@ -1,33 +1,23 @@
+import { DeliverEmailSchema } from "@/../../packages/emails/src";
+import { ScheduledPayloadSchema } from "@trigger.dev/internal";
 import { z } from "zod";
+import { prisma } from "~/db.server";
 import { env } from "~/env.server";
 import { ZodWorker } from "~/platform/zodWorker.server";
+import { sendEmail } from "./email.server";
 import { IndexEndpointService } from "./endpoints/indexEndpoint.server";
-import { integrationAuthRepository } from "./externalApis/integrationAuthRepository.server";
-import { RegisterJobService } from "./jobs/registerJob.server";
-import { StartRunService } from "./runs/startRun.server";
-import { DeliverHttpSourceRequestService } from "./sources/deliverHttpSourceRequest.server";
-import { StartQueuedRunsService } from "./runs/startQueuedRuns.server";
-import { RunFinishedService } from "./runs/runFinished.server";
-import {
-  DynamicTriggerEndpointMetadataSchema,
-  JobMetadataSchema,
-  RegisterDynamicSchedulePayloadSchema,
-  ScheduledPayloadSchema,
-  SourceMetadataSchema,
-} from "@trigger.dev/internal";
-import { RegisterSourceService } from "./sources/registerSource.server";
-import { ActivateSourceService } from "./sources/activateSource.server";
 import { DeliverEventService } from "./events/deliverEvent.server";
 import { InvokeDispatcherService } from "./events/invokeDispatcher.server";
-import { RegisterDynamicTriggerService } from "./triggers/registerDynamicTrigger.server";
-import { RegisterDynamicScheduleService } from "./triggers/registerDynamicSchedule.server";
-import { DeliverScheduledEventService } from "./schedules/deliverScheduledEvent.server";
-import { prisma } from "~/db.server";
-import { MissingConnectionCreatedService } from "./runs/missingConnectionCreated.server";
+import { integrationAuthRepository } from "./externalApis/integrationAuthRepository.server";
 import { IntegrationConnectionCreatedService } from "./externalApis/integrationConnectionCreated.server";
-import { sendEmail } from "./email.server";
-import { DeliverEmailSchema } from "@/../../packages/emails/src";
+import { MissingConnectionCreatedService } from "./runs/missingConnectionCreated.server";
 import { PerformRunExecutionService } from "./runs/performRunExecution.server";
+import { RunFinishedService } from "./runs/runFinished.server";
+import { StartQueuedRunsService } from "./runs/startQueuedRuns.server";
+import { StartRunService } from "./runs/startRun.server";
+import { DeliverScheduledEventService } from "./schedules/deliverScheduledEvent.server";
+import { ActivateSourceService } from "./sources/activateSource.server";
+import { DeliverHttpSourceRequestService } from "./sources/deliverHttpSourceRequest.server";
 import { PerformTaskOperationService } from "./tasks/performTaskOperation.server";
 
 const workerCatalog = {
@@ -59,22 +49,6 @@ const workerCatalog = {
   refreshOAuthToken: z.object({
     organizationId: z.string(),
     connectionId: z.string(),
-  }),
-  registerJob: z.object({
-    endpointId: z.string(),
-    job: JobMetadataSchema,
-  }),
-  registerSource: z.object({
-    endpointId: z.string(),
-    source: SourceMetadataSchema,
-  }),
-  registerDynamicTrigger: z.object({
-    endpointId: z.string(),
-    dynamicTrigger: DynamicTriggerEndpointMetadataSchema,
-  }),
-  registerDynamicSchedule: z.object({
-    endpointId: z.string(),
-    dynamicSchedule: RegisterDynamicSchedulePayloadSchema,
   }),
   activateSource: z.object({
     id: z.string(),
@@ -178,38 +152,6 @@ function getWorkerQueue() {
           const service = new StartQueuedRunsService();
 
           await service.call(payload.id);
-        },
-      },
-      registerJob: {
-        maxAttempts: 3,
-        handler: async (payload, job) => {
-          const service = new RegisterJobService();
-
-          await service.call(payload.endpointId, payload.job);
-        },
-      },
-      registerSource: {
-        maxAttempts: 3,
-        handler: async (payload, job) => {
-          const service = new RegisterSourceService();
-
-          await service.call(payload.endpointId, payload.source);
-        },
-      },
-      registerDynamicTrigger: {
-        maxAttempts: 3,
-        handler: async (payload, job) => {
-          const service = new RegisterDynamicTriggerService();
-
-          await service.call(payload.endpointId, payload.dynamicTrigger);
-        },
-      },
-      registerDynamicSchedule: {
-        maxAttempts: 3,
-        handler: async (payload, job) => {
-          const service = new RegisterDynamicScheduleService();
-
-          await service.call(payload.endpointId, payload.dynamicSchedule);
         },
       },
       activateSource: {
