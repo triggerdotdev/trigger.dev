@@ -35,3 +35,11 @@ export type UpsertCustomerParams = Prettify<
 export type UpsertCustomerResponse = GetPlainSuccessResponseData<
   ReturnType<PlainSDK["upsertCustomer"]>
 >;
+
+export type UpsertCustomTimelineEntryParams = Prettify<
+  Parameters<PlainSDK["upsertCustomTimelineEntry"]>[0]
+>;
+
+export type UpsertCustomTimelineEntryResponse = GetPlainSuccessResponseData<
+  ReturnType<PlainSDK["upsertCustomTimelineEntry"]>
+>;

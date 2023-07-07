@@ -4,10 +4,15 @@ import {
   GetCustomerByIdResponse,
   PlainSDK,
   RemoveTypename,
+  UpsertCustomTimelineEntryParams,
+  UpsertCustomTimelineEntryResponse,
   UpsertCustomerParams,
   UpsertCustomerResponse,
 } from "./types";
-import { PlainSDKError } from "@team-plain/typescript-sdk";
+import {
+  PlainSDKError,
+  UpsertCustomTimelineEntryInput,
+} from "@team-plain/typescript-sdk";
 import { Prettify } from "@trigger.dev/integration-kit/prettify";
 
 function isPlainError(error: unknown): error is PlainSDKError {
@@ -86,6 +91,37 @@ const upsertCustomer: AuthenticatedTask<
   },
 };
 
+const upsertCustomTimelineEntry: AuthenticatedTask<
+  PlainSDK,
+  UpsertCustomTimelineEntryParams,
+  UpsertCustomTimelineEntryResponse
+> = {
+  run: async (params, client) => {
+    const response = await client.upsertCustomTimelineEntry(params);
+
+    if (response.error) {
+      throw response.error;
+    } else {
+      return recursivelyRemoveTypenameProperties(response.data);
+    }
+  },
+  init: (params) => {
+    return {
+      name: "Upsert Customer Timeline Entry",
+      params,
+      icon: "plain",
+      properties: [
+        { label: "Customer ID", text: params.customerId },
+        { label: "Title", text: params.title },
+        {
+          label: "Components count",
+          text: params.components.length.toString(),
+        },
+      ],
+    };
+  },
+};
+
 // This function removes all the __typename properties from an object, recursively
 function recursivelyRemoveTypenameProperties<T extends object>(
   obj: T
@@ -101,4 +137,5 @@ function recursivelyRemoveTypenameProperties<T extends object>(
 export const tasks = {
   getCustomerById,
   upsertCustomer,
+  upsertCustomTimelineEntry,
 };

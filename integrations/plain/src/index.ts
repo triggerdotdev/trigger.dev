@@ -39,3 +39,13 @@ export class Plain implements PlainIntegration {
     return { id: "plain", name: "Plain.com" };
   }
 }
+
+export {
+  ComponentBadgeColor,
+  ComponentDividerSpacingSize,
+  ComponentPlainTextColor,
+  ComponentPlainTextSize,
+  ComponentSpacerSize,
+  ComponentTextColor,
+  ComponentTextSize,
+} from "@team-plain/typescript-sdk";
