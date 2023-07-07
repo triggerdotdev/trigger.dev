@@ -1,5 +1,11 @@
 # create-trigger
 
+## 0.2.1-next.15
+
+### Patch Changes
+
+- f01af9c0: Upgrade to zod 3.21.4
+
 ## 0.2.1-next.14
 
 ### Patch Changes

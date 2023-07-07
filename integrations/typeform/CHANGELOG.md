@@ -1,5 +1,16 @@
 # @trigger.dev/typeform
 
+## 1.0.0-next.4
+
+### Patch Changes
+
+- f01af9c0: Upgrade to zod 3.21.4
+- 94cc28d3: integration-kit uses webhook package
+- Updated dependencies [f01af9c0]
+- Updated dependencies [94cc28d3]
+  - @trigger.dev/sdk@2.0.0-next.12
+  - @trigger.dev/integration-kit@2.0.0-next.4
+
 ## 1.0.0-next.3
 
 ### Patch Changes
