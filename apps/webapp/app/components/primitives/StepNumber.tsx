@@ -11,7 +11,7 @@ export function StepNumber({
   stepNumber?: string;
   active?: boolean;
   complete?: boolean;
-  title?: string;
+  title?: React.ReactNode;
   className?: string;
 }) {
   return (

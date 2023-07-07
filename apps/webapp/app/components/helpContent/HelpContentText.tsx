@@ -26,6 +26,7 @@ import selectEnvironment from "./select-environment.png";
 import selectExample from "./select-example.png";
 import { Header2 } from "../primitives/Headers";
 import { CodeBlock } from "../code/CodeBlock";
+import { EnvironmentLabel } from "../environments/EnvironmentLabel";
 
 export function HowToSetupYourProject() {
   const devEnvironment = useDevEnvironment();
@@ -349,7 +350,15 @@ export function HowToUseApiKeysAndEndpoints() {
   apiKey: process.env.TRIGGER_API_KEY!,
 });`}
       />
-      <StepNumber stepNumber="→" title="Development" />
+      <StepNumber
+        stepNumber="→"
+        title={
+          <span className="flex items-center gap-x-2">
+            <span>Development</span>
+            <EnvironmentLabel environment={{ type: "DEVELOPMENT" }} />
+          </span>
+        }
+      />
       <StepContentContainer>
         <Paragraph>
           The <InlineCode>DEV</InlineCode> environment should only be used for
@@ -362,7 +371,15 @@ export function HowToUseApiKeysAndEndpoints() {
           scheduled Jobs.
         </Callout>
       </StepContentContainer>
-      <StepNumber stepNumber="→" title="Production" />
+      <StepNumber
+        stepNumber="→"
+        title={
+          <span className="flex items-center gap-x-2">
+            <span>Production</span>
+            <EnvironmentLabel environment={{ type: "PRODUCTION" }} />
+          </span>
+        }
+      />
       <StepContentContainer>
         <Paragraph spacing>
           The <InlineCode>PROD</InlineCode> environment is where your Jobs will
