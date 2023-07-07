@@ -1,0 +1,34 @@
+{
+  "name": "@trigger.dev/plain",
+  "version": "1.0.0-next.2",
+  "description": "The official Plain.com integration for Trigger.dev",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "publishConfig": {
+    "access": "public"
+  },
+  "files": [
+    "dist/index.js",
+    "dist/index.d.ts",
+    "dist/index.js.map"
+  ],
+  "devDependencies": {
+    "@trigger.dev/tsconfig": "workspace:*",
+    "@types/node": "18",
+    "rimraf": "^3.0.2",
+    "tsup": "^6.5.0"
+  },
+  "scripts": {
+    "clean": "rimraf dist",
+    "build": "npm run clean && npm run build:tsup",
+    "build:tsup": "tsup"
+  },
+  "dependencies": {
+    "@trigger.dev/integration-kit": "workspace:^2.0.0-next",
+    "@trigger.dev/sdk": "workspace:^2.0.0-next",
+    "@team-plain/typescript-sdk": "^2.7.0"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

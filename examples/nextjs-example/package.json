@@ -16,6 +16,7 @@
     "@trigger.dev/slack": "workspace:*",
     "@trigger.dev/resend": "workspace:*",
     "@trigger.dev/typeform": "workspace:*",
+    "@trigger.dev/plain": "workspace:*",
     "@types/node": "18.15.13",
     "@types/react": "^18.0.21",
     "@types/react-dom": "^18.0.6",

@@ -37,7 +37,9 @@
       "@trigger.dev/resend": ["../../integrations/resend/src/index"],
       "@trigger.dev/resend/*": ["../../integrations/resend/src/*"],
       "@trigger.dev/typeform": ["../../integrations/typeform/src/index"],
-      "@trigger.dev/typeform/*": ["../../integrations/typeform/src/*"]
+      "@trigger.dev/typeform/*": ["../../integrations/typeform/src/*"],
+      "@trigger.dev/plain": ["../../integrations/plain/src/index"],
+      "@trigger.dev/plain/*": ["../../integrations/plain/src/*"]
     },
     "plugins": [
       {

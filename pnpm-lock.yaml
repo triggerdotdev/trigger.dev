@@ -503,6 +503,7 @@ importers:
       '@trigger.dev/github': workspace:*
       '@trigger.dev/nextjs': workspace:*
       '@trigger.dev/openai': workspace:*
+      '@trigger.dev/plain': workspace:*
       '@trigger.dev/resend': workspace:*
       '@trigger.dev/sdk': workspace:*
       '@trigger.dev/slack': workspace:*
@@ -525,6 +526,7 @@ importers:
       '@trigger.dev/github': link:../../integrations/github
       '@trigger.dev/nextjs': link:../../packages/nextjs
       '@trigger.dev/openai': link:../../integrations/openai
+      '@trigger.dev/plain': link:../../integrations/plain
       '@trigger.dev/resend': link:../../integrations/resend
       '@trigger.dev/sdk': link:../../packages/trigger-sdk
       '@trigger.dev/slack': link:../../integrations/slack
@@ -623,6 +625,25 @@ importers:
       '@trigger.dev/sdk': link:../../packages/trigger-sdk
       openai: 3.3.0
       zod: 3.20.2
+    devDependencies:
+      '@trigger.dev/tsconfig': link:../../config-packages/tsconfig
+      '@types/node': 18.15.13
+      rimraf: 3.0.2
+      tsup: 6.6.3
+
+  integrations/plain:
+    specifiers:
+      '@team-plain/typescript-sdk': ^2.7.0
+      '@trigger.dev/integration-kit': workspace:^2.0.0-next
+      '@trigger.dev/sdk': workspace:^2.0.0-next
+      '@trigger.dev/tsconfig': workspace:*
+      '@types/node': '18'
+      rimraf: ^3.0.2
+      tsup: ^6.5.0
+    dependencies:
+      '@team-plain/typescript-sdk': 2.7.0
+      '@trigger.dev/integration-kit': link:../../packages/integration-kit
+      '@trigger.dev/sdk': link:../../packages/trigger-sdk
     devDependencies:
       '@trigger.dev/tsconfig': link:../../config-packages/tsconfig
       '@types/node': 18.15.13
@@ -10257,7 +10278,7 @@ packages:
       '@slack/logger': 3.0.0
       '@slack/types': 2.8.0
       '@types/is-stream': 1.1.0
-      '@types/node': 20.3.1
+      '@types/node': 20.3.3
       axios: 0.27.2
       eventemitter3: 3.1.2
       form-data: 2.5.1
@@ -11807,6 +11828,17 @@ packages:
       - debug
     dev: false
 
+  /@team-plain/typescript-sdk/2.7.0:
+    resolution: {integrity: sha512-n5CRvOuGAUvuAIAL2/4jgr6dG1kW8pelbXyq4YObzGcvUcQRyJ69d93bBvduFAh5/1sQYMUle6BYT/3liwpcfQ==}
+    dependencies:
+      '@graphql-typed-document-node/core': 3.2.0_graphql@16.6.0
+      axios: 1.4.0
+      graphql: 16.6.0
+      zod: 3.21.4
+    transitivePeerDependencies:
+      - debug
+    dev: false
+
   /@testing-library/cypress/8.0.7_cypress@10.11.0:
     resolution: {integrity: sha512-3HTV725rOS+YHve/gD9coZp/UcPK5xhr4H0GMnq/ni6USdtzVtSOG9WBFtd8rYnrXk8rrGD+0toRFYouJNIG0Q==}
     engines: {node: '>=12', npm: '>=6'}
@@ -12518,9 +12550,6 @@ packages:
 
   /@types/node/18.15.13:
     resolution: {integrity: sha512-N+0kuo9KgrUQ1Sn/ifDXsvg0TTleP7rIy4zOBGECxAljqvqfqpTfzx0Q1NUedOixRMBfe2Whhb056a42cWs26Q==}
-
-  /@types/node/20.3.1:
-    resolution: {integrity: sha512-EhcH/wvidPy1WeML3TtYFGR83UzjxeWRen9V402T8aUGYsCHOmfoisV3ZSg03gAFIbLq8TnWOJ0f4cALtnSEUg==}
 
   /@types/node/20.3.2:
     resolution: {integrity: sha512-vOBLVQeCQfIcF/2Y7eKFTqrMnizK5lRNQ7ykML/5RuwVXVWxYkgwS7xbt4B6fKCUPgbSL5FSsjHQpaGQP/dQmw==}
@@ -19585,7 +19614,7 @@ packages:
     engines: {node: ^14.15.0 || ^16.10.0 || >=18.0.0}
     dependencies:
       '@jest/types': 29.5.0
-      '@types/node': 20.3.1
+      '@types/node': 20.3.3
       chalk: 4.1.2
       ci-info: 3.7.1
       graceful-fs: 4.2.10
