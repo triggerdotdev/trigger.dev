@@ -1,5 +1,13 @@
 # @trigger.dev/slack
 
+## 1.0.0-next.3
+
+### Patch Changes
+
+- f01af9c0: Upgrade to zod 3.21.4
+- Updated dependencies [f01af9c0]
+  - @trigger.dev/sdk@2.0.0-next.12
+
 ## 1.0.0-next.2
 
 ### Patch Changes

@@ -1,5 +1,11 @@
 # @trigger.dev/sdk
 
+## 2.0.0-next.12
+
+### Patch Changes
+
+- f01af9c0: Upgrade to zod 3.21.4
+
 ## 2.0.0-next.11
 
 ### Patch Changes

@@ -1,5 +1,11 @@
 # @trigger.dev/integration-kit
 
+## 2.0.0-next.4
+
+### Patch Changes
+
+- 94cc28d3: integration-kit uses webhook package
+
 ## 2.0.0-next.3
 
 ### Patch Changes
