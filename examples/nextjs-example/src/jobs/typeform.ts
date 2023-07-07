@@ -2,6 +2,7 @@ import { client } from "@/trigger";
 import { Typeform, events } from "@trigger.dev/typeform";
 import { Job, eventTrigger } from "@trigger.dev/sdk";
 import { DynamicTrigger } from "@trigger.dev/sdk";
+import { z } from "zod";
 
 export const typeform = new Typeform({
   id: "typeform-1",
@@ -17,6 +18,9 @@ new Job(client, {
   },
   trigger: eventTrigger({
     name: "typeform.playground",
+    schema: z.object({
+      formId: z.string(),
+    }),
   }),
   run: async (payload, io, ctx) => {
     await io.typeform.listForms("list-forms");
