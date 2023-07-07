@@ -21,7 +21,6 @@ import { DeliverHttpSourceRequestService } from "./sources/deliverHttpSourceRequ
 import { PerformTaskOperationService } from "./tasks/performTaskOperation.server";
 
 const workerCatalog = {
-  organizationCreated: z.object({ id: z.string() }),
   indexEndpoint: z.object({
     id: z.string(),
     source: z.enum(["MANUAL", "API", "INTERNAL", "HOOK"]).optional(),
@@ -29,14 +28,6 @@ const workerCatalog = {
     reason: z.string().optional(),
   }),
   scheduleEmail: DeliverEmailSchema,
-  githubAppInstallationDeleted: z.object({ id: z.string() }),
-  githubPush: z.object({
-    branch: z.string(),
-    commitSha: z.string(),
-    repository: z.string(),
-  }),
-  stopVM: z.object({ id: z.string() }),
-  startInitialProjectDeployment: z.object({ id: z.string() }),
   startRun: z.object({ id: z.string() }),
   performRunExecution: z.object({
     id: z.string(),
@@ -202,46 +193,6 @@ function getWorkerQueue() {
         maxAttempts: 3,
         handler: async (payload, job) => {
           await sendEmail(payload);
-        },
-      },
-      startInitialProjectDeployment: {
-        queueName: "internal-queue",
-        priority: 50,
-        maxAttempts: 3,
-        handler: async (payload, job) => {
-          // TODO: implement
-        },
-      },
-      stopVM: {
-        queueName: "internal-queue",
-        priority: 50,
-        maxAttempts: 3,
-        handler: async (payload, job) => {
-          // TODO: implement
-        },
-      },
-      organizationCreated: {
-        queueName: "internal-queue",
-        priority: 50,
-        maxAttempts: 3,
-        handler: async (payload, job) => {
-          // TODO: implement
-        },
-      },
-      githubPush: {
-        queueName: "internal-queue",
-        priority: 50,
-        maxAttempts: 3,
-        handler: async (payload, job) => {
-          // TODO: implement
-        },
-      },
-      githubAppInstallationDeleted: {
-        queueName: "internal-queue",
-        priority: 50,
-        maxAttempts: 3,
-        handler: async (payload, job) => {
-          // TODO: implement
         },
       },
       indexEndpoint: {

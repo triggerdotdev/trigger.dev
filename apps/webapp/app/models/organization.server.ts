@@ -116,10 +116,6 @@ export async function createOrganization(
     userId,
   });
 
-  await workerQueue.enqueue("organizationCreated", {
-    id: organization.id,
-  });
-
   return { ...organization, projects: [project] };
 }
 
