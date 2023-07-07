@@ -1,5 +1,10 @@
 import { client } from "@/trigger";
-import { Plain } from "@trigger.dev/plain";
+import {
+  ComponentDividerSpacingSize,
+  ComponentTextColor,
+  ComponentTextSize,
+  Plain,
+} from "@trigger.dev/plain";
 import { Job, eventTrigger } from "@trigger.dev/sdk";
 
 export const plain = new Plain({
@@ -43,5 +48,37 @@ new Job(client, {
     const foundCustomer = await io.plain.getCustomerById("get-customer", {
       customerId: customer.id,
     });
+
+    const timelineEntry = await io.plain.upsertCustomTimelineEntry(
+      "upsert-timeline-entry",
+      {
+        customerId: customer.id,
+        title: "My timeline entry",
+        components: [
+          {
+            componentText: {
+              text: `This is a nice title`,
+            },
+          },
+          {
+            componentDivider: {
+              dividerSpacingSize: ComponentDividerSpacingSize.M,
+            },
+          },
+          {
+            componentText: {
+              textSize: ComponentTextSize.S,
+              textColor: ComponentTextColor.Muted,
+              text: "External id",
+            },
+          },
+          {
+            componentText: {
+              text: foundCustomer?.externalId ?? "",
+            },
+          },
+        ],
+      }
+    );
   },
 });
