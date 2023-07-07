@@ -1,5 +1,11 @@
 # @trigger.dev/sdk
 
+## 2.0.0-next.13
+
+### Patch Changes
+
+- 5ee0b188: Don't return the apiKey when they don't match
+
 ## 2.0.0-next.12
 
 ### Patch Changes
