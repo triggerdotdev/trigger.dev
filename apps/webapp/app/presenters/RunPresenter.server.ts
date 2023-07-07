@@ -212,13 +212,28 @@ export class RunPresenter {
                               select: {
                                 ...taskSelect,
                               },
+                              orderBy: {
+                                createdAt: "asc",
+                              },
                             },
+                          },
+                          orderBy: {
+                            createdAt: "asc",
                           },
                         },
                       },
+                      orderBy: {
+                        createdAt: "asc",
+                      },
                     },
                   },
+                  orderBy: {
+                    createdAt: "asc",
+                  },
                 },
+              },
+              orderBy: {
+                createdAt: "asc",
               },
             },
           },
