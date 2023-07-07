@@ -99,34 +99,33 @@ const getAllResponses: AuthenticatedTask<
 
     const pageSize = 50;
 
-    async function listResponsesForPage(page: number) {
+    async function listResponsesForPage(before?: string) {
+      const pageParams = {
+        ...params,
+        submitted_at: "desc",
+        before,
+        pageSize: pageSize,
+      };
       // @ts-ignore
       // This is needed because of the index signature on the response type
-      return await io.runTask<ListResponsesResponse>(
-        `page-${page}`,
-        listResponses.init(params),
+      return io.runTask<ListResponsesResponse>(
+        `page${before ? `-before-${before}` : ""}`,
+        listResponses.init(pageParams),
         async (t, io) => {
-          const subResponse = await listResponses.run(
-            params,
-            client,
-            t,
-            io,
-            auth
-          );
-
-          return subResponse;
+          return await listResponses.run(pageParams, client, t, io, auth);
         }
       );
     }
 
-    const firstPage = await listResponsesForPage(1);
+    const firstPage = await listResponsesForPage();
+    let token = firstPage.items[firstPage.items.length - 1].token;
 
     const totalPages = Math.ceil(firstPage.total_items / pageSize);
-
     const allResponses = firstPage.items;
 
-    for (let i = 2; i <= totalPages; i++) {
-      const page = await listResponsesForPage(i);
+    for (let i = 1; i < totalPages; i++) {
+      const page = await listResponsesForPage(token);
+      token = page.items[page.items.length - 1].token;
       allResponses.push(...page.items);
     }
 

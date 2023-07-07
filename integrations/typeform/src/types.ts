@@ -32,7 +32,16 @@ export type ListResponsesParams = {
   fields?: string | string[];
 };
 
-export type ListResponsesResponse = Prettify<Typeform.API.Responses.List>;
+//fix because the Typeform SDK doesn't have the `token` property on an item…
+type ResponseListItem = Prettify<
+  Typeform.API.Responses.List["items"][number]
+> & {
+  token?: string;
+};
+
+export type ListResponsesResponse = Prettify<
+  Omit<Typeform.API.Responses.List, "items"> & { items: ResponseListItem[] }
+>;
 
 export type GetFormParams = {
   uid: string;
