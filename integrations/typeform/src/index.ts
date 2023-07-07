@@ -19,7 +19,7 @@ import {
 import { createHmac } from "node:crypto";
 import { z } from "zod";
 import { formResponseExample } from "./payload-examples";
-import { safeParseBody } from "@trigger.dev/integration-kit/webhooks";
+import { safeParseBody } from "@trigger.dev/integration-kit";
 import { SOURCE } from "./consts";
 
 export * from "./types";
