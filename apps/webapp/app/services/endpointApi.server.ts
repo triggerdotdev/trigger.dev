@@ -173,6 +173,7 @@ export class EndpointApi {
     return {
       response,
       parser: RunJobResponseSchema,
+      errorParser: ErrorWithStackSchema,
     };
   }
 

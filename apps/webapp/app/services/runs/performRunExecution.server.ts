@@ -247,7 +247,7 @@ export class PerformRunExecutionService {
       run.event.sourceContext
     );
 
-    const { response, parser } = await client.executeJobRequest({
+    const { response, parser, errorParser } = await client.executeJobRequest({
       event,
       job: {
         id: run.version.job.slug,
@@ -288,13 +288,20 @@ export class PerformRunExecutionService {
       });
     }
 
+    const rawBody = await response.text();
+
     if (!response.ok) {
+      const errorBody = safeJsonZodParse(errorParser, rawBody);
+
+      if (errorBody && errorBody.success) {
+        return await this.#failRunExecutionWithRetry(execution, errorBody.data);
+      }
+
       return await this.#failRunExecutionWithRetry(execution, {
         message: `Endpoint responded with ${response.status} status code`,
       });
     }
 
-    const rawBody = await response.text();
     const safeBody = safeJsonZodParse(parser, rawBody);
 
     if (!safeBody) {

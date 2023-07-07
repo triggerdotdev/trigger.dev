@@ -141,9 +141,7 @@ export class TriggerClient {
         return {
           status: 401,
           body: {
-            message: `Forbidden: client apiKey mismatch: Expected ${
-              this.#options.apiKey
-            }, got ${apiKey}`,
+            message: `Forbidden: client apiKey mismatch: Make sure you are using the correct API Key for your environment`,
           },
         };
       }
