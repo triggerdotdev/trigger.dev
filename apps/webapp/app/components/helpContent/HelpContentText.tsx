@@ -24,6 +24,8 @@ import { ClipboardField } from "../primitives/ClipboardField";
 import integrationButton from "./integration-button.png";
 import selectEnvironment from "./select-environment.png";
 import selectExample from "./select-example.png";
+import { Header2 } from "../primitives/Headers";
+import { CodeBlock } from "../code/CodeBlock";
 
 export function HowToSetupYourProject() {
   const devEnvironment = useDevEnvironment();
@@ -314,6 +316,85 @@ export function HowToUseThisIntegration({
           </StepContentContainer>
         </>
       )}
+    </>
+  );
+}
+
+export function HowToUseApiKeysAndEndpoints() {
+  return (
+    <>
+      <Paragraph spacing>
+        Environments and Endpoints are used to connect your server to the
+        Trigger.dev platform.
+      </Paragraph>
+      <Header2 spacing>Environments</Header2>
+      <Paragraph spacing>
+        Each environment has an API Key associated with it. This API Key is used
+        to authenticate your Jobs with the Trigger.dev platform.
+      </Paragraph>
+      <Paragraph spacing>
+        The API Key you use for your{" "}
+        <TextLink to="https://trigger.dev/docs/documentation/concepts/client-adaptors">
+          Client
+        </TextLink>{" "}
+        is how we know which environment to run your code against:
+      </Paragraph>
+      <CodeBlock
+        showLineNumbers={false}
+        className="mb-4"
+        code={`export const client = new TriggerClient({
+  id: "nextjs-example",
+  //this environment variable should be set to your DEV API Key locally,
+  //and your PROD API Key in production
+  apiKey: process.env.TRIGGER_API_KEY!,
+});`}
+      />
+      <StepNumber stepNumber="→" title="Development" />
+      <StepContentContainer>
+        <Paragraph>
+          The <InlineCode>DEV</InlineCode> environment should only be used for
+          local development. It’s where you can test your Jobs before deploying
+          them to servers.
+        </Paragraph>
+        <Callout variant="warning" className="my-2">
+          Scheduled Triggers do not trigger Jobs in the DEV Environment. When
+          you’re working locally you should use the Test feature to trigger any
+          scheduled Jobs.
+        </Callout>
+      </StepContentContainer>
+      <StepNumber stepNumber="→" title="Production" />
+      <StepContentContainer>
+        <Paragraph spacing>
+          The <InlineCode>PROD</InlineCode> environment is where your Jobs will
+          run in production. It’s where you can run your Jobs against real data.
+        </Paragraph>
+      </StepContentContainer>
+      <Header2 spacing>Endpoints</Header2>
+      <Paragraph spacing>
+        An Endpoint is a URL on your server that Trigger.dev can connect to.
+        This URL is used to register Jobs, start them and orchestrate runs and
+        retries.
+      </Paragraph>
+      <Paragraph spacing>
+        <InlineCode>DEV</InlineCode> has multiple endpoints associated with it –
+        one for each team member. This allows each team member to run their own
+        Jobs, without interfering with each other.
+      </Paragraph>
+      <Paragraph spacing>
+        All other environments have just a single endpoint (with a single URL)
+        associated with them.
+      </Paragraph>
+      <Header2 spacing>Deployment</Header2>
+      <Paragraph spacing>
+        Deployment uses Environments and Endpoints to connect your Jobs to the
+        Trigger.dev platform.
+      </Paragraph>
+      <Callout
+        variant="docs"
+        to="https://trigger.dev/docs/documentation/guides/deployment"
+      >
+        Read the deployment guide to learn more.
+      </Callout>
     </>
   );
 }

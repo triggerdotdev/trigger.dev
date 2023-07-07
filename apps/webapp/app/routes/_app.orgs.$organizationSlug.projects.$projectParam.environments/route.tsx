@@ -9,7 +9,7 @@ import { PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { ButtonContent } from "~/components/primitives/Buttons";
 import { ClipboardField } from "~/components/primitives/ClipboardField";
 import { DateTime } from "~/components/primitives/DateTime";
-import { Header1, Header2 } from "~/components/primitives/Headers";
+import { Header1, Header2, Header3 } from "~/components/primitives/Headers";
 import {
   PageDescription,
   PageHeader,
@@ -36,6 +36,12 @@ import { ProjectParamSchema } from "~/utils/pathBuilder";
 import { requestUrl } from "~/utils/requestUrl.server";
 import { RuntimeEnvironmentType } from "../../../../../packages/database/src";
 import { ConfigureEndpointSheet } from "./ConfigureEndpointSheet";
+import { Help, HelpContent, HelpTrigger } from "~/components/primitives/Help";
+import { cn } from "~/utils/cn";
+import {
+  HowToSetupYourProject,
+  HowToUseApiKeysAndEndpoints,
+} from "~/components/helpContent/HelpContentText";
 
 export const loader = async ({ request, params }: LoaderArgs) => {
   const userId = await requireUserId(request);
@@ -105,73 +111,94 @@ export default function Page() {
         </PageDescription>
       </PageHeader>
       <PageBody>
-        <Header1>API Keys</Header1>
-        <div className="mb-8 mt-4 flex gap-4">
-          {environments.map((environment) => (
-            <ClipboardField
-              key={environment.id}
-              fullWidth={false}
-              secure
-              value={environment.apiKey}
-              variant={"primary/medium"}
-              icon={<EnvironmentLabel environment={environment} />}
-            />
-          ))}
-        </div>
+        <Help defaultOpen>
+          {(open) => (
+            <div
+              className={cn(
+                "grid h-full gap-4",
+                open ? "grid-cols-2" : "grid-cols-1"
+              )}
+            >
+              <div>
+                <div className="mb-2 flex items-center justify-between gap-x-2">
+                  <Header2>API Keys</Header2>
+                  <HelpTrigger title="How do I use API Keys and Endpoints?" />
+                </div>
+                <div className="mb-8 mt-4 flex gap-4">
+                  {environments.map((environment) => (
+                    <ClipboardField
+                      key={environment.id}
+                      fullWidth={false}
+                      secure
+                      value={environment.apiKey}
+                      variant={"primary/medium"}
+                      icon={<EnvironmentLabel environment={environment} />}
+                    />
+                  ))}
+                </div>
 
-        <Header1 className="mb-2">Endpoints</Header1>
-        <div className="flex flex-col gap-4">
-          {clients.length > 0 ? (
-            clients.map((client) => (
-              <div key={client.slug}>
-                <Header2 className="mb-2">{client.slug}</Header2>
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHeaderCell>Environment</TableHeaderCell>
-                      <TableHeaderCell>Url</TableHeaderCell>
-                      <TableHeaderCell>Last refreshed</TableHeaderCell>
-                      <TableHeaderCell>Jobs</TableHeaderCell>
-                      <TableHeaderCell hiddenLabel>Go to page</TableHeaderCell>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    <EndpointRow
-                      endpoint={client.endpoints.DEVELOPMENT}
-                      type="DEVELOPMENT"
-                      onClick={() =>
-                        setSelected({
-                          client: client.slug,
-                          type: "DEVELOPMENT",
-                        })
-                      }
-                    />
-                    <EndpointRow
-                      endpoint={client.endpoints.PRODUCTION}
-                      type="PRODUCTION"
-                      onClick={() =>
-                        setSelected({
-                          client: client.slug,
-                          type: "PRODUCTION",
-                        })
-                      }
-                    />
-                  </TableBody>
-                </Table>
+                <Header2 className="mb-2">Endpoints</Header2>
+                <div className="flex flex-col gap-4">
+                  {clients.length > 0 ? (
+                    clients.map((client) => (
+                      <div key={client.slug}>
+                        <Header3 className="mb-2">{client.slug}</Header3>
+                        <Table>
+                          <TableHeader>
+                            <TableRow>
+                              <TableHeaderCell>Environment</TableHeaderCell>
+                              <TableHeaderCell>Url</TableHeaderCell>
+                              <TableHeaderCell>Last refreshed</TableHeaderCell>
+                              <TableHeaderCell>Jobs</TableHeaderCell>
+                              <TableHeaderCell hiddenLabel>
+                                Go to page
+                              </TableHeaderCell>
+                            </TableRow>
+                          </TableHeader>
+                          <TableBody>
+                            <EndpointRow
+                              endpoint={client.endpoints.DEVELOPMENT}
+                              type="DEVELOPMENT"
+                              onClick={() =>
+                                setSelected({
+                                  client: client.slug,
+                                  type: "DEVELOPMENT",
+                                })
+                              }
+                            />
+                            <EndpointRow
+                              endpoint={client.endpoints.PRODUCTION}
+                              type="PRODUCTION"
+                              onClick={() =>
+                                setSelected({
+                                  client: client.slug,
+                                  type: "PRODUCTION",
+                                })
+                              }
+                            />
+                          </TableBody>
+                        </Table>
+                      </div>
+                    ))
+                  ) : (
+                    <Paragraph>You have no clients yet</Paragraph>
+                  )}
+                </div>
+                {selectedEndpoint && (
+                  <ConfigureEndpointSheet
+                    slug={selectedEndpoint.clientSlug}
+                    endpoint={selectedEndpoint.endpoint}
+                    type={selectedEndpoint.type}
+                    onClose={() => setSelected(undefined)}
+                  />
+                )}
               </div>
-            ))
-          ) : (
-            <Paragraph>You have no clients yet</Paragraph>
+              <HelpContent title="How to use API Keys and Endpoints">
+                <HowToUseApiKeysAndEndpoints />
+              </HelpContent>
+            </div>
           )}
-        </div>
-        {selectedEndpoint && (
-          <ConfigureEndpointSheet
-            slug={selectedEndpoint.clientSlug}
-            endpoint={selectedEndpoint.endpoint}
-            type={selectedEndpoint.type}
-            onClose={() => setSelected(undefined)}
-          />
-        )}
+        </Help>
       </PageBody>
     </PageContainer>
   );
