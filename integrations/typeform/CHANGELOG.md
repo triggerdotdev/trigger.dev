@@ -1,5 +1,13 @@
 # @trigger.dev/typeform
 
+## 1.0.0-next.5
+
+### Patch Changes
+
+- 26f3dbff: safeBodyParse webhook import fixed
+- Updated dependencies [5ee0b188]
+  - @trigger.dev/sdk@2.0.0-next.13
+
 ## 1.0.0-next.4
 
 ### Patch Changes
