@@ -1,5 +1,11 @@
 # @trigger.dev/typeform
 
+## 1.0.0-next.6
+
+### Patch Changes
+
+- 89a121f2: getAllResponses fixed
+
 ## 1.0.0-next.5
 
 ### Patch Changes
