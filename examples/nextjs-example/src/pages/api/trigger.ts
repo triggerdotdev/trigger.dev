@@ -1,14 +1,15 @@
 import { client } from "@/trigger";
 
-import "@/jobs/github";
-import "@/jobs/openai";
-import "@/jobs/resend";
+import "@/jobs/events";
 import "@/jobs/general";
+import "@/jobs/github";
+import "@/jobs/logging";
+import "@/jobs/openai";
+import "@/jobs/plain";
+import "@/jobs/resend";
+import "@/jobs/schedules";
 import "@/jobs/slack";
 import "@/jobs/typeform";
-import "@/jobs/logging";
-import "@/jobs/schedules";
-import "@/jobs/events";
 
 import { createPagesRoute } from "@trigger.dev/nextjs";
 
