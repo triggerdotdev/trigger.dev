@@ -19,6 +19,17 @@ export class RegisterDynamicTriggerService {
         ? await findEndpoint(endpointIdOrEndpoint)
         : endpointIdOrEndpoint;
 
+    const registrationJob = metadata.registerSourceJob
+      ? await this.#prismaClient.job.findUnique({
+          where: {
+            projectId_slug: {
+              projectId: endpoint.projectId,
+              slug: metadata.registerSourceJob.id,
+            },
+          },
+        })
+      : undefined;
+
     const dynamicTrigger = await this.#prismaClient.dynamicTrigger.upsert({
       where: {
         endpointId_slug_type: {
@@ -35,8 +46,33 @@ export class RegisterDynamicTriggerService {
             id: endpoint.id,
           },
         },
+        sourceRegistrationJob:
+          registrationJob && metadata.registerSourceJob
+            ? {
+                connect: {
+                  jobId_version_environmentId: {
+                    jobId: registrationJob.id,
+                    version: metadata.registerSourceJob.version,
+                    environmentId: endpoint.environmentId,
+                  },
+                },
+              }
+            : undefined,
       },
-      update: {},
+      update: {
+        sourceRegistrationJob:
+          registrationJob && metadata.registerSourceJob
+            ? {
+                connect: {
+                  jobId_version_environmentId: {
+                    jobId: registrationJob.id,
+                    version: metadata.registerSourceJob.version,
+                    environmentId: endpoint.environmentId,
+                  },
+                },
+              }
+            : undefined,
+      },
       include: {
         jobs: true,
       },

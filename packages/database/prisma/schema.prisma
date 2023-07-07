@@ -414,7 +414,7 @@ model Job {
   dynamicTriggers DynamicTrigger[]
 
   createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
 
   @@unique([projectId, slug])
 }
@@ -450,10 +450,12 @@ model JobVersion {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  runs         JobRun[]
-  integrations JobIntegration[]
-  aliases      JobAlias[]
-  examples     EventExample[]
+  runs            JobRun[]
+  integrations    JobIntegration[]
+  aliases         JobAlias[]
+  examples        EventExample[]
+  dynamicTriggers DynamicTrigger[]
+  triggerSources  TriggerSource[]
 
   @@unique([jobId, version, environmentId])
 }
@@ -565,6 +567,9 @@ model DynamicTrigger {
   jobs          Job[]
   sources       TriggerSource[]
   registrations DynamicTriggerRegistration[]
+
+  sourceRegistrationJob   JobVersion? @relation(fields: [sourceRegistrationJobId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  sourceRegistrationJobId String?
 
   @@unique([endpointId, slug, type])
 }
@@ -881,6 +886,9 @@ model TriggerSource {
 
   externalAccount   ExternalAccount? @relation(fields: [externalAccountId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   externalAccountId String?
+
+  sourceRegistrationJob   JobVersion? @relation(fields: [sourceRegistrationJobId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  sourceRegistrationJobId String?
 
   dynamicSourceId       String?
   dynamicSourceMetadata Json?

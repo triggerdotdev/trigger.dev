@@ -162,6 +162,12 @@ export const SourceMetadataSchema = z.object({
   key: z.string(),
   params: z.any(),
   events: z.array(z.string()),
+  registerSourceJob: z
+    .object({
+      id: z.string(),
+      version: z.string(),
+    })
+    .optional(),
 });
 
 export type SourceMetadata = z.infer<typeof SourceMetadataSchema>;
@@ -169,6 +175,12 @@ export type SourceMetadata = z.infer<typeof SourceMetadataSchema>;
 export const DynamicTriggerEndpointMetadataSchema = z.object({
   id: z.string(),
   jobs: z.array(JobMetadataSchema.pick({ id: true, version: true })),
+  registerSourceJob: z
+    .object({
+      id: z.string(),
+      version: z.string(),
+    })
+    .optional(),
 });
 
 export type DynamicTriggerEndpointMetadata = z.infer<

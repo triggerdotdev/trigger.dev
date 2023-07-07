@@ -229,6 +229,10 @@ export class TriggerClient {
             (trigger) => ({
               id: trigger.id,
               jobs: this.#jobMetadataByDynamicTriggers[trigger.id] ?? [],
+              registerSourceJob: {
+                id: dynamicTriggerRegisterSourceJobId(trigger.id),
+                version: trigger.source.version,
+              },
             })
           ),
           dynamicSchedules: Object.entries(this.#registeredSchedules).map(
@@ -413,7 +417,7 @@ export class TriggerClient {
     this.#registeredDynamicTriggers[trigger.id] = trigger;
 
     new Job(this, {
-      id: `register-dynamic-trigger-${trigger.id}`,
+      id: dynamicTriggerRegisterSourceJobId(trigger.id),
       name: `Register dynamic trigger ${trigger.id}`,
       version: trigger.source.version,
       trigger: new EventTrigger({
@@ -481,6 +485,10 @@ export class TriggerClient {
           authSource: options.source.integration.client.usesLocalAuth
             ? "LOCAL"
             : "HOSTED",
+        },
+        registerSourceJob: {
+          id: options.key,
+          version: options.source.version,
         },
       };
     }
@@ -830,4 +838,8 @@ export class TriggerClient {
       },
     };
   }
+}
+
+function dynamicTriggerRegisterSourceJobId(id: string) {
+  return `register-dynamic-trigger-${id}`;
 }

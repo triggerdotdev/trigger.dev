@@ -3,7 +3,6 @@ import type { SourceMetadata } from "@trigger.dev/internal";
 import { $transaction, PrismaClientOrTransaction } from "~/db.server";
 import { prisma } from "~/db.server";
 import type { AuthenticatedEnvironment } from "../apiAuth.server";
-import { logger } from "../logger.server";
 import { workerQueue } from "../worker.server";
 import { generateSecret } from "./utils.server";
 import { ExtendedEndpoint, findEndpoint } from "~/models/endpoint.server";
@@ -48,6 +47,17 @@ export class RegisterSourceService {
     const key = [dynamicTriggerId, dynamicSource?.id, metadata.key]
       .filter(Boolean)
       .join(":");
+
+    const registrationJob = metadata.registerSourceJob
+      ? await this.#prismaClient.job.findUnique({
+          where: {
+            projectId_slug: {
+              projectId: endpoint.projectId,
+              slug: metadata.registerSourceJob.id,
+            },
+          },
+        })
+      : undefined;
 
     const source = await $transaction(
       this.#prismaClient,
@@ -133,6 +143,18 @@ export class RegisterSourceService {
             },
             dynamicSourceId: dynamicSource?.id,
             dynamicSourceMetadata: dynamicSource?.metadata,
+            sourceRegistrationJob:
+              registrationJob && metadata.registerSourceJob
+                ? {
+                    connect: {
+                      jobId_version_environmentId: {
+                        jobId: registrationJob.id,
+                        version: metadata.registerSourceJob.version,
+                        environmentId: endpoint.environmentId,
+                      },
+                    },
+                  }
+                : undefined,
           },
           update: {
             endpoint: {
@@ -143,6 +165,18 @@ export class RegisterSourceService {
             integration: { connect: { id: integration.id } },
             dynamicSourceId: dynamicSource?.id,
             dynamicSourceMetadata: dynamicSource?.metadata,
+            sourceRegistrationJob:
+              registrationJob && metadata.registerSourceJob
+                ? {
+                    connect: {
+                      jobId_version_environmentId: {
+                        jobId: registrationJob.id,
+                        version: metadata.registerSourceJob.version,
+                        environmentId: endpoint.environmentId,
+                      },
+                    },
+                  }
+                : undefined,
           },
           include: {
             events: true,

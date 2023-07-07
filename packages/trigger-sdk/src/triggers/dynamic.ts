@@ -77,6 +77,8 @@ export class DynamicTrigger<
   registeredTriggerForParams(
     params: ExternalSourceParams<TExternalSource>
   ): RegisterTriggerBody {
+    const key = slugifyId(this.source.key(params));
+
     return {
       rule: {
         event: this.event.name,
@@ -87,7 +89,7 @@ export class DynamicTrigger<
         ),
       },
       source: {
-        key: slugifyId(this.source.key(params)),
+        key,
         channel: this.source.channel,
         params,
         events: [this.event.name],
