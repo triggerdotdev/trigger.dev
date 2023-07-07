@@ -196,7 +196,6 @@ function getWorkerQueue() {
         },
       },
       indexEndpoint: {
-        queueName: "internal-queue",
         handler: async (payload, job) => {
           const service = new IndexEndpointService();
 
