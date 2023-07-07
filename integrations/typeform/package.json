@@ -27,7 +27,7 @@
     "@typeform/api-client": "^1.8.0",
     "@trigger.dev/sdk": "workspace:^2.0.0-next.11",
     "@trigger.dev/integration-kit": "workspace:^2.0.0-next.3",
-    "zod": "3.20.2"
+    "zod": "3.21.4"
   },
   "engines": {
     "node": ">=18"

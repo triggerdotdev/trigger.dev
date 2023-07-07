@@ -13,12 +13,10 @@ module.exports = {
   devServerPort: 8002,
   serverModuleFormat: "cjs",
   serverDependenciesToBundle: [
-    "pretty-bytes",
     "marked",
     "axios",
     "@trigger.dev/internal",
     "emails",
-    "@octokit/webhooks",
     "highlight.run",
   ],
   watchPaths: async () => {

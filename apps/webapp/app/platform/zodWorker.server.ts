@@ -9,7 +9,7 @@ import type {
 } from "graphile-worker";
 import { run as graphileRun } from "graphile-worker";
 
-import { omit } from "lodash";
+import omit from "lodash.omit";
 import { z } from "zod";
 import { PrismaClient, PrismaClientOrTransaction } from "~/db.server";
 import { logger } from "~/services/logger.server";
