@@ -16,7 +16,8 @@
     "@trigger.dev/integration-kit": "2.0.0-next.1",
     "@trigger.dev/resend": "1.0.0-next.1",
     "@trigger.dev/cli": "0.2.1-next.8",
-    "@trigger.dev/typeform": "1.0.0-next.2"
+    "@trigger.dev/typeform": "1.0.0-next.2",
+    "@trigger.dev/plain": "1.0.0-next.2"
   },
   "changesets": [
     "afraid-hornets-cheer",
@@ -34,6 +35,7 @@
     "fast-ligers-wink",
     "four-ligers-perform",
     "friendly-parents-clean",
+    "funny-elephants-sing",
     "gentle-guests-leave",
     "great-meals-listen",
     "healthy-rockets-cry",
