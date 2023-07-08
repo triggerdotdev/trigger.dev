@@ -138,6 +138,50 @@ new Job(client, {
 });
 
 new Job(client, {
+  id: "openai-errors",
+  name: "OpenAI Errors",
+  version: "0.0.1",
+  enabled,
+  trigger: eventTrigger({
+    name: "openai.errors",
+  }),
+  integrations: {
+    openai,
+  },
+  run: async (payload, io, ctx) => {
+    await io.openai.createChatCompletion("chat-completion", {
+      model: "gpt-3.5-turbo",
+      messages: [
+        {
+          role: "system",
+          content:
+            "You are an AI assistant that is helpful, creative, clever, and very friendly.",
+        },
+        {
+          role: "user",
+          content:
+            "Call the supplied function that will tweet a really funny joke",
+        },
+      ],
+      function_call: { name: "tweetFunnyJoke" },
+      functions: [
+        {
+          name: "tweetFunnyJoke",
+          description:
+            "Tweets a really funny joke. The joke is so funny that it will make you laugh out loud.",
+          parameters: {
+            type: "array",
+            items: {
+              type: "string",
+            },
+          },
+        },
+      ],
+    });
+  },
+});
+
+new Job(client, {
   id: "on-missing-auth-connection",
   name: "On missing auth connection",
   version: "0.1.1",

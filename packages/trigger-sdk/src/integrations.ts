@@ -52,7 +52,7 @@ export type AuthenticatedTask<
   onError?: (
     error: unknown,
     task: ServerTask
-  ) => { retryAt: Date; error?: Error } | undefined | void;
+  ) => { retryAt: Date; error?: Error } | Error | undefined | void;
 };
 
 export function authenticatedTask<TClient, TParams, TResult>(options: {

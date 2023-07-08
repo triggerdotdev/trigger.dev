@@ -474,7 +474,11 @@ export class IO {
       error: unknown,
       task: IOTask,
       io: IO
-    ) => { retryAt: Date; error?: Error; jitter?: number } | undefined | void
+    ) =>
+      | { retryAt: Date; error?: Error; jitter?: number }
+      | Error
+      | undefined
+      | void
   ): Promise<TResult> {
     const parentId = this._taskStorage.getStore()?.taskId;
 
@@ -571,17 +575,21 @@ export class IO {
           const onErrorResult = onError(error, task, this);
 
           if (onErrorResult) {
-            const parsedError = ErrorWithStackSchema.safeParse(
-              onErrorResult.error
-            );
+            if (onErrorResult instanceof Error) {
+              error = onErrorResult;
+            } else {
+              const parsedError = ErrorWithStackSchema.safeParse(
+                onErrorResult.error
+              );
 
-            throw new RetryWithTaskError(
-              parsedError.success
-                ? parsedError.data
-                : { message: "Unknown error" },
-              task,
-              onErrorResult.retryAt
-            );
+              throw new RetryWithTaskError(
+                parsedError.success
+                  ? parsedError.data
+                  : { message: "Unknown error" },
+                task,
+                onErrorResult.retryAt
+              );
+            }
           }
         }
 

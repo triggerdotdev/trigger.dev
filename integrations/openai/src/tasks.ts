@@ -15,7 +15,7 @@ import {
   fileFromString,
   truncate,
 } from "@trigger.dev/integration-kit";
-import { createTaskUsageProperties } from "./taskUtils";
+import { createTaskUsageProperties, onTaskError } from "./taskUtils";
 
 type OpenAIClientType = InstanceType<typeof OpenAIApi>;
 
@@ -32,6 +32,7 @@ export const retrieveModel: AuthenticatedTask<
   Prettify<RetrieveModelRequest>,
   RetrieveModelResponseData
 > = {
+  onError: onTaskError,
   run: async (params, client) => {
     return client.retrieveModel(params.model).then((res) => res.data);
   },
@@ -59,6 +60,7 @@ export const listModels: AuthenticatedTask<
   void,
   Prettify<ListModelsResponseData>
 > = {
+  onError: onTaskError,
   run: async (params, client) => {
     return client.listModels().then((res) => res.data);
   },
@@ -154,6 +156,7 @@ export const createChatCompletion: AuthenticatedTask<
   Prettify<CreateChatCompletionRequest>,
   Prettify<CreateChatCompetionResponseData>
 > = {
+  onError: onTaskError,
   run: async (params, client, task) => {
     const response = await client.createChatCompletion(params);
 
@@ -245,6 +248,7 @@ export const createEdit: AuthenticatedTask<
   Prettify<CreateEditRequest>,
   CreateEditResponseData
 > = {
+  onError: onTaskError,
   run: async (params, client, task) => {
     const response = await client.createEdit(params);
 
@@ -290,6 +294,7 @@ export const createImage: AuthenticatedTask<
   Prettify<CreateImageRequest>,
   CreateImageResponseData
 > = {
+  onError: onTaskError,
   run: async (params, client, task) => {
     const response = await client.createImage(params);
 
@@ -342,6 +347,7 @@ export const createEmbedding: AuthenticatedTask<
   Prettify<CreateEmbeddingRequest>,
   CreateEmbeddingResponseData
 > = {
+  onError: onTaskError,
   run: async (params, client, task) => {
     const response = await client.createEmbedding(params);
 
@@ -386,6 +392,7 @@ export const createFile: AuthenticatedTask<
   Prettify<CreateFileRequest>,
   Prettify<CreateFileResponseData>
 > = {
+  onError: onTaskError,
   run: async (params, client) => {
     let file: File;
 
@@ -428,6 +435,7 @@ export const listFiles: AuthenticatedTask<
   void,
   ListFilesResponseData
 > = {
+  onError: onTaskError,
   run: async (params, client) => {
     return client.listFiles().then((res) => res.data);
   },
@@ -454,6 +462,7 @@ export const createFineTuneFile: AuthenticatedTask<
   Prettify<CreateFineTuneFileRequest>,
   Prettify<CreateFileResponseData>
 > = {
+  onError: onTaskError,
   run: async (params, client) => {
     const file = (await fileFromString(
       params.examples.map((d) => JSON.stringify(d)).join("\n"),
@@ -486,6 +495,7 @@ export const createFineTune: AuthenticatedTask<
   Prettify<CreateFineTuneRequest>,
   CreateFineTuneResponseData
 > = {
+  onError: onTaskError,
   run: async (params, client) => {
     return client.createFineTune(params).then((res) => res.data);
   },
@@ -529,6 +539,7 @@ export const listFineTunes: AuthenticatedTask<
   void,
   ListFineTunesResponseData
 > = {
+  onError: onTaskError,
   run: async (params, client) => {
     return client.listFineTunes().then((res) => res.data);
   },
@@ -555,6 +566,7 @@ export const retrieveFineTune: AuthenticatedTask<
   Prettify<SpecificFineTuneRequest>,
   RetrieveFineTuneResponseData
 > = {
+  onError: onTaskError,
   run: async (params, client) => {
     return client.retrieveFineTune(params.fineTuneId).then((res) => res.data);
   },
@@ -582,6 +594,7 @@ export const cancelFineTune: AuthenticatedTask<
   Prettify<SpecificFineTuneRequest>,
   CancelFineTuneResponseData
 > = {
+  onError: onTaskError,
   run: async (params, client) => {
     return client.cancelFineTune(params.fineTuneId).then((res) => res.data);
   },
@@ -609,6 +622,7 @@ export const listFineTuneEvents: AuthenticatedTask<
   Prettify<SpecificFineTuneRequest>,
   ListFineTuneEventsResponseData
 > = {
+  onError: onTaskError,
   run: async (params, client) => {
     return client
       .listFineTuneEvents(params.fineTuneId, false)
@@ -642,6 +656,7 @@ export const deleteFineTune: AuthenticatedTask<
   Prettify<DeleteFineTunedModelRequest>,
   DeleteFineTuneResponseData
 > = {
+  onError: onTaskError,
   run: async (params, client) => {
     return client.deleteModel(params.fineTunedModelId).then((res) => res.data);
   },
