@@ -1,47 +1,7 @@
 import type { IntegrationClient, TriggerIntegration } from "@trigger.dev/sdk";
 import { Configuration, OpenAIApi } from "openai";
-import {
-  backgroundCreateChatCompletion,
-  backgroundCreateCompletion,
-  cancelFineTune,
-  createChatCompletion,
-  createCompletion,
-  createEdit,
-  createEmbedding,
-  createFile,
-  createFineTune,
-  createFineTuneFile,
-  createImage,
-  deleteFineTune,
-  listFiles,
-  listFineTuneEvents,
-  listFineTunes,
-  listModels,
-  retrieveFineTune,
-  retrieveModel,
-} from "./tasks";
+import * as tasks from "./tasks";
 import { OpenAIIntegrationOptions } from "./types";
-
-const tasks = {
-  retrieveModel,
-  listModels,
-  createCompletion,
-  createChatCompletion,
-  backgroundCreateCompletion,
-  backgroundCreateChatCompletion,
-  createEdit,
-  createImage,
-  createEmbedding,
-  createFile,
-  listFiles,
-  createFineTuneFile,
-  createFineTune,
-  listFineTunes,
-  retrieveFineTune,
-  cancelFineTune,
-  listFineTuneEvents,
-  deleteFineTune,
-};
 
 export class OpenAI
   implements TriggerIntegration<IntegrationClient<OpenAIApi, typeof tasks>>

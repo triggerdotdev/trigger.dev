@@ -760,14 +760,15 @@ model Task {
   delayUntil DateTime?
   noop       Boolean    @default(false)
 
-  description String?
-  properties  Json?
-  params      Json?
-  output      Json?
-  error       String?
-  redact      Json?
-  style       Json?
-  operation   String?
+  description      String?
+  properties       Json?
+  outputProperties Json?
+  params           Json?
+  output           Json?
+  error            String?
+  redact           Json?
+  style            Json?
+  operation        String?
 
   startedAt   DateTime?
   completedAt DateTime?

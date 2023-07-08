@@ -67,7 +67,7 @@ export default function Page() {
               <Header3>Properties</Header3>
               <RunPanelProperties
                 properties={run.properties}
-                layout="vertical"
+                layout="horizontal"
               />
             </div>
           )}

@@ -1,14 +1,11 @@
 import {
-  DisplayPropertiesSchema,
-  DisplayProperty,
-  DisplayPropertySchema,
   ErrorWithStack,
   ErrorWithStackSchema,
   EventSpecificationSchema,
   StyleSchema,
 } from "@trigger.dev/internal";
-import { z } from "zod";
 import { PrismaClient, prisma } from "~/db.server";
+import { mergeProperties } from "~/utils/mergeProperties.server";
 
 type RunOptions = {
   id: string;
@@ -35,6 +32,7 @@ const taskSelect = {
   delayUntil: true,
   description: true,
   properties: true,
+  outputProperties: true,
   error: true,
   startedAt: true,
   completedAt: true,
@@ -67,30 +65,15 @@ export class RunPresenter {
       return undefined;
     }
 
-    //merge the properties from the version and the run, with the run properties taking precedence
-    const mergedProperties = new Map<string, DisplayProperty>();
-    if (run.version.properties) {
-      const properties = DisplayPropertiesSchema.parse(run.version.properties);
-      for (const property of properties) {
-        mergedProperties.set(property.label, property);
-      }
-    }
-    if (run.properties) {
-      const properties = DisplayPropertiesSchema.parse(run.properties);
-      for (const property of properties) {
-        mergedProperties.set(property.label, property);
-      }
-    }
-    if (run.version.eventSpecification) {
-      const eventSpecification = EventSpecificationSchema.parse(
-        run.version.eventSpecification
-      );
-      if (eventSpecification.properties) {
-        for (const properties of eventSpecification.properties) {
-          mergedProperties.set(properties.label, properties);
-        }
-      }
-    }
+    const eventSpecification = EventSpecificationSchema.parse(
+      run.version.eventSpecification
+    );
+
+    const runProperties = mergeProperties(
+      run.version.properties,
+      run.properties,
+      eventSpecification.properties
+    );
 
     const enrichTask = (task: QueryTask) => {
       const { children, ...t } = task;
@@ -98,10 +81,7 @@ export class RunPresenter {
         ...t,
         error: t.error ? ErrorWithStackSchema.parse(t.error) : undefined,
         connection: t.runConnection,
-        properties:
-          t.properties == null
-            ? []
-            : z.array(DisplayPropertySchema).parse(t.properties),
+        properties: mergeProperties(t.properties, t.outputProperties),
         style: t.style ? StyleSchema.parse(t.style) : undefined,
       };
     };
@@ -147,7 +127,7 @@ export class RunPresenter {
       isTest: run.isTest,
       version: run.version.version,
       output: runOutput,
-      properties: Array.from(mergedProperties.values()),
+      properties: runProperties,
       environment: {
         type: run.environment.type,
         slug: run.environment.slug,

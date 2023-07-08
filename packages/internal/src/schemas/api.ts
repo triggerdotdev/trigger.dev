@@ -13,6 +13,7 @@ import {
 } from "./schedules";
 import { CachedTaskSchema, ServerTaskSchema, TaskSchema } from "./tasks";
 import { EventSpecificationSchema, TriggerMetadataSchema } from "./triggers";
+import { Prettify } from "../types";
 
 export const UpdateTriggerSourceBodySchema = z.object({
   registeredEvents: z.array(z.string()),
@@ -530,7 +531,9 @@ export const CompleteTaskBodyInputSchema = RunTaskBodyInputSchema.pick({
   ),
 });
 
-export type CompleteTaskBodyInput = z.input<typeof CompleteTaskBodyInputSchema>;
+export type CompleteTaskBodyInput = Prettify<
+  z.input<typeof CompleteTaskBodyInputSchema>
+>;
 export type CompleteTaskBodyOutput = z.infer<
   typeof CompleteTaskBodyInputSchema
 >;

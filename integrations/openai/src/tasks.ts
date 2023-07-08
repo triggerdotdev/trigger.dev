@@ -15,6 +15,7 @@ import {
   fileFromString,
   truncate,
 } from "@trigger.dev/integration-kit";
+import { createTaskUsageProperties } from "./taskUtils";
 
 type OpenAIClientType = InstanceType<typeof OpenAIApi>;
 
@@ -76,8 +77,12 @@ export const createCompletion: AuthenticatedTask<
   Prettify<CreateCompletionRequest>,
   Prettify<Awaited<ReturnType<OpenAIClientType["createCompletion"]>>["data"]>
 > = {
-  run: async (params, client) => {
-    return client.createCompletion(params).then((res) => res.data);
+  run: async (params, client, task) => {
+    const response = await client.createCompletion(params);
+
+    task.outputProperties = createTaskUsageProperties(response.data.usage);
+
+    return response.data;
   },
   init: (params) => {
     return {
@@ -105,7 +110,7 @@ export const backgroundCreateCompletion: AuthenticatedTask<
   OpenAIIntegrationAuth
 > = {
   run: async (params, client, task, io, auth) => {
-    return io.backgroundFetch<CreateCompletionResponseData>(
+    const response = await io.backgroundFetch<CreateCompletionResponseData>(
       "background",
       "https://api.openai.com/v1/completions",
       {
@@ -120,6 +125,10 @@ export const backgroundCreateCompletion: AuthenticatedTask<
         body: JSON.stringify(params),
       }
     );
+
+    task.outputProperties = createTaskUsageProperties(response.usage);
+
+    return response;
   },
   init: (params) => {
     return {
@@ -145,8 +154,12 @@ export const createChatCompletion: AuthenticatedTask<
   Prettify<CreateChatCompletionRequest>,
   Prettify<CreateChatCompetionResponseData>
 > = {
-  run: async (params, client) => {
-    return client.createChatCompletion(params).then((res) => res.data);
+  run: async (params, client, task) => {
+    const response = await client.createChatCompletion(params);
+
+    task.outputProperties = createTaskUsageProperties(response.data.usage);
+
+    return response.data;
   },
   init: (params) => {
     return {
@@ -170,7 +183,7 @@ export const backgroundCreateChatCompletion: AuthenticatedTask<
   OpenAIIntegrationAuth
 > = {
   run: async (params, client, task, io, auth) => {
-    return io.backgroundFetch<CreateChatCompetionResponseData>(
+    const response = await io.backgroundFetch<CreateChatCompetionResponseData>(
       "background",
       "https://api.openai.com/v1/chat/completions",
       {
@@ -203,6 +216,10 @@ export const backgroundCreateChatCompletion: AuthenticatedTask<
         },
       }
     );
+
+    task.outputProperties = createTaskUsageProperties(response.usage);
+
+    return response;
   },
   init: (params) => {
     return {
@@ -228,8 +245,12 @@ export const createEdit: AuthenticatedTask<
   Prettify<CreateEditRequest>,
   CreateEditResponseData
 > = {
-  run: async (params, client) => {
-    return client.createEdit(params).then((res) => res.data);
+  run: async (params, client, task) => {
+    const response = await client.createEdit(params);
+
+    task.outputProperties = createTaskUsageProperties(response.data.usage);
+
+    return response.data;
   },
   init: (params) => {
     let properties = [
@@ -270,7 +291,9 @@ export const createImage: AuthenticatedTask<
   CreateImageResponseData
 > = {
   run: async (params, client, task) => {
-    return client.createImage(params).then((res) => res.data);
+    const response = await client.createImage(params);
+
+    return response.data;
   },
   init: (params) => {
     let properties = [
@@ -319,8 +342,12 @@ export const createEmbedding: AuthenticatedTask<
   Prettify<CreateEmbeddingRequest>,
   CreateEmbeddingResponseData
 > = {
-  run: async (params, client) => {
-    return client.createEmbedding(params).then((res) => res.data);
+  run: async (params, client, task) => {
+    const response = await client.createEmbedding(params);
+
+    task.outputProperties = createTaskUsageProperties(response.data.usage);
+
+    return response.data;
   },
   init: (params) => {
     return {

@@ -23,6 +23,7 @@ export const TaskSchema = z.object({
   status: TaskStatusSchema,
   description: z.string().optional().nullable(),
   properties: z.array(DisplayPropertySchema).optional().nullable(),
+  outputProperties: z.array(DisplayPropertySchema).optional().nullable(),
   params: DeserializedJsonSchema.optional().nullable(),
   output: DeserializedJsonSchema.optional().nullable(),
   error: z.string().optional().nullable(),

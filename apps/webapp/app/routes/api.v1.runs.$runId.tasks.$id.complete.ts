@@ -146,6 +146,7 @@ export class CompleteRunTaskService {
             status: "COMPLETED",
             output: taskBody.output ?? undefined,
             completedAt: new Date(),
+            outputProperties: taskBody.properties,
           },
           include: {
             attempts: true,

@@ -3,7 +3,6 @@ import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { CodeBlock } from "~/components/code/CodeBlock";
 import { DateTime } from "~/components/primitives/DateTime";
 import { Header3 } from "~/components/primitives/Headers";
-import { useLocales } from "~/components/primitives/LocaleProvider";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import {
   Table,
@@ -58,7 +57,6 @@ export const loader = async ({ request, params }: LoaderArgs) => {
 
 export default function Page() {
   const { task } = useTypedLoaderData<typeof loader>();
-  const locales = useLocales();
 
   const {
     name,
@@ -139,7 +137,7 @@ export default function Page() {
         {properties.length > 0 && (
           <div className="mt-4 flex flex-col gap-2">
             <Header3>Properties</Header3>
-            <RunPanelProperties properties={properties} layout="vertical" />
+            <RunPanelProperties properties={properties} layout="horizontal" />
           </div>
         )}
 

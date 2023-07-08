@@ -558,6 +558,7 @@ export class IO {
 
         await this._apiClient.completeTask(this._id, task.id, {
           output: result ?? undefined,
+          properties: task.outputProperties ?? undefined,
         });
 
         return result;

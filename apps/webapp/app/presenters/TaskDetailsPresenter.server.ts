@@ -1,5 +1,6 @@
 import { DisplayPropertiesSchema, StyleSchema } from "@trigger.dev/internal";
 import { PrismaClient, prisma } from "~/db.server";
+import { mergeProperties } from "~/utils/mergeProperties.server";
 
 type DetailsProps = {
   id: string;
@@ -56,6 +57,7 @@ export class TaskDetailsPresenter {
         noop: true,
         description: true,
         properties: true,
+        outputProperties: true,
         params: true,
         output: true,
         error: true,
@@ -89,10 +91,7 @@ export class TaskDetailsPresenter {
       ...task,
       connection: task.runConnection,
       params: task.params as Record<string, any>,
-      properties:
-        task.properties == null
-          ? []
-          : DisplayPropertiesSchema.parse(task.properties),
+      properties: mergeProperties(task.properties, task.outputProperties),
       style: task.style ? StyleSchema.parse(task.style) : undefined,
     };
   }
