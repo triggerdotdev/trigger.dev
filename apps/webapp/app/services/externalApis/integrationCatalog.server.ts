@@ -1,5 +1,6 @@
 import { github } from "./integrations/github";
 import { openai } from "./integrations/openai";
+import { plain } from "./integrations/plain";
 import { resend } from "./integrations/resend";
 import { slack } from "./integrations/slack";
 import { typeform } from "./integrations/typeform";
@@ -30,6 +31,7 @@ export const integrationCatalog = new IntegrationCatalog({
   // airtable,
   github,
   openai,
+  plain,
   resend,
   slack,
   typeform,
