@@ -3,7 +3,7 @@ import type { Integration } from "../types";
 export const plain: Integration = {
   identifier: "plain",
   name: "Plain",
-  packageName: "@trigger.dev/plain@next",
+  packageName: "@trigger.dev/plain@latest",
   authenticationMethods: {
     apikey: {
       type: "apikey",
