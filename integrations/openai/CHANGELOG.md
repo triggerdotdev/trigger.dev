@@ -1,5 +1,15 @@
 # @trigger.dev/slack
 
+## 1.0.0-next.4
+
+### Patch Changes
+
+- c34a02c0: Improved OpenAI task errors
+- 61ed1fb2: Adding support for output properties on tasks
+- Updated dependencies [c34a02c0]
+- Updated dependencies [61ed1fb2]
+  - @trigger.dev/sdk@2.0.0-next.14
+
 ## 1.0.0-next.3
 
 ### Patch Changes
