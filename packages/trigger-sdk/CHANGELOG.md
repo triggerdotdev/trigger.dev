@@ -1,5 +1,12 @@
 # @trigger.dev/sdk
 
+## 2.0.0-next.14
+
+### Patch Changes
+
+- c34a02c0: Improved OpenAI task errors
+- 61ed1fb2: Adding support for output properties on tasks
+
 ## 2.0.0-next.13
 
 ### Patch Changes
