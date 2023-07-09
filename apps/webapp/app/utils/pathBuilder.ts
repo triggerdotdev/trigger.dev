@@ -1,4 +1,4 @@
-import type { Integration } from "@trigger.dev/database";
+import type { Integration, TriggerSource } from "@trigger.dev/database";
 import { z } from "zod";
 import { Job } from "~/models/job.server";
 import type { Organization } from "~/models/organization.server";
@@ -9,6 +9,7 @@ type ProjectForPath = Pick<Project, "slug">;
 type JobForPath = Pick<Job, "slug">;
 type RunForPath = Pick<Job, "id">;
 type IntegrationForPath = Pick<Integration, "slug">;
+type TriggerForPath = Pick<TriggerSource, "id">;
 
 export const OrganizationParamsSchema = z.object({
   organizationSlug: z.string(),
@@ -160,6 +161,23 @@ export function integrationClientScopesPath(
 
 function clientParam(integration: IntegrationForPath) {
   return integration.slug;
+}
+
+// Triggers
+
+export function triggerSourcePath(
+  organization: OrgForPath,
+  project: ProjectForPath,
+  trigger: TriggerForPath
+) {
+  return `${projectTriggersPath(
+    organization,
+    project
+  )}/triggersources/${triggerSourceParam(trigger)}`;
+}
+
+function triggerSourceParam(trigger: TriggerForPath) {
+  return trigger.id;
 }
 
 // Job
