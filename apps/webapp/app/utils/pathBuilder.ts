@@ -105,6 +105,13 @@ export function projectIntegrationsPath(
   return `${projectPath(organization, project)}/integrations`;
 }
 
+export function projectTriggersPath(
+  organization: OrgForPath,
+  project: ProjectForPath
+) {
+  return `${projectPath(organization, project)}/triggers`;
+}
+
 export function projectEnvironmentsPath(
   organization: OrgForPath,
   project: ProjectForPath

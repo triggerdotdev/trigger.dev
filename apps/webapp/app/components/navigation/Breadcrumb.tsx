@@ -20,6 +20,7 @@ import {
   projectEnvironmentsPath,
   projectIntegrationsPath,
   projectPath,
+  projectTriggersPath,
   runDashboardPath,
 } from "~/utils/pathBuilder";
 import { BreadcrumbIcon } from "../primitives/BreadcrumbIcon";
@@ -36,6 +37,7 @@ export type Breadcrumb = {
     | "integration-job"
     | "integration-connections"
     | "integration-scopes"
+    | "triggers"
     | "environments"
     | "job"
     | "test"
@@ -165,6 +167,14 @@ function BreadcrumbItem({
         <BreadcrumbLink
           to={integrationClientScopesPath(organization, project, client)}
           title={"Scopes"}
+        />
+      );
+    case "triggers":
+      if (!organization || !project) return null;
+      return (
+        <BreadcrumbLink
+          to={projectTriggersPath(organization, project)}
+          title={"Triggers"}
         />
       );
     case "job":

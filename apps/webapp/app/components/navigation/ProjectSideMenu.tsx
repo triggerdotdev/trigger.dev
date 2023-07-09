@@ -11,6 +11,7 @@ import {
   organizationTeamPath,
   projectEnvironmentsPath,
   projectIntegrationsPath,
+  projectTriggersPath,
   projectPath,
 } from "~/utils/pathBuilder";
 import { UserProfilePhoto } from "../UserProfilePhoto";
@@ -79,6 +80,13 @@ export function ProjectSideMenu() {
           to={projectIntegrationsPath(organization, project)}
           isCollapsed={isCollapsed}
           data-action="integrations"
+        />
+        <SideMenuItem
+          name="Triggers"
+          icon="trigger"
+          to={projectTriggersPath(organization, project)}
+          isCollapsed={isCollapsed}
+          data-action="triggers"
         />
         <SideMenuItem
           name="Environments & API Keys"
