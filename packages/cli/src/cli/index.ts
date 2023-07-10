@@ -164,7 +164,7 @@ export const promptEndpointSlug = async (path: string): Promise<string> => {
     message: "Enter a unique ID for your endpoint",
     validate: (input) => {
       if (!input) {
-        return "Please enter a unique slug for your endpoint";
+        return "Please enter a unique ID for your endpoint";
       }
 
       return true;
@@ -172,44 +172,6 @@ export const promptEndpointSlug = async (path: string): Promise<string> => {
   });
 
   return endpointSlug;
-};
-
-export const promptEndpointUrl = async (
-  instanceUrl: string
-): Promise<string> => {
-  const { endpointUrl } = await inquirer.prompt<{
-    endpointUrl: string;
-  }>({
-    type: "input",
-    name: "endpointUrl",
-    message: "What's the URL of your Next.js project?",
-    validate: (input) => {
-      if (!input) {
-        return "Please enter the URL of your Next.js project";
-      }
-
-      // If instanceUrl is a cloud instance, then the URL must be publicly accessible
-      const url = new URL(input);
-      const triggerUrl = new URL(instanceUrl);
-
-      if (triggerUrl.hostname !== "localhost" && url.hostname === "localhost") {
-        return `Your Trigger.dev instance is hosted at ${triggerUrl.hostname}, so your Next.js project must also be publicly accessible. See our docs for more info: https://trigger.dev/docs/documentation/guides/tunneling-localhost`;
-      }
-
-      // Make sure triggerUrl and url don't use the same port if they are both localhost
-      if (
-        triggerUrl.hostname === "localhost" &&
-        url.hostname === "localhost" &&
-        triggerUrl.port === url.port
-      ) {
-        return `Your Trigger.dev instance and your Next.js project are both trying to use port ${triggerUrl.port}. Please use a different port for one of them`;
-      }
-
-      return true;
-    },
-  });
-
-  return endpointUrl;
 };
 
 export const obfuscateApiKey = (apiKey: string) => {
