@@ -244,7 +244,7 @@ export function jobRunsParentPath(
   return `${jobPath(organization, project, job)}/runs`;
 }
 
-function runPath(
+export function runPath(
   organization: OrgForPath,
   project: ProjectForPath,
   job: JobForPath,
@@ -259,7 +259,7 @@ export function jobRunDashboardPath(
   job: JobForPath,
   run: RunForPath
 ) {
-  return runTriggerPath(organization, project, job, run);
+  return runTriggerPath(runPath(organization, project, job, run));
 }
 
 export function runStreamingPath(
@@ -276,34 +276,18 @@ export function runParam(run: RunForPath) {
 }
 
 // Task
-export function runTaskPath(
-  organization: OrgForPath,
-  project: ProjectForPath,
-  job: JobForPath,
-  run: RunForPath,
-  taskId: string
-) {
-  return `${runPath(organization, project, job, run)}/tasks/${taskId}`;
+export function runTaskPath(runPath: string, taskId: string) {
+  return `${runPath}/tasks/${taskId}`;
 }
 
 // Event
-export function runTriggerPath(
-  organization: OrgForPath,
-  project: ProjectForPath,
-  job: JobForPath,
-  run: RunForPath
-) {
-  return `${runPath(organization, project, job, run)}/trigger`;
+export function runTriggerPath(runPath: string) {
+  return `${runPath}/trigger`;
 }
 
 // Event
-export function runCompletedPath(
-  organization: OrgForPath,
-  project: ProjectForPath,
-  job: JobForPath,
-  run: RunForPath
-) {
-  return `${runPath(organization, project, job, run)}/completed`;
+export function runCompletedPath(runPath: string) {
+  return `${runPath}/completed`;
 }
 
 // Docs
