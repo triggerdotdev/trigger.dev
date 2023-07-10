@@ -55,16 +55,20 @@ export async function devCommand(path: string, anyOptions: any) {
   const { apiUrl } = await getTriggerApiDetails(resolvedPath, options.envFile);
   logger.success(`✔️ [trigger.dev] Found API Key in ${options.envFile} file`);
 
+  logger.info(
+    `  [trigger.dev] Looking for Next.js site on port ${options.port}`
+  );
+
   // Setup tunnel
   const endpointUrl = await resolveEndpointUrl(apiUrl, options.port);
 
-  const connectingSpinner = ora(
-    `[trigger.dev] Connecting to Trigger.dev...`
-  ).start();
+  const connectingSpinner = ora(`[trigger.dev] Connecting to Trigger.dev...`);
 
   //refresh function
   let attemptCount = 0;
   const refresh = async () => {
+    connectingSpinner.start();
+
     const refreshedEndpointId = await getEndpointIdFromPackageJson(
       resolvedPath
     );
@@ -95,6 +99,7 @@ export async function devCommand(path: string, anyOptions: any) {
       if (attemptCount === 10 || !result.retryable) {
         connectingSpinner.fail(`🚨 Failed to connect: ${result.error}`);
         logger.info(`Will attempt again on the next file change…`);
+        attemptCount = 0;
         return;
       }
 
