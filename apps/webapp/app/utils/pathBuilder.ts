@@ -35,6 +35,10 @@ export const IntegrationClientParamSchema = ProjectParamSchema.extend({
   clientParam: z.string(),
 });
 
+export const TriggerSourceParamSchema = ProjectParamSchema.extend({
+  triggerParam: z.string(),
+});
+
 export function organizationsPath() {
   return `/`;
 }

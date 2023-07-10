@@ -1,57 +1,58 @@
-import { CheckCircleIcon, XCircleIcon } from "@heroicons/react/24/solid";
+import { Response } from "@remix-run/node";
 import type { LoaderArgs } from "@remix-run/server-runtime";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
-import { EnvironmentLabel } from "~/components/environments/EnvironmentLabel";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
-import { Header2 } from "~/components/primitives/Headers";
-import { LabelValueStack } from "~/components/primitives/LabelValueStack";
-import { NamedIcon } from "~/components/primitives/NamedIcon";
 import {
-  PageDescription,
   PageHeader,
+  PageInfoGroup,
+  PageInfoProperty,
+  PageInfoRow,
   PageTitle,
   PageTitleRow,
 } from "~/components/primitives/PageHeader";
-import { Paragraph } from "~/components/primitives/Paragraph";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableCellChevron,
-  TableHeader,
-  TableHeaderCell,
-  TableRow,
-} from "~/components/primitives/Table";
-import { SimpleTooltip } from "~/components/primitives/Tooltip";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
-import { TriggersPresenter } from "~/presenters/TriggersPresenter.server";
+import { DynamicTriggerSourcePresenter } from "~/presenters/DynamicTriggerSourcePresenter.server";
 import { requireUser } from "~/services/session.server";
 import { Handle } from "~/utils/handle";
-import { ProjectParamSchema, triggerSourcePath } from "~/utils/pathBuilder";
+import {
+  TriggerSourceParamSchema,
+  projectTriggersPath,
+} from "~/utils/pathBuilder";
 
 export const loader = async ({ request, params }: LoaderArgs) => {
   const user = await requireUser(request);
-  const { organizationSlug, projectParam } = ProjectParamSchema.parse(params);
+  const { organizationSlug, projectParam, triggerParam } =
+    TriggerSourceParamSchema.parse(params);
 
-  const presenter = new TriggersPresenter();
-  const data = await presenter.call({
+  const presenter = new DynamicTriggerSourcePresenter();
+  const { trigger } = await presenter.call({
     userId: user.id,
     organizationSlug,
     projectSlug: projectParam,
+    triggerSourceId: triggerParam,
   });
 
-  return typedjson(data);
+  if (!trigger) {
+    throw new Response("Trigger not found", {
+      status: 404,
+      statusText: "Not Found",
+    });
+  }
+
+  return typedjson({ trigger });
 };
 
 export const handle: Handle = {
   breadcrumb: {
-    slug: "triggers",
+    slug: "trigger",
   },
 };
 
+//todo outlet somewhere, look at how I did this with the integration client page.
+
 export default function Integrations() {
-  const { triggers } = useTypedLoaderData<typeof loader>();
+  const { trigger } = useTypedLoaderData<typeof loader>();
   const organization = useOrganization();
   const project = useProject();
 
@@ -59,13 +60,27 @@ export default function Integrations() {
     <PageContainer>
       <PageHeader>
         <PageTitleRow>
-          <PageTitle title="Triggers" />
+          <PageTitle
+            title="Trigger detail"
+            backButton={{
+              to: projectTriggersPath(organization, project),
+              text: "Triggers",
+            }}
+          />
         </PageTitleRow>
-        <PageDescription>Triggers causes Jobs to run.</PageDescription>
+        <PageInfoRow>
+          <PageInfoGroup>
+            <PageInfoProperty
+              icon={trigger.integration.definitionId}
+              label="Integration"
+              value={trigger.integration.title}
+            />
+          </PageInfoGroup>
+        </PageInfoRow>
       </PageHeader>
 
       <PageBody scrollable={false}>
-        <div className="h-full overflow-y-auto p-4 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-slate-700">
+        {/* <div className="h-full overflow-y-auto p-4 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-slate-700">
           <div>
             <Header2 spacing>External Triggers</Header2>
             <Paragraph variant="small" spacing>
@@ -147,7 +162,7 @@ export default function Integrations() {
               </TableBody>
             </Table>
           </div>
-        </div>
+        </div> */}
       </PageBody>
     </PageContainer>
   );

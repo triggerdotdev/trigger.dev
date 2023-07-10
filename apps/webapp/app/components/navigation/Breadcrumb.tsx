@@ -38,6 +38,7 @@ export type Breadcrumb = {
     | "integration-connections"
     | "integration-scopes"
     | "triggers"
+    | "trigger"
     | "environments"
     | "job"
     | "test"
@@ -170,6 +171,14 @@ function BreadcrumbItem({
         />
       );
     case "triggers":
+      if (!organization || !project) return null;
+      return (
+        <BreadcrumbLink
+          to={projectTriggersPath(organization, project)}
+          title={"Triggers"}
+        />
+      );
+    case "trigger":
       if (!organization || !project) return null;
       return (
         <BreadcrumbLink
