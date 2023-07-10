@@ -1,5 +1,11 @@
 # create-trigger
 
+## 0.2.1-next.17
+
+### Patch Changes
+
+- 37635774: Improved spinner and made port clear in logs
+
 ## 0.2.1-next.16
 
 ### Patch Changes
