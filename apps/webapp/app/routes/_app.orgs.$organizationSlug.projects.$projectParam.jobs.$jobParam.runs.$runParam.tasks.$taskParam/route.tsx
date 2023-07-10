@@ -30,9 +30,9 @@ import {
   RunPanelProperties,
   UpdatingDelay,
   UpdatingDuration,
-} from "../_app.orgs.$organizationSlug.projects.$projectParam.jobs.$jobParam.runs.$runParam/RunCard";
-import { TaskStatusIcon } from "../_app.orgs.$organizationSlug.projects.$projectParam.jobs.$jobParam.runs.$runParam/TaskStatus";
+} from "../../components/run/RunCard";
 import { TaskAttemptStatusLabel } from "./TaskAttemptStatus";
+import { TaskStatusIcon } from "~/components/run/TaskStatus";
 
 export const loader = async ({ request, params }: LoaderArgs) => {
   const userId = await requireUserId(request);

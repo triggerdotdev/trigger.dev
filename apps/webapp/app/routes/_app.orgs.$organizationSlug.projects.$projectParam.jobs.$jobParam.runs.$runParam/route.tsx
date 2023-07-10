@@ -73,9 +73,9 @@ import {
   RunPanelIconSection,
   RunPanelIconTitle,
   RunPanelProperties,
-} from "./RunCard";
-import { TaskCard } from "./TaskCard";
-import { TaskCardSkeleton } from "./TaskCardSkeleton";
+} from "../../components/run/RunCard";
+import { TaskCard } from "~/components/run/TaskCard";
+import { TaskCardSkeleton } from "~/components/run/TaskCardSkeleton";
 
 export const loader = async ({ request, params }: LoaderArgs) => {
   const userId = await requireUserId(request);

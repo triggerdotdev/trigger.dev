@@ -15,7 +15,7 @@ import {
   RunPanelIconProperty,
   RunPanelIconSection,
   RunPanelProperties,
-} from "../_app.orgs.$organizationSlug.projects.$projectParam.jobs.$jobParam.runs.$runParam/RunCard";
+} from "../../components/run/RunCard";
 
 export const loader = async ({ request, params }: LoaderArgs) => {
   const { runParam } = RunParamsSchema.parse(params);

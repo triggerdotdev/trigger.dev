@@ -12,7 +12,7 @@ import {
   RunPanelHeader,
   RunPanelIconProperty,
   RunPanelIconSection,
-} from "../_app.orgs.$organizationSlug.projects.$projectParam.jobs.$jobParam.runs.$runParam/RunCard";
+} from "../../components/run/RunCard";
 
 export default function RunCompletedPage() {
   const run = useRun();
@@ -21,7 +21,11 @@ export default function RunCompletedPage() {
     <RunPanel>
       <RunPanelHeader
         icon={<RunStatusIcon status={run.status} className={"h-5 w-5"} />}
-        title={<RunStatusLabel status={run.status} />}
+        title={
+          <Paragraph variant="small/bright">
+            <RunStatusLabel status={run.status} />
+          </Paragraph>
+        }
       />
       <RunPanelBody>
         <RunPanelIconSection>
