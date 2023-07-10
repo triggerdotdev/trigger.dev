@@ -1,5 +1,11 @@
 # create-trigger
 
+## 0.2.1-next.16
+
+### Patch Changes
+
+- 568786e4: Fix when setting the url as an option
+
 ## 0.2.1-next.15
 
 ### Patch Changes
