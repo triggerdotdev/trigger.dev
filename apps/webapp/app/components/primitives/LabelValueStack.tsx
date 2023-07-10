@@ -3,10 +3,7 @@ import { Paragraph, ParagraphVariant } from "./Paragraph";
 import { ArrowTopRightOnSquareIcon } from "@heroicons/react/20/solid";
 import { SimpleTooltip } from "./Tooltip";
 
-const variations: Record<
-  string,
-  { label: ParagraphVariant; value: ParagraphVariant }
-> = {
+const variations = {
   primary: {
     label: "extra-small/bright",
     value: "extra-small",
@@ -15,7 +12,7 @@ const variations: Record<
     label: "extra-extra-small/caps",
     value: "extra-small/bright",
   },
-};
+} as const;
 
 type LabelValueStackProps = {
   label: React.ReactNode;
