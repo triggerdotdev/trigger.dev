@@ -168,6 +168,12 @@ function clientParam(integration: IntegrationForPath) {
 }
 
 // Triggers
+export function projectScheduledTriggersPath(
+  organization: OrgForPath,
+  project: ProjectForPath
+) {
+  return `${projectTriggersPath(organization, project)}/scheduled`;
+}
 
 export function triggerSourcePath(
   organization: OrgForPath,
