@@ -335,7 +335,11 @@ export default function Page() {
                         className={"h-5 w-5"}
                       />
                     }
-                    title={<RunStatusLabel status={run.status} />}
+                    title={
+                      <Paragraph variant="small/bright">
+                        <RunStatusLabel status={run.status} />
+                      </Paragraph>
+                    }
                   />
                   <RunPanelBody>
                     <RunPanelIconSection>
