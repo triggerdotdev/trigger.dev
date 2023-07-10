@@ -221,6 +221,9 @@ const icons = {
   "custom-event": (className: string) => (
     <CodeBracketSquareIcon className={cn("text-toxic-600", className)} />
   ),
+  "register-source": (className: string) => (
+    <GlobeAltIcon className={cn("text-sky-500", className)} />
+  ),
   "schedule-interval": (className: string) => (
     <ScheduleIcon className={cn("text-sky-500", className)} />
   ),

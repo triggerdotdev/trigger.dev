@@ -39,6 +39,15 @@ export const TriggerSourceParamSchema = ProjectParamSchema.extend({
   triggerParam: z.string(),
 });
 
+export const TriggerSourceRunParamsSchema = TriggerSourceParamSchema.extend({
+  runParam: z.string(),
+});
+
+export const TriggerSourceRunTaskParamsSchema =
+  TriggerSourceRunParamsSchema.extend({
+    taskParam: z.string(),
+  });
+
 export function organizationsPath() {
   return `/`;
 }
@@ -192,6 +201,24 @@ export function triggerSourceRunsPath(
   trigger: TriggerForPath
 ) {
   return `${triggerSourcePath(organization, project, trigger)}/runs`;
+}
+
+export function triggerSourceRunPath(
+  organization: OrgForPath,
+  project: ProjectForPath,
+  trigger: TriggerForPath,
+  run: RunForPath
+) {
+  return `${triggerSourceRunsPath(organization, project, trigger)}/${run.id}`;
+}
+
+export function triggerSourceRunStreamingPath(
+  organization: OrgForPath,
+  project: ProjectForPath,
+  trigger: TriggerForPath,
+  run: RunForPath
+) {
+  return `${triggerSourceRunPath(organization, project, trigger, run)}/stream`;
 }
 
 function triggerSourceParam(trigger: TriggerForPath) {

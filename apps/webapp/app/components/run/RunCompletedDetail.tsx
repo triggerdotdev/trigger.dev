@@ -2,7 +2,7 @@ import { CodeBlock } from "~/components/code/CodeBlock";
 import { DateTime } from "~/components/primitives/DateTime";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { RunStatusIcon, RunStatusLabel } from "~/components/runs/RunStatuses";
-import { useRun } from "~/hooks/useRun";
+import { MatchedRun, useRun } from "~/hooks/useRun";
 import { formatDuration } from "~/utils";
 import {
   RunPanel,
@@ -14,9 +14,7 @@ import {
   RunPanelIconSection,
 } from "./RunCard";
 
-export function RunCompletedDetail() {
-  const run = useRun();
-
+export function RunCompletedDetail({ run }: { run: MatchedRun }) {
   return (
     <RunPanel>
       <RunPanelHeader
