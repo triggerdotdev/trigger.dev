@@ -58,7 +58,7 @@ import {
   RunParamsSchema,
   jobPath,
   runCompletedPath,
-  runDashboardPath,
+  jobRunDashboardPath,
   runStreamingPath,
   runTaskPath,
   runTriggerPath,
@@ -121,7 +121,7 @@ export const action: ActionFunction = async ({ request, params }) => {
       }
 
       return redirectWithSuccessMessage(
-        runDashboardPath(
+        jobRunDashboardPath(
           { slug: organizationSlug },
           { slug: projectParam },
           { slug: jobParam },
@@ -135,7 +135,7 @@ export const action: ActionFunction = async ({ request, params }) => {
       await continueService.call({ runId: runParam });
 
       return redirectWithSuccessMessage(
-        runDashboardPath(
+        jobRunDashboardPath(
           { slug: organizationSlug },
           { slug: projectParam },
           { slug: jobParam },

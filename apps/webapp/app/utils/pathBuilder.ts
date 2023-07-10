@@ -4,12 +4,12 @@ import { Job } from "~/models/job.server";
 import type { Organization } from "~/models/organization.server";
 import type { Project } from "~/models/project.server";
 
-type OrgForPath = Pick<Organization, "slug">;
-type ProjectForPath = Pick<Project, "slug">;
-type JobForPath = Pick<Job, "slug">;
-type RunForPath = Pick<Job, "id">;
-type IntegrationForPath = Pick<Integration, "slug">;
-type TriggerForPath = Pick<TriggerSource, "id">;
+export type OrgForPath = Pick<Organization, "slug">;
+export type ProjectForPath = Pick<Project, "slug">;
+export type JobForPath = Pick<Job, "slug">;
+export type RunForPath = Pick<Job, "id">;
+export type IntegrationForPath = Pick<Integration, "slug">;
+export type TriggerForPath = Pick<TriggerSource, "id">;
 
 export const OrganizationParamsSchema = z.object({
   organizationSlug: z.string(),
@@ -186,6 +186,14 @@ export function triggerSourcePath(
   )}/triggersources/${triggerSourceParam(trigger)}`;
 }
 
+export function triggerSourceRunsPath(
+  organization: OrgForPath,
+  project: ProjectForPath,
+  trigger: TriggerForPath
+) {
+  return `${triggerSourcePath(organization, project, trigger)}/runs`;
+}
+
 function triggerSourceParam(trigger: TriggerForPath) {
   return trigger.id;
 }
@@ -228,16 +236,24 @@ export function jobParam(job: JobForPath) {
 }
 
 // Run
+export function jobRunsParentPath(
+  organization: OrgForPath,
+  project: ProjectForPath,
+  job: JobForPath
+) {
+  return `${jobPath(organization, project, job)}/runs`;
+}
+
 function runPath(
   organization: OrgForPath,
   project: ProjectForPath,
   job: JobForPath,
   run: RunForPath
 ) {
-  return `${jobPath(organization, project, job)}/runs/${runParam(run)}`;
+  return `${jobRunsParentPath(organization, project, job)}/${runParam(run)}`;
 }
 
-export function runDashboardPath(
+export function jobRunDashboardPath(
   organization: OrgForPath,
   project: ProjectForPath,
   job: JobForPath,

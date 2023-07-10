@@ -21,7 +21,7 @@ import {
   projectIntegrationsPath,
   projectPath,
   projectTriggersPath,
-  runDashboardPath,
+  jobRunDashboardPath,
 } from "~/utils/pathBuilder";
 import { BreadcrumbIcon } from "../primitives/BreadcrumbIcon";
 import { JobsMenu } from "./JobsMenu";
@@ -29,7 +29,7 @@ import { BreadcrumbLink } from "./NavBar";
 import { ProjectsMenu } from "./ProjectsMenu";
 
 export type Breadcrumb = {
-  slug:
+  slug?:
     | "projects"
     | "jobs"
     | "integrations"
@@ -45,22 +45,12 @@ export type Breadcrumb = {
     | "runs"
     | "run";
   link?: {
-    to: string;
     title: string;
   };
 };
 
-function useBreadcrumbs(): Breadcrumb[] {
-  const matches = useMatches();
-
-  return matches
-    .filter((match) => match.handle)
-    .filter((match) => match.handle!.breadcrumb)
-    .map((match) => match.handle!.breadcrumb as Breadcrumb);
-}
-
 export function Breadcrumb() {
-  const breadcrumbs = useBreadcrumbs();
+  const matches = useMatches();
   const organization = useOptionalOrganization();
   const project = useOptionalProject();
   const job = useOptionalJob();
@@ -69,19 +59,32 @@ export function Breadcrumb() {
 
   return (
     <div className="hidden items-center md:flex">
-      {breadcrumbs.map((breadcrumb, index) => (
-        <Fragment key={breadcrumb.slug}>
-          <BreadcrumbIcon />
-          <BreadcrumbItem
-            breadcrumb={breadcrumb}
-            organization={organization}
-            project={project}
-            job={job}
-            run={run}
-            client={client}
-          />
-        </Fragment>
-      ))}
+      {matches.map((match) => {
+        if (!match.handle || !match.handle.breadcrumb) return null;
+
+        const breadcrumb = match.handle.breadcrumb as Breadcrumb;
+
+        return (
+          <Fragment key={match.id}>
+            <BreadcrumbIcon />
+            {breadcrumb.link ? (
+              <BreadcrumbLink
+                to={match.pathname}
+                title={breadcrumb.link.title}
+              />
+            ) : (
+              <BreadcrumbItem
+                breadcrumb={breadcrumb}
+                organization={organization}
+                project={project}
+                job={job}
+                run={run}
+                client={client}
+              />
+            )}
+          </Fragment>
+        );
+      })}
     </div>
   );
 }
@@ -226,7 +229,7 @@ function BreadcrumbItem({
           />
           <BreadcrumbIcon />
           <BreadcrumbLink
-            to={runDashboardPath(organization, project, job, run)}
+            to={jobRunDashboardPath(organization, project, job, run)}
             title={`Run #${run.number}`}
           />
         </Fragment>

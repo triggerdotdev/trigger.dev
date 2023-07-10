@@ -17,6 +17,7 @@ import {
   BuildingOffice2Icon,
   CalendarDaysIcon,
   ChatBubbleLeftEllipsisIcon,
+  CheckCircleIcon,
   CheckIcon,
   ChevronDownIcon,
   ChevronLeftIcon,
@@ -47,6 +48,7 @@ import {
   UserIcon,
   UserPlusIcon,
   WrenchScrewdriverIcon,
+  XCircleIcon,
   XMarkIcon,
 } from "@heroicons/react/24/solid";
 import { ScheduleIcon } from "~/assets/icons/ScheduleIcon";
@@ -60,6 +62,9 @@ import { DynamicTriggerIcon } from "~/assets/icons/DynamicTriggerIcon";
 const icons = {
   account: (className: string) => (
     <UserCircleIcon className={cn("text-slate-400", className)} />
+  ),
+  active: (className: string) => (
+    <CheckCircleIcon className={cn("text-green-500", className)} />
   ),
   "arrow-right": (className: string) => (
     <ArrowRightIcon className={cn("text-white", className)} />
@@ -141,6 +146,9 @@ const icons = {
   ),
   id: (className: string) => (
     <FingerPrintIcon className={cn("text-rose-200", className)} />
+  ),
+  inactive: (className: string) => (
+    <XCircleIcon className={cn("text-rose-500", className)} />
   ),
   info: (className: string) => (
     <InformationCircleIcon className={cn("text-blue-500", className)} />

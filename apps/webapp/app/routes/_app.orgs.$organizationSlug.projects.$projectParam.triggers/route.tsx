@@ -10,10 +10,7 @@ import {
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { Handle } from "~/utils/handle";
-import {
-  projectScheduledTriggersPath,
-  projectTriggersPath,
-} from "~/utils/pathBuilder";
+import { projectTriggersPath } from "~/utils/pathBuilder";
 
 export const handle: Handle = {
   breadcrumb: {
@@ -27,7 +24,7 @@ export default function Integrations() {
 
   return (
     <PageContainer>
-      <PageHeader>
+      <PageHeader hideBorder>
         <PageTitleRow>
           <PageTitle title="Triggers" />
         </PageTitleRow>
@@ -37,7 +34,7 @@ export default function Integrations() {
         <PageTabs
           tabs={[
             {
-              label: "External",
+              label: "External Triggers",
               to: projectTriggersPath(organization, project),
             },
             // {

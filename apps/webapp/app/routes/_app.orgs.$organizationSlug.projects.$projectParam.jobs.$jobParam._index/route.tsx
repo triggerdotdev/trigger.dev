@@ -9,7 +9,11 @@ import { RunListPresenter } from "~/presenters/RunListPresenter.server";
 import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
 import { Handle } from "~/utils/handle";
-import { JobParamsSchema, projectIntegrationsPath } from "~/utils/pathBuilder";
+import {
+  JobParamsSchema,
+  projectIntegrationsPath,
+  jobRunsParentPath,
+} from "~/utils/pathBuilder";
 import { ListPagination } from "./ListPagination";
 import { Callout } from "~/components/primitives/Callout";
 import { useOrganization } from "~/hooks/useOrganizations";
@@ -97,6 +101,7 @@ export default function Page() {
                 hasFilters={false}
                 runs={list.runs}
                 isLoading={isLoading}
+                runsParentPath={jobRunsParentPath(organization, project, job)}
               />
               <ListPagination list={list} className="mt-2 justify-end" />
             </div>

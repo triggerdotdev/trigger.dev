@@ -5,7 +5,12 @@ import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { RunList } from "~/presenters/RunListPresenter.server";
 import { formatDuration } from "~/utils";
-import { runDashboardPath } from "~/utils/pathBuilder";
+import {
+  JobForPath,
+  OrgForPath,
+  ProjectForPath,
+  jobRunDashboardPath,
+} from "~/utils/pathBuilder";
 import { EnvironmentLabel } from "../environments/EnvironmentLabel";
 import { Callout } from "../primitives/Callout";
 import { DateTime } from "../primitives/DateTime";
@@ -21,22 +26,37 @@ import {
   TableRow,
 } from "../primitives/Table";
 import { RunStatus } from "./RunStatuses";
+import { JobRunStatus, RuntimeEnvironmentType } from "@trigger.dev/database";
+
+type RunTableItem = {
+  id: string;
+  number: number;
+  environment: {
+    type: RuntimeEnvironmentType;
+  };
+  status: JobRunStatus;
+  startedAt: Date | null;
+  completedAt: Date | null;
+  createdAt: Date | null;
+  version: string;
+  isTest: boolean;
+};
+
+type RunsTableProps = {
+  total: number;
+  hasFilters: boolean;
+  runs: RunTableItem[];
+  isLoading?: boolean;
+  runsParentPath: string;
+};
 
 export function RunsTable({
   total,
   hasFilters,
   runs,
   isLoading = false,
-}: {
-  total: number;
-  hasFilters: boolean;
-  runs: RunList["runs"];
-  isLoading?: boolean;
-}) {
-  const organization = useOrganization();
-  const project = useProject();
-  const job = useJob();
-
+  runsParentPath,
+}: RunsTableProps) {
   return (
     <Table>
       <TableHeader>
@@ -65,7 +85,7 @@ export function RunsTable({
           </TableBlankRow>
         ) : (
           runs.map((run) => {
-            const path = runDashboardPath(organization, project, job, run);
+            const path = `${runsParentPath}/${run.id}/trigger`;
             return (
               <TableRow key={run.id}>
                 <TableCell to={path}>#{run.number}</TableCell>

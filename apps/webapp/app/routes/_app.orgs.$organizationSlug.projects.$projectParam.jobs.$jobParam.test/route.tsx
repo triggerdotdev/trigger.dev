@@ -31,7 +31,7 @@ import { TestJobService } from "~/services/jobs/testJob.server";
 import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
 import { Handle } from "~/utils/handle";
-import { JobParamsSchema, runDashboardPath } from "~/utils/pathBuilder";
+import { JobParamsSchema, jobRunDashboardPath } from "~/utils/pathBuilder";
 
 export const loader = async ({ request, params }: LoaderArgs) => {
   const userId = await requireUserId(request);
@@ -102,7 +102,7 @@ export const action: ActionFunction = async ({ request, params }) => {
   }
 
   return redirectWithSuccessMessage(
-    runDashboardPath(
+    jobRunDashboardPath(
       { slug: organizationSlug },
       { slug: projectParam },
       { slug: jobParam },
