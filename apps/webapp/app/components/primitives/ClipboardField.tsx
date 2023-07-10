@@ -106,11 +106,11 @@ export function ClipboardField({
   const inputIcon = useRef<HTMLInputElement>(null);
 
   return (
-    <div
+    <span
       className={cn(container, fullWidth ? "w-full" : "max-w-max", className)}
     >
       {icon && (
-        <div
+        <span
           onClick={() => inputIcon.current && inputIcon.current.focus()}
           className={cn(iconPosition, "flex items-center")}
         >
@@ -119,7 +119,7 @@ export function ClipboardField({
           ) : (
             icon
           )}
-        </div>
+        </span>
       )}
       <input
         type="text"
@@ -153,6 +153,6 @@ export function ClipboardField({
       >
         {copied ? <CheckIcon className="h-4 w-4 text-green-500" /> : "Copy"}
       </Button>
-    </div>
+    </span>
   );
 }
