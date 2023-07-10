@@ -169,15 +169,7 @@ export function RunOverview({
                 selected={selectedId === "trigger"}
                 onClick={() => navigate(runTriggerPath(paths.run))}
               >
-                <RunPanelHeader
-                  icon={<BoltIcon className="h-5 w-5 text-orange-500" />}
-                  title={
-                    <RunPanelIconTitle
-                      icon={trigger.icon}
-                      title={trigger.title}
-                    />
-                  }
-                />
+                <RunPanelHeader icon={trigger.icon} title={trigger.title} />
                 <RunPanelBody>
                   <RunPanelProperties
                     properties={[
