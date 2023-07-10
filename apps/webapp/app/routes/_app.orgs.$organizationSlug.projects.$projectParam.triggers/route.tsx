@@ -27,6 +27,7 @@ import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { TriggersPresenter } from "~/presenters/TriggersPresenter.server";
 import { requireUser } from "~/services/session.server";
+import { cn } from "~/utils/cn";
 import { Handle } from "~/utils/handle";
 import { ProjectParamSchema, triggerSourcePath } from "~/utils/pathBuilder";
 
@@ -85,15 +86,22 @@ export default function Integrations() {
                 {triggers.map((t) => {
                   const path = triggerSourcePath(organization, project, t);
                   return (
-                    <TableRow key={t.id}>
+                    <TableRow
+                      key={t.id}
+                      className={cn(!t.active && "bg-rose-500/30")}
+                    >
                       <TableCell to={path}>
-                        <span className="flex items-center gap-1">
+                        <div className="flex items-center gap-1">
                           <NamedIcon
                             name={t.integration.definitionId}
-                            className="h-6 w-6"
+                            className="h-8 w-8"
                           />
-                          {t.integration.title}
-                        </span>
+                          <LabelValueStack
+                            label={t.integration.title}
+                            value={t.integration.slug}
+                            variant="primary"
+                          />
+                        </div>
                       </TableCell>
                       <TableCell to={path}>
                         {t.params && (
