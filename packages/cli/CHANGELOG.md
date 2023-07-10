@@ -1,5 +1,11 @@
 # create-trigger
 
+## 0.2.1-next.18
+
+### Patch Changes
+
+- b8b84d8d: Improved the endpoint prompt
+
 ## 0.2.1-next.17
 
 ### Patch Changes
