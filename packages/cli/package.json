@@ -32,7 +32,7 @@
   "type": "module",
   "exports": "./dist/index.js",
   "bin": {
-    "cli": "./dist/index.js"
+    "trigger-cli": "./dist/index.js"
   },
   "devDependencies": {
     "@types/fs-extra": "^11.0.1",

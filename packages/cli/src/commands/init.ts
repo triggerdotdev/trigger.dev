@@ -187,12 +187,12 @@ const resolveOptionsWithPrompts = async (
   try {
     if (!options.triggerUrl) {
       resolvedOptions.triggerUrl = await promptTriggerUrl();
+    }
 
-      if (resolvedOptions.triggerUrl === CLOUD_TRIGGER_URL) {
-        resolvedOptions.apiUrl = CLOUD_API_URL;
-      } else {
-        resolvedOptions.apiUrl = resolvedOptions.triggerUrl;
-      }
+    if (resolvedOptions.triggerUrl === CLOUD_TRIGGER_URL) {
+      resolvedOptions.apiUrl = CLOUD_API_URL;
+    } else {
+      resolvedOptions.apiUrl = resolvedOptions.triggerUrl;
     }
 
     if (!options.apiKey) {
