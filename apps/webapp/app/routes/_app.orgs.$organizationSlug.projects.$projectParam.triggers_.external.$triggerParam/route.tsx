@@ -136,7 +136,7 @@ export default function Page() {
 
       <PageBody scrollable={false}>
         <div className="h-full overflow-y-auto p-4 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-slate-700">
-          <Header2 spacing>Trigger registration runs</Header2>
+          <Header2 spacing>External Trigger registration runs</Header2>
           <Paragraph variant="small" spacing>
             External Triggers need to be registered with the external service.
             You can see the list of attempted registrations below.
@@ -145,7 +145,7 @@ export default function Page() {
             <>
               <ListPagination
                 list={trigger.runList}
-                className="mt-2 justify-end"
+                className="mb-2 justify-end"
               />
               <RunsTable
                 runs={trigger.runList.runs}

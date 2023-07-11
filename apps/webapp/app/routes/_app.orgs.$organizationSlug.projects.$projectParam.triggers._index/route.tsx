@@ -61,10 +61,10 @@ export default function Integrations() {
   return (
     <>
       <Paragraph variant="small" spacing>
-        The most common type of External Trigger is a webhook. External Triggers
-        get registered with external APIs..
+        External Triggers get registered with external APIs, for example a
+        webhook.
       </Paragraph>
-      <Table className="mt-2">
+      <Table containerClassName="mt-4">
         <TableHeader>
           <TableRow>
             <TableHeaderCell>Integration</TableHeaderCell>
