@@ -17,9 +17,9 @@ import {
   TriggerSourceRunParamsSchema,
   projectTriggersPath,
   runStreamingPath,
-  triggerSourcePath,
-  triggerSourceRunPath,
-  triggerSourceRunStreamingPath,
+  externalTriggerPath,
+  externalTriggerRunPath,
+  externalTriggerRunStreamingPath,
   trimTrailingSlash,
 } from "~/utils/pathBuilder";
 
@@ -84,7 +84,7 @@ export const handle: Handle = {
         />
         <BreadcrumbIcon />
         <BreadcrumbLink
-          to={triggerSourcePath(org, project, { id: data.trigger.id })}
+          to={externalTriggerPath(org, project, { id: data.trigger.id })}
           title={`${data.trigger.integration.title}: ${data.trigger.integration.slug}`}
         />
         <BreadcrumbIcon />
@@ -104,7 +104,7 @@ export default function Page() {
 
   const revalidator = useRevalidator();
   const events = useEventSource(
-    triggerSourceRunStreamingPath(organization, project, trigger, run),
+    externalTriggerRunStreamingPath(organization, project, trigger, run),
     {
       event: "message",
     }
@@ -122,8 +122,8 @@ export default function Page() {
       trigger={{ icon: "register-source", title: "Register external source" }}
       showRerun={false}
       paths={{
-        back: triggerSourcePath(organization, project, { id: trigger.id }),
-        run: triggerSourceRunPath(
+        back: externalTriggerPath(organization, project, { id: trigger.id }),
+        run: externalTriggerRunPath(
           organization,
           project,
           { id: trigger.id },

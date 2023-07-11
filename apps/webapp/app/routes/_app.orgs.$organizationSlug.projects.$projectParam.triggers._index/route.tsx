@@ -25,7 +25,7 @@ import { cn } from "~/utils/cn";
 import { Handle } from "~/utils/handle";
 import {
   ProjectParamSchema,
-  triggerSourcePath,
+  externalTriggerPath,
   trimTrailingSlash,
 } from "~/utils/pathBuilder";
 
@@ -78,7 +78,7 @@ export default function Integrations() {
         <TableBody>
           {triggers.length > 0 ? (
             triggers.map((t) => {
-              const path = triggerSourcePath(organization, project, t);
+              const path = externalTriggerPath(organization, project, t);
               return (
                 <TableRow
                   key={t.id}

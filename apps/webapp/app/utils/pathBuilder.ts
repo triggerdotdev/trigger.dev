@@ -194,7 +194,7 @@ export function projectScheduledTriggersPath(
   return `${projectTriggersPath(organization, project)}/scheduled`;
 }
 
-export function triggerSourcePath(
+export function externalTriggerPath(
   organization: OrgForPath,
   project: ProjectForPath,
   trigger: TriggerForPath
@@ -205,30 +205,37 @@ export function triggerSourcePath(
   )}/external/${triggerSourceParam(trigger)}`;
 }
 
-export function triggerSourceRunsPath(
+export function externalTriggerRunsParentPath(
   organization: OrgForPath,
   project: ProjectForPath,
   trigger: TriggerForPath
 ) {
-  return `${triggerSourcePath(organization, project, trigger)}/runs`;
+  return `${externalTriggerPath(organization, project, trigger)}/runs`;
 }
 
-export function triggerSourceRunPath(
+export function externalTriggerRunPath(
   organization: OrgForPath,
   project: ProjectForPath,
   trigger: TriggerForPath,
   run: RunForPath
 ) {
-  return `${triggerSourceRunsPath(organization, project, trigger)}/${run.id}`;
+  return `${externalTriggerRunsParentPath(organization, project, trigger)}/${
+    run.id
+  }`;
 }
 
-export function triggerSourceRunStreamingPath(
+export function externalTriggerRunStreamingPath(
   organization: OrgForPath,
   project: ProjectForPath,
   trigger: TriggerForPath,
   run: RunForPath
 ) {
-  return `${triggerSourceRunPath(organization, project, trigger, run)}/stream`;
+  return `${externalTriggerRunPath(
+    organization,
+    project,
+    trigger,
+    run
+  )}/stream`;
 }
 
 function triggerSourceParam(trigger: TriggerForPath) {
