@@ -72,6 +72,7 @@ export const handle: Handle = {
   breadcrumb: (match) => (
     <BreadcrumbLink to={match.pathname} title="Integrations" />
   ),
+  expandSidebar: true,
 };
 
 export default function Integrations() {

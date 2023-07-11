@@ -50,6 +50,7 @@ export const handle: Handle = {
       title="External Triggers"
     />
   ),
+  expandSidebar: true,
 };
 
 export default function Integrations() {

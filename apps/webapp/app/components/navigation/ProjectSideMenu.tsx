@@ -18,6 +18,8 @@ import { UserProfilePhoto } from "../UserProfilePhoto";
 import { NavLinkButton } from "../primitives/Buttons";
 import type { IconNames } from "../primitives/NamedIcon";
 import { SimpleTooltip } from "../primitives/Tooltip";
+import { usePathName } from "~/hooks/usePathName";
+import { Handle } from "~/utils/handle";
 
 export function SideMenuContainer({ children }: { children: React.ReactNode }) {
   return (
@@ -46,14 +48,15 @@ export function ProjectSideMenu() {
   const project = useProject();
   const matches = useMatches();
 
-  //we collapse the menu if we're in a job or an integration
-  const job = useOptionalJob();
-  const client = useOptionalIntegrationClient();
-  const isCollapsed = job !== undefined || client !== undefined;
+  //the deepest route `handle` determines if the menu is expanded
+  const deepestMatch = matches.at(-1);
+  const handle = deepestMatch?.handle as Handle;
+  const isCollapsed = handle?.expandSidebar ? !handle.expandSidebar : true;
 
+  const job = useOptionalJob();
   const jobsActive =
     job !== undefined ||
-    matches.at(-1)?.id ===
+    deepestMatch?.id ===
       "routes/_app.orgs.$organizationSlug.projects.$projectParam._index";
 
   return (
