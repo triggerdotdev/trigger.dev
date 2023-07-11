@@ -1,5 +1,11 @@
 # @trigger.dev/sdk
 
+## 2.0.0-next.15
+
+### Patch Changes
+
+- 2c0ea0c1: Set Node version to 16.8 and above
+
 ## 2.0.0-next.14
 
 ### Patch Changes
