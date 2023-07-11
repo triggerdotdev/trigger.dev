@@ -1,5 +1,11 @@
 # create-trigger
 
+## 0.2.1-next.19
+
+### Patch Changes
+
+- 2c0ea0c1: Set Node version to 16.8 and above
+
 ## 0.2.1-next.18
 
 ### Patch Changes
