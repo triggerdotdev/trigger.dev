@@ -709,6 +709,7 @@ enum JobRunStatus {
   FAILURE
   TIMED_OUT
   ABORTED
+  CANCELED
 }
 
 model JobRunExecution {

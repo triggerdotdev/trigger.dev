@@ -1,11 +1,19 @@
 import { conform, useForm } from "@conform-to/react";
 import { parse } from "@conform-to/zod";
 import { BoltIcon, ForwardIcon } from "@heroicons/react/24/solid";
-import { Form, Outlet, useActionData, useNavigate } from "@remix-run/react";
+import {
+  Form,
+  Outlet,
+  useActionData,
+  useLocation,
+  useNavigate,
+  useNavigation,
+} from "@remix-run/react";
 import { JobRunStatus, RuntimeEnvironmentType } from "@trigger.dev/database";
 import { useMemo } from "react";
 import { usePathName } from "~/hooks/usePathName";
 import { Run } from "~/presenters/RunPresenter.server";
+import { cancelSchema } from "~/routes/resources.runs.$runId.cancel";
 import { schema } from "~/routes/resources.runs.$runId.rerun";
 import { formatDuration } from "~/utils";
 import { cn } from "~/utils/cn";
@@ -123,6 +131,7 @@ export function RunOverview({
                 status={basicStatus}
               />
             )}
+            {!hasFinished(run.status) && <CancelRun runId={run.id} />}
           </PageButtons>
         </PageTitleRow>
         <PageInfoRow>
@@ -417,5 +426,44 @@ function RerunPopover({
         </Form>
       </PopoverContent>
     </Popover>
+  );
+}
+
+export function CancelRun({ runId }: { runId: string }) {
+  const lastSubmission = useActionData();
+  const location = useLocation();
+  const navigation = useNavigation();
+
+  const [form, { redirectUrl }] = useForm({
+    id: "cancel-run",
+    lastSubmission,
+    onValidate({ formData }) {
+      return parse(formData, { schema: cancelSchema });
+    },
+  });
+
+  const isLoading =
+    navigation.state === "submitting" && navigation.formData !== undefined;
+
+  return (
+    <Form
+      method="post"
+      action={`/resources/runs/${runId}/cancel`}
+      {...form.props}
+    >
+      <input
+        {...conform.input(redirectUrl, { type: "hidden" })}
+        defaultValue={location.pathname}
+      />
+      <Button
+        type="submit"
+        LeadingIcon={isLoading ? "spinner-white" : "stop"}
+        leadingIconClassName="text-white"
+        variant="danger/small"
+        disabled={isLoading}
+      >
+        {isLoading ? "Canceling" : "Cancel run"}
+      </Button>
+    </Form>
   );
 }

@@ -192,6 +192,18 @@ export class RunTaskService {
         return existingTask;
       }
 
+      const run = await tx.jobRun.findUnique({
+        where: {
+          id: runId,
+        },
+        select: {
+          status: true,
+        },
+      });
+
+      if (!run) throw new Error("Run not found");
+      if (run.status === "CANCELED") return;
+
       // If task.delayUntil is set and is in the future, we'll set the task's status to "WAITING", else set it to RUNNING
       const status =
         (taskBody.delayUntil && taskBody.delayUntil.getTime() > Date.now()) ||
