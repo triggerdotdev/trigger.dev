@@ -64,6 +64,7 @@ export const loader = async ({ request, params }: LoaderArgs) => {
 };
 
 export const handle: Handle = {
+  //this one is complicated because we render outside the parent route (using triggers_ in the path)
   breadcrumb: (match, matches) => {
     const data = useTypedMatchData<typeof loader>(match);
     if (!data) return null;
@@ -92,7 +93,7 @@ export const handle: Handle = {
   },
 };
 
-export default function Integrations() {
+export default function Page() {
   const { trigger } = useTypedLoaderData<typeof loader>();
   const organization = useOrganization();
   const project = useProject();
