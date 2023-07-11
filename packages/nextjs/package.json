@@ -33,12 +33,12 @@
   },
   "peerDependencies": {
     "@trigger.dev/sdk": "workspace:^2.0.0-next.5",
-    "next": "^13.3.1"
+    "next": ">=12.0.0 <14.0.0"
   },
   "dependencies": {
     "debug": "^4.3.4"
   },
   "engines": {
-    "node": ">=18"
+    "node": ">=16"
   }
 }

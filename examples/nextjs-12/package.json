@@ -1,0 +1,25 @@
+{
+  "name": "nextjs-12",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint"
+  },
+  "dependencies": {
+    "next": "12.3.4",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "@trigger.dev/nextjs": "workspace:*",
+    "@trigger.dev/sdk": "workspace:*"
+  },
+  "devDependencies": {
+    "eslint": "8.44.0",
+    "eslint-config-next": "12.3.4"
+  },
+  "trigger.dev": {
+    "endpointId": "nextjs-12"
+  }
+}
