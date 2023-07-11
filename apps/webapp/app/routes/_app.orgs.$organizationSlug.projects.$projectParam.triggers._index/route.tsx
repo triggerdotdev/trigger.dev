@@ -61,15 +61,17 @@ export default function Integrations() {
   return (
     <>
       <Paragraph variant="small" spacing>
-        Webhooks are connected as external Triggers
+        The most common type of External Trigger is a webhook. External Triggers
+        get registered with external APIs..
       </Paragraph>
-      <Table>
+      <Table className="mt-2">
         <TableHeader>
           <TableRow>
             <TableHeaderCell>Integration</TableHeaderCell>
+            <TableHeaderCell>Dynamic</TableHeaderCell>
             <TableHeaderCell>Properties</TableHeaderCell>
-            <TableHeaderCell>Active</TableHeaderCell>
             <TableHeaderCell>Environment</TableHeaderCell>
+            <TableHeaderCell>Active</TableHeaderCell>
             <TableHeaderCell hiddenLabel>Go to page</TableHeaderCell>
           </TableRow>
         </TableHeader>
@@ -94,6 +96,16 @@ export default function Integrations() {
                         variant="primary"
                       />
                     </div>
+                  </TableCell>
+                  <TableCell to={path}>
+                    {t.dynamicTrigger ? (
+                      <span className="flex items-center gap-0.5">
+                        <NamedIcon name="dynamic" className="h-4 w-4" />
+                        {t.dynamicTrigger.slug}
+                      </span>
+                    ) : (
+                      <span className="text-dimmed">–</span>
+                    )}
                   </TableCell>
                   <TableCell to={path}>
                     {t.params && (
@@ -129,16 +141,16 @@ export default function Integrations() {
                     )}
                   </TableCell>
                   <TableCell to={path}>
+                    <span className="flex">
+                      <EnvironmentLabel environment={t.environment} />
+                    </span>
+                  </TableCell>
+                  <TableCell to={path}>
                     {t.active ? (
                       <CheckCircleIcon className="h-6 w-6 text-green-500" />
                     ) : (
                       <XCircleIcon className="h-6 w-6 text-rose-500" />
                     )}
-                  </TableCell>
-                  <TableCell to={path}>
-                    <span className="flex">
-                      <EnvironmentLabel environment={t.environment} />
-                    </span>
                   </TableCell>
                   <TableCellChevron to={path} />
                 </TableRow>
