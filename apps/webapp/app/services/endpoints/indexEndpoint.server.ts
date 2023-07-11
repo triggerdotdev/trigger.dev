@@ -74,12 +74,11 @@ export class IndexEndpointService {
 
         indexStats.jobs++;
       } catch (error) {
-        logger.debug("Failed to register job", {
+        logger.error("Failed to register job", {
           endpointId: endpoint.id,
           job,
+          error,
         });
-
-        logger.error(error);
       }
     }
 
@@ -89,12 +88,11 @@ export class IndexEndpointService {
 
         indexStats.sources++;
       } catch (error) {
-        logger.debug("Failed to register source", {
+        logger.error("Failed to register source", {
           endpointId: endpoint.id,
           source,
+          error,
         });
-
-        logger.error(error);
       }
     }
 
@@ -107,12 +105,11 @@ export class IndexEndpointService {
 
         indexStats.dynamicTriggers++;
       } catch (error) {
-        logger.debug("Failed to register dynamic trigger", {
+        logger.error("Failed to register dynamic trigger", {
           endpointId: endpoint.id,
           dynamicTrigger,
+          error,
         });
-
-        logger.error(error);
       }
     }
 
@@ -125,12 +122,11 @@ export class IndexEndpointService {
 
         indexStats.dynamicSchedules++;
       } catch (error) {
-        logger.debug("Failed to register dynamic schedule", {
+        logger.error("Failed to register dynamic schedule", {
           endpointId: endpoint.id,
           dynamicSchedule,
+          error,
         });
-
-        logger.error(error);
       }
     }
 

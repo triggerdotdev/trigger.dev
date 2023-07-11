@@ -47,44 +47,52 @@ export class Logger {
     return logLevels.indexOf(logLevel) <= logLevels.indexOf(setLevel);
   }
 
-  log(...args: any[]) {
+  log(message: string, ...args: Array<Record<string, unknown> | undefined>) {
     if (this.#level < 0) return;
 
-    console.log(`[${formattedDateTime()}] [${this.#name}] `, ...args);
+    this.#structuredLog(console.log, message, ...args);
   }
 
-  error(...args: any[]) {
+  error(message: string, ...args: Array<Record<string, unknown> | undefined>) {
     if (this.#level < 1) return;
 
-    console.error(`[${formattedDateTime()}] [${this.#name}] `, ...args);
+    this.#structuredLog(console.error, message, ...args);
   }
 
-  warn(...args: any[]) {
+  warn(message: string, ...args: Array<Record<string, unknown> | undefined>) {
     if (this.#level < 2) return;
 
-    console.warn(`[${formattedDateTime()}] [${this.#name}] `, ...args);
+    this.#structuredLog(console.warn, message, ...args);
   }
 
-  info(...args: any[]) {
+  info(message: string, ...args: Array<Record<string, unknown> | undefined>) {
     if (this.#level < 3) return;
 
-    console.info(`[${formattedDateTime()}] [${this.#name}] `, ...args);
+    this.#structuredLog(console.info, message, ...args);
   }
 
   debug(message: string, ...args: Array<Record<string, unknown> | undefined>) {
     if (this.#level < 4) return;
 
+    this.#structuredLog(console.debug, message, ...args);
+  }
+
+  #structuredLog(
+    loggerFunction: (message: string, ...args: any[]) => void,
+    message: string,
+    ...args: Array<Record<string, unknown> | undefined>
+  ) {
     const structuredLog = {
-      timestamp: new Date(),
-      name: this.#name,
-      message,
-      args: structureArgs(
+      ...structureArgs(
         safeJsonClone(args) as Record<string, unknown>[],
         this.#filteredKeys
       ),
+      timestamp: new Date(),
+      name: this.#name,
+      message,
     };
 
-    console.debug(
+    loggerFunction(
       JSON.stringify(structuredLog, createReplacer(this.#jsonReplacer))
     );
   }
