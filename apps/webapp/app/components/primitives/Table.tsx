@@ -4,14 +4,20 @@ import { ReactNode, forwardRef } from "react";
 import { cn } from "~/utils/cn";
 
 type TableProps = {
+  containerClassName?: string;
   className?: string;
   children: ReactNode;
 };
 
 export const Table = forwardRef<HTMLTableElement, TableProps>(
-  ({ className, children }, ref) => {
+  ({ className, containerClassName, children }, ref) => {
     return (
-      <div className="overflow-x-auto whitespace-nowrap rounded-md border border-slate-900 scrollbar-thin scrollbar-track-midnight-850 scrollbar-thumb-slate-700">
+      <div
+        className={cn(
+          "overflow-x-auto whitespace-nowrap rounded-md border border-slate-900 scrollbar-thin scrollbar-track-midnight-850 scrollbar-thumb-slate-700",
+          containerClassName
+        )}
+      >
         <table
           ref={ref}
           className={cn("w-full divide-y bg-midnight-850", className)}
