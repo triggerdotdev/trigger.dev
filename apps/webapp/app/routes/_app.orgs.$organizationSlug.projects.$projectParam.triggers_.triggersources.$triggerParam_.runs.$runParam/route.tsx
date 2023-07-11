@@ -16,6 +16,7 @@ import { Handle } from "~/utils/handle";
 import {
   TriggerSourceRunParamsSchema,
   projectTriggersPath,
+  runStreamingPath,
   triggerSourcePath,
   triggerSourceRunPath,
   triggerSourceRunStreamingPath,
@@ -103,12 +104,7 @@ export default function Page() {
 
   const revalidator = useRevalidator();
   const events = useEventSource(
-    triggerSourceRunStreamingPath(
-      organization,
-      project,
-      { id: trigger.id },
-      run
-    ),
+    triggerSourceRunStreamingPath(organization, project, trigger, run),
     {
       event: "message",
     }
