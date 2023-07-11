@@ -17,20 +17,6 @@
     },
     "./package.json": "./package.json"
   },
-  "devDependencies": {
-    "@trigger.dev/internal": "workspace:*",
-    "@trigger.dev/tsconfig": "workspace:*",
-    "@types/debug": "^4.1.7",
-    "@types/node": "18",
-    "@types/node-fetch": "2.6.x",
-    "@types/slug": "^5.0.3",
-    "@types/uuid": "^9.0.0",
-    "@types/ws": "^8.5.3",
-    "rimraf": "^3.0.2",
-    "tsup": "^6.5.0",
-    "tsx": "^3.12.1",
-    "typescript": "^4.8.4"
-  },
   "scripts": {
     "clean": "rimraf dist",
     "build": "npm run clean && npm run build:tsup",
@@ -54,7 +40,21 @@
     "zod": "3.21.4",
     "zod-error": "1.5.0"
   },
+  "devDependencies": {
+    "@trigger.dev/internal": "workspace:*",
+    "@trigger.dev/tsconfig": "workspace:*",
+    "@types/debug": "^4.1.7",
+    "@types/node": "18",
+    "@types/node-fetch": "2.6.x",
+    "@types/slug": "^5.0.3",
+    "@types/uuid": "^9.0.0",
+    "@types/ws": "^8.5.3",
+    "rimraf": "^3.0.2",
+    "tsup": "^6.5.0",
+    "tsx": "^3.12.1",
+    "typescript": "^4.8.4"
+  },
   "engines": {
-    "node": ">=18"
+    "node": ">=16.8.0"
   }
 }

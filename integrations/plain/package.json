@@ -29,6 +29,6 @@
     "@team-plain/typescript-sdk": "^2.7.0"
   },
   "engines": {
-    "node": ">=18"
+    "node": ">=16.8.0"
   }
 }

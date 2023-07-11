@@ -21,7 +21,9 @@ import {
   TriggerSourceSchema,
   UpdateTriggerSourceBody,
 } from "@trigger.dev/internal";
+
 import { z } from "zod";
+import fetch, { type RequestInit } from "node-fetch";
 
 export type ApiClientOptions = {
   apiKey?: string;
