@@ -1,10 +1,10 @@
 import { useTypedRouteLoaderData } from "remix-typedjson";
 import { RunCompletedDetail } from "~/components/run/RunCompletedDetail";
-import type { loader as runLoader } from "~/routes/_app.orgs.$organizationSlug.projects.$projectParam.triggers_.triggersources.$triggerParam_.runs.$runParam/route";
+import type { loader as runLoader } from "~/routes/_app.orgs.$organizationSlug.projects.$projectParam.triggers_.external.$triggerParam_.runs.$runParam/route";
 
 function useTriggerRegisterRun() {
   const routeMatch = useTypedRouteLoaderData<typeof runLoader>(
-    "routes/_app.orgs.$organizationSlug.projects.$projectParam.triggers_.triggersources.$triggerParam_.runs.$runParam"
+    "routes/_app.orgs.$organizationSlug.projects.$projectParam.triggers_.external.$triggerParam_.runs.$runParam"
   );
 
   if (!routeMatch || !routeMatch.run) {

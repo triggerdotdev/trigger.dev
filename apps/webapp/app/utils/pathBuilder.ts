@@ -202,7 +202,7 @@ export function triggerSourcePath(
   return `${projectTriggersPath(
     organization,
     project
-  )}/triggersources/${triggerSourceParam(trigger)}`;
+  )}/external/${triggerSourceParam(trigger)}`;
 }
 
 export function triggerSourceRunsPath(
