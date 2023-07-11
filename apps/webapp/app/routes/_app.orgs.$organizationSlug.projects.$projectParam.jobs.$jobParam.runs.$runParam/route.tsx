@@ -1,15 +1,20 @@
 import { parse } from "@conform-to/zod";
 import { useRevalidator } from "@remix-run/react";
 import { ActionFunction, LoaderArgs, json } from "@remix-run/server-runtime";
-import { useEffect } from "react";
+import { match } from "assert";
+import { Fragment, useEffect } from "react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { useEventSource } from "remix-utils";
 import { z } from "zod";
+import { JobsMenu } from "~/components/navigation/JobsMenu";
+import { BreadcrumbLink } from "~/components/navigation/NavBar";
+import { BreadcrumbIcon } from "~/components/primitives/BreadcrumbIcon";
 import { RunOverview } from "~/components/run/RunOverview";
 import { runBasicStatus } from "~/components/runs/RunStatuses";
-import { useJob } from "~/hooks/useJob";
+import { jobMatchId, useJob } from "~/hooks/useJob";
 import { useOrganization } from "~/hooks/useOrganizations";
-import { useProject } from "~/hooks/useProject";
+import { projectMatchId, useProject } from "~/hooks/useProject";
+import { useTypedMatchData } from "~/hooks/useTypedMatchData";
 import {
   redirectBackWithErrorMessage,
   redirectWithSuccessMessage,
@@ -25,6 +30,7 @@ import {
   jobRunDashboardPath,
   runPath,
   runStreamingPath,
+  trimTrailingSlash,
 } from "~/utils/pathBuilder";
 
 export const loader = async ({ request, params }: LoaderArgs) => {
@@ -101,8 +107,24 @@ export const action: ActionFunction = async ({ request, params }) => {
 };
 
 export const handle: Handle = {
-  breadcrumb: {
-    slug: "run",
+  breadcrumb: (match, matches) => {
+    const jobMatch = matches.find((m) => m.id === jobMatchId);
+    const runData = useTypedMatchData<typeof loader>(match);
+    return (
+      <Fragment>
+        <BreadcrumbLink
+          to={trimTrailingSlash(jobMatch?.pathname ?? "")}
+          title="Runs"
+        />
+        <BreadcrumbIcon />
+        {runData && (
+          <BreadcrumbLink
+            to={match.pathname}
+            title={`Run #${runData.run.number}`}
+          />
+        )}
+      </Fragment>
+    );
   },
 };
 

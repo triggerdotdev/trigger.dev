@@ -48,6 +48,16 @@ export const TriggerSourceRunTaskParamsSchema =
     taskParam: z.string(),
   });
 
+export function trimTrailingSlash(path: string) {
+  return path.replace(/\/$/, "");
+}
+
+export function parentPath(path: string) {
+  const trimmedTrailingSlash = trimTrailingSlash(path);
+  const lastSlashIndex = trimmedTrailingSlash.lastIndexOf("/");
+  return trimmedTrailingSlash.substring(0, lastSlashIndex);
+}
+
 export function organizationsPath() {
   return `/`;
 }

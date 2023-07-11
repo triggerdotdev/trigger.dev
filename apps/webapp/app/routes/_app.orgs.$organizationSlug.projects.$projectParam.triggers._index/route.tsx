@@ -1,19 +1,10 @@
 import { CheckCircleIcon, XCircleIcon } from "@heroicons/react/24/solid";
-import { Outlet } from "@remix-run/react";
 import type { LoaderArgs } from "@remix-run/server-runtime";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { EnvironmentLabel } from "~/components/environments/EnvironmentLabel";
-import { PageBody, PageContainer } from "~/components/layout/AppLayout";
-import { Header2 } from "~/components/primitives/Headers";
+import { BreadcrumbLink } from "~/components/navigation/NavBar";
 import { LabelValueStack } from "~/components/primitives/LabelValueStack";
 import { NamedIcon } from "~/components/primitives/NamedIcon";
-import {
-  PageDescription,
-  PageHeader,
-  PageTabs,
-  PageTitle,
-  PageTitleRow,
-} from "~/components/primitives/PageHeader";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import {
   Table,
@@ -35,7 +26,7 @@ import { Handle } from "~/utils/handle";
 import {
   ProjectParamSchema,
   triggerSourcePath,
-  projectTriggersPath,
+  trimTrailingSlash,
 } from "~/utils/pathBuilder";
 
 export const loader = async ({ request, params }: LoaderArgs) => {
@@ -53,11 +44,12 @@ export const loader = async ({ request, params }: LoaderArgs) => {
 };
 
 export const handle: Handle = {
-  breadcrumb: {
-    link: {
-      title: "External",
-    },
-  },
+  breadcrumb: (match) => (
+    <BreadcrumbLink
+      to={trimTrailingSlash(match.pathname)}
+      title="External Triggers"
+    />
+  ),
 };
 
 export default function Integrations() {

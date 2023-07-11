@@ -1,7 +1,11 @@
 import { Outlet, useLocation } from "@remix-run/react";
 import type { LoaderArgs } from "@remix-run/server-runtime";
+import { Fragment } from "react";
 import { typedjson } from "remix-typedjson";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
+import { JobsMenu } from "~/components/navigation/JobsMenu";
+import { BreadcrumbLink } from "~/components/navigation/NavBar";
+import { BreadcrumbIcon } from "~/components/primitives/BreadcrumbIcon";
 import { LinkButton } from "~/components/primitives/Buttons";
 import { NamedIcon } from "~/components/primitives/NamedIcon";
 import {
@@ -17,7 +21,7 @@ import {
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { useJob } from "~/hooks/useJob";
 import { useOrganization } from "~/hooks/useOrganizations";
-import { useProject } from "~/hooks/useProject";
+import { projectMatchId, useProject } from "~/hooks/useProject";
 import { useOptionalRun } from "~/hooks/useRun";
 import { findJobByParams } from "~/models/job.server";
 import { requireUserId } from "~/services/session.server";
@@ -28,6 +32,7 @@ import {
   jobSettingsPath,
   jobTestPath,
   jobTriggerPath,
+  trimTrailingSlash,
 } from "~/utils/pathBuilder";
 
 export const loader = async ({ request, params }: LoaderArgs) => {
@@ -58,8 +63,18 @@ export const loader = async ({ request, params }: LoaderArgs) => {
 };
 
 export const handle: Handle = {
-  breadcrumb: {
-    slug: "job",
+  breadcrumb: (_match, matches) => {
+    const projectMatch = matches.find((m) => m.id === projectMatchId);
+    return (
+      <Fragment>
+        <BreadcrumbLink
+          to={trimTrailingSlash(projectMatch?.pathname ?? "")}
+          title="Jobs"
+        />
+        <BreadcrumbIcon />
+        <JobsMenu matches={matches} />
+      </Fragment>
+    );
   },
 };
 

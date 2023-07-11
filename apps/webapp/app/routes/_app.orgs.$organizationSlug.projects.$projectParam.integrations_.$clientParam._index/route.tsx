@@ -4,6 +4,7 @@ import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { HowToUseThisIntegration } from "~/components/helpContent/HelpContentText";
 import { JobSkeleton } from "~/components/jobs/JobSkeleton";
 import { JobsTable } from "~/components/jobs/JobsTable";
+import { BreadcrumbLink } from "~/components/navigation/NavBar";
 import { Callout } from "~/components/primitives/Callout";
 import { Header2 } from "~/components/primitives/Headers";
 import { Help, HelpContent, HelpTrigger } from "~/components/primitives/Help";
@@ -11,6 +12,7 @@ import { Input } from "~/components/primitives/Input";
 import { useFilterJobs } from "~/hooks/useFilterJobs";
 import { useIntegrationClient } from "~/hooks/useIntegrationClient";
 import { useProject } from "~/hooks/useProject";
+import { useTypedMatchData } from "~/hooks/useTypedMatchData";
 import { IntegrationClientJobsPresenter } from "~/presenters/IntegrationClientJobsPresenter.server";
 import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
@@ -19,6 +21,7 @@ import {
   IntegrationClientParamSchema,
   docsIntegrationPath,
   docsRoot,
+  trimTrailingSlash,
 } from "~/utils/pathBuilder";
 
 export const loader = async ({ request, params }: LoaderArgs) => {
@@ -38,9 +41,9 @@ export const loader = async ({ request, params }: LoaderArgs) => {
 };
 
 export const handle: Handle = {
-  breadcrumb: {
-    slug: "integration-job",
-  },
+  breadcrumb: (match) => (
+    <BreadcrumbLink to={trimTrailingSlash(match.pathname)} title="Jobs" />
+  ),
 };
 
 export default function Page() {

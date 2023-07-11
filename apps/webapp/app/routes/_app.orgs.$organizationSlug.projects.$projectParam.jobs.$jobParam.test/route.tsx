@@ -9,6 +9,7 @@ import { z } from "zod";
 import { JSONEditor } from "~/components/code/JSONEditor";
 import { EnvironmentLabel } from "~/components/environments/EnvironmentLabel";
 import { HowToRunATest } from "~/components/helpContent/HelpContentText";
+import { BreadcrumbLink } from "~/components/navigation/NavBar";
 import { Button, ButtonContent } from "~/components/primitives/Buttons";
 import { Callout } from "~/components/primitives/Callout";
 import { FormError } from "~/components/primitives/FormError";
@@ -31,7 +32,11 @@ import { TestJobService } from "~/services/jobs/testJob.server";
 import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
 import { Handle } from "~/utils/handle";
-import { JobParamsSchema, jobRunDashboardPath } from "~/utils/pathBuilder";
+import {
+  JobParamsSchema,
+  jobRunDashboardPath,
+  trimTrailingSlash,
+} from "~/utils/pathBuilder";
 
 export const loader = async ({ request, params }: LoaderArgs) => {
   const userId = await requireUserId(request);
@@ -114,9 +119,9 @@ export const action: ActionFunction = async ({ request, params }) => {
 };
 
 export const handle: Handle = {
-  breadcrumb: {
-    slug: "test",
-  },
+  breadcrumb: (match) => (
+    <BreadcrumbLink to={trimTrailingSlash(match.pathname)} title="Test" />
+  ),
 };
 
 const startingJson = "{\n\n}";

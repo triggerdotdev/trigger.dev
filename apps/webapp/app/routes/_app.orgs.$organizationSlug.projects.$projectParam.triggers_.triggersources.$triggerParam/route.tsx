@@ -1,10 +1,15 @@
 import { Response } from "@remix-run/node";
 import type { LoaderArgs } from "@remix-run/server-runtime";
+import { Fragment } from "react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { EnvironmentLabel } from "~/components/environments/EnvironmentLabel";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
+import { JobsMenu } from "~/components/navigation/JobsMenu";
+import { BreadcrumbLink } from "~/components/navigation/NavBar";
+import { BreadcrumbIcon } from "~/components/primitives/BreadcrumbIcon";
 import { Callout } from "~/components/primitives/Callout";
 import { Header2 } from "~/components/primitives/Headers";
+import { NamedIcon } from "~/components/primitives/NamedIcon";
 import {
   PageHeader,
   PageInfoGroup,
@@ -16,14 +21,17 @@ import {
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { RunsTable } from "~/components/runs/RunsTable";
 import { useOrganization } from "~/hooks/useOrganizations";
-import { useProject } from "~/hooks/useProject";
+import { projectMatchId, useProject } from "~/hooks/useProject";
+import { useTypedMatchData } from "~/hooks/useTypedMatchData";
 import { TriggerSourcePresenter } from "~/presenters/TriggerSourcePresenter.server";
 import { requireUser } from "~/services/session.server";
 import { Handle } from "~/utils/handle";
 import {
   TriggerSourceParamSchema,
+  parentPath,
   projectTriggersPath,
   triggerSourceRunsPath,
+  trimTrailingSlash,
 } from "~/utils/pathBuilder";
 
 export const loader = async ({ request, params }: LoaderArgs) => {
@@ -50,8 +58,31 @@ export const loader = async ({ request, params }: LoaderArgs) => {
 };
 
 export const handle: Handle = {
-  breadcrumb: {
-    slug: "trigger",
+  breadcrumb: (match, matches) => {
+    const data = useTypedMatchData<typeof loader>(match);
+    if (!data) return null;
+
+    const org = useOrganization(matches);
+    const project = useProject(matches);
+
+    return (
+      <Fragment>
+        <BreadcrumbLink
+          to={projectTriggersPath(org, project)}
+          title="Triggers"
+        />
+        <BreadcrumbIcon />
+        <BreadcrumbLink
+          to={projectTriggersPath(org, project)}
+          title="External Triggers"
+        />
+        <BreadcrumbIcon />
+        <BreadcrumbLink
+          to={trimTrailingSlash(match.pathname)}
+          title={`${data.trigger.integration.title}: ${data.trigger.integration.slug}`}
+        />
+      </Fragment>
+    );
   },
 };
 
@@ -68,7 +99,7 @@ export default function Integrations() {
             title={`${trigger.integration.title}: ${trigger.integration.slug}`}
             backButton={{
               to: projectTriggersPath(organization, project),
-              text: "Triggers",
+              text: "External Triggers",
             }}
           />
         </PageTitleRow>
@@ -80,9 +111,13 @@ export default function Integrations() {
               value={trigger.integration.slug}
             />
             <PageInfoProperty
-              icon={trigger.active ? "active" : "inactive"}
-              label="Active"
-              value={trigger.active ? "Yes" : "No"}
+              label={trigger.active ? "Active" : "Inactive"}
+              value={
+                <NamedIcon
+                  name={trigger.active ? "active" : "inactive"}
+                  className="h-4 w-4"
+                />
+              }
             />
             <PageInfoProperty
               label="Environment"

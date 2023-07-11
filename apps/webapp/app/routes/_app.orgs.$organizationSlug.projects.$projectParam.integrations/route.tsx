@@ -8,6 +8,7 @@ import { ConnectToIntegrationSheet } from "~/components/integrations/ConnectToIn
 import { IntegrationWithMissingFieldSheet } from "~/components/integrations/IntegrationWithMissingFieldSheet";
 import { NoIntegrationSheet } from "~/components/integrations/NoIntegrationSheet";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
+import { BreadcrumbLink } from "~/components/navigation/NavBar";
 import { LinkButton } from "~/components/primitives/Buttons";
 import { Callout } from "~/components/primitives/Callout";
 import { DateTime } from "~/components/primitives/DateTime";
@@ -68,9 +69,9 @@ export const loader = async ({ request, params }: LoaderArgs) => {
 };
 
 export const handle: Handle = {
-  breadcrumb: {
-    slug: "integrations",
-  },
+  breadcrumb: (match) => (
+    <BreadcrumbLink to={match.pathname} title="Integrations" />
+  ),
 };
 
 export default function Integrations() {

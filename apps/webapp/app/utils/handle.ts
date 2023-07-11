@@ -1,5 +1,5 @@
-import { Breadcrumb } from "~/components/navigation/Breadcrumb";
+import { BreadcrumbItem } from "~/components/navigation/Breadcrumb";
 
 export type Handle = {
-  breadcrumb?: Breadcrumb;
+  breadcrumb?: BreadcrumbItem;
 };

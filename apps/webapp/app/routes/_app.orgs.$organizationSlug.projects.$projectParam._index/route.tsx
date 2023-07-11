@@ -21,12 +21,17 @@ import { useProject } from "~/hooks/useProject";
 import { cn } from "~/utils/cn";
 import { Handle } from "~/utils/handle";
 import useWindowSize from "react-use/lib/useWindowSize";
-import { docsPath, projectIntegrationsPath } from "~/utils/pathBuilder";
+import {
+  docsPath,
+  projectIntegrationsPath,
+  trimTrailingSlash,
+} from "~/utils/pathBuilder";
+import { BreadcrumbLink } from "~/components/navigation/NavBar";
 
 export const handle: Handle = {
-  breadcrumb: {
-    slug: "jobs",
-  },
+  breadcrumb: (match) => (
+    <BreadcrumbLink to={trimTrailingSlash(match.pathname)} title="Jobs" />
+  ),
 };
 
 export default function Page() {

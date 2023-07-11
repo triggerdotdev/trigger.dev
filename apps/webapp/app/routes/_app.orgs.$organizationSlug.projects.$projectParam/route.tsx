@@ -7,6 +7,7 @@ import {
   ProjectSideMenu,
   SideMenuContainer,
 } from "~/components/navigation/ProjectSideMenu";
+import { ProjectsMenu } from "~/components/navigation/ProjectsMenu";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { ProjectPresenter } from "~/presenters/ProjectPresenter.server";
@@ -55,9 +56,7 @@ export const loader = async ({ request, params }: LoaderArgs) => {
 };
 
 export const handle: Handle = {
-  breadcrumb: {
-    slug: "projects",
-  },
+  breadcrumb: (_match, matches) => <ProjectsMenu matches={matches} />,
 };
 
 export default function Project() {

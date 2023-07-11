@@ -42,6 +42,7 @@ import {
   HowToSetupYourProject,
   HowToUseApiKeysAndEndpoints,
 } from "~/components/helpContent/HelpContentText";
+import { BreadcrumbLink } from "~/components/navigation/NavBar";
 
 export const loader = async ({ request, params }: LoaderArgs) => {
   const userId = await requireUserId(request);
@@ -72,9 +73,9 @@ export const loader = async ({ request, params }: LoaderArgs) => {
 };
 
 export const handle: Handle = {
-  breadcrumb: {
-    slug: "environments",
-  },
+  breadcrumb: (match) => (
+    <BreadcrumbLink to={match.pathname} title="Environments" />
+  ),
 };
 
 export default function Page() {

@@ -13,6 +13,7 @@ import {
   JobParamsSchema,
   projectIntegrationsPath,
   jobRunsParentPath,
+  trimTrailingSlash,
 } from "~/utils/pathBuilder";
 import { ListPagination } from "./ListPagination";
 import { Callout } from "~/components/primitives/Callout";
@@ -20,6 +21,7 @@ import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { useJob } from "~/hooks/useJob";
 import simplur from "simplur";
+import { BreadcrumbLink } from "~/components/navigation/NavBar";
 
 export const DirectionSchema = z.union([
   z.literal("forward"),
@@ -56,9 +58,9 @@ export const loader = async ({ request, params }: LoaderArgs) => {
 };
 
 export const handle: Handle = {
-  breadcrumb: {
-    slug: "runs",
-  },
+  breadcrumb: (match) => (
+    <BreadcrumbLink to={trimTrailingSlash(match.pathname)} title="Runs" />
+  ),
 };
 
 export default function Page() {
